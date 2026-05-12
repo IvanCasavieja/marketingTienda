@@ -108,9 +108,9 @@ export default function CampaignsPage() {
       {!loading && displayed.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Inversión total",  value: `$${totals.spend.toLocaleString()}` },
-            { label: "Clicks",           value: totals.clicks.toLocaleString() },
-            { label: "Conversiones",     value: totals.conversions.toLocaleString() },
+            { label: "Inversión total",  value: `$${totals.spend.toLocaleString('es-UY')}` },
+            { label: "Clicks",           value: totals.clicks.toLocaleString('es-UY') },
+            { label: "Conversiones",     value: totals.conversions.toLocaleString('es-UY') },
           ].map(({ label, value }) => (
             <div key={label} className="card p-4">
               <p className="text-xs text-slate-500 mb-1">{label}</p>
@@ -189,8 +189,8 @@ export default function CampaignsPage() {
                     </span>
                   </td>
                   <td className="table-td text-slate-400 text-xs">{m.date}</td>
-                  <td className="table-td font-semibold">${m.spend.toLocaleString()}</td>
-                  <td className="table-td">{m.clicks.toLocaleString()}</td>
+                  <td className="table-td font-semibold">${m.spend.toLocaleString('es-UY')}</td>
+                  <td className="table-td">{m.clicks.toLocaleString('es-UY')}</td>
                   <td className="table-td">
                     <span className={`text-xs font-medium ${m.ctr > 3 ? "text-emerald-600" : m.ctr > 1 ? "text-slate-600" : "text-red-500"}`}>
                       {m.ctr.toFixed(2)}%
@@ -206,7 +206,7 @@ export default function CampaignsPage() {
         {!loading && displayed.length > 0 && (
           <div className="px-4 py-3 border-t border-slate-50 bg-slate-50/30">
             <p className="text-xs text-slate-400">
-              {displayed.length} campañas · ${totals.spend.toLocaleString()} de inversión total
+              {displayed.length} campañas · ${totals.spend.toLocaleString('es-UY')} de inversión total
             </p>
           </div>
         )}

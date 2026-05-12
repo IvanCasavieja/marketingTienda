@@ -18,8 +18,8 @@ export default function SpendByPlatform({ data }: Props) {
       <BarChart data={formatted} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
         <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-        <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${v.toLocaleString()}`} />
-        <Tooltip formatter={(v: number) => [`$${v.toLocaleString()}`, "Inversión"]} />
+        <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${v.toLocaleString('es-UY')}`} />
+        <Tooltip formatter={(v: number) => [`$${v.toLocaleString('es-UY')}`, "Inversión"]} />
         <Bar dataKey="spend" radius={[4, 4, 0, 0]}>
           {formatted.map((entry, i) => (
             <rect key={i} fill={entry.fill} />
