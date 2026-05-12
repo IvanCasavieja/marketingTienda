@@ -1,10 +1,16 @@
-from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 import secrets
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
     # App
     APP_ENV: str = "development"
     APP_SECRET_KEY: str = secrets.token_hex(32)
@@ -58,10 +64,6 @@ class Settings(BaseSettings):
     @property
     def allowed_origins(self) -> List[str]:
         return [o.strip() for o in self.APP_ALLOWED_ORIGINS.split(",")]
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
 
 settings = Settings()
