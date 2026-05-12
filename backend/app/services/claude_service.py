@@ -3,7 +3,14 @@ from datetime import date
 from typing import List, Dict
 from app.core.config import settings
 
-client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+_client: anthropic.Anthropic | None = None
+
+
+def _get_client() -> anthropic.Anthropic:
+    global _client
+    if _client is None:
+        _client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    return _client
 
 SYSTEM_PROMPT = """Eres un analista experto en marketing digital con profundo conocimiento en Meta Ads,
 Google Ads, TikTok Ads, DV360 y Salesforce Marketing Cloud. Tu rol es analizar datos de campañas
@@ -69,7 +76,7 @@ Genera un reporte ejecutivo completo con las siguientes secciones:
 5. **ALERTAS Y ANOMALÍAS** (si las hay)
 6. **PRÓXIMOS PASOS RECOMENDADOS** (ordenados por prioridad)"""
 
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
         system=SYSTEM_PROMPT,
@@ -99,7 +106,7 @@ Identifica:
 
 Para cada anomalía indica: plataforma, campaña afectada, magnitud del problema y acción recomendada."""
 
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2048,
         system=SYSTEM_PROMPT,
@@ -131,7 +138,7 @@ Genera recomendaciones de optimización específicas y accionables:
 
 Para cada recomendación incluye: plataforma, acción específica, métricas que mejoraría y % de mejora estimado."""
 
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2048,
         system=SYSTEM_PROMPT,
@@ -160,7 +167,7 @@ Genera una comparativa detallada:
 4. **MIX ÓPTIMO** recomendado de inversión entre plataformas
 5. **CONCLUSIÓN ESTRATÉGICA** (qué plataforma priorizar según el objetivo de negocio)"""
 
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2048,
         system=SYSTEM_PROMPT,
