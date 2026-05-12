@@ -15,6 +15,7 @@ import {
 import { SkeletonCard, SkeletonRow } from "@/components/ui/SkeletonCard";
 import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
+import { fNum, fMoney } from "@/lib/format";
 import { metricsApi as mApi } from "@/lib/api";
 
 const COLORS: Record<string, string> = {
@@ -72,7 +73,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       <p className="text-xs font-semibold text-slate-700 mb-1">{label}</p>
       {payload.map((p: any) => (
         <p key={p.dataKey} className="text-sm font-bold" style={{ color: p.fill || p.stroke }}>
-          {p.name === "roas" ? `${p.value.toFixed(2)}x` : `$${p.value.toLocaleString('es-UY')}`}
+          {p.name === "roas" ? `${p.value.toFixed(2)}x` : fMoney(p.value)}
         </p>
       ))}
     </div>
@@ -156,15 +157,15 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPICard label="Inversión total" value={`$${totals.spend.toLocaleString('es-UY')}`}
+          <KPICard label="Inversión total" value={fMoney(totals.spend)}
             sub="últimos 30 días" trend={8.3}
             icon={<DollarSign size={18} className="text-white" />}
             gradient="from-brand-500 to-brand-600" />
-          <KPICard label="Clicks totales" value={totals.clicks.toLocaleString('es-UY')}
+          <KPICard label="Clicks totales" value={fNum(totals.clicks)}
             sub="todas las plataformas" trend={-2.1}
             icon={<MousePointerClick size={18} className="text-white" />}
             gradient="from-slate-600 to-slate-700" />
-          <KPICard label="Conversiones" value={totals.conversions.toLocaleString('es-UY')}
+          <KPICard label="Conversiones" value={fNum(totals.conversions)}
             sub={`CPA: $${cpa.toFixed(2)}`} trend={12.4}
             icon={<ShoppingCart size={18} className="text-white" />}
             gradient="from-emerald-500 to-emerald-600" />
@@ -267,10 +268,10 @@ export default function DashboardPage() {
               summary.map((s) => (
                 <tr key={s.platform} className="table-tr">
                   <td className="table-td"><PlatformBadge platform={s.platform} /></td>
-                  <td className="table-td font-semibold">${s.spend.toLocaleString('es-UY')}</td>
-                  <td className="table-td">{s.clicks.toLocaleString('es-UY')}</td>
+                  <td className="table-td font-semibold">{fMoney(s.spend)}</td>
+                  <td className="table-td">{fNum(s.clicks)}</td>
                   <td className="table-td">{s.avg_ctr.toFixed(2)}%</td>
-                  <td className="table-td">{s.conversions.toLocaleString('es-UY')}</td>
+                  <td className="table-td">{fNum(s.conversions)}</td>
                   <td className="table-td">
                     <span className={`font-bold ${s.avg_roas >= 2 ? "text-emerald-600" : s.avg_roas >= 1 ? "text-amber-500" : "text-red-500"}`}>
                       {s.avg_roas.toFixed(2)}x

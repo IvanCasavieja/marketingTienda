@@ -7,6 +7,7 @@ import { RefreshCw, Search, ArrowUpDown, TrendingUp, TrendingDown, Minus } from 
 import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
 import { SkeletonRow } from "@/components/ui/SkeletonCard";
+import { fNum, fMoney } from "@/lib/format";
 
 const PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"] as const;
 
@@ -108,9 +109,9 @@ export default function CampaignsPage() {
       {!loading && displayed.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Inversión total",  value: `$${totals.spend.toLocaleString('es-UY')}` },
-            { label: "Clicks",           value: totals.clicks.toLocaleString('es-UY') },
-            { label: "Conversiones",     value: totals.conversions.toLocaleString('es-UY') },
+            { label: "Inversión total",  value: fMoney(totals.spend) },
+            { label: "Clicks",           value: fNum(totals.clicks) },
+            { label: "Conversiones",     value: fNum(totals.conversions) },
           ].map(({ label, value }) => (
             <div key={label} className="card p-4">
               <p className="text-xs text-slate-500 mb-1">{label}</p>
@@ -190,7 +191,7 @@ export default function CampaignsPage() {
                   </td>
                   <td className="table-td text-slate-400 text-xs">{m.date}</td>
                   <td className="table-td font-semibold">${m.spend.toLocaleString('es-UY')}</td>
-                  <td className="table-td">{m.clicks.toLocaleString('es-UY')}</td>
+                  <td className="table-td">{fNum(m.clicks)}</td>
                   <td className="table-td">
                     <span className={`text-xs font-medium ${m.ctr > 3 ? "text-emerald-600" : m.ctr > 1 ? "text-slate-600" : "text-red-500"}`}>
                       {m.ctr.toFixed(2)}%

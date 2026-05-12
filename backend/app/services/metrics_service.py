@@ -1,6 +1,6 @@
 from datetime import date, date as date_type
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete
 from typing import List, Dict
 from app.models.campaign_metric import CampaignMetric
 from app.models.platform_connection import PlatformConnection, Platform
@@ -28,6 +28,17 @@ async def sync_platform(db: AsyncSession, user_id: int, platform: Platform, date
     connections = await get_connections(db, user_id, platform)
     if not connections:
         raise ValueError(f"No active connection for platform {platform}")
+
+    await db.execute(
+        delete(CampaignMetric).where(
+            and_(
+                CampaignMetric.user_id == user_id,
+                CampaignMetric.platform == platform,
+                CampaignMetric.date >= date_from,
+                CampaignMetric.date <= date_to,
+            )
+        )
+    )
 
     saved = 0
     for conn in connections:
