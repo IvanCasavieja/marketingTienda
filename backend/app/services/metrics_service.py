@@ -11,7 +11,7 @@ from app.connectors import (
 )
 
 
-async def get_connection(db: AsyncSession, user_id: int, platform: Platform) -> PlatformConnection | None:
+async def get_connections(db: AsyncSession, user_id: int, platform: Platform) -> list[PlatformConnection]:
     result = await db.execute(
         select(PlatformConnection).where(
             and_(
@@ -21,54 +21,55 @@ async def get_connection(db: AsyncSession, user_id: int, platform: Platform) -> 
             )
         )
     )
-    return result.scalar_one_or_none()
+    return result.scalars().all()
 
 
 async def sync_platform(db: AsyncSession, user_id: int, platform: Platform, date_from: date, date_to: date) -> int:
-    conn = await get_connection(db, user_id, platform)
-    if not conn:
+    connections = await get_connections(db, user_id, platform)
+    if not connections:
         raise ValueError(f"No active connection for platform {platform}")
 
-    access_token = decrypt_token(conn.access_token_enc)
-    account_id = conn.account_id
-
-    if platform == Platform.META:
-        connector = MetaAdsConnector(access_token, account_id)
-    elif platform == Platform.GOOGLE_ADS:
-        connector = GoogleAdsConnector(access_token, account_id, settings.GOOGLE_DEVELOPER_TOKEN)
-    elif platform == Platform.TIKTOK:
-        connector = TikTokAdsConnector(access_token, account_id)
-    elif platform == Platform.DV360:
-        connector = DV360Connector(access_token, account_id)
-    else:
-        raise ValueError(f"Unsupported platform for sync: {platform}")
-
-    raw = await connector.fetch_campaigns(date_from, date_to)
-    normalized = connector.normalize(raw, date_from, date_to)
-
     saved = 0
-    for row in normalized:
-        metric = CampaignMetric(
-            user_id=user_id,
-            platform=platform,
-            account_id=row["account_id"],
-            campaign_id=row["campaign_id"],
-            campaign_name=row["campaign_name"],
-            date=row["date"],
-            impressions=row["impressions"],
-            clicks=row["clicks"],
-            spend=row["spend"],
-            conversions=row["conversions"],
-            revenue=row["revenue"],
-            reach=row["reach"],
-            ctr=row["ctr"],
-            cpc=row["cpc"],
-            cpm=row["cpm"],
-            roas=row["roas"],
-            raw_data=row["raw_data"],
-        )
-        db.add(metric)
-        saved += 1
+    for conn in connections:
+        access_token = decrypt_token(conn.access_token_enc)
+        account_id = conn.account_id
+
+        if platform == Platform.META:
+            connector = MetaAdsConnector(access_token, account_id)
+        elif platform == Platform.GOOGLE_ADS:
+            connector = GoogleAdsConnector(access_token, account_id, settings.GOOGLE_DEVELOPER_TOKEN)
+        elif platform == Platform.TIKTOK:
+            connector = TikTokAdsConnector(access_token, account_id)
+        elif platform == Platform.DV360:
+            connector = DV360Connector(access_token, account_id)
+        else:
+            raise ValueError(f"Unsupported platform for sync: {platform}")
+
+        raw = await connector.fetch_campaigns(date_from, date_to)
+        normalized = connector.normalize(raw, date_from, date_to)
+
+        for row in normalized:
+            metric = CampaignMetric(
+                user_id=user_id,
+                platform=platform,
+                account_id=row["account_id"],
+                campaign_id=row["campaign_id"],
+                campaign_name=row["campaign_name"],
+                date=row["date"],
+                impressions=row["impressions"],
+                clicks=row["clicks"],
+                spend=row["spend"],
+                conversions=row["conversions"],
+                revenue=row["revenue"],
+                reach=row["reach"],
+                ctr=row["ctr"],
+                cpc=row["cpc"],
+                cpm=row["cpm"],
+                roas=row["roas"],
+                raw_data=row["raw_data"],
+            )
+            db.add(metric)
+            saved += 1
 
     await db.flush()
     return saved

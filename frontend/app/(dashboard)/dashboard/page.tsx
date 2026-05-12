@@ -13,6 +13,7 @@ import {
   TrendingUp, ArrowUpRight, ArrowDownRight, RefreshCw,
 } from "lucide-react";
 import { SkeletonCard, SkeletonRow } from "@/components/ui/SkeletonCard";
+import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
 import { metricsApi as mApi } from "@/lib/api";
 
@@ -104,7 +105,11 @@ export default function DashboardPage() {
   async function syncAll() {
     setSyncing(true);
     const platforms = ["meta", "google_ads", "tiktok", "dv360"];
-    await Promise.allSettled(platforms.map((p) => mApi.sync(p, month30, today)));
+    const results = await Promise.allSettled(platforms.map((p) => mApi.sync(p, month30, today)));
+    const succeeded = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (succeeded > 0) toast.success(`Sincronizadas ${succeeded} plataforma(s) correctamente`);
+    if (failed > 0 && succeeded === 0) toast.error("No se pudo sincronizar ninguna plataforma");
     await loadData();
     setSyncing(false);
   }
