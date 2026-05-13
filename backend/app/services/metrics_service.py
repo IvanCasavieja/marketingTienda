@@ -48,7 +48,11 @@ async def sync_platform(db: AsyncSession, user_id: int, platform: Platform, date
         if platform == Platform.META:
             connector = MetaAdsConnector(access_token, account_id)
         elif platform == Platform.GOOGLE_ADS:
-            connector = GoogleAdsConnector(access_token, account_id, settings.GOOGLE_DEVELOPER_TOKEN)
+            connector = GoogleAdsConnector(
+                access_token, account_id, settings.GOOGLE_DEVELOPER_TOKEN,
+                client_id=settings.GOOGLE_CLIENT_ID,
+                client_secret=settings.GOOGLE_CLIENT_SECRET,
+            )
         elif platform == Platform.TIKTOK:
             connector = TikTokAdsConnector(access_token, account_id)
         elif platform == Platform.DV360:
