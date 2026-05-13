@@ -146,7 +146,7 @@ export default function DashboardPage() {
     const failed    = results.filter((r) => r.status === "rejected").length;
     if (succeeded > 0) toast.success(`Sincronizadas ${succeeded} plataforma(s) correctamente`);
     if (failed > 0 && succeeded === 0) toast.error("No se pudo sincronizar ninguna plataforma");
-    await loadData(period);
+    await loadData(period, compareMode);
     setSyncing(false);
   }
 
