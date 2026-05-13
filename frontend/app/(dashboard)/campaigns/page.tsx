@@ -136,27 +136,19 @@ export default function CampaignsPage() {
         </div>
 
         {/* Sort */}
-        <div className="flex items-center gap-2">
-          <select
-            value={`${sortKey}-${sortDir}`}
-            onChange={(e) => {
-              const [k, d] = e.target.value.split("-") as [SortKey, SortDir];
-              setSortKey(k);
-              setSortDir(d);
-            }}
-            className="input py-2 text-xs pr-8"
-          >
-            <option value="spend-desc">Inversión ↓</option>
-            <option value="spend-asc">Inversión ↑</option>
-            <option value="clicks-desc">Clicks ↓</option>
-            <option value="clicks-asc">Clicks ↑</option>
-            <option value="ctr-desc">CTR ↓</option>
-            <option value="ctr-asc">CTR ↑</option>
-            <option value="conversions-desc">Conv. ↓</option>
-            <option value="conversions-asc">Conv. ↑</option>
-            <option value="roas-desc">ROAS ↓</option>
-            <option value="roas-asc">ROAS ↑</option>
+        <div className="flex items-center gap-1">
+          <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}
+            className="input py-2 text-xs pr-8">
+            <option value="spend">Inversión</option>
+            <option value="clicks">Clicks</option>
+            <option value="ctr">CTR</option>
+            <option value="conversions">Conv.</option>
+            <option value="roas">ROAS</option>
           </select>
+          <button onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
+            className="input py-2 px-3 text-xs font-medium hover:bg-slate-100 transition-colors">
+            {sortDir === "desc" ? "↓" : "↑"}
+          </button>
         </div>
 
         {/* Date range */}
