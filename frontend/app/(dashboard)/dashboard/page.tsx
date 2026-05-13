@@ -112,8 +112,11 @@ export default function DashboardPage() {
   const [syncing, setSyncing]         = useState(false);
   const [period, setPeriod]           = useState(30);
   const [compareMode, setCompareMode] = useState<CompareMode>("prev_period");
+  const [mounted, setMounted]         = useState(false);
 
-  const dayLabel = format(new Date(), "EEEE d 'de' MMMM", { locale: es });
+  useEffect(() => { setMounted(true); }, []);
+
+  const dayLabel = mounted ? format(new Date(), "EEEE d 'de' MMMM", { locale: es }) : "";
 
   useEffect(() => { loadData(period, compareMode); }, [period, compareMode]);
 
@@ -212,7 +215,7 @@ export default function DashboardPage() {
                 <option value="prev_year">vs. año anterior</option>
               </select>
             </div>
-            <p className="text-[11px] text-slate-400">{getCompareLabel(period, compareMode)}</p>
+            {mounted && <p className="text-[11px] text-slate-400">{getCompareLabel(period, compareMode)}</p>}
           </div>
           <button onClick={syncAll} disabled={syncing} className="btn-secondary">
             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
