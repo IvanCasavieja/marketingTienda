@@ -33,7 +33,7 @@ async def sync_metrics(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        saved = await sync_platform(db, current_user.id, payload.platform, payload.date_from, payload.date_to)
+        saved = await sync_platform(db, payload.platform, payload.date_from, payload.date_to)
         return SyncResponse(platform=payload.platform.value, records_saved=saved)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -50,7 +50,7 @@ async def get_campaign_metrics(
     db: AsyncSession = Depends(get_db),
 ):
     platform_list = [Platform(p) for p in platforms.split(",")] if platforms else list(Platform)
-    return await get_metrics(db, current_user.id, platform_list, date_from, date_to)
+    return await get_metrics(db, platform_list, date_from, date_to)
 
 
 @router.get("/summary")
@@ -73,7 +73,6 @@ async def get_summary(
         )
         .where(
             and_(
-                CampaignMetric.user_id == current_user.id,
                 CampaignMetric.date >= date_from,
                 CampaignMetric.date <= date_to,
             )

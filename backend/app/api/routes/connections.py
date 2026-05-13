@@ -36,9 +36,7 @@ async def list_connections(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(PlatformConnection).where(PlatformConnection.user_id == current_user.id)
-    )
+    result = await db.execute(select(PlatformConnection))
     return result.scalars().all()
 
 

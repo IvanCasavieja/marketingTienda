@@ -11,11 +11,10 @@ from app.connectors import (
 )
 
 
-async def get_connections(db: AsyncSession, user_id: int, platform: Platform) -> list[PlatformConnection]:
+async def get_connections(db: AsyncSession, platform: Platform) -> list[PlatformConnection]:
     result = await db.execute(
         select(PlatformConnection).where(
             and_(
-                PlatformConnection.user_id == user_id,
                 PlatformConnection.platform == platform,
                 PlatformConnection.is_active == True,
             )
@@ -24,15 +23,14 @@ async def get_connections(db: AsyncSession, user_id: int, platform: Platform) ->
     return result.scalars().all()
 
 
-async def sync_platform(db: AsyncSession, user_id: int, platform: Platform, date_from: date, date_to: date) -> int:
-    connections = await get_connections(db, user_id, platform)
+async def sync_platform(db: AsyncSession, platform: Platform, date_from: date, date_to: date) -> int:
+    connections = await get_connections(db, platform)
     if not connections:
         raise ValueError(f"No active connection for platform {platform}")
 
     await db.execute(
         delete(CampaignMetric).where(
             and_(
-                CampaignMetric.user_id == user_id,
                 CampaignMetric.platform == platform,
                 CampaignMetric.date >= date_from,
                 CampaignMetric.date <= date_to,
@@ -90,9 +88,8 @@ async def sync_platform(db: AsyncSession, user_id: int, platform: Platform, date
     return saved
 
 
-async def get_metrics(db: AsyncSession, user_id: int, platforms: List[Platform], date_from: date, date_to: date) -> List[Dict]:
+async def get_metrics(db: AsyncSession, platforms: List[Platform], date_from: date, date_to: date) -> List[Dict]:
     filters = [
-        CampaignMetric.user_id == user_id,
         CampaignMetric.date >= date_from,
         CampaignMetric.date <= date_to,
     ]
