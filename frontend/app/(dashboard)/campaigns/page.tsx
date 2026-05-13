@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo } from "react";
 import { metricsApi } from "@/lib/api";
 import { CampaignMetric, PLATFORM_LABELS } from "@/types";
 import { format, subDays } from "date-fns";
-import { RefreshCw, Search, ArrowUpDown, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { RefreshCw, Search, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
 import { SkeletonRow } from "@/components/ui/SkeletonCard";
@@ -76,15 +76,6 @@ export default function CampaignsPage() {
     { spend: 0, clicks: 0, conversions: 0 }
   ), [displayed]);
 
-  function SortBtn({ k, label }: { k: SortKey; label: string }) {
-    return (
-      <button onClick={() => toggleSort(k)}
-        className={`table-th flex items-center gap-1 hover:text-slate-700 transition-colors ${sortKey === k ? "text-brand-600" : ""}`}>
-        {label}
-        <ArrowUpDown size={11} className={sortKey === k ? "text-brand-500" : "text-slate-300"} />
-      </button>
-    );
-  }
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -144,6 +135,30 @@ export default function CampaignsPage() {
             placeholder="Buscar campaña..." className="input pl-8 py-2 text-xs" />
         </div>
 
+        {/* Sort */}
+        <div className="flex items-center gap-2">
+          <select
+            value={`${sortKey}-${sortDir}`}
+            onChange={(e) => {
+              const [k, d] = e.target.value.split("-") as [SortKey, SortDir];
+              setSortKey(k);
+              setSortDir(d);
+            }}
+            className="input py-2 text-xs pr-8"
+          >
+            <option value="spend-desc">Inversión ↓</option>
+            <option value="spend-asc">Inversión ↑</option>
+            <option value="clicks-desc">Clicks ↓</option>
+            <option value="clicks-asc">Clicks ↑</option>
+            <option value="ctr-desc">CTR ↓</option>
+            <option value="ctr-asc">CTR ↑</option>
+            <option value="conversions-desc">Conv. ↓</option>
+            <option value="conversions-asc">Conv. ↑</option>
+            <option value="roas-desc">ROAS ↓</option>
+            <option value="roas-asc">ROAS ↑</option>
+          </select>
+        </div>
+
         {/* Date range */}
         <div className="flex items-center gap-2">
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
@@ -162,10 +177,10 @@ export default function CampaignsPage() {
               <th className="table-th">Plataforma</th>
               <th className="table-th">Campaña</th>
               <th className="table-th">Fecha</th>
-              <SortBtn k="spend"       label="Inversión" />
-              <SortBtn k="clicks"      label="Clicks" />
-              <SortBtn k="ctr"         label="CTR" />
-              <SortBtn k="conversions" label="Conv." />
+              <th className="table-th">Inversión</th>
+              <th className="table-th">Clicks</th>
+              <th className="table-th">CTR</th>
+              <th className="table-th">Conv.</th>
               <SortBtn k="roas"        label="ROAS" />
             </tr>
           </thead>
