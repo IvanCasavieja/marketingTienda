@@ -2,7 +2,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { metricsApi } from "@/lib/api";
 import { CampaignMetric, PLATFORM_LABELS } from "@/types";
-import { format, subDays } from "date-fns";
+import { format, subDays, subYears } from "date-fns";
+import { es } from "date-fns/locale";
 import { RefreshCw, Search, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
@@ -30,13 +31,20 @@ export default function CampaignsPage() {
   const [sortDir, setSortDir]           = useState<SortDir>("desc");
   const [dateFrom, setDateFrom]         = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [dateTo, setDateTo]             = useState(format(new Date(), "yyyy-MM-dd"));
+  const [comparing, setComparing]       = useState(false);
+  const [cmpFrom, setCmpFrom]           = useState(format(subDays(new Date(), 60), "yyyy-MM-dd"));
+  const [cmpTo, setCmpTo]               = useState(format(subDays(new Date(), 31), "yyyy-MM-dd"));
+  const [cmpMetrics, setCmpMetrics]     = useState<CampaignMetric[]>([]);
 
   async function loadMetrics() {
     setLoading(true);
     const pf = filterPlatform !== "all" ? filterPlatform : undefined;
     try {
-      const { data } = await metricsApi.getMetrics(dateFrom, dateTo, pf);
-      setMetrics(data);
+      const reqs = [metricsApi.getMetrics(dateFrom, dateTo, pf)];
+      if (comparing) reqs.push(metricsApi.getMetrics(cmpFrom, cmpTo, pf));
+      const [main, cmp] = await Promise.all(reqs);
+      setMetrics(main.data);
+      if (cmp) setCmpMetrics(cmp.data);
     } catch {
       toast.error("Error cargando métricas");
     } finally {
@@ -44,7 +52,7 @@ export default function CampaignsPage() {
     }
   }
 
-  useEffect(() => { loadMetrics(); }, [dateFrom, dateTo, filterPlatform]);
+  useEffect(() => { loadMetrics(); }, [dateFrom, dateTo, filterPlatform, comparing, cmpFrom, cmpTo]);
 
   async function syncPlatform(platform: string) {
     setSyncing(platform);
@@ -76,6 +84,27 @@ export default function CampaignsPage() {
     { spend: 0, clicks: 0, conversions: 0 }
   ), [displayed]);
 
+  const cmpTotals = useMemo(() => cmpMetrics.reduce(
+    (acc, m) => ({ spend: acc.spend + m.spend, clicks: acc.clicks + m.clicks, conversions: acc.conversions + m.conversions }),
+    { spend: 0, clicks: 0, conversions: 0 }
+  ), [cmpMetrics]);
+
+  function pct(curr: number, prev: number) {
+    if (prev === 0) return null;
+    return ((curr - prev) / prev) * 100;
+  }
+
+  function DeltaBadge({ curr, prev }: { curr: number; prev: number }) {
+    const delta = pct(curr, prev);
+    if (delta === null) return null;
+    const up = delta >= 0;
+    return (
+      <span className={`text-[10px] font-semibold ${up ? "text-emerald-600" : "text-red-500"}`}>
+        {up ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}%
+      </span>
+    );
+  }
+
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -100,13 +129,17 @@ export default function CampaignsPage() {
       {!loading && displayed.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Inversión total",  value: fMoney(totals.spend) },
-            { label: "Clicks",           value: fNum(totals.clicks) },
-            { label: "Conversiones",     value: fNum(totals.conversions) },
-          ].map(({ label, value }) => (
+            { label: "Inversión total", curr: totals.spend,       prev: cmpTotals.spend,       fmt: fMoney },
+            { label: "Clicks",          curr: totals.clicks,      prev: cmpTotals.clicks,      fmt: fNum },
+            { label: "Conversiones",    curr: totals.conversions, prev: cmpTotals.conversions, fmt: fNum },
+          ].map(({ label, curr, prev, fmt }) => (
             <div key={label} className="card p-4">
               <p className="text-xs text-slate-500 mb-1">{label}</p>
-              <p className="text-xl font-bold text-slate-900">{value}</p>
+              <div className="flex items-end gap-2">
+                <p className="text-xl font-bold text-slate-900">{fmt(curr)}</p>
+                {comparing && <DeltaBadge curr={curr} prev={prev} />}
+              </div>
+              {comparing && <p className="text-xs text-slate-400 mt-0.5">{fmt(prev)} período anterior</p>}
             </div>
           ))}
         </div>
@@ -152,21 +185,43 @@ export default function CampaignsPage() {
         </div>
 
         {/* Date range */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex gap-1">
-            {[{l:"7D",d:7},{l:"30D",d:30},{l:"90D",d:90}].map(({l,d}) => (
-              <button key={d}
-                onClick={() => { setDateFrom(format(subDays(new Date(), d), "yyyy-MM-dd")); setDateTo(format(new Date(), "yyyy-MM-dd")); }}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
-                {l}
-              </button>
-            ))}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex gap-1">
+              {[{l:"7D",d:7},{l:"30D",d:30},{l:"90D",d:90}].map(({l,d}) => (
+                <button key={d}
+                  onClick={() => { setDateFrom(format(subDays(new Date(), d), "yyyy-MM-dd")); setDateTo(format(new Date(), "yyyy-MM-dd")); }}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+                  {l}
+                </button>
+              ))}
+            </div>
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+              className="input py-2 text-xs w-36" />
+            <span className="text-slate-400 text-xs">→</span>
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+              className="input py-2 text-xs w-36" />
+            <button onClick={() => setComparing(c => !c)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
+                comparing ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}>
+              Comparar
+            </button>
           </div>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-            className="input py-2 text-xs w-36" />
-          <span className="text-slate-400 text-xs">→</span>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-            className="input py-2 text-xs w-36" />
+          {comparing && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-slate-400 w-[calc(3*2.5rem+0.5rem)]">vs.</span>
+              <input type="date" value={cmpFrom} onChange={(e) => setCmpFrom(e.target.value)}
+                className="input py-2 text-xs w-36 border-dashed" />
+              <span className="text-slate-400 text-xs">→</span>
+              <input type="date" value={cmpTo} onChange={(e) => setCmpTo(e.target.value)}
+                className="input py-2 text-xs w-36 border-dashed" />
+              <button onClick={() => { setCmpFrom(format(subYears(new Date(dateFrom), 1), "yyyy-MM-dd")); setCmpTo(format(subYears(new Date(dateTo), 1), "yyyy-MM-dd")); }}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+                Año anterior
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

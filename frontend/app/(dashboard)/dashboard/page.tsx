@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { metricsApi } from "@/lib/api";
 import { PlatformSummary, PLATFORM_LABELS } from "@/types";
-import { format, subDays } from "date-fns";
+import { format, subDays, subYears } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -31,6 +31,28 @@ const PERIODS = [
   { label: "30D", days: 30 },
   { label: "90D", days: 90 },
 ];
+
+type CompareMode = "prev_period" | "prev_year";
+
+function getCompareDates(days: number, mode: CompareMode) {
+  if (mode === "prev_year") {
+    return {
+      from: format(subYears(subDays(new Date(), days), 1), "yyyy-MM-dd"),
+      to:   format(subYears(new Date(), 1), "yyyy-MM-dd"),
+    };
+  }
+  return {
+    from: format(subDays(new Date(), days * 2), "yyyy-MM-dd"),
+    to:   format(subDays(new Date(), days + 1), "yyyy-MM-dd"),
+  };
+}
+
+function getCompareLabel(days: number, mode: CompareMode): string {
+  const { from, to } = getCompareDates(days, mode);
+  const f = format(new Date(from + "T00:00:00"), "d MMM", { locale: es });
+  const t = format(new Date(to   + "T00:00:00"), "d MMM", { locale: es });
+  return `vs. ${f} – ${t}`;
+}
 
 interface KPIProps {
   label: string;
@@ -89,21 +111,21 @@ export default function DashboardPage() {
   const [loading, setLoading]         = useState(true);
   const [syncing, setSyncing]         = useState(false);
   const [period, setPeriod]           = useState(30);
+  const [compareMode, setCompareMode] = useState<CompareMode>("prev_period");
 
   const dayLabel = format(new Date(), "EEEE d 'de' MMMM", { locale: es });
 
-  useEffect(() => { loadData(period); }, [period]);
+  useEffect(() => { loadData(period, compareMode); }, [period, compareMode]);
 
-  async function loadData(days: number) {
+  async function loadData(days: number, mode: CompareMode) {
     setLoading(true);
-    const today    = format(new Date(), "yyyy-MM-dd");
-    const from     = format(subDays(new Date(), days), "yyyy-MM-dd");
-    const prevTo   = format(subDays(new Date(), days + 1), "yyyy-MM-dd");
-    const prevFrom = format(subDays(new Date(), days * 2), "yyyy-MM-dd");
+    const today = format(new Date(), "yyyy-MM-dd");
+    const from  = format(subDays(new Date(), days), "yyyy-MM-dd");
+    const cmp   = getCompareDates(days, mode);
     try {
       const [curr, prev] = await Promise.all([
         metricsApi.getSummary(from, today),
-        metricsApi.getSummary(prevFrom, prevTo),
+        metricsApi.getSummary(cmp.from, cmp.to),
       ]);
       setSummary(curr.data);
       setPrevSummary(prev.data);
@@ -170,17 +192,27 @@ export default function DashboardPage() {
           <p className="text-sm text-slate-500 mt-0.5">Todas las plataformas</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-            {PERIODS.map(({ label, days }) => (
-              <button key={days} onClick={() => setPeriod(days)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
-                  period === days
-                    ? "bg-white shadow-sm text-slate-800"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}>
-                {label}
-              </button>
-            ))}
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+                {PERIODS.map(({ label, days }) => (
+                  <button key={days} onClick={() => setPeriod(days)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                      period === days
+                        ? "bg-white shadow-sm text-slate-800"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <select value={compareMode} onChange={(e) => setCompareMode(e.target.value as CompareMode)}
+                className="text-xs text-slate-500 bg-transparent border-none outline-none cursor-pointer hover:text-slate-700">
+                <option value="prev_period">vs. período anterior</option>
+                <option value="prev_year">vs. año anterior</option>
+              </select>
+            </div>
+            <p className="text-[11px] text-slate-400">{getCompareLabel(period, compareMode)}</p>
           </div>
           <button onClick={syncAll} disabled={syncing} className="btn-secondary">
             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
