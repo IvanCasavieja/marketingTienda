@@ -28,11 +28,14 @@ async def analyze(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not current_user.team_group_id:
+        raise HTTPException(status_code=400, detail="Join a team before running analysis")
+
     handler = ANALYSIS_HANDLERS.get(payload.analysis_type)
     if not handler:
         raise HTTPException(status_code=400, detail=f"Unknown analysis type: {payload.analysis_type}")
 
-    metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
+    metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
 
     if payload.analysis_type == "full_report":
         result = await handler(metrics, [], [], payload.date_from, payload.date_to)

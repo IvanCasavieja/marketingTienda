@@ -7,7 +7,8 @@ import {
   BarChart3, ChevronRight,
 } from "lucide-react";
 import { clsx } from "clsx";
-import { connectionsApi } from "@/lib/api";
+import { authApi, connectionsApi } from "@/lib/api";
+import type { CurrentUser } from "@/types";
 
 const nav = [
   { href: "/dashboard",  label: "Dashboard",    icon: LayoutDashboard },
@@ -26,6 +27,7 @@ const platforms = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [connected, setConnected] = useState<Set<string>>(new Set());
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   useEffect(() => {
     connectionsApi.list()
@@ -33,7 +35,14 @@ export default function Sidebar() {
         setConnected(new Set(data.filter((c: any) => c.is_active).map((c: any) => c.platform)));
       })
       .catch(() => {});
+    authApi.me()
+      .then(({ data }) => setCurrentUser(data))
+      .catch(() => {});
   }, []);
+
+  const tenantLabel = currentUser?.group_name && currentUser?.team_name
+    ? `${currentUser.group_name} · ${currentUser.team_name}`
+    : "Sin equipo asignado";
 
   return (
     <aside className="w-64 min-h-screen bg-navy-900 flex flex-col shrink-0">
@@ -45,7 +54,9 @@ export default function Sidebar() {
           </div>
           <div>
             <p className="text-white font-bold text-sm leading-none">MKTG Platform</p>
-            <p className="text-slate-500 text-[11px] mt-0.5">Marketing Intelligence</p>
+            <p className="text-slate-500 text-[11px] mt-0.5 max-w-[180px] truncate" title={tenantLabel}>
+              {tenantLabel}
+            </p>
           </div>
         </div>
       </div>

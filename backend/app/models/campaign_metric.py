@@ -9,7 +9,7 @@ class CampaignMetric(Base):
     __tablename__ = "campaign_metrics"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    team_group_id: Mapped[int] = mapped_column(ForeignKey("team_groups.id", ondelete="CASCADE"), nullable=False)
     platform: Mapped[Platform] = mapped_column(Enum(Platform), nullable=False)
     account_id: Mapped[str] = mapped_column(String(255), nullable=False)
     campaign_id: Mapped[str] = mapped_column(String(255), nullable=False)

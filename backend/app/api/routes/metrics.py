@@ -32,8 +32,11 @@ async def sync_metrics(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not current_user.team_group_id:
+        raise HTTPException(status_code=400, detail="Join a team before syncing metrics")
+
     try:
-        saved = await sync_platform(db, payload.platform, payload.date_from, payload.date_to)
+        saved = await sync_platform(db, payload.platform, current_user.team_group_id, payload.date_from, payload.date_to)
         return SyncResponse(platform=payload.platform.value, records_saved=saved)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -49,8 +52,11 @@ async def get_campaign_metrics(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not current_user.team_group_id:
+        return []
+
     platform_list = [Platform(p) for p in platforms.split(",")] if platforms else list(Platform)
-    return await get_metrics(db, platform_list, date_from, date_to)
+    return await get_metrics(db, platform_list, current_user.team_group_id, date_from, date_to)
 
 
 @router.get("/summary")
@@ -60,6 +66,9 @@ async def get_summary(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not current_user.team_group_id:
+        return []
+
     result = await db.execute(
         select(
             CampaignMetric.platform,
@@ -75,6 +84,7 @@ async def get_summary(
             and_(
                 CampaignMetric.date >= date_from,
                 CampaignMetric.date <= date_to,
+                CampaignMetric.team_group_id == current_user.team_group_id,
             )
         )
         .group_by(CampaignMetric.platform)

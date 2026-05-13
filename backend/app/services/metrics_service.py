@@ -11,10 +11,11 @@ from app.connectors import (
 )
 
 
-async def get_connections(db: AsyncSession, platform: Platform) -> list[PlatformConnection]:
+async def get_connections(db: AsyncSession, platform: Platform, team_group_id: int) -> list[PlatformConnection]:
     result = await db.execute(
         select(PlatformConnection).where(
             and_(
+                PlatformConnection.team_group_id == team_group_id,
                 PlatformConnection.platform == platform,
                 PlatformConnection.is_active == True,
             )
@@ -23,8 +24,8 @@ async def get_connections(db: AsyncSession, platform: Platform) -> list[Platform
     return result.scalars().all()
 
 
-async def sync_platform(db: AsyncSession, platform: Platform, date_from: date, date_to: date) -> int:
-    connections = await get_connections(db, platform)
+async def sync_platform(db: AsyncSession, platform: Platform, team_group_id: int, date_from: date, date_to: date) -> int:
+    connections = await get_connections(db, platform, team_group_id)
     if not connections:
         raise ValueError(f"No active connection for platform {platform}")
 
@@ -32,6 +33,7 @@ async def sync_platform(db: AsyncSession, platform: Platform, date_from: date, d
         delete(CampaignMetric).where(
             and_(
                 CampaignMetric.platform == platform,
+                CampaignMetric.team_group_id == team_group_id,
                 CampaignMetric.date >= date_from,
                 CampaignMetric.date <= date_to,
             )
@@ -63,7 +65,7 @@ async def sync_platform(db: AsyncSession, platform: Platform, date_from: date, d
 
         for row in normalized:
             metric = CampaignMetric(
-                user_id=user_id,
+                team_group_id=team_group_id,
                 platform=platform,
                 account_id=row["account_id"],
                 campaign_id=row["campaign_id"],
@@ -88,8 +90,15 @@ async def sync_platform(db: AsyncSession, platform: Platform, date_from: date, d
     return saved
 
 
-async def get_metrics(db: AsyncSession, platforms: List[Platform], date_from: date, date_to: date) -> List[Dict]:
+async def get_metrics(
+    db: AsyncSession,
+    platforms: List[Platform],
+    team_group_id: int,
+    date_from: date,
+    date_to: date,
+) -> List[Dict]:
     filters = [
+        CampaignMetric.team_group_id == team_group_id,
         CampaignMetric.date >= date_from,
         CampaignMetric.date <= date_to,
     ]

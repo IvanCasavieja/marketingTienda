@@ -6,6 +6,7 @@ class UserRegister(BaseModel):
     email: EmailStr
     full_name: str
     password: str
+    join_code: str | None = None
 
     @field_validator("password")
     @classmethod
@@ -24,6 +25,7 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+    join_code: str | None = None
 
 
 class TokenResponse(BaseModel):
@@ -36,10 +38,35 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class JoinTeamRequest(BaseModel):
+    join_code: str
+
+
+class JoinTeamResponse(BaseModel):
+    team_name: str
+    group_name: str
+
+
+class TeamGroupCreateRequest(BaseModel):
+    team_name: str
+    team_slug: str
+    group_name: str
+
+
+class TeamGroupCreateResponse(BaseModel):
+    team_name: str
+    group_name: str
+    join_code: str
+
+
 class UserResponse(BaseModel):
     id: int
     email: str
     full_name: str
+    team_group_id: int | None = None
+    team_name: str | None = None
+    group_name: str | None = None
+    join_code: str | None = None
     is_active: bool
     is_superuser: bool
 

@@ -8,7 +8,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis
+from app.core.tenant_migration import migrate_default_team
+from app.models import Team, TeamGroup, User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis
 from app.api import router
 
 
@@ -16,6 +17,7 @@ from app.api import router
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await migrate_default_team(conn)
     yield
 
 

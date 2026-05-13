@@ -16,6 +16,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [showJoinStep, setShowJoinStep] = useState(false);
   const [showPwd, setShowPwd]   = useState(false);
   const [loading, setLoading]   = useState(false);
 
@@ -23,12 +25,33 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data } = await authApi.login(email, password);
+      const { data } = await authApi.login(email, password, joinCode.trim());
       localStorage.setItem("access_token",  data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
+      const { data: me } = await authApi.me();
+      if (!me.team_group_id) {
+        setShowJoinStep(true);
+        return;
+      }
       router.push("/dashboard");
     } catch {
       toast.error("Email o contraseña incorrectos");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleJoinTeam(e: React.FormEvent) {
+    e.preventDefault();
+    if (!joinCode.trim()) return;
+
+    setLoading(true);
+    try {
+      await authApi.joinTeam(joinCode.trim());
+      toast.success("Equipo asignado correctamente");
+      router.push("/dashboard");
+    } catch {
+      toast.error("Código de equipo inválido");
     } finally {
       setLoading(false);
     }
@@ -125,6 +148,19 @@ export default function LoginPage() {
               </div>
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Código de equipo
+              </label>
+              <input
+                type="text"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                className="input"
+                placeholder="Opcional"
+              />
+            </div>
+
             <button type="submit" disabled={loading} className="btn-primary w-full mt-2">
               {loading
                 ? <><Loader2 size={16} className="animate-spin" /> Ingresando...</>
@@ -137,6 +173,45 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {showJoinStep && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Asignar equipo</h3>
+            <p className="text-sm text-slate-500 mb-5">
+              Ingresá el código de invitación para acceder a las conexiones y métricas del grupo.
+            </p>
+            <form onSubmit={handleJoinTeam} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Código de equipo
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                  className="input"
+                  placeholder="Pegá tu código"
+                />
+              </div>
+              <button type="submit" disabled={loading} className="btn-primary w-full">
+                {loading
+                  ? <><Loader2 size={16} className="animate-spin" /> Validando...</>
+                  : "Unirme al equipo"}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard")}
+                className="w-full text-sm text-slate-500 hover:text-slate-700"
+              >
+                Continuar sin equipo
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

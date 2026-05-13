@@ -43,11 +43,12 @@ api.interceptors.response.use(
 );
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post("/auth/login", { email, password }),
-  register: (email: string, full_name: string, password: string) =>
-    api.post("/auth/register", { email, full_name, password }),
+  login: (email: string, password: string, join_code?: string) =>
+    api.post("/auth/login", { email, password, join_code: join_code || undefined }),
+  register: (email: string, full_name: string, password: string, join_code?: string) =>
+    api.post("/auth/register", { email, full_name, password, join_code: join_code || undefined }),
   me: () => api.get("/auth/me"),
+  joinTeam: (join_code: string) => api.post("/auth/join-team", { join_code }),
 };
 
 export const metricsApi = {

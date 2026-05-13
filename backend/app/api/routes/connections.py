@@ -36,7 +36,12 @@ async def list_connections(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(PlatformConnection))
+    if not current_user.team_group_id:
+        return []
+
+    result = await db.execute(
+        select(PlatformConnection).where(PlatformConnection.team_group_id == current_user.team_group_id)
+    )
     return result.scalars().all()
 
 
@@ -46,10 +51,13 @@ async def create_connection(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not current_user.team_group_id:
+        raise HTTPException(status_code=400, detail="Join a team before creating connections")
+
     existing = await db.execute(
         select(PlatformConnection).where(
             and_(
-                PlatformConnection.user_id == current_user.id,
+                PlatformConnection.team_group_id == current_user.team_group_id,
                 PlatformConnection.platform == payload.platform,
                 PlatformConnection.account_id == payload.account_id,
             )
@@ -59,7 +67,7 @@ async def create_connection(
         raise HTTPException(status_code=409, detail="Connection already exists")
 
     conn = PlatformConnection(
-        user_id=current_user.id,
+        team_group_id=current_user.team_group_id,
         platform=payload.platform,
         account_id=payload.account_id,
         account_name=payload.account_name,
@@ -81,7 +89,7 @@ async def delete_connection(
         select(PlatformConnection).where(
             and_(
                 PlatformConnection.id == connection_id,
-                PlatformConnection.user_id == current_user.id,
+                PlatformConnection.team_group_id == current_user.team_group_id,
             )
         )
     )
