@@ -6,7 +6,7 @@ import { format, subDays } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell, LineChart, Line,
+  ResponsiveContainer, Cell,
 } from "recharts";
 import {
   DollarSign, MousePointerClick, ShoppingCart,
@@ -26,13 +26,11 @@ const COLORS: Record<string, string> = {
   sfmc:       "#00A1E0",
 };
 
-const SPEND_GRADIENT: Record<string, string> = {
-  meta:       "from-blue-500 to-blue-600",
-  google_ads: "from-indigo-500 to-indigo-600",
-  tiktok:     "from-rose-500 to-rose-600",
-  dv360:      "from-emerald-500 to-emerald-600",
-  sfmc:       "from-cyan-500 to-cyan-600",
-};
+const PERIODS = [
+  { label: "7D",  days: 7 },
+  { label: "30D", days: 30 },
+  { label: "90D", days: 90 },
+];
 
 interface KPIProps {
   label: string;
@@ -80,24 +78,37 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-export default function DashboardPage() {
-  const [summary, setSummary] = useState<PlatformSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+function pctChange(curr: number, prev: number): number | undefined {
+  if (prev === 0) return undefined;
+  return ((curr - prev) / prev) * 100;
+}
 
-  const today    = format(new Date(), "yyyy-MM-dd");
-  const month30  = format(subDays(new Date(), 30), "yyyy-MM-dd");
+export default function DashboardPage() {
+  const [summary, setSummary]         = useState<PlatformSummary[]>([]);
+  const [prevSummary, setPrevSummary] = useState<PlatformSummary[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [syncing, setSyncing]         = useState(false);
+  const [period, setPeriod]           = useState(30);
+
   const dayLabel = format(new Date(), "EEEE d 'de' MMMM", { locale: es });
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(period); }, [period]);
 
-  async function loadData() {
+  async function loadData(days: number) {
     setLoading(true);
+    const today    = format(new Date(), "yyyy-MM-dd");
+    const from     = format(subDays(new Date(), days), "yyyy-MM-dd");
+    const prevTo   = format(subDays(new Date(), days + 1), "yyyy-MM-dd");
+    const prevFrom = format(subDays(new Date(), days * 2), "yyyy-MM-dd");
     try {
-      const { data } = await metricsApi.getSummary(month30, today);
-      setSummary(data);
+      const [curr, prev] = await Promise.all([
+        metricsApi.getSummary(from, today),
+        metricsApi.getSummary(prevFrom, prevTo),
+      ]);
+      setSummary(curr.data);
+      setPrevSummary(prev.data);
     } catch {
-      // Show empty state
+      // show empty state
     } finally {
       setLoading(false);
     }
@@ -105,13 +116,15 @@ export default function DashboardPage() {
 
   async function syncAll() {
     setSyncing(true);
+    const today = format(new Date(), "yyyy-MM-dd");
+    const from  = format(subDays(new Date(), period), "yyyy-MM-dd");
     const platforms = ["meta", "google_ads", "tiktok", "dv360"];
-    const results = await Promise.allSettled(platforms.map((p) => mApi.sync(p, month30, today)));
+    const results = await Promise.allSettled(platforms.map((p) => mApi.sync(p, from, today)));
     const succeeded = results.filter((r) => r.status === "fulfilled").length;
-    const failed = results.filter((r) => r.status === "rejected").length;
+    const failed    = results.filter((r) => r.status === "rejected").length;
     if (succeeded > 0) toast.success(`Sincronizadas ${succeeded} plataforma(s) correctamente`);
     if (failed > 0 && succeeded === 0) toast.error("No se pudo sincronizar ninguna plataforma");
-    await loadData();
+    await loadData(period);
     setSyncing(false);
   }
 
@@ -125,7 +138,19 @@ export default function DashboardPage() {
     }),
     { spend: 0, clicks: 0, impressions: 0, conversions: 0, revenue: 0 }
   );
+
+  const prevTotals = prevSummary.reduce(
+    (acc, s) => ({
+      spend:       acc.spend + s.spend,
+      clicks:      acc.clicks + s.clicks,
+      conversions: acc.conversions + s.conversions,
+      revenue:     acc.revenue + s.revenue,
+    }),
+    { spend: 0, clicks: 0, conversions: 0, revenue: 0 }
+  );
+
   const globalRoas = totals.spend > 0 ? totals.revenue / totals.spend : 0;
+  const prevRoas   = prevTotals.spend > 0 ? prevTotals.revenue / prevTotals.spend : 0;
   const cpa        = totals.conversions > 0 ? totals.spend / totals.conversions : 0;
 
   const chartData = summary.map((s) => ({
@@ -142,12 +167,26 @@ export default function DashboardPage() {
         <div>
           <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1 capitalize">{dayLabel}</p>
           <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Últimos 30 días · todas las plataformas</p>
+          <p className="text-sm text-slate-500 mt-0.5">Todas las plataformas</p>
         </div>
-        <button onClick={syncAll} disabled={syncing} className="btn-secondary">
-          <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-          {syncing ? "Sincronizando..." : "Sync datos"}
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+            {PERIODS.map(({ label, days }) => (
+              <button key={days} onClick={() => setPeriod(days)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                  period === days
+                    ? "bg-white shadow-sm text-slate-800"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <button onClick={syncAll} disabled={syncing} className="btn-secondary">
+            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Sincronizando..." : "Sync datos"}
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -158,19 +197,23 @@ export default function DashboardPage() {
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard label="Inversión total" value={fMoney(totals.spend)}
-            sub="últimos 30 días" trend={8.3}
+            sub={`últimos ${period} días`}
+            trend={pctChange(totals.spend, prevTotals.spend)}
             icon={<DollarSign size={18} className="text-white" />}
             gradient="from-brand-500 to-brand-600" />
           <KPICard label="Clicks totales" value={fNum(totals.clicks)}
-            sub="todas las plataformas" trend={-2.1}
+            sub="todas las plataformas"
+            trend={pctChange(totals.clicks, prevTotals.clicks)}
             icon={<MousePointerClick size={18} className="text-white" />}
             gradient="from-slate-600 to-slate-700" />
           <KPICard label="Conversiones" value={fNum(totals.conversions)}
-            sub={`CPA: $${cpa.toFixed(2)}`} trend={12.4}
+            sub={`CPA: $${cpa.toFixed(2)}`}
+            trend={pctChange(totals.conversions, prevTotals.conversions)}
             icon={<ShoppingCart size={18} className="text-white" />}
             gradient="from-emerald-500 to-emerald-600" />
           <KPICard label="ROAS global" value={`${globalRoas.toFixed(2)}x`}
-            sub="revenue / inversión" trend={5.7}
+            sub="revenue / inversión"
+            trend={pctChange(globalRoas, prevRoas)}
             icon={<TrendingUp size={18} className="text-white" />}
             gradient="from-amber-500 to-orange-500" />
         </div>
@@ -178,13 +221,10 @@ export default function DashboardPage() {
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Spend chart */}
         <div className="card p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <p className="section-title">Inversión por plataforma</p>
-              <p className="section-sub mt-0.5">Gasto total en 30 días</p>
-            </div>
+          <div className="mb-5">
+            <p className="section-title">Inversión por plataforma</p>
+            <p className="section-sub mt-0.5">Gasto total en {period} días</p>
           </div>
           {loading ? (
             <div className="h-52 skeleton rounded-xl" />
@@ -210,7 +250,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* ROAS chart */}
         <div className="card p-6">
           <div className="mb-5">
             <p className="section-title">ROAS por plataforma</p>
@@ -245,7 +284,7 @@ export default function DashboardPage() {
       <div className="card overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between">
           <p className="section-title">Rendimiento por plataforma</p>
-          <span className="text-xs text-slate-400">Últimos 30 días</span>
+          <span className="text-xs text-slate-400">Últimos {period} días</span>
         </div>
         <table className="w-full">
           <thead>

@@ -32,7 +32,7 @@ async def analyze(
     if not handler:
         raise HTTPException(status_code=400, detail=f"Unknown analysis type: {payload.analysis_type}")
 
-    metrics = await get_metrics(db, current_user.id, payload.platforms, payload.date_from, payload.date_to)
+    metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
 
     if payload.analysis_type == "full_report":
         result = await handler(metrics, [], [], payload.date_from, payload.date_to)

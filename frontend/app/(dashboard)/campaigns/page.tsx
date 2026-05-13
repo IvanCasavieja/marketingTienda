@@ -7,7 +7,7 @@ import { RefreshCw, Search, TrendingUp, TrendingDown, Minus } from "lucide-react
 import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
 import { SkeletonRow } from "@/components/ui/SkeletonCard";
-import { fNum, fMoney } from "@/lib/format";
+import { fNum, fMoney, fMoneyExact } from "@/lib/format";
 
 const PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"] as const;
 
@@ -160,7 +160,16 @@ export default function CampaignsPage() {
         </div>
 
         {/* Date range */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex gap-1">
+            {[{l:"7D",d:7},{l:"30D",d:30},{l:"90D",d:90}].map(({l,d}) => (
+              <button key={d}
+                onClick={() => { setDateFrom(format(subDays(new Date(), d), "yyyy-MM-dd")); setDateTo(format(new Date(), "yyyy-MM-dd")); }}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+                {l}
+              </button>
+            ))}
+          </div>
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
             className="input py-2 text-xs w-36" />
           <span className="text-slate-400 text-xs">→</span>
@@ -205,7 +214,7 @@ export default function CampaignsPage() {
                     </span>
                   </td>
                   <td className="table-td text-slate-400 text-xs">{m.date}</td>
-                  <td className="table-td font-semibold">${m.spend.toLocaleString('es-UY')}</td>
+                  <td className="table-td font-semibold">{fMoneyExact(m.spend)}</td>
                   <td className="table-td">{fNum(m.clicks)}</td>
                   <td className="table-td">
                     <span className={`text-xs font-medium ${m.ctr > 3 ? "text-emerald-600" : m.ctr > 1 ? "text-slate-600" : "text-red-500"}`}>
@@ -222,7 +231,7 @@ export default function CampaignsPage() {
         {!loading && displayed.length > 0 && (
           <div className="px-4 py-3 border-t border-slate-50 bg-slate-50/30">
             <p className="text-xs text-slate-400">
-              {displayed.length} campañas · ${totals.spend.toLocaleString('es-UY')} de inversión total
+              {displayed.length} campañas · {fMoneyExact(totals.spend)} de inversión total
             </p>
           </div>
         )}
