@@ -215,7 +215,9 @@ export default function DashboardPage() {
                 <option value="prev_year">vs. año anterior</option>
               </select>
             </div>
-            {mounted && <p className="text-[11px] text-slate-400">{getCompareLabel(period, compareMode)}</p>}
+            <p className="text-xs text-slate-400" suppressHydrationWarning>
+              {getCompareLabel(period, compareMode)}
+            </p>
           </div>
           <button onClick={syncAll} disabled={syncing} className="btn-secondary">
             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
