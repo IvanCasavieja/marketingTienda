@@ -181,7 +181,7 @@ export default function CampaignsPage() {
               <th className="table-th">Clicks</th>
               <th className="table-th">CTR</th>
               <th className="table-th">Conv.</th>
-              <SortBtn k="roas"        label="ROAS" />
+              <th className="table-th">ROAS</th>
             </tr>
           </thead>
           <tbody>
