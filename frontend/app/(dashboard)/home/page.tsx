@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { authApi } from "@/lib/api";
 import type { CurrentUser } from "@/types";
-import { Send, Sparkles, ChevronDown } from "lucide-react";
+import { Send, ChevronDown } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Bot knowledge base — swap with real AI call later
@@ -101,9 +101,7 @@ export default function HomePage() {
         {/* Mascot + greeting */}
         <div className="flex flex-col items-center text-center gap-4">
           <div className="relative">
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-lg shadow-brand-500/30">
-              <Sparkles size={36} className="text-white" />
-            </div>
+            <RobotMascot />
             <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white" />
           </div>
 
@@ -127,7 +125,7 @@ export default function HomePage() {
             className="w-full flex items-center gap-3 px-5 py-4 hover:bg-slate-50 transition-colors"
           >
             <div className="w-8 h-8 rounded-xl bg-brand-500/10 flex items-center justify-center shrink-0">
-              <Sparkles size={16} className="text-brand-500" />
+              <RobotMini />
             </div>
             <div className="flex-1 text-left">
               <p className="text-sm font-semibold text-slate-800">Asistente MKTG</p>
@@ -147,7 +145,7 @@ export default function HomePage() {
                   <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
                     {m.role === "bot" && (
                       <div className="w-7 h-7 rounded-xl bg-brand-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <Sparkles size={13} className="text-brand-500" />
+                        <RobotMini />
                       </div>
                     )}
                     <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
@@ -166,7 +164,7 @@ export default function HomePage() {
                 {typing && (
                   <div className="flex gap-3">
                     <div className="w-7 h-7 rounded-xl bg-brand-500/10 flex items-center justify-center shrink-0">
-                      <Sparkles size={13} className="text-brand-500" />
+                      <RobotMini />
                     </div>
                     <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm flex gap-1 items-center">
                       <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0ms]" />
@@ -216,5 +214,64 @@ export default function HomePage() {
         </p>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Robot mascot SVGs
+// ---------------------------------------------------------------------------
+
+function RobotMascot() {
+  return (
+    <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Shadow */}
+      <ellipse cx="40" cy="76" rx="22" ry="4" fill="#6366f1" fillOpacity="0.15" />
+      {/* Body */}
+      <rect x="22" y="38" width="36" height="26" rx="8" fill="#4f46e5" />
+      {/* Belly panel */}
+      <rect x="29" y="44" width="22" height="13" rx="4" fill="#4338ca" />
+      {/* Belly lights */}
+      <circle cx="34" cy="50" r="2.5" fill="#a5f3fc" />
+      <circle cx="40" cy="50" r="2.5" fill="#6ee7b7" />
+      <circle cx="46" cy="50" r="2.5" fill="#fca5a5" />
+      {/* Arms */}
+      <rect x="10" y="40" width="10" height="18" rx="5" fill="#4f46e5" />
+      <rect x="60" y="40" width="10" height="18" rx="5" fill="#4f46e5" />
+      {/* Hands */}
+      <circle cx="15" cy="60" r="5" fill="#6366f1" />
+      <circle cx="65" cy="60" r="5" fill="#6366f1" />
+      {/* Neck */}
+      <rect x="35" y="32" width="10" height="8" rx="3" fill="#6366f1" />
+      {/* Head */}
+      <rect x="18" y="10" width="44" height="30" rx="12" fill="#6366f1" />
+      {/* Eyes */}
+      <rect x="26" y="19" width="12" height="10" rx="5" fill="white" />
+      <rect x="42" y="19" width="12" height="10" rx="5" fill="white" />
+      <circle cx="32" cy="24" r="4" fill="#1e1b4b" />
+      <circle cx="48" cy="24" r="4" fill="#1e1b4b" />
+      <circle cx="33" cy="22" r="1.5" fill="white" />
+      <circle cx="49" cy="22" r="1.5" fill="white" />
+      {/* Smile */}
+      <path d="M30 33 Q40 39 50 33" stroke="white" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+      {/* Antenna */}
+      <line x1="40" y1="10" x2="40" y2="3" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx="40" cy="2" r="3" fill="#a5b4fc" />
+    </svg>
+  );
+}
+
+function RobotMini() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="18" y="10" width="44" height="30" rx="12" fill="#6366f1" />
+      <rect x="26" y="19" width="12" height="10" rx="5" fill="white" />
+      <rect x="42" y="19" width="12" height="10" rx="5" fill="white" />
+      <circle cx="32" cy="24" r="4" fill="#1e1b4b" />
+      <circle cx="48" cy="24" r="4" fill="#1e1b4b" />
+      <path d="M30 33 Q40 39 50 33" stroke="white" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+      <line x1="40" y1="10" x2="40" y2="3" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx="40" cy="2" r="3" fill="#a5b4fc" />
+      <rect x="22" y="38" width="36" height="26" rx="8" fill="#4f46e5" />
+    </svg>
   );
 }
