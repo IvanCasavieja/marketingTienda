@@ -21,11 +21,16 @@ export default function LoginPage() {
   const [showPwd, setShowPwd]   = useState(false);
   const [loading, setLoading]   = useState(false);
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Read directly from DOM to handle browser autofill (autofill doesn't fire onChange)
+    const form = e.currentTarget;
+    const emailVal    = (form.elements.namedItem("email")    as HTMLInputElement).value;
+    const passwordVal = (form.elements.namedItem("password") as HTMLInputElement).value;
+    const joinCodeVal = (form.elements.namedItem("joinCode") as HTMLInputElement)?.value ?? "";
     setLoading(true);
     try {
-      const { data } = await authApi.login(email, password, joinCode.trim());
+      const { data } = await authApi.login(emailVal, passwordVal, joinCodeVal.trim());
       localStorage.setItem("access_token",  data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
       const { data: me } = await authApi.me();
@@ -117,6 +122,8 @@ export default function LoginPage() {
               </label>
               <input
                 type="email"
+                name="email"
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -132,6 +139,8 @@ export default function LoginPage() {
               <div className="relative">
                 <input
                   type={showPwd ? "text" : "password"}
+                  name="password"
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -154,6 +163,8 @@ export default function LoginPage() {
               </label>
               <input
                 type="text"
+                name="joinCode"
+                autoComplete="off"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value)}
                 className="input"
