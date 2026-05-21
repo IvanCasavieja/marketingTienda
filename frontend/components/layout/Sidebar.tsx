@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
-  BarChart3, ChevronRight, Wrench,
+  BarChart3, ChevronRight, Presentation,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, connectionsApi } from "@/lib/api";
@@ -14,7 +14,7 @@ const nav = [
   { href: "/dashboard",    label: "Dashboard",   icon: LayoutDashboard, section: "MKTG Platform" },
   { href: "/campaigns",    label: "Campañas",    icon: Megaphone,       section: "MKTG Platform" },
   { href: "/analytics",    label: "Análisis IA", icon: Brain,           section: "MKTG Platform" },
-  { href: "/herramientas", label: "Herramientas",icon: Wrench,          section: "Herramientas"  },
+  { href: "/herramientas/cenefas", label: "Cenefas", icon: Presentation, section: "Herramientas" },
   { href: "/settings",     label: "Conexiones",  icon: Settings,        section: "Configuración" },
 ];
 
