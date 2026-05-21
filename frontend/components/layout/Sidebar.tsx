@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
-  BarChart3, ChevronRight, Wrench,
+  BarChart3, ChevronRight, Wrench, Home,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, connectionsApi } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 
 const nav = [
+  { href: "/home",           label: "Módulos",       icon: Home            },
   { href: "/dashboard",      label: "Dashboard",    icon: LayoutDashboard },
   { href: "/campaigns",      label: "Campañas",      icon: Megaphone       },
   { href: "/analytics",      label: "Análisis IA",   icon: Brain           },

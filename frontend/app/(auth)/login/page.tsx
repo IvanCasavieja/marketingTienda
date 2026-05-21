@@ -33,7 +33,7 @@ export default function LoginPage() {
         setShowJoinStep(true);
         return;
       }
-      router.push("/dashboard");
+      router.push("/home");
     } catch {
       toast.error("Email o contraseña incorrectos");
     } finally {
@@ -49,7 +49,7 @@ export default function LoginPage() {
     try {
       await authApi.joinTeam(joinCode.trim());
       toast.success("Equipo asignado correctamente");
-      router.push("/dashboard");
+      router.push("/home");
     } catch {
       toast.error("Código de equipo inválido");
     } finally {
@@ -210,7 +210,7 @@ export default function LoginPage() {
               </button>
               <button
                 type="button"
-                onClick={() => router.push("/dashboard")}
+                onClick={() => router.push("/home")}
                 className="w-full text-sm text-slate-500 hover:text-slate-700"
               >
                 Continuar sin equipo
