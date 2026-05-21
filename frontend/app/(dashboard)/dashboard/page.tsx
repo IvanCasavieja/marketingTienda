@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import {
   DollarSign, MousePointerClick, ShoppingCart,
-  TrendingUp, ArrowUpRight, ArrowDownRight, RefreshCw,
+  TrendingUp, ArrowUpRight, ArrowDownRight, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { SkeletonCard, SkeletonRow } from "@/components/ui/SkeletonCard";
 import { toast } from "sonner";
@@ -178,6 +178,17 @@ export default function DashboardPage() {
   const prevRoas   = prevTotals.spend > 0 ? prevTotals.revenue / prevTotals.spend : 0;
   const cpa        = totals.conversions > 0 ? totals.spend / totals.conversions : 0;
 
+  const alerts: string[] = [];
+  if (!loading && totals.spend > 0) {
+    if (globalRoas < 1 && globalRoas > 0) alerts.push(`ROAS global en ${globalRoas.toFixed(2)}x — estás gastando más de lo que generás en revenue`);
+    const spendChange = prevTotals.spend > 0 ? (totals.spend - prevTotals.spend) / prevTotals.spend * 100 : 0;
+    if (spendChange > 50) alerts.push(`Inversión ${spendChange.toFixed(0)}% mayor que el período anterior — revisá si fue intencional`);
+    if (totals.clicks > 0 && totals.conversions === 0) alerts.push("0 conversiones en este período — verificá el píxel de conversión en todas las plataformas");
+    summary.forEach((s) => {
+      if (s.avg_roas < 0.5 && s.spend > 0) alerts.push(`${PLATFORM_LABELS[s.platform] || s.platform}: ROAS de ${s.avg_roas.toFixed(2)}x — considera pausar o ajustar presupuesto`);
+    });
+  }
+
   const chartData = summary.map((s) => ({
     name:  PLATFORM_LABELS[s.platform] || s.platform,
     spend: s.spend,
@@ -253,6 +264,18 @@ export default function DashboardPage() {
             trend={pctChange(globalRoas, prevRoas)}
             icon={<TrendingUp size={18} className="text-white" />}
             gradient="from-amber-500 to-orange-500" />
+        </div>
+      )}
+
+      {/* Anomaly alerts */}
+      {alerts.length > 0 && (
+        <div className="space-y-2">
+          {alerts.map((alert, i) => (
+            <div key={i} className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-800">{alert}</p>
+            </div>
+          ))}
         </div>
       )}
 

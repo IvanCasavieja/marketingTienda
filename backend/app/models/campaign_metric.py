@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, Float, ForeignKey, Date, DateTime, Enum, func, JSON
+from sqlalchemy import String, Integer, Float, ForeignKey, Date, DateTime, Enum, func, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import date, datetime
 from app.core.database import Base
@@ -7,6 +7,10 @@ from app.models.platform_connection import Platform
 
 class CampaignMetric(Base):
     __tablename__ = "campaign_metrics"
+    __table_args__ = (
+        Index("ix_campaign_metrics_team_date_platform", "team_group_id", "date", "platform"),
+        Index("ix_campaign_metrics_team_date", "team_group_id", "date"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     team_group_id: Mapped[int] = mapped_column(ForeignKey("team_groups.id", ondelete="CASCADE"), nullable=False)

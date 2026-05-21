@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { metricsApi } from "@/lib/api";
 import { CampaignMetric, PLATFORM_LABELS } from "@/types";
 import { format, subDays, subYears } from "date-fns";
 import { es } from "date-fns/locale";
-import { RefreshCw, Search, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { RefreshCw, Search, TrendingUp, TrendingDown, Minus, Download } from "lucide-react";
 import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
 import { SkeletonRow } from "@/components/ui/SkeletonCard";
@@ -35,6 +35,7 @@ export default function CampaignsPage() {
   const [cmpFrom, setCmpFrom]           = useState(format(subDays(new Date(), 60), "yyyy-MM-dd"));
   const [cmpTo, setCmpTo]               = useState(format(subDays(new Date(), 31), "yyyy-MM-dd"));
   const [cmpMetrics, setCmpMetrics]     = useState<CampaignMetric[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function loadMetrics() {
     setLoading(true);
@@ -52,7 +53,11 @@ export default function CampaignsPage() {
     }
   }
 
-  useEffect(() => { loadMetrics(); }, [dateFrom, dateTo, filterPlatform, comparing, cmpFrom, cmpTo]);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => loadMetrics(), 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [dateFrom, dateTo, filterPlatform, comparing, cmpFrom, cmpTo]);
 
   async function syncPlatform(platform: string) {
     setSyncing(platform);
@@ -65,6 +70,20 @@ export default function CampaignsPage() {
     } finally {
       setSyncing(null);
     }
+  }
+
+  function exportCSV() {
+    const headers = ["Plataforma", "Campaña", "Fecha", "Inversión", "Clicks", "CTR%", "Conversiones", "ROAS"];
+    const rows = displayed.map((m) => [
+      m.platform, m.campaign_name, m.date,
+      m.spend.toFixed(2), m.clicks, m.ctr.toFixed(2), m.conversions, m.roas.toFixed(2),
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `campanas_${dateFrom}_${dateTo}.csv`; a.click();
+    URL.revokeObjectURL(url);
   }
 
   function toggleSort(key: SortKey) {
@@ -114,7 +133,7 @@ export default function CampaignsPage() {
           <h1 className="text-2xl font-bold text-slate-900">Campañas</h1>
           <p className="text-sm text-slate-500 mt-0.5">Métricas por campaña · todas las plataformas</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {PLATFORMS.map((p) => (
             <button key={p} onClick={() => syncPlatform(p)} disabled={!!syncing}
               className="btn-secondary text-xs py-2 px-3">
@@ -122,6 +141,11 @@ export default function CampaignsPage() {
               {PLATFORM_LABELS[p]}
             </button>
           ))}
+          {displayed.length > 0 && (
+            <button onClick={exportCSV} className="btn-secondary text-xs py-2 px-3">
+              <Download size={12} /> CSV
+            </button>
+          )}
         </div>
       </div>
 

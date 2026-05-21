@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, ForeignKey, DateTime, Text, JSON, func, Date
+from sqlalchemy import String, Integer, ForeignKey, DateTime, Text, JSON, func, Date, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime, date
 from app.core.database import Base
@@ -6,6 +6,9 @@ from app.core.database import Base
 
 class AIAnalysis(Base):
     __tablename__ = "ai_analyses"
+    __table_args__ = (
+        Index("ix_ai_analyses_user_created", "user_id", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)

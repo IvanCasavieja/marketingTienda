@@ -49,6 +49,8 @@ export const authApi = {
     api.post("/auth/register", { email, full_name, password, join_code: join_code || undefined }),
   me: () => api.get("/auth/me"),
   joinTeam: (join_code: string) => api.post("/auth/join-team", { join_code }),
+  teamMembers: () => api.get("/auth/team-members"),
+  removeTeamMember: (userId: number) => api.delete(`/auth/team-members/${userId}`),
 };
 
 export const metricsApi = {

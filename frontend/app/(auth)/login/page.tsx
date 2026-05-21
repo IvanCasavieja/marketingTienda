@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
 import { toast } from "sonner";
-import { Eye, EyeOff, Loader2, BarChart3, TrendingUp, Brain, Zap } from "lucide-react";
+import { Eye, EyeOff, Loader2, BarChart3, TrendingUp, Brain, Zap, X } from "lucide-react";
 
 const features = [
   { icon: BarChart3, label: "Datos en tiempo real", desc: "Meta, Google, TikTok y DV360 unificados" },
@@ -176,7 +176,14 @@ export default function LoginPage() {
 
       {showJoinStep && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl relative">
+            <button
+              type="button"
+              onClick={() => setShowJoinStep(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <X size={18} />
+            </button>
             <h3 className="text-lg font-bold text-slate-900 mb-1">Asignar equipo</h3>
             <p className="text-sm text-slate-500 mb-5">
               Ingresá el código de invitación para acceder a las conexiones y métricas del grupo.

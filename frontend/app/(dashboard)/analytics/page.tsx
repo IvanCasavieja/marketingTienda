@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { analyticsApi } from "@/lib/api";
 import { Analysis, PLATFORM_LABELS } from "@/types";
 import { format, subDays } from "date-fns";
-import { Brain, Loader2, Sparkles, Clock, ChevronRight, BarChart3, AlertTriangle, TrendingUp, Globe } from "lucide-react";
+import { Brain, Loader2, Sparkles, Clock, ChevronRight, BarChart3, AlertTriangle, TrendingUp, Globe, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { SkeletonText } from "@/components/ui/SkeletonCard";
 
@@ -66,6 +66,7 @@ export default function AnalyticsPage() {
   const [dateFrom, setDateFrom]       = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [dateTo, setDateTo]           = useState(format(new Date(), "yyyy-MM-dd"));
   const [result, setResult]           = useState<string>("");
+  const [errorMsg, setErrorMsg]       = useState<string>("");
   const [loading, setLoading]         = useState(false);
   const [history, setHistory]         = useState<Analysis[]>([]);
   const [activeAnalysis, setActive]   = useState<number | null>(null);
@@ -78,6 +79,7 @@ export default function AnalyticsPage() {
     if (!platforms.length) return toast.error("Seleccioná al menos una plataforma");
     setLoading(true);
     setResult("");
+    setErrorMsg("");
     setActive(null);
     try {
       const { data } = await analyticsApi.analyze(platforms, dateFrom, dateTo, analysisType);
@@ -85,7 +87,9 @@ export default function AnalyticsPage() {
       setActive(data.id);
       toast.success("Análisis generado por Claude");
       analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
-    } catch {
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail ?? "Error al generar el análisis. Intentá de nuevo.";
+      setErrorMsg(detail);
       toast.error("Error al generar análisis");
     } finally {
       setLoading(false);
@@ -178,6 +182,19 @@ export default function AnalyticsPage() {
         {/* ── Result panel ── */}
         <div className="space-y-4">
           {/* Main result */}
+          {errorMsg && (
+            <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-700">Error al generar análisis</p>
+                <p className="text-xs text-red-600 mt-0.5">{errorMsg}</p>
+              </div>
+              <button onClick={() => setErrorMsg("")} className="text-red-400 hover:text-red-600">
+                <XCircle size={14} />
+              </button>
+            </div>
+          )}
+
           <div className="card p-6 min-h-[400px]">
             {loading ? (
               <div className="space-y-6">

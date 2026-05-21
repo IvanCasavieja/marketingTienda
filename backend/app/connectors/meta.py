@@ -8,10 +8,11 @@ class MetaAdsConnector(BaseConnector):
     BASE_URL = "https://graph.facebook.com/v20.0"
 
     async def fetch_campaigns(self, date_from: date, date_to: date) -> List[dict]:
-        fields = "campaign_id,campaign_name,impressions,clicks,spend,reach,actions,action_values"
+        fields = "campaign_id,campaign_name,impressions,clicks,spend,reach,actions,action_values,date_start"
         params = {
             "fields": fields,
             "time_range": f'{{"since":"{date_from}","until":"{date_to}"}}',
+            "time_increment": "1",
             "level": "campaign",
             "access_token": self.access_token,
             "limit": 500,
@@ -21,13 +22,12 @@ class MetaAdsConnector(BaseConnector):
 
         async with httpx.AsyncClient(timeout=30) as client:
             while url:
-                resp = client.get(url, params=params)
-                resp = await resp if hasattr(resp, "__await__") else resp
+                resp = await client.get(url, params=params)
                 resp.raise_for_status()
                 data = resp.json()
                 results.extend(data.get("data", []))
                 url = data.get("paging", {}).get("next")
-                params = {}  # next URL already has all params embedded
+                params = {}
 
         return results
 
@@ -39,7 +39,6 @@ class MetaAdsConnector(BaseConnector):
             clicks = int(row.get("clicks", 0))
             reach = int(row.get("reach", 0))
 
-            # Extract conversions and revenue from actions
             actions = {a["action_type"]: float(a["value"]) for a in row.get("actions", [])}
             action_values = {a["action_type"]: float(a["value"]) for a in row.get("action_values", [])}
             conversions = int(actions.get("purchase", actions.get("offsite_conversion.fb_pixel_purchase", 0)))
@@ -50,7 +49,7 @@ class MetaAdsConnector(BaseConnector):
                 "account_id": self.account_id,
                 "campaign_id": row["campaign_id"],
                 "campaign_name": row.get("campaign_name", ""),
-                "date": str(date_from),
+                "date": row.get("date_start", str(date_from)),
                 "impressions": impressions,
                 "clicks": clicks,
                 "spend": spend,

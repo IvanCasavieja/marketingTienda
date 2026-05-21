@@ -6,11 +6,13 @@ from datetime import date
 from typing import List
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.config import settings
 from app.models.user import User
 from app.models.ai_analysis import AIAnalysis
 from app.models.platform_connection import Platform
 from app.services.metrics_service import get_metrics
 from app.services.claude_service import ANALYSIS_HANDLERS
+from app.connectors.sfmc import SFMCConnector
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -38,7 +40,22 @@ async def analyze(
     metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
 
     if payload.analysis_type == "full_report":
-        result = await handler(metrics, [], [], payload.date_from, payload.date_to)
+        email_data, whatsapp_data = [], []
+        if settings.SFMC_CLIENT_ID:
+            try:
+                sfmc = SFMCConnector(
+                    client_id=settings.SFMC_CLIENT_ID,
+                    client_secret=settings.SFMC_CLIENT_SECRET,
+                    subdomain=settings.SFMC_SUBDOMAIN,
+                    account_id=settings.SFMC_ACCOUNT_ID,
+                )
+                raw_email = await sfmc.fetch_email_performance(payload.date_from, payload.date_to)
+                email_data = sfmc.normalize_email(raw_email)
+                raw_wa = await sfmc.fetch_whatsapp_performance(payload.date_from, payload.date_to)
+                whatsapp_data = sfmc.normalize_whatsapp(raw_wa)
+            except Exception:
+                pass
+        result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to)
     else:
         result = await handler(metrics, payload.date_from, payload.date_to)
 

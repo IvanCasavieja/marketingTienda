@@ -26,6 +26,13 @@ from app.schemas.auth import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return _client_ip(request) if request.client else "unknown"
+
+
 def _user_response(user: User) -> UserResponse:
     team_group = user.team_group
     team = team_group.team if team_group else None
@@ -72,7 +79,7 @@ async def register(payload: UserRegister, request: Request, db: AsyncSession = D
     if team_group:
         user.team_group = team_group
 
-    db.add(AuditLog(user_id=user.id, action="user.register", ip_address=request.client.host))
+    db.add(AuditLog(user_id=user.id, action="user.register", ip_address=_client_ip(request)))
     return _user_response(user)
 
 
@@ -88,7 +95,7 @@ async def login(payload: UserLogin, request: Request, db: AsyncSession = Depends
         team_group = await _get_group_by_join_code(db, payload.join_code)
         user.team_group_id = team_group.id
 
-    db.add(AuditLog(user_id=user.id, action="user.login", ip_address=request.client.host))
+    db.add(AuditLog(user_id=user.id, action="user.login", ip_address=_client_ip(request)))
 
     return TokenResponse(
         access_token=create_access_token(user.id),
@@ -168,3 +175,48 @@ async def create_team_group(
 
     db.add(AuditLog(user_id=current_user.id, action="team_group.create", resource="team_group"))
     return TeamGroupCreateResponse(team_name=team.name, group_name=payload.group_name, join_code=join_code)
+
+
+@router.get("/team-members")
+async def list_team_members(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not current_user.team_group_id:
+        raise HTTPException(status_code=400, detail="Not part of a team")
+
+    result = await db.execute(
+        select(User).where(User.team_group_id == current_user.team_group_id, User.is_active == True)
+    )
+    members = result.scalars().all()
+    return [
+        {
+            "id": m.id,
+            "email": m.email,
+            "full_name": m.full_name,
+            "is_superuser": m.is_superuser,
+        }
+        for m in members
+    ]
+
+
+@router.delete("/team-members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_team_member(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Only admins can remove members")
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot remove yourself")
+
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.team_group_id == current_user.team_group_id)
+    )
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found in your team")
+
+    member.team_group_id = None
+    db.add(AuditLog(user_id=current_user.id, action="team.remove_member", resource=str(user_id)))

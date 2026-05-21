@@ -76,17 +76,17 @@ Genera un reporte ejecutivo completo con las siguientes secciones:
 5. **ALERTAS Y ANOMALÍAS** (si las hay)
 6. **PRÓXIMOS PASOS RECOMENDADOS** (ordenados por prioridad)"""
 
-    response = _get_client().messages.create(
+    response = _get_client().beta.prompt_caching.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
-        system=SYSTEM_PROMPT,
+        system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": prompt}],
     )
 
     return {
         "result": response.content[0].text,
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens,
+        "input_tokens": getattr(response.usage, "input_tokens", 0),
+        "output_tokens": getattr(response.usage, "output_tokens", 0),
         "analysis_type": "full_report",
     }
 
@@ -115,8 +115,8 @@ Para cada anomalía indica: plataforma, campaña afectada, magnitud del problema
 
     return {
         "result": response.content[0].text,
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens,
+        "input_tokens": getattr(response.usage, "input_tokens", 0),
+        "output_tokens": getattr(response.usage, "output_tokens", 0),
         "analysis_type": "anomaly_detection",
     }
 
@@ -147,8 +147,8 @@ Para cada recomendación incluye: plataforma, acción específica, métricas que
 
     return {
         "result": response.content[0].text,
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens,
+        "input_tokens": getattr(response.usage, "input_tokens", 0),
+        "output_tokens": getattr(response.usage, "output_tokens", 0),
         "analysis_type": "optimization",
     }
 
@@ -176,8 +176,8 @@ Genera una comparativa detallada:
 
     return {
         "result": response.content[0].text,
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens,
+        "input_tokens": getattr(response.usage, "input_tokens", 0),
+        "output_tokens": getattr(response.usage, "output_tokens", 0),
         "analysis_type": "cross_platform",
     }
 
