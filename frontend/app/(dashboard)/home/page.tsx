@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { authApi } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 import {
-  BarChart3, FilePresentation, ChevronRight,
+  BarChart3, Presentation, ChevronRight,
   TrendingUp, Brain, Megaphone, Settings,
 } from "lucide-react";
 
@@ -30,7 +30,7 @@ const modules = [
     href: "/herramientas/cenefas",
     title: "Generador de Cenefas",
     description: "Subí el Excel de productos y la plantilla PPTX para generar las cenefas de la semana automáticamente.",
-    icon: FilePresentation,
+    icon: Presentation,
     color: "from-emerald-500 to-emerald-700",
     iconBg: "bg-emerald-500/15",
     iconColor: "text-emerald-400",
