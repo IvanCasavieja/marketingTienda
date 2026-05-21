@@ -11,12 +11,12 @@ import { authApi, connectionsApi } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 
 const nav = [
-  { href: "/home",           label: "Módulos",       icon: Home            },
-  { href: "/dashboard",      label: "Dashboard",    icon: LayoutDashboard },
-  { href: "/campaigns",      label: "Campañas",      icon: Megaphone       },
-  { href: "/analytics",      label: "Análisis IA",   icon: Brain           },
-  { href: "/herramientas",   label: "Herramientas",  icon: Wrench          },
-  { href: "/settings",       label: "Conexiones",    icon: Settings        },
+  { href: "/home", label: "Módulos", icon: Home, section: null },
+  { href: "/dashboard",    label: "Dashboard",   icon: LayoutDashboard, section: "MKTG Platform" },
+  { href: "/campaigns",    label: "Campañas",    icon: Megaphone,       section: "MKTG Platform" },
+  { href: "/analytics",    label: "Análisis IA", icon: Brain,           section: "MKTG Platform" },
+  { href: "/herramientas", label: "Herramientas",icon: Wrench,          section: "Herramientas"  },
+  { href: "/settings",     label: "Conexiones",  icon: Settings,        section: "Configuración" },
 ];
 
 const platforms = [
@@ -64,24 +64,31 @@ export default function Sidebar() {
       <div className="mx-4 h-px bg-white/5 mb-3" />
 
       {/* Main nav */}
-      <nav className="px-3 space-y-0.5 flex-1">
-        <p className="px-3 mb-2 text-[10px] font-semibold text-slate-600 uppercase tracking-widest">
-          Menú
-        </p>
-        {nav.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href;
+      <nav className="px-3 flex-1 space-y-0.5">
+        {nav.map(({ href, label, icon: Icon, section }, i) => {
+          const active = pathname === href || (href !== "/home" && pathname.startsWith(href));
+          const prevSection = i > 0 ? nav[i - 1].section : undefined;
+          const showLabel = section && section !== prevSection;
           return (
-            <Link key={href} href={href}
-              className={clsx(
-                "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
-                active
-                  ? "bg-brand-600 text-white shadow-glow"
-                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
-              )}>
-              <Icon size={17} className={active ? "text-white" : "text-slate-500 group-hover:text-slate-300"} />
-              <span className="flex-1">{label}</span>
-              {active && <ChevronRight size={14} className="text-white/60" />}
-            </Link>
+            <div key={href}>
+              {showLabel && (
+                <p className="px-3 pt-4 pb-1.5 text-[10px] font-semibold text-slate-600 uppercase tracking-widest">
+                  {section}
+                </p>
+              )}
+              {!section && i > 0 && <div className="h-px bg-white/5 mx-1 my-2" />}
+              <Link href={href}
+                className={clsx(
+                  "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
+                  active
+                    ? "bg-brand-600 text-white shadow-glow"
+                    : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                )}>
+                <Icon size={17} className={active ? "text-white" : "text-slate-500 group-hover:text-slate-300"} />
+                <span className="flex-1">{label}</span>
+                {active && <ChevronRight size={14} className="text-white/60" />}
+              </Link>
+            </div>
           );
         })}
 
