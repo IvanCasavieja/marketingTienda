@@ -59,7 +59,7 @@ export default function HomePage() {
       {/* Header */}
       <div className="mb-10">
         <p className="text-xs font-semibold text-brand-400 uppercase tracking-widest mb-2">
-          {user?.group_name && user?.team_name ? `${user.group_name} · ${user.team_name}` : "MKTG Platform"}
+          {user?.team_name ?? "MKTG Platform"}
         </p>
         <h1 className="text-3xl font-bold text-slate-900">{greeting} 👋</h1>
         <p className="text-slate-500 mt-1.5 text-base">¿Con qué módulo trabajás hoy?</p>

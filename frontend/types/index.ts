@@ -52,7 +52,6 @@ export interface CurrentUser {
   full_name: string;
   team_group_id: number | null;
   team_name: string | null;
-  group_name: string | null;
   join_code: string | null;
   is_active: boolean;
   is_superuser: boolean;

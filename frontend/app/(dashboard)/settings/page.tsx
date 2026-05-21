@@ -252,9 +252,7 @@ export default function SettingsPage() {
           <div>
             <h2 className="text-lg font-bold text-slate-900">Equipo</h2>
             <p className="text-sm text-slate-500 mt-0.5">
-              {currentUser?.group_name && currentUser?.team_name
-                ? `${currentUser.group_name} · ${currentUser.team_name}`
-                : "Sin equipo asignado"}
+              {currentUser?.team_name ?? "Sin equipo asignado"}
             </p>
           </div>
           {currentUser?.join_code && (

@@ -42,9 +42,7 @@ export default function Sidebar() {
       .catch(() => {});
   }, []);
 
-  const tenantLabel = currentUser?.group_name && currentUser?.team_name
-    ? `${currentUser.group_name} · ${currentUser.team_name}`
-    : "Sin equipo asignado";
+  const tenantLabel = currentUser?.team_name ?? "Sin equipo asignado";
 
   return (
     <aside className="w-64 min-h-screen bg-navy-900 flex flex-col shrink-0">

@@ -44,7 +44,6 @@ class JoinTeamRequest(BaseModel):
 
 class JoinTeamResponse(BaseModel):
     team_name: str
-    group_name: str
 
 
 class TeamGroupCreateRequest(BaseModel):
@@ -55,7 +54,6 @@ class TeamGroupCreateRequest(BaseModel):
 
 class TeamGroupCreateResponse(BaseModel):
     team_name: str
-    group_name: str
     join_code: str
 
 
@@ -65,7 +63,6 @@ class UserResponse(BaseModel):
     full_name: str
     team_group_id: int | None = None
     team_name: str | None = None
-    group_name: str | None = None
     join_code: str | None = None
     is_active: bool
     is_superuser: bool

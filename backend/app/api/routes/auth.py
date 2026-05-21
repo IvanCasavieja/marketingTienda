@@ -35,14 +35,12 @@ def _client_ip(request: Request) -> str:
 
 def _user_response(user: User) -> UserResponse:
     team_group = user.team_group
-    team = team_group.team if team_group else None
     return UserResponse(
         id=user.id,
         email=user.email,
         full_name=user.full_name,
         team_group_id=user.team_group_id,
-        team_name=team.name if team else None,
-        group_name=team_group.name if team_group else None,
+        team_name=team_group.name if team_group else None,
         join_code=decrypt_token(team_group.join_code) if team_group else None,
         is_active=user.is_active,
         is_superuser=user.is_superuser,
@@ -139,7 +137,7 @@ async def join_team(
     team_group = await _get_group_by_join_code(db, payload.join_code)
     current_user.team_group_id = team_group.id
     db.add(AuditLog(user_id=current_user.id, action="user.join_team"))
-    return JoinTeamResponse(team_name=team_group.team.name, group_name=team_group.name)
+    return JoinTeamResponse(team_name=team_group.name)
 
 
 @router.post("/team-groups", response_model=TeamGroupCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -174,7 +172,7 @@ async def create_team_group(
         db.add(team_group)
 
     db.add(AuditLog(user_id=current_user.id, action="team_group.create", resource="team_group"))
-    return TeamGroupCreateResponse(team_name=team.name, group_name=payload.group_name, join_code=join_code)
+    return TeamGroupCreateResponse(team_name=team_group.name, join_code=join_code)
 
 
 @router.get("/team-members")
