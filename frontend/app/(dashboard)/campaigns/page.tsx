@@ -250,10 +250,11 @@ export default function CampaignsPage() {
       </div>
 
       {/* Table */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-hidden flex flex-col">
+        <div className="overflow-y-auto max-h-[calc(100vh-22rem)]">
         <table className="w-full">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/50">
+          <thead className="sticky top-0 z-10">
+            <tr className="border-b border-slate-100 bg-slate-50">
               <th className="table-th">Plataforma</th>
               <th className="table-th">Campaña</th>
               <th className="table-th">Fecha</th>
@@ -298,6 +299,7 @@ export default function CampaignsPage() {
               ))}
           </tbody>
         </table>
+        </div>
 
         {!loading && displayed.length > 0 && (
           <div className="px-4 py-3 border-t border-slate-50 bg-slate-50/30">
