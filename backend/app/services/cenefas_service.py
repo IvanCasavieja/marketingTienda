@@ -8,6 +8,18 @@ import openpyxl
 from lxml import etree
 from pptx import Presentation
 from pptx.oxml.ns import qn
+from pptx.util import Pt
+
+# ---------------------------------------------------------------------------
+# Format constants
+# ---------------------------------------------------------------------------
+
+P1_FONT_SIZE  = 16      # pt — "Precio Final" / "6X" label
+P1_BOLD       = False   # label goes without bold
+P1_MARGIN_EMU = 253200  # gap between P1 bottom and price shape top
+                        # 16pt text ≈ 203200 EMU + ~50000 visual margin
+
+PRICE_SYMBOL_PT = 55    # pt — $ / U$S symbol inside the price run
 
 DELI_SUBCATS = {"FIAMBRES", "QUESOS"}
 NO_UNIDAD_SUBCATS = {"CARNES", "FIAMBRES", "EMBUTIDOS CARNE", "QUESOS"}
@@ -201,7 +213,7 @@ def _set_price(shape, text: str) -> None:
     sym_r.find(qn("a:t")).text = symbol
     rPr = sym_r.find(qn("a:rPr"))
     if rPr is not None:
-        rPr.set("sz", "5500")
+        rPr.set("sz", str(PRICE_SYMBOL_PT * 100))
     p_elem.append(sym_r)
 
     num_r = copy.deepcopy(tmpl_r)
@@ -241,12 +253,27 @@ def _set_desc(shape, text: str) -> None:
             new_run.font.bold = True
 
 
+def _set_p1(shape, text: str) -> None:
+    _set_text(shape, text)
+    if not shape.has_text_frame:
+        return
+    for para in shape.text_frame.paragraphs:
+        for run in para.runs:
+            run.font.size = Pt(P1_FONT_SIZE)
+            run.font.bold = P1_BOLD
+
+
 def _fill_slot(shapes, data: dict) -> None:
+    p1_shape = None
+    price_shape = None
+
     for shape in shapes:
         t = _shape_text(shape)
         if "<<P1>>" in t:
-            _set_text(shape, data["p1"])
+            p1_shape = shape
+            _set_p1(shape, data["p1"])
         elif "Precio 1" in t:
+            price_shape = shape
             _set_price(shape, data["precio"])
         elif "<<Mecanica1>>" in t:
             _set_text(shape, data["mecanica"])
@@ -260,6 +287,10 @@ def _fill_slot(shapes, data: dict) -> None:
             _set_text(shape, data["aclaracion"])
         elif "<<OtraAclaracion1>>" in t:
             _set_text(shape, data["otra_aclaracion"])
+
+    # Position P1 label dynamically above the price shape
+    if p1_shape is not None and price_shape is not None:
+        p1_shape.top = price_shape.top - P1_MARGIN_EMU
 
 
 def _clear_slot(shapes) -> None:
