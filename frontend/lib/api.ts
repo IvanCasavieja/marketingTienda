@@ -79,3 +79,11 @@ export const connectionsApi = {
   create: (data: object) => api.post("/connections/", data),
   delete: (id: number) => api.delete(`/connections/${id}`),
 };
+
+export const toolsApi = {
+  generateCenefas: (formData: FormData) =>
+    api.post("/tools/cenefas/generate", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      responseType: "blob",
+    }),
+};

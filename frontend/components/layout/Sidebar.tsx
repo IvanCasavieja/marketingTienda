@@ -4,17 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
-  BarChart3, ChevronRight,
+  BarChart3, ChevronRight, Wrench,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, connectionsApi } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 
 const nav = [
-  { href: "/dashboard",  label: "Dashboard",    icon: LayoutDashboard },
-  { href: "/campaigns",  label: "Campañas",      icon: Megaphone       },
-  { href: "/analytics",  label: "Análisis IA",   icon: Brain           },
-  { href: "/settings",   label: "Conexiones",    icon: Settings        },
+  { href: "/dashboard",      label: "Dashboard",    icon: LayoutDashboard },
+  { href: "/campaigns",      label: "Campañas",      icon: Megaphone       },
+  { href: "/analytics",      label: "Análisis IA",   icon: Brain           },
+  { href: "/herramientas",   label: "Herramientas",  icon: Wrench          },
+  { href: "/settings",       label: "Conexiones",    icon: Settings        },
 ];
 
 const platforms = [
