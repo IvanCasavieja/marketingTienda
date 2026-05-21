@@ -3,23 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import { authApi } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 import { Send, ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 // ---------------------------------------------------------------------------
 // Bot knowledge base — swap with real AI call later
 // ---------------------------------------------------------------------------
 type BotMessage = { role: "bot" | "user"; text: string; ts: Date };
 
-const SUGGESTIONS = [
-  "¿Cómo sincronizo Meta Ads?",
-  "¿Cómo genero cenefas?",
-  "¿Qué es el ROAS?",
-  "¿Cómo invito a mi equipo?",
-];
-
 function getBotReply(input: string): string {
   const q = input.toLowerCase();
 
-  if (q.includes("cenefas") || q.includes("pptx"))
+  if (q.includes("cenefa") || q.includes("banner") || q.includes("faixa") || q.includes("pptx"))
     return "Para generar cenefas andá a **Herramientas → Cenefas** en el sidebar. Necesitás cargar el Excel de productos y la plantilla PPTX base. El sistema genera el archivo con 3 productos por slide automáticamente.";
 
   if (q.includes("meta") || q.includes("sincroniz") || q.includes("sync"))
@@ -28,22 +22,22 @@ function getBotReply(input: string): string {
   if (q.includes("roas"))
     return "El **ROAS** (Return On Ad Spend) mide cuánto revenue generás por cada peso invertido. Un ROAS de 3x significa que por cada $1 invertido generás $3. En el Dashboard podés ver el ROAS global y por plataforma.";
 
-  if (q.includes("equipo") || q.includes("invit") || q.includes("código"))
+  if (q.includes("equipo") || q.includes("team") || q.includes("invit") || q.includes("código") || q.includes("code"))
     return "En **Configuración → Conexiones** encontrás el botón 'Copiar código de invitación'. Compartí ese código con tu equipo — al registrarse o iniciar sesión pueden pegarlo para unirse automáticamente.";
 
   if (q.includes("dashboard") || q.includes("kpi"))
     return "El **Dashboard** muestra tus KPIs principales: inversión total, clicks, conversiones y ROAS global. Podés filtrar por 7D, 30D o 90D y comparar contra períodos anteriores. También detecta anomalías automáticamente.";
 
-  if (q.includes("campaña") || q.includes("campaña"))
+  if (q.includes("campaña") || q.includes("campaign"))
     return "En **Campañas** ves todas las métricas a nivel de campaña con filtros por plataforma, rango de fechas y búsqueda. Podés ordenar por inversión, ROAS, CTR y exportar a CSV.";
 
-  if (q.includes("análisis") || q.includes("ia") || q.includes("inteligencia"))
+  if (q.includes("análisis") || q.includes("analysis") || q.includes("ia") || q.includes("ai") || q.includes("inteligencia"))
     return "En **Análisis IA** podés pedirle a Claude que analice tus campañas y genere insights accionables. Seleccionás las plataformas y el tipo de análisis, y la IA cruza los datos y te da recomendaciones.";
 
-  if (q.includes("conexion") || q.includes("token") || q.includes("api"))
+  if (q.includes("conexion") || q.includes("connection") || q.includes("token") || q.includes("api"))
     return "En **Configuración → Conexiones** podés agregar tus cuentas de Meta Ads, Google Ads, TikTok y DV360. Cada plataforma tiene una guía paso a paso para obtener el token de acceso.";
 
-  if (q.includes("hola") || q.includes("buenas") || q.includes("hi"))
+  if (q.includes("hola") || q.includes("hi") || q.includes("hello") || q.includes("buenas") || q.includes("olá"))
     return "¡Hola! Estoy aquí para ayudarte a sacarle el máximo provecho a la plataforma. Podés preguntarme sobre cualquier funcionalidad o cómo hacer algo específico.";
 
   return "Puedo ayudarte con **sincronización de plataformas**, **generación de cenefas**, **análisis IA**, **métricas y ROAS**, o **gestión del equipo**. ¿Sobre qué querés saber más?";
@@ -53,6 +47,7 @@ function getBotReply(input: string): string {
 // Main page
 // ---------------------------------------------------------------------------
 export default function HomePage() {
+  const { t } = useTranslation();
   const [user, setUser]     = useState<CurrentUser | null>(null);
   const [messages, setMessages] = useState<BotMessage[]>([]);
   const [input, setInput]   = useState("");
@@ -60,17 +55,25 @@ export default function HomePage() {
   const [typing, setTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const SUGGESTIONS = [
+    t("home.suggestions.s1"),
+    t("home.suggestions.s2"),
+    t("home.suggestions.s3"),
+    t("home.suggestions.s4"),
+  ];
+
   useEffect(() => {
     authApi.me().then(({ data }) => {
       setUser(data);
       const name = data.full_name?.split(" ")[0] ?? "";
+      const greeting = name ? t("home.greeting", { name }) : t("home.greetingNoName");
       setMessages([{
         role: "bot",
-        text: `¡Hola${name ? ", " + name : ""}! Soy tu asistente de MKTG Platform. Puedo guiarte en el uso de la plataforma, explicarte funcionalidades y ayudarte a sacarle el máximo provecho. ¿En qué te puedo ayudar hoy?`,
+        text: `${greeting}! ${t("home.assistantWelcome")}`,
         ts: new Date(),
       }]);
     }).catch(() => {});
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -110,9 +113,9 @@ export default function HomePage() {
               {user?.team_name ?? "MKTG Platform"}
             </p>
             <h1 className="text-3xl font-bold text-slate-900">
-              Hola{firstName ? `, ${firstName}` : ""} 👋
+              {firstName ? t("home.greeting", { name: firstName }) : t("home.greetingNoName")} {t("home.waveEmoji")}
             </h1>
-            <p className="text-slate-500 mt-1">Tu asistente de plataforma está listo</p>
+            <p className="text-slate-500 mt-1">{t("home.assistantReady")}</p>
           </div>
         </div>
 
@@ -128,8 +131,8 @@ export default function HomePage() {
               <RobotMini />
             </div>
             <div className="flex-1 text-left">
-              <p className="text-sm font-semibold text-slate-800">Asistente MKTG</p>
-              <p className="text-xs text-slate-400">Preguntame sobre la plataforma</p>
+              <p className="text-sm font-semibold text-slate-800">{t("home.assistantName")}</p>
+              <p className="text-xs text-slate-400">{t("home.assistantSubtitle")}</p>
             </div>
             <ChevronDown
               size={16}
@@ -193,7 +196,7 @@ export default function HomePage() {
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Escribí tu pregunta..."
+                  placeholder={t("home.inputPlaceholder")}
                   className="flex-1 text-sm bg-slate-100 rounded-xl px-4 py-2.5 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:bg-white transition-all"
                 />
                 <button
@@ -210,7 +213,7 @@ export default function HomePage() {
 
         {/* Quick note */}
         <p className="text-center text-xs text-slate-400">
-          Pronto con IA real integrada · Por ahora respondo preguntas frecuentes sobre la plataforma
+          {t("home.comingSoon")}
         </p>
       </div>
     </div>

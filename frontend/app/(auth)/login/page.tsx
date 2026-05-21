@@ -4,22 +4,24 @@ import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2, BarChart3, TrendingUp, Brain, Zap, X } from "lucide-react";
-
-const features = [
-  { icon: BarChart3, label: "Datos en tiempo real", desc: "Meta, Google, TikTok y DV360 unificados" },
-  { icon: Brain,     label: "Análisis con IA",      desc: "Claude genera insights accionables" },
-  { icon: TrendingUp,label: "ROAS cross-platform",  desc: "Compará el rendimiento entre canales" },
-  { icon: Zap,       label: "Alertas inteligentes", desc: "Detectá anomalías automáticamente" },
-];
+import { useTranslation } from "react-i18next";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [showJoinStep, setShowJoinStep] = useState(false);
   const [showPwd, setShowPwd]   = useState(false);
   const [loading, setLoading]   = useState(false);
+
+  const features = [
+    { icon: BarChart3,  label: t("login.features.realtime"), desc: t("login.features.realtimeDesc") },
+    { icon: Brain,      label: t("login.features.ai"),       desc: t("login.features.aiDesc") },
+    { icon: TrendingUp, label: t("login.features.roas"),     desc: t("login.features.roasDesc") },
+    { icon: Zap,        label: t("login.features.alerts"),   desc: t("login.features.alertsDesc") },
+  ];
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -40,7 +42,7 @@ export default function LoginPage() {
       }
       router.push("/home");
     } catch {
-      toast.error("Email o contraseña incorrectos");
+      toast.error(t("login.wrongCredentials"));
     } finally {
       setLoading(false);
     }
@@ -53,10 +55,10 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await authApi.joinTeam(joinCode.trim());
-      toast.success("Equipo asignado correctamente");
+      toast.success(t("login.joinTeamSuccess"));
       router.push("/home");
     } catch {
-      toast.error("Código de equipo inválido");
+      toast.error(t("login.invalidCode"));
     } finally {
       setLoading(false);
     }
@@ -81,10 +83,10 @@ export default function LoginPage() {
           </div>
 
           <h1 className="text-4xl font-bold text-white leading-tight mb-4">
-            Toda tu inversión<br />en un solo lugar.
+            {t("login.tagline")}
           </h1>
           <p className="text-slate-400 text-base leading-relaxed max-w-sm">
-            Conectá Meta, Google Ads, TikTok y DV360. Analizá con IA. Tomá mejores decisiones.
+            {t("login.taglineSub")}
           </p>
         </div>
 
@@ -112,13 +114,13 @@ export default function LoginPage() {
             <span className="font-bold text-slate-800">MKTG Platform</span>
           </div>
 
-          <h2 className="text-2xl font-bold text-slate-900 mb-1">Bienvenido</h2>
-          <p className="text-slate-500 text-sm mb-8">Ingresá con tu cuenta de trabajo</p>
+          <h2 className="text-2xl font-bold text-slate-900 mb-1">{t("login.welcome")}</h2>
+          <p className="text-slate-500 text-sm mb-8">{t("login.subtitle")}</p>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Email
+                {t("login.email")}
               </label>
               <input
                 type="email"
@@ -134,7 +136,7 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Contraseña
+                {t("login.password")}
               </label>
               <div className="relative">
                 <input
@@ -159,7 +161,7 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Código de equipo
+                {t("login.teamCode")}
               </label>
               <input
                 type="text"
@@ -168,14 +170,14 @@ export default function LoginPage() {
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value)}
                 className="input"
-                placeholder="Opcional"
+                placeholder={t("login.optional")}
               />
             </div>
 
             <button type="submit" disabled={loading} className="btn-primary w-full mt-2">
               {loading
-                ? <><Loader2 size={16} className="animate-spin" /> Ingresando...</>
-                : "Ingresar"}
+                ? <><Loader2 size={16} className="animate-spin" /> {t("login.signingIn")}</>
+                : t("login.signIn")}
             </button>
           </form>
 
@@ -195,14 +197,12 @@ export default function LoginPage() {
             >
               <X size={18} />
             </button>
-            <h3 className="text-lg font-bold text-slate-900 mb-1">Asignar equipo</h3>
-            <p className="text-sm text-slate-500 mb-5">
-              Ingresá el código de invitación para acceder a las conexiones y métricas del grupo.
-            </p>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">{t("login.joinTeamTitle")}</h3>
+            <p className="text-sm text-slate-500 mb-5">{t("login.joinTeamSub")}</p>
             <form onSubmit={handleJoinTeam} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Código de equipo
+                  {t("login.joinTeamCode")}
                 </label>
                 <input
                   type="text"
@@ -211,20 +211,20 @@ export default function LoginPage() {
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value)}
                   className="input"
-                  placeholder="Pegá tu código"
+                  placeholder={t("login.joinTeamPaste")}
                 />
               </div>
               <button type="submit" disabled={loading} className="btn-primary w-full">
                 {loading
-                  ? <><Loader2 size={16} className="animate-spin" /> Validando...</>
-                  : "Unirme al equipo"}
+                  ? <><Loader2 size={16} className="animate-spin" /> {t("login.joinTeamValidating")}</>
+                  : t("login.joinTeamBtn")}
               </button>
               <button
                 type="button"
                 onClick={() => router.push("/home")}
                 className="w-full text-sm text-slate-500 hover:text-slate-700"
               >
-                Continuar sin equipo
+                {t("login.continueWithoutTeam")}
               </button>
             </form>
           </div>

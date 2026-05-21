@@ -4,6 +4,7 @@ import { connectionsApi, authApi } from "@/lib/api";
 import { Connection, CurrentUser, PLATFORM_LABELS } from "@/types";
 import { Plus, Trash2, CheckCircle2, XCircle, ChevronDown, Eye, EyeOff, Users, Copy, UserMinus } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface TeamMember { id: number; email: string; full_name: string; is_superuser: boolean; }
 
@@ -34,6 +35,7 @@ const TOKEN_GUIDES: Record<string, { steps: string[]; link: string }> = {
 };
 
 export default function SettingsPage() {
+  const { t } = useTranslation();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [showForm, setShowForm]       = useState(false);
   const [showGuide, setShowGuide]     = useState<string | null>(null);
@@ -56,39 +58,39 @@ export default function SettingsPage() {
     e.preventDefault();
     try {
       await connectionsApi.create(form);
-      toast.success("Conexión guardada correctamente");
+      toast.success(t("settings.saveSuccess"));
       setShowForm(false);
       setForm({ platform: "meta", account_id: "", account_name: "", access_token: "", refresh_token: "" });
       await load();
     } catch {
-      toast.error("Error al guardar la conexión");
+      toast.error(t("settings.saveError"));
     }
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("¿Eliminar esta conexión? Se perderán los tokens guardados.")) return;
+    if (!confirm(t("settings.deleteConfirm"))) return;
     try {
       await connectionsApi.delete(id);
-      toast.success("Conexión eliminada");
+      toast.success(t("settings.deleteSuccess"));
       await load();
-    } catch { toast.error("Error al eliminar"); }
+    } catch { toast.error(t("settings.deleteError")); }
   }
 
   async function handleRemoveMember(id: number, email: string) {
-    if (!confirm(`¿Remover a ${email} del equipo?`)) return;
+    if (!confirm(t("settings.removeMember", { email }))) return;
     try {
       await authApi.removeTeamMember(id);
-      toast.success("Miembro removido del equipo");
+      toast.success(t("settings.removeMemberSuccess"));
       setMembers((prev) => prev.filter((m) => m.id !== id));
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? "Error al remover miembro");
+      toast.error(err?.response?.data?.detail ?? t("settings.removeMemberError"));
     }
   }
 
   function copyJoinCode() {
     if (currentUser?.join_code) {
       navigator.clipboard.writeText(currentUser.join_code);
-      toast.success("Código copiado al portapapeles");
+      toast.success(t("settings.codeCopied"));
     }
   }
 
@@ -98,23 +100,23 @@ export default function SettingsPage() {
     <div className="animate-fade-in space-y-6 max-w-3xl">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Conexiones</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Conectá tus cuentas de advertising</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("settings.title")}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{t("settings.subtitle")}</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary">
           <Plus size={16} />
-          Nueva conexión
+          {t("settings.newConnection")}
         </button>
       </div>
 
       {/* Form */}
       {showForm && (
         <div className="card p-6 animate-slide-up">
-          <h2 className="section-title mb-4">Agregar conexión</h2>
+          <h2 className="section-title mb-4">{t("settings.addConnection")}</h2>
           <form onSubmit={handleCreate} className="space-y-4">
             {/* Platform selector */}
             <div>
-              <label className="text-sm font-medium text-slate-700 mb-2 block">Plataforma</label>
+              <label className="text-sm font-medium text-slate-700 mb-2 block">{t("settings.platform")}</label>
               <div className="grid grid-cols-2 gap-2">
                 {PLATFORM_OPTIONS.map((p) => (
                   <button key={p.value} type="button" onClick={() => setForm({ ...form, platform: p.value })}
@@ -139,7 +141,7 @@ export default function SettingsPage() {
               <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
                 <button type="button" onClick={() => setShowGuide(showGuide === form.platform ? null : form.platform)}
                   className="flex items-center justify-between w-full text-left">
-                  <span className="text-xs font-semibold text-slate-600">¿Cómo obtengo el token de {selectedPlatform.label}?</span>
+                  <span className="text-xs font-semibold text-slate-600">{t("settings.howToGet", { platform: selectedPlatform.label })}</span>
                   <ChevronDown size={14} className={`text-slate-400 transition-transform ${showGuide === form.platform ? "rotate-180" : ""}`} />
                 </button>
                 {showGuide === form.platform && (
@@ -154,7 +156,7 @@ export default function SettingsPage() {
                     ))}
                     <a href={TOKEN_GUIDES[form.platform]?.link} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline mt-2 font-medium">
-                      Abrir portal →
+                      {t("settings.openPortal")}
                     </a>
                   </div>
                 )}
@@ -163,17 +165,17 @@ export default function SettingsPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1.5 block">Account ID *</label>
+                <label className="text-xs font-medium text-slate-600 mb-1.5 block">{t("settings.accountId")}</label>
                 <input required value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })}
                   className="input text-sm" placeholder="123456789" />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1.5 block">Nombre de cuenta</label>
+                <label className="text-xs font-medium text-slate-600 mb-1.5 block">{t("settings.accountName")}</label>
                 <input value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })}
                   className="input text-sm" placeholder="Mi cuenta principal" />
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-slate-600 mb-1.5 block">Access Token *</label>
+                <label className="text-xs font-medium text-slate-600 mb-1.5 block">{t("settings.accessToken")}</label>
                 <div className="relative">
                   <input required type={showTokens.access ? "text" : "password"} value={form.access_token}
                     onChange={(e) => setForm({ ...form, access_token: e.target.value })}
@@ -185,7 +187,9 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-slate-600 mb-1.5 block">Refresh Token <span className="text-slate-400 font-normal">(opcional)</span></label>
+                <label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                  {t("settings.refreshToken")} <span className="text-slate-400 font-normal">({t("settings.optional")})</span>
+                </label>
                 <div className="relative">
                   <input type={showTokens.refresh ? "text" : "password"} value={form.refresh_token}
                     onChange={(e) => setForm({ ...form, refresh_token: e.target.value })}
@@ -199,8 +203,8 @@ export default function SettingsPage() {
             </div>
 
             <div className="flex gap-3 pt-1">
-              <button type="submit" className="btn-primary">Guardar conexión</button>
-              <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancelar</button>
+              <button type="submit" className="btn-primary">{t("settings.saveConnection")}</button>
+              <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">{t("common.cancel")}</button>
             </div>
           </form>
         </div>
@@ -213,8 +217,8 @@ export default function SettingsPage() {
             <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
               <Plus size={24} className="text-slate-300" />
             </div>
-            <p className="text-sm font-medium text-slate-500">Sin conexiones configuradas</p>
-            <p className="text-xs text-slate-400 mt-1 max-w-xs">Agregá tu primera plataforma para empezar a importar métricas</p>
+            <p className="text-sm font-medium text-slate-500">{t("settings.noConnections")}</p>
+            <p className="text-xs text-slate-400 mt-1 max-w-xs">{t("settings.noConnectionsSub")}</p>
           </div>
         ) : (
           connections.map((c) => {
@@ -229,8 +233,8 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-slate-800 text-sm">{plat?.label || c.platform}</p>
                     {c.is_active
-                      ? <span className="badge badge-green flex items-center gap-1"><CheckCircle2 size={10} />Activa</span>
-                      : <span className="badge badge-red flex items-center gap-1"><XCircle size={10} />Inactiva</span>}
+                      ? <span className="badge badge-green flex items-center gap-1"><CheckCircle2 size={10} />{t("settings.active")}</span>
+                      : <span className="badge badge-red flex items-center gap-1"><XCircle size={10} />{t("settings.inactive")}</span>}
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
                     {c.account_name ? `${c.account_name} · ` : ""}{c.account_id}
@@ -250,15 +254,15 @@ export default function SettingsPage() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Equipo</h2>
+            <h2 className="text-lg font-bold text-slate-900">{t("settings.teamTitle")}</h2>
             <p className="text-sm text-slate-500 mt-0.5">
-              {currentUser?.team_name ?? "Sin equipo asignado"}
+              {currentUser?.team_name ?? t("common.noTeam")}
             </p>
           </div>
           {currentUser?.join_code && (
             <button onClick={copyJoinCode}
               className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-medium transition-colors">
-              <Copy size={13} /> Copiar código de invitación
+              <Copy size={13} /> {t("settings.copyCode")}
             </button>
           )}
         </div>
@@ -267,7 +271,11 @@ export default function SettingsPage() {
           <div className="card overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-50 flex items-center gap-2">
               <Users size={14} className="text-slate-400" />
-              <p className="text-sm font-semibold text-slate-700">{members.length} miembro{members.length !== 1 ? "s" : ""}</p>
+              <p className="text-sm font-semibold text-slate-700">
+                {members.length !== 1
+                  ? t("settings.members_plural", { n: members.length })
+                  : t("settings.members", { n: members.length })}
+              </p>
             </div>
             <div className="divide-y divide-slate-50">
               {members.map((m) => (
@@ -280,7 +288,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-slate-400 truncate">{m.email}</p>
                   </div>
                   {m.is_superuser && (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-100 text-brand-600">Admin</span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-100 text-brand-600">{t("settings.admin")}</span>
                   )}
                   {currentUser?.is_superuser && !m.is_superuser && (
                     <button onClick={() => handleRemoveMember(m.id, m.email)}
@@ -294,7 +302,7 @@ export default function SettingsPage() {
           </div>
         ) : (
           <div className="card p-6 text-center text-sm text-slate-400">
-            No hay otros miembros en este equipo
+            {t("settings.noMembers")}
           </div>
         )}
       </div>
@@ -305,10 +313,8 @@ export default function SettingsPage() {
           <CheckCircle2 size={12} className="text-emerald-600" />
         </div>
         <div>
-          <p className="text-xs font-semibold text-slate-700">Almacenamiento seguro de tokens</p>
-          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-            Todos los tokens se encriptan con AES-256 antes de guardarse en la base de datos. Nunca se almacenan en texto plano.
-          </p>
+          <p className="text-xs font-semibold text-slate-700">{t("settings.securityTitle")}</p>
+          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{t("settings.securitySub")}</p>
         </div>
       </div>
     </div>

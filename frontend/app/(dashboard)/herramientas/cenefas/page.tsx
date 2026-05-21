@@ -2,10 +2,12 @@
 import { useState, useRef, ChangeEvent, FormEvent } from "react";
 import { Upload, Presentation, Download, AlertCircle, CheckCircle2, Loader2, FileSpreadsheet, FileType2 } from "lucide-react";
 import { toolsApi } from "@/lib/api";
+import { useTranslation } from "react-i18next";
 
 type Status = "idle" | "loading" | "success" | "error";
 
 export default function CenefasPage() {
+  const { t } = useTranslation();
   const [excel, setExcel] = useState<File | null>(null);
   const [template, setTemplate] = useState<File | null>(null);
   const [vigencia, setVigencia] = useState("");
@@ -51,8 +53,8 @@ export default function CenefasPage() {
       setStatus("success");
     } catch (err: any) {
       const detail = err?.response?.data
-        ? await err.response.data.text?.() ?? "Error desconocido"
-        : err?.message ?? "Error desconocido";
+        ? await err.response.data.text?.() ?? t("cenefas.unknownError")
+        : err?.message ?? t("cenefas.unknownError");
       setErrorMsg(detail);
       setStatus("error");
     }
@@ -68,55 +70,59 @@ export default function CenefasPage() {
           <Presentation size={22} className="text-emerald-500" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Generador de Cenefas</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Subí el Excel de productos y la plantilla PPTX para generar el archivo final.
-          </p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("cenefas.title")}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{t("cenefas.subtitle")}</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Archivos */}
         <div className="card p-6 space-y-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Archivos</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.filesSection")}</p>
 
           <FileDropField
-            label="Excel de productos"
-            hint=".xlsx / .xlsm"
+            label={t("cenefas.excelLabel")}
+            hint={t("cenefas.excelHint")}
             accept=".xlsx,.xlsm"
             file={excel}
             icon={FileSpreadsheet}
             accentColor="emerald"
             onChange={handleFile(setExcel)}
+            chooseLabel={t("cenefas.chooseFile")}
+            readyLabel={t("cenefas.ready")}
+            searchLabel={t("cenefas.search")}
           />
           <FileDropField
-            label="Plantilla PPTX base"
-            hint=".pptx"
+            label={t("cenefas.pptxLabel")}
+            hint={t("cenefas.pptxHint")}
             accept=".pptx"
             file={template}
             icon={FileType2}
             accentColor="brand"
             onChange={handleFile(setTemplate)}
+            chooseLabel={t("cenefas.chooseFile")}
+            readyLabel={t("cenefas.ready")}
+            searchLabel={t("cenefas.search")}
           />
         </div>
 
         {/* Configuración */}
         <div className="card p-6 space-y-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Configuración</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.configSection")}</p>
 
           <Field
-            label="Vigencia *"
-            placeholder="ej: 28/5/2026 al 3/6/2026"
+            label={t("cenefas.vigencia")}
+            placeholder={t("cenefas.vigenciaPlaceholder")}
             value={vigencia}
             onChange={setVigencia}
           />
           <Field
-            label="Aclaración"
+            label={t("cenefas.aclaracion")}
             value={aclaracion}
             onChange={setAclaracion}
           />
           <Field
-            label="Leyenda alcohol"
+            label={t("cenefas.alcohol")}
             value={otraAlcohol}
             onChange={setOtraAlcohol}
           />
@@ -132,9 +138,7 @@ export default function CenefasPage() {
         {status === "success" && (
           <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
             <CheckCircle2 size={16} className="text-emerald-600" />
-            <p className="text-sm text-emerald-700 font-medium">
-              ¡Cenefas generadas! La descarga comenzó automáticamente.
-            </p>
+            <p className="text-sm text-emerald-700 font-medium">{t("cenefas.successMsg")}</p>
           </div>
         )}
 
@@ -144,9 +148,9 @@ export default function CenefasPage() {
           className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {status === "loading" ? (
-            <><Loader2 size={16} className="animate-spin" /> Generando…</>
+            <><Loader2 size={16} className="animate-spin" /> {t("cenefas.generating")}</>
           ) : (
-            <><Download size={16} /> Generar y descargar PPTX</>
+            <><Download size={16} /> {t("cenefas.generate")}</>
           )}
         </button>
       </form>
@@ -160,6 +164,7 @@ export default function CenefasPage() {
 
 function FileDropField({
   label, hint, accept, file, onChange, icon: Icon, accentColor,
+  chooseLabel, readyLabel, searchLabel,
 }: {
   label: string;
   hint: string;
@@ -168,6 +173,9 @@ function FileDropField({
   onChange: (e: ChangeEvent<HTMLInputElement>) => void;
   icon: React.ElementType;
   accentColor: "emerald" | "brand";
+  chooseLabel: string;
+  readyLabel: string;
+  searchLabel: string;
 }) {
   const id = label.replace(/\s+/g, "-").toLowerCase();
   const active = !!file;
@@ -195,16 +203,16 @@ function FileDropField({
       <div className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition-all duration-150 ${colors.border}`}>
         <Icon size={18} className={`shrink-0 ${colors.icon}`} />
         <span className={`text-sm flex-1 truncate ${colors.text}`}>
-          {file ? file.name : "Elegir archivo…"}
+          {file ? file.name : chooseLabel}
         </span>
         {!file && (
           <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-200 text-slate-500 font-medium shrink-0">
-            Buscar
+            {searchLabel}
           </span>
         )}
         {file && (
           <span className={`text-xs px-2.5 py-1 rounded-lg font-medium shrink-0 ${colors.badge}`}>
-            Listo
+            {readyLabel}
           </span>
         )}
       </div>

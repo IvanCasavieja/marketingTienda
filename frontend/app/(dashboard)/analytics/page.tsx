@@ -6,37 +6,7 @@ import { format, subDays } from "date-fns";
 import { Brain, Loader2, Sparkles, Clock, ChevronRight, BarChart3, AlertTriangle, TrendingUp, Globe, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { SkeletonText } from "@/components/ui/SkeletonCard";
-
-const ANALYSIS_TYPES = [
-  {
-    value: "full_report",
-    label: "Reporte completo",
-    desc: "Resumen ejecutivo de todos los canales",
-    icon: BarChart3,
-    color: "text-brand-600 bg-brand-50",
-  },
-  {
-    value: "anomaly_detection",
-    label: "Detección de anomalías",
-    desc: "Alertas y problemas críticos",
-    icon: AlertTriangle,
-    color: "text-amber-600 bg-amber-50",
-  },
-  {
-    value: "optimization",
-    label: "Optimización",
-    desc: "Recomendaciones accionables",
-    icon: TrendingUp,
-    color: "text-emerald-600 bg-emerald-50",
-  },
-  {
-    value: "cross_platform",
-    label: "Comparativa cross-channel",
-    desc: "Ranking de eficiencia por plataforma",
-    icon: Globe,
-    color: "text-purple-600 bg-purple-50",
-  },
-];
+import { useTranslation } from "react-i18next";
 
 const ALL_PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"];
 
@@ -61,6 +31,7 @@ function MarkdownOutput({ text }: { text: string }) {
 }
 
 export default function AnalyticsPage() {
+  const { t } = useTranslation();
   const [platforms, setPlatforms]     = useState<string[]>(ALL_PLATFORMS);
   const [analysisType, setType]       = useState("full_report");
   const [dateFrom, setDateFrom]       = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
@@ -71,12 +42,43 @@ export default function AnalyticsPage() {
   const [history, setHistory]         = useState<Analysis[]>([]);
   const [activeAnalysis, setActive]   = useState<number | null>(null);
 
+  const ANALYSIS_TYPES = [
+    {
+      value: "full_report",
+      label: t("analytics.types.full_report_label"),
+      desc:  t("analytics.types.full_report_desc"),
+      icon: BarChart3,
+      color: "text-brand-600 bg-brand-50",
+    },
+    {
+      value: "anomaly_detection",
+      label: t("analytics.types.anomaly_detection_label"),
+      desc:  t("analytics.types.anomaly_detection_desc"),
+      icon: AlertTriangle,
+      color: "text-amber-600 bg-amber-50",
+    },
+    {
+      value: "optimization",
+      label: t("analytics.types.optimization_label"),
+      desc:  t("analytics.types.optimization_desc"),
+      icon: TrendingUp,
+      color: "text-emerald-600 bg-emerald-50",
+    },
+    {
+      value: "cross_platform",
+      label: t("analytics.types.cross_platform_label"),
+      desc:  t("analytics.types.cross_platform_desc"),
+      icon: Globe,
+      color: "text-purple-600 bg-purple-50",
+    },
+  ];
+
   useEffect(() => {
     analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
   }, []);
 
   async function runAnalysis() {
-    if (!platforms.length) return toast.error("Seleccioná al menos una plataforma");
+    if (!platforms.length) return toast.error(t("analytics.selectPlatform"));
     setLoading(true);
     setResult("");
     setErrorMsg("");
@@ -85,12 +87,12 @@ export default function AnalyticsPage() {
       const { data } = await analyticsApi.analyze(platforms, dateFrom, dateTo, analysisType);
       setResult(data.result);
       setActive(data.id);
-      toast.success("Análisis generado por Claude");
+      toast.success(t("analytics.successToast"));
       analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
     } catch (err: any) {
-      const detail = err?.response?.data?.detail ?? "Error al generar el análisis. Intentá de nuevo.";
+      const detail = err?.response?.data?.detail ?? t("analytics.defaultError");
       setErrorMsg(detail);
-      toast.error("Error al generar análisis");
+      toast.error(t("analytics.errorToast"));
     } finally {
       setLoading(false);
     }
@@ -101,16 +103,16 @@ export default function AnalyticsPage() {
     try {
       const { data } = await analyticsApi.getAnalysis(id);
       setResult(data.result);
-    } catch { toast.error("Error cargando análisis"); }
+    } catch { toast.error(t("analytics.loadError")); }
   }
 
-  const selectedType = ANALYSIS_TYPES.find((t) => t.value === analysisType);
+  const selectedType = ANALYSIS_TYPES.find((tp) => tp.value === analysisType);
 
   return (
     <div className="animate-fade-in space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Análisis con IA</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Claude analiza tus campañas y genera insights accionables</p>
+        <h1 className="text-2xl font-bold text-slate-900">{t("analytics.title")}</h1>
+        <p className="text-sm text-slate-500 mt-0.5">{t("analytics.subtitle")}</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[340px_1fr] gap-5">
@@ -118,7 +120,7 @@ export default function AnalyticsPage() {
         <div className="space-y-4">
           {/* Analysis type */}
           <div className="card p-5">
-            <p className="section-title mb-3">Tipo de análisis</p>
+            <p className="section-title mb-3">{t("analytics.analysisType")}</p>
             <div className="space-y-2">
               {ANALYSIS_TYPES.map(({ value, label, desc, icon: Icon, color }) => (
                 <button key={value} onClick={() => setType(value)}
@@ -141,7 +143,7 @@ export default function AnalyticsPage() {
 
           {/* Platforms */}
           <div className="card p-5">
-            <p className="section-title mb-3">Plataformas</p>
+            <p className="section-title mb-3">{t("analytics.platformsLabel")}</p>
             <div className="space-y-2">
               {ALL_PLATFORMS.map((p) => (
                 <label key={p} className="flex items-center gap-3 cursor-pointer group">
@@ -159,14 +161,14 @@ export default function AnalyticsPage() {
 
           {/* Date range */}
           <div className="card p-5">
-            <p className="section-title mb-3">Período</p>
+            <p className="section-title mb-3">{t("analytics.period")}</p>
             <div className="space-y-2.5">
               <div>
-                <label className="text-xs text-slate-500 mb-1 block">Desde</label>
+                <label className="text-xs text-slate-500 mb-1 block">{t("common.from")}</label>
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input text-sm" />
               </div>
               <div>
-                <label className="text-xs text-slate-500 mb-1 block">Hasta</label>
+                <label className="text-xs text-slate-500 mb-1 block">{t("common.to")}</label>
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input text-sm" />
               </div>
             </div>
@@ -174,8 +176,8 @@ export default function AnalyticsPage() {
 
           <button onClick={runAnalysis} disabled={loading || !platforms.length} className="btn-primary w-full py-3">
             {loading
-              ? <><Loader2 size={16} className="animate-spin" /> Analizando con Claude...</>
-              : <><Sparkles size={16} /> Generar análisis</>}
+              ? <><Loader2 size={16} className="animate-spin" /> {t("analytics.analyzing")}</>
+              : <><Sparkles size={16} /> {t("analytics.runAnalysis")}</>}
           </button>
         </div>
 
@@ -186,7 +188,7 @@ export default function AnalyticsPage() {
             <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="text-sm font-semibold text-red-700">Error al generar análisis</p>
+                <p className="text-sm font-semibold text-red-700">{t("analytics.errorTitle")}</p>
                 <p className="text-xs text-red-600 mt-0.5">{errorMsg}</p>
               </div>
               <button onClick={() => setErrorMsg("")} className="text-red-400 hover:text-red-600">
@@ -200,7 +202,7 @@ export default function AnalyticsPage() {
               <div className="space-y-6">
                 <div className="flex items-center gap-2 text-brand-600">
                   <Brain size={20} className="animate-pulse-slow" />
-                  <span className="text-sm font-semibold">Claude está analizando tus campañas...</span>
+                  <span className="text-sm font-semibold">{t("analytics.analyzing")}</span>
                 </div>
                 {[5, 4, 6, 3, 5].map((lines, i) => (
                   <div key={i}>
@@ -217,7 +219,7 @@ export default function AnalyticsPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-slate-800 text-sm">{selectedType?.label}</p>
-                    <p className="text-xs text-slate-400">Generado por Claude · {format(new Date(), "dd/MM/yyyy HH:mm")}</p>
+                    <p className="text-xs text-slate-400">{t("analytics.generatedBy", { date: format(new Date(), "dd/MM/yyyy HH:mm") })}</p>
                   </div>
                 </div>
                 <MarkdownOutput text={result} />
@@ -227,8 +229,8 @@ export default function AnalyticsPage() {
                 <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
                   <Brain size={28} className="text-slate-300" />
                 </div>
-                <p className="text-sm font-medium text-slate-500">Configurá y ejecutá un análisis</p>
-                <p className="text-xs text-slate-400 mt-1">Claude generará insights sobre tus campañas</p>
+                <p className="text-sm font-medium text-slate-500">{t("analytics.emptyTitle")}</p>
+                <p className="text-xs text-slate-400 mt-1">{t("analytics.emptySub")}</p>
               </div>
             )}
           </div>
@@ -238,21 +240,21 @@ export default function AnalyticsPage() {
             <div className="card overflow-hidden">
               <div className="px-5 py-3.5 border-b border-slate-50 flex items-center gap-2">
                 <Clock size={14} className="text-slate-400" />
-                <p className="text-sm font-semibold text-slate-700">Análisis recientes</p>
+                <p className="text-sm font-semibold text-slate-700">{t("analytics.recentAnalyses")}</p>
               </div>
               <div className="divide-y divide-slate-50">
                 {history.slice(0, 6).map((h) => {
-                  const t = ANALYSIS_TYPES.find((x) => x.value === h.analysis_type);
+                  const tp = ANALYSIS_TYPES.find((x) => x.value === h.analysis_type);
                   return (
                     <button key={h.id} onClick={() => loadFromHistory(h.id)}
                       className={`w-full flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors text-left ${activeAnalysis === h.id ? "bg-brand-50/50" : ""}`}>
-                      {t && (
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${t.color}`}>
-                          <t.icon size={13} />
+                      {tp && (
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${tp.color}`}>
+                          <tp.icon size={13} />
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-slate-700">{t?.label}</p>
+                        <p className="text-xs font-semibold text-slate-700">{tp?.label}</p>
                         <p className="text-[11px] text-slate-400">{format(new Date(h.created_at), "dd/MM HH:mm")}</p>
                       </div>
                       <ChevronRight size={14} className="text-slate-300 shrink-0" />

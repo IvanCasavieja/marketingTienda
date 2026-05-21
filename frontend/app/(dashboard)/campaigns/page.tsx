@@ -3,12 +3,12 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { metricsApi } from "@/lib/api";
 import { CampaignMetric, PLATFORM_LABELS } from "@/types";
 import { format, subDays, subYears } from "date-fns";
-import { es } from "date-fns/locale";
 import { RefreshCw, Search, TrendingUp, TrendingDown, Minus, Download } from "lucide-react";
 import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
 import { SkeletonRow } from "@/components/ui/SkeletonCard";
 import { fNum, fMoney, fMoneyExact } from "@/lib/format";
+import { useTranslation } from "react-i18next";
 
 const PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"] as const;
 
@@ -22,6 +22,7 @@ function RoasBadge({ roas }: { roas: number }) {
 }
 
 export default function CampaignsPage() {
+  const { t } = useTranslation();
   const [metrics, setMetrics]           = useState<CampaignMetric[]>([]);
   const [loading, setLoading]           = useState(true);
   const [syncing, setSyncing]           = useState<string | null>(null);
@@ -47,7 +48,7 @@ export default function CampaignsPage() {
       setMetrics(main.data);
       if (cmp) setCmpMetrics(cmp.data);
     } catch {
-      toast.error("Error cargando métricas");
+      toast.error(t("campaigns.loadError"));
     } finally {
       setLoading(false);
     }
@@ -63,17 +64,26 @@ export default function CampaignsPage() {
     setSyncing(platform);
     try {
       const { data } = await metricsApi.sync(platform, dateFrom, dateTo);
-      toast.success(`${PLATFORM_LABELS[platform]}: ${data.records_saved} registros sincronizados`);
+      toast.success(t("campaigns.syncSuccess", { platform: PLATFORM_LABELS[platform], n: data.records_saved }));
       await loadMetrics();
     } catch {
-      toast.error(`Error al sincronizar ${PLATFORM_LABELS[platform]}`);
+      toast.error(t("campaigns.syncError", { platform: PLATFORM_LABELS[platform] }));
     } finally {
       setSyncing(null);
     }
   }
 
   function exportCSV() {
-    const headers = ["Plataforma", "Campaña", "Fecha", "Inversión", "Clicks", "CTR%", "Conversiones", "ROAS"];
+    const headers = [
+      t("campaigns.tableHeaders.platform"),
+      t("campaigns.tableHeaders.campaign"),
+      t("campaigns.tableHeaders.date"),
+      t("campaigns.tableHeaders.investment"),
+      t("campaigns.tableHeaders.clicks"),
+      "CTR%",
+      t("campaigns.tableHeaders.conv"),
+      t("campaigns.tableHeaders.roas"),
+    ];
     const rows = displayed.map((m) => [
       m.platform, m.campaign_name, m.date,
       m.spend.toFixed(2), m.clicks, m.ctr.toFixed(2), m.conversions, m.roas.toFixed(2),
@@ -130,8 +140,8 @@ export default function CampaignsPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Campañas</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Métricas por campaña · todas las plataformas</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("campaigns.title")}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{t("campaigns.subtitle")}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           {PLATFORMS.map((p) => (
@@ -143,7 +153,7 @@ export default function CampaignsPage() {
           ))}
           {displayed.length > 0 && (
             <button onClick={exportCSV} className="btn-secondary text-xs py-2 px-3">
-              <Download size={12} /> CSV
+              <Download size={12} /> {t("campaigns.exportCsv")}
             </button>
           )}
         </div>
@@ -153,9 +163,9 @@ export default function CampaignsPage() {
       {!loading && displayed.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Inversión total", curr: totals.spend,       prev: cmpTotals.spend,       fmt: fMoney },
-            { label: "Clicks",          curr: totals.clicks,      prev: cmpTotals.clicks,      fmt: fNum },
-            { label: "Conversiones",    curr: totals.conversions, prev: cmpTotals.conversions, fmt: fNum },
+            { label: t("campaigns.totalInvestment"), curr: totals.spend,       prev: cmpTotals.spend,       fmt: fMoney },
+            { label: t("campaigns.clicks"),          curr: totals.clicks,      prev: cmpTotals.clicks,      fmt: fNum },
+            { label: t("campaigns.conversions"),     curr: totals.conversions, prev: cmpTotals.conversions, fmt: fNum },
           ].map(({ label, curr, prev, fmt }) => (
             <div key={label} className="card p-4">
               <p className="text-xs text-slate-500 mb-1">{label}</p>
@@ -163,7 +173,7 @@ export default function CampaignsPage() {
                 <p className="text-xl font-bold text-slate-900">{fmt(curr)}</p>
                 {comparing && <DeltaBadge curr={curr} prev={prev} />}
               </div>
-              {comparing && <p className="text-xs text-slate-400 mt-0.5">{fmt(prev)} período anterior</p>}
+              {comparing && <p className="text-xs text-slate-400 mt-0.5">{fmt(prev)} {t("campaigns.prevPeriod")}</p>}
             </div>
           ))}
         </div>
@@ -180,7 +190,7 @@ export default function CampaignsPage() {
                   ? "bg-brand-600 text-white shadow-sm"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}>
-              {p === "all" ? "Todas" : PLATFORM_LABELS[p]}
+              {p === "all" ? t("common.allPlatforms") : PLATFORM_LABELS[p]}
             </button>
           ))}
         </div>
@@ -189,18 +199,18 @@ export default function CampaignsPage() {
         <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar campaña..." className="input pl-8 py-2 text-xs" />
+            placeholder={t("campaigns.searchPlaceholder")} className="input pl-8 py-2 text-xs" />
         </div>
 
         {/* Sort */}
         <div className="flex items-center gap-1">
           <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}
             className="input py-2 text-xs pr-8">
-            <option value="spend">Inversión</option>
-            <option value="clicks">Clicks</option>
-            <option value="ctr">CTR</option>
-            <option value="conversions">Conv.</option>
-            <option value="roas">ROAS</option>
+            <option value="spend">{t("campaigns.sortOptions.investment")}</option>
+            <option value="clicks">{t("campaigns.sortOptions.clicks")}</option>
+            <option value="ctr">{t("campaigns.sortOptions.ctr")}</option>
+            <option value="conversions">{t("campaigns.sortOptions.conversions")}</option>
+            <option value="roas">{t("campaigns.sortOptions.roas")}</option>
           </select>
           <button onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
             className="input py-2 px-3 text-xs font-medium hover:bg-slate-100 transition-colors">
@@ -229,7 +239,7 @@ export default function CampaignsPage() {
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
                 comparing ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}>
-              Comparar
+              {t("campaigns.compare")}
             </button>
           </div>
           {comparing && (
@@ -242,7 +252,7 @@ export default function CampaignsPage() {
                 className="input py-2 text-xs w-36 border-dashed" />
               <button onClick={() => { setCmpFrom(format(subYears(new Date(dateFrom), 1), "yyyy-MM-dd")); setCmpTo(format(subYears(new Date(dateTo), 1), "yyyy-MM-dd")); }}
                 className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
-                Año anterior
+                {t("campaigns.prevYear")}
               </button>
             </div>
           )}
@@ -255,14 +265,14 @@ export default function CampaignsPage() {
         <table className="w-full">
           <thead className="sticky top-0 z-10">
             <tr className="border-b border-slate-100 bg-slate-50">
-              <th className="table-th">Plataforma</th>
-              <th className="table-th">Campaña</th>
-              <th className="table-th">Fecha</th>
-              <th className="table-th">Inversión</th>
-              <th className="table-th">Clicks</th>
-              <th className="table-th">CTR</th>
-              <th className="table-th">Conv.</th>
-              <th className="table-th">ROAS</th>
+              <th className="table-th">{t("campaigns.tableHeaders.platform")}</th>
+              <th className="table-th">{t("campaigns.tableHeaders.campaign")}</th>
+              <th className="table-th">{t("campaigns.tableHeaders.date")}</th>
+              <th className="table-th">{t("campaigns.tableHeaders.investment")}</th>
+              <th className="table-th">{t("campaigns.tableHeaders.clicks")}</th>
+              <th className="table-th">{t("campaigns.tableHeaders.ctr")}</th>
+              <th className="table-th">{t("campaigns.tableHeaders.conv")}</th>
+              <th className="table-th">{t("campaigns.tableHeaders.roas")}</th>
             </tr>
           </thead>
           <tbody>
@@ -272,8 +282,8 @@ export default function CampaignsPage() {
               ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-14 text-center">
-                    <p className="text-sm text-slate-400">Sin datos para este rango</p>
-                    <p className="text-xs text-slate-300 mt-1">Sincronizá una plataforma o ajustá las fechas</p>
+                    <p className="text-sm text-slate-400">{t("campaigns.noData")}</p>
+                    <p className="text-xs text-slate-300 mt-1">{t("campaigns.noDataSub")}</p>
                   </td>
                 </tr>
               )
@@ -304,7 +314,7 @@ export default function CampaignsPage() {
         {!loading && displayed.length > 0 && (
           <div className="px-4 py-3 border-t border-slate-50 bg-slate-50/30">
             <p className="text-xs text-slate-400">
-              {displayed.length} campañas · {fMoneyExact(totals.spend)} de inversión total
+              {t("campaigns.footer", { n: displayed.length, spend: fMoneyExact(totals.spend) })}
             </p>
           </div>
         )}

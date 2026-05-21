@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { metricsApi } from "@/lib/api";
 import { PlatformSummary, PLATFORM_LABELS } from "@/types";
 import { format, subDays, subYears } from "date-fns";
-import { es } from "date-fns/locale";
+import { es, enUS, ptBR } from "date-fns/locale";
+import type { Locale } from "date-fns";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
@@ -17,6 +18,7 @@ import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
 import { fNum, fMoney } from "@/lib/format";
 import { metricsApi as mApi } from "@/lib/api";
+import { useTranslation } from "react-i18next";
 
 const COLORS: Record<string, string> = {
   meta:       "#1877F2",
@@ -31,6 +33,8 @@ const PERIODS = [
   { label: "30D", days: 30 },
   { label: "90D", days: 90 },
 ];
+
+const DF_LOCALES: Record<string, Locale> = { es, en: enUS, pt: ptBR };
 
 type CompareMode = "prev_period" | "prev_year";
 
@@ -47,10 +51,10 @@ function getCompareDates(days: number, mode: CompareMode) {
   };
 }
 
-function getCompareLabel(days: number, mode: CompareMode): string {
+function getCompareLabel(days: number, mode: CompareMode, locale: Locale): string {
   const { from, to } = getCompareDates(days, mode);
-  const f = format(new Date(from + "T00:00:00"), "d MMM", { locale: es });
-  const t = format(new Date(to   + "T00:00:00"), "d MMM", { locale: es });
+  const f = format(new Date(from + "T00:00:00"), "d MMM", { locale });
+  const t = format(new Date(to   + "T00:00:00"), "d MMM", { locale });
   return `vs. ${f} – ${t}`;
 }
 
@@ -106,6 +110,7 @@ function pctChange(curr: number, prev: number): number | undefined {
 }
 
 export default function DashboardPage() {
+  const { t, i18n } = useTranslation();
   const [summary, setSummary]         = useState<PlatformSummary[]>([]);
   const [prevSummary, setPrevSummary] = useState<PlatformSummary[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -114,9 +119,11 @@ export default function DashboardPage() {
   const [compareMode, setCompareMode] = useState<CompareMode>("prev_period");
   const [mounted, setMounted]         = useState(false);
 
+  const dfLocale = DF_LOCALES[i18n.language] ?? es;
+
   useEffect(() => { setMounted(true); }, []);
 
-  const dayLabel = mounted ? format(new Date(), "EEEE d 'de' MMMM", { locale: es }) : "";
+  const dayLabel = mounted ? format(new Date(), "EEEE d 'de' MMMM", { locale: dfLocale }) : "";
 
   useEffect(() => { loadData(period, compareMode); }, [period, compareMode]);
 
@@ -147,8 +154,8 @@ export default function DashboardPage() {
     const results = await Promise.allSettled(platforms.map((p) => mApi.sync(p, from, today)));
     const succeeded = results.filter((r) => r.status === "fulfilled").length;
     const failed    = results.filter((r) => r.status === "rejected").length;
-    if (succeeded > 0) toast.success(`Sincronizadas ${succeeded} plataforma(s) correctamente`);
-    if (failed > 0 && succeeded === 0) toast.error("No se pudo sincronizar ninguna plataforma");
+    if (succeeded > 0) toast.success(t("dashboard.syncSuccess", { n: succeeded }));
+    if (failed > 0 && succeeded === 0) toast.error(t("dashboard.syncError"));
     await loadData(period, compareMode);
     setSyncing(false);
   }
@@ -180,12 +187,12 @@ export default function DashboardPage() {
 
   const alerts: string[] = [];
   if (!loading && totals.spend > 0) {
-    if (globalRoas < 1 && globalRoas > 0) alerts.push(`ROAS global en ${globalRoas.toFixed(2)}x — estás gastando más de lo que generás en revenue`);
+    if (globalRoas < 1 && globalRoas > 0) alerts.push(t("dashboard.alerts.lowRoas", { roas: globalRoas.toFixed(2) }));
     const spendChange = prevTotals.spend > 0 ? (totals.spend - prevTotals.spend) / prevTotals.spend * 100 : 0;
-    if (spendChange > 50) alerts.push(`Inversión ${spendChange.toFixed(0)}% mayor que el período anterior — revisá si fue intencional`);
-    if (totals.clicks > 0 && totals.conversions === 0) alerts.push("0 conversiones en este período — verificá el píxel de conversión en todas las plataformas");
+    if (spendChange > 50) alerts.push(t("dashboard.alerts.highSpend", { pct: spendChange.toFixed(0) }));
+    if (totals.clicks > 0 && totals.conversions === 0) alerts.push(t("dashboard.alerts.noConversions"));
     summary.forEach((s) => {
-      if (s.avg_roas < 0.5 && s.spend > 0) alerts.push(`${PLATFORM_LABELS[s.platform] || s.platform}: ROAS de ${s.avg_roas.toFixed(2)}x — considera pausar o ajustar presupuesto`);
+      if (s.avg_roas < 0.5 && s.spend > 0) alerts.push(t("dashboard.alerts.platformLowRoas", { platform: PLATFORM_LABELS[s.platform] || s.platform, roas: s.avg_roas.toFixed(2) }));
     });
   }
 
@@ -202,8 +209,8 @@ export default function DashboardPage() {
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1 capitalize">{dayLabel}</p>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Todas las plataformas</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("dashboard.title")}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{t("dashboard.subtitle")}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex flex-col items-end gap-1.5">
@@ -222,17 +229,17 @@ export default function DashboardPage() {
               </div>
               <select value={compareMode} onChange={(e) => setCompareMode(e.target.value as CompareMode)}
                 className="text-xs text-slate-500 bg-transparent border-none outline-none cursor-pointer hover:text-slate-700">
-                <option value="prev_period">vs. período anterior</option>
-                <option value="prev_year">vs. año anterior</option>
+                <option value="prev_period">{t("dashboard.prevPeriod")}</option>
+                <option value="prev_year">{t("dashboard.prevYear")}</option>
               </select>
             </div>
             <p className="text-xs text-slate-400" suppressHydrationWarning>
-              {getCompareLabel(period, compareMode)}
+              {getCompareLabel(period, compareMode, dfLocale)}
             </p>
           </div>
           <button onClick={syncAll} disabled={syncing} className="btn-secondary">
             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-            {syncing ? "Sincronizando..." : "Sync datos"}
+            {syncing ? t("dashboard.syncing") : t("dashboard.syncAll")}
           </button>
         </div>
       </div>
@@ -244,23 +251,23 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPICard label="Inversión total" value={fMoney(totals.spend)}
-            sub={`últimos ${period} días`}
+          <KPICard label={t("dashboard.totalInvestment")} value={fMoney(totals.spend)}
+            sub={t("dashboard.lastNDays", { n: period })}
             trend={pctChange(totals.spend, prevTotals.spend)}
             icon={<DollarSign size={18} className="text-white" />}
             gradient="from-brand-500 to-brand-600" />
-          <KPICard label="Clicks totales" value={fNum(totals.clicks)}
-            sub="todas las plataformas"
+          <KPICard label={t("dashboard.totalClicks")} value={fNum(totals.clicks)}
+            sub={t("dashboard.allPlatforms")}
             trend={pctChange(totals.clicks, prevTotals.clicks)}
             icon={<MousePointerClick size={18} className="text-white" />}
             gradient="from-slate-600 to-slate-700" />
-          <KPICard label="Conversiones" value={fNum(totals.conversions)}
+          <KPICard label={t("dashboard.conversions")} value={fNum(totals.conversions)}
             sub={`CPA: $${cpa.toFixed(2)}`}
             trend={pctChange(totals.conversions, prevTotals.conversions)}
             icon={<ShoppingCart size={18} className="text-white" />}
             gradient="from-emerald-500 to-emerald-600" />
-          <KPICard label="ROAS global" value={`${globalRoas.toFixed(2)}x`}
-            sub="revenue / inversión"
+          <KPICard label={t("dashboard.globalRoas")} value={`${globalRoas.toFixed(2)}x`}
+            sub={t("dashboard.revenueInversion")}
             trend={pctChange(globalRoas, prevRoas)}
             icon={<TrendingUp size={18} className="text-white" />}
             gradient="from-amber-500 to-orange-500" />
@@ -283,14 +290,14 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="card p-6">
           <div className="mb-5">
-            <p className="section-title">Inversión por plataforma</p>
-            <p className="section-sub mt-0.5">Gasto total en {period} días</p>
+            <p className="section-title">{t("dashboard.investmentByPlatform")}</p>
+            <p className="section-sub mt-0.5">{t("dashboard.totalSpendNDays", { n: period })}</p>
           </div>
           {loading ? (
             <div className="h-52 skeleton rounded-xl" />
           ) : chartData.length === 0 ? (
             <div className="h-52 flex items-center justify-center text-slate-400 text-sm">
-              Sin datos · Sincronizá una plataforma
+              {t("dashboard.noDataSync")}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
@@ -300,7 +307,7 @@ export default function DashboardPage() {
                 <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false}
                   tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="spend" radius={[6, 6, 0, 0]} name="Inversión">
+                <Bar dataKey="spend" radius={[6, 6, 0, 0]} name={t("dashboard.tableHeaders.investment")}>
                   {chartData.map((entry, i) => (
                     <Cell key={i} fill={entry.fill} fillOpacity={0.9} />
                   ))}
@@ -312,14 +319,14 @@ export default function DashboardPage() {
 
         <div className="card p-6">
           <div className="mb-5">
-            <p className="section-title">ROAS por plataforma</p>
-            <p className="section-sub mt-0.5">Revenue / Inversión</p>
+            <p className="section-title">{t("dashboard.roas")}</p>
+            <p className="section-sub mt-0.5">{t("dashboard.revenueSlash")}</p>
           </div>
           {loading ? (
             <div className="h-52 skeleton rounded-xl" />
           ) : chartData.length === 0 ? (
             <div className="h-52 flex items-center justify-center text-slate-400 text-sm">
-              Sin datos · Sincronizá una plataforma
+              {t("dashboard.noDataSync")}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
@@ -343,13 +350,20 @@ export default function DashboardPage() {
       {/* Platform table */}
       <div className="card overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between">
-          <p className="section-title">Rendimiento por plataforma</p>
-          <span className="text-xs text-slate-400">Últimos {period} días</span>
+          <p className="section-title">{t("dashboard.performanceByPlatform")}</p>
+          <span className="text-xs text-slate-400">{t("dashboard.lastNDaysShort", { n: period })}</span>
         </div>
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-50">
-              {["Plataforma", "Inversión", "Clicks", "CTR", "Conversiones", "ROAS"].map((h) => (
+              {[
+                t("dashboard.tableHeaders.platform"),
+                t("dashboard.tableHeaders.investment"),
+                t("dashboard.tableHeaders.clicks"),
+                t("dashboard.tableHeaders.ctr"),
+                t("dashboard.tableHeaders.conversions"),
+                t("dashboard.tableHeaders.roas"),
+              ].map((h) => (
                 <th key={h} className="table-th">{h}</th>
               ))}
             </tr>
@@ -360,7 +374,7 @@ export default function DashboardPage() {
             ) : summary.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
-                  Sin datos — sincronizá tus plataformas para ver métricas aquí
+                  {t("dashboard.noDataFull")}
                 </td>
               </tr>
             ) : (
