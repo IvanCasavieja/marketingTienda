@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
-import { FilePresentation, ChevronRight } from "lucide-react";
+import { Presentation, ChevronRight } from "lucide-react";
 
 const tools = [
   {
     href: "/herramientas/cenefas",
     title: "Generador de Cenefas",
     description: "Cargá el Excel de productos y la plantilla PPTX para generar las cenefas automáticamente.",
-    icon: FilePresentation,
+    icon: Presentation,
     tag: "PPTX",
   },
 ];
