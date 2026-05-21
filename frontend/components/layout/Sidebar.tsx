@@ -4,14 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
-  BarChart3, ChevronRight, Wrench, Home,
+  BarChart3, ChevronRight, Wrench,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, connectionsApi } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 
 const nav = [
-  { href: "/home", label: "Módulos", icon: Home, section: null },
   { href: "/dashboard",    label: "Dashboard",   icon: LayoutDashboard, section: "MKTG Platform" },
   { href: "/campaigns",    label: "Campañas",    icon: Megaphone,       section: "MKTG Platform" },
   { href: "/analytics",    label: "Análisis IA", icon: Brain,           section: "MKTG Platform" },
@@ -46,29 +45,27 @@ export default function Sidebar() {
 
   return (
     <aside className="w-64 min-h-screen bg-navy-900 flex flex-col shrink-0">
-      {/* Logo */}
-      <div className="px-5 pt-6 pb-5">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-brand-500 flex items-center justify-center shrink-0">
-            <BarChart3 size={16} className="text-white" />
-          </div>
-          <div>
-            <p className="text-white font-bold text-sm leading-none">MKTG Platform</p>
-            <p className="text-slate-500 text-[11px] mt-0.5 max-w-[180px] truncate" title={tenantLabel}>
-              {tenantLabel}
-            </p>
-          </div>
+      {/* Logo — click goes to home */}
+      <Link href="/home" className="px-5 pt-6 pb-5 flex items-center gap-3 group">
+        <div className="w-8 h-8 rounded-xl bg-brand-500 flex items-center justify-center shrink-0 group-hover:bg-brand-400 transition-colors">
+          <BarChart3 size={16} className="text-white" />
         </div>
-      </div>
+        <div>
+          <p className="text-white font-bold text-sm leading-none">MKTG Platform</p>
+          <p className="text-slate-500 text-[11px] mt-0.5 max-w-[180px] truncate" title={tenantLabel}>
+            {tenantLabel}
+          </p>
+        </div>
+      </Link>
 
       <div className="mx-4 h-px bg-white/5 mb-3" />
 
       {/* Main nav */}
       <nav className="px-3 flex-1 space-y-0.5">
         {nav.map(({ href, label, icon: Icon, section }, i) => {
-          const active = pathname === href || (href !== "/home" && pathname.startsWith(href));
+          const active = pathname === href || pathname.startsWith(href + "/");
           const prevSection = i > 0 ? nav[i - 1].section : undefined;
-          const showLabel = section && section !== prevSection;
+          const showLabel = section !== prevSection;
           return (
             <div key={href}>
               {showLabel && (
@@ -76,7 +73,6 @@ export default function Sidebar() {
                   {section}
                 </p>
               )}
-              {!section && i > 0 && <div className="h-px bg-white/5 mx-1 my-2" />}
               <Link href={href}
                 className={clsx(
                   "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
