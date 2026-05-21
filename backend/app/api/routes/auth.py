@@ -30,7 +30,7 @@ def _client_ip(request: Request) -> str:
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
-    return _client_ip(request) if request.client else "unknown"
+    return request.client.host if request.client else "unknown"
 
 
 def _user_response(user: User) -> UserResponse:

@@ -298,8 +298,38 @@ def _clear_slot(shapes) -> None:
         if not shape.has_text_frame:
             continue
         t = _shape_text(shape)
-        if "<<" in t or "Precio 1" in t:
+        if "<<" in t or re.search(r"Precio\s+\d", t):
             _set_text(shape, "")
+
+
+def _slot_num(shape) -> int | None:
+    """Return 1, 2, or 3 if the shape belongs to a numbered product slot."""
+    t = _shape_text(shape)
+    for n in (1, 2, 3):
+        if (f"<<P{n}>>" in t
+                or f"Precio {n}" in t
+                or f"<<Mecanica{n}>>" in t
+                or f"<<UnidadMedida{n}>>" in t
+                or f"<<Vigencia{n}>>" in t
+                or f"<<Aclaracion{n}>>" in t
+                or f"<<OtraAclaracion{n}>>" in t
+                or ("<<" in t and "Descripci" in t and str(n) in t)):
+            return n
+    return None
+
+
+def _get_slots(shapes) -> list[list]:
+    """Group shapes by product slot number. Falls back to index-based split if
+    the template uses un-numbered placeholders."""
+    buckets: dict[int, list] = {1: [], 2: [], 3: []}
+    for shape in shapes:
+        n = _slot_num(shape)
+        if n:
+            buckets[n].append(shape)
+    if any(buckets[n] for n in (1, 2, 3)):
+        return [buckets[1], buckets[2], buckets[3]]
+    # Fallback for templates without numbered placeholders
+    return [shapes[0:8], shapes[8:16], shapes[16:24]]
 
 
 def _add_slide_from_template(prs, layout, template_shape_xmls):
@@ -336,8 +366,7 @@ def generate_pptx_bytes(
 
     for idx, group in enumerate(groups):
         slide = template_slide if idx == 0 else _add_slide_from_template(prs, layout, template_shape_xmls)
-        shapes = list(slide.shapes)
-        slots = [shapes[0:8], shapes[8:16], shapes[16:24]]
+        slots = _get_slots(list(slide.shapes))
         for i, product in enumerate(group):
             _fill_slot(slots[i], product)
         for i in range(len(group), 3):

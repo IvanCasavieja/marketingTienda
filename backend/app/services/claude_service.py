@@ -3,6 +3,17 @@ from datetime import date
 from typing import List, Dict
 from app.core.config import settings
 
+
+def _call_claude(fn, **kwargs) -> anthropic.types.Message:
+    try:
+        return fn(**kwargs)
+    except anthropic.APIStatusError as e:
+        raise RuntimeError(f"Claude API error {e.status_code}: {e.message}") from e
+    except anthropic.APIConnectionError as e:
+        raise RuntimeError(f"Claude API unreachable: {e}") from e
+    except Exception as e:
+        raise RuntimeError(f"Unexpected Claude error: {e}") from e
+
 _client: anthropic.Anthropic | None = None
 
 
@@ -76,7 +87,8 @@ Genera un reporte ejecutivo completo con las siguientes secciones:
 5. **ALERTAS Y ANOMALÍAS** (si las hay)
 6. **PRÓXIMOS PASOS RECOMENDADOS** (ordenados por prioridad)"""
 
-    response = _get_client().beta.prompt_caching.messages.create(
+    response = _call_claude(
+        _get_client().beta.prompt_caching.messages.create,
         model="claude-sonnet-4-6",
         max_tokens=4096,
         system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
@@ -106,7 +118,8 @@ Identifica:
 
 Para cada anomalía indica: plataforma, campaña afectada, magnitud del problema y acción recomendada."""
 
-    response = _get_client().messages.create(
+    response = _call_claude(
+        _get_client().messages.create,
         model="claude-sonnet-4-6",
         max_tokens=2048,
         system=SYSTEM_PROMPT,
@@ -138,7 +151,8 @@ Genera recomendaciones de optimización específicas y accionables:
 
 Para cada recomendación incluye: plataforma, acción específica, métricas que mejoraría y % de mejora estimado."""
 
-    response = _get_client().messages.create(
+    response = _call_claude(
+        _get_client().messages.create,
         model="claude-sonnet-4-6",
         max_tokens=2048,
         system=SYSTEM_PROMPT,
@@ -167,7 +181,8 @@ Genera una comparativa detallada:
 4. **MIX ÓPTIMO** recomendado de inversión entre plataformas
 5. **CONCLUSIÓN ESTRATÉGICA** (qué plataforma priorizar según el objetivo de negocio)"""
 
-    response = _get_client().messages.create(
+    response = _call_claude(
+        _get_client().messages.create,
         model="claude-sonnet-4-6",
         max_tokens=2048,
         system=SYSTEM_PROMPT,

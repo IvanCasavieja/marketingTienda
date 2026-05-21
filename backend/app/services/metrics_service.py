@@ -29,18 +29,9 @@ async def sync_platform(db: AsyncSession, platform: Platform, team_group_id: int
     if not connections:
         raise ValueError(f"No active connection for platform {platform}")
 
-    await db.execute(
-        delete(CampaignMetric).where(
-            and_(
-                CampaignMetric.platform == platform,
-                CampaignMetric.team_group_id == team_group_id,
-                CampaignMetric.date >= date_from,
-                CampaignMetric.date <= date_to,
-            )
-        )
-    )
-
-    saved = 0
+    # Fetch and normalize ALL data first — only delete existing rows once we
+    # know the remote call succeeded. A failure here leaves the DB untouched.
+    all_normalized: list[dict] = []
     for conn in connections:
         access_token = decrypt_token(conn.access_token_enc)
         account_id = conn.account_id
@@ -61,33 +52,43 @@ async def sync_platform(db: AsyncSession, platform: Platform, team_group_id: int
             raise ValueError(f"Unsupported platform for sync: {platform}")
 
         raw = await connector.fetch_campaigns(date_from, date_to)
-        normalized = connector.normalize(raw, date_from, date_to)
+        all_normalized.extend(connector.normalize(raw, date_from, date_to))
 
-        for row in normalized:
-            metric = CampaignMetric(
-                team_group_id=team_group_id,
-                platform=platform,
-                account_id=row["account_id"],
-                campaign_id=row["campaign_id"],
-                campaign_name=row["campaign_name"],
-                date=date_type.fromisoformat(row["date"]) if isinstance(row["date"], str) else row["date"],
-                impressions=row["impressions"],
-                clicks=row["clicks"],
-                spend=row["spend"],
-                conversions=row["conversions"],
-                revenue=row["revenue"],
-                reach=row["reach"],
-                ctr=row["ctr"],
-                cpc=row["cpc"],
-                cpm=row["cpm"],
-                roas=row["roas"],
-                raw_data=row["raw_data"],
+    # Safe to replace now that we have fresh data in memory
+    await db.execute(
+        delete(CampaignMetric).where(
+            and_(
+                CampaignMetric.platform == platform,
+                CampaignMetric.team_group_id == team_group_id,
+                CampaignMetric.date >= date_from,
+                CampaignMetric.date <= date_to,
             )
-            db.add(metric)
-            saved += 1
+        )
+    )
+
+    for row in all_normalized:
+        db.add(CampaignMetric(
+            team_group_id=team_group_id,
+            platform=platform,
+            account_id=row["account_id"],
+            campaign_id=row["campaign_id"],
+            campaign_name=row["campaign_name"],
+            date=date_type.fromisoformat(row["date"]) if isinstance(row["date"], str) else row["date"],
+            impressions=row["impressions"],
+            clicks=row["clicks"],
+            spend=row["spend"],
+            conversions=row["conversions"],
+            revenue=row["revenue"],
+            reach=row["reach"],
+            ctr=row["ctr"],
+            cpc=row["cpc"],
+            cpm=row["cpm"],
+            roas=row["roas"],
+            raw_data=row["raw_data"],
+        ))
 
     await db.flush()
-    return saved
+    return len(all_normalized)
 
 
 async def get_metrics(

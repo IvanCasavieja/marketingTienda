@@ -39,25 +39,28 @@ async def analyze(
 
     metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
 
-    if payload.analysis_type == "full_report":
-        email_data, whatsapp_data = [], []
-        if settings.SFMC_CLIENT_ID:
-            try:
-                sfmc = SFMCConnector(
-                    client_id=settings.SFMC_CLIENT_ID,
-                    client_secret=settings.SFMC_CLIENT_SECRET,
-                    subdomain=settings.SFMC_SUBDOMAIN,
-                    account_id=settings.SFMC_ACCOUNT_ID,
-                )
-                raw_email = await sfmc.fetch_email_performance(payload.date_from, payload.date_to)
-                email_data = sfmc.normalize_email(raw_email)
-                raw_wa = await sfmc.fetch_whatsapp_performance(payload.date_from, payload.date_to)
-                whatsapp_data = sfmc.normalize_whatsapp(raw_wa)
-            except Exception:
-                pass
-        result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to)
-    else:
-        result = await handler(metrics, payload.date_from, payload.date_to)
+    try:
+        if payload.analysis_type == "full_report":
+            email_data, whatsapp_data = [], []
+            if settings.SFMC_CLIENT_ID:
+                try:
+                    sfmc = SFMCConnector(
+                        client_id=settings.SFMC_CLIENT_ID,
+                        client_secret=settings.SFMC_CLIENT_SECRET,
+                        subdomain=settings.SFMC_SUBDOMAIN,
+                        account_id=settings.SFMC_ACCOUNT_ID,
+                    )
+                    raw_email = await sfmc.fetch_email_performance(payload.date_from, payload.date_to)
+                    email_data = sfmc.normalize_email(raw_email)
+                    raw_wa = await sfmc.fetch_whatsapp_performance(payload.date_from, payload.date_to)
+                    whatsapp_data = sfmc.normalize_whatsapp(raw_wa)
+                except Exception:
+                    pass
+            result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to)
+        else:
+            result = await handler(metrics, payload.date_from, payload.date_to)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
     analysis = AIAnalysis(
         user_id=current_user.id,
