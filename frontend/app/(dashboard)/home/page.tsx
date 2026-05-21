@@ -23,13 +23,13 @@ function getBotReply(input: string): string {
     return "Para generar cenefas andá a **Herramientas → Cenefas** en el sidebar. Necesitás cargar el Excel de productos y la plantilla PPTX base. El sistema genera el archivo con 3 productos por slide automáticamente.";
 
   if (q.includes("meta") || q.includes("sincroniz") || q.includes("sync"))
-    return "Para sincronizar Meta Ads primero agregá tu conexión en **Configuración → Conexiones** con tu Access Token. Después en la página de **Campañas** usá el botón "Meta Ads" arriba a la derecha para importar los datos.";
+    return "Para sincronizar Meta Ads primero agregá tu conexión en **Configuración → Conexiones** con tu Access Token. Después en la página de **Campañas** usá el botón 'Meta Ads' arriba a la derecha para importar los datos.";
 
   if (q.includes("roas"))
     return "El **ROAS** (Return On Ad Spend) mide cuánto revenue generás por cada peso invertido. Un ROAS de 3x significa que por cada $1 invertido generás $3. En el Dashboard podés ver el ROAS global y por plataforma.";
 
   if (q.includes("equipo") || q.includes("invit") || q.includes("código"))
-    return "En **Configuración → Conexiones** encontrás el botón "Copiar código de invitación". Compartí ese código con tu equipo — al registrarse o iniciar sesión pueden pegarlo para unirse automáticamente.";
+    return "En **Configuración → Conexiones** encontrás el botón 'Copiar código de invitación'. Compartí ese código con tu equipo — al registrarse o iniciar sesión pueden pegarlo para unirse automáticamente.";
 
   if (q.includes("dashboard") || q.includes("kpi"))
     return "El **Dashboard** muestra tus KPIs principales: inversión total, clicks, conversiones y ROAS global. Podés filtrar por 7D, 30D o 90D y comparar contra períodos anteriores. También detecta anomalías automáticamente.";
