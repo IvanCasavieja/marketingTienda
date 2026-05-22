@@ -3,12 +3,36 @@ import { useState, useEffect } from "react";
 import { analyticsApi } from "@/lib/api";
 import { Analysis, PLATFORM_LABELS } from "@/types";
 import { format, subDays } from "date-fns";
-import { Brain, Loader2, Sparkles, Clock, ChevronRight, BarChart3, AlertTriangle, TrendingUp, Globe, XCircle } from "lucide-react";
+import {
+  Brain, Loader2, Sparkles, Clock, ChevronRight,
+  BarChart3, AlertTriangle, TrendingUp, Globe, XCircle, MessageSquare,
+} from "lucide-react";
 import { toast } from "sonner";
 import { SkeletonText } from "@/components/ui/SkeletonCard";
 import { useTranslation } from "react-i18next";
 
 const ALL_PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"];
+
+const SPEAKER_STYLES: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  Claude:  { bg: "bg-orange-50",  text: "text-orange-700",  border: "border-orange-200",  dot: "bg-orange-500"  },
+  ChatGPT: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500" },
+  Llama:   { bg: "bg-purple-50",  text: "text-purple-700",  border: "border-purple-200",  dot: "bg-purple-500"  },
+};
+
+interface DebateMessage {
+  speaker: string;
+  round: number;
+  role: string;
+  content: string;
+}
+
+function tryParseDebate(result: string): DebateMessage[] | null {
+  try {
+    const parsed = JSON.parse(result);
+    if (parsed.debate && Array.isArray(parsed.debate)) return parsed.debate;
+  } catch { /* not debate JSON */ }
+  return null;
+}
 
 function MarkdownOutput({ text }: { text: string }) {
   const lines = text.split("\n");
@@ -26,6 +50,104 @@ function MarkdownOutput({ text }: { text: string }) {
         const rendered = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
         return <p key={i} dangerouslySetInnerHTML={{ __html: rendered }} />;
       })}
+    </div>
+  );
+}
+
+function DebateOutput({ messages }: { messages: DebateMessage[] }) {
+  const { t } = useTranslation();
+
+  const ROUND_TITLES: Record<number, string> = {
+    1: t("analytics.debate.round1Title"),
+    2: t("analytics.debate.round2Title"),
+    3: t("analytics.debate.round3Title"),
+  };
+  const ROLE_LABELS: Record<string, string> = {
+    analysis:  t("analytics.debate.roleAnalysis"),
+    rebuttal:  t("analytics.debate.roleRebuttal"),
+    synthesis: t("analytics.debate.roleSynthesis"),
+  };
+
+  const rounds = [1, 2, 3];
+
+  return (
+    <div className="space-y-8">
+      {rounds.map((round) => {
+        const roundMessages = messages.filter((m) => m.round === round);
+        if (!roundMessages.length) return null;
+        return (
+          <div key={round}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-px flex-1 bg-slate-100" />
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider px-2">
+                {ROUND_TITLES[round]}
+              </span>
+              <div className="h-px flex-1 bg-slate-100" />
+            </div>
+            <div className="space-y-4">
+              {roundMessages.map((msg, idx) => {
+                const style = SPEAKER_STYLES[msg.speaker] ?? SPEAKER_STYLES.Claude;
+                return (
+                  <div key={idx} className={`rounded-xl border p-4 ${style.bg} ${style.border}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className={`w-6 h-6 rounded-full ${style.dot} flex items-center justify-center shrink-0`}>
+                        <span className="text-white text-[10px] font-bold">{msg.speaker[0]}</span>
+                      </div>
+                      <span className={`text-sm font-bold ${style.text}`}>{msg.speaker}</span>
+                      <span className="text-xs text-slate-400">·</span>
+                      <span className="text-xs text-slate-400">{ROLE_LABELS[msg.role] ?? msg.role}</span>
+                    </div>
+                    <div className={`text-sm leading-relaxed ${style.text.replace("700", "800")}`}>
+                      <MarkdownOutput text={msg.content} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DebateLoadingSkeleton() {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2 text-violet-600">
+        <MessageSquare size={20} className="animate-pulse-slow" />
+        <span className="text-sm font-semibold">{t("analytics.debate.analyzing")}</span>
+      </div>
+      <div className="space-y-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+          <span>Claude — analizando datos...</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+          <span>ChatGPT — analizando datos...</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+          <span>Llama — analizando datos...</span>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {[
+          "bg-orange-50 border-orange-100",
+          "bg-emerald-50 border-emerald-100",
+          "bg-purple-50 border-purple-100",
+        ].map((cls, i) => (
+          <div key={i} className={`rounded-xl border p-4 ${cls}`}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="skeleton w-6 h-6 rounded-full" />
+              <div className="skeleton h-3 w-16 rounded" />
+            </div>
+            <SkeletonText lines={3} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -71,6 +193,13 @@ export default function AnalyticsPage() {
       icon: Globe,
       color: "text-purple-600 bg-purple-50",
     },
+    {
+      value: "debate",
+      label: t("analytics.types.debate_label"),
+      desc:  t("analytics.types.debate_desc"),
+      icon: MessageSquare,
+      color: "text-violet-600 bg-violet-50",
+    },
   ];
 
   useEffect(() => {
@@ -87,7 +216,11 @@ export default function AnalyticsPage() {
       const { data } = await analyticsApi.analyze(platforms, dateFrom, dateTo, analysisType);
       setResult(data.result);
       setActive(data.id);
-      toast.success(t("analytics.successToast"));
+      toast.success(
+        analysisType === "debate"
+          ? t("analytics.debate.successToast")
+          : t("analytics.successToast")
+      );
       analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
     } catch (err: any) {
       const detail = err?.response?.data?.detail ?? t("analytics.defaultError");
@@ -107,6 +240,8 @@ export default function AnalyticsPage() {
   }
 
   const selectedType = ANALYSIS_TYPES.find((tp) => tp.value === analysisType);
+  const debateMessages = result ? tryParseDebate(result) : null;
+  const isDebate = analysisType === "debate" || debateMessages !== null;
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -136,6 +271,11 @@ export default function AnalyticsPage() {
                     <p className="text-sm font-semibold text-slate-800">{label}</p>
                     <p className="text-xs text-slate-500">{desc}</p>
                   </div>
+                  {value === "debate" && (
+                    <span className="ml-auto shrink-0 text-[10px] font-bold uppercase tracking-wide bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full">
+                      NEW
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -174,16 +314,23 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          <button onClick={runAnalysis} disabled={loading || !platforms.length} className="btn-primary w-full py-3">
+          <button onClick={runAnalysis} disabled={loading || !platforms.length}
+            className={`btn-primary w-full py-3 ${analysisType === "debate" ? "bg-violet-600 hover:bg-violet-700 focus:ring-violet-500" : ""}`}>
             {loading
-              ? <><Loader2 size={16} className="animate-spin" /> {t("analytics.analyzing")}</>
+              ? <><Loader2 size={16} className="animate-spin" /> {isDebate ? t("analytics.debate.analyzing") : t("analytics.analyzing")}</>
               : <><Sparkles size={16} /> {t("analytics.runAnalysis")}</>}
           </button>
+
+          {analysisType === "debate" && !loading && (
+            <p className="text-xs text-slate-400 text-center -mt-1">
+              {t("analytics.debate.disclaimer")}
+            </p>
+          )}
         </div>
 
         {/* ── Result panel ── */}
         <div className="space-y-4">
-          {/* Main result */}
+          {/* Error */}
           {errorMsg && (
             <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
@@ -199,30 +346,49 @@ export default function AnalyticsPage() {
 
           <div className="card p-6 min-h-[400px]">
             {loading ? (
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 text-brand-600">
-                  <Brain size={20} className="animate-pulse-slow" />
-                  <span className="text-sm font-semibold">{t("analytics.analyzing")}</span>
-                </div>
-                {[5, 4, 6, 3, 5].map((lines, i) => (
-                  <div key={i}>
-                    <div className="skeleton h-3 w-32 rounded mb-3" />
-                    <SkeletonText lines={lines} />
+              isDebate
+                ? <DebateLoadingSkeleton />
+                : (
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2 text-brand-600">
+                      <Brain size={20} className="animate-pulse-slow" />
+                      <span className="text-sm font-semibold">{t("analytics.analyzing")}</span>
+                    </div>
+                    {[5, 4, 6, 3, 5].map((lines, i) => (
+                      <div key={i}>
+                        <div className="skeleton h-3 w-32 rounded mb-3" />
+                        <SkeletonText lines={lines} />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )
             ) : result ? (
               <>
                 <div className="flex items-center gap-2 mb-5 pb-4 border-b border-slate-50">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedType?.color}`}>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedType?.color ?? "bg-slate-100 text-slate-500"}`}>
                     {selectedType && <selectedType.icon size={16} />}
                   </div>
                   <div>
                     <p className="font-semibold text-slate-800 text-sm">{selectedType?.label}</p>
-                    <p className="text-xs text-slate-400">{t("analytics.generatedBy", { date: format(new Date(), "dd/MM/yyyy HH:mm") })}</p>
+                    <p className="text-xs text-slate-400">
+                      {debateMessages
+                        ? t("analytics.debate.generatedBy")
+                        : t("analytics.generatedBy", { date: format(new Date(), "dd/MM/yyyy HH:mm") })}
+                    </p>
                   </div>
+                  {debateMessages && (
+                    <div className="ml-auto flex gap-1">
+                      {["C", "G", "L"].map((initial, i) => (
+                        <div key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold ${["bg-orange-500", "bg-emerald-500", "bg-purple-500"][i]}`}>
+                          {initial}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <MarkdownOutput text={result} />
+                {debateMessages
+                  ? <DebateOutput messages={debateMessages} />
+                  : <MarkdownOutput text={result} />}
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -254,7 +420,7 @@ export default function AnalyticsPage() {
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-slate-700">{tp?.label}</p>
+                        <p className="text-xs font-semibold text-slate-700">{tp?.label ?? h.analysis_type}</p>
                         <p className="text-[11px] text-slate-400">{format(new Date(h.created_at), "dd/MM HH:mm")}</p>
                       </div>
                       <ChevronRight size={14} className="text-slate-300 shrink-0" />

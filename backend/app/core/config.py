@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     # Claude
     ANTHROPIC_API_KEY: str
 
+    # OpenAI (debate feature)
+    OPENAI_API_KEY: str = ""
+
+    # Groq / Llama (debate feature)
+    GROQ_API_KEY: str = ""
+
     # Meta Ads
     META_APP_ID: str = ""
     META_APP_SECRET: str = ""

@@ -179,7 +179,21 @@
       "optimization_label": "Optimización",
       "optimization_desc": "Recomendaciones accionables",
       "cross_platform_label": "Comparativa cross-channel",
-      "cross_platform_desc": "Ranking de eficiencia por plataforma"
+      "cross_platform_desc": "Ranking de eficiencia por plataforma",
+      "debate_label": "Mesa Redonda IA",
+      "debate_desc": "Debate entre Claude, ChatGPT y Llama"
+    },
+    "debate": {
+      "analyzing": "Los modelos están debatiendo...",
+      "successToast": "Debate completado entre los 3 modelos",
+      "generatedBy": "Debate — Claude · ChatGPT · Llama",
+      "disclaimer": "Este análisis tarda ~30 seg. — 6 llamadas a 3 modelos",
+      "round1Title": "Ronda 1 — Análisis inicial",
+      "round2Title": "Ronda 2 — Réplicas",
+      "round3Title": "Ronda 3 — Síntesis del moderador",
+      "roleAnalysis": "Análisis inicial",
+      "roleRebuttal": "Réplica",
+      "roleSynthesis": "Síntesis final"
     }
   },
   "settings": {
@@ -237,6 +251,21 @@
     "ready": "Listo",
     "search": "Buscar",
     "successMsg": "¡Cenefas generadas! La descarga comenzó automáticamente.",
-    "unknownError": "Error desconocido"
+    "unknownError": "Error desconocido",
+    "savedTemplates": "Plantilla PPTX",
+    "noTemplates": "Sin templates guardados. Subí el primero con + Nuevo.",
+    "newTemplate": "Nuevo template",
+    "templateName": "Nombre *",
+    "templateNamePlaceholder": "ej: A4 Navidad 2026",
+    "templateFormat": "Formato",
+    "uploadTemplate": "Guardar",
+    "uploading": "Guardando…",
+    "templateSaved": "Template guardado",
+    "templateSaveError": "Error al guardar el template",
+    "templateDeleted": "Template eliminado",
+    "templateDeleteError": "Error al eliminar",
+    "templateDeleteConfirm": "¿Eliminar este template? No se puede deshacer.",
+    "orUploadNew": "o subí un PPTX personalizado",
+    "cancel": "Cancelar"
   }
 }

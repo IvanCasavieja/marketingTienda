@@ -12,7 +12,10 @@ from app.models.ai_analysis import AIAnalysis
 from app.models.platform_connection import Platform
 from app.services.metrics_service import get_metrics
 from app.services.claude_service import ANALYSIS_HANDLERS
+from app.services.debate_service import run_debate
 from app.connectors.sfmc import SFMCConnector
+
+_ALL_HANDLERS = {**ANALYSIS_HANDLERS, "debate": run_debate}
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -33,14 +36,14 @@ async def analyze(
     if not current_user.team_group_id:
         raise HTTPException(status_code=400, detail="Join a team before running analysis")
 
-    handler = ANALYSIS_HANDLERS.get(payload.analysis_type)
+    handler = _ALL_HANDLERS.get(payload.analysis_type)
     if not handler:
         raise HTTPException(status_code=400, detail=f"Unknown analysis type: {payload.analysis_type}")
 
     metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
 
     try:
-        if payload.analysis_type == "full_report":
+        if payload.analysis_type in ("full_report", "debate"):
             email_data, whatsapp_data = [], []
             if settings.SFMC_CLIENT_ID:
                 try:

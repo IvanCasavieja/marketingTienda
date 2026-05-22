@@ -1,15 +1,30 @@
 "use client";
-import { useState, useRef, ChangeEvent, FormEvent } from "react";
-import { Upload, Presentation, Download, AlertCircle, CheckCircle2, Loader2, FileSpreadsheet, FileType2 } from "lucide-react";
+import { useState, useRef, useEffect, ChangeEvent, FormEvent } from "react";
+import {
+  Upload, Presentation, Download, AlertCircle, CheckCircle2, Loader2,
+  FileSpreadsheet, FileType2, Plus, Trash2, X, LayoutTemplate,
+} from "lucide-react";
 import { toolsApi } from "@/lib/api";
 import { useTranslation } from "react-i18next";
+import { format } from "date-fns";
+import { toast } from "sonner";
 
 type Status = "idle" | "loading" | "success" | "error";
 
+interface TemplateInfo {
+  id: number;
+  name: string;
+  format_name: string;
+  created_at: string | null;
+}
+
 export default function CenefasPage() {
   const { t } = useTranslation();
+
+  // Generation state
   const [excel, setExcel] = useState<File | null>(null);
-  const [template, setTemplate] = useState<File | null>(null);
+  const [customPptx, setCustomPptx] = useState<File | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [vigencia, setVigencia] = useState("");
   const [aclaracion, setAclaracion] = useState("Bases y condiciones en redexpres.uy");
   const [otraAlcohol, setOtraAlcohol] = useState(
@@ -19,23 +34,89 @@ export default function CenefasPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const downloadRef = useRef<HTMLAnchorElement>(null);
 
-  function handleFile(setter: (f: File) => void) {
-    return (e: ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files?.[0]) setter(e.target.files[0]);
-    };
+  // Templates state
+  const [templates, setTemplates] = useState<TemplateInfo[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(true);
+
+  // New template form state
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newFormat, setNewFormat] = useState("");
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    toolsApi.getCenefaTemplates()
+      .then(({ data }) => setTemplates(data))
+      .catch(() => {})
+      .finally(() => setLoadingTemplates(false));
+  }, []);
+
+  function selectTemplate(id: number) {
+    if (selectedTemplateId === id) {
+      setSelectedTemplateId(null);
+    } else {
+      setSelectedTemplateId(id);
+      setCustomPptx(null);
+    }
+  }
+
+  function handleCustomPptxChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCustomPptx(file);
+      setSelectedTemplateId(null);
+    }
+  }
+
+  async function handleUploadTemplate(e: FormEvent) {
+    e.preventDefault();
+    if (!newFile || !newName.trim()) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("name", newName.trim());
+      fd.append("format_name", newFormat.trim());
+      fd.append("file", newFile);
+      const { data } = await toolsApi.createCenefaTemplate(fd);
+      setTemplates((prev) => [data, ...prev]);
+      setNewName("");
+      setNewFormat("");
+      setNewFile(null);
+      setShowNewForm(false);
+      toast.success(t("cenefas.templateSaved"));
+    } catch {
+      toast.error(t("cenefas.templateSaveError"));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDeleteTemplate(id: number) {
+    if (!confirm(t("cenefas.templateDeleteConfirm"))) return;
+    try {
+      await toolsApi.deleteCenefaTemplate(id);
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+      if (selectedTemplateId === id) setSelectedTemplateId(null);
+      toast.success(t("cenefas.templateDeleted"));
+    } catch {
+      toast.error(t("cenefas.templateDeleteError"));
+    }
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!excel || !template || !vigencia.trim()) return;
-
+    if (!canSubmit) return;
     setStatus("loading");
     setErrorMsg("");
-
     try {
       const fd = new FormData();
-      fd.append("excel", excel);
-      fd.append("template", template);
+      fd.append("excel", excel!);
+      if (selectedTemplateId !== null) {
+        fd.append("template_id", selectedTemplateId.toString());
+      } else {
+        fd.append("template", customPptx!);
+      }
       fd.append("vigencia", vigencia.trim());
       fd.append("aclaracion", aclaracion.trim());
       fd.append("otra_alcohol", otraAlcohol.trim());
@@ -60,7 +141,8 @@ export default function CenefasPage() {
     }
   }
 
-  const canSubmit = !!excel && !!template && !!vigencia.trim() && status !== "loading";
+  const hasTemplate = selectedTemplateId !== null || !!customPptx;
+  const canSubmit = !!excel && hasTemplate && !!vigencia.trim() && status !== "loading";
 
   return (
     <div className="animate-fade-in max-w-2xl space-y-6">
@@ -76,10 +158,169 @@ export default function CenefasPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Archivos */}
+        {/* Templates card */}
+        <div className="card p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
+              {t("cenefas.savedTemplates")}
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowNewForm(!showNewForm)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 transition-colors"
+            >
+              <Plus size={13} />
+              {t("cenefas.newTemplate")}
+            </button>
+          </div>
+
+          {/* New template form */}
+          {showNewForm && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+              <div className="flex gap-3">
+                <label className="flex-1 flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-600">{t("cenefas.templateName")}</span>
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder={t("cenefas.templateNamePlaceholder")}
+                    className="input text-sm"
+                    required
+                  />
+                </label>
+                <label className="w-32 flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-600">{t("cenefas.templateFormat")}</span>
+                  <input
+                    type="text"
+                    value={newFormat}
+                    onChange={(e) => setNewFormat(e.target.value)}
+                    placeholder="A4, A5..."
+                    className="input text-sm"
+                  />
+                </label>
+              </div>
+              <label className="flex flex-col gap-1 cursor-pointer">
+                <span className="text-xs font-medium text-slate-600">{t("cenefas.pptxLabel")}</span>
+                <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 transition-all duration-150 ${
+                  newFile ? "border-brand-400 bg-brand-50" : "border-dashed border-slate-300 hover:border-slate-400"
+                }`}>
+                  <FileType2 size={15} className={newFile ? "text-brand-500" : "text-slate-400"} />
+                  <span className={`text-sm flex-1 truncate ${newFile ? "text-brand-700 font-medium" : "text-slate-400"}`}>
+                    {newFile ? newFile.name : t("cenefas.chooseFile")}
+                  </span>
+                  {newFile && (
+                    <button type="button" onClick={() => setNewFile(null)} className="text-slate-400 hover:text-slate-600">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept=".pptx"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && setNewFile(e.target.files[0])}
+                />
+              </label>
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setShowNewForm(false); setNewName(""); setNewFormat(""); setNewFile(null); }}
+                  className="btn-ghost text-sm px-3 py-1.5"
+                >
+                  {t("cenefas.cancel")}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUploadTemplate}
+                  disabled={uploading || !newFile || !newName.trim()}
+                  className="btn-primary text-sm px-4 py-1.5 disabled:opacity-40"
+                >
+                  {uploading ? <><Loader2 size={13} className="animate-spin" /> {t("cenefas.uploading")}</> : t("cenefas.uploadTemplate")}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Templates list */}
+          {loadingTemplates ? (
+            <div className="flex gap-2">
+              {[1, 2].map((i) => <div key={i} className="skeleton h-16 w-40 rounded-xl" />)}
+            </div>
+          ) : templates.length === 0 ? (
+            <div className="flex items-center gap-3 py-3 text-slate-400">
+              <LayoutTemplate size={16} />
+              <p className="text-xs">{t("cenefas.noTemplates")}</p>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {templates.map((tmpl) => (
+                <div
+                  key={tmpl.id}
+                  onClick={() => selectTemplate(tmpl.id)}
+                  className={`relative group flex flex-col gap-1 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all duration-150 min-w-[140px] ${
+                    selectedTemplateId === tmpl.id
+                      ? "border-emerald-400 bg-emerald-50"
+                      : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className={`text-xs font-semibold leading-tight truncate max-w-[110px] ${
+                      selectedTemplateId === tmpl.id ? "text-emerald-700" : "text-slate-700"
+                    }`}>
+                      {tmpl.name}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(tmpl.id); }}
+                      className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all shrink-0"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  {tmpl.format_name && (
+                    <span className={`self-start text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                      selectedTemplateId === tmpl.id ? "bg-emerald-200 text-emerald-700" : "bg-slate-200 text-slate-500"
+                    }`}>
+                      {tmpl.format_name}
+                    </span>
+                  )}
+                  {tmpl.created_at && (
+                    <p className="text-[10px] text-slate-400">
+                      {format(new Date(tmpl.created_at), "dd/MM/yy")}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Separator */}
+          <div className="flex items-center gap-2">
+            <div className="h-px flex-1 bg-slate-100" />
+            <span className="text-[11px] text-slate-400 px-1">{t("cenefas.orUploadNew")}</span>
+            <div className="h-px flex-1 bg-slate-100" />
+          </div>
+
+          {/* Custom PPTX upload */}
+          <FileDropField
+            label={t("cenefas.pptxLabel")}
+            hint={t("cenefas.pptxHint")}
+            accept=".pptx"
+            file={customPptx}
+            icon={FileType2}
+            accentColor="brand"
+            onChange={handleCustomPptxChange}
+            chooseLabel={t("cenefas.chooseFile")}
+            readyLabel={t("cenefas.ready")}
+            searchLabel={t("cenefas.search")}
+            dimmed={selectedTemplateId !== null}
+          />
+        </div>
+
+        {/* Excel card */}
         <div className="card p-6 space-y-4">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.filesSection")}</p>
-
           <FileDropField
             label={t("cenefas.excelLabel")}
             hint={t("cenefas.excelHint")}
@@ -87,45 +328,19 @@ export default function CenefasPage() {
             file={excel}
             icon={FileSpreadsheet}
             accentColor="emerald"
-            onChange={handleFile(setExcel)}
-            chooseLabel={t("cenefas.chooseFile")}
-            readyLabel={t("cenefas.ready")}
-            searchLabel={t("cenefas.search")}
-          />
-          <FileDropField
-            label={t("cenefas.pptxLabel")}
-            hint={t("cenefas.pptxHint")}
-            accept=".pptx"
-            file={template}
-            icon={FileType2}
-            accentColor="brand"
-            onChange={handleFile(setTemplate)}
+            onChange={(e) => e.target.files?.[0] && setExcel(e.target.files[0])}
             chooseLabel={t("cenefas.chooseFile")}
             readyLabel={t("cenefas.ready")}
             searchLabel={t("cenefas.search")}
           />
         </div>
 
-        {/* Configuración */}
+        {/* Config card */}
         <div className="card p-6 space-y-4">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.configSection")}</p>
-
-          <Field
-            label={t("cenefas.vigencia")}
-            placeholder={t("cenefas.vigenciaPlaceholder")}
-            value={vigencia}
-            onChange={setVigencia}
-          />
-          <Field
-            label={t("cenefas.aclaracion")}
-            value={aclaracion}
-            onChange={setAclaracion}
-          />
-          <Field
-            label={t("cenefas.alcohol")}
-            value={otraAlcohol}
-            onChange={setOtraAlcohol}
-          />
+          <Field label={t("cenefas.vigencia")} placeholder={t("cenefas.vigenciaPlaceholder")} value={vigencia} onChange={setVigencia} />
+          <Field label={t("cenefas.aclaracion")} value={aclaracion} onChange={setAclaracion} />
+          <Field label={t("cenefas.alcohol")} value={otraAlcohol} onChange={setOtraAlcohol} />
         </div>
 
         {/* Feedback */}
@@ -142,11 +357,7 @@ export default function CenefasPage() {
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
-        >
+        <button type="submit" disabled={!canSubmit} className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed">
           {status === "loading" ? (
             <><Loader2 size={16} className="animate-spin" /> {t("cenefas.generating")}</>
           ) : (
@@ -164,7 +375,7 @@ export default function CenefasPage() {
 
 function FileDropField({
   label, hint, accept, file, onChange, icon: Icon, accentColor,
-  chooseLabel, readyLabel, searchLabel,
+  chooseLabel, readyLabel, searchLabel, dimmed,
 }: {
   label: string;
   hint: string;
@@ -176,6 +387,7 @@ function FileDropField({
   chooseLabel: string;
   readyLabel: string;
   searchLabel: string;
+  dimmed?: boolean;
 }) {
   const id = label.replace(/\s+/g, "-").toLowerCase();
   const active = !!file;
@@ -195,7 +407,7 @@ function FileDropField({
   }[accentColor];
 
   return (
-    <label htmlFor={id} className="flex flex-col gap-1.5 cursor-pointer">
+    <label htmlFor={id} className={`flex flex-col gap-1.5 cursor-pointer transition-opacity ${dimmed ? "opacity-40 pointer-events-none" : ""}`}>
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-slate-700">{label}</span>
         <span className="text-xs text-slate-400">{hint}</span>
@@ -221,9 +433,7 @@ function FileDropField({
   );
 }
 
-function Field({
-  label, placeholder, value, onChange,
-}: {
+function Field({ label, placeholder, value, onChange }: {
   label: string;
   placeholder?: string;
   value: string;
@@ -232,13 +442,7 @@ function Field({
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-medium text-slate-700">{label}</span>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="input text-sm"
-      />
+      <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="input text-sm" />
     </label>
   );
 }

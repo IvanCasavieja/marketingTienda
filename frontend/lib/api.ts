@@ -88,4 +88,10 @@ export const toolsApi = {
       headers: { "Content-Type": "multipart/form-data" },
       responseType: "blob",
     }),
+  getCenefaTemplates: () => api.get("/tools/cenefas/templates"),
+  createCenefaTemplate: (formData: FormData) =>
+    api.post("/tools/cenefas/templates", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+  deleteCenefaTemplate: (id: number) => api.delete(`/tools/cenefas/templates/${id}`),
 };
