@@ -15,8 +15,12 @@ from app.api import router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.APP_ENV == "development":
+        # Dev only: create tables if they don't exist (no migrations needed locally)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    # Production: run `alembic upgrade head` before starting the server
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
         await migrate_default_team(conn)
     yield
 

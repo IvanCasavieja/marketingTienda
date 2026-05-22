@@ -1,11 +1,12 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 
+from app.core.config import settings
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token, decrypt_token, encrypt_token
 from app.core.deps import get_current_user
 from app.models.team import Team, TeamGroup
@@ -24,6 +25,21 @@ from app.schemas.auth import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_COOKIE_MAX_AGE_ACCESS  = settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
+_COOKIE_MAX_AGE_REFRESH = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
+
+
+def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    is_prod = settings.APP_ENV == "production"
+    common = dict(httponly=True, secure=is_prod, samesite="none" if is_prod else "lax")
+    response.set_cookie("access_token",  access_token,  max_age=_COOKIE_MAX_AGE_ACCESS,  **common)
+    response.set_cookie("refresh_token", refresh_token, max_age=_COOKIE_MAX_AGE_REFRESH, **common)
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
 
 
 def _client_ip(request: Request) -> str:
@@ -48,11 +64,18 @@ def _user_response(user: User) -> UserResponse:
 
 
 async def _get_group_by_join_code(db: AsyncSession, join_code: str) -> TeamGroup:
-    result = await db.execute(select(TeamGroup).options(selectinload(TeamGroup.team)))
-    for group in result.scalars().all():
+    # Join codes are Fernet-encrypted (random IV) so we can't query by value.
+    # We fetch only the join_code + id columns to minimise data transfer.
+    result = await db.execute(
+        select(TeamGroup.id, TeamGroup.team_id, TeamGroup.name, TeamGroup.join_code)
+    )
+    for row in result.all():
         try:
-            if decrypt_token(group.join_code) == join_code:
-                return group
+            if decrypt_token(row.join_code) == join_code:
+                # Re-fetch the full object (single row by PK — cheap)
+                full = await db.get(TeamGroup, row.id)
+                if full:
+                    return full
         except Exception:
             continue
     raise HTTPException(status_code=400, detail="Invalid join code")
@@ -82,7 +105,7 @@ async def register(payload: UserRegister, request: Request, db: AsyncSession = D
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: UserLogin, request: Request, db: AsyncSession = Depends(get_db)):
+async def login(payload: UserLogin, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == payload.email, User.is_active == True))
     user = result.scalar_one_or_none()
 
@@ -95,27 +118,48 @@ async def login(payload: UserLogin, request: Request, db: AsyncSession = Depends
 
     db.add(AuditLog(user_id=user.id, action="user.login", ip_address=_client_ip(request)))
 
-    return TokenResponse(
-        access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id),
-    )
+    access_token  = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+    _set_auth_cookies(response, access_token, refresh_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    data = decode_token(payload.refresh_token)
+async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    # Accept token from cookie (primary) or request body (legacy clients)
+    token = request.cookies.get("refresh_token")
+    if not token:
+        try:
+            body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+            token = body.get("refresh_token") if isinstance(body, dict) else None
+        except Exception:
+            token = None
+    if not token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+
+    data = decode_token(token)
     if not data or data.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    result = await db.execute(select(User).where(User.id == int(data["sub"]), User.is_active == True))
+    try:
+        sub_id = int(data["sub"])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    result = await db.execute(select(User).where(User.id == sub_id, User.is_active == True))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
-    return TokenResponse(
-        access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id),
-    )
+    access_token  = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+    _set_auth_cookies(response, access_token, refresh_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response):
+    _clear_auth_cookies(response)
 
 
 @router.get("/me", response_model=UserResponse)

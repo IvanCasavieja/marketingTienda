@@ -18,6 +18,12 @@ interface TemplateInfo {
   created_at: string | null;
 }
 
+interface BuiltinTemplate {
+  slug: string;
+  name: string;
+  format_name: string;
+}
+
 export default function CenefasPage() {
   const { t } = useTranslation();
 
@@ -25,6 +31,7 @@ export default function CenefasPage() {
   const [excel, setExcel] = useState<File | null>(null);
   const [customPptx, setCustomPptx] = useState<File | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [selectedBuiltinSlug, setSelectedBuiltinSlug] = useState<string | null>(null);
   const [vigencia, setVigencia] = useState("");
   const [aclaracion, setAclaracion] = useState("Bases y condiciones en redexpres.uy");
   const [otraAlcohol, setOtraAlcohol] = useState(
@@ -37,6 +44,7 @@ export default function CenefasPage() {
   // Templates state
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
+  const [builtinTemplates, setBuiltinTemplates] = useState<BuiltinTemplate[]>([]);
 
   // New template form state
   const [showNewForm, setShowNewForm] = useState(false);
@@ -50,6 +58,9 @@ export default function CenefasPage() {
       .then(({ data }) => setTemplates(data))
       .catch(() => {})
       .finally(() => setLoadingTemplates(false));
+    toolsApi.getBuiltinTemplates()
+      .then(({ data }) => setBuiltinTemplates(data))
+      .catch(() => {});
   }, []);
 
   function selectTemplate(id: number) {
@@ -57,6 +68,17 @@ export default function CenefasPage() {
       setSelectedTemplateId(null);
     } else {
       setSelectedTemplateId(id);
+      setSelectedBuiltinSlug(null);
+      setCustomPptx(null);
+    }
+  }
+
+  function selectBuiltin(slug: string) {
+    if (selectedBuiltinSlug === slug) {
+      setSelectedBuiltinSlug(null);
+    } else {
+      setSelectedBuiltinSlug(slug);
+      setSelectedTemplateId(null);
       setCustomPptx(null);
     }
   }
@@ -66,6 +88,7 @@ export default function CenefasPage() {
     if (file) {
       setCustomPptx(file);
       setSelectedTemplateId(null);
+      setSelectedBuiltinSlug(null);
     }
   }
 
@@ -104,6 +127,22 @@ export default function CenefasPage() {
     }
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      const { data } = await toolsApi.downloadExcelTemplate();
+      const url = URL.createObjectURL(new Blob([data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "plantilla_cenefas.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error(t("cenefas.unknownError"));
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
@@ -114,6 +153,8 @@ export default function CenefasPage() {
       fd.append("excel", excel!);
       if (selectedTemplateId !== null) {
         fd.append("template_id", selectedTemplateId.toString());
+      } else if (selectedBuiltinSlug !== null) {
+        fd.append("builtin_slug", selectedBuiltinSlug);
       } else {
         fd.append("template", customPptx!);
       }
@@ -141,7 +182,7 @@ export default function CenefasPage() {
     }
   }
 
-  const hasTemplate = selectedTemplateId !== null || !!customPptx;
+  const hasTemplate = selectedTemplateId !== null || !!customPptx || selectedBuiltinSlug !== null;
   const canSubmit = !!excel && hasTemplate && !!vigencia.trim() && status !== "loading";
 
   return (
@@ -173,6 +214,44 @@ export default function CenefasPage() {
               {t("cenefas.newTemplate")}
             </button>
           </div>
+
+          {/* Built-in templates */}
+          {builtinTemplates.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
+                {t("cenefas.builtinTemplates")}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {builtinTemplates.map((tmpl) => (
+                  <button
+                    key={tmpl.slug}
+                    type="button"
+                    onClick={() => selectBuiltin(tmpl.slug)}
+                    className={`flex flex-col gap-1 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all duration-150 min-w-[120px] text-left ${
+                      selectedBuiltinSlug === tmpl.slug
+                        ? "border-indigo-400 bg-indigo-50"
+                        : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                    }`}
+                  >
+                    <p className={`text-xs font-semibold leading-tight ${
+                      selectedBuiltinSlug === tmpl.slug ? "text-indigo-700" : "text-slate-700"
+                    }`}>
+                      {tmpl.name}
+                    </p>
+                    {tmpl.format_name && (
+                      <span className={`self-start text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                        selectedBuiltinSlug === tmpl.slug
+                          ? "bg-indigo-200 text-indigo-700"
+                          : "bg-slate-200 text-slate-500"
+                      }`}>
+                        {tmpl.format_name}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* New template form */}
           {showNewForm && (
@@ -320,7 +399,17 @@ export default function CenefasPage() {
 
         {/* Excel card */}
         <div className="card p-6 space-y-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.filesSection")}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.filesSection")}</p>
+            <button
+              type="button"
+              onClick={handleDownloadTemplate}
+              className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+            >
+              <FileSpreadsheet size={13} />
+              {t("cenefas.downloadTemplate")}
+            </button>
+          </div>
           <FileDropField
             label={t("cenefas.excelLabel")}
             hint={t("cenefas.excelHint")}

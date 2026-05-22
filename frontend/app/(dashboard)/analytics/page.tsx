@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { analyticsApi } from "@/lib/api";
 import { Analysis, PLATFORM_LABELS } from "@/types";
 import { format, subDays } from "date-fns";
@@ -35,21 +36,9 @@ function tryParseDebate(result: string): DebateMessage[] | null {
 }
 
 function MarkdownOutput({ text }: { text: string }) {
-  const lines = text.split("\n");
   return (
-    <div className="prose-analysis space-y-0.5">
-      {lines.map((line, i) => {
-        if (line.startsWith("## ")) return <h2 key={i}>{line.replace("## ", "")}</h2>;
-        if (line.startsWith("### ")) return <h3 key={i}>{line.replace("### ", "")}</h3>;
-        if (line.startsWith("**") && line.endsWith("**")) return <p key={i} className="font-semibold text-slate-800 text-sm">{line.replace(/\*\*/g, "")}</p>;
-        if (line.startsWith("- ") || line.startsWith("• ")) {
-          const content = line.replace(/^[-•] /, "").replace(/\*\*(.*?)\*\*/g, "$1");
-          return <li key={i}>{content}</li>;
-        }
-        if (line.trim() === "") return <div key={i} className="h-1" />;
-        const rendered = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-        return <p key={i} dangerouslySetInnerHTML={{ __html: rendered }} />;
-      })}
+    <div className="prose-analysis">
+      <ReactMarkdown>{text}</ReactMarkdown>
     </div>
   );
 }
@@ -122,15 +111,15 @@ function DebateLoadingSkeleton() {
       <div className="space-y-2 text-xs text-slate-400">
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span>Claude — analizando datos...</span>
+          <span>Claude — {t("analytics.debate.modelStatus")}</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span>ChatGPT — analizando datos...</span>
+          <span>ChatGPT — {t("analytics.debate.modelStatus")}</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-          <span>Llama — analizando datos...</span>
+          <span>Llama — {t("analytics.debate.modelStatus")}</span>
         </div>
       </div>
       <div className="space-y-3">
@@ -212,19 +201,59 @@ export default function AnalyticsPage() {
     setResult("");
     setErrorMsg("");
     setActive(null);
+
+    if (analysisType === "debate") {
+      // Debate uses multiple models concurrently — can't stream, use regular endpoint
+      try {
+        const { data } = await analyticsApi.analyze(platforms, dateFrom, dateTo, analysisType);
+        setResult(data.result);
+        setActive(data.id);
+        toast.success(t("analytics.debate.successToast"));
+        analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
+      } catch (err: any) {
+        const detail = err?.response?.data?.detail ?? t("analytics.defaultError");
+        setErrorMsg(detail);
+        toast.error(t("analytics.errorToast"));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // All other types: SSE streaming
     try {
-      const { data } = await analyticsApi.analyze(platforms, dateFrom, dateTo, analysisType);
-      setResult(data.result);
-      setActive(data.id);
-      toast.success(
-        analysisType === "debate"
-          ? t("analytics.debate.successToast")
-          : t("analytics.successToast")
-      );
-      analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
+      const response = await analyticsApi.streamAnalyze(platforms, dateFrom, dateTo, analysisType);
+      if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+
+        for (const event of events) {
+          if (!event.startsWith("data: ")) continue;
+          const raw = event.slice(6).trim();
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed.error) { setErrorMsg(parsed.error); toast.error(t("analytics.errorToast")); return; }
+            if (parsed.text)  { setResult(prev => prev + parsed.text); }
+            if (parsed.done && parsed.id) {
+              setActive(parsed.id);
+              toast.success(t("analytics.successToast"));
+              analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
+            }
+          } catch { /* partial JSON, skip */ }
+        }
+      }
     } catch (err: any) {
-      const detail = err?.response?.data?.detail ?? t("analytics.defaultError");
-      setErrorMsg(detail);
+      setErrorMsg(err?.message ?? t("analytics.defaultError"));
       toast.error(t("analytics.errorToast"));
     } finally {
       setLoading(false);

@@ -5,37 +5,21 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v
 export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
-  withCredentials: false,
+  withCredentials: true, // sends httpOnly cookies on every request
 });
 
-// Attach access token from localStorage on every request
-api.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("access_token");
-    if (token) config.headers["Authorization"] = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Auto-refresh on 401
+// Auto-refresh on 401 — cookies are sent automatically, no token reading needed
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
-      const refresh = localStorage.getItem("refresh_token");
-      if (refresh) {
-        try {
-          const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refresh_token: refresh });
-          localStorage.setItem("access_token", data.access_token);
-          localStorage.setItem("refresh_token", data.refresh_token);
-          original.headers["Authorization"] = `Bearer ${data.access_token}`;
-          return api(original);
-        } catch {
-          localStorage.clear();
-          window.location.href = "/login";
-        }
+      try {
+        await axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+        return api(original);
+      } catch {
+        window.location.href = "/login";
       }
     }
     return Promise.reject(error);
@@ -48,6 +32,7 @@ export const authApi = {
   register: (email: string, full_name: string, password: string, join_code?: string) =>
     api.post("/auth/register", { email, full_name, password, join_code: join_code || undefined }),
   me: () => api.get("/auth/me"),
+  logout: () => api.post("/auth/logout"),
   joinTeam: (join_code: string) => api.post("/auth/join-team", { join_code }),
   teamMembers: () => api.get("/auth/team-members"),
   removeTeamMember: (userId: number) => api.delete(`/auth/team-members/${userId}`),
@@ -65,6 +50,13 @@ export const metricsApi = {
 export const analyticsApi = {
   analyze: (platforms: string[], date_from: string, date_to: string, analysis_type: string) =>
     api.post("/analytics/analyze", { platforms, date_from, date_to, analysis_type }),
+  streamAnalyze: (platforms: string[], date_from: string, date_to: string, analysis_type: string) =>
+    fetch(`${BASE_URL}/analytics/analyze/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ platforms, date_from, date_to, analysis_type }),
+    }),
   getHistory: () => api.get("/analytics/history"),
   getAnalysis: (id: number) => api.get(`/analytics/history/${id}`),
 };
@@ -94,6 +86,10 @@ export const toolsApi = {
       headers: { "Content-Type": "multipart/form-data" },
     }),
   deleteCenefaTemplate: (id: number) => api.delete(`/tools/cenefas/templates/${id}`),
+  downloadExcelTemplate: () =>
+    api.get("/tools/cenefas/template", { responseType: "blob" }),
+  getBuiltinTemplates: () =>
+    api.get<{ slug: string; name: string; format_name: string }[]>("/tools/cenefas/builtin-templates"),
 };
 
 export const chatApi = {

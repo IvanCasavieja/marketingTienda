@@ -1,3 +1,5 @@
+import logging
+import pathlib
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,13 +8,47 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.cenefa_template import CenefaTemplate
-from app.services.cenefas_service import generate_pptx_bytes
+from app.services.cenefas_service import generate_pptx_bytes, generate_template_bytes
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
+_STATIC_DIR = pathlib.Path(__file__).parent.parent.parent / "static" / "cenefa_templates"
+
+_BUILTIN_TEMPLATES = [
+    {"slug": "a4",      "name": "Cenefa A4",    "format_name": "A4",      "filename": "Base cenefa A4 1.pptx"},
+    {"slug": "pinchos", "name": "Pinchos",       "format_name": "Pinchos", "filename": "Base pinchos 1.pptx"},
+    {"slug": "black",   "name": "Cenefa Black",  "format_name": "Black",   "filename": "Bases cenefas BLACK 1.pptx"},
+]
+
 
 # ---------------------------------------------------------------------------
-# Template CRUD
+# Built-in templates
+# ---------------------------------------------------------------------------
+
+@router.get("/cenefas/builtin-templates")
+async def list_builtin_templates(current_user: User = Depends(get_current_user)):
+    return [{"slug": t["slug"], "name": t["name"], "format_name": t["format_name"]} for t in _BUILTIN_TEMPLATES]
+
+
+@router.get("/cenefas/builtin-templates/{slug}")
+async def download_builtin_template(slug: str, current_user: User = Depends(get_current_user)):
+    tmpl = next((t for t in _BUILTIN_TEMPLATES if t["slug"] == slug), None)
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template no encontrado")
+    path = _STATIC_DIR / tmpl["filename"]
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Archivo de plantilla no encontrado en el servidor")
+    return Response(
+        content=path.read_bytes(),
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{tmpl["filename"]}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Team template CRUD
 # ---------------------------------------------------------------------------
 
 @router.get("/cenefas/templates")
@@ -104,6 +140,7 @@ async def generate_cenefas(
     excel: UploadFile = File(..., description="Archivo Excel con hoja 'Cenefas'"),
     template: UploadFile | None = File(None, description="Plantilla PPTX personalizada"),
     template_id: int | None = Form(None, description="ID de template guardado"),
+    builtin_slug: str | None = Form(None, description="Slug de plantilla predeterminada"),
     vigencia: str = Form(...),
     aclaracion: str = Form(default=""),
     otra_alcohol: str = Form(default="Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
@@ -113,7 +150,7 @@ async def generate_cenefas(
     if not excel.filename or not excel.filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="El Excel debe ser .xlsx o .xlsm")
 
-    # Resolve template bytes: saved template takes precedence over uploaded file
+    # Resolve template bytes — priority: saved team template > built-in > uploaded file
     if template_id is not None:
         if not current_user.team_group_id:
             raise HTTPException(status_code=400, detail="Unite a un equipo para usar templates guardados")
@@ -128,6 +165,14 @@ async def generate_cenefas(
         if not tmpl_record:
             raise HTTPException(status_code=404, detail="Template no encontrado")
         template_bytes = tmpl_record.file_bytes
+    elif builtin_slug is not None:
+        tmpl_meta = next((t for t in _BUILTIN_TEMPLATES if t["slug"] == builtin_slug), None)
+        if not tmpl_meta:
+            raise HTTPException(status_code=400, detail="Plantilla predeterminada no encontrada")
+        path = _STATIC_DIR / tmpl_meta["filename"]
+        if not path.exists():
+            raise HTTPException(status_code=500, detail="Archivo de plantilla predeterminada no encontrado en el servidor")
+        template_bytes = path.read_bytes()
     elif template is not None and template.filename:
         if not template.filename.lower().endswith(".pptx"):
             raise HTTPException(status_code=400, detail="La plantilla debe ser .pptx")
@@ -135,7 +180,7 @@ async def generate_cenefas(
     else:
         raise HTTPException(
             status_code=400,
-            detail="Debés seleccionar un template guardado o subir un archivo PPTX"
+            detail="Debés seleccionar una plantilla predeterminada, una del equipo, o subir un archivo PPTX"
         )
 
     excel_bytes = await excel.read()
@@ -148,13 +193,28 @@ async def generate_cenefas(
             aclaracion=aclaracion,
             otra_alcohol=otra_alcohol,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Columna faltante en el Excel: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al generar: {e}")
+        logger.error("Cenefas generation error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Error al generar el archivo PPTX")
 
     return Response(
         content=pptx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": 'attachment; filename="cenefas_output.pptx"'},
+    )
+
+
+@router.get("/cenefas/template")
+async def download_cenefa_template(
+    current_user: User = Depends(get_current_user),
+):
+    xlsx_bytes = generate_template_bytes()
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="plantilla_cenefas.xlsx"'},
     )

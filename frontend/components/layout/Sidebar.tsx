@@ -154,7 +154,7 @@ export default function Sidebar() {
       {/* Logout */}
       <div className="px-3 pb-5">
         <button
-          onClick={() => { localStorage.clear(); window.location.href = "/login"; }}
+          onClick={() => authApi.logout().finally(() => { window.location.href = "/login"; })}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-slate-500
                      hover:bg-white/5 hover:text-slate-300 transition-all duration-150">
           <LogOut size={16} />

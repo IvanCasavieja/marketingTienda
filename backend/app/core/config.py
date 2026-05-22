@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
-import secrets
 
 
 class Settings(BaseSettings):
@@ -13,7 +12,7 @@ class Settings(BaseSettings):
 
     # App
     APP_ENV: str = "development"
-    APP_SECRET_KEY: str = secrets.token_hex(32)
+    APP_SECRET_KEY: str  # Required — must be set in .env; no default prevents silent token invalidation on restart
     APP_ALLOWED_ORIGINS: str = "http://localhost:3000"
     API_V1_PREFIX: str = "/api/v1"
 

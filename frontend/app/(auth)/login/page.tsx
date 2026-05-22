@@ -31,9 +31,7 @@ export default function LoginPage() {
     const passwordVal = (form.elements.namedItem("password") as HTMLInputElement).value;
     setLoading(true);
     try {
-      const { data } = await authApi.login(emailVal, passwordVal, "");
-      localStorage.setItem("access_token",  data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
+      await authApi.login(emailVal, passwordVal, "");
       const { data: me } = await authApi.me();
       if (!me.team_group_id) {
         setShowJoinStep(true);

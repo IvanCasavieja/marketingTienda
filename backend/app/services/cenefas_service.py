@@ -81,7 +81,7 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
     ofertadet = str(row[h["OFERTADET"]] or "").strip()
     precio_raw = row[h["PRECIO"]]
     oferta_raw = row[h["OFERTA"]]
-    desc = str(row[4] or "").strip()
+    desc = str(row[h["DESCRIPCION"]] or "").strip()
     cat = str(row[h["Categoria"]] or "").strip()
     subcat = str(row[h["subcategoria"]] or "").strip()
     moneda = str(row[h["MONEDA"]] or "").strip()
@@ -141,6 +141,8 @@ def load_products_from_bytes(
     otra_alcohol: str,
 ) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
+    if "Cenefas" not in wb.sheetnames:
+        raise ValueError("Hoja 'Cenefas' no encontrada. El archivo Excel debe tener una hoja llamada 'Cenefas'.")
     ws = wb["Cenefas"]
     headers = [cell.value for cell in ws[1]]
     h = {name: idx for idx, name in enumerate(headers) if name}
@@ -269,23 +271,23 @@ def _fill_slot(shapes, data: dict) -> None:
 
     for shape in shapes:
         t = _shape_text(shape)
-        if "<<P1>>" in t:
+        if re.search(r"<<P\d+>>", t):
             p1_shape = shape
             _set_p1(shape, data["p1"])
-        elif "Precio 1" in t:
+        elif re.search(r"Precio\s+\d+", t) or re.search(r"<<Precio\d+>>", t):
             price_shape = shape
             _set_price(shape, data["precio"])
-        elif "<<Mecanica1>>" in t:
+        elif re.search(r"<<Mecanica\d+>>", t):
             _set_text(shape, data["mecanica"])
         elif "<<" in t and "Descripci" in t:
             _set_desc(shape, data["descripcion"])
-        elif "<<UnidadMedida1>>" in t:
+        elif re.search(r"<<UnidadMedida\d+>>", t):
             _set_text(shape, data["unidad"])
-        elif "<<Vigencia1>>" in t:
+        elif re.search(r"<<Vigencia\d+>>", t):
             _set_text(shape, data["vigencia"])
-        elif "<<Aclaracion1>>" in t:
+        elif re.search(r"<<Aclaracion\d+>>", t):
             _set_text(shape, data["aclaracion"])
-        elif "<<OtraAclaracion1>>" in t:
+        elif re.search(r"<<OtraAclaracion\d+>>", t):
             _set_text(shape, data["otra_aclaracion"])
 
     # Position P1 label dynamically above the price shape
@@ -303,11 +305,12 @@ def _clear_slot(shapes) -> None:
 
 
 def _slot_num(shape) -> int | None:
-    """Return 1, 2, or 3 if the shape belongs to a numbered product slot."""
+    """Return the slot number (1–9) if the shape belongs to a numbered product slot."""
     t = _shape_text(shape)
-    for n in (1, 2, 3):
+    for n in range(1, 10):
         if (f"<<P{n}>>" in t
                 or f"Precio {n}" in t
+                or f"<<Precio{n}>>" in t
                 or f"<<Mecanica{n}>>" in t
                 or f"<<UnidadMedida{n}>>" in t
                 or f"<<Vigencia{n}>>" in t
@@ -319,17 +322,40 @@ def _slot_num(shape) -> int | None:
 
 
 def _get_slots(shapes) -> list[list]:
-    """Group shapes by product slot number. Falls back to index-based split if
-    the template uses un-numbered placeholders."""
-    buckets: dict[int, list] = {1: [], 2: [], 3: []}
+    """Group shapes by product slot. Supports 1–9 products per slide.
+
+    Strategy:
+    - If multiple distinct slot numbers are detected (e.g. <<P1>>/<<P2>>/…), use
+      those buckets directly (standard numbered templates, Pinchos 1-9).
+    - If all shapes map to slot 1 (templates where every placeholder is labelled
+      "1" regardless of position, like Bases cenefas BLACK), count the price/P1
+      anchors to determine how many product copies are present, then split by
+      index into equal groups.
+    """
+    buckets: dict[int, list] = {n: [] for n in range(1, 10)}
     for shape in shapes:
         n = _slot_num(shape)
         if n:
             buckets[n].append(shape)
-    if any(buckets[n] for n in (1, 2, 3)):
-        return [buckets[1], buckets[2], buckets[3]]
-    # Fallback for templates without numbered placeholders
-    return [shapes[0:8], shapes[8:16], shapes[16:24]]
+
+    present = sorted(n for n in range(1, 10) if buckets[n])
+
+    if len(present) > 1:
+        return [buckets[n] for n in present]
+
+    # All shapes land in slot 1 — count "P1 label" anchors to find product count.
+    # Use price shapes as fallback only if no P1 labels exist (e.g. Pinchos-style).
+    all_shapes = list(shapes)
+    p1_count = sum(1 for s in all_shapes if re.search(r"<<P\d+>>", _shape_text(s)))
+    price_count = sum(
+        1 for s in all_shapes
+        if re.search(r"Precio\s+\d+|<<Precio\d+>>", _shape_text(s))
+    )
+    products = max(p1_count if p1_count > 0 else price_count, 1)
+    if products <= 1:
+        return [all_shapes]
+    per_slot = len(all_shapes) // products
+    return [all_shapes[i * per_slot:(i + 1) * per_slot] for i in range(products)]
 
 
 def _add_slide_from_template(prs, layout, template_shape_xmls):
@@ -358,20 +384,132 @@ def generate_pptx_bytes(
     products = load_products_from_bytes(excel_bytes, vigencia, aclaracion, otra_alcohol)
 
     prs = Presentation(io.BytesIO(template_bytes))
-    template_slide = prs.slides[1]
+    if not prs.slides:
+        raise ValueError("La plantilla PPTX está vacía.")
+
+    # Single-slide templates: slide 0 is the product template.
+    # Multi-slide templates: slide 0 is a cover kept as-is, slide 1 is the template.
+    template_slide = prs.slides[0] if len(prs.slides) == 1 else prs.slides[1]
     layout = template_slide.slide_layout
 
     template_shape_xmls = [copy.deepcopy(shape._element) for shape in template_slide.shapes]
-    groups = [products[i:i + 3] for i in range(0, len(products), 3)]
+
+    # Detect products per slide from the template's slot structure
+    initial_slots = _get_slots(list(template_slide.shapes))
+    products_per_slide = max(len(initial_slots), 1)
+
+    groups = [products[i:i + products_per_slide] for i in range(0, len(products), products_per_slide)]
 
     for idx, group in enumerate(groups):
         slide = template_slide if idx == 0 else _add_slide_from_template(prs, layout, template_shape_xmls)
-        slots = _get_slots(list(slide.shapes))
+        cur_slots = _get_slots(list(slide.shapes))
         for i, product in enumerate(group):
-            _fill_slot(slots[i], product)
-        for i in range(len(group), 3):
-            _clear_slot(slots[i])
+            if i < len(cur_slots):
+                _fill_slot(cur_slots[i], product)
+        for i in range(len(group), products_per_slide):
+            if i < len(cur_slots):
+                _clear_slot(cur_slots[i])
 
     buf = io.BytesIO()
     prs.save(buf)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Excel template generation
+# ---------------------------------------------------------------------------
+
+def generate_template_bytes() -> bytes:
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.dataval import DataValidation
+
+    HEADERS = ["Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA"]
+    EXAMPLES: list[tuple] = [
+        ("ALIMENTOS",           "GALLETITAS",        "Precio fijo",  "Galletitas OREO 117g",          1500,  "",       "$"),
+        ("BEBIDAS SIN ALCOHOL", "GASEOSAS",           "Combo",        "Coca-Cola 2.25L",               2500,  "2X4500", "$"),
+        ("BEBIDAS SIN ALCOHOL", "AGUA",               "M x N",        "Agua SALUS 1.5L",               800,   "",       "$"),
+        ("LIMPIEZA",            "LIMPIADORES",        "% descuento",  "Lavandina AYUDIN 2L",           850,   "",       "$"),
+        ("FIAMBRES Y QUESOS",   "QUESOS",             "Precio fijo",  "Queso Barra por Kg.",           12000, "",       "$"),
+        ("BEBIDAS CON ALCOHOL", "VINOS",              "Precio fijo",  "Vino NORTON Malbec 750ml",      3200,  "",       "$"),
+        ("ELECTRODOMESTICOS",   "ELECTRODOMESTICOS",  "Precio fijo",  "Licuadora PHILIPS HR2100",      45,    "",       "U$S"),
+    ]
+
+    wb = openpyxl.Workbook()
+
+    # ── Cenefas sheet ──────────────────────────────────────────────────────
+    ws = wb.active
+    ws.title = "Cenefas"
+
+    header_fill = PatternFill("solid", fgColor="1E3A5F")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    even_fill   = PatternFill("solid", fgColor="EEF2F7")
+
+    for col, name in enumerate(HEADERS, 1):
+        cell = ws.cell(row=1, column=col, value=name)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for row_idx, data in enumerate(EXAMPLES, 2):
+        fill = even_fill if row_idx % 2 == 0 else None
+        for col_idx, value in enumerate(data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.alignment = Alignment(vertical="center")
+            if fill:
+                cell.fill = fill
+
+    col_widths = [22, 20, 14, 36, 10, 12, 10]
+    for col, width in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+    ws.row_dimensions[1].height = 26
+    ws.freeze_panes = "A2"
+
+    dv_tipo = DataValidation(type="list", formula1='"Precio fijo,% descuento,Combo,M x N"', allow_blank=True)
+    dv_tipo.sqref = "C2:C5000"
+    ws.add_data_validation(dv_tipo)
+
+    dv_moneda = DataValidation(type="list", formula1='"$,U$S"', allow_blank=True)
+    dv_moneda.sqref = "G2:G5000"
+    ws.add_data_validation(dv_moneda)
+
+    # ── Instrucciones sheet ────────────────────────────────────────────────
+    ws2 = wb.create_sheet("Instrucciones")
+    ws2.column_dimensions["A"].width = 20
+    ws2.column_dimensions["B"].width = 45
+    ws2.column_dimensions["C"].width = 32
+    ws2.column_dimensions["D"].width = 35
+
+    inst_header_font = Font(bold=True, color="FFFFFF", size=11)
+    inst_header_fill = PatternFill("solid", fgColor="1E3A5F")
+    inst_even_fill   = PatternFill("solid", fgColor="EEF2F7")
+
+    inst_cols = ["Columna", "Descripción", "Valores aceptados", "Notas"]
+    for col, name in enumerate(inst_cols, 1):
+        cell = ws2.cell(row=1, column=col, value=name)
+        cell.fill = inst_header_fill
+        cell.font = inst_header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws2.row_dimensions[1].height = 24
+
+    rows = [
+        ("Categoria",    "Categoría del producto",              "Texto libre",                     "Ej: ALIMENTOS, BEBIDAS CON ALCOHOL, CARNES"),
+        ("subcategoria", "Subcategoría del producto",           "Texto libre",                     "QUESOS y FIAMBRES: precio por 100g si desc tiene 'kg'. CARNES/FIAMBRES/QUESOS: sin unidad."),
+        ("OFERTADET",    "Tipo de oferta",                      "Precio fijo / % descuento / Combo / M x N", "Determina cómo se muestra el precio en la cenefa"),
+        ("DESCRIPCION",  "Nombre del producto tal como aparece","Texto libre",                     "Las palabras en MAYÚSCULAS se muestran en negrita"),
+        ("PRECIO",       "Precio unitario (número)",            "Número (ej: 1500, 45.90)",        "Para Combo: precio individual. Para dólares usa MONEDA=U$S"),
+        ("OFERTA",       "Solo para Combo: cantidad y precio total", "Formato: 2X4500",            "2X4500 = 2 unidades por $4500. Vacío para otros tipos."),
+        ("MONEDA",       "Moneda del precio",                   "$ o U$S",                         "$ = pesos uruguayos. U$S = dólares."),
+    ]
+    for row_idx, data in enumerate(rows, 2):
+        fill = inst_even_fill if row_idx % 2 == 0 else None
+        for col_idx, value in enumerate(data, 1):
+            cell = ws2.cell(row=row_idx, column=col_idx, value=value)
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+            if fill:
+                cell.fill = fill
+        ws2.row_dimensions[row_idx].height = 36
+
+    buf = io.BytesIO()
+    wb.save(buf)
     return buf.getvalue()

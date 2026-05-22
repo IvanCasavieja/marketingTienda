@@ -17,7 +17,6 @@ import { SkeletonCard, SkeletonRow } from "@/components/ui/SkeletonCard";
 import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
 import { fNum, fMoney } from "@/lib/format";
-import { metricsApi as mApi } from "@/lib/api";
 import { useTranslation } from "react-i18next";
 
 const COLORS: Record<string, string> = {
@@ -140,7 +139,7 @@ export default function DashboardPage() {
       setSummary(curr.data);
       setPrevSummary(prev.data);
     } catch {
-      // show empty state
+      toast.error(t("dashboard.loadError"));
     } finally {
       setLoading(false);
     }
@@ -151,7 +150,7 @@ export default function DashboardPage() {
     const today = format(new Date(), "yyyy-MM-dd");
     const from  = format(subDays(new Date(), period), "yyyy-MM-dd");
     const platforms = ["meta", "google_ads", "tiktok", "dv360"];
-    const results = await Promise.allSettled(platforms.map((p) => mApi.sync(p, from, today)));
+    const results = await Promise.allSettled(platforms.map((p) => metricsApi.sync(p, from, today)));
     const succeeded = results.filter((r) => r.status === "fulfilled").length;
     const failed    = results.filter((r) => r.status === "rejected").length;
     if (succeeded > 0) toast.success(t("dashboard.syncSuccess", { n: succeeded }));

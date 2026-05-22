@@ -50,6 +50,10 @@ class ChatResponse(BaseModel):
     reply: str
 
 
+_MAX_MESSAGE_LEN = 2_000
+_MAX_HISTORY_LEN = 10
+
+
 @router.post("/message", response_model=ChatResponse)
 async def chat_message(
     body: ChatRequest,
@@ -57,6 +61,8 @@ async def chat_message(
 ):
     if not settings.GROQ_API_KEY:
         raise HTTPException(status_code=503, detail="Chat AI not configured")
+    if len(body.message) > _MAX_MESSAGE_LEN:
+        raise HTTPException(status_code=400, detail=f"Message too long (max {_MAX_MESSAGE_LEN} characters)")
 
     try:
         from groq import AsyncGroq
@@ -64,7 +70,7 @@ async def chat_message(
         client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
         messages: list = [{"role": "system", "content": _SYSTEM_PROMPT}]
-        for msg in body.history[-10:]:
+        for msg in body.history[-_MAX_HISTORY_LEN:]:
             messages.append({"role": msg.role, "content": msg.content})
         messages.append({"role": "user", "content": body.message})
 

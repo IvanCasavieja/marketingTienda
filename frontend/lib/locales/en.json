@@ -185,6 +185,7 @@
     },
     "debate": {
       "analyzing": "The models are debating...",
+      "modelStatus": "analyzing data...",
       "successToast": "Debate completed between all 3 models",
       "generatedBy": "Debate — Claude · ChatGPT · Llama",
       "disclaimer": "This analysis takes ~30 sec. — 6 calls to 3 models",
@@ -266,6 +267,8 @@
     "templateDeleteError": "Error deleting",
     "templateDeleteConfirm": "Delete this template? This cannot be undone.",
     "orUploadNew": "or upload a custom PPTX",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "downloadTemplate": "Download Excel template",
+    "builtinTemplates": "Built-in"
   }
 }

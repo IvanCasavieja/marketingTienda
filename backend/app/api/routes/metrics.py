@@ -55,7 +55,10 @@ async def get_campaign_metrics(
     if not current_user.team_group_id:
         return []
 
-    platform_list = [Platform(p) for p in platforms.split(",")] if platforms else list(Platform)
+    try:
+        platform_list = [Platform(p.strip()) for p in platforms.split(",")] if platforms else list(Platform)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid platform: {e}")
     return await get_metrics(db, platform_list, current_user.team_group_id, date_from, date_to)
 
 

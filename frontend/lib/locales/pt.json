@@ -185,6 +185,7 @@
     },
     "debate": {
       "analyzing": "Os modelos estão debatendo...",
+      "modelStatus": "analisando dados...",
       "successToast": "Debate concluído entre os 3 modelos",
       "generatedBy": "Debate — Claude · ChatGPT · Llama",
       "disclaimer": "Esta análise leva ~30 seg. — 6 chamadas a 3 modelos",
@@ -266,6 +267,8 @@
     "templateDeleteError": "Erro ao excluir",
     "templateDeleteConfirm": "Excluir este template? Não pode ser desfeito.",
     "orUploadNew": "ou envie um PPTX personalizado",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "downloadTemplate": "Baixar planilha modelo",
+    "builtinTemplates": "Predefinidos"
   }
 }

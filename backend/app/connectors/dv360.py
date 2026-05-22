@@ -31,9 +31,9 @@ class DV360Connector(BaseConnector):
             resp.raise_for_status()
             report_id = resp.json().get("key", {}).get("reportId")
 
-            # Poll until report is done
+            # Poll until report is done (linear backoff: 3s → 15s cap)
             import asyncio
-            for _ in range(20):
+            for attempt in range(20):
                 r = await client.get(f"{self.BASE_URL}/queries/{query_id}/reports/{report_id}", headers=headers)
                 r.raise_for_status()
                 status = r.json().get("metadata", {}).get("status", {}).get("state")
@@ -43,7 +43,7 @@ class DV360Connector(BaseConnector):
                     return self._parse_csv(csv_resp.text)
                 if status == "FAILED":
                     raise ValueError("DV360 report generation failed")
-                await asyncio.sleep(5)
+                await asyncio.sleep(min(3 + attempt * 2, 15))
 
         return []
 
