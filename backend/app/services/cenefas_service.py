@@ -376,30 +376,6 @@ def _get_slots(shapes) -> list[list]:
     return [all_shapes[i * per_slot:(i + 1) * per_slot] for i in range(products)]
 
 
-def _center_shapes_horizontally(slide, slide_width: int) -> None:
-    """Centra horizontalmente el contenido en la diapositiva.
-
-    Calcula el offset usando solo shapes con texto (contenido real),
-    ignorando shapes de fondo que podrían distorsionar el bounding box.
-    Aplica el desplazamiento a todos los shapes para mantener la composición.
-    """
-    all_shapes = list(slide.shapes)
-    # Shapes de contenido: los que tienen texto y no son más anchos que 80% del slide
-    content_shapes = [
-        s for s in all_shapes
-        if s.has_text_frame and s.left is not None and s.width is not None
-        and s.width < slide_width * 0.8
-    ]
-    if not content_shapes:
-        return
-    min_left = min(s.left for s in content_shapes)
-    max_right = max(s.left + s.width for s in content_shapes)
-    content_width = max_right - min_left
-    offset = (slide_width - content_width) // 2 - min_left
-    for shape in all_shapes:
-        if shape.left is not None:
-            shape.left += offset
-
 
 def _add_slide_from_template(prs, layout, template_shape_xmls):
     new_slide = prs.slides.add_slide(layout)
@@ -452,8 +428,6 @@ def generate_pptx_bytes(
         for i in range(len(group), products_per_slide):
             if i < len(cur_slots):
                 _clear_slot(cur_slots[i])
-        if products_per_slide == 1:
-            _center_shapes_horizontally(slide, prs.slide_width)
 
     buf = io.BytesIO()
     prs.save(buf)
