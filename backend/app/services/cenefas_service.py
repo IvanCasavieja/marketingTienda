@@ -2,6 +2,7 @@
 import copy
 import io
 import re
+import unicodedata
 from typing import Any
 
 import openpyxl
@@ -134,6 +135,17 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
     }
 
 
+def _normalize_header(name: str) -> str:
+    """Normaliza a mayúsculas sin tildes para matching flexible de columnas."""
+    return unicodedata.normalize("NFD", str(name)).encode("ascii", "ignore").decode().upper().strip()
+
+
+_EXPECTED_HEADERS = {
+    _normalize_header(k): k
+    for k in ["Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA"]
+}
+
+
 def load_products_from_bytes(
     excel_bytes: bytes,
     vigencia: str,
@@ -144,8 +156,14 @@ def load_products_from_bytes(
     if "Cenefas" not in wb.sheetnames:
         raise ValueError("Hoja 'Cenefas' no encontrada. El archivo Excel debe tener una hoja llamada 'Cenefas'.")
     ws = wb["Cenefas"]
-    headers = [cell.value for cell in ws[1]]
-    h = {name: idx for idx, name in enumerate(headers) if name}
+    raw_headers = [cell.value for cell in ws[1]]
+    # Mapeo flexible: normaliza el header del Excel al nombre canónico esperado
+    h = {}
+    for idx, raw in enumerate(raw_headers):
+        if not raw:
+            continue
+        canonical = _EXPECTED_HEADERS.get(_normalize_header(str(raw)))
+        h[canonical or str(raw)] = idx
 
     products = []
     seen: set = set()
@@ -422,7 +440,7 @@ def generate_pptx_bytes(
 def generate_template_bytes() -> bytes:
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
-    from openpyxl.worksheet.dataval import DataValidation
+    from openpyxl.worksheet.datavalidation import DataValidation
 
     HEADERS = ["Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA"]
     EXAMPLES: list[tuple] = [
