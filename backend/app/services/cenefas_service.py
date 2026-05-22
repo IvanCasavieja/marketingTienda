@@ -377,18 +377,26 @@ def _get_slots(shapes) -> list[list]:
 
 
 def _center_shapes_horizontally(slide, slide_width: int) -> None:
-    """Centra horizontalmente el grupo de shapes en la diapositiva."""
-    shapes = list(slide.shapes)
-    if not shapes:
+    """Centra horizontalmente el contenido en la diapositiva.
+
+    Calcula el offset usando solo shapes con texto (contenido real),
+    ignorando shapes de fondo que podrían distorsionar el bounding box.
+    Aplica el desplazamiento a todos los shapes para mantener la composición.
+    """
+    all_shapes = list(slide.shapes)
+    # Shapes de contenido: los que tienen texto y no son más anchos que 80% del slide
+    content_shapes = [
+        s for s in all_shapes
+        if s.has_text_frame and s.left is not None and s.width is not None
+        and s.width < slide_width * 0.8
+    ]
+    if not content_shapes:
         return
-    lefts  = [s.left for s in shapes if s.left is not None]
-    rights = [s.left + s.width for s in shapes if s.left is not None and s.width is not None]
-    if not lefts or not rights:
-        return
-    content_left  = min(lefts)
-    content_width = max(rights) - content_left
-    offset = (slide_width - content_width) // 2 - content_left
-    for shape in shapes:
+    min_left = min(s.left for s in content_shapes)
+    max_right = max(s.left + s.width for s in content_shapes)
+    content_width = max_right - min_left
+    offset = (slide_width - content_width) // 2 - min_left
+    for shape in all_shapes:
         if shape.left is not None:
             shape.left += offset
 
