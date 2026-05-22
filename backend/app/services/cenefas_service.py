@@ -8,6 +8,7 @@ from typing import Any
 import openpyxl
 from lxml import etree
 from pptx import Presentation
+from pptx.enum.text import PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Pt
 
@@ -377,6 +378,22 @@ def _get_slots(shapes) -> list[list]:
 
 
 
+def _center_content_a4(slide, slide_width: int) -> None:
+    """Centra el contenido en plantillas de 1 producto por hoja.
+
+    El shape del precio en la plantilla A4 tiene width > slide_width (se extiende
+    fuera del slide). En lugar de mover shapes, ponemos cada text-shape a ancho
+    completo y alineación CENTER para que el contenido quede centrado en la hoja.
+    """
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+        shape.left = 0
+        shape.width = slide_width
+        for para in shape.text_frame.paragraphs:
+            para.alignment = PP_ALIGN.CENTER
+
+
 def _add_slide_from_template(prs, layout, template_shape_xmls):
     new_slide = prs.slides.add_slide(layout)
     sp_tree = new_slide.shapes._spTree
@@ -428,6 +445,8 @@ def generate_pptx_bytes(
         for i in range(len(group), products_per_slide):
             if i < len(cur_slots):
                 _clear_slot(cur_slots[i])
+        if products_per_slide == 1:
+            _center_content_a4(slide, prs.slide_width)
 
     buf = io.BytesIO()
     prs.save(buf)
