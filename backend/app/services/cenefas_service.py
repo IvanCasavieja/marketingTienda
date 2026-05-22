@@ -376,6 +376,23 @@ def _get_slots(shapes) -> list[list]:
     return [all_shapes[i * per_slot:(i + 1) * per_slot] for i in range(products)]
 
 
+def _center_shapes_horizontally(slide, slide_width: int) -> None:
+    """Centra horizontalmente el grupo de shapes en la diapositiva."""
+    shapes = list(slide.shapes)
+    if not shapes:
+        return
+    lefts  = [s.left for s in shapes if s.left is not None]
+    rights = [s.left + s.width for s in shapes if s.left is not None and s.width is not None]
+    if not lefts or not rights:
+        return
+    content_left  = min(lefts)
+    content_width = max(rights) - content_left
+    offset = (slide_width - content_width) // 2 - content_left
+    for shape in shapes:
+        if shape.left is not None:
+            shape.left += offset
+
+
 def _add_slide_from_template(prs, layout, template_shape_xmls):
     new_slide = prs.slides.add_slide(layout)
     sp_tree = new_slide.shapes._spTree
@@ -427,6 +444,8 @@ def generate_pptx_bytes(
         for i in range(len(group), products_per_slide):
             if i < len(cur_slots):
                 _clear_slot(cur_slots[i])
+        if products_per_slide == 1:
+            _center_shapes_horizontally(slide, prs.slide_width)
 
     buf = io.BytesIO()
     prs.save(buf)
