@@ -29,10 +29,9 @@ export default function LoginPage() {
     const form = e.currentTarget;
     const emailVal    = (form.elements.namedItem("email")    as HTMLInputElement).value;
     const passwordVal = (form.elements.namedItem("password") as HTMLInputElement).value;
-    const joinCodeVal = (form.elements.namedItem("joinCode") as HTMLInputElement)?.value ?? "";
     setLoading(true);
     try {
-      const { data } = await authApi.login(emailVal, passwordVal, joinCodeVal.trim());
+      const { data } = await authApi.login(emailVal, passwordVal, "");
       localStorage.setItem("access_token",  data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
       const { data: me } = await authApi.me();
@@ -157,21 +156,6 @@ export default function LoginPage() {
                   {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                {t("login.teamCode")}
-              </label>
-              <input
-                type="text"
-                name="joinCode"
-                autoComplete="off"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
-                className="input"
-                placeholder={t("login.optional")}
-              />
             </div>
 
             <button type="submit" disabled={loading} className="btn-primary w-full mt-2">

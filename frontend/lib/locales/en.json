@@ -70,7 +70,7 @@
     "assistantName": "MKTG Assistant",
     "assistantSubtitle": "Ask me about the platform",
     "inputPlaceholder": "Type your question...",
-    "comingSoon": "Real AI coming soon · For now I answer frequently asked questions about the platform",
+    "comingSoon": "Real AI assistant · Powered by Llama 3.3 70B via Groq",
     "assistantWelcome": "I'm your MKTG Platform assistant. I can guide you through the platform, explain features, and help you get the most out of it. How can I help you today?",
     "suggestions": {
       "s1": "How do I sync Meta Ads?",

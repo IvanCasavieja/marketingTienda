@@ -70,7 +70,7 @@
     "assistantName": "Asistente MKTG",
     "assistantSubtitle": "Preguntame sobre la plataforma",
     "inputPlaceholder": "Escribí tu pregunta...",
-    "comingSoon": "Pronto con IA real integrada · Por ahora respondo preguntas frecuentes sobre la plataforma",
+    "comingSoon": "Asistente con IA real · Powered by Llama 3.3 70B vía Groq",
     "assistantWelcome": "Soy tu asistente de MKTG Platform. Puedo guiarte en el uso de la plataforma, explicarte funcionalidades y ayudarte a sacarle el máximo provecho. ¿En qué te puedo ayudar hoy?",
     "suggestions": {
       "s1": "¿Cómo sincronizo Meta Ads?",

@@ -95,3 +95,8 @@ export const toolsApi = {
     }),
   deleteCenefaTemplate: (id: number) => api.delete(`/tools/cenefas/templates/${id}`),
 };
+
+export const chatApi = {
+  sendMessage: (message: string, history: { role: string; content: string }[]) =>
+    api.post<{ reply: string }>("/chat/message", { message, history }),
+};

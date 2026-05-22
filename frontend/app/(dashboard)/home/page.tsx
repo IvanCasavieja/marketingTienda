@@ -1,47 +1,14 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { authApi } from "@/lib/api";
+import { authApi, chatApi } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 import { Send, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 // ---------------------------------------------------------------------------
-// Bot knowledge base — swap with real AI call later
+// Types
 // ---------------------------------------------------------------------------
 type BotMessage = { role: "bot" | "user"; text: string; ts: Date };
-
-function getBotReply(input: string): string {
-  const q = input.toLowerCase();
-
-  if (q.includes("cenefa") || q.includes("banner") || q.includes("faixa") || q.includes("pptx"))
-    return "Para generar cenefas andá a **Herramientas → Cenefas** en el sidebar. Necesitás cargar el Excel de productos y la plantilla PPTX base. El sistema genera el archivo con 3 productos por slide automáticamente.";
-
-  if (q.includes("meta") || q.includes("sincroniz") || q.includes("sync"))
-    return "Para sincronizar Meta Ads primero agregá tu conexión en **Configuración → Conexiones** con tu Access Token. Después en la página de **Campañas** usá el botón 'Meta Ads' arriba a la derecha para importar los datos.";
-
-  if (q.includes("roas"))
-    return "El **ROAS** (Return On Ad Spend) mide cuánto revenue generás por cada peso invertido. Un ROAS de 3x significa que por cada $1 invertido generás $3. En el Dashboard podés ver el ROAS global y por plataforma.";
-
-  if (q.includes("equipo") || q.includes("team") || q.includes("invit") || q.includes("código") || q.includes("code"))
-    return "En **Configuración → Conexiones** encontrás el botón 'Copiar código de invitación'. Compartí ese código con tu equipo — al registrarse o iniciar sesión pueden pegarlo para unirse automáticamente.";
-
-  if (q.includes("dashboard") || q.includes("kpi"))
-    return "El **Dashboard** muestra tus KPIs principales: inversión total, clicks, conversiones y ROAS global. Podés filtrar por 7D, 30D o 90D y comparar contra períodos anteriores. También detecta anomalías automáticamente.";
-
-  if (q.includes("campaña") || q.includes("campaign"))
-    return "En **Campañas** ves todas las métricas a nivel de campaña con filtros por plataforma, rango de fechas y búsqueda. Podés ordenar por inversión, ROAS, CTR y exportar a CSV.";
-
-  if (q.includes("análisis") || q.includes("analysis") || q.includes("ia") || q.includes("ai") || q.includes("inteligencia"))
-    return "En **Análisis IA** podés pedirle a Claude que analice tus campañas y genere insights accionables. Seleccionás las plataformas y el tipo de análisis, y la IA cruza los datos y te da recomendaciones.";
-
-  if (q.includes("conexion") || q.includes("connection") || q.includes("token") || q.includes("api"))
-    return "En **Configuración → Conexiones** podés agregar tus cuentas de Meta Ads, Google Ads, TikTok y DV360. Cada plataforma tiene una guía paso a paso para obtener el token de acceso.";
-
-  if (q.includes("hola") || q.includes("hi") || q.includes("hello") || q.includes("buenas") || q.includes("olá"))
-    return "¡Hola! Estoy aquí para ayudarte a sacarle el máximo provecho a la plataforma. Podés preguntarme sobre cualquier funcionalidad o cómo hacer algo específico.";
-
-  return "Puedo ayudarte con **sincronización de plataformas**, **generación de cenefas**, **análisis IA**, **métricas y ROAS**, o **gestión del equipo**. ¿Sobre qué querés saber más?";
-}
 
 // ---------------------------------------------------------------------------
 // Main page
@@ -83,11 +50,30 @@ export default function HomePage() {
     const q = text.trim();
     if (!q) return;
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", text: q, ts: new Date() }]);
+    setMessages((prev) => {
+      const next = [...prev, { role: "user" as const, text: q, ts: new Date() }];
+      _sendToApi(q, next);
+      return next;
+    });
+  }
+
+  async function _sendToApi(q: string, currentMessages: BotMessage[]) {
     setTyping(true);
-    await new Promise((r) => setTimeout(r, 700 + Math.random() * 400));
-    setTyping(false);
-    setMessages((prev) => [...prev, { role: "bot", text: getBotReply(q), ts: new Date() }]);
+    try {
+      const history = currentMessages
+        .filter((m) => m.role !== "bot" || m !== currentMessages[0])
+        .slice(-11, -1)
+        .map((m) => ({ role: m.role === "bot" ? "assistant" : "user", content: m.text }));
+      const { data } = await chatApi.sendMessage(q, history);
+      setMessages((prev) => [...prev, { role: "bot", text: data.reply, ts: new Date() }]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: "bot", text: "Lo siento, hubo un error al contactar el asistente. Intentá de nuevo.", ts: new Date() },
+      ]);
+    } finally {
+      setTyping(false);
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
