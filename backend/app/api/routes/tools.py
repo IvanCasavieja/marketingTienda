@@ -19,7 +19,7 @@ _STATIC_DIR = pathlib.Path(__file__).parent.parent.parent / "static" / "cenefa_t
 _BUILTIN_TEMPLATES = [
     {"slug": "a4",      "name": "Cenefa A4",    "format_name": "A4",      "filename": "Base cenefa A4 1.pptx"},
     {"slug": "pinchos", "name": "Pinchos",       "format_name": "Pinchos", "filename": "Base pinchos 1.pptx"},
-    {"slug": "black",   "name": "Cenefa Black",  "format_name": "Black",   "filename": "Bases cenefas BLACK 1.pptx"},
+    {"slug": "black",   "name": "Cenefas 3xA4",  "format_name": "3xA4",    "filename": "Bases cenefas BLACK 1.pptx"},
 ]
 
 
