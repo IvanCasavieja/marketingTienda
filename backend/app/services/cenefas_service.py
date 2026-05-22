@@ -284,7 +284,7 @@ def _set_p1(shape, text: str) -> None:
             run.font.bold = P1_BOLD
 
 
-def _fill_slot(shapes, data: dict) -> None:
+def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
     p1_shape = None
     price_shape = None
 
@@ -309,8 +309,9 @@ def _fill_slot(shapes, data: dict) -> None:
         elif re.search(r"<<OtraAclaracion\d+>>", t):
             _set_text(shape, data["otra_aclaracion"])
 
-    # Position P1 label dynamically above the price shape
-    if p1_shape is not None and price_shape is not None:
+    # Ajuste dinámico de P1 solo para plantillas de 1 producto por hoja (A4).
+    # En multi-producto, P1 queda en la posición fija de la plantilla.
+    if adjust_p1 and p1_shape is not None and price_shape is not None:
         p1_shape.top = price_shape.top - P1_MARGIN_EMU
 
 
@@ -441,7 +442,7 @@ def generate_pptx_bytes(
         cur_slots = _get_slots(list(slide.shapes))
         for i, product in enumerate(group):
             if i < len(cur_slots):
-                _fill_slot(cur_slots[i], product)
+                _fill_slot(cur_slots[i], product, adjust_p1=(products_per_slide == 1))
         for i in range(len(group), products_per_slide):
             if i < len(cur_slots):
                 _clear_slot(cur_slots[i])
