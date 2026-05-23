@@ -105,11 +105,16 @@ async def run_debate(
     )
 
     # Round 1 — all three analyze independently in parallel
-    r1_claude, r1_gpt, r1_llama = await asyncio.gather(
+    r1_results = await asyncio.gather(
         _ask_claude(CLAUDE_PERSONA, round1_prompt),
         _ask_gpt(GPT_PERSONA, round1_prompt),
         _ask_llama(LLAMA_PERSONA, round1_prompt),
+        return_exceptions=True,
     )
+    for r in r1_results:
+        if isinstance(r, Exception):
+            raise RuntimeError(f"Error en Round 1: {r}") from r
+    r1_claude, r1_gpt, r1_llama = r1_results
 
     # Round 2 — Claude and GPT reply to each other in parallel
     r2_claude_prompt = (
@@ -123,10 +128,15 @@ async def run_debate(
         "¿Qué perspectiva importante creés que está pasando por alto? Sé directo y específico. Máximo 3 párrafos."
     )
 
-    r2_claude, r2_gpt = await asyncio.gather(
+    r2_results = await asyncio.gather(
         _ask_claude(CLAUDE_PERSONA, r2_claude_prompt),
         _ask_gpt(GPT_PERSONA, r2_gpt_prompt),
+        return_exceptions=True,
     )
+    for r in r2_results:
+        if isinstance(r, Exception):
+            raise RuntimeError(f"Error en Round 2: {r}") from r
+    r2_claude, r2_gpt = r2_results
 
     # Round 3 — Llama synthesizes the full debate
     r3_prompt = (

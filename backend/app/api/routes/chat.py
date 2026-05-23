@@ -7,7 +7,7 @@ from app.models.user import User
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-_BASE_URL = "https://marketing-tienda.vercel.app"
+_BASE_URL = settings.FRONTEND_URL
 
 _SYSTEM_PROMPT = f"""Sos el asistente oficial de MKTG Platform, una plataforma de marketing digital que centraliza métricas de Meta Ads, Google Ads, TikTok Ads y DV360.
 
@@ -80,6 +80,8 @@ async def chat_message(
             max_tokens=512,
             temperature=0.7,
         )
+        if not completion.choices:
+            raise HTTPException(status_code=500, detail="Error al contactar el servicio de IA")
         reply = completion.choices[0].message.content or "No pude generar una respuesta."
         return ChatResponse(reply=reply)
 

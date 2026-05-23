@@ -97,4 +97,4 @@ async def delete_connection(
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    await db.delete(conn)
+    db.delete(conn)

@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from typing import List
 
 
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     APP_SECRET_KEY: str  # Required — must be set in .env; no default prevents silent token invalidation on restart
     APP_ALLOWED_ORIGINS: str = "http://localhost:3000"
+    FRONTEND_URL: str = "https://marketing-tienda.vercel.app"
     API_V1_PREFIX: str = "/api/v1"
 
     # Database
@@ -65,6 +67,19 @@ class Settings(BaseSettings):
     SFMC_CLIENT_SECRET: str = ""
     SFMC_SUBDOMAIN: str = ""
     SFMC_ACCOUNT_ID: str = ""
+
+    @field_validator("ENCRYPTION_KEY", mode="after")
+    @classmethod
+    def validate_encryption_key(cls, v: str) -> str:
+        try:
+            from cryptography.fernet import Fernet
+            Fernet(v.encode())
+        except Exception:
+            raise ValueError(
+                "ENCRYPTION_KEY inválida. Generá una con: "
+                "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+            )
+        return v
 
     @property
     def allowed_origins(self) -> List[str]:

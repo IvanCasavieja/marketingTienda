@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -7,6 +8,8 @@ from app.core.deps import get_current_user
 from app.core.config import settings
 from app.models.user import User
 from app.connectors.sfmc import SFMCConnector
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sfmc", tags=["salesforce-mc"])
 
@@ -35,7 +38,8 @@ async def get_email_performance(
         raw = await connector.fetch_email_performance(payload.date_from, payload.date_to)
         return connector.normalize_email(raw)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SFMC error: {str(e)}")
+        logger.error("SFMC error: %s", e, exc_info=True)
+        raise HTTPException(status_code=502, detail="Error al conectar con Salesforce Marketing Cloud")
 
 
 @router.post("/whatsapp")
@@ -57,4 +61,5 @@ async def get_whatsapp_performance(
         raw = await connector.fetch_whatsapp_performance(payload.date_from, payload.date_to)
         return connector.normalize_whatsapp(raw)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SFMC error: {str(e)}")
+        logger.error("SFMC error: %s", e, exc_info=True)
+        raise HTTPException(status_code=502, detail="Error al conectar con Salesforce Marketing Cloud")
