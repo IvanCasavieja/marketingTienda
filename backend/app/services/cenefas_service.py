@@ -21,7 +21,8 @@ P1_BOLD       = False   # label goes without bold
 P1_MARGIN_EMU = 253200  # gap between P1 bottom and price shape top
                         # 16pt text ≈ 203200 EMU + ~50000 visual margin
 
-PRICE_SYMBOL_PT = 55    # pt — $ / U$S symbol inside the price run
+PRICE_SYMBOL_PT   = 55    # pt — $ / U$S symbol inside the price run
+PRICE_SIZE_SCALE  = 1.15  # scale factor applied to the template's price number font size
 
 DELI_SUBCATS = {"FIAMBRES", "QUESOS"}
 NO_UNIDAD_SUBCATS = {"CARNES", "FIAMBRES", "EMBUTIDOS CARNE", "QUESOS"}
@@ -238,6 +239,11 @@ def _set_price(shape, text: str) -> None:
 
     num_r = copy.deepcopy(tmpl_r)
     num_r.find(qn("a:t")).text = number
+    num_rPr = num_r.find(qn("a:rPr"))
+    if num_rPr is not None:
+        orig_sz = num_rPr.get("sz")
+        if orig_sz:
+            num_rPr.set("sz", str(int(int(orig_sz) * PRICE_SIZE_SCALE)))
 
     # Insert runs BEFORE <a:endParaRPr> to maintain valid OOXML element order.
     # Appending after endParaRPr causes PowerPoint to silently ignore the runs.
