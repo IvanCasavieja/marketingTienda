@@ -235,11 +235,20 @@ def _set_price(shape, text: str) -> None:
     rPr = sym_r.find(qn("a:rPr"))
     if rPr is not None:
         rPr.set("sz", str(PRICE_SYMBOL_PT * 100))
-    p_elem.append(sym_r)
 
     num_r = copy.deepcopy(tmpl_r)
     num_r.find(qn("a:t")).text = number
-    p_elem.append(num_r)
+
+    # Insert runs BEFORE <a:endParaRPr> to maintain valid OOXML element order.
+    # Appending after endParaRPr causes PowerPoint to silently ignore the runs.
+    end_rpr = p_elem.find(qn("a:endParaRPr"))
+    if end_rpr is not None:
+        idx = list(p_elem).index(end_rpr)
+        p_elem.insert(idx, num_r)
+        p_elem.insert(idx, sym_r)
+    else:
+        p_elem.append(sym_r)
+        p_elem.append(num_r)
 
 
 def _set_desc(shape, text: str) -> None:
