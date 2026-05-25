@@ -85,8 +85,8 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
     precio_raw = row[h["PRECIO"]]
     oferta_raw = row[h["OFERTA"]]
     desc = str(row[h["DESCRIPCION"]] or "").strip()
-    cat = str(row[h["Categoria"]] or "").strip()
-    subcat = str(row[h["subcategoria"]] or "").strip()
+    cat = str(row[h["Categoria"]] or "").strip() if "Categoria" in h else ""
+    subcat = str(row[h["subcategoria"]] or "").strip() if "subcategoria" in h else ""
     moneda = str(row[h["MONEDA"]] or "").strip()
 
     prefix = "U$S " if moneda == "U$S" else "$"
@@ -145,8 +145,10 @@ def _normalize_header(name: str) -> str:
 
 _EXPECTED_HEADERS = {
     _normalize_header(k): k
-    for k in ["Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA"]
+    for k in ["Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA", "NOMBREARTICULO"]
 }
+
+_OPTIONAL_HEADERS = {"Categoria", "subcategoria"}
 
 
 def load_products_from_bytes(
@@ -156,10 +158,17 @@ def load_products_from_bytes(
     otra_alcohol: str,
 ) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
-    if "Cenefas" not in wb.sheetnames:
-        raise ValueError("Hoja 'Cenefas' no encontrada. El archivo Excel debe tener una hoja llamada 'Cenefas'.")
-    ws = wb["Cenefas"]
-    raw_headers = [cell.value for cell in ws[1]]
+    ws = wb["Cenefas"] if "Cenefas" in wb.sheetnames else wb.active
+
+    # Auto-detectar fila de headers: buscar la primera fila que contenga OFERTADET
+    header_row = 1
+    for i, row in enumerate(ws.iter_rows(max_row=10, values_only=True), start=1):
+        normalized = [_normalize_header(str(c)) if c else "" for c in row]
+        if "OFERTADET" in normalized:
+            header_row = i
+            break
+
+    raw_headers = [cell.value for cell in ws[header_row]]
     # Mapeo flexible: normaliza el header del Excel al nombre canónico esperado
     h = {}
     for idx, raw in enumerate(raw_headers):
@@ -168,10 +177,15 @@ def load_products_from_bytes(
         canonical = _EXPECTED_HEADERS.get(_normalize_header(str(raw)))
         h[canonical or str(raw)] = idx
 
+    required = [k for k in ["OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA"] if k not in _OPTIONAL_HEADERS]
+    for k in required:
+        if k not in h:
+            raise KeyError(k)
+
     products = []
     seen: set = set()
 
-    for row in ws.iter_rows(min_row=2, values_only=True):
+    for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
         if not row[h["OFERTADET"]]:
             continue
         data = process_row(row, h, vigencia, aclaracion, otra_alcohol)
