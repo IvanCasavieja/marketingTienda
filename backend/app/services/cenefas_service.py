@@ -266,6 +266,7 @@ def _set_desc(shape, text: str) -> None:
     parts = split_caps(text)
     first_seg, first_bold = parts[0]
     first_run = target_para.runs[0]
+    tmpl_r = copy.deepcopy(first_run._r)
     first_run.text = first_seg
     first_run.font.bold = True if first_bold else None
 
@@ -277,10 +278,19 @@ def _set_desc(shape, text: str) -> None:
     for seg, bold in parts[1:]:
         if not seg:
             continue
-        new_run = target_para.add_run()
-        new_run.text = seg
-        if bold:
-            new_run.font.bold = True
+        new_r = copy.deepcopy(tmpl_r)
+        new_r.find(qn("a:t")).text = seg
+        rPr = new_r.find(qn("a:rPr"))
+        if rPr is not None:
+            if bold:
+                rPr.set("b", "1")
+            else:
+                rPr.attrib.pop("b", None)
+        end_rpr = p_elem.find(qn("a:endParaRPr"))
+        if end_rpr is not None:
+            p_elem.insert(list(p_elem).index(end_rpr), new_r)
+        else:
+            p_elem.append(new_r)
 
 
 def _set_p1(shape, text: str) -> None:
