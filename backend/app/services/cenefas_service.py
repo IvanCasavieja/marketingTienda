@@ -51,7 +51,7 @@ def fmt_price(value: Any) -> str:
 
 def parse_combo(oferta_str: str) -> tuple[str, float]:
     s = str(oferta_str or "").strip()
-    m = re.match(r"(\d+)\s*[xX]\s*(\d+(?:[.,]\d+)?)\s*$", s)
+    m = re.match(r"(\d+)\s*[xX]\s*\$?\s*(\d+(?:[.,]\d+)?)\s*$", s)
     if m:
         amount = float(m.group(2).replace(",", "."))
         return m.group(1) + "X", amount
