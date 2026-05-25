@@ -16,13 +16,13 @@ from pptx.util import Pt
 # Format constants
 # ---------------------------------------------------------------------------
 
-P1_FONT_SIZE  = 16      # pt — "Precio Final" / "6X" label
+P1_FONT_SIZE  = 32      # pt — "Precio Final" / "6X" label
 P1_BOLD       = False   # label goes without bold
-P1_MARGIN_EMU = 253200  # gap between P1 bottom and price shape top
-                        # 16pt text ≈ 203200 EMU + ~50000 visual margin
+P1_MARGIN_EMU = 466400  # distance from P1 top to price shape top (32pt*12700 + 60000 gap)
 
-PRICE_SYMBOL_PT   = 55    # pt — $ / U$S symbol inside the price run
-PRICE_SIZE_SCALE  = 1.15  # scale factor applied to the template's price number font size
+PRICE_SYMBOL_PT    = 55   # pt — $ / U$S symbol inside the price run
+PRICE_SIZE_SCALE   = 1.15 # scale factor applied to the template's price number font size
+PRICE_DECIMAL_SCALE = 0.6 # decimal part (e.g. ",90") relative to integer part size
 
 DELI_SUBCATS = {"FIAMBRES", "QUESOS"}
 NO_UNIDAD_SUBCATS = {"CARNES", "FIAMBRES", "EMBUTIDOS CARNE", "QUESOS"}
@@ -99,7 +99,8 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
     if ofertadet == "Combo":
         p1, amount = parse_combo(oferta_raw)
         precio_display = prefix + fmt_price(amount)
-        mecanica = f"Comprando 2, {prefix}{fmt_price(precio)} c/u"
+        qty = p1[:-1] if p1.endswith("X") else "2"
+        mecanica = f"Comprando {qty}, {prefix}{fmt_price(precio)} c/u"
 
     elif ofertadet == "M x N":
         precio_display = prefix + fmt_price(precio)
@@ -231,30 +232,50 @@ def _set_price(shape, text: str) -> None:
     for r_elem in list(p_elem.findall(qn("a:r"))):
         p_elem.remove(r_elem)
 
+    # Split number into integer and decimal parts (decimal separator is ',')
+    if "," in number:
+        num_int, num_dec_digits = number.rsplit(",", 1)
+        num_dec = "," + num_dec_digits
+    else:
+        num_int = number
+        num_dec = None
+
     sym_r = copy.deepcopy(tmpl_r)
     sym_r.find(qn("a:t")).text = symbol
     rPr = sym_r.find(qn("a:rPr"))
     if rPr is not None:
         rPr.set("sz", str(PRICE_SYMBOL_PT * 100))
 
-    num_r = copy.deepcopy(tmpl_r)
-    num_r.find(qn("a:t")).text = number
-    num_rPr = num_r.find(qn("a:rPr"))
-    if num_rPr is not None:
-        orig_sz = num_rPr.get("sz")
+    int_r = copy.deepcopy(tmpl_r)
+    int_r.find(qn("a:t")).text = num_int
+    int_rPr = int_r.find(qn("a:rPr"))
+    if int_rPr is not None:
+        orig_sz = int_rPr.get("sz")
         if orig_sz:
-            num_rPr.set("sz", str(int(int(orig_sz) * PRICE_SIZE_SCALE)))
+            int_rPr.set("sz", str(int(int(orig_sz) * PRICE_SIZE_SCALE)))
+
+    runs = [sym_r, int_r]
+
+    if num_dec:
+        dec_r = copy.deepcopy(tmpl_r)
+        dec_r.find(qn("a:t")).text = num_dec
+        dec_rPr = dec_r.find(qn("a:rPr"))
+        if dec_rPr is not None:
+            orig_sz = dec_rPr.get("sz")
+            if orig_sz:
+                dec_rPr.set("sz", str(int(int(orig_sz) * PRICE_SIZE_SCALE * PRICE_DECIMAL_SCALE)))
+        runs.append(dec_r)
 
     # Insert runs BEFORE <a:endParaRPr> to maintain valid OOXML element order.
     # Appending after endParaRPr causes PowerPoint to silently ignore the runs.
     end_rpr = p_elem.find(qn("a:endParaRPr"))
     if end_rpr is not None:
         idx = list(p_elem).index(end_rpr)
-        p_elem.insert(idx, num_r)
-        p_elem.insert(idx, sym_r)
+        for r in reversed(runs):
+            p_elem.insert(idx, r)
     else:
-        p_elem.append(sym_r)
-        p_elem.append(num_r)
+        for r in runs:
+            p_elem.append(r)
 
 
 def _set_desc(shape, text: str) -> None:
