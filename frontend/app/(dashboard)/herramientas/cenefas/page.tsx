@@ -185,7 +185,7 @@ export default function CenefasPage() {
   }
 
   const hasTemplate = selectedTemplateId !== null || !!customPptx || selectedBuiltinSlug !== null;
-  const canSubmit = !!excel && hasTemplate && !!vigencia.trim() && status !== "loading";
+  const canSubmit = !!excel && hasTemplate && status !== "loading";
 
   return (
     <div className="animate-fade-in max-w-2xl space-y-6">

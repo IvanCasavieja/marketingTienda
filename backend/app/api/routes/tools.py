@@ -141,7 +141,7 @@ async def generate_cenefas(
     template: UploadFile | None = File(None, description="Plantilla PPTX personalizada"),
     template_id: int | None = Form(None, description="ID de template guardado"),
     builtin_slug: str | None = Form(None, description="Slug de plantilla predeterminada"),
-    vigencia: str = Form(...),
+    vigencia: str = Form(default=""),
     aclaracion: str = Form(default=""),
     otra_alcohol: str = Form(default="Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
     banco: str = Form(default=""),
