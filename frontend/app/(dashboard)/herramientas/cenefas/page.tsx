@@ -37,6 +37,7 @@ export default function CenefasPage() {
   const [otraAlcohol, setOtraAlcohol] = useState(
     "Prohibida la venta de bebidas alcohólicas a menores de 18 años"
   );
+  const [banco, setBanco] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const downloadRef = useRef<HTMLAnchorElement>(null);
@@ -161,6 +162,7 @@ export default function CenefasPage() {
       fd.append("vigencia", vigencia.trim());
       fd.append("aclaracion", aclaracion.trim());
       fd.append("otra_alcohol", otraAlcohol.trim());
+      fd.append("banco", banco.trim());
 
       const { data } = await toolsApi.generateCenefas(fd);
       const url = URL.createObjectURL(new Blob([data], {
@@ -430,6 +432,7 @@ export default function CenefasPage() {
           <Field label={t("cenefas.vigencia")} placeholder={t("cenefas.vigenciaPlaceholder")} value={vigencia} onChange={setVigencia} />
           <Field label={t("cenefas.aclaracion")} value={aclaracion} onChange={setAclaracion} />
           <Field label={t("cenefas.alcohol")} value={otraAlcohol} onChange={setOtraAlcohol} />
+          <Field label="Banco / Beneficio" placeholder='Ej: "Scotia.", "BBVA", "Hasta 12 cuotas"' value={banco} onChange={setBanco} />
         </div>
 
         {/* Feedback */}

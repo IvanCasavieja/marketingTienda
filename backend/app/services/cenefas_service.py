@@ -45,6 +45,31 @@ def fmt_price(value: Any) -> str:
     return int_str + "," + dec_str
 
 
+def _parse_price_raw(value: Any) -> float:
+    """Convierte un valor de precio crudo a float.
+
+    Soporta: números (int/float), strings con texto como '181 UNIDAD',
+    decimales con coma ('144,8') y separadores de miles con punto ('1.500').
+    """
+    if value is None or value == "":
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    m = re.match(r"^(\d[\d.,]*)", str(value).strip())
+    if not m:
+        return 0.0
+    num_str = m.group(1)
+    # "1.500,50" → European: punto=miles, coma=decimal
+    if "." in num_str and "," in num_str:
+        num_str = num_str.replace(".", "").replace(",", ".")
+    elif "," in num_str:
+        num_str = num_str.replace(",", ".")
+    try:
+        return float(num_str)
+    except ValueError:
+        return 0.0
+
+
 # ---------------------------------------------------------------------------
 # Combo parsing
 # ---------------------------------------------------------------------------
@@ -80,17 +105,19 @@ def split_caps(text: str) -> list[tuple[str, bool]]:
 # Row processing
 # ---------------------------------------------------------------------------
 
-def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcohol: str) -> dict:
-    ofertadet = str(row[h["OFERTADET"]] or "").strip()
-    precio_raw = row[h["PRECIO"]]
-    oferta_raw = row[h["OFERTA"]]
+def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcohol: str, banco: str = "") -> dict:
+    ofertadet = str(row[h["OFERTADET"]] or "").strip() if "OFERTADET" in h else "Precio fijo"
+    precio_raw = row[h["PRECIO"]] if "PRECIO" in h else 0
+    oferta_raw = row[h["OFERTA"]] if "OFERTA" in h else ""
     desc = str(row[h["DESCRIPCION"]] or "").strip()
     cat = str(row[h["Categoria"]] or "").strip() if "Categoria" in h else ""
     subcat = str(row[h["subcategoria"]] or "").strip() if "subcategoria" in h else ""
-    moneda = str(row[h["MONEDA"]] or "").strip()
+    moneda = str(row[h["MONEDA"]] or "").strip() if "MONEDA" in h else "$"
+    code = str(row[h["CODIGO"]] or "").strip() if "CODIGO" in h else ""
+    precio_banco_raw = row[h["PRECIO_BANCO"]] if "PRECIO_BANCO" in h else None
 
     prefix = "U$S " if moneda == "U$S" else "$"
-    precio = float(precio_raw) if precio_raw else 0.0
+    precio = _parse_price_raw(precio_raw)
 
     p1 = ""
     precio_display = ""
@@ -126,6 +153,13 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
 
     otra = otra_alcohol if cat == "BEBIDAS CON ALCOHOL" else ""
 
+    # Precio bancario: formateado igual que precio principal
+    pbanco_display = ""
+    if precio_banco_raw is not None and precio_banco_raw != "":
+        pbanco_val = _parse_price_raw(precio_banco_raw)
+        if pbanco_val > 0:
+            pbanco_display = prefix + fmt_price(pbanco_val)
+
     return {
         "p1": p1,
         "precio": precio_display,
@@ -135,6 +169,9 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
         "vigencia": vigencia,
         "aclaracion": aclaracion,
         "otra_aclaracion": otra,
+        "code": code,
+        "pbanco": pbanco_display,
+        "banco": banco,
     }
 
 
@@ -143,12 +180,36 @@ def _normalize_header(name: str) -> str:
     return unicodedata.normalize("NFD", str(name)).encode("ascii", "ignore").decode().upper().strip()
 
 
-_EXPECTED_HEADERS = {
-    _normalize_header(k): k
-    for k in ["Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA", "NOMBREARTICULO"]
+_CANONICAL_COLUMNS = [
+    "Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO",
+    "OFERTA", "MONEDA", "NOMBREARTICULO", "CODIGO", "PRECIO_BANCO",
+]
+
+# Aliases: nombre normalizado del Excel → nombre canónico interno
+# Permite columnas con nombres alternativos sin romper el sistema.
+_HEADER_ALIASES: dict[str, str] = {
+    "PRECIOS": "PRECIO",           # variante plural
+    "SCOTLAND 20%": "PRECIO_BANCO",
+    "SCOTIA 20%": "PRECIO_BANCO",  # columna de precio bancario Scotia
+    "PRECIO BANCO": "PRECIO_BANCO",
+    "PBANCO": "PRECIO_BANCO",
 }
 
-_OPTIONAL_HEADERS = {"Categoria", "subcategoria"}
+_EXPECTED_HEADERS: dict[str, str] = {
+    _normalize_header(k): k for k in _CANONICAL_COLUMNS
+}
+_EXPECTED_HEADERS.update({
+    _normalize_header(alias): canonical
+    for alias, canonical in _HEADER_ALIASES.items()
+})
+
+_OPTIONAL_HEADERS = {"Categoria", "subcategoria", "OFERTADET", "OFERTA", "CODIGO", "PRECIO_BANCO", "NOMBREARTICULO"}
+
+# Columnas mínimas que deben existir para que el parsing funcione
+_REQUIRED_HEADERS = {"DESCRIPCION", "PRECIO"}
+
+# Columnas usadas para auto-detectar la fila de headers
+_DETECTION_COLS = {"OFERTADET", "DESCRIPCION", "PRECIOS", "PRECIO", "CODIGO", "MONEDA"}
 
 
 def load_products_from_bytes(
@@ -156,17 +217,22 @@ def load_products_from_bytes(
     vigencia: str,
     aclaracion: str,
     otra_alcohol: str,
+    banco: str = "",
 ) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
     ws = wb["Cenefas"] if "Cenefas" in wb.sheetnames else wb.active
 
-    # Auto-detectar fila de headers: buscar la primera fila que contenga OFERTADET
-    header_row = 1
+    # Auto-detectar fila de headers: buscar la primera fila que contenga
+    # al menos 2 columnas conocidas (no solo OFERTADET, para soportar
+    # Excels alternativos como el de Especial Mascotas).
+    header_row = None
     for i, row in enumerate(ws.iter_rows(max_row=10, values_only=True), start=1):
-        normalized = [_normalize_header(str(c)) if c else "" for c in row]
-        if "OFERTADET" in normalized:
+        normalized = {_normalize_header(str(c)) for c in row if c is not None}
+        if "OFERTADET" in normalized or len(normalized & _DETECTION_COLS) >= 2:
             header_row = i
             break
+    if header_row is None:
+        header_row = 1
 
     raw_headers = [cell.value for cell in ws[header_row]]
     # Mapeo flexible: normaliza el header del Excel al nombre canónico esperado
@@ -177,8 +243,7 @@ def load_products_from_bytes(
         canonical = _EXPECTED_HEADERS.get(_normalize_header(str(raw)))
         h[canonical or str(raw)] = idx
 
-    required = [k for k in ["OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA"] if k not in _OPTIONAL_HEADERS]
-    for k in required:
+    for k in _REQUIRED_HEADERS:
         if k not in h:
             raise KeyError(k)
 
@@ -186,10 +251,14 @@ def load_products_from_bytes(
     seen: set = set()
 
     for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
-        if not row[h["OFERTADET"]]:
+        # Saltar filas vacías usando DESCRIPCION como ancla
+        if not row[h["DESCRIPCION"]]:
             continue
-        data = process_row(row, h, vigencia, aclaracion, otra_alcohol)
-        key = (data["p1"], data["precio"], data["mecanica"], data["descripcion"].lower().strip())
+        # Saltar también si OFERTADET está y está vacío (comportamiento original)
+        if "OFERTADET" in h and not row[h["OFERTADET"]]:
+            continue
+        data = process_row(row, h, vigencia, aclaracion, otra_alcohol, banco)
+        key = (data["p1"], data["precio"], data["mecanica"], data["descripcion"].lower().strip(), data.get("code", ""))
         if key not in seen:
             seen.add(key)
             products.append(data)
@@ -211,8 +280,11 @@ def _set_text(shape, text: str) -> None:
     if not shape.has_text_frame:
         return
     for para in shape.text_frame.paragraphs:
-        for run in para.runs:
-            run.text = text
+        runs = para.runs
+        if runs:
+            runs[0].text = text
+            for run in runs[1:]:   # Limpiar runs adicionales (placeholder multi-run)
+                run.text = ""
             return
     if shape.text_frame.paragraphs:
         para = shape.text_frame.paragraphs[0]
@@ -353,7 +425,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
         if re.search(r"<<P\d+>>", t):
             p1_shape = shape
             _set_p1(shape, data["p1"])
-        elif re.search(r"Precio\s+\d+", t) or re.search(r"<<Precio\d+>>", t):
+        elif re.search(r"Precio\s+\d+", t) or re.search(r"<<Precio\d*>>", t):
             price_shape = shape
             _set_price(shape, data["precio"])
         elif re.search(r"<<Mecanica\d+>>", t):
@@ -362,12 +434,18 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
             _set_desc(shape, data["descripcion"])
         elif re.search(r"<<UnidadMedida\d+>>", t):
             _set_text(shape, data["unidad"])
-        elif re.search(r"<<Vigencia\d+>>", t):
+        elif re.search(r"<<Vigencia\d*>>", t):
             _set_text(shape, data["vigencia"])
-        elif re.search(r"<<Aclaracion\d+>>", t):
+        elif re.search(r"<<Aclaracion\d*>>", t):
             _set_text(shape, data["aclaracion"])
-        elif re.search(r"<<OtraAclaracion\d+>>", t):
+        elif re.search(r"<<OtraAclaracion\d*>>", t):
             _set_text(shape, data["otra_aclaracion"])
+        elif re.search(r"<<[Cc]ode\d*>>", t):
+            _set_text(shape, data.get("code", ""))
+        elif re.search(r"<<[Pp][Bb]anco\d*>>", t):
+            _set_price(shape, data.get("pbanco", ""))
+        elif re.search(r"<<[Bb]anco\d*>>", t):
+            _set_text(shape, data.get("banco", ""))
 
     # Ajuste dinámico de P1 solo para plantillas de 1 producto por hoja (A4).
     # En multi-producto, P1 queda en la posición fija de la plantilla.
@@ -477,8 +555,9 @@ def generate_pptx_bytes(
     vigencia: str,
     aclaracion: str,
     otra_alcohol: str,
+    banco: str = "",
 ) -> bytes:
-    products = load_products_from_bytes(excel_bytes, vigencia, aclaracion, otra_alcohol)
+    products = load_products_from_bytes(excel_bytes, vigencia, aclaracion, otra_alcohol, banco)
 
     prs = Presentation(io.BytesIO(template_bytes))
     if not prs.slides:

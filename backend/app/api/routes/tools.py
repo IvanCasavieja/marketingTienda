@@ -144,6 +144,7 @@ async def generate_cenefas(
     vigencia: str = Form(...),
     aclaracion: str = Form(default=""),
     otra_alcohol: str = Form(default="Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
+    banco: str = Form(default=""),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -192,6 +193,7 @@ async def generate_cenefas(
             vigencia=vigencia,
             aclaracion=aclaracion,
             otra_alcohol=otra_alcohol,
+            banco=banco,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
