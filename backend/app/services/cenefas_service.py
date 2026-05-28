@@ -575,10 +575,12 @@ def _get_slots(shapes) -> list[list]:
 def _center_content_a4(slide, slide_width: int) -> None:
     """Centra el contenido en plantillas de 1 producto por hoja.
 
-    El shape del precio en la plantilla A4 tiene width > slide_width (se extiende
-    fuera del slide). En lugar de mover shapes, ponemos cada text-shape a ancho
-    completo y alineación CENTER para que el contenido quede centrado en la hoja.
+    Solo se aplica cuando el slide NO tiene GroupShapes: esas plantillas tienen
+    un layout intencional (precio a la izquierda, caja banco a la derecha) y
+    estirar todos los shapes causaría solapamientos.
     """
+    if any(hasattr(s, 'shapes') for s in slide.shapes):
+        return
     for shape in slide.shapes:
         if not shape.has_text_frame:
             continue
