@@ -442,12 +442,15 @@ def _set_p1(shape, text: str) -> None:
             run.font.bold = P1_BOLD
 
 
+def _is_multi_sku(code: str) -> bool:
+    return bool(code and ("/" in code or re.search(r"\d\s*[-–—]\s*\d", code)))
+
+
 def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
-    import logging as _logging
-    _log = _logging.getLogger(__name__)
-    _log.warning("FILL_SLOT code=%r shapes_texts=%r", data.get("code"), [_shape_text(s)[:30] for s in shapes])
     p1_shape = None
     price_shape = None
+    code = data.get("code", "")
+    multi = _is_multi_sku(code)
 
     for shape in shapes:
         t = _shape_text(shape)
@@ -462,9 +465,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
         elif "<<" in t and "Descripci" in t:
             _set_desc(shape, data["descripcion"])
         elif re.search(r"<<UnidadMedida\d+>>", t):
-            _code = data.get("code", "")
-            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*[-–—]\s*\d", _code)))
-            _set_text(shape, data["unidad"] if _multi else "")
+            _set_text(shape, data["unidad"] if multi else "")
         elif re.search(r"<<Vigencia\d*>>", t):
             _set_text(shape, data["vigencia"])
         elif re.search(r"<<Aclaracion\d*>>", t):
@@ -472,19 +473,18 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
         elif re.search(r"<<OtraAclaracion\d*>>", t):
             _set_text(shape, data["otra_aclaracion"])
         elif re.search(r"<<[Cc]ode\d*>>", t):
-            _set_text(shape, data.get("code", ""))
+            _set_text(shape, code)
         elif re.search(r"<<[Pp][Bb]anco\d*>>", t):
             _set_price(shape, data.get("pbanco", ""), int_pt=PBANCO_INT_PT)
         elif re.search(r"<<[Bb]anco\d*>>", t):
             _set_text(shape, data.get("banco", ""))
         elif re.search(r"<<UnidadPrecio\d*>>", t):
-            _code = data.get("code", "")
-            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*[-–—]\s*\d", _code)))
-            _set_text_sized(shape, "unidad" if _multi else "", UNIDAD_PRECIO_PT)
+            _set_text_sized(shape, "unidad" if multi else "", UNIDAD_PRECIO_PT)
         elif re.search(r"<<UnidadPBanco\d*>>", t):
-            _code = data.get("code", "")
-            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*[-–—]\s*\d", _code)))
-            _set_text_sized(shape, "unidad" if _multi else "", UNIDAD_PBANCO_PT)
+            _set_text_sized(shape, "unidad" if multi else "", UNIDAD_PBANCO_PT)
+        elif t.strip().lower() == "unidad":
+            # Texto estático "unidad" en el template — se limpia para SKU único
+            _set_text(shape, "unidad" if multi else "")
 
     # Ajuste dinámico de P1 solo para plantillas de 1 producto por hoja (A4).
     # En multi-producto, P1 queda en la posición fija de la plantilla.
