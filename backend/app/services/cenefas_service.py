@@ -147,7 +147,11 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
     if not p1:
         p1 = "Precio Final"
 
-    if ofertadet in ("Precio fijo", "% descuento"):
+    # "unidad" solo para productos con múltiples SKUs (código con "/" o "dígito - dígito").
+    # Productos de un solo SKU no muestran "unidad" aunque sean precio fijo.
+    is_multi_sku = bool(code and ("/" in code or re.search(r"\d\s*-\s*\d", code)))
+
+    if is_multi_sku and ofertadet in ("Precio fijo", "% descuento"):
         unidad = "" if subcat in NO_UNIDAD_SUBCATS else "unidad"
     else:
         unidad = ""
@@ -161,10 +165,7 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
         if pbanco_val > 0:
             pbanco_display = prefix + fmt_price(pbanco_val)
 
-    # Productos con múltiples SKUs (código contiene "/" o "dígito - dígito")
-    # muestran "unidad" debajo del precio y del precio bancario.
-    is_multi_sku = bool(code and ("/" in code or re.search(r"\d\s*-\s*\d", code)))
-    unidad_precio = "unidad" if is_multi_sku else ""
+    unidad_precio = unidad
     unidad_pbanco = "unidad" if is_multi_sku else ""
 
     return {
