@@ -543,11 +543,11 @@ def _get_slots(shapes) -> list[list]:
     if len(present) > 1:
         return [buckets[n] for n in present]
 
-    # All shapes land in slot 1 — use spatial clustering.
+    # All shapes land in slot 1 — count anchors to determine product count.
     all_shapes = list(shapes)
     anchors = [s for s in all_shapes if re.search(r"<<P\d+>>", _shape_text(s))]
     if not anchors:
-        anchors = [s for s in all_shapes if re.search(r"Precio\s+\d+|<<Precio\d+>>", _shape_text(s))]
+        anchors = [s for s in all_shapes if re.search(r"Precio\s+\d+|<<Precio\d*>>", _shape_text(s))]
 
     products = len(anchors)
     if products <= 1:
@@ -558,23 +558,18 @@ def _get_slots(shapes) -> list[list]:
     ys = [s.top for s in anchors]
     horizontal = (max(xs) - min(xs)) >= (max(ys) - min(ys))
 
-    anchors_sorted = sorted(anchors, key=lambda s: s.left if horizontal else s.top)
-
-    # Assign each shape to the slot whose anchor center is closest.
-    slots: list[list] = [[] for _ in range(products)]
-    for shape in all_shapes:
-        cx = shape.left + shape.width // 2
-        cy = shape.top + shape.height // 2
-        best_idx = min(
-            range(products),
-            key=lambda i: abs(
-                (cx if horizontal else cy)
-                - (anchors_sorted[i].left + anchors_sorted[i].width // 2
-                   if horizontal
-                   else anchors_sorted[i].top + anchors_sorted[i].height // 2)
-            ),
-        )
-        slots[best_idx].append(shape)
+    # Sort ALL shapes by spatial center, then split consecutively.
+    # Nearest-anchor fails when a shape sits at the far end of its section
+    # (e.g. "unidad" below a price) and the NEXT product's anchor is closer.
+    # A positional sort + consecutive split is correct for any non-overlapping
+    # grid layout regardless of XML insertion order.
+    key = (lambda s: s.left + s.width // 2) if horizontal else (lambda s: s.top + s.height // 2)
+    sorted_shapes = sorted(all_shapes, key=key)
+    per_slot = len(sorted_shapes) // products
+    slots = [sorted_shapes[i * per_slot:(i + 1) * per_slot] for i in range(products)]
+    remainder = sorted_shapes[products * per_slot:]
+    if remainder:
+        slots[-1].extend(remainder)
     return slots
 
 
