@@ -20,8 +20,10 @@ P1_FONT_SIZE  = 32      # pt — "Precio Final" / "6X" label
 P1_BOLD       = False   # label goes without bold
 P1_MARGIN_EMU = 466400  # distance from P1 top to price shape top (32pt*12700 + 60000 gap)
 
-PRICE_DECIMAL_PT = 20  # pt — parte decimal fija (,90 / ,20) para todos los precios
-PBANCO_INT_PT    = 40  # pt — tamaño fijo del entero/símbolo de pBanco
+PRICE_DECIMAL_PT  = 20  # pt — parte decimal fija (,90 / ,20) para todos los precios
+PBANCO_INT_PT     = 40  # pt — tamaño fijo del entero/símbolo de pBanco
+UNIDAD_PRECIO_PT  = 16  # pt — "unidad" debajo de Precio1 en productos multi-SKU
+UNIDAD_PBANCO_PT  = 10  # pt — "unidad" debajo de pBanco en productos multi-SKU
 
 DELI_SUBCATS = {"FIAMBRES", "QUESOS"}
 NO_UNIDAD_SUBCATS = {"CARNES", "FIAMBRES", "EMBUTIDOS CARNE", "QUESOS"}
@@ -159,6 +161,12 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
         if pbanco_val > 0:
             pbanco_display = prefix + fmt_price(pbanco_val)
 
+    # Productos con múltiples SKUs (código contiene "/" o "dígito - dígito")
+    # muestran "unidad" debajo del precio y del precio bancario.
+    is_multi_sku = bool(code and ("/" in code or re.search(r"\d\s*-\s*\d", code)))
+    unidad_precio = "unidad" if is_multi_sku else ""
+    unidad_pbanco = "unidad" if is_multi_sku else ""
+
     return {
         "p1": p1,
         "precio": precio_display,
@@ -171,6 +179,8 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
         "code": code,
         "pbanco": pbanco_display,
         "banco": banco,
+        "unidad_precio": unidad_precio,
+        "unidad_pbanco": unidad_pbanco,
     }
 
 
@@ -289,6 +299,16 @@ def _set_text(shape, text: str) -> None:
         para = shape.text_frame.paragraphs[0]
         run = para.add_run()
         run.text = text
+
+
+def _set_text_sized(shape, text: str, pt: int) -> None:
+    """Sets shape text and forces all runs to the given font size."""
+    _set_text(shape, text)
+    if not shape.has_text_frame:
+        return
+    for para in shape.text_frame.paragraphs:
+        for run in para.runs:
+            run.font.size = Pt(pt)
 
 
 def _set_price(shape, text: str, int_pt: int | None = None) -> None:
@@ -451,6 +471,10 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
             _set_price(shape, data.get("pbanco", ""), int_pt=PBANCO_INT_PT)
         elif re.search(r"<<[Bb]anco\d*>>", t):
             _set_text(shape, data.get("banco", ""))
+        elif re.search(r"<<UnidadPrecio\d*>>", t):
+            _set_text_sized(shape, data.get("unidad_precio", ""), UNIDAD_PRECIO_PT)
+        elif re.search(r"<<UnidadPBanco\d*>>", t):
+            _set_text_sized(shape, data.get("unidad_pbanco", ""), UNIDAD_PBANCO_PT)
 
     # Ajuste dinámico de P1 solo para plantillas de 1 producto por hoja (A4).
     # En multi-producto, P1 queda en la posición fija de la plantilla.
@@ -479,6 +503,8 @@ def _slot_num(shape) -> int | None:
                 or f"<<Vigencia{n}>>" in t
                 or f"<<Aclaracion{n}>>" in t
                 or f"<<OtraAclaracion{n}>>" in t
+                or f"<<UnidadPrecio{n}>>" in t
+                or f"<<UnidadPBanco{n}>>" in t
                 or ("<<" in t and "Descripci" in t and str(n) in t)):
             return n
     return None
