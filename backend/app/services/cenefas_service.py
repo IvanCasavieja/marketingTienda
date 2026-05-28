@@ -339,7 +339,10 @@ def _set_price(shape, text: str, int_pt: int | None = None) -> None:
         return
 
     p_elem = target_para._p
-    tmpl_r = copy.deepcopy(target_para.runs[0]._r)
+    # Templates suelen tener 2 runs: símbolo (menor tamaño) + entero (mayor tamaño).
+    # Cada parte hereda el formato del run correspondiente.
+    tmpl_r_sym = copy.deepcopy(target_para.runs[0]._r)
+    tmpl_r_int = copy.deepcopy(target_para.runs[-1]._r)
 
     for r_elem in list(p_elem.findall(qn("a:r"))):
         p_elem.remove(r_elem)
@@ -352,18 +355,19 @@ def _set_price(shape, text: str, int_pt: int | None = None) -> None:
         num_int = number
         num_dec = None
 
-    # Símbolo e entero: respetan el tamaño escrito en el template.
-    # Decimal: siempre fijo en PRICE_DECIMAL_PT (20 pt).
-    sym_r = copy.deepcopy(tmpl_r)
+    # Símbolo: hereda el run del símbolo del template (primer run).
+    # Entero: hereda el run del número del template (último run, típicamente mayor tamaño).
+    # Decimal: copia del run del entero pero forzado a PRICE_DECIMAL_PT.
+    sym_r = copy.deepcopy(tmpl_r_sym)
     sym_r.find(qn("a:t")).text = symbol
 
-    int_r = copy.deepcopy(tmpl_r)
+    int_r = copy.deepcopy(tmpl_r_int)
     int_r.find(qn("a:t")).text = num_int
 
     runs = [sym_r, int_r]
 
     if num_dec:
-        dec_r = copy.deepcopy(tmpl_r)
+        dec_r = copy.deepcopy(tmpl_r_int)
         dec_r.find(qn("a:t")).text = num_dec
         dec_rPr = dec_r.find(qn("a:rPr"))
         if dec_rPr is not None:
@@ -591,7 +595,12 @@ def _center_content_a4(slide, slide_width: int) -> None:
 
 
 def _align_bank_group_a4(slide) -> None:
-    """Baja el GroupShape de oferta bancaria para alinearlo con el borde inferior del precio."""
+    """Ajusta el layout de slides A4 con GROUP bancario.
+
+    Recorta el ancho del shape de precio para que no invada horizontalmente
+    la columna del GROUP. No mueve el GROUP (su posición vertical fue diseñada
+    en el template y el footer del fondo empieza justo debajo).
+    """
     price_shape = None
     group_shape = None
     for shape in slide.shapes:
@@ -601,8 +610,13 @@ def _align_bank_group_a4(slide) -> None:
             t = _shape_text(shape)
             if re.search(r"<<Precio\d*>>", t) or re.search(r"Precio\s+\d+", t):
                 price_shape = shape
-    if price_shape is not None and group_shape is not None:
-        group_shape.top = price_shape.top + price_shape.height - group_shape.height
+    if price_shape is None or group_shape is None:
+        return
+    # Recortar el ancho del precio para que su borde derecho quede antes del GROUP
+    gap = 150000  # ~4mm de separación horizontal
+    price_right_max = group_shape.left - gap
+    if price_shape.left + price_shape.width > price_right_max:
+        price_shape.width = price_right_max - price_shape.left
 
 
 def _add_slide_from_template(prs, layout, template_shape_xmls):
