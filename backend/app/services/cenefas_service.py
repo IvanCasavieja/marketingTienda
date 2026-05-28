@@ -459,7 +459,9 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
         elif "<<" in t and "Descripci" in t:
             _set_desc(shape, data["descripcion"])
         elif re.search(r"<<UnidadMedida\d+>>", t):
-            _set_text(shape, data["unidad"])
+            _code = data.get("code", "")
+            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*-\s*\d", _code)))
+            _set_text(shape, data["unidad"] if _multi else "")
         elif re.search(r"<<Vigencia\d*>>", t):
             _set_text(shape, data["vigencia"])
         elif re.search(r"<<Aclaracion\d*>>", t):
@@ -473,9 +475,13 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
         elif re.search(r"<<[Bb]anco\d*>>", t):
             _set_text(shape, data.get("banco", ""))
         elif re.search(r"<<UnidadPrecio\d*>>", t):
-            _set_text_sized(shape, data.get("unidad_precio", ""), UNIDAD_PRECIO_PT)
+            _code = data.get("code", "")
+            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*-\s*\d", _code)))
+            _set_text_sized(shape, "unidad" if _multi else "", UNIDAD_PRECIO_PT)
         elif re.search(r"<<UnidadPBanco\d*>>", t):
-            _set_text_sized(shape, data.get("unidad_pbanco", ""), UNIDAD_PBANCO_PT)
+            _code = data.get("code", "")
+            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*-\s*\d", _code)))
+            _set_text_sized(shape, "unidad" if _multi else "", UNIDAD_PBANCO_PT)
 
     # Ajuste dinámico de P1 solo para plantillas de 1 producto por hoja (A4).
     # En multi-producto, P1 queda en la posición fija de la plantilla.
