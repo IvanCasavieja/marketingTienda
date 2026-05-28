@@ -20,9 +20,9 @@ P1_FONT_SIZE  = 32      # pt — "Precio Final" / "6X" label
 P1_BOLD       = False   # label goes without bold
 P1_MARGIN_EMU = 466400  # distance from P1 top to price shape top (32pt*12700 + 60000 gap)
 
-PRICE_SYMBOL_SCALE  = 0.55 # símbolo ($ / U$S) relativo al entero — proporcional al shape
-PRICE_SIZE_SCALE    = 1.15 # entero relativo al tamaño de fuente del template
-PRICE_DECIMAL_SCALE = 0.42 # parte decimal relativa al entero — bastante más chica
+PRICE_SYMBOL_PT  = 45  # pt — símbolo $ / U$S
+PRICE_INT_PT     = 45  # pt — número entero del precio
+PRICE_DECIMAL_PT = 25  # pt — parte decimal (,90 / ,20)
 
 DELI_SUBCATS = {"FIAMBRES", "QUESOS"}
 NO_UNIDAD_SUBCATS = {"CARNES", "FIAMBRES", "EMBUTIDOS CARNE", "QUESOS"}
@@ -326,22 +326,17 @@ def _set_price(shape, text: str) -> None:
         num_int = number
         num_dec = None
 
-    # Calcular tamaño del entero primero para que el símbolo y el decimal sean proporcionales.
-    int_r = copy.deepcopy(tmpl_r)
-    int_r.find(qn("a:t")).text = num_int
-    int_rPr = int_r.find(qn("a:rPr"))
-    int_sz_raw = int_rPr.get("sz") if int_rPr is not None else None
-    int_sz = int(int(int_sz_raw) * PRICE_SIZE_SCALE) if int_sz_raw else None
-    if int_sz and int_rPr is not None:
-        int_rPr.set("sz", str(int_sz))
-
     sym_r = copy.deepcopy(tmpl_r)
     sym_r.find(qn("a:t")).text = symbol
     sym_rPr = sym_r.find(qn("a:rPr"))
     if sym_rPr is not None:
-        sym_sz = int(int_sz * PRICE_SYMBOL_SCALE) if int_sz else None
-        if sym_sz:
-            sym_rPr.set("sz", str(sym_sz))
+        sym_rPr.set("sz", str(PRICE_SYMBOL_PT * 100))
+
+    int_r = copy.deepcopy(tmpl_r)
+    int_r.find(qn("a:t")).text = num_int
+    int_rPr = int_r.find(qn("a:rPr"))
+    if int_rPr is not None:
+        int_rPr.set("sz", str(PRICE_INT_PT * 100))
 
     runs = [sym_r, int_r]
 
@@ -349,8 +344,8 @@ def _set_price(shape, text: str) -> None:
         dec_r = copy.deepcopy(tmpl_r)
         dec_r.find(qn("a:t")).text = num_dec
         dec_rPr = dec_r.find(qn("a:rPr"))
-        if dec_rPr is not None and int_sz:
-            dec_rPr.set("sz", str(int(int_sz * PRICE_DECIMAL_SCALE)))
+        if dec_rPr is not None:
+            dec_rPr.set("sz", str(PRICE_DECIMAL_PT * 100))
         runs.append(dec_r)
 
     # Insert runs BEFORE <a:endParaRPr> to maintain valid OOXML element order.
