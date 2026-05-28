@@ -590,6 +590,21 @@ def _center_content_a4(slide, slide_width: int) -> None:
             para.alignment = PP_ALIGN.CENTER
 
 
+def _align_bank_group_a4(slide) -> None:
+    """Baja el GroupShape de oferta bancaria para alinearlo con el borde inferior del precio."""
+    price_shape = None
+    group_shape = None
+    for shape in slide.shapes:
+        if hasattr(shape, 'shapes'):
+            group_shape = shape
+        elif shape.has_text_frame:
+            t = _shape_text(shape)
+            if re.search(r"<<Precio\d*>>", t) or re.search(r"Precio\s+\d+", t):
+                price_shape = shape
+    if price_shape is not None and group_shape is not None:
+        group_shape.top = price_shape.top + price_shape.height - group_shape.height
+
+
 def _add_slide_from_template(prs, layout, template_shape_xmls):
     new_slide = prs.slides.add_slide(layout)
     sp_tree = new_slide.shapes._spTree
@@ -644,6 +659,7 @@ def generate_pptx_bytes(
                 _clear_slot(cur_slots[i])
         if products_per_slide == 1:
             _center_content_a4(slide, prs.slide_width)
+            _align_bank_group_a4(slide)
 
     buf = io.BytesIO()
     prs.save(buf)
