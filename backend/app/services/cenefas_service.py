@@ -403,7 +403,8 @@ def _set_desc(shape, text: str) -> None:
     first_run = target_para.runs[0]
     tmpl_r = copy.deepcopy(first_run._r)
     first_run.text = first_seg
-    first_run.font.bold = True if first_bold else None
+    # Explicit True/False — None heredaría el bold del párrafo/tema del template
+    first_run.font.bold = first_bold
 
     p_elem = target_para._p
     all_r = list(p_elem.findall(qn("a:r")))
@@ -417,15 +418,29 @@ def _set_desc(shape, text: str) -> None:
         new_r.find(qn("a:t")).text = seg
         rPr = new_r.find(qn("a:rPr"))
         if rPr is not None:
-            if bold:
-                rPr.set("b", "1")
-            else:
-                rPr.attrib.pop("b", None)
+            # "0" explícito para no-bold, evita herencia del bold del template
+            rPr.set("b", "1" if bold else "0")
         end_rpr = p_elem.find(qn("a:endParaRPr"))
         if end_rpr is not None:
             p_elem.insert(list(p_elem).index(end_rpr), new_r)
         else:
             p_elem.append(new_r)
+
+
+def _set_normAutofit(shape) -> None:
+    """Reemplaza spAutoFit por normAutofit: el texto se achica para caber en el cuadro
+    en vez de que el cuadro crezca y se superponga con los shapes de abajo."""
+    if not shape.has_text_frame:
+        return
+    body_pr = shape.text_frame._txBody.find(qn("a:bodyPr"))
+    if body_pr is None:
+        return
+    for tag in (qn("a:spAutoFit"), qn("a:noAutofit")):
+        child = body_pr.find(tag)
+        if child is not None:
+            body_pr.remove(child)
+    if body_pr.find(qn("a:normAutofit")) is None:
+        body_pr.append(etree.Element(qn("a:normAutofit")))
 
 
 def _set_p1(shape, text: str) -> None:
@@ -466,6 +481,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
             _set_text(shape, data["mecanica"])
         elif "<<" in t and "Descripci" in t:
             _set_desc(shape, data["descripcion"])
+            _set_normAutofit(shape)
         elif re.search(r"<<UnidadMedida\d+>>", t):
             _set_text(shape, data["unidad"] if multi else "")
         elif re.search(r"<<Vigencia\d*>>", t):
