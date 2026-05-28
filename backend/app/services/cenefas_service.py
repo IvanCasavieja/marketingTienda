@@ -149,7 +149,7 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
 
     # "unidad" solo para productos con múltiples SKUs (código con "/" o "dígito - dígito").
     # Productos de un solo SKU no muestran "unidad" aunque sean precio fijo.
-    is_multi_sku = bool(code and ("/" in code or re.search(r"\d\s*-\s*\d", code)))
+    is_multi_sku = bool(code and ("/" in code or re.search(r"\d\s*[-–—]\s*\d", code)))
 
     if is_multi_sku and ofertadet in ("Precio fijo", "% descuento"):
         unidad = "" if subcat in NO_UNIDAD_SUBCATS else "unidad"
@@ -460,7 +460,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
             _set_desc(shape, data["descripcion"])
         elif re.search(r"<<UnidadMedida\d+>>", t):
             _code = data.get("code", "")
-            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*-\s*\d", _code)))
+            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*[-–—]\s*\d", _code)))
             _set_text(shape, data["unidad"] if _multi else "")
         elif re.search(r"<<Vigencia\d*>>", t):
             _set_text(shape, data["vigencia"])
@@ -476,11 +476,11 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
             _set_text(shape, data.get("banco", ""))
         elif re.search(r"<<UnidadPrecio\d*>>", t):
             _code = data.get("code", "")
-            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*-\s*\d", _code)))
+            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*[-–—]\s*\d", _code)))
             _set_text_sized(shape, "unidad" if _multi else "", UNIDAD_PRECIO_PT)
         elif re.search(r"<<UnidadPBanco\d*>>", t):
             _code = data.get("code", "")
-            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*-\s*\d", _code)))
+            _multi = bool(_code and ("/" in _code or re.search(r"\d\s*[-–—]\s*\d", _code)))
             _set_text_sized(shape, "unidad" if _multi else "", UNIDAD_PBANCO_PT)
 
     # Ajuste dinámico de P1 solo para plantillas de 1 producto por hoja (A4).
