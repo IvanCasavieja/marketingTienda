@@ -20,7 +20,8 @@ P1_FONT_SIZE  = 32      # pt — "Precio Final" / "6X" label
 P1_BOLD       = False   # label goes without bold
 P1_MARGIN_EMU = 466400  # distance from P1 top to price shape top (32pt*12700 + 60000 gap)
 
-PRICE_DECIMAL_PT = 25  # pt — parte decimal fija (,90 / ,20) — entero y símbolo respetan el template
+PRICE_DECIMAL_PT = 20  # pt — parte decimal fija (,90 / ,20) para todos los precios
+PBANCO_INT_PT    = 40  # pt — tamaño fijo del entero/símbolo de pBanco
 
 DELI_SUBCATS = {"FIAMBRES", "QUESOS"}
 NO_UNIDAD_SUBCATS = {"CARNES", "FIAMBRES", "EMBUTIDOS CARNE", "QUESOS"}
@@ -290,7 +291,13 @@ def _set_text(shape, text: str) -> None:
         run.text = text
 
 
-def _set_price(shape, text: str) -> None:
+def _set_price(shape, text: str, int_pt: int | None = None) -> None:
+    """Renderiza un precio con símbolo, entero y decimal en runs separados.
+
+    int_pt: si se especifica, fija el tamaño del símbolo y el entero en ese valor
+            (ignora el tamaño del template). Usado para pBanco.
+            Si es None, usa el tamaño que tiene el shape en el template.
+    """
     if not shape.has_text_frame:
         return
 
@@ -324,13 +331,21 @@ def _set_price(shape, text: str) -> None:
         num_int = number
         num_dec = None
 
-    # Símbolo e entero: usan el tamaño que el diseñador puso en el template.
-    # Decimal: siempre fijo en PRICE_DECIMAL_PT (bastante más chico que el entero).
+    # Símbolo e entero: tamaño del template salvo que int_pt lo sobreescriba.
+    # Decimal: siempre fijo en PRICE_DECIMAL_PT.
     sym_r = copy.deepcopy(tmpl_r)
     sym_r.find(qn("a:t")).text = symbol
+    if int_pt is not None:
+        sym_rPr = sym_r.find(qn("a:rPr"))
+        if sym_rPr is not None:
+            sym_rPr.set("sz", str(int_pt * 100))
 
     int_r = copy.deepcopy(tmpl_r)
     int_r.find(qn("a:t")).text = num_int
+    if int_pt is not None:
+        int_rPr = int_r.find(qn("a:rPr"))
+        if int_rPr is not None:
+            int_rPr.set("sz", str(int_pt * 100))
 
     runs = [sym_r, int_r]
 
@@ -433,7 +448,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
         elif re.search(r"<<[Cc]ode\d*>>", t):
             _set_text(shape, data.get("code", ""))
         elif re.search(r"<<[Pp][Bb]anco\d*>>", t):
-            _set_price(shape, data.get("pbanco", ""))
+            _set_price(shape, data.get("pbanco", ""), int_pt=PBANCO_INT_PT)
         elif re.search(r"<<[Bb]anco\d*>>", t):
             _set_text(shape, data.get("banco", ""))
 
