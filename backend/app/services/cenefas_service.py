@@ -443,6 +443,9 @@ def _set_p1(shape, text: str) -> None:
 
 
 def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    _log.warning("FILL_SLOT code=%r shapes_texts=%r", data.get("code"), [_shape_text(s)[:30] for s in shapes])
     p1_shape = None
     price_shape = None
 
