@@ -315,9 +315,9 @@ def _set_text_sized(shape, text: str, pt: int) -> None:
 def _set_price(shape, text: str, int_pt: int | None = None) -> None:
     """Renderiza un precio con símbolo, entero y decimal en runs separados.
 
-    int_pt: si se especifica, fija el tamaño del símbolo y el entero en ese valor
-            (ignora el tamaño del template). Usado para pBanco.
-            Si es None, usa el tamaño que tiene el shape en el template.
+    Símbolo e entero usan el tamaño que tiene el run en el template.
+    Solo el decimal se fuerza a PRICE_DECIMAL_PT (20 pt).
+    int_pt se mantiene por compatibilidad pero ya no sobreescribe tamaños.
     """
     if not shape.has_text_frame:
         return
@@ -352,21 +352,13 @@ def _set_price(shape, text: str, int_pt: int | None = None) -> None:
         num_int = number
         num_dec = None
 
-    # Símbolo e entero: tamaño del template salvo que int_pt lo sobreescriba.
-    # Decimal: siempre fijo en PRICE_DECIMAL_PT.
+    # Símbolo e entero: respetan el tamaño escrito en el template.
+    # Decimal: siempre fijo en PRICE_DECIMAL_PT (20 pt).
     sym_r = copy.deepcopy(tmpl_r)
     sym_r.find(qn("a:t")).text = symbol
-    if int_pt is not None:
-        sym_rPr = sym_r.find(qn("a:rPr"))
-        if sym_rPr is not None:
-            sym_rPr.set("sz", str(int_pt * 100))
 
     int_r = copy.deepcopy(tmpl_r)
     int_r.find(qn("a:t")).text = num_int
-    if int_pt is not None:
-        int_rPr = int_r.find(qn("a:rPr"))
-        if int_rPr is not None:
-            int_rPr.set("sz", str(int_pt * 100))
 
     runs = [sym_r, int_r]
 
@@ -447,12 +439,18 @@ def _is_multi_sku(code: str) -> bool:
 
 
 def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
+    # Expand group shapes so children (e.g. <<banco>>/<<pbanco>>) are reached
+    expanded = list(shapes)
+    for shape in list(shapes):
+        if hasattr(shape, 'shapes'):
+            expanded.extend(shape.shapes)
+
     p1_shape = None
     price_shape = None
     code = data.get("code", "")
     multi = _is_multi_sku(code)
 
-    for shape in shapes:
+    for shape in expanded:
         t = _shape_text(shape)
         if re.search(r"<<P\d+>>", t):
             p1_shape = shape
