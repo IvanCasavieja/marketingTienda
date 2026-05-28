@@ -188,7 +188,7 @@ export default function CenefasPage() {
   const canSubmit = !!excel && hasTemplate && status !== "loading";
 
   return (
-    <div className="animate-fade-in max-w-2xl space-y-6">
+    <div className="animate-fade-in max-w-2xl space-y-6 bg-red-500 p-4">
       {/* Header */}
       <div className="flex items-center gap-4">
         <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0">
