@@ -527,9 +527,10 @@ def _get_slots(shapes) -> list[list]:
     - If multiple distinct slot numbers are detected (e.g. <<P1>>/<<P2>>/…), use
       those buckets directly (standard numbered templates, Pinchos 1-9).
     - If all shapes map to slot 1 (templates where every placeholder is labelled
-      "1" regardless of position, like Bases cenefas BLACK), count the price/P1
-      anchors to determine how many product copies are present, then split by
-      index into equal groups.
+      "1" regardless of position, like Bases cenefas BLACK), find the P1/Price
+      anchor shapes, then assign every shape to its spatially nearest anchor.
+      This is robust against XML insertion order (shapes added later don't land
+      in wrong slots just because they appear at the end of the XML).
     """
     buckets: dict[int, list] = {n: [] for n in range(1, 10)}
     for shape in shapes:
@@ -542,19 +543,39 @@ def _get_slots(shapes) -> list[list]:
     if len(present) > 1:
         return [buckets[n] for n in present]
 
-    # All shapes land in slot 1 — count "P1 label" anchors to find product count.
-    # Use price shapes as fallback only if no P1 labels exist (e.g. Pinchos-style).
+    # All shapes land in slot 1 — use spatial clustering.
     all_shapes = list(shapes)
-    p1_count = sum(1 for s in all_shapes if re.search(r"<<P\d+>>", _shape_text(s)))
-    price_count = sum(
-        1 for s in all_shapes
-        if re.search(r"Precio\s+\d+|<<Precio\d+>>", _shape_text(s))
-    )
-    products = max(p1_count if p1_count > 0 else price_count, 1)
+    anchors = [s for s in all_shapes if re.search(r"<<P\d+>>", _shape_text(s))]
+    if not anchors:
+        anchors = [s for s in all_shapes if re.search(r"Precio\s+\d+|<<Precio\d+>>", _shape_text(s))]
+
+    products = len(anchors)
     if products <= 1:
         return [all_shapes]
-    per_slot = len(all_shapes) // products
-    return [all_shapes[i * per_slot:(i + 1) * per_slot] for i in range(products)]
+
+    # Determine layout orientation from anchor spread (horizontal vs vertical).
+    xs = [s.left for s in anchors]
+    ys = [s.top for s in anchors]
+    horizontal = (max(xs) - min(xs)) >= (max(ys) - min(ys))
+
+    anchors_sorted = sorted(anchors, key=lambda s: s.left if horizontal else s.top)
+
+    # Assign each shape to the slot whose anchor center is closest.
+    slots: list[list] = [[] for _ in range(products)]
+    for shape in all_shapes:
+        cx = shape.left + shape.width // 2
+        cy = shape.top + shape.height // 2
+        best_idx = min(
+            range(products),
+            key=lambda i: abs(
+                (cx if horizontal else cy)
+                - (anchors_sorted[i].left + anchors_sorted[i].width // 2
+                   if horizontal
+                   else anchors_sorted[i].top + anchors_sorted[i].height // 2)
+            ),
+        )
+        slots[best_idx].append(shape)
+    return slots
 
 
 
