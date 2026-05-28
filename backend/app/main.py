@@ -67,4 +67,9 @@ app.include_router(router, prefix=settings.API_V1_PREFIX)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    import subprocess, os
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd="/app").decode().strip()
+    except Exception:
+        commit = "unknown"
+    return {"status": "ok", "commit": commit}
