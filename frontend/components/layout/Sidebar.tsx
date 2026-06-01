@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
-  BarChart3, ChevronRight, Presentation, Globe,
+  BarChart3, ChevronRight, Presentation, Globe, Layers,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, connectionsApi } from "@/lib/api";
@@ -31,6 +31,7 @@ export default function Sidebar() {
     { href: "/campaigns",          label: t("common.campaigns"),  icon: Megaphone,        section: "MKTG Platform" },
     { href: "/analytics",          label: t("common.aiAnalysis"), icon: Brain,            section: "MKTG Platform" },
     { href: "/herramientas/cenefas",label: t("common.cenefas"),   icon: Presentation,     section: t("sidebar.herramientas") },
+    { href: "/herramientas/cenefas/v2", label: "Editor v2",      icon: Layers,           section: t("sidebar.herramientas") },
     { href: "/settings",           label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion") },
   ];
 

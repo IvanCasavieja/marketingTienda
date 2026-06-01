@@ -96,3 +96,51 @@ export const chatApi = {
   sendMessage: (message: string, history: { role: string; content: string }[]) =>
     api.post<{ reply: string }>("/chat/message", { message, history }),
 };
+
+// ---------------------------------------------------------------------------
+// Cenefas v2
+// ---------------------------------------------------------------------------
+
+import type {
+  CenefaFormat,
+  CenefaJob,
+  CenefaTemplate,
+  CenefaTemplateRecord,
+} from "@/types/cenefas";
+
+export const cenefasV2Api = {
+  // Formatos del sistema
+  getFormats: () => api.get<CenefaFormat[]>("/tools/cenefas/v2/formats"),
+
+  // Templates
+  listTemplates: () => api.get<CenefaTemplateRecord[]>("/tools/cenefas/v2/templates"),
+  getTemplate: (id: string) =>
+    api.get<CenefaTemplateRecord>(`/tools/cenefas/v2/templates/${id}`),
+  createTemplate: (payload: CenefaTemplate) =>
+    api.post<{ id: string; name: string; created_at: string }>(
+      "/tools/cenefas/v2/templates",
+      payload
+    ),
+  updateTemplate: (id: string, payload: CenefaTemplate) =>
+    api.put<{ id: string; name: string }>(`/tools/cenefas/v2/templates/${id}`, payload),
+  deleteTemplate: (id: string) =>
+    api.delete(`/tools/cenefas/v2/templates/${id}`),
+
+  // Jobs
+  listJobs: () => api.get<CenefaJob[]>("/tools/cenefas/v2/jobs"),
+  getJob: (id: string) => api.get<CenefaJob>(`/tools/cenefas/v2/jobs/${id}`),
+  createJob: (formData: FormData) =>
+    api.post<{ job_id: string; status: string; format: string }>(
+      "/tools/cenefas/v2/jobs",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    ),
+  downloadJob: (id: string) =>
+    api.get(`/tools/cenefas/v2/jobs/${id}/download`, { responseType: "blob" }),
+
+  // Validación
+  validateCsv: (formData: FormData) =>
+    api.post("/tools/cenefas/v2/validate", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+};

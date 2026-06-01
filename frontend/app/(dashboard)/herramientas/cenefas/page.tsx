@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, ChangeEvent, FormEvent } from "react";
 import {
   Upload, Presentation, Download, AlertCircle, CheckCircle2, Loader2,
-  FileSpreadsheet, FileType2, Plus, Trash2, X, LayoutTemplate,
+  FileSpreadsheet, FileType2, Plus, Trash2, X, LayoutTemplate, Layers, ChevronRight,
 } from "lucide-react";
 import { toolsApi } from "@/lib/api";
 import { useTranslation } from "react-i18next";
@@ -189,6 +189,23 @@ export default function CenefasPage() {
 
   return (
     <div className="animate-fade-in max-w-2xl space-y-6">
+      {/* Banner Editor v2 */}
+      <a
+        href="/herramientas/cenefas/v2"
+        className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-brand-600 to-brand-500 text-white hover:from-brand-700 hover:to-brand-600 transition-all shadow-sm group"
+      >
+        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+          <Layers size={20} className="text-white" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-bold">Nuevo: Editor Visual v2</p>
+          <p className="text-xs text-brand-100 mt-0.5">
+            Diseñá componentes, aplicá reglas y generá múltiples formatos desde un solo template
+          </p>
+        </div>
+        <ChevronRight size={18} className="text-white/70 group-hover:text-white transition-colors" />
+      </a>
+
       {/* Header */}
       <div className="flex items-center gap-4">
         <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0">
