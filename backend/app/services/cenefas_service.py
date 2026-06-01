@@ -133,15 +133,25 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
     elif ofertadet == "M x N":
         precio_display = prefix + fmt_price(precio)
         mecanica = f"Comprando 2, {prefix}{fmt_price(precio)} c/u"
+        p1 = "M x N"
+
+    elif re.search(r"2da\s+al\s+50|2da\s+50", ofertadet, re.IGNORECASE):
+        precio_display = prefix + fmt_price(precio)
+        mecanica = "Comprando 2, la 2da al 50% OFF"
+        p1 = "2DA AL 50%"
 
     else:
         precio_val = precio
         if subcat in DELI_SUBCATS:
             dl = desc.lower()
-            if ". kg" in dl or " kg" in dl or dl.endswith("kg") or "100g" in dl:
+            has_kg = ". kg" in dl or " kg" in dl or dl.endswith("kg") or "100g" in dl
+            # FIAMBRES are always priced per kg in the Excel; always show per 100g.
+            # QUESOS only convert when the description explicitly mentions kg.
+            if has_kg or subcat == "FIAMBRES":
                 precio_val = precio / 10
-                desc = re.sub(r"\.\s*[Kk]g\b", ". 100g", desc)
-                desc = re.sub(r"\s+[Kk]g\b", " 100g", desc)
+                if has_kg:
+                    desc = re.sub(r"\.\s*[Kk]g\b", ". 100g", desc)
+                    desc = re.sub(r"\s+[Kk]g\b", " 100g", desc)
         precio_display = prefix + fmt_price(precio_val)
 
     if not p1:
@@ -447,9 +457,14 @@ def _set_p1(shape, text: str) -> None:
     _set_text(shape, text)
     if not shape.has_text_frame:
         return
+    # Combo/quantity labels (e.g. "2X", "3X") use the template's native font
+    # size — the shape was designed for large short text.  Text labels like
+    # "Precio Final" / "M x N" force a smaller fixed size so they fit.
+    is_combo_label = bool(re.match(r"^\d+X$", text.strip()))
     for para in shape.text_frame.paragraphs:
         for run in para.runs:
-            run.font.size = Pt(P1_FONT_SIZE)
+            if not is_combo_label:
+                run.font.size = Pt(P1_FONT_SIZE)
             run.font.bold = P1_BOLD
 
 
@@ -538,17 +553,70 @@ def _slot_num(shape) -> int | None:
     return None
 
 
+def _buckets_coherent(buckets: dict, present: list) -> bool:
+    """Return True if shapes in every numbered bucket are spatially co-located.
+
+    Some templates (e.g. Pinchos) assign <<Precio1>>…<<Precio9>> and
+    <<Descripción1>>…<<Descripción9>> with independent spatial orderings, so
+    same-numbered shapes end up in different visual rows/columns.  A vertical
+    spread > 3 million EMU (~8 cm) within a single bucket is a reliable signal
+    that the numbering is inconsistent and spatial grouping must be used instead.
+    """
+    for n in present:
+        shapes_in_bucket = buckets[n]
+        if len(shapes_in_bucket) < 2:
+            continue
+        tops = [s.top for s in shapes_in_bucket]
+        if max(tops) - min(tops) > 3_000_000:
+            return False
+    return True
+
+
+def _assign_by_nearest_anchor(anchors: list, all_shapes: list) -> list[list]:
+    """Assign each shape to the slot whose anchor is spatially nearest.
+
+    Anchors are sorted in reading order (top-to-bottom then left-to-right) so
+    that product slot 0 = top-left cell, slot 1 = next cell in reading order,
+    etc.  Only used for templates where numbered slot grouping is incoherent
+    (e.g. Pinchos 3×3 grid); the 1-D spatial-sort+split path handles the
+    standard single-row / single-column multi-product templates.
+    """
+    products = len(anchors)
+    anchors_sorted = sorted(
+        anchors,
+        key=lambda s: (s.top + s.height // 2, s.left + s.width // 2),
+    )
+
+    def _ctr(s):
+        return (s.left + s.width / 2, s.top + s.height / 2)
+
+    anchor_centers = [_ctr(a) for a in anchors_sorted]
+    slots: list[list] = [[] for _ in range(products)]
+    for shape in all_shapes:
+        cx, cy = _ctr(shape)
+        best = min(
+            range(products),
+            key=lambda i: (cx - anchor_centers[i][0]) ** 2 + (cy - anchor_centers[i][1]) ** 2,
+        )
+        slots[best].append(shape)
+    return slots
+
+
 def _get_slots(shapes) -> list[list]:
     """Group shapes by product slot. Supports 1–9 products per slide.
 
     Strategy:
-    - If multiple distinct slot numbers are detected (e.g. <<P1>>/<<P2>>/…), use
-      those buckets directly (standard numbered templates, Pinchos 1-9).
-    - If all shapes map to slot 1 (templates where every placeholder is labelled
-      "1" regardless of position, like Bases cenefas BLACK), find the P1/Price
-      anchor shapes, then assign every shape to its spatially nearest anchor.
-      This is robust against XML insertion order (shapes added later don't land
-      in wrong slots just because they appear at the end of the XML).
+    - If multiple distinct slot numbers are detected AND the shapes in each
+      bucket are spatially coherent (same visual region), use those buckets
+      directly (standard numbered multi-product templates).
+    - If shapes with the same slot number are in different visual cells
+      (Pinchos-style: Precio1-9 and Descripción1-9 numbered with different
+      spatial orderings), detect the incoherence and group by nearest-anchor
+      distance instead.
+    - If all shapes map to slot 1 (e.g. Bases cenefas BLACK), find the Price
+      anchor shapes, sort all shapes spatially, and split consecutively.
+      Nearest-anchor is NOT used here because boundary shapes can be closer to
+      the wrong anchor in 1-D strip layouts.
     """
     buckets: dict[int, list] = {n: [] for n in range(1, 10)}
     for shape in shapes:
@@ -559,7 +627,16 @@ def _get_slots(shapes) -> list[list]:
     present = sorted(n for n in range(1, 10) if buckets[n])
 
     if len(present) > 1:
-        return [buckets[n] for n in present]
+        if _buckets_coherent(buckets, present):
+            return [buckets[n] for n in present]
+        # Incoherent numbering (e.g. Pinchos): use nearest-anchor grouping.
+        all_shapes = list(shapes)
+        anchors = [s for s in all_shapes if re.search(r"Precio\s+\d+|<<Precio\d*>>", _shape_text(s))]
+        if not anchors:
+            anchors = [s for s in all_shapes if re.search(r"<<P\d+>>", _shape_text(s))]
+        if anchors:
+            return _assign_by_nearest_anchor(anchors, all_shapes)
+        return [buckets[n] for n in present]  # last-resort fallback
 
     # All shapes land in slot 1 — count anchors to determine product count.
     all_shapes = list(shapes)
@@ -580,7 +657,7 @@ def _get_slots(shapes) -> list[list]:
     # Nearest-anchor fails when a shape sits at the far end of its section
     # (e.g. "unidad" below a price) and the NEXT product's anchor is closer.
     # A positional sort + consecutive split is correct for any non-overlapping
-    # grid layout regardless of XML insertion order.
+    # 1-D strip layout regardless of XML insertion order.
     key = (lambda s: s.left + s.width // 2) if horizontal else (lambda s: s.top + s.height // 2)
     sorted_shapes = sorted(all_shapes, key=key)
     per_slot = len(sorted_shapes) // products
@@ -746,7 +823,7 @@ def generate_template_bytes() -> bytes:
     ws.row_dimensions[1].height = 26
     ws.freeze_panes = "A2"
 
-    dv_tipo = DataValidation(type="list", formula1='"Precio fijo,% descuento,Combo,M x N"', allow_blank=True)
+    dv_tipo = DataValidation(type="list", formula1='"Precio fijo,% descuento,Combo,M x N,2da al 50% OFF"', allow_blank=True)
     dv_tipo.sqref = "C2:C5000"
     ws.add_data_validation(dv_tipo)
 
@@ -776,7 +853,7 @@ def generate_template_bytes() -> bytes:
     rows = [
         ("Categoria",    "Categoría del producto",              "Texto libre",                     "Ej: ALIMENTOS, BEBIDAS CON ALCOHOL, CARNES"),
         ("subcategoria", "Subcategoría del producto",           "Texto libre",                     "QUESOS y FIAMBRES: precio por 100g si desc tiene 'kg'. CARNES/FIAMBRES/QUESOS: sin unidad."),
-        ("OFERTADET",    "Tipo de oferta",                      "Precio fijo / % descuento / Combo / M x N", "Determina cómo se muestra el precio en la cenefa"),
+        ("OFERTADET",    "Tipo de oferta",                      "Precio fijo / % descuento / Combo / M x N / 2da al 50% OFF", "Determina cómo se muestra el precio en la cenefa"),
         ("DESCRIPCION",  "Nombre del producto tal como aparece","Texto libre",                     "Las palabras en MAYÚSCULAS se muestran en negrita"),
         ("PRECIO",       "Precio unitario (número)",            "Número (ej: 1500, 45.90)",        "Para Combo: precio individual. Para dólares usa MONEDA=U$S"),
         ("OFERTA",       "Solo para Combo: cantidad y precio total", "Formato: 2X4500",            "2X4500 = 2 unidades por $4500. Vacío para otros tipos."),
