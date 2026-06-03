@@ -105,54 +105,62 @@ def _extract_image_b64(shape) -> tuple[str, str] | None:
 
 
 def _to_web_image(raw: bytes) -> tuple[bytes, str] | None:
-    """Convierte WMF/EMF/BMP/TIFF → PNG o JPEG según tenga transparencia."""
+    """Convierte formatos no-web (WMF, EMF, BMP, TIFF) → siempre PNG.
+    PNG es más confiable que JPEG para imágenes vectoriales rasterizadas por GDI+."""
     try:
         from PIL import Image as PILImage
         import io as _io
 
         img = PILImage.open(_io.BytesIO(raw))
-        return _pil_to_web(img)
+
+        # Para imágenes vectoriales grandes, limitar a 800px
+        max_dim = 800
+        if max(img.width, img.height) > max_dim:
+            ratio = max_dim / max(img.width, img.height)
+            img = img.resize(
+                (int(img.width * ratio), int(img.height * ratio)),
+                PILImage.LANCZOS,
+            )
+
+        # Siempre PNG para garantizar compatibilidad con todos los browsers
+        has_alpha = img.mode in ("RGBA", "LA") or (
+            img.mode == "P" and "transparency" in img.info
+        )
+        buf = _io.BytesIO()
+        img.convert("RGBA" if has_alpha else "RGB").save(buf, format="PNG", optimize=True)
+        return buf.getvalue(), "png"
     except Exception:
         return None
 
 
 def _compress_image(raw: bytes, ext: str) -> tuple[bytes, str]:
-    """Comprime una imagen web existente preservando transparencia PNG."""
+    """Comprime una imagen web existente (JPEG/PNG). Preserva transparencia."""
     try:
         from PIL import Image as PILImage
         import io as _io
 
         img = PILImage.open(_io.BytesIO(raw))
-        result = _pil_to_web(img)
-        return result if result else (raw, ext)
-    except Exception:
-        return raw, ext
-
-
-def _pil_to_web(img) -> tuple[bytes, str]:
-    """Convierte una imagen PIL a bytes web (PNG si tiene alpha, JPEG si no)."""
-    from PIL import Image as PILImage
-    import io as _io
-
-    has_alpha = img.mode in ("RGBA", "LA") or (
-        img.mode == "P" and "transparency" in img.info
-    )
-
-    max_dim = 1500
-    if max(img.width, img.height) > max_dim:
-        ratio = max_dim / max(img.width, img.height)
-        img = img.resize(
-            (int(img.width * ratio), int(img.height * ratio)),
-            PILImage.LANCZOS,
+        has_alpha = img.mode in ("RGBA", "LA") or (
+            img.mode == "P" and "transparency" in img.info
         )
 
-    buf = _io.BytesIO()
-    if has_alpha:
-        img.convert("RGBA").save(buf, format="PNG", optimize=True)
-        return buf.getvalue(), "png"
-    else:
-        img.convert("RGB").save(buf, format="JPEG", quality=85, optimize=True)
-        return buf.getvalue(), "jpeg"
+        max_dim = 1500
+        if max(img.width, img.height) > max_dim:
+            ratio = max_dim / max(img.width, img.height)
+            img = img.resize(
+                (int(img.width * ratio), int(img.height * ratio)),
+                PILImage.LANCZOS,
+            )
+
+        buf = _io.BytesIO()
+        if has_alpha:
+            img.convert("RGBA").save(buf, format="PNG", optimize=True)
+            return buf.getvalue(), "png"
+        else:
+            img.convert("RGB").save(buf, format="JPEG", quality=85, optimize=True)
+            return buf.getvalue(), "jpeg"
+    except Exception:
+        return raw, ext
 
 
 def _extract_fill_color(shape) -> str | None:
