@@ -156,6 +156,23 @@ def add_shape_component(slide, comp: dict) -> None:
         shape.fill.background()
 
 
+def add_image_from_data(slide, comp: dict) -> None:
+    """Embebe una imagen base64 directamente en el slide."""
+    import base64 as _b64
+    bounds = comp["computed_bounds"]
+    try:
+        img_bytes = _b64.b64decode(comp["image_data"])
+        slide.shapes.add_picture(
+            io.BytesIO(img_bytes),
+            Cm(bounds["x"]),
+            Cm(bounds["y"]),
+            Cm(max(bounds["width"],  0.1)),
+            Cm(max(bounds["height"], 0.1)),
+        )
+    except Exception:
+        add_image_placeholder(slide, comp, comp.get("name", "imagen"))
+
+
 def add_image_placeholder(slide, comp: dict, label: str) -> None:
     """Placeholder para imágenes — rectángulo gris con el nombre de la variable.
 
@@ -212,7 +229,10 @@ def _render_slide(slide, comp_layout: list[dict], product: dict, slot_offset_x: 
         elif comp_type == "shape":
             add_shape_component(slide, comp)
         elif comp_type == "image":
-            add_image_placeholder(slide, comp, variable or "imagen")
+            if comp.get("image_data"):
+                add_image_from_data(slide, comp)
+            else:
+                add_image_placeholder(slide, comp, variable or "imagen")
 
 
 # ---------------------------------------------------------------------------

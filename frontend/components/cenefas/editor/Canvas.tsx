@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent } from "@/types/cenefas";
@@ -214,15 +214,30 @@ interface ComponentShapeProps {
   onDragEnd:  (x: number, y: number) => void;
 }
 
+function useBase64Image(imageData?: string, imageExt?: string) {
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (!imageData) { setImg(null); return; }
+    const el = new window.Image();
+    el.src = `data:image/${imageExt ?? "png"};base64,${imageData}`;
+    el.onload  = () => setImg(el);
+    el.onerror = () => setImg(null);
+    return () => { el.onload = null; el.onerror = null; };
+  }, [imageData, imageExt]);
+  return img;
+}
+
 function ComponentShape({
   comp, pageLeft, pageTop, isSelected, draggable, shapeRef, onSelect, onDragEnd,
 }: ComponentShapeProps) {
-  const color  = COMP_COLORS[comp.type] ?? "#64748b";
-  const b      = comp.base_bounds;
-  const x      = pageLeft + scalePx(b.x);
-  const y      = pageTop  + scalePx(b.y);
-  const w      = Math.max(scalePx(b.width),  20);
-  const h      = Math.max(scalePx(b.height), 10);
+  const color = COMP_COLORS[comp.type] ?? "#64748b";
+  const b     = comp.base_bounds;
+  const x     = pageLeft + scalePx(b.x);
+  const y     = pageTop  + scalePx(b.y);
+  const w     = Math.max(scalePx(b.width),  20);
+  const h     = Math.max(scalePx(b.height), 10);
+
+  const loadedImg = useBase64Image(comp.image_data, comp.image_ext);
 
   return (
     <Group
@@ -233,28 +248,62 @@ function ComponentShape({
       onTap={onSelect}
       onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
     >
-      <Rect
-        width={w} height={h}
-        fill={`${color}22`}
-        stroke={isSelected ? color : `${color}88`}
-        strokeWidth={isSelected ? 2 : 1}
-        cornerRadius={3}
-        dash={comp.locked ? [4, 3] : undefined}
-      />
-      <Text
-        x={4} y={4} width={w - 8} height={h - 8}
-        text={
-          comp.variable
-            ? `${comp.name}\n(${comp.variable})`
-            : comp.static_value
-              ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
-              : comp.name
-        }
-        fontSize={Math.min(11, Math.max(7, h / 2.5))}
-        fill={color}
-        fontFamily="Inter, system-ui, sans-serif"
-        ellipsis wrap="word"
-      />
+      {/* Imagen real cuando está disponible */}
+      {loadedImg ? (
+        <>
+          <KonvaImage
+            image={loadedImg}
+            width={w} height={h}
+            cornerRadius={comp.locked ? 0 : 2}
+          />
+          {/* Borde de selección encima de la imagen */}
+          {isSelected && (
+            <Rect width={w} height={h}
+              fill="transparent"
+              stroke={color} strokeWidth={2}
+              cornerRadius={2}
+            />
+          )}
+          {/* Borde tenue cuando no está seleccionado pero es un componente editable */}
+          {!isSelected && !comp.locked && (
+            <Rect width={w} height={h}
+              fill="transparent"
+              stroke={`${color}55`} strokeWidth={1}
+              dash={[4, 3]}
+            />
+          )}
+        </>
+      ) : (
+        /* Placeholder coloreado para imágenes sin datos o shapes/textos */
+        <>
+          <Rect
+            width={w} height={h}
+            fill={
+              comp.type === "shape" && comp.style?.background_color
+                ? comp.style.background_color
+                : `${color}22`
+            }
+            stroke={isSelected ? color : `${color}88`}
+            strokeWidth={isSelected ? 2 : 1}
+            cornerRadius={3}
+            dash={comp.locked ? [4, 3] : undefined}
+          />
+          <Text
+            x={4} y={4} width={w - 8} height={h - 8}
+            text={
+              comp.variable
+                ? `${comp.name}\n(${comp.variable})`
+                : comp.static_value
+                  ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
+                  : comp.name
+            }
+            fontSize={Math.min(11, Math.max(7, h / 2.5))}
+            fill={comp.type === "shape" && comp.style?.background_color ? "#00000055" : color}
+            fontFamily="Inter, system-ui, sans-serif"
+            ellipsis wrap="word"
+          />
+        </>
+      )}
     </Group>
   );
 }

@@ -1,4 +1,5 @@
 """Importador PPTX → definición v2 de componentes."""
+import base64
 import re
 import uuid
 from io import BytesIO
@@ -8,10 +9,8 @@ from pptx.enum.text import PP_ALIGN
 
 _EMU_PER_CM = 360_000
 
-# Regex: <<PLACEHOLDER>> con número de slot opcional
 _RE_PLACEHOLDER = re.compile(r"<<(\w+?)(\d*)>>", re.IGNORECASE)
 
-# Mapping placeholder root (lowercase) → (var_name, var_type, transform)
 _PLACEHOLDER_MAP: dict[str, tuple[str, str, str]] = {
     "p":               ("precio",          "price", "price_full"),
     "precio":          ("precio",          "price", "price_full"),
@@ -63,7 +62,6 @@ def _emu_to_cm(emu: int) -> float:
 
 
 def _detect_format(width_cm: float, height_cm: float) -> tuple[str, int]:
-    """Devuelve (format_id, slots) para las dimensiones dadas."""
     best = "a4"
     best_dist = float("inf")
     for fmt_id, (w, h, _slots) in _FORMATS_DIM.items():
@@ -73,6 +71,49 @@ def _detect_format(width_cm: float, height_cm: float) -> tuple[str, int]:
             best = fmt_id
     _, _, slots = _FORMATS_DIM[best]
     return best, slots
+
+
+_MAX_IMAGE_BYTES = 300_000  # ~300 KB antes de comprimir
+
+
+def _extract_image_b64(shape) -> tuple[str, str] | None:
+    """Extrae la imagen de un shape Picture, comprimiendo si es necesario.
+    Devuelve (base64_str, ext) o None."""
+    try:
+        img_obj = shape.image
+        raw = img_obj.blob
+        ext = img_obj.ext.lower()
+
+        if len(raw) > _MAX_IMAGE_BYTES:
+            raw, ext = _compress_image(raw, ext)
+
+        return base64.b64encode(raw).decode("utf-8"), ext
+    except Exception:
+        return None
+
+
+def _compress_image(raw: bytes, ext: str) -> tuple[bytes, str]:
+    """Comprime la imagen a JPEG 85% si supera el umbral de tamaño."""
+    try:
+        from PIL import Image as PILImage
+        import io as _io
+
+        img = PILImage.open(_io.BytesIO(raw)).convert("RGB")
+
+        # Reducir resolución si el lado mayor supera 1500px
+        max_dim = 1500
+        if max(img.width, img.height) > max_dim:
+            ratio = max_dim / max(img.width, img.height)
+            img = img.resize(
+                (int(img.width * ratio), int(img.height * ratio)),
+                PILImage.LANCZOS,
+            )
+
+        buf = _io.BytesIO()
+        img.save(buf, format="JPEG", quality=85, optimize=True)
+        return buf.getvalue(), "jpeg"
+    except Exception:
+        return raw, ext
 
 
 def _extract_fill_color(shape) -> str | None:
@@ -101,21 +142,15 @@ def _get_shape_text(shape) -> str:
 
 
 def _detect_placeholder(text: str) -> tuple[str, str, str] | None:
-    """Devuelve (var_name, var_type, transform) o None si no hay placeholder."""
     m = _RE_PLACEHOLDER.search(text)
     if not m:
         return None
     root = m.group(1).lower()
-
     if root in _PLACEHOLDER_MAP:
         return _PLACEHOLDER_MAP[root]
-
-    # Coincidencia parcial por prefijo
     for key, value in _PLACEHOLDER_MAP.items():
         if root.startswith(key) or key.startswith(root):
             return value
-
-    # Fallback: usar el nombre tal cual
     return (root, "text", "none")
 
 
@@ -123,15 +158,12 @@ def _extract_style(shape) -> dict:
     style: dict = {}
     if not shape.has_text_frame:
         return style
-
     tf = shape.text_frame
-
     for para in tf.paragraphs:
         if para.alignment is not None:
             _align = {PP_ALIGN.LEFT: "left", PP_ALIGN.CENTER: "center", PP_ALIGN.RIGHT: "right"}
             style["align"] = _align.get(para.alignment, "center")
             break
-
     first_run = None
     for para in tf.paragraphs:
         for run in para.runs:
@@ -140,7 +172,6 @@ def _extract_style(shape) -> dict:
                 break
         if first_run:
             break
-
     if first_run:
         font = first_run.font
         try:
@@ -161,7 +192,6 @@ def _extract_style(shape) -> dict:
         color = _extract_font_color(first_run)
         if color:
             style["color"] = color
-
     style.setdefault("align", "center")
     style["auto_fit"] = True
     return style
@@ -177,11 +207,7 @@ def _flatten_shapes(shapes) -> list:
     return result
 
 
-# ---------------------------------------------------------------------------
-# Parseo de shapes individuales
-# ---------------------------------------------------------------------------
-
-def _parse_shape(shape, z_index: int) -> dict | None:
+def _make_common(shape, z_index: int) -> dict | None:
     try:
         left   = _emu_to_cm(shape.left   or 0)
         top    = _emu_to_cm(shape.top    or 0)
@@ -189,26 +215,37 @@ def _parse_shape(shape, z_index: int) -> dict | None:
         height = _emu_to_cm(shape.height or 0)
     except Exception:
         return None
-
     if width < 0.1 or height < 0.1:
         return None
-
-    base = {"x": left, "y": top, "width": width, "height": height}
-    common = {
-        "id":             str(uuid.uuid4()),
-        "base_bounds":    base,
+    return {
+        "id":               str(uuid.uuid4()),
+        "base_bounds":      {"x": left, "y": top, "width": width, "height": height},
         "format_overrides": {},
-        "z_index":        z_index,
-        "locked":         False,
-        "visible":        True,
+        "z_index":          z_index,
+        "locked":           False,
+        "visible":          True,
     }
 
-    # Imagen
+
+# ---------------------------------------------------------------------------
+# Parseo de shapes individuales
+# ---------------------------------------------------------------------------
+
+def _parse_shape(shape, z_index: int) -> dict | None:
+    common = _make_common(shape, z_index)
+    if common is None:
+        return None
+
+    # Imagen embebida (foto, cocarde, logo)
     try:
         from pptx.enum.shapes import MSO_SHAPE_TYPE
         if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-            return {**common, "type": "image", "name": f"imagen_{z_index}",
-                    "variable": "imagen", "style": {}, "_var_type": "image_url"}
+            comp = {**common, "type": "image", "name": f"imagen_{z_index}",
+                    "variable": None, "style": {}, "_var_type": "image_url"}
+            result = _extract_image_b64(shape)
+            if result:
+                comp["image_data"], comp["image_ext"] = result
+            return comp
     except Exception:
         pass
 
@@ -222,15 +259,14 @@ def _parse_shape(shape, z_index: int) -> dict | None:
             return {**common, "type": "text", "name": var_name,
                     "variable": var_name, "transform": transform,
                     "style": style, "_var_type": var_type}
-        # Texto estático (etiquetas, aclaraciones fijas, logos, etc.)
         if not text:
-            return None  # ignorar cuadros vacíos
+            return None
         label = text[:30]
         return {**common, "type": "text", "name": label,
                 "variable": None, "static_value": text,
                 "transform": "none", "style": style, "_var_type": "text"}
 
-    # Shape sin texto → fondo/decorativo
+    # Shape sin texto → fondo/decorativo con color
     style = {}
     bg = _extract_fill_color(shape)
     if bg:
@@ -251,22 +287,48 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
     slide = prs.slides[0]
     width_cm  = _emu_to_cm(prs.slide_width)
     height_cm = _emu_to_cm(prs.slide_height)
-
     format_id, slots = _detect_format(width_cm, height_cm)
-    slot_width = width_cm / slots  # 21cm para 3xa4, igual al total para 1-slot
+    slot_width = width_cm / slots
 
-    all_shapes = _flatten_shapes(slide.shapes)
-
-    components: list[dict]     = []
+    components: list[dict]          = []
     variables_seen: dict[str, dict] = {}
     z_index = 0
 
-    for shape in all_shapes:
+    # ── 1. Imágenes del slide master (fondo visual del template) ──────────
+    try:
+        from pptx.enum.shapes import MSO_SHAPE_TYPE
+        master = slide.slide_layout.slide_master
+        for shape in master.shapes:
+            if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
+                continue
+            common = _make_common(shape, z_index)
+            if common is None:
+                continue
+            result = _extract_image_b64(shape)
+            if not result:
+                continue
+            b64, ext = result
+            components.append({
+                **common,
+                "type":       "image",
+                "name":       "fondo",
+                "variable":   None,
+                "image_data": b64,
+                "image_ext":  ext,
+                "style":      {},
+                "locked":     True,   # fondo bloqueado, no editable por accidente
+            })
+            z_index += 1
+    except Exception:
+        pass
+
+    # ── 2. Shapes del slide (datos variables + imágenes embebidas) ────────
+    for shape in _flatten_shapes(slide.shapes):
         comp = _parse_shape(shape, z_index)
         if comp is None:
             continue
 
-        # Para formatos multi-slot: conservar solo las shapes del primer slot
+        # Formatos multi-slot: solo primer slot
         if slots > 1 and comp["base_bounds"]["x"] >= slot_width:
             continue
 
