@@ -194,10 +194,11 @@ def _render_slide(slide, comp_layout: list[dict], product: dict, slot_offset_x: 
         if not comp.get("visible", True):
             continue
 
-        variable  = comp.get("variable")
-        raw_value = str(product.get(variable, "") or "") if variable else ""
-        transform = comp.get("transform", "none")
-        value     = apply_transform(raw_value, transform)
+        variable     = comp.get("variable")
+        static_value = comp.get("static_value", "")
+        raw_value    = str(product.get(variable, "") or "") if variable else static_value
+        transform    = comp.get("transform", "none")
+        value        = apply_transform(raw_value, transform)
 
         # Offset horizontal para layouts multi-slot
         if slot_offset_x > 0:

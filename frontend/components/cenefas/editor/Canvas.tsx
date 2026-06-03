@@ -243,7 +243,13 @@ function ComponentShape({
       />
       <Text
         x={4} y={4} width={w - 8} height={h - 8}
-        text={comp.variable ? `${comp.name}\n(${comp.variable})` : comp.name}
+        text={
+          comp.variable
+            ? `${comp.name}\n(${comp.variable})`
+            : comp.static_value
+              ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
+              : comp.name
+        }
         fontSize={Math.min(11, Math.max(7, h / 2.5))}
         fill={color}
         fontFamily="Inter, system-ui, sans-serif"

@@ -11,6 +11,7 @@ interface ComponentBlueprint {
   label: string;
   type: CenefaComponent["type"];
   variable?: string;
+  static_value?: string;
   transform?: CenefaComponent["transform"];
   icon: React.ReactNode;
   color: string;
@@ -119,6 +120,15 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
         defaults: { style: { background_color: "#F1F5F9" },
                     base_bounds: { x: 0, y: 0, width: 21, height: 5 } },
       },
+      {
+        label: "Texto fijo",
+        type: "text",
+        static_value: "Texto fijo",
+        icon: <Type size={14} />, color: "text-slate-400",
+        defaults: { style: { font_size: 10, align: "center" },
+                    base_bounds: { x: 0.5, y: 1, width: 10, height: 0.8 },
+                    static_value: "Texto fijo" },
+      },
     ],
   },
 ];
@@ -135,15 +145,16 @@ export default function ComponentPanel() {
     const id = crypto.randomUUID();
     const comp: CenefaComponent = {
       id,
-      type: blueprint.type,
-      name: blueprint.label,
-      variable: blueprint.variable,
-      transform: blueprint.transform,
-      style: blueprint.defaults.style ?? {},
-      base_bounds: blueprint.defaults.base_bounds ?? { x: 1, y: 1, width: 6, height: 2 },
+      type:         blueprint.type,
+      name:         blueprint.label,
+      variable:     blueprint.variable,
+      static_value: blueprint.defaults.static_value,
+      transform:    blueprint.transform,
+      style:        blueprint.defaults.style ?? {},
+      base_bounds:  blueprint.defaults.base_bounds ?? { x: 1, y: 1, width: 6, height: 2 },
       format_overrides: {},
       z_index: template.components.length + 1,
-      locked: false,
+      locked:  false,
       visible: true,
     };
     addComponent(comp);

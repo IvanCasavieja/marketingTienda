@@ -85,20 +85,38 @@ export default function PropertiesPanel() {
 
       <div className="p-4 space-y-5">
         {/* Variable */}
-        <Section label="Variable CSV">
-          <select
-            className="input w-full text-sm"
-            value={comp.variable ?? ""}
-            onChange={(e) => set("variable", e.target.value || undefined)}
-          >
-            <option value="">— Sin variable —</option>
-            {template.variables.map((v) => (
-              <option key={v.name} value={v.name}>
-                {v.name} ({v.csv_column})
-              </option>
-            ))}
-          </select>
-        </Section>
+        {comp.type !== "shape" && (
+          <Section label="Variable CSV">
+            <select
+              className="input w-full text-sm"
+              value={comp.variable ?? ""}
+              onChange={(e) => set("variable", e.target.value || undefined)}
+            >
+              <option value="">— Texto fijo (sin variable) —</option>
+              {template.variables.map((v) => (
+                <option key={v.name} value={v.name}>
+                  {v.name} ({v.csv_column})
+                </option>
+              ))}
+            </select>
+          </Section>
+        )}
+
+        {/* Texto fijo — visible solo cuando no hay variable */}
+        {comp.type === "text" && !comp.variable && (
+          <Section label="Texto fijo">
+            <input
+              type="text"
+              className="input w-full text-sm"
+              placeholder="Ej: VÁLIDO AL:, unidad, ..."
+              value={comp.static_value ?? ""}
+              onChange={(e) => set("static_value", e.target.value || undefined)}
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Este texto aparece igual en todas las cenefas generadas.
+            </p>
+          </Section>
+        )}
 
         {/* Transformación */}
         {comp.type === "text" && (

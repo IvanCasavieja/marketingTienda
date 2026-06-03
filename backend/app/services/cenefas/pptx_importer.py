@@ -222,11 +222,13 @@ def _parse_shape(shape, z_index: int) -> dict | None:
             return {**common, "type": "text", "name": var_name,
                     "variable": var_name, "transform": transform,
                     "style": style, "_var_type": var_type}
-        # Texto estático (etiquetas, aclaraciones fijas, etc.)
-        label = text[:30] if text else f"texto_{z_index}"
+        # Texto estático (etiquetas, aclaraciones fijas, logos, etc.)
+        if not text:
+            return None  # ignorar cuadros vacíos
+        label = text[:30]
         return {**common, "type": "text", "name": label,
-                "variable": None, "transform": "none",
-                "style": style, "_var_type": "text"}
+                "variable": None, "static_value": text,
+                "transform": "none", "style": style, "_var_type": "text"}
 
     # Shape sin texto → fondo/decorativo
     style = {}

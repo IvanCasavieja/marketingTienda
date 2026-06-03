@@ -34,6 +34,7 @@ export interface CenefaComponent {
   type: ComponentType;
   name: string;
   variable?: string;
+  static_value?: string;
   transform?: TextTransform;
   style: ComponentStyle;
   base_bounds: ComponentBounds;
