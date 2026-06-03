@@ -91,11 +91,12 @@ def _extract_image_b64(shape) -> tuple[str, str] | None:
             ext = "jpeg"
 
         if ext not in _WEB_EXTS:
-            # Formato no soportado por navegadores → intentar convertir
+            # Intentar convertir a PNG (funciona en Windows/GDI+)
             converted = _to_web_image(raw)
-            if converted is None:
-                return None  # No se pudo convertir; saltar la imagen
-            raw, ext = converted
+            if converted is not None:
+                raw, ext = converted
+            # Si PIL falla (Linux): guardar raw con ext original.
+            # El renderer lo embebe en el PPTX directamente sin PIL.
         elif len(raw) > _MAX_IMAGE_BYTES:
             raw, ext = _compress_image(raw, ext)
 
@@ -105,15 +106,17 @@ def _extract_image_b64(shape) -> tuple[str, str] | None:
 
 
 def _to_web_image(raw: bytes) -> tuple[bytes, str] | None:
-    """Convierte formatos no-web (WMF, EMF, BMP, TIFF) → siempre PNG.
-    PNG es más confiable que JPEG para imágenes vectoriales rasterizadas por GDI+."""
+    """Intenta convertir WMF/EMF/BMP/TIFF → PNG usando PIL.
+    Funciona en Windows (GDI+). En Linux devuelve None → el renderer embebe raw."""
     try:
         from PIL import Image as PILImage
         import io as _io
 
         img = PILImage.open(_io.BytesIO(raw))
 
-        # Para imágenes vectoriales grandes, limitar a 800px
+        # Verificar que PIL realmente pudo rasterizar (no solo abrir el header)
+        img.load()
+
         max_dim = 800
         if max(img.width, img.height) > max_dim:
             ratio = max_dim / max(img.width, img.height)
@@ -122,7 +125,6 @@ def _to_web_image(raw: bytes) -> tuple[bytes, str] | None:
                 PILImage.LANCZOS,
             )
 
-        # Siempre PNG para garantizar compatibilidad con todos los browsers
         has_alpha = img.mode in ("RGBA", "LA") or (
             img.mode == "P" and "transparency" in img.info
         )

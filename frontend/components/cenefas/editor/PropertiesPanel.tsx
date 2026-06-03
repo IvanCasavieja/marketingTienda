@@ -52,7 +52,7 @@ export default function PropertiesPanel() {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="flex-1 overflow-y-auto min-h-0">
       {/* Header del componente */}
       <div className="p-4 border-b border-slate-100 flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">

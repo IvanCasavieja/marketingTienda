@@ -309,8 +309,8 @@ export default function EditorPage() {
         </main>
 
         {/* Panel derecho */}
-        <aside className="w-64 flex-shrink-0 border-l border-slate-100">
-          <div className="px-4 py-2.5 border-b border-slate-100">
+        <aside className="w-64 flex-shrink-0 border-l border-slate-100 flex flex-col min-h-0">
+          <div className="px-4 py-2.5 border-b border-slate-100 flex-shrink-0">
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
               Propiedades
             </p>

@@ -156,21 +156,75 @@ def add_shape_component(slide, comp: dict) -> None:
         shape.fill.background()
 
 
+_WMF_EXTS = {"wmf", "emf"}
+
 def add_image_from_data(slide, comp: dict) -> None:
-    """Embebe una imagen base64 directamente en el slide."""
+    """Embebe una imagen base64 en el slide.
+    Formatos web (JPEG/PNG): usa add_picture normal.
+    Formatos vectoriales (WMF/EMF): embebe via XML directo, sin PIL."""
     import base64 as _b64
-    bounds = comp["computed_bounds"]
+    bounds   = comp["computed_bounds"]
+    img_ext  = (comp.get("image_ext") or "").lower()
+
     try:
         img_bytes = _b64.b64decode(comp["image_data"])
-        slide.shapes.add_picture(
-            io.BytesIO(img_bytes),
-            Cm(bounds["x"]),
-            Cm(bounds["y"]),
-            Cm(max(bounds["width"],  0.1)),
-            Cm(max(bounds["height"], 0.1)),
-        )
     except Exception:
         add_image_placeholder(slide, comp, comp.get("name", "imagen"))
+        return
+
+    if img_ext in _WMF_EXTS:
+        _embed_vector_image(slide, img_bytes, img_ext, bounds)
+    else:
+        try:
+            slide.shapes.add_picture(
+                io.BytesIO(img_bytes),
+                Cm(bounds["x"]),
+                Cm(bounds["y"]),
+                Cm(max(bounds["width"],  0.1)),
+                Cm(max(bounds["height"], 0.1)),
+            )
+        except Exception:
+            add_image_placeholder(slide, comp, comp.get("name", "imagen"))
+
+
+def _embed_vector_image(slide, img_bytes: bytes, ext: str, bounds: dict) -> None:
+    """Embebe WMF/EMF directamente en el XML del slide sin pasar por PIL."""
+    import hashlib
+    from pptx.opc.part import Part
+    from pptx.opc.packuri import PackURI
+
+    content_types = {"wmf": "image/x-wmf", "emf": "image/x-emf"}
+    ct  = content_types.get(ext, "image/x-wmf")
+    h   = hashlib.md5(img_bytes).hexdigest()[:12]
+    uri = PackURI(f"/ppt/media/img_{h}.{ext}")
+
+    img_part = Part(uri, ct, img_bytes)
+    rId = slide.part.relate_to(
+        img_part,
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+    )
+
+    x  = int(Cm(bounds["x"]))
+    y  = int(Cm(bounds["y"]))
+    cx = int(Cm(max(bounds["width"],  0.1)))
+    cy = int(Cm(max(bounds["height"], 0.1)))
+    pid = abs(hash(h)) % 8000 + 1000
+
+    pic_xml = (
+        f'<p:pic xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        f' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+        f' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f'<p:nvPicPr>'
+        f'<p:cNvPr id="{pid}" name="img_{h[:8]}"/>'
+        f'<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>'
+        f'<p:nvPr/></p:nvPicPr>'
+        f'<p:blipFill><a:blip r:embed="{rId}"/>'
+        f'<a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+        f'<p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
+        f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
+        f'</p:pic>'
+    )
+    slide.shapes._spTree.append(etree.fromstring(pic_xml.encode()))
 
 
 def add_image_placeholder(slide, comp: dict, label: str) -> None:
