@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useEditorStore } from "@/store/editor";
-import type { CenefaComponent, CenefaTemplate } from "@/types/cenefas";
-import { Trash2, Lock, Unlock } from "lucide-react";
+import type { CenefaComponent, CenefaRule, CenefaTemplate } from "@/types/cenefas";
+import { Trash2, Lock, Unlock, Plus } from "lucide-react";
+import { RuleChip, RuleForm } from "./RulesPanel";
 
 const TRANSFORMS = [
   { value: "none",           label: "Sin transformación" },
@@ -16,10 +17,11 @@ const TRANSFORMS = [
 ];
 
 export default function PropertiesPanel() {
-  const { template, selectedComponentId, getSelectedComponent, updateComponent, deleteComponent } =
+  const { template, selectedComponentId, getSelectedComponent, updateComponent, deleteComponent, addRule, deleteRule } =
     useEditorStore();
 
   const comp = getSelectedComponent();
+  const [showRuleForm, setShowRuleForm] = useState(false);
 
   if (!comp) {
     return (
@@ -250,6 +252,48 @@ export default function PropertiesPanel() {
         {template.formats.filter((f) => f !== template.master_format).length > 0 && (
           <FormatOverridesSection comp={comp} updateComponent={updateComponent} template={template} />
         )}
+
+        {/* Reglas de visibilidad para este componente */}
+        <Section label="Reglas de visibilidad">
+          {(() => {
+            const compRules = template.rules.filter(
+              (r) => r.target_component_id === comp.id
+            );
+            return (
+              <div className="space-y-0.5">
+                {compRules.length === 0 && !showRuleForm && (
+                  <p className="text-[10px] text-slate-400 italic">
+                    Siempre visible — sin reglas
+                  </p>
+                )}
+                {compRules.map((rule) => (
+                  <RuleChip
+                    key={rule.id}
+                    rule={rule}
+                    onDelete={() => deleteRule(rule.id)}
+                  />
+                ))}
+                {showRuleForm ? (
+                  <div className="mt-2">
+                    <RuleForm
+                      componentId={comp.id}
+                      variables={template.variables}
+                      onSave={(rule: CenefaRule) => { addRule(rule); setShowRuleForm(false); }}
+                      onCancel={() => setShowRuleForm(false)}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowRuleForm(true)}
+                    className="flex items-center gap-1 text-[10px] text-brand-600 hover:text-brand-700 font-medium mt-1"
+                  >
+                    <Plus size={10} /> Agregar regla
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+        </Section>
       </div>
     </div>
   );
