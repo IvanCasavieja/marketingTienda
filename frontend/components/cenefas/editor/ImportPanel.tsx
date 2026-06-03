@@ -82,9 +82,8 @@ export default function ImportPanel({ onDismiss }: Props) {
   }
 
   return (
-    /* Overlay semitransparente sobre el canvas */
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-100/80 backdrop-blur-sm p-6">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden">
+    <div className="w-full max-w-2xl">
+      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full overflow-hidden">
 
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b border-slate-100">
