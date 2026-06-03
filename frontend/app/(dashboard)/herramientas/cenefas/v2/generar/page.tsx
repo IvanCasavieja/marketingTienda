@@ -55,6 +55,14 @@ export default function GenerarPage() {
   const dlRef   = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
+    // Pre-seleccionar template si viene del editor (?template_id=...)
+    const params = new URLSearchParams(window.location.search);
+    const paramId = params.get("template_id");
+    if (paramId) {
+      setTemplateId(paramId);
+      setTmplMode("v2");
+    }
+
     cenefasV2Api.listTemplates().then(({ data }) => setTemplates(data)).catch(() => {});
     cenefasV2Api.getFormats().then(({ data }) => setFormats(data)).catch(() => {});
   }, []);

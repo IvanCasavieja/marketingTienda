@@ -47,6 +47,7 @@ export default function EditorPage() {
   const [formats,      setFormats]      = useState<CenefaFormat[]>([]);
   const [savedTmpls,   setSavedTmpls]   = useState<CenefaTemplateRecord[]>([]);
   const [saving,       setSaving]       = useState(false);
+  const [generating,   setGenerating]   = useState(false);
   const [nameEditing,  setNameEditing]  = useState(false);
   const [showTmplMenu, setShowTmplMenu] = useState(false);
   const [loadingTmpl,  setLoadingTmpl]  = useState(false);
@@ -85,6 +86,31 @@ export default function EditorPage() {
       toast.error("Error al cargar el template");
     } finally {
       setLoadingTmpl(false);
+    }
+  }
+
+  async function handleGenerate() {
+    if (template.components.length === 0) return;
+    setGenerating(true);
+    try {
+      let id = templateId;
+      const payload = { ...template };
+
+      if (!id) {
+        const { data } = await cenefasV2Api.createTemplate(payload);
+        id = data.id;
+        loadTemplate(data.id, payload);
+        cenefasV2Api.listTemplates().then(({ data: list }) => setSavedTmpls(list)).catch(() => {});
+        markSaved();
+      } else if (isDirty) {
+        await cenefasV2Api.updateTemplate(id, payload);
+        markSaved();
+      }
+
+      window.location.href = `/herramientas/cenefas/v2/generar?template_id=${id}`;
+    } catch {
+      toast.error("Error al guardar el template");
+      setGenerating(false);
     }
   }
 
@@ -204,15 +230,19 @@ export default function EditorPage() {
           )}
         </div>
 
-        {/* Ir al generador */}
-        {templateId && (
-          <a
-            href={`/herramientas/cenefas/v2/generar`}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500 hover:bg-emerald-600 text-white transition-all"
+        {/* Generar */}
+        {template.components.length > 0 && (
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500 hover:bg-emerald-600 text-white transition-all disabled:opacity-60"
           >
-            <Play size={13} />
-            Generar
-          </a>
+            {generating
+              ? <Loader2 size={13} className="animate-spin" />
+              : <Play size={13} />
+            }
+            {generating ? "Guardando…" : (!templateId || isDirty) ? "Guardar y Generar" : "Generar"}
+          </button>
         )}
 
         {/* Guardar */}
