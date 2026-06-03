@@ -63,8 +63,8 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
                     base_bounds: { x: 0.5, y: 4, width: 10, height: 3 } },
       },
       {
-        label: "Mecánica",
-        type: "text", variable: "mecanica", transform: "none",
+        label: "Mecánica / Oferta",
+        type: "text", variable: "tipo_promocion", transform: "none",
         icon: <Type size={14} />, color: "text-slate-500",
         defaults: { style: { font_size: 12 },
                     base_bounds: { x: 0.5, y: 14, width: 10, height: 1.5 } },

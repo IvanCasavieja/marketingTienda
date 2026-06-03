@@ -55,16 +55,24 @@ export default function GenerarPage() {
   const dlRef   = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
-    // Pre-seleccionar template si viene del editor (?template_id=...)
     const params = new URLSearchParams(window.location.search);
     const paramId = params.get("template_id");
-    if (paramId) {
-      setTemplateId(paramId);
-      setTmplMode("v2");
-    }
 
-    cenefasV2Api.listTemplates().then(({ data }) => setTemplates(data)).catch(() => {});
-    cenefasV2Api.getFormats().then(({ data }) => setFormats(data)).catch(() => {});
+    Promise.all([
+      cenefasV2Api.listTemplates(),
+      cenefasV2Api.getFormats(),
+    ]).then(([tmplRes, fmtRes]) => {
+      setTemplates(tmplRes.data);
+      setFormats(fmtRes.data);
+
+      if (paramId) {
+        setTemplateId(paramId);
+        setTmplMode("v2");
+        // Pre-seleccionar el formato del template
+        const tmpl = tmplRes.data.find((t: any) => t.id === paramId);
+        if (tmpl?.formats?.[0]) setFormatId(tmpl.formats[0]);
+      }
+    }).catch(() => {});
   }, []);
 
   // Polling del job
@@ -186,20 +194,32 @@ export default function GenerarPage() {
           <div>
             <SectionLabel>Tipo de plantilla</SectionLabel>
             <div className="flex gap-2 mt-2">
-              {(["v2", "builtin"] as TmplMode[]).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setTmplMode(m)}
-                  className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                    tmplMode === m
-                      ? "border-brand-500 bg-brand-50 text-brand-700"
-                      : "border-slate-200 text-slate-500 hover:border-slate-300"
-                  }`}
-                >
-                  {m === "v2" ? "Template v2 (editor)" : "Predeterminada (PPTX)"}
-                </button>
-              ))}
+              <button
+                onClick={() => setTmplMode("v2")}
+                className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                  tmplMode === "v2"
+                    ? "border-brand-500 bg-brand-50 text-brand-700"
+                    : "border-slate-200 text-slate-500 hover:border-slate-300"
+                }`}
+              >
+                Template del editor ✦
+              </button>
+              <button
+                onClick={() => setTmplMode("builtin")}
+                className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                  tmplMode === "builtin"
+                    ? "border-slate-400 bg-slate-50 text-slate-700"
+                    : "border-slate-200 text-slate-400 hover:border-slate-300"
+                }`}
+              >
+                Plantilla clásica
+              </button>
             </div>
+            {tmplMode === "builtin" && (
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                Usa el motor original (PPTX fijo). Para más personalización, usá el Editor de plantillas.
+              </p>
+            )}
           </div>
 
           {/* Selector según modo */}
@@ -323,7 +343,9 @@ export default function GenerarPage() {
               <div className="space-y-1.5 mt-2">
                 {validation.rule_summary.map((r) => (
                   <div key={r.rule_id} className="flex items-center gap-3 text-xs">
-                    <span className="text-slate-500 font-mono truncate flex-1">{r.rule_id}</span>
+                    <span className="text-slate-600 truncate flex-1 font-medium">
+                      {(r as any).rule_name || r.rule_id}
+                    </span>
                     <div className="w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden">
                       <div className="h-full bg-brand-400 rounded-full" style={{ width: `${r.pct}%` }} />
                     </div>

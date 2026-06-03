@@ -37,7 +37,7 @@ export default function LoginPage() {
         setShowJoinStep(true);
         return;
       }
-      router.push("/home");
+      router.push("/dashboard");
     } catch {
       toast.error(t("login.wrongCredentials"));
     } finally {
@@ -53,7 +53,7 @@ export default function LoginPage() {
     try {
       await authApi.joinTeam(joinCode.trim());
       toast.success(t("login.joinTeamSuccess"));
-      router.push("/home");
+      router.push("/dashboard");
     } catch {
       toast.error(t("login.invalidCode"));
     } finally {

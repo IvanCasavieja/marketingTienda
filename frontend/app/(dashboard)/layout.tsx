@@ -8,7 +8,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
 
   useEffect(() => {
-    authApi.me().catch(() => router.replace("/login"));
+    authApi.me().catch((err) => {
+      // Solo redirigir al login en errores de auth, no en errores de red
+      if (err?.response?.status === 401 || err?.response?.status === 403) {
+        router.replace("/login");
+      }
+    });
   }, []);
 
   return (

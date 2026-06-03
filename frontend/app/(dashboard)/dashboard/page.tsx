@@ -117,6 +117,7 @@ export default function DashboardPage() {
   const [period, setPeriod]           = useState(30);
   const [compareMode, setCompareMode] = useState<CompareMode>("prev_period");
   const [mounted, setMounted]         = useState(false);
+  const [lastSyncDate, setLastSyncDate] = useState<string | null>(null);
 
   const dfLocale = DF_LOCALES[i18n.language] ?? es;
 
@@ -138,6 +139,12 @@ export default function DashboardPage() {
       ]);
       setSummary(curr.data);
       setPrevSummary(prev.data);
+      // Mostrar la fecha más reciente encontrada en los datos
+      const maxDate = curr.data.reduce((max: string | null, s: any) => {
+        if (!s.last_date) return max;
+        return !max || s.last_date > max ? s.last_date : max;
+      }, null);
+      setLastSyncDate(maxDate);
     } catch {
       toast.error(t("dashboard.loadError"));
     } finally {
@@ -213,6 +220,11 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex flex-col items-end gap-1.5">
+            {lastSyncDate && (
+              <p className="text-[11px] text-slate-400 text-right">
+                Datos hasta <span className="font-medium text-slate-500">{lastSyncDate}</span>
+              </p>
+            )}
             <div className="flex items-center gap-2">
               <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
                 {PERIODS.map(({ label, days }) => (
@@ -270,6 +282,31 @@ export default function DashboardPage() {
             trend={pctChange(globalRoas, prevRoas)}
             icon={<TrendingUp size={18} className="text-white" />}
             gradient="from-amber-500 to-orange-500" />
+        </div>
+      )}
+
+      {/* Empty state — sin datos, guiar al usuario */}
+      {!loading && summary.length === 0 && (
+        <div className="card p-6 flex flex-col items-center gap-3 text-center border-dashed">
+          <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+            <RefreshCw size={20} className="text-slate-400" />
+          </div>
+          <div>
+            <p className="font-semibold text-slate-700">Sin datos para este período</p>
+            <p className="text-sm text-slate-500 mt-1 max-w-sm">
+              Conectá una plataforma publicitaria y sincronizá para ver tus métricas acá.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <a href="/settings"
+              className="text-xs font-medium text-brand-600 hover:text-brand-700 border border-brand-200 hover:border-brand-300 px-4 py-2 rounded-lg transition-colors">
+              Configurar conexiones
+            </a>
+            <button onClick={syncAll} disabled={syncing}
+              className="text-xs font-medium text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
+              Sincronizar ahora
+            </button>
+          </div>
         </div>
       )}
 

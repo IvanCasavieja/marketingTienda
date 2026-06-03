@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
-  BarChart3, ChevronRight, Presentation, Globe, Layers,
+  BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, MessageSquare,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, connectionsApi } from "@/lib/api";
@@ -27,12 +27,14 @@ export default function Sidebar() {
   const [showLangMenu, setShowLangMenu] = useState(false);
 
   const nav = [
-    { href: "/dashboard",          label: t("common.dashboard"),  icon: LayoutDashboard, section: "MKTG Platform" },
-    { href: "/campaigns",          label: t("common.campaigns"),  icon: Megaphone,        section: "MKTG Platform" },
-    { href: "/analytics",          label: t("common.aiAnalysis"), icon: Brain,            section: "MKTG Platform" },
-    { href: "/herramientas/cenefas",label: t("common.cenefas"),   icon: Presentation,     section: t("sidebar.herramientas") },
-    { href: "/herramientas/cenefas/v2", label: "Editor v2",      icon: Layers,           section: t("sidebar.herramientas") },
-    { href: "/settings",           label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion") },
+    { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: "Analytics" },
+    { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: "Analytics" },
+    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: "Analytics" },
+    { href: "/home",                    label: "Asistente IA",         icon: MessageSquare,    section: "Analytics" },
+    { href: "/herramientas/cenefas",    label: "Generar cenefas",      icon: Presentation,     section: t("sidebar.herramientas") },
+    { href: "/herramientas/cenefas/v2", label: "Editor de plantillas", icon: Layers,           section: t("sidebar.herramientas") },
+    { href: "/herramientas/cenefas/v2/jobs", label: "Historial",       icon: Clock,            section: t("sidebar.herramientas") },
+    { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion") },
   ];
 
   useEffect(() => {

@@ -82,6 +82,7 @@ async def get_summary(
             func.sum(CampaignMetric.revenue).label("revenue"),
             func.avg(CampaignMetric.ctr).label("avg_ctr"),
             func.avg(CampaignMetric.roas).label("avg_roas"),
+            func.max(CampaignMetric.date).label("last_date"),
         )
         .where(
             and_(
@@ -96,14 +97,15 @@ async def get_summary(
     rows = result.all()
     return [
         {
-            "platform": row.platform.value,
+            "platform":    row.platform.value,
             "impressions": int(row.impressions or 0),
-            "clicks": int(row.clicks or 0),
-            "spend": round(float(row.spend or 0), 2),
+            "clicks":      int(row.clicks or 0),
+            "spend":       round(float(row.spend or 0), 2),
             "conversions": int(row.conversions or 0),
-            "revenue": round(float(row.revenue or 0), 2),
-            "avg_ctr": round(float(row.avg_ctr or 0), 2),
-            "avg_roas": round(float(row.avg_roas or 0), 2),
+            "revenue":     round(float(row.revenue or 0), 2),
+            "avg_ctr":     round(float(row.avg_ctr or 0), 2),
+            "avg_roas":    round(float(row.avg_roas or 0), 2),
+            "last_date":   row.last_date.isoformat() if row.last_date else None,
         }
         for row in rows
     ]

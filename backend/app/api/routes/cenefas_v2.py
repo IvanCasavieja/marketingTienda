@@ -26,6 +26,9 @@ router = APIRouter(prefix="/tools/cenefas/v2", tags=["cenefas-v2"])
 
 _STATIC_DIR = pathlib.Path(__file__).parent.parent.parent / "static" / "cenefa_templates"
 
+# Cache en memoria de las definiciones builtin (se parsean una sola vez al arrancar)
+_builtin_definitions_cache: list | None = None
+
 _BUILTIN_PPTX = {
     "a4": {
         "slug":      "a4",
@@ -75,7 +78,13 @@ async def import_pptx(
 
 @router.get("/builtin-definitions")
 async def get_builtin_definitions(_: User = Depends(get_current_user)):
-    """Devuelve las definiciones v2 de los templates predeterminados (parseados desde PPTX)."""
+    """Devuelve las definiciones v2 de los templates predeterminados.
+    Las parsea una vez al primer request y cachea en memoria."""
+    global _builtin_definitions_cache
+
+    if _builtin_definitions_cache is not None:
+        return _builtin_definitions_cache
+
     from app.services.cenefas.pptx_importer import import_pptx as _import
 
     result = []
@@ -96,6 +105,7 @@ async def get_builtin_definitions(_: User = Depends(get_current_user)):
             "definition": definition,
         })
 
+    _builtin_definitions_cache = result
     return result
 
 
@@ -255,8 +265,9 @@ async def validate_csv(
         logger.error("validate_csv parse error: %s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=f"Error al parsear el archivo: {e}")
 
-    rules      = definition.get("rules", [])
-    variables  = {v["name"]: v for v in definition.get("variables", [])}
+    rules       = definition.get("rules", [])
+    variables   = {v["name"]: v for v in definition.get("variables", [])}
+    rule_names  = {r["id"]: r.get("name", r["id"]) for r in rules if "id" in r}
 
     # Verificar variables requeridas contra columnas disponibles del primer producto
     missing_required: list[str] = []
@@ -285,6 +296,7 @@ async def validate_csv(
         "rule_summary": [
             {
                 "rule_id":   rule_id,
+                "rule_name": rule_names.get(rule_id, rule_id),
                 "hits":      hits,
                 "pct":       round(hits / len(products) * 100, 1) if products else 0,
             }
