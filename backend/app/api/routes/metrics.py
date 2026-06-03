@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
@@ -10,6 +12,8 @@ from app.models.user import User
 from app.models.campaign_metric import CampaignMetric
 from app.models.platform_connection import Platform
 from app.services.metrics_service import sync_platform, get_metrics
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -41,11 +45,14 @@ async def sync_metrics(
     except ValueError as e:
         msg = str(e)
         if "No active connection" in msg:
-            # Plataforma no configurada — no es un error, simplemente se omite
+            # Plataforma no configurada — no es error, se omite silenciosamente
             return SyncResponse(platform=payload.platform.value, records_saved=0, status="skipped")
+        # Error descriptivo del conector (token expirado, permisos, etc.)
+        logger.warning("sync %s error: %s", payload.platform.value, msg)
         raise HTTPException(status_code=400, detail=msg)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Platform sync error: {str(e)}")
+        logger.exception("sync %s unexpected error", payload.platform.value)
+        raise HTTPException(status_code=502, detail=f"Error inesperado al sincronizar {payload.platform.value}: {e}")
 
 
 @router.get("/")

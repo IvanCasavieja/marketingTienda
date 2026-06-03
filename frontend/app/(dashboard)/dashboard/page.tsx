@@ -183,12 +183,24 @@ export default function DashboardPage() {
     setSyncing(true);
     const today = format(new Date(), "yyyy-MM-dd");
     const from  = format(subDays(new Date(), period), "yyyy-MM-dd");
-    const platforms = ["meta", "google_ads", "tiktok", "dv360"];
-    const results = await Promise.allSettled(platforms.map((p) => metricsApi.sync(p, from, today)));
-    const succeeded = results.filter((r) => r.status === "fulfilled").length;
-    const failed    = results.filter((r) => r.status === "rejected").length;
-    if (succeeded > 0) toast.success(t("dashboard.syncSuccess", { n: succeeded }));
-    if (failed > 0 && succeeded === 0) toast.error(t("dashboard.syncError"));
+    const platformList = ["meta", "google_ads", "tiktok", "dv360"];
+    const results = await Promise.allSettled(platformList.map((p) => metricsApi.sync(p, from, today)));
+
+    let synced = 0;
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") {
+        const { records_saved, status } = r.value.data;
+        if (status !== "skipped" && records_saved > 0) synced++;
+      } else {
+        // r.reason es el error de axios — mostrar el detail del backend
+        const detail: string =
+          r.reason?.response?.data?.detail ??
+          `Error al sincronizar ${platformList[i]}`;
+        toast.error(detail, { duration: 8000 });
+      }
+    });
+
+    if (synced > 0) toast.success(t("dashboard.syncSuccess", { n: synced }));
     await loadData(period, compareMode);
     setSyncing(false);
   }

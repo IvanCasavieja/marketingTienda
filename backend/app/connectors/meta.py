@@ -3,6 +3,27 @@ from datetime import date
 from typing import List
 from app.connectors.base import BaseConnector
 
+# Códigos de error de Meta que indican token inválido / expirado
+_META_TOKEN_ERROR_CODES = {190, 102, 200, 467, 463}
+
+
+def _parse_meta_error(response: httpx.Response) -> str:
+    """Extrae el mensaje de error legible del body de la Graph API."""
+    try:
+        err = response.json().get("error", {})
+        msg  = err.get("message", "")
+        code = err.get("code", 0)
+        sub  = err.get("error_subcode", 0)
+        if code in _META_TOKEN_ERROR_CODES or sub in _META_TOKEN_ERROR_CODES:
+            return f"Token de Meta Ads inválido o expirado (code {code}): {msg}"
+        if code == 17:
+            return "Rate limit de Meta Ads — reintentá en unos minutos"
+        if code == 10:
+            return "Permisos insuficientes en el token de Meta Ads (ads_read requerido)"
+        return f"Meta Ads API error {code}: {msg}" if msg else f"HTTP {response.status_code}"
+    except Exception:
+        return f"HTTP {response.status_code}"
+
 
 class MetaAdsConnector(BaseConnector):
     BASE_URL = "https://graph.facebook.com/v20.0"
@@ -20,14 +41,23 @@ class MetaAdsConnector(BaseConnector):
         results = []
         url = f"{self.BASE_URL}/act_{self.account_id}/insights"
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            while url:
-                resp = await client.get(url, params=params)
-                resp.raise_for_status()
-                data = resp.json()
-                results.extend(data.get("data", []))
-                url = data.get("paging", {}).get("next")
-                params = {}
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                while url:
+                    resp = await client.get(url, params=params)
+                    if not resp.is_success:
+                        raise ValueError(_parse_meta_error(resp))
+                    data = resp.json()
+                    # La Graph API puede devolver 200 con un objeto "error" dentro
+                    if "error" in data:
+                        raise ValueError(_parse_meta_error(resp))
+                    results.extend(data.get("data", []))
+                    url = data.get("paging", {}).get("next")
+                    params = {}
+        except httpx.TimeoutException:
+            raise ValueError("Timeout conectando a Meta Ads API — reintentá más tarde")
+        except httpx.NetworkError as exc:
+            raise ValueError(f"Error de red al conectar con Meta Ads: {exc}")
 
         return results
 
