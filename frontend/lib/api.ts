@@ -36,6 +36,7 @@ export const authApi = {
   joinTeam: (join_code: string) => api.post("/auth/join-team", { join_code }),
   teamMembers: () => api.get("/auth/team-members"),
   removeTeamMember: (userId: number) => api.delete(`/auth/team-members/${userId}`),
+  updateTeamType: (team_type: string) => api.patch("/auth/team-group/type", { team_type }),
 };
 
 export const metricsApi = {

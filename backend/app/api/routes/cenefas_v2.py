@@ -123,6 +123,8 @@ async def list_formats(_: User = Depends(get_current_user)):
             "width_cm":  fmt["width_cm"],
             "height_cm": fmt["height_cm"],
             "slots":     fmt["slots"],
+            "slot_cols": fmt.get("slot_cols", 1),
+            "slot_rows": fmt.get("slot_rows", 1),
         }
         for fmt_id, fmt in FORMATS.items()
     ]

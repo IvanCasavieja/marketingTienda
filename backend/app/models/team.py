@@ -25,6 +25,7 @@ class TeamGroup(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     join_code: Mapped[str] = mapped_column(String(500), nullable=False)
+    team_type: Mapped[str] = mapped_column(String(20), nullable=False, default="medios")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 

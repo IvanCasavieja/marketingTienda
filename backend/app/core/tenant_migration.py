@@ -34,11 +34,16 @@ async def migrate_default_team(conn: AsyncConnection) -> None:
                 team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
                 name VARCHAR(255) NOT NULL,
                 join_code VARCHAR(500) NOT NULL,
+                team_type VARCHAR(20) NOT NULL DEFAULT 'medios',
                 created_at TIMESTAMPTZ DEFAULT now(),
                 updated_at TIMESTAMPTZ
             )
             """
         )
+    )
+    # Añadir team_type a grupos existentes (si ya existía la tabla sin esa columna)
+    await conn.execute(
+        text("ALTER TABLE team_groups ADD COLUMN IF NOT EXISTS team_type VARCHAR(20) NOT NULL DEFAULT 'medios'")
     )
 
     await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS team_group_id INTEGER"))

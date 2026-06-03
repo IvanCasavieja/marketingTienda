@@ -39,7 +39,11 @@ async def sync_metrics(
         saved = await sync_platform(db, payload.platform, current_user.team_group_id, payload.date_from, payload.date_to)
         return SyncResponse(platform=payload.platform.value, records_saved=saved)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        msg = str(e)
+        if "No active connection" in msg:
+            # Plataforma no configurada — no es un error, simplemente se omite
+            return SyncResponse(platform=payload.platform.value, records_saved=0, status="skipped")
+        raise HTTPException(status_code=400, detail=msg)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Platform sync error: {str(e)}")
 

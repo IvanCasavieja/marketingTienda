@@ -46,10 +46,10 @@ _CSV_COLUMN_MAP: dict[str, str] = {
 _REQUIRED_VARS = {"descripcion", "precio"}
 
 _FORMATS_DIM = {
-    "a4":      (21.0,  29.7, 1),
-    "a3":      (29.7,  42.0, 1),
-    "3xa4":    (63.0,  29.7, 3),
-    "pinchos": (10.5,  29.7, 1),
+    "a4":      (21.0,  29.7,  1),
+    "a3":      (29.7,  42.0,  1),
+    "3xa4":    (21.0,  9.9,   3),   # slide de una franja; 3 en A4 portrait
+    "pinchos": (7.0,   14.85, 6),   # slide de un pincho; grilla 3×2 en A4
 }
 
 

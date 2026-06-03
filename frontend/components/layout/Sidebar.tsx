@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
-  BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, MessageSquare,
+  BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, ShieldCheck,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, connectionsApi } from "@/lib/api";
@@ -26,16 +26,22 @@ export default function Sidebar() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [showLangMenu, setShowLangMenu] = useState(false);
 
-  const nav = [
-    { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: "Analytics" },
-    { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: "Analytics" },
-    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: "Analytics" },
-    { href: "/home",                    label: "Asistente IA",         icon: MessageSquare,    section: "Analytics" },
-    { href: "/herramientas/cenefas",    label: "Generar cenefas",      icon: Presentation,     section: t("sidebar.herramientas") },
-    { href: "/herramientas/cenefas/v2", label: "Editor de plantillas", icon: Layers,           section: t("sidebar.herramientas") },
-    { href: "/herramientas/cenefas/v2/jobs", label: "Historial",       icon: Clock,            section: t("sidebar.herramientas") },
-    { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion") },
+  const isMedios = !currentUser || currentUser.team_type === "medios" || currentUser.team_type === null;
+
+  const navAll = [
+    { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: "Analytics",                  restricted: true },
+    { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: "Analytics",                  restricted: true },
+    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: "Analytics",                  restricted: true },
+    { href: "/herramientas/cenefas",    label: "Generar cenefas",      icon: Presentation,     section: t("sidebar.herramientas"),    restricted: false },
+    { href: "/herramientas/cenefas/v2", label: "Editor de plantillas", icon: Layers,           section: t("sidebar.herramientas"),    restricted: false },
+    { href: "/herramientas/cenefas/v2/jobs", label: "Historial",       icon: Clock,            section: t("sidebar.herramientas"),    restricted: false },
+    { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion"),   restricted: false },
+    ...(currentUser?.is_superuser
+      ? [{ href: "/admin", label: "Administrador", icon: ShieldCheck, section: t("sidebar.configuracion"), restricted: false }]
+      : []),
   ];
+
+  const nav = navAll.filter((item) => isMedios || !item.restricted);
 
   useEffect(() => {
     connectionsApi.list()
@@ -54,7 +60,7 @@ export default function Sidebar() {
   return (
     <aside className="w-64 min-h-screen bg-navy-900 flex flex-col shrink-0">
       {/* Logo — click goes to home */}
-      <Link href="/home" className="px-5 pt-6 pb-5 flex items-center gap-3 group">
+      <Link href={isMedios ? "/dashboard" : "/herramientas/cenefas"} className="px-5 pt-6 pb-5 flex items-center gap-3 group">
         <div className="w-8 h-8 rounded-xl bg-brand-500 flex items-center justify-center shrink-0 group-hover:bg-brand-400 transition-colors">
           <BarChart3 size={16} className="text-white" />
         </div>

@@ -50,6 +50,7 @@ class TeamGroupCreateRequest(BaseModel):
     team_name: str
     team_slug: str
     group_name: str
+    team_type: str = "medios"
 
 
 class TeamGroupCreateResponse(BaseModel):
@@ -63,6 +64,7 @@ class UserResponse(BaseModel):
     full_name: str
     team_group_id: int | None = None
     team_name: str | None = None
+    team_type: str | None = None
     join_code: str | None = None
     is_active: bool
     is_superuser: bool

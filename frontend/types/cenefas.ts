@@ -107,6 +107,8 @@ export interface CenefaFormat {
   width_cm: number;
   height_cm: number;
   slots: number;
+  slot_cols: number;
+  slot_rows: number;
 }
 
 export interface CenefaJob {

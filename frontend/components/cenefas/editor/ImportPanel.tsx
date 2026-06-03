@@ -19,8 +19,8 @@ interface Props {
 
 const FORMAT_LABELS: Record<string, string> = {
   a4:      "A4 · 21 × 29.7 cm",
-  pinchos: "Pinchos · 10.5 × 29.7 cm",
-  "3xa4":  "3 × A4 · 63 × 29.7 cm",
+  pinchos: "Pinchos · 6 por A4",
+  "3xa4":  "3 × A4 · 3 franjas en A4 vertical",
   a3:      "A3 · 29.7 × 42 cm",
 };
 
@@ -199,23 +199,44 @@ export default function ImportPanel({ onDismiss }: Props) {
 
 /* Miniatura visual del formato */
 function FormatThumb({ formatId }: { formatId: string }) {
-  const configs: Record<string, { w: number; h: number; cols?: number }> = {
+  const configs: Record<string, { w: number; h: number; rows?: number; cols?: number }> = {
     a4:      { w: 32, h: 45 },
     a3:      { w: 45, h: 64 },
-    "3xa4":  { w: 56, h: 20, cols: 3 },
-    pinchos: { w: 16, h: 45 },
+    "3xa4":  { w: 32, h: 45, rows: 3 },   // A4 portrait con 3 franjas horizontales apiladas
+    pinchos: { w: 32, h: 45, rows: 2, cols: 3 }, // A4 portrait grilla 3×2
   };
   const cfg = configs[formatId] ?? { w: 32, h: 45 };
 
   return (
     <div
-      className="rounded border border-slate-200 bg-slate-50 flex items-center justify-center gap-0.5 overflow-hidden"
+      className="rounded border border-slate-200 bg-slate-50 overflow-hidden"
       style={{ width: cfg.w, height: cfg.h }}
     >
-      {cfg.cols ? (
-        Array.from({ length: cfg.cols }).map((_, i) => (
-          <div key={i} className="flex-1 h-full border-r border-slate-200 last:border-0 bg-white" />
-        ))
+      {cfg.rows && cfg.cols ? (
+        // Grilla 2D (pinchos: 3 cols × 2 filas)
+        <div className="w-full h-full flex flex-col">
+          {Array.from({ length: cfg.rows }).map((_, r) => (
+            <div key={r} className="flex flex-1 border-b border-slate-200 last:border-0">
+              {Array.from({ length: cfg.cols! }).map((_, c) => (
+                <div key={c} className="flex-1 border-r border-slate-200 last:border-0 bg-white" />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : cfg.rows ? (
+        // Filas apiladas (3xA4: 3 franjas horizontales)
+        <div className="w-full h-full flex flex-col">
+          {Array.from({ length: cfg.rows }).map((_, i) => (
+            <div key={i} className="flex-1 w-full border-b border-slate-200 last:border-0 bg-white" />
+          ))}
+        </div>
+      ) : cfg.cols ? (
+        // Columnas (no usado actualmente)
+        <div className="w-full h-full flex">
+          {Array.from({ length: cfg.cols }).map((_, i) => (
+            <div key={i} className="flex-1 h-full border-r border-slate-200 last:border-0 bg-white" />
+          ))}
+        </div>
       ) : (
         <div className="w-full h-full bg-white" />
       )}

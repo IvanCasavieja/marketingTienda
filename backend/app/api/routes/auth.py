@@ -57,6 +57,7 @@ def _user_response(user: User) -> UserResponse:
         full_name=user.full_name,
         team_group_id=user.team_group_id,
         team_name=team_group.name if team_group else None,
+        team_type=team_group.team_type if team_group else None,
         join_code=decrypt_token(team_group.join_code) if team_group else None,
         is_active=user.is_active,
         is_superuser=user.is_superuser,
@@ -212,7 +213,7 @@ async def create_team_group(
         join_code = decrypt_token(team_group.join_code)
     else:
         join_code = secrets.token_urlsafe(16)
-        team_group = TeamGroup(team_id=team.id, name=payload.group_name, join_code=encrypt_token(join_code))
+        team_group = TeamGroup(team_id=team.id, name=payload.group_name, join_code=encrypt_token(join_code), team_type=payload.team_type)
         db.add(team_group)
 
     db.add(AuditLog(user_id=current_user.id, action="team_group.create", resource="team_group"))
@@ -262,3 +263,26 @@ async def remove_team_member(
 
     member.team_group_id = None
     db.add(AuditLog(user_id=current_user.id, action="team.remove_member", resource=str(user_id)))
+
+
+@router.patch("/team-group/type", status_code=200)
+async def update_team_group_type(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Only admins can change team type")
+    if not current_user.team_group_id:
+        raise HTTPException(status_code=400, detail="Not part of a team")
+    team_type = payload.get("team_type")
+    if team_type not in ("medios", "marca", "promo"):
+        raise HTTPException(status_code=400, detail="team_type must be medios, marca or promo")
+
+    result = await db.execute(select(TeamGroup).where(TeamGroup.id == current_user.team_group_id))
+    group = result.scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="Team group not found")
+    group.team_type = team_type
+    db.add(AuditLog(user_id=current_user.id, action="team_group.update_type", resource=team_type))
+    return {"team_type": team_type}

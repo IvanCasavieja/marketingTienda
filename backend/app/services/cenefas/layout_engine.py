@@ -22,16 +22,20 @@ FORMATS: dict[str, dict] = {
     },
     "3xa4": {
         "label":     "3xA4",
-        "width_cm":  63.0,
-        "height_cm": 29.7,
+        "width_cm":  21.0,   # cada cenefa ocupa todo el ancho A4
+        "height_cm": 9.9,    # 29.7 / 3 — franja horizontal
         "slots":     3,
+        "slot_cols": 1,
+        "slot_rows": 3,
         "scale":     1.0,
     },
     "pinchos": {
         "label":     "Pinchos",
-        "width_cm":  10.5,
-        "height_cm": 29.7,
-        "slots":     1,
+        "width_cm":  7.0,    # 21 / 3 columnas
+        "height_cm": 14.85,  # 29.7 / 2 filas
+        "slots":     6,
+        "slot_cols": 3,
+        "slot_rows": 2,
         "scale":     0.5,
     },
 }

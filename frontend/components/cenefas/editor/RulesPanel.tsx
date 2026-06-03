@@ -18,6 +18,13 @@ export const NEEDS_VALUE: RuleOperator[] = [
   "equals", "not_equals", "greater_than", "less_than", "contains",
 ];
 
+// Opciones simplificadas para el formulario amigable
+const SIMPLE_CONDITIONS = [
+  { value: "is_not_empty", label: "Sí tiene valor",  emoji: "✓" },
+  { value: "is_empty",     label: "No tiene valor",   emoji: "✗" },
+  { value: "equals",       label: "Es igual a…",      emoji: "=" },
+] as const;
+
 // ---------------------------------------------------------------------------
 // Panel principal — vista agrupada por componente
 // ---------------------------------------------------------------------------
@@ -223,61 +230,79 @@ export function RuleForm({
   }
 
   return (
-    <div className="space-y-2">
-      {/* Acción */}
-      <div className="flex gap-2">
-        <select
-          className="input text-xs flex-shrink-0 w-24"
-          value={action}
-          onChange={(e) => setAction(e.target.value as RuleAction)}
-        >
-          <option value="show">Mostrar</option>
-          <option value="hide">Ocultar</option>
-        </select>
-        <span className="text-[10px] text-slate-400 self-center">este elemento si…</span>
+    <div className="space-y-3">
+      {/* Paso 1: Acción */}
+      <div>
+        <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5">¿Qué hace?</p>
+        <div className="flex gap-2">
+          {(["show", "hide"] as RuleAction[]).map((a) => (
+            <button
+              key={a}
+              onClick={() => setAction(a)}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
+                action === a
+                  ? a === "show"
+                    ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300"
+                    : "bg-rose-100 text-rose-700 ring-1 ring-rose-300"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              {a === "show" ? "Mostrar" : "Ocultar"}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Condición */}
-      <div className="flex gap-1.5 flex-wrap">
+      {/* Paso 2: Variable */}
+      <div>
+        <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5">¿Cuándo?  Según la variable…</p>
         <select
-          className="input text-xs flex-1 min-w-0"
+          className="input text-xs w-full"
           value={field}
           onChange={(e) => setField(e.target.value)}
         >
           {variables.map((v) => (
-            <option key={v.name} value={v.name}>{v.name}</option>
-          ))}
-        </select>
-        <select
-          className="input text-xs flex-1 min-w-0"
-          value={operator}
-          onChange={(e) => setOperator(e.target.value as RuleOperator)}
-        >
-          {OPERATORS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={v.name} value={v.name}>{v.name} ({v.csv_column})</option>
           ))}
         </select>
       </div>
 
-      {NEEDS_VALUE.includes(operator) && (
-        <input
-          className="input w-full text-xs"
-          placeholder="Valor a comparar"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-      )}
+      {/* Paso 3: Condición simplificada */}
+      <div>
+        <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5">¿Bajo qué condición?</p>
+        <div className="flex gap-2 flex-wrap">
+          {SIMPLE_CONDITIONS.map((c) => (
+            <button
+              key={c.value}
+              onClick={() => { setOperator(c.value as RuleOperator); if (c.value !== "equals") setValue(""); }}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                operator === c.value
+                  ? "bg-brand-100 text-brand-700 ring-1 ring-brand-300"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              {c.emoji} {c.label}
+            </button>
+          ))}
+        </div>
+        {operator === "equals" && (
+          <input
+            className="input w-full text-xs mt-2"
+            placeholder="Escribí el valor exacto…"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        )}
+      </div>
 
-      {/* Preview del nombre auto-generado */}
-      <p className="text-[10px] text-slate-400 italic truncate">→ {autoName}</p>
+      {/* Preview */}
+      <p className="text-[10px] text-slate-400 italic bg-slate-50 rounded px-2 py-1.5 truncate">
+        → {autoName}
+      </p>
 
       <div className="flex gap-1.5">
-        <button onClick={handleSave} className="btn-primary text-xs px-2.5 py-1">
-          Guardar
-        </button>
-        <button onClick={onCancel} className="btn-secondary text-xs px-2.5 py-1">
-          Cancelar
-        </button>
+        <button onClick={handleSave} className="btn-primary text-xs px-2.5 py-1">Guardar</button>
+        <button onClick={onCancel} className="btn-secondary text-xs px-2.5 py-1">Cancelar</button>
       </div>
     </div>
   );

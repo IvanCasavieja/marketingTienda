@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import {
   DollarSign, MousePointerClick, ShoppingCart,
-  TrendingUp, ArrowUpRight, ArrowDownRight, RefreshCw, AlertTriangle,
+  TrendingUp, ArrowUpRight, ArrowDownRight, RefreshCw, AlertTriangle, ChevronDown,
 } from "lucide-react";
 import { SkeletonCard, SkeletonRow } from "@/components/ui/SkeletonCard";
 import { toast } from "sonner";
@@ -276,11 +276,17 @@ export default function DashboardPage() {
                   </button>
                 ))}
               </div>
-              <select value={compareMode} onChange={(e) => setCompareMode(e.target.value as CompareMode)}
-                className="text-xs text-slate-500 bg-transparent border-none outline-none cursor-pointer hover:text-slate-700">
-                <option value="prev_period">{t("dashboard.prevPeriod")}</option>
-                <option value="prev_year">{t("dashboard.prevYear")}</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={compareMode}
+                  onChange={(e) => setCompareMode(e.target.value as CompareMode)}
+                  className="appearance-none pl-3 pr-7 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-500 bg-white hover:border-slate-300 hover:text-slate-700 cursor-pointer outline-none transition-all shadow-card"
+                >
+                  <option value="prev_period">{t("dashboard.prevPeriod")}</option>
+                  <option value="prev_year">{t("dashboard.prevYear")}</option>
+                </select>
+                <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
             </div>
             <p className="text-xs text-slate-400" suppressHydrationWarning>
               {getCompareLabel(period, compareMode, dfLocale)}

@@ -8,6 +8,12 @@ import { useTranslation } from "react-i18next";
 
 interface TeamMember { id: number; email: string; full_name: string; is_superuser: boolean; }
 
+const TEAM_TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  medios: { label: "Medios Digitales", color: "bg-brand-100 text-brand-700" },
+  marca:  { label: "Marca",            color: "bg-amber-100 text-amber-700" },
+  promo:  { label: "Promo",            color: "bg-emerald-100 text-emerald-700" },
+};
+
 const PLATFORM_OPTIONS = [
   { value: "meta",       label: "Meta Ads",    color: "#1877F2", initial: "M", desc: "Facebook & Instagram Ads" },
   { value: "google_ads", label: "Google Ads",  color: "#4285F4", initial: "G", desc: "Search, Display & YouTube" },
@@ -84,6 +90,16 @@ export default function SettingsPage() {
       setMembers((prev) => prev.filter((m) => m.id !== id));
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("settings.removeMemberError"));
+    }
+  }
+
+  async function handleUpdateTeamType(team_type: string) {
+    try {
+      await authApi.updateTeamType(team_type);
+      authApi.me().then(({ data }) => setCurrentUser(data)).catch(() => {});
+      toast.success("Tipo de equipo actualizado");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? "Error al actualizar el tipo de equipo");
     }
   }
 
@@ -255,16 +271,35 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-900">{t("settings.teamTitle")}</h2>
-            <p className="text-sm text-slate-500 mt-0.5">
-              {currentUser?.team_name ?? t("common.noTeam")}
-            </p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-sm text-slate-500">{currentUser?.team_name ?? t("common.noTeam")}</p>
+              {currentUser?.team_type && (
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${TEAM_TYPE_LABELS[currentUser.team_type]?.color ?? "bg-slate-100 text-slate-500"}`}>
+                  {TEAM_TYPE_LABELS[currentUser.team_type]?.label ?? currentUser.team_type}
+                </span>
+              )}
+            </div>
           </div>
-          {currentUser?.join_code && (
-            <button onClick={copyJoinCode}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-medium transition-colors">
-              <Copy size={13} /> {t("settings.copyCode")}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {currentUser?.is_superuser && currentUser?.team_type && (
+              <select
+                value={currentUser.team_type}
+                onChange={(e) => handleUpdateTeamType(e.target.value)}
+                className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 text-slate-600 bg-white outline-none cursor-pointer hover:border-slate-300"
+                title="Cambiar tipo de equipo"
+              >
+                <option value="medios">Medios Digitales</option>
+                <option value="marca">Marca</option>
+                <option value="promo">Promo</option>
+              </select>
+            )}
+            {currentUser?.join_code && (
+              <button onClick={copyJoinCode}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-medium transition-colors">
+                <Copy size={13} /> {t("settings.copyCode")}
+              </button>
+            )}
+          </div>
         </div>
 
         {members.length > 0 ? (

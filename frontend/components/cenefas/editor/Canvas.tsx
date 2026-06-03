@@ -12,10 +12,10 @@ import type { CenefaComponent } from "@/types/cenefas";
 const PX_PER_CM = 28;
 
 const FORMAT_DIMS: Record<string, { w: number; h: number }> = {
-  a4:      { w: 21.0, h: 29.7 },
-  a3:      { w: 29.7, h: 42.0 },
-  "3xa4":  { w: 63.0, h: 29.7 },
-  pinchos: { w: 10.5, h: 29.7 },
+  a4:      { w: 21.0,  h: 29.7  },
+  a3:      { w: 29.7,  h: 42.0  },
+  "3xa4":  { w: 21.0,  h: 9.9   },  // franja horizontal única (1/3 A4)
+  pinchos: { w: 7.0,   h: 14.85 },  // pincho individual (grilla 3×2 en A4)
 };
 
 const COMP_COLORS: Record<string, string> = {

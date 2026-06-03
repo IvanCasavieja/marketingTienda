@@ -85,23 +85,37 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       activeFormat: "a4",
     }),
 
-  loadTemplate: (id, template) =>
+  loadTemplate: (id, template) => {
+    // Asegurar que las variables base siempre están presentes
+    const existing = new Set(template.variables.map((v) => v.name));
+    const merged   = [
+      ...template.variables,
+      ...EMPTY_TEMPLATE.variables.filter((v) => !existing.has(v.name)),
+    ];
     set({
       templateId: id,
-      template,
+      template: { ...template, variables: merged },
       isDirty: false,
       selectedComponentId: null,
       activeFormat: template.master_format,
-    }),
+    });
+  },
 
-  loadDefinition: (template) =>
+  loadDefinition: (template) => {
+    // Merge: mantener las variables importadas + agregar las base que falten
+    const existing = new Set(template.variables.map((v) => v.name));
+    const merged   = [
+      ...template.variables,
+      ...EMPTY_TEMPLATE.variables.filter((v) => !existing.has(v.name)),
+    ];
     set({
       templateId: null,
-      template,
+      template: { ...template, variables: merged },
       isDirty: true,
       selectedComponentId: null,
       activeFormat: template.master_format,
-    }),
+    });
+  },
 
   markSaved: () => set({ isDirty: false }),
 

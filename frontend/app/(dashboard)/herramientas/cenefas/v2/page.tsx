@@ -269,30 +269,32 @@ export default function EditorPage() {
       {/* ── Área de trabajo ── */}
       <div className="flex flex-1 min-h-0">
         {/* Panel izquierdo */}
-        <aside className="w-56 flex-shrink-0 border-r border-slate-100 flex flex-col">
-          <div className="flex border-b border-slate-100">
-            {leftPanelDef.map(({ id, label, icon }) => (
-              <button
-                key={id}
-                onClick={() => setLeftPanel(id as Parameters<typeof setLeftPanel>[0])}
-                className={`flex-1 flex items-center justify-center gap-1 py-2 text-[10px] font-medium transition-colors ${
-                  leftPanel === id
-                    ? "text-brand-600 border-b-2 border-brand-600"
-                    : "text-slate-400 hover:text-slate-600"
-                }`}
-                title={label}
-              >
-                {icon}
-                <span className="hidden sm:inline">{label.split(" ")[0]}</span>
-              </button>
-            ))}
-          </div>
-          <div className="flex-1 overflow-hidden">
-            {leftPanel === "components" && <ComponentPanel />}
-            {leftPanel === "rules"      && <RulesPanel />}
-            {leftPanel === "variables"  && <VariablesPanel />}
-          </div>
-        </aside>
+        {!showImport && (
+          <aside className="w-56 flex-shrink-0 border-r border-slate-100 flex flex-col animate-slide-in-left">
+            <div className="flex border-b border-slate-100">
+              {leftPanelDef.map(({ id, label, icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setLeftPanel(id as Parameters<typeof setLeftPanel>[0])}
+                  className={`flex-1 flex items-center justify-center gap-1 py-2 text-[10px] font-medium transition-colors ${
+                    leftPanel === id
+                      ? "text-brand-600 border-b-2 border-brand-600"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                  title={label}
+                >
+                  {icon}
+                  <span className="hidden sm:inline">{label.split(" ")[0]}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 overflow-hidden">
+              {leftPanel === "components" && <ComponentPanel />}
+              {leftPanel === "rules"      && <RulesPanel />}
+              {leftPanel === "variables"  && <VariablesPanel />}
+            </div>
+          </aside>
+        )}
 
         {/* Canvas central */}
         <main className="relative flex-1 overflow-auto bg-slate-100 flex flex-col items-center p-6 gap-4">
@@ -309,14 +311,16 @@ export default function EditorPage() {
         </main>
 
         {/* Panel derecho */}
-        <aside className="w-64 flex-shrink-0 border-l border-slate-100 flex flex-col min-h-0">
-          <div className="px-4 py-2.5 border-b border-slate-100 flex-shrink-0">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-              Propiedades
-            </p>
-          </div>
-          <PropertiesPanel />
-        </aside>
+        {!showImport && (
+          <aside className="w-64 flex-shrink-0 border-l border-slate-100 flex flex-col min-h-0 animate-slide-in-right">
+            <div className="px-4 py-2.5 border-b border-slate-100 flex-shrink-0">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                Propiedades
+              </p>
+            </div>
+            <PropertiesPanel />
+          </aside>
+        )}
       </div>
     </div>
   );

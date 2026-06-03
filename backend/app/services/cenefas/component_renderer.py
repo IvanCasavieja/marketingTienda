@@ -21,8 +21,8 @@ from app.services.cenefas.rules_engine import apply_visibility, evaluate_rules
 FORMAT_SLIDES: dict[str, tuple] = {
     "a4":      (Cm(21.0),  Cm(29.7)),
     "a3":      (Cm(29.7),  Cm(42.0)),
-    "3xa4":    (Cm(63.0),  Cm(29.7)),
-    "pinchos": (Cm(10.5),  Cm(29.7)),
+    "3xa4":    (Cm(21.0),  Cm(29.7)),   # A4 portrait completo, 3 franjas verticales
+    "pinchos": (Cm(21.0),  Cm(29.7)),   # A4 portrait completo, grilla 3×2
 }
 
 ALIGN_MAP = {
@@ -260,7 +260,13 @@ def add_image_placeholder(slide, comp: dict, label: str) -> None:
 # Render de un slide completo
 # ---------------------------------------------------------------------------
 
-def _render_slide(slide, comp_layout: list[dict], product: dict, slot_offset_x: float = 0.0) -> None:
+def _render_slide(
+    slide,
+    comp_layout: list[dict],
+    product: dict,
+    slot_offset_x: float = 0.0,
+    slot_offset_y: float = 0.0,
+) -> None:
     for comp in comp_layout:
         if not comp.get("visible", True):
             continue
@@ -271,10 +277,11 @@ def _render_slide(slide, comp_layout: list[dict], product: dict, slot_offset_x: 
         transform    = comp.get("transform", "none")
         value        = apply_transform(raw_value, transform)
 
-        # Offset horizontal para layouts multi-slot
-        if slot_offset_x > 0:
-            cb  = comp["computed_bounds"].copy()
+        # Offset 2D para layouts multi-slot (grilla horizontal × vertical)
+        if slot_offset_x > 0 or slot_offset_y > 0:
+            cb = comp["computed_bounds"].copy()
             cb["x"] = cb["x"] + slot_offset_x
+            cb["y"] = cb["y"] + slot_offset_y
             comp = {**comp, "computed_bounds": cb}
 
         comp_type = comp.get("type", "text")
@@ -315,20 +322,26 @@ def render_template_to_pptx(
     # Calcular layout base una vez (posiciones en el formato destino)
     laid_out = compute_layout(components, target_format, master_format)
 
+    slot_cols = fmt_info.get("slot_cols", 1)
+    slot_rows = fmt_info.get("slot_rows", 1)
+    cell_w    = fmt_info["width_cm"]
+    cell_h    = fmt_info["height_cm"]
+
     groups = [products[i:i + slots] for i in range(0, len(products), slots)]
 
     for group in groups:
         slide = prs.slides.add_slide(blank_layout)
 
         for slot_idx, product in enumerate(group):
-            slot_offset_x = 0.0
-            if slots > 1:
-                slot_offset_x = slot_idx * (fmt_info["width_cm"] / slots)
+            col = slot_idx % slot_cols
+            row = slot_idx // slot_cols
+            slot_offset_x = col * cell_w
+            slot_offset_y = row * cell_h
 
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
 
-            _render_slide(slide, visible_comps, product, slot_offset_x)
+            _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y)
 
     buf = io.BytesIO()
     prs.save(buf)
