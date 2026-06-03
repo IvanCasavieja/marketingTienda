@@ -69,7 +69,8 @@ export default function Sidebar() {
       {/* Main nav */}
       <nav className="px-3 flex-1 space-y-0.5">
         {nav.map(({ href, label, icon: Icon, section }, i) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
+          const active = pathname === href ||
+            (pathname.startsWith(href + "/") && !nav.some(n => n.href !== href && pathname.startsWith(n.href)));
           const prevSection = i > 0 ? nav[i - 1].section : undefined;
           const showLabel = section !== prevSection;
           return (
