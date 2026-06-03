@@ -38,6 +38,7 @@ interface EditorStore {
   // Inicialización
   initNew: () => void;
   loadTemplate: (id: string, template: CenefaTemplate) => void;
+  loadDefinition: (template: CenefaTemplate) => void;
   markSaved: () => void;
 
   // Template metadata
@@ -89,6 +90,15 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       templateId: id,
       template,
       isDirty: false,
+      selectedComponentId: null,
+      activeFormat: template.master_format,
+    }),
+
+  loadDefinition: (template) =>
+    set({
+      templateId: null,
+      template,
+      isDirty: true,
       selectedComponentId: null,
       activeFormat: template.master_format,
     }),

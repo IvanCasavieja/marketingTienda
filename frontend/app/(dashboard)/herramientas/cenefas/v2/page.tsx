@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   Save, Loader2, AlertCircle, CheckCircle2,
-  ChevronLeft, ChevronRight, Layers, GitBranch,
+  ChevronLeft, Layers, GitBranch,
   Variable, FolderOpen, Play,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
 import RulesPanel      from "@/components/cenefas/editor/RulesPanel";
 import VariablesPanel  from "@/components/cenefas/editor/VariablesPanel";
 import FormatSelector  from "@/components/cenefas/editor/FormatSelector";
+import ImportPanel     from "@/components/cenefas/editor/ImportPanel";
 
 const Canvas = dynamic(
   () => import("@/components/cenefas/editor/Canvas"),
@@ -49,6 +50,7 @@ export default function EditorPage() {
   const [nameEditing,  setNameEditing]  = useState(false);
   const [showTmplMenu, setShowTmplMenu] = useState(false);
   const [loadingTmpl,  setLoadingTmpl]  = useState(false);
+  const [showImport,   setShowImport]   = useState(true);
   const tmplMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -73,8 +75,12 @@ export default function EditorPage() {
     setShowTmplMenu(false);
     try {
       const { data } = await cenefasV2Api.getTemplate(id);
-      if (data.definition) loadTemplate(data.id, data.definition);
-      else toast.error("Este template no tiene definición de componentes");
+      if (data.definition) {
+        loadTemplate(data.id, data.definition);
+        setShowImport(false);
+      } else {
+        toast.error("Este template no tiene definición de componentes");
+      }
     } catch {
       toast.error("Error al cargar el template");
     } finally {
@@ -188,7 +194,7 @@ export default function EditorPage() {
               )}
               <div className="px-3 py-2 border-t border-slate-100">
                 <button
-                  onClick={() => { initNew(); setShowTmplMenu(false); }}
+                  onClick={() => { initNew(); setShowTmplMenu(false); setShowImport(true); }}
                   className="text-xs text-brand-600 hover:text-brand-700 font-medium"
                 >
                   + Nuevo template
@@ -259,14 +265,17 @@ export default function EditorPage() {
         </aside>
 
         {/* Canvas central */}
-        <main className="flex-1 overflow-auto bg-slate-100 flex flex-col items-center p-6 gap-4">
-          {template.components.length === 0 && (
+        <main className="relative flex-1 overflow-auto bg-slate-100 flex flex-col items-center p-6 gap-4">
+          {template.components.length === 0 && !showImport && (
             <div className="flex items-center gap-2 text-xs text-slate-400 bg-white rounded-lg px-3 py-2 border border-slate-200 self-start">
               <AlertCircle size={13} />
               Agregá componentes desde el panel izquierdo para comenzar a diseñar
             </div>
           )}
           <Canvas />
+          {showImport && !templateId && (
+            <ImportPanel onDismiss={() => setShowImport(false)} />
+          )}
         </main>
 
         {/* Panel derecho */}

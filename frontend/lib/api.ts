@@ -143,4 +143,16 @@ export const cenefasV2Api = {
     api.post("/tools/cenefas/v2/validate", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
+
+  // Importar PPTX → definición v2
+  importPptx: (formData: FormData) =>
+    api.post<CenefaTemplate>("/tools/cenefas/v2/import-pptx", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+
+  // Definiciones de templates predeterminados
+  getBuiltinDefinitions: () =>
+    api.get<{ slug: string; name: string; format_id: string; definition: CenefaTemplate }[]>(
+      "/tools/cenefas/v2/builtin-definitions"
+    ),
 };

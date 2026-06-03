@@ -1,5 +1,6 @@
 """Rutas /tools/cenefas/v2/ — API del nuevo motor de componentes."""
 import logging
+import pathlib
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
@@ -22,6 +23,81 @@ from app.services.cenefas.validation_engine import build_summary, validate_produ
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools/cenefas/v2", tags=["cenefas-v2"])
+
+_STATIC_DIR = pathlib.Path(__file__).parent.parent.parent / "static" / "cenefa_templates"
+
+_BUILTIN_PPTX = {
+    "a4": {
+        "slug":      "a4",
+        "name":      "Cenefa A4",
+        "format_id": "a4",
+        "file":      "Base cenefa A4 1.pptx",
+    },
+    "pinchos": {
+        "slug":      "pinchos",
+        "name":      "Pinchos",
+        "format_id": "pinchos",
+        "file":      "Base pinchos 1.pptx",
+    },
+    "black": {
+        "slug":      "black",
+        "name":      "Cenefas 3xA4",
+        "format_id": "3xa4",
+        "file":      "Bases cenefas BLACK 1.pptx",
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Importación de PPTX
+# ---------------------------------------------------------------------------
+
+@router.post("/import-pptx")
+async def import_pptx(
+    file: UploadFile = File(..., description="Archivo PPTX a importar"),
+    name: str = Form(default="Template importado"),
+    _: User = Depends(get_current_user),
+):
+    """Parsea un PPTX y devuelve una definición v2 lista para cargar en el editor."""
+    if not file.filename or not file.filename.lower().endswith(".pptx"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser .pptx")
+
+    pptx_bytes = await file.read()
+
+    from app.services.cenefas.pptx_importer import import_pptx as _import
+    try:
+        definition = _import(pptx_bytes, name=name.strip() or "Template importado")
+    except Exception as exc:
+        logger.warning("import_pptx error: %s", exc)
+        raise HTTPException(status_code=422, detail=f"No se pudo parsear el PPTX: {exc}")
+
+    return definition
+
+
+@router.get("/builtin-definitions")
+async def get_builtin_definitions(_: User = Depends(get_current_user)):
+    """Devuelve las definiciones v2 de los templates predeterminados (parseados desde PPTX)."""
+    from app.services.cenefas.pptx_importer import import_pptx as _import
+
+    result = []
+    for slug, info in _BUILTIN_PPTX.items():
+        path = _STATIC_DIR / info["file"]
+        if not path.exists():
+            logger.warning("builtin-definitions: archivo no encontrado: %s", path)
+            continue
+        try:
+            definition = _import(path.read_bytes(), name=info["name"])
+        except Exception as exc:
+            logger.warning("builtin-definitions: error parseando %s: %s", slug, exc)
+            continue
+        result.append({
+            "slug":       slug,
+            "name":       info["name"],
+            "format_id":  info["format_id"],
+            "definition": definition,
+        })
+
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Formatos del sistema
