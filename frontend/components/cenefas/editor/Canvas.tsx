@@ -214,12 +214,18 @@ interface ComponentShapeProps {
   onDragEnd:  (x: number, y: number) => void;
 }
 
+// Formatos que los navegadores pueden mostrar en data URLs
+const _WEB_EXTS = new Set(["jpeg", "jpg", "png", "gif", "webp", "svg+xml"]);
+
 function useBase64Image(imageData?: string, imageExt?: string) {
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   useEffect(() => {
-    if (!imageData) { setImg(null); return; }
+    if (!imageData || !imageExt || !_WEB_EXTS.has(imageExt)) {
+      setImg(null);
+      return;
+    }
     const el = new window.Image();
-    el.src = `data:image/${imageExt ?? "png"};base64,${imageData}`;
+    el.src = `data:image/${imageExt};base64,${imageData}`;
     el.onload  = () => setImg(el);
     el.onerror = () => setImg(null);
     return () => { el.onload = null; el.onerror = null; };
@@ -237,7 +243,8 @@ function ComponentShape({
   const w     = Math.max(scalePx(b.width),  20);
   const h     = Math.max(scalePx(b.height), 10);
 
-  const loadedImg = useBase64Image(comp.image_data, comp.image_ext);
+  const loadedImg  = useBase64Image(comp.image_data, comp.image_ext);
+  const imgInvalid = comp.type === "image" && comp.image_data && !_WEB_EXTS.has(comp.image_ext ?? "");
 
   return (
     <Group
@@ -291,14 +298,22 @@ function ComponentShape({
           <Text
             x={4} y={4} width={w - 8} height={h - 8}
             text={
-              comp.variable
-                ? `${comp.name}\n(${comp.variable})`
-                : comp.static_value
-                  ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
-                  : comp.name
+              imgInvalid
+                ? `⚠ Re-importá el PPTX\n(${comp.image_ext ?? "?"} no soportado)`
+                : comp.variable
+                  ? `${comp.name}\n(${comp.variable})`
+                  : comp.static_value
+                    ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
+                    : comp.name
             }
             fontSize={Math.min(11, Math.max(7, h / 2.5))}
-            fill={comp.type === "shape" && comp.style?.background_color ? "#00000055" : color}
+            fill={
+              imgInvalid
+                ? "#F59E0B"
+                : comp.type === "shape" && comp.style?.background_color
+                  ? "#00000055"
+                  : color
+            }
             fontFamily="Inter, system-ui, sans-serif"
             ellipsis wrap="word"
           />
