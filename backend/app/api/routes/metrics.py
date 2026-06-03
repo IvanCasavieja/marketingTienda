@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from pydantic import BaseModel
@@ -109,3 +109,10 @@ async def get_summary(
         }
         for row in rows
     ]
+
+
+@router.get("/auto-sync/status")
+async def auto_sync_status(_: User = Depends(get_current_user)):
+    """Estado del auto-sync: último run, próximo run e intervalo configurado."""
+    from app.services.auto_sync import get_sync_status
+    return await get_sync_status()

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { metricsApi } from "@/lib/api";
 import { PlatformSummary, PLATFORM_LABELS } from "@/types";
 import { format, subDays, subYears } from "date-fns";
@@ -117,7 +117,11 @@ export default function DashboardPage() {
   const [period, setPeriod]           = useState(30);
   const [compareMode, setCompareMode] = useState<CompareMode>("prev_period");
   const [mounted, setMounted]         = useState(false);
-  const [lastSyncDate, setLastSyncDate] = useState<string | null>(null);
+  const [lastSyncDate, setLastSyncDate]   = useState<string | null>(null);
+  const [autoSyncStatus, setAutoSyncStatus] = useState<{
+    last_run: string | null; next_run: string | null; interval_hours: number; active: boolean;
+  } | null>(null);
+  const lastAutoRunRef = useRef<string | null>(null);
 
   const dfLocale = DF_LOCALES[i18n.language] ?? es;
 
@@ -126,6 +130,29 @@ export default function DashboardPage() {
   const dayLabel = mounted ? format(new Date(), "EEEE d 'de' MMMM", { locale: dfLocale }) : "";
 
   useEffect(() => { loadData(period, compareMode); }, [period, compareMode]);
+
+  // Cargar estado del auto-sync y detectar nuevos syncs automáticamente
+  useEffect(() => {
+    function fetchAutoSync() {
+      metricsApi.getAutoSyncStatus()
+        .then(({ data }) => {
+          setAutoSyncStatus(data);
+          // Si el auto-sync corrió y tenemos datos nuevos, recargar métricas
+          if (data.last_run && data.last_run !== lastAutoRunRef.current) {
+            if (lastAutoRunRef.current !== null) {
+              // Hubo un sync nuevo mientras estaba abierto — recargar datos
+              loadData(period, compareMode);
+            }
+            lastAutoRunRef.current = data.last_run;
+          }
+        })
+        .catch(() => {});
+    }
+
+    fetchAutoSync();
+    const interval = setInterval(fetchAutoSync, 5 * 60 * 1000); // cada 5 min
+    return () => clearInterval(interval);
+  }, [period, compareMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData(days: number, mode: CompareMode) {
     setLoading(true);
@@ -220,11 +247,22 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex flex-col items-end gap-1.5">
-            {lastSyncDate && (
-              <p className="text-[11px] text-slate-400 text-right">
-                Datos hasta <span className="font-medium text-slate-500">{lastSyncDate}</span>
-              </p>
-            )}
+            {/* Frescura de datos + estado auto-sync */}
+            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+              {lastSyncDate && (
+                <span>
+                  Datos hasta <span className="font-medium text-slate-500">{lastSyncDate}</span>
+                </span>
+              )}
+              {autoSyncStatus?.active && (
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {autoSyncStatus.last_run
+                    ? `Auto-sync · cada ${autoSyncStatus.interval_hours}h`
+                    : "Auto-sync activo"}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
                 {PERIODS.map(({ label, days }) => (

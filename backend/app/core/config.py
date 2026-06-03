@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "https://marketing-tienda.vercel.app"
     API_V1_PREFIX: str = "/api/v1"
 
+    # Auto-sync de métricas (0 = desactivado)
+    SYNC_INTERVAL_HOURS: int = 6
+
     # Database
     DATABASE_URL: str
 

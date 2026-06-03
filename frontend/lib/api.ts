@@ -45,6 +45,13 @@ export const metricsApi = {
     api.get("/metrics/", { params: { date_from, date_to, platforms } }),
   getSummary: (date_from: string, date_to: string) =>
     api.get("/metrics/summary", { params: { date_from, date_to } }),
+  getAutoSyncStatus: () =>
+    api.get<{
+      last_run: string | null;
+      next_run: string | null;
+      interval_hours: number;
+      active: boolean;
+    }>("/metrics/auto-sync/status"),
 };
 
 export const analyticsApi = {

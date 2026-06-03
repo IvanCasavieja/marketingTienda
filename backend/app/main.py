@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,17 +14,32 @@ from app.core.tenant_migration import migrate_default_team
 from app.models import Team, TeamGroup, User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob
 from app.api import router
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.APP_ENV == "development":
-        # Dev only: create tables if they don't exist (no migrations needed locally)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-    # Production: run `alembic upgrade head` before starting the server
     async with engine.begin() as conn:
         await migrate_default_team(conn)
+
+    # Arrancar auto-sync de métricas si está habilitado
+    sync_task = None
+    if settings.SYNC_INTERVAL_HOURS > 0:
+        from app.services.auto_sync import run_auto_sync_loop
+        sync_task = asyncio.create_task(run_auto_sync_loop())
+        logger.info("auto_sync: loop iniciado (cada %dh)", settings.SYNC_INTERVAL_HOURS)
+
     yield
+
+    if sync_task:
+        sync_task.cancel()
+        try:
+            await sync_task
+        except asyncio.CancelledError:
+            pass
 
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
