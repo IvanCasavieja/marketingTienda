@@ -75,16 +75,28 @@ def _detect_format(width_cm: float, height_cm: float) -> tuple[str, int]:
 
 _MAX_IMAGE_BYTES = 300_000  # ~300 KB antes de comprimir
 
+# Formatos que los navegadores entienden nativamente
+_WEB_EXTS = {"jpeg", "jpg", "png", "gif", "webp"}
+
 
 def _extract_image_b64(shape) -> tuple[str, str] | None:
-    """Extrae la imagen de un shape Picture, comprimiendo si es necesario.
+    """Extrae la imagen de un shape Picture como base64 web-compatible.
+    WMF/EMF/BMP/TIFF se convierten a PNG/JPEG con Pillow.
     Devuelve (base64_str, ext) o None."""
     try:
         img_obj = shape.image
         raw = img_obj.blob
-        ext = img_obj.ext.lower()
+        ext = img_obj.ext.lower().lstrip(".")
+        if ext == "jpg":
+            ext = "jpeg"
 
-        if len(raw) > _MAX_IMAGE_BYTES:
+        if ext not in _WEB_EXTS:
+            # Formato no soportado por navegadores → intentar convertir
+            converted = _to_web_image(raw)
+            if converted is None:
+                return None  # No se pudo convertir; saltar la imagen
+            raw, ext = converted
+        elif len(raw) > _MAX_IMAGE_BYTES:
             raw, ext = _compress_image(raw, ext)
 
         return base64.b64encode(raw).decode("utf-8"), ext
@@ -92,28 +104,55 @@ def _extract_image_b64(shape) -> tuple[str, str] | None:
         return None
 
 
-def _compress_image(raw: bytes, ext: str) -> tuple[bytes, str]:
-    """Comprime la imagen a JPEG 85% si supera el umbral de tamaño."""
+def _to_web_image(raw: bytes) -> tuple[bytes, str] | None:
+    """Convierte WMF/EMF/BMP/TIFF → PNG o JPEG según tenga transparencia."""
     try:
         from PIL import Image as PILImage
         import io as _io
 
-        img = PILImage.open(_io.BytesIO(raw)).convert("RGB")
+        img = PILImage.open(_io.BytesIO(raw))
+        return _pil_to_web(img)
+    except Exception:
+        return None
 
-        # Reducir resolución si el lado mayor supera 1500px
-        max_dim = 1500
-        if max(img.width, img.height) > max_dim:
-            ratio = max_dim / max(img.width, img.height)
-            img = img.resize(
-                (int(img.width * ratio), int(img.height * ratio)),
-                PILImage.LANCZOS,
-            )
 
-        buf = _io.BytesIO()
-        img.save(buf, format="JPEG", quality=85, optimize=True)
-        return buf.getvalue(), "jpeg"
+def _compress_image(raw: bytes, ext: str) -> tuple[bytes, str]:
+    """Comprime una imagen web existente preservando transparencia PNG."""
+    try:
+        from PIL import Image as PILImage
+        import io as _io
+
+        img = PILImage.open(_io.BytesIO(raw))
+        result = _pil_to_web(img)
+        return result if result else (raw, ext)
     except Exception:
         return raw, ext
+
+
+def _pil_to_web(img) -> tuple[bytes, str]:
+    """Convierte una imagen PIL a bytes web (PNG si tiene alpha, JPEG si no)."""
+    from PIL import Image as PILImage
+    import io as _io
+
+    has_alpha = img.mode in ("RGBA", "LA") or (
+        img.mode == "P" and "transparency" in img.info
+    )
+
+    max_dim = 1500
+    if max(img.width, img.height) > max_dim:
+        ratio = max_dim / max(img.width, img.height)
+        img = img.resize(
+            (int(img.width * ratio), int(img.height * ratio)),
+            PILImage.LANCZOS,
+        )
+
+    buf = _io.BytesIO()
+    if has_alpha:
+        img.convert("RGBA").save(buf, format="PNG", optimize=True)
+        return buf.getvalue(), "png"
+    else:
+        img.convert("RGB").save(buf, format="JPEG", quality=85, optimize=True)
+        return buf.getvalue(), "jpeg"
 
 
 def _extract_fill_color(shape) -> str | None:
