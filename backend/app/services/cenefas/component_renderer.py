@@ -103,7 +103,17 @@ def add_text_component(slide, comp: dict, value: str) -> None:
     tf = txBox.text_frame
     tf.word_wrap = True
 
-    if style.get("auto_fit", True):
+    # Vertical anchor (preserved from original PPTX)
+    vertical_align = style.get("vertical_align")
+    if vertical_align:
+        try:
+            body_pr = tf._txBody.find(qn("a:bodyPr"))
+            if body_pr is not None:
+                body_pr.set("anchor", vertical_align)
+        except Exception:
+            pass
+
+    if style.get("auto_fit", False):
         _enable_normAutofit(tf)
 
     transform = comp.get("transform", "none")

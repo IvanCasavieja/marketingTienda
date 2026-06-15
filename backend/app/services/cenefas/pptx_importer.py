@@ -324,7 +324,23 @@ def _extract_style(shape) -> dict:
         if color:
             style["color"] = color
     style.setdefault("align", "center")
-    style["auto_fit"] = True
+
+    # Vertical anchor + autofit from bodyPr
+    try:
+        from pptx.oxml.ns import qn as _qn
+        body_pr = tf._txBody.find(_qn("a:bodyPr"))
+        if body_pr is not None:
+            anchor = body_pr.get("anchor", "t")
+            if anchor and anchor != "t":
+                style["vertical_align"] = anchor
+            has_norm = body_pr.find(_qn("a:normAutofit")) is not None
+            has_sp   = body_pr.find(_qn("a:spAutoFit"))  is not None
+            style["auto_fit"] = has_norm or has_sp
+        else:
+            style["auto_fit"] = False
+    except Exception:
+        style["auto_fit"] = False
+
     return style
 
 
