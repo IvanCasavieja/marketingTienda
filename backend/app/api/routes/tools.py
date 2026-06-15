@@ -32,7 +32,6 @@ _BUILTIN_TEMPLATES = [
     {"slug": "a4",        "name": "Cenefa A4",     "format_name": "A4",     "filename": "Base cenefa A4 1.pptx"},
     {"slug": "pinchos",   "name": "Pinchos",        "format_name": "Pinchos","filename": "Base pinchos 1.pptx"},
     {"slug": "black",     "name": "Cenefas 3xA4",   "format_name": "3xA4",  "filename": "Bases cenefas BLACK 1.pptx"},
-    {"slug": "plato-dia", "name": "Plato del día",  "format_name": "A4",    "filename": "Plato del dia template.pptx"},
 ]
 
 
