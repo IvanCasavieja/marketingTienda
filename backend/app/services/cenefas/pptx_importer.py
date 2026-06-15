@@ -296,13 +296,16 @@ def _extract_style(shape) -> dict:
             style["align"] = _align.get(para.alignment, "center")
             break
     first_run = None
+    max_font_size = 0.0
     for para in tf.paragraphs:
         for run in para.runs:
-            if run.text.strip():
+            try:
+                if run.font.size:
+                    max_font_size = max(max_font_size, run.font.size.pt)
+            except Exception:
+                pass
+            if first_run is None and run.text.strip():
                 first_run = run
-                break
-        if first_run:
-            break
     if first_run:
         font = first_run.font
         try:
@@ -323,6 +326,10 @@ def _extract_style(shape) -> dict:
         color = _extract_font_color(first_run)
         if color:
             style["color"] = color
+    # If there are runs with a larger font (e.g. empty spacer runs for line-height),
+    # preserve the max so the renderer can replicate the correct line height.
+    if max_font_size > style.get("font_size", 0):
+        style["line_height_pt"] = round(max_font_size, 1)
     style.setdefault("align", "center")
 
     # Vertical anchor + autofit from bodyPr
