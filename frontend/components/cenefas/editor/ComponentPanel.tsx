@@ -1,7 +1,7 @@
 "use client";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent } from "@/types/cenefas";
-import { Type, Image, Square, Plus, Eye, EyeOff, Lock, Trash2 } from "lucide-react";
+import { Type, Image, Square, Plus, Eye, EyeOff, Lock, Trash2, Award } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Catálogo de componentes predefinidos
@@ -100,6 +100,12 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
         type: "image", variable: "imagen",
         icon: <Image size={14} />, color: "text-violet-500",
         defaults: { style: {}, base_bounds: { x: 1, y: 0.5, width: 9, height: 5 } },
+      },
+      {
+        label: "Cocarda / Badge",
+        type: "image",
+        icon: <Award size={14} />, color: "text-amber-500",
+        defaults: { style: {}, base_bounds: { x: 7.5, y: 0, width: 3.5, height: 3.5 } },
       },
     ],
   },

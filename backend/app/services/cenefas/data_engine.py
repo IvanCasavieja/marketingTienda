@@ -167,6 +167,10 @@ def load_products_from_bytes(
         canonical = _EXPECTED_HEADERS.get(_normalize_header(str(raw)))
         h[canonical or str(raw)] = idx
 
+    # Extra columns: anything not in the canonical set gets passed through to the product dict
+    _canonical_set = set(_CANONICAL_COLUMNS)
+    extra_cols = {key: idx for key, idx in h.items() if key not in _canonical_set}
+
     products = []
     seen: set = set()
 
@@ -176,6 +180,10 @@ def load_products_from_bytes(
         if "OFERTADET" in h and not row[h["OFERTADET"]]:
             continue
         data = process_row(row, h, vigencia, aclaracion, otra_alcohol, banco)
+        for col_name, col_idx in extra_cols.items():
+            if col_idx < len(row):
+                val = row[col_idx]
+                data[col_name] = str(val).strip() if val is not None and val != "" else ""
         key = (data["p1"], data["precio"], data["mecanica"], data["descripcion"].lower().strip() if data["descripcion"] else "", data.get("code", ""), data.get("dia", ""))
         if key not in seen:
             seen.add(key)

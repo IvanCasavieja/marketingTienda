@@ -45,6 +45,25 @@ async def list_builtin_templates(current_user: User = Depends(get_current_user))
     return [{"slug": t["slug"], "name": t["name"], "format_name": t["format_name"]} for t in _BUILTIN_TEMPLATES]
 
 
+@router.put("/cenefas/builtin-templates/{slug}", status_code=200)
+async def update_builtin_template(
+    slug: str,
+    file: UploadFile = File(..., description="Nueva plantilla PPTX"),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Solo administradores pueden modificar plantillas predeterminadas")
+    tmpl = next((t for t in _BUILTIN_TEMPLATES if t["slug"] == slug), None)
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template no encontrado")
+    if not file.filename or not file.filename.lower().endswith(".pptx"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser .pptx")
+    file_bytes = await _read_limited(file, "template PPTX")
+    path = _STATIC_DIR / tmpl["filename"]
+    path.write_bytes(file_bytes)
+    return {"slug": slug, "name": tmpl["name"], "message": "Plantilla actualizada correctamente"}
+
+
 @router.get("/cenefas/builtin-templates/{slug}")
 async def download_builtin_template(slug: str, current_user: User = Depends(get_current_user)):
     tmpl = next((t for t in _BUILTIN_TEMPLATES if t["slug"] == slug), None)
