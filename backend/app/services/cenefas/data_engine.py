@@ -19,7 +19,7 @@ from app.services.cenefas.formatters import (
 
 _CANONICAL_COLUMNS = [
     "Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO",
-    "OFERTA", "MONEDA", "NOMBREARTICULO", "CODIGO", "PRECIO_BANCO",
+    "OFERTA", "MONEDA", "CODIGO", "PRECIO_BANCO", "DIA",
 ]
 
 _HEADER_ALIASES: dict[str, str] = {
@@ -28,11 +28,15 @@ _HEADER_ALIASES: dict[str, str] = {
     "SCOTIA 20%":   "PRECIO_BANCO",
     "PRECIO BANCO": "PRECIO_BANCO",
     "PBANCO":       "PRECIO_BANCO",
+    "DIA SEMANA":   "DIA",
+    "DIA_SEMANA":   "DIA",
+    "PLATO DIA":    "DIA",
+    "PLATO DEL DIA":"DIA",
 }
 
-_OPTIONAL_HEADERS  = {"Categoria", "subcategoria", "OFERTADET", "OFERTA", "CODIGO", "PRECIO_BANCO", "NOMBREARTICULO"}
+_OPTIONAL_HEADERS  = {"Categoria", "subcategoria", "OFERTADET", "OFERTA", "CODIGO", "PRECIO_BANCO", "DIA"}
 _REQUIRED_HEADERS  = {"DESCRIPCION", "PRECIO"}
-_DETECTION_COLS    = {"OFERTADET", "DESCRIPCION", "PRECIOS", "PRECIO", "CODIGO", "MONEDA"}
+_DETECTION_COLS    = {"OFERTADET", "DESCRIPCION", "PRECIOS", "PRECIO", "CODIGO", "MONEDA", "DIA"}
 
 
 def _normalize_header(name: str) -> str:
@@ -53,12 +57,13 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
     ofertadet    = str(row[h["OFERTADET"]] or "").strip() if "OFERTADET" in h else "Precio fijo"
     precio_raw   = row[h["PRECIO"]] if "PRECIO" in h else 0
     oferta_raw   = row[h["OFERTA"]] if "OFERTA" in h else ""
-    desc         = str(row[h["DESCRIPCION"]] or "").strip()
+    desc         = str(row[h["DESCRIPCION"]] or "").strip() if "DESCRIPCION" in h else ""
     cat          = str(row[h["Categoria"]] or "").strip() if "Categoria" in h else ""
     subcat       = str(row[h["subcategoria"]] or "").strip() if "subcategoria" in h else ""
     moneda       = str(row[h["MONEDA"]] or "").strip() if "MONEDA" in h else "$"
     code         = str(row[h["CODIGO"]] or "").strip() if "CODIGO" in h else ""
     precio_banco_raw = row[h["PRECIO_BANCO"]] if "PRECIO_BANCO" in h else None
+    dia          = str(row[h["DIA"]] or "").strip() if "DIA" in h else ""
 
     prefix  = "U$S " if moneda == "U$S" else "$"
     precio  = parse_price_raw(precio_raw)
@@ -118,6 +123,7 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
         "precio":          precio_display,
         "mecanica":        mecanica,
         "descripcion":     desc,
+        "dia":             dia,
         "unidad":          unidad,
         "vigencia":        vigencia,
         "aclaracion":      aclaracion,
@@ -161,20 +167,16 @@ def load_products_from_bytes(
         canonical = _EXPECTED_HEADERS.get(_normalize_header(str(raw)))
         h[canonical or str(raw)] = idx
 
-    for k in _REQUIRED_HEADERS:
-        if k not in h:
-            raise KeyError(k)
-
     products = []
     seen: set = set()
 
     for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
-        if not row[h["DESCRIPCION"]]:
+        if "DESCRIPCION" in h and not row[h["DESCRIPCION"]]:
             continue
         if "OFERTADET" in h and not row[h["OFERTADET"]]:
             continue
         data = process_row(row, h, vigencia, aclaracion, otra_alcohol, banco)
-        key = (data["p1"], data["precio"], data["mecanica"], data["descripcion"].lower().strip(), data.get("code", ""))
+        key = (data["p1"], data["precio"], data["mecanica"], data["descripcion"].lower().strip() if data["descripcion"] else "", data.get("code", ""), data.get("dia", ""))
         if key not in seen:
             seen.add(key)
             products.append(data)
@@ -191,15 +193,16 @@ def generate_template_bytes() -> bytes:
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
 
-    HEADERS = ["Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA"]
+    HEADERS = ["Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA", "CODIGO", "PRECIO_BANCO"]
     EXAMPLES: list[tuple] = [
-        ("ALIMENTOS",           "GALLETITAS",       "Precio fijo",       "Galletitas OREO 117g",          1500,  "",       "$"),
-        ("BEBIDAS SIN ALCOHOL", "GASEOSAS",          "Combo",             "Coca-Cola 2.25L",               2500,  "2X4500", "$"),
-        ("BEBIDAS SIN ALCOHOL", "AGUA",              "M x N",             "Agua SALUS 1.5L",               800,   "",       "$"),
-        ("LIMPIEZA",            "LIMPIADORES",       "% descuento",       "Lavandina AYUDIN 2L",           850,   "",       "$"),
-        ("FIAMBRES Y QUESOS",   "QUESOS",            "Precio fijo",       "Queso Barra por Kg.",           12000, "",       "$"),
-        ("BEBIDAS CON ALCOHOL", "VINOS",             "Precio fijo",       "Vino NORTON Malbec 750ml",      3200,  "",       "$"),
-        ("ELECTRODOMESTICOS",   "ELECTRODOMESTICOS", "Precio fijo",       "Licuadora PHILIPS HR2100",      45,    "",       "U$S"),
+        ("ALIMENTOS",           "GALLETITAS",       "Precio fijo",       "Galletitas OREO 117g",          1500,  "",       "$",    "7790001",  ""),
+        ("BEBIDAS SIN ALCOHOL", "GASEOSAS",         "Combo",             "Coca-Cola 2.25L",               2500,  "2x$4500","$",    "7790002",  ""),
+        ("BEBIDAS SIN ALCOHOL", "AGUA",             "M x N",             "Agua SALUS 1.5L",               800,   "",       "$",    "7790003",  ""),
+        ("LIMPIEZA",            "LIMPIADORES",      "% descuento",       "Lavandina AYUDIN 2L",           850,   "",       "$",    "7790004",  ""),
+        ("FIAMBRES Y QUESOS",   "QUESOS",           "Precio fijo",       "Queso Barra por Kg.",           12000, "",       "$",    "7790005",  ""),
+        ("BEBIDAS CON ALCOHOL", "VINOS",            "Precio fijo",       "Vino NORTON Malbec 750ml",      3200,  "",       "$",    "7790006",  2560),
+        ("ELECTRODOMESTICOS",   "ELECTRODOMESTICOS","Precio fijo",       "Licuadora PHILIPS HR2100",      45,    "",       "U$S",  "7790007",  ""),
+        ("ALIMENTOS",           "GALLETITAS",       "Precio fijo",       "Galletitas OREO 117g + Chips AHOY 120g", 2800, "", "$", "7790001/7790008", 2240),
     ]
 
     wb = openpyxl.Workbook()
@@ -225,7 +228,7 @@ def generate_template_bytes() -> bytes:
             if fill:
                 cell.fill = fill
 
-    col_widths = [22, 20, 14, 36, 10, 12, 10]
+    col_widths = [22, 20, 14, 36, 10, 12, 10, 14, 14]
     for col, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.row_dimensions[1].height = 26
@@ -242,6 +245,11 @@ def generate_template_bytes() -> bytes:
     dv_moneda = DataValidation(type="list", formula1='"$,U$S"', allow_blank=True)
     dv_moneda.sqref = "G2:G5000"
     ws.add_data_validation(dv_moneda)
+
+    # Formato numérico para PRECIO_BANCO
+    from openpyxl.styles import numbers
+    for row_idx in range(2, 5002):
+        ws.cell(row=row_idx, column=9).number_format = "#,##0.##"
 
     ws2 = wb.create_sheet("Instrucciones")
     ws2.column_dimensions["A"].width = 20
@@ -273,10 +281,14 @@ def generate_template_bytes() -> bytes:
          "Las palabras en MAYÚSCULAS se muestran en negrita"),
         ("PRECIO",       "Precio unitario (número)",            "Número (ej: 1500, 45.90)",
          "Para Combo: precio individual. Para dólares usa MONEDA=U$S"),
-        ("OFERTA",       "Solo para Combo: cantidad y precio total", "Formato: 2X4500",
-         "2X4500 = 2 unidades por $4500. Vacío para otros tipos."),
+        ("OFERTA",       "Solo para Combo: cantidad y precio total", "Formato: 2X4500 o 2x$4500",
+         "2X4500 = 2 unidades por $4500. También acepta 2x$4500. Vacío para otros tipos."),
         ("MONEDA",       "Moneda del precio",                   "$ o U$S",
          "$ = pesos uruguayos. U$S = dólares."),
+        ("CODIGO",       "Código de artículo (opcional)",       "Texto o número",
+         "Si contiene '/' (ej: 7790001/7790002) activa modo MULTI-SKU: muestra 'unidad' bajo el precio"),
+        ("PRECIO_BANCO", "Precio con beneficio bancario (opcional)", "Número (ej: 2560)",
+         "Se muestra en el bloque de banco de la plantilla (placeholder <<PBanco>>)"),
     ]
     for row_idx, data in enumerate(rows, 2):
         fill = inst_even_fill if row_idx % 2 == 0 else None

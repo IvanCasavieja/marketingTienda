@@ -22,9 +22,10 @@ logger = logging.getLogger(__name__)
 _STATIC_DIR = pathlib.Path(__file__).parent.parent.parent / "static" / "cenefa_templates"
 
 _BUILTIN_FILES = {
-    "a4":      "Base cenefa A4 1.pptx",
-    "pinchos": "Base pinchos 1.pptx",
-    "black":   "Bases cenefas BLACK 1.pptx",
+    "a4":         "Base cenefa A4 1.pptx",
+    "pinchos":    "Base pinchos 1.pptx",
+    "black":      "Bases cenefas BLACK 1.pptx",
+    "plato-dia":  "Plato del dia template.pptx",
 }
 
 REDIS_INPUT_TTL  = 3_600   # 1 hora

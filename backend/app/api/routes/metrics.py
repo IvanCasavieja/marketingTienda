@@ -6,6 +6,7 @@ from sqlalchemy import select, and_, func
 from pydantic import BaseModel
 from datetime import date
 from typing import List, Optional
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
@@ -36,6 +37,9 @@ async def sync_metrics(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DEMO_MODE:
+        return SyncResponse(platform=payload.platform.value, records_saved=0, status="demo")
+
     if not current_user.team_group_id:
         raise HTTPException(status_code=400, detail="Join a team before syncing metrics")
 
@@ -63,6 +67,11 @@ async def get_campaign_metrics(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DEMO_MODE:
+        from app.services.demo_data import get_demo_metrics_by_day
+        platform_list = [p.strip() for p in platforms.split(",")] if platforms else None
+        return get_demo_metrics_by_day(date_from, date_to, platform_list)
+
     if not current_user.team_group_id:
         return []
 
@@ -80,6 +89,10 @@ async def get_summary(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DEMO_MODE:
+        from app.services.demo_data import get_demo_summary
+        return get_demo_summary(date_from, date_to)
+
     if not current_user.team_group_id:
         return []
 

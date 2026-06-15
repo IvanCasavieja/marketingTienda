@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # Auto-sync de métricas (0 = desactivado)
     SYNC_INTERVAL_HOURS: int = 6
 
+    # Demo mode — devuelve datos ficticios en todos los endpoints de métricas
+    DEMO_MODE: bool = False
+
     # Database
     DATABASE_URL: str
 

@@ -61,7 +61,7 @@ export default function Sidebar() {
   return (
     <aside className="w-64 min-h-screen bg-navy-900 flex flex-col shrink-0">
       {/* Logo — click goes to home */}
-      <Link href={isMedios ? "/dashboard" : "/herramientas/cenefas"} className="px-5 pt-6 pb-5 flex items-center gap-3 group">
+      <Link href="/home" className="px-5 pt-6 pb-5 flex items-center gap-3 group">
         <div className="w-8 h-8 rounded-xl bg-brand-500 flex items-center justify-center shrink-0 group-hover:bg-brand-400 transition-colors">
           <BarChart3 size={16} className="text-white" />
         </div>

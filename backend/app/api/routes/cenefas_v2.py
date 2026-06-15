@@ -48,6 +48,12 @@ _BUILTIN_PPTX = {
         "format_id": "3xa4",
         "file":      "Bases cenefas BLACK 1.pptx",
     },
+    "plato-dia": {
+        "slug":      "plato-dia",
+        "name":      "Plato del día",
+        "format_id": "a4",
+        "file":      "Plato del dia template.pptx",
+    },
 }
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,9 @@ api.interceptors.response.use(
         await axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true });
         return api(original);
       } catch {
-        window.location.href = "/login";
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
       }
     }
     return Promise.reject(error);

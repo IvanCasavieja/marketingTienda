@@ -226,11 +226,13 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
             _set_text(shape, data["aclaracion"])
         elif re.search(r"<<OtraAclaracion\d*>>", t):
             _set_text(shape, data["otra_aclaracion"])
+        elif re.search(r"<<[Dd][Ii][Aa]\d*>>", t):
+            _set_text(shape, data.get("dia", ""))
         elif re.search(r"<<[Cc]ode\d*>>", t):
             _set_text(shape, code)
-        elif re.search(r"<<[Pp][Bb]anco\d*>>", t):
+        elif re.search(r"<<[Pp][Bb]anco\d*>>", t, re.IGNORECASE):
             _set_price(shape, data.get("pbanco", ""), int_pt=PBANCO_INT_PT)
-        elif re.search(r"<<[Bb]anco\d*>>", t):
+        elif re.search(r"<<[Bb]anco\d*>>", t, re.IGNORECASE):
             _set_text(shape, data.get("banco", ""))
         elif re.search(r"<<UnidadPrecio\d*>>", t):
             _set_text_sized(shape, "unidad" if multi else "", UNIDAD_PRECIO_PT)
@@ -269,7 +271,8 @@ def _slot_num(shape) -> int | None:
                 or f"<<OtraAclaracion{n}>>" in t
                 or f"<<UnidadPrecio{n}>>" in t
                 or f"<<UnidadPBanco{n}>>" in t
-                or ("<<" in t and "Descripci" in t and str(n) in t)):
+                or bool(re.search(rf"<<[Dd]escripci[oó]n{n}>>", t))
+                or bool(re.search(rf"<<[Dd][Ii][Aa]{n}>>", t))):
             return n
     return None
 
