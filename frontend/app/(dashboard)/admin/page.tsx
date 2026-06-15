@@ -31,10 +31,9 @@ const TEAM_TYPE_BADGE: Record<string, string> = {
 };
 
 const BUILTIN_SLUGS = [
-  { slug: "a4",        name: "Cenefa A4",     format: "A4" },
-  { slug: "pinchos",   name: "Pinchos",        format: "Pinchos" },
-  { slug: "black",     name: "Cenefas 3xA4",   format: "3xA4" },
-  { slug: "plato-dia", name: "Plato del día",  format: "A4" },
+  { slug: "a4",      name: "Cenefa A4",    format: "A4" },
+  { slug: "pinchos", name: "Pinchos",      format: "Pinchos" },
+  { slug: "black",   name: "Cenefas 3xA4", format: "3xA4" },
 ];
 
 function BuiltinTemplatesSection() {

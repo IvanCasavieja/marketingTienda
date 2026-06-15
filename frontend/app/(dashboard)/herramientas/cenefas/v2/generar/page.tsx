@@ -15,7 +15,6 @@ const BUILTINS = [
   { slug: "a4",        label: "Cenefa A4",      formats: ["a4"] },
   { slug: "pinchos",   label: "Pinchos",         formats: ["pinchos"] },
   { slug: "black",     label: "Cenefas 3xA4",    formats: ["3xa4"] },
-  { slug: "plato-dia", label: "Plato del día",   formats: ["a4"] },
 ];
 
 // ---------------------------------------------------------------------------
