@@ -123,6 +123,9 @@ def _set_price(shape, text: str, int_pt: int | None = None) -> None:
 def _set_desc(shape, text: str) -> None:
     if not shape.has_text_frame:
         return
+    if not text:
+        _set_text(shape, "")
+        return
     tf = shape.text_frame
     target_para = None
     for para in tf.paragraphs:
