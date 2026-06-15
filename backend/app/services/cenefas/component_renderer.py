@@ -194,7 +194,10 @@ def add_image_from_data(slide, comp: dict) -> None:
         try:
             _embed_vector_image(slide, img_bytes, img_ext, bounds)
         except Exception:
-            add_image_placeholder(slide, comp, comp.get("name", "imagen"))
+            # Only show placeholder for variable images (product images).
+            # Decorative static images (no variable) are silently skipped.
+            if comp.get("variable"):
+                add_image_placeholder(slide, comp, comp.get("name", "imagen"))
     else:
         try:
             slide.shapes.add_picture(
