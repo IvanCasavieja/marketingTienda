@@ -527,4 +527,7 @@ def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
     if include_report and job.validation_report:
         summary = job.validation_report.get("summary")
         d["validation_summary"] = summary
+        # Expose error message so the frontend can display it instead of "Error desconocido"
+        if job.status == "error":
+            d["validation_report"] = {"error": job.validation_report.get("error", "Error interno")}
     return d
