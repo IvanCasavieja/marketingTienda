@@ -220,6 +220,23 @@ async def update_template(
     return {"id": str(tmpl.id), "name": tmpl.name}
 
 
+@router.patch("/templates/{template_id}/rename")
+async def rename_template(
+    template_id: uuid.UUID,
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    tmpl = await _get_owned_template(template_id, current_user, db)
+    if tmpl.is_builtin:
+        raise HTTPException(status_code=403, detail="No se pueden modificar templates del sistema")
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="El nombre no puede estar vacío")
+    tmpl.name = name
+    return {"id": str(tmpl.id), "name": tmpl.name}
+
+
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_template(
     template_id: uuid.UUID,
