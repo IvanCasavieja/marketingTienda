@@ -390,19 +390,20 @@ def _parse_shape(shape, z_index: int) -> dict | None:
             return {**common, "type": "text", "name": var_name,
                     "variable": var_name, "transform": transform,
                     "style": style, "_var_type": var_type}
-        if not text:
-            return None
-        label = text[:30]
-        return {**common, "type": "text", "name": label,
-                "variable": None, "static_value": text,
-                "transform": "none", "style": style, "_var_type": "text"}
+        if text:
+            label = text[:30]
+            return {**common, "type": "text", "name": label,
+                    "variable": None, "static_value": text,
+                    "transform": "none", "style": style, "_var_type": "text"}
+        # Texto vacío: puede ser un shape decorativo con color de fondo → fall-through
 
-    # Shape sin texto → fondo/decorativo con color
+    # Shape sin texto (o texto vacío) → fondo/decorativo con color
     style = {}
     bg = _extract_fill_color(shape)
     if bg:
         style["background_color"] = bg
-    return {**common, "type": "shape", "name": f"fondo_{z_index}", "style": style}
+        return {**common, "type": "shape", "name": f"fondo_{z_index}", "style": style}
+    return None
 
 
 # ---------------------------------------------------------------------------
