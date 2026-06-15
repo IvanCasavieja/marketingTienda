@@ -326,13 +326,12 @@ def _extract_style(shape) -> dict:
         color = _extract_font_color(first_run)
         if color:
             style["color"] = color
-    # If there are runs with a larger font (e.g. empty spacer runs for line-height),
-    # preserve the max so the renderer can replicate the correct line height.
+    # Max font across all runs (spacer runs set line height)
     if max_font_size > style.get("font_size", 0):
         style["line_height_pt"] = round(max_font_size, 1)
     style.setdefault("align", "center")
 
-    # Vertical anchor + autofit from bodyPr
+    # Vertical anchor + autofit + insets from bodyPr
     try:
         from pptx.oxml.ns import qn as _qn
         body_pr = tf._txBody.find(_qn("a:bodyPr"))
@@ -343,10 +342,40 @@ def _extract_style(shape) -> dict:
             has_norm = body_pr.find(_qn("a:normAutofit")) is not None
             has_sp   = body_pr.find(_qn("a:spAutoFit"))  is not None
             style["auto_fit"] = has_norm or has_sp
+            # Bottom inset (needed for anchor=b overflow calculation)
+            style["_b_ins_emu"] = int(body_pr.get("bIns", "45720"))
         else:
             style["auto_fit"] = False
     except Exception:
         style["auto_fit"] = False
+
+    # Line spacing from lstStyle (e.g. 90000 = 90%)
+    try:
+        from pptx.oxml.ns import qn as _qn2
+        lst = tf._txBody.find(_qn2("a:lstStyle"))
+        if lst is not None:
+            pct_el = lst.find(f'.//{_qn2("a:lnSpc")}/{_qn2("a:spcPct")}')
+            if pct_el is not None:
+                style["_lnSpc_pct"] = int(pct_el.get("val", "100000")) / 1000
+    except Exception:
+        pass
+
+    # Baseline shift from first non-empty run (e.g. 30000 = 30% superscript)
+    try:
+        from pptx.oxml.ns import qn as _qn3
+        for para in tf.paragraphs:
+            for run in para.runs:
+                if run.text.strip():
+                    rPr = run._r.find(_qn3("a:rPr"))
+                    if rPr is not None:
+                        bl = rPr.get("baseline")
+                        if bl and int(bl) != 0:
+                            style["_baseline"] = int(bl)
+                    break
+            if "_baseline" in style:
+                break
+    except Exception:
+        pass
 
     return style
 
@@ -407,6 +436,30 @@ def _parse_shape(shape, z_index: int) -> dict | None:
     if shape.has_text_frame:
         text = _get_shape_text(shape).strip()
         style = _extract_style(shape)
+
+        # Recompute bounds for bottom-anchored shapes with spacer overflow runs.
+        # PowerPoint positions these using anchor=b + large spacer + baseline shift.
+        # We convert to a top-anchored box at the computed visual position instead,
+        # so the export faithfully places the text where it appears in the original.
+        if (style.get("vertical_align") == "b"
+                and style.get("line_height_pt", 0) > common["base_bounds"]["height"] * 1.5):
+            max_font   = style["line_height_pt"]
+            lnSpc      = style.pop("_lnSpc_pct", 100) / 100
+            b_ins      = style.pop("_b_ins_emu", 45720) / _EMU_PER_CM
+            baseline   = style.pop("_baseline", 0) / 100000   # e.g. 0.30
+            eff_line_h = max_font * lnSpc / 72 * 2.54          # cm
+            y_bottom   = common["base_bounds"]["y"] + common["base_bounds"]["height"] - b_ins
+            bl_shift   = baseline * max_font / 72 * 2.54       # cm upward
+            new_y      = y_bottom - eff_line_h - bl_shift
+            common["base_bounds"]["y"]      = round(new_y, 3)
+            common["base_bounds"]["height"] = round(eff_line_h, 3)
+            style.pop("vertical_align", None)   # use default top anchor
+            style.pop("line_height_pt", None)   # no spacer run needed in export
+        else:
+            style.pop("_lnSpc_pct", None)
+            style.pop("_b_ins_emu", None)
+            style.pop("_baseline", None)
+
         ph = _detect_placeholder(text)
         if ph:
             var_name, var_type, transform = ph
