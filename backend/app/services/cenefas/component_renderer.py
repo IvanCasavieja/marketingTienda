@@ -132,6 +132,14 @@ def add_text_component(slide, comp: dict, value: str) -> None:
         run.text = value
         _apply_run_style(run, style)
 
+    # Replicate empty spacer run used in original PPTX to set a larger line height.
+    # Without this, anchor=b positions text much lower than the original.
+    line_height_pt = style.get("line_height_pt")
+    if line_height_pt and line_height_pt != style.get("font_size"):
+        spacer = p.add_run()
+        spacer.text = ""
+        spacer.font.size = Pt(line_height_pt)
+
 
 def _apply_run_style(run, style: dict, bold_override: bool | None = None) -> None:
     font = run.font
