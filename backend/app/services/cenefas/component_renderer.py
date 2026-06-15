@@ -173,7 +173,10 @@ def add_image_from_data(slide, comp: dict) -> None:
         return
 
     if img_ext in _WMF_EXTS:
-        _embed_vector_image(slide, img_bytes, img_ext, bounds)
+        try:
+            _embed_vector_image(slide, img_bytes, img_ext, bounds)
+        except Exception:
+            add_image_placeholder(slide, comp, comp.get("name", "imagen"))
     else:
         try:
             slide.shapes.add_picture(
