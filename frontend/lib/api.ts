@@ -133,6 +133,8 @@ export const cenefasV2Api = {
     ),
   updateTemplate: (id: string, payload: CenefaTemplate) =>
     api.put<{ id: string; name: string }>(`/tools/cenefas/v2/templates/${id}`, payload),
+  renameTemplate: (id: string, name: string) =>
+    api.patch<{ id: string; name: string }>(`/tools/cenefas/v2/templates/${id}/rename`, { name }),
   deleteTemplate: (id: string) =>
     api.delete(`/tools/cenefas/v2/templates/${id}`),
 

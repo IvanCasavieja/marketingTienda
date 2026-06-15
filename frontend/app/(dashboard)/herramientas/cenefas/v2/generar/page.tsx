@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Upload, ChevronLeft, ChevronRight, FileSpreadsheet,
   CheckCircle2, AlertCircle, Loader2, Download, RefreshCw,
+  Trash2, Pencil, Check, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
@@ -227,19 +228,18 @@ export default function GenerarPage() {
           {tmplMode === "v2" ? (
             <div>
               <SectionLabel>Template v2</SectionLabel>
-              <select className="input w-full mt-1" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-                <option value="">— Seleccioná un template —</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name} ({t.formats.join(", ")})</option>
-                ))}
-              </select>
-              {templates.length === 0 && (
-                <p className="text-xs text-amber-600 flex items-center gap-1.5 mt-1.5">
-                  <AlertCircle size={13} />
-                  No hay templates v2.{" "}
-                  <a href="/herramientas/cenefas/v2" className="underline">Creá uno en el editor</a>.
-                </p>
-              )}
+              <TemplateList
+                templates={templates}
+                selectedId={templateId}
+                onSelect={setTemplateId}
+                onRenamed={(id, name) =>
+                  setTemplates((prev) => prev.map((t) => t.id === id ? { ...t, name } : t))
+                }
+                onDeleted={(id) => {
+                  setTemplates((prev) => prev.filter((t) => t.id !== id));
+                  if (templateId === id) setTemplateId("");
+                }}
+              />
             </div>
           ) : (
             <div>
@@ -502,6 +502,134 @@ function Stepper({ current }: { current: Step }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{children}</p>;
+}
+
+function TemplateList({
+  templates, selectedId, onSelect, onRenamed, onDeleted,
+}: {
+  templates:  CenefaTemplateRecord[];
+  selectedId: string;
+  onSelect:   (id: string) => void;
+  onRenamed:  (id: string, name: string) => void;
+  onDeleted:  (id: string) => void;
+}) {
+  const [editingId,   setEditingId]   = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [deletingId,  setDeletingId]  = useState<string | null>(null);
+
+  async function handleRename(id: string) {
+    if (!editingName.trim()) return;
+    try {
+      await cenefasV2Api.renameTemplate(id, editingName.trim());
+      onRenamed(id, editingName.trim());
+      toast.success("Nombre actualizado");
+    } catch {
+      toast.error("Error al renombrar");
+    } finally {
+      setEditingId(null);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await cenefasV2Api.deleteTemplate(id);
+      onDeleted(id);
+      toast.success("Template eliminado");
+    } catch {
+      toast.error("Error al eliminar");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  if (templates.length === 0) {
+    return (
+      <p className="text-xs text-amber-600 flex items-center gap-1.5 mt-1.5">
+        <AlertCircle size={13} />
+        No hay templates v2.{" "}
+        <a href="/herramientas/cenefas/v2" className="underline">Creá uno en el editor</a>.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-1 space-y-1">
+      {templates.map((t) => {
+        const isSelected = selectedId === t.id;
+        const isEditing  = editingId === t.id;
+        const isDeleting = deletingId === t.id;
+
+        return (
+          <div
+            key={t.id}
+            onClick={() => !isEditing && onSelect(t.id)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-all group ${
+              isSelected
+                ? "border-brand-500 bg-brand-50"
+                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            {isEditing ? (
+              <>
+                <input
+                  autoFocus
+                  className="flex-1 text-sm bg-transparent outline-none border-b border-brand-400"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleRename(t.id);
+                    if (e.key === "Escape") setEditingId(null);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <button onClick={(e) => { e.stopPropagation(); handleRename(t.id); }}
+                  className="text-emerald-600 hover:text-emerald-700">
+                  <Check size={14} />
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }}
+                  className="text-slate-400 hover:text-slate-600">
+                  <X size={14} />
+                </button>
+              </>
+            ) : isDeleting ? (
+              <>
+                <span className="flex-1 text-sm text-rose-600">¿Eliminar "{t.name}"?</span>
+                <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
+                  className="text-xs font-semibold text-rose-600 hover:text-rose-800 px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100">
+                  Sí, borrar
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); setDeletingId(null); }}
+                  className="text-xs text-slate-500 hover:text-slate-700">
+                  Cancelar
+                </button>
+              </>
+            ) : (
+              <>
+                <span className={`flex-1 text-sm truncate ${isSelected ? "text-brand-700 font-medium" : "text-slate-700"}`}>
+                  {t.name}
+                </span>
+                <span className="text-[10px] text-slate-400 shrink-0">{t.formats?.join(", ")}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setEditingId(t.id); setEditingName(t.name); setDeletingId(null); }}
+                  className="p-1 text-slate-300 hover:text-brand-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Renombrar"
+                >
+                  <Pencil size={12} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setDeletingId(t.id); setEditingId(null); }}
+                  className="p-1 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Eliminar"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
