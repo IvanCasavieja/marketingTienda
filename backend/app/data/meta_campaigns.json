@@ -1,0 +1,23 @@
+[
+  {
+    "_comment": "Reemplazá estos registros con los datos reales de Meta Ads exportados.",
+    "_guide": "Cada objeto representa un día de una campaña. Campos requeridos: platform, campaign_id, campaign_name, date, impressions, clicks, spend, conversions, revenue, reach, ctr, cpc, cpm, roas.",
+    "_reconnect": "Para volver a la API live de Meta: ponér META_DISABLED=False en el .env del backend y reiniciar. El token guardado en DB sigue intacto."
+  },
+  {
+    "platform": "meta",
+    "campaign_id": "REEMPLAZAR_ID",
+    "campaign_name": "Campaña ejemplo — reemplazar con datos reales",
+    "date": "2026-06-01",
+    "impressions": 0,
+    "clicks": 0,
+    "spend": 0.0,
+    "conversions": 0,
+    "revenue": 0.0,
+    "reach": 0,
+    "ctr": 0.0,
+    "cpc": 0.0,
+    "cpm": 0.0,
+    "roas": 0.0
+  }
+]

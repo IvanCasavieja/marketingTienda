@@ -104,6 +104,53 @@ export default function PropertiesPanel() {
           </Section>
         )}
 
+        {/* Imagen estática — para componentes tipo imagen */}
+        {comp.type === "image" && (
+          <Section label="Imagen">
+            {comp.image_data ? (
+              <div className="space-y-2">
+                <img
+                  src={`data:image/${comp.image_ext ?? "png"};base64,${comp.image_data}`}
+                  alt="preview"
+                  className="max-h-24 w-auto rounded border border-slate-200 object-contain"
+                />
+                <button
+                  onClick={() => { set("image_data", undefined); set("image_ext", undefined); }}
+                  className="text-[10px] text-rose-500 hover:text-rose-700"
+                >
+                  Quitar imagen
+                </button>
+              </div>
+            ) : (
+              <p className="text-[10px] text-slate-400 italic mb-1">
+                Sin imagen — se mostrará un placeholder gris
+              </p>
+            )}
+            <label className="mt-2 flex flex-col gap-1">
+              <span className="text-[10px] text-slate-400 uppercase">
+                {comp.image_data ? "Reemplazar imagen" : "Subir imagen"}
+              </span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                className="text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-slate-100 file:text-slate-600 hover:file:bg-slate-200"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    const b64 = (ev.target?.result as string).split(",")[1];
+                    set("image_data", b64);
+                    set("image_ext", ext);
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </label>
+          </Section>
+        )}
+
         {/* Texto fijo — visible solo cuando no hay variable */}
         {comp.type === "text" && !comp.variable && (
           <Section label="Texto fijo">

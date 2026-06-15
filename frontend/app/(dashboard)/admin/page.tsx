@@ -4,7 +4,7 @@ import { api, authApi } from "@/lib/api";
 import { CurrentUser } from "@/types";
 import {
   Users, UserPlus, KeyRound, Building2, ShieldAlert,
-  Loader2, CheckCircle2, XCircle, ChevronDown,
+  Loader2, CheckCircle2, XCircle, ChevronDown, Presentation, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,6 +29,74 @@ const TEAM_TYPE_BADGE: Record<string, string> = {
   marca:  "bg-amber-100 text-amber-700",
   promo:  "bg-emerald-100 text-emerald-700",
 };
+
+const BUILTIN_SLUGS = [
+  { slug: "a4",        name: "Cenefa A4",     format: "A4" },
+  { slug: "pinchos",   name: "Pinchos",        format: "Pinchos" },
+  { slug: "black",     name: "Cenefas 3xA4",   format: "3xA4" },
+  { slug: "plato-dia", name: "Plato del día",  format: "A4" },
+];
+
+function BuiltinTemplatesSection() {
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  async function handleUpload(slug: string, file: File) {
+    setUploading(slug);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      await api.put(`/tools/cenefas/builtin-templates/${slug}`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("Plantilla actualizada correctamente");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? "Error al actualizar plantilla");
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-2">
+        <Presentation size={15} className="text-slate-400" />
+        <p className="text-sm font-semibold text-slate-700">Plantillas predeterminadas</p>
+      </div>
+      <div className="divide-y divide-slate-50">
+        {BUILTIN_SLUGS.map((t) => (
+          <div key={t.slug} className="flex items-center gap-4 px-5 py-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-800">{t.name}</p>
+              <p className="text-xs text-slate-400">{t.format} · slug: {t.slug}</p>
+            </div>
+            <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+              uploading === t.slug
+                ? "bg-slate-100 text-slate-400 pointer-events-none"
+                : "bg-brand-50 text-brand-600 hover:bg-brand-100"
+            }`}>
+              {uploading === t.slug
+                ? <Loader2 size={13} className="animate-spin" />
+                : <Upload size={13} />
+              }
+              {uploading === t.slug ? "Subiendo…" : "Reemplazar PPTX"}
+              <input
+                type="file"
+                accept=".pptx"
+                className="hidden"
+                disabled={!!uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleUpload(t.slug, file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminPage() {
   const [me,       setMe]       = useState<CurrentUser | null>(null);
@@ -221,6 +289,9 @@ export default function AdminPage() {
           </button>
         </div>
       )}
+
+      {/* Plantillas predeterminadas */}
+      <BuiltinTemplatesSection />
 
       {/* Tabla de grupos */}
       <div className="card overflow-hidden">

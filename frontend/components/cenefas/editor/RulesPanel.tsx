@@ -197,20 +197,23 @@ export function RuleForm({
   onSave:      (rule: CenefaRule) => void;
   onCancel:    () => void;
 }) {
-  const [action,   setAction]   = useState<RuleAction>("show");
-  const [field,    setField]    = useState(variables[0]?.name ?? "");
-  const [operator, setOperator] = useState<RuleOperator>("is_not_empty");
-  const [value,    setValue]    = useState("");
+  const [action,     setAction]     = useState<RuleAction>("show");
+  const [fieldSrc,   setFieldSrc]   = useState<"variable" | "custom">(variables.length > 0 ? "variable" : "custom");
+  const [field,      setField]      = useState(variables[0]?.name ?? "");
+  const [customCol,  setCustomCol]  = useState("");
+  const [operator,   setOperator]   = useState<RuleOperator>("is_not_empty");
+  const [value,      setValue]      = useState("");
 
+  const effectiveField  = fieldSrc === "custom" ? customCol.trim().toUpperCase() : field;
   const actionLabel     = action === "show" ? "Mostrar" : "Ocultar";
   const operatorLabel   = OPERATORS.find((o) => o.value === operator)?.label ?? "";
-  const autoName        = `${actionLabel} si ${field} ${operatorLabel}`;
+  const autoName        = `${actionLabel} si ${effectiveField} ${operatorLabel}`;
 
   function handleSave() {
-    if (!field) return;
+    if (!effectiveField) return;
     const condition = NEEDS_VALUE.includes(operator)
-      ? { field, operator, value }
-      : { field, operator };
+      ? { field: effectiveField, operator, value }
+      : { field: effectiveField, operator };
 
     onSave({
       id:                  crypto.randomUUID(),
@@ -219,14 +222,6 @@ export function RuleForm({
       condition:           condition as CenefaRule["condition"],
       action:              { type: action },
     });
-  }
-
-  if (variables.length === 0) {
-    return (
-      <p className="text-[10px] text-slate-400 italic">
-        Primero agregá variables en la pestaña Variables
-      </p>
-    );
   }
 
   return (
@@ -253,18 +248,57 @@ export function RuleForm({
         </div>
       </div>
 
-      {/* Paso 2: Variable */}
+      {/* Paso 2: Campo — variable de plantilla o columna de Excel */}
       <div>
-        <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5">¿Cuándo?  Según la variable…</p>
-        <select
-          className="input text-xs w-full"
-          value={field}
-          onChange={(e) => setField(e.target.value)}
-        >
-          {variables.map((v) => (
-            <option key={v.name} value={v.name}>{v.name} ({v.csv_column})</option>
-          ))}
-        </select>
+        <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5">¿Cuándo? Según…</p>
+        <div className="flex gap-1 mb-2">
+          {variables.length > 0 && (
+            <button
+              onClick={() => setFieldSrc("variable")}
+              className={`flex-1 py-1 rounded text-[10px] font-medium transition-all ${
+                fieldSrc === "variable"
+                  ? "bg-brand-100 text-brand-700 ring-1 ring-brand-300"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              Variable de plantilla
+            </button>
+          )}
+          <button
+            onClick={() => setFieldSrc("custom")}
+            className={`flex-1 py-1 rounded text-[10px] font-medium transition-all ${
+              fieldSrc === "custom"
+                ? "bg-amber-100 text-amber-700 ring-1 ring-amber-300"
+                : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+            }`}
+          >
+            Columna del Excel
+          </button>
+        </div>
+
+        {fieldSrc === "variable" && variables.length > 0 ? (
+          <select
+            className="input text-xs w-full"
+            value={field}
+            onChange={(e) => setField(e.target.value)}
+          >
+            {variables.map((v) => (
+              <option key={v.name} value={v.name}>{v.name} ({v.csv_column})</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            className="input text-xs w-full"
+            placeholder="Ej: DESCUENTO 20"
+            value={customCol}
+            onChange={(e) => setCustomCol(e.target.value)}
+          />
+        )}
+        {fieldSrc === "custom" && (
+          <p className="text-[10px] text-slate-400 mt-1">
+            Escribí el nombre exacto de la columna en el Excel (sin tildes).
+          </p>
+        )}
       </div>
 
       {/* Paso 3: Condición simplificada */}
