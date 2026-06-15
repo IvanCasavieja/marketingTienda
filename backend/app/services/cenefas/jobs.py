@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from app.core.redis_client import get_redis
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template import CenefaTemplate
 from app.models.cenefa_template_v2 import CenefaTemplateV2
@@ -27,12 +26,26 @@ _BUILTIN_FILES = {
     "black":   "Bases cenefas BLACK 1.pptx",
 }
 
-REDIS_INPUT_TTL  = 3_600   # 1 hora
-REDIS_RESULT_TTL = 86_400  # 24 horas
+REDIS_INPUT_TTL  = 3_600
+REDIS_RESULT_TTL = 86_400
+
+# Cache en memoria — reemplaza Redis para input/output de jobs.
+# Funciona en deployments single-process (Render free tier).
+# Los bytes se eliminan al descargar o al reiniciar el servidor.
+_job_results: dict[str, bytes] = {}
+
+
+def store_job_result(job_id: uuid.UUID, pptx_bytes: bytes) -> None:
+    _job_results[str(job_id)] = pptx_bytes
+
+
+def pop_job_result(job_id: uuid.UUID) -> bytes | None:
+    return _job_results.pop(str(job_id), None)
 
 
 async def run_generation_job(
     job_id:          uuid.UUID,
+    excel_bytes:     bytes,
     builtin_slug:    str | None,
     template_v1_id:  int | None,
     template_v2_id:  uuid.UUID | None,
@@ -48,8 +61,6 @@ async def run_generation_job(
     Pipeline v1/builtin:  Excel → generate_pptx_bytes (template PPTX clonado)
     Pipeline v2:          Excel → component_renderer   (JSON components)
     """
-    redis = get_redis()
-
     async with AsyncSessionLocal() as db:
         job = await _get_job(db, job_id)
         if job is None:
@@ -59,11 +70,6 @@ async def run_generation_job(
         await db.commit()
 
         try:
-            # Leer Excel desde Redis
-            excel_bytes = await redis.get(f"cenefa:input:{job_id}")
-            if not excel_bytes:
-                raise ValueError("Excel expiró o no fue almacenado correctamente")
-
             # Parsear y validar productos (ambos pipelines necesitan esto)
             products = await asyncio.to_thread(
                 load_products_from_bytes, excel_bytes, vigencia, aclaracion, otra_alcohol, banco
@@ -88,14 +94,13 @@ async def run_generation_job(
                     vigencia, aclaracion, otra_alcohol, banco,
                 )
 
-            # Guardar resultado en Redis
-            result_key = f"cenefa:result:{job_id}"
-            await redis.setex(result_key, REDIS_RESULT_TTL, pptx_bytes)
+            # Guardar resultado en memoria
+            store_job_result(job_id, pptx_bytes)
 
             job.status            = "done"
             job.row_count         = len(products)
             job.error_count       = len(validation["errors"])
-            job.result_path       = result_key
+            job.result_path       = str(job_id)
             job.validation_report = {
                 "summary":  summary,
                 "errors":   validation["errors"],

@@ -10,12 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.core.redis_client import get_redis
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
 from app.services.cenefas.data_engine import load_products_from_bytes
-from app.services.cenefas.jobs import REDIS_INPUT_TTL, run_generation_job
+from app.services.cenefas.jobs import run_generation_job, pop_job_result
 from app.services.cenefas.layout_engine import FORMATS
 from app.services.cenefas.rules_engine import evaluate_rules
 from app.services.cenefas.validation_engine import build_summary, validate_products
@@ -390,12 +389,10 @@ async def create_job(
     await db.refresh(job)
     job_id = job.id
 
-    redis = get_redis()
-    await redis.setex(f"cenefa:input:{job_id}", REDIS_INPUT_TTL, excel_bytes)
-
     background_tasks.add_task(
         run_generation_job,
         job_id=job_id,
+        excel_bytes=excel_bytes,
         builtin_slug=builtin_slug,
         template_v1_id=template_v1_id,
         template_v2_id=template_v2_id,
@@ -456,12 +453,11 @@ async def download_job_result(
     if not job.result_path:
         raise HTTPException(status_code=404, detail="Resultado no disponible")
 
-    redis = get_redis()
-    result_bytes = await redis.get(job.result_path)
+    result_bytes = pop_job_result(job.id)
     if not result_bytes:
         raise HTTPException(
             status_code=410,
-            detail="El resultado expiró (disponible por 24h desde la generación)",
+            detail="El resultado ya fue descargado o el servidor se reinició — generá de nuevo",
         )
 
     media_type = (
