@@ -94,7 +94,10 @@ class Settings(BaseSettings):
 
     @property
     def allowed_origins(self) -> List[str]:
-        return [o.strip() for o in self.APP_ALLOWED_ORIGINS.split(",")]
+        origins = [o.strip() for o in self.APP_ALLOWED_ORIGINS.split(",") if o.strip()]
+        if self.FRONTEND_URL and self.FRONTEND_URL not in origins:
+            origins.append(self.FRONTEND_URL)
+        return origins
 
 
 settings = Settings()
