@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import {
   Save, Loader2, AlertCircle, CheckCircle2,
   ChevronLeft, Layers, GitBranch,
-  Variable, FolderOpen, Play,
+  Variable, FolderOpen, Play, Pencil, Trash2, Check, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
@@ -52,6 +52,9 @@ export default function EditorPage() {
   const [showTmplMenu, setShowTmplMenu] = useState(false);
   const [loadingTmpl,  setLoadingTmpl]  = useState(false);
   const [showImport,   setShowImport]   = useState(true);
+  const [editingTmplId,   setEditingTmplId]   = useState<string | null>(null);
+  const [editingTmplName, setEditingTmplName] = useState("");
+  const [deletingTmplId,  setDeletingTmplId]  = useState<string | null>(null);
   const tmplMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -86,6 +89,32 @@ export default function EditorPage() {
       toast.error("Error al cargar el template");
     } finally {
       setLoadingTmpl(false);
+    }
+  }
+
+  async function handleRenameTmpl(id: string) {
+    if (!editingTmplName.trim()) return;
+    try {
+      await cenefasV2Api.renameTemplate(id, editingTmplName.trim());
+      setSavedTmpls((prev) => prev.map((t) => t.id === id ? { ...t, name: editingTmplName.trim() } : t));
+      if (templateId === id) setTemplateName(editingTmplName.trim());
+      toast.success("Nombre actualizado");
+    } catch {
+      toast.error("Error al renombrar");
+    } finally {
+      setEditingTmplId(null);
+    }
+  }
+
+  async function handleDeleteTmpl(id: string) {
+    try {
+      await cenefasV2Api.deleteTemplate(id);
+      setSavedTmpls((prev) => prev.filter((t) => t.id !== id));
+      toast.success("Template eliminado");
+    } catch {
+      toast.error("Error al eliminar");
+    } finally {
+      setDeletingTmplId(null);
     }
   }
 
@@ -205,17 +234,59 @@ export default function EditorPage() {
               {savedTmpls.length === 0 ? (
                 <p className="px-3 py-4 text-xs text-slate-400 text-center">Sin templates guardados</p>
               ) : (
-                <div className="max-h-52 overflow-y-auto">
-                  {savedTmpls.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => handleLoadTemplate(t.id)}
-                      className="w-full text-left px-3 py-2.5 hover:bg-slate-50 text-sm text-slate-700 border-b border-slate-50 last:border-0"
-                    >
-                      <p className="font-medium truncate">{t.name}</p>
-                      <p className="text-[10px] text-slate-400">{t.formats.join(", ")}</p>
-                    </button>
-                  ))}
+                <div className="max-h-64 overflow-y-auto">
+                  {savedTmpls.map((t) => {
+                    const isEd  = editingTmplId  === t.id;
+                    const isDel = deletingTmplId === t.id;
+                    return (
+                      <div key={t.id} className="group border-b border-slate-50 last:border-0">
+                        {isEd ? (
+                          <div className="flex items-center gap-1 px-3 py-2">
+                            <input
+                              autoFocus
+                              className="flex-1 text-sm border-b border-brand-400 outline-none bg-transparent"
+                              value={editingTmplName}
+                              onChange={(e) => setEditingTmplName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleRenameTmpl(t.id);
+                                if (e.key === "Escape") setEditingTmplId(null);
+                              }}
+                            />
+                            <button onClick={() => handleRenameTmpl(t.id)} className="p-1 text-emerald-600 hover:text-emerald-700"><Check size={13} /></button>
+                            <button onClick={() => setEditingTmplId(null)} className="p-1 text-slate-400 hover:text-slate-600"><X size={13} /></button>
+                          </div>
+                        ) : isDel ? (
+                          <div className="px-3 py-2">
+                            <p className="text-xs text-rose-600 mb-1.5">¿Borrar "{t.name}"?</p>
+                            <div className="flex gap-2">
+                              <button onClick={() => handleDeleteTmpl(t.id)} className="text-xs font-semibold text-rose-600 hover:text-rose-800 px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100">Sí, borrar</button>
+                              <button onClick={() => setDeletingTmplId(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancelar</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center pr-1">
+                            <button
+                              onClick={() => handleLoadTemplate(t.id)}
+                              className="flex-1 text-left px-3 py-2.5 hover:bg-slate-50 text-sm text-slate-700"
+                            >
+                              <p className="font-medium truncate">{t.name}</p>
+                              <p className="text-[10px] text-slate-400">{t.formats.join(", ")}</p>
+                            </button>
+                            <button
+                              onClick={() => { setEditingTmplId(t.id); setEditingTmplName(t.name); setDeletingTmplId(null); }}
+                              className="p-1.5 text-slate-300 hover:text-brand-500 shrink-0"
+                              title="Renombrar"
+                            ><Pencil size={12} /></button>
+                            <button
+                              onClick={() => { setDeletingTmplId(t.id); setEditingTmplId(null); }}
+                              className="p-1.5 text-slate-300 hover:text-rose-500 shrink-0"
+                              title="Eliminar"
+                            ><Trash2 size={12} /></button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <div className="px-3 py-2 border-t border-slate-100">
