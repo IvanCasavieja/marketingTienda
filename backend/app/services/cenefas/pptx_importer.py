@@ -410,32 +410,6 @@ def _parse_shape(shape, z_index: int) -> dict | None:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def _detect_vertical_slots(all_comps: list[dict], page_height: float) -> str | None:
-    """Detecta si un slide A4 tiene múltiples franjas verticales (mismo layout repetido).
-
-    Compara la distribución Y de los componentes variable:
-    - Si hay componentes en los 3 tercios de la página → '3xa4' (3 franjas de 9.9cm)
-    - Retorna None si no se detecta patrón multi-franja.
-    """
-    # Solo considerar shapes con variable (los que tienen datos reales)
-    y_centers = []
-    for c in all_comps:
-        if not c.get("variable"):
-            continue
-        bb = c["base_bounds"]
-        y_centers.append(bb["y"] + bb["height"] / 2)
-
-    if not y_centers:
-        return None
-
-    band_h = page_height / 3
-    in_band2 = any(band_h <= y < 2 * band_h for y in y_centers)
-    in_band3 = any(2 * band_h <= y for y in y_centers)
-    if in_band2 and in_band3:
-        return "3xa4"
-    return None
-
-
 def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
     """Parsea el primer slide de un PPTX y devuelve una definición v2."""
     prs = Presentation(BytesIO(pptx_bytes))
@@ -445,7 +419,8 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
     slide = prs.slides[0]
     width_cm  = _emu_to_cm(prs.slide_width)
     height_cm = _emu_to_cm(prs.slide_height)
-    format_id, _slots = _detect_format(width_cm, height_cm)
+    format_id, slots = _detect_format(width_cm, height_cm)
+    slot_width = width_cm / slots
 
     components: list[dict]          = []
     variables_seen: dict[str, dict] = {}
@@ -479,42 +454,19 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
     except Exception:
         pass
 
-    # ── 2. Shapes del slide — importar TODOS primero ──────────────────────
-    all_raw: list[dict] = []
+    # ── 2. Shapes del slide (datos variables + imágenes embebidas) ────────
     for shape in _flatten_shapes(slide.shapes):
         comp = _parse_shape(shape, z_index)
         if comp is None:
             continue
-        all_raw.append(comp)
-        z_index += 1
 
-    # ── 3. Detectar layout vertical multi-franja en slides A4 ─────────────
-    # Un PPTX de "Plato del día 3 franjas" es A4 completo (21×29.7) con 3 filas
-    # repetidas de ~9.9cm. El renderer espera UN slot por formato; hay que importar
-    # solo la primera franja y usar master_format='3xa4'.
-    if format_id == "a4":
-        detected = _detect_vertical_slots(all_raw, height_cm)
-        if detected:
-            format_id = detected
-
-    # ── 4. Filtrar al primer slot según formato ───────────────────────────
-    slot_w, slot_h, _n = _FORMATS_DIM[format_id]
-
-    def _in_first_slot(comp: dict) -> bool:
-        bb = comp["base_bounds"]
-        if format_id == "3xa4":
-            # Vertical: primera franja Y < slot_h (con margen de 1cm)
-            return bb["y"] < slot_h + 1.0
-        elif format_id == "pinchos":
-            # Horizontal: primera columna X < slot_w
-            return bb["x"] < slot_w
-        return True
-
-    for comp in all_raw:
-        if not _in_first_slot(comp):
+        # Formatos multi-slot horizontales (pinchos): solo primera columna
+        if slots > 1 and comp["base_bounds"]["x"] >= slot_width:
             continue
 
         components.append(comp)
+        z_index += 1
+
         var_name = comp.get("variable")
         if var_name and var_name not in variables_seen:
             variables_seen[var_name] = {
