@@ -170,10 +170,92 @@ def _extract_fill_color(shape) -> str | None:
         fill = shape.fill
         if fill.type is None:
             return None
-        rgb = fill.fore_color.rgb
-        return f"#{rgb.red:02X}{rgb.green:02X}{rgb.blue:02X}"
+        # Try python-pptx direct RGB (works for explicit fills)
+        try:
+            rgb = fill.fore_color.rgb
+            return f"#{rgb.red:02X}{rgb.green:02X}{rgb.blue:02X}"
+        except (TypeError, AttributeError):
+            pass
+        # Fallback: parse XML for srgbClr (explicit RGB embedded in XML)
+        from lxml import etree
+        from pptx.oxml.ns import qn
+        solidFill = shape.element.find('.//' + qn('a:solidFill'))
+        if solidFill is not None:
+            srgbClr = solidFill.find(qn('a:srgbClr'))
+            if srgbClr is not None:
+                val = srgbClr.get('val', '')
+                if val:
+                    return f"#{val.upper()}"
+            # Theme color: try to resolve from presentation theme XML
+            schemeClr = solidFill.find(qn('a:schemeClr'))
+            if schemeClr is not None:
+                return _resolve_theme_color(shape, schemeClr)
+        return None
     except Exception:
         return None
+
+
+def _resolve_theme_color(shape, schemeClr) -> str | None:
+    """Resolve a theme color reference (schemeClr) to an explicit hex RGB."""
+    try:
+        from pptx.oxml.ns import qn
+        val = schemeClr.get('val', '')
+        _COLOR_ELEM = {
+            'dk1': 'a:dk1', 'lt1': 'a:lt1',
+            'dk2': 'a:dk2', 'lt2': 'a:lt2',
+            'accent1': 'a:accent1', 'accent2': 'a:accent2',
+            'accent3': 'a:accent3', 'accent4': 'a:accent4',
+            'accent5': 'a:accent5', 'accent6': 'a:accent6',
+        }
+        tag = _COLOR_ELEM.get(val)
+        if not tag:
+            return None
+        # Walk up to find the theme part
+        part = shape.part
+        theme_part = None
+        for rel in part.rels.values():
+            if 'theme' in rel.reltype:
+                theme_part = rel._target
+                break
+        if theme_part is None:
+            # Try slide layout → slide master → theme
+            try:
+                layout = part.slide_layout
+                for rel in layout.slide_master.part.rels.values():
+                    if 'theme' in rel.reltype:
+                        theme_part = rel._target
+                        break
+            except Exception:
+                pass
+        if theme_part is None:
+            return None
+        theme_el = theme_part._element
+        ns = {'a': 'http://schemas.openxmlformats.org/drawingml/2006/main'}
+        # Path: a:theme/a:themeElements/a:clrScheme/a:accent1/a:srgbClr
+        node = theme_el.find(f'.//a:clrScheme/{tag}/a:srgbClr', ns)
+        if node is None:
+            node = theme_el.find(f'.//a:clrScheme/{tag}/a:sysClr', ns)
+        if node is not None:
+            hex_val = node.get('val') or node.get('lastClr')
+            if hex_val:
+                # Apply luminance modifier if present
+                lum_mod = schemeClr.find(qn('a:lumMod'))
+                lum_off = schemeClr.find(qn('a:lumOff'))
+                r = int(hex_val[0:2], 16)
+                g = int(hex_val[2:4], 16)
+                b = int(hex_val[4:6], 16)
+                if lum_mod is not None:
+                    factor = int(lum_mod.get('val', '100000')) / 100000
+                    r = int(r * factor); g = int(g * factor); b = int(b * factor)
+                if lum_off is not None:
+                    offset = int(lum_off.get('val', '0')) / 100000 * 255
+                    r = int(min(255, r + offset))
+                    g = int(min(255, g + offset))
+                    b = int(min(255, b + offset))
+                return f"#{r:02X}{g:02X}{b:02X}"
+    except Exception:
+        pass
+    return None
 
 
 def _extract_font_color(run) -> str | None:
@@ -327,6 +409,32 @@ def _parse_shape(shape, z_index: int) -> dict | None:
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _detect_vertical_slots(all_comps: list[dict], page_height: float) -> str | None:
+    """Detecta si un slide A4 tiene múltiples franjas verticales (mismo layout repetido).
+
+    Compara la distribución Y de los componentes variable:
+    - Si hay componentes en los 3 tercios de la página → '3xa4' (3 franjas de 9.9cm)
+    - Retorna None si no se detecta patrón multi-franja.
+    """
+    # Solo considerar shapes con variable (los que tienen datos reales)
+    y_centers = []
+    for c in all_comps:
+        if not c.get("variable"):
+            continue
+        bb = c["base_bounds"]
+        y_centers.append(bb["y"] + bb["height"] / 2)
+
+    if not y_centers:
+        return None
+
+    band_h = page_height / 3
+    in_band2 = any(band_h <= y < 2 * band_h for y in y_centers)
+    in_band3 = any(2 * band_h <= y for y in y_centers)
+    if in_band2 and in_band3:
+        return "3xa4"
+    return None
+
+
 def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
     """Parsea el primer slide de un PPTX y devuelve una definición v2."""
     prs = Presentation(BytesIO(pptx_bytes))
@@ -336,8 +444,7 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
     slide = prs.slides[0]
     width_cm  = _emu_to_cm(prs.slide_width)
     height_cm = _emu_to_cm(prs.slide_height)
-    format_id, slots = _detect_format(width_cm, height_cm)
-    slot_width = width_cm / slots
+    format_id, _slots = _detect_format(width_cm, height_cm)
 
     components: list[dict]          = []
     variables_seen: dict[str, dict] = {}
@@ -365,25 +472,48 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
                 "image_data": b64,
                 "image_ext":  ext,
                 "style":      {},
-                "locked":     True,   # fondo bloqueado, no editable por accidente
+                "locked":     True,
             })
             z_index += 1
     except Exception:
         pass
 
-    # ── 2. Shapes del slide (datos variables + imágenes embebidas) ────────
+    # ── 2. Shapes del slide — importar TODOS primero ──────────────────────
+    all_raw: list[dict] = []
     for shape in _flatten_shapes(slide.shapes):
         comp = _parse_shape(shape, z_index)
         if comp is None:
             continue
+        all_raw.append(comp)
+        z_index += 1
 
-        # Formatos multi-slot: solo primer slot
-        if slots > 1 and comp["base_bounds"]["x"] >= slot_width:
+    # ── 3. Detectar layout vertical multi-franja en slides A4 ─────────────
+    # Un PPTX de "Plato del día 3 franjas" es A4 completo (21×29.7) con 3 filas
+    # repetidas de ~9.9cm. El renderer espera UN slot por formato; hay que importar
+    # solo la primera franja y usar master_format='3xa4'.
+    if format_id == "a4":
+        detected = _detect_vertical_slots(all_raw, height_cm)
+        if detected:
+            format_id = detected
+
+    # ── 4. Filtrar al primer slot según formato ───────────────────────────
+    slot_w, slot_h, _n = _FORMATS_DIM[format_id]
+
+    def _in_first_slot(comp: dict) -> bool:
+        bb = comp["base_bounds"]
+        if format_id == "3xa4":
+            # Vertical: primera franja Y < slot_h (con margen de 1cm)
+            return bb["y"] < slot_h + 1.0
+        elif format_id == "pinchos":
+            # Horizontal: primera columna X < slot_w
+            return bb["x"] < slot_w
+        return True
+
+    for comp in all_raw:
+        if not _in_first_slot(comp):
             continue
 
         components.append(comp)
-        z_index += 1
-
         var_name = comp.get("variable")
         if var_name and var_name not in variables_seen:
             variables_seen[var_name] = {
