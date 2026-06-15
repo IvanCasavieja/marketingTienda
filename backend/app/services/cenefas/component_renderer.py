@@ -300,6 +300,32 @@ def _render_slide(
 
 
 # ---------------------------------------------------------------------------
+# Multi-slot A4 detection
+# ---------------------------------------------------------------------------
+
+def _detect_slot_bands(components: list[dict], n_bands: int = 3) -> list[list[dict]] | None:
+    """Detect if an A4 template has multiple vertical slot bands (same layout repeated).
+
+    Groups non-background components by y-band. Returns list of per-band component
+    lists when at least 2 bands contain variable components, else None.
+    """
+    page_h = 29.7
+    band_h = page_h / n_bands
+    bands: list[list[dict]] = [[] for _ in range(n_bands)]
+
+    for comp in components:
+        if comp.get("locked"):
+            continue  # background — rendered separately
+        y = comp.get("base_bounds", {}).get("y", 0)
+        idx = min(n_bands - 1, int(y / band_h))
+        bands[idx].append(comp)
+
+    # At least 2 bands must have variable components
+    populated = sum(1 for b in bands if any(c.get("variable") for c in b))
+    return bands if populated >= 2 else None
+
+
+# ---------------------------------------------------------------------------
 # Entry points
 # ---------------------------------------------------------------------------
 
@@ -322,7 +348,37 @@ def render_template_to_pptx(
     prs.slide_height = slide_h
     blank_layout     = prs.slide_layouts[6]
 
-    # Calcular layout base una vez (posiciones en el formato destino)
+    # ── Multi-slot A4: template with 3 vertical bands (e.g. "Plato del día") ──
+    # When the template defines multiple bands with the same variable names,
+    # group consecutive Excel rows into pages: band 0 → product 0, band 1 → product 1, …
+    if target_format == "a4":
+        slot_bands = _detect_slot_bands(components, n_bands=3)
+        if slot_bands:
+            bg_comps  = [c for c in components if c.get("locked")]
+            n_slots   = len(slot_bands)
+            page_groups = [products[i:i + n_slots] for i in range(0, len(products), n_slots)]
+
+            for pg in page_groups:
+                slide = prs.slides.add_slide(blank_layout)
+                # Render background images once (no product data needed)
+                if bg_comps:
+                    laid_bg = compute_layout(bg_comps, target_format, master_format)
+                    _render_slide(slide, laid_bg, {})
+                # Render each band with its product
+                for band_idx, band_comps in enumerate(slot_bands):
+                    if band_idx >= len(pg):
+                        break
+                    product       = pg[band_idx]
+                    visibility    = evaluate_rules(rules, product)
+                    laid_band     = compute_layout(band_comps, target_format, master_format)
+                    visible_comps = apply_visibility(laid_band, visibility)
+                    _render_slide(slide, visible_comps, product)
+
+            buf = io.BytesIO()
+            prs.save(buf)
+            return buf.getvalue()
+
+    # ── Standard multi-slot rendering (3xa4, pinchos, etc.) ──────────────────
     laid_out = compute_layout(components, target_format, master_format)
 
     slot_cols = fmt_info.get("slot_cols", 1)

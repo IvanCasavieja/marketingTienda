@@ -19,7 +19,7 @@ from app.services.cenefas.formatters import (
 
 _CANONICAL_COLUMNS = [
     "Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO",
-    "OFERTA", "MONEDA", "CODIGO", "PRECIO_BANCO", "DIA",
+    "OFERTA", "MONEDA", "CODIGO", "PRECIO_BANCO", "DIA", "ACLARACION",
 ]
 
 _HEADER_ALIASES: dict[str, str] = {
@@ -64,6 +64,8 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
     code         = str(row[h["CODIGO"]] or "").strip() if "CODIGO" in h else ""
     precio_banco_raw = row[h["PRECIO_BANCO"]] if "PRECIO_BANCO" in h else None
     dia          = str(row[h["DIA"]] or "").strip() if "DIA" in h else ""
+
+    aclaracion_col = str(row[h["ACLARACION"]] or "").strip() if "ACLARACION" in h else ""
 
     prefix  = "U$S " if moneda == "U$S" else "$"
     precio  = parse_price_raw(precio_raw)
@@ -126,7 +128,7 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
         "dia":             dia,
         "unidad":          unidad,
         "vigencia":        vigencia,
-        "aclaracion":      aclaracion,
+        "aclaracion":      aclaracion_col or aclaracion,
         "otra_aclaracion": otra,
         "code":            code,
         "pbanco":          pbanco_display,
