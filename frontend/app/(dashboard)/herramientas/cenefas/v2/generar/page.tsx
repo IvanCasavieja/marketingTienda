@@ -70,7 +70,7 @@ export default function GenerarPage() {
     status: string;
   } | null>(null);
 
-  const [varRefOpen, setVarRefOpen] = useState(false);
+  const [varModalOpen, setVarModalOpen] = useState(false);
 
   // Job
   const [job,     setJob]     = useState<CenefaJob | null>(null);
@@ -196,16 +196,50 @@ export default function GenerarPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {/* Variable reference modal */}
+      {varModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <BookOpen size={15} className="text-brand-600" />
+                <p className="font-semibold text-slate-800 text-sm">Referencia de variables</p>
+              </div>
+              <button onClick={() => setVarModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+              {VARIABLES_REFERENCE.map(({ name, desc }) => (
+                <div key={name} className="flex items-center gap-3 px-5 py-2.5">
+                  <code className="text-[11px] font-mono text-brand-700 shrink-0 bg-brand-50 border border-brand-100 px-1.5 py-0.5 rounded">
+                    {`<<${name}>>`}
+                  </code>
+                  <span className="text-xs text-slate-500">{desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-3">
         <a href="/herramientas/cenefas/v2"
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
           <ChevronLeft size={18} />
         </a>
-        <div>
+        <div className="flex-1">
           <h1 className="text-xl font-bold text-slate-800">Generar cenefas</h1>
           <p className="text-sm text-slate-500">Motor v2 — componentes inteligentes</p>
         </div>
+        <button
+          onClick={() => setVarModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
+        >
+          <BookOpen size={12} />
+          Variables
+        </button>
       </div>
 
       <Stepper current={step} />
@@ -328,32 +362,9 @@ export default function GenerarPage() {
                 <ComboField label="Aclaración" value={aclaracion} onChange={setAclaracion} storageKey="cenefa_opts_aclaracion" />
               </div>
               <div className="col-span-2">
-                <ComboField label="Leyenda alcohol" value={otraAlcohol} onChange={setOtraAlcohol} storageKey="cenefa_opts_alcohol" />
+                <ComboField label="Segunda aclaración" value={otraAlcohol} onChange={setOtraAlcohol} storageKey="cenefa_opts_segunda_aclaracion" />
               </div>
             </div>
-          </div>
-
-          {/* Variable reference */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setVarRefOpen((o) => !o)}
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-brand-600 transition-colors"
-            >
-              <BookOpen size={12} />
-              <span>Referencia de variables</span>
-              <ChevronDown size={12} className={`transition-transform ${varRefOpen ? "rotate-180" : ""}`} />
-            </button>
-            {varRefOpen && (
-              <div className="mt-2 rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
-                {VARIABLES_REFERENCE.map(({ name, desc }) => (
-                  <div key={name} className="flex items-baseline gap-3 px-3 py-2 bg-slate-50/50">
-                    <code className="text-[11px] font-mono text-brand-700 shrink-0">{`<<${name}>>`}</code>
-                    <span className="text-xs text-slate-500">{desc}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           <div className="flex justify-end pt-2">
@@ -717,14 +728,19 @@ function ComboField({
   onChange: (v: string) => void;
   storageKey: string;
 }) {
-  const [options, setOptions] = useState<string[]>(() => {
-    if (typeof window === "undefined") return [];
-    try { return JSON.parse(localStorage.getItem(storageKey) ?? "[]"); } catch { return []; }
-  });
+  const [options, setOptions] = useState<string[]>([]);
   const [open,       setOpen]       = useState(false);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editingVal, setEditingVal] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+
+  // Load from localStorage after mount to avoid SSR hydration mismatch
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) setOptions(JSON.parse(saved));
+    } catch {}
+  }, [storageKey]);
 
   useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -783,20 +799,22 @@ function ComboField({
             Guardar
           </button>
         )}
-        {options.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            className="shrink-0 px-2 border border-slate-200 rounded-lg bg-white text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="shrink-0 px-2 border border-slate-200 rounded-lg bg-white text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
       </div>
 
-      {open && options.length > 0 && (
+      {open && (
         <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
-          {options.map((opt, idx) => (
+          {options.length === 0 ? (
+            <p className="px-3 py-3 text-xs text-slate-400 text-center">
+              Sin opciones guardadas — escribí un valor y hacé clic en "Guardar".
+            </p>
+          ) : options.map((opt, idx) => (
             <div
               key={idx}
               className="flex items-center gap-1.5 px-3 py-2.5 hover:bg-slate-50 group border-b border-slate-100 last:border-0"
