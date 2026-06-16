@@ -1,18 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
-import { connectionsApi, authApi } from "@/lib/api";
-import { Connection, CurrentUser, PLATFORM_LABELS } from "@/types";
-import { Plus, Trash2, CheckCircle2, XCircle, ChevronDown, Eye, EyeOff, Users, Copy, UserMinus } from "lucide-react";
+import { connectionsApi } from "@/lib/api";
+import { Connection } from "@/types";
+import { Plus, Trash2, CheckCircle2, XCircle, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
-interface TeamMember { id: number; email: string; full_name: string; is_superuser: boolean; }
-
-const TEAM_TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  medios: { label: "Medios Digitales", color: "bg-brand-100 text-brand-700" },
-  marca:  { label: "Marca",            color: "bg-amber-100 text-amber-700" },
-  promo:  { label: "Promo",            color: "bg-emerald-100 text-emerald-700" },
-};
 
 const PLATFORM_OPTIONS = [
   { value: "meta",       label: "Meta Ads",    color: "#1877F2", initial: "M", desc: "Facebook & Instagram Ads" },
@@ -46,8 +39,6 @@ export default function SettingsPage() {
   const [showForm, setShowForm]       = useState(false);
   const [showGuide, setShowGuide]     = useState<string | null>(null);
   const [showTokens, setShowTokens]   = useState<Record<string, boolean>>({});
-  const [members, setMembers]         = useState<TeamMember[]>([]);
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [form, setForm] = useState({
     platform: "meta", account_id: "", account_name: "",
     access_token: "", refresh_token: "",
@@ -55,8 +46,6 @@ export default function SettingsPage() {
 
   async function load() {
     connectionsApi.list().then(({ data }) => setConnections(data)).catch(() => {});
-    authApi.me().then(({ data }) => setCurrentUser(data)).catch(() => {});
-    authApi.teamMembers().then(({ data }) => setMembers(data)).catch(() => {});
   }
   useEffect(() => { load(); }, []);
 
@@ -80,34 +69,6 @@ export default function SettingsPage() {
       toast.success(t("settings.deleteSuccess"));
       await load();
     } catch { toast.error(t("settings.deleteError")); }
-  }
-
-  async function handleRemoveMember(id: number, email: string) {
-    if (!confirm(t("settings.removeMember", { email }))) return;
-    try {
-      await authApi.removeTeamMember(id);
-      toast.success(t("settings.removeMemberSuccess"));
-      setMembers((prev) => prev.filter((m) => m.id !== id));
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? t("settings.removeMemberError"));
-    }
-  }
-
-  async function handleUpdateTeamType(team_type: string) {
-    try {
-      await authApi.updateTeamType(team_type);
-      authApi.me().then(({ data }) => setCurrentUser(data)).catch(() => {});
-      toast.success("Tipo de equipo actualizado");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? "Error al actualizar el tipo de equipo");
-    }
-  }
-
-  function copyJoinCode() {
-    if (currentUser?.join_code) {
-      navigator.clipboard.writeText(currentUser.join_code);
-      toast.success(t("settings.codeCopied"));
-    }
   }
 
   const selectedPlatform = PLATFORM_OPTIONS.find((p) => p.value === form.platform);
@@ -263,82 +224,6 @@ export default function SettingsPage() {
               </div>
             );
           })
-        )}
-      </div>
-
-      {/* Team members */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">{t("settings.teamTitle")}</h2>
-            <div className="flex items-center gap-2 mt-0.5">
-              <p className="text-sm text-slate-500">{currentUser?.team_name ?? t("common.noTeam")}</p>
-              {currentUser?.team_type && (
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${TEAM_TYPE_LABELS[currentUser.team_type]?.color ?? "bg-slate-100 text-slate-500"}`}>
-                  {TEAM_TYPE_LABELS[currentUser.team_type]?.label ?? currentUser.team_type}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {currentUser?.is_superuser && currentUser?.team_type && (
-              <select
-                value={currentUser.team_type}
-                onChange={(e) => handleUpdateTeamType(e.target.value)}
-                className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 text-slate-600 bg-white outline-none cursor-pointer hover:border-slate-300"
-                title="Cambiar tipo de equipo"
-              >
-                <option value="medios">Medios Digitales</option>
-                <option value="marca">Marca</option>
-                <option value="promo">Promo</option>
-              </select>
-            )}
-            {currentUser?.join_code && (
-              <button onClick={copyJoinCode}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-medium transition-colors">
-                <Copy size={13} /> {t("settings.copyCode")}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {members.length > 0 ? (
-          <div className="card overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-50 flex items-center gap-2">
-              <Users size={14} className="text-slate-400" />
-              <p className="text-sm font-semibold text-slate-700">
-                {members.length !== 1
-                  ? t("settings.members_plural", { n: members.length })
-                  : t("settings.members", { n: members.length })}
-              </p>
-            </div>
-            <div className="divide-y divide-slate-50">
-              {members.map((m) => (
-                <div key={m.id} className="flex items-center gap-3 px-4 py-3">
-                  <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-semibold text-sm shrink-0">
-                    {m.full_name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{m.full_name}</p>
-                    <p className="text-xs text-slate-400 truncate">{m.email}</p>
-                  </div>
-                  {m.is_superuser && (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-100 text-brand-600">{t("settings.admin")}</span>
-                  )}
-                  {currentUser?.is_superuser && !m.is_superuser && (
-                    <button onClick={() => handleRemoveMember(m.id, m.email)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all">
-                      <UserMinus size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="card p-6 text-center text-sm text-slate-400">
-            {t("settings.noMembers")}
-          </div>
         )}
       </div>
 
