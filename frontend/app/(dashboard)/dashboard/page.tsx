@@ -251,16 +251,16 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1 capitalize">{dayLabel}</p>
-          <h1 className="text-2xl font-bold text-slate-900">{t("dashboard.title")}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{t("dashboard.title")}</h1>
           <p className="text-sm text-slate-500 mt-0.5">{t("dashboard.subtitle")}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col items-end gap-1.5">
+        <div className="flex items-start gap-3 flex-wrap">
+          <div className="flex flex-col gap-1.5">
             {/* Frescura de datos + estado auto-sync */}
-            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
               {lastSyncDate && (
                 <span>
                   Datos hasta <span className="font-medium text-slate-500">{lastSyncDate}</span>
@@ -275,11 +275,11 @@ export default function DashboardPage() {
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
                 {PERIODS.map(({ label, days }) => (
                   <button key={days} onClick={() => setPeriod(days)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                    className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
                       period === days
                         ? "bg-white shadow-sm text-slate-800"
                         : "text-slate-500 hover:text-slate-700"
@@ -304,7 +304,7 @@ export default function DashboardPage() {
               {getCompareLabel(period, compareMode, dfLocale)}
             </p>
           </div>
-          <button onClick={syncAll} disabled={syncing} className="btn-secondary">
+          <button onClick={syncAll} disabled={syncing} className="btn-secondary text-xs sm:text-sm">
             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
             {syncing ? t("dashboard.syncing") : t("dashboard.syncAll")}
           </button>
@@ -441,11 +441,12 @@ export default function DashboardPage() {
 
       {/* Platform table */}
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-50 flex items-center justify-between">
           <p className="section-title">{t("dashboard.performanceByPlatform")}</p>
           <span className="text-xs text-slate-400">{t("dashboard.lastNDaysShort", { n: period })}</span>
         </div>
-        <table className="w-full">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px]">
           <thead>
             <tr className="border-b border-slate-50">
               {[
@@ -487,6 +488,7 @@ export default function DashboardPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

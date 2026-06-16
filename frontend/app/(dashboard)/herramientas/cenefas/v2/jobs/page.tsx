@@ -213,7 +213,8 @@ export default function JobsPage() {
             </a>
           </div>
         ) : (
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px]">
             <thead>
               <tr className="border-b border-slate-100">
                 {["Fecha", "Formato", "Estado", "Filas", "Issues", ""].map((h) => (
@@ -282,6 +283,7 @@ export default function JobsPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

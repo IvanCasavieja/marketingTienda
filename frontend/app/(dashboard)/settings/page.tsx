@@ -114,12 +114,12 @@ export default function SettingsPage() {
 
   return (
     <div className="animate-fade-in space-y-6 max-w-3xl">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{t("settings.title")}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{t("settings.title")}</h1>
           <p className="text-sm text-slate-500 mt-0.5">{t("settings.subtitle")}</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="btn-primary">
+        <button onClick={() => setShowForm(!showForm)} className="btn-primary self-start">
           <Plus size={16} />
           {t("settings.newConnection")}
         </button>
@@ -133,7 +133,7 @@ export default function SettingsPage() {
             {/* Platform selector */}
             <div>
               <label className="text-sm font-medium text-slate-700 mb-2 block">{t("settings.platform")}</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {PLATFORM_OPTIONS.map((p) => (
                   <button key={p.value} type="button" onClick={() => setForm({ ...form, platform: p.value })}
                     className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
@@ -179,7 +179,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-slate-600 mb-1.5 block">{t("settings.accountId")}</label>
                 <input required value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })}

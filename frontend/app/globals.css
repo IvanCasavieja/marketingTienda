@@ -67,9 +67,12 @@
   .section-sub   { @apply text-sm text-slate-500; }
 
   /* ── Table ──────────────────────────────────── */
-  .table-th { @apply px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider; }
-  .table-td { @apply px-4 py-3.5 text-sm text-slate-700; }
+  .table-th { @apply px-3 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider sm:px-4 sm:py-3; }
+  .table-td { @apply px-3 py-3 text-xs text-slate-700 sm:px-4 sm:py-3.5 sm:text-sm; }
   .table-tr { @apply border-b border-slate-50 hover:bg-slate-50/70 transition-colors; }
+
+  /* ── Scrollable table wrapper ───────────────── */
+  .table-scroll { @apply overflow-x-auto -mx-0; }
 }
 
 /* ── Prose override for Claude output ────────── */
