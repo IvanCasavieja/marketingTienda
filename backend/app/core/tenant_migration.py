@@ -1,4 +1,4 @@
-import json
+﻿import json
 import secrets
 
 from sqlalchemy import text
@@ -33,7 +33,7 @@ async def migrate_roles(conn: AsyncConnection) -> None:
     for role in DEFAULT_ROLES:
         await conn.execute(text("""
             INSERT INTO roles (name, description, permissions, is_system)
-            VALUES (:name, :desc, :perms::json, :sys)
+            VALUES (:name, :desc, CAST(:perms AS json), :sys)
             ON CONFLICT (name) DO UPDATE
                 SET description = EXCLUDED.description,
                     permissions  = EXCLUDED.permissions,
@@ -84,7 +84,7 @@ async def migrate_default_team(conn: AsyncConnection) -> None:
             """
         )
     )
-    # Añadir team_type a grupos existentes (si ya existía la tabla sin esa columna)
+    # AÃ±adir team_type a grupos existentes (si ya existÃ­a la tabla sin esa columna)
     await conn.execute(
         text("ALTER TABLE team_groups ADD COLUMN IF NOT EXISTS team_type VARCHAR(20) NOT NULL DEFAULT 'medios'")
     )
@@ -215,3 +215,4 @@ async def _migrate_owned_table(conn: AsyncConnection, table_name: str, default_g
     await conn.execute(text(f"ALTER TABLE {table_name} ALTER COLUMN team_group_id SET NOT NULL"))
     if has_user_id:
         await conn.execute(text(f"ALTER TABLE {table_name} DROP COLUMN IF EXISTS user_id CASCADE"))
+
