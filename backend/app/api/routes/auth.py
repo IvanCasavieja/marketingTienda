@@ -51,6 +51,7 @@ def _client_ip(request: Request) -> str:
 
 def _user_response(user: User) -> UserResponse:
     team_group = user.team_group
+    role = user.role
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -61,6 +62,9 @@ def _user_response(user: User) -> UserResponse:
         join_code=decrypt_token(team_group.join_code) if team_group else None,
         is_active=user.is_active,
         is_superuser=user.is_superuser,
+        role_id=role.id if role else None,
+        role_name=role.name if role else None,
+        permissions=role.permissions if role else [],
     )
 
 
@@ -165,9 +169,13 @@ async def logout(response: Response):
 
 @router.get("/me", response_model=UserResponse)
 async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models.role import Role as RoleModel
     result = await db.execute(
         select(User)
-        .options(selectinload(User.team_group).selectinload(TeamGroup.team))
+        .options(
+            selectinload(User.team_group).selectinload(TeamGroup.team),
+            selectinload(User.role),
+        )
         .where(User.id == current_user.id)
     )
     return _user_response(result.scalar_one())

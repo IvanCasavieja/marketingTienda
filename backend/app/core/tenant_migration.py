@@ -1,3 +1,4 @@
+import json
 import secrets
 
 from sqlalchemy import text
@@ -8,6 +9,48 @@ from app.core.security import encrypt_token
 DEFAULT_TEAM_NAME = "Tienda Inglesa"
 DEFAULT_TEAM_SLUG = "tienda-inglesa"
 DEFAULT_GROUP_NAME = "Medios Digitales"
+
+
+async def migrate_roles(conn: AsyncConnection) -> None:
+    """Create roles table and seed default roles if they don't exist."""
+    from app.models.role import ALL_PERMISSIONS, DEFAULT_ROLES
+
+    await conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS roles (
+            id          SERIAL PRIMARY KEY,
+            name        VARCHAR(100) UNIQUE NOT NULL,
+            description VARCHAR(500) NOT NULL DEFAULT '',
+            permissions JSON NOT NULL DEFAULT '[]',
+            is_system   BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at  TIMESTAMPTZ DEFAULT now()
+        )
+    """))
+
+    await conn.execute(text(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles(id) ON DELETE SET NULL"
+    ))
+
+    for role in DEFAULT_ROLES:
+        await conn.execute(text("""
+            INSERT INTO roles (name, description, permissions, is_system)
+            VALUES (:name, :desc, :perms::json, :sys)
+            ON CONFLICT (name) DO UPDATE
+                SET description = EXCLUDED.description,
+                    permissions  = EXCLUDED.permissions,
+                    is_system    = EXCLUDED.is_system
+        """), {
+            "name": role["name"],
+            "desc": role["description"],
+            "perms": json.dumps(role["permissions"]),
+            "sys": role["is_system"],
+        })
+
+    # Assign Superadmin role to all is_superuser users that have no role yet
+    await conn.execute(text("""
+        UPDATE users
+        SET role_id = (SELECT id FROM roles WHERE name = 'Superadmin' LIMIT 1)
+        WHERE is_superuser = TRUE AND role_id IS NULL
+    """))
 
 
 async def migrate_default_team(conn: AsyncConnection) -> None:

@@ -1,4 +1,4 @@
-"""Parseo de Excel/CSV y generación de plantilla de carga."""
+"""Parseo de Excel/CSV — motor de datos para cenefas v2."""
 import io
 import re
 import unicodedata
@@ -14,81 +14,186 @@ from app.services.cenefas.formatters import (
 )
 
 # ---------------------------------------------------------------------------
-# Mapeo de columnas
+# Variables canónicas del sistema — nomenclatura estándar camelCase
+# ---------------------------------------------------------------------------
+#
+# Estas son TODAS las variables que el sistema reconoce.
+# En el Excel, usar estos nombres como títulos de columna.
+# En los PPTX, usar <<variableName>> con el mismo nombre.
+# Todas son opcionales — se usa lo que el Excel contenga.
+#
+CANONICAL_VARS: frozenset[str] = frozenset({
+    "precioActual",       # precio principal formateado ("$1.234")
+    "precioAnterior",     # precio tachado / anterior ("$1.500")
+    "precioBanco",        # precio con beneficio bancario ("$1.000")
+    "banco",              # nombre o logo del banco (texto o imagen)
+    "descripcion",        # nombre del producto
+    "titulo",             # etiqueta de tipo de oferta ("Precio Final", "2X$X"...)
+    "aclaracion",         # texto de aclaración por producto
+    "segundaAclaracion",  # segunda aclaración (ej: aviso de alcohol)
+    "vigencia",           # texto de vigencia
+    "codigoSKU",          # código de artículo
+    "dia",                # día de la semana
+    "mes",                # mes
+    "año",                # año
+    "moneda",             # prefijo de moneda ("$" o "U$S")
+    "categoria",          # categoría del producto
+    "subCategoria",       # subcategoría del producto
+    "descuento",          # TRUE/FALSE para reglas de visibilidad
+})
+
+# Variables que contienen precios — los números se auto-formatean con prefix de moneda
+_PRICE_VARS: frozenset[str] = frozenset({"precioActual", "precioAnterior", "precioBanco"})
+
+# ---------------------------------------------------------------------------
+# Normalización de headers Excel
 # ---------------------------------------------------------------------------
 
-_CANONICAL_COLUMNS = [
-    "Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO",
-    "OFERTA", "MONEDA", "CODIGO", "PRECIO_BANCO", "DIA", "ACLARACION",
-]
+def _norm(name: str) -> str:
+    """Normaliza para lookup: sin acentos, sin espacios/guiones, minúsculas."""
+    s = unicodedata.normalize("NFD", str(name)).encode("ascii", "ignore").decode()
+    return re.sub(r"[\s_\-]+", "", s).lower()
 
-_HEADER_ALIASES: dict[str, str] = {
-    "PRECIOS":      "PRECIO",
-    "SCOTLAND 20%": "PRECIO_BANCO",
-    "SCOTIA 20%":   "PRECIO_BANCO",
-    "PRECIO BANCO": "PRECIO_BANCO",
-    "PBANCO":       "PRECIO_BANCO",
-    "DIA SEMANA":   "DIA",
-    "DIA_SEMANA":   "DIA",
-    "PLATO DIA":    "DIA",
-    "PLATO DEL DIA":"DIA",
+
+# Mapa: header normalizado → nombre canónico de variable
+# Soporta tanto nombres nuevos como legacy para backward compat
+_ALIASES: dict[str, str] = {
+    # ── Nuevos nombres canónicos (pasan directo) ──────────────────────────
+    "precioactual":       "precioActual",
+    "precioanterior":     "precioAnterior",
+    "preciobanco":        "precioBanco",
+    "banco":              "banco",
+    "descripcion":        "descripcion",
+    "titulo":             "titulo",
+    "aclaracion":         "aclaracion",
+    "segundaaclaracion":  "segundaAclaracion",
+    "vigencia":           "vigencia",
+    "codigosku":          "codigoSKU",
+    "dia":                "dia",
+    "mes":                "mes",
+    "ano":                "año",        # ñ → n tras strip de acentos
+    "moneda":             "moneda",
+    "categoria":          "categoria",
+    "subcategoria":       "subCategoria",
+    "descuento":          "descuento",
+
+    # ── Legacy Excel → canónico ───────────────────────────────────────────
+    "precio":             "precioActual",
+    "precios":            "precioActual",
+    "scotland20%":        "precioBanco",
+    "scotia20%":          "precioBanco",
+    "pbanco":             "precioBanco",
+    "preciobanco":        "precioBanco",
+    "codigo":             "codigoSKU",
+    "diasemana":          "dia",
+    "diasemana":          "dia",
+    "platodia":           "dia",
+    "platodeldia":        "dia",
+    "otraaclaracion":     "segundaAclaracion",
+
+    # ── Triggers internos para compatibilidad con lógica legacy ───────────
+    # (las columnas OFERTADET y OFERTA activan el compute de mecanica/titulo)
+    "ofertadet":          "_ofertadet",
+    "oferta":             "_oferta",
+    "subcategoria":       "_subcategoria_legacy",  # needed for DELI logic
 }
 
-_OPTIONAL_HEADERS  = {"Categoria", "subcategoria", "OFERTADET", "OFERTA", "CODIGO", "PRECIO_BANCO", "DIA"}
-_REQUIRED_HEADERS  = {"DESCRIPCION", "PRECIO"}
-_DETECTION_COLS    = {"OFERTADET", "DESCRIPCION", "PRECIOS", "PRECIO", "CODIGO", "MONEDA", "DIA"}
+# Columnas que, si están presentes, sirven para detectar la fila de headers
+_DETECTION_NORMS = {"ofertadet", "descripcion", "precios", "precio", "precioactual", "codigo", "moneda", "dia"}
 
-
-def _normalize_header(name: str) -> str:
-    return unicodedata.normalize("NFD", str(name)).encode("ascii", "ignore").decode().upper().strip()
-
-
-_EXPECTED_HEADERS: dict[str, str] = {_normalize_header(k): k for k in _CANONICAL_COLUMNS}
-_EXPECTED_HEADERS.update({
-    _normalize_header(alias): canonical
-    for alias, canonical in _HEADER_ALIASES.items()
-})
 
 # ---------------------------------------------------------------------------
 # Procesamiento de fila
 # ---------------------------------------------------------------------------
 
-def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcohol: str, banco: str = "") -> dict:
-    ofertadet    = str(row[h["OFERTADET"]] or "").strip() if "OFERTADET" in h else "Precio fijo"
-    precio_raw   = row[h["PRECIO"]] if "PRECIO" in h else 0
-    oferta_raw   = row[h["OFERTA"]] if "OFERTA" in h else ""
-    desc         = str(row[h["DESCRIPCION"]] or "").strip() if "DESCRIPCION" in h else ""
-    cat          = str(row[h["Categoria"]] or "").strip() if "Categoria" in h else ""
-    subcat       = str(row[h["subcategoria"]] or "").strip() if "subcategoria" in h else ""
-    moneda       = str(row[h["MONEDA"]] or "").strip() if "MONEDA" in h else "$"
-    code         = str(row[h["CODIGO"]] or "").strip() if "CODIGO" in h else ""
-    precio_banco_raw = row[h["PRECIO_BANCO"]] if "PRECIO_BANCO" in h else None
-    dia          = str(row[h["DIA"]] or "").strip() if "DIA" in h else ""
+def process_row(
+    row:         tuple,
+    h:           dict,       # var_name → col_idx
+    vigencia:    str = "",
+    aclaracion:  str = "",
+    otra_alcohol:str = "",
+    banco:       str = "",
+) -> dict:
+    """Convierte una fila de Excel en un dict de variables para el renderer."""
 
-    aclaracion_col = str(row[h["ACLARACION"]] or "").strip() if "ACLARACION" in h else ""
+    # Leer moneda primero (necesaria para formatear precios)
+    moneda  = "$"
+    if "moneda" in h:
+        m = h["moneda"]
+        if m < len(row) and row[m]:
+            moneda = str(row[m]).strip()
+    prefix = "U$S " if moneda == "U$S" else "$"
 
-    prefix  = "U$S " if moneda == "U$S" else "$"
-    precio  = parse_price_raw(precio_raw)
+    result: dict[str, str] = {}
 
-    p1 = ""
-    precio_display = ""
-    mecanica = ""
+    # ── Passthrough + auto-formato para columnas canónicas ─────────────────
+    for var_name, col_idx in h.items():
+        if var_name.startswith("_"):
+            continue  # columna interna — se procesa abajo
+        if col_idx >= len(row):
+            continue
+        val = row[col_idx]
+        if val is None or (isinstance(val, str) and not val.strip()):
+            result[var_name] = ""
+        elif var_name in _PRICE_VARS:
+            pv = parse_price_raw(val)
+            result[var_name] = (prefix + fmt_price(pv)) if pv > 0 else str(val).strip()
+        else:
+            result[var_name] = str(val).strip()
+
+    # ── Compute legacy para plantillas con OFERTADET ──────────────────────
+    if "_ofertadet" in h:
+        _apply_legacy_compute(row, h, result, prefix, moneda, otra_alcohol)
+
+    # ── Fallback a parámetros globales ────────────────────────────────────
+    if not result.get("vigencia"):
+        result["vigencia"] = vigencia
+    if not result.get("aclaracion"):
+        result["aclaracion"] = aclaracion
+    if not result.get("banco"):
+        result["banco"] = banco
+
+    # ── Aliases backward compat (para templates ya importados con nombres viejos) ──
+    _backfill_legacy_keys(result)
+
+    return result
+
+
+def _apply_legacy_compute(
+    row: tuple, h: dict, result: dict, prefix: str, moneda: str, otra_alcohol: str
+) -> None:
+    """Computa título y mecánica de oferta a partir de OFERTADET/OFERTA/PRECIO."""
+    ofertadet     = str(row[h["_ofertadet"]] or "").strip() if h["_ofertadet"] < len(row) else "Precio fijo"
+    precio_raw    = row[h.get("precioActual", -1)] if "precioActual" in h and h["precioActual"] < len(row) else 0
+    oferta_raw    = str(row[h["_oferta"]] or "").strip() if "_oferta" in h and h["_oferta"] < len(row) else ""
+    precio        = parse_price_raw(precio_raw)
+    desc          = result.get("descripcion", "")
+    cat           = result.get("categoria", "")
+    subcat        = result.get("subCategoria", "") or (
+        str(row[h["_subcategoria_legacy"]] or "").strip() if "_subcategoria_legacy" in h else ""
+    )
+    cod           = result.get("codigoSKU", "")
+
+    titulo_val  = ""
+    mecanica    = ""
+    unidad      = ""
 
     if ofertadet == "Combo":
-        p1, amount = parse_combo(oferta_raw)
-        precio_display = prefix + fmt_price(amount)
-        qty = p1[:-1] if p1.endswith("X") else "2"
+        p1_str, amount = parse_combo(oferta_raw)
+        result["precioActual"] = prefix + fmt_price(amount)
+        qty = p1_str[:-1] if p1_str.endswith("X") else "2"
         mecanica = f"Comprando {qty}, {prefix}{fmt_price(precio)} c/u"
+        titulo_val = p1_str
 
     elif ofertadet == "M x N":
-        precio_display = prefix + fmt_price(precio)
+        result["precioActual"] = prefix + fmt_price(precio)
         mecanica = f"Comprando 2, {prefix}{fmt_price(precio)} c/u"
-        p1 = "M x N"
+        titulo_val = "M x N"
 
     elif re.search(r"2da\s+al\s+50|2da\s+50", ofertadet, re.IGNORECASE):
-        precio_display = prefix + fmt_price(precio)
+        result["precioActual"] = prefix + fmt_price(precio)
         mecanica = "Comprando 2, la 2da al 50% OFF"
-        p1 = "2DA AL 50%"
+        titulo_val = "2DA AL 50%"
 
     else:
         precio_val = precio
@@ -100,42 +205,41 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
                 if has_kg:
                     desc = re.sub(r"\.\s*[Kk]g\b", ". 100g", desc)
                     desc = re.sub(r"\s+[Kk]g\b", " 100g", desc)
-        precio_display = prefix + fmt_price(precio_val)
+                    result["descripcion"] = desc
+        result["precioActual"] = prefix + fmt_price(precio_val)
+        titulo_val = "Precio Final"
 
-    if not p1:
-        p1 = "Precio Final"
-
-    is_multi_sku = bool(code and ("/" in code or re.search(r"\d\s*[-–—]\s*\d", code)))
-
+    is_multi_sku = bool(cod and ("/" in cod or re.search(r"\d\s*[-–—]\s*\d", cod)))
     if is_multi_sku and ofertadet in ("Precio fijo", "% descuento"):
-        unidad = "" if subcat in NO_UNIDAD_SUBCATS else "unidad"
-    else:
-        unidad = ""
+        if subcat not in NO_UNIDAD_SUBCATS:
+            unidad = "unidad"
 
-    otra = otra_alcohol if cat == "BEBIDAS CON ALCOHOL" else ""
+    if not result.get("titulo"):
+        result["titulo"] = titulo_val
+    result["mecanica"]        = mecanica
+    result["unidadPrecio"]    = unidad
+    result["unidadPBanco"]    = "unidad" if is_multi_sku else ""
+    if cat == "BEBIDAS CON ALCOHOL":
+        result["segundaAclaracion"] = result.get("segundaAclaracion") or "Prohibida la venta de bebidas alcohólicas a menores de 18 años"
 
-    pbanco_display = ""
-    if precio_banco_raw is not None and precio_banco_raw != "":
-        pbanco_val = parse_price_raw(precio_banco_raw)
-        if pbanco_val > 0:
-            pbanco_display = prefix + fmt_price(pbanco_val)
 
-    return {
-        "p1":              p1,
-        "precio":          precio_display,
-        "mecanica":        mecanica,
-        "descripcion":     desc,
-        "dia":             dia,
-        "unidad":          unidad,
-        "vigencia":        vigencia,
-        "aclaracion":      aclaracion_col or aclaracion,
-        "otra_aclaracion": otra,
-        "code":            code,
-        "pbanco":          pbanco_display,
-        "banco":           banco,
-        "unidad_precio":   unidad,
-        "unidad_pbanco":   "unidad" if is_multi_sku else "",
+def _backfill_legacy_keys(result: dict) -> None:
+    """Agrega claves con nombres legacy para que templates viejos sigan funcionando."""
+    _map = {
+        # old key          canonical key
+        "precio":          "precioActual",
+        "precio_banco":    "precioBanco",
+        "p1":              "titulo",
+        "code":            "codigoSKU",
+        "otra_aclaracion": "segundaAclaracion",
+        "unidad":          "unidadPrecio",
+        "unidad_precio":   "unidadPrecio",
+        "unidad_pbanco":   "unidadPBanco",
+        "mecanica":        "mecanica",   # mecanica is set by legacy compute
     }
+    for old, new in _map.items():
+        if old not in result:
+            result[old] = result.get(new, "")
 
 
 # ---------------------------------------------------------------------------
@@ -143,50 +247,61 @@ def process_row(row: tuple, h: dict, vigencia: str, aclaracion: str, otra_alcoho
 # ---------------------------------------------------------------------------
 
 def load_products_from_bytes(
-    excel_bytes: bytes,
-    vigencia: str,
-    aclaracion: str,
-    otra_alcohol: str,
-    banco: str = "",
+    excel_bytes:  bytes,
+    vigencia:     str = "",
+    aclaracion:   str = "",
+    otra_alcohol: str = "",
+    banco:        str = "",
 ) -> list[dict]:
-    wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
+    wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), data_only=True)
     ws = wb["Cenefas"] if "Cenefas" in wb.sheetnames else wb.active
 
+    # ── Detectar fila de encabezados ──────────────────────────────────────
     header_row = None
     for i, row in enumerate(ws.iter_rows(max_row=10, values_only=True), start=1):
-        normalized = {_normalize_header(str(c)) for c in row if c is not None}
-        if "OFERTADET" in normalized or len(normalized & _DETECTION_COLS) >= 2:
+        norms = {_norm(str(c)) for c in row if c is not None}
+        if len(norms & _DETECTION_NORMS) >= 1 or "ofertadet" in norms:
             header_row = i
             break
     if header_row is None:
         header_row = 1
 
+    # ── Mapear columnas ───────────────────────────────────────────────────
     raw_headers = [cell.value for cell in ws[header_row]]
-    h = {}
+    h: dict[str, int] = {}
     for idx, raw in enumerate(raw_headers):
         if not raw:
             continue
-        canonical = _EXPECTED_HEADERS.get(_normalize_header(str(raw)))
-        h[canonical or str(raw)] = idx
+        canonical = _ALIASES.get(_norm(str(raw)))
+        key = canonical if canonical else str(raw)  # pass through unknown columns as-is
+        h[key] = idx
 
-    # Extra columns: anything not in the canonical set gets passed through to the product dict
-    _canonical_set = set(_CANONICAL_COLUMNS)
-    extra_cols = {key: idx for key, idx in h.items() if key not in _canonical_set}
+    # ── Detectar columna de descripción para skip de filas vacías ─────────
+    desc_col = h.get("descripcion")
+    titulo_col = h.get("_ofertadet")
 
-    products = []
-    seen: set = set()
+    products: list[dict] = []
+    seen: set[tuple] = set()
 
     for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
-        if "DESCRIPCION" in h and not row[h["DESCRIPCION"]]:
+        # Saltar filas sin descripción
+        if desc_col is not None and (desc_col >= len(row) or not row[desc_col]):
             continue
-        if "OFERTADET" in h and not row[h["OFERTADET"]]:
+        # Si hay OFERTADET legacy, saltar filas sin él también
+        if titulo_col is not None and (titulo_col >= len(row) or not row[titulo_col]):
             continue
+
         data = process_row(row, h, vigencia, aclaracion, otra_alcohol, banco)
-        for col_name, col_idx in extra_cols.items():
-            if col_idx < len(row):
-                val = row[col_idx]
-                data[col_name] = str(val).strip() if val is not None and val != "" else ""
-        key = (data["p1"], data["precio"], data["mecanica"], data["descripcion"].lower().strip() if data["descripcion"] else "", data.get("code", ""), data.get("dia", ""))
+
+        # Deduplicación por clave natural
+        key = (
+            data.get("titulo", ""),
+            data.get("precioActual", ""),
+            data.get("mecanica", ""),
+            (data.get("descripcion") or "").lower().strip(),
+            data.get("codigoSKU", ""),
+            data.get("dia", ""),
+        )
         if key not in seen:
             seen.add(key)
             products.append(data)
@@ -195,7 +310,7 @@ def load_products_from_bytes(
 
 
 # ---------------------------------------------------------------------------
-# Generación de plantilla Excel de carga
+# Generación de plantilla Excel de descarga
 # ---------------------------------------------------------------------------
 
 def generate_template_bytes() -> bytes:
@@ -203,20 +318,25 @@ def generate_template_bytes() -> bytes:
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
 
-    HEADERS = ["Categoria", "subcategoria", "OFERTADET", "DESCRIPCION", "PRECIO", "OFERTA", "MONEDA", "CODIGO", "PRECIO_BANCO"]
+    # Columnas estándar en orden lógico
+    HEADERS = [
+        "descripcion", "precioActual", "precioAnterior", "precioBanco",
+        "titulo", "banco", "moneda", "codigoSKU",
+        "dia", "mes", "año",
+        "aclaracion", "segundaAclaracion", "vigencia",
+        "categoria", "subCategoria", "descuento",
+    ]
+
     EXAMPLES: list[tuple] = [
-        ("ALIMENTOS",           "GALLETITAS",       "Precio fijo",       "Galletitas OREO 117g",          1500,  "",       "$",    "7790001",  ""),
-        ("BEBIDAS SIN ALCOHOL", "GASEOSAS",         "Combo",             "Coca-Cola 2.25L",               2500,  "2x$4500","$",    "7790002",  ""),
-        ("BEBIDAS SIN ALCOHOL", "AGUA",             "M x N",             "Agua SALUS 1.5L",               800,   "",       "$",    "7790003",  ""),
-        ("LIMPIEZA",            "LIMPIADORES",      "% descuento",       "Lavandina AYUDIN 2L",           850,   "",       "$",    "7790004",  ""),
-        ("FIAMBRES Y QUESOS",   "QUESOS",           "Precio fijo",       "Queso Barra por Kg.",           12000, "",       "$",    "7790005",  ""),
-        ("BEBIDAS CON ALCOHOL", "VINOS",            "Precio fijo",       "Vino NORTON Malbec 750ml",      3200,  "",       "$",    "7790006",  2560),
-        ("ELECTRODOMESTICOS",   "ELECTRODOMESTICOS","Precio fijo",       "Licuadora PHILIPS HR2100",      45,    "",       "U$S",  "7790007",  ""),
-        ("ALIMENTOS",           "GALLETITAS",       "Precio fijo",       "Galletitas OREO 117g + Chips AHOY 120g", 2800, "", "$", "7790001/7790008", 2240),
+        ("Galletitas OREO 117g",          "$1.500",  "",       "",     "Precio Final", "",  "$",    "7790001", "",       "", "", "",    "", "", "ALIMENTOS",           "GALLETITAS",  "FALSE"),
+        ("Coca-Cola 2.25L",               "$4.500",  "",       "",     "2X$4.500",     "",  "$",    "7790002", "",       "", "", "",    "", "", "BEBIDAS SIN ALCOHOL", "GASEOSAS",    "FALSE"),
+        ("Agua SALUS 1.5L",               "$800",    "",       "",     "M x N",        "",  "$",    "7790003", "",       "", "", "",    "", "", "BEBIDAS SIN ALCOHOL", "AGUA",        "FALSE"),
+        ("Vino NORTON Malbec 750ml",       "$3.200",  "",       "$2.560","Precio Final","Scotiabank","$","7790006","",  "", "", "",    "", "Del 1 al 30 de junio", "BEBIDAS CON ALCOHOL", "VINOS", "TRUE"),
+        ("Licuadora PHILIPS HR2100",       "U$S 45",  "",       "",     "Precio Final", "",  "U$S",  "7790007", "",       "", "", "",    "", "", "ELECTRODOMESTICOS",   "ELECTRODOMESTICOS","FALSE"),
+        ("Asado de Tira por Kg.",          "$890",    "",       "",     "Precio Final", "",  "$",    "7790009", "LUNES",  "", "", "Precio válido solo los lunes","","","ALIMENTOS","CARNES","FALSE"),
     ]
 
     wb = openpyxl.Workbook()
-
     ws = wb.active
     ws.title = "Cenefas"
 
@@ -238,75 +358,63 @@ def generate_template_bytes() -> bytes:
             if fill:
                 cell.fill = fill
 
-    col_widths = [22, 20, 14, 36, 10, 12, 10, 14, 14]
+    col_widths = [36, 14, 14, 14, 16, 14, 8, 14, 10, 8, 6, 28, 28, 22, 22, 16, 10]
     for col, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.row_dimensions[1].height = 26
     ws.freeze_panes = "A2"
 
-    dv_tipo = DataValidation(
-        type="list",
-        formula1='"Precio fijo,% descuento,Combo,M x N,2da al 50% OFF"',
-        allow_blank=True,
-    )
-    dv_tipo.sqref = "C2:C5000"
-    ws.add_data_validation(dv_tipo)
-
+    # Validación: moneda
     dv_moneda = DataValidation(type="list", formula1='"$,U$S"', allow_blank=True)
     dv_moneda.sqref = "G2:G5000"
     ws.add_data_validation(dv_moneda)
 
-    # Formato numérico para PRECIO_BANCO
-    from openpyxl.styles import numbers
-    for row_idx in range(2, 5002):
-        ws.cell(row=row_idx, column=9).number_format = "#,##0.##"
+    # Validación: descuento
+    dv_desc = DataValidation(type="list", formula1='"TRUE,FALSE"', allow_blank=True)
+    dv_desc.sqref = "Q2:Q5000"
+    ws.add_data_validation(dv_desc)
 
-    ws2 = wb.create_sheet("Instrucciones")
+    # ── Hoja de instrucciones ─────────────────────────────────────────────
+    ws2 = wb.create_sheet("Variables")
     ws2.column_dimensions["A"].width = 20
-    ws2.column_dimensions["B"].width = 45
-    ws2.column_dimensions["C"].width = 32
-    ws2.column_dimensions["D"].width = 35
+    ws2.column_dimensions["B"].width = 42
+    ws2.column_dimensions["C"].width = 18
+    ws2.column_dimensions["D"].width = 40
 
-    inst_header_font = Font(bold=True, color="FFFFFF", size=11)
-    inst_header_fill = PatternFill("solid", fgColor="1E3A5F")
-    inst_even_fill   = PatternFill("solid", fgColor="EEF2F7")
+    inst_font = Font(bold=True, color="FFFFFF", size=11)
+    inst_fill = PatternFill("solid", fgColor="1E3A5F")
 
-    inst_cols = ["Columna", "Descripción", "Valores aceptados", "Notas"]
-    for col, name in enumerate(inst_cols, 1):
+    for col, name in enumerate(["Variable", "Descripción", "Tipo", "Notas"], 1):
         cell = ws2.cell(row=1, column=col, value=name)
-        cell.fill  = inst_header_fill
-        cell.font  = inst_header_font
+        cell.fill = inst_fill; cell.font = inst_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
     ws2.row_dimensions[1].height = 24
 
-    rows = [
-        ("Categoria",    "Categoría del producto",              "Texto libre",
-         "Ej: ALIMENTOS, BEBIDAS CON ALCOHOL, CARNES"),
-        ("subcategoria", "Subcategoría del producto",           "Texto libre",
-         "QUESOS y FIAMBRES: precio por 100g si desc tiene 'kg'. CARNES/FIAMBRES/QUESOS: sin unidad."),
-        ("OFERTADET",    "Tipo de oferta",
-         "Precio fijo / % descuento / Combo / M x N / 2da al 50% OFF",
-         "Determina cómo se muestra el precio en la cenefa"),
-        ("DESCRIPCION",  "Nombre del producto tal como aparece","Texto libre",
-         "Las palabras en MAYÚSCULAS se muestran en negrita"),
-        ("PRECIO",       "Precio unitario (número)",            "Número (ej: 1500, 45.90)",
-         "Para Combo: precio individual. Para dólares usa MONEDA=U$S"),
-        ("OFERTA",       "Solo para Combo: cantidad y precio total", "Formato: 2X4500 o 2x$4500",
-         "2X4500 = 2 unidades por $4500. También acepta 2x$4500. Vacío para otros tipos."),
-        ("MONEDA",       "Moneda del precio",                   "$ o U$S",
-         "$ = pesos uruguayos. U$S = dólares."),
-        ("CODIGO",       "Código de artículo (opcional)",       "Texto o número",
-         "Si contiene '/' (ej: 7790001/7790002) activa modo MULTI-SKU: muestra 'unidad' bajo el precio"),
-        ("PRECIO_BANCO", "Precio con beneficio bancario (opcional)", "Número (ej: 2560)",
-         "Se muestra en el bloque de banco de la plantilla (placeholder <<PBanco>>)"),
+    VAR_DOCS = [
+        ("descripcion",       "Nombre del producto tal como aparece",               "Texto",    "Palabras en MAYÚSCULAS se renderizan en negrita"),
+        ("precioActual",      "Precio principal del producto",                       "Precio",   "Puede ser número (1500) o texto formateado ($1.500). Con número se auto-formatea."),
+        ("precioAnterior",    "Precio anterior / tachado",                           "Precio",   "Opcional. Se usa para mostrar precio original antes del descuento."),
+        ("precioBanco",       "Precio con beneficio bancario",                       "Precio",   "Opcional. Se muestra en bloque de banco (<<precioBanco>>). También acepta: PBANCO, SCOTLAND 20%, SCOTIA 20%."),
+        ("titulo",            "Etiqueta de tipo de oferta",                          "Texto",    "Ej: 'Precio Final', '2X$4.500', 'M x N'. También acepta: OFERTADET (nombre legacy)."),
+        ("banco",             "Nombre o logo del banco",                             "Texto",    "Texto o nombre del banco. Pasado como parámetro global al generar."),
+        ("moneda",            "Prefijo de moneda",                                   "Texto",    "$ (defecto) o U$S. Afecta el prefijo de todos los precios."),
+        ("codigoSKU",         "Código de artículo",                                  "Texto",    "Si contiene '/' activa modo MULTI-SKU y muestra 'unidad' bajo el precio."),
+        ("dia",               "Día de la semana",                                    "Texto",    "Ej: LUNES, MARTES. Para plantillas tipo 'Plato del día'."),
+        ("mes",               "Mes",                                                 "Texto",    "Opcional. Ej: JUNIO."),
+        ("año",               "Año",                                                 "Texto",    "Opcional. Ej: 2026."),
+        ("aclaracion",        "Aclaración por producto",                             "Texto",    "Si vacío, usa la aclaración global del formulario de generación."),
+        ("segundaAclaracion", "Segunda aclaración",                                  "Texto",    "Para BEBIDAS CON ALCOHOL se llena automáticamente con el aviso legal."),
+        ("vigencia",          "Texto de vigencia",                                   "Texto",    "Si vacío, usa la vigencia global del formulario de generación."),
+        ("categoria",         "Categoría del producto",                              "Texto",    "BEBIDAS CON ALCOHOL activa el aviso legal automáticamente."),
+        ("subCategoria",      "Subcategoría",                                        "Texto",    "FIAMBRES/QUESOS/DELI activan precio por 100g si la descripción incluye 'kg'."),
+        ("descuento",         "Indica si el producto tiene descuento bancario",      "TRUE/FALSE","Controla visibilidad de elementos como cocarda. TRUE = mostrar."),
     ]
-    for row_idx, data in enumerate(rows, 2):
-        fill = inst_even_fill if row_idx % 2 == 0 else None
+    for row_idx, data in enumerate(VAR_DOCS, 2):
         for col_idx, value in enumerate(data, 1):
             cell = ws2.cell(row=row_idx, column=col_idx, value=value)
             cell.alignment = Alignment(vertical="center", wrap_text=True)
-            if fill:
-                cell.fill = fill
+            if row_idx % 2 == 0:
+                cell.fill = PatternFill("solid", fgColor="EEF2F7")
         ws2.row_dimensions[row_idx].height = 36
 
     buf = io.BytesIO()

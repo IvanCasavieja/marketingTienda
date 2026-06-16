@@ -68,6 +68,9 @@ class UserResponse(BaseModel):
     join_code: str | None = None
     is_active: bool
     is_superuser: bool
+    role_id: int | None = None
+    role_name: str | None = None
+    permissions: list[str] = []
 
     class Config:
         from_attributes = True

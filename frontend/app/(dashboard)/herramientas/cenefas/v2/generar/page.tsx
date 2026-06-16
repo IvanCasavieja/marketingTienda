@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import {
-  Upload, ChevronLeft, ChevronRight, FileSpreadsheet,
+  Upload, ChevronLeft, ChevronRight, ChevronDown, FileSpreadsheet,
   CheckCircle2, AlertCircle, Loader2, Download, RefreshCw,
-  Trash2, Pencil, Check, X,
+  Trash2, Pencil, Check, X, BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
@@ -11,6 +11,26 @@ import type { CenefaFormat, CenefaJob, CenefaTemplateRecord } from "@/types/cene
 
 type Step     = 1 | 2 | 3;
 type TmplMode = "v2" | "builtin";
+
+const VARIABLES_REFERENCE = [
+  { name: "descripcion",       desc: "Nombre del producto" },
+  { name: "precioActual",      desc: "Precio de venta actual" },
+  { name: "precioAnterior",    desc: "Precio anterior o tachado" },
+  { name: "precioBanco",       desc: "Precio con beneficio bancario" },
+  { name: "banco",             desc: "Nombre del banco o beneficio" },
+  { name: "titulo",            desc: "Título o mecánica de la oferta (ej: 2x1, Combo)" },
+  { name: "aclaracion",        desc: "Texto aclaratorio (ej: bases y condiciones)" },
+  { name: "segundaAclaracion", desc: "Segunda aclaración o leyenda de alcohol" },
+  { name: "vigencia",          desc: "Período de validez de la oferta" },
+  { name: "codigoSKU",         desc: "Código de producto o SKU" },
+  { name: "dia",               desc: "Día de la semana o número" },
+  { name: "mes",               desc: "Mes de vigencia" },
+  { name: "año",               desc: "Año de vigencia" },
+  { name: "moneda",            desc: "Símbolo de moneda (ej: $, €)" },
+  { name: "categoria",         desc: "Categoría del producto" },
+  { name: "subCategoria",      desc: "Subcategoría del producto" },
+  { name: "descuento",         desc: "¿Aplica descuento? Columna TRUE/FALSE en Excel" },
+] as const;
 
 const BUILTINS = [
   { slug: "a4",        label: "Cenefa A4",      formats: ["a4"] },
@@ -49,6 +69,8 @@ export default function GenerarPage() {
     rule_summary: { rule_id: string; hits: number; pct: number }[];
     status: string;
   } | null>(null);
+
+  const [varRefOpen, setVarRefOpen] = useState(false);
 
   // Job
   const [job,     setJob]     = useState<CenefaJob | null>(null);
@@ -300,12 +322,38 @@ export default function GenerarPage() {
           <div>
             <SectionLabel>Metadata (opcional)</SectionLabel>
             <div className="grid grid-cols-2 gap-3 mt-2">
-              <Field label="Vigencia"    value={vigencia}    onChange={setVigencia} />
-              <Field label="Banco"       value={banco}       onChange={setBanco} />
+              <Field label="Vigencia" value={vigencia} onChange={setVigencia} />
+              <ComboField label="Banco / Beneficio" value={banco} onChange={setBanco} storageKey="cenefa_opts_banco" />
               <div className="col-span-2">
-                <Field label="Aclaración" value={aclaracion} onChange={setAclaracion} />
+                <ComboField label="Aclaración" value={aclaracion} onChange={setAclaracion} storageKey="cenefa_opts_aclaracion" />
+              </div>
+              <div className="col-span-2">
+                <ComboField label="Leyenda alcohol" value={otraAlcohol} onChange={setOtraAlcohol} storageKey="cenefa_opts_alcohol" />
               </div>
             </div>
+          </div>
+
+          {/* Variable reference */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setVarRefOpen((o) => !o)}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-brand-600 transition-colors"
+            >
+              <BookOpen size={12} />
+              <span>Referencia de variables</span>
+              <ChevronDown size={12} className={`transition-transform ${varRefOpen ? "rotate-180" : ""}`} />
+            </button>
+            {varRefOpen && (
+              <div className="mt-2 rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
+                {VARIABLES_REFERENCE.map(({ name, desc }) => (
+                  <div key={name} className="flex items-baseline gap-3 px-3 py-2 bg-slate-50/50">
+                    <code className="text-[11px] font-mono text-brand-700 shrink-0">{`<<${name}>>`}</code>
+                    <span className="text-xs text-slate-500">{desc}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end pt-2">
@@ -434,6 +482,26 @@ export default function GenerarPage() {
                   </p>
                 )}
               </div>
+              {job.missing_vars && job.missing_vars.length > 0 && (
+                <div className="text-left rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+                  <p className="text-sm font-semibold text-amber-800">
+                    Variables del template no encontradas en el Excel
+                  </p>
+                  <p className="text-xs text-amber-700">
+                    Estos placeholders existen en el diseño pero el Excel no tiene una columna con ese nombre exacto. Se exportaron en blanco:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {job.missing_vars.map((v) => (
+                      <code key={v} className="text-xs bg-white border border-amber-300 text-amber-900 rounded px-2 py-0.5 font-mono">
+                        {"<<"}{v}{">>"}
+                      </code>
+                    ))}
+                  </div>
+                  <p className="text-xs text-amber-600">
+                    Agregá una columna con ese nombre exacto en el Excel y generá de nuevo.
+                  </p>
+                </div>
+              )}
               <div className="flex justify-center gap-3">
                 <button onClick={handleDownload}
                   className="btn-primary flex items-center gap-2 px-6 py-2.5">
@@ -638,6 +706,156 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
       <span className="text-xs text-slate-500">{label}</span>
       <input className="input text-sm" value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
+  );
+}
+
+function ComboField({
+  label, value, onChange, storageKey,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  storageKey: string;
+}) {
+  const [options, setOptions] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? "[]"); } catch { return []; }
+  });
+  const [open,       setOpen]       = useState(false);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editingVal, setEditingVal] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setEditingIdx(null);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  function persist(next: string[]) {
+    setOptions(next);
+    localStorage.setItem(storageKey, JSON.stringify(next));
+  }
+
+  function handleSaveCurrent() {
+    const v = value.trim();
+    if (!v || options.includes(v)) return;
+    persist([...options, v]);
+    toast.success("Opción guardada");
+  }
+
+  function handleDelete(idx: number) {
+    persist(options.filter((_, i) => i !== idx));
+  }
+
+  function handleEditSave(idx: number) {
+    if (!editingVal.trim()) return;
+    const next = [...options];
+    next[idx] = editingVal.trim();
+    persist(next);
+    setEditingIdx(null);
+  }
+
+  const canSave = !!value.trim() && !options.includes(value.trim());
+
+  return (
+    <div ref={ref} className="relative flex flex-col gap-1">
+      <span className="text-xs text-slate-500">{label}</span>
+      <div className="flex gap-1 items-stretch">
+        <input
+          className="input text-sm flex-1 min-w-0"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setOpen(true)}
+        />
+        {canSave && (
+          <button
+            type="button"
+            onClick={handleSaveCurrent}
+            className="shrink-0 px-2.5 text-xs rounded-lg border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100 transition-colors"
+            title="Guardar como opción"
+          >
+            Guardar
+          </button>
+        )}
+        {options.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="shrink-0 px-2 border border-slate-200 rounded-lg bg-white text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
+        )}
+      </div>
+
+      {open && options.length > 0 && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+          {options.map((opt, idx) => (
+            <div
+              key={idx}
+              className="flex items-center gap-1.5 px-3 py-2.5 hover:bg-slate-50 group border-b border-slate-100 last:border-0"
+            >
+              {editingIdx === idx ? (
+                <>
+                  <input
+                    autoFocus
+                    className="flex-1 text-sm outline-none border-b border-brand-400 bg-transparent"
+                    value={editingVal}
+                    onChange={(e) => setEditingVal(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleEditSave(idx);
+                      if (e.key === "Escape") setEditingIdx(null);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleEditSave(idx); }}
+                    className="shrink-0 text-emerald-600 hover:text-emerald-700"
+                  >
+                    <Check size={13} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditingIdx(null); }}
+                    className="shrink-0 text-slate-400 hover:text-slate-600"
+                  >
+                    <X size={13} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span
+                    className="flex-1 text-sm text-slate-700 cursor-pointer truncate"
+                    onClick={() => { onChange(opt); setOpen(false); }}
+                  >
+                    {opt}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditingIdx(idx); setEditingVal(opt); }}
+                    className="shrink-0 p-0.5 text-slate-300 hover:text-brand-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Editar"
+                  >
+                    <Pencil size={11} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(idx); }}
+                    className="shrink-0 p-0.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Eliminar"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -56,6 +56,9 @@ export interface CurrentUser {
   join_code: string | null;
   is_active: boolean;
   is_superuser: boolean;
+  role_id: number | null;
+  role_name: string | null;
+  permissions: string[];
 }
 
 export const PLATFORM_LABELS: Record<Platform | string, string> = {
