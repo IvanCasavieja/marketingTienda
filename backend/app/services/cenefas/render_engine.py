@@ -205,36 +205,36 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
 
     p1_shape    = None
     price_shape = None
-    code  = data.get("code", "")
+    code  = data.get("codigoSKU", "")
     multi = _is_multi_sku(code)
 
     for shape in expanded:
         t = _shape_text(shape)
         if re.search(r"<<P\d+>>", t):
             p1_shape = shape
-            _set_p1(shape, data["p1"])
+            _set_p1(shape, data.get("mecanica", ""))
         elif re.search(r"Precio\s+\d+", t) or re.search(r"<<Precio\d*>>", t):
             price_shape = shape
-            _set_price(shape, data["precio"])
+            _set_price(shape, data.get("precioActual", ""))
         elif re.search(r"<<Mecanica\d+>>", t):
-            _set_text(shape, data["mecanica"])
+            _set_text(shape, data.get("mecanica", ""))
         elif "<<" in t and "Descripci" in t:
-            _set_desc(shape, data["descripcion"])
+            _set_desc(shape, data.get("descripcion", ""))
             _set_normAutofit(shape)
         elif re.search(r"<<UnidadMedida\d+>>", t):
-            _set_text(shape, data["unidad"] if multi else "")
+            _set_text(shape, "unidad" if multi else "")
         elif re.search(r"<<Vigencia\d*>>", t):
-            _set_text(shape, data["vigencia"])
+            _set_text(shape, data.get("vigencia", ""))
         elif re.search(r"<<Aclaracion\d*>>", t):
-            _set_text(shape, data["aclaracion"])
+            _set_text(shape, data.get("aclaracion", ""))
         elif re.search(r"<<OtraAclaracion\d*>>", t):
-            _set_text(shape, data["otra_aclaracion"])
+            _set_text(shape, data.get("segundaAclaracion", ""))
         elif re.search(r"<<[Dd][Ii][Aa]\d*>>", t):
             _set_text(shape, data.get("dia", ""))
         elif re.search(r"<<[Cc]ode\d*>>", t):
             _set_text(shape, code)
         elif re.search(r"<<[Pp][Bb]anco\d*>>", t, re.IGNORECASE):
-            _set_price(shape, data.get("pbanco", ""), int_pt=PBANCO_INT_PT)
+            _set_price(shape, data.get("precioBanco", ""), int_pt=PBANCO_INT_PT)
         elif re.search(r"<<[Bb]anco\d*>>", t, re.IGNORECASE):
             _set_text(shape, data.get("banco", ""))
         elif re.search(r"<<UnidadPrecio\d*>>", t):
