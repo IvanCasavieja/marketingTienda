@@ -111,6 +111,13 @@ export interface CenefaFormat {
   slot_rows: number;
 }
 
+export interface CenefaJobIssue {
+  row: number;
+  product: string;
+  type: string;
+  detail: string;
+}
+
 export interface CenefaJob {
   id: string;
   status: "pending" | "running" | "done" | "error";
@@ -121,6 +128,8 @@ export interface CenefaJob {
   created_at: string;
   completed_at?: string;
   missing_vars?: string[];
+  errors?: CenefaJobIssue[];
+  warnings?: CenefaJobIssue[];
   validation_summary?: {
     total: number;
     correct: number;

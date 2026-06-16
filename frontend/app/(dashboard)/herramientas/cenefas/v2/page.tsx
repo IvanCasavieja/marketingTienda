@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import {
   Save, Loader2, AlertCircle, CheckCircle2,
   ChevronLeft, Layers, GitBranch,
-  Variable, FolderOpen, Play, Pencil, Trash2, Check, X,
+  Variable, FolderOpen, Play, Pencil, Trash2, Check, X, BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
@@ -30,6 +30,26 @@ function CanvasPlaceholder() {
   );
 }
 
+const VARIABLES_REFERENCE = [
+  { name: "descripcion",       desc: "Nombre del producto" },
+  { name: "precioActual",      desc: "Precio de venta actual" },
+  { name: "precioAnterior",    desc: "Precio anterior o tachado" },
+  { name: "precioBanco",       desc: "Precio con beneficio bancario" },
+  { name: "banco",             desc: "Nombre del banco o beneficio" },
+  { name: "mecanica",          desc: "Mecánica o tipo de oferta (ej: 2x1, Combo, Precio Final)" },
+  { name: "aclaracion",        desc: "Texto aclaratorio (ej: bases y condiciones)" },
+  { name: "segundaAclaracion", desc: "Segunda aclaración o leyenda de alcohol" },
+  { name: "vigencia",          desc: "Período de validez de la oferta" },
+  { name: "codigoSKU",         desc: "Código de producto o SKU" },
+  { name: "dia",               desc: "Día de la semana o número" },
+  { name: "mes",               desc: "Mes de vigencia" },
+  { name: "año",               desc: "Año de vigencia" },
+  { name: "moneda",            desc: "Símbolo de moneda (ej: $, €)" },
+  { name: "categoria",         desc: "Categoría del producto" },
+  { name: "subCategoria",      desc: "Subcategoría del producto" },
+  { name: "descuento",         desc: "¿Aplica descuento? Columna TRUE/FALSE en Excel" },
+] as const;
+
 export type LeftPanel = "components" | "rules" | "variables";
 
 // ---------------------------------------------------------------------------
@@ -46,6 +66,7 @@ export default function EditorPage() {
 
   const [formats,      setFormats]      = useState<CenefaFormat[]>([]);
   const [savedTmpls,   setSavedTmpls]   = useState<CenefaTemplateRecord[]>([]);
+  const [varModalOpen, setVarModalOpen] = useState(false);
   const [saving,       setSaving]       = useState(false);
   const [generating,   setGenerating]   = useState(false);
   const [nameEditing,  setNameEditing]  = useState(false);
@@ -174,6 +195,33 @@ export default function EditorPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-2rem)] -m-8 rounded-2xl overflow-hidden border border-slate-200 shadow-card bg-white">
 
+      {/* Modal de referencia de variables */}
+      {varModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <BookOpen size={15} className="text-brand-600" />
+                <p className="font-semibold text-slate-800 text-sm">Referencia de variables</p>
+              </div>
+              <button onClick={() => setVarModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+              {VARIABLES_REFERENCE.map(({ name, desc }) => (
+                <div key={name} className="flex items-center gap-3 px-5 py-2.5">
+                  <code className="text-[11px] font-mono text-brand-700 shrink-0 bg-brand-50 border border-brand-100 px-1.5 py-0.5 rounded">
+                    {`<<${name}>>`}
+                  </code>
+                  <span className="text-xs text-slate-500">{desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Barra superior ── */}
       <header className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 bg-white flex-shrink-0">
         <a
@@ -215,6 +263,15 @@ export default function EditorPage() {
           <span>{template.rules.length} reglas</span>
           <span>{template.variables.length} vars</span>
         </div>
+
+        {/* Referencia de variables */}
+        <button
+          onClick={() => setVarModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-600 transition-all"
+        >
+          <BookOpen size={13} />
+          Variables
+        </button>
 
         {/* Cargar template existente */}
         <div className="relative" ref={tmplMenuRef}>
