@@ -531,6 +531,13 @@ def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
         missing = job.validation_report.get("missing_vars", [])
         if missing:
             d["missing_vars"] = missing
+        # Exponer lista completa de errores y warnings para mostrar en el historial
+        errors = job.validation_report.get("errors", [])
+        if errors:
+            d["errors"] = errors
+        warnings = job.validation_report.get("warnings", [])
+        if warnings:
+            d["warnings"] = warnings
         # Expose error message so the frontend can display it instead of "Error desconocido"
         if job.status == "error":
             d["validation_report"] = {"error": job.validation_report.get("error", "Error interno")}
