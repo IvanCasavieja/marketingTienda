@@ -207,8 +207,7 @@ export default function EditorPage() {
           )}
         </div>
 
-        {/* Selector de formatos */}
-        {formats.length > 0 && <FormatSelector formats={formats} />}
+        {/* Selector de formatos — oculto (el diseño siempre viene en A4) */}
 
         {/* Stats */}
         <div className="flex items-center gap-3 text-xs text-slate-400 border-l border-slate-100 pl-3">
