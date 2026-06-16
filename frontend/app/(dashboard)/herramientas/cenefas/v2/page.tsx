@@ -267,7 +267,7 @@ export default function EditorPage() {
         {/* Referencia de variables */}
         <button
           onClick={() => setVarModalOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-600 transition-all"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:border-brand-400 transition-all"
         >
           <BookOpen size={13} />
           Variables
