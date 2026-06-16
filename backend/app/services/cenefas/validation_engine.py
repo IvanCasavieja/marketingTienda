@@ -48,7 +48,7 @@ def validate_products(products: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def _check_price(p: dict, row: int, name: str, errors: list) -> None:
-    price_str = p.get("precio", "")
+    price_str = p.get("precioActual", "")
     # Extraer parte numérica: quitar símbolo de moneda y separadores de miles
     num_str = re.sub(r"[^\d,.]", "", price_str).replace(".", "").replace(",", ".")
     try:
@@ -98,18 +98,18 @@ def _check_description(p: dict, row: int, name: str, errors: list, warnings: lis
 
 
 def _check_combo(p: dict, row: int, name: str, errors: list) -> None:
-    p1 = p.get("p1", "")
-    if re.match(r"^\d+X$", p1) and not p.get("mecanica"):
+    mecanica = p.get("mecanica", "")
+    if re.match(r"^\d+[Xx]$", mecanica) and not p.get("precioActual", ""):
         errors.append({
             "row":     row,
             "product": name,
-            "type":    "combo_missing_mecanica",
-            "detail":  f"Producto combo ({p1}) sin mecánica de precio",
+            "type":    "combo_missing_price",
+            "detail":  f"Producto combo ({mecanica}) sin precio activo",
         })
 
 
 def _check_bank(p: dict, row: int, name: str, warnings: list) -> None:
-    if p.get("pbanco") and not p.get("banco"):
+    if p.get("precioBanco") and not p.get("banco"):
         warnings.append({
             "row":     row,
             "product": name,

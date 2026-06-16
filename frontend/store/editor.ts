@@ -13,10 +13,9 @@ const EMPTY_TEMPLATE: CenefaTemplate = {
   master_format: "a4",
   formats: ["a4"],
   variables: [
-    { name: "descripcion",    type: "text",  required: true,  csv_column: "DESCRIPCION" },
-    { name: "precio",         type: "price", required: true,  csv_column: "PRECIO"      },
-    { name: "oferta",         type: "text",  required: false, csv_column: "OFERTA"      },
-    { name: "tipo_promocion", type: "text",  required: false, csv_column: "OFERTADET"   },
+    { name: "descripcion",  type: "text",  required: true,  csv_column: "descripcion"  },
+    { name: "precioActual", type: "price", required: true,  csv_column: "precioActual" },
+    { name: "mecanica",     type: "text",  required: false, csv_column: "mecanica"     },
   ],
   components: [],
   rules: [],
