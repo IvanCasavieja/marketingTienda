@@ -70,8 +70,8 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
                     base_bounds: { x: 0.5, y: 4, width: 10, height: 3 } },
       },
       {
-        label: "Título / Mecánica",
-        type: "text", variable: "titulo", transform: "uppercase",
+        label: "Mecánica / Oferta",
+        type: "text", variable: "mecanica", transform: "uppercase",
         icon: <Type size={14} />, color: "text-orange-500",
         defaults: { style: { font_size: 32, font_bold: true, color: "#F97316" },
                     base_bounds: { x: 1, y: 6, width: 8, height: 1.5 } },
