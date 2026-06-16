@@ -45,6 +45,31 @@ async def migrate_roles(conn: AsyncConnection) -> None:
             "sys": role["is_system"],
         })
 
+    # Bootstrap: si no existe ningún superusuario, promover el primer usuario
+    # (o el indicado por FIRST_SUPERUSER_EMAIL) como Superadmin.
+    import os
+    first_su_email = os.environ.get("FIRST_SUPERUSER_EMAIL", "").strip().lower()
+    if first_su_email:
+        await conn.execute(text("""
+            UPDATE users
+            SET is_superuser = TRUE,
+                role_id = (SELECT id FROM roles WHERE name = 'Superadmin' LIMIT 1)
+            WHERE LOWER(email) = :email
+              AND (
+                NOT EXISTS (SELECT 1 FROM users WHERE is_superuser = TRUE)
+                OR LOWER(email) = :email
+              )
+        """), {"email": first_su_email})
+    else:
+        # Promover el primer usuario creado si no hay ningún superusuario
+        await conn.execute(text("""
+            UPDATE users
+            SET is_superuser = TRUE,
+                role_id = (SELECT id FROM roles WHERE name = 'Superadmin' LIMIT 1)
+            WHERE id = (SELECT id FROM users ORDER BY id LIMIT 1)
+              AND NOT EXISTS (SELECT 1 FROM users WHERE is_superuser = TRUE)
+        """))
+
     # Assign Superadmin role to all is_superuser users that have no role yet
     await conn.execute(text("""
         UPDATE users
