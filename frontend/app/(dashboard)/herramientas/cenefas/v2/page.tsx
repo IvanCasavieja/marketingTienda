@@ -270,7 +270,7 @@ export default function EditorPage() {
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:border-brand-400 transition-all"
         >
           <BookOpen size={13} />
-          Variables
+          Guía de variables
         </button>
 
         {/* Cargar template existente */}
