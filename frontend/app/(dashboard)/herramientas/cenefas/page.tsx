@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, ChangeEvent, FormEvent } from "react";
 import {
   Upload, Presentation, Download, AlertCircle, CheckCircle2, Loader2,
   FileSpreadsheet, FileType2, Plus, Trash2, X, LayoutTemplate, Layers, ChevronRight,
+  ChevronDown, Check, Pencil,
 } from "lucide-react";
 import { toolsApi } from "@/lib/api";
 import { useTranslation } from "react-i18next";
@@ -447,9 +448,9 @@ export default function CenefasPage() {
         <div className="card p-6 space-y-4">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.configSection")}</p>
           <Field label={t("cenefas.vigencia")} placeholder={t("cenefas.vigenciaPlaceholder")} value={vigencia} onChange={setVigencia} />
-          <Field label={t("cenefas.aclaracion")} value={aclaracion} onChange={setAclaracion} />
-          <Field label={t("cenefas.alcohol")} value={otraAlcohol} onChange={setOtraAlcohol} />
-          <Field label="Banco / Beneficio" placeholder='Ej: "Scotia.", "BBVA", "Hasta 12 cuotas"' value={banco} onChange={setBanco} />
+          <ComboField label={t("cenefas.aclaracion")} value={aclaracion} onChange={setAclaracion} storageKey="cenefa_opts_aclaracion" />
+          <ComboField label={t("cenefas.alcohol")} value={otraAlcohol} onChange={setOtraAlcohol} storageKey="cenefa_opts_segunda_aclaracion" />
+          <ComboField label="Banco / Beneficio" value={banco} onChange={setBanco} storageKey="cenefa_opts_banco" />
         </div>
 
         {/* Feedback */}
@@ -539,6 +540,134 @@ function FileDropField({
       </div>
       <input id={id} type="file" accept={accept} onChange={onChange} className="hidden" />
     </label>
+  );
+}
+
+function ComboField({
+  label, value, onChange, storageKey,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  storageKey: string;
+}) {
+  const [options, setOptions] = useState<string[]>([]);
+  const [open,       setOpen]       = useState(false);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editingVal, setEditingVal] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) setOptions(JSON.parse(saved));
+    } catch {}
+  }, [storageKey]);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setEditingIdx(null);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  function persist(next: string[]) {
+    setOptions(next);
+    localStorage.setItem(storageKey, JSON.stringify(next));
+  }
+
+  function handleSaveCurrent() {
+    const v = value.trim();
+    if (!v || options.includes(v)) return;
+    persist([...options, v]);
+    toast.success("Opción guardada");
+  }
+
+  function handleDelete(idx: number) {
+    persist(options.filter((_, i) => i !== idx));
+  }
+
+  function handleEditSave(idx: number) {
+    if (!editingVal.trim()) return;
+    const next = [...options];
+    next[idx] = editingVal.trim();
+    persist(next);
+    setEditingIdx(null);
+  }
+
+  const canSave = !!value.trim() && !options.includes(value.trim());
+
+  return (
+    <div ref={ref} className="relative flex flex-col gap-1.5">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <div className="flex gap-1 items-stretch">
+        <input
+          className="input text-sm flex-1 min-w-0"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setOpen(true)}
+        />
+        {canSave && (
+          <button
+            type="button"
+            onClick={handleSaveCurrent}
+            className="shrink-0 px-2.5 text-xs rounded-lg border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100 transition-colors"
+          >
+            Guardar
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="shrink-0 px-2 border border-slate-200 rounded-lg bg-white text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+          {options.length === 0 ? (
+            <p className="px-3 py-3 text-xs text-slate-400 text-center">
+              Sin opciones guardadas — escribí un valor y hacé clic en "Guardar".
+            </p>
+          ) : options.map((opt, idx) => (
+            <div
+              key={idx}
+              className="flex items-center gap-1.5 px-3 py-2.5 hover:bg-slate-50 group border-b border-slate-100 last:border-0"
+            >
+              {editingIdx === idx ? (
+                <>
+                  <input
+                    autoFocus
+                    className="flex-1 text-sm outline-none border-b border-brand-400 bg-transparent"
+                    value={editingVal}
+                    onChange={(e) => setEditingVal(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleEditSave(idx);
+                      if (e.key === "Escape") setEditingIdx(null);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <button onClick={(e) => { e.stopPropagation(); handleEditSave(idx); }} className="shrink-0 text-emerald-600 hover:text-emerald-700"><Check size={13} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); setEditingIdx(null); }} className="shrink-0 text-slate-400 hover:text-slate-600"><X size={13} /></button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 text-sm text-slate-700 cursor-pointer truncate" onClick={() => { onChange(opt); setOpen(false); }}>{opt}</span>
+                  <button onClick={(e) => { e.stopPropagation(); setEditingIdx(idx); setEditingVal(opt); }} className="shrink-0 p-0.5 text-slate-300 hover:text-brand-500 opacity-0 group-hover:opacity-100"><Pencil size={11} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(idx); }} className="shrink-0 p-0.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100"><Trash2 size={11} /></button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
