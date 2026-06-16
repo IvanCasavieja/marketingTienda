@@ -80,7 +80,7 @@ async def run_generation_job(
             # Generar PPTX según el tipo de template
             if template_v2_id is not None:
                 template_def = await _resolve_template_v2(db, template_v2_id, team_group_id)
-                pptx_bytes = await asyncio.to_thread(
+                pptx_bytes, missing_vars = await asyncio.to_thread(
                     render_template_to_pptx,
                     template_def, products, target_format,
                 )
@@ -93,6 +93,7 @@ async def run_generation_job(
                     excel_bytes, template_bytes,
                     vigencia, aclaracion, otra_alcohol, banco,
                 )
+                missing_vars = []
 
             # Guardar resultado en memoria
             store_job_result(job_id, pptx_bytes)
@@ -102,9 +103,10 @@ async def run_generation_job(
             job.error_count       = len(validation["errors"])
             job.result_path       = str(job_id)
             job.validation_report = {
-                "summary":  summary,
-                "errors":   validation["errors"],
-                "warnings": validation["warnings"],
+                "summary":      summary,
+                "errors":       validation["errors"],
+                "warnings":     validation["warnings"],
+                "missing_vars": missing_vars,
             }
             job.completed_at = datetime.now(timezone.utc)
             await db.commit()

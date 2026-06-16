@@ -10,8 +10,9 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.core.tenant_migration import migrate_default_team
+from app.core.tenant_migration import migrate_default_team, migrate_roles
 from app.models import Team, TeamGroup, User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob
+from app.models.role import Role  # noqa: F401 — registers with Base.metadata
 from app.api import router
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     async with engine.begin() as conn:
+        await migrate_roles(conn)
         await migrate_default_team(conn)
 
     # Arrancar auto-sync de métricas si está habilitado

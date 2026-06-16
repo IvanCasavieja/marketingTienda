@@ -11,39 +11,78 @@ _EMU_PER_CM = 360_000
 
 _RE_PLACEHOLDER = re.compile(r"<<(\w+?)(\d*)>>", re.IGNORECASE)
 
+# ---------------------------------------------------------------------------
+# Mapa de placeholders → (variable_name, tipo, transform)
+#
+# variable_name: nombre canónico camelCase almacenado en el JSON del template
+# tipo:          "text" | "price" | "image"
+# transform:     "smart_bold" | "upper" | "price_full" | "none"
+#
+# Los placeholders en el PPTX deben ser <<variableName>> (mismos nombres que
+# las columnas del Excel). Se soportan nombres legacy por backward compat.
+# ---------------------------------------------------------------------------
 _PLACEHOLDER_MAP: dict[str, tuple[str, str, str]] = {
-    "p":               ("precio",          "price", "price_full"),
-    "precio":          ("precio",          "price", "price_full"),
-    "descripcion":     ("descripcion",     "text",  "smart_bold"),
-    "descripci":       ("descripcion",     "text",  "smart_bold"),
-    "mecanica":        ("tipo_promocion",  "text",  "none"),
-    "unidadmedida":    ("unidad",          "text",  "none"),
-    "vigencia":        ("vigencia",        "text",  "none"),
-    "aclaracion":      ("aclaracion",      "text",  "none"),
-    "otraaclaracion":  ("otra_aclaracion", "text",  "none"),
-    "code":            ("codigo",          "text",  "none"),
-    "pbanco":          ("precio_banco",    "price", "price_full"),
-    "banco":           ("banco",           "text",  "none"),
-    "unidadprecio":    ("unidad_precio",   "text",  "none"),
-    "unidadpbanco":    ("unidad_pbanco",   "text",  "none"),
+    # ── Nombres canónicos nuevos ──────────────────────────────────────────
+    "precioactual":       ("precioActual",      "price", "price_full"),
+    "precioanterior":     ("precioAnterior",    "price", "price_full"),
+    "preciobanco":        ("precioBanco",       "price", "price_full"),
+    "banco":              ("banco",             "text",  "none"),
+    "descripcion":        ("descripcion",       "text",  "smart_bold"),
+    "titulo":             ("titulo",            "text",  "upper"),
+    "aclaracion":         ("aclaracion",        "text",  "none"),
+    "segundaaclaracion":  ("segundaAclaracion", "text",  "none"),
+    "vigencia":           ("vigencia",          "text",  "none"),
+    "codigosku":          ("codigoSKU",         "text",  "none"),
+    "dia":                ("dia",               "text",  "upper"),
+    "mes":                ("mes",               "text",  "none"),
+    "ano":                ("año",               "text",  "none"),
+    "año":                ("año",               "text",  "none"),
+    "moneda":             ("moneda",            "text",  "none"),
+    "categoria":          ("categoria",         "text",  "none"),
+    "subcategoria":       ("subCategoria",      "text",  "none"),
+    "descuento":          ("descuento",         "text",  "none"),
+
+    # ── Legacy backward compat (plantillas importadas antes de la unificación) ──
+    "p":               ("precioActual",      "price", "price_full"),
+    "precio":          ("precioActual",      "price", "price_full"),
+    "pbanco":          ("precioBanco",       "price", "price_full"),
+    "p1":              ("titulo",            "text",  "upper"),
+    "mecanica":        ("mecanica",          "text",  "none"),
+    "code":            ("codigoSKU",         "text",  "none"),
+    "otraaclaracion":  ("segundaAclaracion", "text",  "none"),
+    "unidadprecio":    ("unidadPrecio",      "text",  "none"),
+    "unidadpbanco":    ("unidadPBanco",      "text",  "none"),
+    "unidad":          ("unidadPrecio",      "text",  "none"),
+    "unidadmedida":    ("unidadPrecio",      "text",  "none"),
+    "descripci":       ("descripcion",       "text",  "smart_bold"),
 }
 
+# Mapa: variable_name → columna Excel canónica (para el panel de Variables)
 _CSV_COLUMN_MAP: dict[str, str] = {
-    "precio":          "PRECIO",
-    "descripcion":     "DESCRIPCION",
-    "tipo_promocion":  "OFERTADET",
-    "unidad":          "UNIDAD",
-    "vigencia":        "VIGENCIA",
-    "aclaracion":      "ACLARACION",
-    "otra_aclaracion": "ACLARACION",
-    "codigo":          "CODIGO",
-    "precio_banco":    "PRECIO_BANCO",
-    "banco":           "BANCO",
-    "unidad_precio":   "UNIDAD",
-    "unidad_pbanco":   "UNIDAD",
+    "precioActual":      "precioActual",
+    "precioAnterior":    "precioAnterior",
+    "precioBanco":       "precioBanco",
+    "banco":             "banco",
+    "descripcion":       "descripcion",
+    "titulo":            "titulo",
+    "aclaracion":        "aclaracion",
+    "segundaAclaracion": "segundaAclaracion",
+    "vigencia":          "vigencia",
+    "codigoSKU":         "codigoSKU",
+    "dia":               "dia",
+    "mes":               "mes",
+    "año":               "año",
+    "moneda":            "moneda",
+    "categoria":         "categoria",
+    "subCategoria":      "subCategoria",
+    "descuento":         "descuento",
+    # legacy
+    "mecanica":          "mecanica",
+    "unidadPrecio":      "unidadPrecio",
+    "unidadPBanco":      "unidadPBanco",
 }
 
-_REQUIRED_VARS = {"descripcion", "precio"}
+_REQUIRED_VARS = {"descripcion", "precioActual"}
 
 _FORMATS_DIM = {
     "a4":      (21.0,  29.7,  1),

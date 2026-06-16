@@ -290,6 +290,7 @@ def _render_slide(
     product: dict,
     slot_offset_x: float = 0.0,
     slot_offset_y: float = 0.0,
+    missing_vars: set | None = None,
 ) -> None:
     for comp in comp_layout:
         if not comp.get("visible", True):
@@ -300,6 +301,10 @@ def _render_slide(
         raw_value    = str(product.get(variable, "") or "") if variable else static_value
         transform    = comp.get("transform", "none")
         value        = apply_transform(raw_value, transform)
+
+        # Collect variables that are used in the template but absent from the product
+        if variable and not raw_value and missing_vars is not None:
+            missing_vars.add(variable)
 
         # Offset 2D para layouts multi-slot (grilla horizontal × vertical)
         if slot_offset_x > 0 or slot_offset_y > 0:
@@ -354,8 +359,12 @@ def render_template_to_pptx(
     template_def: dict,
     products: list[dict],
     target_format: str = "a4",
-) -> bytes:
-    """Genera PPTX desde una definición v2 y una lista de productos procesados."""
+) -> tuple[bytes, list[str]]:
+    """Genera PPTX desde una definición v2 y una lista de productos.
+
+    Returns (pptx_bytes, missing_vars) donde missing_vars es la lista de
+    variables que el template usa pero que no fueron encontradas en el Excel.
+    """
     master_format = template_def.get("master_format", "a4")
     components    = template_def.get("components", [])
     rules         = template_def.get("rules", [])
@@ -369,9 +378,9 @@ def render_template_to_pptx(
     prs.slide_height = slide_h
     blank_layout     = prs.slide_layouts[6]
 
+    missing_vars: set[str] = set()
+
     # ── Multi-slot A4: template with 3 vertical bands (e.g. "Plato del día") ──
-    # When the template defines multiple bands with the same variable names,
-    # group consecutive Excel rows into pages: band 0 → product 0, band 1 → product 1, …
     if target_format == "a4":
         slot_bands = _detect_slot_bands(components, n_bands=3)
         if slot_bands:
@@ -381,11 +390,9 @@ def render_template_to_pptx(
 
             for pg in page_groups:
                 slide = prs.slides.add_slide(blank_layout)
-                # Render background images once (no product data needed)
                 if bg_comps:
                     laid_bg = compute_layout(bg_comps, target_format, master_format)
-                    _render_slide(slide, laid_bg, {})
-                # Render each band with its product
+                    _render_slide(slide, laid_bg, {}, missing_vars=missing_vars)
                 for band_idx, band_comps in enumerate(slot_bands):
                     if band_idx >= len(pg):
                         break
@@ -393,17 +400,16 @@ def render_template_to_pptx(
                     visibility    = evaluate_rules(rules, product)
                     laid_band     = compute_layout(band_comps, target_format, master_format)
                     visible_comps = apply_visibility(laid_band, visibility)
-                    _render_slide(slide, visible_comps, product)
+                    _render_slide(slide, visible_comps, product, missing_vars=missing_vars)
 
             buf = io.BytesIO()
             prs.save(buf)
-            return buf.getvalue()
+            return buf.getvalue(), sorted(missing_vars)
 
     # ── Standard multi-slot rendering (3xa4, pinchos, etc.) ──────────────────
     laid_out = compute_layout(components, target_format, master_format)
 
     slot_cols = fmt_info.get("slot_cols", 1)
-    slot_rows = fmt_info.get("slot_rows", 1)
     cell_w    = fmt_info["width_cm"]
     cell_h    = fmt_info["height_cm"]
 
@@ -421,11 +427,11 @@ def render_template_to_pptx(
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
 
-            _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y)
+            _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars)
 
     buf = io.BytesIO()
     prs.save(buf)
-    return buf.getvalue()
+    return buf.getvalue(), sorted(missing_vars)
 
 
 def generate_from_template_v2(
@@ -436,8 +442,8 @@ def generate_from_template_v2(
     aclaracion: str = "",
     otra_alcohol: str = "Prohibida la venta de bebidas alcohólicas a menores de 18 años",
     banco: str = "",
-) -> bytes:
-    """Parsea Excel y genera PPTX desde template v2."""
+) -> tuple[bytes, list[str]]:
+    """Parsea Excel y genera PPTX desde template v2. Returns (bytes, missing_vars)."""
     products = load_products_from_bytes(
         excel_bytes, vigencia, aclaracion, otra_alcohol, banco
     )

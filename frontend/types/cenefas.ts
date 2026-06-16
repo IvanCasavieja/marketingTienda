@@ -120,6 +120,7 @@ export interface CenefaJob {
   error_count: number;
   created_at: string;
   completed_at?: string;
+  missing_vars?: string[];
   validation_summary?: {
     total: number;
     correct: number;
