@@ -18,7 +18,7 @@ const VARIABLES_REFERENCE = [
   { name: "precioAnterior",    desc: "Precio anterior o tachado" },
   { name: "precioBanco",       desc: "Precio con beneficio bancario" },
   { name: "banco",             desc: "Nombre del banco o beneficio" },
-  { name: "titulo",            desc: "Título o mecánica de la oferta (ej: 2x1, Combo)" },
+  { name: "mecanica",          desc: "Mecánica o tipo de oferta (ej: 2x1, Combo, Precio Final)" },
   { name: "aclaracion",        desc: "Texto aclaratorio (ej: bases y condiciones)" },
   { name: "segundaAclaracion", desc: "Segunda aclaración o leyenda de alcohol" },
   { name: "vigencia",          desc: "Período de validez de la oferta" },

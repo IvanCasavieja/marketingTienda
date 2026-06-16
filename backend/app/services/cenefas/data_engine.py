@@ -28,7 +28,7 @@ CANONICAL_VARS: frozenset[str] = frozenset({
     "precioBanco",        # precio con beneficio bancario ("$1.000")
     "banco",              # nombre o logo del banco (texto o imagen)
     "descripcion",        # nombre del producto
-    "titulo",             # etiqueta de tipo de oferta ("Precio Final", "2X$X"...)
+    "mecanica",           # mecánica / tipo de oferta ("Precio Final", "2X$X"...)
     "aclaracion",         # texto de aclaración por producto
     "segundaAclaracion",  # segunda aclaración (ej: aviso de alcohol)
     "vigencia",           # texto de vigencia
@@ -64,7 +64,8 @@ _ALIASES: dict[str, str] = {
     "preciobanco":        "precioBanco",
     "banco":              "banco",
     "descripcion":        "descripcion",
-    "titulo":             "titulo",
+    "titulo":             "mecanica",    # backward compat: columna "titulo" → var "mecanica"
+    "mecanica":           "mecanica",
     "aclaracion":         "aclaracion",
     "segundaaclaracion":  "segundaAclaracion",
     "vigencia":           "vigencia",
@@ -214,9 +215,8 @@ def _apply_legacy_compute(
         if subcat not in NO_UNIDAD_SUBCATS:
             unidad = "unidad"
 
-    if not result.get("titulo"):
-        result["titulo"] = titulo_val
-    result["mecanica"]        = mecanica
+    if not result.get("mecanica"):
+        result["mecanica"] = titulo_val
     result["unidadPrecio"]    = unidad
     result["unidadPBanco"]    = "unidad" if is_multi_sku else ""
     if cat == "BEBIDAS CON ALCOHOL":
@@ -229,13 +229,13 @@ def _backfill_legacy_keys(result: dict) -> None:
         # old key          canonical key
         "precio":          "precioActual",
         "precio_banco":    "precioBanco",
-        "p1":              "titulo",
+        "p1":              "mecanica",    # legacy P1 → mecanica
+        "titulo":          "mecanica",   # legacy titulo → mecanica
         "code":            "codigoSKU",
         "otra_aclaracion": "segundaAclaracion",
         "unidad":          "unidadPrecio",
         "unidad_precio":   "unidadPrecio",
         "unidad_pbanco":   "unidadPBanco",
-        "mecanica":        "mecanica",   # mecanica is set by legacy compute
     }
     for old, new in _map.items():
         if old not in result:
@@ -295,9 +295,8 @@ def load_products_from_bytes(
 
         # Deduplicación por clave natural
         key = (
-            data.get("titulo", ""),
-            data.get("precioActual", ""),
             data.get("mecanica", ""),
+            data.get("precioActual", ""),
             (data.get("descripcion") or "").lower().strip(),
             data.get("codigoSKU", ""),
             data.get("dia", ""),
@@ -321,7 +320,7 @@ def generate_template_bytes() -> bytes:
     # Columnas estándar en orden lógico
     HEADERS = [
         "descripcion", "precioActual", "precioAnterior", "precioBanco",
-        "titulo", "banco", "moneda", "codigoSKU",
+        "mecanica", "banco", "moneda", "codigoSKU",
         "dia", "mes", "año",
         "aclaracion", "segundaAclaracion", "vigencia",
         "categoria", "subCategoria", "descuento",
@@ -395,7 +394,7 @@ def generate_template_bytes() -> bytes:
         ("precioActual",      "Precio principal del producto",                       "Precio",   "Puede ser número (1500) o texto formateado ($1.500). Con número se auto-formatea."),
         ("precioAnterior",    "Precio anterior / tachado",                           "Precio",   "Opcional. Se usa para mostrar precio original antes del descuento."),
         ("precioBanco",       "Precio con beneficio bancario",                       "Precio",   "Opcional. Se muestra en bloque de banco (<<precioBanco>>). También acepta: PBANCO, SCOTLAND 20%, SCOTIA 20%."),
-        ("titulo",            "Etiqueta de tipo de oferta",                          "Texto",    "Ej: 'Precio Final', '2X$4.500', 'M x N'. También acepta: OFERTADET (nombre legacy)."),
+        ("mecanica",          "Mecánica o tipo de oferta",                           "Texto",    "Ej: 'Precio Final', '2X$4.500', 'M x N'. También acepta: titulo, OFERTADET (nombres legacy)."),
         ("banco",             "Nombre o logo del banco",                             "Texto",    "Texto o nombre del banco. Pasado como parámetro global al generar."),
         ("moneda",            "Prefijo de moneda",                                   "Texto",    "$ (defecto) o U$S. Afecta el prefijo de todos los precios."),
         ("codigoSKU",         "Código de artículo",                                  "Texto",    "Si contiene '/' activa modo MULTI-SKU y muestra 'unidad' bajo el precio."),
