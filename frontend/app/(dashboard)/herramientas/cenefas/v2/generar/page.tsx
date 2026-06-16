@@ -300,7 +300,7 @@ export default function GenerarPage() {
           ) : (
             <div>
               <SectionLabel>Plantilla predeterminada</SectionLabel>
-              <div className="grid grid-cols-3 gap-2 mt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
                 {BUILTINS.map((b) => (
                   <button
                     key={b.slug}
@@ -336,7 +336,7 @@ export default function GenerarPage() {
           {/* Formato de salida */}
           <div>
             <SectionLabel>Formato de salida</SectionLabel>
-            <div className="grid grid-cols-4 gap-2 mt-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
               {formats.map((f) => (
                 <button key={f.id} onClick={() => setFormatId(f.id)}
                   className={`p-3 rounded-xl border text-center transition-all ${
@@ -355,13 +355,13 @@ export default function GenerarPage() {
           {/* Metadata */}
           <div>
             <SectionLabel>Metadata (opcional)</SectionLabel>
-            <div className="grid grid-cols-2 gap-3 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
               <Field label="Vigencia" value={vigencia} onChange={setVigencia} />
               <ComboField label="Banco / Beneficio" value={banco} onChange={setBanco} storageKey="cenefa_opts_banco" />
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <ComboField label="Aclaración" value={aclaracion} onChange={setAclaracion} storageKey="cenefa_opts_aclaracion" />
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <ComboField label="Segunda aclaración" value={otraAlcohol} onChange={setOtraAlcohol} storageKey="cenefa_opts_segunda_aclaracion" />
               </div>
             </div>

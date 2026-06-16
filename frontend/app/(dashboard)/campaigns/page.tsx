@@ -138,9 +138,9 @@ export default function CampaignsPage() {
   return (
     <div className="space-y-5 animate-fade-in">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{t("campaigns.title")}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{t("campaigns.title")}</h1>
           <p className="text-sm text-slate-500 mt-0.5">{t("campaigns.subtitle")}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -161,7 +161,7 @@ export default function CampaignsPage() {
 
       {/* Summary row */}
       {!loading && displayed.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           {[
             { label: t("campaigns.totalInvestment"), curr: totals.spend,       prev: cmpTotals.spend,       fmt: fMoney },
             { label: t("campaigns.clicks"),          curr: totals.clicks,      prev: cmpTotals.clicks,      fmt: fNum },
@@ -261,8 +261,8 @@ export default function CampaignsPage() {
 
       {/* Table */}
       <div className="card overflow-hidden flex flex-col">
-        <div className="overflow-y-auto max-h-[calc(100vh-22rem)]">
-        <table className="w-full">
+        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100svh-22rem)]">
+        <table className="w-full min-w-[640px]">
           <thead className="sticky top-0 z-10">
             <tr className="border-b border-slate-100 bg-slate-50">
               <th className="table-th">{t("campaigns.tableHeaders.platform")}</th>
