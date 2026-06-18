@@ -2,7 +2,7 @@
 import asyncio
 import json
 from datetime import date
-from typing import List, Dict
+from typing import List, Dict, AsyncIterator
 
 import anthropic
 
@@ -82,6 +82,91 @@ async def _ask_llama(system: str, prompt: str) -> str:
         ],
     )
     return response.choices[0].message.content
+
+
+async def _race(speaker: str, round_n: int, role: str, coro, queue: asyncio.Queue) -> None:
+    try:
+        content = await coro
+        await queue.put({"ok": True, "speaker": speaker, "round": round_n, "role": role, "content": content})
+    except Exception as exc:
+        await queue.put({"ok": False, "speaker": speaker, "error": str(exc)})
+
+
+async def stream_debate(
+    metrics: List[Dict],
+    email_data: List[Dict],
+    whatsapp_data: List[Dict],
+    date_from: date,
+    date_to: date,
+) -> AsyncIterator[dict]:
+    metrics_ctx = _build_metrics_context(metrics)
+    sfmc_ctx = _build_sfmc_context(email_data, whatsapp_data)
+
+    data_context = (
+        f"Período: {date_from} al {date_to}\n\n"
+        f"## CAMPAÑAS PAGAS\n{metrics_ctx}\n\n"
+        f"## COMUNICACIONES (Email / WhatsApp)\n{sfmc_ctx}"
+    )
+    round1_prompt = (
+        f"Analizá estos datos de marketing y dá tu perspectiva inicial en 3-4 párrafos concisos:\n\n"
+        f"{data_context}\n\n"
+        "Incluí: principales hallazgos, el problema más crítico que detectás y tu recomendación más importante."
+    )
+
+    # ── Round 1 — los tres analizan en paralelo; se streamea cada uno al terminar ──
+    yield {"type": "round_start", "round": 1}
+    q1: asyncio.Queue = asyncio.Queue()
+    asyncio.create_task(_race("Claude",  1, "analysis", _ask_claude(CLAUDE_PERSONA, round1_prompt), q1))
+    asyncio.create_task(_race("ChatGPT", 1, "analysis", _ask_gpt(GPT_PERSONA,   round1_prompt), q1))
+    asyncio.create_task(_race("Llama",   1, "analysis", _ask_llama(LLAMA_PERSONA, round1_prompt), q1))
+
+    r1: Dict[str, str] = {}
+    for _ in range(3):
+        item = await q1.get()
+        if not item["ok"]:
+            raise RuntimeError(f"Round 1 · {item['speaker']}: {item['error']}")
+        r1[item["speaker"]] = item["content"]
+        yield {"type": "message", "speaker": item["speaker"], "round": 1, "role": "analysis", "content": item["content"]}
+
+    # ── Round 2 — Claude y ChatGPT responden cruzado en paralelo ──
+    yield {"type": "round_start", "round": 2}
+    r2_claude_prompt = (
+        f"El análisis inicial de ChatGPT sobre los mismos datos fue:\n\n\"{r1['ChatGPT']}\"\n\n"
+        "Teniendo en cuenta tu propio análisis, ¿en qué puntos concordás con ChatGPT y en cuáles diferís? "
+        "¿Qué perspectiva importante creés que está pasando por alto? Sé directo y específico. Máximo 3 párrafos."
+    )
+    r2_gpt_prompt = (
+        f"El análisis inicial de Claude sobre los mismos datos fue:\n\n\"{r1['Claude']}\"\n\n"
+        "Teniendo en cuenta tu propio análisis, ¿en qué puntos concordás con Claude y en cuáles diferís? "
+        "¿Qué perspectiva importante creés que está pasando por alto? Sé directo y específico. Máximo 3 párrafos."
+    )
+    q2: asyncio.Queue = asyncio.Queue()
+    asyncio.create_task(_race("Claude",  2, "rebuttal", _ask_claude(CLAUDE_PERSONA, r2_claude_prompt), q2))
+    asyncio.create_task(_race("ChatGPT", 2, "rebuttal", _ask_gpt(GPT_PERSONA,   r2_gpt_prompt),   q2))
+
+    r2: Dict[str, str] = {}
+    for _ in range(2):
+        item = await q2.get()
+        if not item["ok"]:
+            raise RuntimeError(f"Round 2 · {item['speaker']}: {item['error']}")
+        r2[item["speaker"]] = item["content"]
+        yield {"type": "message", "speaker": item["speaker"], "round": 2, "role": "rebuttal", "content": item["content"]}
+
+    # ── Round 3 — Llama sintetiza todo ──
+    yield {"type": "round_start", "round": 3}
+    r3_prompt = (
+        f"Presenciaste el debate completo entre Claude y ChatGPT sobre datos de marketing ({date_from} al {date_to}).\n\n"
+        f"**Claude (análisis inicial):** {r1['Claude']}\n\n"
+        f"**ChatGPT (análisis inicial):** {r1['ChatGPT']}\n\n"
+        f"**Claude (réplica):** {r2['Claude']}\n\n"
+        f"**ChatGPT (réplica):** {r2['ChatGPT']}\n\n"
+        "Como moderador, sintetizá en estas 3 secciones:\n"
+        "1. **Puntos en los que todos coinciden** (alta confianza — ejecutar sin dudar)\n"
+        "2. **Principal diferencia de perspectiva** y cuál te parece más válida con una justificación breve\n"
+        "3. **Los 3 próximos pasos concretos** que el equipo debería tomar esta semana, ordenados por prioridad"
+    )
+    r3_content = await _ask_llama(LLAMA_PERSONA, r3_prompt)
+    yield {"type": "message", "speaker": "Llama", "round": 3, "role": "synthesis", "content": r3_content}
 
 
 async def run_debate(
