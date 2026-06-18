@@ -14,10 +14,31 @@ import { useTranslation } from "react-i18next";
 
 const ALL_PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"];
 
-const SPEAKER_STYLES: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  Claude:  { bg: "bg-orange-50",  text: "text-orange-700",  border: "border-orange-200",  dot: "bg-orange-500"  },
-  ChatGPT: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500" },
-  Llama:   { bg: "bg-purple-50",  text: "text-purple-700",  border: "border-purple-200",  dot: "bg-purple-500"  },
+const SPEAKER_STYLES: Record<string, {
+  bg: string; text: string; border: string; dot: string;
+  avatarBg: string; avatarRing: string; nameBadge: string; label: string;
+}> = {
+  Claude:  {
+    bg: "bg-gradient-to-br from-amber-50 to-orange-50",
+    text: "text-slate-700", border: "border-orange-200/70",
+    dot: "bg-orange-500", avatarBg: "bg-orange-500", avatarRing: "ring-orange-200",
+    nameBadge: "bg-orange-100 text-orange-700 border-orange-200",
+    label: "Analista cuantitativo",
+  },
+  ChatGPT: {
+    bg: "bg-gradient-to-br from-emerald-50 to-teal-50",
+    text: "text-slate-700", border: "border-emerald-200/70",
+    dot: "bg-emerald-500", avatarBg: "bg-emerald-500", avatarRing: "ring-emerald-200",
+    nameBadge: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    label: "Estratega de crecimiento",
+  },
+  Llama: {
+    bg: "bg-gradient-to-br from-violet-50 to-purple-50",
+    text: "text-slate-700", border: "border-purple-200/70",
+    dot: "bg-purple-500", avatarBg: "bg-purple-600", avatarRing: "ring-purple-200",
+    nameBadge: "bg-purple-100 text-purple-700 border-purple-200",
+    label: "Árbitro",
+  },
 };
 
 interface ChatMessage {
@@ -359,57 +380,60 @@ export default function AnalyticsPage() {
             </div>
           )}
 
-          <div className="card flex flex-col" style={{ height: "calc(100vh - 180px)", minHeight: "640px" }}>
+          <div className="flex flex-col rounded-2xl overflow-hidden border border-slate-200 shadow-lg" style={{ height: "calc(100vh - 180px)", minHeight: "640px" }}>
             {/* Header */}
-            <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-slate-100 shrink-0">
-              <div className="flex -space-x-1.5">
-                {[{ dot: "bg-orange-500", l: "C" }, { dot: "bg-emerald-500", l: "G" }, { dot: "bg-purple-500", l: "L" }].map((a) => (
-                  <div key={a.l} className={`w-6 h-6 rounded-full ${a.dot} border-2 border-white flex items-center justify-center`}>
-                    <span className="text-white text-[9px] font-bold">{a.l}</span>
+            <div className="flex items-center gap-3 px-5 py-4 shrink-0 bg-gradient-to-r from-slate-800 to-slate-900">
+              <div className="flex -space-x-2">
+                {[{ dot: "bg-orange-500", l: "C" }, { dot: "bg-emerald-400", l: "G" }, { dot: "bg-purple-500", l: "L" }].map((a) => (
+                  <div key={a.l} className={`w-8 h-8 rounded-full ${a.dot} border-2 border-slate-800 flex items-center justify-center shadow-md`}>
+                    <span className="text-white text-[10px] font-black">{a.l}</span>
                   </div>
                 ))}
               </div>
               <div className="flex-1">
-                <p className="text-sm font-bold text-slate-800">La Triada</p>
-                <p className="text-[10px] text-slate-400">Claude · ChatGPT · Llama</p>
+                <p className="text-sm font-bold text-white">La Triada</p>
+                <p className="text-[10px] text-slate-400 font-medium">Claude · ChatGPT · Llama</p>
               </div>
               {(loading || verdictLoading) && (
-                <button onClick={stopCurrent} className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 font-medium shrink-0">
-                  <StopCircle size={14} /> Detener
+                <button onClick={stopCurrent} className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 font-semibold shrink-0 transition-colors">
+                  <StopCircle size={13} /> Detener
                 </button>
               )}
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
               {chatMessages.map((msg) => {
                 if (msg.speaker === "user") {
                   return (
-                    <div key={msg.id} className="flex justify-end">
-                      <div className="bg-violet-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 text-sm max-w-[80%] leading-relaxed">
+                    <div key={msg.id} className="flex justify-end px-1">
+                      <div className="bg-violet-600 text-white rounded-2xl rounded-br-md px-4 py-3 text-sm max-w-[78%] leading-relaxed shadow-sm shadow-violet-200">
                         {msg.content}
                       </div>
                     </div>
                   );
                 }
                 const style = SPEAKER_STYLES[msg.speaker] ?? SPEAKER_STYLES.Claude;
-                const roleMap: Record<string, string> = { debate: "debate", synthesis: "veredicto" };
-                const roleLabel = msg.role && msg.type === "debate" ? (roleMap[msg.role] ?? "") : "";
+                const isVerdict = msg.role === "synthesis";
                 return (
-                  <div key={msg.id} className={`rounded-xl border p-3.5 ${style.bg} ${style.border} animate-fade-in`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-5 h-5 rounded-full ${style.dot} flex items-center justify-center shrink-0`}>
-                        <span className="text-white text-[9px] font-bold">{msg.speaker[0]}</span>
+                  <div key={msg.id} className={`rounded-2xl border shadow-sm p-4 ${style.bg} ${style.border} animate-fade-in`}>
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <div className={`w-7 h-7 rounded-full ${style.avatarBg} ring-2 ${style.avatarRing} flex items-center justify-center shrink-0 shadow-sm`}>
+                        <span className="text-white text-[11px] font-black">{msg.speaker[0]}</span>
                       </div>
-                      <span className={`text-xs font-bold ${style.text}`}>{msg.speaker}</span>
-                      {roleLabel && (
-                        <>
-                          <span className="text-[10px] text-slate-300">·</span>
-                          <span className="text-[10px] text-slate-400">{roleLabel}</span>
-                        </>
-                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${style.nameBadge}`}>
+                          {msg.speaker}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium">{style.label}</span>
+                        {isVerdict && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-600 text-white">
+                            veredicto
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className={`text-sm leading-relaxed ${style.text.replace("700", "800")}`}>
+                    <div className="text-sm leading-relaxed text-slate-700 pl-9">
                       <MarkdownOutput text={msg.content} />
                     </div>
                   </div>
@@ -420,39 +444,37 @@ export default function AnalyticsPage() {
               {pendingSpeakers.map((speaker) => {
                 const style = SPEAKER_STYLES[speaker];
                 return (
-                  <div key={`t-${speaker}`} className={`rounded-xl border p-3.5 ${style.bg} ${style.border} animate-pulse`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-5 h-5 rounded-full ${style.dot} flex items-center justify-center shrink-0`}>
-                        <span className="text-white text-[9px] font-bold">{speaker[0]}</span>
+                  <div key={`t-${speaker}`} className={`rounded-2xl border shadow-sm p-4 ${style.bg} ${style.border}`}>
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <div className={`w-7 h-7 rounded-full ${style.avatarBg} ring-2 ${style.avatarRing} flex items-center justify-center shrink-0 shadow-sm`}>
+                        <span className="text-white text-[11px] font-black">{speaker[0]}</span>
                       </div>
-                      <span className={`text-xs font-bold ${style.text}`}>{speaker}</span>
-                      <span className="text-[10px] text-slate-400">· analizando...</span>
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${style.nameBadge}`}>{speaker}</span>
                       <div className="flex gap-1 ml-1">
                         {[0, 150, 300].map((d) => (
-                          <div key={d} className={`w-1 h-1 rounded-full ${style.dot} animate-bounce`} style={{ animationDelay: `${d}ms` }} />
+                          <div key={d} className={`w-1.5 h-1.5 rounded-full ${style.dot} animate-bounce opacity-70`} style={{ animationDelay: `${d}ms` }} />
                         ))}
                       </div>
                     </div>
-                    <SkeletonText lines={3} />
+                    <div className="pl-9"><SkeletonText lines={3} /></div>
                   </div>
                 );
               })}
 
               {verdictLoading && (
-                <div className={`rounded-xl border p-3.5 ${SPEAKER_STYLES.Llama.bg} ${SPEAKER_STYLES.Llama.border} animate-pulse`}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={`w-5 h-5 rounded-full ${SPEAKER_STYLES.Llama.dot} flex items-center justify-center shrink-0`}>
-                      <span className="text-white text-[9px] font-bold">L</span>
+                <div className={`rounded-2xl border shadow-sm p-4 ${SPEAKER_STYLES.Llama.bg} ${SPEAKER_STYLES.Llama.border}`}>
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className={`w-7 h-7 rounded-full ${SPEAKER_STYLES.Llama.avatarBg} ring-2 ${SPEAKER_STYLES.Llama.avatarRing} flex items-center justify-center shrink-0 shadow-sm`}>
+                      <span className="text-white text-[11px] font-black">L</span>
                     </div>
-                    <span className={`text-xs font-bold ${SPEAKER_STYLES.Llama.text}`}>Llama</span>
-                    <span className="text-[10px] text-slate-400">· elaborando veredicto...</span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${SPEAKER_STYLES.Llama.nameBadge}`}>Llama</span>
                     <div className="flex gap-1 ml-1">
                       {[0, 150, 300].map((d) => (
-                        <div key={d} className={`w-1 h-1 rounded-full ${SPEAKER_STYLES.Llama.dot} animate-bounce`} style={{ animationDelay: `${d}ms` }} />
+                        <div key={d} className={`w-1.5 h-1.5 rounded-full ${SPEAKER_STYLES.Llama.dot} animate-bounce opacity-70`} style={{ animationDelay: `${d}ms` }} />
                       ))}
                     </div>
                   </div>
-                  <SkeletonText lines={4} />
+                  <div className="pl-9"><SkeletonText lines={4} /></div>
                 </div>
               )}
 
@@ -461,21 +483,21 @@ export default function AnalyticsPage() {
 
             {/* Token strip */}
             {tokenTotals.total > 0 && (
-              <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/60 shrink-0">
+              <div className="px-4 py-2 border-t border-slate-200 bg-white shrink-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-slate-500">Tokens consumidos:</span>
-                  <span className="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full">
-                    {tokenTotals.total.toLocaleString()} total
+                  <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Tokens</span>
+                  <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                    {tokenTotals.total.toLocaleString()}
                   </span>
                   {Object.entries(tokenTotals.by_model).map(([model, count]) => {
                     const s: Record<string, string> = {
-                      Claude:  "bg-orange-50 text-orange-700 border-orange-200",
-                      ChatGPT: "bg-emerald-50 text-emerald-700 border-emerald-200",
-                      Llama:   "bg-purple-50 text-purple-700 border-purple-200",
+                      Claude:  "bg-orange-100 text-orange-700",
+                      ChatGPT: "bg-emerald-100 text-emerald-700",
+                      Llama:   "bg-purple-100 text-purple-700",
                     };
                     return (
-                      <span key={model} className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${s[model] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
-                        {model}: {(count as number).toLocaleString()}
+                      <span key={model} className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${s[model] ?? "bg-slate-100 text-slate-600"}`}>
+                        {model} {(count as number).toLocaleString()}
                       </span>
                     );
                   })}
@@ -485,13 +507,13 @@ export default function AnalyticsPage() {
 
             {/* Llama verdict button */}
             {hasDebateContent && !loading && !verdictLoading && !llamaHasSpoken && (
-              <div className="px-4 py-2.5 border-t border-slate-50 shrink-0">
+              <div className="px-4 py-2.5 border-t border-slate-200 bg-white shrink-0">
                 <button
                   onClick={requestVerdict}
-                  className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-purple-200 text-purple-600 text-xs font-semibold hover:bg-purple-50 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-colors shadow-sm shadow-purple-200"
                 >
-                  <div className="w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center">
-                    <span className="text-white text-[8px] font-bold">L</span>
+                  <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center">
+                    <span className="text-white text-[8px] font-black">L</span>
                   </div>
                   Pedir veredicto a Llama
                 </button>
@@ -499,7 +521,7 @@ export default function AnalyticsPage() {
             )}
 
             {/* Input */}
-            <div className="px-4 py-3 border-t border-slate-100 shrink-0">
+            <div className="px-4 py-3 border-t border-slate-200 bg-white shrink-0">
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -512,12 +534,12 @@ export default function AnalyticsPage() {
                     verdictLoading ? "Llama está elaborando el veredicto..." :
                     "Escribí tu pregunta o seguí el debate..."
                   }
-                  className="flex-1 px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:bg-slate-50 disabled:text-slate-400 disabled:placeholder:text-slate-300"
+                  className="flex-1 px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent bg-slate-50 disabled:text-slate-400 disabled:placeholder:text-slate-300 transition-all"
                 />
                 <button
                   onClick={sendChatMessage}
                   disabled={!chatInput.trim() || loading || verdictLoading}
-                  className="w-10 h-10 rounded-xl bg-violet-600 text-white flex items-center justify-center hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+                  className="w-10 h-10 rounded-xl bg-violet-600 text-white flex items-center justify-center hover:bg-violet-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all shrink-0 shadow-sm"
                 >
                   {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={15} />}
                 </button>
