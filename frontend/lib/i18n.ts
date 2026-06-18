@@ -23,8 +23,9 @@ i18n.use(initReactI18next).init({
   lng: "es",
   fallbackLng: "es",
   interpolation: { escapeValue: false },
+  initImmediate: false,   // synchronous init — resources are in-memory JSON, no async work needed
   react: {
-    useSuspense: false, // prevents react-i18next v15 from suspending on client while server already rendered — fixes #418/#423
+    useSuspense: false,   // prevents suspending while server already rendered translated content
   },
 });
 
