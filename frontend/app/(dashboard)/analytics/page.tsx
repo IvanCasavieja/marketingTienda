@@ -161,8 +161,8 @@ export default function AnalyticsPage() {
   const { t } = useTranslation();
   const [platforms, setPlatforms]         = useState<string[]>(ALL_PLATFORMS);
   const [analysisType, setType]           = useState("full_report");
-  const [dateFrom, setDateFrom]           = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
-  const [dateTo, setDateTo]               = useState(format(new Date(), "yyyy-MM-dd"));
+  const [dateFrom, setDateFrom]           = useState("");
+  const [dateTo, setDateTo]               = useState("");
   const [result, setResult]               = useState<string>("");
   const [debateMessages, setDebateMessages] = useState<DebateMessage[]>([]);
   const [activeRound, setActiveRound]     = useState<number | null>(null);
@@ -210,6 +210,8 @@ export default function AnalyticsPage() {
   ];
 
   useEffect(() => {
+    setDateFrom(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+    setDateTo(format(new Date(), "yyyy-MM-dd"));
     analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
   }, []);
 
