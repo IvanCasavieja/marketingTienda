@@ -18,24 +18,26 @@ def _build_compact_context(metrics: List[Dict], email_data: List[Dict], whatsapp
 
     by_platform: dict = defaultdict(lambda: {
         "spend": 0.0, "impressions": 0, "clicks": 0,
-        "conversions": 0, "revenue": 0.0, "names": set(),
+        "conversions": 0, "revenue": 0.0, "reach": 0, "names": set(),
     })
     for m in metrics:
         p = m["platform"].upper()
-        by_platform[p]["spend"] += m["spend"]
+        by_platform[p]["spend"]       += m["spend"]
         by_platform[p]["impressions"] += m["impressions"]
-        by_platform[p]["clicks"] += m["clicks"]
+        by_platform[p]["clicks"]      += m["clicks"]
         by_platform[p]["conversions"] += m["conversions"]
-        by_platform[p]["revenue"] += m["revenue"]
+        by_platform[p]["revenue"]     += m["revenue"]
+        by_platform[p]["reach"]       += m.get("reach") or 0
         by_platform[p]["names"].add(m["campaign_name"])
 
     lines = ["## Resumen por plataforma"]
     for platform, d in sorted(by_platform.items()):
-        ctr = (d["clicks"] / d["impressions"] * 100) if d["impressions"] > 0 else 0
-        roas = (d["revenue"] / d["spend"]) if d["spend"] > 0 else 0
+        ctr  = (d["clicks"] / d["impressions"] * 100) if d["impressions"] > 0 else 0
+        cpm  = (d["spend"] / d["impressions"] * 1000)  if d["impressions"] > 0 else 0
+        roas = (d["revenue"] / d["spend"])              if d["spend"] > 0 else 0
         lines.append(
             f"- [{platform}] {len(d['names'])} campañas | Inversión=${d['spend']:.0f} | "
-            f"CTR={ctr:.2f}% | Conv={d['conversions']} | ROAS={roas:.2f}x"
+            f"Alcance={d['reach']:,} | CPM=${cpm:.2f} | CTR={ctr:.2f}% | Conv={d['conversions']} | ROAS={roas:.2f}x"
         )
 
     top8 = sorted(metrics, key=lambda x: x["spend"], reverse=True)[:8]
@@ -46,8 +48,10 @@ def _build_compact_context(metrics: List[Dict], email_data: List[Dict], whatsapp
         if key in seen:
             continue
         seen.add(key)
+        cpm_val = m.get("cpm") or 0.0
         camp_lines.append(
-            f"  · [{m['platform'].upper()}] {m['campaign_name']}: ${m['spend']:.0f} | ROAS={m['roas']:.2f}x"
+            f"  · [{m['platform'].upper()}] {m['campaign_name']}: ${m['spend']:.0f} | "
+            f"CTR={m['ctr']:.2f}% | CPM=${cpm_val:.2f} | ROAS={m['roas']:.2f}x"
         )
     if camp_lines:
         lines.append("## Top campañas")

@@ -37,9 +37,12 @@ def _build_metrics_context(metrics: List[Dict]) -> str:
 
     lines = []
     for m in metrics:
+        reach = m.get("reach") or 0
+        cpm   = m.get("cpm")   or 0.0
         lines.append(
             f"- [{m['platform'].upper()}] {m['campaign_name']}: "
             f"Inversión=${m['spend']:.2f} | Impresiones={m['impressions']:,} | "
+            f"Alcance={reach:,} | CPM=${cpm:.2f} | "
             f"Clicks={m['clicks']:,} | CTR={m['ctr']:.2f}% | CPC=${m['cpc']:.2f} | "
             f"Conversiones={m['conversions']} | Revenue=${m['revenue']:.2f} | ROAS={m['roas']:.2f}x"
         )
