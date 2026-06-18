@@ -77,6 +77,28 @@ export const analyticsApi = {
       signal,
       body: JSON.stringify({ platforms, date_from, date_to, analysis_type: "debate", user_prompt }),
     }),
+  streamDebateTurn: (
+    platforms: string[], date_from: string, date_to: string,
+    history: object[], user_message: string, signal?: AbortSignal,
+  ) =>
+    fetch(`${BASE_URL}/analytics/debate/turn`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      signal,
+      body: JSON.stringify({ platforms, date_from, date_to, history, user_message }),
+    }),
+  streamDebateVerdict: (
+    platforms: string[], date_from: string, date_to: string,
+    history: object[], signal?: AbortSignal,
+  ) =>
+    fetch(`${BASE_URL}/analytics/debate/verdict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      signal,
+      body: JSON.stringify({ platforms, date_from, date_to, history }),
+    }),
   getHistory: () => api.get("/analytics/history"),
   getAnalysis: (id: number) => api.get(`/analytics/history/${id}`),
 };

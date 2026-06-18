@@ -17,7 +17,7 @@ from app.models.ai_analysis import AIAnalysis
 from app.models.platform_connection import Platform
 from app.services.metrics_service import get_metrics
 from app.services.claude_service import ANALYSIS_HANDLERS, stream_analysis
-from app.services.debate_service import run_debate, stream_debate
+from app.services.debate_service import run_debate, stream_debate, stream_debate_turn, stream_llama_verdict
 from app.connectors.sfmc import SFMCConnector
 
 _ALL_HANDLERS = {**ANALYSIS_HANDLERS, "debate": run_debate}
@@ -31,6 +31,21 @@ class AnalysisRequest(BaseModel):
     date_to: date
     analysis_type: str = "full_report"
     user_prompt: str = ""
+
+
+class DebateTurnRequest(BaseModel):
+    platforms: List[Platform]
+    date_from: date
+    date_to: date
+    user_message: str
+    history: List[dict] = []
+
+
+class DebateVerdictRequest(BaseModel):
+    platforms: List[Platform]
+    date_from: date
+    date_to: date
+    history: List[dict] = []
 
 
 @router.post("/analyze")
@@ -294,6 +309,129 @@ async def debate_stream(
                 prompt_used=f"debate | platforms: {platforms_str} | {date_from} to {date_to}",
                 result=json.dumps({"debate": all_messages}, ensure_ascii=False),
                 input_tokens=total_tokens,
+                output_tokens=0,
+            )
+            save_db.add(analysis)
+            await save_db.commit()
+            await save_db.refresh(analysis)
+            yield f"data: {json.dumps({'type': 'done', 'id': analysis.id})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/debate/turn")
+async def debate_turn(
+    payload: DebateTurnRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Single conversational turn: Claude + ChatGPT respond to user message."""
+    if not current_user.team_group_id:
+        raise HTTPException(status_code=400, detail="Join a team before running analysis")
+
+    metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
+    email_data, whatsapp_data = [], []
+    if settings.SFMC_CLIENT_ID:
+        try:
+            sfmc = SFMCConnector(
+                client_id=settings.SFMC_CLIENT_ID,
+                client_secret=settings.SFMC_CLIENT_SECRET,
+                subdomain=settings.SFMC_SUBDOMAIN,
+                account_id=settings.SFMC_ACCOUNT_ID,
+            )
+            email_data    = sfmc.normalize_email(await sfmc.fetch_email_performance(payload.date_from, payload.date_to))
+            whatsapp_data = sfmc.normalize_whatsapp(await sfmc.fetch_whatsapp_performance(payload.date_from, payload.date_to))
+        except Exception as e:
+            logger.warning("SFMC unavailable for debate turn: %s", e)
+
+    async def event_stream():
+        try:
+            async for event in stream_debate_turn(
+                payload.history, payload.user_message,
+                metrics, email_data, whatsapp_data,
+                payload.date_from, payload.date_to,
+            ):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except RuntimeError as exc:
+            logger.error("Debate turn failed: %s", exc)
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/debate/verdict")
+async def debate_verdict(
+    payload: DebateVerdictRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Request Llama verdict on the current conversation, then save full debate to DB."""
+    if not current_user.team_group_id:
+        raise HTTPException(status_code=400, detail="Join a team before running analysis")
+
+    metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
+    email_data, whatsapp_data = [], []
+    if settings.SFMC_CLIENT_ID:
+        try:
+            sfmc = SFMCConnector(
+                client_id=settings.SFMC_CLIENT_ID,
+                client_secret=settings.SFMC_CLIENT_SECRET,
+                subdomain=settings.SFMC_SUBDOMAIN,
+                account_id=settings.SFMC_ACCOUNT_ID,
+            )
+            email_data    = sfmc.normalize_email(await sfmc.fetch_email_performance(payload.date_from, payload.date_to))
+            whatsapp_data = sfmc.normalize_whatsapp(await sfmc.fetch_whatsapp_performance(payload.date_from, payload.date_to))
+        except Exception as e:
+            logger.warning("SFMC unavailable for debate verdict: %s", e)
+
+    user_id        = current_user.id
+    platforms_list = [p.value for p in payload.platforms]
+    platforms_str  = ", ".join(platforms_list)
+
+    async def event_stream():
+        llama_content = ""
+        llama_tokens  = 0
+        try:
+            async for event in stream_llama_verdict(
+                payload.history, metrics, email_data, whatsapp_data,
+                payload.date_from, payload.date_to,
+            ):
+                if event.get("type") == "message":
+                    llama_content = event.get("content", "")
+                elif event.get("type") == "tokens":
+                    llama_tokens = event.get("total", 0)
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except RuntimeError as exc:
+            logger.error("Debate verdict failed: %s", exc)
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+            return
+
+        all_messages = [
+            {k: m[k] for k in ("speaker", "content", "role") if k in m}
+            for m in payload.history
+            if m.get("type") in ("debate", "user") or m.get("speaker") in ("Claude", "ChatGPT", "user")
+        ]
+        if llama_content:
+            all_messages.append({"speaker": "Llama", "role": "synthesis", "content": llama_content})
+
+        async with AsyncSessionLocal() as save_db:
+            analysis = AIAnalysis(
+                user_id=user_id,
+                analysis_type="debate",
+                platforms=platforms_list,
+                date_from=payload.date_from,
+                date_to=payload.date_to,
+                prompt_used=f"debate-chat | {platforms_str} | {payload.date_from} to {payload.date_to}",
+                result=json.dumps({"debate": all_messages}, ensure_ascii=False),
+                input_tokens=llama_tokens,
                 output_tokens=0,
             )
             save_db.add(analysis)
