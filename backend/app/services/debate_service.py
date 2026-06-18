@@ -1,6 +1,7 @@
 """Multi-AI debate: Claude vs ChatGPT vs Llama (moderator) in 3 rounds."""
 import asyncio
 import json
+from collections import defaultdict
 from datetime import date
 from typing import List, Dict, AsyncIterator
 
@@ -8,6 +9,58 @@ import anthropic
 
 from app.core.config import settings
 from app.services.claude_service import _build_metrics_context, _build_sfmc_context
+
+
+def _build_compact_context(metrics: List[Dict], email_data: List[Dict], whatsapp_data: List[Dict]) -> str:
+    """Compact per-platform aggregation for Llama — keeps tokens well under Groq free-tier limit."""
+    if not metrics:
+        return "No hay métricas disponibles."
+
+    by_platform: dict = defaultdict(lambda: {
+        "spend": 0.0, "impressions": 0, "clicks": 0,
+        "conversions": 0, "revenue": 0.0, "names": set(),
+    })
+    for m in metrics:
+        p = m["platform"].upper()
+        by_platform[p]["spend"] += m["spend"]
+        by_platform[p]["impressions"] += m["impressions"]
+        by_platform[p]["clicks"] += m["clicks"]
+        by_platform[p]["conversions"] += m["conversions"]
+        by_platform[p]["revenue"] += m["revenue"]
+        by_platform[p]["names"].add(m["campaign_name"])
+
+    lines = ["## Resumen por plataforma"]
+    for platform, d in sorted(by_platform.items()):
+        ctr = (d["clicks"] / d["impressions"] * 100) if d["impressions"] > 0 else 0
+        roas = (d["revenue"] / d["spend"]) if d["spend"] > 0 else 0
+        n = len(d["names"])
+        lines.append(
+            f"- [{platform}] {n} campañas | Inversión=${d['spend']:.0f} | "
+            f"Impresiones={d['impressions']:,} | Clicks={d['clicks']:,} | "
+            f"CTR={ctr:.2f}% | Conv={d['conversions']} | ROAS={roas:.2f}x"
+        )
+
+    top10 = sorted(metrics, key=lambda x: x["spend"], reverse=True)[:10]
+    lines.append("\n## Top campañas por inversión")
+    seen: set = set()
+    for m in top10:
+        key = (m["platform"], m["campaign_name"])
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(
+            f"  · [{m['platform'].upper()}] {m['campaign_name']}: "
+            f"${m['spend']:.0f} | ROAS={m['roas']:.2f}x | CTR={m['ctr']:.2f}%"
+        )
+
+    if email_data or whatsapp_data:
+        lines.append("\n## Canal email/WhatsApp (resumen)")
+        for e in email_data[:5]:
+            lines.append(f"  · [EMAIL] {e['name']}: apertura={e['open_rate']}% clicks={e['click_rate']}%")
+        for w in whatsapp_data[:5]:
+            lines.append(f"  · [WA] {w['name']}: entrega={w['delivery_rate']}% lectura={w['read_rate']}%")
+
+    return "\n".join(lines)
 
 CLAUDE_PERSONA = (
     "Sos Claude, un analista cuantitativo riguroso especializado en marketing digital. "
@@ -112,13 +165,21 @@ async def stream_debate(
         f"{data_context}\n\n"
         "Incluí: principales hallazgos, el problema más crítico que detectás y tu recomendación más importante."
     )
+    # Groq free tier caps at 12k TPM; full row-by-row context can exceed 70k tokens.
+    # Llama (moderator) receives an aggregated summary that fits within the limit.
+    compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
+    llama_r1_prompt = (
+        f"Analizá estos datos de marketing y dá tu perspectiva inicial en 3-4 párrafos concisos:\n\n"
+        f"Período: {date_from} al {date_to}\n\n{compact_ctx}\n\n"
+        "Incluí: principales hallazgos, el problema más crítico que detectás y tu recomendación más importante."
+    )
 
     # ── Round 1 — los tres analizan en paralelo; se streamea cada uno al terminar ──
     yield {"type": "round_start", "round": 1}
     q1: asyncio.Queue = asyncio.Queue()
     asyncio.create_task(_race("Claude",  1, "analysis", _ask_claude(CLAUDE_PERSONA, round1_prompt), q1))
     asyncio.create_task(_race("ChatGPT", 1, "analysis", _ask_gpt(GPT_PERSONA,   round1_prompt), q1))
-    asyncio.create_task(_race("Llama",   1, "analysis", _ask_llama(LLAMA_PERSONA, round1_prompt), q1))
+    asyncio.create_task(_race("Llama",   1, "analysis", _ask_llama(LLAMA_PERSONA, llama_r1_prompt), q1))
 
     r1: Dict[str, str] = {}
     for _ in range(3):
@@ -190,12 +251,18 @@ async def run_debate(
         f"{data_context}\n\n"
         "Incluí: principales hallazgos, el problema más crítico que detectás y tu recomendación más importante."
     )
+    compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
+    llama_r1_prompt = (
+        f"Analizá estos datos de marketing y dá tu perspectiva inicial en 3-4 párrafos concisos:\n\n"
+        f"Período: {date_from} al {date_to}\n\n{compact_ctx}\n\n"
+        "Incluí: principales hallazgos, el problema más crítico que detectás y tu recomendación más importante."
+    )
 
     # Round 1 — all three analyze independently in parallel
     r1_results = await asyncio.gather(
         _ask_claude(CLAUDE_PERSONA, round1_prompt),
         _ask_gpt(GPT_PERSONA, round1_prompt),
-        _ask_llama(LLAMA_PERSONA, round1_prompt),
+        _ask_llama(LLAMA_PERSONA, llama_r1_prompt),
         return_exceptions=True,
     )
     for r in r1_results:
