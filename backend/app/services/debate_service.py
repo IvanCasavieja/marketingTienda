@@ -404,60 +404,70 @@ async def stream_debate_turn(
     date_from: date,
     date_to: date,
 ) -> AsyncIterator[dict]:
-    """Claude + ChatGPT respond to a single user message, with full conversation history."""
+    """Sequential debate: Claude responds first, then ChatGPT reads Claude's answer and responds to both."""
     compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
     history_str = _build_history_str(history)
-
     is_first_turn = not any(m.get("speaker") in ("Claude", "ChatGPT") for m in history)
-    last_gpt    = next((m["content"][:500] for m in reversed(history) if m.get("speaker") == "ChatGPT"), None)
-    last_claude = next((m["content"][:500] for m in reversed(history) if m.get("speaker") == "Claude"), None)
 
-    def _prompt(speaker: str, other_last: str | None) -> str:
-        other_name = "ChatGPT" if speaker == "Claude" else "Claude"
-        parts: list[str] = []
-        parts.append(MARKET_CONTEXT)
-        if history_str:
-            parts.append(history_str)
-        parts.append(f"Datos del período {date_from} al {date_to}:\n{compact_ctx}")
-        parts.append(f"Pregunta del usuario: **{user_message}**")
+    base_parts = [
+        MARKET_CONTEXT,
+        *(([history_str]) if history_str else []),
+        f"Datos del período {date_from} al {date_to}:\n{compact_ctx}",
+        f"El usuario dice: **{user_message}**",
+    ]
 
-        if is_first_turn:
-            parts.append(
-                "INSTRUCCIONES — primer turno:\n"
-                "1. Tomá una posición analítica fuerte y específica sobre lo que pregunta el usuario.\n"
-                "2. Usá números exactos: ROAS, CTR, CPC, CPM, conversiones por campaña — no promedios vagos.\n"
-                "3. Identificá la campaña o plataforma con el mejor y peor desempeño y explicá POR QUÉ (causa raíz, no solo el síntoma).\n"
-                "4. Calculá al menos una ratio o comparación entre plataformas que sea no obvia: por ejemplo, eficiencia de conversión "
-                "ajustada por inversión, o CTR relativo entre canales.\n"
-                "5. Terminá con una afirmación provocadora que el otro analista probablemente va a querer rebatir.\n"
-                "Sé directo y técnico. No uses lenguaje vago como 'rendimiento sólido' o 'buena tracción'."
-            )
-        else:
-            counter = (
-                f"\n\n{other_name} argumentó:\n\"{other_last}\"\n\n"
-                "Tu respuesta debe:\n"
-                f"1. Señalar el error o la omisión más grave de {other_name} y refutarla con un dato específico de los datos.\n"
-                "2. Profundizar en el argumento que planteaste antes con nueva evidencia de los datos — no lo repitas, extendelo.\n"
-                "3. Proponer una conclusión accionable concreta: qué haría HOY con el presupuesto o la estrategia, y cuánto impacto esperarías.\n"
-                f"4. Hacerle a {other_name} una pregunta técnica específica que no pueda responder sin mirar los datos."
-            ) if other_last else (
-                "\nProfundizá tu análisis con nueva evidencia y formulá una conclusión accionable concreta."
-            )
-            parts.append(counter)
-        return "\n\n".join(parts)
+    # ── Step 1: Claude ────────────────────────────────────────────────────────
+    if is_first_turn:
+        claude_instructions = (
+            "INSTRUCCIONES — primer turno:\n"
+            "1. Tomá una posición analítica fuerte y específica sobre lo que plantea el usuario.\n"
+            "2. Usá números exactos: ROAS, CTR, CPC, CPM, conversiones por campaña — nada vago.\n"
+            "3. Identificá la campaña o plataforma con mejor Y peor desempeño y explicá la causa raíz "
+            "(no solo el síntoma: si el CTR es bajo, ¿es el creativo, la audiencia, o la puja?).\n"
+            "4. Calculá al menos una ratio no obvia: costo por conversión ajustado por plataforma, "
+            "eficiencia de CPM vs CTR, o ROAS relativo entre canales.\n"
+            "5. Cerrá con una afirmación fuerte que ChatGPT probablemente va a querer cuestionar.\n"
+            "Sé directo y técnico. Prohibido usar frases como 'rendimiento sólido' sin cuantificar contra benchmarks."
+        )
+    else:
+        last_gpt = next((m["content"] for m in reversed(history) if m.get("speaker") == "ChatGPT"), None)
+        claude_instructions = (
+            "Respondé al usuario profundizando tu posición con nueva evidencia de los datos.\n"
+            + (f"ChatGPT dijo anteriormente: \"{last_gpt[:600]}\"\n"
+               "Señalá el error o la omisión más grave de ChatGPT y refutala con un dato concreto. "
+               "Luego proponé una acción específica: plataforma, monto y métrica esperada." if last_gpt else "")
+        )
 
-    q: asyncio.Queue = asyncio.Queue()
-    asyncio.create_task(_race("Claude",  0, "debate", _ask_claude(CLAUDE_PERSONA, _prompt("Claude",  last_gpt),    1400), q))
-    asyncio.create_task(_race("ChatGPT", 0, "debate", _ask_gpt(GPT_PERSONA,       _prompt("ChatGPT", last_claude), 1400), q))
+    claude_prompt = "\n\n".join([*base_parts, claude_instructions])
+    claude_content, claude_tokens = await _ask_claude(CLAUDE_PERSONA, claude_prompt, 1400)
+    yield {"type": "message", "speaker": "Claude", "role": "debate", "content": claude_content}
 
-    tokens_by_model: Dict[str, int] = {}
-    for _ in range(2):
-        item = await q.get()
-        if not item["ok"]:
-            raise RuntimeError(f"{item['speaker']}: {item['error']}")
-        tokens_by_model[item["speaker"]] = item["tokens"]
-        yield {"type": "message", "speaker": item["speaker"], "role": "debate", "content": item["content"]}
+    # ── Step 2: ChatGPT — ve la pregunta del usuario Y la respuesta de Claude ─
+    if is_first_turn:
+        gpt_instructions = (
+            f"Claude acaba de analizar los datos y argumentó:\n\"{claude_content}\"\n\n"
+            "Ahora respondé vos. Tu análisis debe:\n"
+            "1. Tomar partido sobre lo que preguntó el usuario con tu propia lectura de los datos — "
+            "no repitas lo que dijo Claude, buscá el ángulo que él no vio.\n"
+            "2. Identificar el punto más débil del argumento de Claude y contradecirlo con un dato específico.\n"
+            "3. Señalar una oportunidad de escala o crecimiento que Claude ignoró — con número y plataforma.\n"
+            "4. Cerrar con una pregunta técnica directa a Claude que exponga una laguna en su análisis.\n"
+            "Sé propositivo y concreto. El usuario necesita perspectivas distintas, no un resumen de lo que dijo Claude."
+        )
+    else:
+        last_claude_hist = next((m["content"] for m in reversed(history) if m.get("speaker") == "Claude"), None)
+        gpt_instructions = (
+            f"Claude acaba de responder:\n\"{claude_content}\"\n\n"
+            "Respondé al usuario y a Claude. Podés acordar en algo y contradecir en otro, siempre con datos. "
+            "Proponé al menos una acción concreta diferente a la que propuso Claude."
+            + (f"\nEn el turno anterior Claude había dicho: \"{last_claude_hist[:400]}\"" if last_claude_hist else "")
+        )
 
+    gpt_prompt = "\n\n".join([*base_parts, gpt_instructions])
+    gpt_content, gpt_tokens = await _ask_gpt(GPT_PERSONA, gpt_prompt, 1400)
+    yield {"type": "message", "speaker": "ChatGPT", "role": "debate", "content": gpt_content}
+
+    tokens_by_model = {"Claude": claude_tokens, "ChatGPT": gpt_tokens}
     yield {"type": "tokens", "total": sum(tokens_by_model.values()), "by_model": tokens_by_model}
 
 
