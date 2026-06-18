@@ -40,6 +40,7 @@
     "signIn": "Entrar",
     "signingIn": "Entrando...",
     "wrongCredentials": "E-mail ou senha incorretos",
+    "forgotPassword": "Esqueceu sua senha?",
     "tagline": "Todo o seu investimento em um só lugar.",
     "taglineSub": "Conecte Meta, Google Ads, TikTok e DV360. Analise com IA. Tome melhores decisões.",
     "joinTeamTitle": "Atribuir equipe",
@@ -61,6 +62,30 @@
       "alerts": "Alertas inteligentes",
       "alertsDesc": "Detecte anomalias automaticamente"
     }
+  },
+  "forgotPassword": {
+    "title": "Esqueceu sua senha",
+    "subtitle": "Insira seu e-mail e enviaremos um link para redefini-la.",
+    "send": "Enviar link de recuperação",
+    "sending": "Enviando...",
+    "backToLogin": "Voltar ao login",
+    "sentTitle": "E-mail enviado",
+    "sentSub": "Se o e-mail estiver cadastrado, você receberá o link em alguns minutos. Verifique também a pasta de spam.",
+    "errorToast": "Erro ao enviar o e-mail. Tente novamente."
+  },
+  "resetPassword": {
+    "title": "Nova senha",
+    "subtitle": "Escolha uma senha segura para sua conta.",
+    "newPassword": "Nova senha",
+    "confirmPassword": "Confirmar senha",
+    "hint": "Mínimo 12 caracteres, uma maiúscula, um número e um símbolo.",
+    "save": "Salvar senha",
+    "saving": "Salvando...",
+    "mismatch": "As senhas não coincidem",
+    "invalidLink": "O link de recuperação é inválido. Solicite um novo.",
+    "successTitle": "Senha atualizada",
+    "successSub": "Sua senha foi alterada com sucesso. Redirecionando para o login...",
+    "errorToast": "Token inválido ou expirado"
   },
   "home": {
     "greeting": "Olá, {{name}}",

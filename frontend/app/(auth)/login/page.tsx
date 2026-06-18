@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
 import { toast } from "sonner";
+import Link from "next/link";
 import { Eye, EyeOff, Loader2, BarChart3, TrendingUp, Brain, Zap, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -161,6 +162,15 @@ export default function LoginPage() {
                 ? <><Loader2 size={16} className="animate-spin" /> {t("login.signingIn")}</>
                 : t("login.signIn")}
             </button>
+
+            <div className="text-center pt-1">
+              <Link
+                href="/forgot-password"
+                className="text-xs text-slate-400 hover:text-brand-600 transition-colors"
+              >
+                {t("login.forgotPassword")}
+              </Link>
+            </div>
           </form>
 
           <p className="text-center text-xs text-slate-400 mt-8">

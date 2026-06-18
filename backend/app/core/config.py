@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     SFMC_SUBDOMAIN: str = ""
     SFMC_ACCOUNT_ID: str = ""
 
+    # SMTP (password reset emails)
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "MKTG Platform"
+
     @field_validator("ENCRYPTION_KEY", mode="after")
     @classmethod
     def validate_encryption_key(cls, v: str) -> str:
