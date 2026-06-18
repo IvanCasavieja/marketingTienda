@@ -648,25 +648,16 @@ export default function AnalyticsPage() {
             )}
           </div>
 
-          {/* Post-debate: generate full report prompt */}
+          {/* Post-debate: generate full report button */}
           {hasDebateContent && !loading && !hasReportContent && !reportLoading && (
-            <div className="card p-4 border border-dashed border-violet-200 bg-violet-50/20">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
-                  <BarChart3 size={16} className="text-violet-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-slate-800">¿Querés un informe visual completo?</p>
-                  <p className="text-xs text-slate-500">Claude genera un reporte ejecutivo detallado con todos los datos del período</p>
-                </div>
-                <button
-                  onClick={generateReport}
-                  className="px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors flex items-center gap-1.5 shrink-0"
-                >
-                  <Sparkles size={14} />
-                  Generar informe
-                </button>
-              </div>
+            <div className="flex justify-center">
+              <button
+                onClick={generateReport}
+                className="px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors flex items-center gap-2 shadow-sm"
+              >
+                <BarChart3 size={15} />
+                Generar informe completo
+              </button>
             </div>
           )}
 
