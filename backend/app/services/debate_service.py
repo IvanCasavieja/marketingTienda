@@ -32,6 +32,8 @@ LLAMA_PERSONA = (
 
 
 async def _ask_claude(system: str, prompt: str) -> str:
+    if not settings.ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY no configurado en las variables de entorno")
     def _sync():
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         response = client.messages.create(

@@ -1,29 +1,25 @@
-"""Servicio de email via SMTP — recuperación de contraseña."""
-import asyncio
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+"""Servicio de email via Resend API — recuperación de contraseña."""
+import httpx
 
 from app.core.config import settings
 
 
-def _send_sync(to: str, subject: str, html: str, plain: str) -> None:
-    from_addr = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
-    msg = MIMEMultipart("alternative")
-    msg["From"] = f"{settings.SMTP_FROM_NAME} <{from_addr}>"
-    msg["To"] = to
-    msg["Subject"] = subject
-    msg.attach(MIMEText(plain, "plain", "utf-8"))
-    msg.attach(MIMEText(html, "html", "utf-8"))
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-        server.sendmail(from_addr, [to], msg.as_string())
-
-
 async def send_email(to: str, subject: str, html: str, plain: str) -> None:
-    await asyncio.to_thread(_send_sync, to, subject, html, plain)
+    payload = {
+        "from": settings.EMAIL_FROM,
+        "to": [to],
+        "subject": subject,
+        "html": html,
+        "text": plain,
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            "https://api.resend.com/emails",
+            json=payload,
+            headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+        )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Resend error {resp.status_code}: {resp.text}")
 
 
 def build_reset_email(reset_url: str) -> tuple[str, str]:
