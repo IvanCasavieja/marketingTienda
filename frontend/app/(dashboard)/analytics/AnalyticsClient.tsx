@@ -27,6 +27,11 @@ interface DebateMessage {
   content: string;
 }
 
+interface DebateTokens {
+  total: number;
+  by_model: Record<string, number>;
+}
+
 function tryParseDebate(result: string): DebateMessage[] | null {
   try {
     const parsed = JSON.parse(result);
@@ -86,7 +91,6 @@ function DebateOutput({
     synthesis: t("analytics.debate.roleSynthesis"),
   };
 
-  // Speakers expected per round (in order they should appear as pending)
   const ROUND_SPEAKERS: Record<number, string[]> = {
     1: ["Claude", "ChatGPT"],
     2: ["Claude", "ChatGPT"],
@@ -94,8 +98,6 @@ function DebateOutput({
   };
 
   const rounds = [1, 2, 3];
-
-  // Which speakers have already answered in each round
   const answered = new Set(messages.map((m) => `${m.round}:${m.speaker}`));
 
   return (
@@ -103,7 +105,6 @@ function DebateOutput({
       {rounds.map((round) => {
         const roundMessages = messages.filter((m) => m.round === round);
         const isCurrentRound = loading && activeRound === round;
-        const isPendingRound = loading && activeRound !== null && round > activeRound;
         const pendingSpeakers = isCurrentRound
           ? (ROUND_SPEAKERS[round] ?? []).filter((s) => !answered.has(`${round}:${s}`))
           : [];
@@ -122,14 +123,10 @@ function DebateOutput({
             </div>
 
             <div className="space-y-4">
-              {/* Messages that already arrived */}
               {roundMessages.map((msg, idx) => {
                 const style = SPEAKER_STYLES[msg.speaker] ?? SPEAKER_STYLES.Claude;
                 return (
-                  <div
-                    key={idx}
-                    className={`rounded-xl border p-4 ${style.bg} ${style.border} animate-fade-in`}
-                  >
+                  <div key={idx} className={`rounded-xl border p-4 ${style.bg} ${style.border} animate-fade-in`}>
                     <div className="flex items-center gap-2 mb-3">
                       <div className={`w-6 h-6 rounded-full ${style.dot} flex items-center justify-center shrink-0`}>
                         <span className="text-white text-[10px] font-bold">{msg.speaker[0]}</span>
@@ -145,7 +142,6 @@ function DebateOutput({
                 );
               })}
 
-              {/* Thinking placeholders for speakers still working in current round */}
               {pendingSpeakers.map((speaker) => (
                 <ThinkingCard key={speaker} speaker={speaker} />
               ))}
@@ -159,19 +155,22 @@ function DebateOutput({
 
 export default function AnalyticsPage() {
   const { t } = useTranslation();
-  const [platforms, setPlatforms]           = useState<string[]>(ALL_PLATFORMS);
-  const [analysisType, setType]             = useState("full_report");
-  const [dateFrom, setDateFrom]             = useState("");
-  const [dateTo, setDateTo]                 = useState("");
-  const [result, setResult]                 = useState<string>("");
-  const [debateMessages, setDebateMessages] = useState<DebateMessage[]>([]);
-  const [activeRound, setActiveRound]       = useState<number | null>(null);
-  const [errorMsg, setErrorMsg]             = useState<string>("");
-  const [loading, setLoading]               = useState(false);
-  const [history, setHistory]               = useState<Analysis[]>([]);
-  const [activeAnalysis, setActive]         = useState<number | null>(null);
+  const [platforms, setPlatforms]             = useState<string[]>(ALL_PLATFORMS);
+  const [analysisType, setType]               = useState("full_report");
+  const [dateFrom, setDateFrom]               = useState("");
+  const [dateTo, setDateTo]                   = useState("");
+  const [result, setResult]                   = useState<string>("");
+  const [debateMessages, setDebateMessages]   = useState<DebateMessage[]>([]);
+  const [debateTokens, setDebateTokens]       = useState<DebateTokens | null>(null);
+  const [activeRound, setActiveRound]         = useState<number | null>(null);
+  const [errorMsg, setErrorMsg]               = useState<string>("");
+  const [loading, setLoading]                 = useState(false);
+  const [reportResult, setReportResult]       = useState<string>("");
+  const [reportLoading, setReportLoading]     = useState(false);
+  const [history, setHistory]                 = useState<Analysis[]>([]);
+  const [activeAnalysis, setActive]           = useState<number | null>(null);
   const [showDebateModal, setShowDebateModal] = useState(false);
-  const [debatePrompt, setDebatePrompt]     = useState("");
+  const [debatePrompt, setDebatePrompt]       = useState("");
 
   const ANALYSIS_TYPES = [
     {
@@ -232,8 +231,10 @@ export default function AnalyticsPage() {
     setLoading(true);
     setResult("");
     setDebateMessages([]);
+    setDebateTokens(null);
     setActiveRound(null);
     setErrorMsg("");
+    setReportResult("");
     setActive(null);
 
     try {
@@ -265,6 +266,8 @@ export default function AnalyticsPage() {
                 role:    parsed.role,
                 content: parsed.content,
               }]);
+            } else if (parsed.type === "tokens") {
+              setDebateTokens({ total: parsed.total, by_model: parsed.by_model });
             } else if (parsed.type === "done") {
               setActive(parsed.id);
               setActiveRound(null);
@@ -290,11 +293,12 @@ export default function AnalyticsPage() {
     setLoading(true);
     setResult("");
     setDebateMessages([]);
+    setDebateTokens(null);
     setActiveRound(null);
     setErrorMsg("");
+    setReportResult("");
     setActive(null);
 
-    // SSE text streaming for non-debate analysis types
     try {
       const response = await analyticsApi.streamAnalyze(platforms, dateFrom, dateTo, analysisType);
       if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
@@ -334,10 +338,55 @@ export default function AnalyticsPage() {
     }
   }
 
+  async function generateReport() {
+    setReportLoading(true);
+    setReportResult("");
+    setErrorMsg("");
+
+    try {
+      const response = await analyticsApi.streamAnalyze(platforms, dateFrom, dateTo, "full_report");
+      if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+
+        for (const event of events) {
+          if (!event.startsWith("data: ")) continue;
+          const raw = event.slice(6).trim();
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed.error) { setErrorMsg(parsed.error); toast.error(t("analytics.errorToast")); return; }
+            if (parsed.text)  { setReportResult(prev => prev + parsed.text); }
+            if (parsed.done && parsed.id) {
+              toast.success(t("analytics.successToast"));
+              analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
+            }
+          } catch { /* partial JSON */ }
+        }
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? t("analytics.defaultError"));
+      toast.error(t("analytics.errorToast"));
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
   async function loadFromHistory(id: number) {
     setActive(id);
     setDebateMessages([]);
+    setDebateTokens(null);
     setResult("");
+    setReportResult("");
     try {
       const { data } = await analyticsApi.getAnalysis(id);
       const parsed = tryParseDebate(data.result);
@@ -354,6 +403,7 @@ export default function AnalyticsPage() {
   const isDebate = analysisType === "debate" || debateMessages.length > 0;
   const hasDebateContent = debateMessages.length > 0;
   const hasTextContent = result.length > 0;
+  const hasReportContent = reportResult.length > 0;
 
   return (
     <>
@@ -381,7 +431,7 @@ export default function AnalyticsPage() {
             className="w-full h-28 px-4 py-3 text-sm border border-slate-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-violet-400 placeholder:text-slate-300"
           />
           <p className="text-[11px] text-slate-400 mt-1.5 mb-4">
-            Claude y ChatGPT debaten con datos completos · Llama sintetiza con un resumen
+            Claude y ChatGPT debaten con posiciones opuestas · Llama da un veredicto final
           </p>
 
           <div className="flex gap-2">
@@ -399,7 +449,7 @@ export default function AnalyticsPage() {
             </button>
             <button
               onClick={() => startDebate(debatePrompt)}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50"
+              className="flex-1 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors"
             >
               Iniciar debate
             </button>
@@ -506,8 +556,8 @@ export default function AnalyticsPage() {
             </div>
           )}
 
+          {/* Main result card */}
           <div className="card p-6 min-h-[400px]">
-            {/* Debate — streaming live or from history */}
             {(isDebate && (hasDebateContent || loading)) ? (
               <>
                 <div className="flex items-center gap-2 mb-5 pb-4 border-b border-slate-50">
@@ -534,7 +584,30 @@ export default function AnalyticsPage() {
                     </div>
                   )}
                 </div>
+
                 <DebateOutput messages={debateMessages} loading={loading} activeRound={activeRound} />
+
+                {/* Token consumption badge */}
+                {hasDebateContent && !loading && debateTokens && (
+                  <div className="flex items-center gap-2 pt-5 mt-5 border-t border-slate-50 flex-wrap">
+                    <span className="text-xs font-semibold text-slate-400">Tokens consumidos:</span>
+                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
+                      {debateTokens.total.toLocaleString()} total
+                    </span>
+                    {Object.entries(debateTokens.by_model).map(([model, tokens]) => {
+                      const colorMap: Record<string, string> = {
+                        Claude: "bg-orange-100 text-orange-700",
+                        ChatGPT: "bg-emerald-100 text-emerald-700",
+                        Llama: "bg-purple-100 text-purple-700",
+                      };
+                      return (
+                        <span key={model} className={`text-xs px-2.5 py-1 rounded-full font-medium ${colorMap[model] ?? "bg-slate-100 text-slate-600"}`}>
+                          {model}: {(tokens as number).toLocaleString()}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </>
             ) : hasTextContent ? (
               <>
@@ -574,6 +647,62 @@ export default function AnalyticsPage() {
               </div>
             )}
           </div>
+
+          {/* Post-debate: generate full report prompt */}
+          {hasDebateContent && !loading && !hasReportContent && !reportLoading && (
+            <div className="card p-4 border border-dashed border-violet-200 bg-violet-50/20">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
+                  <BarChart3 size={16} className="text-violet-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-800">¿Querés un informe visual completo?</p>
+                  <p className="text-xs text-slate-500">Claude genera un reporte ejecutivo detallado con todos los datos del período</p>
+                </div>
+                <button
+                  onClick={generateReport}
+                  className="px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors flex items-center gap-1.5 shrink-0"
+                >
+                  <Sparkles size={14} />
+                  Generar informe
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Report loading skeleton */}
+          {reportLoading && (
+            <div className="card p-6">
+              <div className="flex items-center gap-2 text-brand-600 mb-6">
+                <Brain size={20} className="animate-pulse-slow" />
+                <span className="text-sm font-semibold">{t("analytics.analyzing")}</span>
+              </div>
+              {[5, 4, 6, 3, 5].map((lines, i) => (
+                <div key={i} className="mb-5">
+                  <div className="skeleton h-3 w-32 rounded mb-3" />
+                  <SkeletonText lines={lines} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Report output — shown below debate */}
+          {hasReportContent && (
+            <div className="card p-6">
+              <div className="flex items-center gap-2 mb-5 pb-4 border-b border-slate-50">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-brand-600 bg-brand-50">
+                  <BarChart3 size={16} />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-800 text-sm">{t("analytics.types.full_report_label")}</p>
+                  <p className="text-xs text-slate-400">
+                    {t("analytics.generatedBy", { date: format(new Date(), "dd/MM/yyyy HH:mm") })}
+                  </p>
+                </div>
+              </div>
+              <MarkdownOutput text={reportResult} />
+            </div>
+          )}
 
           {/* History */}
           {history.length > 0 && (

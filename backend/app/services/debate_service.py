@@ -3,7 +3,7 @@ import asyncio
 import json
 from collections import defaultdict
 from datetime import date
-from typing import List, Dict, AsyncIterator
+from typing import List, Dict, AsyncIterator, Tuple
 
 import anthropic
 
@@ -12,7 +12,7 @@ from app.services.claude_service import _build_metrics_context, _build_sfmc_cont
 
 
 def _build_compact_context(metrics: List[Dict], email_data: List[Dict], whatsapp_data: List[Dict]) -> str:
-    """Per-platform aggregate — keeps Llama's Round 3 prompt well under Groq's 12k TPM limit."""
+    """Per-platform aggregate for Llama's Round 3 — stays well under Groq's 12k TPM limit."""
     if not metrics:
         return "No hay métricas disponibles."
 
@@ -62,25 +62,25 @@ def _build_compact_context(metrics: List[Dict], email_data: List[Dict], whatsapp
 
 
 CLAUDE_PERSONA = (
-    "Sos Claude, analista cuantitativo riguroso en marketing digital. "
-    "Detectás patrones y anomalías en métricas con base en evidencia. "
-    "Sos preciso, cauteloso con afirmaciones sin datos. Respondés en español."
+    "Sos Claude, analista cuantitativo especializado en marketing digital. "
+    "Argumentás con números exactos, detectás inconsistencias en los datos y no tenés miedo de contradecir "
+    "afirmaciones vagas con evidencia concreta. Tu estilo es incisivo y directo. Respondés en español."
 )
 
 GPT_PERSONA = (
-    "Sos ChatGPT, estratega de marketing creativo orientado al crecimiento. "
-    "Conectás datos con oportunidades de mercado y proponés estrategias de escala. "
-    "Sos ambicioso y priorizás el impacto en revenue. Respondés en español."
+    "Sos ChatGPT, estratega de marketing orientado al crecimiento de negocio. "
+    "Ves oportunidades donde otros ven problemas, defendés el riesgo calculado y cuestionás la sobre-cautela. "
+    "Tu estilo es propositivo y confrontacional cuando hace falta. Respondés en español."
 )
 
 LLAMA_PERSONA = (
-    "Sos Llama, consultor operacional equilibrado. Sintetizás perspectivas diversas "
-    "y proponés acciones concretas para ejecutar esta semana. "
-    "Sos directo, práctico e imparcial. Respondés en español."
+    "Sos Llama, árbitro del debate. Tu trabajo es dar un veredicto claro, no hacer un resumen diplomático. "
+    "Identificás el desacuerdo real, tomás partido por el argumento más sólido con datos, "
+    "y definís pasos de acción concretos. Respondés en español."
 )
 
 
-async def _ask_claude(system: str, prompt: str, max_tokens: int = 800) -> str:
+async def _ask_claude(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str, int]:
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY no configurado")
     def _sync():
@@ -91,11 +91,12 @@ async def _ask_claude(system: str, prompt: str, max_tokens: int = 800) -> str:
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
-        return resp.content[0].text
+        tokens = resp.usage.input_tokens + resp.usage.output_tokens
+        return resp.content[0].text, tokens
     return await asyncio.to_thread(_sync)
 
 
-async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> str:
+async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str, int]:
     try:
         import openai as _openai
     except ImportError:
@@ -111,10 +112,11 @@ async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> str:
             {"role": "user", "content": prompt},
         ],
     )
-    return resp.choices[0].message.content
+    tokens = (resp.usage.prompt_tokens or 0) + (resp.usage.completion_tokens or 0)
+    return resp.choices[0].message.content, tokens
 
 
-async def _ask_llama(system: str, prompt: str, max_tokens: int = 900) -> str:
+async def _ask_llama(system: str, prompt: str, max_tokens: int = 900) -> Tuple[str, int]:
     try:
         from groq import AsyncGroq
     except ImportError:
@@ -130,13 +132,17 @@ async def _ask_llama(system: str, prompt: str, max_tokens: int = 900) -> str:
             {"role": "user", "content": prompt},
         ],
     )
-    return resp.choices[0].message.content
+    tokens = (resp.usage.prompt_tokens or 0) + (resp.usage.completion_tokens or 0)
+    return resp.choices[0].message.content, tokens
 
 
 async def _race(speaker: str, round_n: int, role: str, coro, queue: asyncio.Queue) -> None:
     try:
-        content = await coro
-        await queue.put({"ok": True, "speaker": speaker, "round": round_n, "role": role, "content": content})
+        content, tokens = await coro
+        await queue.put({
+            "ok": True, "speaker": speaker, "round": round_n,
+            "role": role, "content": content, "tokens": tokens,
+        })
     except Exception as exc:
         await queue.put({"ok": False, "speaker": speaker, "error": str(exc)})
 
@@ -146,6 +152,59 @@ def _build_data_context(metrics_ctx: str, sfmc_ctx: str, date_from: date, date_t
         f"Período: {date_from} al {date_to}\n\n"
         f"## CAMPAÑAS PAGAS\n{metrics_ctx}\n\n"
         f"## COMUNICACIONES\n{sfmc_ctx}"
+    )
+
+
+def _r1_prompt(data_context: str, focus: str) -> str:
+    return (
+        f"Analizá estos datos de marketing y tomá una posición clara y defendible.{focus}\n\n"
+        f"{data_context}\n\n"
+        "Estructurá tu respuesta así:\n"
+        "**Posición central:** Una afirmación fuerte sobre el estado real de las campañas (no tibia).\n"
+        "**Evidencia:** 2-3 métricas o campañas específicas con números exactos que respaldan tu posición.\n"
+        "**Punto ciego:** Qué problema crítico creés que otros analistas van a ignorar o subestimar.\n\n"
+        "Nombrá plataformas y campañas específicas. Máximo 4 párrafos."
+    )
+
+
+def _r2_claude_prompt(r1_gpt: str) -> str:
+    return (
+        f"ChatGPT analizó los mismos datos y argumentó:\n\n\"{r1_gpt}\"\n\n"
+        "Rebatí directamente. Tu respuesta debe:\n"
+        "1. Identificar el punto más débil o incorrecto de lo que dijo ChatGPT — refutarlo con datos concretos\n"
+        "2. Defender tu posición original con algo que ChatGPT pasó por alto o interpretó mal\n"
+        "3. Hacerle UNA pregunta directa y específica que ponga en jaque su argumento principal\n\n"
+        "No hagas un resumen de tu propio análisis anterior. Ataca el argumento del otro. 3 párrafos."
+    )
+
+
+def _r2_gpt_prompt(r1_claude: str) -> str:
+    return (
+        f"Claude analizó los mismos datos y argumentó:\n\n\"{r1_claude}\"\n\n"
+        "Rebatí directamente. Tu respuesta debe:\n"
+        "1. Identificar el punto más débil o incorrecto de lo que dijo Claude — refutarlo con datos concretos\n"
+        "2. Defender tu posición original con algo que Claude pasó por alto o interpretó mal\n"
+        "3. Hacerle UNA pregunta directa y específica que ponga en jaque su argumento principal\n\n"
+        "No hagas un resumen de tu propio análisis anterior. Ataca el argumento del otro. 3 párrafos."
+    )
+
+
+def _r3_prompt(r1: Dict, r2: Dict, compact_ctx: str, date_from: date, date_to: date, focus_line: str) -> str:
+    return (
+        f"{focus_line}Árbitro del debate entre Claude y ChatGPT sobre datos de marketing ({date_from} al {date_to}).\n\n"
+        f"=== DEBATE COMPLETO ===\n\n"
+        f"**Claude (Round 1):** {r1['Claude']}\n\n"
+        f"**ChatGPT (Round 1):** {r1['ChatGPT']}\n\n"
+        f"**Claude (Round 2 — réplica):** {r2['Claude']}\n\n"
+        f"**ChatGPT (Round 2 — réplica):** {r2['ChatGPT']}\n\n"
+        f"=== DATOS ===\n{compact_ctx}\n\n"
+        "Tu veredicto en 3 secciones:\n\n"
+        "**1. Desacuerdo central** — ¿Sobre qué exactamente están en desacuerdo real? No resumas todo, "
+        "enfocate en LA tensión principal.\n\n"
+        "**2. Veredicto** — ¿Quién tiene el argumento más sólido? Tomá partido. Podés usar una tabla "
+        "markdown con 2-3 métricas clave si ayuda a ilustrar por qué uno tiene razón.\n\n"
+        "**3. Plan de acción** — 3 acciones concretas para esta semana que resuelvan esa tensión, "
+        "ordenadas por impacto. Cada acción debe poder ejecutarse mañana."
     )
 
 
@@ -162,18 +221,16 @@ async def stream_debate(
     data_context = _build_data_context(metrics_ctx, sfmc_ctx, date_from, date_to)
     compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
 
-    focus = f"\n\nPregunta del equipo: **{user_prompt.strip()}**" if user_prompt.strip() else ""
-    r1_prompt = (
-        f"Analizá estos datos de marketing en 3 párrafos concisos.{focus}\n\n"
-        f"{data_context}\n\n"
-        "Incluí: hallazgos clave, el problema más crítico y tu recomendación principal."
-    )
+    focus = f"\n\nContexto de la pregunta del equipo: **{user_prompt.strip()}**" if user_prompt.strip() else ""
+    focus_line = f"Pregunta del equipo: **{user_prompt.strip()}**\n\n" if user_prompt.strip() else ""
 
-    # ── Round 1 — Claude + ChatGPT analizan en paralelo (Llama ahorra tokens para síntesis) ──
+    tokens_by_model: Dict[str, int] = {}
+
+    # ── Round 1 — cada uno toma una posición fuerte con datos ──
     yield {"type": "round_start", "round": 1}
     q1: asyncio.Queue = asyncio.Queue()
-    asyncio.create_task(_race("Claude",  1, "analysis", _ask_claude(CLAUDE_PERSONA, r1_prompt, 800), q1))
-    asyncio.create_task(_race("ChatGPT", 1, "analysis", _ask_gpt(GPT_PERSONA, r1_prompt, 800), q1))
+    asyncio.create_task(_race("Claude",  1, "analysis", _ask_claude(CLAUDE_PERSONA, _r1_prompt(data_context, focus), 900), q1))
+    asyncio.create_task(_race("ChatGPT", 1, "analysis", _ask_gpt(GPT_PERSONA, _r1_prompt(data_context, focus), 900), q1))
 
     r1: Dict[str, str] = {}
     for _ in range(2):
@@ -181,21 +238,14 @@ async def stream_debate(
         if not item["ok"]:
             raise RuntimeError(f"Round 1 · {item['speaker']}: {item['error']}")
         r1[item["speaker"]] = item["content"]
+        tokens_by_model[item["speaker"]] = item["tokens"]
         yield {"type": "message", "speaker": item["speaker"], "round": 1, "role": "analysis", "content": item["content"]}
 
-    # ── Round 2 — réplica cruzada (sin contexto de datos, solo las respuestas previas) ──
+    # ── Round 2 — réplica cruzada: atacan el argumento del otro y hacen preguntas ──
     yield {"type": "round_start", "round": 2}
-    r2_claude_prompt = (
-        f"ChatGPT analizó los mismos datos y dijo:\n\n\"{r1['ChatGPT']}\"\n\n"
-        "¿En qué concordás y qué perspectiva importante le falta? Sé directo. 2-3 párrafos."
-    )
-    r2_gpt_prompt = (
-        f"Claude analizó los mismos datos y dijo:\n\n\"{r1['Claude']}\"\n\n"
-        "¿En qué concordás y qué perspectiva importante le falta? Sé directo. 2-3 párrafos."
-    )
     q2: asyncio.Queue = asyncio.Queue()
-    asyncio.create_task(_race("Claude",  2, "rebuttal", _ask_claude(CLAUDE_PERSONA, r2_claude_prompt, 600), q2))
-    asyncio.create_task(_race("ChatGPT", 2, "rebuttal", _ask_gpt(GPT_PERSONA, r2_gpt_prompt, 600), q2))
+    asyncio.create_task(_race("Claude",  2, "rebuttal", _ask_claude(CLAUDE_PERSONA, _r2_claude_prompt(r1["ChatGPT"]), 700), q2))
+    asyncio.create_task(_race("ChatGPT", 2, "rebuttal", _ask_gpt(GPT_PERSONA, _r2_gpt_prompt(r1["Claude"]), 700), q2))
 
     r2: Dict[str, str] = {}
     for _ in range(2):
@@ -203,25 +253,21 @@ async def stream_debate(
         if not item["ok"]:
             raise RuntimeError(f"Round 2 · {item['speaker']}: {item['error']}")
         r2[item["speaker"]] = item["content"]
+        tokens_by_model[item["speaker"]] = tokens_by_model.get(item["speaker"], 0) + item["tokens"]
         yield {"type": "message", "speaker": item["speaker"], "round": 2, "role": "rebuttal", "content": item["content"]}
 
-    # ── Round 3 — Llama sintetiza con contexto compacto (≈4k tokens, bien bajo el límite de Groq) ──
+    # ── Round 3 — Llama da un veredicto con postura, no solo síntesis ──
     yield {"type": "round_start", "round": 3}
-    focus_line = f"La pregunta del equipo fue: **{user_prompt.strip()}**\n\n" if user_prompt.strip() else ""
-    r3_prompt = (
-        f"{focus_line}Sintetizá el debate entre Claude y ChatGPT ({date_from} al {date_to}).\n\n"
-        f"Contexto de datos:\n{compact_ctx}\n\n"
-        f"**Claude (análisis):** {r1['Claude']}\n\n"
-        f"**ChatGPT (análisis):** {r1['ChatGPT']}\n\n"
-        f"**Claude (réplica):** {r2['Claude']}\n\n"
-        f"**ChatGPT (réplica):** {r2['ChatGPT']}\n\n"
-        "Respondé en 3 secciones:\n"
-        "1. **Acuerdo** — qué coinciden (ejecutar sin dudar)\n"
-        "2. **Diferencia clave** — cuál perspectiva es más válida y por qué\n"
-        "3. **3 próximos pasos** — ordenados por impacto esta semana"
+    r3_content, r3_tokens = await _ask_llama(
+        LLAMA_PERSONA,
+        _r3_prompt(r1, r2, compact_ctx, date_from, date_to, focus_line),
+        1000,
     )
-    r3_content = await _ask_llama(LLAMA_PERSONA, r3_prompt, 900)
+    tokens_by_model["Llama"] = r3_tokens
     yield {"type": "message", "speaker": "Llama", "round": 3, "role": "synthesis", "content": r3_content}
+
+    total_tokens = sum(tokens_by_model.values())
+    yield {"type": "tokens", "total": total_tokens, "by_model": tokens_by_model}
 
 
 async def run_debate(
@@ -237,56 +283,38 @@ async def run_debate(
     data_context = _build_data_context(metrics_ctx, sfmc_ctx, date_from, date_to)
     compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
 
-    focus = f"\n\nPregunta del equipo: **{user_prompt.strip()}**" if user_prompt.strip() else ""
-    r1_prompt = (
-        f"Analizá estos datos de marketing en 3 párrafos concisos.{focus}\n\n"
-        f"{data_context}\n\n"
-        "Incluí: hallazgos clave, el problema más crítico y tu recomendación principal."
-    )
+    focus = f"\n\nContexto de la pregunta del equipo: **{user_prompt.strip()}**" if user_prompt.strip() else ""
+    focus_line = f"Pregunta del equipo: **{user_prompt.strip()}**\n\n" if user_prompt.strip() else ""
 
     r1_results = await asyncio.gather(
-        _ask_claude(CLAUDE_PERSONA, r1_prompt, 800),
-        _ask_gpt(GPT_PERSONA, r1_prompt, 800),
+        _ask_claude(CLAUDE_PERSONA, _r1_prompt(data_context, focus), 900),
+        _ask_gpt(GPT_PERSONA, _r1_prompt(data_context, focus), 900),
         return_exceptions=True,
     )
     for r in r1_results:
         if isinstance(r, Exception):
             raise RuntimeError(f"Error en Round 1: {r}") from r
-    r1_claude, r1_gpt = r1_results
+    (r1_claude, t_r1_claude), (r1_gpt, t_r1_gpt) = r1_results
 
-    r2_claude_prompt = (
-        f"ChatGPT analizó los mismos datos y dijo:\n\n\"{r1_gpt}\"\n\n"
-        "¿En qué concordás y qué perspectiva importante le falta? Sé directo. 2-3 párrafos."
-    )
-    r2_gpt_prompt = (
-        f"Claude analizó los mismos datos y dijo:\n\n\"{r1_claude}\"\n\n"
-        "¿En qué concordás y qué perspectiva importante le falta? Sé directo. 2-3 párrafos."
-    )
     r2_results = await asyncio.gather(
-        _ask_claude(CLAUDE_PERSONA, r2_claude_prompt, 600),
-        _ask_gpt(GPT_PERSONA, r2_gpt_prompt, 600),
+        _ask_claude(CLAUDE_PERSONA, _r2_claude_prompt(r1_gpt), 700),
+        _ask_gpt(GPT_PERSONA, _r2_gpt_prompt(r1_claude), 700),
         return_exceptions=True,
     )
     for r in r2_results:
         if isinstance(r, Exception):
             raise RuntimeError(f"Error en Round 2: {r}") from r
-    r2_claude, r2_gpt = r2_results
+    (r2_claude, t_r2_claude), (r2_gpt, t_r2_gpt) = r2_results
 
-    focus_line = f"La pregunta del equipo fue: **{user_prompt.strip()}**\n\n" if user_prompt.strip() else ""
-    r3_prompt = (
-        f"{focus_line}Sintetizá el debate entre Claude y ChatGPT ({date_from} al {date_to}).\n\n"
-        f"Contexto de datos:\n{compact_ctx}\n\n"
-        f"**Claude (análisis):** {r1_claude}\n\n"
-        f"**ChatGPT (análisis):** {r1_gpt}\n\n"
-        f"**Claude (réplica):** {r2_claude}\n\n"
-        f"**ChatGPT (réplica):** {r2_gpt}\n\n"
-        "Respondé en 3 secciones:\n"
-        "1. **Acuerdo** — qué coinciden (ejecutar sin dudar)\n"
-        "2. **Diferencia clave** — cuál perspectiva es más válida y por qué\n"
-        "3. **3 próximos pasos** — ordenados por impacto esta semana"
+    r1 = {"Claude": r1_claude, "ChatGPT": r1_gpt}
+    r2 = {"Claude": r2_claude, "ChatGPT": r2_gpt}
+    r3_llama, t_r3 = await _ask_llama(
+        LLAMA_PERSONA,
+        _r3_prompt(r1, r2, compact_ctx, date_from, date_to, focus_line),
+        1000,
     )
-    r3_llama = await _ask_llama(LLAMA_PERSONA, r3_prompt, 900)
 
+    total_tokens = t_r1_claude + t_r1_gpt + t_r2_claude + t_r2_gpt + t_r3
     debate = [
         {"speaker": "Claude",  "round": 1, "role": "analysis",  "content": r1_claude},
         {"speaker": "ChatGPT", "round": 1, "role": "analysis",  "content": r1_gpt},
@@ -297,7 +325,7 @@ async def run_debate(
 
     return {
         "result": json.dumps({"debate": debate}, ensure_ascii=False),
-        "input_tokens": 0,
+        "input_tokens": total_tokens,
         "output_tokens": 0,
         "analysis_type": "debate",
     }
