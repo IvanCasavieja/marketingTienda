@@ -266,6 +266,7 @@ async def debate_stream(
 
     async def event_stream():
         all_messages = []
+        total_tokens = 0
         try:
             async for event in stream_debate(metrics, email_data, whatsapp_data, date_from, date_to, user_prompt):
                 if event.get("type") == "message":
@@ -275,6 +276,8 @@ async def debate_stream(
                         "role":    event["role"],
                         "content": event["content"],
                     })
+                elif event.get("type") == "tokens":
+                    total_tokens = event.get("total", 0)
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except RuntimeError as exc:
             logger.error("Debate stream failed: %s", exc)
@@ -290,7 +293,7 @@ async def debate_stream(
                 date_to=date_to,
                 prompt_used=f"debate | platforms: {platforms_str} | {date_from} to {date_to}",
                 result=json.dumps({"debate": all_messages}, ensure_ascii=False),
-                input_tokens=0,
+                input_tokens=total_tokens,
                 output_tokens=0,
             )
             save_db.add(analysis)
