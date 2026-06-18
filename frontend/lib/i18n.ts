@@ -20,9 +20,12 @@ i18n.use(initReactI18next).init({
     en: { translation: en },
     pt: { translation: pt },
   },
-  lng: "es",          // always "es" on both server and client — I18nProvider applies stored lang after hydration
+  lng: "es",
   fallbackLng: "es",
   interpolation: { escapeValue: false },
+  react: {
+    useSuspense: false, // prevents react-i18next v15 from suspending on client while server already rendered — fixes #418/#423
+  },
 });
 
 export function setLanguage(code: LangCode) {
