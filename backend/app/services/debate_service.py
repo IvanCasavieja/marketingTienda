@@ -329,3 +329,99 @@ async def run_debate(
         "output_tokens": 0,
         "analysis_type": "debate",
     }
+
+
+# ── Conversational mode (new) ─────────────────────────────────────────────────
+
+def _build_history_str(history: List[Dict], max_items: int = 20) -> str:
+    """Render conversation history for inclusion in prompts."""
+    if not history:
+        return ""
+    recent = history[-max_items:]
+    lines = ["=== HISTORIAL DE CONVERSACIÓN ==="]
+    for msg in recent:
+        speaker = msg.get("speaker", "?")
+        content = str(msg.get("content", ""))[:500]
+        lines.append(f"[{speaker}]: {content}")
+    return "\n\n".join(lines)
+
+
+async def stream_debate_turn(
+    history: List[Dict],
+    user_message: str,
+    metrics: List[Dict],
+    email_data: List[Dict],
+    whatsapp_data: List[Dict],
+    date_from: date,
+    date_to: date,
+) -> AsyncIterator[dict]:
+    """Claude + ChatGPT respond to a single user message, with full conversation history."""
+    compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
+    history_str = _build_history_str(history)
+
+    is_first_turn = not any(m.get("speaker") in ("Claude", "ChatGPT") for m in history)
+    last_gpt    = next((m["content"][:500] for m in reversed(history) if m.get("speaker") == "ChatGPT"), None)
+    last_claude = next((m["content"][:500] for m in reversed(history) if m.get("speaker") == "Claude"), None)
+
+    def _prompt(speaker: str, other_last) -> str:
+        other_name = "ChatGPT" if speaker == "Claude" else "Claude"
+        parts = []
+        if history_str:
+            parts.append(history_str)
+        parts.append(f"Datos del período {date_from} al {date_to}:\n{compact_ctx}")
+        parts.append(f"El usuario dice: **{user_message}**")
+        if is_first_turn:
+            parts.append(
+                "Primer intercambio. Tomá una posición clara y defendible sobre lo que pregunta el usuario. "
+                "Nombrá campañas y métricas específicas de los datos. Máximo 4 párrafos."
+            )
+        else:
+            counter = f"\n{other_name} dijo anteriormente: \"{other_last}\"" if other_last else ""
+            parts.append(
+                f"Respondé al usuario.{counter} "
+                "Si el otro analista cometió un error o ignoró algo importante, contradecilo con datos concretos. "
+                "Máximo 3 párrafos."
+            )
+        return "\n\n".join(parts)
+
+    q: asyncio.Queue = asyncio.Queue()
+    asyncio.create_task(_race("Claude",  0, "debate", _ask_claude(CLAUDE_PERSONA, _prompt("Claude",  last_gpt),    700), q))
+    asyncio.create_task(_race("ChatGPT", 0, "debate", _ask_gpt(GPT_PERSONA,       _prompt("ChatGPT", last_claude), 700), q))
+
+    tokens_by_model: Dict[str, int] = {}
+    for _ in range(2):
+        item = await q.get()
+        if not item["ok"]:
+            raise RuntimeError(f"{item['speaker']}: {item['error']}")
+        tokens_by_model[item["speaker"]] = item["tokens"]
+        yield {"type": "message", "speaker": item["speaker"], "role": "debate", "content": item["content"]}
+
+    yield {"type": "tokens", "total": sum(tokens_by_model.values()), "by_model": tokens_by_model}
+
+
+async def stream_llama_verdict(
+    history: List[Dict],
+    metrics: List[Dict],
+    email_data: List[Dict],
+    whatsapp_data: List[Dict],
+    date_from: date,
+    date_to: date,
+) -> AsyncIterator[dict]:
+    """Llama reads the full debate and gives an on-demand verdict."""
+    compact_ctx  = _build_compact_context(metrics, email_data, whatsapp_data)
+    history_str  = _build_history_str(history, max_items=24)
+
+    prompt = (
+        f"Sos el árbitro de este debate sobre campañas de marketing ({date_from} al {date_to}).\n\n"
+        f"{history_str}\n\n"
+        f"Datos de referencia:\n{compact_ctx}\n\n"
+        "Tu veredicto en 3 secciones:\n\n"
+        "**1. Desacuerdo central** — La tensión principal del debate en 2-3 oraciones.\n\n"
+        "**2. Veredicto** — ¿Quién tiene el argumento más sólido? Tomá partido con razones concretas. "
+        "Usá tabla markdown si ayuda a comparar posiciones.\n\n"
+        "**3. Plan de acción** — 3 acciones ejecutables para esta semana, ordenadas por impacto."
+    )
+
+    content, tokens = await _ask_llama(LLAMA_PERSONA, prompt, 1000)
+    yield {"type": "message", "speaker": "Llama", "role": "synthesis", "content": content}
+    yield {"type": "tokens", "total": tokens, "by_model": {"Llama": tokens}}
