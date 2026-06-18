@@ -187,6 +187,9 @@ export default function AnalyticsPage() {
   const [platforms, setPlatforms]           = useState<string[]>(ALL_PLATFORMS);
   const [dateFrom, setDateFrom]             = useState("");
   const [dateTo, setDateTo]                 = useState("");
+  const [compareMode, setCompareMode]       = useState(false);
+  const [dateFrom2, setDateFrom2]           = useState("");
+  const [dateTo2, setDateTo2]               = useState("");
   const [chatMessages, setChatMessages]     = useState<ChatMessage[]>(GREETINGS);
   const [chatInput, setChatInput]           = useState("");
   const [tokenTotals, setTokenTotals]       = useState<TokenTotals>({ total: 0, by_model: {} });
@@ -195,14 +198,20 @@ export default function AnalyticsPage() {
   const [verdictLoading, setVerdictLoading] = useState(false);
   const [history, setHistory]               = useState<Analysis[]>([]);
   const [activeAnalysis, setActive]         = useState<number | null>(null);
+  const [conversationId, setConversationId] = useState<number | null>(null);
 
   const abortRef        = useRef<AbortController | null>(null);
   const chatEndRef      = useRef<HTMLDivElement | null>(null);
   const currentSpeakers = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    setDateFrom(format(subDays(new Date(), 30), "yyyy-MM-dd"));
-    setDateTo(format(new Date(), "yyyy-MM-dd"));
+    const to   = new Date();
+    const from = subDays(to, 30);
+    setDateFrom(format(from, "yyyy-MM-dd"));
+    setDateTo(format(to, "yyyy-MM-dd"));
+    // Default period 2 = previous 30 days
+    setDateTo2(format(subDays(from, 1), "yyyy-MM-dd"));
+    setDateFrom2(format(subDays(from, 30), "yyyy-MM-dd"));
     analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
   }, []);
 
@@ -226,6 +235,7 @@ export default function AnalyticsPage() {
     setTokenTotals({ total: 0, by_model: {} });
     setErrorMsg("");
     setActive(null);
+    setConversationId(null);
   }
 
   function stopCurrent() { abortRef.current?.abort(); }
@@ -253,7 +263,11 @@ export default function AnalyticsPage() {
 
     try {
       const response = await analyticsApi.streamDebateTurn(
-        platforms, dateFrom, dateTo, historyForApi, userMessage, abortRef.current.signal,
+        platforms, dateFrom, dateTo, historyForApi, userMessage,
+        abortRef.current.signal,
+        conversationId,
+        compareMode ? dateFrom2 : undefined,
+        compareMode ? dateTo2   : undefined,
       );
       if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
 
@@ -282,6 +296,9 @@ export default function AnalyticsPage() {
               }]);
             } else if (parsed.type === "tokens") {
               accumulateTokens(parsed);
+            } else if (parsed.type === "session") {
+              setConversationId(parsed.conversation_id);
+              analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
             } else if (parsed.type === "error") {
               setErrorMsg(parsed.detail ?? t("analytics.defaultError"));
               toast.error(t("analytics.errorToast"));
@@ -311,7 +328,11 @@ export default function AnalyticsPage() {
 
     try {
       const response = await analyticsApi.streamDebateVerdict(
-        platforms, dateFrom, dateTo, historyForApi, abortRef.current.signal,
+        platforms, dateFrom, dateTo, historyForApi,
+        abortRef.current.signal,
+        conversationId,
+        compareMode ? dateFrom2 : undefined,
+        compareMode ? dateTo2   : undefined,
       );
       if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
 
@@ -414,9 +435,13 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          <div className="card p-5">
-            <p className="section-title mb-3">{t("analytics.period")}</p>
-            <div className="space-y-2.5">
+          <div className="card p-5 space-y-3">
+            {/* Period 1 */}
+            <div className="flex items-center justify-between">
+              <p className="section-title">{compareMode ? "Período actual" : t("analytics.period")}</p>
+              {compareMode && <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">P2</span>}
+            </div>
+            <div className="space-y-2">
               <div>
                 <label className="text-xs text-slate-500 mb-1 block">{t("common.from")}</label>
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input text-sm" />
@@ -426,6 +451,39 @@ export default function AnalyticsPage() {
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input text-sm" />
               </div>
             </div>
+
+            {/* Compare toggle */}
+            <button
+              onClick={() => setCompareMode((v) => !v)}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-semibold transition-all ${
+                compareMode
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600"
+              }`}
+            >
+              <span>Comparar períodos</span>
+              <div className={`w-7 h-4 rounded-full transition-all relative ${compareMode ? "bg-white/30" : "bg-slate-200"}`}>
+                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${compareMode ? "left-3.5" : "left-0.5"}`} />
+              </div>
+            </button>
+
+            {/* Period 2 (base) */}
+            {compareMode && (
+              <div className="pt-1 border-t border-slate-100 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-semibold text-slate-600">Período base</p>
+                  <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">P1</span>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">{t("common.from")}</label>
+                  <input type="date" value={dateFrom2} onChange={(e) => setDateFrom2(e.target.value)} className="input text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">{t("common.to")}</label>
+                  <input type="date" value={dateTo2} onChange={(e) => setDateTo2(e.target.value)} className="input text-sm" />
+                </div>
+              </div>
+            )}
           </div>
 
           <button
