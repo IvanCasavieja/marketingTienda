@@ -93,11 +93,11 @@ ANÁLISIS CON IA
 - Recomendaciones de optimización: qué cambiar para mejorar el ROAS.
 - Comparativa cross-platform: eficiencia por canal y mix recomendado.
 
-**Mesa redonda de IA**: tres modelos debaten sobre los datos desde perspectivas distintas:
+**La Triada**: tres modelos debaten sobre los datos desde perspectivas distintas:
 - Claude (Anthropic): analista cuantitativo riguroso.
 - ChatGPT (OpenAI): estratega creativo orientado a crecimiento.
 - Llama (Meta/Groq): consultor pragmático que sintetiza y propone acciones concretas.
-Los 3 hacen rondas de análisis sobre los mismos datos; el resultado es una discusión estructurada.
+Los 3 hacen rondas de análisis sobre los mismos datos; el resultado es una discusión estructurada en 3 rondas con síntesis final.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SISTEMA DE CENEFAS — EXPLICACIÓN COMPLETA

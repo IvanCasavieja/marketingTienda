@@ -186,7 +186,7 @@ async def migrate_default_team(conn: AsyncConnection) -> None:
 
 
 async def _migrate_owned_table(conn: AsyncConnection, table_name: str, default_group_id: int) -> None:
-    await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS team_group_id INTEGER"))
+    await conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS team_group_id INTEGER'))
     has_user_id = await conn.scalar(
         text(
             """
@@ -203,7 +203,7 @@ async def _migrate_owned_table(conn: AsyncConnection, table_name: str, default_g
         await conn.execute(
             text(
                 f"""
-                UPDATE {table_name} owned
+                UPDATE "{table_name}" owned
                 SET team_group_id = COALESCE(users.team_group_id, :default_group_id)
                 FROM users
                 WHERE owned.user_id = users.id
@@ -213,7 +213,7 @@ async def _migrate_owned_table(conn: AsyncConnection, table_name: str, default_g
             {"default_group_id": default_group_id},
         )
     await conn.execute(
-        text(f"UPDATE {table_name} SET team_group_id = :group_id WHERE team_group_id IS NULL"),
+        text(f'UPDATE "{table_name}" SET team_group_id = :group_id WHERE team_group_id IS NULL'),
         {"group_id": default_group_id},
     )
     await conn.execute(
@@ -226,18 +226,18 @@ async def _migrate_owned_table(conn: AsyncConnection, table_name: str, default_g
                     FROM pg_constraint c
                     JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
                     WHERE c.contype = 'f'
-                      AND c.conrelid = '{table_name}'::regclass
+                      AND c.conrelid = '"{table_name}"'::regclass
                       AND a.attname = 'team_group_id'
                 ) THEN
-                    ALTER TABLE {table_name}
-                    ADD CONSTRAINT fk_{table_name}_team_group_id
+                    ALTER TABLE "{table_name}"
+                    ADD CONSTRAINT "fk_{table_name}_team_group_id"
                     FOREIGN KEY (team_group_id) REFERENCES team_groups(id) ON DELETE CASCADE;
                 END IF;
             END $$;
             """
         )
     )
-    await conn.execute(text(f"ALTER TABLE {table_name} ALTER COLUMN team_group_id SET NOT NULL"))
+    await conn.execute(text(f'ALTER TABLE "{table_name}" ALTER COLUMN team_group_id SET NOT NULL'))
     if has_user_id:
-        await conn.execute(text(f"ALTER TABLE {table_name} DROP COLUMN IF EXISTS user_id CASCADE"))
+        await conn.execute(text(f'ALTER TABLE "{table_name}" DROP COLUMN IF EXISTS user_id CASCADE'))
 

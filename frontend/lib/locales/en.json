@@ -180,15 +180,15 @@
       "optimization_desc": "Actionable recommendations",
       "cross_platform_label": "Cross-channel comparison",
       "cross_platform_desc": "Efficiency ranking by platform",
-      "debate_label": "AI Roundtable",
-      "debate_desc": "Debate between Claude, ChatGPT and Llama"
+      "debate_label": "The Triad",
+      "debate_desc": "Three models. Three perspectives. One synthesis."
     },
     "debate": {
-      "analyzing": "The models are debating...",
+      "analyzing": "The Triad is deliberating...",
       "modelStatus": "analyzing data...",
-      "successToast": "Debate completed between all 3 models",
-      "generatedBy": "Debate — Claude · ChatGPT · Llama",
-      "disclaimer": "This analysis takes ~30 sec. — 6 calls to 3 models",
+      "successToast": "The Triad completed its analysis",
+      "generatedBy": "The Triad — Claude · ChatGPT · Llama",
+      "disclaimer": "The Triad takes ~30 sec. — 6 calls to 3 models",
       "round1Title": "Round 1 — Initial analysis",
       "round2Title": "Round 2 — Rebuttals",
       "round3Title": "Round 3 — Moderator's synthesis",
