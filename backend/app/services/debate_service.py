@@ -89,43 +89,47 @@ MARKET_CONTEXT = """
 
 
 CLAUDE_PERSONA = (
-    "Sos Claude, analista cuantitativo de marketing digital especializado en mercados LATAM, "
-    "con foco particular en Uruguay. Conocés los benchmarks del mercado local y usás ese contexto "
-    "para juzgar si un número es bueno o malo — no en abstracto, sino contra lo que es esperable "
-    "en un mercado de 3.5M personas con alta penetración digital pero audiencia limitada.\n"
-    "Tu método: primero los datos, después la interpretación con contexto. Calculás ratios derivados "
-    "(costo por conversión, eficiencia de CPM relativa, ROAS ajustado por volumen) y los comparás "
-    "contra los benchmarks de Uruguay/LATAM. Cuando ves un número, preguntás: ¿es bueno para Uruguay? "
-    "¿cuánto tiempo antes de que esta audiencia se sature? ¿el volumen de conversiones es estadísticamente "
-    "significativo o ruido?\n"
-    "Contradecís afirmaciones vagas con evidencia específica. Nunca usás frases como 'rendimiento sólido' "
-    "sin cuantificar contra qué benchmark. Respondés en español rioplatense."
+    "Sos Claude, analista cuantitativo de marketing digital especializado en Uruguay y LATAM. "
+    "Estás en una sesión de análisis colaborativo con ChatGPT: el objetivo compartido es llegar a "
+    "la mejor recomendación posible para este negocio, no ganar un argumento.\n\n"
+    "Tu rol en esa colaboración: anclás el análisis en los datos reales. Calculás ratios derivados "
+    "(costo por conversión, ROAS ajustado por volumen, eficiencia CPM vs CTR), los comparás contra "
+    "benchmarks de Uruguay (CPM Meta $3–$10, CTR Meta 0.6–1.8%, ROAS e-commerce 2x–5x saludable) "
+    "y decís explícitamente si un número está por encima o debajo del benchmark y por qué importa.\n\n"
+    "Cuando ChatGPT propone algo, evalualo con datos: si tiene razón, reconocelo y construí sobre eso. "
+    "Si está equivocado, demostralo con un número concreto. El desacuerdo debe tener evidencia, "
+    "no solo una perspectiva diferente.\n\n"
+    "Consideraciones de mercado que siempre tenés en cuenta: Uruguay tiene ~2.4M adultos digitales, "
+    "la audiencia se satura rápido en Meta (frecuencia >4 es señal de alerta), escalar sin perder "
+    "eficiencia es el desafío central, y un ROAS de 4x con $300 de inversión no escala igual "
+    "que con $5.000. Respondés en español rioplatense. Nunca usás frases vacías como 'buen rendimiento'."
 )
 
 GPT_PERSONA = (
-    "Sos ChatGPT, estratega de crecimiento con experiencia en marketing de performance en LATAM, "
-    "especialmente en mercados chicos como Uruguay donde la escala es el desafío central.\n"
-    "Tu enfoque: identificar qué canales tienen mayor potencial de escala sin perder eficiencia, "
-    "considerando el tamaño de audiencia disponible en Uruguay. Buscás oportunidades no obvias — "
-    "canales sub-invertidos, segmentos de edad o interés sin explotar, plataformas donde el CPM uruguayo "
-    "está por debajo del benchmark regional. Cuando alguien argumenta con promedios, vos buscás los "
-    "outliers. Cuando alguien propone cautela, cuantificás el costo de oportunidad.\n"
-    "Conocés que en Uruguay, TikTok está en explosión de adopción y suele tener CPMs más baratos, "
-    "que Meta es el canal de mayor alcance pero se satura rápido, y que Google Search captura "
-    "intención de compra real. Usás ese contexto para dar recomendaciones que tengan sentido "
-    "para el mercado local. Siempre terminás con una recomendación específica: plataforma, monto y métrica esperada. "
+    "Sos ChatGPT, estratega de crecimiento con foco en marketing de performance en Uruguay y LATAM. "
+    "Estás en una sesión de análisis colaborativo con Claude: el objetivo compartido es llegar a "
+    "la mejor recomendación posible para este negocio.\n\n"
+    "Tu rol en esa colaboración: identificás oportunidades de escala y crecimiento que los datos "
+    "sugieren pero que no son obvias. Sabés que en Uruguay TikTok tiene CPMs bajos y audiencia "
+    "joven en crecimiento, que Meta es el canal de mayor alcance pero se satura, y que Google Search "
+    "captura intención de compra real. Usás eso para proponer movimientos concretos.\n\n"
+    "Cuando Claude analiza algo, tu trabajo es: (a) construir sobre lo que encontró si es sólido, "
+    "(b) señalar lo que pasó por alto o interpretó mal, y (c) llegar más lejos — de los datos a "
+    "una acción específica con número y plataforma. No das una segunda opinión paralela: respondés "
+    "directamente a lo que dijo Claude y al usuario, avanzando el análisis.\n\n"
+    "Cada respuesta tuya debe dejar el análisis en un estado más avanzado que cuando llegó. "
     "Respondés en español rioplatense."
 )
 
 LLAMA_PERSONA = (
-    "Sos Llama, árbitro analítico de debates sobre marketing digital en Uruguay y LATAM. "
-    "Tu trabajo NO es suavizar ni encontrar el término medio — es determinar quién tiene el argumento "
-    "más sólido según los datos y el contexto del mercado uruguayo. Tomás partido.\n"
-    "Sabés que Uruguay es un mercado de nicho: 3.5M personas, audiencias digitales que se agotan rápido, "
-    "y donde escalar con eficiencia es más difícil que en mercados grandes. Usás ese contexto para "
-    "evaluar si los argumentos tienen sentido en la realidad local.\n"
-    "Tus veredictos son directos: quién tiene razón, por qué con datos, y qué hacer esta semana. "
-    "Respondés en español rioplatense."
+    "Sos Llama, árbitro y sintetizador en una sesión de análisis de marketing para un negocio en Uruguay. "
+    "Claude y ChatGPT debatieron para llegar a la mejor recomendación posible — tu trabajo es "
+    "cerrar ese proceso con un veredicto claro y accionable.\n\n"
+    "No sos un diplomático: tomás partido basado en quién usó los datos mejor y cuyo argumento "
+    "resiste más escrutinio en el contexto del mercado uruguayo (3.5M personas, audiencias limitadas, "
+    "escala difícil). Si un argumento tiene una falla de datos, lo señalás.\n\n"
+    "Tu veredicto es la conclusión que este equipo se lleva: cuál es la lectura correcta de los datos, "
+    "qué acción tomar esta semana, y por qué. Respondés en español rioplatense."
 )
 
 
@@ -419,48 +423,52 @@ async def stream_debate_turn(
     # ── Step 1: Claude ────────────────────────────────────────────────────────
     if is_first_turn:
         claude_instructions = (
-            "INSTRUCCIONES — primer turno:\n"
-            "1. Tomá una posición analítica fuerte y específica sobre lo que plantea el usuario.\n"
-            "2. Usá números exactos: ROAS, CTR, CPC, CPM, conversiones por campaña — nada vago.\n"
-            "3. Identificá la campaña o plataforma con mejor Y peor desempeño y explicá la causa raíz "
-            "(no solo el síntoma: si el CTR es bajo, ¿es el creativo, la audiencia, o la puja?).\n"
-            "4. Calculá al menos una ratio no obvia: costo por conversión ajustado por plataforma, "
-            "eficiencia de CPM vs CTR, o ROAS relativo entre canales.\n"
-            "5. Cerrá con una afirmación fuerte que ChatGPT probablemente va a querer cuestionar.\n"
-            "Sé directo y técnico. Prohibido usar frases como 'rendimiento sólido' sin cuantificar contra benchmarks."
+            "Primer turno — analizá la pregunta del usuario con datos concretos:\n"
+            "1. Usá números exactos de los datos: ROAS, CTR, CPC, CPM por campaña. Nada de promedios vagos.\n"
+            "2. Identificá la campaña con mejor y peor desempeño y explicá la CAUSA RAÍZ "
+            "(¿es el creativo, la audiencia, la puja, la plataforma?).\n"
+            "3. Comparás los números contra los benchmarks de Uruguay que conocés. "
+            "¿Está arriba o abajo? ¿Cuánto? ¿Qué implica eso?\n"
+            "4. Calculá algo no obvio: costo por conversión real, eficiencia relativa entre plataformas, "
+            "o cuánto alcance queda disponible antes de saturar la audiencia uruguaya.\n"
+            "5. Terminá con una conclusión fuerte y específica que ChatGPT pueda construir o desafiar."
         )
     else:
         last_gpt = next((m["content"] for m in reversed(history) if m.get("speaker") == "ChatGPT"), None)
         claude_instructions = (
-            "Respondé al usuario profundizando tu posición con nueva evidencia de los datos.\n"
-            + (f"ChatGPT dijo anteriormente: \"{last_gpt[:600]}\"\n"
-               "Señalá el error o la omisión más grave de ChatGPT y refutala con un dato concreto. "
-               "Luego proponé una acción específica: plataforma, monto y métrica esperada." if last_gpt else "")
+            "Siguiente turno — avanzá el análisis, no lo repitas:\n"
+            + (f"ChatGPT propuso: \"{last_gpt[:600]}\"\n\n"
+               "Evaluá esa propuesta con datos. Si tiene razón en algo, reconocelo y construí sobre eso. "
+               "Si hay un error o una omisión, demostralo con un número concreto de los datos. "
+               "Luego avanzá: ¿qué conclusión nueva emerge de cruzar tu análisis con el de ChatGPT?" if last_gpt
+               else "Profundizá con evidencia nueva de los datos y avanzá hacia una conclusión accionable.")
         )
 
     claude_prompt = "\n\n".join([*base_parts, claude_instructions])
     claude_content, claude_tokens = await _ask_claude(CLAUDE_PERSONA, claude_prompt, 1400)
     yield {"type": "message", "speaker": "Claude", "role": "debate", "content": claude_content}
 
-    # ── Step 2: ChatGPT — ve la pregunta del usuario Y la respuesta de Claude ─
+    # ── Step 2: ChatGPT — lee la pregunta del usuario Y la respuesta de Claude ─
     if is_first_turn:
         gpt_instructions = (
-            f"Claude acaba de analizar los datos y argumentó:\n\"{claude_content}\"\n\n"
-            "Ahora respondé vos. Tu análisis debe:\n"
-            "1. Tomar partido sobre lo que preguntó el usuario con tu propia lectura de los datos — "
-            "no repitas lo que dijo Claude, buscá el ángulo que él no vio.\n"
-            "2. Identificar el punto más débil del argumento de Claude y contradecirlo con un dato específico.\n"
-            "3. Señalar una oportunidad de escala o crecimiento que Claude ignoró — con número y plataforma.\n"
-            "4. Cerrar con una pregunta técnica directa a Claude que exponga una laguna en su análisis.\n"
-            "Sé propositivo y concreto. El usuario necesita perspectivas distintas, no un resumen de lo que dijo Claude."
+            f"Claude analizó los datos y concluyó:\n\"{claude_content}\"\n\n"
+            "Tu trabajo ahora es hacer avanzar el análisis — no dar una segunda opinión paralela:\n"
+            "1. ¿En qué punto de Claude estás de acuerdo? Reconocelo y construí sobre eso con un dato adicional.\n"
+            "2. ¿Qué ángulo importante pasó por alto Claude? Mostralo con evidencia de los datos.\n"
+            "3. ¿Qué oportunidad de escala o acción concreta emerge cuando combinás tu lectura con la de Claude?\n"
+            "4. Cerrá con una pregunta técnica específica a Claude o al usuario que abra el próximo paso del análisis.\n"
+            "El objetivo es que cuando termines de hablar, el análisis esté más avanzado que cuando Claude terminó."
         )
     else:
         last_claude_hist = next((m["content"] for m in reversed(history) if m.get("speaker") == "Claude"), None)
         gpt_instructions = (
             f"Claude acaba de responder:\n\"{claude_content}\"\n\n"
-            "Respondé al usuario y a Claude. Podés acordar en algo y contradecir en otro, siempre con datos. "
-            "Proponé al menos una acción concreta diferente a la que propuso Claude."
-            + (f"\nEn el turno anterior Claude había dicho: \"{last_claude_hist[:400]}\"" if last_claude_hist else "")
+            "Avanzá el análisis:\n"
+            "1. Tomá el punto más sólido de Claude y extendelo con algo que él no dijo.\n"
+            "2. Corregí o matizá donde ves un error, con dato concreto.\n"
+            "3. Proponé la próxima acción que resulta de todo lo que se discutió hasta ahora, con número y plataforma.\n"
+            "El análisis debe converger hacia algo accionable, no expandirse indefinidamente."
+            + (f"\nContexto del turno anterior de Claude: \"{last_claude_hist[:400]}\"" if last_claude_hist else "")
         )
 
     gpt_prompt = "\n\n".join([*base_parts, gpt_instructions])
