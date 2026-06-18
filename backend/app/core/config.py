@@ -24,11 +24,6 @@ class Settings(BaseSettings):
     # Demo mode — devuelve datos ficticios en todos los endpoints de métricas
     DEMO_MODE: bool = False
 
-    # Meta desconectado temporalmente — sirve desde meta_campaigns.json en lugar de la API live.
-    # Para reconectar: poner META_DISABLED=False en .env y reiniciar el backend.
-    # El token / la conexión en DB no se toca — se puede volver a activar sin reconfigurar nada.
-    META_DISABLED: bool = False
-
     # Database
     DATABASE_URL: str
 
