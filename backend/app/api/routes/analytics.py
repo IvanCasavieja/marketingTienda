@@ -30,6 +30,7 @@ class AnalysisRequest(BaseModel):
     date_from: date
     date_to: date
     analysis_type: str = "full_report"
+    user_prompt: str = ""
 
 
 @router.post("/analyze")
@@ -64,7 +65,10 @@ async def analyze(
                     whatsapp_data = sfmc.normalize_whatsapp(raw_wa)
                 except Exception as sfmc_err:
                     logger.warning("SFMC data unavailable, proceeding without it: %s", sfmc_err)
-            result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to)
+            if payload.analysis_type == "debate":
+                result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to, payload.user_prompt)
+            else:
+                result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to)
         else:
             result = await handler(metrics, payload.date_from, payload.date_to)
     except RuntimeError as e:
@@ -258,10 +262,12 @@ async def debate_stream(
     date_from = payload.date_from
     date_to = payload.date_to
 
+    user_prompt = payload.user_prompt
+
     async def event_stream():
         all_messages = []
         try:
-            async for event in stream_debate(metrics, email_data, whatsapp_data, date_from, date_to):
+            async for event in stream_debate(metrics, email_data, whatsapp_data, date_from, date_to, user_prompt):
                 if event.get("type") == "message":
                     all_messages.append({
                         "speaker": event["speaker"],

@@ -88,7 +88,7 @@ function DebateOutput({
 
   // Speakers expected per round (in order they should appear as pending)
   const ROUND_SPEAKERS: Record<number, string[]> = {
-    1: ["Claude", "ChatGPT", "Llama"],
+    1: ["Claude", "ChatGPT"],
     2: ["Claude", "ChatGPT"],
     3: ["Llama"],
   };
@@ -159,17 +159,19 @@ function DebateOutput({
 
 export default function AnalyticsPage() {
   const { t } = useTranslation();
-  const [platforms, setPlatforms]         = useState<string[]>(ALL_PLATFORMS);
-  const [analysisType, setType]           = useState("full_report");
-  const [dateFrom, setDateFrom]           = useState("");
-  const [dateTo, setDateTo]               = useState("");
-  const [result, setResult]               = useState<string>("");
+  const [platforms, setPlatforms]           = useState<string[]>(ALL_PLATFORMS);
+  const [analysisType, setType]             = useState("full_report");
+  const [dateFrom, setDateFrom]             = useState("");
+  const [dateTo, setDateTo]                 = useState("");
+  const [result, setResult]                 = useState<string>("");
   const [debateMessages, setDebateMessages] = useState<DebateMessage[]>([]);
-  const [activeRound, setActiveRound]     = useState<number | null>(null);
-  const [errorMsg, setErrorMsg]           = useState<string>("");
-  const [loading, setLoading]             = useState(false);
-  const [history, setHistory]             = useState<Analysis[]>([]);
-  const [activeAnalysis, setActive]       = useState<number | null>(null);
+  const [activeRound, setActiveRound]       = useState<number | null>(null);
+  const [errorMsg, setErrorMsg]             = useState<string>("");
+  const [loading, setLoading]               = useState(false);
+  const [history, setHistory]               = useState<Analysis[]>([]);
+  const [activeAnalysis, setActive]         = useState<number | null>(null);
+  const [showDebateModal, setShowDebateModal] = useState(false);
+  const [debatePrompt, setDebatePrompt]     = useState("");
 
   const ANALYSIS_TYPES = [
     {
@@ -217,6 +219,16 @@ export default function AnalyticsPage() {
 
   async function runAnalysis() {
     if (!platforms.length) return toast.error(t("analytics.selectPlatform"));
+    if (analysisType === "debate") {
+      setDebatePrompt("");
+      setShowDebateModal(true);
+      return;
+    }
+    await executeAnalysis();
+  }
+
+  async function startDebate(prompt: string) {
+    setShowDebateModal(false);
     setLoading(true);
     setResult("");
     setDebateMessages([]);
@@ -224,60 +236,65 @@ export default function AnalyticsPage() {
     setErrorMsg("");
     setActive(null);
 
-    if (analysisType === "debate") {
-      try {
-        const response = await analyticsApi.streamDebate(platforms, dateFrom, dateTo);
-        if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
+    try {
+      const response = await analyticsApi.streamDebate(platforms, dateFrom, dateTo, prompt);
+      if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
 
-          const events = buffer.split("\n\n");
-          buffer = events.pop() ?? "";
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
 
-          for (const event of events) {
-            if (!event.startsWith("data: ")) continue;
-            try {
-              const parsed = JSON.parse(event.slice(6).trim());
-
-              if (parsed.type === "round_start") {
-                setActiveRound(parsed.round);
-              } else if (parsed.type === "message") {
-                setDebateMessages((prev) => [...prev, {
-                  speaker: parsed.speaker,
-                  round:   parsed.round,
-                  role:    parsed.role,
-                  content: parsed.content,
-                }]);
-              } else if (parsed.type === "done") {
-                setActive(parsed.id);
-                setActiveRound(null);
-                toast.success(t("analytics.debate.successToast"));
-                analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
-              } else if (parsed.type === "error") {
-                setErrorMsg(parsed.detail ?? t("analytics.defaultError"));
-                toast.error(t("analytics.errorToast"));
-              }
-            } catch { /* partial JSON */ }
-          }
+        for (const event of events) {
+          if (!event.startsWith("data: ")) continue;
+          try {
+            const parsed = JSON.parse(event.slice(6).trim());
+            if (parsed.type === "round_start") {
+              setActiveRound(parsed.round);
+            } else if (parsed.type === "message") {
+              setDebateMessages((prev) => [...prev, {
+                speaker: parsed.speaker,
+                round:   parsed.round,
+                role:    parsed.role,
+                content: parsed.content,
+              }]);
+            } else if (parsed.type === "done") {
+              setActive(parsed.id);
+              setActiveRound(null);
+              toast.success(t("analytics.debate.successToast"));
+              analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
+            } else if (parsed.type === "error") {
+              setErrorMsg(parsed.detail ?? t("analytics.defaultError"));
+              toast.error(t("analytics.errorToast"));
+            }
+          } catch { /* partial JSON */ }
         }
-      } catch (err: any) {
-        setErrorMsg(err?.message ?? t("analytics.defaultError"));
-        toast.error(t("analytics.errorToast"));
-      } finally {
-        setLoading(false);
-        setActiveRound(null);
       }
-      return;
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? t("analytics.defaultError"));
+      toast.error(t("analytics.errorToast"));
+    } finally {
+      setLoading(false);
+      setActiveRound(null);
     }
+  }
 
-    // All other types: SSE text streaming
+  async function executeAnalysis() {
+    setLoading(true);
+    setResult("");
+    setDebateMessages([]);
+    setActiveRound(null);
+    setErrorMsg("");
+    setActive(null);
+
+    // SSE text streaming for non-debate analysis types
     try {
       const response = await analyticsApi.streamAnalyze(platforms, dateFrom, dateTo, analysisType);
       if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
@@ -339,6 +356,58 @@ export default function AnalyticsPage() {
   const hasTextContent = result.length > 0;
 
   return (
+    <>
+    {/* ── Debate prompt modal ── */}
+    {showDebateModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowDebateModal(false)} />
+        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-fade-in">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
+              <MessageSquare size={18} className="text-violet-600" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">¿Qué querés analizar?</h2>
+              <p className="text-xs text-slate-500">Escribí una pregunta o dejalo vacío para un análisis libre</p>
+            </div>
+          </div>
+
+          <textarea
+            autoFocus
+            value={debatePrompt}
+            onChange={(e) => setDebatePrompt(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) startDebate(debatePrompt); }}
+            placeholder="Ej: ¿Cuál plataforma tiene mejor ROAS y cómo podemos escalarla?"
+            className="w-full h-28 px-4 py-3 text-sm border border-slate-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-violet-400 placeholder:text-slate-300"
+          />
+          <p className="text-[11px] text-slate-400 mt-1.5 mb-4">
+            Claude y ChatGPT debaten con datos completos · Llama sintetiza con un resumen
+          </p>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowDebateModal(false)}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => startDebate("")}
+              className="px-4 py-2.5 rounded-xl border border-violet-200 text-sm text-violet-600 hover:bg-violet-50 transition-colors"
+            >
+              Debate libre
+            </button>
+            <button
+              onClick={() => startDebate(debatePrompt)}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50"
+            >
+              Iniciar debate
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     <div className="animate-fade-in space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">{t("analytics.title")}</h1>
@@ -538,5 +607,6 @@ export default function AnalyticsPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }
