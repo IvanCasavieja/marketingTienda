@@ -22,6 +22,8 @@ from app.schemas.auth import (
     JoinTeamResponse,
     TeamGroupCreateRequest,
     TeamGroupCreateResponse,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -271,6 +273,73 @@ async def remove_team_member(
 
     member.team_group_id = None
     db.add(AuditLog(user_id=current_user.id, action="team.remove_member", resource=str(user_id)))
+
+
+import logging as _logging
+_logger = _logging.getLogger(__name__)
+_RESET_TOKEN_TTL = 3600  # 1 hora
+
+
+@router.post("/forgot-password", status_code=200)
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.SMTP_HOST:
+        raise HTTPException(status_code=503, detail="Email service not configured")
+
+    result = await db.execute(select(User).where(User.email == payload.email, User.is_active == True))
+    user = result.scalar_one_or_none()
+
+    if user:
+        from app.core.redis_client import get_redis
+        from app.services.email_service import send_email, build_reset_email
+
+        token = secrets.token_urlsafe(32)
+        redis = get_redis()
+        await redis.setex(f"pwd_reset:{token}", _RESET_TOKEN_TTL, str(user.id))
+
+        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+        html, plain = build_reset_email(reset_url)
+        try:
+            await send_email(user.email, "Recuperá tu contraseña — MKTG Platform", html, plain)
+        except Exception as exc:
+            _logger.error("Failed to send password reset email to %s: %s", user.email, exc)
+            raise HTTPException(status_code=502, detail="Error al enviar el email. Intentá de nuevo.")
+
+    # Respuesta idéntica exista o no el email — evita enumeración
+    return {"message": "Si el email está registrado, vas a recibir el link en los próximos minutos."}
+
+
+@router.post("/reset-password", status_code=200)
+async def reset_password(
+    payload: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.redis_client import get_redis
+
+    redis = get_redis()
+    redis_key = f"pwd_reset:{payload.token}"
+    raw = await redis.get(redis_key)
+
+    if not raw:
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+
+    try:
+        user_id = int(raw.decode() if isinstance(raw, bytes) else raw)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+
+    result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+
+    user.hashed_password = hash_password(payload.new_password)
+    await redis.delete(redis_key)  # token de un solo uso
+    db.add(AuditLog(user_id=user.id, action="user.password_reset"))
+
+    return {"message": "Contraseña actualizada correctamente."}
 
 
 @router.patch("/team-group/type", status_code=200)

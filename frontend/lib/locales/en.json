@@ -40,6 +40,7 @@
     "signIn": "Sign in",
     "signingIn": "Signing in...",
     "wrongCredentials": "Incorrect email or password",
+    "forgotPassword": "Forgot your password?",
     "tagline": "All your investment in one place.",
     "taglineSub": "Connect Meta, Google Ads, TikTok and DV360. Analyze with AI. Make better decisions.",
     "joinTeamTitle": "Assign team",
@@ -61,6 +62,30 @@
       "alerts": "Smart alerts",
       "alertsDesc": "Detect anomalies automatically"
     }
+  },
+  "forgotPassword": {
+    "title": "Forgot your password",
+    "subtitle": "Enter your email and we'll send you a link to reset it.",
+    "send": "Send recovery link",
+    "sending": "Sending...",
+    "backToLogin": "Back to login",
+    "sentTitle": "Email sent",
+    "sentSub": "If the email is registered, you'll receive the link in the next few minutes. Check your spam folder too.",
+    "errorToast": "Error sending the email. Please try again."
+  },
+  "resetPassword": {
+    "title": "New password",
+    "subtitle": "Choose a strong password for your account.",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "hint": "At least 12 characters, one uppercase letter, one number and one symbol.",
+    "save": "Save password",
+    "saving": "Saving...",
+    "mismatch": "Passwords do not match",
+    "invalidLink": "The recovery link is invalid. Please request a new one.",
+    "successTitle": "Password updated",
+    "successSub": "Your password was changed successfully. Redirecting to login...",
+    "errorToast": "Invalid or expired token"
   },
   "home": {
     "greeting": "Hi, {{name}}",

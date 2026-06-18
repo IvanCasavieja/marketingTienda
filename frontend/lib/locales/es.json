@@ -40,6 +40,7 @@
     "signIn": "Ingresar",
     "signingIn": "Ingresando...",
     "wrongCredentials": "Email o contraseña incorrectos",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
     "tagline": "Toda tu inversión en un solo lugar.",
     "taglineSub": "Conectá Meta, Google Ads, TikTok y DV360. Analizá con IA. Tomá mejores decisiones.",
     "joinTeamTitle": "Asignar equipo",
@@ -61,6 +62,30 @@
       "alerts": "Alertas inteligentes",
       "alertsDesc": "Detectá anomalías automáticamente"
     }
+  },
+  "forgotPassword": {
+    "title": "Olvidaste tu contraseña",
+    "subtitle": "Ingresá tu email y te enviamos un link para restablecerla.",
+    "send": "Enviar link de recuperación",
+    "sending": "Enviando...",
+    "backToLogin": "Volver al login",
+    "sentTitle": "Email enviado",
+    "sentSub": "Si el email está registrado, vas a recibir el link en los próximos minutos. Revisá también la carpeta de spam.",
+    "errorToast": "Error al enviar el email. Intentá de nuevo."
+  },
+  "resetPassword": {
+    "title": "Nueva contraseña",
+    "subtitle": "Elegí una contraseña segura para tu cuenta.",
+    "newPassword": "Nueva contraseña",
+    "confirmPassword": "Confirmar contraseña",
+    "hint": "Mínimo 12 caracteres, una mayúscula, un número y un símbolo.",
+    "save": "Guardar contraseña",
+    "saving": "Guardando...",
+    "mismatch": "Las contraseñas no coinciden",
+    "invalidLink": "El link de recuperación es inválido. Solicitá uno nuevo.",
+    "successTitle": "Contraseña actualizada",
+    "successSub": "Tu contraseña fue cambiada correctamente. Redirigiendo al login...",
+    "errorToast": "Token inválido o expirado"
   },
   "home": {
     "greeting": "Hola, {{name}}",
