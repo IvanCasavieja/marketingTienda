@@ -65,6 +65,74 @@ def _build_compact_context(metrics: List[Dict], email_data: List[Dict], whatsapp
     return "\n".join(lines)
 
 
+def _build_comparison_context(
+    metrics_1: List[Dict], metrics_2: List[Dict],
+    date_from_1: date, date_to_1: date,
+    date_from_2: date, date_to_2: date,
+) -> str:
+    """Period-over-period comparison table injected into the AI prompt."""
+    def _agg(metrics: List[Dict]) -> dict:
+        by_p: dict = defaultdict(lambda: {"spend": 0.0, "impressions": 0, "clicks": 0,
+                                           "conversions": 0, "revenue": 0.0, "reach": 0})
+        for m in metrics:
+            p = m["platform"].upper()
+            by_p[p]["spend"]       += m["spend"]
+            by_p[p]["impressions"] += m["impressions"]
+            by_p[p]["clicks"]      += m["clicks"]
+            by_p[p]["conversions"] += m["conversions"]
+            by_p[p]["revenue"]     += m["revenue"]
+            by_p[p]["reach"]       += m.get("reach") or 0
+        return by_p
+
+    def _roas(d: dict) -> float: return d["revenue"] / d["spend"]   if d["spend"] > 0        else 0.0
+    def _cpm(d: dict)  -> float: return d["spend"]   / d["impressions"] * 1000 if d["impressions"] > 0 else 0.0
+    def _ctr(d: dict)  -> float: return d["clicks"]  / d["impressions"] * 100  if d["impressions"] > 0 else 0.0
+    def _cpa(d: dict)  -> float: return d["spend"]   / d["conversions"]         if d["conversions"] > 0 else 0.0
+
+    def _delta(v1: float, v2: float) -> str:
+        if v1 == 0: return "—"
+        p = (v2 - v1) / v1 * 100
+        return f"{'+'if p>=0 else ''}{p:.1f}%"
+
+    agg1 = _agg(metrics_1)
+    agg2 = _agg(metrics_2)
+    platforms = sorted(set(agg1) | set(agg2))
+    ZERO: dict = {"spend": 0.0, "impressions": 0, "clicks": 0, "conversions": 0, "revenue": 0.0, "reach": 0}
+
+    lines = [
+        "## COMPARATIVA DE PERÍODOS",
+        f"Período base  : {date_from_1} → {date_to_1}",
+        f"Período actual: {date_from_2} → {date_to_2}",
+        "",
+        "| Plataforma | Spend base | Spend actual | Δ Spend | ROAS base | ROAS actual | Δ ROAS | "
+        "CPM base | CPM actual | Δ CPM | CTR base | CTR actual | Δ CTR | CPA base | CPA actual | Δ CPA |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for p in platforms:
+        d1, d2 = agg1.get(p, dict(ZERO)), agg2.get(p, dict(ZERO))
+        lines.append(
+            f"| **{p}** "
+            f"| ${d1['spend']:.0f} | ${d2['spend']:.0f} | {_delta(d1['spend'], d2['spend'])} "
+            f"| {_roas(d1):.2f}x | {_roas(d2):.2f}x | {_delta(_roas(d1), _roas(d2))} "
+            f"| ${_cpm(d1):.2f} | ${_cpm(d2):.2f} | {_delta(_cpm(d1), _cpm(d2))} "
+            f"| {_ctr(d1):.2f}% | {_ctr(d2):.2f}% | {_delta(_ctr(d1), _ctr(d2))} "
+            f"| ${_cpa(d1):.2f} | ${_cpa(d2):.2f} | {_delta(_cpa(d1), _cpa(d2))} |"
+        )
+
+    # Totals row
+    tot1 = {k: sum(d.get(k, 0) for d in agg1.values()) for k in ZERO}
+    tot2 = {k: sum(d.get(k, 0) for d in agg2.values()) for k in ZERO}
+    lines.append(
+        f"| **TOTAL** "
+        f"| ${tot1['spend']:.0f} | ${tot2['spend']:.0f} | {_delta(tot1['spend'], tot2['spend'])} "
+        f"| {_roas(tot1):.2f}x | {_roas(tot2):.2f}x | {_delta(_roas(tot1), _roas(tot2))} "
+        f"| ${_cpm(tot1):.2f} | ${_cpm(tot2):.2f} | {_delta(_cpm(tot1), _cpm(tot2))} "
+        f"| {_ctr(tot1):.2f}% | {_ctr(tot2):.2f}% | {_delta(_ctr(tot1), _ctr(tot2))} "
+        f"| ${_cpa(tot1):.2f} | ${_cpa(tot2):.2f} | {_delta(_cpa(tot1), _cpa(tot2))} |"
+    )
+    return "\n".join(lines)
+
+
 MARKET_CONTEXT = """
 ## CONTEXTO DE MERCADO — URUGUAY
 - **País:** Uruguay (América del Sur). Población ~3.5M, ~2.4M adultos digitales activos.
@@ -407,16 +475,31 @@ async def stream_debate_turn(
     whatsapp_data: List[Dict],
     date_from: date,
     date_to: date,
+    metrics_2: List[Dict] | None = None,
+    date_from_2: date | None = None,
+    date_to_2: date | None = None,
 ) -> AsyncIterator[dict]:
     """Sequential debate: Claude responds first, then ChatGPT reads Claude's answer and responds to both."""
     compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
     history_str = _build_history_str(history)
     is_first_turn = not any(m.get("speaker") in ("Claude", "ChatGPT") for m in history)
 
+    data_section = f"Datos del período {date_from} al {date_to}:\n{compact_ctx}"
+    if metrics_2 and date_from_2 and date_to_2:
+        compact_ctx_2   = _build_compact_context(metrics_2, [], [])
+        comparison_ctx  = _build_comparison_context(
+            metrics_2, metrics, date_from_2, date_to_2, date_from, date_to
+        )
+        data_section = (
+            f"Datos período base ({date_from_2} al {date_to_2}):\n{compact_ctx_2}\n\n"
+            f"Datos período actual ({date_from} al {date_to}):\n{compact_ctx}\n\n"
+            f"{comparison_ctx}"
+        )
+
     base_parts = [
         MARKET_CONTEXT,
         *(([history_str]) if history_str else []),
-        f"Datos del período {date_from} al {date_to}:\n{compact_ctx}",
+        data_section,
         f"El usuario dice: **{user_message}**",
     ]
 
@@ -486,15 +569,25 @@ async def stream_llama_verdict(
     whatsapp_data: List[Dict],
     date_from: date,
     date_to: date,
+    metrics_2: List[Dict] | None = None,
+    date_from_2: date | None = None,
+    date_to_2: date | None = None,
 ) -> AsyncIterator[dict]:
     """Llama reads the full debate and gives an on-demand verdict."""
     compact_ctx  = _build_compact_context(metrics, email_data, whatsapp_data)
     history_str  = _build_history_str(history, max_items=24)
 
+    data_section = f"Datos de referencia ({date_from} al {date_to}):\n{compact_ctx}"
+    if metrics_2 and date_from_2 and date_to_2:
+        comparison_ctx = _build_comparison_context(
+            metrics_2, metrics, date_from_2, date_to_2, date_from, date_to
+        )
+        data_section = f"{comparison_ctx}\n\nDetalle período actual:\n{compact_ctx}"
+
     prompt = (
         f"Sos el árbitro de este debate sobre campañas de marketing ({date_from} al {date_to}).\n\n"
         f"{history_str}\n\n"
-        f"Datos de referencia:\n{compact_ctx}\n\n"
+        f"{data_section}\n\n"
         "Tu veredicto debe ser analítico y concreto — no diplomático. Estructuralo así:\n\n"
         "**1. Desacuerdo central**\n"
         "En 2-3 oraciones: cuál es la tensión real entre los dos analistas. No resumas todo el debate, "

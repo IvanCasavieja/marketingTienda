@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from datetime import date
-from typing import List
+from typing import List, Optional
 from app.core.database import get_db, AsyncSessionLocal
 from app.core.deps import get_current_user
 from app.core.config import settings
@@ -39,6 +39,9 @@ class DebateTurnRequest(BaseModel):
     date_to: date
     user_message: str
     history: List[dict] = []
+    conversation_id: Optional[int] = None
+    date_from_2: Optional[date] = None
+    date_to_2: Optional[date] = None
 
 
 class DebateVerdictRequest(BaseModel):
@@ -46,6 +49,9 @@ class DebateVerdictRequest(BaseModel):
     date_from: date
     date_to: date
     history: List[dict] = []
+    conversation_id: Optional[int] = None
+    date_from_2: Optional[date] = None
+    date_to_2: Optional[date] = None
 
 
 @router.post("/analyze")
@@ -329,11 +335,15 @@ async def debate_turn(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Single conversational turn: Claude + ChatGPT respond to user message."""
+    """Single conversational turn: Claude first, then ChatGPT. Auto-saves after every turn."""
     if not current_user.team_group_id:
         raise HTTPException(status_code=400, detail="Join a team before running analysis")
 
     metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
+    metrics_2: list = []
+    if payload.date_from_2 and payload.date_to_2:
+        metrics_2 = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from_2, payload.date_to_2)
+
     email_data, whatsapp_data = [], []
     if settings.SFMC_CLIENT_ID:
         try:
@@ -348,17 +358,72 @@ async def debate_turn(
         except Exception as e:
             logger.warning("SFMC unavailable for debate turn: %s", e)
 
+    user_id        = current_user.id
+    platforms_list = [p.value for p in payload.platforms]
+    platforms_str  = ", ".join(platforms_list)
+
     async def event_stream():
+        new_messages: list = []
+        turn_tokens = 0
         try:
             async for event in stream_debate_turn(
                 payload.history, payload.user_message,
                 metrics, email_data, whatsapp_data,
                 payload.date_from, payload.date_to,
+                metrics_2 or None, payload.date_from_2, payload.date_to_2,
             ):
+                if event.get("type") == "message":
+                    new_messages.append({
+                        "speaker": event["speaker"], "content": event["content"],
+                        "role": event.get("role", "debate"), "type": "debate",
+                    })
+                elif event.get("type") == "tokens":
+                    turn_tokens = event.get("total", 0)
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except RuntimeError as exc:
             logger.error("Debate turn failed: %s", exc)
             yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+            return
+
+        # Build full conversation to save
+        prior = [
+            {k: m[k] for k in ("speaker", "content", "role", "type") if k in m}
+            for m in payload.history if m.get("type") in ("debate", "user")
+        ]
+        user_msg = {"speaker": "user", "content": payload.user_message, "type": "user", "role": "user"}
+        all_messages = prior + [user_msg] + new_messages
+
+        conv_id = payload.conversation_id
+        async with AsyncSessionLocal() as save_db:
+            if conv_id:
+                res = await save_db.execute(
+                    select(AIAnalysis).where(AIAnalysis.id == conv_id, AIAnalysis.user_id == user_id)
+                )
+                existing = res.scalar_one_or_none()
+                if existing:
+                    existing.result       = json.dumps({"debate": all_messages}, ensure_ascii=False)
+                    existing.input_tokens = (existing.input_tokens or 0) + turn_tokens
+                    await save_db.commit()
+                    await save_db.refresh(existing)
+                    conv_id = existing.id
+                else:
+                    conv_id = None
+
+            if not conv_id:
+                analysis = AIAnalysis(
+                    user_id=user_id, analysis_type="debate",
+                    platforms=platforms_list,
+                    date_from=payload.date_from, date_to=payload.date_to,
+                    prompt_used=f"debate-chat | {platforms_str} | {payload.date_from} to {payload.date_to}",
+                    result=json.dumps({"debate": all_messages}, ensure_ascii=False),
+                    input_tokens=turn_tokens, output_tokens=0,
+                )
+                save_db.add(analysis)
+                await save_db.commit()
+                await save_db.refresh(analysis)
+                conv_id = analysis.id
+
+        yield f"data: {json.dumps({'type': 'session', 'conversation_id': conv_id})}\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -378,6 +443,10 @@ async def debate_verdict(
         raise HTTPException(status_code=400, detail="Join a team before running analysis")
 
     metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
+    metrics_2: list = []
+    if payload.date_from_2 and payload.date_to_2:
+        metrics_2 = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from_2, payload.date_to_2)
+
     email_data, whatsapp_data = [], []
     if settings.SFMC_CLIENT_ID:
         try:
@@ -403,6 +472,7 @@ async def debate_verdict(
             async for event in stream_llama_verdict(
                 payload.history, metrics, email_data, whatsapp_data,
                 payload.date_from, payload.date_to,
+                metrics_2 or None, payload.date_from_2, payload.date_to_2,
             ):
                 if event.get("type") == "message":
                     llama_content = event.get("content", "")
@@ -414,25 +484,35 @@ async def debate_verdict(
             yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
             return
 
-        all_messages = [
-            {k: m[k] for k in ("speaker", "content", "role") if k in m}
-            for m in payload.history
-            if m.get("type") in ("debate", "user") or m.get("speaker") in ("Claude", "ChatGPT", "user")
+        prior = [
+            {k: m[k] for k in ("speaker", "content", "role", "type") if k in m}
+            for m in payload.history if m.get("type") in ("debate", "user")
         ]
         if llama_content:
-            all_messages.append({"speaker": "Llama", "role": "synthesis", "content": llama_content})
+            prior.append({"speaker": "Llama", "role": "synthesis", "type": "debate", "content": llama_content})
 
         async with AsyncSessionLocal() as save_db:
+            conv_id = payload.conversation_id
+            if conv_id:
+                res = await save_db.execute(
+                    select(AIAnalysis).where(AIAnalysis.id == conv_id, AIAnalysis.user_id == user_id)
+                )
+                existing = res.scalar_one_or_none()
+                if existing:
+                    existing.result       = json.dumps({"debate": prior}, ensure_ascii=False)
+                    existing.input_tokens = (existing.input_tokens or 0) + llama_tokens
+                    await save_db.commit()
+                    await save_db.refresh(existing)
+                    yield f"data: {json.dumps({'type': 'done', 'id': existing.id})}\n\n"
+                    return
+
             analysis = AIAnalysis(
-                user_id=user_id,
-                analysis_type="debate",
+                user_id=user_id, analysis_type="debate",
                 platforms=platforms_list,
-                date_from=payload.date_from,
-                date_to=payload.date_to,
+                date_from=payload.date_from, date_to=payload.date_to,
                 prompt_used=f"debate-chat | {platforms_str} | {payload.date_from} to {payload.date_to}",
-                result=json.dumps({"debate": all_messages}, ensure_ascii=False),
-                input_tokens=llama_tokens,
-                output_tokens=0,
+                result=json.dumps({"debate": prior}, ensure_ascii=False),
+                input_tokens=llama_tokens, output_tokens=0,
             )
             save_db.add(analysis)
             await save_db.commit()

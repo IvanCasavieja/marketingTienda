@@ -79,25 +79,39 @@ export const analyticsApi = {
     }),
   streamDebateTurn: (
     platforms: string[], date_from: string, date_to: string,
-    history: object[], user_message: string, signal?: AbortSignal,
+    history: object[], user_message: string,
+    signal?: AbortSignal,
+    conversation_id?: number | null,
+    date_from_2?: string, date_to_2?: string,
   ) =>
     fetch(`${BASE_URL}/analytics/debate/turn`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       signal,
-      body: JSON.stringify({ platforms, date_from, date_to, history, user_message }),
+      body: JSON.stringify({
+        platforms, date_from, date_to, history, user_message,
+        ...(conversation_id ? { conversation_id } : {}),
+        ...(date_from_2 && date_to_2 ? { date_from_2, date_to_2 } : {}),
+      }),
     }),
   streamDebateVerdict: (
     platforms: string[], date_from: string, date_to: string,
-    history: object[], signal?: AbortSignal,
+    history: object[],
+    signal?: AbortSignal,
+    conversation_id?: number | null,
+    date_from_2?: string, date_to_2?: string,
   ) =>
     fetch(`${BASE_URL}/analytics/debate/verdict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       signal,
-      body: JSON.stringify({ platforms, date_from, date_to, history }),
+      body: JSON.stringify({
+        platforms, date_from, date_to, history,
+        ...(conversation_id ? { conversation_id } : {}),
+        ...(date_from_2 && date_to_2 ? { date_from_2, date_to_2 } : {}),
+      }),
     }),
   getHistory: () => api.get("/analytics/history"),
   getAnalysis: (id: number) => api.get(`/analytics/history/${id}`),
