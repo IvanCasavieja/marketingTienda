@@ -213,7 +213,7 @@
       "modelStatus": "analizando datos...",
       "successToast": "La Triada completó su análisis",
       "generatedBy": "La Triada — Claude · ChatGPT · Llama",
-      "disclaimer": "La Triada tarda ~30 seg. — 6 llamadas a 3 modelos",
+      "disclaimer": "Claude y ChatGPT debaten · Llama sintetiza al final — ~30 seg.",
       "round1Title": "Ronda 1 — Análisis inicial",
       "round2Title": "Ronda 2 — Réplicas",
       "round3Title": "Ronda 3 — Síntesis del moderador",
