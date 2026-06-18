@@ -485,16 +485,6 @@ export default function AnalyticsPage() {
                   <p className="text-[10px] text-slate-400">Claude · ChatGPT · Llama</p>
                 </div>
 
-                {tokenTotals.total > 0 && (
-                  <div className="flex items-center gap-2 text-[10px] flex-wrap justify-end">
-                    <span className="text-slate-400">{tokenTotals.total.toLocaleString()} tokens</span>
-                    {Object.entries(tokenTotals.by_model).map(([model, count]) => {
-                      const c: Record<string, string> = { Claude: "text-orange-500", ChatGPT: "text-emerald-500", Llama: "text-purple-500" };
-                      return <span key={model} className={`font-semibold ${c[model] ?? "text-slate-500"}`}>{model} {(count as number).toLocaleString()}</span>;
-                    })}
-                  </div>
-                )}
-
                 {(loading || verdictLoading) && (
                   <button onClick={stopCurrent} className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 font-medium ml-2 shrink-0">
                     <StopCircle size={14} /> Detener
@@ -581,6 +571,30 @@ export default function AnalyticsPage() {
 
                 <div ref={chatEndRef} />
               </div>
+
+              {/* Token usage strip — shown after first completed turn */}
+              {tokenTotals.total > 0 && (
+                <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/60 shrink-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-slate-500">Tokens consumidos:</span>
+                    <span className="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full">
+                      {tokenTotals.total.toLocaleString()} total
+                    </span>
+                    {Object.entries(tokenTotals.by_model).map(([model, count]) => {
+                      const s: Record<string, string> = {
+                        Claude:  "bg-orange-50 text-orange-700 border-orange-200",
+                        ChatGPT: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                        Llama:   "bg-purple-50 text-purple-700 border-purple-200",
+                      };
+                      return (
+                        <span key={model} className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${s[model] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
+                          {model}: {(count as number).toLocaleString()}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Llama verdict button — only when there are AI messages and Llama hasn't spoken */}
               {hasDebateContent && !loading && !verdictLoading && !llamaHasSpoken && (
