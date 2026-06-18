@@ -180,15 +180,15 @@
       "optimization_desc": "Recomendações acionáveis",
       "cross_platform_label": "Comparativo cross-channel",
       "cross_platform_desc": "Ranking de eficiência por plataforma",
-      "debate_label": "Mesa Redonda IA",
-      "debate_desc": "Debate entre Claude, ChatGPT e Llama"
+      "debate_label": "A Tríade",
+      "debate_desc": "Três modelos. Três perspectivas. Uma síntese."
     },
     "debate": {
-      "analyzing": "Os modelos estão debatendo...",
+      "analyzing": "A Tríade está deliberando...",
       "modelStatus": "analisando dados...",
-      "successToast": "Debate concluído entre os 3 modelos",
-      "generatedBy": "Debate — Claude · ChatGPT · Llama",
-      "disclaimer": "Esta análise leva ~30 seg. — 6 chamadas a 3 modelos",
+      "successToast": "A Tríade concluiu sua análise",
+      "generatedBy": "A Tríade — Claude · ChatGPT · Llama",
+      "disclaimer": "A Tríade leva ~30 seg. — 6 chamadas a 3 modelos",
       "round1Title": "Rodada 1 — Análise inicial",
       "round2Title": "Rodada 2 — Réplicas",
       "round3Title": "Rodada 3 — Síntese do moderador",
