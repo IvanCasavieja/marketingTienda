@@ -30,11 +30,11 @@ export default function CampaignsPage() {
   const [search, setSearch]             = useState("");
   const [sortKey, setSortKey]           = useState<SortKey>("spend");
   const [sortDir, setSortDir]           = useState<SortDir>("desc");
-  const [dateFrom, setDateFrom]         = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
-  const [dateTo, setDateTo]             = useState(format(new Date(), "yyyy-MM-dd"));
+  const [dateFrom, setDateFrom]         = useState("");
+  const [dateTo, setDateTo]             = useState("");
   const [comparing, setComparing]       = useState(false);
-  const [cmpFrom, setCmpFrom]           = useState(format(subDays(new Date(), 60), "yyyy-MM-dd"));
-  const [cmpTo, setCmpTo]               = useState(format(subDays(new Date(), 31), "yyyy-MM-dd"));
+  const [cmpFrom, setCmpFrom]           = useState("");
+  const [cmpTo, setCmpTo]               = useState("");
   const [cmpMetrics, setCmpMetrics]     = useState<CampaignMetric[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -55,6 +55,18 @@ export default function CampaignsPage() {
   }
 
   useEffect(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const d30   = format(subDays(new Date(), 30), "yyyy-MM-dd");
+    const d60   = format(subDays(new Date(), 60), "yyyy-MM-dd");
+    const d31   = format(subDays(new Date(), 31), "yyyy-MM-dd");
+    setDateFrom(d30);
+    setDateTo(today);
+    setCmpFrom(d60);
+    setCmpTo(d31);
+  }, []);
+
+  useEffect(() => {
+    if (!dateFrom || !dateTo) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => loadMetrics(), 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };

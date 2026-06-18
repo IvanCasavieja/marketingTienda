@@ -14,18 +14,13 @@ export const LANGUAGES = [
 
 export type LangCode = "es" | "en" | "pt";
 
-function getInitialLang(): LangCode {
-  if (typeof window === "undefined") return "es";
-  return (localStorage.getItem(STORAGE_KEY) as LangCode) ?? "es";
-}
-
 i18n.use(initReactI18next).init({
   resources: {
     es: { translation: es },
     en: { translation: en },
     pt: { translation: pt },
   },
-  lng: getInitialLang(),
+  lng: "es",          // always "es" on both server and client — I18nProvider applies stored lang after hydration
   fallbackLng: "es",
   interpolation: { escapeValue: false },
 });
