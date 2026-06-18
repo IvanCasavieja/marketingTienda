@@ -1,10 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Sidebar from "@/components/layout/Sidebar";
+import dynamic from "next/dynamic";
 import { authApi } from "@/lib/api";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Menu, BarChart3 } from "lucide-react";
+
+// ssr: false — sidebar uses useTranslation + localStorage which differ between
+// server and client, causing React hydration errors in the entire subtree.
+const Sidebar = dynamic(() => import("@/components/layout/Sidebar"), { ssr: false });
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
