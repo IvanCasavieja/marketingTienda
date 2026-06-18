@@ -285,7 +285,7 @@ async def forgot_password(
     payload: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    if not settings.SMTP_HOST:
+    if not settings.RESEND_API_KEY:
         raise HTTPException(status_code=503, detail="Email service not configured")
 
     result = await db.execute(select(User).where(User.email == payload.email, User.is_active == True))
