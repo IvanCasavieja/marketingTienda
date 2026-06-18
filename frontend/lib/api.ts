@@ -69,11 +69,12 @@ export const analyticsApi = {
       credentials: "include",
       body: JSON.stringify({ platforms, date_from, date_to, analysis_type }),
     }),
-  streamDebate: (platforms: string[], date_from: string, date_to: string, user_prompt: string = "") =>
+  streamDebate: (platforms: string[], date_from: string, date_to: string, user_prompt: string = "", signal?: AbortSignal) =>
     fetch(`${BASE_URL}/analytics/analyze/debate/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
+      signal,
       body: JSON.stringify({ platforms, date_from, date_to, analysis_type: "debate", user_prompt }),
     }),
   getHistory: () => api.get("/analytics/history"),
