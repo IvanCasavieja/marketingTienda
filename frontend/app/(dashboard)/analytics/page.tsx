@@ -14,10 +14,10 @@ import { useTranslation } from "react-i18next";
 
 const ALL_PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"];
 
-const SPEAKER_STYLES: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  Claude:  { bg: "bg-orange-50",  text: "text-orange-700",  border: "border-orange-200",  dot: "bg-orange-500"  },
-  ChatGPT: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500" },
-  Llama:   { bg: "bg-purple-50",  text: "text-purple-700",  border: "border-purple-200",  dot: "bg-purple-500"  },
+const SPEAKER_STYLES: Record<string, { bg: string; text: string; border: string; dot: string; ring: string }> = {
+  Claude:  { bg: "bg-orange-50",  text: "text-orange-700",  border: "border-orange-200",  dot: "bg-orange-500",  ring: "ring-orange-300"  },
+  ChatGPT: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500", ring: "ring-emerald-300" },
+  Llama:   { bg: "bg-purple-50",  text: "text-purple-700",  border: "border-purple-200",  dot: "bg-purple-500",  ring: "ring-purple-300"  },
 };
 
 interface DebateMessage {
@@ -43,7 +43,36 @@ function MarkdownOutput({ text }: { text: string }) {
   );
 }
 
-function DebateOutput({ messages }: { messages: DebateMessage[] }) {
+function ThinkingCard({ speaker }: { speaker: string }) {
+  const style = SPEAKER_STYLES[speaker] ?? SPEAKER_STYLES.Claude;
+  return (
+    <div className={`rounded-xl border p-4 ${style.bg} ${style.border} animate-pulse`}>
+      <div className="flex items-center gap-2 mb-3">
+        <div className={`w-6 h-6 rounded-full ${style.dot} ring-2 ${style.ring} ring-offset-1 flex items-center justify-center shrink-0`}>
+          <span className="text-white text-[10px] font-bold">{speaker[0]}</span>
+        </div>
+        <span className={`text-sm font-bold ${style.text}`}>{speaker}</span>
+        <span className="text-xs text-slate-400">· pensando...</span>
+        <div className="flex gap-1 ml-1">
+          {[0, 150, 300].map((d) => (
+            <div key={d} className={`w-1.5 h-1.5 rounded-full ${style.dot} animate-bounce`} style={{ animationDelay: `${d}ms` }} />
+          ))}
+        </div>
+      </div>
+      <SkeletonText lines={3} />
+    </div>
+  );
+}
+
+function DebateOutput({
+  messages,
+  loading,
+  activeRound,
+}: {
+  messages: DebateMessage[];
+  loading: boolean;
+  activeRound: number | null;
+}) {
   const { t } = useTranslation();
 
   const ROUND_TITLES: Record<number, string> = {
@@ -57,27 +86,50 @@ function DebateOutput({ messages }: { messages: DebateMessage[] }) {
     synthesis: t("analytics.debate.roleSynthesis"),
   };
 
+  // Speakers expected per round (in order they should appear as pending)
+  const ROUND_SPEAKERS: Record<number, string[]> = {
+    1: ["Claude", "ChatGPT", "Llama"],
+    2: ["Claude", "ChatGPT"],
+    3: ["Llama"],
+  };
+
   const rounds = [1, 2, 3];
+
+  // Which speakers have already answered in each round
+  const answered = new Set(messages.map((m) => `${m.round}:${m.speaker}`));
 
   return (
     <div className="space-y-8">
       {rounds.map((round) => {
         const roundMessages = messages.filter((m) => m.round === round);
-        if (!roundMessages.length) return null;
+        const isCurrentRound = loading && activeRound === round;
+        const isPendingRound = loading && activeRound !== null && round > activeRound;
+        const pendingSpeakers = isCurrentRound
+          ? (ROUND_SPEAKERS[round] ?? []).filter((s) => !answered.has(`${round}:${s}`))
+          : [];
+
+        if (!roundMessages.length && !isCurrentRound) return null;
+
         return (
           <div key={round}>
             <div className="flex items-center gap-3 mb-4">
               <div className="h-px flex-1 bg-slate-100" />
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider px-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider px-2 flex items-center gap-1.5">
                 {ROUND_TITLES[round]}
+                {isCurrentRound && <Loader2 size={10} className="animate-spin text-violet-400" />}
               </span>
               <div className="h-px flex-1 bg-slate-100" />
             </div>
+
             <div className="space-y-4">
+              {/* Messages that already arrived */}
               {roundMessages.map((msg, idx) => {
                 const style = SPEAKER_STYLES[msg.speaker] ?? SPEAKER_STYLES.Claude;
                 return (
-                  <div key={idx} className={`rounded-xl border p-4 ${style.bg} ${style.border}`}>
+                  <div
+                    key={idx}
+                    className={`rounded-xl border p-4 ${style.bg} ${style.border} animate-fade-in`}
+                  >
                     <div className="flex items-center gap-2 mb-3">
                       <div className={`w-6 h-6 rounded-full ${style.dot} flex items-center justify-center shrink-0`}>
                         <span className="text-white text-[10px] font-bold">{msg.speaker[0]}</span>
@@ -92,6 +144,11 @@ function DebateOutput({ messages }: { messages: DebateMessage[] }) {
                   </div>
                 );
               })}
+
+              {/* Thinking placeholders for speakers still working in current round */}
+              {pendingSpeakers.map((speaker) => (
+                <ThinkingCard key={speaker} speaker={speaker} />
+              ))}
             </div>
           </div>
         );
@@ -100,58 +157,19 @@ function DebateOutput({ messages }: { messages: DebateMessage[] }) {
   );
 }
 
-function DebateLoadingSkeleton() {
-  const { t } = useTranslation();
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-violet-600">
-        <MessageSquare size={20} className="animate-pulse-slow" />
-        <span className="text-sm font-semibold">{t("analytics.debate.analyzing")}</span>
-      </div>
-      <div className="space-y-2 text-xs text-slate-400">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span>Claude — {t("analytics.debate.modelStatus")}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span>ChatGPT — {t("analytics.debate.modelStatus")}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-          <span>Llama — {t("analytics.debate.modelStatus")}</span>
-        </div>
-      </div>
-      <div className="space-y-3">
-        {[
-          "bg-orange-50 border-orange-100",
-          "bg-emerald-50 border-emerald-100",
-          "bg-purple-50 border-purple-100",
-        ].map((cls, i) => (
-          <div key={i} className={`rounded-xl border p-4 ${cls}`}>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="skeleton w-6 h-6 rounded-full" />
-              <div className="skeleton h-3 w-16 rounded" />
-            </div>
-            <SkeletonText lines={3} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function AnalyticsPage() {
   const { t } = useTranslation();
-  const [platforms, setPlatforms]     = useState<string[]>(ALL_PLATFORMS);
-  const [analysisType, setType]       = useState("full_report");
-  const [dateFrom, setDateFrom]       = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
-  const [dateTo, setDateTo]           = useState(format(new Date(), "yyyy-MM-dd"));
-  const [result, setResult]           = useState<string>("");
-  const [errorMsg, setErrorMsg]       = useState<string>("");
-  const [loading, setLoading]         = useState(false);
-  const [history, setHistory]         = useState<Analysis[]>([]);
-  const [activeAnalysis, setActive]   = useState<number | null>(null);
+  const [platforms, setPlatforms]         = useState<string[]>(ALL_PLATFORMS);
+  const [analysisType, setType]           = useState("full_report");
+  const [dateFrom, setDateFrom]           = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [dateTo, setDateTo]               = useState(format(new Date(), "yyyy-MM-dd"));
+  const [result, setResult]               = useState<string>("");
+  const [debateMessages, setDebateMessages] = useState<DebateMessage[]>([]);
+  const [activeRound, setActiveRound]     = useState<number | null>(null);
+  const [errorMsg, setErrorMsg]           = useState<string>("");
+  const [loading, setLoading]             = useState(false);
+  const [history, setHistory]             = useState<Analysis[]>([]);
+  const [activeAnalysis, setActive]       = useState<number | null>(null);
 
   const ANALYSIS_TYPES = [
     {
@@ -199,28 +217,65 @@ export default function AnalyticsPage() {
     if (!platforms.length) return toast.error(t("analytics.selectPlatform"));
     setLoading(true);
     setResult("");
+    setDebateMessages([]);
+    setActiveRound(null);
     setErrorMsg("");
     setActive(null);
 
     if (analysisType === "debate") {
-      // Debate uses multiple models concurrently — can't stream, use regular endpoint
       try {
-        const { data } = await analyticsApi.analyze(platforms, dateFrom, dateTo, analysisType);
-        setResult(data.result);
-        setActive(data.id);
-        toast.success(t("analytics.debate.successToast"));
-        analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
+        const response = await analyticsApi.streamDebate(platforms, dateFrom, dateTo);
+        if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const events = buffer.split("\n\n");
+          buffer = events.pop() ?? "";
+
+          for (const event of events) {
+            if (!event.startsWith("data: ")) continue;
+            try {
+              const parsed = JSON.parse(event.slice(6).trim());
+
+              if (parsed.type === "round_start") {
+                setActiveRound(parsed.round);
+              } else if (parsed.type === "message") {
+                setDebateMessages((prev) => [...prev, {
+                  speaker: parsed.speaker,
+                  round:   parsed.round,
+                  role:    parsed.role,
+                  content: parsed.content,
+                }]);
+              } else if (parsed.type === "done") {
+                setActive(parsed.id);
+                setActiveRound(null);
+                toast.success(t("analytics.debate.successToast"));
+                analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
+              } else if (parsed.type === "error") {
+                setErrorMsg(parsed.detail ?? t("analytics.defaultError"));
+                toast.error(t("analytics.errorToast"));
+              }
+            } catch { /* partial JSON */ }
+          }
+        }
       } catch (err: any) {
-        const detail = err?.response?.data?.detail ?? t("analytics.defaultError");
-        setErrorMsg(detail);
+        setErrorMsg(err?.message ?? t("analytics.defaultError"));
         toast.error(t("analytics.errorToast"));
       } finally {
         setLoading(false);
+        setActiveRound(null);
       }
       return;
     }
 
-    // All other types: SSE streaming
+    // All other types: SSE text streaming
     try {
       const response = await analyticsApi.streamAnalyze(platforms, dateFrom, dateTo, analysisType);
       if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
@@ -249,7 +304,7 @@ export default function AnalyticsPage() {
               toast.success(t("analytics.successToast"));
               analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
             }
-          } catch { /* partial JSON, skip */ }
+          } catch { /* partial JSON */ }
         }
       }
     } catch (err: any) {
@@ -262,15 +317,24 @@ export default function AnalyticsPage() {
 
   async function loadFromHistory(id: number) {
     setActive(id);
+    setDebateMessages([]);
+    setResult("");
     try {
       const { data } = await analyticsApi.getAnalysis(id);
-      setResult(data.result);
+      const parsed = tryParseDebate(data.result);
+      if (parsed) {
+        setDebateMessages(parsed);
+        setType("debate");
+      } else {
+        setResult(data.result);
+      }
     } catch { toast.error(t("analytics.loadError")); }
   }
 
   const selectedType = ANALYSIS_TYPES.find((tp) => tp.value === analysisType);
-  const debateMessages = result ? tryParseDebate(result) : null;
-  const isDebate = analysisType === "debate" || debateMessages !== null;
+  const isDebate = analysisType === "debate" || debateMessages.length > 0;
+  const hasDebateContent = debateMessages.length > 0;
+  const hasTextContent = result.length > 0;
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -282,7 +346,6 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 xl:grid-cols-[340px_1fr] gap-5">
         {/* ── Config panel ── */}
         <div className="space-y-4">
-          {/* Analysis type */}
           <div className="card p-5">
             <p className="section-title mb-3">{t("analytics.analysisType")}</p>
             <div className="space-y-2">
@@ -359,7 +422,6 @@ export default function AnalyticsPage() {
 
         {/* ── Result panel ── */}
         <div className="space-y-4">
-          {/* Error */}
           {errorMsg && (
             <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
@@ -374,39 +436,25 @@ export default function AnalyticsPage() {
           )}
 
           <div className="card p-6 min-h-[400px]">
-            {loading ? (
-              isDebate
-                ? <DebateLoadingSkeleton />
-                : (
-                  <div className="space-y-6">
-                    <div className="flex items-center gap-2 text-brand-600">
-                      <Brain size={20} className="animate-pulse-slow" />
-                      <span className="text-sm font-semibold">{t("analytics.analyzing")}</span>
-                    </div>
-                    {[5, 4, 6, 3, 5].map((lines, i) => (
-                      <div key={i}>
-                        <div className="skeleton h-3 w-32 rounded mb-3" />
-                        <SkeletonText lines={lines} />
-                      </div>
-                    ))}
-                  </div>
-                )
-            ) : result ? (
+            {/* Debate — streaming live or from history */}
+            {(isDebate && (hasDebateContent || loading)) ? (
               <>
                 <div className="flex items-center gap-2 mb-5 pb-4 border-b border-slate-50">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedType?.color ?? "bg-slate-100 text-slate-500"}`}>
-                    {selectedType && <selectedType.icon size={16} />}
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-violet-600 bg-violet-50">
+                    <MessageSquare size={16} />
                   </div>
-                  <div>
-                    <p className="font-semibold text-slate-800 text-sm">{selectedType?.label}</p>
-                    <p className="text-xs text-slate-400">
-                      {debateMessages
-                        ? t("analytics.debate.generatedBy")
-                        : t("analytics.generatedBy", { date: format(new Date(), "dd/MM/yyyy HH:mm") })}
-                    </p>
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-800 text-sm">{t("analytics.types.debate_label")}</p>
+                    <p className="text-xs text-slate-400">{t("analytics.debate.generatedBy")}</p>
                   </div>
-                  {debateMessages && (
-                    <div className="ml-auto flex gap-1">
+                  {loading && (
+                    <div className="flex items-center gap-1.5 text-xs text-violet-500 font-medium">
+                      <Loader2 size={12} className="animate-spin" />
+                      {t("analytics.debate.analyzing")}
+                    </div>
+                  )}
+                  {hasDebateContent && !loading && (
+                    <div className="flex gap-1">
                       {["C", "G", "L"].map((initial, i) => (
                         <div key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold ${["bg-orange-500", "bg-emerald-500", "bg-purple-500"][i]}`}>
                           {initial}
@@ -415,10 +463,36 @@ export default function AnalyticsPage() {
                     </div>
                   )}
                 </div>
-                {debateMessages
-                  ? <DebateOutput messages={debateMessages} />
-                  : <MarkdownOutput text={result} />}
+                <DebateOutput messages={debateMessages} loading={loading} activeRound={activeRound} />
               </>
+            ) : hasTextContent ? (
+              <>
+                <div className="flex items-center gap-2 mb-5 pb-4 border-b border-slate-50">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedType?.color ?? "bg-slate-100 text-slate-500"}`}>
+                    {selectedType && <selectedType.icon size={16} />}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-800 text-sm">{selectedType?.label}</p>
+                    <p className="text-xs text-slate-400">
+                      {t("analytics.generatedBy", { date: format(new Date(), "dd/MM/yyyy HH:mm") })}
+                    </p>
+                  </div>
+                </div>
+                <MarkdownOutput text={result} />
+              </>
+            ) : loading && !isDebate ? (
+              <div className="space-y-6">
+                <div className="flex items-center gap-2 text-brand-600">
+                  <Brain size={20} className="animate-pulse-slow" />
+                  <span className="text-sm font-semibold">{t("analytics.analyzing")}</span>
+                </div>
+                {[5, 4, 6, 3, 5].map((lines, i) => (
+                  <div key={i}>
+                    <div className="skeleton h-3 w-32 rounded mb-3" />
+                    <SkeletonText lines={lines} />
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-center">
                 <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
