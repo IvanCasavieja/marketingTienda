@@ -6,40 +6,40 @@ import { Analysis, PLATFORM_LABELS } from "@/types";
 import { format, subDays } from "date-fns";
 import {
   Clock, ChevronRight, XCircle, MessageSquare,
-  Send, StopCircle, Loader2, RotateCcw,
+  Send, StopCircle, Loader2, RotateCcw, Gavel,
 } from "lucide-react";
 import { toast } from "sonner";
-import { SkeletonText } from "@/components/ui/SkeletonCard";
 import { useTranslation } from "react-i18next";
 
 const ALL_PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"];
 
-const SPEAKER_STYLES: Record<string, {
-  bg: string; text: string; border: string; dot: string;
-  avatarBg: string; avatarRing: string; nameBadge: string; label: string;
-}> = {
-  Claude:  {
-    bg: "bg-gradient-to-br from-amber-50 to-orange-50",
-    text: "text-slate-700", border: "border-orange-200/70",
-    dot: "bg-orange-500", avatarBg: "bg-orange-500", avatarRing: "ring-orange-200",
-    nameBadge: "bg-orange-100 text-orange-700 border-orange-200",
+// Per-speaker design tokens
+const S = {
+  Claude: {
+    avatar: "bg-orange-500",
+    name: "text-orange-600",
     label: "Analista cuantitativo",
+    border: "border-orange-100",
+    dot: "bg-orange-500",
+    side: "left" as const,
   },
   ChatGPT: {
-    bg: "bg-gradient-to-br from-emerald-50 to-teal-50",
-    text: "text-slate-700", border: "border-emerald-200/70",
-    dot: "bg-emerald-500", avatarBg: "bg-emerald-500", avatarRing: "ring-emerald-200",
-    nameBadge: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    avatar: "bg-emerald-500",
+    name: "text-emerald-600",
     label: "Estratega de crecimiento",
+    border: "border-emerald-100",
+    dot: "bg-emerald-500",
+    side: "right" as const,
   },
   Llama: {
-    bg: "bg-gradient-to-br from-violet-50 to-purple-50",
-    text: "text-slate-700", border: "border-purple-200/70",
-    dot: "bg-purple-500", avatarBg: "bg-purple-600", avatarRing: "ring-purple-200",
-    nameBadge: "bg-purple-100 text-purple-700 border-purple-200",
+    avatar: "bg-purple-600",
+    name: "text-purple-600",
     label: "Árbitro",
+    border: "border-purple-200",
+    dot: "bg-purple-500",
+    side: "full" as const,
   },
-};
+} as const;
 
 interface ChatMessage {
   id: string;
@@ -70,10 +70,20 @@ function tryParseDebate(result: string): ChatMessage[] | null {
   return null;
 }
 
-function MarkdownOutput({ text }: { text: string }) {
+function Md({ text }: { text: string }) {
+  return <div className="prose-analysis"><ReactMarkdown>{text}</ReactMarkdown></div>;
+}
+
+function TypingDots({ color }: { color: string }) {
   return (
-    <div className="prose-analysis">
-      <ReactMarkdown>{text}</ReactMarkdown>
+    <div className="flex gap-1 items-center h-4">
+      {[0, 120, 240].map((d) => (
+        <span
+          key={d}
+          className={`w-1.5 h-1.5 rounded-full ${color} animate-bounce opacity-60`}
+          style={{ animationDelay: `${d}ms` }}
+        />
+      ))}
     </div>
   );
 }
@@ -81,8 +91,96 @@ function MarkdownOutput({ text }: { text: string }) {
 const GREETINGS: ChatMessage[] = [
   { id: "g1", speaker: "Claude",  type: "greeting", role: "greeting", content: "Hola. Tengo cargados los datos de tus campañas para el período seleccionado. ¿Qué querés que analice o debata?" },
   { id: "g2", speaker: "ChatGPT", type: "greeting", role: "greeting", content: "Listo para empezar. Compartí tu pregunta y arrancamos." },
-  { id: "g3", speaker: "Llama",   type: "greeting", role: "greeting", content: "Cuando quieras mi veredicto, hacé click en el botón de abajo." },
+  { id: "g3", speaker: "Llama",   type: "greeting", role: "greeting", content: "Cuando quieras mi veredicto final, hacé click en el botón de abajo." },
 ];
+
+// ── Message bubble components ─────────────────────────────────────────────────
+
+function UserBubble({ content }: { content: string }) {
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[68%] bg-violet-600 text-white text-sm leading-relaxed px-4 py-3 rounded-2xl rounded-br-sm shadow-sm">
+        {content}
+      </div>
+    </div>
+  );
+}
+
+function LlamaBubble({ content, loading = false }: { content?: string; loading?: boolean }) {
+  return (
+    <div className="w-full rounded-2xl overflow-hidden border border-purple-200 shadow-md bg-white animate-fade-in">
+      <div className="flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-purple-700 to-violet-600">
+        <div className="w-7 h-7 rounded-full bg-white/15 border border-white/20 flex items-center justify-center">
+          <Gavel size={13} className="text-white" />
+        </div>
+        <div>
+          <p className="text-white text-xs font-bold leading-none">Llama</p>
+          <p className="text-purple-200 text-[10px] mt-0.5">Árbitro · Veredicto</p>
+        </div>
+      </div>
+      <div className="px-5 py-4 text-sm leading-relaxed text-slate-700">
+        {loading ? <TypingDots color="bg-purple-500" /> : content && <Md text={content} />}
+      </div>
+    </div>
+  );
+}
+
+function LlamaGreetingBubble({ content }: { content: string }) {
+  return (
+    <div className="flex justify-center">
+      <div className="flex items-center gap-2.5 bg-purple-50 border border-purple-100 rounded-2xl px-4 py-2.5 max-w-[75%]">
+        <div className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center shrink-0">
+          <Gavel size={11} className="text-white" />
+        </div>
+        <p className="text-xs text-purple-700">{content}</p>
+      </div>
+    </div>
+  );
+}
+
+function AiBubble({
+  speaker, content, isGreeting = false, loading = false,
+}: {
+  speaker: "Claude" | "ChatGPT";
+  content?: string;
+  isGreeting?: boolean;
+  loading?: boolean;
+}) {
+  const cfg = S[speaker];
+  const isLeft = cfg.side === "left";
+
+  return (
+    <div className={`flex items-end gap-2.5 animate-fade-in ${isLeft ? "flex-row" : "flex-row-reverse"}`}>
+      {/* Avatar */}
+      <div className={`w-8 h-8 rounded-full ${cfg.avatar} flex items-center justify-center shrink-0 shadow-sm mb-0.5`}>
+        <span className="text-white text-[11px] font-black">{speaker[0]}</span>
+      </div>
+
+      {/* Bubble */}
+      <div className={`flex flex-col gap-1 max-w-[70%] ${isLeft ? "items-start" : "items-end"}`}>
+        {!isGreeting && (
+          <div className={`flex items-center gap-1.5 px-1 ${isLeft ? "" : "flex-row-reverse"}`}>
+            <span className={`text-[11px] font-bold ${cfg.name}`}>{speaker}</span>
+            <span className="text-[10px] text-slate-400">{cfg.label}</span>
+          </div>
+        )}
+        <div
+          className={`bg-white border ${cfg.border} shadow-sm px-4 py-3 text-sm leading-relaxed text-slate-700
+            ${isLeft ? "rounded-2xl rounded-bl-sm" : "rounded-2xl rounded-br-sm"}
+            ${isGreeting ? "opacity-75" : ""}
+          `}
+        >
+          {loading
+            ? <TypingDots color={cfg.dot} />
+            : content && <Md text={content} />
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
   const { t } = useTranslation();
@@ -130,9 +228,7 @@ export default function AnalyticsPage() {
     setActive(null);
   }
 
-  function stopCurrent() {
-    abortRef.current?.abort();
-  }
+  function stopCurrent() { abortRef.current?.abort(); }
 
   async function sendChatMessage() {
     const msg = chatInput.trim();
@@ -178,10 +274,10 @@ export default function AnalyticsPage() {
             if (parsed.type === "message") {
               currentSpeakers.current.add(parsed.speaker);
               setChatMessages((prev) => [...prev, {
-                id:      `m-${Date.now()}-${parsed.speaker}`,
+                id: `m-${Date.now()}-${parsed.speaker}`,
                 speaker: parsed.speaker,
-                type:    "debate",
-                role:    parsed.role,
+                type: "debate",
+                role: parsed.role,
                 content: parsed.content,
               }]);
             } else if (parsed.type === "tokens") {
@@ -235,10 +331,10 @@ export default function AnalyticsPage() {
             const parsed = JSON.parse(event.slice(6).trim());
             if (parsed.type === "message") {
               setChatMessages((prev) => [...prev, {
-                id:      `v-${Date.now()}`,
+                id: `v-${Date.now()}`,
                 speaker: "Llama",
-                type:    "debate",
-                role:    "synthesis",
+                type: "debate",
+                role: "synthesis",
                 content: parsed.content,
               }]);
             } else if (parsed.type === "tokens") {
@@ -279,9 +375,8 @@ export default function AnalyticsPage() {
   const hasDebateContent = chatMessages.some((m) => m.type === "debate");
   const llamaHasSpoken   = chatMessages.some((m) => m.speaker === "Llama" && m.type === "debate");
   const pendingSpeakers  = loading
-    ? ["Claude", "ChatGPT"].filter((s) => !currentSpeakers.current.has(s))
+    ? (["Claude", "ChatGPT"] as const).filter((s) => !currentSpeakers.current.has(s))
     : [];
-
   const debateHistory = history.filter((h) => h.analysis_type === "debate");
 
   return (
@@ -291,7 +386,7 @@ export default function AnalyticsPage() {
         <p className="text-sm text-slate-500 mt-0.5">Claude · ChatGPT · Llama — debate con tus datos de campañas</p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[300px_1fr] gap-5 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 items-start">
         {/* ── Left panel ── */}
         <div className="space-y-4">
           <div className="card p-5">
@@ -341,7 +436,6 @@ export default function AnalyticsPage() {
             Nueva conversación
           </button>
 
-          {/* History */}
           {debateHistory.length > 0 && (
             <div className="card overflow-hidden">
               <div className="px-5 py-3.5 border-b border-slate-50 flex items-center gap-2">
@@ -368,7 +462,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* ── Chat ── */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {errorMsg && (
             <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
@@ -380,166 +474,138 @@ export default function AnalyticsPage() {
             </div>
           )}
 
-          <div className="flex flex-col rounded-2xl overflow-hidden border border-slate-200 shadow-lg" style={{ height: "calc(100vh - 180px)", minHeight: "640px" }}>
-            {/* Header */}
-            <div className="flex items-center gap-3 px-5 py-4 shrink-0 bg-gradient-to-r from-slate-800 to-slate-900">
-              <div className="flex -space-x-2">
-                {[{ dot: "bg-orange-500", l: "C" }, { dot: "bg-emerald-400", l: "G" }, { dot: "bg-purple-500", l: "L" }].map((a) => (
-                  <div key={a.l} className={`w-8 h-8 rounded-full ${a.dot} border-2 border-slate-800 flex items-center justify-center shadow-md`}>
-                    <span className="text-white text-[10px] font-black">{a.l}</span>
+          <div
+            className="flex flex-col rounded-2xl overflow-hidden border border-slate-200/80 shadow-xl"
+            style={{ height: "calc(100vh - 175px)", minHeight: "640px" }}
+          >
+            {/* ── Header ── */}
+            <div className="shrink-0 bg-slate-900 px-5 py-3.5 flex items-center gap-4">
+              {/* Speaker pills */}
+              <div className="flex items-center gap-1.5">
+                {[
+                  { bg: "bg-orange-500", name: "Claude" },
+                  { bg: "bg-emerald-400", name: "ChatGPT" },
+                  { bg: "bg-purple-500", name: "Llama" },
+                ].map((a) => (
+                  <div key={a.name} className={`flex items-center gap-1.5 ${a.bg} bg-opacity-20 border border-white/10 rounded-full pl-1.5 pr-2.5 py-1`}>
+                    <div className={`w-4 h-4 rounded-full ${a.bg} flex items-center justify-center`}>
+                      <span className="text-white text-[8px] font-black">{a.name[0]}</span>
+                    </div>
+                    <span className="text-white text-[11px] font-semibold">{a.name}</span>
                   </div>
                 ))}
               </div>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-white">La Triada</p>
-                <p className="text-[10px] text-slate-400 font-medium">Claude · ChatGPT · Llama</p>
-              </div>
+              <div className="flex-1" />
               {(loading || verdictLoading) && (
-                <button onClick={stopCurrent} className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 font-semibold shrink-0 transition-colors">
-                  <StopCircle size={13} /> Detener
+                <button
+                  onClick={stopCurrent}
+                  className="flex items-center gap-1.5 text-[11px] font-semibold text-red-400 hover:text-red-300 transition-colors"
+                >
+                  <StopCircle size={13} />
+                  Detener
                 </button>
               )}
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+            {/* ── Debate labels ── */}
+            <div className="shrink-0 grid grid-cols-2 border-b border-slate-100 bg-white">
+              <div className="flex items-center gap-2 px-4 py-2 border-r border-slate-100">
+                <div className="w-2 h-2 rounded-full bg-orange-400" />
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Claude</span>
+              </div>
+              <div className="flex items-center justify-end gap-2 px-4 py-2">
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">ChatGPT</span>
+                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+              </div>
+            </div>
+
+            {/* ── Messages ── */}
+            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-slate-50/60">
               {chatMessages.map((msg) => {
                 if (msg.speaker === "user") {
-                  return (
-                    <div key={msg.id} className="flex justify-end px-1">
-                      <div className="bg-violet-600 text-white rounded-2xl rounded-br-md px-4 py-3 text-sm max-w-[78%] leading-relaxed shadow-sm shadow-violet-200">
-                        {msg.content}
-                      </div>
-                    </div>
-                  );
+                  return <UserBubble key={msg.id} content={msg.content} />;
                 }
-                const style = SPEAKER_STYLES[msg.speaker] ?? SPEAKER_STYLES.Claude;
-                const isVerdict = msg.role === "synthesis";
+                if (msg.speaker === "Llama") {
+                  return msg.type === "greeting"
+                    ? <LlamaGreetingBubble key={msg.id} content={msg.content} />
+                    : <LlamaBubble key={msg.id} content={msg.content} />;
+                }
                 return (
-                  <div key={msg.id} className={`rounded-2xl border shadow-sm p-4 ${style.bg} ${style.border} animate-fade-in`}>
-                    <div className="flex items-center gap-2.5 mb-3">
-                      <div className={`w-7 h-7 rounded-full ${style.avatarBg} ring-2 ${style.avatarRing} flex items-center justify-center shrink-0 shadow-sm`}>
-                        <span className="text-white text-[11px] font-black">{msg.speaker[0]}</span>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${style.nameBadge}`}>
-                          {msg.speaker}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-medium">{style.label}</span>
-                        {isVerdict && (
-                          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-600 text-white">
-                            veredicto
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-sm leading-relaxed text-slate-700 pl-9">
-                      <MarkdownOutput text={msg.content} />
-                    </div>
-                  </div>
+                  <AiBubble
+                    key={msg.id}
+                    speaker={msg.speaker}
+                    content={msg.content}
+                    isGreeting={msg.type === "greeting"}
+                  />
                 );
               })}
 
-              {/* Thinking placeholders */}
-              {pendingSpeakers.map((speaker) => {
-                const style = SPEAKER_STYLES[speaker];
-                return (
-                  <div key={`t-${speaker}`} className={`rounded-2xl border shadow-sm p-4 ${style.bg} ${style.border}`}>
-                    <div className="flex items-center gap-2.5 mb-3">
-                      <div className={`w-7 h-7 rounded-full ${style.avatarBg} ring-2 ${style.avatarRing} flex items-center justify-center shrink-0 shadow-sm`}>
-                        <span className="text-white text-[11px] font-black">{speaker[0]}</span>
-                      </div>
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${style.nameBadge}`}>{speaker}</span>
-                      <div className="flex gap-1 ml-1">
-                        {[0, 150, 300].map((d) => (
-                          <div key={d} className={`w-1.5 h-1.5 rounded-full ${style.dot} animate-bounce opacity-70`} style={{ animationDelay: `${d}ms` }} />
-                        ))}
-                      </div>
-                    </div>
-                    <div className="pl-9"><SkeletonText lines={3} /></div>
-                  </div>
-                );
-              })}
-
-              {verdictLoading && (
-                <div className={`rounded-2xl border shadow-sm p-4 ${SPEAKER_STYLES.Llama.bg} ${SPEAKER_STYLES.Llama.border}`}>
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <div className={`w-7 h-7 rounded-full ${SPEAKER_STYLES.Llama.avatarBg} ring-2 ${SPEAKER_STYLES.Llama.avatarRing} flex items-center justify-center shrink-0 shadow-sm`}>
-                      <span className="text-white text-[11px] font-black">L</span>
-                    </div>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${SPEAKER_STYLES.Llama.nameBadge}`}>Llama</span>
-                    <div className="flex gap-1 ml-1">
-                      {[0, 150, 300].map((d) => (
-                        <div key={d} className={`w-1.5 h-1.5 rounded-full ${SPEAKER_STYLES.Llama.dot} animate-bounce opacity-70`} style={{ animationDelay: `${d}ms` }} />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="pl-9"><SkeletonText lines={4} /></div>
-                </div>
-              )}
+              {/* Typing indicators */}
+              {pendingSpeakers.map((speaker) => (
+                <AiBubble key={`t-${speaker}`} speaker={speaker} loading />
+              ))}
+              {verdictLoading && <LlamaBubble loading />}
 
               <div ref={chatEndRef} />
             </div>
 
-            {/* Token strip */}
+            {/* ── Token strip ── */}
             {tokenTotals.total > 0 && (
-              <div className="px-4 py-2 border-t border-slate-200 bg-white shrink-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Tokens</span>
-                  <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
-                    {tokenTotals.total.toLocaleString()}
-                  </span>
-                  {Object.entries(tokenTotals.by_model).map(([model, count]) => {
-                    const s: Record<string, string> = {
-                      Claude:  "bg-orange-100 text-orange-700",
-                      ChatGPT: "bg-emerald-100 text-emerald-700",
-                      Llama:   "bg-purple-100 text-purple-700",
-                    };
-                    return (
-                      <span key={model} className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${s[model] ?? "bg-slate-100 text-slate-600"}`}>
-                        {model} {(count as number).toLocaleString()}
-                      </span>
-                    );
-                  })}
-                </div>
+              <div className="shrink-0 px-5 py-2 bg-white border-t border-slate-100 flex items-center gap-2.5 flex-wrap">
+                <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">Tokens</span>
+                <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                  {tokenTotals.total.toLocaleString()}
+                </span>
+                {Object.entries(tokenTotals.by_model).map(([model, count]) => {
+                  const colors: Record<string, string> = {
+                    Claude:  "bg-orange-100 text-orange-700",
+                    ChatGPT: "bg-emerald-100 text-emerald-700",
+                    Llama:   "bg-purple-100 text-purple-700",
+                  };
+                  return (
+                    <span key={model} className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${colors[model] ?? "bg-slate-100 text-slate-600"}`}>
+                      {model} {(count as number).toLocaleString()}
+                    </span>
+                  );
+                })}
               </div>
             )}
 
-            {/* Llama verdict button */}
+            {/* ── Llama verdict button ── */}
             {hasDebateContent && !loading && !verdictLoading && !llamaHasSpoken && (
-              <div className="px-4 py-2.5 border-t border-slate-200 bg-white shrink-0">
+              <div className="shrink-0 px-5 py-3 bg-white border-t border-slate-100">
                 <button
                   onClick={requestVerdict}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-colors shadow-sm shadow-purple-200"
+                  className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl bg-gradient-to-r from-purple-700 to-violet-600 hover:from-purple-800 hover:to-violet-700 text-white text-sm font-bold transition-all shadow-sm shadow-purple-300/40"
                 >
-                  <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center">
-                    <span className="text-white text-[8px] font-black">L</span>
-                  </div>
+                  <Gavel size={15} />
                   Pedir veredicto a Llama
                 </button>
               </div>
             )}
 
-            {/* Input */}
-            <div className="px-4 py-3 border-t border-slate-200 bg-white shrink-0">
-              <div className="flex gap-2">
+            {/* ── Input ── */}
+            <div className="shrink-0 px-5 py-3.5 bg-white border-t border-slate-100">
+              <div className="flex gap-2.5">
                 <input
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+                  }}
                   disabled={loading || verdictLoading}
                   placeholder={
                     loading ? "Claude y ChatGPT están pensando..." :
                     verdictLoading ? "Llama está elaborando el veredicto..." :
-                    "Escribí tu pregunta o seguí el debate..."
+                    "Preguntá algo o seguí el debate..."
                   }
-                  className="flex-1 px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent bg-slate-50 disabled:text-slate-400 disabled:placeholder:text-slate-300 transition-all"
+                  className="flex-1 px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400/60 focus:border-violet-400 focus:bg-white disabled:text-slate-400 disabled:placeholder:text-slate-300 transition-all"
                 />
                 <button
                   onClick={sendChatMessage}
                   disabled={!chatInput.trim() || loading || verdictLoading}
-                  className="w-10 h-10 rounded-xl bg-violet-600 text-white flex items-center justify-center hover:bg-violet-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all shrink-0 shadow-sm"
+                  className="w-10 h-10 rounded-xl bg-violet-600 text-white flex items-center justify-center hover:bg-violet-700 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all shrink-0 shadow-sm"
                 >
                   {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={15} />}
                 </button>
