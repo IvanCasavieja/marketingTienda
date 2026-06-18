@@ -66,21 +66,34 @@ def _build_compact_context(metrics: List[Dict], email_data: List[Dict], whatsapp
 
 
 CLAUDE_PERSONA = (
-    "Sos Claude, analista cuantitativo especializado en marketing digital. "
-    "Argumentás con números exactos, detectás inconsistencias en los datos y no tenés miedo de contradecir "
-    "afirmaciones vagas con evidencia concreta. Tu estilo es incisivo y directo. Respondés en español."
+    "Sos Claude, analista cuantitativo especializado en marketing digital con foco en eficiencia de inversión. "
+    "Tu método: primero los datos, después la interpretación. Calculás ratios derivados (ROAS ajustado, costo por conversión "
+    "incremental, eficiencia de CPM vs CTR) para ir más allá de lo superficial. "
+    "Cuando ves un número, preguntás: ¿es bueno o malo en contexto? ¿qué lo explica? ¿qué implica para el presupuesto? "
+    "Contradecís afirmaciones vagas con evidencia específica. Si los datos no alcanzan para una conclusión, lo decís. "
+    "Tu estilo es incisivo, técnico y directo. Nunca usás frases como 'rendimiento sólido' o 'buenos resultados' "
+    "sin cuantificar qué significa 'sólido' o 'buenos'. Respondés en español."
 )
 
 GPT_PERSONA = (
-    "Sos ChatGPT, estratega de marketing orientado al crecimiento de negocio. "
-    "Ves oportunidades donde otros ven problemas, defendés el riesgo calculado y cuestionás la sobre-cautela. "
-    "Tu estilo es propositivo y confrontacional cuando hace falta. Respondés en español."
+    "Sos ChatGPT, estratega de crecimiento con experiencia en marketing de performance y allocation de presupuesto. "
+    "Tu enfoque: identificar qué canales y campañas tienen el mayor potencial de escala y por qué. "
+    "Buscás oportunidades no obvias en los datos — audiencias sub-invertidas, canales con CTR alto pero bajo presupuesto, "
+    "o plataformas donde el CPM bajo no se está aprovechando. "
+    "Cuando alguien argumenta con promedios, vos buscás los outliers. Cuando alguien propone cautela, "
+    "cuantificás el costo de oportunidad de no actuar. "
+    "Sos propositivo y específico: siempre terminás con una recomendación que tenga número y plataforma. "
+    "Respondés en español."
 )
 
 LLAMA_PERSONA = (
-    "Sos Llama, árbitro del debate. Tu trabajo es dar un veredicto claro, no hacer un resumen diplomático. "
-    "Identificás el desacuerdo real, tomás partido por el argumento más sólido con datos, "
-    "y definís pasos de acción concretos. Respondés en español."
+    "Sos Llama, árbitro analítico de debates sobre marketing digital. "
+    "Tu trabajo NO es suavizar ni encontrar el término medio — es determinar quién tiene el argumento más sólido "
+    "según los datos disponibles. Tomás partido. Si un analista usó los datos mal o llegó a una conclusión infundada, "
+    "lo señalás directamente. "
+    "Tus veredictos incluyen siempre: el desacuerdo real (no el superficial), quién gana y por qué con evidencia, "
+    "y pasos de acción concretos con métricas esperadas. "
+    "Respondés en español."
 )
 
 
@@ -109,7 +122,7 @@ async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str
         raise RuntimeError("OPENAI_API_KEY no configurado")
     client = _openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     resp = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         max_tokens=max_tokens,
         messages=[
             {"role": "system", "content": system},
@@ -338,14 +351,14 @@ async def run_debate(
 # ── Conversational mode (new) ─────────────────────────────────────────────────
 
 def _build_history_str(history: List[Dict], max_items: int = 20) -> str:
-    """Render conversation history for inclusion in prompts."""
+    """Render conversation history for inclusion in prompts — no truncation per message."""
     if not history:
         return ""
     recent = history[-max_items:]
     lines = ["=== HISTORIAL DE CONVERSACIÓN ==="]
     for msg in recent:
         speaker = msg.get("speaker", "?")
-        content = str(msg.get("content", ""))[:500]
+        content = str(msg.get("content", ""))
         lines.append(f"[{speaker}]: {content}")
     return "\n\n".join(lines)
 
@@ -367,30 +380,42 @@ async def stream_debate_turn(
     last_gpt    = next((m["content"][:500] for m in reversed(history) if m.get("speaker") == "ChatGPT"), None)
     last_claude = next((m["content"][:500] for m in reversed(history) if m.get("speaker") == "Claude"), None)
 
-    def _prompt(speaker: str, other_last) -> str:
+    def _prompt(speaker: str, other_last: str | None) -> str:
         other_name = "ChatGPT" if speaker == "Claude" else "Claude"
-        parts = []
+        parts: list[str] = []
         if history_str:
             parts.append(history_str)
         parts.append(f"Datos del período {date_from} al {date_to}:\n{compact_ctx}")
-        parts.append(f"El usuario dice: **{user_message}**")
+        parts.append(f"Pregunta del usuario: **{user_message}**")
+
         if is_first_turn:
             parts.append(
-                "Primer intercambio. Tomá una posición clara y defendible sobre lo que pregunta el usuario. "
-                "Nombrá campañas y métricas específicas de los datos. Máximo 4 párrafos."
+                "INSTRUCCIONES — primer turno:\n"
+                "1. Tomá una posición analítica fuerte y específica sobre lo que pregunta el usuario.\n"
+                "2. Usá números exactos: ROAS, CTR, CPC, CPM, conversiones por campaña — no promedios vagos.\n"
+                "3. Identificá la campaña o plataforma con el mejor y peor desempeño y explicá POR QUÉ (causa raíz, no solo el síntoma).\n"
+                "4. Calculá al menos una ratio o comparación entre plataformas que sea no obvia: por ejemplo, eficiencia de conversión "
+                "ajustada por inversión, o CTR relativo entre canales.\n"
+                "5. Terminá con una afirmación provocadora que el otro analista probablemente va a querer rebatir.\n"
+                "Sé directo y técnico. No uses lenguaje vago como 'rendimiento sólido' o 'buena tracción'."
             )
         else:
-            counter = f"\n{other_name} dijo anteriormente: \"{other_last}\"" if other_last else ""
-            parts.append(
-                f"Respondé al usuario.{counter} "
-                "Si el otro analista cometió un error o ignoró algo importante, contradecilo con datos concretos. "
-                "Máximo 3 párrafos."
+            counter = (
+                f"\n\n{other_name} argumentó:\n\"{other_last}\"\n\n"
+                "Tu respuesta debe:\n"
+                f"1. Señalar el error o la omisión más grave de {other_name} y refutarla con un dato específico de los datos.\n"
+                "2. Profundizar en el argumento que planteaste antes con nueva evidencia de los datos — no lo repitas, extendelo.\n"
+                "3. Proponer una conclusión accionable concreta: qué haría HOY con el presupuesto o la estrategia, y cuánto impacto esperarías.\n"
+                f"4. Hacerle a {other_name} una pregunta técnica específica que no pueda responder sin mirar los datos."
+            ) if other_last else (
+                "\nProfundizá tu análisis con nueva evidencia y formulá una conclusión accionable concreta."
             )
+            parts.append(counter)
         return "\n\n".join(parts)
 
     q: asyncio.Queue = asyncio.Queue()
-    asyncio.create_task(_race("Claude",  0, "debate", _ask_claude(CLAUDE_PERSONA, _prompt("Claude",  last_gpt),    700), q))
-    asyncio.create_task(_race("ChatGPT", 0, "debate", _ask_gpt(GPT_PERSONA,       _prompt("ChatGPT", last_claude), 700), q))
+    asyncio.create_task(_race("Claude",  0, "debate", _ask_claude(CLAUDE_PERSONA, _prompt("Claude",  last_gpt),    1400), q))
+    asyncio.create_task(_race("ChatGPT", 0, "debate", _ask_gpt(GPT_PERSONA,       _prompt("ChatGPT", last_claude), 1400), q))
 
     tokens_by_model: Dict[str, int] = {}
     for _ in range(2):
@@ -419,13 +444,20 @@ async def stream_llama_verdict(
         f"Sos el árbitro de este debate sobre campañas de marketing ({date_from} al {date_to}).\n\n"
         f"{history_str}\n\n"
         f"Datos de referencia:\n{compact_ctx}\n\n"
-        "Tu veredicto en 3 secciones:\n\n"
-        "**1. Desacuerdo central** — La tensión principal del debate en 2-3 oraciones.\n\n"
-        "**2. Veredicto** — ¿Quién tiene el argumento más sólido? Tomá partido con razones concretas. "
-        "Usá tabla markdown si ayuda a comparar posiciones.\n\n"
-        "**3. Plan de acción** — 3 acciones ejecutables para esta semana, ordenadas por impacto."
+        "Tu veredicto debe ser analítico y concreto — no diplomático. Estructuralo así:\n\n"
+        "**1. Desacuerdo central**\n"
+        "En 2-3 oraciones: cuál es la tensión real entre los dos analistas. No resumas todo el debate, "
+        "identificá el punto exacto donde difieren y por qué importa.\n\n"
+        "**2. Veredicto**\n"
+        "¿Quién tiene el argumento más sólido y por qué? Tomá partido claro — no 'ambos tienen razón'. "
+        "Justificá con al menos 2 datos concretos de la conversación o de los datos. "
+        "Si los datos no son concluyentes, decilo y explicá qué información faltaría para decidir.\n"
+        "Incluí una tabla markdown comparando las posiciones si ayuda a ilustrar el veredicto.\n\n"
+        "**3. Plan de acción**\n"
+        "3 acciones ejecutables ordenadas por impacto esperado. Para cada una: qué hacer, en qué plataforma/campaña, "
+        "y qué métrica debería mejorar como resultado. Sé específico — nada de 'optimizar el presupuesto'."
     )
 
-    content, tokens = await _ask_llama(LLAMA_PERSONA, prompt, 1000)
+    content, tokens = await _ask_llama(LLAMA_PERSONA, prompt, 1400)
     yield {"type": "message", "speaker": "Llama", "role": "synthesis", "content": content}
     yield {"type": "tokens", "total": tokens, "by_model": {"Llama": tokens}}
