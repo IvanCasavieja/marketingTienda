@@ -6,9 +6,11 @@ import { authApi } from "@/lib/api";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Menu, BarChart3 } from "lucide-react";
 
-// ssr: false — sidebar uses useTranslation + localStorage which differ between
-// server and client, causing React hydration errors in the entire subtree.
 const Sidebar = dynamic(() => import("@/components/layout/Sidebar"), { ssr: false });
+// Dashboard pages use useTranslation() which produces server/client HTML mismatches.
+// Wrapping children with ssr:false means the server sends null, the client mounts
+// fresh — no hydration reconciliation needed, no #418 errors on any dashboard page.
+const ClientOnly = dynamic(() => import("@/components/ClientOnly"), { ssr: false });
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -46,7 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto">
           <ErrorBoundary>
-            {children}
+            <ClientOnly>{children}</ClientOnly>
           </ErrorBoundary>
         </main>
       </div>
