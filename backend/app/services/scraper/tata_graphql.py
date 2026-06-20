@@ -110,7 +110,7 @@ def bajar_varias(categorias: list, headless: bool = True) -> dict:
     """
     resultado = {}
     with sync_playwright() as p:
-        b = p.chromium.launch(headless=headless)
+        b = p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"])
 
         for facets in categorias:
             slug = "/".join(facets)

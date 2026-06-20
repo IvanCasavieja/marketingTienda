@@ -186,7 +186,7 @@ def run_gdu_fase(fase: int):
         pendientes_por_tienda.setdefault(tienda, []).append((slug, base))
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         for tienda, items in pendientes_por_tienda.items():
             page = browser.new_page(viewport={"width": 1280, "height": 900})
             try:
@@ -294,7 +294,7 @@ def _run_tata_fase4_descubrimiento():
     nuevas_cats: dict = {}
 
     with sync_playwright() as pw:
-        b = pw.chromium.launch(headless=True)
+        b = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         page = b.new_page()
         page.goto(BASE, timeout=30000)
         try:
