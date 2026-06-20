@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type Producto, type PreciosListResponse, type TiendaStats } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
-import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare, Download, RefreshCw, Clock } from "lucide-react";
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare, Download, RefreshCw, Clock, History, X } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -106,8 +106,8 @@ export default function PreciosPage() {
   useEffect(() => {
     preciosApi.tiendas().then(({ data }) => setTiendas(data)).catch(() => {});
     refreshStats();
-    // Check initial progress state (scan may already be running)
     preciosApi.scraperProgress().then(({ data }) => setProgress(data)).catch(() => {});
+    preciosApi.historialFechas().then(({ data }) => setFechasHistorial(data)).catch(() => {});
   }, [refreshStats]);
 
   // Polling — activo solo mientras el scan está corriendo
@@ -175,9 +175,15 @@ export default function PreciosPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [q, tienda, categoria, marca, conDescuento, sortBy, sortDir]);
 
-  const totalPages = result ? Math.ceil(result.total / PAGE_SIZE) : 1;
+  const activeResult = fechaSeleccionada ? historialResult : result;
+  const activeLoading = fechaSeleccionada ? loadingHistorial : loading;
+  const totalPages = activeResult ? Math.ceil(activeResult.total / PAGE_SIZE) : 1;
 
-  const [exporting, setExporting] = useState(false);
+  const [exporting,         setExporting]         = useState(false);
+  const [fechasHistorial,   setFechasHistorial]   = useState<string[]>([]);
+  const [fechaSeleccionada, setFechaSeleccionada] = useState<string | null>(null);
+  const [historialResult,   setHistorialResult]   = useState<{ total: number; page: number; items: Producto[] } | null>(null);
+  const [loadingHistorial,  setLoadingHistorial]  = useState(false);
 
   const scanActive = progress?.running ?? false;
 
@@ -235,6 +241,49 @@ export default function PreciosPage() {
     } finally {
       setExporting(false);
     }
+  }
+
+  const loadHistorial = useCallback(async (fecha: string, newPage = 1) => {
+    setLoadingHistorial(true);
+    try {
+      const { data } = await preciosApi.historial({
+        fecha,
+        q:             q             || undefined,
+        tienda:        tienda        || undefined,
+        categoria:     categoria     || undefined,
+        marca:         marca         || undefined,
+        con_descuento: conDescuento  || undefined,
+        sort_by:       sortBy,
+        sort_dir:      sortDir,
+        page:          newPage,
+        page_size:     PAGE_SIZE,
+      });
+      setHistorialResult({ total: data.total, page: data.page, items: data.items });
+      setPage(newPage);
+    } catch {
+      toast.error("Error al cargar historial");
+    } finally {
+      setLoadingHistorial(false);
+    }
+  }, [q, tienda, categoria, marca, conDescuento, sortBy, sortDir]);
+
+  useEffect(() => {
+    if (!fechaSeleccionada) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => loadHistorial(fechaSeleccionada, 1), 350);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [fechaSeleccionada, q, tienda, categoria, marca, conDescuento, sortBy, sortDir, loadHistorial]);
+
+  function handleFechaSelect(fecha: string) {
+    setFechaSeleccionada(fecha);
+    setPage(1);
+    setHistorialResult(null);
+  }
+
+  function handleSalirHistorial() {
+    setFechaSeleccionada(null);
+    setHistorialResult(null);
+    load(1);
   }
 
   function handleSort(col: string) {
@@ -388,6 +437,57 @@ export default function PreciosPage() {
         </div>
       )}
 
+      {/* Historial de fechas */}
+      {fechasHistorial.length > 0 && (
+        <div className="card px-4 py-3 flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 shrink-0">
+            <History size={13} />
+            Historial
+          </div>
+          <div className="flex flex-wrap gap-1.5 flex-1">
+            {fechasHistorial.map((f) => {
+              const label = new Date(f + "T12:00:00").toLocaleDateString("es-UY", { day: "2-digit", month: "short", year: "numeric" });
+              const activa = fechaSeleccionada === f;
+              return (
+                <button
+                  key={f}
+                  onClick={() => activa ? handleSalirHistorial() : handleFechaSelect(f)}
+                  className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+                    activa
+                      ? "bg-brand-600 text-white border-brand-600"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-brand-400 hover:text-brand-600"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {fechaSeleccionada && (
+            <button
+              onClick={handleSalirHistorial}
+              className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 shrink-0"
+            >
+              <X size={12} /> Ver actual
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Banner snapshot activo */}
+      {fechaSeleccionada && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-brand-50 border border-brand-200 rounded-xl text-sm text-brand-700">
+          <History size={14} />
+          <span>
+            Viendo snapshot del{" "}
+            <strong>
+              {new Date(fechaSeleccionada + "T12:00:00").toLocaleDateString("es-UY", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+            </strong>
+            {historialResult && ` — ${historialResult.total.toLocaleString("es-UY")} productos`}
+          </span>
+        </div>
+      )}
+
       {/* Filtros */}
       <div className="card p-4 flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
@@ -459,9 +559,9 @@ export default function PreciosPage() {
             </tr>
           </thead>
           <tbody>
-            {loading
+            {activeLoading
               ? Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} />)
-              : (result?.items ?? []).map((p: Producto) => (
+              : (activeResult?.items ?? []).map((p: Producto) => (
                   <tr key={p.id} className="table-tr">
                     <td className="table-td">
                       <div className="font-medium text-slate-800 leading-tight max-w-xs truncate">
@@ -508,7 +608,7 @@ export default function PreciosPage() {
                   </tr>
                 ))
             }
-            {!loading && result?.items.length === 0 && (
+            {!activeLoading && activeResult?.items.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-sm">
                   Sin productos para los filtros seleccionados.
@@ -520,17 +620,17 @@ export default function PreciosPage() {
       </div>
 
       {/* Paginación */}
-      {result && result.total > PAGE_SIZE && (
+      {activeResult && activeResult.total > PAGE_SIZE && (
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span>
             {((page - 1) * PAGE_SIZE + 1).toLocaleString("es-UY")}–
-            {Math.min(page * PAGE_SIZE, result.total).toLocaleString("es-UY")} de{" "}
-            {result.total.toLocaleString("es-UY")}
+            {Math.min(page * PAGE_SIZE, activeResult.total).toLocaleString("es-UY")} de{" "}
+            {activeResult.total.toLocaleString("es-UY")}
           </span>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => load(page - 1)}
-              disabled={page <= 1 || loading}
+              onClick={() => fechaSeleccionada ? loadHistorial(fechaSeleccionada, page - 1) : load(page - 1)}
+              disabled={page <= 1 || activeLoading}
               className="btn-ghost p-1.5 disabled:opacity-30"
             >
               <ChevronLeft size={15} />
@@ -539,8 +639,8 @@ export default function PreciosPage() {
               {page} / {totalPages}
             </span>
             <button
-              onClick={() => load(page + 1)}
-              disabled={page >= totalPages || loading}
+              onClick={() => fechaSeleccionada ? loadHistorial(fechaSeleccionada, page + 1) : load(page + 1)}
+              disabled={page >= totalPages || activeLoading}
               className="btn-ghost p-1.5 disabled:opacity-30"
             >
               <ChevronRight size={15} />

@@ -323,4 +323,29 @@ export const preciosApi = {
     limit?:         number;
   }) =>
     api.get<Blob>("/precios/export.csv", { params, responseType: "blob" }),
+
+  historialFechas: () =>
+    api.get<string[]>("/precios/historial/fechas"),
+
+  historial: (params: {
+    fecha:          string;
+    tienda?:        string;
+    categoria?:     string;
+    marca?:         string;
+    q?:             string;
+    precio_min?:    number;
+    precio_max?:    number;
+    con_descuento?: boolean;
+    sort_by?:       string;
+    sort_dir?:      string;
+    page?:          number;
+    page_size?:     number;
+  }) =>
+    api.get<{
+      fecha:     string;
+      total:     number;
+      page:      number;
+      page_size: number;
+      items:     Producto[];
+    }>("/precios/historial", { params }),
 };

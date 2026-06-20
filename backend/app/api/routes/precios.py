@@ -351,6 +351,109 @@ async def exportar_csv(
     )
 
 
+@router.get("/historial/fechas", response_model=list[str])
+async def historial_fechas(
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fechas con snapshots disponibles, ordenadas más reciente primero."""
+    from app.models.precio_historial import PrecioHistorial
+    rows = await db.execute(
+        select(PrecioHistorial.fecha_scan).distinct().order_by(PrecioHistorial.fecha_scan.desc())
+    )
+    return [str(r[0]) for r in rows.all()]
+
+
+@router.get("/historial")
+async def historial_precios(
+    fecha:         str             = Query(..., description="YYYY-MM-DD"),
+    tienda:        Optional[str]   = Query(None),
+    categoria:     Optional[str]   = Query(None),
+    marca:         Optional[str]   = Query(None),
+    q:             Optional[str]   = Query(None),
+    precio_min:    Optional[float] = Query(None),
+    precio_max:    Optional[float] = Query(None),
+    con_descuento: Optional[bool]  = Query(None),
+    sort_by:       Optional[str]   = Query(None),
+    sort_dir:      Optional[str]   = Query("asc"),
+    page:          int             = Query(1, ge=1),
+    page_size:     int             = Query(50, ge=1, le=200),
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Catálogo de precios de una fecha específica (snapshot histórico)."""
+    from datetime import date as date_type
+    from app.models.precio_historial import PrecioHistorial
+
+    try:
+        fecha_dt = date_type.fromisoformat(fecha)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Formato de fecha inválido (usar YYYY-MM-DD)")
+
+    base    = select(PrecioHistorial).where(PrecioHistorial.fecha_scan == fecha_dt)
+    count_q = select(func.count()).select_from(PrecioHistorial).where(PrecioHistorial.fecha_scan == fecha_dt)
+
+    filters = []
+    if tienda:     filters.append(PrecioHistorial.tienda == tienda)
+    if categoria:  filters.append(PrecioHistorial.categoria.ilike(f"%{categoria}%"))
+    if marca:      filters.append(PrecioHistorial.marca.ilike(f"%{marca}%"))
+    if q:
+        like = f"%{q}%"
+        filters.append(
+            PrecioHistorial.nombre.ilike(like) |
+            PrecioHistorial.sku.ilike(like)    |
+            PrecioHistorial.barcode.ilike(like)
+        )
+    if precio_min is not None: filters.append(PrecioHistorial.precio >= precio_min)
+    if precio_max is not None: filters.append(PrecioHistorial.precio <= precio_max)
+    if con_descuento:
+        filters.append(
+            PrecioHistorial.precio_lista.isnot(None) &
+            (PrecioHistorial.precio_lista > PrecioHistorial.precio)
+        )
+
+    for f in filters:
+        base    = base.where(f)
+        count_q = count_q.where(f)
+
+    total = (await db.execute(count_q)).scalar_one()
+
+    _sort_cols = {
+        "nombre":    PrecioHistorial.nombre,
+        "precio":    PrecioHistorial.precio,
+        "tienda":    PrecioHistorial.tienda,
+        "categoria": PrecioHistorial.categoria,
+    }
+    sort_col   = _sort_cols.get(sort_by or "nombre", PrecioHistorial.nombre)
+    order_expr = sort_col.desc() if sort_dir == "desc" else sort_col.asc()
+
+    offset = (page - 1) * page_size
+    items  = (await db.execute(base.order_by(order_expr).offset(offset).limit(page_size))).scalars().all()
+
+    return {
+        "fecha":     str(fecha_dt),
+        "total":     total,
+        "page":      page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id":           p.id,
+                "tienda":       p.tienda,
+                "url":          p.url,
+                "nombre":       p.nombre,
+                "precio":       p.precio,
+                "precio_lista": p.precio_lista,
+                "sku":          p.sku,
+                "barcode":      p.barcode,
+                "marca":        p.marca,
+                "categoria":    p.categoria,
+                "fecha_scan":   str(p.fecha_scan),
+            }
+            for p in items
+        ],
+    }
+
+
 @router.get("/scraper/status")
 async def scraper_status(_: User = Depends(get_current_user)):
     """Estado del scheduler nocturno de scraping."""
