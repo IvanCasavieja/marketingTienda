@@ -26,9 +26,17 @@ function TiendaBadge({ tienda }: { tienda: string }) {
 function PrecioBadge({ precio, precioLista }: { precio: number | null; precioLista: number | null }) {
   if (precio === null) return <span className="text-slate-400 text-xs">—</span>;
   const hasDesc = precioLista !== null && precioLista > precio;
+  const pct = hasDesc ? Math.round((1 - precio / precioLista!) * 100) : 0;
   return (
     <div className="flex flex-col items-end gap-0.5">
-      <span className="text-sm font-semibold text-slate-800">{fMoneyExact(precio)}</span>
+      <div className="flex items-center gap-1.5">
+        {hasDesc && (
+          <span className="text-[10px] font-bold bg-red-50 text-red-600 px-1.5 py-0.5 rounded-full">
+            -{pct}%
+          </span>
+        )}
+        <span className="text-sm font-semibold text-slate-800">{fMoneyExact(precio)}</span>
+      </div>
       {hasDesc && (
         <span className="text-[11px] text-slate-400 line-through">{fMoneyExact(precioLista!)}</span>
       )}
@@ -57,11 +65,12 @@ export default function PreciosPage() {
   const [result,     setResult]     = useState<PreciosListResponse | null>(null);
   const [loading,    setLoading]    = useState(true);
 
-  const [q,         setQ]         = useState("");
-  const [tienda,    setTienda]    = useState("");
-  const [categoria, setCategoria] = useState("");
-  const [marca,     setMarca]     = useState("");
-  const [page,      setPage]      = useState(1);
+  const [q,            setQ]           = useState("");
+  const [tienda,       setTienda]      = useState("");
+  const [categoria,    setCategoria]   = useState("");
+  const [marca,        setMarca]       = useState("");
+  const [conDescuento, setConDescuento] = useState(false);
+  const [page,         setPage]        = useState(1);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -80,12 +89,13 @@ export default function PreciosPage() {
     setLoading(true);
     try {
       const { data } = await preciosApi.list({
-        q:         q         || undefined,
-        tienda:    tienda    || undefined,
-        categoria: categoria || undefined,
-        marca:     marca     || undefined,
-        page:      newPage,
-        page_size: PAGE_SIZE,
+        q:             q             || undefined,
+        tienda:        tienda        || undefined,
+        categoria:     categoria     || undefined,
+        marca:         marca         || undefined,
+        con_descuento: conDescuento  || undefined,
+        page:          newPage,
+        page_size:     PAGE_SIZE,
       });
       setResult(data);
       setPage(newPage);
@@ -94,13 +104,13 @@ export default function PreciosPage() {
     } finally {
       setLoading(false);
     }
-  }, [q, tienda, categoria, marca]);
+  }, [q, tienda, categoria, marca, conDescuento]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => load(1), 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [q, tienda, categoria, marca]);
+  }, [q, tienda, categoria, marca, conDescuento]);
 
   const totalPages = result ? Math.ceil(result.total / PAGE_SIZE) : 1;
 
@@ -156,6 +166,16 @@ export default function PreciosPage() {
           placeholder="Marca…"
           className="input text-sm min-w-[140px] w-auto"
         />
+
+        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={conDescuento}
+            onChange={(e) => { setConDescuento(e.target.checked); setPage(1); }}
+            className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+          />
+          Solo ofertas
+        </label>
       </div>
 
       {/* Tabla */}

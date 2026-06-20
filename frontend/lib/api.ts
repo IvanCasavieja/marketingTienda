@@ -242,14 +242,15 @@ export interface PreciosListResponse {
 
 export const preciosApi = {
   list: (params: {
-    tienda?:    string;
-    categoria?: string;
-    marca?:     string;
-    q?:         string;
-    precio_min?: number;
-    precio_max?: number;
-    page?:      number;
-    page_size?: number;
+    tienda?:        string;
+    categoria?:     string;
+    marca?:         string;
+    q?:             string;
+    precio_min?:    number;
+    precio_max?:    number;
+    con_descuento?: boolean;
+    page?:          number;
+    page_size?:     number;
   }) => api.get<PreciosListResponse>("/precios", { params }),
 
   tiendas:    () => api.get<string[]>("/precios/tiendas"),
