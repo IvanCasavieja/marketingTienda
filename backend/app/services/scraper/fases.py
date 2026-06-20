@@ -123,21 +123,35 @@ def link_a_url_producto(base: str, link: str) -> str | None:
     return base + partes[0] + "-" + partes[1] + "/p"
 
 
-def scroll_categoria(page, url: str, max_pasos: int = 60,
-                     espera_ms: int = 700, paso_px: int = 400) -> set:
+def scroll_categoria(page, url: str, max_pasos: int = 150,
+                     espera_ms: int = 1200, paso_px: int = 800) -> set:
     page.goto(url, timeout=30000)
-    page.wait_for_timeout(4000)
+    # Blazor Server usa SignalR (WS abierto), networkidle puede no disparar — toleramos timeout
+    try:
+        page.wait_for_load_state("networkidle", timeout=8000)
+    except Exception:
+        page.wait_for_timeout(5000)
+
+    # acumulados: unión de todos los links vistos en cualquier momento del scroll.
+    # Necesario porque GDU hace virtual scroll: desmonta productos fuera de pantalla,
+    # por lo que page.content() solo contiene los actualmente renderizados.
+    acumulados = set()
     vistos = set(re.findall(r'href="(/product/[^"]+)"', page.content()))
+    acumulados |= vistos
     sin_cambios = 0
+
     for _ in range(max_pasos):
         page.mouse.wheel(0, paso_px)
         page.wait_for_timeout(espera_ms)
         nuevos = set(re.findall(r'href="(/product/[^"]+)"', page.content()))
-        sin_cambios = 0 if len(nuevos) != len(vistos) else sin_cambios + 1
+        # Comparar sets, no lengths: virtual scroll puede tener mismo count pero distinto contenido
+        sin_cambios = 0 if nuevos != vistos else sin_cambios + 1
         vistos = nuevos
-        if sin_cambios >= 6:
+        acumulados |= nuevos
+        if sin_cambios >= 10:
             break
-    return vistos
+
+    return acumulados
 
 
 def extraer_lote_gdu(urls: list, workers: int = 4) -> tuple:
@@ -188,26 +202,29 @@ def run_gdu_fase(fase: int):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         for tienda, items in pendientes_por_tienda.items():
-            page = browser.new_page(viewport={"width": 1280, "height": 900})
-            try:
-                for slug, base in items:
-                    url = f"{base}/{slug}"
-                    log.info("GDU [%s] %s", tienda, slug)
-                    try:
-                        links = scroll_categoria(page, url)
-                        if links:
-                            urls = [link_a_url_producto(base, lk) for lk in links]
-                            urls = [u for u in urls if u]
-                            g, e = extraer_lote_gdu(urls)
-                            fase_guardados += g
-                            fase_errores   += e
-                            log.info("GDU [%s] %s: g=%d e=%d", tienda, slug, g, e)
-                        prog["completados"].append(f"{tienda}::{slug}")
-                        guardar_progreso(PROGRESO_GDU, prog)
-                    except Exception as ex:
-                        log.warning("GDU [%s] %s ERROR: %s", tienda, slug, str(ex)[:100])
-            finally:
-                page.close()
+            for slug, base in items:
+                url = f"{base}/{slug}"
+                log.info("GDU [%s] %s", tienda, slug)
+                page = browser.new_page(viewport={"width": 1280, "height": 900})
+                try:
+                    links = scroll_categoria(page, url)
+                    if links:
+                        urls = [link_a_url_producto(base, lk) for lk in links]
+                        urls = [u for u in urls if u]
+                        g, e = extraer_lote_gdu(urls)
+                        fase_guardados += g
+                        fase_errores   += e
+                        log.info("GDU [%s] %s: links=%d guardados=%d errores=%d",
+                                 tienda, slug, len(links), g, e)
+                    else:
+                        log.info("GDU [%s] %s: 0 links encontrados", tienda, slug)
+                    # Solo marcar completado si la página cargó (aunque tenga 0 productos)
+                    prog["completados"].append(f"{tienda}::{slug}")
+                    guardar_progreso(PROGRESO_GDU, prog)
+                except Exception as ex:
+                    log.warning("GDU [%s] %s ERROR: %s", tienda, slug, str(ex)[:150])
+                finally:
+                    page.close()
         browser.close()
 
     prog["total_guardados"] = prog.get("total_guardados", 0) + fase_guardados
@@ -472,8 +489,12 @@ def run_full():
     """Raspa Tata, Farmashop y GDU. Tienda Inglesa deshabilitada (170k productos, cobertura GDU aún baja)."""
     log.info("=== FULL SCAN INICIADO ===")
 
-    # Limpiar SQLite para empezar fresco
+    # Limpiar SQLite y archivos de progreso para empezar completamente fresco.
+    # Sin esto, el segundo run nocturno saltea todo porque los slugs siguen en "completados".
     store.limpiar()
+    for _prog in (PROGRESO_GDU, PROGRESO_TATA, PROGRESO_FARMASHOP, PROGRESO_TI):
+        if _prog.exists():
+            _prog.unlink()
 
     for fase in (1, 2, 3, 4):
         run_tata_fase(fase)
