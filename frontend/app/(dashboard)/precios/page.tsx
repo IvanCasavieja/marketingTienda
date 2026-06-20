@@ -175,17 +175,16 @@ export default function PreciosPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [q, tienda, categoria, marca, conDescuento, sortBy, sortDir]);
 
-  const activeResult = fechaSeleccionada ? historialResult : result;
-  const activeLoading = fechaSeleccionada ? loadingHistorial : loading;
-  const totalPages = activeResult ? Math.ceil(activeResult.total / PAGE_SIZE) : 1;
-
   const [exporting,         setExporting]         = useState(false);
   const [fechasHistorial,   setFechasHistorial]   = useState<string[]>([]);
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string | null>(null);
   const [historialResult,   setHistorialResult]   = useState<{ total: number; page: number; items: Producto[] } | null>(null);
   const [loadingHistorial,  setLoadingHistorial]  = useState(false);
 
-  const scanActive = progress?.running ?? false;
+  const scanActive    = progress?.running ?? false;
+  const activeResult  = fechaSeleccionada ? historialResult : result;
+  const activeLoading = fechaSeleccionada ? loadingHistorial : loading;
+  const totalPages    = activeResult ? Math.ceil(activeResult.total / PAGE_SIZE) : 1;
 
   async function handleTrigger() {
     setTriggering(true);
