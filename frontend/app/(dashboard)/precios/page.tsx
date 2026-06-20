@@ -6,11 +6,12 @@ import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag } from "lucide-rea
 import { toast } from "sonner";
 
 const TIENDA_COLORS: Record<string, string> = {
-  "Disco":     "bg-blue-50 text-blue-700",
-  "Devoto":    "bg-green-50 text-green-700",
-  "Géant":     "bg-purple-50 text-purple-700",
-  "Ta-Ta":     "bg-red-50 text-red-700",
-  "Farmashop": "bg-orange-50 text-orange-700",
+  "Disco":           "bg-blue-50 text-blue-700",
+  "Devoto":          "bg-green-50 text-green-700",
+  "Géant":           "bg-purple-50 text-purple-700",
+  "Ta-Ta":           "bg-red-50 text-red-700",
+  "Farmashop":       "bg-orange-50 text-orange-700",
+  "Tienda Inglesa":  "bg-teal-50 text-teal-700",
 };
 
 function TiendaBadge({ tienda }: { tienda: string }) {
