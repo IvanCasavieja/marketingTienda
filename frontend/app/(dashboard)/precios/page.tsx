@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type Producto, type PreciosListResponse, type TiendaStats } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
-import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -284,15 +284,26 @@ export default function PreciosPage() {
                       <PrecioBadge precio={p.precio} precioLista={p.precio_lista} />
                     </td>
                     <td className="table-td">
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-slate-400 hover:text-brand-600 transition-colors"
-                        title="Ver en tienda"
-                      >
-                        <ExternalLink size={13} />
-                      </a>
+                      <div className="flex items-center gap-2">
+                        {p.barcode && (
+                          <Link
+                            href={`/precios/comparar?barcode=${encodeURIComponent(p.barcode)}`}
+                            className="text-slate-300 hover:text-brand-600 transition-colors"
+                            title="Comparar en otras tiendas"
+                          >
+                            <GitCompare size={13} />
+                          </Link>
+                        )}
+                        <a
+                          href={p.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-slate-400 hover:text-brand-600 transition-colors"
+                          title="Ver en tienda"
+                        >
+                          <ExternalLink size={13} />
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 ))

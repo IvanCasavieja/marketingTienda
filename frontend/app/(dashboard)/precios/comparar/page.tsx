@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { preciosApi, type CompararGrupo, type CompararTiendaItem } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
 import { Search, ExternalLink, ArrowRight, Scale } from "lucide-react";
@@ -94,10 +95,13 @@ function GrupoRow({ grupo }: { grupo: CompararGrupo }) {
   );
 }
 
-export default function CompararPage() {
-  const [q,       setQ]       = useState("");
-  const [grupos,  setGrupos]  = useState<CompararGrupo[]>([]);
-  const [loading, setLoading] = useState(false);
+function CompararContent() {
+  const searchParams = useSearchParams();
+  const barcodeParam = searchParams.get("barcode");
+
+  const [q,        setQ]        = useState(barcodeParam ?? "");
+  const [grupos,   setGrupos]   = useState<CompararGrupo[]>([]);
+  const [loading,  setLoading]  = useState(false);
   const [searched, setSearched] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -110,23 +114,28 @@ export default function CompararPage() {
     setLoading(true);
     setSearched(true);
     try {
-      const { data } = await preciosApi.comparar({ q: query, limit: 50 });
+      const params = barcodeParam && query === barcodeParam
+        ? { barcode: query, limit: 50 }
+        : { q: query, limit: 50 };
+      const { data } = await preciosApi.comparar(params);
       setGrupos(data.grupos);
     } catch {
       toast.error("Error al buscar");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [barcodeParam]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => search(q), 500);
+    const delay = barcodeParam ? 0 : 500;
+    debounceRef.current = setTimeout(() => search(q), delay);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [q, search]);
+  }, [q, search, barcodeParam]);
 
   return (
     <div className="p-6 lg:p-8 max-w-5xl mx-auto space-y-5">
+
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="section-title flex items-center gap-2">
@@ -184,5 +193,13 @@ export default function CompararPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function CompararPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-slate-400 text-sm">Cargando…</div>}>
+      <CompararContent />
+    </Suspense>
   );
 }
