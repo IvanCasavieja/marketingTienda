@@ -76,7 +76,8 @@ export default function PreciosPage() {
   const [loading,    setLoading]    = useState(true);
   const [stats,        setStats]        = useState<TiendaStats[] | null>(null);
   const [scraperInfo,  setScraperInfo]  = useState<{ status: string; last_run: string | null; next_run: string | null; last_total: number | null } | null>(null);
-  const [triggering,   setTriggering]   = useState(false);
+  const [triggering,    setTriggering]    = useState(false);
+  const [triggeringGdu, setTriggeringGdu] = useState(false);
 
   const [q,            setQ]           = useState("");
   const [tienda,       setTienda]      = useState("");
@@ -139,12 +140,25 @@ export default function PreciosPage() {
     setTriggering(true);
     try {
       await preciosApi.scraperTrigger();
-      toast.success("Scraping iniciado — puede tardar hasta 2 horas");
+      toast.success("Scraping completo iniciado — puede tardar hasta 2 horas");
       setTimeout(() => preciosApi.scraperStatus().then(({ data }) => setScraperInfo(data)).catch(() => {}), 2000);
     } catch {
       toast.error("Ya hay un scraping en curso");
     } finally {
       setTriggering(false);
+    }
+  }
+
+  async function handleTriggerGdu() {
+    setTriggeringGdu(true);
+    try {
+      await preciosApi.scraperTriggerGdu();
+      toast.success("Scan GDU iniciado — Geant, Disco y Devoto");
+      setTimeout(() => preciosApi.scraperStatus().then(({ data }) => setScraperInfo(data)).catch(() => {}), 2000);
+    } catch {
+      toast.error("Ya hay un scraping en curso");
+    } finally {
+      setTriggeringGdu(false);
     }
   }
 
@@ -240,15 +254,26 @@ export default function PreciosPage() {
               Próximo: {new Date(scraperInfo.next_run).toLocaleString("es-UY")}
             </span>
           )}
-          <button
-            onClick={handleTrigger}
-            disabled={triggering || scraperInfo.status === "running"}
-            className="ml-auto btn-ghost text-[11px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
-            title="Iniciar scraping manual ahora"
-          >
-            <RefreshCw size={11} className={triggering ? "animate-spin" : ""} />
-            Escanear ahora
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={handleTriggerGdu}
+              disabled={triggeringGdu || scraperInfo.status === "running"}
+              className="btn-ghost text-[11px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
+              title="Escanear solo Geant, Disco y Devoto"
+            >
+              <RefreshCw size={11} className={triggeringGdu ? "animate-spin" : ""} />
+              Solo GDU
+            </button>
+            <button
+              onClick={handleTrigger}
+              disabled={triggering || scraperInfo.status === "running"}
+              className="btn-ghost text-[11px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
+              title="Iniciar scraping completo de todas las tiendas"
+            >
+              <RefreshCw size={11} className={triggering ? "animate-spin" : ""} />
+              Escanear todo
+            </button>
+          </div>
         </div>
       )}
 

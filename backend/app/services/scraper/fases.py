@@ -509,3 +509,24 @@ def run_full():
     for t, n in sorted(totales.items()):
         log.info("  %s: %d", t, n)
     return total
+
+
+def run_gdu_only() -> int:
+    """Raspa solo GDU (Geant, Disco, Devoto) y deja los productos en SQLite.
+    No toca Tata ni Farmashop. El sync posterior hace upsert por URL,
+    actualizando solo registros GDU sin duplicar ni borrar los de otras tiendas."""
+    log.info("=== GDU SCAN INICIADO ===")
+
+    store.limpiar()
+    if PROGRESO_GDU.exists():
+        PROGRESO_GDU.unlink()
+
+    for fase in (1, 2, 3, 4):
+        run_gdu_fase(fase)
+
+    totales = store.contar()
+    total   = sum(totales.values())
+    log.info("=== GDU SCAN COMPLETADO — %d productos ===", total)
+    for t, n in sorted(totales.items()):
+        log.info("  %s: %d", t, n)
+    return total

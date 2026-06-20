@@ -303,7 +303,8 @@ export const preciosApi = {
       next_run:   string | null;
       schedule:   string;
     }>("/precios/scraper/status"),
-  scraperTrigger: () => api.post("/precios/scraper/trigger"),
+  scraperTrigger:    () => api.post("/precios/scraper/trigger"),
+  scraperTriggerGdu: () => api.post("/precios/scraper/trigger-gdu"),
 
   exportCsv: (params: {
     tienda?:        string;

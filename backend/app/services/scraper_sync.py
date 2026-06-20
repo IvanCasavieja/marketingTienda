@@ -72,6 +72,17 @@ async def trigger_manual() -> bool:
     return True
 
 
+async def trigger_gdu() -> bool:
+    """Lanza un scan de solo GDU (Geant/Disco/Devoto) si no hay otro corriendo."""
+    from app.core.redis_client import get_redis
+    redis = get_redis()
+    is_running = await redis.get(_REDIS_STATUS)
+    if is_running and is_running.decode() == "running":
+        return False
+    asyncio.create_task(_execute_gdu())
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Ejecución real
 # ---------------------------------------------------------------------------
@@ -112,6 +123,43 @@ def _run_blocking() -> int:
     """Corre en ThreadPoolExecutor — no bloquea el event loop."""
     from app.services.scraper.fases import run_full
     return run_full()
+
+
+async def _execute_gdu() -> None:
+    from app.core.redis_client import get_redis
+    redis = get_redis()
+
+    acquired = await redis.set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
+    if not acquired:
+        logger.info("scraper_sync: lock activo, saltando")
+        return
+
+    try:
+        await redis.set(_REDIS_STATUS, "running")
+        logger.info("scraper_sync: iniciando GDU-only scan")
+
+        loop = asyncio.get_event_loop()
+        total = await loop.run_in_executor(None, _run_blocking_gdu)
+
+        await _sync_to_postgres()
+
+        now = datetime.now(timezone.utc).isoformat()
+        await redis.set(_REDIS_LAST, now)
+        await redis.set(_REDIS_TOTAL, str(total))
+        await redis.set(_REDIS_STATUS, "idle")
+        logger.info("scraper_sync: GDU scan completado — %d productos", total)
+
+    except Exception as exc:
+        await redis.set(_REDIS_STATUS, f"error: {str(exc)[:200]}")
+        logger.error("scraper_sync: GDU scan falló: %s", exc, exc_info=True)
+        raise
+    finally:
+        await redis.delete(_REDIS_LOCK)
+
+
+def _run_blocking_gdu() -> int:
+    from app.services.scraper.fases import run_gdu_only
+    return run_gdu_only()
 
 
 async def _sync_to_postgres() -> None:
