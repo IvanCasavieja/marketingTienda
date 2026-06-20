@@ -58,14 +58,40 @@ async def run_scraper_loop() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Helpers Redis — silently degradan si Redis no está disponible
+# ---------------------------------------------------------------------------
+
+async def _r_get(key: str) -> bytes | None:
+    try:
+        from app.core.redis_client import get_redis
+        return await get_redis().get(key)
+    except Exception:
+        return None
+
+
+async def _r_set(key: str, value, **kwargs) -> bool:
+    try:
+        from app.core.redis_client import get_redis
+        return bool(await get_redis().set(key, value, **kwargs))
+    except Exception:
+        return True  # sin Redis asumimos éxito para no bloquear
+
+
+async def _r_del(key: str) -> None:
+    try:
+        from app.core.redis_client import get_redis
+        await get_redis().delete(key)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Trigger manual (desde endpoint de admin)
 # ---------------------------------------------------------------------------
 
 async def trigger_manual() -> bool:
     """Lanza el scraper ahora si no hay otro corriendo. Retorna True si se lanzó."""
-    from app.core.redis_client import get_redis
-    redis = get_redis()
-    is_running = await redis.get(_REDIS_STATUS)
+    is_running = await _r_get(_REDIS_STATUS)
     if is_running and is_running.decode() == "running":
         return False
     asyncio.create_task(_execute())
@@ -74,9 +100,7 @@ async def trigger_manual() -> bool:
 
 async def trigger_gdu() -> bool:
     """Lanza un scan de solo GDU (Geant/Disco/Devoto) si no hay otro corriendo."""
-    from app.core.redis_client import get_redis
-    redis = get_redis()
-    is_running = await redis.get(_REDIS_STATUS)
+    is_running = await _r_get(_REDIS_STATUS)
     if is_running and is_running.decode() == "running":
         return False
     asyncio.create_task(_execute_gdu())
@@ -88,16 +112,13 @@ async def trigger_gdu() -> bool:
 # ---------------------------------------------------------------------------
 
 async def _execute() -> None:
-    from app.core.redis_client import get_redis
-    redis = get_redis()
-
-    acquired = await redis.set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
+    acquired = await _r_set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
     if not acquired:
         logger.info("scraper_sync: lock activo, saltando")
         return
 
     try:
-        await redis.set(_REDIS_STATUS, "running")
+        await _r_set(_REDIS_STATUS, "running")
         logger.info("scraper_sync: iniciando full scan")
 
         loop = asyncio.get_event_loop()
@@ -106,17 +127,17 @@ async def _execute() -> None:
         await _sync_to_postgres()
 
         now = datetime.now(timezone.utc).isoformat()
-        await redis.set(_REDIS_LAST, now)
-        await redis.set(_REDIS_TOTAL, str(total))
-        await redis.set(_REDIS_STATUS, "idle")
+        await _r_set(_REDIS_LAST, now)
+        await _r_set(_REDIS_TOTAL, str(total))
+        await _r_set(_REDIS_STATUS, "idle")
         logger.info("scraper_sync: completado — %d productos", total)
 
     except Exception as exc:
-        await redis.set(_REDIS_STATUS, f"error: {str(exc)[:200]}")
+        await _r_set(_REDIS_STATUS, f"error: {str(exc)[:200]}")
         logger.error("scraper_sync: falló: %s", exc, exc_info=True)
         raise
     finally:
-        await redis.delete(_REDIS_LOCK)
+        await _r_del(_REDIS_LOCK)
 
 
 def _run_blocking() -> int:
@@ -126,16 +147,13 @@ def _run_blocking() -> int:
 
 
 async def _execute_gdu() -> None:
-    from app.core.redis_client import get_redis
-    redis = get_redis()
-
-    acquired = await redis.set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
+    acquired = await _r_set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
     if not acquired:
         logger.info("scraper_sync: lock activo, saltando")
         return
 
     try:
-        await redis.set(_REDIS_STATUS, "running")
+        await _r_set(_REDIS_STATUS, "running")
         logger.info("scraper_sync: iniciando GDU-only scan")
 
         loop = asyncio.get_event_loop()
@@ -144,17 +162,17 @@ async def _execute_gdu() -> None:
         await _sync_to_postgres()
 
         now = datetime.now(timezone.utc).isoformat()
-        await redis.set(_REDIS_LAST, now)
-        await redis.set(_REDIS_TOTAL, str(total))
-        await redis.set(_REDIS_STATUS, "idle")
+        await _r_set(_REDIS_LAST, now)
+        await _r_set(_REDIS_TOTAL, str(total))
+        await _r_set(_REDIS_STATUS, "idle")
         logger.info("scraper_sync: GDU scan completado — %d productos", total)
 
     except Exception as exc:
-        await redis.set(_REDIS_STATUS, f"error: {str(exc)[:200]}")
+        await _r_set(_REDIS_STATUS, f"error: {str(exc)[:200]}")
         logger.error("scraper_sync: GDU scan falló: %s", exc, exc_info=True)
         raise
     finally:
-        await redis.delete(_REDIS_LOCK)
+        await _r_del(_REDIS_LOCK)
 
 
 def _run_blocking_gdu() -> int:
