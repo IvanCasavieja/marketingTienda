@@ -469,7 +469,7 @@ def run_ti_fase(fase: int):
 # ---------------------------------------------------------------------------
 
 def run_full():
-    """Raspa las 4 fuentes completas. Deja los productos en store.DB_PATH."""
+    """Raspa Tata, Farmashop y GDU. Tienda Inglesa deshabilitada (170k productos, cobertura GDU aún baja)."""
     log.info("=== FULL SCAN INICIADO ===")
 
     # Limpiar SQLite para empezar fresco
@@ -479,8 +479,6 @@ def run_full():
         run_tata_fase(fase)
     for fase in (1, 2, 3, 4):
         run_farmashop_fase(fase)
-    for fase in (1, 2, 3, 4):
-        run_ti_fase(fase)
     for fase in (1, 2, 3, 4):
         run_gdu_fase(fase)
 
