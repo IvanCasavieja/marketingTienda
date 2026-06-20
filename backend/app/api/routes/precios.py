@@ -8,16 +8,17 @@ Endpoints públicos (requieren JWT de usuario):
   GET  /precios/{id}         — detalle de un producto
 
 Endpoint de sincronización (requiere APP_SECRET_KEY en header X-Sync-Key):
-  POST /precios/sync         — bulk upsert desde el scraper
+  POST /precios/sync         — bulk upsert desde el scraper (INSERT ... ON CONFLICT)
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import APIKeyHeader
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -46,42 +47,53 @@ async def _require_sync_key(key: Optional[str] = Depends(_sync_key_scheme)):
 
 @router.post("/sync", response_model=SyncResult, dependencies=[Depends(_require_sync_key)])
 async def sync_productos(payload: SyncPayload, db: AsyncSession = Depends(get_db)):
-    """Bulk upsert de productos. Autenticación: header X-Sync-Key = APP_SECRET_KEY."""
+    """Bulk upsert via PostgreSQL INSERT ... ON CONFLICT DO UPDATE.
+    Un solo statement por batch — eficiente para 45k+ productos.
+    """
     if not payload.productos:
         return SyncResult(upsertados=0, total_enviados=0)
 
-    upsertados = 0
+    now = datetime.now(timezone.utc)
+    rows = []
     for item in payload.productos:
         ts = None
         if item.actualizado_en:
             try:
                 ts = datetime.fromisoformat(item.actualizado_en)
             except ValueError:
-                ts = None
+                ts = now
+        rows.append({
+            "tienda":        item.tienda,
+            "url":           item.url,
+            "nombre":        item.nombre,
+            "precio":        item.precio,
+            "precio_lista":  item.precio_lista,
+            "sku":           item.sku,
+            "barcode":       item.barcode,
+            "marca":         item.marca,
+            "categoria":     item.categoria,
+            "actualizado_en": ts or now,
+        })
 
-        result = await db.execute(
-            select(Producto).where(Producto.url == item.url)
-        )
-        prod = result.scalar_one_or_none()
+    stmt = pg_insert(Producto).values(rows)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["url"],
+        set_={
+            "tienda":        stmt.excluded.tienda,
+            "nombre":        stmt.excluded.nombre,
+            "precio":        stmt.excluded.precio,
+            "precio_lista":  stmt.excluded.precio_lista,
+            "sku":           stmt.excluded.sku,
+            "barcode":       stmt.excluded.barcode,
+            "marca":         stmt.excluded.marca,
+            "categoria":     stmt.excluded.categoria,
+            "actualizado_en": stmt.excluded.actualizado_en,
+        },
+    )
 
-        if prod is None:
-            prod = Producto(url=item.url)
-            db.add(prod)
-
-        prod.tienda       = item.tienda
-        prod.nombre       = item.nombre
-        prod.precio       = item.precio
-        prod.precio_lista = item.precio_lista
-        prod.sku          = item.sku
-        prod.barcode      = item.barcode
-        prod.marca        = item.marca
-        prod.categoria    = item.categoria
-        prod.actualizado_en = ts
-        upsertados += 1
-
-    await db.flush()
-    logger.info("sync_productos: %d upsertados", upsertados)
-    return SyncResult(upsertados=upsertados, total_enviados=len(payload.productos))
+    await db.execute(stmt)
+    logger.info("sync_productos: %d upsertados", len(rows))
+    return SyncResult(upsertados=len(rows), total_enviados=len(payload.productos))
 
 
 # ---------------------------------------------------------------------------
@@ -105,9 +117,7 @@ async def listar_categorias(
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    q = select(Producto.categoria).distinct().where(
-        Producto.categoria.isnot(None)
-    )
+    q = select(Producto.categoria).distinct().where(Producto.categoria.isnot(None))
     if tienda:
         q = q.where(Producto.tienda == tienda)
     rows = await db.execute(q.order_by(Producto.categoria))
@@ -127,7 +137,7 @@ async def listar_precios(
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    base = select(Producto)
+    base    = select(Producto)
     count_q = select(func.count()).select_from(Producto)
 
     filters = []
