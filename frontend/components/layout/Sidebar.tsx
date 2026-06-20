@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
-  BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, ShieldCheck, HelpCircle, X,
+  BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, ShieldCheck, HelpCircle, X, Tag,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, connectionsApi } from "@/lib/api";
@@ -40,6 +40,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/herramientas/cenefas",    label: "Generar cenefas",      icon: Presentation,     section: t("sidebar.herramientas"),    restricted: false },
     { href: "/herramientas/cenefas/v2", label: "Editor de plantillas", icon: Layers,           section: t("sidebar.herramientas"),    restricted: false },
     { href: "/herramientas/cenefas/v2/jobs", label: "Historial",       icon: Clock,            section: t("sidebar.herramientas"),    restricted: false },
+    { href: "/precios",                 label: "Catálogo de precios",  icon: Tag,              section: t("sidebar.herramientas"),    restricted: false },
     { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion"),   restricted: false },
     { href: "/ayuda",                   label: "Guía de uso",          icon: HelpCircle,       section: t("sidebar.configuracion"),   restricted: false },
     ...(currentUser?.is_superuser
