@@ -12,10 +12,63 @@
     "almacen/canasta-familiar/legumbres",
     "almacen/canasta-familiar/pan-rallado"
   ],
+  "Almacén > Desayuno Merienda y Postres": [
+    "almacen/desayuno-merienda-y-postres/cereales",
+    "almacen/desayuno-merienda-y-postres/cafe-y-cebada",
+    "almacen/desayuno-merienda-y-postres/azucar",
+    "almacen/desayuno-merienda-y-postres/galletas-dulces",
+    "almacen/desayuno-merienda-y-postres/galletas-saladas",
+    "almacen/desayuno-merienda-y-postres/mermeladas-dulces-y-miel"
+  ],
+  "Bebidas": [
+    "bebidas/aguas",
+    "bebidas/aperitivos",
+    "bebidas/bebidas-blancas",
+    "bebidas/cervezas",
+    "bebidas/cigarrillos",
+    "bebidas/destiladas",
+    "bebidas/energeticas-e-isotonicas",
+    "bebidas/espumantes",
+    "bebidas/jugos-en-polvo",
+    "bebidas/jugos-liquidos",
+    "bebidas/licores",
+    "bebidas/refrescos",
+    "bebidas/vinos-de-mesa",
+    "bebidas/vinos-finos",
+    "bebidas/whisky"
+  ],
+  "Perfumería y Limpieza > Limpieza": [
+    "perfumeria-y-limpieza/limpieza/accesorios-del-hogar",
+    "perfumeria-y-limpieza/limpieza/cuidado-ropa",
+    "perfumeria-y-limpieza/limpieza/desodorantes-de-ambiente",
+    "perfumeria-y-limpieza/limpieza/detergentes-lavavajillas",
+    "perfumeria-y-limpieza/limpieza/insecticida",
+    "perfumeria-y-limpieza/limpieza/lavandinas",
+    "perfumeria-y-limpieza/limpieza/limpieza-hogar",
+    "perfumeria-y-limpieza/limpieza/rollos-de-cocina-y-servilletas"
+  ],
+  "Perfumería y Limpieza > Perfumería": [
+    "perfumeria-y-limpieza/perfumeria/belleza",
+    "perfumeria-y-limpieza/perfumeria/cepillos-dentales-enjuagues-e-hilo",
+    "perfumeria-y-limpieza/perfumeria/coloracion",
+    "perfumeria-y-limpieza/perfumeria/cuidado-cabello",
+    "perfumeria-y-limpieza/perfumeria/desodorantes",
+    "perfumeria-y-limpieza/perfumeria/higiene-femenina",
+    "perfumeria-y-limpieza/perfumeria/jabon-de-tocador",
+    "perfumeria-y-limpieza/perfumeria/material-de-afeitar",
+    "perfumeria-y-limpieza/perfumeria/panales",
+    "perfumeria-y-limpieza/perfumeria/papel-higienico",
+    "perfumeria-y-limpieza/perfumeria/parafarmacia",
+    "perfumeria-y-limpieza/perfumeria/pasta-dental",
+    "perfumeria-y-limpieza/perfumeria/perfumeria",
+    "perfumeria-y-limpieza/perfumeria/productos-solares",
+    "perfumeria-y-limpieza/perfumeria/tocador-bebe"
+  ],
   "Frescos": [
     "frescos/carniceria",
     "frescos/confiteria",
     "frescos/congelados",
+    "frescos/dulces-y-mermeladas",
     "frescos/fiambres",
     "frescos/frutas-y-verduras",
     "frescos/lacteos",
@@ -25,40 +78,71 @@
     "frescos/quesos",
     "frescos/rotiseria"
   ],
-  "Bebidas": [
-    "bebidas/cervezas",
-    "bebidas/refrescos",
-    "bebidas/aguas",
-    "bebidas/whisky",
-    "bebidas/espumantes",
-    "bebidas/bebidas-blancas",
-    "bebidas/jugos-en-polvo",
-    "bebidas/licores",
-    "bebidas/aperitivos",
-    "bebidas/energeticas-e-isotonicas",
-    "bebidas/destiladas",
-    "bebidas/vinos-finos",
-    "bebidas/vinos-de-mesa"
+  "Frescos > Carnicería": [
+    "frescos/carniceria/accesorios-de-parrilla",
+    "frescos/carniceria/carnes-especiales",
+    "frescos/carniceria/carnes-rojas",
+    "frescos/carniceria/chacinados",
+    "frescos/carniceria/elaborados",
+    "frescos/carniceria/grasas",
+    "frescos/carniceria/pollo"
   ],
-  "Perfumería y Limpieza > Limpieza": [
-    "perfumeria-y-limpieza/limpieza/limpieza-hogar",
-    "perfumeria-y-limpieza/limpieza/accesorios-del-hogar",
-    "perfumeria-y-limpieza/limpieza/cuidado-ropa",
-    "perfumeria-y-limpieza/limpieza/insecticida",
-    "perfumeria-y-limpieza/limpieza/desodorantes-de-ambiente",
-    "perfumeria-y-limpieza/limpieza/rollos-de-cocina-y-servilletas",
-    "perfumeria-y-limpieza/limpieza/lavandinas"
+  "Frescos > Congelados": [
+    "frescos/congelados/comidas-preparadas",
+    "frescos/congelados/frutas-y-verduras-congeladas",
+    "frescos/congelados/hamburguesas",
+    "frescos/congelados/helados-y-postres-helados",
+    "frescos/congelados/papas-congeladas",
+    "frescos/congelados/pescados-congelados",
+    "frescos/congelados/pre-fritos-rebozados"
   ],
-  "Perfumería y Limpieza > Perfumería": [
-    "perfumeria-y-limpieza/perfumeria/desodorantes",
-    "perfumeria-y-limpieza/perfumeria/belleza",
-    "perfumeria-y-limpieza/perfumeria/coloracion",
-    "perfumeria-y-limpieza/perfumeria/cuidado-cabello",
-    "perfumeria-y-limpieza/perfumeria/higiene-femenina"
+  "Frescos > Lácteos": [
+    "frescos/lacteos/cremas",
+    "frescos/lacteos/huevos",
+    "frescos/lacteos/jugos-frescos",
+    "frescos/lacteos/leches",
+    "frescos/lacteos/mantecas-margarinas-y-levaduras",
+    "frescos/lacteos/pastas-y-salsas",
+    "frescos/lacteos/pizzas-frescas-y-otros",
+    "frescos/lacteos/postres",
+    "frescos/lacteos/yogures"
+  ],
+  "Frescos > Frutas y Verduras": [
+    "frescos/frutas-y-verduras/frutas",
+    "frescos/frutas-y-verduras/verduras",
+    "frescos/frutas-y-verduras/frutos-secos",
+    "frescos/frutas-y-verduras/verduras-y-frutas-organicas"
+  ],
+  "Mascotas": [
+    "mascotas/accesorios",
+    "mascotas/alimentos-para-mascotas",
+    "mascotas/casillas-y-camas",
+    "mascotas/cuidado-de-mascota"
+  ],
+  "TV y Audio": [
+    "tv-y-audio/tv",
+    "tv-y-audio/audio",
+    "tv-y-audio/audio/auriculares",
+    "tv-y-audio/audio/barra-de-sonido",
+    "tv-y-audio/audio/home-theater",
+    "tv-y-audio/audio/microcomponente",
+    "tv-y-audio/audio/minicomponente",
+    "tv-y-audio/audio/parlante",
+    "tv-y-audio/reproductores",
+    "tv-y-audio/accesorios"
+  ],
+  "Celulares y Telefonía": [
+    "celulares-y-telefonia/accesorios",
+    "celulares-y-telefonia/celulares-libres",
+    "celulares-y-telefonia/smartwatch",
+    "celulares-y-telefonia/telefonos-fijos",
+    "celulares-y-telefonia/telefonos-inalambricos"
   ],
   "Electrodomésticos": [
     "electrodomesticos/auxiliares-de-cocina",
     "electrodomesticos/climatizacion",
+    "electrodomesticos/climatizacion/aire-acondicionado",
+    "electrodomesticos/climatizacion/calefaccion",
     "electrodomesticos/cocinas",
     "electrodomesticos/heladeras-y-freezers",
     "electrodomesticos/higiene-y-belleza",
@@ -67,44 +151,201 @@
     "electrodomesticos/termotanques"
   ],
   "Tecnología": [
-    "tecnologia/informatica",
-    "tecnologia/consolas-y-video-juegos"
-  ],
-  "Celulares y Telefonía": [
-    "celulares-y-telefonia/telefonos-fijos"
-  ],
-  "Almacén > Desayuno Merienda y Postres": [
-    "almacen/desayuno-merienda-y-postres/cereales",
-    "almacen/desayuno-merienda-y-postres/cafe-y-cebada",
-    "almacen/desayuno-merienda-y-postres/azucar",
-    "almacen/desayuno-merienda-y-postres/galletas-dulces",
-    "almacen/desayuno-merienda-y-postres/galletas-saladas",
-    "almacen/desayuno-merienda-y-postres/mermeladas-dulces-y-miel"
-  ],
-  "Hogar": [
-    "hogar/termos-y-mates",
-    "hogar/vajilla-plastica"
-  ],
-  "Frescos > Carnicería (detalle)": [
-    "frescos/carniceria/carnes-rojas",
-    "frescos/carniceria/chacinados",
-    "frescos/carniceria/pollo",
-    "frescos/carniceria/carnes-especiales"
-  ],
-  "TV y Audio": [
-    "tv-y-audio/tv",
-    "tv-y-audio/audio"
-  ],
-  "Celulares y Telefonía (detalle)": [
-    "celulares-y-telefonia/telefonos-inalambricos"
-  ],
-  "Tecnología (detalle)": [
-    "tecnologia/informatica",
     "tecnologia/consolas-y-video-juegos",
+    "tecnologia/fotografia-y-video",
+    "tecnologia/hogar-digital",
+    "tecnologia/informatica",
+    "tecnologia/informatica/almacenamiento",
+    "tecnologia/informatica/componentes-pc",
+    "tecnologia/informatica/conectividad",
+    "tecnologia/informatica/drones",
+    "tecnologia/informatica/impresoras",
+    "tecnologia/informatica/insumos-de-impresoras",
     "tecnologia/informatica/monitores",
-    "tecnologia/informatica/impresoras"
+    "tecnologia/informatica/notebook",
+    "tecnologia/informatica/perifericos-y-accesorios",
+    "tecnologia/informatica/proyectores-y-pantallas",
+    "tecnologia/informatica/tablet",
+    "tecnologia/seguridad",
+    "tecnologia/seguridad/camara-exterior",
+    "tecnologia/seguridad/camara-interior"
   ],
-  "Electrodomésticos > Climatización (detalle)": [
-    "electrodomesticos/climatizacion/aire-acondicionado"
+  "Muebles > Interior": [
+    "muebles/muebles-de-interior/colchones",
+    "muebles/muebles-de-interior/comedor",
+    "muebles/muebles-de-interior/conjunto-de-sommier-y-respaldos",
+    "muebles/muebles-de-interior/cortinas",
+    "muebles/muebles-de-interior/dormitorio",
+    "muebles/muebles-de-interior/living-y-estar",
+    "muebles/muebles-de-interior/oficina",
+    "muebles/muebles-de-interior/sillas-de-interior"
+  ],
+  "Muebles > Jardín": [
+    "muebles/muebles-de-jardin/barbacoas-y-accesorios",
+    "muebles/muebles-de-jardin/hamacas",
+    "muebles/muebles-de-jardin/juegos-de-jardin",
+    "muebles/muebles-de-jardin/mesas",
+    "muebles/muebles-de-jardin/reposeras",
+    "muebles/muebles-de-jardin/sillas-y-bancos",
+    "muebles/muebles-de-jardin/sombrillas"
+  ],
+  "Hogar > Artículos de Mesa": [
+    "hogar/articulos-de-mesa/cubiertos-y-juegos-de-cubiertos",
+    "hogar/articulos-de-mesa/juegos-de-vajilla",
+    "hogar/articulos-de-mesa/parrilla",
+    "hogar/articulos-de-mesa/vajilla-de-porcelana-y-ceramica",
+    "hogar/articulos-de-mesa/vajilla-de-vidrio"
+  ],
+  "Hogar > Baño": [
+    "hogar/bano/accesorios",
+    "hogar/bano/alfombras",
+    "hogar/bano/botiquines-de-bano",
+    "hogar/bano/canastos-para-ropa",
+    "hogar/bano/espejos-de-bano",
+    "hogar/bano/estantes-y-organizadores"
+  ],
+  "Hogar > Cocina": [
+    "hogar/cocina/accesorios-de-cocina",
+    "hogar/cocina/cacerolas-y-ollas",
+    "hogar/cocina/cafeteras-y-teteras",
+    "hogar/cocina/hervidores",
+    "hogar/cocina/jarras-termicas",
+    "hogar/cocina/juegos-de-bateria",
+    "hogar/cocina/sartenes-y-wok",
+    "hogar/cocina/tablas-de-madera",
+    "hogar/cocina/utensilios-de-cocina"
+  ],
+  "Hogar > Organización": [
+    "hogar/organizacion/cajas-organizadoras",
+    "hogar/organizacion/cestos-para-ropa",
+    "hogar/organizacion/conservadoras-y-luncheras",
+    "hogar/organizacion/contenedores",
+    "hogar/organizacion/papeleras-y-basureros",
+    "hogar/organizacion/perchas",
+    "hogar/organizacion/tablas-de-planchar"
+  ],
+  "Hogar > Cristalería": [
+    "hogar/cristaleria/juegos-de-copas",
+    "hogar/cristaleria/juegos-de-vasos",
+    "hogar/cristaleria/vasos-sueltos"
+  ],
+  "Hogar > Vajilla Plástica": [
+    "hogar/vajilla-plastica",
+    "hogar/vajilla-plastica/melamina",
+    "hogar/vajilla-plastica/vajilla-infantil"
+  ],
+  "Hogar > Termos y Mates": [
+    "hogar/termos-y-mates",
+    "hogar/termos-y-mates/bombillas",
+    "hogar/termos-y-mates/materas",
+    "hogar/termos-y-mates/mates",
+    "hogar/termos-y-mates/termos"
+  ],
+  "Hogar > Descartables": [
+    "hogar/descartables/bolsas-conserva-de-alimentos",
+    "hogar/descartables/film-y-papel-de-aluminio",
+    "hogar/descartables/vajilla-descartables"
+  ],
+  "Decoración": [
+    "decoracion/iluminacion",
+    "decoracion/iluminacion/iluminacion-de-interior",
+    "decoracion/iluminacion/iluminacion-de-jardin",
+    "decoracion/floreros",
+    "decoracion/relojes",
+    "decoracion/candelabros-y-fanales",
+    "decoracion/laminas",
+    "decoracion/velas",
+    "decoracion/alfombras",
+    "decoracion/espejos",
+    "decoracion/portarretratos",
+    "decoracion/plantas-y-macetas",
+    "decoracion/accesorios-deco"
+  ],
+  "Textil Hogar > Baño": [
+    "textil-hogar/bano/set-de-toallas",
+    "textil-hogar/bano/toallas-para-bano",
+    "textil-hogar/bano/toallas-infantiles",
+    "textil-hogar/bano/toallas-para-mano",
+    "textil-hogar/bano/toallas-playeras"
+  ],
+  "Textil Hogar > Cama": [
+    "textil-hogar/cama/acolchados",
+    "textil-hogar/cama/acolchados-infantiles",
+    "textil-hogar/cama/almohadas",
+    "textil-hogar/cama/cubrecamas",
+    "textil-hogar/cama/mantas",
+    "textil-hogar/cama/protector-de-colchon",
+    "textil-hogar/cama/sabanas",
+    "textil-hogar/cama/sabanas-infantiles"
+  ],
+  "Textil Hogar > Cocina": [
+    "textil-hogar/cocina/agarraderas",
+    "textil-hogar/cocina/delantales",
+    "textil-hogar/cocina/individuales",
+    "textil-hogar/cocina/manteles",
+    "textil-hogar/cocina/repasadores",
+    "textil-hogar/cocina/servilletas"
+  ],
+  "Textil Hogar > Decoración": [
+    "textil-hogar/decoracion/almohadones-de-decoracion",
+    "textil-hogar/decoracion/almohadones-para-silla",
+    "textil-hogar/decoracion/cortinas-para-sala",
+    "textil-hogar/decoracion/fundas-de-sofa"
+  ],
+  "Ferretería y Automóvil > Automóvil": [
+    "ferreteria-y-automovil/automovil/accesorios",
+    "ferreteria-y-automovil/automovil/aromatizantes",
+    "ferreteria-y-automovil/automovil/audio-para-autos",
+    "ferreteria-y-automovil/automovil/baterias",
+    "ferreteria-y-automovil/automovil/gps",
+    "ferreteria-y-automovil/automovil/lubricantes",
+    "ferreteria-y-automovil/automovil/neumaticos"
+  ],
+  "Ferretería y Automóvil > Ferretería": [
+    "ferreteria-y-automovil/ferreteria/accesorios",
+    "ferreteria-y-automovil/ferreteria/combustible-y-encendido",
+    "ferreteria-y-automovil/ferreteria/energia",
+    "ferreteria-y-automovil/ferreteria/herramientas-de-mano",
+    "ferreteria-y-automovil/ferreteria/herramientas-electricas",
+    "ferreteria-y-automovil/ferreteria/herramientas-para-jardin",
+    "ferreteria-y-automovil/ferreteria/iluminacion",
+    "ferreteria-y-automovil/ferreteria/jardin",
+    "ferreteria-y-automovil/ferreteria/materiales-electricos",
+    "ferreteria-y-automovil/ferreteria/pinturas"
+  ],
+  "Deporte y Tiempo Libre": [
+    "deporte-y-tiempo-libre/aparatos-de-gimnasia",
+    "deporte-y-tiempo-libre/bicicletas",
+    "deporte-y-tiempo-libre/camping",
+    "deporte-y-tiempo-libre/camping/carpas",
+    "deporte-y-tiempo-libre/camping/conservadoras",
+    "deporte-y-tiempo-libre/camping/lonas-y-toldos",
+    "deporte-y-tiempo-libre/entrenamiento",
+    "deporte-y-tiempo-libre/entretenimiento",
+    "deporte-y-tiempo-libre/piscinas-y-accesorios",
+    "deporte-y-tiempo-libre/vehiculos-electricos"
+  ],
+  "Papelería": [
+    "papeleria/articulos-de-oficina",
+    "papeleria/bricolage-creativo",
+    "papeleria/colores-y-marcadores",
+    "papeleria/cuadernos-y-cuadernolas",
+    "papeleria/dibujo-y-geometria",
+    "papeleria/equipaje",
+    "papeleria/equipaje/mochilas",
+    "papeleria/equipaje/valijas",
+    "papeleria/libros",
+    "papeleria/materiales-de-escritura"
+  ],
+  "Juguetes": [
+    "juguetes/juguetes"
+  ],
+  "Puericultura": [
+    "puericultura/alimentacion",
+    "puericultura/butacas-y-booster",
+    "puericultura/cochecitos-de-bebe",
+    "puericultura/descanso",
+    "puericultura/estimulacion",
+    "puericultura/higiene-y-salud"
   ]
 }
