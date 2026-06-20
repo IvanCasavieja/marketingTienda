@@ -74,3 +74,15 @@ class CompararGrupo(BaseModel):
 class CompararResponse(BaseModel):
     grupos: list[CompararGrupo]
     total:  int
+
+
+class TiendaStats(BaseModel):
+    tienda:          str
+    total:           int
+    con_descuento:   int
+    precio_promedio: Optional[float]
+
+
+class PreciosStats(BaseModel):
+    total_productos: int
+    tiendas:         list[TiendaStats]

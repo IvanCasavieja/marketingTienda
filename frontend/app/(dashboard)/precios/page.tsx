@@ -1,9 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { preciosApi, type Producto, type PreciosListResponse } from "@/lib/api";
+import { preciosApi, type Producto, type PreciosListResponse, type TiendaStats } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
-import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag } from "lucide-react";
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale } from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
 
 const TIENDA_COLORS: Record<string, string> = {
   "Disco":           "bg-blue-50 text-blue-700",
@@ -12,6 +13,15 @@ const TIENDA_COLORS: Record<string, string> = {
   "Ta-Ta":           "bg-red-50 text-red-700",
   "Farmashop":       "bg-orange-50 text-orange-700",
   "Tienda Inglesa":  "bg-teal-50 text-teal-700",
+};
+
+const TIENDA_BADGE_DOTS: Record<string, string> = {
+  "Disco":           "bg-blue-500",
+  "Devoto":          "bg-green-500",
+  "Géant":           "bg-purple-500",
+  "Ta-Ta":           "bg-red-500",
+  "Farmashop":       "bg-orange-500",
+  "Tienda Inglesa":  "bg-teal-500",
 };
 
 function TiendaBadge({ tienda }: { tienda: string }) {
@@ -64,6 +74,7 @@ export default function PreciosPage() {
   const [categorias, setCategorias] = useState<string[]>([]);
   const [result,     setResult]     = useState<PreciosListResponse | null>(null);
   const [loading,    setLoading]    = useState(true);
+  const [stats,      setStats]      = useState<TiendaStats[] | null>(null);
 
   const [q,            setQ]           = useState("");
   const [tienda,       setTienda]      = useState("");
@@ -76,6 +87,7 @@ export default function PreciosPage() {
 
   useEffect(() => {
     preciosApi.tiendas().then(({ data }) => setTiendas(data)).catch(() => {});
+    preciosApi.estadisticas().then(({ data }) => setStats(data.tiendas)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -117,17 +129,45 @@ export default function PreciosPage() {
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
       {/* Header */}
-      <div>
-        <h1 className="section-title flex items-center gap-2">
-          <Tag size={17} className="text-brand-600" />
-          Catálogo de precios
-        </h1>
-        <p className="section-sub mt-0.5">
-          {result
-            ? `${result.total.toLocaleString("es-UY")} productos de supermercados uruguayos`
-            : "Cargando…"}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="section-title flex items-center gap-2">
+            <Tag size={17} className="text-brand-600" />
+            Catálogo de precios
+          </h1>
+          <p className="section-sub mt-0.5">
+            {result
+              ? `${result.total.toLocaleString("es-UY")} productos de supermercados uruguayos`
+              : "Cargando…"}
+          </p>
+        </div>
+        <Link href="/precios/comparar" className="btn-secondary text-xs px-3 py-1.5 shrink-0">
+          <Scale size={13} />
+          Comparar
+        </Link>
       </div>
+
+      {/* Stats por tienda */}
+      {stats && (
+        <div className="flex flex-wrap gap-2">
+          {stats.map((s) => (
+            <div key={s.tienda} className="card px-3 py-2 flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  TIENDA_BADGE_DOTS[s.tienda] ?? "bg-slate-400"
+                }`}
+              />
+              <span className="text-xs font-medium text-slate-700">{s.tienda}</span>
+              <span className="text-xs text-slate-400">{s.total.toLocaleString("es-UY")}</span>
+              {s.con_descuento > 0 && (
+                <span className="text-[10px] bg-red-50 text-red-500 px-1.5 py-0.5 rounded-full">
+                  {s.con_descuento} ofertas
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="card p-4 flex flex-wrap gap-3">
