@@ -305,6 +305,12 @@ export const preciosApi = {
     }>("/precios/scraper/status"),
   scraperTrigger:    () => api.post("/precios/scraper/trigger"),
   scraperTriggerGdu: () => api.post("/precios/scraper/trigger-gdu"),
+  scraperProgress:   () =>
+    api.get<{
+      running:   boolean;
+      scan_type: "full" | "gdu" | null;
+      gdu: { completados: number; total: number; guardados: number; pct: number };
+    }>("/precios/scraper/progress"),
 
   exportCsv: (params: {
     tienda?:        string;

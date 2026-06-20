@@ -358,6 +358,13 @@ async def scraper_status(_: User = Depends(get_current_user)):
     return await get_status()
 
 
+@router.get("/scraper/progress")
+async def scraper_progress(_: User = Depends(get_current_user)):
+    """Progreso en tiempo real del scan activo (lee JSON de checkpoint)."""
+    from app.services.scraper_sync import get_progress
+    return await get_progress()
+
+
 @router.post("/scraper/trigger", status_code=202)
 async def scraper_trigger(_: User = Depends(get_current_user)):
     """Dispara un scraping manual completo (todas las tiendas)."""

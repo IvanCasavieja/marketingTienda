@@ -24,6 +24,12 @@ const TIENDA_BADGE_DOTS: Record<string, string> = {
   "Tienda Inglesa":  "bg-teal-500",
 };
 
+type ProgressData = {
+  running:   boolean;
+  scan_type: "full" | "gdu" | null;
+  gdu: { completados: number; total: number; guardados: number; pct: number };
+};
+
 function TiendaBadge({ tienda }: { tienda: string }) {
   const cls = TIENDA_COLORS[tienda] ?? "bg-slate-100 text-slate-600";
   return (
@@ -78,6 +84,7 @@ export default function PreciosPage() {
   const [scraperInfo,  setScraperInfo]  = useState<{ status: string; last_run: string | null; next_run: string | null; last_total: number | null } | null>(null);
   const [triggering,    setTriggering]    = useState(false);
   const [triggeringGdu, setTriggeringGdu] = useState(false);
+  const [progress,      setProgress]      = useState<ProgressData | null>(null);
 
   const [q,            setQ]           = useState("");
   const [tienda,       setTienda]      = useState("");
@@ -88,13 +95,49 @@ export default function PreciosPage() {
   const [sortDir,      setSortDir]     = useState<"asc" | "desc">("asc");
   const [page,         setPage]        = useState(1);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevRunning   = useRef<boolean>(false);
 
-  useEffect(() => {
-    preciosApi.tiendas().then(({ data }) => setTiendas(data)).catch(() => {});
+  const refreshStats = useCallback(() => {
     preciosApi.estadisticas().then(({ data }) => setStats(data.tiendas)).catch(() => {});
     preciosApi.scraperStatus().then(({ data }) => setScraperInfo(data)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    preciosApi.tiendas().then(({ data }) => setTiendas(data)).catch(() => {});
+    refreshStats();
+    // Check initial progress state (scan may already be running)
+    preciosApi.scraperProgress().then(({ data }) => setProgress(data)).catch(() => {});
+  }, [refreshStats]);
+
+  // Polling — activo solo mientras el scan está corriendo
+  useEffect(() => {
+    if (!progress?.running) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const { data } = await preciosApi.scraperProgress();
+        setProgress(data);
+
+        if (!data.running && prevRunning.current) {
+          // Scan terminó — refrescar todo
+          refreshStats();
+          load(1);
+          const guardados = data.gdu.guardados;
+          toast.success(
+            guardados
+              ? `Scan completado — ${guardados.toLocaleString("es-UY")} productos GDU actualizados`
+              : "Scan completado"
+          );
+        }
+        prevRunning.current = data.running;
+      } catch {}
+    }, 3000);
+
+    prevRunning.current = true;
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress?.running]);
 
   useEffect(() => {
     preciosApi.categorias(tienda || undefined)
@@ -136,12 +179,17 @@ export default function PreciosPage() {
 
   const [exporting, setExporting] = useState(false);
 
+  const scanActive = progress?.running ?? false;
+
   async function handleTrigger() {
     setTriggering(true);
     try {
       await preciosApi.scraperTrigger();
       toast.success("Scraping completo iniciado — puede tardar hasta 2 horas");
-      setTimeout(() => preciosApi.scraperStatus().then(({ data }) => setScraperInfo(data)).catch(() => {}), 2000);
+      setTimeout(() => {
+        preciosApi.scraperProgress().then(({ data }) => setProgress(data)).catch(() => {});
+        refreshStats();
+      }, 1500);
     } catch {
       toast.error("Ya hay un scraping en curso");
     } finally {
@@ -154,7 +202,10 @@ export default function PreciosPage() {
     try {
       await preciosApi.scraperTriggerGdu();
       toast.success("Scan GDU iniciado — Geant, Disco y Devoto");
-      setTimeout(() => preciosApi.scraperStatus().then(({ data }) => setScraperInfo(data)).catch(() => {}), 2000);
+      setTimeout(() => {
+        preciosApi.scraperProgress().then(({ data }) => setProgress(data)).catch(() => {});
+        refreshStats();
+      }, 1500);
     } catch {
       toast.error("Ya hay un scraping en curso");
     } finally {
@@ -234,46 +285,84 @@ export default function PreciosPage() {
 
       {/* Scraper status */}
       {scraperInfo && (
-        <div className="card px-4 py-2.5 flex items-center gap-3 text-xs text-slate-500">
-          <div className={`w-2 h-2 rounded-full shrink-0 ${
-            scraperInfo.status === "running" ? "bg-amber-400 animate-pulse" :
-            scraperInfo.status.startsWith("error") ? "bg-red-400" : "bg-emerald-400"
-          }`} />
-          <span className="font-medium text-slate-700">
-            {scraperInfo.status === "running" ? "Scraping en curso…" : "Scraper"}
-          </span>
-          {scraperInfo.last_run && (
-            <span className="flex items-center gap-1">
-              <Clock size={11} />
-              Último: {new Date(scraperInfo.last_run).toLocaleString("es-UY")}
-              {scraperInfo.last_total && ` · ${scraperInfo.last_total.toLocaleString("es-UY")} productos`}
+        <div className="card px-4 py-3 space-y-2.5">
+          <div className="flex items-center gap-3 text-xs text-slate-500">
+            <div className={`w-2 h-2 rounded-full shrink-0 ${
+              (scanActive || scraperInfo.status === "running") ? "bg-amber-400 animate-pulse" :
+              scraperInfo.status.startsWith("error") ? "bg-red-400" : "bg-emerald-400"
+            }`} />
+            <span className="font-medium text-slate-700">
+              {scanActive ? (
+                progress?.scan_type === "gdu"
+                  ? "Escaneando GDU…"
+                  : "Scraping en curso…"
+              ) : "Scraper"}
             </span>
-          )}
-          {scraperInfo.next_run && scraperInfo.status !== "running" && (
-            <span className="text-slate-400">
-              Próximo: {new Date(scraperInfo.next_run).toLocaleString("es-UY")}
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-1">
-            <button
-              onClick={handleTriggerGdu}
-              disabled={triggeringGdu || scraperInfo.status === "running"}
-              className="btn-ghost text-[11px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
-              title="Escanear solo Geant, Disco y Devoto"
-            >
-              <RefreshCw size={11} className={triggeringGdu ? "animate-spin" : ""} />
-              Solo GDU
-            </button>
-            <button
-              onClick={handleTrigger}
-              disabled={triggering || scraperInfo.status === "running"}
-              className="btn-ghost text-[11px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
-              title="Iniciar scraping completo de todas las tiendas"
-            >
-              <RefreshCw size={11} className={triggering ? "animate-spin" : ""} />
-              Escanear todo
-            </button>
+            {scraperInfo.last_run && !scanActive && (
+              <span className="flex items-center gap-1">
+                <Clock size={11} />
+                Último: {new Date(scraperInfo.last_run).toLocaleString("es-UY")}
+                {scraperInfo.last_total && ` · ${scraperInfo.last_total.toLocaleString("es-UY")} productos`}
+              </span>
+            )}
+            {scraperInfo.next_run && !scanActive && scraperInfo.status !== "running" && (
+              <span className="text-slate-400">
+                Próximo: {new Date(scraperInfo.next_run).toLocaleString("es-UY")}
+              </span>
+            )}
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                onClick={handleTriggerGdu}
+                disabled={triggeringGdu || scanActive || scraperInfo.status === "running"}
+                className="btn-ghost text-[11px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
+                title="Escanear solo Geant, Disco y Devoto"
+              >
+                <RefreshCw size={11} className={triggeringGdu ? "animate-spin" : ""} />
+                Solo GDU
+              </button>
+              <button
+                onClick={handleTrigger}
+                disabled={triggering || scanActive || scraperInfo.status === "running"}
+                className="btn-ghost text-[11px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
+                title="Iniciar scraping completo de todas las tiendas"
+              >
+                <RefreshCw size={11} className={triggering ? "animate-spin" : ""} />
+                Escanear todo
+              </button>
+            </div>
           </div>
+
+          {/* Barra de progreso — visible cuando hay un scan activo */}
+          {scanActive && progress && (
+            <div className="space-y-1.5 pt-0.5">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>
+                  {progress.scan_type === "gdu"
+                    ? "Geant · Disco · Devoto"
+                    : "Todas las tiendas"}
+                  {" — "}
+                  <span className="tabular-nums">
+                    {progress.gdu.completados.toLocaleString("es-UY")}
+                  </span>
+                  {" de "}
+                  <span className="tabular-nums">
+                    {progress.gdu.total.toLocaleString("es-UY")}
+                  </span>
+                  {" categorías "}
+                  <span className="text-slate-400">({progress.gdu.pct}%)</span>
+                </span>
+                <span className="font-medium text-slate-700 tabular-nums">
+                  {progress.gdu.guardados.toLocaleString("es-UY")} productos encontrados
+                </span>
+              </div>
+              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-brand-500 rounded-full transition-all duration-700"
+                  style={{ width: `${Math.max(progress.gdu.pct, 0.5)}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

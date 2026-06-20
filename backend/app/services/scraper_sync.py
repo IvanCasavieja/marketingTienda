@@ -7,8 +7,11 @@ El scraping corre en ThreadPoolExecutor (no bloquea el event loop).
 """
 
 import asyncio
+import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from app.core.config import settings
@@ -21,6 +24,10 @@ _REDIS_TTL    = 7 * 3600   # 7h max — el full scan tarda ~2h
 _REDIS_LAST   = "scraper:last_run"
 _REDIS_STATUS = "scraper:status"
 _REDIS_TOTAL  = "scraper:last_total"
+
+# Lock in-memory — evita scans concurrentes cuando Redis no está disponible
+_scan_running: bool = False
+_scan_type: str | None = None  # "full" | "gdu" | None
 
 
 def _seconds_until_next_run() -> float:
@@ -91,6 +98,9 @@ async def _r_del(key: str) -> None:
 
 async def trigger_manual() -> bool:
     """Lanza el scraper ahora si no hay otro corriendo. Retorna True si se lanzó."""
+    global _scan_running
+    if _scan_running:
+        return False
     is_running = await _r_get(_REDIS_STATUS)
     if is_running and is_running.decode() == "running":
         return False
@@ -100,6 +110,9 @@ async def trigger_manual() -> bool:
 
 async def trigger_gdu() -> bool:
     """Lanza un scan de solo GDU (Geant/Disco/Devoto) si no hay otro corriendo."""
+    global _scan_running
+    if _scan_running:
+        return False
     is_running = await _r_get(_REDIS_STATUS)
     if is_running and is_running.decode() == "running":
         return False
@@ -112,10 +125,14 @@ async def trigger_gdu() -> bool:
 # ---------------------------------------------------------------------------
 
 async def _execute() -> None:
-    acquired = await _r_set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
-    if not acquired:
-        logger.info("scraper_sync: lock activo, saltando")
+    global _scan_running, _scan_type
+    if _scan_running:
+        logger.info("scraper_sync: scan en curso (in-memory), saltando")
         return
+    _scan_running = True
+    _scan_type = "full"
+
+    acquired = await _r_set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
 
     try:
         await _r_set(_REDIS_STATUS, "running")
@@ -137,7 +154,10 @@ async def _execute() -> None:
         logger.error("scraper_sync: falló: %s", exc, exc_info=True)
         raise
     finally:
-        await _r_del(_REDIS_LOCK)
+        _scan_running = False
+        _scan_type = None
+        if acquired:
+            await _r_del(_REDIS_LOCK)
 
 
 def _run_blocking() -> int:
@@ -147,10 +167,14 @@ def _run_blocking() -> int:
 
 
 async def _execute_gdu() -> None:
-    acquired = await _r_set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
-    if not acquired:
-        logger.info("scraper_sync: lock activo, saltando")
+    global _scan_running, _scan_type
+    if _scan_running:
+        logger.info("scraper_sync: scan en curso (in-memory), saltando GDU")
         return
+    _scan_running = True
+    _scan_type = "gdu"
+
+    acquired = await _r_set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
 
     try:
         await _r_set(_REDIS_STATUS, "running")
@@ -172,7 +196,10 @@ async def _execute_gdu() -> None:
         logger.error("scraper_sync: GDU scan falló: %s", exc, exc_info=True)
         raise
     finally:
-        await _r_del(_REDIS_LOCK)
+        _scan_running = False
+        _scan_type = None
+        if acquired:
+            await _r_del(_REDIS_LOCK)
 
 
 def _run_blocking_gdu() -> int:
@@ -262,3 +289,45 @@ async def get_status() -> dict:
         "next_run":   next_run,
         "schedule":   f"Diario a las {settings.SCRAPER_HOUR:02d}:{settings.SCRAPER_MINUTE:02d} UY",
     }
+
+
+async def get_progress() -> dict:
+    """Progreso en tiempo real del scan en curso, leyendo los JSON de checkpoint."""
+    _DATA_DIR = Path(os.environ.get("SCRAPER_DATA_DIR", "/tmp/scraper"))
+    _PKG_DIR  = Path(__file__).parent / "scraper"
+
+    # Calcular total GDU dinámicamente desde el JSON de categorías
+    gdu_total = 831  # fallback: 277 slugs × 3 tiendas
+    cats_json = _PKG_DIR / "categorias_gdu.json"
+    if cats_json.exists():
+        try:
+            with open(cats_json, encoding="utf-8") as f:
+                mapeo = json.load(f)
+            vistos: set = set()
+            for slugs in mapeo.values():
+                for s in slugs:
+                    vistos.add(s)
+            gdu_total = len(vistos) * 3
+        except Exception:
+            pass
+
+    result: dict = {
+        "running":   _scan_running,
+        "scan_type": _scan_type,
+        "gdu": {"completados": 0, "total": gdu_total, "guardados": 0, "pct": 0.0},
+    }
+
+    prog_path = _DATA_DIR / "progreso_gdu.json"
+    if prog_path.exists():
+        try:
+            with open(prog_path, encoding="utf-8") as f:
+                prog = json.load(f)
+            completados = len(prog.get("completados", []))
+            guardados   = prog.get("total_guardados", 0)
+            result["gdu"]["completados"] = completados
+            result["gdu"]["guardados"]   = guardados
+            result["gdu"]["pct"] = round(completados / gdu_total * 100, 1) if gdu_total else 0.0
+        except Exception:
+            pass
+
+    return result
