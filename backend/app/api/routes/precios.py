@@ -11,11 +11,14 @@ Endpoint de sincronización (requiere APP_SECRET_KEY en header X-Sync-Key):
   POST /precios/sync         — bulk upsert desde el scraper (INSERT ... ON CONFLICT)
 """
 
+import csv
+import io
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from fastapi.security import APIKeyHeader
 from sqlalchemy import select, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -295,6 +298,57 @@ async def comparar_precios(
     grupos.sort(key=lambda g: -g.n_tiendas)
     grupos = grupos[:limit]
     return CompararResponse(grupos=grupos, total=len(grupos))
+
+
+@router.get("/export.csv")
+async def exportar_csv(
+    tienda:     Optional[str]   = Query(None),
+    categoria:  Optional[str]   = Query(None),
+    marca:      Optional[str]   = Query(None),
+    q:          Optional[str]   = Query(None),
+    precio_min: Optional[float] = Query(None),
+    precio_max: Optional[float] = Query(None),
+    con_descuento: Optional[bool] = Query(None),
+    limit:      int             = Query(10000, ge=1, le=50000),
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Exporta el catálogo filtrado como CSV."""
+    base = select(Producto)
+    filters = []
+    if tienda:        filters.append(Producto.tienda == tienda)
+    if categoria:     filters.append(Producto.categoria.ilike(f"%{categoria}%"))
+    if marca:         filters.append(Producto.marca.ilike(f"%{marca}%"))
+    if q:
+        like = f"%{q}%"
+        filters.append(
+            Producto.nombre.ilike(like) | Producto.sku.ilike(like) | Producto.barcode.ilike(like)
+        )
+    if precio_min is not None: filters.append(Producto.precio >= precio_min)
+    if precio_max is not None: filters.append(Producto.precio <= precio_max)
+    if con_descuento:
+        filters.append(Producto.precio_lista.isnot(None) & (Producto.precio_lista > Producto.precio))
+    for f in filters:
+        base = base.where(f)
+
+    result = await db.execute(base.order_by(Producto.nombre).limit(limit))
+    items = result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["tienda","nombre","precio","precio_lista","sku","barcode","marca","categoria","url"])
+    for p in items:
+        writer.writerow([
+            p.tienda, p.nombre, p.precio, p.precio_lista,
+            p.sku, p.barcode, p.marca, p.categoria, p.url,
+        ])
+
+    filename = f"precios_{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.csv"
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{producto_id}", response_model=ProductoOut)
