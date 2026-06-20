@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type Producto, type PreciosListResponse, type TiendaStats } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
-import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale } from "lucide-react";
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -81,6 +81,8 @@ export default function PreciosPage() {
   const [categoria,    setCategoria]   = useState("");
   const [marca,        setMarca]       = useState("");
   const [conDescuento, setConDescuento] = useState(false);
+  const [sortBy,       setSortBy]      = useState("nombre");
+  const [sortDir,      setSortDir]     = useState<"asc" | "desc">("asc");
   const [page,         setPage]        = useState(1);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -106,6 +108,8 @@ export default function PreciosPage() {
         categoria:     categoria     || undefined,
         marca:         marca         || undefined,
         con_descuento: conDescuento  || undefined,
+        sort_by:       sortBy,
+        sort_dir:      sortDir,
         page:          newPage,
         page_size:     PAGE_SIZE,
       });
@@ -116,15 +120,30 @@ export default function PreciosPage() {
     } finally {
       setLoading(false);
     }
-  }, [q, tienda, categoria, marca, conDescuento]);
+  }, [q, tienda, categoria, marca, conDescuento, sortBy, sortDir]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => load(1), 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [q, tienda, categoria, marca, conDescuento]);
+  }, [q, tienda, categoria, marca, conDescuento, sortBy, sortDir]);
 
   const totalPages = result ? Math.ceil(result.total / PAGE_SIZE) : 1;
+
+  function handleSort(col: string) {
+    if (sortBy === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(col);
+      setSortDir("asc");
+    }
+    setPage(1);
+  }
+
+  function SortIcon({ col }: { col: string }) {
+    if (sortBy !== col) return <ArrowUpDown size={11} className="opacity-30" />;
+    return sortDir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />;
+  }
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
@@ -223,11 +242,19 @@ export default function PreciosPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">
-              <th className="table-th">Producto</th>
+              <th className="table-th cursor-pointer hover:text-slate-700" onClick={() => handleSort("nombre")}>
+                <span className="flex items-center gap-1">Producto <SortIcon col="nombre" /></span>
+              </th>
               <th className="table-th hidden md:table-cell">Marca</th>
-              <th className="table-th hidden lg:table-cell">Categoría</th>
-              <th className="table-th">Tienda</th>
-              <th className="table-th text-right">Precio</th>
+              <th className="table-th hidden lg:table-cell cursor-pointer hover:text-slate-700" onClick={() => handleSort("categoria")}>
+                <span className="flex items-center gap-1">Categoría <SortIcon col="categoria" /></span>
+              </th>
+              <th className="table-th cursor-pointer hover:text-slate-700" onClick={() => handleSort("tienda")}>
+                <span className="flex items-center gap-1">Tienda <SortIcon col="tienda" /></span>
+              </th>
+              <th className="table-th text-right cursor-pointer hover:text-slate-700" onClick={() => handleSort("precio")}>
+                <span className="flex items-center justify-end gap-1">Precio <SortIcon col="precio" /></span>
+              </th>
               <th className="table-th w-8" />
             </tr>
           </thead>

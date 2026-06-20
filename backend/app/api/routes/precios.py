@@ -173,6 +173,8 @@ async def listar_precios(
     precio_min:    Optional[float] = Query(None),
     precio_max:    Optional[float] = Query(None),
     con_descuento: Optional[bool]  = Query(None, description="Solo productos con descuento activo"),
+    sort_by:       Optional[str]   = Query(None, description="Campo de ordenamiento: nombre|precio|tienda|categoria"),
+    sort_dir:      Optional[str]   = Query("asc", description="Dirección: asc|desc"),
     page:          int             = Query(1, ge=1),
     page_size:     int             = Query(50, ge=1, le=200),
     _: User = Depends(get_current_user),
@@ -212,9 +214,18 @@ async def listar_precios(
     total_result = await db.execute(count_q)
     total = total_result.scalar_one()
 
+    _sort_cols = {
+        "nombre":    Producto.nombre,
+        "precio":    Producto.precio,
+        "tienda":    Producto.tienda,
+        "categoria": Producto.categoria,
+    }
+    sort_col = _sort_cols.get(sort_by or "nombre", Producto.nombre)
+    order_expr = sort_col.desc() if sort_dir == "desc" else sort_col.asc()
+
     offset = (page - 1) * page_size
     items_result = await db.execute(
-        base.order_by(Producto.nombre).offset(offset).limit(page_size)
+        base.order_by(order_expr).offset(offset).limit(page_size)
     )
     items = items_result.scalars().all()
 
