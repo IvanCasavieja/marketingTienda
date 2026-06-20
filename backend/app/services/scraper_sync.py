@@ -178,18 +178,36 @@ async def _execute_gdu() -> None:
 
     try:
         await _r_set(_REDIS_STATUS, "running")
-        logger.info("scraper_sync: iniciando GDU-only scan")
+        logger.info("scraper_sync: iniciando GDU-only scan (sync incremental por fase)")
 
+        from app.services.scraper import store as sc_store
         loop = asyncio.get_event_loop()
-        total = await loop.run_in_executor(None, _run_blocking_gdu)
 
-        await _sync_to_postgres()
+        # Inicio fresco: limpia SQLite y checkpoint
+        await loop.run_in_executor(None, sc_store.limpiar)
+        _prog = Path(os.environ.get("SCRAPER_DATA_DIR", "/tmp/scraper")) / "progreso_gdu.json"
+        if _prog.exists():
+            _prog.unlink()
+
+        total_acumulado = 0
+        for fase in (1, 2, 3, 4):
+            logger.info("scraper_sync: GDU fase %d/4", fase)
+            fase_count = await loop.run_in_executor(None, _run_gdu_fase_solo, fase)
+            total_acumulado += fase_count
+
+            # Sync a PostgreSQL tras cada fase — los datos quedan seguros
+            # aunque Render reinicie el proceso antes de que terminen las 4 fases
+            await _sync_to_postgres()
+            logger.info("scraper_sync: GDU fase %d synced — %d productos esta fase", fase, fase_count)
+
+            # Limpia SQLite para la siguiente fase (ya persistido en PostgreSQL)
+            await loop.run_in_executor(None, sc_store.limpiar)
 
         now = datetime.now(timezone.utc).isoformat()
         await _r_set(_REDIS_LAST, now)
-        await _r_set(_REDIS_TOTAL, str(total))
+        await _r_set(_REDIS_TOTAL, str(total_acumulado))
         await _r_set(_REDIS_STATUS, "idle")
-        logger.info("scraper_sync: GDU scan completado — %d productos", total)
+        logger.info("scraper_sync: GDU scan completado — %d productos totales", total_acumulado)
 
     except Exception as exc:
         await _r_set(_REDIS_STATUS, f"error: {str(exc)[:200]}")
@@ -200,6 +218,14 @@ async def _execute_gdu() -> None:
         _scan_type = None
         if acquired:
             await _r_del(_REDIS_LOCK)
+
+
+def _run_gdu_fase_solo(fase: int) -> int:
+    """Corre una sola fase GDU y retorna cuántos productos quedaron en SQLite."""
+    from app.services.scraper.fases import run_gdu_fase
+    from app.services.scraper import store
+    run_gdu_fase(fase)
+    return sum(store.contar().values())
 
 
 def _run_blocking_gdu() -> int:
