@@ -214,3 +214,46 @@ export const cenefasV2Api = {
       "/tools/cenefas/v2/builtin-definitions"
     ),
 };
+
+// ---------------------------------------------------------------------------
+// Precios — catálogo de supermercados uruguayos
+// ---------------------------------------------------------------------------
+
+export interface Producto {
+  id:           number;
+  tienda:       string;
+  url:          string;
+  nombre:       string | null;
+  precio:       number | null;
+  precio_lista: number | null;
+  sku:          string | null;
+  barcode:      string | null;
+  marca:        string | null;
+  categoria:    string | null;
+  actualizado_en: string | null;
+}
+
+export interface PreciosListResponse {
+  total:     number;
+  page:      number;
+  page_size: number;
+  items:     Producto[];
+}
+
+export const preciosApi = {
+  list: (params: {
+    tienda?:    string;
+    categoria?: string;
+    marca?:     string;
+    q?:         string;
+    precio_min?: number;
+    precio_max?: number;
+    page?:      number;
+    page_size?: number;
+  }) => api.get<PreciosListResponse>("/precios", { params }),
+
+  tiendas:    () => api.get<string[]>("/precios/tiendas"),
+  categorias: (tienda?: string) =>
+    api.get<string[]>("/precios/categorias", { params: tienda ? { tienda } : {} }),
+  get: (id: number) => api.get<Producto>(`/precios/${id}`),
+};
