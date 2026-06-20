@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type Producto, type PreciosListResponse, type TiendaStats } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
-import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare } from "lucide-react";
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare, Download } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -130,6 +130,32 @@ export default function PreciosPage() {
 
   const totalPages = result ? Math.ceil(result.total / PAGE_SIZE) : 1;
 
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const { data } = await preciosApi.exportCsv({
+        q:             q             || undefined,
+        tienda:        tienda        || undefined,
+        categoria:     categoria     || undefined,
+        marca:         marca         || undefined,
+        con_descuento: conDescuento  || undefined,
+        limit:         10000,
+      });
+      const url = URL.createObjectURL(data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `precios_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Error al exportar CSV");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function handleSort(col: string) {
     if (sortBy === col) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -160,10 +186,20 @@ export default function PreciosPage() {
               : "Cargando…"}
           </p>
         </div>
-        <Link href="/precios/comparar" className="btn-secondary text-xs px-3 py-1.5 shrink-0">
-          <Scale size={13} />
-          Comparar
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-50"
+          >
+            <Download size={13} />
+            {exporting ? "Exportando…" : "CSV"}
+          </button>
+          <Link href="/precios/comparar" className="btn-secondary text-xs px-3 py-1.5">
+            <Scale size={13} />
+            Comparar
+          </Link>
+        </div>
       </div>
 
       {/* Stats por tienda */}

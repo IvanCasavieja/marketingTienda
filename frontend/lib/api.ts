@@ -294,4 +294,15 @@ export const preciosApi = {
   comparar: (params: { q?: string; barcode?: string; limit?: number }) =>
     api.get<CompararResponse>("/precios/comparar", { params }),
   estadisticas: () => api.get<PreciosStats>("/precios/estadisticas"),
+  exportCsv: (params: {
+    tienda?:        string;
+    categoria?:     string;
+    marca?:         string;
+    q?:             string;
+    precio_min?:    number;
+    precio_max?:    number;
+    con_descuento?: boolean;
+    limit?:         number;
+  }) =>
+    api.get<Blob>("/precios/export.csv", { params, responseType: "blob" }),
 };
