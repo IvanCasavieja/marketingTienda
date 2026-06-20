@@ -281,6 +281,8 @@ export const preciosApi = {
     precio_min?:    number;
     precio_max?:    number;
     con_descuento?: boolean;
+    sort_by?:       string;
+    sort_dir?:      "asc" | "desc";
     page?:          number;
     page_size?:     number;
   }) => api.get<PreciosListResponse>("/precios", { params }),
