@@ -240,6 +240,26 @@ export interface PreciosListResponse {
   items:     Producto[];
 }
 
+export interface CompararTiendaItem {
+  tienda:       string;
+  precio:       number | null;
+  precio_lista: number | null;
+  url:          string;
+  nombre:       string | null;
+}
+
+export interface CompararGrupo {
+  barcode:    string;
+  nombre_ref: string | null;
+  n_tiendas:  number;
+  tiendas:    CompararTiendaItem[];
+}
+
+export interface CompararResponse {
+  grupos: CompararGrupo[];
+  total:  number;
+}
+
 export const preciosApi = {
   list: (params: {
     tienda?:        string;
@@ -257,4 +277,6 @@ export const preciosApi = {
   categorias: (tienda?: string) =>
     api.get<string[]>("/precios/categorias", { params: tienda ? { tienda } : {} }),
   get: (id: number) => api.get<Producto>(`/precios/${id}`),
+  comparar: (params: { q?: string; barcode?: string; limit?: number }) =>
+    api.get<CompararResponse>("/precios/comparar", { params }),
 };

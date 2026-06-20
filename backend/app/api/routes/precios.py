@@ -28,6 +28,7 @@ from app.models.producto import Producto
 from app.models.user import User
 from app.schemas.precios import (
     ProductoOut, SyncPayload, SyncResult, PreciosListResponse,
+    CompararResponse, CompararGrupo, CompararTiendaItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -184,6 +185,66 @@ async def listar_precios(
         page_size=page_size,
         items=[ProductoOut.model_validate(p) for p in items],
     )
+
+
+@router.get("/comparar", response_model=CompararResponse)
+async def comparar_precios(
+    q:       Optional[str] = Query(None, description="Búsqueda por nombre o barcode"),
+    barcode: Optional[str] = Query(None, description="Barcode exacto"),
+    limit:   int           = Query(30, ge=1, le=100),
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Compara el mismo producto (por barcode) en distintas tiendas.
+    Agrupa productos con barcode compartido entre >=2 tiendas.
+    """
+    base = select(Producto).where(Producto.barcode.isnot(None), Producto.barcode != "")
+
+    if barcode:
+        base = base.where(Producto.barcode == barcode)
+    elif q:
+        like = f"%{q}%"
+        base = base.where(
+            Producto.nombre.ilike(like) | Producto.barcode.ilike(like)
+        )
+    else:
+        return CompararResponse(grupos=[], total=0)
+
+    result = await db.execute(base.order_by(Producto.barcode, Producto.tienda))
+    rows = result.scalars().all()
+
+    from collections import defaultdict
+    by_barcode: dict[str, list] = defaultdict(list)
+    for p in rows:
+        by_barcode[p.barcode].append(p)
+
+    grupos = []
+    for bc, prods in by_barcode.items():
+        tiendas_set = {p.tienda for p in prods}
+        if len(tiendas_set) < 2:
+            continue
+        nombre_ref = next((p.nombre for p in prods if p.nombre), None)
+        items = [
+            CompararTiendaItem(
+                tienda=p.tienda,
+                precio=p.precio,
+                precio_lista=p.precio_lista,
+                url=p.url,
+                nombre=p.nombre,
+            )
+            for p in sorted(prods, key=lambda x: x.tienda)
+        ]
+        grupos.append(CompararGrupo(
+            barcode=bc,
+            nombre_ref=nombre_ref,
+            n_tiendas=len(tiendas_set),
+            tiendas=items,
+        ))
+
+    grupos.sort(key=lambda g: -g.n_tiendas)
+    grupos = grupos[:limit]
+    return CompararResponse(grupos=grupos, total=len(grupos))
 
 
 @router.get("/{producto_id}", response_model=ProductoOut)
