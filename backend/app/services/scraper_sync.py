@@ -142,6 +142,7 @@ async def _execute() -> None:
         total = await loop.run_in_executor(None, _run_blocking)
 
         await _sync_to_postgres()
+        await _sync_to_historial()
 
         now = datetime.now(timezone.utc).isoformat()
         await _r_set(_REDIS_LAST, now)
@@ -195,9 +196,9 @@ async def _execute_gdu() -> None:
             fase_count = await loop.run_in_executor(None, _run_gdu_fase_solo, fase)
             total_acumulado += fase_count
 
-            # Sync a PostgreSQL tras cada fase — los datos quedan seguros
-            # aunque Render reinicie el proceso antes de que terminen las 4 fases
+            # Sync a PostgreSQL + historial tras cada fase
             await _sync_to_postgres()
+            await _sync_to_historial()
             logger.info("scraper_sync: GDU fase %d synced — %d productos esta fase", fase, fase_count)
 
             # Limpia SQLite para la siguiente fase (ya persistido en PostgreSQL)
@@ -231,6 +232,48 @@ def _run_gdu_fase_solo(fase: int) -> int:
 def _run_blocking_gdu() -> int:
     from app.services.scraper.fases import run_gdu_only
     return run_gdu_only()
+
+
+async def _sync_to_historial() -> None:
+    """Guarda snapshot diario en precio_historial (ON CONFLICT DO NOTHING — una fila por url+fecha)."""
+    from app.services.scraper import store as sc_store
+    from app.core.database import AsyncSessionLocal
+    from app.models.precio_historial import PrecioHistorial
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from datetime import date
+
+    productos = sc_store.todos()
+    if not productos:
+        return
+
+    today = date.today()
+    logger.info("scraper_sync: guardando historial %s — %d productos", today, len(productos))
+    BATCH = 500
+
+    async with AsyncSessionLocal() as db:
+        for i in range(0, len(productos), BATCH):
+            batch = productos[i:i + BATCH]
+            rows = [
+                {
+                    "tienda":        p["tienda"],
+                    "url":           p["url"],
+                    "nombre":        p.get("nombre"),
+                    "precio":        p.get("precio"),
+                    "precio_lista":  p.get("precio_lista"),
+                    "sku":           p.get("sku"),
+                    "barcode":       p.get("barcode"),
+                    "marca":         p.get("marca"),
+                    "categoria":     p.get("categoria"),
+                    "fecha_scan":    today,
+                }
+                for p in batch
+            ]
+            stmt = pg_insert(PrecioHistorial).values(rows)
+            stmt = stmt.on_conflict_do_nothing(constraint="uq_historial_url_fecha")
+            await db.execute(stmt)
+        await db.commit()
+
+    logger.info("scraper_sync: historial %s completado", today)
 
 
 async def _sync_to_postgres() -> None:

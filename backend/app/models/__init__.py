@@ -8,10 +8,11 @@ from app.models.cenefa_template import CenefaTemplate
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.cenefa_job import CenefaJob
 from app.models.producto import Producto
+from app.models.precio_historial import PrecioHistorial
 
 __all__ = [
     "Team", "TeamGroup", "User", "PlatformConnection", "Platform",
     "CampaignMetric", "AuditLog", "AIAnalysis",
     "CenefaTemplate", "CenefaTemplateV2", "CenefaJob",
-    "Producto",
+    "Producto", "PrecioHistorial",
 ]
