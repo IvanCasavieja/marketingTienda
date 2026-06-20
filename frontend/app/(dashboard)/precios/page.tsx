@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type Producto, type PreciosListResponse, type TiendaStats } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
-import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare, Download } from "lucide-react";
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare, Download, RefreshCw, Clock } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -74,7 +74,9 @@ export default function PreciosPage() {
   const [categorias, setCategorias] = useState<string[]>([]);
   const [result,     setResult]     = useState<PreciosListResponse | null>(null);
   const [loading,    setLoading]    = useState(true);
-  const [stats,      setStats]      = useState<TiendaStats[] | null>(null);
+  const [stats,        setStats]        = useState<TiendaStats[] | null>(null);
+  const [scraperInfo,  setScraperInfo]  = useState<{ status: string; last_run: string | null; next_run: string | null; last_total: number | null } | null>(null);
+  const [triggering,   setTriggering]   = useState(false);
 
   const [q,            setQ]           = useState("");
   const [tienda,       setTienda]      = useState("");
@@ -90,6 +92,7 @@ export default function PreciosPage() {
   useEffect(() => {
     preciosApi.tiendas().then(({ data }) => setTiendas(data)).catch(() => {});
     preciosApi.estadisticas().then(({ data }) => setStats(data.tiendas)).catch(() => {});
+    preciosApi.scraperStatus().then(({ data }) => setScraperInfo(data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -131,6 +134,19 @@ export default function PreciosPage() {
   const totalPages = result ? Math.ceil(result.total / PAGE_SIZE) : 1;
 
   const [exporting, setExporting] = useState(false);
+
+  async function handleTrigger() {
+    setTriggering(true);
+    try {
+      await preciosApi.scraperTrigger();
+      toast.success("Scraping iniciado — puede tardar hasta 2 horas");
+      setTimeout(() => preciosApi.scraperStatus().then(({ data }) => setScraperInfo(data)).catch(() => {}), 2000);
+    } catch {
+      toast.error("Ya hay un scraping en curso");
+    } finally {
+      setTriggering(false);
+    }
+  }
 
   async function handleExport() {
     setExporting(true);
@@ -201,6 +217,40 @@ export default function PreciosPage() {
           </Link>
         </div>
       </div>
+
+      {/* Scraper status */}
+      {scraperInfo && (
+        <div className="card px-4 py-2.5 flex items-center gap-3 text-xs text-slate-500">
+          <div className={`w-2 h-2 rounded-full shrink-0 ${
+            scraperInfo.status === "running" ? "bg-amber-400 animate-pulse" :
+            scraperInfo.status.startsWith("error") ? "bg-red-400" : "bg-emerald-400"
+          }`} />
+          <span className="font-medium text-slate-700">
+            {scraperInfo.status === "running" ? "Scraping en curso…" : "Scraper"}
+          </span>
+          {scraperInfo.last_run && (
+            <span className="flex items-center gap-1">
+              <Clock size={11} />
+              Último: {new Date(scraperInfo.last_run).toLocaleString("es-UY")}
+              {scraperInfo.last_total && ` · ${scraperInfo.last_total.toLocaleString("es-UY")} productos`}
+            </span>
+          )}
+          {scraperInfo.next_run && scraperInfo.status !== "running" && (
+            <span className="text-slate-400">
+              Próximo: {new Date(scraperInfo.next_run).toLocaleString("es-UY")}
+            </span>
+          )}
+          <button
+            onClick={handleTrigger}
+            disabled={triggering || scraperInfo.status === "running"}
+            className="ml-auto btn-ghost text-[11px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
+            title="Iniciar scraping manual ahora"
+          >
+            <RefreshCw size={11} className={triggering ? "animate-spin" : ""} />
+            Escanear ahora
+          </button>
+        </div>
+      )}
 
       {/* Stats por tienda */}
       {stats && (

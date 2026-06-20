@@ -1,0 +1,110 @@
+{
+  "Almacén > Canasta Familiar": [
+    "almacen/canasta-familiar/aceites",
+    "almacen/canasta-familiar/alimentos-bebe",
+    "almacen/canasta-familiar/arroz",
+    "almacen/canasta-familiar/caldos-y-sopas",
+    "almacen/canasta-familiar/condimentos",
+    "almacen/canasta-familiar/copetin",
+    "almacen/canasta-familiar/enlatados",
+    "almacen/canasta-familiar/fideos",
+    "almacen/canasta-familiar/harinas",
+    "almacen/canasta-familiar/legumbres",
+    "almacen/canasta-familiar/pan-rallado"
+  ],
+  "Frescos": [
+    "frescos/carniceria",
+    "frescos/confiteria",
+    "frescos/congelados",
+    "frescos/fiambres",
+    "frescos/frutas-y-verduras",
+    "frescos/lacteos",
+    "frescos/panaderia",
+    "frescos/pastas",
+    "frescos/pescaderia",
+    "frescos/quesos",
+    "frescos/rotiseria"
+  ],
+  "Bebidas": [
+    "bebidas/cervezas",
+    "bebidas/refrescos",
+    "bebidas/aguas",
+    "bebidas/whisky",
+    "bebidas/espumantes",
+    "bebidas/bebidas-blancas",
+    "bebidas/jugos-en-polvo",
+    "bebidas/licores",
+    "bebidas/aperitivos",
+    "bebidas/energeticas-e-isotonicas",
+    "bebidas/destiladas",
+    "bebidas/vinos-finos",
+    "bebidas/vinos-de-mesa"
+  ],
+  "Perfumería y Limpieza > Limpieza": [
+    "perfumeria-y-limpieza/limpieza/limpieza-hogar",
+    "perfumeria-y-limpieza/limpieza/accesorios-del-hogar",
+    "perfumeria-y-limpieza/limpieza/cuidado-ropa",
+    "perfumeria-y-limpieza/limpieza/insecticida",
+    "perfumeria-y-limpieza/limpieza/desodorantes-de-ambiente",
+    "perfumeria-y-limpieza/limpieza/rollos-de-cocina-y-servilletas",
+    "perfumeria-y-limpieza/limpieza/lavandinas"
+  ],
+  "Perfumería y Limpieza > Perfumería": [
+    "perfumeria-y-limpieza/perfumeria/desodorantes",
+    "perfumeria-y-limpieza/perfumeria/belleza",
+    "perfumeria-y-limpieza/perfumeria/coloracion",
+    "perfumeria-y-limpieza/perfumeria/cuidado-cabello",
+    "perfumeria-y-limpieza/perfumeria/higiene-femenina"
+  ],
+  "Electrodomésticos": [
+    "electrodomesticos/auxiliares-de-cocina",
+    "electrodomesticos/climatizacion",
+    "electrodomesticos/cocinas",
+    "electrodomesticos/heladeras-y-freezers",
+    "electrodomesticos/higiene-y-belleza",
+    "electrodomesticos/lavado",
+    "electrodomesticos/mantenimiento-del-hogar",
+    "electrodomesticos/termotanques"
+  ],
+  "Tecnología": [
+    "tecnologia/informatica",
+    "tecnologia/consolas-y-video-juegos"
+  ],
+  "Celulares y Telefonía": [
+    "celulares-y-telefonia/telefonos-fijos"
+  ],
+  "Almacén > Desayuno Merienda y Postres": [
+    "almacen/desayuno-merienda-y-postres/cereales",
+    "almacen/desayuno-merienda-y-postres/cafe-y-cebada",
+    "almacen/desayuno-merienda-y-postres/azucar",
+    "almacen/desayuno-merienda-y-postres/galletas-dulces",
+    "almacen/desayuno-merienda-y-postres/galletas-saladas",
+    "almacen/desayuno-merienda-y-postres/mermeladas-dulces-y-miel"
+  ],
+  "Hogar": [
+    "hogar/termos-y-mates",
+    "hogar/vajilla-plastica"
+  ],
+  "Frescos > Carnicería (detalle)": [
+    "frescos/carniceria/carnes-rojas",
+    "frescos/carniceria/chacinados",
+    "frescos/carniceria/pollo",
+    "frescos/carniceria/carnes-especiales"
+  ],
+  "TV y Audio": [
+    "tv-y-audio/tv",
+    "tv-y-audio/audio"
+  ],
+  "Celulares y Telefonía (detalle)": [
+    "celulares-y-telefonia/telefonos-inalambricos"
+  ],
+  "Tecnología (detalle)": [
+    "tecnologia/informatica",
+    "tecnologia/consolas-y-video-juegos",
+    "tecnologia/informatica/monitores",
+    "tecnologia/informatica/impresoras"
+  ],
+  "Electrodomésticos > Climatización (detalle)": [
+    "electrodomesticos/climatizacion/aire-acondicionado"
+  ]
+}

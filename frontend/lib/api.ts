@@ -294,6 +294,17 @@ export const preciosApi = {
   comparar: (params: { q?: string; barcode?: string; limit?: number }) =>
     api.get<CompararResponse>("/precios/comparar", { params }),
   estadisticas: () => api.get<PreciosStats>("/precios/estadisticas"),
+  scraperStatus: () =>
+    api.get<{
+      enabled:    boolean;
+      status:     string;
+      last_run:   string | null;
+      last_total: number | null;
+      next_run:   string | null;
+      schedule:   string;
+    }>("/precios/scraper/status"),
+  scraperTrigger: () => api.post("/precios/scraper/trigger"),
+
   exportCsv: (params: {
     tienda?:        string;
     categoria?:     string;

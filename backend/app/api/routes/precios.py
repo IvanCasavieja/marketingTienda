@@ -351,6 +351,23 @@ async def exportar_csv(
     )
 
 
+@router.get("/scraper/status")
+async def scraper_status(_: User = Depends(get_current_user)):
+    """Estado del scheduler nocturno de scraping."""
+    from app.services.scraper_sync import get_status
+    return await get_status()
+
+
+@router.post("/scraper/trigger", status_code=202)
+async def scraper_trigger(_: User = Depends(get_current_user)):
+    """Dispara un scraping manual inmediato (si no hay otro corriendo)."""
+    from app.services.scraper_sync import trigger_manual
+    launched = await trigger_manual()
+    if not launched:
+        raise HTTPException(status_code=409, detail="Ya hay un scraping en curso")
+    return {"message": "Scraping iniciado"}
+
+
 @router.get("/{producto_id}", response_model=ProductoOut)
 async def obtener_precio(
     producto_id: int,
