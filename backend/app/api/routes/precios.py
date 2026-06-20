@@ -29,6 +29,7 @@ from app.models.user import User
 from app.schemas.precios import (
     ProductoOut, SyncPayload, SyncResult, PreciosListResponse,
     CompararResponse, CompararGrupo, CompararTiendaItem,
+    PreciosStats, TiendaStats,
 )
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,44 @@ async def listar_tiendas(
         select(Producto.tienda).distinct().order_by(Producto.tienda)
     )
     return [r[0] for r in rows.all()]
+
+
+@router.get("/estadisticas", response_model=PreciosStats)
+async def estadisticas_precios(
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resumen estadístico del catálogo de precios por tienda."""
+    from sqlalchemy import case, Integer, cast
+    desc_expr = cast(
+        case(
+            (
+                Producto.precio_lista.isnot(None) & (Producto.precio_lista > Producto.precio),
+                1,
+            ),
+            else_=0,
+        ),
+        Integer,
+    )
+    rows = await db.execute(
+        select(
+            Producto.tienda,
+            func.count().label("total"),
+            func.sum(desc_expr).label("con_descuento"),
+            func.avg(Producto.precio).label("precio_promedio"),
+        ).group_by(Producto.tienda).order_by(Producto.tienda)
+    )
+    tiendas = []
+    total_global = 0
+    for tienda, total, con_desc, avg_precio in rows.all():
+        tiendas.append(TiendaStats(
+            tienda=tienda,
+            total=total,
+            con_descuento=int(con_desc or 0),
+            precio_promedio=round(float(avg_precio), 2) if avg_precio else None,
+        ))
+        total_global += total
+    return PreciosStats(total_productos=total_global, tiendas=tiendas)
 
 
 @router.get("/categorias", response_model=list[str])

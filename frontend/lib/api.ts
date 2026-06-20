@@ -260,6 +260,18 @@ export interface CompararResponse {
   total:  number;
 }
 
+export interface TiendaStats {
+  tienda:          string;
+  total:           number;
+  con_descuento:   number;
+  precio_promedio: number | null;
+}
+
+export interface PreciosStats {
+  total_productos: number;
+  tiendas:         TiendaStats[];
+}
+
 export const preciosApi = {
   list: (params: {
     tienda?:        string;
@@ -279,4 +291,5 @@ export const preciosApi = {
   get: (id: number) => api.get<Producto>(`/precios/${id}`),
   comparar: (params: { q?: string; barcode?: string; limit?: number }) =>
     api.get<CompararResponse>("/precios/comparar", { params }),
+  estadisticas: () => api.get<PreciosStats>("/precios/estadisticas"),
 };
