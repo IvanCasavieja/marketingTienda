@@ -159,7 +159,7 @@ def bajar_varias(slugs: list, browser=None) -> dict:
     _own_browser = browser is None
 
     with sync_playwright() as pw:
-        b = pw.chromium.launch(headless=True) if _own_browser else browser
+        b = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]) if _own_browser else browser
         pg = b.new_page(viewport={"width": 1280, "height": 900})
         # Load homepage first to set cookies/session
         try:
