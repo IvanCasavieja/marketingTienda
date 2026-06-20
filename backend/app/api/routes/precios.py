@@ -130,10 +130,11 @@ async def listar_precios(
     categoria:  Optional[str]   = Query(None),
     marca:      Optional[str]   = Query(None),
     q:          Optional[str]   = Query(None, description="Búsqueda por nombre, SKU o barcode"),
-    precio_min: Optional[float] = Query(None),
-    precio_max: Optional[float] = Query(None),
-    page:       int             = Query(1, ge=1),
-    page_size:  int             = Query(50, ge=1, le=200),
+    precio_min:    Optional[float] = Query(None),
+    precio_max:    Optional[float] = Query(None),
+    con_descuento: Optional[bool]  = Query(None, description="Solo productos con descuento activo"),
+    page:          int             = Query(1, ge=1),
+    page_size:     int             = Query(50, ge=1, le=200),
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -158,6 +159,11 @@ async def listar_precios(
         filters.append(Producto.precio >= precio_min)
     if precio_max is not None:
         filters.append(Producto.precio <= precio_max)
+    if con_descuento:
+        filters.append(
+            Producto.precio_lista.isnot(None) &
+            (Producto.precio_lista > Producto.precio)
+        )
 
     for f in filters:
         base    = base.where(f)
