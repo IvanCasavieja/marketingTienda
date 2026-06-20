@@ -360,12 +360,23 @@ async def scraper_status(_: User = Depends(get_current_user)):
 
 @router.post("/scraper/trigger", status_code=202)
 async def scraper_trigger(_: User = Depends(get_current_user)):
-    """Dispara un scraping manual inmediato (si no hay otro corriendo)."""
+    """Dispara un scraping manual completo (todas las tiendas)."""
     from app.services.scraper_sync import trigger_manual
     launched = await trigger_manual()
     if not launched:
         raise HTTPException(status_code=409, detail="Ya hay un scraping en curso")
-    return {"message": "Scraping iniciado"}
+    return {"message": "Scraping completo iniciado"}
+
+
+@router.post("/scraper/trigger-gdu", status_code=202)
+async def scraper_trigger_gdu(_: User = Depends(get_current_user)):
+    """Dispara un scan de solo GDU (Geant, Disco, Devoto). Actualiza únicamente
+    registros GDU en PostgreSQL via upsert por URL — no toca Tata ni Farmashop."""
+    from app.services.scraper_sync import trigger_gdu
+    launched = await trigger_gdu()
+    if not launched:
+        raise HTTPException(status_code=409, detail="Ya hay un scraping en curso")
+    return {"message": "GDU scan iniciado"}
 
 
 @router.get("/{producto_id}", response_model=ProductoOut)
