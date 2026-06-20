@@ -3,19 +3,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type Producto, type PreciosListResponse } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
 import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag } from "lucide-react";
-import { SkeletonRow } from "@/components/ui/SkeletonCard";
 import { toast } from "sonner";
 
 const TIENDA_COLORS: Record<string, string> = {
-  "Disco":      "bg-blue-500/15 text-blue-300",
-  "Devoto":     "bg-green-500/15 text-green-300",
-  "Géant":      "bg-purple-500/15 text-purple-300",
-  "Ta-Ta":      "bg-red-500/15 text-red-300",
-  "Farmashop":  "bg-orange-500/15 text-orange-300",
+  "Disco":     "bg-blue-50 text-blue-700",
+  "Devoto":    "bg-green-50 text-green-700",
+  "Géant":     "bg-purple-50 text-purple-700",
+  "Ta-Ta":     "bg-red-50 text-red-700",
+  "Farmashop": "bg-orange-50 text-orange-700",
 };
 
 function TiendaBadge({ tienda }: { tienda: string }) {
-  const cls = TIENDA_COLORS[tienda] ?? "bg-slate-500/15 text-slate-300";
+  const cls = TIENDA_COLORS[tienda] ?? "bg-slate-100 text-slate-600";
   return (
     <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${cls}`}>
       {tienda}
@@ -24,15 +23,28 @@ function TiendaBadge({ tienda }: { tienda: string }) {
 }
 
 function PrecioBadge({ precio, precioLista }: { precio: number | null; precioLista: number | null }) {
-  if (precio === null) return <span className="text-slate-600 text-xs">—</span>;
+  if (precio === null) return <span className="text-slate-400 text-xs">—</span>;
   const hasDesc = precioLista !== null && precioLista > precio;
   return (
     <div className="flex flex-col items-end gap-0.5">
-      <span className="text-sm font-semibold text-slate-100">{fMoneyExact(precio)}</span>
+      <span className="text-sm font-semibold text-slate-800">{fMoneyExact(precio)}</span>
       {hasDesc && (
-        <span className="text-[11px] text-slate-500 line-through">{fMoneyExact(precioLista!)}</span>
+        <span className="text-[11px] text-slate-400 line-through">{fMoneyExact(precioLista!)}</span>
       )}
     </div>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <tr className="border-b border-slate-50 animate-pulse">
+      {[55, 30, 25, 15, 10].map((w, i) => (
+        <td key={i} className="px-4 py-3">
+          <div className={`h-3 bg-slate-100 rounded w-${w < 20 ? "[60px]" : "[140px]"}`} />
+        </td>
+      ))}
+      <td className="px-4 py-3" />
+    </tr>
   );
 }
 
@@ -44,22 +56,18 @@ export default function PreciosPage() {
   const [result,     setResult]     = useState<PreciosListResponse | null>(null);
   const [loading,    setLoading]    = useState(true);
 
-  const [q,          setQ]          = useState("");
-  const [tienda,     setTienda]     = useState("");
-  const [categoria,  setCategoria]  = useState("");
-  const [marca,      setMarca]      = useState("");
-  const [page,       setPage]       = useState(1);
+  const [q,         setQ]         = useState("");
+  const [tienda,    setTienda]    = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [marca,     setMarca]     = useState("");
+  const [page,      setPage]      = useState(1);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cargar tiendas disponibles al montar
   useEffect(() => {
-    preciosApi.tiendas()
-      .then(({ data }) => setTiendas(data))
-      .catch(() => {});
+    preciosApi.tiendas().then(({ data }) => setTiendas(data)).catch(() => {});
   }, []);
 
-  // Actualizar categorías cuando cambia la tienda seleccionada
   useEffect(() => {
     preciosApi.categorias(tienda || undefined)
       .then(({ data }) => setCategorias(data))
@@ -67,14 +75,14 @@ export default function PreciosPage() {
     setCategoria("");
   }, [tienda]);
 
-  const load = useCallback(async (newPage = page) => {
+  const load = useCallback(async (newPage = 1) => {
     setLoading(true);
     try {
       const { data } = await preciosApi.list({
-        q:         q      || undefined,
-        tienda:    tienda || undefined,
+        q:         q         || undefined,
+        tienda:    tienda    || undefined,
         categoria: categoria || undefined,
-        marca:     marca  || undefined,
+        marca:     marca     || undefined,
         page:      newPage,
         page_size: PAGE_SIZE,
       });
@@ -85,9 +93,8 @@ export default function PreciosPage() {
     } finally {
       setLoading(false);
     }
-  }, [q, tienda, categoria, marca, page]);
+  }, [q, tienda, categoria, marca]);
 
-  // Debounce de búsqueda de texto
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => load(1), 350);
@@ -97,62 +104,56 @@ export default function PreciosPage() {
   const totalPages = result ? Math.ceil(result.total / PAGE_SIZE) : 1;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-5">
+    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
       {/* Header */}
       <div>
         <h1 className="section-title flex items-center gap-2">
-          <Tag size={20} className="text-brand-400" />
+          <Tag size={17} className="text-brand-600" />
           Catálogo de precios
         </h1>
         <p className="section-sub mt-0.5">
-          {result ? `${result.total.toLocaleString("es-UY")} productos de supermercados uruguayos` : "Cargando…"}
+          {result
+            ? `${result.total.toLocaleString("es-UY")} productos de supermercados uruguayos`
+            : "Cargando…"}
         </p>
       </div>
 
       {/* Filtros */}
-      <div className="card flex flex-wrap gap-3">
-        {/* Búsqueda */}
+      <div className="card p-4 flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nombre, SKU, código de barras..."
-            className="input pl-8 w-full text-sm"
+            placeholder="Buscar por nombre, SKU, código de barras…"
+            className="input pl-8 text-sm"
           />
         </div>
 
-        {/* Tienda */}
         <select
           value={tienda}
           onChange={(e) => { setTienda(e.target.value); setPage(1); }}
-          className="input text-sm min-w-[140px]"
+          className="input text-sm min-w-[140px] w-auto"
         >
           <option value="">Todas las tiendas</option>
-          {tiendas.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
+          {tiendas.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
 
-        {/* Categoría */}
         <select
           value={categoria}
           onChange={(e) => { setCategoria(e.target.value); setPage(1); }}
-          className="input text-sm min-w-[200px]"
+          className="input text-sm min-w-[200px] w-auto"
           disabled={categorias.length === 0}
         >
           <option value="">Todas las categorías</option>
-          {categorias.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
+          {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
 
-        {/* Marca */}
         <input
           value={marca}
           onChange={(e) => setMarca(e.target.value)}
-          placeholder="Filtrar por marca..."
-          className="input text-sm min-w-[160px]"
+          placeholder="Marca…"
+          className="input text-sm min-w-[140px] w-auto"
         />
       </div>
 
@@ -160,50 +161,46 @@ export default function PreciosPage() {
       <div className="card overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-white/5 text-slate-500 text-xs uppercase tracking-wider">
-              <th className="text-left px-4 py-3 font-medium">Producto</th>
-              <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Marca</th>
-              <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">Categoría</th>
-              <th className="text-left px-4 py-3 font-medium">Tienda</th>
-              <th className="text-right px-4 py-3 font-medium">Precio</th>
-              <th className="px-4 py-3 w-8"></th>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              <th className="table-th">Producto</th>
+              <th className="table-th hidden md:table-cell">Marca</th>
+              <th className="table-th hidden lg:table-cell">Categoría</th>
+              <th className="table-th">Tienda</th>
+              <th className="table-th text-right">Precio</th>
+              <th className="table-th w-8" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody>
             {loading
-              ? Array.from({ length: 10 }).map((_, i) => (
-                  <tr key={i}>
-                    <td colSpan={6} className="px-4 py-3"><SkeletonRow /></td>
-                  </tr>
-                ))
+              ? Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} />)
               : (result?.items ?? []).map((p: Producto) => (
-                  <tr key={p.id} className="hover:bg-white/[0.02] transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-200 leading-tight max-w-xs truncate">
+                  <tr key={p.id} className="table-tr">
+                    <td className="table-td">
+                      <div className="font-medium text-slate-800 leading-tight max-w-xs truncate">
                         {p.nombre ?? "—"}
                       </div>
                       {p.sku && (
-                        <div className="text-[11px] text-slate-600 mt-0.5">SKU {p.sku}</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">SKU {p.sku}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-400 hidden md:table-cell">
+                    <td className="table-td text-slate-600 hidden md:table-cell">
                       {p.marca ?? "—"}
                     </td>
-                    <td className="px-4 py-3 text-slate-500 text-xs hidden lg:table-cell max-w-[180px] truncate">
+                    <td className="table-td text-slate-500 text-xs hidden lg:table-cell max-w-[200px] truncate">
                       {p.categoria ?? "—"}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="table-td">
                       <TiendaBadge tienda={p.tienda} />
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="table-td text-right">
                       <PrecioBadge precio={p.precio} precioLista={p.precio_lista} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="table-td">
                       <a
                         href={p.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-slate-600 hover:text-brand-400 transition-colors"
+                        className="text-slate-400 hover:text-brand-600 transition-colors"
                         title="Ver en tienda"
                       >
                         <ExternalLink size={13} />
@@ -214,7 +211,7 @@ export default function PreciosPage() {
             }
             {!loading && result?.items.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-slate-600">
+                <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-sm">
                   Sin productos para los filtros seleccionados.
                 </td>
               </tr>
@@ -235,19 +232,19 @@ export default function PreciosPage() {
             <button
               onClick={() => load(page - 1)}
               disabled={page <= 1 || loading}
-              className="btn-ghost p-1 disabled:opacity-30"
+              className="btn-ghost p-1.5 disabled:opacity-30"
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={15} />
             </button>
-            <span className="px-3 text-slate-400">
+            <span className="px-3 text-slate-500 tabular-nums">
               {page} / {totalPages}
             </span>
             <button
               onClick={() => load(page + 1)}
               disabled={page >= totalPages || loading}
-              className="btn-ghost p-1 disabled:opacity-30"
+              className="btn-ghost p-1.5 disabled:opacity-30"
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={15} />
             </button>
           </div>
         </div>
