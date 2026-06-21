@@ -103,35 +103,38 @@ def bajar_categoria(page, cat_facets: list, lote: int = 50) -> tuple:
     return productos, total
 
 
-def bajar_varias(categorias: list, headless: bool = True) -> dict:
+def bajar_varias(categorias: list, headless: bool = True, max_workers: int = 3) -> dict:
     """categorias: lista de listas de facets.
-    Abre una página fresca por categoría para evitar degradación de sesión.
+    Corre hasta max_workers categorías en paralelo, cada una con su propio browser.
     Devuelve dict slug -> {productos, total_declarado}.
     """
-    resultado = {}
-    with sync_playwright() as p:
-        b = p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"])
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        for facets in categorias:
-            slug = "/".join(facets)
+    def _bajar_una(facets):
+        slug = "/".join(facets)
+        with sync_playwright() as p:
+            b = p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"])
             page = b.new_page()
             try:
                 page.goto("https://www.tata.com.uy/", timeout=30000)
-                # Esperar carga real, no tiempo fijo
                 try:
                     page.wait_for_load_state("domcontentloaded", timeout=10000)
                 except Exception:
                     pass
                 page.wait_for_timeout(1500)
-
                 prods, total = bajar_categoria(page, facets)
-                resultado[slug] = {"productos": prods, "total_declarado": total}
                 print(f"  {slug}: {len(prods)}/{total}")
+                return slug, {"productos": prods, "total_declarado": total}
             except Exception as e:
-                resultado[slug] = {"error": str(e)}
                 print(f"  {slug}: ERROR {str(e)[:60]}")
+                return slug, {"error": str(e)}
             finally:
                 page.close()
+                b.close()
 
-        b.close()
+    resultado = {}
+    workers = min(max_workers, len(categorias))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for slug, data in (f.result() for f in as_completed(ex.submit(_bajar_una, f) for f in categorias)):
+            resultado[slug] = data
     return resultado

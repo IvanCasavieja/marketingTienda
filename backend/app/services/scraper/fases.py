@@ -11,12 +11,11 @@ import logging
 import os
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from pathlib import Path
 
 from . import store
-from .adapters import extraer, ProductRecord
+from .adapters import ProductRecord
 
 _PKG_DIR  = Path(__file__).parent
 _DATA_DIR = Path(os.environ.get("SCRAPER_DATA_DIR", "/tmp/scraper"))
@@ -98,7 +97,10 @@ def slugs_gdu_unicos() -> tuple:
         mapeo = json.load(f)
     vistos: set = set()
     result = []
-    for slugs in mapeo.values():
+    for k, v in mapeo.items():
+        if k.startswith("_"):   # ignorar claves de metadatos (_nota, etc.)
+            continue
+        slugs = v if isinstance(v, list) else [v]
         for s in slugs:
             if s not in vistos:
                 vistos.add(s)
@@ -123,58 +125,114 @@ def link_a_url_producto(base: str, link: str) -> str | None:
     return base + partes[0] + "-" + partes[1] + "/p"
 
 
-def scroll_categoria(page, url: str, max_pasos: int = 150,
-                     espera_ms: int = 1200, paso_px: int = 800) -> set:
-    page.goto(url, timeout=30000)
-    # Blazor Server usa SignalR (WS abierto), networkidle puede no disparar — toleramos timeout
+_JS_EXTRAER_CARDS = """
+() => {
+    const items = document.querySelectorAll('.product-item');
+    return Array.from(items).map(item => {
+        const linkEl = item.querySelector('h3 a') || item.querySelector('figure a');
+        const href = linkEl ? linkEl.getAttribute('href') : null;
+        if (!href || !href.startsWith('/product/')) return null;
+
+        const h3El   = item.querySelector('h3 a');
+        const imgEl  = item.querySelector('figure img');
+        const nombre = (h3El  ? h3El.textContent.trim()          : null) ||
+                       (imgEl ? imgEl.getAttribute('alt')         : null);
+
+        const dp = item.querySelector('.desc-prices');
+        let precio_str = null, precio_lista_str = null;
+        if (dp) {
+            const valEl = dp.querySelector('.val');
+            if (valEl) precio_str = valEl.textContent.trim();
+            const oldEl = dp.querySelector('.price-old');
+            if (oldEl) precio_lista_str = oldEl.textContent.replace(/[^0-9,.]/g, '');
+        }
+        const brandEl = item.querySelector('.prod-cats a');
+        return { href, nombre, precio_str, precio_lista_str,
+                 marca: brandEl ? brandEl.textContent.trim() : null };
+    }).filter(Boolean);
+}
+"""
+
+
+def _parse_precio(s: str | None) -> float | None:
+    if not s:
+        return None
+    try:
+        return float(s.replace(".", "").replace(",", "."))
+    except (ValueError, AttributeError):
+        return None
+
+
+def scroll_categoria_con_datos(page, url: str, tienda: str, base_url: str,
+                                max_pasos: int = 300, espera_ms: int = 900,
+                                paso_px: int = 800, sin_cambios_max: int = 30) -> list:
+    """Scroll GDU category page y extrae datos de cada product card inline.
+    No hace requests adicionales por producto — todo viene del DOM del listado.
+    Retorna lista de ProductRecord listos para guardar.
+
+    sin_cambios_max=30 (27s de tolerancia) cubre:
+    - Categorías con inicio tardío (ej: ferreteria necesita ~15 pasos antes del 1er batch)
+    - 3 sesiones Blazor en paralelo (servidor 2x más lento bajo carga concurrente)
+    max_pasos=300 garantiza completar categorías grandes (~1500 productos = ~75 batches × 2 pasos)
+    """
+    resp = page.goto(url, timeout=30000)
+    if resp and resp.status >= 400:
+        log.warning("GDU: %s HTTP %d — saltando", url, resp.status)
+        return []
     try:
         page.wait_for_load_state("networkidle", timeout=8000)
     except Exception:
-        page.wait_for_timeout(5000)
+        pass
+    # Espera fija post-carga: le da tiempo al componente Blazor de virtual scroll
+    # para inicializarse antes de empezar el loop. Sin esto, bajo carga paralela
+    # el scroll puede empezar antes de que el componente esté montado.
+    page.wait_for_timeout(2500)
 
-    # acumulados: unión de todos los links vistos en cualquier momento del scroll.
-    # Necesario porque GDU hace virtual scroll: desmonta productos fuera de pantalla,
-    # por lo que page.content() solo contiene los actualmente renderizados.
-    acumulados = set()
-    vistos = set(re.findall(r'href="(/product/[^"]+)"', page.content()))
-    acumulados |= vistos
+    categoria_slug = url.replace(base_url + "/", "")
+    acumulados: dict[str, dict] = {}   # href -> card data
+
+    def _extraer():
+        try:
+            for card in page.evaluate(_JS_EXTRAER_CARDS):
+                href = card.get("href")
+                if href and href not in acumulados:
+                    acumulados[href] = card
+        except Exception:
+            pass
+
+    _extraer()
+    vistos = set(acumulados.keys())
     sin_cambios = 0
 
     for _ in range(max_pasos):
         page.mouse.wheel(0, paso_px)
         page.wait_for_timeout(espera_ms)
-        nuevos = set(re.findall(r'href="(/product/[^"]+)"', page.content()))
-        # Comparar sets, no lengths: virtual scroll puede tener mismo count pero distinto contenido
+        _extraer()
+        nuevos = set(acumulados.keys())
         sin_cambios = 0 if nuevos != vistos else sin_cambios + 1
         vistos = nuevos
-        acumulados |= nuevos
-        if sin_cambios >= 10:
+        if sin_cambios >= sin_cambios_max:
             break
 
-    return acumulados
-
-
-def extraer_lote_gdu(urls: list, workers: int = 4) -> tuple:
     records = []
-    errores = 0
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(extraer, url): url for url in urls}
-        for i, fut in enumerate(as_completed(futs), 1):
-            try:
-                rec = fut.result()
-                records.append(rec)
-                if rec.error:
-                    errores += 1
-            except Exception as e:
-                errores += 1
-                log.warning("GDU extract error: %s", e)
-            if i % 100 == 0:
-                log.info("GDU: %d/%d extraidos", i, len(urls))
-    guardados = store.guardar_bulk(records)
-    return guardados, errores
+    for href, card in acumulados.items():
+        url_prod = link_a_url_producto(base_url, href)
+        if not url_prod:
+            continue
+        records.append(ProductRecord(
+            tienda=tienda,
+            url=url_prod,
+            nombre=card.get("nombre"),
+            precio=_parse_precio(card.get("precio_str")),
+            precio_lista=_parse_precio(card.get("precio_lista_str")),
+            marca=card.get("marca"),
+            categoria=categoria_slug,
+        ))
+    return records
 
 
 def run_gdu_fase(fase: int):
+    import threading
     from playwright.sync_api import sync_playwright
 
     fases  = slugs_por_fase_gdu()
@@ -194,42 +252,53 @@ def run_gdu_fase(fase: int):
         log.info("GDU Fase %d: ya completada", fase)
         return
 
-    fase_guardados = fase_errores = 0
     pendientes_por_tienda: dict = {}
     for slug, tienda, base in pendientes:
         pendientes_por_tienda.setdefault(tienda, []).append((slug, base))
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-        for tienda, items in pendientes_por_tienda.items():
+    prog_lock   = threading.Lock()
+    resultados  = {}  # tienda → (guardados, errores)
+
+    def scroll_tienda(tienda: str, items: list):
+        g_total = 0
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
             for slug, base in items:
                 url = f"{base}/{slug}"
                 log.info("GDU [%s] %s", tienda, slug)
                 page = browser.new_page(viewport={"width": 1280, "height": 900})
                 try:
-                    links = scroll_categoria(page, url)
-                    if links:
-                        urls = [link_a_url_producto(base, lk) for lk in links]
-                        urls = [u for u in urls if u]
-                        g, e = extraer_lote_gdu(urls)
-                        fase_guardados += g
-                        fase_errores   += e
-                        log.info("GDU [%s] %s: links=%d guardados=%d errores=%d",
-                                 tienda, slug, len(links), g, e)
-                    else:
-                        log.info("GDU [%s] %s: 0 links encontrados", tienda, slug)
-                    # Solo marcar completado si la página cargó (aunque tenga 0 productos)
-                    prog["completados"].append(f"{tienda}::{slug}")
-                    guardar_progreso(PROGRESO_GDU, prog)
+                    records = scroll_categoria_con_datos(page, url, tienda, base)
+                    g = store.guardar_bulk(records) if records else 0
+                    g_total += g
+                    log.info("GDU [%s] %s: %d productos", tienda, slug, g)
+                    with prog_lock:
+                        prog["completados"].append(f"{tienda}::{slug}")
+                        guardar_progreso(PROGRESO_GDU, prog)
                 except Exception as ex:
                     log.warning("GDU [%s] %s ERROR: %s", tienda, slug, str(ex)[:150])
                 finally:
                     page.close()
-        browser.close()
+            browser.close()
+        resultados[tienda] = (g_total, 0)
 
-    prog["total_guardados"] = prog.get("total_guardados", 0) + fase_guardados
+    threads = [
+        threading.Thread(target=scroll_tienda, args=(tienda, items), name=f"gdu-{tienda}", daemon=True)
+        for tienda, items in pendientes_por_tienda.items()
+    ]
+    log.info("GDU Fase %d: corriendo %d tiendas en paralelo", fase, len(threads))
+    for i, t in enumerate(threads):
+        t.start()
+        if i < len(threads) - 1:
+            time.sleep(15)  # stagger: evita que 3 browsers golpeen el servidor al mismo tiempo
+    for t in threads:
+        t.join()
+
+    total_g = sum(g for g, _ in resultados.values())
+    total_e = sum(e for _, e in resultados.values())
+    prog["total_guardados"] = prog.get("total_guardados", 0) + total_g
     guardar_progreso(PROGRESO_GDU, prog)
-    log.info("GDU Fase %d terminada: guardados=%d errores=%d", fase, fase_guardados, fase_errores)
+    log.info("GDU Fase %d terminada: guardados=%d errores=%d", fase, total_g, total_e)
 
 
 # ---------------------------------------------------------------------------

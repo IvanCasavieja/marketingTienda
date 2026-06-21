@@ -324,6 +324,9 @@ export const preciosApi = {
   }) =>
     api.get<Blob>("/precios/export.csv", { params, responseType: "blob" }),
 
+  exportExcel: () =>
+    api.get<Blob>("/precios/historial/export.xlsx", { responseType: "blob" }),
+
   historialFechas: () =>
     api.get<string[]>("/precios/historial/fechas"),
 

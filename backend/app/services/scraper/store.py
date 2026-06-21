@@ -42,6 +42,7 @@ def conectar() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH, check_same_thread=False)
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=NORMAL")
+    con.execute("PRAGMA busy_timeout=5000")
     con.executescript(_SCHEMA)
     # migración: agregar columna si la DB viene de versión anterior
     cols = {r[1] for r in con.execute("PRAGMA table_info(productos)")}
