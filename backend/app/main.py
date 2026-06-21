@@ -23,9 +23,18 @@ async def lifespan(app: FastAPI):
     if settings.APP_ENV == "development":
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-    async with engine.begin() as conn:
-        await migrate_roles(conn)
-        await migrate_default_team(conn)
+
+    # Migraciones en background — el schema ya existe en prod (IF NOT EXISTS = no-op).
+    # No bloquear el lifespan: Render mata la instancia si el health check no responde en 5s.
+    async def _run_migrations():
+        try:
+            async with engine.begin() as conn:
+                await migrate_roles(conn)
+                await migrate_default_team(conn)
+        except Exception as e:
+            logger.error("Startup migrations failed: %s", e)
+
+    asyncio.create_task(_run_migrations())
 
     # Arrancar auto-sync de métricas si está habilitado
     sync_task = None
