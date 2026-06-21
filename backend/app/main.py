@@ -24,15 +24,48 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    # Migraciones en background — el schema ya existe en prod (IF NOT EXISTS = no-op).
-    # No bloquear el lifespan: Render mata la instancia si el health check no responde en 5s.
+    # Migraciones en background — no bloquear el lifespan.
+    # Render mata la instancia si /health no responde en 5s, y scripts/migrate.py
+    # tarda 3-5s abriendo conexiones síncronas a Supabase antes de que uvicorn arranque.
+    # Solución: uvicorn arranca solo, migraciones corren acá en background.
+    def _run_alembic():
+        """Ejecuta scripts/migrate.py en thread pool (es código síncrono)."""
+        import os, sys
+        from sqlalchemy import create_engine, inspect, text as sa_text
+        raw_url = os.environ.get("DATABASE_URL", "")
+        if not raw_url:
+            return
+        sync_url = raw_url.replace("postgresql+asyncpg://", "postgresql://")
+        eng = create_engine(sync_url)
+        try:
+            with eng.connect() as conn:
+                tables = inspect(eng).get_table_names()
+                if "alembic_version" not in tables and "teams" in tables:
+                    conn.execute(sa_text(
+                        "CREATE TABLE alembic_version "
+                        "(version_num VARCHAR(32) NOT NULL CONSTRAINT alembic_version_pkc PRIMARY KEY)"
+                    ))
+                    conn.execute(sa_text("INSERT INTO alembic_version (version_num) VALUES ('0001')"))
+                    conn.commit()
+        finally:
+            eng.dispose()
+        from alembic import command
+        from alembic.config import Config
+        command.upgrade(Config("alembic.ini"), "head")
+        logger.info("Alembic migrations completed")
+
     async def _run_migrations():
+        loop = asyncio.get_event_loop()
+        try:
+            await loop.run_in_executor(None, _run_alembic)
+        except Exception as e:
+            logger.error("Alembic migration failed: %s", e)
         try:
             async with engine.begin() as conn:
                 await migrate_roles(conn)
                 await migrate_default_team(conn)
         except Exception as e:
-            logger.error("Startup migrations failed: %s", e)
+            logger.error("In-app migrations failed: %s", e)
 
     asyncio.create_task(_run_migrations())
 
