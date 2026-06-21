@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type Producto, type PreciosListResponse, type TiendaStats } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
-import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare, Download, RefreshCw, Clock, History, X } from "lucide-react";
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare, Download, RefreshCw, Clock, History, X, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -176,6 +176,7 @@ export default function PreciosPage() {
   }, [q, tienda, categoria, marca, conDescuento, sortBy, sortDir]);
 
   const [exporting,         setExporting]         = useState(false);
+  const [exportingExcel,    setExportingExcel]    = useState(false);
   const [fechasHistorial,   setFechasHistorial]   = useState<string[]>([]);
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string | null>(null);
   const [historialResult,   setHistorialResult]   = useState<{ total: number; page: number; items: Producto[] } | null>(null);
@@ -239,6 +240,23 @@ export default function PreciosPage() {
       toast.error("Error al exportar CSV");
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleExportExcel() {
+    setExportingExcel(true);
+    try {
+      const { data } = await preciosApi.exportExcel();
+      const url = URL.createObjectURL(data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `precios_historial_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Error al exportar Excel");
+    } finally {
+      setExportingExcel(false);
     }
   }
 
@@ -320,9 +338,19 @@ export default function PreciosPage() {
             onClick={handleExport}
             disabled={exporting}
             className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-50"
+            title="Exportar vista actual como CSV"
           >
             <Download size={13} />
             {exporting ? "Exportando…" : "CSV"}
+          </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={exportingExcel}
+            className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-50"
+            title="Descargar historial completo como Excel (una hoja por fecha)"
+          >
+            <FileSpreadsheet size={13} />
+            {exportingExcel ? "Generando…" : "Excel"}
           </button>
           <Link href="/precios/comparar" className="btn-secondary text-xs px-3 py-1.5">
             <Scale size={13} />

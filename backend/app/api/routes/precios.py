@@ -351,6 +351,69 @@ async def exportar_csv(
     )
 
 
+@router.get("/historial/export.xlsx")
+async def exportar_excel_historial(
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Exporta historial completo como Excel — una hoja por fecha de scan."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from app.models.precio_historial import PrecioHistorial
+
+    fechas_result = await db.execute(
+        select(PrecioHistorial.fecha_scan).distinct().order_by(PrecioHistorial.fecha_scan.desc())
+    )
+    fechas = [r[0] for r in fechas_result.all()]
+
+    if not fechas:
+        raise HTTPException(status_code=404, detail="No hay datos históricos disponibles")
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    headers = ["Tienda", "Nombre", "Precio", "Precio Lista", "SKU", "Barcode", "Marca", "Categoría", "URL"]
+    header_fill = PatternFill("solid", fgColor="1E3A5F")
+    header_font = Font(bold=True, color="FFFFFF")
+
+    # Anchos fijos por columna (evita iterar 100k+ celdas para calcular max_len)
+    COL_WIDTHS = [12, 50, 12, 12, 14, 14, 20, 30, 60]
+
+    for fecha in fechas:
+        ws = wb.create_sheet(title=str(fecha))
+        ws.append(headers)
+        for i, cell in enumerate(ws[1]):
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+            ws.column_dimensions[cell.column_letter].width = COL_WIDTHS[i]
+
+        items_result = await db.execute(
+            select(
+                PrecioHistorial.tienda, PrecioHistorial.nombre,
+                PrecioHistorial.precio, PrecioHistorial.precio_lista,
+                PrecioHistorial.sku, PrecioHistorial.barcode,
+                PrecioHistorial.marca, PrecioHistorial.categoria,
+                PrecioHistorial.url,
+            )
+            .where(PrecioHistorial.fecha_scan == fecha)
+            .order_by(PrecioHistorial.tienda, PrecioHistorial.nombre)
+        )
+        for row in items_result.all():
+            ws.append(list(row))
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"precios_historial_{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/historial/fechas", response_model=list[str])
 async def historial_fechas(
     _: User = Depends(get_current_user),

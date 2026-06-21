@@ -150,20 +150,26 @@ def bajar_categoria(nombre_cat: str, page_size: int = 48) -> tuple:
     return productos, total or 0
 
 
-def bajar_varias(nombres_cats: list) -> dict:
-    """Baja varias categorías en secuencia.
+def bajar_varias(nombres_cats: list, max_workers: int = 4) -> dict:
+    """Baja varias categorías en paralelo via ThreadPoolExecutor.
     Devuelve dict nombre_cat -> {productos, total_declarado}.
     """
-    resultado = {}
-    for nombre in nombres_cats:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _bajar(nombre):
         if nombre not in CATEGORIAS:
-            resultado[nombre] = {"error": f"Categoría desconocida: {nombre}"}
-            continue
+            return nombre, {"error": f"Categoría desconocida: {nombre}"}
         try:
             prods, total = bajar_categoria(nombre)
-            resultado[nombre] = {"productos": prods, "total_declarado": total}
             print(f"  {nombre}: {len(prods)}/{total}", flush=True)
+            return nombre, {"productos": prods, "total_declarado": total}
         except Exception as e:
-            resultado[nombre] = {"error": str(e)}
             print(f"  {nombre}: ERROR {str(e)[:80]}", flush=True)
+            return nombre, {"error": str(e)}
+
+    resultado = {}
+    workers = min(max_workers, len(nombres_cats))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for nombre, data in (f.result() for f in as_completed(ex.submit(_bajar, n) for n in nombres_cats)):
+            resultado[nombre] = data
     return resultado
