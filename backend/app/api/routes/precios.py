@@ -356,9 +356,15 @@ async def exportar_excel_historial(
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Exporta historial completo como Excel — una hoja por fecha de scan."""
+    """Exporta historial completo como Excel — una hoja por fecha de scan.
+
+    Usa write_only=True + stream_results para memoria constante (~20MB) sin importar
+    cuántas filas haya. Sin esto openpyxl acumula ~1M cell objects en RAM y crashea.
+    """
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.utils import get_column_letter
     from app.models.precio_historial import PrecioHistorial
 
     fechas_result = await db.execute(
@@ -369,26 +375,33 @@ async def exportar_excel_historial(
     if not fechas:
         raise HTTPException(status_code=404, detail="No hay datos históricos disponibles")
 
-    wb = Workbook()
-    wb.remove(wb.active)
-
-    headers = ["Tienda", "Nombre", "Precio", "Precio Lista", "SKU", "Barcode", "Marca", "Categoría", "URL"]
+    COL_HEADERS = ["Tienda", "Nombre", "Precio", "Precio Lista", "SKU", "Barcode", "Marca", "Categoría", "URL"]
+    COL_WIDTHS  = [12, 50, 12, 12, 14, 14, 20, 30, 60]
     header_fill = PatternFill("solid", fgColor="1E3A5F")
     header_font = Font(bold=True, color="FFFFFF")
+    center      = Alignment(horizontal="center")
 
-    # Anchos fijos por columna (evita iterar 100k+ celdas para calcular max_len)
-    COL_WIDTHS = [12, 50, 12, 12, 14, 14, 20, 30, 60]
+    wb = Workbook(write_only=True)
 
     for fecha in fechas:
         ws = wb.create_sheet(title=str(fecha))
-        ws.append(headers)
-        for i, cell in enumerate(ws[1]):
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal="center")
-            ws.column_dimensions[cell.column_letter].width = COL_WIDTHS[i]
 
-        items_result = await db.execute(
+        # Anchos de columna (write_only los soporta antes de escribir filas)
+        for i, w in enumerate(COL_WIDTHS, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+        # Fila de cabecera con estilo usando WriteOnlyCell
+        header_row = []
+        for h in COL_HEADERS:
+            c = WriteOnlyCell(ws, value=h)
+            c.font  = header_font
+            c.fill  = header_fill
+            c.alignment = center
+            header_row.append(c)
+        ws.append(header_row)
+
+        # Fetch en bloques de 2000 — evita cargar 100k filas en memoria Python de una vez
+        result = await db.execute(
             select(
                 PrecioHistorial.tienda, PrecioHistorial.nombre,
                 PrecioHistorial.precio, PrecioHistorial.precio_lista,
@@ -398,9 +411,11 @@ async def exportar_excel_historial(
             )
             .where(PrecioHistorial.fecha_scan == fecha)
             .order_by(PrecioHistorial.tienda, PrecioHistorial.nombre)
+            .execution_options(stream_results=True)
         )
-        for row in items_result.all():
-            ws.append(list(row))
+        while chunk := result.fetchmany(2000):
+            for row in chunk:
+                ws.append(list(row))
 
     output = io.BytesIO()
     wb.save(output)
