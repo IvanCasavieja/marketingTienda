@@ -364,7 +364,6 @@ async def exportar_excel_historial(
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.cell import WriteOnlyCell
-    from openpyxl.utils import get_column_letter
     from app.models.precio_historial import PrecioHistorial
 
     fechas_result = await db.execute(
@@ -376,7 +375,6 @@ async def exportar_excel_historial(
         raise HTTPException(status_code=404, detail="No hay datos históricos disponibles")
 
     COL_HEADERS = ["Tienda", "Nombre", "Precio", "Precio Lista", "SKU", "Barcode", "Marca", "Categoría", "URL"]
-    COL_WIDTHS  = [12, 50, 12, 12, 14, 14, 20, 30, 60]
     header_fill = PatternFill("solid", fgColor="1E3A5F")
     header_font = Font(bold=True, color="FFFFFF")
     center      = Alignment(horizontal="center")
@@ -385,10 +383,6 @@ async def exportar_excel_historial(
 
     for fecha in fechas:
         ws = wb.create_sheet(title=str(fecha))
-
-        # Anchos de columna (write_only los soporta antes de escribir filas)
-        for i, w in enumerate(COL_WIDTHS, 1):
-            ws.column_dimensions[get_column_letter(i)].width = w
 
         # Fila de cabecera con estilo usando WriteOnlyCell
         header_row = []

@@ -85,7 +85,12 @@ app.add_middleware(
 # Security headers middleware
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Si la cadena interna lanza excepción no capturada, devolvemos una
+        # respuesta propia para que el CORSMiddleware pueda agregar sus headers.
+        response = JSONResponse({"detail": "Internal server error"}, status_code=500)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
