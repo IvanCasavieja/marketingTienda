@@ -67,13 +67,18 @@ async def _wait_initial() -> None:
 # ---------------------------------------------------------------------------
 
 async def _execute_sync() -> None:
-    """Sincroniza todas las plataformas activas. Usa lock Redis para no duplicar trabajo."""
-    redis = get_redis()
-
-    acquired = await redis.set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_LOCK_TTL)
-    if not acquired:
-        logger.info("auto_sync: otro worker ya está corriendo, saltando")
-        return
+    """Sincroniza todas las plataformas activas. Usa lock Redis si está disponible."""
+    # Redis es opcional — si no está disponible, corremos igual sin lock distribuido.
+    redis_ok = False
+    try:
+        redis = get_redis()
+        acquired = await redis.set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_LOCK_TTL)
+        if not acquired:
+            logger.info("auto_sync: otro worker ya está corriendo, saltando")
+            return
+        redis_ok = True
+    except Exception:
+        pass  # Sin Redis: continuamos sin lock
 
     try:
         pairs = await _get_active_pairs()
@@ -102,12 +107,20 @@ async def _execute_sync() -> None:
                     platform.value, team_group_id, exc,
                 )
 
-        now_iso = datetime.now(timezone.utc).isoformat()
-        await redis.set(_REDIS_LAST_RUN, now_iso)
         logger.info("auto_sync completado — rows=%d errors=%d", synced, errors)
+        if redis_ok:
+            try:
+                now_iso = datetime.now(timezone.utc).isoformat()
+                await redis.set(_REDIS_LAST_RUN, now_iso)
+            except Exception:
+                pass
 
     finally:
-        await redis.delete(_REDIS_LOCK)
+        if redis_ok:
+            try:
+                await redis.delete(_REDIS_LOCK)
+            except Exception:
+                pass
 
 
 async def _get_active_pairs() -> list[tuple]:
