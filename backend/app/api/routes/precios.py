@@ -351,7 +351,7 @@ async def exportar_csv(
     )
 
 
-@router.get("/historial/export.xlsx")
+@router.get("/historial/exportar-excel")
 async def exportar_excel_historial(
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -400,7 +400,6 @@ async def exportar_excel_historial(
             header_row.append(c)
         ws.append(header_row)
 
-        # Fetch en bloques de 2000 — evita cargar 100k filas en memoria Python de una vez
         result = await db.execute(
             select(
                 PrecioHistorial.tienda, PrecioHistorial.nombre,
@@ -411,11 +410,9 @@ async def exportar_excel_historial(
             )
             .where(PrecioHistorial.fecha_scan == fecha)
             .order_by(PrecioHistorial.tienda, PrecioHistorial.nombre)
-            .execution_options(stream_results=True)
         )
-        while chunk := result.fetchmany(2000):
-            for row in chunk:
-                ws.append(list(row))
+        for row in result.all():
+            ws.append(list(row))
 
     output = io.BytesIO()
     wb.save(output)
