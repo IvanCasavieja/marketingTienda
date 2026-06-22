@@ -6,9 +6,12 @@ Comparte los mismos category_id pero expone un catálogo diferente.
 URL de producto: https://botiga.farmashop.com.uy/{url_key}.html
 """
 
+import logging
 import time
 import random
 import requests
+
+log = logging.getLogger(__name__)
 
 _ENDPOINT = "https://botiga.farmashop.com.uy/graphql"
 
