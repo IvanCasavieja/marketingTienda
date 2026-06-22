@@ -557,12 +557,32 @@ def run_ti_fase(fase: int):
 # ---------------------------------------------------------------------------
 
 def _guardar_productos_botiga(resultado: dict, prog: dict) -> int:
-    guardados = 0
+    from .botiga_graphql import validar_urls
+
+    # Juntar todos los productos de la fase para validar URLs en un solo batch
+    todos_prods = []
+    cats_ok = []
     for nombre_cat, info in resultado.items():
         if "error" in info:
             log.warning("Botiga %s ERROR: %s", nombre_cat, info["error"])
             continue
-        prods = info.get("productos", [])
+        todos_prods.extend(info.get("productos", []))
+        cats_ok.append(nombre_cat)
+
+    if not todos_prods:
+        return 0
+
+    # Validar URLs — filtra 404s y reporta conteo
+    prods_validos, n_404 = validar_urls(todos_prods)
+    if n_404:
+        prog["urls_404"] = prog.get("urls_404", 0) + n_404
+        guardar_progreso(PROGRESO_BOTIGA, prog)
+
+    # Agrupar de vuelta por categoría para guardar
+    validos_set = {p["url"] for p in prods_validos}
+    guardados = 0
+    for nombre_cat in cats_ok:
+        prods = [p for p in resultado[nombre_cat].get("productos", []) if p["url"] in validos_set]
         records = [
             ProductRecord(
                 tienda="Botiga", url=pr["url"], nombre=pr["nombre"],
@@ -575,7 +595,9 @@ def _guardar_productos_botiga(resultado: dict, prog: dict) -> int:
         guardados += store.guardar_bulk(records)
         prog["completados"].append(nombre_cat)
         guardar_progreso(PROGRESO_BOTIGA, prog)
-        log.info("Botiga %s: %d productos", nombre_cat, len(prods))
+        log.info("Botiga %s: %d productos (válidos)", nombre_cat, len(prods))
+
+    log.info("Botiga fase: %d guardados, %d URLs 404 filtradas", guardados, n_404)
     return guardados
 
 

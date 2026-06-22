@@ -150,6 +150,49 @@ def bajar_categoria(nombre_cat: str, page_size: int = 48) -> tuple:
     return productos, total or 0
 
 
+def validar_urls(productos: list, max_workers: int = 30, timeout: int = 10) -> tuple:
+    """Verifica cada URL única con HEAD request en paralelo.
+    Retorna (productos_validos, n_404) filtrando los que devuelvan 404.
+    Errores de red / timeouts se conservan (no son 404 confirmados).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # Deduplicar por URL para no hacer el mismo check dos veces
+    url_status: dict[str, int] = {}
+    urls_unicas = list({p["url"] for p in productos})
+
+    _check_headers = {**_HEADERS, "Accept": "text/html,application/xhtml+xml,*/*"}
+
+    def _check(url: str) -> tuple[str, int]:
+        try:
+            r = requests.head(url, headers=_check_headers, timeout=timeout, allow_redirects=True)
+            return url, r.status_code
+        except Exception:
+            return url, 0  # error de red → conservar
+
+    log.info("Botiga validar_urls: %d URLs únicas con %d workers", len(urls_unicas), max_workers)
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = {ex.submit(_check, u): u for u in urls_unicas}
+        done = 0
+        for fut in as_completed(futures):
+            url, status = fut.result()
+            url_status[url] = status
+            done += 1
+            if done % 500 == 0:
+                log.info("Botiga validar_urls: %d/%d verificadas", done, len(urls_unicas))
+
+    invalidos_404 = [u for u, s in url_status.items() if s == 404]
+    invalidos_set = set(invalidos_404)
+    n_404 = len(invalidos_404)
+
+    if n_404:
+        log.warning("Botiga validar_urls: %d URLs con 404 (filtradas)", n_404)
+        print(f"  [validacion] {n_404} URLs con 404 filtradas de {len(urls_unicas)} únicas", flush=True)
+
+    validos = [p for p in productos if p["url"] not in invalidos_set]
+    return validos, n_404
+
+
 def bajar_varias(nombres_cats: list, max_workers: int = 4) -> dict:
     """Baja varias categorías en paralelo via ThreadPoolExecutor."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
