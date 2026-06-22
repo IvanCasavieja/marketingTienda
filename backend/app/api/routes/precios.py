@@ -559,6 +559,17 @@ async def scraper_trigger_gdu(_: User = Depends(get_current_user)):
     return {"message": "GDU scan iniciado"}
 
 
+@router.post("/scraper/trigger-botiga", status_code=202)
+async def scraper_trigger_botiga(_: User = Depends(get_current_user)):
+    """Dispara un scan de solo Botiga (botiga.farmashop.com.uy, Magento GraphQL).
+    Upsert por URL en PostgreSQL — no toca otras tiendas."""
+    from app.services.scraper_sync import trigger_botiga
+    launched = await trigger_botiga()
+    if not launched:
+        raise HTTPException(status_code=409, detail="Ya hay un scraping en curso")
+    return {"message": "Botiga scan iniciado"}
+
+
 @router.get("/{producto_id}", response_model=ProductoOut)
 async def obtener_precio(
     producto_id: int,

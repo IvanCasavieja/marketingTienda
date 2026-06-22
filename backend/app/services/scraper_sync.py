@@ -120,6 +120,18 @@ async def trigger_gdu() -> bool:
     return True
 
 
+async def trigger_botiga() -> bool:
+    """Lanza un scan de solo Botiga si no hay otro corriendo."""
+    global _scan_running
+    if _scan_running:
+        return False
+    is_running = await _r_get(_REDIS_STATUS)
+    if is_running and is_running.decode() == "running":
+        return False
+    asyncio.create_task(_execute_botiga())
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Ejecución real
 # ---------------------------------------------------------------------------
@@ -232,6 +244,55 @@ def _run_gdu_fase_solo(fase: int) -> int:
 def _run_blocking_gdu() -> int:
     from app.services.scraper.fases import run_gdu_only
     return run_gdu_only()
+
+
+async def _execute_botiga() -> None:
+    global _scan_running, _scan_type
+    if _scan_running:
+        logger.info("scraper_sync: scan en curso, saltando Botiga")
+        return
+    _scan_running = True
+    _scan_type = "botiga"
+
+    acquired = await _r_set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
+
+    try:
+        await _r_set(_REDIS_STATUS, "running")
+        logger.info("scraper_sync: iniciando Botiga-only scan")
+
+        from app.services.scraper import store as sc_store
+        from app.services.scraper.fases import run_botiga_fase, PROGRESO_BOTIGA
+        loop = asyncio.get_event_loop()
+
+        await loop.run_in_executor(None, sc_store.limpiar)
+        if PROGRESO_BOTIGA.exists():
+            PROGRESO_BOTIGA.unlink()
+
+        for fase in (1, 2, 3, 4):
+            logger.info("scraper_sync: Botiga fase %d/4", fase)
+            await loop.run_in_executor(None, run_botiga_fase, fase)
+
+        totales = await loop.run_in_executor(None, sc_store.contar)
+        total_acumulado = sum(totales.values())
+
+        await _sync_to_postgres()
+        await _sync_to_historial()
+
+        now = datetime.now(timezone.utc).isoformat()
+        await _r_set(_REDIS_LAST, now)
+        await _r_set(_REDIS_TOTAL, str(total_acumulado))
+        await _r_set(_REDIS_STATUS, "idle")
+        logger.info("scraper_sync: Botiga scan completado — %d productos", total_acumulado)
+
+    except Exception as exc:
+        await _r_set(_REDIS_STATUS, f"error: {str(exc)[:200]}")
+        logger.error("scraper_sync: Botiga scan falló: %s", exc, exc_info=True)
+        raise
+    finally:
+        _scan_running = False
+        _scan_type = None
+        if acquired:
+            await _r_del(_REDIS_LOCK)
 
 
 async def _sync_to_historial() -> None:
@@ -373,30 +434,46 @@ async def get_progress() -> dict:
             with open(cats_json, encoding="utf-8") as f:
                 mapeo = json.load(f)
             vistos: set = set()
-            for slugs in mapeo.values():
-                for s in slugs:
+            for k, slugs in mapeo.items():
+                if k.startswith("_"):
+                    continue
+                for s in (slugs if isinstance(slugs, list) else [slugs]):
                     vistos.add(s)
             gdu_total = len(vistos) * 3
         except Exception:
             pass
 
     result: dict = {
-        "running":   _scan_running,
-        "scan_type": _scan_type,
-        "gdu": {"completados": 0, "total": gdu_total, "guardados": 0, "pct": 0.0},
+        "running":    _scan_running,
+        "scan_type":  _scan_type,
+        "gdu":        {"completados": 0, "total": gdu_total,  "guardados": 0, "pct": 0.0},
+        "tata":       {"completados": 0, "total": 31,          "guardados": 0, "pct": 0.0},
+        "farmashop":  {"completados": 0, "total": 16,          "guardados": 0, "pct": 0.0},
+        "ti":         {"completados": 0, "total": 14,          "guardados": 0, "pct": 0.0},
+        "botiga":     {"completados": 0, "total": 16,          "guardados": 0, "pct": 0.0},
+        "pigalle":    {"completados": 0, "total": 10,          "guardados": 0, "pct": 0.0},
     }
 
-    prog_path = _DATA_DIR / "progreso_gdu.json"
-    if prog_path.exists():
-        try:
-            with open(prog_path, encoding="utf-8") as f:
-                prog = json.load(f)
-            completados = len(prog.get("completados", []))
-            guardados   = prog.get("total_guardados", 0)
-            result["gdu"]["completados"] = completados
-            result["gdu"]["guardados"]   = guardados
-            result["gdu"]["pct"] = round(completados / gdu_total * 100, 1) if gdu_total else 0.0
-        except Exception:
-            pass
+    prog_files = {
+        "gdu":       ("progreso_gdu.json",        gdu_total),
+        "tata":      ("progreso_tata.json",        31),
+        "farmashop": ("progreso_farmashop.json",   16),
+        "ti":        ("progreso_ti.json",          14),
+        "botiga":    ("progreso_botiga.json",      16),
+        "pigalle":   ("progreso_pigalle.json",     10),
+    }
+    for key, (fname, total) in prog_files.items():
+        prog_path = _DATA_DIR / fname
+        if prog_path.exists():
+            try:
+                with open(prog_path, encoding="utf-8") as f:
+                    prog = json.load(f)
+                completados = len(prog.get("completados", []))
+                guardados   = prog.get("total_guardados", 0)
+                result[key]["completados"] = completados
+                result[key]["guardados"]   = guardados
+                result[key]["pct"] = round(completados / total * 100, 1) if total else 0.0
+            except Exception:
+                pass
 
     return result
