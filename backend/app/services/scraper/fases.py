@@ -26,6 +26,8 @@ PROGRESO_GDU        = _DATA_DIR / "progreso_gdu.json"
 PROGRESO_TATA       = _DATA_DIR / "progreso_tata.json"
 PROGRESO_FARMASHOP  = _DATA_DIR / "progreso_farmashop.json"
 PROGRESO_TI         = _DATA_DIR / "progreso_ti.json"
+PROGRESO_BOTIGA     = _DATA_DIR / "progreso_botiga.json"
+PROGRESO_PIGALLE    = _DATA_DIR / "progreso_pigalle.json"
 
 DOMINIOS_GDU = {
     "Disco":  "https://www.disco.com.uy",
@@ -551,17 +553,118 @@ def run_ti_fase(fase: int):
 
 
 # ---------------------------------------------------------------------------
+# Botiga — Magento 2.4 GraphQL (mismo backend que Farmashop, distinto store-view)
+# ---------------------------------------------------------------------------
+
+def _guardar_productos_botiga(resultado: dict, prog: dict) -> int:
+    guardados = 0
+    for nombre_cat, info in resultado.items():
+        if "error" in info:
+            log.warning("Botiga %s ERROR: %s", nombre_cat, info["error"])
+            continue
+        prods = info.get("productos", [])
+        records = [
+            ProductRecord(
+                tienda="Botiga", url=pr["url"], nombre=pr["nombre"],
+                precio=pr["precio"], precio_lista=pr.get("precio_lista"),
+                sku=pr.get("sku"), barcode=None,
+                marca=pr.get("marca"), categoria=pr.get("categoria"),
+            )
+            for pr in prods
+        ]
+        guardados += store.guardar_bulk(records)
+        prog["completados"].append(nombre_cat)
+        guardar_progreso(PROGRESO_BOTIGA, prog)
+        log.info("Botiga %s: %d productos", nombre_cat, len(prods))
+    return guardados
+
+
+def run_botiga_fase(fase: int):
+    from .botiga_graphql import bajar_varias, BOTIGA_FASES
+
+    cats = BOTIGA_FASES.get(fase)
+    if not cats:
+        log.error("Botiga: fase %d no existe", fase)
+        return
+
+    prog        = cargar_progreso(PROGRESO_BOTIGA)
+    completados = set(prog["completados"])
+    pendientes  = [c for c in cats if c not in completados]
+
+    log.info("Botiga Fase %d: %d cats, %d pendientes", fase, len(cats), len(pendientes))
+    if not pendientes:
+        log.info("Botiga Fase %d: ya completada", fase)
+        return
+
+    resultado = bajar_varias(pendientes)
+    guardados = _guardar_productos_botiga(resultado, prog)
+    prog["total_guardados"] = prog.get("total_guardados", 0) + guardados
+    guardar_progreso(PROGRESO_BOTIGA, prog)
+    log.info("Botiga Fase %d terminada: %d productos", fase, guardados)
+
+
+# ---------------------------------------------------------------------------
+# Pigalle — Magento 2.4 HTML (GraphQL roto server-side)
+# ---------------------------------------------------------------------------
+
+def _guardar_productos_pigalle(resultado: dict, prog: dict) -> int:
+    guardados = 0
+    for nombre_cat, info in resultado.items():
+        if "error" in info:
+            log.warning("Pigalle %s ERROR: %s", nombre_cat, info["error"])
+            continue
+        prods = info.get("productos", [])
+        records = [
+            ProductRecord(
+                tienda="Pigalle", url=pr["url"], nombre=pr["nombre"],
+                precio=pr["precio"], precio_lista=pr.get("precio_lista"),
+                sku=None, barcode=None,
+                marca=None, categoria=pr.get("categoria"),
+            )
+            for pr in prods
+        ]
+        guardados += store.guardar_bulk(records)
+        prog["completados"].append(nombre_cat)
+        guardar_progreso(PROGRESO_PIGALLE, prog)
+        log.info("Pigalle %s: %d productos", nombre_cat, len(prods))
+    return guardados
+
+
+def run_pigalle_fase(fase: int):
+    from .pigalle_html import bajar_varias, PIGALLE_FASES
+
+    cats = PIGALLE_FASES.get(fase)
+    if not cats:
+        log.error("Pigalle: fase %d no existe", fase)
+        return
+
+    prog        = cargar_progreso(PROGRESO_PIGALLE)
+    completados = set(prog["completados"])
+    pendientes  = [c for c in cats if c not in completados]
+
+    log.info("Pigalle Fase %d: %d cats, %d pendientes", fase, len(cats), len(pendientes))
+    if not pendientes:
+        log.info("Pigalle Fase %d: ya completada", fase)
+        return
+
+    resultado = bajar_varias(pendientes)
+    guardados = _guardar_productos_pigalle(resultado, prog)
+    prog["total_guardados"] = prog.get("total_guardados", 0) + guardados
+    guardar_progreso(PROGRESO_PIGALLE, prog)
+    log.info("Pigalle Fase %d terminada: %d productos", fase, guardados)
+
+
+# ---------------------------------------------------------------------------
 # Full scan
 # ---------------------------------------------------------------------------
 
 def run_full():
-    """Raspa Tata, Farmashop y GDU. Tienda Inglesa deshabilitada (170k productos, cobertura GDU aún baja)."""
+    """Raspa Tata, Farmashop, GDU, Botiga y Pigalle."""
     log.info("=== FULL SCAN INICIADO ===")
 
-    # Limpiar SQLite y archivos de progreso para empezar completamente fresco.
-    # Sin esto, el segundo run nocturno saltea todo porque los slugs siguen en "completados".
     store.limpiar()
-    for _prog in (PROGRESO_GDU, PROGRESO_TATA, PROGRESO_FARMASHOP, PROGRESO_TI):
+    for _prog in (PROGRESO_GDU, PROGRESO_TATA, PROGRESO_FARMASHOP, PROGRESO_TI,
+                  PROGRESO_BOTIGA, PROGRESO_PIGALLE):
         if _prog.exists():
             _prog.unlink()
 
@@ -571,6 +674,10 @@ def run_full():
         run_farmashop_fase(fase)
     for fase in (1, 2, 3, 4):
         run_gdu_fase(fase)
+    for fase in (1, 2, 3, 4):
+        run_botiga_fase(fase)
+    for fase in (1, 2, 3, 4):
+        run_pigalle_fase(fase)
 
     totales = store.contar()
     total   = sum(totales.values())
