@@ -394,7 +394,7 @@ async def exportar_excel_historial(
             header_row.append(c)
         ws.append(header_row)
 
-        result = await db.execute(
+        result = await db.stream(
             select(
                 PrecioHistorial.tienda, PrecioHistorial.nombre,
                 PrecioHistorial.precio, PrecioHistorial.precio_lista,
@@ -404,8 +404,9 @@ async def exportar_excel_historial(
             )
             .where(PrecioHistorial.fecha_scan == fecha)
             .order_by(PrecioHistorial.tienda, PrecioHistorial.nombre)
+            .execution_options(yield_per=500)
         )
-        for row in result.all():
+        async for row in result:
             ws.append(list(row))
 
     output = io.BytesIO()
