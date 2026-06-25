@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, nullif
 from pydantic import BaseModel
 from datetime import date
 from typing import List, Optional
@@ -40,11 +40,8 @@ async def sync_metrics(
     if settings.DEMO_MODE:
         return SyncResponse(platform=payload.platform.value, records_saved=0, status="demo")
 
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Join a team before syncing metrics")
-
     try:
-        saved = await sync_platform(db, payload.platform, current_user.team_group_id, payload.date_from, payload.date_to)
+        saved = await sync_platform(db, payload.platform, payload.date_from, payload.date_to)
         return SyncResponse(platform=payload.platform.value, records_saved=saved)
     except ValueError as e:
         msg = str(e)
@@ -70,15 +67,12 @@ async def get_campaign_metrics(
         platform_list = [p.strip() for p in platforms.split(",")] if platforms else None
         return get_demo_metrics_by_day(date_from, date_to, platform_list)
 
-    if not current_user.team_group_id:
-        return []
-
     try:
         platform_list = [Platform(p.strip()) for p in platforms.split(",")] if platforms else list(Platform)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid platform: {e}")
 
-    return await get_metrics(db, platform_list, current_user.team_group_id, date_from, date_to)
+    return await get_metrics(db, platform_list, date_from, date_to)
 
 
 @router.get("/summary")
@@ -92,9 +86,6 @@ async def get_summary(
         from app.services.demo_data import get_demo_summary
         return get_demo_summary(date_from, date_to)
 
-    if not current_user.team_group_id:
-        return []
-
     result = await db.execute(
         select(
             CampaignMetric.platform,
@@ -104,14 +95,14 @@ async def get_summary(
             func.sum(CampaignMetric.conversions).label("conversions"),
             func.sum(CampaignMetric.revenue).label("revenue"),
             func.avg(CampaignMetric.ctr).label("avg_ctr"),
-            func.avg(CampaignMetric.roas).label("avg_roas"),
+            # ROAS correcto: revenue total / spend total (no avg de roas por fila)
+            (func.sum(CampaignMetric.revenue) / nullif(func.sum(CampaignMetric.spend), 0)).label("avg_roas"),
             func.max(CampaignMetric.date).label("last_date"),
         )
         .where(
             and_(
                 CampaignMetric.date >= date_from,
                 CampaignMetric.date <= date_to,
-                CampaignMetric.team_group_id == current_user.team_group_id,
                 CampaignMetric.platform.in_(list(Platform)),
             )
         )

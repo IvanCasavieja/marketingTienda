@@ -31,7 +31,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [showLangMenu, setShowLangMenu] = useState(false);
 
-  const isMedios = !currentUser || currentUser.team_type === "medios" || currentUser.team_type === null;
+  const isMedios = true;
 
   const navAll = [
     { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: "Analytics",                  restricted: true },
@@ -67,7 +67,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     if (onClose) onClose();
   }
 
-  const tenantLabel = currentUser?.team_name ?? t("common.noTeam");
+  const tenantLabel = "MKTG Platform";
   const currentLang = LANGUAGES.find((l) => l.code === i18n.language) ?? LANGUAGES[0];
 
   return (
