@@ -135,14 +135,11 @@ async def list_formats(_: User = Depends(get_current_user)):
 
 @router.get("/templates")
 async def list_templates(
-    current_user: User = Depends(get_current_user),
+    _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        return []
     result = await db.execute(
         select(CenefaTemplateV2)
-        .where(CenefaTemplateV2.team_group_id == current_user.team_group_id)
         .order_by(CenefaTemplateV2.created_at.desc())
     )
     templates = result.scalars().all()
@@ -165,13 +162,9 @@ async def create_template(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Unite a un equipo para crear templates")
-
     _validate_template_payload(payload)
 
     tmpl = CenefaTemplateV2(
-        team_group_id=current_user.team_group_id,
         created_by=current_user.id,
         name=payload["name"].strip(),
         definition=payload,
@@ -333,13 +326,8 @@ async def _get_owned_template(
     current_user: User,
     db: AsyncSession,
 ) -> CenefaTemplateV2:
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Unite a un equipo para gestionar templates")
     result = await db.execute(
-        select(CenefaTemplateV2).where(
-            CenefaTemplateV2.id == template_id,
-            CenefaTemplateV2.team_group_id == current_user.team_group_id,
-        )
+        select(CenefaTemplateV2).where(CenefaTemplateV2.id == template_id)
     )
     tmpl = result.scalar_one_or_none()
     if not tmpl:
@@ -380,8 +368,6 @@ async def create_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Inicia un job de generación async. Acepta templates v1 (PPTX) y v2 (componentes JSON)."""
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Unite a un equipo para generar cenefas")
     if format_id not in FORMATS:
         raise HTTPException(status_code=400, detail=f"Formato inválido. Disponibles: {list(FORMATS)}")
     if not builtin_slug and not template_v1_id and not template_v2_id:
@@ -395,7 +381,6 @@ async def create_job(
     excel_bytes = await excel.read()
 
     job = CenefaJob(
-        team_group_id=current_user.team_group_id,
         created_by=current_user.id,
         status="pending",
         format=format_id,
@@ -413,7 +398,6 @@ async def create_job(
         builtin_slug=builtin_slug,
         template_v1_id=template_v1_id,
         template_v2_id=template_v2_id,
-        team_group_id=current_user.team_group_id,
         target_format=format_id,
         vigencia=vigencia,
         aclaracion=aclaracion,
@@ -429,12 +413,9 @@ async def list_jobs(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lista los últimos 20 jobs del equipo."""
-    if not current_user.team_group_id:
-        return []
+    """Lista los últimos 20 jobs."""
     result = await db.execute(
         select(CenefaJob)
-        .where(CenefaJob.team_group_id == current_user.team_group_id)
         .order_by(CenefaJob.created_at.desc())
         .limit(20)
     )
@@ -499,13 +480,8 @@ async def _get_owned_job(
     current_user: User,
     db: AsyncSession,
 ) -> CenefaJob:
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Unite a un equipo para consultar jobs")
     result = await db.execute(
-        select(CenefaJob).where(
-            CenefaJob.id == job_id,
-            CenefaJob.team_group_id == current_user.team_group_id,
-        )
+        select(CenefaJob).where(CenefaJob.id == job_id)
     )
     job = result.scalar_one_or_none()
     if not job:

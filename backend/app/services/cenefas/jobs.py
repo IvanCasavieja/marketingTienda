@@ -49,7 +49,6 @@ async def run_generation_job(
     builtin_slug:    str | None,
     template_v1_id:  int | None,
     template_v2_id:  uuid.UUID | None,
-    team_group_id:   int,
     target_format:   str,
     vigencia:        str,
     aclaracion:      str,
@@ -79,14 +78,14 @@ async def run_generation_job(
 
             # Generar PPTX según el tipo de template
             if template_v2_id is not None:
-                template_def = await _resolve_template_v2(db, template_v2_id, team_group_id)
+                template_def = await _resolve_template_v2(db, template_v2_id)
                 pptx_bytes, missing_vars = await asyncio.to_thread(
                     render_template_to_pptx,
                     template_def, products, target_format,
                 )
             else:
                 template_bytes = await _resolve_template_pptx(
-                    db, builtin_slug, template_v1_id, team_group_id
+                    db, builtin_slug, template_v1_id
                 )
                 pptx_bytes = await asyncio.to_thread(
                     generate_pptx_bytes,
@@ -132,12 +131,9 @@ async def _get_job(db, job_id: uuid.UUID) -> CenefaJob | None:
     return result.scalar_one_or_none()
 
 
-async def _resolve_template_v2(db, template_id: uuid.UUID, team_group_id: int) -> dict:
+async def _resolve_template_v2(db, template_id: uuid.UUID) -> dict:
     result = await db.execute(
-        select(CenefaTemplateV2).where(
-            CenefaTemplateV2.id == template_id,
-            CenefaTemplateV2.team_group_id == team_group_id,
-        )
+        select(CenefaTemplateV2).where(CenefaTemplateV2.id == template_id)
     )
     tmpl = result.scalar_one_or_none()
     if tmpl is None:
@@ -149,7 +145,6 @@ async def _resolve_template_pptx(
     db,
     builtin_slug:   str | None,
     template_v1_id: int | None,
-    team_group_id:  int,
 ) -> bytes:
     if builtin_slug is not None:
         filename = _BUILTIN_FILES.get(builtin_slug)
@@ -164,7 +159,6 @@ async def _resolve_template_pptx(
         result = await db.execute(
             select(CenefaTemplate).where(
                 CenefaTemplate.id == template_v1_id,
-                CenefaTemplate.team_group_id == team_group_id,
                 CenefaTemplate.is_active == True,
             )
         )
