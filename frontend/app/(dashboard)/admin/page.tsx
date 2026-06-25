@@ -119,6 +119,77 @@ function BuiltinTemplatesSection() {
 }
 
 // ---------------------------------------------------------------------------
+// User editor modal
+// ---------------------------------------------------------------------------
+function UserEditorModal({
+  user, onClose, onSaved,
+}: {
+  user: AdminUser;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [fullName, setFullName] = useState(user.full_name);
+  const [email,    setEmail]    = useState(user.email);
+  const [saving,   setSaving]   = useState(false);
+
+  async function save() {
+    if (!fullName.trim()) { toast.error("El nombre es obligatorio"); return; }
+    if (!email.trim())    { toast.error("El email es obligatorio");  return; }
+    setSaving(true);
+    try {
+      await api.patch(`/admin/users/${user.id}`, { full_name: fullName, email });
+      toast.success("Usuario actualizado");
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
+          <Pencil size={16} className="text-brand-500" />
+          <h2 className="text-base font-semibold text-slate-800">Editar usuario</h2>
+          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600"><X size={18} /></button>
+        </div>
+        <div className="px-6 py-5 space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Nombre completo</label>
+            <input
+              className="input text-sm w-full"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Nombre completo"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Email</label>
+            <input
+              type="email"
+              className="input text-sm w-full"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="email@empresa.com"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-6 pb-5">
+          <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cancelar</button>
+          <button onClick={save} disabled={saving} className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
+            {saving && <Loader2 size={13} className="animate-spin" />}
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Role editor modal
 // ---------------------------------------------------------------------------
 function RoleEditorModal({
@@ -266,6 +337,7 @@ export default function AdminPage() {
   const [loading,     setLoading]     = useState(true);
   const [showForm,    setShowForm]    = useState(false);
   const [editingRole, setEditingRole] = useState<RoleItem | null | "new">(undefined as any);
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [tempPwd,     setTempPwd]     = useState<{ userId: number; pwd: string } | null>(null);
 
   const [form, setForm] = useState({
@@ -535,6 +607,11 @@ export default function AdminPage() {
                   <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
 
+                <button onClick={() => setEditingUser(u)} title="Editar usuario"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-all">
+                  <Pencil size={15} />
+                </button>
+
                 <button onClick={() => handleResetPassword(u.id)} title="Resetear contraseña"
                   className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-all">
                   <KeyRound size={15} />
@@ -559,6 +636,15 @@ export default function AdminPage() {
           role={editingRole === "new" ? null : editingRole}
           allPerms={allPerms}
           onClose={() => setEditingRole(undefined as any)}
+          onSaved={load}
+        />
+      )}
+
+      {/* User editor modal */}
+      {editingUser && (
+        <UserEditorModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
           onSaved={load}
         />
       )}
