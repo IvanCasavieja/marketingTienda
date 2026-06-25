@@ -331,27 +331,39 @@ def _render_slide(
 # Multi-slot A4 detection
 # ---------------------------------------------------------------------------
 
-def _detect_slot_bands(components: list[dict], n_bands: int = 3) -> list[list[dict]] | None:
-    """Detect if an A4 template has multiple vertical slot bands (same layout repeated).
+def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
+    """Detect how many product slots are encoded in one slide of a template.
 
-    Groups non-background components by y-band. Returns list of per-band component
-    lists when at least 2 bands contain variable components, else None.
+    Counts how many times the most-repeated variable appears — that's the
+    number of slots per slide (works for 1, 3, 6, or any other count).
+    Splits non-background components by Y order into that many groups.
+    Returns None when n_slots == 1 (single-slot → standard per-product render).
     """
-    page_h = 29.7
-    band_h = page_h / n_bands
-    bands: list[list[dict]] = [[] for _ in range(n_bands)]
+    from collections import Counter
 
-    for comp in components:
-        if comp.get("locked"):
-            continue  # background — rendered separately
-        y = comp.get("base_bounds", {}).get("y", 0)
-        idx = min(n_bands - 1, int(y / band_h))
-        bands[idx].append(comp)
+    non_bg = [c for c in components if not c.get("locked")]
+    var_counts = Counter(c["variable"] for c in non_bg if c.get("variable"))
+    if not var_counts:
+        return None
 
-    # All n_bands must have variable components (prevents false positives on
-    # single-slot A4 templates whose content spans only the lower 2/3 of the page)
-    populated = sum(1 for b in bands if any(c.get("variable") for c in b))
-    return bands if populated >= n_bands else None
+    n_slots = max(var_counts.values())
+    if n_slots <= 1:
+        return None  # single-slot template
+
+    # Sort by Y, then split into n_slots consecutive groups
+    sorted_comps = sorted(non_bg, key=lambda c: c.get("base_bounds", {}).get("y", 0))
+    total      = len(sorted_comps)
+    group_size = total // n_slots
+    remainder  = total % n_slots
+
+    bands: list[list[dict]] = []
+    idx = 0
+    for i in range(n_slots):
+        size = group_size + (1 if i < remainder else 0)
+        bands.append(sorted_comps[idx : idx + size])
+        idx += size
+
+    return bands
 
 
 # ---------------------------------------------------------------------------
@@ -383,9 +395,9 @@ def render_template_to_pptx(
 
     missing_vars: set[str] = set()
 
-    # ── Multi-slot A4: template with 3 vertical bands (e.g. "Plato del día") ──
+    # ── Multi-slot A4: slots detected from variable repetition count ──────────
     if target_format == "a4":
-        slot_bands = _detect_slot_bands(components, n_bands=3)
+        slot_bands = _detect_slot_bands(components)
         if slot_bands:
             bg_comps  = [c for c in components if c.get("locked")]
             n_slots   = len(slot_bands)
