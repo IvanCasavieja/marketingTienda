@@ -319,22 +319,18 @@ def generate_template_bytes() -> bytes:
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
 
-    # Columnas estándar en orden lógico
+    # Columnas canónicas para cenefas de plato del día / precio por producto
     HEADERS = [
-        "descripcion", "precioActual", "precioAnterior", "precioBanco",
-        "mecanica", "banco", "moneda", "codigoSKU",
-        "dia", "mes", "año",
-        "aclaracion", "segundaAclaracion", "vigencia",
-        "categoria", "subCategoria", "descuento",
+        "DIA", "DESCRIPCION", "precioActual",
+        "ACLARACION", "ACLARACION2", "DESCUENTO", "codigoSKU",
     ]
 
     EXAMPLES: list[tuple] = [
-        ("Galletitas OREO 117g",          "$1.500",  "",       "",     "Precio Final", "",  "$",    "7790001", "",       "", "", "",    "", "", "ALIMENTOS",           "GALLETITAS",  "FALSE"),
-        ("Coca-Cola 2.25L",               "$4.500",  "",       "",     "2X$4.500",     "",  "$",    "7790002", "",       "", "", "",    "", "", "BEBIDAS SIN ALCOHOL", "GASEOSAS",    "FALSE"),
-        ("Agua SALUS 1.5L",               "$800",    "",       "",     "M x N",        "",  "$",    "7790003", "",       "", "", "",    "", "", "BEBIDAS SIN ALCOHOL", "AGUA",        "FALSE"),
-        ("Vino NORTON Malbec 750ml",       "$3.200",  "",       "$2.560","Precio Final","Scotiabank","$","7790006","",  "", "", "",    "", "Del 1 al 30 de junio", "BEBIDAS CON ALCOHOL", "VINOS", "TRUE"),
-        ("Licuadora PHILIPS HR2100",       "U$S 45",  "",       "",     "Precio Final", "",  "U$S",  "7790007", "",       "", "", "",    "", "", "ELECTRODOMESTICOS",   "ELECTRODOMESTICOS","FALSE"),
-        ("Asado de Tira por Kg.",          "$890",    "",       "",     "Precio Final", "",  "$",    "7790009", "LUNES",  "", "", "Precio válido solo los lunes","","","ALIMENTOS","CARNES","FALSE"),
+        ("LUNES 1",      "STROGONOFF DE POLLO CON ARROZ",      189,  "Descuento aplicado en caja.", "",                                          "FALSE", "72187"),
+        ("MARTES 2",     "FELIPE JAMÓN Y QUESO",               199,  "Descuento aplicado en caja.", "",                                          "FALSE", "1332"),
+        ("MIÉRCOLES 3",  "RAVIOLES CON SALSA CARUSO",          199,  "Descuento aplicado en caja.", "Precio final con el 30% ya aplicado.",       "FALSE", "12736"),
+        ("JUEVES 4",     "MILANESA DE POLLO CON PURÉ",         249,  "Descuento aplicado en caja.", "",                                          "FALSE", "52508"),
+        ("VIERNES 5",    "FEIJOADA CON ARROZ",                 215,  "Descuento aplicado en caja.", "",                                          "FALSE", "17876"),
     ]
 
     wb = openpyxl.Workbook()
@@ -347,8 +343,8 @@ def generate_template_bytes() -> bytes:
 
     for col, name in enumerate(HEADERS, 1):
         cell = ws.cell(row=1, column=col, value=name)
-        cell.fill  = header_fill
-        cell.font  = header_font
+        cell.fill      = header_fill
+        cell.font      = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     for row_idx, data in enumerate(EXAMPLES, 2):
@@ -359,23 +355,19 @@ def generate_template_bytes() -> bytes:
             if fill:
                 cell.fill = fill
 
-    col_widths = [36, 14, 14, 14, 16, 14, 8, 14, 10, 8, 6, 28, 28, 22, 22, 16, 10]
+    # DIA, DESCRIPCION, precioActual, ACLARACION, ACLARACION2, DESCUENTO, codigoSKU
+    col_widths = [14, 36, 14, 32, 40, 10, 12]
     for col, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.row_dimensions[1].height = 26
     ws.freeze_panes = "A2"
 
-    # Validación: moneda
-    dv_moneda = DataValidation(type="list", formula1='"$,U$S"', allow_blank=True)
-    dv_moneda.sqref = "G2:G5000"
-    ws.add_data_validation(dv_moneda)
-
-    # Validación: descuento
+    # Validación: DESCUENTO (columna F = 6)
     dv_desc = DataValidation(type="list", formula1='"TRUE,FALSE"', allow_blank=True)
-    dv_desc.sqref = "Q2:Q5000"
+    dv_desc.sqref = "F2:F5000"
     ws.add_data_validation(dv_desc)
 
-    # ── Hoja de instrucciones ─────────────────────────────────────────────
+    # ── Hoja de referencia de variables ──────────────────────────────────────
     ws2 = wb.create_sheet("Variables")
     ws2.column_dimensions["A"].width = 20
     ws2.column_dimensions["B"].width = 42
@@ -392,23 +384,13 @@ def generate_template_bytes() -> bytes:
     ws2.row_dimensions[1].height = 24
 
     VAR_DOCS = [
-        ("descripcion",       "Nombre del producto tal como aparece",               "Texto",    "Palabras en MAYÚSCULAS se renderizan en negrita"),
-        ("precioActual",      "Precio principal del producto",                       "Precio",   "Puede ser número (1500) o texto formateado ($1.500). Con número se auto-formatea."),
-        ("precioAnterior",    "Precio anterior / tachado",                           "Precio",   "Opcional. Se usa para mostrar precio original antes del descuento."),
-        ("precioBanco",       "Precio con beneficio bancario",                       "Precio",   "Opcional. Se muestra en bloque de banco (<<precioBanco>>). También acepta: PBANCO, SCOTLAND 20%, SCOTIA 20%."),
-        ("mecanica",          "Mecánica o tipo de oferta",                           "Texto",    "Ej: 'Precio Final', '2X$4.500', 'M x N'. También acepta: titulo, OFERTADET (nombres legacy)."),
-        ("banco",             "Nombre o logo del banco",                             "Texto",    "Texto o nombre del banco. Pasado como parámetro global al generar."),
-        ("moneda",            "Prefijo de moneda",                                   "Texto",    "$ (defecto) o U$S. Afecta el prefijo de todos los precios."),
-        ("codigoSKU",         "Código de artículo",                                  "Texto",    "Si contiene '/' activa modo MULTI-SKU y muestra 'unidad' bajo el precio."),
-        ("dia",               "Día de la semana",                                    "Texto",    "Ej: LUNES, MARTES. Para plantillas tipo 'Plato del día'."),
-        ("mes",               "Mes",                                                 "Texto",    "Opcional. Ej: JUNIO."),
-        ("año",               "Año",                                                 "Texto",    "Opcional. Ej: 2026."),
-        ("aclaracion",        "Aclaración por producto",                             "Texto",    "Si vacío, usa la aclaración global del formulario de generación."),
-        ("segundaAclaracion", "Segunda aclaración",                                  "Texto",    "Para BEBIDAS CON ALCOHOL se llena automáticamente con el aviso legal."),
-        ("vigencia",          "Texto de vigencia",                                   "Texto",    "Si vacío, usa la vigencia global del formulario de generación."),
-        ("categoria",         "Categoría del producto",                              "Texto",    "BEBIDAS CON ALCOHOL activa el aviso legal automáticamente."),
-        ("subCategoria",      "Subcategoría",                                        "Texto",    "FIAMBRES/QUESOS/DELI activan precio por 100g si la descripción incluye 'kg'."),
-        ("descuento",         "Indica si el producto tiene descuento bancario",      "TRUE/FALSE","Controla visibilidad de elementos como cocarda. TRUE = mostrar."),
+        ("DIA",          "Día, número o fecha",                             "Texto",     "Ej: LUNES 1 / MARTES 2 / 01/06/2026. Cualquier texto funciona."),
+        ("DESCRIPCION",  "Nombre del plato / producto",                     "Texto",     "Palabras en MAYÚSCULAS se renderizan en negrita."),
+        ("precioActual", "Precio del producto",                             "Precio",    "Número (189) o texto ($189). Con número se auto-formatea con $."),
+        ("ACLARACION",   "Aclaración principal por producto",               "Texto",     "Ej: 'Descuento aplicado en caja.' Si vacío, usa la aclaración global."),
+        ("ACLARACION2",  "Segunda aclaración (opcional)",                   "Texto",     "Ej: 'Precio final con el 30% ya aplicado.' Dejar vacío si no aplica."),
+        ("DESCUENTO",    "Indica si el producto tiene descuento activo",    "TRUE/FALSE","Controla visibilidad de elementos como cocarda o badge. TRUE = mostrar."),
+        ("codigoSKU",    "Código de artículo",                              "Texto",     "Identificador interno del producto."),
     ]
     for row_idx, data in enumerate(VAR_DOCS, 2):
         for col_idx, value in enumerate(data, 1):
