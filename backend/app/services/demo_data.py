@@ -125,7 +125,6 @@ def get_demo_summary(date_from: date, date_to: date) -> list[dict]:
                 "conversions": 0,
                 "revenue":     0.0,
                 "ctr_sum":     0.0,
-                "roas_sum":    0.0,
                 "count":       0,
                 "last_date":   None,
             }
@@ -136,7 +135,6 @@ def get_demo_summary(date_from: date, date_to: date) -> list[dict]:
         a["conversions"] += row["conversions"]
         a["revenue"]     += row["revenue"]
         a["ctr_sum"]     += row["ctr"]
-        a["roas_sum"]    += row["roas"]
         a["count"]       += 1
         if a["last_date"] is None or row["date"] > a["last_date"]:
             a["last_date"] = row["date"]
@@ -152,7 +150,7 @@ def get_demo_summary(date_from: date, date_to: date) -> list[dict]:
             "conversions": a["conversions"],
             "revenue":     round(a["revenue"], 2),
             "avg_ctr":     round(a["ctr_sum"] / n, 2),
-            "avg_roas":    round(a["roas_sum"] / n, 2),
+            "avg_roas":    round(a["revenue"] / a["spend"], 2) if a["spend"] else 0.0,
             "last_date":   a["last_date"],
         })
     return result
