@@ -395,40 +395,43 @@ def render_template_to_pptx(
 
     missing_vars: set[str] = set()
 
-    # ── Multi-slot A4: slots detected from variable repetition count ──────────
-    if target_format == "a4":
-        slot_bands = _detect_slot_bands(components)
-        if slot_bands:
-            bg_comps  = [c for c in components if c.get("locked")]
-            n_slots   = len(slot_bands)
-            page_groups = [products[i:i + n_slots] for i in range(0, len(products), n_slots)]
+    # ── Detect internal slots from variable repetition count ─────────────────
+    # A template encodes N products per slide when its variables each appear N
+    # times. Sort components by Y, split into N consecutive groups, and fill
+    # each group with one product row — regardless of format or page size.
+    slot_bands = _detect_slot_bands(components)
 
-            for pg in page_groups:
-                slide = prs.slides.add_slide(blank_layout)
-                if bg_comps:
-                    laid_bg = compute_layout(bg_comps, target_format, master_format)
-                    _render_slide(slide, laid_bg, {}, missing_vars=missing_vars)
-                for band_idx, band_comps in enumerate(slot_bands):
-                    if band_idx >= len(pg):
-                        break
-                    product       = pg[band_idx]
-                    visibility    = evaluate_rules(rules, product)
-                    laid_band     = compute_layout(band_comps, target_format, master_format)
-                    visible_comps = apply_visibility(laid_band, visibility)
-                    _render_slide(slide, visible_comps, product, missing_vars=missing_vars)
+    if slot_bands:
+        bg_comps    = [c for c in components if c.get("locked")]
+        n_slots     = len(slot_bands)
+        page_groups = [products[i:i + n_slots] for i in range(0, len(products), n_slots)]
 
-            buf = io.BytesIO()
-            prs.save(buf)
-            return buf.getvalue(), sorted(missing_vars)
+        for pg in page_groups:
+            slide = prs.slides.add_slide(blank_layout)
+            if bg_comps:
+                laid_bg = compute_layout(bg_comps, target_format, master_format)
+                _render_slide(slide, laid_bg, {}, missing_vars=missing_vars)
+            for band_idx, band_comps in enumerate(slot_bands):
+                if band_idx >= len(pg):
+                    break
+                product       = pg[band_idx]
+                visibility    = evaluate_rules(rules, product)
+                laid_band     = compute_layout(band_comps, target_format, master_format)
+                visible_comps = apply_visibility(laid_band, visibility)
+                _render_slide(slide, visible_comps, product, missing_vars=missing_vars)
 
-    # ── Standard multi-slot rendering (3xa4, pinchos, etc.) ──────────────────
-    laid_out = compute_layout(components, target_format, master_format)
+        buf = io.BytesIO()
+        prs.save(buf)
+        return buf.getvalue(), sorted(missing_vars)
 
+    # ── Single-slot template: one product per format-cell, tiled by offset ───
+    # Used for 3xa4 / pinchos / any format where the slide IS the unit cell
+    # and multiple cells are arranged spatially on the output page.
+    laid_out  = compute_layout(components, target_format, master_format)
     slot_cols = fmt_info.get("slot_cols", 1)
     cell_w    = fmt_info["width_cm"]
     cell_h    = fmt_info["height_cm"]
-
-    groups = [products[i:i + slots] for i in range(0, len(products), slots)]
+    groups    = [products[i:i + slots] for i in range(0, len(products), slots)]
 
     for group in groups:
         slide = prs.slides.add_slide(blank_layout)
