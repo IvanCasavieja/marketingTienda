@@ -89,16 +89,16 @@ function BuiltinTemplatesSection() {
 
   return (
     <div className="card overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-2">
+      <div className="px-5 py-3 border-b border-slate-50 dark:border-slate-800 flex items-center gap-2">
         <Presentation size={15} className="text-slate-400" />
-        <p className="text-sm font-semibold text-slate-700">Plantillas predeterminadas</p>
+        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Plantillas predeterminadas</p>
       </div>
-      <div className="divide-y divide-slate-50">
+      <div className="divide-y divide-slate-50 dark:divide-slate-800">
         {BUILTIN_SLUGS.map((t) => (
           <div key={t.slug} className="flex items-center gap-4 px-5 py-3">
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-800">{t.name}</p>
-              <p className="text-xs text-slate-400">{t.format} · slug: {t.slug}</p>
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{t.name}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">{t.format} · slug: {t.slug}</p>
             </div>
             <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
               uploading === t.slug
@@ -150,15 +150,15 @@ function UserEditorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800">
           <Pencil size={16} className="text-brand-500" />
-          <h2 className="text-base font-semibold text-slate-800">Editar usuario</h2>
-          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600"><X size={18} /></button>
+          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">Editar usuario</h2>
+          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X size={18} /></button>
         </div>
         <div className="px-6 py-5 space-y-3">
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Nombre completo</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Nombre completo</label>
             <input
               className="input text-sm w-full"
               value={fullName}
@@ -167,7 +167,7 @@ function UserEditorModal({
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Email</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Email</label>
             <input
               type="email"
               className="input text-sm w-full"
@@ -241,21 +241,21 @@ function RoleEditorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800">
           <Shield size={18} className="text-brand-500" />
-          <h2 className="text-base font-semibold text-slate-800">
+          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
             {role ? `Editar rol: ${role.name}` : "Crear nuevo rol"}
           </h2>
-          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600"><X size={18} /></button>
+          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X size={18} /></button>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Nombre del rol</label>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Nombre del rol</label>
               <input
                 className="input text-sm w-full"
                 placeholder="Ej: Editor Comercial"
@@ -266,7 +266,7 @@ function RoleEditorModal({
               {role?.is_system && <p className="text-[10px] text-slate-400 mt-1">Los roles del sistema no se pueden renombrar</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Descripción</label>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Descripción</label>
               <input
                 className="input text-sm w-full"
                 placeholder="Breve descripción del rol…"
@@ -278,11 +278,11 @@ function RoleEditorModal({
 
           {/* Permissions */}
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Permisos</p>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Permisos</p>
             <div className="space-y-4">
               {Object.entries(grouped).map(([ns, perms]) => (
                 <div key={ns}>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                  <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
                     {PERM_GROUPS[ns] ?? ns}
                   </p>
                   <div className="space-y-1.5">
@@ -298,8 +298,8 @@ function RoleEditorModal({
                           {selected.has(p.key) && <CheckCircle2 size={11} className="text-white" />}
                         </div>
                         <div onClick={() => toggle(p.key)}>
-                          <p className="text-xs font-medium text-slate-700 font-mono">{p.key}</p>
-                          <p className="text-[11px] text-slate-400 leading-snug">{p.description}</p>
+                          <p className="text-xs font-medium text-slate-700 dark:text-slate-300 font-mono">{p.key}</p>
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-snug">{p.description}</p>
                         </div>
                       </label>
                     ))}
@@ -311,8 +311,8 @@ function RoleEditorModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
-          <p className="text-xs text-slate-400">{selected.size} permiso{selected.size !== 1 ? "s" : ""} seleccionado{selected.size !== 1 ? "s" : ""}</p>
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-slate-800">
+          <p className="text-xs text-slate-400 dark:text-slate-500">{selected.size} permiso{selected.size !== 1 ? "s" : ""} seleccionado{selected.size !== 1 ? "s" : ""}</p>
           <div className="flex gap-2">
             <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cancelar</button>
             <button onClick={save} disabled={saving} className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
@@ -431,7 +431,7 @@ export default function AdminPage() {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
         <ShieldAlert size={40} className="text-rose-400" />
-        <p className="text-slate-600 font-medium">Acceso denegado — solo administradores</p>
+        <p className="text-slate-600 dark:text-slate-400 font-medium">Acceso denegado — solo administradores</p>
       </div>
     );
   }
@@ -448,8 +448,8 @@ export default function AdminPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Panel de Administrador</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Gestión de usuarios, roles y permisos</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Panel de Administrador</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Gestión de usuarios, roles y permisos</p>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
@@ -462,7 +462,7 @@ export default function AdminPage() {
       {/* Create user form */}
       {showForm && (
         <form onSubmit={handleCreate} className="card p-5 space-y-4 border-brand-200 border">
-          <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
             <UserPlus size={15} className="text-brand-500" /> Crear nuevo usuario
           </p>
           <div className="grid grid-cols-2 gap-3">
@@ -508,9 +508,9 @@ export default function AdminPage() {
 
       {/* Roles */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-2">
+        <div className="px-5 py-3 border-b border-slate-50 dark:border-slate-800 flex items-center gap-2">
           <Shield size={15} className="text-slate-400" />
-          <p className="text-sm font-semibold text-slate-700">Roles y permisos</p>
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Roles y permisos</p>
           <button onClick={() => setEditingRole("new")}
             className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition-all">
             <Plus size={12} /> Nuevo rol
@@ -519,13 +519,13 @@ export default function AdminPage() {
         {loading ? (
           <div className="flex items-center justify-center p-8"><Loader2 size={18} className="animate-spin text-slate-400" /></div>
         ) : (
-          <div className="divide-y divide-slate-50">
+          <div className="divide-y divide-slate-50 dark:divide-slate-800">
             {roles.map((r) => (
               <div key={r.id} className="flex items-start gap-3 px-5 py-3">
                 <ShieldCheck size={15} className="text-slate-400 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-slate-800">{r.name}</span>
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{r.name}</span>
                     {r.is_system && (
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">SISTEMA</span>
                     )}
@@ -533,13 +533,13 @@ export default function AdminPage() {
                       {r.permissions.length} permiso{r.permissions.length !== 1 ? "s" : ""}
                     </span>
                   </div>
-                  {r.description && <p className="text-xs text-slate-400 mt-0.5 leading-snug">{r.description}</p>}
+                  {r.description && <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">{r.description}</p>}
                   <div className="flex flex-wrap gap-1 mt-1.5">
                     {r.permissions.slice(0, 6).map((p) => (
-                      <span key={p} className="text-[10px] bg-slate-50 border border-slate-100 text-slate-500 rounded px-1.5 py-0.5 font-mono">{p}</span>
+                      <span key={p} className="text-[10px] bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded px-1.5 py-0.5 font-mono">{p}</span>
                     ))}
                     {r.permissions.length > 6 && (
-                      <span className="text-[10px] text-slate-400 px-1.5 py-0.5">+{r.permissions.length - 6} más</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 px-1.5 py-0.5">+{r.permissions.length - 6} más</span>
                     )}
                   </div>
                 </div>
@@ -563,14 +563,14 @@ export default function AdminPage() {
 
       {/* Users */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-2">
+        <div className="px-5 py-3 border-b border-slate-50 dark:border-slate-800 flex items-center gap-2">
           <Users size={15} className="text-slate-400" />
-          <p className="text-sm font-semibold text-slate-700">Usuarios ({users.length})</p>
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Usuarios ({users.length})</p>
         </div>
         {loading ? (
           <div className="flex items-center justify-center p-10"><Loader2 size={20} className="animate-spin text-slate-400" /></div>
         ) : (
-          <div className="divide-y divide-slate-50">
+          <div className="divide-y divide-slate-50 dark:divide-slate-800">
             {users.map((u) => (
               <div key={u.id} className="flex items-center gap-4 px-5 py-3">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
@@ -581,7 +581,7 @@ export default function AdminPage() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-medium text-slate-800 truncate">{u.full_name}</p>
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{u.full_name}</p>
                     {u.role_name && (
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${ROLE_COLORS[u.role_name] ?? "bg-violet-100 text-violet-700"}`}>
                         {u.role_name.toUpperCase()}
@@ -591,7 +591,7 @@ export default function AdminPage() {
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">INACTIVO</span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-400 truncate">{u.email}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{u.email}</p>
                 </div>
 
                 {/* Role selector */}
@@ -599,7 +599,7 @@ export default function AdminPage() {
                   <select
                     value={u.role_id ?? ""}
                     onChange={(e) => handleAssignRole(u.id, e.target.value)}
-                    className="appearance-none text-xs px-2 pr-6 py-1.5 rounded-lg border border-slate-200 text-slate-600 bg-white outline-none cursor-pointer hover:border-slate-300"
+                    className="appearance-none text-xs px-2 pr-6 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 outline-none cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
                   >
                     <option value="">Sin rol</option>
                     {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}

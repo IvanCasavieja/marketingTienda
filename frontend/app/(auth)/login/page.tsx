@@ -80,22 +80,22 @@ export default function LoginPage() {
       </div>
 
       {/* ── Right panel ────────────────────────────── */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-slate-50">
+      <div className="flex-1 flex items-center justify-center p-8 bg-slate-50 dark:bg-slate-950">
         <div className="w-full max-w-sm animate-fade-in">
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-8 lg:hidden">
             <div className="w-8 h-8 rounded-xl bg-brand-500 flex items-center justify-center">
               <BarChart3 size={16} className="text-white" />
             </div>
-            <span className="font-bold text-slate-800">MKTG Platform</span>
+            <span className="font-bold text-slate-800 dark:text-slate-100">MKTG Platform</span>
           </div>
 
-          <h2 className="text-2xl font-bold text-slate-900 mb-1">{t("login.welcome")}</h2>
-          <p className="text-slate-500 text-sm mb-8">{t("login.subtitle")}</p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">{t("login.welcome")}</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mb-8">{t("login.subtitle")}</p>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 {t("login.email")}
               </label>
               <input
@@ -111,7 +111,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 {t("login.password")}
               </label>
               <div className="relative">
@@ -151,7 +151,7 @@ export default function LoginPage() {
             </div>
           </form>
 
-          <p className="text-center text-xs text-slate-400 mt-8">
+          <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-8">
             Marketing Intelligence Platform · {new Date().getFullYear()}
           </p>
         </div>

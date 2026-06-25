@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
 import I18nProvider from "@/components/I18nProvider";
+import ThemeProvider from "@/components/ThemeProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -14,12 +15,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
       <body className={inter.className}>
-        <I18nProvider>
-          {children}
-          <Toaster richColors position="top-right" />
-        </I18nProvider>
+        <ThemeProvider>
+          <I18nProvider>
+            {children}
+            <Toaster richColors position="top-right" />
+          </I18nProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

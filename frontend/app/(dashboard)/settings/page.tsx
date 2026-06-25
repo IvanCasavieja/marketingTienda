@@ -77,8 +77,8 @@ export default function SettingsPage() {
     <div className="animate-fade-in space-y-6 max-w-3xl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{t("settings.title")}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{t("settings.subtitle")}</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{t("settings.title")}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("settings.subtitle")}</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary self-start">
           <Plus size={16} />
@@ -93,20 +93,20 @@ export default function SettingsPage() {
           <form onSubmit={handleCreate} className="space-y-4">
             {/* Platform selector */}
             <div>
-              <label className="text-sm font-medium text-slate-700 mb-2 block">{t("settings.platform")}</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">{t("settings.platform")}</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {PLATFORM_OPTIONS.map((p) => (
                   <button key={p.value} type="button" onClick={() => setForm({ ...form, platform: p.value })}
                     className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
-                      form.platform === p.value ? "border-brand-500 bg-brand-50/40" : "border-slate-200 hover:border-slate-300"
+                      form.platform === p.value ? "border-brand-500 bg-brand-50/40 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
                     }`}>
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
                       style={{ backgroundColor: p.color }}>
                       {p.initial}
                     </div>
                     <div className="text-left">
-                      <p className="text-sm font-semibold text-slate-800">{p.label}</p>
-                      <p className="text-xs text-slate-400">{p.desc}</p>
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{p.label}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">{p.desc}</p>
                     </div>
                   </button>
                 ))}
@@ -115,16 +115,16 @@ export default function SettingsPage() {
 
             {/* Guide */}
             {selectedPlatform && (
-              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3.5 border border-slate-100 dark:border-slate-700">
                 <button type="button" onClick={() => setShowGuide(showGuide === form.platform ? null : form.platform)}
                   className="flex items-center justify-between w-full text-left">
-                  <span className="text-xs font-semibold text-slate-600">{t("settings.howToGet", { platform: selectedPlatform.label })}</span>
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">{t("settings.howToGet", { platform: selectedPlatform.label })}</span>
                   <ChevronDown size={14} className={`text-slate-400 transition-transform ${showGuide === form.platform ? "rotate-180" : ""}`} />
                 </button>
                 {showGuide === form.platform && (
                   <div className="mt-3 space-y-1.5">
                     {TOKEN_GUIDES[form.platform]?.steps.map((step, i) => (
-                      <p key={i} className="text-xs text-slate-600 flex gap-2">
+                      <p key={i} className="text-xs text-slate-600 dark:text-slate-400 flex gap-2">
                         <span className="w-4 h-4 rounded-full bg-brand-100 text-brand-600 font-bold text-[10px] flex items-center justify-center shrink-0 mt-px">
                           {i + 1}
                         </span>
@@ -142,17 +142,17 @@ export default function SettingsPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1.5 block">{t("settings.accountId")}</label>
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">{t("settings.accountId")}</label>
                 <input required value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })}
                   className="input text-sm" placeholder="123456789" />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1.5 block">{t("settings.accountName")}</label>
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">{t("settings.accountName")}</label>
                 <input value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })}
                   className="input text-sm" placeholder="Mi cuenta principal" />
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-slate-600 mb-1.5 block">{t("settings.accessToken")}</label>
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">{t("settings.accessToken")}</label>
                 <div className="relative">
                   <input required type={showTokens.access ? "text" : "password"} value={form.access_token}
                     onChange={(e) => setForm({ ...form, access_token: e.target.value })}
@@ -164,8 +164,8 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-slate-600 mb-1.5 block">
-                  {t("settings.refreshToken")} <span className="text-slate-400 font-normal">({t("settings.optional")})</span>
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+                  {t("settings.refreshToken")} <span className="text-slate-400 dark:text-slate-500 font-normal">({t("settings.optional")})</span>
                 </label>
                 <div className="relative">
                   <input type={showTokens.refresh ? "text" : "password"} value={form.refresh_token}
@@ -194,8 +194,8 @@ export default function SettingsPage() {
             <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
               <Plus size={24} className="text-slate-300" />
             </div>
-            <p className="text-sm font-medium text-slate-500">{t("settings.noConnections")}</p>
-            <p className="text-xs text-slate-400 mt-1 max-w-xs">{t("settings.noConnectionsSub")}</p>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{t("settings.noConnections")}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-xs">{t("settings.noConnectionsSub")}</p>
           </div>
         ) : (
           connections.map((c) => {
@@ -208,12 +208,12 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="font-semibold text-slate-800 text-sm">{plat?.label || c.platform}</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{plat?.label || c.platform}</p>
                     {c.is_active
                       ? <span className="badge badge-green flex items-center gap-1"><CheckCircle2 size={10} />{t("settings.active")}</span>
                       : <span className="badge badge-red flex items-center gap-1"><XCircle size={10} />{t("settings.inactive")}</span>}
                   </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                     {c.account_name ? `${c.account_name} · ` : ""}{c.account_id}
                   </p>
                 </div>
@@ -228,13 +228,13 @@ export default function SettingsPage() {
       </div>
 
       {/* Security note */}
-      <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 flex gap-3">
+      <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 flex gap-3">
         <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
           <CheckCircle2 size={12} className="text-emerald-600" />
         </div>
         <div>
-          <p className="text-xs font-semibold text-slate-700">{t("settings.securityTitle")}</p>
-          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{t("settings.securitySub")}</p>
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{t("settings.securityTitle")}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{t("settings.securitySub")}</p>
         </div>
       </div>
     </div>
