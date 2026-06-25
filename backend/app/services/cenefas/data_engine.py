@@ -30,6 +30,7 @@ CANONICAL_VARS: frozenset[str] = frozenset({
     "descripcion",        # nombre del producto
     "mecanica",           # mecánica / tipo de oferta ("Precio Final", "2X$X"...)
     "aclaracion",         # texto de aclaración por producto
+    "aclaracion2",        # segunda aclaración (alias Excel-friendly de segundaAclaracion)
     "segundaAclaracion",  # segunda aclaración (ej: aviso de alcohol)
     "vigencia",           # texto de vigencia
     "codigoSKU",          # código de artículo
@@ -67,6 +68,7 @@ _ALIASES: dict[str, str] = {
     "titulo":             "mecanica",    # backward compat: columna "titulo" → var "mecanica"
     "mecanica":           "mecanica",
     "aclaracion":         "aclaracion",
+    "aclaracion2":        "aclaracion2",
     "segundaaclaracion":  "segundaAclaracion",
     "vigencia":           "vigencia",
     "codigosku":          "codigoSKU",

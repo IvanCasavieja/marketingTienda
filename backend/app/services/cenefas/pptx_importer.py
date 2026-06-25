@@ -30,6 +30,7 @@ _PLACEHOLDER_MAP: dict[str, tuple[str, str, str]] = {
     "descripcion":        ("descripcion",       "text",  "smart_bold"),
     "titulo":             ("mecanica",           "text",  "upper"),
     "aclaracion":         ("aclaracion",        "text",  "none"),
+    "aclaracion2":        ("aclaracion2",       "text",  "none"),
     "segundaaclaracion":  ("segundaAclaracion", "text",  "none"),
     "vigencia":           ("vigencia",          "text",  "none"),
     "codigosku":          ("codigoSKU",         "text",  "none"),
@@ -66,6 +67,7 @@ _CSV_COLUMN_MAP: dict[str, str] = {
     "descripcion":       "descripcion",
     "mecanica":          "mecanica",
     "aclaracion":        "aclaracion",
+    "aclaracion2":       "aclaracion2",
     "segundaAclaracion": "segundaAclaracion",
     "vigencia":          "vigencia",
     "codigoSKU":         "codigoSKU",
@@ -316,12 +318,16 @@ def _detect_placeholder(text: str) -> tuple[str, str, str] | None:
     if not m:
         return None
     root = m.group(1).lower()
+    # Reconstruct full name including numeric suffix (e.g. "aclaracion" + "2" → "aclaracion2")
+    full = root + m.group(2)
+    if full in _PLACEHOLDER_MAP:
+        return _PLACEHOLDER_MAP[full]
     if root in _PLACEHOLDER_MAP:
         return _PLACEHOLDER_MAP[root]
     for key, value in _PLACEHOLDER_MAP.items():
-        if root.startswith(key) or key.startswith(root):
+        if full.startswith(key) or key.startswith(full):
             return value
-    return (root, "text", "none")
+    return (full, "text", "none")
 
 
 def _extract_style(shape) -> dict:
@@ -353,8 +359,28 @@ def _extract_style(shape) -> dict:
         except Exception:
             pass
         try:
-            if font.bold is not None:
-                style["font_bold"] = bool(font.bold)
+            b = font.bold
+            if b is None:
+                # font.bold is None when bold is inherited from theme/layout.
+                # Fall back to reading the XML directly.
+                from pptx.oxml.ns import qn as _qn_b
+                rPr = first_run._r.find(_qn_b("a:rPr"))
+                if rPr is not None:
+                    b_str = rPr.get("b")
+                    if b_str is not None:
+                        b = b_str not in ("0", "false")
+                if b is None:
+                    # Check paragraph-level defRPr as last resort
+                    for _para in tf.paragraphs:
+                        if any(r._r is first_run._r for r in _para.runs):
+                            def_rpr = _para._p.find(_qn_b("a:defRPr"))
+                            if def_rpr is not None:
+                                b_str = def_rpr.get("b")
+                                if b_str is not None:
+                                    b = b_str not in ("0", "false")
+                            break
+            if b is not None:
+                style["font_bold"] = bool(b)
         except Exception:
             pass
         try:
