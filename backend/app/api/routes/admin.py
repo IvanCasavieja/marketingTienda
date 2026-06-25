@@ -165,6 +165,11 @@ class AssignRoleRequest(BaseModel):
     role_id: int | None
 
 
+class UpdateUserRequest(BaseModel):
+    full_name: str | None = None
+    email: EmailStr | None = None
+
+
 @router.get("/users")
 async def list_users(
     _: User = Depends(_require_superuser),
@@ -220,6 +225,31 @@ async def create_user(
     )
     db.add(user)
     await db.flush()
+    return {"id": user.id, "email": user.email, "full_name": user.full_name}
+
+
+@router.patch("/users/{user_id}")
+async def update_user(
+    user_id: int,
+    payload: UpdateUserRequest,
+    current_user: User = Depends(_require_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if payload.email is not None and payload.email != user.email:
+        existing = await db.execute(select(User).where(User.email == payload.email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="El email ya está en uso por otro usuario")
+        user.email = payload.email
+
+    if payload.full_name is not None:
+        user.full_name = payload.full_name
+
+    db.add(user)
     return {"id": user.id, "email": user.email, "full_name": user.full_name}
 
 
