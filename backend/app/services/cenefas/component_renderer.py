@@ -302,8 +302,10 @@ def _render_slide(
         transform    = comp.get("transform", "none")
         value        = apply_transform(raw_value, transform)
 
-        # Collect variables that are used in the template but absent from the product
-        if variable and not raw_value and missing_vars is not None:
+        # Collect variables that are used in the template but whose column is
+        # entirely absent from the Excel (key not in product at all).
+        # Empty cells produce key="" — that's valid data, not a missing column.
+        if variable and variable not in product and missing_vars is not None:
             missing_vars.add(variable)
 
         # Offset 2D para layouts multi-slot (grilla horizontal × vertical)
