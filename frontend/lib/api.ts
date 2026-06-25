@@ -29,18 +29,14 @@ api.interceptors.response.use(
 );
 
 export const authApi = {
-  login: (email: string, password: string, join_code?: string) =>
-    api.post("/auth/login", { email, password, join_code: join_code || undefined }),
-  register: (email: string, full_name: string, password: string, join_code?: string) =>
-    api.post("/auth/register", { email, full_name, password, join_code: join_code || undefined }),
+  login: (email: string, password: string) =>
+    api.post("/auth/login", { email, password }),
+  register: (email: string, full_name: string, password: string) =>
+    api.post("/auth/register", { email, full_name, password }),
   me: () => api.get("/auth/me"),
   logout: () => api.post("/auth/logout"),
   forgotPassword: (email: string) => api.post("/auth/forgot-password", { email }),
   resetPassword: (token: string, new_password: string) => api.post("/auth/reset-password", { token, new_password }),
-  joinTeam: (join_code: string) => api.post("/auth/join-team", { join_code }),
-  teamMembers: () => api.get("/auth/team-members"),
-  removeTeamMember: (userId: number) => api.delete(`/auth/team-members/${userId}`),
-  updateTeamType: (team_type: string) => api.patch("/auth/team-group/type", { team_type }),
 };
 
 export const metricsApi = {

@@ -50,10 +50,6 @@ export interface CurrentUser {
   id: number;
   email: string;
   full_name: string;
-  team_group_id: number | null;
-  team_name: string | null;
-  team_type: "medios" | "marca" | "promo" | null;
-  join_code: string | null;
   is_active: boolean;
   is_superuser: boolean;
   role_id: number | null;

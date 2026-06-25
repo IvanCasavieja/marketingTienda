@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Eye, EyeOff, Loader2, BarChart3, TrendingUp, Brain, Zap, X } from "lucide-react";
+import { Eye, EyeOff, Loader2, BarChart3, TrendingUp, Brain, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export default function LoginPage() {
@@ -12,8 +12,6 @@ export default function LoginPage() {
   const { t } = useTranslation();
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [showJoinStep, setShowJoinStep] = useState(false);
   const [showPwd, setShowPwd]   = useState(false);
   const [loading, setLoading]   = useState(false);
 
@@ -32,12 +30,7 @@ export default function LoginPage() {
     const passwordVal = (form.elements.namedItem("password") as HTMLInputElement).value;
     setLoading(true);
     try {
-      await authApi.login(emailVal, passwordVal, "");
-      const { data: me } = await authApi.me();
-      if (!me.team_group_id) {
-        setShowJoinStep(true);
-        return;
-      }
+      await authApi.login(emailVal, passwordVal);
       router.push("/dashboard");
     } catch {
       toast.error(t("login.wrongCredentials"));
@@ -46,21 +39,6 @@ export default function LoginPage() {
     }
   }
 
-  async function handleJoinTeam(e: React.FormEvent) {
-    e.preventDefault();
-    if (!joinCode.trim()) return;
-
-    setLoading(true);
-    try {
-      await authApi.joinTeam(joinCode.trim());
-      toast.success(t("login.joinTeamSuccess"));
-      router.push("/dashboard");
-    } catch {
-      toast.error(t("login.invalidCode"));
-    } finally {
-      setLoading(false);
-    }
-  }
 
   return (
     <div className="min-h-screen flex">
@@ -179,49 +157,6 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {showJoinStep && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl relative">
-            <button
-              type="button"
-              onClick={() => setShowJoinStep(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              <X size={18} />
-            </button>
-            <h3 className="text-lg font-bold text-slate-900 mb-1">{t("login.joinTeamTitle")}</h3>
-            <p className="text-sm text-slate-500 mb-5">{t("login.joinTeamSub")}</p>
-            <form onSubmit={handleJoinTeam} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  {t("login.joinTeamCode")}
-                </label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
-                  className="input"
-                  placeholder={t("login.joinTeamPaste")}
-                />
-              </div>
-              <button type="submit" disabled={loading} className="btn-primary w-full">
-                {loading
-                  ? <><Loader2 size={16} className="animate-spin" /> {t("login.joinTeamValidating")}</>
-                  : t("login.joinTeamBtn")}
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push("/home")}
-                className="w-full text-sm text-slate-500 hover:text-slate-700"
-              >
-                {t("login.continueWithoutTeam")}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
