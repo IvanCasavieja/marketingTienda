@@ -71,16 +71,16 @@ function GrupoRow({ grupo }: { grupo: CompararGrupo }) {
     <div className="card p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800 leading-tight">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 leading-tight">
             {grupo.nombre_ref ?? "—"}
           </p>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
             Barcode: {grupo.barcode} · {grupo.n_tiendas} tiendas
           </p>
         </div>
         {ahorro > 0 && (
           <div className="shrink-0 text-right">
-            <span className="text-xs text-slate-500">diferencia</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">diferencia</span>
             <p className="text-sm font-bold text-emerald-600">-{ahorro}%</p>
           </div>
         )}
@@ -175,10 +175,10 @@ function CompararContent() {
 
       {!loading && searched && grupos.length === 0 && (
         <div className="card p-12 text-center">
-          <p className="text-slate-400 text-sm">
+          <p className="text-slate-400 dark:text-slate-500 text-sm">
             Sin productos que aparezcan en más de una tienda para esa búsqueda.
           </p>
-          <p className="text-slate-300 text-xs mt-1">
+          <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">
             La comparación requiere barcode coincidente entre tiendas.
           </p>
         </div>
@@ -186,7 +186,7 @@ function CompararContent() {
 
       {!loading && grupos.length > 0 && (
         <>
-          <p className="text-xs text-slate-400">{grupos.length} productos comparables encontrados</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">{grupos.length} productos comparables encontrados</p>
           <div className="space-y-3">
             {grupos.map((g) => <GrupoRow key={g.barcode} grupo={g} />)}
           </div>

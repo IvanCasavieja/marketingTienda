@@ -213,8 +213,8 @@ export default function CenefasPage() {
           <Presentation size={22} className="text-emerald-500" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{t("cenefas.title")}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{t("cenefas.subtitle")}</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("cenefas.title")}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("cenefas.subtitle")}</p>
         </div>
       </div>
 
@@ -250,11 +250,11 @@ export default function CenefasPage() {
                     className={`flex flex-col gap-1 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all duration-150 min-w-[120px] text-left ${
                       selectedBuiltinSlug === tmpl.slug
                         ? "border-indigo-400 bg-indigo-50"
-                        : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                        : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-700"
                     }`}
                   >
                     <p className={`text-xs font-semibold leading-tight ${
-                      selectedBuiltinSlug === tmpl.slug ? "text-indigo-700" : "text-slate-700"
+                      selectedBuiltinSlug === tmpl.slug ? "text-indigo-700" : "text-slate-700 dark:text-slate-300"
                     }`}>
                       {tmpl.name}
                     </p>
@@ -262,7 +262,7 @@ export default function CenefasPage() {
                       <span className={`self-start text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
                         selectedBuiltinSlug === tmpl.slug
                           ? "bg-indigo-200 text-indigo-700"
-                          : "bg-slate-200 text-slate-500"
+                          : "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                       }`}>
                         {tmpl.format_name}
                       </span>
@@ -275,10 +275,10 @@ export default function CenefasPage() {
 
           {/* New template form */}
           {showNewForm && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+            <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
               <div className="flex gap-3">
                 <label className="flex-1 flex flex-col gap-1">
-                  <span className="text-xs font-medium text-slate-600">{t("cenefas.templateName")}</span>
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{t("cenefas.templateName")}</span>
                   <input
                     type="text"
                     value={newName}
@@ -289,7 +289,7 @@ export default function CenefasPage() {
                   />
                 </label>
                 <label className="w-32 flex flex-col gap-1">
-                  <span className="text-xs font-medium text-slate-600">{t("cenefas.templateFormat")}</span>
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{t("cenefas.templateFormat")}</span>
                   <input
                     type="text"
                     value={newFormat}
@@ -300,7 +300,7 @@ export default function CenefasPage() {
                 </label>
               </div>
               <label className="flex flex-col gap-1 cursor-pointer">
-                <span className="text-xs font-medium text-slate-600">{t("cenefas.pptxLabel")}</span>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{t("cenefas.pptxLabel")}</span>
                 <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 transition-all duration-150 ${
                   newFile ? "border-brand-400 bg-brand-50" : "border-dashed border-slate-300 hover:border-slate-400"
                 }`}>
@@ -360,12 +360,12 @@ export default function CenefasPage() {
                   className={`relative group flex flex-col gap-1 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all duration-150 min-w-[140px] ${
                     selectedTemplateId === tmpl.id
                       ? "border-emerald-400 bg-emerald-50"
-                      : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                      : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-700"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className={`text-xs font-semibold leading-tight truncate max-w-[110px] ${
-                      selectedTemplateId === tmpl.id ? "text-emerald-700" : "text-slate-700"
+                      selectedTemplateId === tmpl.id ? "text-emerald-700" : "text-slate-700 dark:text-slate-300"
                     }`}>
                       {tmpl.name}
                     </p>
@@ -379,7 +379,7 @@ export default function CenefasPage() {
                   </div>
                   {tmpl.format_name && (
                     <span className={`self-start text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
-                      selectedTemplateId === tmpl.id ? "bg-emerald-200 text-emerald-700" : "bg-slate-200 text-slate-500"
+                      selectedTemplateId === tmpl.id ? "bg-emerald-200 text-emerald-700" : "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                     }`}>
                       {tmpl.format_name}
                     </span>
@@ -396,9 +396,9 @@ export default function CenefasPage() {
 
           {/* Separator */}
           <div className="flex items-center gap-2">
-            <div className="h-px flex-1 bg-slate-100" />
-            <span className="text-[11px] text-slate-400 px-1">{t("cenefas.orUploadNew")}</span>
-            <div className="h-px flex-1 bg-slate-100" />
+            <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 px-1">{t("cenefas.orUploadNew")}</span>
+            <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
           </div>
 
           {/* Custom PPTX upload */}
@@ -503,15 +503,15 @@ function FileDropField({
   const active = !!file;
   const colors = {
     emerald: {
-      border: active ? "border-emerald-400 bg-emerald-50" : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white",
+      border: active ? "border-emerald-400 bg-emerald-50" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-700",
       icon: active ? "text-emerald-500" : "text-slate-400",
-      text: active ? "text-emerald-700 font-medium" : "text-slate-500",
+      text: active ? "text-emerald-700 font-medium" : "text-slate-500 dark:text-slate-400",
       badge: "bg-emerald-100 text-emerald-700",
     },
     brand: {
-      border: active ? "border-brand-400 bg-brand-50" : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white",
+      border: active ? "border-brand-400 bg-brand-50" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-700",
       icon: active ? "text-brand-500" : "text-slate-400",
-      text: active ? "text-brand-700 font-medium" : "text-slate-500",
+      text: active ? "text-brand-700 font-medium" : "text-slate-500 dark:text-slate-400",
       badge: "bg-brand-100 text-brand-700",
     },
   }[accentColor];
@@ -519,8 +519,8 @@ function FileDropField({
   return (
     <label htmlFor={id} className={`flex flex-col gap-1.5 cursor-pointer transition-opacity ${dimmed ? "opacity-40 pointer-events-none" : ""}`}>
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-700">{label}</span>
-        <span className="text-xs text-slate-400">{hint}</span>
+        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
+        <span className="text-xs text-slate-400 dark:text-slate-500">{hint}</span>
       </div>
       <div className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition-all duration-150 ${colors.border}`}>
         <Icon size={18} className={`shrink-0 ${colors.icon}`} />
@@ -528,7 +528,7 @@ function FileDropField({
           {file ? file.name : chooseLabel}
         </span>
         {!file && (
-          <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-200 text-slate-500 font-medium shrink-0">
+          <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-medium shrink-0">
             {searchLabel}
           </span>
         )}
@@ -603,7 +603,7 @@ function ComboField({
 
   return (
     <div ref={ref} className="relative flex flex-col gap-1.5">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
       <div className="flex gap-1 items-stretch">
         <input
           className="input text-sm flex-1 min-w-0"
@@ -623,14 +623,14 @@ function ComboField({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="shrink-0 px-2 border border-slate-200 rounded-lg bg-white text-slate-400 hover:text-slate-600 transition-colors"
+          className="shrink-0 px-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
         >
           <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-52 overflow-y-auto">
           {options.length === 0 ? (
             <p className="px-3 py-3 text-xs text-slate-400 text-center">
               Sin opciones guardadas — escribí un valor y hacé clic en "Guardar".
@@ -638,7 +638,7 @@ function ComboField({
           ) : options.map((opt, idx) => (
             <div
               key={idx}
-              className="flex items-center gap-1.5 px-3 py-2.5 hover:bg-slate-50 group border-b border-slate-100 last:border-0"
+              className="flex items-center gap-1.5 px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 group border-b border-slate-100 dark:border-slate-800 last:border-0"
             >
               {editingIdx === idx ? (
                 <>
@@ -658,7 +658,7 @@ function ComboField({
                 </>
               ) : (
                 <>
-                  <span className="flex-1 text-sm text-slate-700 cursor-pointer truncate" onClick={() => { onChange(opt); setOpen(false); }}>{opt}</span>
+                  <span className="flex-1 text-sm text-slate-700 dark:text-slate-300 cursor-pointer truncate" onClick={() => { onChange(opt); setOpen(false); }}>{opt}</span>
                   <button onClick={(e) => { e.stopPropagation(); setEditingIdx(idx); setEditingVal(opt); }} className="shrink-0 p-0.5 text-slate-300 hover:text-brand-500 opacity-0 group-hover:opacity-100"><Pencil size={11} /></button>
                   <button onClick={(e) => { e.stopPropagation(); handleDelete(idx); }} className="shrink-0 p-0.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100"><Trash2 size={11} /></button>
                 </>
@@ -679,7 +679,7 @@ function Field({ label, placeholder, value, onChange }: {
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
       <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="input text-sm" />
     </label>
   );

@@ -78,14 +78,14 @@ function SectionTitle({ icon: Icon, title, color = "text-brand-600" }: {
       <div className="w-8 h-8 rounded-xl bg-brand-500/10 flex items-center justify-center shrink-0">
         <Icon size={16} className={color} />
       </div>
-      <h2 className="text-lg font-bold text-slate-800">{title}</h2>
+      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">{title}</h2>
     </div>
   );
 }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-white rounded-2xl border border-slate-100 shadow-sm p-5 ${className}`}>
+    <div className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 ${className}`}>
       {children}
     </div>
   );
@@ -98,8 +98,8 @@ function Step({ n, title, description }: { n: number; title: string; description
         {n}
       </div>
       <div>
-        <p className="text-sm font-semibold text-slate-800">{title}</p>
-        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{description}</p>
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{title}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{description}</p>
       </div>
     </div>
   );
@@ -131,8 +131,8 @@ export default function AyudaPage() {
         </div>
         <div>
           <p className="text-xs font-semibold text-brand-500 uppercase tracking-widest mb-1">Guía de uso</p>
-          <h1 className="text-3xl font-bold text-slate-900">¿Cómo funciona la plataforma?</h1>
-          <p className="text-slate-500 mt-2 max-w-lg">
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">¿Cómo funciona la plataforma?</h1>
+          <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-lg">
             Todo lo que necesitás saber para usar MKTG Platform: métricas, análisis IA, generación de cenefas y más.
           </p>
         </div>
@@ -149,18 +149,18 @@ export default function AyudaPage() {
         <SectionTitle icon={LayoutDashboard} title="Dashboard" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="md:col-span-2">
-            <p className="text-sm text-slate-700 leading-relaxed mb-3">
+            <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-3">
               El <strong>Dashboard</strong> muestra el resumen de rendimiento de todas tus plataformas publicitarias conectadas
               en un solo lugar: gasto total, impresiones, clics, conversiones y ROAS.
             </p>
             <ul className="space-y-2 text-xs text-slate-600">
-              <li className="flex items-start gap-2"><CheckCircle2 size={13} className="text-emerald-500 mt-0.5 shrink-0" />Filtrá por rango de fechas y plataforma</li>
-              <li className="flex items-start gap-2"><CheckCircle2 size={13} className="text-emerald-500 mt-0.5 shrink-0" />Detecta anomalías automáticamente con IA</li>
-              <li className="flex items-start gap-2"><CheckCircle2 size={13} className="text-emerald-500 mt-0.5 shrink-0" />Tendencias y variaciones respecto al período anterior</li>
+              <li className="flex items-start gap-2 text-slate-600 dark:text-slate-400"><CheckCircle2 size={13} className="text-emerald-500 mt-0.5 shrink-0" />Filtrá por rango de fechas y plataforma</li>
+              <li className="flex items-start gap-2 text-slate-600 dark:text-slate-400"><CheckCircle2 size={13} className="text-emerald-500 mt-0.5 shrink-0" />Detecta anomalías automáticamente con IA</li>
+              <li className="flex items-start gap-2 text-slate-600 dark:text-slate-400"><CheckCircle2 size={13} className="text-emerald-500 mt-0.5 shrink-0" />Tendencias y variaciones respecto al período anterior</li>
             </ul>
           </Card>
           <Card>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Métricas clave</p>
+            <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Métricas clave</p>
             <div className="space-y-2">
               {[
                 { label: "Spend", desc: "Inversión total" },
@@ -170,8 +170,8 @@ export default function AyudaPage() {
                 { label: "CPC",   desc: "Costo por clic" },
               ].map(({ label, desc }) => (
                 <div key={label} className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800">{label}</span>
-                  <span className="text-xs text-slate-400">{desc}</span>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{label}</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">{desc}</span>
                 </div>
               ))}
             </div>
@@ -183,7 +183,7 @@ export default function AyudaPage() {
       <section>
         <SectionTitle icon={Megaphone} title="Campañas" />
         <Card>
-          <p className="text-sm text-slate-700 leading-relaxed mb-4">
+          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
             Tabla detallada de todas las campañas de todas las plataformas. Podés ordenar, filtrar y exportar los datos.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -193,10 +193,10 @@ export default function AyudaPage() {
               { icon: Eye,             label: "Filtros",      desc: "Por plataforma, fecha, campaña" },
               { icon: BarChart2,       label: "Comparación",  desc: "Período actual vs anterior" },
             ].map(({ icon: Icon, label, desc }) => (
-              <div key={label} className="bg-slate-50 rounded-xl p-3 text-center">
+              <div key={label} className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3 text-center">
                 <Icon size={16} className="text-brand-600 mx-auto mb-1.5" />
-                <p className="text-xs font-semibold text-slate-800">{label}</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">{desc}</p>
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{label}</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{desc}</p>
               </div>
             ))}
           </div>
@@ -209,28 +209,28 @@ export default function AyudaPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>
             <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-2">Análisis con Claude</p>
-            <p className="text-sm text-slate-700 leading-relaxed">
+            <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
               Seleccionás plataforma y rango de fechas. Claude (Anthropic) analiza tus métricas y
               genera un reporte con insights, anomalías detectadas y recomendaciones accionables.
             </p>
           </Card>
           <Card>
             <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">Modo Debate</p>
-            <p className="text-sm text-slate-700 leading-relaxed mb-3">
+            <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-3">
               Tres IAs debaten tus métricas en 3 rondas:
             </p>
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-xs">
                 <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center text-[10px]">C</span>
-                <span><strong className="text-slate-800">Claude</strong> — analista cuantitativo, foco estadístico</span>
+                <span className="text-slate-600 dark:text-slate-400"><strong className="text-slate-800 dark:text-slate-200">Claude</strong> — analista cuantitativo, foco estadístico</span>
               </div>
               <div className="flex items-center gap-2 text-xs">
                 <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center text-[10px]">G</span>
-                <span><strong className="text-slate-800">ChatGPT</strong> — estratega creativo, ideas disruptivas</span>
+                <span className="text-slate-600 dark:text-slate-400"><strong className="text-slate-800 dark:text-slate-200">ChatGPT</strong> — estratega creativo, ideas disruptivas</span>
               </div>
               <div className="flex items-center gap-2 text-xs">
                 <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 font-bold flex items-center justify-center text-[10px]">L</span>
-                <span><strong className="text-slate-800">Llama</strong> — moderador pragmático, síntesis final</span>
+                <span className="text-slate-600 dark:text-slate-400"><strong className="text-slate-800 dark:text-slate-200">Llama</strong> — moderador pragmático, síntesis final</span>
               </div>
             </div>
           </Card>
@@ -241,7 +241,7 @@ export default function AyudaPage() {
       <section>
         <SectionTitle icon={Presentation} title="Generar Cenefas" color="text-emerald-600" />
         <Card>
-          <p className="text-sm text-slate-700 leading-relaxed mb-5">
+          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-5">
             Convertí un Excel con productos en una presentación PowerPoint lista para imprimir.
             El sistema genera automáticamente las láminas con precios, descripciones y promociones formateadas.
           </p>
@@ -287,51 +287,51 @@ export default function AyudaPage() {
           <Card>
             <div className="flex items-center gap-2 mb-2">
               <Eye size={14} className="text-indigo-500" />
-              <p className="text-xs font-semibold text-slate-800">Canvas visual</p>
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">Canvas visual</p>
             </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
               Editor WYSIWYG basado en Konva.js. Ves en tiempo real cómo se verá cada componente en el formato elegido.
             </p>
           </Card>
           <Card>
             <div className="flex items-center gap-2 mb-2">
               <GitBranch size={14} className="text-indigo-500" />
-              <p className="text-xs font-semibold text-slate-800">Reglas de visibilidad</p>
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">Reglas de visibilidad</p>
             </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
               Definís cuándo aparece cada componente según los datos del producto. Condiciones AND/OR/NOT con múltiples operadores.
             </p>
           </Card>
           <Card>
             <div className="flex items-center gap-2 mb-2">
               <Variable size={14} className="text-indigo-500" />
-              <p className="text-xs font-semibold text-slate-800">Variables</p>
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">Variables</p>
             </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
               Mapeás cada campo del Excel a un componente del template: precio, descripción, mecánica, combo, etc.
             </p>
           </Card>
         </div>
         <Card>
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Formas de empezar un template</p>
+          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Formas de empezar un template</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="bg-brand-50 rounded-xl p-3">
               <p className="text-xs font-semibold text-brand-700 mb-1">Plantilla predeterminada</p>
               <p className="text-[11px] text-brand-600">Cenefa A4, Pinchos o 3xA4 ya configurados y listos para usar.</p>
             </div>
-            <div className="bg-slate-50 rounded-xl p-3">
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <Upload size={11} className="text-slate-500" />
-                <p className="text-xs font-semibold text-slate-700">Importar PPTX</p>
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Importar PPTX</p>
               </div>
-              <p className="text-[11px] text-slate-500">Subís tu propio .pptx y los placeholders <code className="bg-white px-1 rounded text-[10px]">&lt;&lt;PRECIO&gt;&gt;</code> se detectan automáticamente.</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Subís tu propio .pptx y los placeholders <code className="bg-white dark:bg-slate-900 px-1 rounded text-[10px]">&lt;&lt;PRECIO&gt;&gt;</code> se detectan automáticamente.</p>
             </div>
-            <div className="bg-slate-50 rounded-xl p-3">
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <Layers size={11} className="text-slate-500" />
-                <p className="text-xs font-semibold text-slate-700">Desde cero</p>
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Desde cero</p>
               </div>
-              <p className="text-[11px] text-slate-500">Creás cada componente manualmente, definís bounds, estilos y transforms.</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Creás cada componente manualmente, definís bounds, estilos y transforms.</p>
             </div>
           </div>
         </Card>
@@ -341,7 +341,7 @@ export default function AyudaPage() {
       <section>
         <SectionTitle icon={Settings} title="Conexiones de plataformas" />
         <Card>
-          <p className="text-sm text-slate-700 leading-relaxed mb-4">
+          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
             Desde <strong>Configuración → Conexiones</strong> conectás cada cuenta publicitaria.
             Los tokens se guardan cifrados. Una vez conectados, la sincronización es automática.
           </p>
@@ -352,13 +352,13 @@ export default function AyudaPage() {
               { name: "TikTok Ads", color: "#FF0050", req: "Access Token + Advertiser ID" },
               { name: "DV360",      color: "#34A853", req: "Service Account JSON" },
             ].map(({ name, color, req }) => (
-              <div key={name} className="rounded-xl border border-slate-100 p-3">
+              <div key={name} className="rounded-xl border border-slate-100 dark:border-slate-800 p-3">
                 <div className="w-6 h-6 rounded-md mb-2 flex items-center justify-center text-white text-[10px] font-bold"
                   style={{ backgroundColor: color }}>
                   {name[0]}
                 </div>
-                <p className="text-xs font-semibold text-slate-800">{name}</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">{req}</p>
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{name}</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{req}</p>
               </div>
             ))}
           </div>
@@ -369,7 +369,7 @@ export default function AyudaPage() {
       <section>
         <SectionTitle icon={Clock} title="Historial de generaciones" />
         <Card>
-          <p className="text-sm text-slate-700 leading-relaxed mb-3">
+          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-3">
             En <strong>Herramientas → Historial</strong> encontrás todos los trabajos de generación de cenefas:
             estado, formato usado, fecha y el botón de descarga (disponible por 24 hs desde la generación).
           </p>
@@ -399,13 +399,13 @@ export default function AyudaPage() {
               </svg>
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-800 mb-1">¿En qué te ayudo?</p>
-              <p className="text-sm text-slate-600 leading-relaxed">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">¿En qué te ayudo?</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                 El asistente (Llama 3.3 70B via Groq) conoce todas las funcionalidades de la plataforma.
                 Podés preguntarle cómo navegar hacia alguna sección, cómo generar un reporte,
                 qué significan las métricas o cualquier duda operativa.
               </p>
-              <p className="text-xs text-slate-400 mt-2">
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
                 Disponible desde el menú principal → ícono del robot (esquina superior izquierda del dashboard).
               </p>
             </div>
@@ -417,7 +417,7 @@ export default function AyudaPage() {
       <section>
         <SectionTitle icon={Users} title="Equipos y accesos" />
         <Card>
-          <p className="text-sm text-slate-700 leading-relaxed mb-4">
+          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
             La plataforma soporta múltiples equipos dentro de una misma organización. Cada equipo tiene su propio
             código de invitación y tipo de acceso.
           </p>
@@ -428,9 +428,9 @@ export default function AyudaPage() {
                 Acceso completo: Dashboard, Campañas, Análisis IA y Herramientas.
               </p>
             </div>
-            <div className="bg-slate-50 rounded-xl p-3">
-              <p className="text-xs font-semibold text-slate-700 mb-1">Otros equipos</p>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Otros equipos</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                 Acceso restringido a Herramientas (cenefas, editor, historial) sin métricas de plataformas.
               </p>
             </div>
