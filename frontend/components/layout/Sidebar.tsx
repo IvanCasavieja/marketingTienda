@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
   BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, ShieldCheck, HelpCircle, X, Tag, Scale,
+  Sun, Moon,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, connectionsApi } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 import { useTranslation } from "react-i18next";
 import { LANGUAGES, setLanguage, type LangCode } from "@/lib/i18n";
+import { useTheme } from "@/hooks/useTheme";
 
 const platforms = [
   { key: "meta",       name: "Meta Ads",   color: "#1877F2", initial: "M" },
@@ -67,6 +69,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     if (onClose) onClose();
   }
 
+  const { theme, toggle: toggleTheme } = useTheme();
   const tenantLabel = "MKTG Platform";
   const currentLang = LANGUAGES.find((l) => l.code === i18n.language) ?? LANGUAGES[0];
 
@@ -195,6 +198,19 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Theme toggle */}
+        <div className="px-3 pb-1">
+          <button
+            onClick={toggleTheme}
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-slate-500
+                       hover:bg-white/5 hover:text-slate-300 transition-all duration-150"
+            aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+          >
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === "dark" ? "Modo claro" : "Modo oscuro"}
+          </button>
         </div>
 
         {/* Logout */}
