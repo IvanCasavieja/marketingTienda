@@ -348,9 +348,10 @@ def _detect_slot_bands(components: list[dict], n_bands: int = 3) -> list[list[di
         idx = min(n_bands - 1, int(y / band_h))
         bands[idx].append(comp)
 
-    # At least 2 bands must have variable components
+    # All n_bands must have variable components (prevents false positives on
+    # single-slot A4 templates whose content spans only the lower 2/3 of the page)
     populated = sum(1 for b in bands if any(c.get("variable") for c in b))
-    return bands if populated >= 2 else None
+    return bands if populated >= n_bands else None
 
 
 # ---------------------------------------------------------------------------
