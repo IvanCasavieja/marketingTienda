@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, nullif
+from sqlalchemy import select, and_, func
 from pydantic import BaseModel
 from datetime import date
 from typing import List, Optional
@@ -96,7 +96,7 @@ async def get_summary(
             func.sum(CampaignMetric.revenue).label("revenue"),
             func.avg(CampaignMetric.ctr).label("avg_ctr"),
             # ROAS correcto: revenue total / spend total (no avg de roas por fila)
-            (func.sum(CampaignMetric.revenue) / nullif(func.sum(CampaignMetric.spend), 0)).label("avg_roas"),
+            (func.sum(CampaignMetric.revenue) / func.nullif(func.sum(CampaignMetric.spend), 0)).label("avg_roas"),
             func.max(CampaignMetric.date).label("last_date"),
         )
         .where(
