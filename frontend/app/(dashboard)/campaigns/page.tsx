@@ -152,8 +152,8 @@ export default function CampaignsPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{t("campaigns.title")}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{t("campaigns.subtitle")}</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{t("campaigns.title")}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("campaigns.subtitle")}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           {PLATFORMS.map((p) => (
@@ -180,9 +180,9 @@ export default function CampaignsPage() {
             { label: t("campaigns.conversions"),     curr: totals.conversions, prev: cmpTotals.conversions, fmt: fNum },
           ].map(({ label, curr, prev, fmt }) => (
             <div key={label} className="card p-4">
-              <p className="text-xs text-slate-500 mb-1">{label}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{label}</p>
               <div className="flex items-end gap-2">
-                <p className="text-xl font-bold text-slate-900">{fmt(curr)}</p>
+                <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{fmt(curr)}</p>
                 {comparing && <DeltaBadge curr={curr} prev={prev} />}
               </div>
               {comparing && <p className="text-xs text-slate-400 mt-0.5">{fmt(prev)} {t("campaigns.prevPeriod")}</p>}
@@ -200,7 +200,7 @@ export default function CampaignsPage() {
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
                 filterPlatform === p
                   ? "bg-brand-600 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
               }`}>
               {p === "all" ? t("common.allPlatforms") : PLATFORM_LABELS[p]}
             </button>
@@ -225,7 +225,7 @@ export default function CampaignsPage() {
             <option value="roas">{t("campaigns.sortOptions.roas")}</option>
           </select>
           <button onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
-            className="input py-2 px-3 text-xs font-medium hover:bg-slate-100 transition-colors">
+            className="input py-2 px-3 text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             {sortDir === "desc" ? "↓" : "↑"}
           </button>
         </div>
@@ -237,7 +237,7 @@ export default function CampaignsPage() {
               {[{l:"7D",d:7},{l:"30D",d:30},{l:"90D",d:90}].map(({l,d}) => (
                 <button key={d}
                   onClick={() => { setDateFrom(format(subDays(new Date(), d), "yyyy-MM-dd")); setDateTo(format(new Date(), "yyyy-MM-dd")); }}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
                   {l}
                 </button>
               ))}
@@ -249,7 +249,7 @@ export default function CampaignsPage() {
               className="input py-2 text-xs w-36" />
             <button onClick={() => setComparing(c => !c)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
-                comparing ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                comparing ? "bg-brand-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
               }`}>
               {t("campaigns.compare")}
             </button>
@@ -276,7 +276,7 @@ export default function CampaignsPage() {
         <div className="overflow-x-auto overflow-y-auto max-h-[calc(100svh-22rem)]">
         <table className="w-full min-w-[640px]">
           <thead className="sticky top-0 z-10">
-            <tr className="border-b border-slate-100 bg-slate-50">
+            <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
               <th className="table-th">{t("campaigns.tableHeaders.platform")}</th>
               <th className="table-th">{t("campaigns.tableHeaders.campaign")}</th>
               <th className="table-th">{t("campaigns.tableHeaders.date")}</th>
@@ -303,7 +303,7 @@ export default function CampaignsPage() {
                 <tr key={i} className="table-tr">
                   <td className="table-td"><PlatformBadge platform={m.platform} /></td>
                   <td className="table-td max-w-[220px]">
-                    <span className="truncate block font-medium text-slate-800" title={m.campaign_name}>
+                    <span className="truncate block font-medium text-slate-800 dark:text-slate-200" title={m.campaign_name}>
                       {m.campaign_name}
                     </span>
                   </td>
@@ -311,7 +311,7 @@ export default function CampaignsPage() {
                   <td className="table-td font-semibold">{fMoneyExact(m.spend)}</td>
                   <td className="table-td">{fNum(m.clicks)}</td>
                   <td className="table-td">
-                    <span className={`text-xs font-medium ${m.ctr > 3 ? "text-emerald-600" : m.ctr > 1 ? "text-slate-600" : "text-red-500"}`}>
+                    <span className={`text-xs font-medium ${m.ctr > 3 ? "text-emerald-600" : m.ctr > 1 ? "text-slate-600 dark:text-slate-400" : "text-red-500"}`}>
                       {m.ctr.toFixed(2)}%
                     </span>
                   </td>
@@ -324,7 +324,7 @@ export default function CampaignsPage() {
         </div>
 
         {!loading && displayed.length > 0 && (
-          <div className="px-4 py-3 border-t border-slate-50 bg-slate-50/30">
+          <div className="px-4 py-3 border-t border-slate-50 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50">
             <p className="text-xs text-slate-400">
               {t("campaigns.footer", { n: displayed.length, spend: fMoneyExact(totals.spend) })}
             </p>

@@ -193,28 +193,28 @@ export default function EditorPage() {
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-2rem)] -m-8 rounded-2xl overflow-hidden border border-slate-200 shadow-card bg-white">
+    <div className="flex flex-col h-[calc(100vh-2rem)] -m-8 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-card bg-white dark:bg-slate-900">
 
       {/* Modal de referencia de variables */}
       {varModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <BookOpen size={15} className="text-brand-600" />
-                <p className="font-semibold text-slate-800 text-sm">Referencia de variables</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Referencia de variables</p>
               </div>
-              <button onClick={() => setVarModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600">
+              <button onClick={() => setVarModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                 <X size={16} />
               </button>
             </div>
-            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+            <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-800">
               {VARIABLES_REFERENCE.map(({ name, desc }) => (
                 <div key={name} className="flex items-center gap-3 px-5 py-2.5">
                   <code className="text-[11px] font-mono text-brand-700 shrink-0 bg-brand-50 border border-brand-100 px-1.5 py-0.5 rounded">
                     {`<<${name}>>`}
                   </code>
-                  <span className="text-xs text-slate-500">{desc}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{desc}</span>
                 </div>
               ))}
             </div>
@@ -223,7 +223,7 @@ export default function EditorPage() {
       )}
 
       {/* ── Barra superior ── */}
-      <header className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 bg-white flex-shrink-0">
+      <header className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex-shrink-0">
         <a
           href="/herramientas/cenefas"
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
@@ -245,7 +245,7 @@ export default function EditorPage() {
           ) : (
             <button
               onClick={() => setNameEditing(true)}
-              className="text-sm font-semibold text-slate-800 hover:text-brand-600 transition-colors"
+              className="text-sm font-semibold text-slate-800 dark:text-slate-200 hover:text-brand-600 transition-colors"
             >
               {template.name}
             </button>
@@ -258,7 +258,7 @@ export default function EditorPage() {
         {/* Selector de formatos — oculto (el diseño siempre viene en A4) */}
 
         {/* Stats */}
-        <div className="flex items-center gap-3 text-xs text-slate-400 border-l border-slate-100 pl-3">
+        <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500 border-l border-slate-100 dark:border-slate-800 pl-3">
           <span>{template.components.length} comp.</span>
           <span>{template.rules.length} reglas</span>
           <span>{template.variables.length} vars</span>
@@ -277,25 +277,25 @@ export default function EditorPage() {
         <div className="relative" ref={tmplMenuRef}>
           <button
             onClick={() => setShowTmplMenu((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-800 transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-800 dark:hover:text-slate-200 transition-all"
           >
             {loadingTmpl ? <Loader2 size={13} className="animate-spin" /> : <FolderOpen size={13} />}
             Cargar
           </button>
           {showTmplMenu && (
-            <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
-              <div className="px-3 py-2 border-b border-slate-100">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase">Templates guardados</p>
+            <div className="absolute right-0 top-full mt-1 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg z-50 overflow-hidden">
+              <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
+                <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase">Templates guardados</p>
               </div>
               {savedTmpls.length === 0 ? (
-                <p className="px-3 py-4 text-xs text-slate-400 text-center">Sin templates guardados</p>
+                <p className="px-3 py-4 text-xs text-slate-400 dark:text-slate-500 text-center">Sin templates guardados</p>
               ) : (
                 <div className="max-h-64 overflow-y-auto">
                   {savedTmpls.map((t) => {
                     const isEd  = editingTmplId  === t.id;
                     const isDel = deletingTmplId === t.id;
                     return (
-                      <div key={t.id} className="group border-b border-slate-50 last:border-0">
+                      <div key={t.id} className="group border-b border-slate-50 dark:border-slate-800 last:border-0">
                         {isEd ? (
                           <div className="flex items-center gap-1 px-3 py-2">
                             <input
@@ -323,10 +323,10 @@ export default function EditorPage() {
                           <div className="flex items-center pr-1">
                             <button
                               onClick={() => handleLoadTemplate(t.id)}
-                              className="flex-1 text-left px-3 py-2.5 hover:bg-slate-50 text-sm text-slate-700"
+                              className="flex-1 text-left px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm text-slate-700 dark:text-slate-300"
                             >
                               <p className="font-medium truncate">{t.name}</p>
-                              <p className="text-[10px] text-slate-400">{t.formats.join(", ")}</p>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-500">{t.formats.join(", ")}</p>
                             </button>
                             <button
                               onClick={() => { setEditingTmplId(t.id); setEditingTmplName(t.name); setDeletingTmplId(null); }}
@@ -345,7 +345,7 @@ export default function EditorPage() {
                   })}
                 </div>
               )}
-              <div className="px-3 py-2 border-t border-slate-100">
+              <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800">
                 <button
                   onClick={() => { initNew(); setShowTmplMenu(false); setShowImport(true); }}
                   className="text-xs text-brand-600 hover:text-brand-700 font-medium"
@@ -397,8 +397,8 @@ export default function EditorPage() {
       <div className="flex flex-1 min-h-0">
         {/* Panel izquierdo */}
         {!showImport && (
-          <aside className="w-56 flex-shrink-0 border-r border-slate-100 flex flex-col animate-slide-in-left">
-            <div className="flex border-b border-slate-100">
+          <aside className="w-56 flex-shrink-0 border-r border-slate-100 dark:border-slate-800 flex flex-col animate-slide-in-left">
+            <div className="flex border-b border-slate-100 dark:border-slate-800">
               {leftPanelDef.map(({ id, label, icon }) => (
                 <button
                   key={id}
@@ -406,7 +406,7 @@ export default function EditorPage() {
                   className={`flex-1 flex items-center justify-center gap-1 py-2 text-[10px] font-medium transition-colors ${
                     leftPanel === id
                       ? "text-brand-600 border-b-2 border-brand-600"
-                      : "text-slate-400 hover:text-slate-600"
+                      : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
                   }`}
                   title={label}
                 >
@@ -431,7 +431,7 @@ export default function EditorPage() {
         ) : (
           <main className="relative flex-1 overflow-auto bg-slate-100 flex flex-col items-center p-6 gap-4">
             {template.components.length === 0 && (
-              <div className="flex items-center gap-2 text-xs text-slate-400 bg-white rounded-lg px-3 py-2 border border-slate-200 self-start">
+              <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700 self-start">
                 <AlertCircle size={13} />
                 Agregá componentes desde el panel izquierdo para comenzar a diseñar
               </div>
@@ -442,9 +442,9 @@ export default function EditorPage() {
 
         {/* Panel derecho */}
         {!showImport && (
-          <aside className="w-64 flex-shrink-0 border-l border-slate-100 flex flex-col min-h-0 animate-slide-in-right">
-            <div className="px-4 py-2.5 border-b border-slate-100 flex-shrink-0">
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+          <aside className="w-64 flex-shrink-0 border-l border-slate-100 dark:border-slate-800 flex flex-col min-h-0 animate-slide-in-right">
+            <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
+              <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 Propiedades
               </p>
             </div>

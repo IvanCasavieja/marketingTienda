@@ -117,17 +117,17 @@ export default function JobsPage() {
       {/* Modal de detalle de errores */}
       {detailJob && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
               <div>
-                <p className="font-semibold text-slate-800 text-sm">
+                <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
                   Detalle de issues · {fDate(detailJob.created_at)}
                 </p>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                   {FORMAT_LABELS[detailJob.format] ?? detailJob.format.toUpperCase()} · {detailJob.row_count} filas
                 </p>
               </div>
-              <button onClick={() => setDetailJob(null)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100">
+              <button onClick={() => setDetailJob(null)} className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
                 <X size={16} />
               </button>
             </div>
@@ -185,8 +185,8 @@ export default function JobsPage() {
           <ChevronLeft size={18} />
         </a>
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Historial de generaciones</h1>
-          <p className="text-sm text-slate-500">Últimos 20 trabajos de tu equipo · Los archivos expiran a las 24 h</p>
+          <h1 className="text-xl font-bold text-slate-800 dark:text-slate-200">Historial de generaciones</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Últimos 20 trabajos de tu equipo · Los archivos expiran a las 24 h</p>
         </div>
         <button onClick={loadJobs}
           className="ml-auto p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
@@ -203,8 +203,8 @@ export default function JobsPage() {
         ) : jobs.length === 0 ? (
           <div className="py-16 text-center">
             <Clock size={28} className="mx-auto text-slate-300 mb-3" />
-            <p className="text-sm font-medium text-slate-500">Sin generaciones aún</p>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Sin generaciones aún</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
               Cuando generes cenefas desde el editor, aparecerán acá.
             </p>
             <a href="/herramientas/cenefas/v2/generar"
@@ -216,7 +216,7 @@ export default function JobsPage() {
           <div className="overflow-x-auto">
           <table className="w-full min-w-[520px]">
             <thead>
-              <tr className="border-b border-slate-100">
+              <tr className="border-b border-slate-100 dark:border-slate-800">
                 {["Fecha", "Formato", "Estado", "Filas", "Issues", ""].map((h) => (
                   <th key={h} className="table-th">{h}</th>
                 ))}
@@ -229,11 +229,11 @@ export default function JobsPage() {
                 const hasIssues = job.error_count > 0;
                 return (
                   <tr key={job.id} className="table-tr">
-                    <td className="table-td text-xs text-slate-500">
+                    <td className="table-td text-xs text-slate-500 dark:text-slate-400">
                       {fDate(job.created_at)}
                     </td>
                     <td className="table-td">
-                      <span className="text-xs font-semibold text-slate-700">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                         {FORMAT_LABELS[job.format] ?? job.format.toUpperCase()}
                       </span>
                     </td>
@@ -242,7 +242,7 @@ export default function JobsPage() {
                         {st.icon} {st.label}
                       </span>
                     </td>
-                    <td className="table-td text-sm text-slate-600">
+                    <td className="table-td text-sm text-slate-600 dark:text-slate-400">
                       {job.row_count ?? (active ? "—" : "—")}
                     </td>
                     <td className="table-td text-sm">
@@ -257,7 +257,7 @@ export default function JobsPage() {
                           {job.error_count}
                         </button>
                       ) : (
-                        <span className="text-slate-400">0</span>
+                        <span className="text-slate-400 dark:text-slate-500">0</span>
                       )}
                     </td>
                     <td className="table-td text-right">
@@ -275,7 +275,7 @@ export default function JobsPage() {
                         </button>
                       )}
                       {active && (
-                        <span className="text-xs text-slate-400">procesando…</span>
+                        <span className="text-xs text-slate-400 dark:text-slate-500">procesando…</span>
                       )}
                     </td>
                   </tr>
@@ -306,9 +306,9 @@ function IssueRow({ issue, variant }: { issue: CenefaJobIssue; variant: "error" 
       <span className={`shrink-0 font-medium ${isError ? "text-rose-700" : "text-amber-700"}`}>
         {ISSUE_TYPE_LABELS[issue.type] ?? issue.type}
       </span>
-      <span className="text-slate-500 truncate flex-1" title={issue.detail}>
+      <span className="text-slate-500 dark:text-slate-400 truncate flex-1" title={issue.detail}>
         {issue.product !== `Fila ${issue.row}` && (
-          <span className="font-medium text-slate-600 mr-1">{issue.product} ·</span>
+          <span className="font-medium text-slate-600 dark:text-slate-400 mr-1">{issue.product} ·</span>
         )}
         {issue.detail}
       </span>

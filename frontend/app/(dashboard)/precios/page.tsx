@@ -51,7 +51,7 @@ function PrecioBadge({ precio, precioLista }: { precio: number | null; precioLis
             -{pct}%
           </span>
         )}
-        <span className="text-sm font-semibold text-slate-800">{fMoneyExact(precio)}</span>
+        <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{fMoneyExact(precio)}</span>
       </div>
       {hasDesc && (
         <span className="text-[11px] text-slate-400 line-through">{fMoneyExact(precioLista!)}</span>
@@ -62,10 +62,10 @@ function PrecioBadge({ precio, precioLista }: { precio: number | null; precioLis
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-slate-50 animate-pulse">
+    <tr className="border-b border-slate-50 dark:border-slate-800 animate-pulse">
       {[55, 30, 25, 15, 10].map((w, i) => (
         <td key={i} className="px-4 py-3">
-          <div className={`h-3 bg-slate-100 rounded w-${w < 20 ? "[60px]" : "[140px]"}`} />
+          <div className={`h-3 bg-slate-100 dark:bg-slate-800 rounded w-${w < 20 ? "[60px]" : "[140px]"}`} />
         </td>
       ))}
       <td className="px-4 py-3" />
@@ -362,12 +362,12 @@ export default function PreciosPage() {
       {/* Scraper status */}
       {scraperInfo && (
         <div className="card px-4 py-3 space-y-2.5">
-          <div className="flex items-center gap-3 text-xs text-slate-500">
+          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
             <div className={`w-2 h-2 rounded-full shrink-0 ${
               (scanActive || scraperInfo.status === "running") ? "bg-amber-400 animate-pulse" :
               scraperInfo.status.startsWith("error") ? "bg-red-400" : "bg-emerald-400"
             }`} />
-            <span className="font-medium text-slate-700">
+            <span className="font-medium text-slate-700 dark:text-slate-300">
               {scanActive ? (
                 progress?.scan_type === "gdu"
                   ? "Escaneando GDU…"
@@ -427,11 +427,11 @@ export default function PreciosPage() {
                   {" categorías "}
                   <span className="text-slate-400">({progress.gdu.pct}%)</span>
                 </span>
-                <span className="font-medium text-slate-700 tabular-nums">
+                <span className="font-medium text-slate-700 dark:text-slate-300 tabular-nums">
                   {progress.gdu.guardados.toLocaleString("es-UY")} productos encontrados
                 </span>
               </div>
-              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-brand-500 rounded-full transition-all duration-700"
                   style={{ width: `${Math.max(progress.gdu.pct, 0.5)}%` }}
@@ -452,7 +452,7 @@ export default function PreciosPage() {
                   TIENDA_BADGE_DOTS[s.tienda] ?? "bg-slate-400"
                 }`}
               />
-              <span className="text-xs font-medium text-slate-700">{s.tienda}</span>
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{s.tienda}</span>
               <span className="text-xs text-slate-400">{s.total.toLocaleString("es-UY")}</span>
               {s.con_descuento > 0 && (
                 <span className="text-[10px] bg-red-50 text-red-500 px-1.5 py-0.5 rounded-full">
@@ -467,7 +467,7 @@ export default function PreciosPage() {
       {/* Historial de fechas */}
       {fechasHistorial.length > 0 && (
         <div className="card px-4 py-3 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 shrink-0">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 shrink-0">
             <History size={13} />
             Historial
           </div>
@@ -482,7 +482,7 @@ export default function PreciosPage() {
                   className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
                     activa
                       ? "bg-brand-600 text-white border-brand-600"
-                      : "bg-white text-slate-600 border-slate-200 hover:border-brand-400 hover:text-brand-600"
+                      : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-brand-400 hover:text-brand-600"
                   }`}
                 >
                   {label}
@@ -493,7 +493,7 @@ export default function PreciosPage() {
           {fechaSeleccionada && (
             <button
               onClick={handleSalirHistorial}
-              className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 shrink-0"
+              className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 shrink-0"
             >
               <X size={12} /> Ver actual
             </button>
@@ -553,7 +553,7 @@ export default function PreciosPage() {
           className="input text-sm min-w-[140px] w-auto"
         />
 
-        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none whitespace-nowrap">
+        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer select-none whitespace-nowrap">
           <input
             type="checkbox"
             checked={conDescuento}
@@ -568,7 +568,7 @@ export default function PreciosPage() {
       <div className="card overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-100 bg-slate-50">
+            <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
               <th className="table-th cursor-pointer hover:text-slate-700" onClick={() => handleSort("nombre")}>
                 <span className="flex items-center gap-1">Producto <SortIcon col="nombre" /></span>
               </th>
@@ -591,17 +591,17 @@ export default function PreciosPage() {
               : (activeResult?.items ?? []).map((p: Producto) => (
                   <tr key={p.id} className="table-tr">
                     <td className="table-td">
-                      <div className="font-medium text-slate-800 leading-tight max-w-xs truncate">
+                      <div className="font-medium text-slate-800 dark:text-slate-200 leading-tight max-w-xs truncate">
                         {p.nombre ?? "—"}
                       </div>
                       {p.sku && (
                         <div className="text-[11px] text-slate-400 mt-0.5">SKU {p.sku}</div>
                       )}
                     </td>
-                    <td className="table-td text-slate-600 hidden md:table-cell">
+                    <td className="table-td text-slate-600 dark:text-slate-400 hidden md:table-cell">
                       {p.marca ?? "—"}
                     </td>
-                    <td className="table-td text-slate-500 text-xs hidden lg:table-cell max-w-[200px] truncate">
+                    <td className="table-td text-slate-500 dark:text-slate-400 text-xs hidden lg:table-cell max-w-[200px] truncate">
                       {p.categoria ?? "—"}
                     </td>
                     <td className="table-td">
@@ -649,7 +649,7 @@ export default function PreciosPage() {
       {/* Paginación */}
       {activeResult && activeResult.total > PAGE_SIZE && (
         <div className="flex items-center justify-between text-sm text-slate-500">
-          <span>
+          <span className="text-slate-500 dark:text-slate-400">
             {((page - 1) * PAGE_SIZE + 1).toLocaleString("es-UY")}–
             {Math.min(page * PAGE_SIZE, activeResult.total).toLocaleString("es-UY")} de{" "}
             {activeResult.total.toLocaleString("es-UY")}
@@ -662,7 +662,7 @@ export default function PreciosPage() {
             >
               <ChevronLeft size={15} />
             </button>
-            <span className="px-3 text-slate-500 tabular-nums">
+            <span className="px-3 text-slate-500 dark:text-slate-400 tabular-nums">
               {page} / {totalPages}
             </span>
             <button

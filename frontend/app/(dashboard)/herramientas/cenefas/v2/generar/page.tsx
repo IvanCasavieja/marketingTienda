@@ -199,23 +199,23 @@ export default function GenerarPage() {
       {/* Variable reference modal */}
       {varModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <BookOpen size={15} className="text-brand-600" />
-                <p className="font-semibold text-slate-800 text-sm">Referencia de variables</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Referencia de variables</p>
               </div>
-              <button onClick={() => setVarModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600">
+              <button onClick={() => setVarModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                 <X size={16} />
               </button>
             </div>
-            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+            <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-800">
               {VARIABLES_REFERENCE.map(({ name, desc }) => (
                 <div key={name} className="flex items-center gap-3 px-5 py-2.5">
                   <code className="text-[11px] font-mono text-brand-700 shrink-0 bg-brand-50 border border-brand-100 px-1.5 py-0.5 rounded">
                     {`<<${name}>>`}
                   </code>
-                  <span className="text-xs text-slate-500">{desc}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{desc}</span>
                 </div>
               ))}
             </div>
@@ -230,8 +230,8 @@ export default function GenerarPage() {
           <ChevronLeft size={18} />
         </a>
         <div className="flex-1">
-          <h1 className="text-xl font-bold text-slate-800">Generar cenefas</h1>
-          <p className="text-sm text-slate-500">Motor v2 — componentes inteligentes</p>
+          <h1 className="text-xl font-bold text-slate-800 dark:text-slate-200">Generar cenefas</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Motor v2 — componentes inteligentes</p>
         </div>
         <button
           onClick={() => setVarModalOpen(true)}
@@ -257,7 +257,7 @@ export default function GenerarPage() {
                 className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                   tmplMode === "v2"
                     ? "border-brand-500 bg-brand-50 text-brand-700"
-                    : "border-slate-200 text-slate-500 hover:border-slate-300"
+                    : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
                 }`}
               >
                 Template del editor ✦
@@ -266,15 +266,15 @@ export default function GenerarPage() {
                 onClick={() => setTmplMode("builtin")}
                 className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                   tmplMode === "builtin"
-                    ? "border-slate-400 bg-slate-50 text-slate-700"
-                    : "border-slate-200 text-slate-400 hover:border-slate-300"
+                    ? "border-slate-400 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                    : "border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
                 }`}
               >
                 Plantilla clásica
               </button>
             </div>
             {tmplMode === "builtin" && (
-              <p className="text-[11px] text-slate-400 mt-1.5">
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
                 Usa el motor original (PPTX fijo). Para más personalización, usá el Editor de plantillas.
               </p>
             )}
@@ -322,12 +322,12 @@ export default function GenerarPage() {
           {/* Excel */}
           <div>
             <SectionLabel>Archivo Excel</SectionLabel>
-            <label className="flex flex-col items-center gap-2 border-2 border-dashed border-slate-200 rounded-xl p-5 cursor-pointer hover:border-brand-400 transition-colors mt-1">
+            <label className="flex flex-col items-center gap-2 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-5 cursor-pointer hover:border-brand-400 transition-colors mt-1">
               <FileSpreadsheet size={26} className={excel ? "text-emerald-500" : "text-slate-300"} />
-              <p className="text-sm font-medium text-slate-600">
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
                 {excel ? excel.name : "Cargá el Excel de productos"}
               </p>
-              <p className="text-xs text-slate-400">.xlsx o .xlsm</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">.xlsx o .xlsm</p>
               <input type="file" accept=".xlsx,.xlsm" className="hidden"
                 onChange={(e) => setExcel(e.target.files?.[0] ?? null)} />
             </label>
@@ -346,7 +346,7 @@ export default function GenerarPage() {
                   }`}
                 >
                   <p className="text-sm font-semibold">{f.label}</p>
-                  <p className="text-[10px] text-slate-400">{f.width_cm}×{f.height_cm}</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500">{f.width_cm}×{f.height_cm}</p>
                 </button>
               ))}
             </div>
@@ -403,10 +403,10 @@ export default function GenerarPage() {
               <div className="space-y-1.5 mt-2">
                 {validation.rule_summary.map((r) => (
                   <div key={r.rule_id} className="flex items-center gap-3 text-xs">
-                    <span className="text-slate-600 truncate flex-1 font-medium">
+                    <span className="text-slate-600 dark:text-slate-400 truncate flex-1 font-medium">
                       {(r as any).rule_name || r.rule_id}
                     </span>
-                    <div className="w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="w-24 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                       <div className="h-full bg-brand-400 rounded-full" style={{ width: `${r.pct}%` }} />
                     </div>
                     <span className="text-slate-400 w-10 text-right">{r.pct}%</span>
@@ -439,12 +439,12 @@ export default function GenerarPage() {
           {/* Modal de variables faltantes */}
           {showMissingModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 space-y-4">
+              <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 space-y-4">
                 <div className="flex items-center gap-2 text-amber-600">
                   <AlertCircle size={20} />
                   <p className="font-semibold text-base">Variables no encontradas</p>
                 </div>
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
                   Las siguientes columnas no se encontraron en tu Excel:
                 </p>
                 <div className="bg-rose-50 border border-rose-200 rounded-xl p-3">
@@ -452,7 +452,7 @@ export default function GenerarPage() {
                     <p key={v} className="text-xs text-rose-600 font-mono">• {v}</p>
                   ))}
                 </div>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
                   Solo se rellenarán las variables disponibles. ¿Querés continuar igual?
                 </p>
                 <div className="flex gap-2 pt-1">
@@ -478,17 +478,17 @@ export default function GenerarPage() {
             <>
               <Loader2 size={40} className="animate-spin text-brand-500 mx-auto" />
               <div>
-                <p className="text-base font-semibold text-slate-700">Generando cenefas…</p>
-                <p className="text-sm text-slate-400 mt-1 capitalize">{job.status}</p>
+                <p className="text-base font-semibold text-slate-700 dark:text-slate-300">Generando cenefas…</p>
+                <p className="text-sm text-slate-400 dark:text-slate-500 mt-1 capitalize">{job.status}</p>
               </div>
             </>
           ) : job.status === "done" ? (
             <>
               <CheckCircle2 size={40} className="text-emerald-500 mx-auto" />
               <div>
-                <p className="text-base font-semibold text-slate-700">¡Listo!</p>
+                <p className="text-base font-semibold text-slate-700 dark:text-slate-300">¡Listo!</p>
                 {job.row_count && (
-                  <p className="text-sm text-slate-400 mt-1">
+                  <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">
                     {job.row_count} productos generados • {job.error_count} errores de datos
                   </p>
                 )}
@@ -527,7 +527,7 @@ export default function GenerarPage() {
           ) : (
             <>
               <AlertCircle size={40} className="text-rose-500 mx-auto" />
-              <p className="text-base font-semibold text-slate-700">Error en la generación</p>
+              <p className="text-base font-semibold text-slate-700 dark:text-slate-300">Error en la generación</p>
               <p className="text-sm text-rose-500">
                 {(job as any).validation_report?.error ?? "Error desconocido"}
               </p>
@@ -645,7 +645,7 @@ function TemplateList({
             className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-all group ${
               isSelected
                 ? "border-brand-500 bg-brand-50"
-                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
             }`}
           >
             {isEditing ? (
@@ -684,7 +684,7 @@ function TemplateList({
               </>
             ) : (
               <>
-                <span className={`flex-1 text-sm truncate ${isSelected ? "text-brand-700 font-medium" : "text-slate-700"}`}>
+                <span className={`flex-1 text-sm truncate ${isSelected ? "text-brand-700 font-medium" : "text-slate-700 dark:text-slate-300"}`}>
                   {t.name}
                 </span>
                 <span className="text-[10px] text-slate-400 shrink-0">{t.formats?.join(", ")}</span>
@@ -714,7 +714,7 @@ function TemplateList({
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs text-slate-500">{label}</span>
+      <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
       <input className="input text-sm" value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
@@ -781,7 +781,7 @@ function ComboField({
 
   return (
     <div ref={ref} className="relative flex flex-col gap-1">
-      <span className="text-xs text-slate-500">{label}</span>
+      <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
       <div className="flex gap-1 items-stretch">
         <input
           className="input text-sm flex-1 min-w-0"
@@ -802,14 +802,14 @@ function ComboField({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="shrink-0 px-2 border border-slate-200 rounded-lg bg-white text-slate-400 hover:text-slate-600 transition-colors"
+          className="shrink-0 px-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
         >
           <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-52 overflow-y-auto">
           {options.length === 0 ? (
             <p className="px-3 py-3 text-xs text-slate-400 text-center">
               Sin opciones guardadas — escribí un valor y hacé clic en "Guardar".
@@ -817,7 +817,7 @@ function ComboField({
           ) : options.map((opt, idx) => (
             <div
               key={idx}
-              className="flex items-center gap-1.5 px-3 py-2.5 hover:bg-slate-50 group border-b border-slate-100 last:border-0"
+              className="flex items-center gap-1.5 px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 group border-b border-slate-100 dark:border-slate-800 last:border-0"
             >
               {editingIdx === idx ? (
                 <>
@@ -848,7 +848,7 @@ function ComboField({
               ) : (
                 <>
                   <span
-                    className="flex-1 text-sm text-slate-700 cursor-pointer truncate"
+                    className="flex-1 text-sm text-slate-700 dark:text-slate-300 cursor-pointer truncate"
                     onClick={() => { onChange(opt); setOpen(false); }}
                   >
                     {opt}
@@ -879,9 +879,9 @@ function ComboField({
 
 function StatBox({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="bg-slate-50 rounded-xl p-4 text-center">
+    <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 text-center">
       <p className={`text-2xl font-bold ${color}`}>{value}</p>
-      <p className="text-xs text-slate-400 mt-1">{label}</p>
+      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{label}</p>
     </div>
   );
 }

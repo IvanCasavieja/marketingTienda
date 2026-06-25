@@ -108,7 +108,7 @@ function UserBubble({ content }: { content: string }) {
 
 function LlamaBubble({ content, loading = false }: { content?: string; loading?: boolean }) {
   return (
-    <div className="w-full rounded-2xl overflow-hidden border border-purple-200 shadow-md bg-white animate-fade-in">
+    <div className="w-full rounded-2xl overflow-hidden border border-purple-200 dark:border-purple-800 shadow-md bg-white dark:bg-slate-900 animate-fade-in">
       <div className="flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-purple-700 to-violet-600">
         <div className="w-7 h-7 rounded-full bg-white/15 border border-white/20 flex items-center justify-center">
           <Gavel size={13} className="text-white" />
@@ -118,7 +118,7 @@ function LlamaBubble({ content, loading = false }: { content?: string; loading?:
           <p className="text-purple-200 text-[10px] mt-0.5">Árbitro · Veredicto</p>
         </div>
       </div>
-      <div className="px-5 py-4 text-sm leading-relaxed text-slate-700">
+      <div className="px-5 py-4 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
         {loading ? <TypingDots color="bg-purple-500" /> : content && <Md text={content} />}
       </div>
     </div>
@@ -165,7 +165,7 @@ function AiBubble({
           </div>
         )}
         <div
-          className={`bg-white border ${cfg.border} shadow-sm px-4 py-3 text-sm leading-relaxed text-slate-700
+          className={`bg-white dark:bg-slate-900 border ${cfg.border} shadow-sm px-4 py-3 text-sm leading-relaxed text-slate-700 dark:text-slate-300
             ${isLeft ? "rounded-2xl rounded-bl-sm" : "rounded-2xl rounded-br-sm"}
             ${isGreeting ? "opacity-75" : ""}
           `}
@@ -403,8 +403,8 @@ export default function AnalyticsPage() {
   return (
     <div className="animate-fade-in space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">La Triada</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Claude · ChatGPT · Llama — debate con tus datos de campañas</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">La Triada</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Claude · ChatGPT · Llama — debate con tus datos de campañas</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 items-start">
@@ -429,7 +429,7 @@ export default function AnalyticsPage() {
                       </svg>
                     )}
                   </div>
-                  <span className="text-sm text-slate-700">{PLATFORM_LABELS[p]}</span>
+                  <span className="text-sm text-slate-700 dark:text-slate-300">{PLATFORM_LABELS[p]}</span>
                 </label>
               ))}
             </div>
@@ -443,11 +443,11 @@ export default function AnalyticsPage() {
             </div>
             <div className="space-y-2">
               <div>
-                <label className="text-xs text-slate-500 mb-1 block">{t("common.from")}</label>
+                <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{t("common.from")}</label>
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input text-sm" />
               </div>
               <div>
-                <label className="text-xs text-slate-500 mb-1 block">{t("common.to")}</label>
+                <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{t("common.to")}</label>
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input text-sm" />
               </div>
             </div>
@@ -458,28 +458,28 @@ export default function AnalyticsPage() {
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-semibold transition-all ${
                 compareMode
                   ? "bg-blue-600 border-blue-600 text-white"
-                  : "border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600"
+                  : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-300 hover:text-blue-600"
               }`}
             >
               <span>Comparar períodos</span>
-              <div className={`w-7 h-4 rounded-full transition-all relative ${compareMode ? "bg-white/30" : "bg-slate-200"}`}>
+              <div className={`w-7 h-4 rounded-full transition-all relative ${compareMode ? "bg-white/30" : "bg-slate-200 dark:bg-slate-700"}`}>
                 <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${compareMode ? "left-3.5" : "left-0.5"}`} />
               </div>
             </button>
 
             {/* Period 2 (base) */}
             {compareMode && (
-              <div className="pt-1 border-t border-slate-100 space-y-2">
+              <div className="pt-1 border-t border-slate-100 dark:border-slate-800 space-y-2">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-semibold text-slate-600">Período base</p>
-                  <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">P1</span>
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">Período base</p>
+                  <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full">P1</span>
                 </div>
                 <div>
-                  <label className="text-xs text-slate-500 mb-1 block">{t("common.from")}</label>
+                  <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{t("common.from")}</label>
                   <input type="date" value={dateFrom2} onChange={(e) => setDateFrom2(e.target.value)} className="input text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-500 mb-1 block">{t("common.to")}</label>
+                  <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{t("common.to")}</label>
                   <input type="date" value={dateTo2} onChange={(e) => setDateTo2(e.target.value)} className="input text-sm" />
                 </div>
               </div>
@@ -488,7 +488,7 @@ export default function AnalyticsPage() {
 
           <button
             onClick={resetChat}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <RotateCcw size={14} />
             Nueva conversación
@@ -496,19 +496,19 @@ export default function AnalyticsPage() {
 
           {debateHistory.length > 0 && (
             <div className="card overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-slate-50 flex items-center gap-2">
+              <div className="px-5 py-3.5 border-b border-slate-50 dark:border-slate-800 flex items-center gap-2">
                 <Clock size={14} className="text-slate-400" />
-                <p className="text-sm font-semibold text-slate-700">Debates anteriores</p>
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Debates anteriores</p>
               </div>
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-slate-50 dark:divide-slate-800">
                 {debateHistory.slice(0, 8).map((h) => (
                   <button key={h.id} onClick={() => loadFromHistory(h.id)}
-                    className={`w-full flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors text-left ${activeAnalysis === h.id ? "bg-brand-50/50" : ""}`}>
+                    className={`w-full flex items-center gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left ${activeAnalysis === h.id ? "bg-brand-50/50" : ""}`}>
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-violet-600 bg-violet-50">
                       <MessageSquare size={13} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-slate-700">La Triada</p>
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">La Triada</p>
                       <p className="text-[11px] text-slate-400">{format(new Date(h.created_at), "dd/MM HH:mm")}</p>
                     </div>
                     <ChevronRight size={14} className="text-slate-300 shrink-0" />
@@ -566,19 +566,19 @@ export default function AnalyticsPage() {
             </div>
 
             {/* ── Debate labels ── */}
-            <div className="shrink-0 grid grid-cols-2 border-b border-slate-100 bg-white">
-              <div className="flex items-center gap-2 px-4 py-2 border-r border-slate-100">
+            <div className="shrink-0 grid grid-cols-2 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+              <div className="flex items-center gap-2 px-4 py-2 border-r border-slate-100 dark:border-slate-800">
                 <div className="w-2 h-2 rounded-full bg-orange-400" />
-                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Claude</span>
+                <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Claude</span>
               </div>
               <div className="flex items-center justify-end gap-2 px-4 py-2">
-                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">ChatGPT</span>
+                <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">ChatGPT</span>
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
               </div>
             </div>
 
             {/* ── Messages ── */}
-            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-slate-50/60">
+            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-slate-50/60 dark:bg-slate-900/50">
               {chatMessages.map((msg) => {
                 if (msg.speaker === "user") {
                   return <UserBubble key={msg.id} content={msg.content} />;
@@ -609,9 +609,9 @@ export default function AnalyticsPage() {
 
             {/* ── Token strip ── */}
             {tokenTotals.total > 0 && (
-              <div className="shrink-0 px-5 py-2 bg-white border-t border-slate-100 flex items-center gap-2.5 flex-wrap">
+              <div className="shrink-0 px-5 py-2 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2.5 flex-wrap">
                 <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">Tokens</span>
-                <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                   {tokenTotals.total.toLocaleString()}
                 </span>
                 {Object.entries(tokenTotals.by_model).map(([model, count]) => {
@@ -621,7 +621,7 @@ export default function AnalyticsPage() {
                     Llama:   "bg-purple-100 text-purple-700",
                   };
                   return (
-                    <span key={model} className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${colors[model] ?? "bg-slate-100 text-slate-600"}`}>
+                    <span key={model} className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${colors[model] ?? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"}`}>
                       {model} {(count as number).toLocaleString()}
                     </span>
                   );
@@ -631,7 +631,7 @@ export default function AnalyticsPage() {
 
             {/* ── Llama verdict button ── */}
             {hasDebateContent && !loading && !verdictLoading && !llamaHasSpoken && (
-              <div className="shrink-0 px-5 py-3 bg-white border-t border-slate-100">
+              <div className="shrink-0 px-5 py-3 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
                 <button
                   onClick={requestVerdict}
                   className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl bg-gradient-to-r from-purple-700 to-violet-600 hover:from-purple-800 hover:to-violet-700 text-white text-sm font-bold transition-all shadow-sm shadow-purple-300/40"
@@ -643,7 +643,7 @@ export default function AnalyticsPage() {
             )}
 
             {/* ── Input ── */}
-            <div className="shrink-0 px-5 py-3.5 bg-white border-t border-slate-100">
+            <div className="shrink-0 px-5 py-3.5 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
               <div className="flex gap-2.5">
                 <input
                   type="text"
@@ -658,7 +658,7 @@ export default function AnalyticsPage() {
                     verdictLoading ? "Llama está elaborando el veredicto..." :
                     "Preguntá algo o seguí el debate..."
                   }
-                  className="flex-1 px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400/60 focus:border-violet-400 focus:bg-white disabled:text-slate-400 disabled:placeholder:text-slate-300 transition-all"
+                  className="flex-1 px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400/60 focus:border-violet-400 focus:bg-white dark:focus:bg-slate-900 disabled:text-slate-400 dark:placeholder:text-slate-500 disabled:placeholder:text-slate-300 transition-all"
                 />
                 <button
                   onClick={sendChatMessage}
