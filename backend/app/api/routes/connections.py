@@ -33,31 +33,22 @@ class ConnectionOut(BaseModel):
 
 @router.get("/", response_model=List[ConnectionOut])
 async def list_connections(
-    current_user: User = Depends(get_current_user),
+    _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        return []
-
-    result = await db.execute(
-        select(PlatformConnection).where(PlatformConnection.team_group_id == current_user.team_group_id)
-    )
+    result = await db.execute(select(PlatformConnection))
     return result.scalars().all()
 
 
 @router.post("/", response_model=ConnectionOut, status_code=status.HTTP_201_CREATED)
 async def create_connection(
     payload: ConnectionCreate,
-    current_user: User = Depends(get_current_user),
+    _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Join a team before creating connections")
-
     existing = await db.execute(
         select(PlatformConnection).where(
             and_(
-                PlatformConnection.team_group_id == current_user.team_group_id,
                 PlatformConnection.platform == payload.platform,
                 PlatformConnection.account_id == payload.account_id,
             )
@@ -67,7 +58,6 @@ async def create_connection(
         raise HTTPException(status_code=409, detail="Connection already exists")
 
     conn = PlatformConnection(
-        team_group_id=current_user.team_group_id,
         platform=payload.platform,
         account_id=payload.account_id,
         account_name=payload.account_name,
@@ -82,16 +72,11 @@ async def create_connection(
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_connection(
     connection_id: int,
-    current_user: User = Depends(get_current_user),
+    _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(PlatformConnection).where(
-            and_(
-                PlatformConnection.id == connection_id,
-                PlatformConnection.team_group_id == current_user.team_group_id,
-            )
-        )
+        select(PlatformConnection).where(PlatformConnection.id == connection_id)
     )
     conn = result.scalar_one_or_none()
     if not conn:
