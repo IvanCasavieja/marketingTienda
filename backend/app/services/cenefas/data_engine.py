@@ -152,9 +152,11 @@ def process_row(
         if _m_nx:
             _cantidad   = _m_nx.group(1)
             _unit_price = parse_price_raw(_m_nx.group(2))
-            result["oferta"]       = f"{_cantidad}x"
-            result["precioActual"] = prefix + fmt_price(_unit_price)
-            result["mecanica"]     = f"Comprando {_cantidad}, {prefix}{fmt_price(_unit_price)} la unidad."
+            # precioActual: usar columna "precio" si ya existe; si no, extraer de OFERTA
+            if not result.get("precioActual"):
+                result["precioActual"] = prefix + fmt_price(_unit_price)
+            result["oferta"]   = f"{_cantidad}x"
+            result["mecanica"] = f"Comprando {_cantidad}, {result['precioActual']} la unidad."
             if result.get("categoria") == "BEBIDAS CON ALCOHOL":
                 result["segundaAclaracion"] = result.get("segundaAclaracion") or otra_alcohol
             _nx_applied = True
