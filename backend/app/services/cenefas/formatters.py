@@ -10,10 +10,13 @@ P1_FONT_SIZE  = 32      # pt — label "Precio Final" / "6X"
 P1_BOLD       = False
 P1_MARGIN_EMU = 466400  # distancia top de P1 al top del shape de precio
 
+PRICE_SYMBOL_PT   = 199 # pt — símbolo de moneda ($, U$S) en precio principal
+PRICE_INT_PT      = 239 # pt — entero del precio principal
 PRICE_DECIMAL_PT  = 20  # pt — parte decimal (,90 / ,20)
 PBANCO_INT_PT     = 40  # pt — entero/símbolo de precio bancario
 UNIDAD_PRECIO_PT  = 16  # pt — "unidad" debajo de Precio1 en multi-SKU
 UNIDAD_PBANCO_PT  = 10  # pt — "unidad" debajo de pBanco en multi-SKU
+DESC_PT           = 40  # pt — descripción del producto
 
 # ---------------------------------------------------------------------------
 # Subcategorías especiales

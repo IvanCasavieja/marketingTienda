@@ -15,10 +15,13 @@ from app.services.cenefas.formatters import (
     P1_FONT_SIZE,
     P1_BOLD,
     P1_MARGIN_EMU,
+    PRICE_SYMBOL_PT,
+    PRICE_INT_PT,
     PRICE_DECIMAL_PT,
     PBANCO_INT_PT,
     UNIDAD_PRECIO_PT,
     UNIDAD_PBANCO_PT,
+    DESC_PT,
 )
 
 # ---------------------------------------------------------------------------
@@ -96,9 +99,17 @@ def _set_price(shape, text: str, int_pt: int | None = None) -> None:
 
     sym_r = copy.deepcopy(tmpl_r_sym)
     sym_r.find(qn("a:t")).text = symbol
+    if int_pt is None:  # precio principal
+        _rpr = sym_r.find(qn("a:rPr"))
+        if _rpr is not None:
+            _rpr.set("sz", str(PRICE_SYMBOL_PT * 100))
 
     int_r = copy.deepcopy(tmpl_r_int)
     int_r.find(qn("a:t")).text = num_int
+    _int_pt_final = int_pt if int_pt is not None else PRICE_INT_PT
+    _rpr = int_r.find(qn("a:rPr"))
+    if _rpr is not None:
+        _rpr.set("sz", str(_int_pt_final * 100))
 
     runs = [sym_r, int_r]
 
@@ -139,8 +150,12 @@ def _set_desc(shape, text: str) -> None:
     first_seg, first_bold = parts[0]
     first_run = target_para.runs[0]
     tmpl_r = copy.deepcopy(first_run._r)
+    _tmpl_rPr = tmpl_r.find(qn("a:rPr"))
+    if _tmpl_rPr is not None:
+        _tmpl_rPr.set("sz", str(DESC_PT * 100))
     first_run.text = first_seg
     first_run.font.bold = first_bold
+    first_run.font.size = Pt(DESC_PT)
 
     p_elem = target_para._p
     all_r = list(p_elem.findall(qn("a:r")))
