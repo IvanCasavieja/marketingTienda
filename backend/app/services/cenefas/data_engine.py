@@ -177,6 +177,18 @@ def _apply_legacy_compute(
     )
     cod           = result.get("codigoSKU", "")
 
+    # Regla Nx$precio: si OFERTA trae "2 x $100", "3x$250", etc., procesarlo directo
+    _m_nx = re.match(r"^(\d+)\s*[xX]\s*\$?\s*([\d.,]+)\s*$", oferta_raw)
+    if _m_nx:
+        cantidad   = _m_nx.group(1)
+        unit_price = parse_price_raw(_m_nx.group(2))
+        result["oferta"]       = f"{cantidad}x"
+        result["precioActual"] = prefix + fmt_price(unit_price)
+        result["mecanica"]     = f"Comprando {cantidad}, {prefix}{fmt_price(unit_price)} la unidad."
+        if cat == "BEBIDAS CON ALCOHOL":
+            result["segundaAclaracion"] = result.get("segundaAclaracion") or otra_alcohol
+        return
+
     titulo_val  = ""
     mecanica    = ""
     unidad      = ""
