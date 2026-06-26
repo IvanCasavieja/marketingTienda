@@ -144,15 +144,54 @@ def process_row(
         else:
             result[var_name] = str(val).strip()
 
-    # ── Regla Nx$precio: "2 x $100", "3x$250", etc. ─────────────────────
+    # ── Lógica de oferta según OFERTADET ─────────────────────────────────
     _nx_applied = False
-    if "_oferta" in h:
-        _oferta_raw = str(row[h["_oferta"]] or "").strip() if h["_oferta"] < len(row) else ""
+
+    _ofertadet_raw = ""
+    if "_ofertadet" in h and h["_ofertadet"] < len(row):
+        _ofertadet_raw = str(row[h["_ofertadet"]] or "").strip()
+
+    _oferta_raw = ""
+    if "_oferta" in h and h["_oferta"] < len(row):
+        _oferta_raw = str(row[h["_oferta"]] or "").strip()
+
+    if "_ofertadet" in h:
+        if _ofertadet_raw.lower() == "combo":
+            # Combo: OFERTA trae "2 x $100" → oferta=2x, mecanica usa columna precio
+            _m_nx = re.match(r"^(\d+)\s*[xX]\s*\$?\s*([\d.,]+)\s*$", _oferta_raw)
+            if _m_nx:
+                _cantidad   = _m_nx.group(1)
+                _unit_price = parse_price_raw(_m_nx.group(2))
+                if not result.get("precioActual"):
+                    result["precioActual"] = prefix + fmt_price(_unit_price)
+                result["oferta"]   = f"{_cantidad}x"
+                result["mecanica"] = f"Comprando {_cantidad}, {result['precioActual']} la unidad."
+                _nx_applied = True
+
+        elif re.search(r"m\s*[xX×]\s*n", _ofertadet_raw, re.IGNORECASE):
+            # M x N: oferta = literal de columna OFERTA (ej "3x2"), mecanica con primer número
+            result["oferta"] = _oferta_raw
+            _m_first = re.match(r"^(\d+)", _oferta_raw)
+            if _m_first:
+                _cantidad = _m_first.group(1)
+                result["mecanica"] = f"Comprando {_cantidad}, {result.get('precioActual', '')} la unidad."
+            _nx_applied = True
+
+        elif not _ofertadet_raw:
+            # Vacío: solo precio de columna, sin oferta ni mecanica
+            result["oferta"]   = ""
+            result["mecanica"] = ""
+            _nx_applied = True
+
+        if result.get("categoria") == "BEBIDAS CON ALCOHOL" and _nx_applied:
+            result["segundaAclaracion"] = result.get("segundaAclaracion") or otra_alcohol
+
+    elif "_oferta" in h:
+        # Sin OFERTADET: backward compat — intentar Nx$precio en OFERTA
         _m_nx = re.match(r"^(\d+)\s*[xX]\s*\$?\s*([\d.,]+)\s*$", _oferta_raw)
         if _m_nx:
             _cantidad   = _m_nx.group(1)
             _unit_price = parse_price_raw(_m_nx.group(2))
-            # precioActual: usar columna "precio" si ya existe; si no, extraer de OFERTA
             if not result.get("precioActual"):
                 result["precioActual"] = prefix + fmt_price(_unit_price)
             result["oferta"]   = f"{_cantidad}x"
@@ -161,7 +200,7 @@ def process_row(
                 result["segundaAclaracion"] = result.get("segundaAclaracion") or otra_alcohol
             _nx_applied = True
 
-    # ── Compute legacy para plantillas con OFERTADET ──────────────────────
+    # ── Otros valores de OFERTADET → lógica legacy ────────────────────────
     if "_ofertadet" in h and not _nx_applied:
         _apply_legacy_compute(row, h, result, prefix, moneda, otra_alcohol)
 
