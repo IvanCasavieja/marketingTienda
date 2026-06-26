@@ -231,6 +231,8 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
             _set_text(shape, data.get("segundaAclaracion", ""))
         elif re.search(r"<<[Dd][Ii][Aa]\d*>>", t):
             _set_text(shape, data.get("dia", ""))
+        elif re.search(r"<<[Oo]ferta\d*>>", t):
+            _set_text(shape, data.get("oferta", ""))
         elif re.search(r"<<[Cc]ode\d*>>", t):
             _set_text(shape, code)
         elif re.search(r"<<[Pp][Bb]anco\d*>>", t, re.IGNORECASE):
