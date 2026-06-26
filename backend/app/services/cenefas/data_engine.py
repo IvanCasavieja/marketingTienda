@@ -144,8 +144,23 @@ def process_row(
         else:
             result[var_name] = str(val).strip()
 
+    # ── Regla Nx$precio: "2 x $100", "3x$250", etc. ─────────────────────
+    _nx_applied = False
+    if "_oferta" in h:
+        _oferta_raw = str(row[h["_oferta"]] or "").strip() if h["_oferta"] < len(row) else ""
+        _m_nx = re.match(r"^(\d+)\s*[xX]\s*\$?\s*([\d.,]+)\s*$", _oferta_raw)
+        if _m_nx:
+            _cantidad   = _m_nx.group(1)
+            _unit_price = parse_price_raw(_m_nx.group(2))
+            result["oferta"]       = f"{_cantidad}x"
+            result["precioActual"] = prefix + fmt_price(_unit_price)
+            result["mecanica"]     = f"Comprando {_cantidad}, {prefix}{fmt_price(_unit_price)} la unidad."
+            if result.get("categoria") == "BEBIDAS CON ALCOHOL":
+                result["segundaAclaracion"] = result.get("segundaAclaracion") or otra_alcohol
+            _nx_applied = True
+
     # ── Compute legacy para plantillas con OFERTADET ──────────────────────
-    if "_ofertadet" in h:
+    if "_ofertadet" in h and not _nx_applied:
         _apply_legacy_compute(row, h, result, prefix, moneda, otra_alcohol)
 
     # ── Fallback a parámetros globales ────────────────────────────────────
@@ -176,18 +191,6 @@ def _apply_legacy_compute(
         str(row[h["_subcategoria_legacy"]] or "").strip() if "_subcategoria_legacy" in h else ""
     )
     cod           = result.get("codigoSKU", "")
-
-    # Regla Nx$precio: si OFERTA trae "2 x $100", "3x$250", etc., procesarlo directo
-    _m_nx = re.match(r"^(\d+)\s*[xX]\s*\$?\s*([\d.,]+)\s*$", oferta_raw)
-    if _m_nx:
-        cantidad   = _m_nx.group(1)
-        unit_price = parse_price_raw(_m_nx.group(2))
-        result["oferta"]       = f"{cantidad}x"
-        result["precioActual"] = prefix + fmt_price(unit_price)
-        result["mecanica"]     = f"Comprando {cantidad}, {prefix}{fmt_price(unit_price)} la unidad."
-        if cat == "BEBIDAS CON ALCOHOL":
-            result["segundaAclaracion"] = result.get("segundaAclaracion") or otra_alcohol
-        return
 
     titulo_val  = ""
     mecanica    = ""
