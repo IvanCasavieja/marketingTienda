@@ -345,9 +345,6 @@ def load_products_from_bytes(
         # Saltar filas sin descripción
         if desc_col is not None and (desc_col >= len(row) or not row[desc_col]):
             continue
-        # Si hay OFERTADET legacy, saltar filas sin él también
-        if titulo_col is not None and (titulo_col >= len(row) or not row[titulo_col]):
-            continue
 
         data = process_row(row, h, vigencia, aclaracion, otra_alcohol, banco)
 
