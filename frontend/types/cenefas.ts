@@ -29,6 +29,17 @@ export interface ComponentStyle {
   auto_fit?: boolean;
 }
 
+export interface TextSegment {
+  type: "static" | "variable";
+  value: string;
+  transform?: TextTransform;
+  style?: {
+    font_size?: number;
+    font_bold?: boolean;
+    color?: string;
+  };
+}
+
 export interface CenefaComponent {
   id: string;
   type: ComponentType;
@@ -38,6 +49,7 @@ export interface CenefaComponent {
   image_data?: string;
   image_ext?: string;
   transform?: TextTransform;
+  segments?: TextSegment[];
   style: ComponentStyle;
   base_bounds: ComponentBounds;
   format_overrides: Record<string, Partial<ComponentBounds> & Partial<ComponentStyle>>;

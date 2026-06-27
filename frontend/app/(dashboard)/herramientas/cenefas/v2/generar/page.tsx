@@ -1,13 +1,13 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Upload, ChevronLeft, ChevronRight, ChevronDown, FileSpreadsheet,
   CheckCircle2, AlertCircle, Loader2, Download, RefreshCw,
-  Trash2, Pencil, Check, X, BookOpen,
+  Trash2, Pencil, Check, X, BookOpen, ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
-import type { CenefaFormat, CenefaJob, CenefaTemplateRecord } from "@/types/cenefas";
+import type { CenefaFormat, CenefaJob, CenefaTemplate, CenefaTemplateRecord } from "@/types/cenefas";
 
 type Step     = 1 | 2 | 3;
 type TmplMode = "v2" | "builtin";
@@ -59,6 +59,10 @@ export default function GenerarPage() {
     "Prohibida la venta de bebidas alcohólicas a menores de 18 años"
   );
   const [banco, setBanco] = useState("");
+
+  // Definición del template seleccionado (para detectar variables de imagen)
+  const [templateDef,   setTemplateDef]   = useState<CenefaTemplate | null>(null);
+  const [imageUploads,  setImageUploads]  = useState<Record<string, { file: File; ext: string }>>({});
 
   // Validación
   const [validating,        setValidating]        = useState(false);
@@ -116,6 +120,29 @@ export default function GenerarPage() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [polling, job?.id]);
 
+  // Cargar definición del template seleccionado para detectar componentes de imagen
+  useEffect(() => {
+    setTemplateDef(null);
+    setImageUploads({});
+    if (templateId && tmplMode === "v2") {
+      cenefasV2Api.getTemplate(templateId)
+        .then(({ data }) => setTemplateDef(data.definition ?? null))
+        .catch(() => {});
+    }
+  }, [templateId, tmplMode]);
+
+  // Variables de imagen: componentes tipo "image" con variable pero sin imagen estática
+  const imageVarNames = useMemo(() => {
+    if (!templateDef) return [] as string[];
+    const names = new Set<string>();
+    templateDef.components.forEach((c) => {
+      if (c.type === "image" && c.variable && !c.image_data) {
+        names.add(c.variable);
+      }
+    });
+    return [...names];
+  }, [templateDef]);
+
   // ── Step 1 → 2: validar (solo para v2 templates)
   async function handleNext() {
     if (!excel) { toast.error("Cargá el archivo Excel"); return; }
@@ -161,6 +188,18 @@ export default function GenerarPage() {
 
       if (tmplMode === "v2") {
         fd.append("template_v2_id", templateId);
+
+        // Codificar imágenes subidas a base64 e incluir como JSON
+        const overrides: Record<string, string> = {};
+        for (const [varName, upload] of Object.entries(imageUploads)) {
+          if (upload) {
+            const b64 = await fileToBase64(upload.file);
+            overrides[varName] = `${upload.ext}:${b64}`;
+          }
+        }
+        if (Object.keys(overrides).length > 0) {
+          fd.append("image_overrides_json", JSON.stringify(overrides));
+        }
       } else {
         fd.append("builtin_slug", builtinSlug);
       }
@@ -176,6 +215,18 @@ export default function GenerarPage() {
     } catch (e: any) {
       toast.error(e?.response?.data?.detail ?? "Error al iniciar la generación");
     }
+  }
+
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        resolve(result.split(",")[1]);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
   async function handleDownload() {
@@ -332,6 +383,64 @@ export default function GenerarPage() {
                 onChange={(e) => setExcel(e.target.files?.[0] ?? null)} />
             </label>
           </div>
+
+          {/* Imágenes para componentes de imagen del template */}
+          {tmplMode === "v2" && imageVarNames.length > 0 && (
+            <div>
+              <SectionLabel>Imágenes</SectionLabel>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 mb-2">
+                Tu template tiene {imageVarNames.length === 1 ? "un componente de imagen" : `${imageVarNames.length} componentes de imagen`}{" "}
+                sin imagen guardada en el template. Podés subir {imageVarNames.length === 1 ? "una imagen" : "las imágenes"} ahora:
+              </p>
+              <div className="space-y-2">
+                {imageVarNames.map((varName) => {
+                  const upload = imageUploads[varName];
+                  return (
+                    <div key={varName}>
+                      <label className="flex items-center gap-2.5 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 cursor-pointer hover:border-brand-400 transition-colors">
+                        <ImageIcon size={18} className={upload ? "text-emerald-500" : "text-slate-300"} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                            <code className="font-mono text-brand-700 bg-brand-50 px-1 py-0.5 rounded text-[10px]">{varName}</code>
+                          </p>
+                          <p className="text-xs text-slate-400 truncate mt-0.5">
+                            {upload ? upload.file.name : "Clic para seleccionar imagen…"}
+                          </p>
+                        </div>
+                        {upload && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setImageUploads((prev) => {
+                                const next = { ...prev };
+                                delete next[varName];
+                                return next;
+                              });
+                            }}
+                            className="shrink-0 p-1 text-slate-300 hover:text-rose-500 transition-colors"
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/gif,image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
+                            setImageUploads((prev) => ({ ...prev, [varName]: { file, ext } }));
+                          }}
+                        />
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Formato de salida */}
           <div>

@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useEditorStore } from "@/store/editor";
-import type { CenefaComponent, CenefaRule, CenefaTemplate } from "@/types/cenefas";
-import { Trash2, Lock, Unlock, Plus } from "lucide-react";
+import type { CenefaComponent, CenefaRule, CenefaTemplate, CenefaVariable, TextSegment, TextTransform } from "@/types/cenefas";
+import { Trash2, Lock, Unlock, Plus, GripVertical } from "lucide-react";
 import { RuleChip, RuleForm } from "./RulesPanel";
 
 const TRANSFORMS = [
@@ -86,15 +86,105 @@ export default function PropertiesPanel() {
       </div>
 
       <div className="p-4 space-y-5">
-        {/* Variable */}
-        {comp.type !== "shape" && (
-          <Section label="Variable CSV">
+        {/* === TEXTO: sección unificada de contenido con modo simple / compuesto === */}
+        {comp.type === "text" && (
+          <Section label="Contenido">
+            {/* Toggle modo compuesto */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs text-slate-500">Texto compuesto</span>
+              <button
+                onClick={() => {
+                  if (comp.segments?.length) {
+                    updateComponent(comp.id, { segments: undefined });
+                  } else {
+                    const initial: TextSegment[] = comp.variable
+                      ? [{ type: "variable", value: comp.variable, transform: comp.transform ?? "none" }]
+                      : comp.static_value
+                      ? [{ type: "static", value: comp.static_value }]
+                      : [{ type: "static", value: "" }];
+                    updateComponent(comp.id, { segments: initial });
+                  }
+                }}
+                className={`relative inline-flex w-9 h-5 rounded-full transition-colors ${
+                  comp.segments?.length ? "bg-brand-500" : "bg-slate-200"
+                }`}
+                title={comp.segments?.length ? "Volver a modo simple" : "Activar texto compuesto (múltiples variables/estilos)"}
+              >
+                <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                  comp.segments?.length ? "translate-x-4" : "translate-x-0.5"
+                }`} />
+              </button>
+            </div>
+
+            {comp.segments?.length ? (
+              <SegmentsEditor
+                segments={comp.segments}
+                variables={template.variables}
+                onChange={(segs) => updateComponent(comp.id, { segments: segs.length ? segs : undefined })}
+              />
+            ) : (
+              <div className="space-y-3">
+                {/* Variable selector */}
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase mb-1">Variable CSV</p>
+                  <select
+                    className="input w-full text-sm"
+                    value={comp.variable ?? ""}
+                    onChange={(e) => set("variable", e.target.value || undefined)}
+                  >
+                    <option value="">— Texto fijo (sin variable) —</option>
+                    {template.variables.map((v) => (
+                      <option key={v.name} value={v.name}>
+                        {v.name} ({v.csv_column})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Texto fijo — solo cuando no hay variable */}
+                {!comp.variable && (
+                  <div>
+                    <p className="text-[10px] text-slate-400 uppercase mb-1">Texto fijo</p>
+                    <input
+                      type="text"
+                      className="input w-full text-sm"
+                      placeholder="Ej: VÁLIDO AL:, unidad, ..."
+                      value={comp.static_value ?? ""}
+                      onChange={(e) => set("static_value", e.target.value || undefined)}
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Aparece igual en todas las cenefas generadas.
+                    </p>
+                  </div>
+                )}
+
+                {/* Transformación */}
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase mb-1">Transformación</p>
+                  <select
+                    className="input w-full text-sm"
+                    value={comp.transform ?? "none"}
+                    onChange={(e) => set("transform", e.target.value as CenefaComponent["transform"])}
+                  >
+                    {TRANSFORMS.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </Section>
+        )}
+
+        {/* === IMAGEN: variable + upload === */}
+        {comp.type === "image" && (
+          <Section label="Variable imagen">
             <select
               className="input w-full text-sm"
               value={comp.variable ?? ""}
               onChange={(e) => set("variable", e.target.value || undefined)}
             >
-              <option value="">— Texto fijo (sin variable) —</option>
+              <option value="">— Sin variable (imagen estática) —</option>
               {template.variables.map((v) => (
                 <option key={v.name} value={v.name}>
                   {v.name} ({v.csv_column})
@@ -104,9 +194,8 @@ export default function PropertiesPanel() {
           </Section>
         )}
 
-        {/* Imagen estática — para componentes tipo imagen */}
         {comp.type === "image" && (
-          <Section label="Imagen">
+          <Section label="Imagen estática">
             {comp.image_data ? (
               <div className="space-y-2">
                 <img
@@ -123,12 +212,12 @@ export default function PropertiesPanel() {
               </div>
             ) : (
               <p className="text-[10px] text-slate-400 italic mb-1">
-                Sin imagen — se mostrará un placeholder gris
+                Sin imagen — se mostrará un placeholder gris (o la imagen que subas al generar)
               </p>
             )}
             <label className="mt-2 flex flex-col gap-1">
               <span className="text-[10px] text-slate-400 uppercase">
-                {comp.image_data ? "Reemplazar imagen" : "Subir imagen"}
+                {comp.image_data ? "Reemplazar imagen" : "Subir imagen al template"}
               </span>
               <input
                 type="file"
@@ -148,41 +237,6 @@ export default function PropertiesPanel() {
                 }}
               />
             </label>
-          </Section>
-        )}
-
-        {/* Texto fijo — visible solo cuando no hay variable */}
-        {comp.type === "text" && !comp.variable && (
-          <Section label="Texto fijo">
-            <input
-              type="text"
-              className="input w-full text-sm"
-              placeholder="Ej: VÁLIDO AL:, unidad, ..."
-              value={comp.static_value ?? ""}
-              onChange={(e) => set("static_value", e.target.value || undefined)}
-            />
-            <p className="text-[10px] text-slate-400 mt-1">
-              Este texto aparece igual en todas las cenefas generadas.
-            </p>
-          </Section>
-        )}
-
-        {/* Transformación */}
-        {comp.type === "text" && (
-          <Section label="Transformación">
-            <select
-              className="input w-full text-sm"
-              value={comp.transform ?? "none"}
-              onChange={(e) =>
-                set("transform", e.target.value as CenefaComponent["transform"])
-              }
-            >
-              {TRANSFORMS.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
           </Section>
         )}
 
@@ -359,6 +413,182 @@ function Section({
         {label}
       </p>
       {children}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Editor de segmentos de texto compuesto
+// ---------------------------------------------------------------------------
+
+function SegmentsEditor({
+  segments,
+  variables,
+  onChange,
+}: {
+  segments: TextSegment[];
+  variables: CenefaVariable[];
+  onChange: (segs: TextSegment[]) => void;
+}) {
+  function updateSeg(idx: number, patch: Partial<TextSegment>) {
+    onChange(segments.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  }
+
+  function updateSegStyle(idx: number, key: string, value: number | string | boolean | undefined) {
+    onChange(
+      segments.map((s, i) => {
+        if (i !== idx) return s;
+        const newStyle = { ...s.style };
+        if (value === undefined || value === "") {
+          delete (newStyle as Record<string, unknown>)[key];
+        } else {
+          (newStyle as Record<string, unknown>)[key] = value;
+        }
+        return { ...s, style: newStyle };
+      }),
+    );
+  }
+
+  function removeSeg(idx: number) {
+    onChange(segments.filter((_, i) => i !== idx));
+  }
+
+  function addSeg() {
+    onChange([...segments, { type: "static", value: "" }]);
+  }
+
+  return (
+    <div className="space-y-2">
+      {segments.map((seg, idx) => (
+        <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden">
+          {/* Header del segmento */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border-b border-slate-100">
+            <GripVertical size={12} className="text-slate-300" />
+            <span className="text-[10px] font-semibold text-slate-400 uppercase flex-1">
+              Segmento {idx + 1}
+            </span>
+            <button
+              onClick={() => removeSeg(idx)}
+              className="p-0.5 text-slate-300 hover:text-rose-500 transition-colors"
+            >
+              <Trash2 size={11} />
+            </button>
+          </div>
+
+          <div className="p-2.5 space-y-2">
+            {/* Tipo: fijo o variable */}
+            <div className="flex gap-1">
+              {(["static", "variable"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => updateSeg(idx, { type: t, value: "" })}
+                  className={`flex-1 py-1 text-xs rounded border transition-all ${
+                    seg.type === t
+                      ? "bg-brand-50 border-brand-400 text-brand-600 font-medium"
+                      : "border-slate-200 text-slate-400 hover:border-slate-300"
+                  }`}
+                >
+                  {t === "static" ? "Texto fijo" : "Variable"}
+                </button>
+              ))}
+            </div>
+
+            {/* Valor */}
+            {seg.type === "static" ? (
+              <input
+                type="text"
+                className="input w-full text-sm"
+                placeholder='Ej: "$", "X", "Precio:"'
+                value={seg.value}
+                onChange={(e) => updateSeg(idx, { value: e.target.value })}
+              />
+            ) : (
+              <select
+                className="input w-full text-sm"
+                value={seg.value}
+                onChange={(e) => updateSeg(idx, { value: e.target.value })}
+              >
+                <option value="">— Seleccionar variable —</option>
+                {variables.map((v) => (
+                  <option key={v.name} value={v.name}>
+                    {v.name} ({v.csv_column})
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Transformación (solo para variable) */}
+            {seg.type === "variable" && (
+              <select
+                className="input w-full text-xs"
+                value={seg.transform ?? "none"}
+                onChange={(e) => updateSeg(idx, { transform: e.target.value as TextTransform })}
+              >
+                {TRANSFORMS.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            )}
+
+            {/* Estilos del segmento */}
+            <div className="grid grid-cols-2 gap-1.5">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[9px] text-slate-400 uppercase">Tamaño (pt)</span>
+                <input
+                  type="number"
+                  min={6}
+                  max={400}
+                  className="input text-xs"
+                  placeholder="Hereda"
+                  value={seg.style?.font_size ?? ""}
+                  onChange={(e) =>
+                    updateSegStyle(idx, "font_size", e.target.value ? parseInt(e.target.value) : undefined)
+                  }
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[9px] text-slate-400 uppercase">Color</span>
+                <div className="flex gap-1">
+                  <input
+                    type="color"
+                    className="w-7 h-8 rounded border border-slate-200 cursor-pointer p-0.5 shrink-0"
+                    value={seg.style?.color ?? "#1e293b"}
+                    onChange={(e) => updateSegStyle(idx, "color", e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    className="input text-xs flex-1 min-w-0"
+                    placeholder="Hereda"
+                    value={seg.style?.color ?? ""}
+                    onChange={(e) => updateSegStyle(idx, "color", e.target.value || undefined)}
+                  />
+                </div>
+              </label>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="rounded text-brand-600"
+                checked={!!seg.style?.font_bold}
+                onChange={(e) =>
+                  updateSegStyle(idx, "font_bold", e.target.checked ? true : undefined)
+                }
+              />
+              <span className="text-xs text-slate-600">Negrita</span>
+              {seg.style?.font_bold === undefined && (
+                <span className="text-[9px] text-slate-400">(hereda del estilo base)</span>
+              )}
+            </label>
+          </div>
+        </div>
+      ))}
+
+      <button
+        onClick={addSeg}
+        className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-brand-600 border border-dashed border-brand-300 rounded-lg hover:bg-brand-50 transition-colors"
+      >
+        <Plus size={12} /> Agregar segmento
+      </button>
     </div>
   );
 }

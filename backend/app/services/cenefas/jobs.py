@@ -54,6 +54,7 @@ async def run_generation_job(
     aclaracion:      str,
     otra_alcohol:    str,
     banco:           str,
+    image_overrides: dict | None = None,
 ) -> None:
     """Orquesta la generación completa.
 
@@ -81,7 +82,7 @@ async def run_generation_job(
                 template_def = await _resolve_template_v2(db, template_v2_id)
                 pptx_bytes, missing_vars = await asyncio.to_thread(
                     render_template_to_pptx,
-                    template_def, products, target_format,
+                    template_def, products, target_format, image_overrides,
                 )
             else:
                 template_bytes = await _resolve_template_pptx(
