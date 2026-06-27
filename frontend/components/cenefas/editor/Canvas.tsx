@@ -300,11 +300,13 @@ function ComponentShape({
             text={
               imgInvalid
                 ? `⚠ Re-importá el PPTX\n(${comp.image_ext ?? "?"} no soportado)`
-                : comp.variable
-                  ? `${comp.name}\n(${comp.variable})`
-                  : comp.static_value
-                    ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
-                    : comp.name
+                : comp.segments?.length
+                  ? `${comp.name}\n${comp.segments.map((s) => s.type === "static" ? `"${s.value}"` : `{${s.value}}`).join(" + ")}`
+                  : comp.variable
+                    ? `${comp.name}\n(${comp.variable})`
+                    : comp.static_value
+                      ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
+                      : comp.name
             }
             fontSize={Math.min(11, Math.max(7, h / 2.5))}
             fill={

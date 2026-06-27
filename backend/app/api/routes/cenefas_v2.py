@@ -1,4 +1,6 @@
 """Rutas /tools/cenefas/v2/ — API del nuevo motor de componentes."""
+import base64 as _b64
+import json
 import logging
 import pathlib
 import uuid
@@ -364,6 +366,10 @@ async def create_job(
     aclaracion: str = Form(default=""),
     otra_alcohol: str = Form(default="Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
     banco: str = Form(default=""),
+    image_overrides_json: str = Form(
+        default="{}",
+        description='JSON {variable_name: "ext:base64"} con imágenes a inyectar en componentes de imagen',
+    ),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -379,6 +385,20 @@ async def create_job(
         raise HTTPException(status_code=400, detail="El Excel debe ser .xlsx o .xlsm")
 
     excel_bytes = await excel.read()
+
+    # Parse image overrides: {var_name: "ext:base64"} → {var_name: (bytes, ext)}
+    image_overrides: dict | None = None
+    try:
+        raw = json.loads(image_overrides_json or "{}")
+        parsed: dict[str, tuple[bytes, str]] = {}
+        for var_name, encoded in raw.items():
+            if ":" in encoded:
+                ext, b64_data = encoded.split(":", 1)
+                parsed[var_name] = (_b64.b64decode(b64_data), ext.lower())
+        if parsed:
+            image_overrides = parsed
+    except Exception:
+        pass
 
     job = CenefaJob(
         created_by=current_user.id,
@@ -403,6 +423,7 @@ async def create_job(
         aclaracion=aclaracion,
         otra_alcohol=otra_alcohol,
         banco=banco,
+        image_overrides=image_overrides,
     )
 
     return {"job_id": str(job_id), "status": "pending", "format": format_id}

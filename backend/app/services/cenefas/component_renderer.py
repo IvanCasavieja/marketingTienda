@@ -92,8 +92,9 @@ def _enable_normAutofit(tf) -> None:
 
 
 def add_text_component(slide, comp: dict, value: str) -> None:
-    bounds = comp["computed_bounds"]
-    style  = comp.get("style", {})
+    bounds   = comp["computed_bounds"]
+    style    = comp.get("style", {})
+    segments = comp.get("segments")
 
     txBox = slide.shapes.add_textbox(
         Cm(bounds["x"]), Cm(bounds["y"]),
@@ -120,7 +121,30 @@ def add_text_component(slide, comp: dict, value: str) -> None:
     p = tf.paragraphs[0]
     p.alignment = ALIGN_MAP.get(style.get("align", "center"), PP_ALIGN.CENTER)
 
-    if transform == "smart_bold":
+    if segments:
+        # Multi-segment: each segment gets its own run with per-segment style overrides.
+        # Variable segments have their value pre-resolved as "_resolved" by _render_slide.
+        for seg in segments:
+            seg_val = seg.get("_resolved", seg.get("value", ""))
+            if not seg_val:
+                continue
+            seg_style = {**style}
+            if seg.get("style"):
+                seg_style.update(seg["style"])
+            seg_transform = seg.get("transform") or "none"
+            if seg_transform == "smart_bold":
+                for part, is_bold in split_caps(seg_val):
+                    if part:
+                        run = p.add_run()
+                        run.text = part
+                        _apply_run_style(run, seg_style, bold_override=is_bold)
+            else:
+                if seg_transform not in (None, "none"):
+                    seg_val = apply_transform(seg_val, seg_transform)
+                run = p.add_run()
+                run.text = seg_val
+                _apply_run_style(run, seg_style)
+    elif transform == "smart_bold":
         for segment, is_bold in split_caps(value):
             if not segment:
                 continue
@@ -296,17 +320,35 @@ def _render_slide(
         if not comp.get("visible", True):
             continue
 
-        variable     = comp.get("variable")
-        static_value = comp.get("static_value", "")
-        raw_value    = str(product.get(variable, "") or "") if variable else static_value
-        transform    = comp.get("transform", "none")
-        value        = apply_transform(raw_value, transform)
+        comp_type = comp.get("type", "text")
+        segments  = comp.get("segments") if comp_type == "text" else None
 
-        # Collect variables that are used in the template but whose column is
-        # entirely absent from the Excel (key not in product at all).
-        # Empty cells produce key="" — that's valid data, not a missing column.
-        if variable and variable not in product and missing_vars is not None:
-            missing_vars.add(variable)
+        if segments:
+            # Resolve variable segments from product data, store as "_resolved"
+            resolved = []
+            for seg in segments:
+                if seg.get("type") == "variable":
+                    seg_var = seg.get("value", "")
+                    seg_val = str(product.get(seg_var, "") or "") if seg_var else ""
+                    if seg_var and seg_var not in product and missing_vars is not None:
+                        missing_vars.add(seg_var)
+                else:
+                    seg_val = seg.get("value", "")
+                resolved.append({**seg, "_resolved": seg_val})
+            comp  = {**comp, "segments": resolved}
+            value = ""  # unused when segments present
+        else:
+            variable     = comp.get("variable")
+            static_value = comp.get("static_value", "")
+            raw_value    = str(product.get(variable, "") or "") if variable else static_value
+            transform    = comp.get("transform", "none")
+            value        = apply_transform(raw_value, transform)
+
+            # Collect variables that are used in the template but whose column is
+            # entirely absent from the Excel (key not in product at all).
+            # Empty cells produce key="" — that's valid data, not a missing column.
+            if variable and variable not in product and missing_vars is not None:
+                missing_vars.add(variable)
 
         # Offset 2D para layouts multi-slot (grilla horizontal × vertical)
         if slot_offset_x > 0 or slot_offset_y > 0:
@@ -315,7 +357,6 @@ def _render_slide(
             cb["y"] = cb["y"] + slot_offset_y
             comp = {**comp, "computed_bounds": cb}
 
-        comp_type = comp.get("type", "text")
         if comp_type == "text":
             add_text_component(slide, comp, value)
         elif comp_type == "shape":
@@ -324,7 +365,7 @@ def _render_slide(
             if comp.get("image_data"):
                 add_image_from_data(slide, comp)
             else:
-                add_image_placeholder(slide, comp, variable or "imagen")
+                add_image_placeholder(slide, comp, comp.get("variable") or "imagen")
 
 
 # ---------------------------------------------------------------------------
@@ -374,15 +415,38 @@ def render_template_to_pptx(
     template_def: dict,
     products: list[dict],
     target_format: str = "a4",
+    image_overrides: dict[str, tuple[bytes, str]] | None = None,
 ) -> tuple[bytes, list[str]]:
     """Genera PPTX desde una definición v2 y una lista de productos.
+
+    image_overrides: {variable_name: (image_bytes, ext)} — inyecta imágenes
+    subidas en la página de generación como image_data de los componentes
+    que usen esa variable.
 
     Returns (pptx_bytes, missing_vars) donde missing_vars es la lista de
     variables que el template usa pero que no fueron encontradas en el Excel.
     """
+    import base64 as _b64
+
     master_format = template_def.get("master_format", "a4")
     components    = template_def.get("components", [])
     rules         = template_def.get("rules", [])
+
+    # Inject uploaded images into matching image components
+    if image_overrides:
+        patched = []
+        for c in components:
+            var = c.get("variable")
+            if c.get("type") == "image" and var and var in image_overrides:
+                img_bytes, img_ext = image_overrides[var]
+                patched.append({
+                    **c,
+                    "image_data": _b64.b64encode(img_bytes).decode(),
+                    "image_ext":  img_ext,
+                })
+            else:
+                patched.append(c)
+        components = patched
     fmt_info      = get_format(target_format)
     slots         = fmt_info["slots"]
 
@@ -460,9 +524,10 @@ def generate_from_template_v2(
     aclaracion: str = "",
     otra_alcohol: str = "Prohibida la venta de bebidas alcohólicas a menores de 18 años",
     banco: str = "",
+    image_overrides: dict[str, tuple[bytes, str]] | None = None,
 ) -> tuple[bytes, list[str]]:
     """Parsea Excel y genera PPTX desde template v2. Returns (bytes, missing_vars)."""
     products = load_products_from_bytes(
         excel_bytes, vigencia, aclaracion, otra_alcohol, banco
     )
-    return render_template_to_pptx(template_def, products, target_format)
+    return render_template_to_pptx(template_def, products, target_format, image_overrides)
