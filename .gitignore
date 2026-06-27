@@ -1,0 +1,9 @@
+# Exploración local — no subir a Render
+gdu_sucursales/
+
+# Archivos locales
+*.xlsx
+*.db
+frontend/.env.local.dev
+backend/.env
+backend/.env.scraper
