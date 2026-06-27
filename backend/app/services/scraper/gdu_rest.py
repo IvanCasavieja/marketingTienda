@@ -7,8 +7,9 @@ Usa los microservicios Azure de GDU directamente via JWT público.
 Una fila por (producto × sucursal) — sin agrupar sucursales con mismo precio,
 porque cada sucursal tiene su propia URL con el parámetro ?sc=<branch_id>.
 
-URL resultante: https://www.disco.com.uy/<slug>-<product_id>/p?sc=<branch_id>
-VTEX hace routing por el ID numérico al final; el slug es SEO pero opcional.
+URL resultante: https://www.disco.com.uy/product/p/<product_id>?sc=<branch_id>
+Blazor ignora el segmento slug/categoria cuando el formato es /product/p/{id}.
+El mismo product_id es válido en las tres cadenas (catálogo unificado GDU).
 
 APIs:
   oauth.disco.com.uy                              → JWT (~15 días, sin secret)
@@ -19,9 +20,7 @@ APIs:
 
 import json
 import logging
-import re
 import time
-import unicodedata
 from pathlib import Path
 from typing import Generator
 
@@ -61,15 +60,6 @@ _PKG_DIR = Path(__file__).parent
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _slugify(text: str) -> str:
-    """ASCII slug compatible con URLs VTEX: minúsculas, solo a-z0-9 y guiones."""
-    text = unicodedata.normalize("NFD", text)
-    text = text.encode("ascii", "ignore").decode("ascii")
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9]+", "-", text)
-    return text.strip("-")
-
-
 def _clasificar_cadena(branch_id: str) -> str:
     if not branch_id.isdigit():
         return "excluir"
@@ -83,10 +73,10 @@ def _clasificar_cadena(branch_id: str) -> str:
     return "excluir"
 
 
-def _construir_url(cadena: str, slug: str, product_id: str, branch_id: str) -> str:
-    """URL VTEX con parámetro de sucursal: /slug-productId/p?sc=branchId"""
+def _construir_url(cadena: str, product_id: str, branch_id: str) -> str:
+    """URL con parámetro de sucursal. /product/p/{id} funciona sin slug ni categoría."""
     base = _DOMINIOS.get(cadena, "https://www.disco.com.uy")
-    return f"{base}/{slug}-{product_id}/p?sc={branch_id}"
+    return f"{base}/product/p/{product_id}?sc={branch_id}"
 
 
 # ── JWT con cache en disco ────────────────────────────────────────────────────
@@ -201,9 +191,9 @@ def _iter_products(
     session: requests.Session,
     page_from: int = 1,
     page_to: int | None = None,
-) -> Generator[tuple[str, str, str], None, None]:
+) -> Generator[tuple[str, str], None, None]:
     """
-    Genera (product_id, product_name, url_slug) para cada producto activo.
+    Genera (product_id, product_name) para cada producto activo.
 
     page_from / page_to: rango de páginas de la API (1-indexed, page_to inclusive).
     page_to=None significa hasta el final del catálogo.
@@ -232,10 +222,9 @@ def _iter_products(
             effective_to = min(page_to, total_pages) if page_to else total_pages
 
         for item in data.get("items", []):
-            desc      = item.get("description", {})
-            name      = desc.get("name", item["id"])
-            link_text = desc.get("linkText") or _slugify(name)
-            yield item["id"], name, link_text
+            desc = item.get("description", {})
+            name = desc.get("name", item["id"])
+            yield item["id"], name
 
         if page >= effective_to:
             break
@@ -282,7 +271,6 @@ def scan_fase(
     records: list[ProductRecord] = []
     batch_ids:   list[str] = []
     batch_names: dict[str, str] = {}
-    batch_slugs: dict[str, str] = {}
     total_prods  = 0
 
     def _flush_batch():
@@ -290,16 +278,14 @@ def scan_fase(
         if not batch_ids:
             return
         price_records = _get_prices_batch(session, batch_ids)
-        _parse_prices(price_records, batch_names, batch_slugs, branch_meta, records)
+        _parse_prices(price_records, batch_names, branch_meta, records)
         total_prods += len(batch_ids)
         batch_ids.clear()
         batch_names.clear()
-        batch_slugs.clear()
 
-    for product_id, product_name, url_slug in _iter_products(session, page_from, page_to):
+    for product_id, product_name in _iter_products(session, page_from, page_to):
         batch_ids.append(product_id)
         batch_names[product_id] = product_name
-        batch_slugs[product_id] = url_slug
 
         if len(batch_ids) >= _PRICE_BATCH:
             _flush_batch()
@@ -313,10 +299,9 @@ def scan_fase(
 
 def _parse_prices(
     price_records: list[dict],
-    names:  dict[str, str],
-    slugs:  dict[str, str],
-    branch_meta: dict[str, dict],
-    out: list[ProductRecord],
+    names:        dict[str, str],
+    branch_meta:  dict[str, dict],
+    out:          list[ProductRecord],
 ) -> None:
     """
     Convierte raw price records en ProductRecord (1 por producto × sucursal).
@@ -336,17 +321,15 @@ def _parse_prices(
         if not meta:
             continue
 
-        cadena  = meta["cadena"]
-        pid     = rec["productId"]
-        name    = names.get(pid, pid)
-        slug    = slugs.get(pid) or _slugify(name)
-
+        cadena        = meta["cadena"]
+        pid           = rec["productId"]
+        name          = names.get(pid, pid)
         precio        = rec["price"]["currentPrice"]
         precio_normal = rec["price"]["normalPrice"]
 
         out.append(ProductRecord(
             tienda          = cadena,
-            url             = _construir_url(cadena, slug, pid, pl_id),
+            url             = _construir_url(cadena, pid, pl_id),
             nombre          = name,
             precio          = precio,
             precio_lista    = precio_normal,
