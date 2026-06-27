@@ -157,15 +157,15 @@ def process_row(
 
     if "_ofertadet" in h:
         if _ofertadet_raw.lower() == "combo":
-            # Combo: OFERTA trae "2 x $100" → oferta=2x, mecanica usa columna precio
+            # Combo: OFERTA "6x160" → precio grande=160 (de OFERTA), mecanica usa columna precio
             _m_nx = re.match(r"^(\d+)\s*[xX]\s*\$?\s*([\d.,]+)\s*$", _oferta_raw)
             if _m_nx:
-                _cantidad   = _m_nx.group(1)
-                _unit_price = parse_price_raw(_m_nx.group(2))
-                if not result.get("precioActual"):
-                    result["precioActual"] = prefix + fmt_price(_unit_price)
-                result["oferta"]   = f"{_cantidad}x"
-                result["mecanica"] = f"Comprando {_cantidad}, {result['precioActual']} la unidad."
+                _cantidad        = _m_nx.group(1)
+                _precio_oferta   = parse_price_raw(_m_nx.group(2))   # 160 — precio grande
+                _precio_columna  = result.get("precioActual", "")    # $53 — para mecanica
+                result["oferta"]       = f"{_cantidad}x"
+                result["precioActual"] = prefix + fmt_price(_precio_oferta)
+                result["mecanica"]     = f"Comprando {_cantidad}, {_precio_columna} la unidad."
                 _nx_applied = True
 
         elif re.search(r"m\s*[xX×]\s*n", _ofertadet_raw, re.IGNORECASE):
