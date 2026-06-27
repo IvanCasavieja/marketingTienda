@@ -120,6 +120,18 @@ async def trigger_gdu() -> bool:
     return True
 
 
+async def trigger_gdu_rest() -> bool:
+    """Lanza un scan de GDU via REST API (Disco/Devoto/Géant por sucursal) si no hay otro corriendo."""
+    global _scan_running
+    if _scan_running:
+        return False
+    is_running = await _r_get(_REDIS_STATUS)
+    if is_running and is_running.decode() == "running":
+        return False
+    asyncio.create_task(_execute_gdu_rest())
+    return True
+
+
 async def trigger_botiga() -> bool:
     """Lanza un scan de solo Botiga si no hay otro corriendo."""
     global _scan_running
@@ -246,6 +258,63 @@ def _run_blocking_gdu() -> int:
     return run_gdu_only()
 
 
+async def _execute_gdu_rest() -> None:
+    """
+    Scan GDU vía REST API (1 registro por producto × sucursal).
+    Sincroniza fase a fase para evitar acumular millones de filas en SQLite.
+    """
+    global _scan_running, _scan_type
+    if _scan_running:
+        logger.info("scraper_sync: scan en curso, saltando GDU REST")
+        return
+    _scan_running = True
+    _scan_type    = "gdu_rest"
+
+    acquired = await _r_set(_REDIS_LOCK, "1", nx=True, ex=_REDIS_TTL)
+
+    try:
+        await _r_set(_REDIS_STATUS, "running")
+        logger.info("scraper_sync: iniciando GDU REST scan (Disco/Devoto/Géant por sucursal)")
+
+        from app.services.scraper import store as sc_store
+        from app.services.scraper.fases import run_gdu_rest_fase, PROGRESO_GDU_REST
+        loop = asyncio.get_event_loop()
+
+        await loop.run_in_executor(None, sc_store.limpiar)
+        if PROGRESO_GDU_REST.exists():
+            PROGRESO_GDU_REST.unlink()
+
+        total_acumulado = 0
+        for fase in (1, 2, 3, 4):
+            logger.info("scraper_sync: GDU REST fase %d/4", fase)
+            await loop.run_in_executor(None, run_gdu_rest_fase, fase)
+
+            await _sync_to_postgres()
+            await _sync_to_historial()
+
+            totales = await loop.run_in_executor(None, sc_store.contar)
+            fase_count = sum(totales.values())
+            total_acumulado += fase_count
+            logger.info("scraper_sync: GDU REST fase %d synced — %d registros esta fase", fase, fase_count)
+            await loop.run_in_executor(None, sc_store.limpiar)
+
+        now = datetime.now(timezone.utc).isoformat()
+        await _r_set(_REDIS_LAST, now)
+        await _r_set(_REDIS_TOTAL, str(total_acumulado))
+        await _r_set(_REDIS_STATUS, "idle")
+        logger.info("scraper_sync: GDU REST completado — %d registros totales", total_acumulado)
+
+    except Exception as exc:
+        await _r_set(_REDIS_STATUS, f"error: {str(exc)[:200]}")
+        logger.error("scraper_sync: GDU REST falló: %s", exc, exc_info=True)
+        raise
+    finally:
+        _scan_running = False
+        _scan_type    = None
+        if acquired:
+            await _r_del(_REDIS_LOCK)
+
+
 async def _execute_botiga() -> None:
     global _scan_running, _scan_type
     if _scan_running:
@@ -316,16 +385,18 @@ async def _sync_to_historial() -> None:
             batch = productos[i:i + BATCH]
             rows = [
                 {
-                    "tienda":        p["tienda"],
-                    "url":           p["url"],
-                    "nombre":        p.get("nombre"),
-                    "precio":        p.get("precio"),
-                    "precio_lista":  p.get("precio_lista"),
-                    "sku":           p.get("sku"),
-                    "barcode":       p.get("barcode"),
-                    "marca":         p.get("marca"),
-                    "categoria":     p.get("categoria"),
-                    "fecha_scan":    today,
+                    "tienda":           p["tienda"],
+                    "url":              p["url"],
+                    "nombre":           p.get("nombre"),
+                    "precio":           p.get("precio"),
+                    "precio_lista":     p.get("precio_lista"),
+                    "sku":              p.get("sku"),
+                    "barcode":          p.get("barcode"),
+                    "marca":            p.get("marca"),
+                    "categoria":        p.get("categoria"),
+                    "sucursal_id":      p.get("sucursal_id"),
+                    "sucursal_nombre":  p.get("sucursal_nombre"),
+                    "fecha_scan":       today,
                 }
                 for p in batch
             ]
@@ -358,16 +429,18 @@ async def _sync_to_postgres() -> None:
         for i, batch in enumerate(batches, 1):
             rows = [
                 {
-                    "tienda":        p["tienda"],
-                    "url":           p["url"],
-                    "nombre":        p.get("nombre"),
-                    "precio":        p.get("precio"),
-                    "precio_lista":  p.get("precio_lista"),
-                    "sku":           p.get("sku"),
-                    "barcode":       p.get("barcode"),
-                    "marca":         p.get("marca"),
-                    "categoria":     p.get("categoria"),
-                    "actualizado_en": now,
+                    "tienda":           p["tienda"],
+                    "url":              p["url"],
+                    "nombre":           p.get("nombre"),
+                    "precio":           p.get("precio"),
+                    "precio_lista":     p.get("precio_lista"),
+                    "sku":              p.get("sku"),
+                    "barcode":          p.get("barcode"),
+                    "marca":            p.get("marca"),
+                    "categoria":        p.get("categoria"),
+                    "sucursal_id":      p.get("sucursal_id"),
+                    "sucursal_nombre":  p.get("sucursal_nombre"),
+                    "actualizado_en":   now,
                 }
                 for p in batch
             ]
@@ -375,15 +448,17 @@ async def _sync_to_postgres() -> None:
             stmt = stmt.on_conflict_do_update(
                 index_elements=["url"],
                 set_={
-                    "tienda":        stmt.excluded.tienda,
-                    "nombre":        stmt.excluded.nombre,
-                    "precio":        stmt.excluded.precio,
-                    "precio_lista":  stmt.excluded.precio_lista,
-                    "sku":           stmt.excluded.sku,
-                    "barcode":       stmt.excluded.barcode,
-                    "marca":         stmt.excluded.marca,
-                    "categoria":     stmt.excluded.categoria,
-                    "actualizado_en": stmt.excluded.actualizado_en,
+                    "tienda":           stmt.excluded.tienda,
+                    "nombre":           stmt.excluded.nombre,
+                    "precio":           stmt.excluded.precio,
+                    "precio_lista":     stmt.excluded.precio_lista,
+                    "sku":              stmt.excluded.sku,
+                    "barcode":          stmt.excluded.barcode,
+                    "marca":            stmt.excluded.marca,
+                    "categoria":        stmt.excluded.categoria,
+                    "sucursal_id":      stmt.excluded.sucursal_id,
+                    "sucursal_nombre":  stmt.excluded.sucursal_nombre,
+                    "actualizado_en":   stmt.excluded.actualizado_en,
                 },
             )
             await db.execute(stmt)
@@ -447,6 +522,7 @@ async def get_progress() -> dict:
         "running":    _scan_running,
         "scan_type":  _scan_type,
         "gdu":        {"completados": 0, "total": gdu_total,  "guardados": 0, "pct": 0.0},
+        "gdu_rest":   {"completados": 0, "total": 4,          "guardados": 0, "pct": 0.0},
         "tata":       {"completados": 0, "total": 31,          "guardados": 0, "pct": 0.0},
         "farmashop":  {"completados": 0, "total": 16,          "guardados": 0, "pct": 0.0},
         "ti":         {"completados": 0, "total": 14,          "guardados": 0, "pct": 0.0},
@@ -475,5 +551,19 @@ async def get_progress() -> dict:
                 result[key]["pct"] = round(completados / total * 100, 1) if total else 0.0
             except Exception:
                 pass
+
+    # GDU REST: progreso basado en fases (4 en total)
+    gdu_rest_path = _DATA_DIR / "progreso_gdu_rest.json"
+    if gdu_rest_path.exists():
+        try:
+            with open(gdu_rest_path, encoding="utf-8") as f:
+                prog = json.load(f)
+            completados = len(prog.get("fases_completadas", []))
+            guardados   = prog.get("total_guardados", 0)
+            result["gdu_rest"]["completados"] = completados
+            result["gdu_rest"]["guardados"]   = guardados
+            result["gdu_rest"]["pct"] = round(completados / 4 * 100, 1)
+        except Exception:
+            pass
 
     return result

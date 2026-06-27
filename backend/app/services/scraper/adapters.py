@@ -51,17 +51,19 @@ def _headers(referer: str = None) -> dict:
 
 @dataclass
 class ProductRecord:
-    tienda:      str
-    url:         str
-    nombre:      Optional[str]  = None
-    precio:      Optional[float] = None
-    precio_lista: Optional[float] = None
-    sku:         Optional[str]  = None
-    barcode:     Optional[str]  = None
-    marca:       Optional[str]  = None
-    categoria:   Optional[str]  = None
-    error:       Optional[str]  = None
-    raw:         dict           = field(default_factory=dict)
+    tienda:          str
+    url:             str
+    nombre:          Optional[str]   = None
+    precio:          Optional[float] = None
+    precio_lista:    Optional[float] = None
+    sku:             Optional[str]   = None
+    barcode:         Optional[str]   = None
+    marca:           Optional[str]   = None
+    categoria:       Optional[str]   = None
+    sucursal_id:     Optional[str]   = None  # branch ID para tiendas multi-sucursal
+    sucursal_nombre: Optional[str]   = None  # nombre legible de la sucursal
+    error:           Optional[str]   = None
+    raw:             dict            = field(default_factory=dict)
 
 
 class BaseAdapter:

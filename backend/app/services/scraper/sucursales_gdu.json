@@ -1,0 +1,928 @@
+{
+  "Disco": [
+    {
+      "id": "199",
+      "nombre": "Disco 199",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": 0.0,
+      "lon": 0.0,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "103",
+      "nombre": "Disco Arenal Grande",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.9029172,
+      "lon": -56.1731498,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "119",
+      "nombre": "Disco Atlántida",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.77132,
+      "lon": -55.761159,
+      "zoneId": "UY-CA"
+    },
+    {
+      "id": "116",
+      "nombre": "Disco Ayacucho",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.894349,
+      "lon": -56.144855,
+      "zoneId": "116"
+    },
+    {
+      "id": "122",
+      "nombre": "Disco Barrios Amorín",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.9138623,
+      "lon": -56.1839504,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "117",
+      "nombre": "Disco Calle Maldonado",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.909954,
+      "lon": -56.19396,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "110",
+      "nombre": "Disco Camino Maldonado",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.8017163,
+      "lon": -56.086484,
+      "zoneId": "110"
+    },
+    {
+      "id": "126",
+      "nombre": "Disco Canelones",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.52143,
+      "lon": -56.279969,
+      "zoneId": "UY-CA"
+    },
+    {
+      "id": "112",
+      "nombre": "Disco Curva de Maroñas",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.8571795,
+      "lon": -56.1328202,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "121",
+      "nombre": "Disco Ejido",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.902256,
+      "lon": -56.187133,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "106",
+      "nombre": "Disco Fernández Crespo",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.89887,
+      "lon": -56.177627,
+      "zoneId": "106"
+    },
+    {
+      "id": "120",
+      "nombre": "Disco Fresh Market 20 de Setiembre",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.9002755,
+      "lon": -56.162714,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "111",
+      "nombre": "Disco Fresh Market 8 de Octubre",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.8898592,
+      "lon": -56.1608304,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "102",
+      "nombre": "Disco Fresh Market Agraciada",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.8760134,
+      "lon": -56.1984297,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "127",
+      "nombre": "Disco Fresh Market Av. Italia",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.887486,
+      "lon": -56.141552,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "113",
+      "nombre": "Disco Fresh Market Chucarro",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.9092465,
+      "lon": -56.1446092,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "114",
+      "nombre": "Disco Fresh Market De La Punta",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.9661531,
+      "lon": -54.9467866,
+      "zoneId": "UY-MA"
+    },
+    {
+      "id": "128",
+      "nombre": "Disco Fresh Market El Pinar",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.804288,
+      "lon": -55.908184,
+      "zoneId": "128"
+    },
+    {
+      "id": "104",
+      "nombre": "Disco Fresh Market Legrand",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.8896447,
+      "lon": -56.0986161,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "124",
+      "nombre": "Disco Fresh Market Obligado",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.913337,
+      "lon": -56.160123,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "105",
+      "nombre": "Disco Fresh Market Parada 5",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.9432375,
+      "lon": -54.9327031,
+      "zoneId": "UY-MA"
+    },
+    {
+      "id": "130",
+      "nombre": "Disco Fresh Market Plaza Italia",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.8875695,
+      "lon": -56.1180098,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "109",
+      "nombre": "Disco Fresh Market Punta Carretas",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.9251424,
+      "lon": -56.1580294,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "108",
+      "nombre": "Disco Fresh Market Roosevelt",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.91298,
+      "lon": -54.96195,
+      "zoneId": "UY-MA"
+    },
+    {
+      "id": "101",
+      "nombre": "Disco Fresh Market Scoseria",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.9152671,
+      "lon": -56.1554753,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "107",
+      "nombre": "Disco Fresh Market Soca",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.9055843,
+      "lon": -56.1545975,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "118",
+      "nombre": "Disco Fresh Market Solymar",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.8260796,
+      "lon": -55.9656543,
+      "zoneId": "UY-COR"
+    },
+    {
+      "id": "129",
+      "nombre": "Disco Libertad",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.6375975,
+      "lon": -56.6207129,
+      "zoneId": "UY-LIB"
+    },
+    {
+      "id": "115",
+      "nombre": "Disco Marcelino Sosa",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.877777,
+      "lon": -56.18129,
+      "zoneId": "115"
+    },
+    {
+      "id": "123",
+      "nombre": "Disco Médanos",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.805607,
+      "lon": -55.927604,
+      "zoneId": "123"
+    },
+    {
+      "id": "125",
+      "nombre": "Disco Solano López",
+      "cadena": "Disco",
+      "activa": true,
+      "lat": -34.8918159,
+      "lon": -56.1251662,
+      "zoneId": "UY-MO"
+    }
+  ],
+  "Devoto": [
+    {
+      "id": "3099",
+      "nombre": "Devoto 3099",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": 0.0,
+      "lon": 0.0,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3021",
+      "nombre": "Devoto 8 de Octubre",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.876569,
+      "lon": -56.143731,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3020",
+      "nombre": "Devoto Arenal Grande",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.89258672851896,
+      "lon": -56.1807348985587,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3003",
+      "nombre": "Devoto Brisas",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.893221,
+      "lon": -56.11583,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3007",
+      "nombre": "Devoto Colón",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.805068,
+      "lon": -56.222795,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3112",
+      "nombre": "Devoto Express 18 de Julio II",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.904918,
+      "lon": -56.18365,
+      "zoneId": "3112"
+    },
+    {
+      "id": "3118",
+      "nombre": "Devoto Express 18 de Julio III",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.904827,
+      "lon": -56.183614,
+      "zoneId": "3118"
+    },
+    {
+      "id": "3119",
+      "nombre": "Devoto Express 18 de julio IV",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.899151,
+      "lon": -56.168752,
+      "zoneId": "3119"
+    },
+    {
+      "id": "3101",
+      "nombre": "Devoto Express 21 de Septiembre",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.916487,
+      "lon": -56.158471,
+      "zoneId": "3101"
+    },
+    {
+      "id": "3106",
+      "nombre": "Devoto Express 6",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.906573,
+      "lon": -56.16385,
+      "zoneId": "3106"
+    },
+    {
+      "id": "3109",
+      "nombre": "Devoto Express 9",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.904267,
+      "lon": -56.196165,
+      "zoneId": "3109"
+    },
+    {
+      "id": "3116",
+      "nombre": "Devoto Express Av. Centenario",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.886711,
+      "lon": -56.153521,
+      "zoneId": "3116"
+    },
+    {
+      "id": "3104",
+      "nombre": "Devoto Express Benito Blanco",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.914558,
+      "lon": -56.149631,
+      "zoneId": "3104"
+    },
+    {
+      "id": "3111",
+      "nombre": "Devoto Express Bulevar II",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.890696,
+      "lon": -56.165132,
+      "zoneId": "3111"
+    },
+    {
+      "id": "3107",
+      "nombre": "Devoto Express Cassinoni",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.896403,
+      "lon": -56.166136,
+      "zoneId": "3107"
+    },
+    {
+      "id": "3113",
+      "nombre": "Devoto Express Ciudadela",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.906615,
+      "lon": -56.200955,
+      "zoneId": "3113"
+    },
+    {
+      "id": "3110",
+      "nombre": "Devoto Express Gorlero",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.962272,
+      "lon": -54.943783,
+      "zoneId": "3110"
+    },
+    {
+      "id": "3105",
+      "nombre": "Devoto Express Purriel",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.88399826468307,
+      "lon": -56.15153243046392,
+      "zoneId": "3105"
+    },
+    {
+      "id": "3022",
+      "nombre": "Devoto Fresh Market 26 de Marzo",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.9076374,
+      "lon": -56.1457206,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3015",
+      "nombre": "Devoto Fresh Market Agraciada",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.865343010362864,
+      "lon": -56.20978999214958,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3004",
+      "nombre": "Devoto Fresh Market Carrasco",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.893144,
+      "lon": -56.066426,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3023",
+      "nombre": "Devoto Fresh Market Coronel Mora",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.919222,
+      "lon": -56.157532,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3001",
+      "nombre": "Devoto Fresh Market Malvín",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.894886,
+      "lon": -56.107436,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3010",
+      "nombre": "Devoto Fresh Market Portones",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.880459,
+      "lon": -56.080649,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3002",
+      "nombre": "Devoto Fresh Market Punta Gorda",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.893719,
+      "lon": -56.079974,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3009",
+      "nombre": "Devoto Fresh Market Punta del Este",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.93303409784974,
+      "lon": -54.939560685851454,
+      "zoneId": "UY-MA"
+    },
+    {
+      "id": "3032",
+      "nombre": "Devoto Fresh Market Solanas",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.87773749999999,
+      "lon": -55.05448440000001,
+      "zoneId": "UY-MA"
+    },
+    {
+      "id": "3019",
+      "nombre": "Devoto Fresh Market Suárez",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.864334,
+      "lon": -56.195424,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3014",
+      "nombre": "Devoto HiperPiria",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.865579,
+      "lon": -55.269382,
+      "zoneId": "UY-MA"
+    },
+    {
+      "id": "3018",
+      "nombre": "Devoto Las Piedras",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.729204,
+      "lon": -56.2166672,
+      "zoneId": "UY-CA"
+    },
+    {
+      "id": "3025",
+      "nombre": "Devoto Las Piedras II",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.7277969,
+      "lon": -56.224004,
+      "zoneId": "UY-CA"
+    },
+    {
+      "id": "3012",
+      "nombre": "Devoto Pando",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.725954,
+      "lon": -55.964576,
+      "zoneId": "UY-CA"
+    },
+    {
+      "id": "3013",
+      "nombre": "Devoto Piriápolis Rambla",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.8560323,
+      "lon": -55.29152089999999,
+      "zoneId": "UY-MA"
+    },
+    {
+      "id": "3008",
+      "nombre": "Devoto San Martín",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.85684,
+      "lon": -56.175507,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3016",
+      "nombre": "Devoto San Martín II",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.869793,
+      "lon": -56.182153,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3024",
+      "nombre": "Devoto San Quintín",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.852516,
+      "lon": -56.22324,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3006",
+      "nombre": "Devoto Santa Mónica",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.8776763035363,
+      "lon": -56.05737985543892,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3011",
+      "nombre": "Devoto Sayago",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.835502,
+      "lon": -56.2110756,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3005",
+      "nombre": "Devoto Shangrilá",
+      "cadena": "Devoto",
+      "activa": true,
+      "lat": -34.849872,
+      "lon": -55.998893,
+      "zoneId": "UY-CA"
+    }
+  ],
+  "Geant": [
+    {
+      "id": "1501",
+      "nombre": "Géant Nuevocentro",
+      "cadena": "Geant",
+      "activa": true,
+      "lat": -34.868209085277236,
+      "lon": -56.17034137670815,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "5201",
+      "nombre": "Géant Parque Roosevelt",
+      "cadena": "Geant",
+      "activa": true,
+      "lat": -34.866323200692946,
+      "lon": -56.02298633293974,
+      "zoneId": "UY-MO"
+    }
+  ],
+  "GDU": [
+    {
+      "id": "CDPerimetral",
+      "nombre": "Centro de Distribucición Perimetral",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": 0.0,
+      "lon": 0.0,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3103",
+      "nombre": "Express 18 de Julio 1",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.9003385,
+      "lon": -56.1726407,
+      "zoneId": "3103"
+    },
+    {
+      "id": "3123",
+      "nombre": "Express 21 de Setiembre y R.Graseras",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.919833,
+      "lon": -56.152468,
+      "zoneId": "3123"
+    },
+    {
+      "id": "3137",
+      "nombre": "Express Agraciada - Bulevar III",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.8725582,
+      "lon": -56.2043115,
+      "zoneId": "3137"
+    },
+    {
+      "id": "3140",
+      "nombre": "Express Av. Italia",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.8937725,
+      "lon": -56.1639106,
+      "zoneId": "3140"
+    },
+    {
+      "id": "3139",
+      "nombre": "Express Berro",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.9102724,
+      "lon": -56.1501246,
+      "zoneId": "3139"
+    },
+    {
+      "id": "3124",
+      "nombre": "Express Camino Carrasco",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.87004,
+      "lon": -56.072197,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3121",
+      "nombre": "Express Canelones",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.908497,
+      "lon": -56.188751,
+      "zoneId": "3121"
+    },
+    {
+      "id": "3133",
+      "nombre": "Express Home Beach - Inzaurraga ",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.9577315,
+      "lon": -54.9418097,
+      "zoneId": "3133"
+    },
+    {
+      "id": "3117",
+      "nombre": "Express La Barra",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.9110765,
+      "lon": -54.8674211,
+      "zoneId": "3117"
+    },
+    {
+      "id": "3125",
+      "nombre": "Express Libertador",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.895836,
+      "lon": -56.189692,
+      "zoneId": "3125"
+    },
+    {
+      "id": "3136",
+      "nombre": "Express Luis A. De Herrera II",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.908556,
+      "lon": -56.135688,
+      "zoneId": "3136"
+    },
+    {
+      "id": "3122",
+      "nombre": "Express Luis Alberto de Herrera y Cádiz",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.8748659,
+      "lon": -56.1584512,
+      "zoneId": "3122"
+    },
+    {
+      "id": "3135",
+      "nombre": "Express Misiones",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.907461,
+      "lon": -56.206116,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3134",
+      "nombre": "Express Oviedo",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.886974,
+      "lon": -56.107142,
+      "zoneId": "3134"
+    },
+    {
+      "id": "3102",
+      "nombre": "Express Rivera",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.901522,
+      "lon": -56.139122,
+      "zoneId": "3102"
+    },
+    {
+      "id": "3120",
+      "nombre": "Express Rivera y Campbell",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.90278,
+      "lon": -56.162275,
+      "zoneId": "3120"
+    },
+    {
+      "id": "3138",
+      "nombre": "Express Rondeau",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.8908152,
+      "lon": -56.1950466,
+      "zoneId": "3138"
+    },
+    {
+      "id": "3132",
+      "nombre": "Express San José",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.9068897,
+      "lon": -56.1950015,
+      "zoneId": "3132"
+    },
+    {
+      "id": "3128",
+      "nombre": "Express Solano López",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.89535817735084,
+      "lon": -56.122189090302086,
+      "zoneId": "3128"
+    },
+    {
+      "id": "3126",
+      "nombre": "Express Yaguarón",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.8935411,
+      "lon": -56.187447,
+      "zoneId": "3126"
+    },
+    {
+      "id": "3130",
+      "nombre": "Fresh Market José Ignacio 1",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.8357711,
+      "lon": -54.643358,
+      "zoneId": "3130"
+    },
+    {
+      "id": "3026 ",
+      "nombre": "Fresh Market José Ignacio 2",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.8423932,
+      "lon": -54.6378704,
+      "zoneId": "3026 "
+    },
+    {
+      "id": "3027",
+      "nombre": "Fresh Market La Barra",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.9110765,
+      "lon": -54.8674211,
+      "zoneId": "3027"
+    },
+    {
+      "id": "3108",
+      "nombre": "Fresh Market Parada 1",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.9578043,
+      "lon": -54.9410122,
+      "zoneId": "3108"
+    },
+    {
+      "id": "3129",
+      "nombre": "Fresh Market Punta Colorada",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.90002496477993,
+      "lon": -55.257807830020845,
+      "zoneId": "3129"
+    },
+    {
+      "id": "Marketplace",
+      "nombre": "Marketplace",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": 0.0,
+      "lon": 0.0,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "3127",
+      "nombre": "Portal Américas",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": -34.86973,
+      "lon": -56.030998,
+      "zoneId": "UY-MO"
+    },
+    {
+      "id": "SUC-01",
+      "nombre": "Sucursal Test 01",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": 13.664258,
+      "lon": -89.258767,
+      "zoneId": "SA-SA"
+    },
+    {
+      "id": "string",
+      "nombre": "string",
+      "cadena": "GDU",
+      "activa": true,
+      "lat": 0.0,
+      "lon": 0.0,
+      "zoneId": "1"
+    }
+  ]
+}
