@@ -218,11 +218,24 @@ async def run_botiga():
     log.info("=== BOTIGA COMPLETADO ===")
 
 
+async def run_eldorado():
+    """El Dorado via VTEX Catalog System REST — sin autenticación, precio único nacional."""
+    from app.services.scraper import store
+    from app.services.scraper.fases import run_eldorado_fase, PROGRESO_ELDORADO
+    store.limpiar()
+    if PROGRESO_ELDORADO.exists():
+        PROGRESO_ELDORADO.unlink()
+    for fase in (1, 2, 3, 4):
+        await _correr_fase(f"ElDorado fase {fase}/4", run_eldorado_fase, fase)
+    log.info("=== EL DORADO COMPLETADO ===")
+
+
 async def run_full():
     await run_tata()
     await run_farmashop()
     await run_botiga()
     await run_gdu_rest()
+    await run_eldorado()
     log.info("=== SCAN COMPLETO FINALIZADO — %d productos totales ===", _stats["total_prods"])
 
 
@@ -296,13 +309,14 @@ async def run_full_parallel():
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 OPCIONES = {
-    "gdu":      run_gdu,       # Playwright GDU — deprecado
-    "gdu_rest": run_gdu_rest,  # GDU via REST API (1 registro por producto × sucursal)
-    "tata":     run_tata,
+    "gdu":       run_gdu,        # Playwright GDU — deprecado
+    "gdu_rest":  run_gdu_rest,   # GDU via REST API (1 registro por producto × sucursal)
+    "tata":      run_tata,
     "farmashop": run_farmashop,
-    "botiga":   run_botiga,
-    "full":     run_full,      # tata + farmashop + botiga + gdu_rest
-    "parallel": run_full_parallel,
+    "botiga":    run_botiga,
+    "eldorado":  run_eldorado,   # El Dorado via VTEX REST
+    "full":      run_full,       # tata + farmashop + botiga + gdu_rest + eldorado
+    "parallel":  run_full_parallel,
 }
 
 if __name__ == "__main__":
