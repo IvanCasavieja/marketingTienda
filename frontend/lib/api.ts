@@ -2,13 +2,43 @@ import axios, { AxiosInstance } from "axios";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+// ── Token storage ─────────────────────────────────────────────────────────────
+// On mobile browsers (especially Safari iOS) cross-site httpOnly cookies are
+// blocked by ITP / Private Browsing even when SameSite=None; Secure is set.
+// We store the access token in localStorage as fallback so auth works on all
+// platforms. The backend accepts both cookie AND Authorization header.
+const TOKEN_KEY = "mktg_at";
+
+export function saveAccessToken(token: string): void {
+  if (typeof window !== "undefined") localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function clearAccessToken(): void {
+  if (typeof window !== "undefined") localStorage.removeItem(TOKEN_KEY);
+}
+
+// ── Axios instance ────────────────────────────────────────────────────────────
 export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
-  withCredentials: true, // sends httpOnly cookies on every request
+  withCredentials: true, // still send cookies when the browser supports them
 });
 
-// Auto-refresh on 401 — cookies are sent automatically, no token reading needed
+// Request interceptor: attach token as Authorization header (fallback for mobile)
+api.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token && !config.headers["Authorization"]) {
+    config.headers["Authorization"] = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Response interceptor: auto-refresh on 401
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
@@ -16,12 +46,18 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
       try {
-        await axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+        const refreshRes = await axios.post(
+          `${BASE_URL}/auth/refresh`,
+          {},
+          { withCredentials: true },
+        );
+        // Save new token from refresh response if present (mobile path)
+        const newToken = refreshRes.data?.access_token;
+        if (newToken) saveAccessToken(newToken);
         return api(original);
       } catch {
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
+        clearAccessToken();
+        if (typeof window !== "undefined") window.location.href = "/login";
       }
     }
     return Promise.reject(error);
@@ -29,14 +65,22 @@ api.interceptors.response.use(
 );
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post("/auth/login", { email, password }),
+  login: async (email: string, password: string) => {
+    const res = await api.post("/auth/login", { email, password });
+    // Save access_token from body — works even when cookies are blocked (mobile)
+    if (res.data?.access_token) saveAccessToken(res.data.access_token);
+    return res;
+  },
   register: (email: string, full_name: string, password: string) =>
     api.post("/auth/register", { email, full_name, password }),
   me: () => api.get("/auth/me"),
-  logout: () => api.post("/auth/logout"),
+  logout: async () => {
+    clearAccessToken();
+    return api.post("/auth/logout");
+  },
   forgotPassword: (email: string) => api.post("/auth/forgot-password", { email }),
-  resetPassword: (token: string, new_password: string) => api.post("/auth/reset-password", { token, new_password }),
+  resetPassword: (token: string, new_password: string) =>
+    api.post("/auth/reset-password", { token, new_password }),
 };
 
 export const metricsApi = {
