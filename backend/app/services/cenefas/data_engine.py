@@ -169,12 +169,14 @@ def process_row(
                 _nx_applied = True
 
         elif re.search(r"m\s*[xX×]\s*n", _ofertadet_raw, re.IGNORECASE):
-            # M x N: oferta = literal de columna OFERTA (ej "3x2"), mecanica con primer número
-            result["oferta"] = _oferta_raw
+            # M x N: "3x2"/"2x1" va en el slot de precio; oferta queda vacío
+            _precio_original  = result.get("precioActual", "")
+            result["oferta"]       = ""
+            result["precioActual"] = _oferta_raw   # "3x2" ocupa el lugar del precio
             _m_first = re.match(r"^(\d+)", _oferta_raw)
             if _m_first:
                 _cantidad = _m_first.group(1)
-                result["mecanica"] = f"Comprando {_cantidad}, {result.get('precioActual', '')} la unidad."
+                result["mecanica"] = f"Comprando {_cantidad}, {_precio_original} la unidad."
             _nx_applied = True
 
         elif not _ofertadet_raw:
