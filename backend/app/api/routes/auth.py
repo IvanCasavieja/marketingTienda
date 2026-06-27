@@ -35,8 +35,11 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
 
 
 def _clear_auth_cookies(response: Response) -> None:
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
+    # Must pass the same path/secure/samesite that were used when setting the
+    # cookie — otherwise the browser won't match and the cookie stays alive.
+    is_prod = settings.APP_ENV == "production"
+    response.delete_cookie("access_token",  path="/", secure=is_prod, samesite="none" if is_prod else "lax")
+    response.delete_cookie("refresh_token", path="/", secure=is_prod, samesite="none" if is_prod else "lax")
 
 
 def _client_ip(request: Request) -> str:
