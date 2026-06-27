@@ -190,21 +190,39 @@ async def run_farmashop():
     log.info("=== FARMASHOP COMPLETADO ===")
 
 
+async def run_botiga():
+    """Runner de Botiga (botiga.farmashop.com.uy) — Magento 2.4 GraphQL.
+    Incluye validación de URLs 404 post-scraping (ver botiga_graphql.validar_urls).
+    GDU Playwright se omite intencionalmente — reemplazado por gdu_full_scan.py (REST API).
+    """
+    from app.services.scraper import store
+    from app.services.scraper.fases import run_botiga_fase
+    store.limpiar()
+    prog = Path(_data_dir) / "progreso_botiga.json"
+    if prog.exists():
+        prog.unlink()
+    for fase in (1, 2, 3, 4):
+        await _correr_fase(f"Botiga fase {fase}/4", run_botiga_fase, fase)
+    log.info("=== BOTIGA COMPLETADO ===")
+
+
 async def run_full():
+    # GDU se omite aquí — ahora se raspa con gdu_full_scan.py (REST, sin Playwright)
     await run_tata()
     await run_farmashop()
-    await run_gdu()
+    await run_botiga()
     log.info("=== SCAN COMPLETO FINALIZADO — %d productos totales ===", _stats["total_prods"])
 
 
 async def run_full_parallel():
-    """Corre GDU, Tata y Farmashop en subprocesos paralelos independientes.
-    Tiempo total: ~2h15min (bound por GDU) vs ~3h secuencial."""
+    """Corre Tata, Farmashop y Botiga en subprocesos paralelos independientes.
+    GDU se omite — reemplazado por gdu_full_scan.py (REST API, sin Playwright).
+    """
     script    = Path(__file__).resolve()
     base_data = Path(_data_dir)
     procs: dict[str, subprocess.Popen] = {}
 
-    for target in ("gdu", "tata", "farmashop"):
+    for target in ("tata", "farmashop", "botiga"):
         sub_dir = base_data / target
         sub_dir.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
@@ -266,10 +284,11 @@ async def run_full_parallel():
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 OPCIONES = {
-    "gdu":       run_gdu,
+    "gdu":       run_gdu,       # Playwright GDU — deprecado, usar gdu_full_scan.py
     "tata":      run_tata,
     "farmashop": run_farmashop,
-    "full":      run_full,
+    "botiga":    run_botiga,
+    "full":      run_full,      # tata + farmashop + botiga (sin GDU Playwright)
     "parallel":  run_full_parallel,
 }
 
