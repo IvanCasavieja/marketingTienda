@@ -230,6 +230,30 @@ async def run_eldorado():
     log.info("=== EL DORADO COMPLETADO ===")
 
 
+async def _export_diario():
+    """Exporta el snapshot actual a archivos/YYYY-MM-DD/ (CSV.gz + Excel)."""
+    from datetime import date as _date
+    import subprocess, sys
+    script = Path(__file__).parent / "scripts" / "export_diario.py"
+    fecha  = str(_date.today())
+    log.info("Export diario → archivos/%s/", fecha)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, str(script), "--fecha", fecha,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        out, _ = await proc.communicate()
+        for line in out.decode("utf-8", errors="replace").splitlines():
+            log.info("[export] %s", line)
+        if proc.returncode == 0:
+            log.info("Export diario completado.")
+        else:
+            log.warning("Export diario terminó con código %d", proc.returncode)
+    except Exception as e:
+        log.warning("Export diario falló: %s", e)
+
+
 async def run_full():
     await run_tata()
     await run_farmashop()
@@ -237,6 +261,7 @@ async def run_full():
     await run_gdu_rest()
     await run_eldorado()
     log.info("=== SCAN COMPLETO FINALIZADO — %d productos totales ===", _stats["total_prods"])
+    await _export_diario()
 
 
 async def run_full_parallel():
