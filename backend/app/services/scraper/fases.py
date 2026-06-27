@@ -29,6 +29,7 @@ PROGRESO_FARMASHOP  = _DATA_DIR / "progreso_farmashop.json"
 PROGRESO_TI         = _DATA_DIR / "progreso_ti.json"
 PROGRESO_BOTIGA     = _DATA_DIR / "progreso_botiga.json"
 PROGRESO_PIGALLE    = _DATA_DIR / "progreso_pigalle.json"
+PROGRESO_ELDORADO   = _DATA_DIR / "progreso_eldorado.json"
 
 DOMINIOS_GDU = {
     "Disco":  "https://www.disco.com.uy",
@@ -718,16 +719,58 @@ def run_pigalle_fase(fase: int):
 
 
 # ---------------------------------------------------------------------------
+# El Dorado — VTEX IO Catalog System REST (sin autenticación)
+# ---------------------------------------------------------------------------
+
+_ELDORADO_PHASES_CACHE: dict | None = None
+
+
+def _get_eldorado_phases() -> dict:
+    """Descarga el árbol de categorías una sola vez y lo cachea en memoria."""
+    global _ELDORADO_PHASES_CACHE
+    if _ELDORADO_PHASES_CACHE is None:
+        from .eldorado_rest import build_phases
+        _ELDORADO_PHASES_CACHE = build_phases(4)
+    return _ELDORADO_PHASES_CACHE
+
+
+def run_eldorado_fase(fase: int) -> None:
+    """
+    Raspa El Dorado vía VTEX Catalog System iterando por categorías hoja.
+    ~318 categorías hoja divididas en 4 fases de ~80 c/u.
+    Precio único nacional (sin variación por sucursal).
+    """
+    from .eldorado_rest import scan_fase
+
+    prog = cargar_progreso(PROGRESO_ELDORADO)
+
+    if fase in prog.get("fases_completadas", []):
+        log.info("ElDorado: fase %d ya completada", fase)
+        return
+
+    fases = _get_eldorado_phases()
+    records   = scan_fase(fase, fases)
+    guardados = store.guardar_bulk(records)
+
+    fases_ok = prog.get("fases_completadas", [])
+    fases_ok.append(fase)
+    prog["fases_completadas"] = fases_ok
+    prog["total_guardados"]   = prog.get("total_guardados", 0) + guardados
+    guardar_progreso(PROGRESO_ELDORADO, prog)
+    log.info("ElDorado: fase %d completada — %d registros guardados", fase, guardados)
+
+
+# ---------------------------------------------------------------------------
 # Full scan
 # ---------------------------------------------------------------------------
 
 def run_full():
-    """Raspa Tata, Farmashop, GDU, Botiga y Pigalle."""
+    """Raspa Tata, Farmashop, GDU REST, Botiga, Pigalle y El Dorado."""
     log.info("=== FULL SCAN INICIADO ===")
 
     store.limpiar()
     for _prog in (PROGRESO_GDU, PROGRESO_TATA, PROGRESO_FARMASHOP, PROGRESO_TI,
-                  PROGRESO_BOTIGA, PROGRESO_PIGALLE):
+                  PROGRESO_BOTIGA, PROGRESO_PIGALLE, PROGRESO_ELDORADO):
         if _prog.exists():
             _prog.unlink()
 
@@ -741,6 +784,8 @@ def run_full():
         run_botiga_fase(fase)
     for fase in (1, 2, 3, 4):
         run_pigalle_fase(fase)
+    for fase in (1, 2, 3, 4):
+        run_eldorado_fase(fase)
 
     totales = store.contar()
     total   = sum(totales.values())
