@@ -6,7 +6,7 @@ import { Analysis, PLATFORM_LABELS } from "@/types";
 import { format, subDays } from "date-fns";
 import {
   Clock, ChevronRight, XCircle, MessageSquare,
-  Send, StopCircle, Loader2, RotateCcw, Gavel,
+  Send, StopCircle, Loader2, RotateCcw, Gavel, Globe, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -46,7 +46,7 @@ interface ChatMessage {
   speaker: "Claude" | "ChatGPT" | "Llama" | "user";
   content: string;
   role?: string;
-  type: "greeting" | "debate" | "user";
+  type: "greeting" | "debate" | "user" | "web_context";
 }
 
 interface TokenTotals {
@@ -180,6 +180,34 @@ function AiBubble({
   );
 }
 
+function WebContextBubble({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="flex justify-center animate-fade-in">
+      <div className="w-full max-w-[85%] rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 overflow-hidden">
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30 transition-colors"
+        >
+          <Globe size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 flex-1 text-left">
+            ChatGPT buscó contexto del período
+          </span>
+          {expanded
+            ? <ChevronUp size={13} className="text-emerald-500 shrink-0" />
+            : <ChevronDown size={13} className="text-emerald-500 shrink-0" />
+          }
+        </button>
+        {expanded && (
+          <div className="px-4 pb-3 text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed border-t border-emerald-200 dark:border-emerald-800 pt-2.5">
+            <Md text={content} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
@@ -249,7 +277,7 @@ export default function AnalyticsPage() {
     setChatMessages((prev) => [...prev, userMsg]);
 
     const historyForApi = [...chatMessages, userMsg]
-      .filter((m) => m.type !== "greeting")
+      .filter((m) => m.type !== "greeting" && m.type !== "web_context")
       .map((m) => ({ speaker: m.speaker, content: m.content, role: m.role, type: m.type }));
 
     await runTurn(historyForApi, msg);
@@ -285,7 +313,14 @@ export default function AnalyticsPage() {
           if (!event.startsWith("data: ")) continue;
           try {
             const parsed = JSON.parse(event.slice(6).trim());
-            if (parsed.type === "message") {
+            if (parsed.type === "web_context") {
+              setChatMessages((prev) => [...prev, {
+                id: `wc-${Date.now()}`,
+                speaker: "ChatGPT",
+                type: "web_context",
+                content: parsed.content,
+              }]);
+            } else if (parsed.type === "message") {
               currentSpeakers.current.add(parsed.speaker);
               setChatMessages((prev) => [...prev, {
                 id: `m-${Date.now()}-${parsed.speaker}`,
@@ -580,6 +615,9 @@ export default function AnalyticsPage() {
             {/* ── Messages ── */}
             <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-slate-50/60 dark:bg-slate-900/50">
               {chatMessages.map((msg) => {
+                if (msg.type === "web_context") {
+                  return <WebContextBubble key={msg.id} content={msg.content} />;
+                }
                 if (msg.speaker === "user") {
                   return <UserBubble key={msg.id} content={msg.content} />;
                 }

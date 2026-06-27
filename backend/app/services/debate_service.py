@@ -237,6 +237,40 @@ async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str
     return resp.choices[0].message.content, tokens
 
 
+async def _fetch_web_context(date_from: date, date_to: date) -> Tuple[str, int]:
+    """ChatGPT busca contexto real del período vía web search (gpt-4o-search-preview)."""
+    try:
+        import openai as _openai
+    except ImportError:
+        raise RuntimeError("Paquete 'openai' no instalado")
+    if not settings.OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY no configurado")
+
+    prompt = (
+        f"Soy analista de marketing digital en Uruguay. Necesito contexto real del período "
+        f"{date_from} al {date_to} para interpretar métricas de campañas digitales.\n\n"
+        f"Buscá y resumí en español:\n"
+        f"1. **Eventos comerciales en Uruguay** en ese período: feriados, fechas especiales, "
+        f"campañas de descuento (Hot Sale, Black Friday, Cyber Monday, vuelta al cole, etc.) "
+        f"que pudieran impactar el comportamiento del consumidor digital.\n"
+        f"2. **Novedades de plataformas publicitarias** (Meta Ads, Google Ads, TikTok Ads) "
+        f"durante ese período: cambios de algoritmo, actualizaciones de políticas o nuevas "
+        f"funciones que puedan explicar variaciones de performance.\n"
+        f"3. **Contexto económico Uruguay**: tipo de cambio USD/UYU aproximado en esa fecha, "
+        f"alguna noticia económica relevante que afecte el consumo digital.\n\n"
+        f"Solo incluí lo concreto y verificable. Máximo 350 palabras."
+    )
+
+    client = _openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    resp = await client.chat.completions.create(
+        model="gpt-4o-search-preview",
+        max_tokens=600,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    tokens = (resp.usage.prompt_tokens or 0) + (resp.usage.completion_tokens or 0)
+    return resp.choices[0].message.content, tokens
+
+
 async def _ask_llama(system: str, prompt: str, max_tokens: int = 900) -> Tuple[str, int]:
     try:
         from groq import AsyncGroq
@@ -479,7 +513,7 @@ async def stream_debate_turn(
     date_from_2: date | None = None,
     date_to_2: date | None = None,
 ) -> AsyncIterator[dict]:
-    """Sequential debate: Claude responds first, then ChatGPT reads Claude's answer and responds to both."""
+    """Sequential debate: ChatGPT fetches web context, Claude draws conclusions, ChatGPT responds."""
     compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
     history_str = _build_history_str(history)
     is_first_turn = not any(m.get("speaker") in ("Claude", "ChatGPT") for m in history)
@@ -496,20 +530,41 @@ async def stream_debate_turn(
             f"{comparison_ctx}"
         )
 
+    # ── Step 0: ChatGPT busca contexto externo del período ────────────────────
+    web_context = ""
+    web_ctx_tokens = 0
+    try:
+        web_context, web_ctx_tokens = await _fetch_web_context(date_from, date_to)
+        yield {"type": "web_context", "speaker": "ChatGPT", "content": web_context}
+    except Exception:
+        pass  # continúa sin contexto web si falla
+
+    web_section = (
+        f"\n\n## CONTEXTO EXTERNO DEL PERÍODO (búsqueda web en tiempo real)\n{web_context}"
+        if web_context else ""
+    )
+
     base_parts = [
         MARKET_CONTEXT,
         *(([history_str]) if history_str else []),
-        data_section,
+        data_section + web_section,
         f"El usuario dice: **{user_message}**",
     ]
 
     # ── Step 1: Claude ────────────────────────────────────────────────────────
+    web_ctx_note = (
+        "\nIMPORTANTE: ChatGPT ya buscó contexto real del período (eventos Uruguay, "
+        "novedades de plataformas, contexto económico) — está incluido en los datos. "
+        "Usalo para contextualizar causas de variaciones en las métricas.\n"
+        if web_context else ""
+    )
     if is_first_turn:
         claude_instructions = (
             "Primer turno — analizá la pregunta del usuario con datos concretos:\n"
+            + web_ctx_note +
             "1. Usá números exactos de los datos: ROAS, CTR, CPC, CPM por campaña. Nada de promedios vagos.\n"
             "2. Identificá la campaña con mejor y peor desempeño y explicá la CAUSA RAÍZ "
-            "(¿es el creativo, la audiencia, la puja, la plataforma?).\n"
+            "(¿es el creativo, la audiencia, la puja, la plataforma? ¿O algo del contexto externo del período?).\n"
             "3. Comparás los números contra los benchmarks de Uruguay que conocés. "
             "¿Está arriba o abajo? ¿Cuánto? ¿Qué implica eso?\n"
             "4. Calculá algo no obvio: costo por conversión real, eficiencia relativa entre plataformas, "
@@ -558,7 +613,7 @@ async def stream_debate_turn(
     gpt_content, gpt_tokens = await _ask_gpt(GPT_PERSONA, gpt_prompt, 1400)
     yield {"type": "message", "speaker": "ChatGPT", "role": "debate", "content": gpt_content}
 
-    tokens_by_model = {"Claude": claude_tokens, "ChatGPT": gpt_tokens}
+    tokens_by_model = {"Claude": claude_tokens, "ChatGPT": gpt_tokens + web_ctx_tokens}
     yield {"type": "tokens", "total": sum(tokens_by_model.values()), "by_model": tokens_by_model}
 
 
