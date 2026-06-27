@@ -23,6 +23,7 @@ _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 CATEGORIAS_GDU_JSON = _PKG_DIR / "categorias_gdu.json"
 PROGRESO_GDU        = _DATA_DIR / "progreso_gdu.json"
+PROGRESO_GDU_REST   = _DATA_DIR / "progreso_gdu_rest.json"
 PROGRESO_TATA       = _DATA_DIR / "progreso_tata.json"
 PROGRESO_FARMASHOP  = _DATA_DIR / "progreso_farmashop.json"
 PROGRESO_TI         = _DATA_DIR / "progreso_ti.json"
@@ -301,6 +302,46 @@ def run_gdu_fase(fase: int):
     prog["total_guardados"] = prog.get("total_guardados", 0) + total_g
     guardar_progreso(PROGRESO_GDU, prog)
     log.info("GDU Fase %d terminada: guardados=%d errores=%d", fase, total_g, total_e)
+
+
+# ---------------------------------------------------------------------------
+# GDU REST — Disco / Devoto / Géant vía microservicios Azure (sin Playwright)
+# ---------------------------------------------------------------------------
+
+def run_gdu_rest_fase(fase: int) -> None:
+    """
+    Raspa GDU (Disco/Devoto/Géant) via REST API para un rango de páginas.
+
+    Un ProductRecord por (producto × sucursal). La URL lleva ?sc=<branch_id>
+    para que el sitio muestre el precio de esa sucursal.
+
+    Fases: 4 rangos de ~132 páginas sobre las ~527 del catálogo completo.
+    """
+    from .gdu_rest import scan_fase, GDU_REST_PHASES
+
+    rango = GDU_REST_PHASES.get(fase)
+    if not rango:
+        log.error("GDU REST: fase %d no existe (hay 4)", fase)
+        return
+
+    page_from, page_to = rango
+    prog = cargar_progreso(PROGRESO_GDU_REST)
+
+    if fase in prog.get("fases_completadas", []):
+        log.info("GDU REST: fase %d ya completada", fase)
+        return
+
+    log.info("GDU REST: fase %d — páginas %s–%s", fase, page_from, page_to or "fin")
+
+    records = scan_fase(page_from, page_to, cache_dir=_DATA_DIR)
+    guardados = store.guardar_bulk(records)
+
+    fases_ok = prog.get("fases_completadas", [])
+    fases_ok.append(fase)
+    prog["fases_completadas"]  = fases_ok
+    prog["total_guardados"]    = prog.get("total_guardados", 0) + guardados
+    guardar_progreso(PROGRESO_GDU_REST, prog)
+    log.info("GDU REST: fase %d completada — %d registros guardados", fase, guardados)
 
 
 # ---------------------------------------------------------------------------

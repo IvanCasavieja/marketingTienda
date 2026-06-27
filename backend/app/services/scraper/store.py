@@ -20,21 +20,24 @@ DB_PATH = _DATA_DIR / "productos.db"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS productos (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    tienda          TEXT    NOT NULL,
-    url             TEXT    NOT NULL UNIQUE,
-    nombre          TEXT,
-    precio          REAL,
-    precio_lista    REAL,
-    sku             TEXT,
-    barcode         TEXT,
-    marca           TEXT,
-    categoria       TEXT,
-    actualizado_en  TEXT
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    tienda           TEXT    NOT NULL,
+    url              TEXT    NOT NULL UNIQUE,
+    nombre           TEXT,
+    precio           REAL,
+    precio_lista     REAL,
+    sku              TEXT,
+    barcode          TEXT,
+    marca            TEXT,
+    categoria        TEXT,
+    sucursal_id      TEXT,
+    sucursal_nombre  TEXT,
+    actualizado_en   TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_sc_barcode ON productos(barcode);
-CREATE INDEX IF NOT EXISTS idx_sc_sku     ON productos(sku);
-CREATE INDEX IF NOT EXISTS idx_sc_tienda  ON productos(tienda);
+CREATE INDEX IF NOT EXISTS idx_sc_barcode  ON productos(barcode);
+CREATE INDEX IF NOT EXISTS idx_sc_sku      ON productos(sku);
+CREATE INDEX IF NOT EXISTS idx_sc_tienda   ON productos(tienda);
+CREATE INDEX IF NOT EXISTS idx_sc_sucursal ON productos(sucursal_id);
 """
 
 
@@ -44,10 +47,14 @@ def conectar() -> sqlite3.Connection:
     con.execute("PRAGMA synchronous=NORMAL")
     con.execute("PRAGMA busy_timeout=5000")
     con.executescript(_SCHEMA)
-    # migración: agregar columna si la DB viene de versión anterior
+    # migraciones incrementales para DBs pre-existentes
     cols = {r[1] for r in con.execute("PRAGMA table_info(productos)")}
     if "precio_lista" not in cols:
         con.execute("ALTER TABLE productos ADD COLUMN precio_lista REAL")
+    if "sucursal_id" not in cols:
+        con.execute("ALTER TABLE productos ADD COLUMN sucursal_id TEXT")
+    if "sucursal_nombre" not in cols:
+        con.execute("ALTER TABLE productos ADD COLUMN sucursal_nombre TEXT")
     con.commit()
     return con
 
@@ -60,23 +67,29 @@ def guardar_bulk(records: list) -> int:
     rows = [
         (r.tienda, r.url, r.nombre, r.precio,
          getattr(r, "precio_lista", None),
-         r.sku, r.barcode, r.marca, r.categoria, ts)
+         r.sku, r.barcode, r.marca, r.categoria,
+         getattr(r, "sucursal_id", None),
+         getattr(r, "sucursal_nombre", None),
+         ts)
         for r in validos
     ]
     con = conectar()
     con.executemany("""
         INSERT INTO productos
-            (tienda, url, nombre, precio, precio_lista, sku, barcode, marca, categoria, actualizado_en)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (tienda, url, nombre, precio, precio_lista, sku, barcode, marca, categoria,
+             sucursal_id, sucursal_nombre, actualizado_en)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(url) DO UPDATE SET
-            nombre       = excluded.nombre,
-            precio       = excluded.precio,
-            precio_lista = excluded.precio_lista,
-            sku          = excluded.sku,
-            barcode      = excluded.barcode,
-            marca        = excluded.marca,
-            categoria    = excluded.categoria,
-            actualizado_en = excluded.actualizado_en
+            nombre          = excluded.nombre,
+            precio          = excluded.precio,
+            precio_lista    = excluded.precio_lista,
+            sku             = excluded.sku,
+            barcode         = excluded.barcode,
+            marca           = excluded.marca,
+            categoria       = excluded.categoria,
+            sucursal_id     = excluded.sucursal_id,
+            sucursal_nombre = excluded.sucursal_nombre,
+            actualizado_en  = excluded.actualizado_en
     """, rows)
     con.commit()
     con.close()
@@ -85,7 +98,8 @@ def guardar_bulk(records: list) -> int:
 
 def todos() -> list[dict]:
     con = conectar()
-    cols = ["id","tienda","url","nombre","precio","precio_lista","sku","barcode","marca","categoria"]
+    cols = ["id","tienda","url","nombre","precio","precio_lista","sku","barcode","marca",
+            "categoria","sucursal_id","sucursal_nombre"]
     sql  = f"SELECT {','.join(cols)} FROM productos"
     filas = [dict(zip(cols, r)) for r in con.execute(sql).fetchall()]
     con.close()

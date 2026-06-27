@@ -190,6 +190,18 @@ async def run_farmashop():
     log.info("=== FARMASHOP COMPLETADO ===")
 
 
+async def run_gdu_rest():
+    """GDU via REST API — Disco/Devoto/Géant, 1 registro por producto × sucursal."""
+    from app.services.scraper import store
+    from app.services.scraper.fases import run_gdu_rest_fase, PROGRESO_GDU_REST
+    store.limpiar()
+    if PROGRESO_GDU_REST.exists():
+        PROGRESO_GDU_REST.unlink()
+    for fase in (1, 2, 3, 4):
+        await _correr_fase(f"GDU REST fase {fase}/4", run_gdu_rest_fase, fase)
+    log.info("=== GDU REST COMPLETADO ===")
+
+
 async def run_botiga():
     """Runner de Botiga (botiga.farmashop.com.uy) — Magento 2.4 GraphQL.
     Incluye validación de URLs 404 post-scraping (ver botiga_graphql.validar_urls).
@@ -207,10 +219,10 @@ async def run_botiga():
 
 
 async def run_full():
-    # GDU se omite aquí — ahora se raspa con gdu_full_scan.py (REST, sin Playwright)
     await run_tata()
     await run_farmashop()
     await run_botiga()
+    await run_gdu_rest()
     log.info("=== SCAN COMPLETO FINALIZADO — %d productos totales ===", _stats["total_prods"])
 
 
@@ -284,12 +296,13 @@ async def run_full_parallel():
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 OPCIONES = {
-    "gdu":       run_gdu,       # Playwright GDU — deprecado, usar gdu_full_scan.py
-    "tata":      run_tata,
+    "gdu":      run_gdu,       # Playwright GDU — deprecado
+    "gdu_rest": run_gdu_rest,  # GDU via REST API (1 registro por producto × sucursal)
+    "tata":     run_tata,
     "farmashop": run_farmashop,
-    "botiga":    run_botiga,
-    "full":      run_full,      # tata + farmashop + botiga (sin GDU Playwright)
-    "parallel":  run_full_parallel,
+    "botiga":   run_botiga,
+    "full":     run_full,      # tata + farmashop + botiga + gdu_rest
+    "parallel": run_full_parallel,
 }
 
 if __name__ == "__main__":
@@ -297,7 +310,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="MKTG Platform Scraper de Precios")
     ap.add_argument("tipo", nargs="?", default="full",
                     choices=list(OPCIONES.keys()),
-                    help="Scan a correr")
+                    help="Scan a correr (default: full)")
     ap.add_argument("--child", action="store_true",
                     help="Modo hijo — suprime notificaciones email (usado por run_full_parallel)")
     parsed = ap.parse_args()
