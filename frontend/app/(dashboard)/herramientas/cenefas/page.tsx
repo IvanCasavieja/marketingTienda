@@ -454,7 +454,7 @@ export default function CenefasPage() {
           <ComboField label={t("cenefas.alcohol")} value={otraAlcohol} onChange={setOtraAlcohol} storageKey="cenefa_opts_segunda_aclaracion" />
           <ComboField label="Banco / Beneficio" value={banco} onChange={setBanco} storageKey="cenefa_opts_banco" />
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Margen (cm)</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Margen lateral (cm)</label>
             <input
               type="number"
               min="0"
