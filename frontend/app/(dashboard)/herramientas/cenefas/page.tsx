@@ -166,7 +166,7 @@ export default function CenefasPage() {
   const canSubmit = !!excel && hasTemplate && status !== "loading";
 
   return (
-    <div className="animate-fade-in max-w-5xl space-y-6">
+    <div className="animate-fade-in w-full space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0">
@@ -178,7 +178,7 @@ export default function CenefasPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-5 items-start">
+      <form onSubmit={handleSubmit} className="grid grid-cols-[3fr_2fr] gap-6 items-start">
         {/* Columna izquierda: Templates + Excel */}
         <div className="flex flex-col gap-5">
 
