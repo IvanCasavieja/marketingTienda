@@ -37,11 +37,9 @@ DOMINIOS_GDU = {
     "Geant":  "https://www.geant.com.uy",
 }
 
-TATA_FASE_1 = [
+TATA_TODAS_CATS: list[list] = [
     ["frescos"], ["bebidas"], ["perfumeria"], ["textil"],
     ["limpieza"], ["congelados"],
-]
-TATA_FASE_2 = [
     ["bebes"], ["ferreteria"], ["mascotas"], ["tecnologia"],
     ["almacen", "desayuno"], ["almacen", "golosinas-y-chocolates"],
     ["almacen", "aceites-y-aderezos"], ["almacen", "snacks"],
@@ -49,19 +47,13 @@ TATA_FASE_2 = [
     ["almacen", "arroz-harina-y-legumbres"], ["almacen", "panificados"],
     ["almacen", "sopas-caldos-y-pure"], ["almacen", "aceitunas-y-encurtidos"],
     ["almacen", "cigarros"], ["almacen", "pascuas"],
-]
-TATA_FASE_3 = [
     ["hogar-y-bazar"], ["jugueteria-y-libreria"],
     ["electrodomesticos-y-aires-ac-"], ["electronica-audio-y-video"],
     ["belleza-y-cuidado-personal"], ["deportes-y-fitness"],
     ["pequenos-electrodomesticos"], ["herramientas"], ["hogar-muebles-y-jardin"],
 ]
 
-TATA_TODAS_CONOCIDAS: set = set()
-for _f in [TATA_FASE_1, TATA_FASE_2, TATA_FASE_3]:
-    for _c in _f:
-        TATA_TODAS_CONOCIDAS.add("/".join(_c))
-TATA_FASES_CONOCIDAS = {1: TATA_FASE_1, 2: TATA_FASE_2, 3: TATA_FASE_3}
+TATA_TODAS_CONOCIDAS: set = {"/".join(c) for c in TATA_TODAS_CATS}
 
 TERMINOS_DESCUBRIMIENTO = [
     "heladera","lavarropas","microondas","television",
@@ -349,7 +341,8 @@ def run_gdu_rest_fase(fase: int) -> None:
 # Ta-Ta — GraphQL API
 # ---------------------------------------------------------------------------
 
-def _guardar_productos_tata(resultado: dict, prog: dict) -> int:
+def _guardar_productos_tata(resultado: dict, prog: dict,
+                            sucursal: dict | None = None) -> int:
     guardados = 0
     for slug, info in resultado.items():
         if "error" in info:
@@ -364,131 +357,62 @@ def _guardar_productos_tata(resultado: dict, prog: dict) -> int:
                 sku=str(pr["sku"]) if pr["sku"] else None,
                 barcode=str(pr["barcode"]) if pr.get("barcode") else None,
                 marca=pr.get("marca"), categoria=slug,
+                sucursal_id=pr.get("sucursal_id"),
+                sucursal_nombre=pr.get("sucursal_nombre"),
             )
             for pr in prods
         ]
         guardados += store.guardar_bulk(records)
-        prog["completados"].append(slug)
-        guardar_progreso(PROGRESO_TATA, prog)
-        log.info("Tata %s: %d productos", slug, len(prods))
+        log.info("Tata [%s] %s: %d productos",
+                 sucursal["nombre"] if sucursal else "–", slug, len(prods))
     return guardados
 
 
 def run_tata_fase(fase: int):
-    if fase in (1, 2, 3):
-        _run_tata_fase_conocida(fase)
-    elif fase == 4:
-        _run_tata_fase4_descubrimiento()
-    else:
-        log.error("Tata: fase %d no existe (hay 4)", fase)
+    """
+    Raspa Ta-Ta con requests — las 15 sucursales en paralelo en una sola llamada.
+    El parámetro `fase` se ignora (se mantiene por compatibilidad con run_scan.py).
+    Solo corre en la primera llamada; las restantes detectan que ya está completo.
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from .tata_graphql import SUCURSALES, bajar_sucursal
 
-
-def _run_tata_fase_conocida(fase: int):
-    from .tata_graphql import bajar_varias
-
-    categorias  = TATA_FASES_CONOCIDAS[fase]
     prog        = cargar_progreso(PROGRESO_TATA)
-    completados = set(prog["completados"])
-    pendientes  = [c for c in categorias if "/".join(c) not in completados]
+    completados = set(prog.get("completados_suc", []))
+    pendientes  = [s for s in SUCURSALES if s["seller_id"] not in completados]
 
-    log.info("Tata Fase %d: %d categorias, %d pendientes", fase, len(categorias), len(pendientes))
     if not pendientes:
-        log.info("Tata Fase %d: ya completada", fase)
+        log.info("Tata: todas las sucursales ya completadas (fase %d ignorada)", fase)
         return
 
-    resultado = bajar_varias(pendientes)
-    guardados = _guardar_productos_tata(resultado, prog)
-    prog["total_guardados"] = prog.get("total_guardados", 0) + guardados
-    guardar_progreso(PROGRESO_TATA, prog)
-    log.info("Tata Fase %d terminada: %d productos", fase, guardados)
+    log.info("Tata: %d sucursales en paralelo", len(pendientes))
 
+    prog_lock       = threading.Lock()
+    guardados_total = 0
 
-def _run_tata_fase4_descubrimiento():
-    import urllib.parse
-    from .tata_graphql import bajar_categoria
-    from playwright.sync_api import sync_playwright
+    def _procesar_sucursal(suc: dict) -> int:
+        log.info("Tata [%s]: scraping %d categorías", suc["nombre"], len(TATA_TODAS_CATS))
+        resultado = bajar_sucursal(suc, TATA_TODAS_CATS)
+        guardados = _guardar_productos_tata(resultado, {}, sucursal=suc)
+        with prog_lock:
+            prog.setdefault("completados_suc", []).append(suc["seller_id"])
+            prog["total_guardados"] = prog.get("total_guardados", 0) + guardados
+            guardar_progreso(PROGRESO_TATA, prog)
+        log.info("Tata [%s]: %d productos guardados", suc["nombre"], guardados)
+        return guardados
 
-    log.info("Tata Fase 4: descubrimiento dinámico")
-    prog        = cargar_progreso(PROGRESO_TATA)
-    completados = set(prog["completados"])
-    BASE        = "https://www.tata.com.uy"
-
-    def search_url(term):
-        v = {"first": 1, "after": "0", "sort": "score_desc", "term": term,
-             "selectedFacets": [
-                 {"key": "channel", "value": '{"salesChannel":"4","regionId":""}'},
-                 {"key": "locale",  "value": "es-uy"},
-             ]}
-        return f"{BASE}/api/graphql?operationName=ProductGalleryQuery&variables={urllib.parse.quote(json.dumps(v))}"
-
-    nuevas_cats: dict = {}
-
-    with sync_playwright() as pw:
-        b = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-        page = b.new_page()
-        page.goto(BASE, timeout=30000)
-        try:
-            page.wait_for_load_state("domcontentloaded", timeout=10000)
-        except Exception:
-            pass
-        page.wait_for_timeout(2000)
-
-        for term in TERMINOS_DESCUBRIMIENTO:
+    with ThreadPoolExecutor(max_workers=len(pendientes)) as ex:
+        futures = {ex.submit(_procesar_sucursal, suc): suc for suc in pendientes}
+        for f in as_completed(futures):
             try:
-                raw = page.evaluate(
-                    "async (u) => (await fetch(u, {headers:{'content-type':'application/json'}})).text()",
-                    search_url(term),
-                )
-                d = json.loads(raw)
-                s = (d.get("data") or {}).get("search") or {}
-                for f in s.get("facets", []):
-                    if f.get("key") == "category-1":
-                        for val in f.get("values", []):
-                            cat = val["value"]
-                            if cat not in TATA_TODAS_CONOCIDAS and cat not in completados:
-                                nuevas_cats[cat] = val.get("quantity", 0)
-                time.sleep(0.2)
-            except Exception:
-                pass
-        page.close()
+                guardados_total += f.result()
+            except Exception as exc:
+                suc = futures[f]
+                log.error("Tata [%s]: error fatal — %s", suc["nombre"], exc, exc_info=True)
 
-        guardados_total = 0
-        for slug in list(nuevas_cats.keys()):
-            if slug in completados:
-                continue
-            pg = b.new_page()
-            try:
-                pg.goto(BASE, timeout=30000)
-                try:
-                    pg.wait_for_load_state("domcontentloaded", timeout=10000)
-                except Exception:
-                    pass
-                pg.wait_for_timeout(1500)
-                prods, total = bajar_categoria(pg, [slug])
-                records = [
-                    ProductRecord(
-                        tienda="Ta-Ta", url=pr["url"], nombre=pr["nombre"],
-                        precio=float(pr["precio"]) if pr["precio"] is not None else None,
-                        precio_lista=float(pr["precio_lista"]) if pr.get("precio_lista") is not None else None,
-                        sku=str(pr["sku"]) if pr["sku"] else None,
-                        barcode=str(pr["barcode"]) if pr.get("barcode") else None,
-                        marca=pr.get("marca"), categoria=slug,
-                    )
-                    for pr in prods
-                ]
-                guardados_total += store.guardar_bulk(records)
-                prog["completados"].append(slug)
-                guardar_progreso(PROGRESO_TATA, prog)
-                log.info("Tata [fase4] %s: %d/%d", slug, len(prods), total)
-            except Exception as e:
-                log.warning("Tata [fase4] %s ERROR: %s", slug, str(e)[:80])
-            finally:
-                pg.close()
-        b.close()
+    log.info("Tata: %d sucursales completadas — %d productos totales", len(pendientes), guardados_total)
 
-    prog["total_guardados"] = prog.get("total_guardados", 0) + guardados_total
-    guardar_progreso(PROGRESO_TATA, prog)
-    log.info("Tata Fase 4 terminada: %d productos", guardados_total)
 
 
 # ---------------------------------------------------------------------------
@@ -736,9 +660,9 @@ def _get_eldorado_phases() -> dict:
 
 def run_eldorado_fase(fase: int) -> None:
     """
-    Raspa El Dorado vía VTEX Catalog System iterando por categorías hoja.
-    ~318 categorías hoja divididas en 4 fases de ~80 c/u.
-    Precio único nacional (sin variación por sucursal).
+    Raspa El Dorado vía VTEX IO Intelligent Search con regionId por sucursal.
+    17 tiendas en Uruguay divididas en 4 fases de 4-5 sucursales c/u.
+    Una fila por (producto × sucursal) — precios varían por departamento.
     """
     from .eldorado_rest import scan_fase
 

@@ -422,7 +422,7 @@ async def _sync_to_postgres() -> None:
 
     logger.info("scraper_sync: sincronizando %d productos a PostgreSQL", len(productos))
     now  = datetime.now(timezone.utc)
-    BATCH = 500
+    BATCH = 5000
 
     async with AsyncSessionLocal() as db:
         batches = [productos[i:i + BATCH] for i in range(0, len(productos), BATCH)]
