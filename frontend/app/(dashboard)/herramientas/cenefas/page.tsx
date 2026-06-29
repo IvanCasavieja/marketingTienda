@@ -60,7 +60,6 @@ export default function CenefasPage() {
       setSelectedTemplateId(null);
     } else {
       setSelectedTemplateId(id);
-      setSelectedBuiltinSlug(null);
       setCustomPptx(null);
     }
   }
@@ -70,7 +69,6 @@ export default function CenefasPage() {
     if (file) {
       setCustomPptx(file);
       setSelectedTemplateId(null);
-      setSelectedBuiltinSlug(null);
     }
   }
 
