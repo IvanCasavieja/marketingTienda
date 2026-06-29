@@ -182,6 +182,8 @@ export const toolsApi = {
       headers: { "Content-Type": "multipart/form-data" },
     }),
   deleteCenefaTemplate: (id: number) => api.delete(`/tools/cenefas/templates/${id}`),
+  downloadCenefaTemplate: (id: number) =>
+    api.get(`/tools/cenefas/templates/${id}/download`, { responseType: "blob" }),
   downloadExcelTemplate: () =>
     api.get("/tools/cenefas/template", { responseType: "blob" }),
   getBuiltinTemplates: () =>

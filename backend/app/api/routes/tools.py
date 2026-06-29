@@ -141,6 +141,32 @@ async def create_cenefa_template(
     }
 
 
+@router.get("/cenefas/templates/{template_id}/download")
+async def download_cenefa_template_by_id(
+    template_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not current_user.team_group_id:
+        raise HTTPException(status_code=400, detail="Unite a un equipo para usar templates guardados")
+    result = await db.execute(
+        select(CenefaTemplate).where(
+            CenefaTemplate.id == template_id,
+            CenefaTemplate.team_group_id == current_user.team_group_id,
+            CenefaTemplate.is_active == True,
+        )
+    )
+    tmpl = result.scalar_one_or_none()
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template no encontrado")
+    safe_name = tmpl.name.replace(" ", "_").replace("/", "-")
+    return Response(
+        content=tmpl.file_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.pptx"'},
+    )
+
+
 @router.delete("/cenefas/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_cenefa_template(
     template_id: int,
