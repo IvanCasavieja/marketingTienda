@@ -109,6 +109,12 @@ def _set_price(shape, text: str, int_pt: int | None = None) -> None:
     int_r = copy.deepcopy(tmpl_r_int)
     int_r.find(qn("a:t")).text = num_int
     _int_pt_final = int_pt if int_pt is not None else PRICE_INT_PT
+    # Auto-shrink si el número desborda el ancho del shape
+    if int_pt is None and shape.width > 0 and num_int:
+        char_emu = _int_pt_final * 12700 * 0.58
+        if len(num_int) * char_emu > shape.width:
+            _int_pt_final = int(shape.width / (len(num_int) * 12700 * 0.58))
+            _int_pt_final = max(_int_pt_final, PBANCO_INT_PT)
     _rpr = int_r.find(qn("a:rPr"))
     if _rpr is not None:
         _rpr.set("sz", str(_int_pt_final * 100))
@@ -288,7 +294,11 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
             _set_text(shape, "unidad" if multi else "")
 
     # --- Layout adjustments ---
-    is_precio_fijo = not data.get("oferta", "").strip()
+    # MxN también tiene oferta="" pero tiene mecanica; solo precio fijo tiene ambas vacías
+    is_precio_fijo = (
+        not data.get("oferta", "").strip() and
+        not data.get("mecanica", "").strip()
+    )
 
     if is_precio_fijo and oferta_shape is not None and price_shape is not None:
         # Precio fijo: sube precio y descripción para ocupar el espacio vacío de oferta
