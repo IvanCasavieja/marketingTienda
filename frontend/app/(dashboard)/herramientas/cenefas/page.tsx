@@ -178,7 +178,7 @@ export default function CenefasPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-[3fr_2fr] gap-6 items-start">
+      <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-6 items-start">
         {/* Columna izquierda: Templates + Excel */}
         <div className="flex flex-col gap-5">
 
