@@ -99,6 +99,7 @@ _ALIASES: dict[str, str] = {
     "ofertadet":          "_ofertadet",
     "oferta":             "_oferta",
     "subcategoria":       "_subcategoria_legacy",  # needed for DELI logic
+    "comprador":          "_comprador",
 }
 
 # Columnas que, si están presentes, sirven para detectar la fila de headers
@@ -213,6 +214,20 @@ def process_row(
         result["aclaracion"] = aclaracion
     if not result.get("banco"):
         result["banco"] = banco
+
+    # ── COMPRADOR: fiambrería + 100g → precio ÷ 10 (kg → por 100g) ──────────
+    _comprador_raw = ""
+    if "_comprador" in h and h["_comprador"] < len(row):
+        _comprador_raw = str(row[h["_comprador"]] or "").strip()
+    if re.search(r"fiambr", _comprador_raw, re.IGNORECASE):
+        desc = result.get("descripcion", "")
+        if re.search(r"100\s*g\b", desc, re.IGNORECASE):
+            for price_key in ("precioActual", "precioAnterior"):
+                pv_str = result.get(price_key, "")
+                if pv_str:
+                    pv = parse_price_raw(pv_str)
+                    if pv > 0:
+                        result[price_key] = prefix + fmt_price(round(pv / 10, 2))
 
     # ── Aliases backward compat (para templates ya importados con nombres viejos) ──
     _backfill_legacy_keys(result)
