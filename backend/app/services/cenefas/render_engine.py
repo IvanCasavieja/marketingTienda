@@ -61,10 +61,10 @@ def _set_text_sized(shape, text: str, pt: int) -> None:
             run.font.size = Pt(pt)
 
 
-def _set_price(shape, text: str, int_pt: int | None = None) -> None:
+def _set_price(shape, text: str, int_pt: int | None = None, preserve_sizes: bool = False) -> None:
     """Renderiza precio con símbolo, entero y decimal en runs separados.
 
-    El decimal se fuerza a PRICE_DECIMAL_PT; símbolo e entero heredan el template.
+    preserve_sizes=True → no toca atributos sz; respeta los tamaños del template original.
     """
     if not shape.has_text_frame:
         return
@@ -101,32 +101,34 @@ def _set_price(shape, text: str, int_pt: int | None = None) -> None:
 
     sym_r = copy.deepcopy(tmpl_r_sym)
     sym_r.find(qn("a:t")).text = symbol
-    if int_pt is None:  # precio principal
+    if not preserve_sizes and int_pt is None:  # A4 Redex: sobreescribir tamaño símbolo
         _rpr = sym_r.find(qn("a:rPr"))
         if _rpr is not None:
             _rpr.set("sz", str(PRICE_SYMBOL_PT * 100))
 
     int_r = copy.deepcopy(tmpl_r_int)
     int_r.find(qn("a:t")).text = num_int
-    _int_pt_final = int_pt if int_pt is not None else PRICE_INT_PT
-    # Auto-shrink si el número desborda el ancho del shape
-    if int_pt is None and shape.width > 0 and num_int:
-        char_emu = _int_pt_final * 12700 * 0.58
-        if len(num_int) * char_emu > shape.width:
-            _int_pt_final = int(shape.width / (len(num_int) * 12700 * 0.58))
-            _int_pt_final = max(_int_pt_final, PBANCO_INT_PT)
-    _rpr = int_r.find(qn("a:rPr"))
-    if _rpr is not None:
-        _rpr.set("sz", str(_int_pt_final * 100))
+    if not preserve_sizes:
+        _int_pt_final = int_pt if int_pt is not None else PRICE_INT_PT
+        # A4 Redex: auto-shrink si el número desborda el ancho del shape
+        if int_pt is None and shape.width > 0 and num_int:
+            char_emu = _int_pt_final * 12700 * 0.58
+            if len(num_int) * char_emu > shape.width:
+                _int_pt_final = int(shape.width / (len(num_int) * 12700 * 0.58))
+                _int_pt_final = max(_int_pt_final, PBANCO_INT_PT)
+        _rpr = int_r.find(qn("a:rPr"))
+        if _rpr is not None:
+            _rpr.set("sz", str(_int_pt_final * 100))
 
     runs = [sym_r, int_r]
 
     if num_dec:
         dec_r = copy.deepcopy(tmpl_r_int)
         dec_r.find(qn("a:t")).text = num_dec
-        dec_rPr = dec_r.find(qn("a:rPr"))
-        if dec_rPr is not None:
-            dec_rPr.set("sz", str(PRICE_DECIMAL_PT * 100))
+        if not preserve_sizes:
+            dec_rPr = dec_r.find(qn("a:rPr"))
+            if dec_rPr is not None:
+                dec_rPr.set("sz", str(PRICE_DECIMAL_PT * 100))
         runs.append(dec_r)
 
     end_rpr = p_elem.find(qn("a:endParaRPr"))
@@ -139,7 +141,7 @@ def _set_price(shape, text: str, int_pt: int | None = None) -> None:
             p_elem.append(r)
 
 
-def _set_desc(shape, text: str) -> None:
+def _set_desc(shape, text: str, preserve_sizes: bool = False) -> None:
     if not shape.has_text_frame:
         return
     if not text:
@@ -158,12 +160,14 @@ def _set_desc(shape, text: str) -> None:
     first_seg, first_bold = parts[0]
     first_run = target_para.runs[0]
     tmpl_r = copy.deepcopy(first_run._r)
-    _tmpl_rPr = tmpl_r.find(qn("a:rPr"))
-    if _tmpl_rPr is not None:
-        _tmpl_rPr.set("sz", str(DESC_PT * 100))
+    if not preserve_sizes:
+        # A4 Redex: forzar tamaño DESC_PT
+        _tmpl_rPr = tmpl_r.find(qn("a:rPr"))
+        if _tmpl_rPr is not None:
+            _tmpl_rPr.set("sz", str(DESC_PT * 100))
+        first_run.font.size = Pt(DESC_PT)
     first_run.text = first_seg
     first_run.font.bold = first_bold
-    first_run.font.size = Pt(DESC_PT)
 
     p_elem = target_para._p
     all_r = list(p_elem.findall(qn("a:r")))
@@ -238,7 +242,12 @@ def _set_runs_font_size(shape, pt: int) -> None:
 # Llenado de slots
 # ---------------------------------------------------------------------------
 
-def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0) -> None:
+def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0, a4_mode: bool = True) -> None:
+    """Rellena un slot de cenefa con los datos del producto.
+
+    a4_mode=True  → A4 Redex: sobreescribe tamaños de letra y aplica ajustes de layout.
+    a4_mode=False → Pass-through: respeta exactamente el template original (3xA4, Pinchos, etc.).
+    """
     expanded = list(shapes)
     for shape in list(shapes):
         if hasattr(shape, "shapes"):
@@ -251,6 +260,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
     aclaracion_shape = None
     code  = data.get("codigoSKU", "")
     multi = _is_multi_sku(code)
+    ps    = not a4_mode  # preserve_sizes — True cuando NO es A4
 
     for shape in expanded:
         t = _shape_text(shape)
@@ -259,13 +269,14 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
             _set_p1(shape, data.get("mecanica", ""))
         elif re.search(r"Precio\s+\d+", t) or re.search(r"<<Precio\d*>>", t):
             price_shape = shape
-            _set_price(shape, data.get("precioActual", ""))
+            _set_price(shape, data.get("precioActual", ""), preserve_sizes=ps)
         elif re.search(r"<<Mecanica\d+>>", t):
             _set_text(shape, data.get("mecanica", ""))
         elif "<<" in t and "Descripci" in t:
             desc_shape = shape
-            _set_desc(shape, data.get("descripcion", ""))
-            _set_normAutofit(shape)
+            _set_desc(shape, data.get("descripcion", ""), preserve_sizes=ps)
+            if a4_mode:
+                _set_normAutofit(shape)
         elif re.search(r"<<UnidadMedida\d+>>", t):
             _set_text(shape, "unidad" if multi else "")
         elif re.search(r"<<Vigencia\d*>>", t):
@@ -283,7 +294,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
         elif re.search(r"<<[Cc]ode\d*>>", t):
             _set_text(shape, code)
         elif re.search(r"<<[Pp][Bb]anco\d*>>", t, re.IGNORECASE):
-            _set_price(shape, data.get("precioBanco", ""), int_pt=PBANCO_INT_PT)
+            _set_price(shape, data.get("precioBanco", ""), int_pt=PBANCO_INT_PT, preserve_sizes=ps)
         elif re.search(r"<<[Bb]anco\d*>>", t, re.IGNORECASE):
             _set_text(shape, data.get("banco", ""))
         elif re.search(r"<<UnidadPrecio\d*>>", t):
@@ -293,39 +304,43 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
         elif t.strip().lower() == "unidad":
             _set_text(shape, "unidad" if multi else "")
 
-    # --- Layout adjustments ---
-    # MxN también tiene oferta="" pero tiene mecanica; solo precio fijo tiene ambas vacías
-    is_precio_fijo = (
-        not data.get("oferta", "").strip() and
-        not data.get("mecanica", "").strip()
-    )
+    # ═══════════════════════════════════════════════════════════════════════════
+    # A4 REDEX — ajustes de layout exclusivos para cenefa de 1 producto/slide
+    # ═══════════════════════════════════════════════════════════════════════════
+    if a4_mode:
+        # MxN también tiene oferta="" pero tiene mecanica; solo precio fijo tiene ambas vacías
+        is_precio_fijo = (
+            not data.get("oferta", "").strip() and
+            not data.get("mecanica", "").strip()
+        )
 
-    if is_precio_fijo and oferta_shape is not None and price_shape is not None:
-        # Precio fijo: sube precio y descripción para ocupar el espacio vacío de oferta
-        shift = oferta_shape.height
-        price_shape.top -= shift
-        if desc_shape is not None:
-            desc_shape.top -= shift
+        if is_precio_fijo and oferta_shape is not None and price_shape is not None:
+            # Precio fijo: sube precio y descripción para ocupar el espacio vacío de oferta
+            shift = oferta_shape.height
+            price_shape.top -= shift
+            if desc_shape is not None:
+                desc_shape.top -= shift
 
-    if adjust_p1 and p1_shape is not None and price_shape is not None:
-        p1_shape.top = price_shape.top - P1_MARGIN_EMU
+        if adjust_p1 and p1_shape is not None and price_shape is not None:
+            p1_shape.top = price_shape.top - P1_MARGIN_EMU
 
-    # Combo/MxN: detecta colisión descripción vs bases y condiciones
-    if not is_precio_fijo and desc_shape is not None and aclaracion_shape is not None:
-        desc_text = data.get("descripcion", "")
-        est_h = _estimate_text_height_emu(desc_text, desc_shape.width, DESC_PT)
-        if desc_shape.top + est_h > aclaracion_shape.top:
-            overlap = (desc_shape.top + est_h) - aclaracion_shape.top
-            new_top = aclaracion_shape.top + overlap
-            if slide_height > 0 and new_top + aclaracion_shape.height <= slide_height:
-                aclaracion_shape.top = new_top
-            else:
-                font_pt = DESC_PT - 2
-                while font_pt >= DESC_MIN_PT:
-                    if desc_shape.top + _estimate_text_height_emu(desc_text, desc_shape.width, font_pt) <= aclaracion_shape.top:
-                        break
-                    font_pt -= 2
-                _set_runs_font_size(desc_shape, font_pt)
+        # Combo/MxN: detecta colisión descripción vs bases y condiciones
+        if not is_precio_fijo and desc_shape is not None and aclaracion_shape is not None:
+            desc_text = data.get("descripcion", "")
+            est_h = _estimate_text_height_emu(desc_text, desc_shape.width, DESC_PT)
+            if desc_shape.top + est_h > aclaracion_shape.top:
+                overlap = (desc_shape.top + est_h) - aclaracion_shape.top
+                new_top = aclaracion_shape.top + overlap
+                if slide_height > 0 and new_top + aclaracion_shape.height <= slide_height:
+                    aclaracion_shape.top = new_top
+                else:
+                    font_pt = DESC_PT - 2
+                    while font_pt >= DESC_MIN_PT:
+                        if desc_shape.top + _estimate_text_height_emu(desc_text, desc_shape.width, font_pt) <= aclaracion_shape.top:
+                            break
+                        font_pt -= 2
+                    _set_runs_font_size(desc_shape, font_pt)
+    # ═══════════════════════════════════════════════════════════════════════════
 
 
 def _clear_slot(shapes) -> None:
@@ -542,9 +557,10 @@ def generate_pptx_bytes(
     for idx, group in enumerate(groups):
         slide     = template_slide if idx == 0 else _add_slide_from_template(prs, layout, template_shape_xmls)
         cur_slots = _get_slots(list(slide.shapes))
+        is_a4 = products_per_slide == 1
         for i, product in enumerate(group):
             if i < len(cur_slots):
-                _fill_slot(cur_slots[i], product, adjust_p1=(products_per_slide == 1), slide_height=slide_height)
+                _fill_slot(cur_slots[i], product, adjust_p1=is_a4, slide_height=slide_height, a4_mode=is_a4)
         for i in range(len(group), products_per_slide):
             if i < len(cur_slots):
                 _clear_slot(cur_slots[i])
