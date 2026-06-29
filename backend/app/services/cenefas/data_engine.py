@@ -221,11 +221,13 @@ def process_row(
         _comprador_raw = str(row[h["_comprador"]] or "").strip()
     if re.search(r"fiambr", _comprador_raw, re.IGNORECASE):
         desc = result.get("descripcion", "")
-        if re.search(r"100\s*g\b", desc, re.IGNORECASE):
+        if re.search(r"100\s*g", desc, re.IGNORECASE):
             for price_key in ("precioActual", "precioAnterior"):
                 pv_str = result.get(price_key, "")
                 if pv_str:
-                    pv = parse_price_raw(pv_str)
+                    # precioActual ya está formateado como "$390"; quitar prefijo antes de parsear
+                    clean = re.sub(r"^[^\d]*", "", pv_str)
+                    pv = parse_price_raw(clean)
                     if pv > 0:
                         result[price_key] = prefix + fmt_price(round(pv / 10, 2))
 
