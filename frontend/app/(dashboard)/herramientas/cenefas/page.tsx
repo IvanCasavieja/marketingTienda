@@ -371,13 +371,33 @@ export default function CenefasPage() {
                     }`}>
                       {tmpl.name}
                     </p>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(tmpl.id); }}
-                      className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all shrink-0"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const { data } = await toolsApi.downloadCenefaTemplate(tmpl.id);
+                          const url = URL.createObjectURL(new Blob([data]));
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `${tmpl.name}.pptx`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="text-slate-300 hover:text-brand-500 transition-colors"
+                        title="Descargar plantilla"
+                      >
+                        <Download size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(tmpl.id); }}
+                        className="text-slate-300 hover:text-red-500 transition-colors"
+                        title="Eliminar plantilla"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
                   {tmpl.format_name && (
                     <span className={`self-start text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
