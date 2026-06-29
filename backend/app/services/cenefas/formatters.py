@@ -17,6 +17,7 @@ PBANCO_INT_PT     = 40  # pt — entero/símbolo de precio bancario
 UNIDAD_PRECIO_PT  = 16  # pt — "unidad" debajo de Precio1 en multi-SKU
 UNIDAD_PBANCO_PT  = 10  # pt — "unidad" debajo de pBanco en multi-SKU
 DESC_PT           = 40  # pt — descripción del producto
+DESC_MIN_PT       = 24  # pt — tamaño mínimo para descripción al achicar por overflow
 
 # ---------------------------------------------------------------------------
 # Subcategorías especiales

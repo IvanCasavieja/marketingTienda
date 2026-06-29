@@ -1,6 +1,7 @@
 """Motor de renderizado PPTX — genera presentaciones desde datos de productos."""
 import copy
 import io
+import math
 import re
 
 from lxml import etree
@@ -22,6 +23,7 @@ from app.services.cenefas.formatters import (
     UNIDAD_PRECIO_PT,
     UNIDAD_PBANCO_PT,
     DESC_PT,
+    DESC_MIN_PT,
 )
 
 # ---------------------------------------------------------------------------
@@ -208,18 +210,39 @@ def _is_multi_sku(code: str) -> bool:
     return bool(code and ("/" in code or re.search(r"\d\s*[-–—]\s*\d", code)))
 
 
+def _estimate_text_height_emu(text: str, shape_width_emu: int, font_pt: int) -> int:
+    """Estimación aproximada de altura de texto en EMU."""
+    if not text or shape_width_emu <= 0 or font_pt <= 0:
+        return int(font_pt * 12700 * 1.4)
+    char_w = max(1, int(font_pt * 12700 * 0.5))
+    lines  = math.ceil(len(text) / max(1, shape_width_emu // char_w))
+    return lines * int(font_pt * 12700 * 1.4)
+
+
+def _set_runs_font_size(shape, pt: int) -> None:
+    """Cambia el tamaño de fuente de todos los runs de un shape."""
+    if not shape.has_text_frame:
+        return
+    for para in shape.text_frame.paragraphs:
+        for run in para.runs:
+            run.font.size = Pt(pt)
+
+
 # ---------------------------------------------------------------------------
 # Llenado de slots
 # ---------------------------------------------------------------------------
 
-def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
+def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0) -> None:
     expanded = list(shapes)
     for shape in list(shapes):
         if hasattr(shape, "shapes"):
             expanded.extend(shape.shapes)
 
-    p1_shape    = None
-    price_shape = None
+    p1_shape         = None
+    price_shape      = None
+    oferta_shape     = None
+    desc_shape       = None
+    aclaracion_shape = None
     code  = data.get("codigoSKU", "")
     multi = _is_multi_sku(code)
 
@@ -234,6 +257,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
         elif re.search(r"<<Mecanica\d+>>", t):
             _set_text(shape, data.get("mecanica", ""))
         elif "<<" in t and "Descripci" in t:
+            desc_shape = shape
             _set_desc(shape, data.get("descripcion", ""))
             _set_normAutofit(shape)
         elif re.search(r"<<UnidadMedida\d+>>", t):
@@ -241,12 +265,14 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
         elif re.search(r"<<Vigencia\d*>>", t):
             _set_text(shape, data.get("vigencia", ""))
         elif re.search(r"<<Aclaracion\d*>>", t):
+            aclaracion_shape = shape
             _set_text(shape, data.get("aclaracion", ""))
         elif re.search(r"<<OtraAclaracion\d*>>", t):
             _set_text(shape, data.get("segundaAclaracion", ""))
         elif re.search(r"<<[Dd][Ii][Aa]\d*>>", t):
             _set_text(shape, data.get("dia", ""))
         elif re.search(r"<<oferta\d*>>", t, re.IGNORECASE):
+            oferta_shape = shape
             _set_text(shape, data.get("oferta", ""))
         elif re.search(r"<<[Cc]ode\d*>>", t):
             _set_text(shape, code)
@@ -261,8 +287,35 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True) -> None:
         elif t.strip().lower() == "unidad":
             _set_text(shape, "unidad" if multi else "")
 
+    # --- Layout adjustments ---
+    is_precio_fijo = not data.get("oferta", "").strip()
+
+    if is_precio_fijo and oferta_shape is not None and price_shape is not None:
+        # Precio fijo: sube precio y descripción para ocupar el espacio vacío de oferta
+        shift = oferta_shape.height
+        price_shape.top -= shift
+        if desc_shape is not None:
+            desc_shape.top -= shift
+
     if adjust_p1 and p1_shape is not None and price_shape is not None:
         p1_shape.top = price_shape.top - P1_MARGIN_EMU
+
+    # Combo/MxN: detecta colisión descripción vs bases y condiciones
+    if not is_precio_fijo and desc_shape is not None and aclaracion_shape is not None:
+        desc_text = data.get("descripcion", "")
+        est_h = _estimate_text_height_emu(desc_text, desc_shape.width, DESC_PT)
+        if desc_shape.top + est_h > aclaracion_shape.top:
+            overlap = (desc_shape.top + est_h) - aclaracion_shape.top
+            new_top = aclaracion_shape.top + overlap
+            if slide_height > 0 and new_top + aclaracion_shape.height <= slide_height:
+                aclaracion_shape.top = new_top
+            else:
+                font_pt = DESC_PT - 2
+                while font_pt >= DESC_MIN_PT:
+                    if desc_shape.top + _estimate_text_height_emu(desc_text, desc_shape.width, font_pt) <= aclaracion_shape.top:
+                        break
+                    font_pt -= 2
+                _set_runs_font_size(desc_shape, font_pt)
 
 
 def _clear_slot(shapes) -> None:
@@ -429,6 +482,24 @@ def _add_slide_from_template(prs, layout, template_shape_xmls):
 
 
 # ---------------------------------------------------------------------------
+# Margen horizontal
+# ---------------------------------------------------------------------------
+
+def _apply_horizontal_margin(slide, slide_width: int, margin_emu: int) -> None:
+    """Contrae todos los shapes para que quepan dentro del margen izquierdo/derecho."""
+    if margin_emu <= 0:
+        return
+    for shape in slide.shapes:
+        original_left  = shape.left
+        original_right = shape.left + shape.width
+        new_left  = max(original_left,  margin_emu)
+        new_right = min(original_right, slide_width - margin_emu)
+        if new_right > new_left:
+            shape.left  = new_left
+            shape.width = new_right - new_left
+
+
+# ---------------------------------------------------------------------------
 # Entry point principal
 # ---------------------------------------------------------------------------
 
@@ -439,6 +510,7 @@ def generate_pptx_bytes(
     aclaracion: str,
     otra_alcohol: str,
     banco: str = "",
+    margin_cm: float = 0.0,
 ) -> bytes:
     products = load_products_from_bytes(excel_bytes, vigencia, aclaracion, otra_alcohol, banco)
 
@@ -452,6 +524,8 @@ def generate_pptx_bytes(
 
     initial_slots      = _get_slots(list(template_slide.shapes))
     products_per_slide = max(len(initial_slots), 1)
+    slide_height       = prs.slide_height
+    margin_emu         = int(margin_cm * 914400 / 2.54) if margin_cm else 0
 
     groups = [products[i:i + products_per_slide] for i in range(0, len(products), products_per_slide)]
 
@@ -460,13 +534,15 @@ def generate_pptx_bytes(
         cur_slots = _get_slots(list(slide.shapes))
         for i, product in enumerate(group):
             if i < len(cur_slots):
-                _fill_slot(cur_slots[i], product, adjust_p1=(products_per_slide == 1))
+                _fill_slot(cur_slots[i], product, adjust_p1=(products_per_slide == 1), slide_height=slide_height)
         for i in range(len(group), products_per_slide):
             if i < len(cur_slots):
                 _clear_slot(cur_slots[i])
         if products_per_slide == 1:
             _center_content_a4(slide, prs.slide_width)
             _align_bank_group_a4(slide)
+        if margin_emu > 0:
+            _apply_horizontal_margin(slide, prs.slide_width, margin_emu)
 
     buf = io.BytesIO()
     prs.save(buf)

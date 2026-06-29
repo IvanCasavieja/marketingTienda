@@ -355,7 +355,6 @@ def load_products_from_bytes(
             data.get("mecanica", ""),
             data.get("precioActual", ""),
             (data.get("descripcion") or "").lower().strip(),
-            data.get("codigoSKU", ""),
             data.get("dia", ""),
         )
         if key not in seen:

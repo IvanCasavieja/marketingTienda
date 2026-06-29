@@ -39,6 +39,7 @@ export default function CenefasPage() {
     "Prohibida la venta de bebidas alcohólicas a menores de 18 años"
   );
   const [banco, setBanco] = useState("");
+  const [margin, setMargin] = useState("0");
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const downloadRef = useRef<HTMLAnchorElement>(null);
@@ -164,6 +165,7 @@ export default function CenefasPage() {
       fd.append("aclaracion", aclaracion.trim());
       fd.append("otra_alcohol", otraAlcohol.trim());
       fd.append("banco", banco.trim());
+      fd.append("margin_cm", margin);
 
       const { data } = await toolsApi.generateCenefas(fd);
       const url = URL.createObjectURL(new Blob([data], {
@@ -451,6 +453,19 @@ export default function CenefasPage() {
           <ComboField label={t("cenefas.aclaracion")} value={aclaracion} onChange={setAclaracion} storageKey="cenefa_opts_aclaracion" />
           <ComboField label={t("cenefas.alcohol")} value={otraAlcohol} onChange={setOtraAlcohol} storageKey="cenefa_opts_segunda_aclaracion" />
           <ComboField label="Banco / Beneficio" value={banco} onChange={setBanco} storageKey="cenefa_opts_banco" />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Margen (cm)</label>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+              value={margin}
+              onChange={(e) => setMargin(e.target.value)}
+              className="input w-32"
+              placeholder="0"
+            />
+          </div>
         </div>
 
         {/* Feedback */}
