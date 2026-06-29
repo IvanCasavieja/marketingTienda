@@ -1,8 +1,8 @@
 "use client";
 import { useState, useRef, useEffect, ChangeEvent, FormEvent } from "react";
 import {
-  Upload, Presentation, Download, AlertCircle, CheckCircle2, Loader2,
-  FileSpreadsheet, FileType2, Plus, Trash2, X, LayoutTemplate, Layers, ChevronRight,
+  Presentation, Download, AlertCircle, CheckCircle2, Loader2,
+  FileSpreadsheet, FileType2, Plus, Trash2, X, LayoutTemplate,
   ChevronDown, Check, Pencil,
 } from "lucide-react";
 import { toolsApi } from "@/lib/api";
@@ -19,12 +19,6 @@ interface TemplateInfo {
   created_at: string | null;
 }
 
-interface BuiltinTemplate {
-  slug: string;
-  name: string;
-  format_name: string;
-}
-
 export default function CenefasPage() {
   const { t } = useTranslation();
 
@@ -32,7 +26,6 @@ export default function CenefasPage() {
   const [excel, setExcel] = useState<File | null>(null);
   const [customPptx, setCustomPptx] = useState<File | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
-  const [selectedBuiltinSlug, setSelectedBuiltinSlug] = useState<string | null>(null);
   const [vigencia, setVigencia] = useState("");
   const [aclaracion, setAclaracion] = useState("Bases y condiciones en redexpres.uy");
   const [otraAlcohol, setOtraAlcohol] = useState(
@@ -47,7 +40,6 @@ export default function CenefasPage() {
   // Templates state
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
-  const [builtinTemplates, setBuiltinTemplates] = useState<BuiltinTemplate[]>([]);
 
   // New template form state
   const [showNewForm, setShowNewForm] = useState(false);
@@ -61,9 +53,6 @@ export default function CenefasPage() {
       .then(({ data }) => setTemplates(data))
       .catch(() => {})
       .finally(() => setLoadingTemplates(false));
-    toolsApi.getBuiltinTemplates()
-      .then(({ data }) => setBuiltinTemplates(data))
-      .catch(() => {});
   }, []);
 
   function selectTemplate(id: number) {
@@ -72,16 +61,6 @@ export default function CenefasPage() {
     } else {
       setSelectedTemplateId(id);
       setSelectedBuiltinSlug(null);
-      setCustomPptx(null);
-    }
-  }
-
-  function selectBuiltin(slug: string) {
-    if (selectedBuiltinSlug === slug) {
-      setSelectedBuiltinSlug(null);
-    } else {
-      setSelectedBuiltinSlug(slug);
-      setSelectedTemplateId(null);
       setCustomPptx(null);
     }
   }
@@ -156,8 +135,6 @@ export default function CenefasPage() {
       fd.append("excel", excel!);
       if (selectedTemplateId !== null) {
         fd.append("template_id", selectedTemplateId.toString());
-      } else if (selectedBuiltinSlug !== null) {
-        fd.append("builtin_slug", selectedBuiltinSlug);
       } else {
         fd.append("template", customPptx!);
       }
@@ -187,40 +164,26 @@ export default function CenefasPage() {
     }
   }
 
-  const hasTemplate = selectedTemplateId !== null || !!customPptx || selectedBuiltinSlug !== null;
+  const hasTemplate = selectedTemplateId !== null || !!customPptx;
   const canSubmit = !!excel && hasTemplate && status !== "loading";
 
   return (
-    <div className="animate-fade-in max-w-2xl space-y-6">
-      {/* Banner Editor v2 */}
-      <a
-        href="/herramientas/cenefas/v2"
-        className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-brand-600 to-brand-500 text-white hover:from-brand-700 hover:to-brand-600 transition-all shadow-sm group"
-      >
-        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-          <Layers size={20} className="text-white" />
-        </div>
-        <div className="flex-1">
-          <p className="text-sm font-bold">Nuevo: Editor Visual v2</p>
-          <p className="text-xs text-brand-100 mt-0.5">
-            Diseñá componentes, aplicá reglas y generá múltiples formatos desde un solo template
-          </p>
-        </div>
-        <ChevronRight size={18} className="text-white/70 group-hover:text-white transition-colors" />
-      </a>
-
+    <div className="animate-fade-in max-w-5xl space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0">
           <Presentation size={22} className="text-emerald-500" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("cenefas.title")}</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("cenefas.subtitle")}</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Cenefas Redex</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Generá cenefas de precio a partir de un Excel</p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-5 items-start">
+        {/* Columna izquierda: Templates + Excel */}
+        <div className="flex flex-col gap-5">
+
         {/* Templates card */}
         <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -236,44 +199,6 @@ export default function CenefasPage() {
               {t("cenefas.newTemplate")}
             </button>
           </div>
-
-          {/* Built-in templates */}
-          {builtinTemplates.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
-                {t("cenefas.builtinTemplates")}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {builtinTemplates.map((tmpl) => (
-                  <button
-                    key={tmpl.slug}
-                    type="button"
-                    onClick={() => selectBuiltin(tmpl.slug)}
-                    className={`flex flex-col gap-1 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all duration-150 min-w-[120px] text-left ${
-                      selectedBuiltinSlug === tmpl.slug
-                        ? "border-indigo-400 bg-indigo-50"
-                        : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-700"
-                    }`}
-                  >
-                    <p className={`text-xs font-semibold leading-tight ${
-                      selectedBuiltinSlug === tmpl.slug ? "text-indigo-700" : "text-slate-700 dark:text-slate-300"
-                    }`}>
-                      {tmpl.name}
-                    </p>
-                    {tmpl.format_name && (
-                      <span className={`self-start text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
-                        selectedBuiltinSlug === tmpl.slug
-                          ? "bg-indigo-200 text-indigo-700"
-                          : "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
-                      }`}>
-                        {tmpl.format_name}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* New template form */}
           {showNewForm && (
@@ -466,6 +391,11 @@ export default function CenefasPage() {
           />
         </div>
 
+        </div>{/* fin columna izquierda */}
+
+        {/* Columna derecha: Config + botón */}
+        <div className="flex flex-col gap-5">
+
         {/* Config card */}
         <div className="card p-6 space-y-4">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.configSection")}</p>
@@ -509,6 +439,8 @@ export default function CenefasPage() {
             <><Download size={16} /> {t("cenefas.generate")}</>
           )}
         </button>
+
+        </div>{/* fin columna derecha */}
       </form>
 
       <a ref={downloadRef} className="hidden" />
