@@ -35,6 +35,7 @@ query ProductsByCategory($categoryId: String!, $pageSize: Int!, $currentPage: In
       name
       sku
       url_key
+      manufacturer
       price_range {
         minimum_price {
           final_price   { value }
@@ -88,6 +89,7 @@ def _parse_item(item: dict, nombre_cat: str) -> dict:
     final        = (min_price.get("final_price")   or {}).get("value")
     regular      = (min_price.get("regular_price") or {}).get("value")
     url_key      = item.get("url_key") or ""
+    mfr          = item.get("manufacturer")
     return {
         "tienda":       "Botiga",
         "nombre":       item.get("name"),
@@ -95,7 +97,7 @@ def _parse_item(item: dict, nombre_cat: str) -> dict:
         "precio_lista": float(regular) if regular is not None and regular != final else None,
         "sku":          item.get("sku"),
         "barcode":      None,
-        "marca":        None,
+        "marca":        str(mfr) if mfr is not None else None,
         "categoria":    nombre_cat,
         "url":          f"{_BASE_URL}/{url_key}.html",
     }

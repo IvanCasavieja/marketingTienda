@@ -191,9 +191,9 @@ def _iter_products(
     session: requests.Session,
     page_from: int = 1,
     page_to: int | None = None,
-) -> Generator[tuple[str, str], None, None]:
+) -> Generator[tuple[str, str, str | None, str | None], None, None]:
     """
-    Genera (product_id, product_name) para cada producto activo.
+    Genera (product_id, product_name, barcode, categoria) para cada producto activo.
 
     page_from / page_to: rango de páginas de la API (1-indexed, page_to inclusive).
     page_to=None significa hasta el final del catálogo.
@@ -224,7 +224,17 @@ def _iter_products(
         for item in data.get("items", []):
             desc = item.get("description", {})
             name = desc.get("name", item["id"])
-            yield item["id"], name
+
+            barcodes_list = item.get("barcodes") or []
+            barcode = barcodes_list[0].get("barcode") if barcodes_list else None
+
+            categoria = None
+            for df in item.get("dynamicFields") or []:
+                if df.get("fieldName") == "FILTER|Categoría":
+                    categoria = df.get("fieldValue")
+                    break
+
+            yield item["id"], name, barcode, categoria
 
         if page >= effective_to:
             break
@@ -269,8 +279,10 @@ def scan_fase(
     log.info("GDU REST: %d sucursales cargadas", len(branch_meta))
 
     records: list[ProductRecord] = []
-    batch_ids:   list[str] = []
-    batch_names: dict[str, str] = {}
+    batch_ids:        list[str]            = []
+    batch_names:      dict[str, str]       = {}
+    batch_barcodes:   dict[str, str | None] = {}
+    batch_categorias: dict[str, str | None] = {}
     total_prods  = 0
 
     def _flush_batch():
@@ -278,14 +290,18 @@ def scan_fase(
         if not batch_ids:
             return
         price_records = _get_prices_batch(session, batch_ids)
-        _parse_prices(price_records, batch_names, branch_meta, records)
+        _parse_prices(price_records, batch_names, batch_barcodes, batch_categorias, branch_meta, records)
         total_prods += len(batch_ids)
         batch_ids.clear()
         batch_names.clear()
+        batch_barcodes.clear()
+        batch_categorias.clear()
 
-    for product_id, product_name in _iter_products(session, page_from, page_to):
+    for product_id, product_name, barcode, categoria in _iter_products(session, page_from, page_to):
         batch_ids.append(product_id)
-        batch_names[product_id] = product_name
+        batch_names[product_id]      = product_name
+        batch_barcodes[product_id]   = barcode
+        batch_categorias[product_id] = categoria
 
         if len(batch_ids) >= _PRICE_BATCH:
             _flush_batch()
@@ -299,9 +315,11 @@ def scan_fase(
 
 def _parse_prices(
     price_records: list[dict],
-    names:        dict[str, str],
-    branch_meta:  dict[str, dict],
-    out:          list[ProductRecord],
+    names:         dict[str, str],
+    barcodes:      dict[str, str | None],
+    categorias:    dict[str, str | None],
+    branch_meta:   dict[str, dict],
+    out:           list[ProductRecord],
 ) -> None:
     """
     Convierte raw price records en ProductRecord (1 por producto × sucursal).
@@ -334,6 +352,8 @@ def _parse_prices(
             precio          = precio,
             precio_lista    = precio_normal,
             sku             = pid,
+            barcode         = barcodes.get(pid),
+            categoria       = categorias.get(pid),
             sucursal_id     = pl_id,
             sucursal_nombre = meta["nombre"],
         ))
