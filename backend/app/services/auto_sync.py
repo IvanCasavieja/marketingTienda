@@ -81,8 +81,8 @@ async def _execute_sync() -> None:
         pass  # Sin Redis: continuamos sin lock
 
     try:
-        pairs = await _get_active_pairs()
-        if not pairs:
+        platforms = await _get_active_platforms()
+        if not platforms:
             logger.info("auto_sync: no hay plataformas conectadas")
             return
 
@@ -90,22 +90,16 @@ async def _execute_sync() -> None:
         date_from = date_to - timedelta(days=SYNC_LOOKBACK_DAYS)
 
         synced = errors = 0
-        for team_group_id, platform in pairs:
+        for platform in platforms:
             try:
                 async with AsyncSessionLocal() as db:
-                    count = await sync_platform(db, platform, team_group_id, date_from, date_to)
+                    count = await sync_platform(db, platform, date_from, date_to)
                     await db.commit()
                 synced += count
-                logger.info(
-                    "auto_sync OK  platform=%-12s team=%d rows=%d",
-                    platform.value, team_group_id, count,
-                )
+                logger.info("auto_sync OK  platform=%-12s rows=%d", platform.value, count)
             except Exception as exc:
                 errors += 1
-                logger.warning(
-                    "auto_sync ERR platform=%-12s team=%d: %s",
-                    platform.value, team_group_id, exc,
-                )
+                logger.warning("auto_sync ERR platform=%-12s: %s", platform.value, exc)
 
         logger.info("auto_sync completado — rows=%d errors=%d", synced, errors)
         if redis_ok:
@@ -123,14 +117,14 @@ async def _execute_sync() -> None:
                 pass
 
 
-async def _get_active_pairs() -> list[tuple]:
+async def _get_active_platforms() -> list:
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(PlatformConnection.team_group_id, PlatformConnection.platform)
+            select(PlatformConnection.platform)
             .where(PlatformConnection.is_active == True)
             .distinct()
         )
-        return result.all()
+        return [row[0] for row in result.all()]
 
 
 # ---------------------------------------------------------------------------

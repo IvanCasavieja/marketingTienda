@@ -29,9 +29,9 @@ router = APIRouter(prefix="/tools", tags=["tools"])
 _STATIC_DIR = pathlib.Path(__file__).parent.parent.parent / "static" / "cenefa_templates"
 
 _BUILTIN_TEMPLATES = [
-    {"slug": "a4",        "name": "Cenefa A4",     "format_name": "A4",     "filename": "Base cenefa A4 1.pptx"},
-    {"slug": "pinchos",   "name": "Pinchos",        "format_name": "Pinchos","filename": "Base pinchos 1.pptx"},
-    {"slug": "black",     "name": "Cenefas 3xA4",   "format_name": "3xA4",  "filename": "Bases cenefas BLACK 1.pptx"},
+    {"slug": "a4",      "name": "Cenefa A4",   "format_name": "A4",     "filename": "Base cenefa A4 1.pptx"},
+    {"slug": "pinchos", "name": "Pinchos",      "format_name": "Pinchos","filename": "Base pinchos 1.pptx"},
+    {"slug": "black",   "name": "Cenefas 3xA4", "format_name": "3xA4",  "filename": "Bases cenefas BLACK 1.pptx"},
 ]
 
 
@@ -79,7 +79,7 @@ async def download_builtin_template(slug: str, current_user: User = Depends(get_
 
 
 # ---------------------------------------------------------------------------
-# Team template CRUD
+# Template CRUD (guardados por usuario)
 # ---------------------------------------------------------------------------
 
 @router.get("/cenefas/templates")
@@ -87,14 +87,9 @@ async def list_cenefa_templates(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        return []
     result = await db.execute(
         select(CenefaTemplate)
-        .where(
-            CenefaTemplate.team_group_id == current_user.team_group_id,
-            CenefaTemplate.is_active == True,
-        )
+        .where(CenefaTemplate.is_active == True)
         .order_by(CenefaTemplate.created_at.desc())
     )
     templates = result.scalars().all()
@@ -117,14 +112,11 @@ async def create_cenefa_template(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Unite a un equipo para guardar templates")
     if not file.filename or not file.filename.lower().endswith(".pptx"):
         raise HTTPException(status_code=400, detail="La plantilla debe ser .pptx")
 
     file_bytes = await _read_limited(file, "template PPTX")
     tmpl = CenefaTemplate(
-        team_group_id=current_user.team_group_id,
         created_by=current_user.id,
         name=name.strip(),
         format_name=format_name.strip(),
@@ -147,12 +139,9 @@ async def download_cenefa_template_by_id(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Unite a un equipo para usar templates guardados")
     result = await db.execute(
         select(CenefaTemplate).where(
             CenefaTemplate.id == template_id,
-            CenefaTemplate.team_group_id == current_user.team_group_id,
             CenefaTemplate.is_active == True,
         )
     )
@@ -173,12 +162,9 @@ async def delete_cenefa_template(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Unite a un equipo para gestionar templates")
     result = await db.execute(
         select(CenefaTemplate).where(
             CenefaTemplate.id == template_id,
-            CenefaTemplate.team_group_id == current_user.team_group_id,
             CenefaTemplate.is_active == True,
         )
     )
@@ -209,14 +195,10 @@ async def generate_cenefas(
     if not excel.filename or not excel.filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="El Excel debe ser .xlsx o .xlsm")
 
-    # Resolve template bytes — priority: saved team template > built-in > uploaded file
     if template_id is not None:
-        if not current_user.team_group_id:
-            raise HTTPException(status_code=400, detail="Unite a un equipo para usar templates guardados")
         result = await db.execute(
             select(CenefaTemplate).where(
                 CenefaTemplate.id == template_id,
-                CenefaTemplate.team_group_id == current_user.team_group_id,
                 CenefaTemplate.is_active == True,
             )
         )
@@ -239,7 +221,7 @@ async def generate_cenefas(
     else:
         raise HTTPException(
             status_code=400,
-            detail="Debés seleccionar una plantilla predeterminada, una del equipo, o subir un archivo PPTX"
+            detail="Debés seleccionar una plantilla predeterminada, una guardada, o subir un archivo PPTX"
         )
 
     excel_bytes = await _read_limited(excel, "Excel")

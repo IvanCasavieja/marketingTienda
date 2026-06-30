@@ -13,7 +13,7 @@ from app.core.database import Base
 
 # Importar todos los modelos para que alembic los detecte
 from app.models import (  # noqa: F401
-    User, Team, TeamGroup, PlatformConnection,
+    User, PlatformConnection,
     CampaignMetric, AuditLog, AIAnalysis,
     CenefaTemplate, CenefaTemplateV2, CenefaJob,
 )

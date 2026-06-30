@@ -11,13 +11,11 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    team_group_id: Mapped[int | None] = mapped_column(ForeignKey("team_groups.id", ondelete="SET NULL"), nullable=True)
     role_id: Mapped[int | None] = mapped_column(ForeignKey("roles.id", ondelete="SET NULL"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
-    team_group = relationship("TeamGroup", back_populates="users")
     role = relationship("Role", back_populates="users")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")

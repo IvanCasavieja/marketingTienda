@@ -141,8 +141,7 @@ async def list_templates(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(CenefaTemplateV2)
-        .order_by(CenefaTemplateV2.created_at.desc())
+        select(CenefaTemplateV2).order_by(CenefaTemplateV2.created_at.desc())
     )
     templates = result.scalars().all()
     return [

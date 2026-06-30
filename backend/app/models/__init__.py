@@ -1,4 +1,3 @@
-from app.models.team import Team, TeamGroup
 from app.models.user import User
 from app.models.platform_connection import PlatformConnection, Platform
 from app.models.campaign_metric import CampaignMetric
@@ -11,7 +10,7 @@ from app.models.producto import Producto
 from app.models.precio_historial import PrecioHistorial
 
 __all__ = [
-    "Team", "TeamGroup", "User", "PlatformConnection", "Platform",
+    "User", "PlatformConnection", "Platform",
     "CampaignMetric", "AuditLog", "AIAnalysis",
     "CenefaTemplate", "CenefaTemplateV2", "CenefaJob",
     "Producto", "PrecioHistorial",

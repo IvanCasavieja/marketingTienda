@@ -14,9 +14,6 @@ class CenefaJob(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    team_group_id: Mapped[int] = mapped_column(
-        ForeignKey("team_groups.id", ondelete="CASCADE"), nullable=False
-    )
     template_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("cenefa_templates_v2.id", ondelete="SET NULL"),

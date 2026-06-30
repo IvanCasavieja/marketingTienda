@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Boolean, func
+from sqlalchemy import String, DateTime, ForeignKey, Boolean, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import LargeBinary
 from datetime import datetime
@@ -9,9 +9,6 @@ class CenefaTemplate(Base):
     __tablename__ = "cenefa_templates"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    team_group_id: Mapped[int] = mapped_column(
-        ForeignKey("team_groups.id", ondelete="CASCADE"), nullable=False
-    )
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
