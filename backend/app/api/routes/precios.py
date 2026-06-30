@@ -570,6 +570,40 @@ async def scraper_trigger_botiga(_: User = Depends(get_current_user)):
     return {"message": "Botiga scan iniciado"}
 
 
+@router.get("/buscar-vivo")
+async def buscar_vivo(
+    q: str = Query(..., min_length=2, description="Término de búsqueda"),
+    _: User = Depends(get_current_user),
+):
+    """Búsqueda EN VIVO de un producto — no usa la base de datos, golpea las
+    APIs de Ta-Ta, El Dorado y GDU en tiempo real, todas las sucursales en
+    paralelo. Tarda unos segundos; pensado para consultas puntuales, no para
+    reemplazar el scraping nocturno masivo."""
+    import asyncio
+    from app.services.scraper.live_search import buscar_todas
+
+    loop = asyncio.get_event_loop()
+    resultados = await loop.run_in_executor(None, buscar_todas, q)
+
+    items = []
+    for records in resultados.values():
+        for r in records:
+            items.append({
+                "tienda":          r.tienda,
+                "nombre":          r.nombre,
+                "precio":          r.precio,
+                "precio_lista":    r.precio_lista,
+                "sku":             r.sku,
+                "barcode":         r.barcode,
+                "marca":           r.marca,
+                "url":             r.url,
+                "sucursal_id":     r.sucursal_id,
+                "sucursal_nombre": r.sucursal_nombre,
+            })
+
+    return {"query": q, "total": len(items), "items": items}
+
+
 @router.get("/{producto_id}", response_model=ProductoOut)
 async def obtener_precio(
     producto_id: int,
