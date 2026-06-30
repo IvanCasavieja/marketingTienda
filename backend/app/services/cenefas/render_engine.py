@@ -309,7 +309,6 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
             _set_desc(shape, data.get("descripcion", ""), preserve_sizes=ps)
             if a4_mode:
                 _set_normAutofit(shape)
-                _apply_desc_lateral_margin(shape, slide_width)
         elif re.search(r"<<UnidadMedida\d+>>", t):
             _set_text(shape, "unidad" if multi else "")
         elif re.search(r"<<Vigencia\d*>>", t):
@@ -374,6 +373,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
                         font_pt -= 2
                     _set_runs_font_size(desc_shape, font_pt)
     # ═══════════════════════════════════════════════════════════════════════════
+    return desc_shape
 
 
 def _clear_slot(shapes) -> None:
@@ -650,15 +650,22 @@ def generate_pptx_bytes(
     for slide, group in zip(all_slides, groups):
         cur_slots = _get_slots(list(slide.shapes))
         is_a4 = products_per_slide == 1
+        desc_shapes_a4 = []
         for i, product in enumerate(group):
             if i < len(cur_slots):
-                _fill_slot(cur_slots[i], product, adjust_p1=is_a4, slide_height=slide_height, slide_width=prs.slide_width, a4_mode=is_a4)
+                ds = _fill_slot(cur_slots[i], product, adjust_p1=is_a4, slide_height=slide_height, slide_width=prs.slide_width, a4_mode=is_a4)
+                if is_a4 and ds is not None:
+                    desc_shapes_a4.append(ds)
         for i in range(len(group), products_per_slide):
             if i < len(cur_slots):
                 _clear_slot(cur_slots[i])
         if products_per_slide == 1:
             _center_content_a4(slide, prs.slide_width)
             _align_bank_group_a4(slide)
+            # Aplicar margen lateral de descripción DESPUÉS de _center_content_a4,
+            # que resetea left=0/width=slide_width en todos los text shapes.
+            for ds in desc_shapes_a4:
+                _apply_desc_lateral_margin(ds, prs.slide_width)
         if margin_emu > 0:
             _apply_horizontal_margin(slide, prs.slide_width, margin_emu)
 
