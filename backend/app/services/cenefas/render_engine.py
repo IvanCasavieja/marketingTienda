@@ -494,7 +494,7 @@ def _align_bank_group_a4(slide) -> None:
 # Construcción de slides
 # ---------------------------------------------------------------------------
 
-def _add_slide_from_template(prs, layout, template_shape_xmls):
+def _add_slide_from_template(prs, layout, template_shape_xmls, template_bg_xml=None):
     new_slide = prs.slides.add_slide(layout)
     sp_tree   = new_slide.shapes._spTree
     for child in list(sp_tree):
@@ -503,6 +503,18 @@ def _add_slide_from_template(prs, layout, template_shape_xmls):
             sp_tree.remove(child)
     for xml_elem in template_shape_xmls:
         sp_tree.append(copy.deepcopy(xml_elem))
+
+    # Copiar fondo del template al nuevo slide — sin esto los slides 2+ salen sin diseño
+    if template_bg_xml is not None:
+        cSld = new_slide._element.find(qn("p:cSld"))
+        if cSld is not None:
+            existing_bg = cSld.find(qn("p:bg"))
+            if existing_bg is not None:
+                cSld.remove(existing_bg)
+            sp_tree_elem = cSld.find(qn("p:spTree"))
+            insert_idx = list(cSld).index(sp_tree_elem) if sp_tree_elem is not None else 0
+            cSld.insert(insert_idx, copy.deepcopy(template_bg_xml))
+
     return new_slide
 
 
@@ -543,9 +555,17 @@ def generate_pptx_bytes(
     if not prs.slides:
         raise ValueError("La plantilla PPTX está vacía.")
 
-    template_slide     = prs.slides[0] if len(prs.slides) == 1 else prs.slides[1]
-    layout             = template_slide.slide_layout
+    template_slide      = prs.slides[0] if len(prs.slides) == 1 else prs.slides[1]
+    layout              = template_slide.slide_layout
     template_shape_xmls = [copy.deepcopy(shape._element) for shape in template_slide.shapes]
+
+    # Extraer fondo del template para replicarlo en todos los slides generados
+    template_bg_xml = None
+    _cSld = template_slide._element.find(qn("p:cSld"))
+    if _cSld is not None:
+        _bg = _cSld.find(qn("p:bg"))
+        if _bg is not None:
+            template_bg_xml = copy.deepcopy(_bg)
 
     initial_slots      = _get_slots(list(template_slide.shapes))
     products_per_slide = max(len(initial_slots), 1)
@@ -555,7 +575,9 @@ def generate_pptx_bytes(
     groups = [products[i:i + products_per_slide] for i in range(0, len(products), products_per_slide)]
 
     for idx, group in enumerate(groups):
-        slide     = template_slide if idx == 0 else _add_slide_from_template(prs, layout, template_shape_xmls)
+        slide = template_slide if idx == 0 else _add_slide_from_template(
+            prs, layout, template_shape_xmls, template_bg_xml
+        )
         cur_slots = _get_slots(list(slide.shapes))
         is_a4 = products_per_slide == 1
         for i, product in enumerate(group):
