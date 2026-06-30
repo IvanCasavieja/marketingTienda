@@ -495,7 +495,13 @@ def _align_bank_group_a4(slide) -> None:
 # ---------------------------------------------------------------------------
 
 def _duplicate_slide(prs, template_slide):
-    """Duplica un slide completo: shapes, fondo e imágenes con sus relaciones."""
+    """Duplica un slide completo: shapes, fondo e imágenes con sus relaciones.
+
+    Modifica el spTree en-place en vez de reemplazar el cSld completo para evitar
+    invalidar el lazyproperty cache de slide.shapes que python-pptx construye
+    durante add_slide. El cache sigue apuntando al mismo nodo spTree, que ahora
+    contiene los children del template.
+    """
     R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
     new_slide = prs.slides.add_slide(template_slide.slide_layout)
@@ -513,31 +519,45 @@ def _duplicate_slide(prs, template_slide):
         except Exception:
             pass
 
-    # Clonar el cSld completo (fondo + todas las shapes)
+    def _remap_rids(elem):
+        for el in elem.iter():
+            for attr_key in list(el.attrib):
+                ns_part, _, local = attr_key.partition("}")
+                ns_part = ns_part.lstrip("{")
+                if ns_part == R_NS and local in ("embed", "link", "id"):
+                    old_rId = el.attrib[attr_key]
+                    if old_rId in rId_map:
+                        el.attrib[attr_key] = rId_map[old_rId]
+        return elem
+
     template_cSld = template_slide._element.find(qn("p:cSld"))
     if template_cSld is None:
         return new_slide
 
-    new_cSld = copy.deepcopy(template_cSld)
+    new_cSld = new_slide._element.find(qn("p:cSld"))
+    if new_cSld is None:
+        return new_slide
 
-    # Reemplazar referencias r:embed / r:link con los nuevos rIds
-    for elem in new_cSld.iter():
-        for attr_key in list(elem.attrib):
-            ns_part, _, local = attr_key.partition("}")
-            ns_part = ns_part.lstrip("{")
-            if ns_part == R_NS and local in ("embed", "link", "id"):
-                old_rId = elem.attrib[attr_key]
-                if old_rId in rId_map:
-                    elem.attrib[attr_key] = rId_map[old_rId]
+    # Copiar fondo (p:bg) si existe en el template
+    template_bg = template_cSld.find(qn("p:bg"))
+    if template_bg is not None:
+        existing_bg = new_cSld.find(qn("p:bg"))
+        if existing_bg is not None:
+            new_cSld.remove(existing_bg)
+        new_spTree_ref = new_cSld.find(qn("p:spTree"))
+        bg_pos = list(new_cSld).index(new_spTree_ref) if new_spTree_ref is not None else 0
+        new_cSld.insert(bg_pos, _remap_rids(copy.deepcopy(template_bg)))
 
-    # Reemplazar cSld del nuevo slide con el clonado
-    sld = new_slide._element
-    old_cSld = sld.find(qn("p:cSld"))
-    if old_cSld is not None:
-        sld.remove(old_cSld)
-    clrMap = sld.find(qn("p:clrMapOvr"))
-    pos = list(sld).index(clrMap) if clrMap is not None else 0
-    sld.insert(pos, new_cSld)
+    # Reemplazar children del spTree en-place: limpia los placeholders vacíos
+    # que add_slide copió desde el layout y agrega los shapes del template
+    template_spTree = template_cSld.find(qn("p:spTree"))
+    new_spTree = new_cSld.find(qn("p:spTree"))
+
+    if template_spTree is not None and new_spTree is not None:
+        for child in list(new_spTree):
+            new_spTree.remove(child)
+        for child in list(template_spTree):
+            new_spTree.append(_remap_rids(copy.deepcopy(child)))
 
     return new_slide
 
