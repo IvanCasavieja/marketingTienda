@@ -60,14 +60,11 @@ async def analyze(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Join a team before running analysis")
-
     handler = _ALL_HANDLERS.get(payload.analysis_type)
     if not handler:
         raise HTTPException(status_code=400, detail=f"Unknown analysis type: {payload.analysis_type}")
 
-    metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
+    metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
 
     try:
         if payload.analysis_type in ("full_report", "debate"):
@@ -179,12 +176,10 @@ async def analyze_stream(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Join a team before running analysis")
     if payload.analysis_type not in STREAMABLE_TYPES:
         raise HTTPException(status_code=400, detail="Use /analyze for debate analysis")
 
-    metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
+    metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
 
     email_data, whatsapp_data = [], []
     if payload.analysis_type == "full_report" and settings.SFMC_CLIENT_ID:
@@ -256,10 +251,7 @@ async def debate_stream(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Join a team before running analysis")
-
-    metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
+    metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
 
     email_data, whatsapp_data = [], []
     if settings.SFMC_CLIENT_ID:
@@ -336,13 +328,10 @@ async def debate_turn(
     db: AsyncSession = Depends(get_db),
 ):
     """Single conversational turn: Claude first, then ChatGPT. Auto-saves after every turn."""
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Join a team before running analysis")
-
-    metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
+    metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
     metrics_2: list = []
     if payload.date_from_2 and payload.date_to_2:
-        metrics_2 = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from_2, payload.date_to_2)
+        metrics_2 = await get_metrics(db, payload.platforms, payload.date_from_2, payload.date_to_2)
 
     email_data, whatsapp_data = [], []
     if settings.SFMC_CLIENT_ID:
@@ -439,13 +428,10 @@ async def debate_verdict(
     db: AsyncSession = Depends(get_db),
 ):
     """Request Llama verdict on the current conversation, then save full debate to DB."""
-    if not current_user.team_group_id:
-        raise HTTPException(status_code=400, detail="Join a team before running analysis")
-
-    metrics = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from, payload.date_to)
+    metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
     metrics_2: list = []
     if payload.date_from_2 and payload.date_to_2:
-        metrics_2 = await get_metrics(db, payload.platforms, current_user.team_group_id, payload.date_from_2, payload.date_to_2)
+        metrics_2 = await get_metrics(db, payload.platforms, payload.date_from_2, payload.date_to_2)
 
     email_data, whatsapp_data = [], []
     if settings.SFMC_CLIENT_ID:

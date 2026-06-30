@@ -14,9 +14,6 @@ class CenefaTemplateV2(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    team_group_id: Mapped[int] = mapped_column(
-        ForeignKey("team_groups.id", ondelete="CASCADE"), nullable=False
-    )
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

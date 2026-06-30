@@ -10,8 +10,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.core.tenant_migration import migrate_default_team, migrate_roles
-from app.models import Team, TeamGroup, User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, Producto, PrecioHistorial
+from app.core.tenant_migration import migrate_roles
+from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, Producto, PrecioHistorial
 from app.models.role import Role  # noqa: F401 — registers with Base.metadata
 from app.api import router
 
@@ -63,7 +63,6 @@ async def lifespan(app: FastAPI):
         try:
             async with engine.begin() as conn:
                 await migrate_roles(conn)
-                await migrate_default_team(conn)
         except Exception as e:
             logger.error("In-app migrations failed: %s", e)
 
@@ -115,7 +114,23 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# CORS — only allow configured origins
+# Security headers middleware — must be registered BEFORE CORSMiddleware so that
+# CORS ends up as the outermost middleware. In Starlette, the last middleware
+# registered via add_middleware becomes the outermost one. Using the decorator here
+# and then calling add_middleware(CORS) below achieves: CORS → security_headers → SlowAPI → app.
+# This ensures CORS headers are always injected even for 5xx responses.
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+# CORS — registered last so it becomes the outermost middleware and injects
+# Access-Control-Allow-Origin on ALL responses, including 5xx errors.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
@@ -123,22 +138,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
-
-# Security headers middleware
-@app.middleware("http")
-async def security_headers(request: Request, call_next):
-    try:
-        response = await call_next(request)
-    except Exception:
-        # Si la cadena interna lanza excepción no capturada, devolvemos una
-        # respuesta propia para que el CORSMiddleware pueda agregar sus headers.
-        response = JSONResponse({"detail": "Internal server error"}, status_code=500)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    return response
 
 
 app.include_router(router, prefix=settings.API_V1_PREFIX)
