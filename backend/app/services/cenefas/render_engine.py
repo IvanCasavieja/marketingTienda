@@ -494,26 +494,50 @@ def _align_bank_group_a4(slide) -> None:
 # Construcción de slides
 # ---------------------------------------------------------------------------
 
-def _add_slide_from_template(prs, layout, template_shape_xmls, template_bg_xml=None):
-    new_slide = prs.slides.add_slide(layout)
-    sp_tree   = new_slide.shapes._spTree
-    for child in list(sp_tree):
-        tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-        if tag not in ("nvGrpSpPr", "grpSpPr"):
-            sp_tree.remove(child)
-    for xml_elem in template_shape_xmls:
-        sp_tree.append(copy.deepcopy(xml_elem))
+def _duplicate_slide(prs, template_slide):
+    """Duplica un slide completo: shapes, fondo e imágenes con sus relaciones."""
+    R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
-    # Copiar fondo del template al nuevo slide — sin esto los slides 2+ salen sin diseño
-    if template_bg_xml is not None:
-        cSld = new_slide._element.find(qn("p:cSld"))
-        if cSld is not None:
-            existing_bg = cSld.find(qn("p:bg"))
-            if existing_bg is not None:
-                cSld.remove(existing_bg)
-            sp_tree_elem = cSld.find(qn("p:spTree"))
-            insert_idx = list(cSld).index(sp_tree_elem) if sp_tree_elem is not None else 0
-            cSld.insert(insert_idx, copy.deepcopy(template_bg_xml))
+    new_slide = prs.slides.add_slide(template_slide.slide_layout)
+
+    # Copiar todas las relaciones del template al nuevo slide (excepto slideLayout)
+    rId_map = {}
+    for rId, rel in template_slide.part.rels.items():
+        if rel.reltype.endswith("/slideLayout"):
+            continue
+        try:
+            new_rId = new_slide.part.relate_to(
+                rel._target, rel.reltype, is_external=rel.is_external
+            )
+            rId_map[rId] = new_rId
+        except Exception:
+            pass
+
+    # Clonar el cSld completo (fondo + todas las shapes)
+    template_cSld = template_slide._element.find(qn("p:cSld"))
+    if template_cSld is None:
+        return new_slide
+
+    new_cSld = copy.deepcopy(template_cSld)
+
+    # Reemplazar referencias r:embed / r:link con los nuevos rIds
+    for elem in new_cSld.iter():
+        for attr_key in list(elem.attrib):
+            ns_part, _, local = attr_key.partition("}")
+            ns_part = ns_part.lstrip("{")
+            if ns_part == R_NS and local in ("embed", "link", "id"):
+                old_rId = elem.attrib[attr_key]
+                if old_rId in rId_map:
+                    elem.attrib[attr_key] = rId_map[old_rId]
+
+    # Reemplazar cSld del nuevo slide con el clonado
+    sld = new_slide._element
+    old_cSld = sld.find(qn("p:cSld"))
+    if old_cSld is not None:
+        sld.remove(old_cSld)
+    clrMap = sld.find(qn("p:clrMapOvr"))
+    pos = list(sld).index(clrMap) if clrMap is not None else 0
+    sld.insert(pos, new_cSld)
 
     return new_slide
 
@@ -555,18 +579,7 @@ def generate_pptx_bytes(
     if not prs.slides:
         raise ValueError("La plantilla PPTX está vacía.")
 
-    template_slide      = prs.slides[0] if len(prs.slides) == 1 else prs.slides[1]
-    layout              = template_slide.slide_layout
-    template_shape_xmls = [copy.deepcopy(shape._element) for shape in template_slide.shapes]
-
-    # Extraer fondo del template para replicarlo en todos los slides generados
-    template_bg_xml = None
-    _cSld = template_slide._element.find(qn("p:cSld"))
-    if _cSld is not None:
-        _bg = _cSld.find(qn("p:bg"))
-        if _bg is not None:
-            template_bg_xml = copy.deepcopy(_bg)
-
+    template_slide     = prs.slides[0] if len(prs.slides) == 1 else prs.slides[1]
     initial_slots      = _get_slots(list(template_slide.shapes))
     products_per_slide = max(len(initial_slots), 1)
     slide_height       = prs.slide_height
@@ -574,10 +587,14 @@ def generate_pptx_bytes(
 
     groups = [products[i:i + products_per_slide] for i in range(0, len(products), products_per_slide)]
 
-    for idx, group in enumerate(groups):
-        slide = template_slide if idx == 0 else _add_slide_from_template(
-            prs, layout, template_shape_xmls, template_bg_xml
-        )
+    # Pre-crear todos los slides como duplicados del template ANTES de llenar ninguno.
+    # Esto es crítico: si llenáramos template_slide primero (idx=0), las copias
+    # posteriores tendrían datos del producto 1 en vez de los placeholders originales.
+    all_slides = [template_slide]
+    for _ in range(len(groups) - 1):
+        all_slides.append(_duplicate_slide(prs, template_slide))
+
+    for slide, group in zip(all_slides, groups):
         cur_slots = _get_slots(list(slide.shapes))
         is_a4 = products_per_slide == 1
         for i, product in enumerate(group):
