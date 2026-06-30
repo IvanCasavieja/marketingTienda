@@ -284,6 +284,8 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
         elif re.search(r"Precio\s+\d+", t) or re.search(r"<<Precio\d*>>", t):
             price_shape = shape
             _set_price(shape, data.get("precioActual", ""), preserve_sizes=ps)
+            if a4_mode:
+                _set_normAutofit(shape)
         elif re.search(r"<<Mecanica\d+>>", t):
             _set_text(shape, data.get("mecanica", ""))
         elif "<<" in t and "Descripci" in t:
