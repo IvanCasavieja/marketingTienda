@@ -256,10 +256,10 @@ def _set_runs_font_size(shape, pt: int) -> None:
 # Llenado de slots
 # ---------------------------------------------------------------------------
 
-def _apply_desc_lateral_margin(shape, slide_width: int, margin_emu: int = 360000) -> None:
-    """Restringe el shape de descripción para que no se salga de los márgenes laterales del slide.
+def _apply_desc_lateral_margin(shape, slide_width: int, margin_emu: int = 720000) -> None:
+    """Restringe el shape de descripción/precio para que no se salga de los márgenes laterales.
 
-    Solo se aplica en modo A4 (1 producto/slide). margin_emu default = 1 cm.
+    Solo se aplica en modo A4 (1 producto/slide). margin_emu default = 2 cm.
     """
     if slide_width <= 0:
         return
