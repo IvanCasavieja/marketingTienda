@@ -242,7 +242,21 @@ def _set_runs_font_size(shape, pt: int) -> None:
 # Llenado de slots
 # ---------------------------------------------------------------------------
 
-def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0, a4_mode: bool = True) -> None:
+def _apply_desc_lateral_margin(shape, slide_width: int, margin_emu: int = 360000) -> None:
+    """Restringe el shape de descripción para que no se salga de los márgenes laterales del slide.
+
+    Solo se aplica en modo A4 (1 producto/slide). margin_emu default = 1 cm.
+    """
+    if slide_width <= 0:
+        return
+    new_left  = max(shape.left, margin_emu)
+    new_right = min(shape.left + shape.width, slide_width - margin_emu)
+    if new_right > new_left:
+        shape.left  = new_left
+        shape.width = new_right - new_left
+
+
+def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0, slide_width: int = 0, a4_mode: bool = True) -> None:
     """Rellena un slot de cenefa con los datos del producto.
 
     a4_mode=True  → A4 Redex: sobreescribe tamaños de letra y aplica ajustes de layout.
@@ -277,6 +291,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
             _set_desc(shape, data.get("descripcion", ""), preserve_sizes=ps)
             if a4_mode:
                 _set_normAutofit(shape)
+                _apply_desc_lateral_margin(shape, slide_width)
         elif re.search(r"<<UnidadMedida\d+>>", t):
             _set_text(shape, "unidad" if multi else "")
         elif re.search(r"<<Vigencia\d*>>", t):
@@ -619,7 +634,7 @@ def generate_pptx_bytes(
         is_a4 = products_per_slide == 1
         for i, product in enumerate(group):
             if i < len(cur_slots):
-                _fill_slot(cur_slots[i], product, adjust_p1=is_a4, slide_height=slide_height, a4_mode=is_a4)
+                _fill_slot(cur_slots[i], product, adjust_p1=is_a4, slide_height=slide_height, slide_width=prs.slide_width, a4_mode=is_a4)
         for i in range(len(group), products_per_slide):
             if i < len(cur_slots):
                 _clear_slot(cur_slots[i])
