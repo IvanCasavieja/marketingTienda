@@ -285,6 +285,7 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
             price_shape = shape
             _set_price(shape, data.get("precioActual", ""), preserve_sizes=ps)
             if a4_mode:
+                _apply_desc_lateral_margin(shape, slide_width)
                 _set_normAutofit(shape)
         elif re.search(r"<<Mecanica\d+>>", t):
             _set_text(shape, data.get("mecanica", ""))
