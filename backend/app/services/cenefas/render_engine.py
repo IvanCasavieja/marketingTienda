@@ -99,23 +99,37 @@ def _set_price(shape, text: str, int_pt: int | None = None, preserve_sizes: bool
         num_int = number
         num_dec = None
 
+    # Calcular tamaños de fuente ANTES de construir los runs.
+    # Si int_pt is None (modo A4), achica símbolo + entero + decimal proporcionalmente
+    # para que el ancho total quede dentro de shape.width.
+    _sym_pt_final = PRICE_SYMBOL_PT
+    _int_pt_final = int_pt if int_pt is not None else PRICE_INT_PT
+    _dec_pt_final = PRICE_DECIMAL_PT
+
+    if not preserve_sizes and int_pt is None and shape.width > 0:
+        K = 12700 * 0.58
+        dec_chars = len(num_dec) if num_dec else 0
+        total_w = (
+            len(symbol)  * PRICE_SYMBOL_PT  +
+            len(num_int) * PRICE_INT_PT      +
+            dec_chars    * PRICE_DECIMAL_PT
+        ) * K
+        if total_w > shape.width and total_w > 0:
+            scale = shape.width / total_w
+            _sym_pt_final = max(int(PRICE_SYMBOL_PT  * scale), 8)
+            _int_pt_final = max(int(PRICE_INT_PT     * scale), PBANCO_INT_PT)
+            _dec_pt_final = max(int(PRICE_DECIMAL_PT * scale), 8)
+
     sym_r = copy.deepcopy(tmpl_r_sym)
     sym_r.find(qn("a:t")).text = symbol
-    if not preserve_sizes and int_pt is None:  # A4 Redex: sobreescribir tamaño símbolo
+    if not preserve_sizes and int_pt is None:
         _rpr = sym_r.find(qn("a:rPr"))
         if _rpr is not None:
-            _rpr.set("sz", str(PRICE_SYMBOL_PT * 100))
+            _rpr.set("sz", str(_sym_pt_final * 100))
 
     int_r = copy.deepcopy(tmpl_r_int)
     int_r.find(qn("a:t")).text = num_int
     if not preserve_sizes:
-        _int_pt_final = int_pt if int_pt is not None else PRICE_INT_PT
-        # A4 Redex: auto-shrink si el número desborda el ancho del shape
-        if int_pt is None and shape.width > 0 and num_int:
-            char_emu = _int_pt_final * 12700 * 0.58
-            if len(num_int) * char_emu > shape.width:
-                _int_pt_final = int(shape.width / (len(num_int) * 12700 * 0.58))
-                _int_pt_final = max(_int_pt_final, PBANCO_INT_PT)
         _rpr = int_r.find(qn("a:rPr"))
         if _rpr is not None:
             _rpr.set("sz", str(_int_pt_final * 100))
@@ -128,7 +142,7 @@ def _set_price(shape, text: str, int_pt: int | None = None, preserve_sizes: bool
         if not preserve_sizes:
             dec_rPr = dec_r.find(qn("a:rPr"))
             if dec_rPr is not None:
-                dec_rPr.set("sz", str(PRICE_DECIMAL_PT * 100))
+                dec_rPr.set("sz", str(_dec_pt_final * 100))
         runs.append(dec_r)
 
     end_rpr = p_elem.find(qn("a:endParaRPr"))
@@ -283,9 +297,10 @@ def _fill_slot(shapes, data: dict, adjust_p1: bool = True, slide_height: int = 0
             _set_p1(shape, data.get("mecanica", ""))
         elif re.search(r"Precio\s+\d+", t) or re.search(r"<<Precio\d*>>", t):
             price_shape = shape
-            _set_price(shape, data.get("precioActual", ""), preserve_sizes=ps)
             if a4_mode:
                 _apply_desc_lateral_margin(shape, slide_width)
+            _set_price(shape, data.get("precioActual", ""), preserve_sizes=ps)
+            if a4_mode:
                 _set_normAutofit(shape)
         elif re.search(r"<<Mecanica\d+>>", t):
             _set_text(shape, data.get("mecanica", ""))
