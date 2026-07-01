@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { preciosApi, type Producto, type PreciosListResponse, type TiendaStats } from "@/lib/api";
+import { preciosApi, type Producto, type ProductoVivo, type PreciosListResponse, type TiendaStats } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
-import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare, Download, RefreshCw, Clock, History, X, FileSpreadsheet } from "lucide-react";
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare, Download, RefreshCw, Clock, History, X, FileSpreadsheet, Zap } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -174,6 +174,31 @@ export default function PreciosPage() {
     debounceRef.current = setTimeout(() => load(1), 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [q, tienda, categoria, marca, conDescuento, sortBy, sortDir]);
+
+  const [modoVivo,       setModoVivo]       = useState(false);
+  const [loadingVivo,    setLoadingVivo]    = useState(false);
+  const [resultadosVivo, setResultadosVivo] = useState<ProductoVivo[] | null>(null);
+
+  const buscarVivo = useCallback(async (term: string) => {
+    if (term.length < 2) { setResultadosVivo(null); return; }
+    setLoadingVivo(true);
+    try {
+      const { data } = await preciosApi.buscarVivo(term);
+      setResultadosVivo(data.items);
+    } catch {
+      toast.error("Error en búsqueda en vivo");
+      setResultadosVivo(null);
+    } finally {
+      setLoadingVivo(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!modoVivo) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => buscarVivo(q), 600);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [modoVivo, q, buscarVivo]);
 
   const [exporting,         setExporting]         = useState(false);
   const [exportingExcel,    setExportingExcel]    = useState(false);
@@ -527,6 +552,19 @@ export default function PreciosPage() {
           />
         </div>
 
+        <button
+          onClick={() => { setModoVivo((v) => !v); setResultadosVivo(null); }}
+          className={`flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border transition-colors shrink-0 ${
+            modoVivo
+              ? "bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-950 dark:border-amber-700 dark:text-amber-400"
+              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 hover:border-brand-400 hover:text-brand-600"
+          }`}
+          title={modoVivo ? "Búsqueda en vivo activa — golpea las APIs en tiempo real" : "Activar búsqueda en vivo (todas las cadenas y sucursales, en tiempo real)"}
+        >
+          <Zap size={13} className={modoVivo ? "fill-amber-400 text-amber-400" : ""} />
+          En vivo
+        </button>
+
         <select
           value={tienda}
           onChange={(e) => { setTienda(e.target.value); setPage(1); }}
@@ -564,8 +602,94 @@ export default function PreciosPage() {
         </label>
       </div>
 
+      {/* Tabla en vivo */}
+      {modoVivo && (
+        <div className="card overflow-x-auto p-0">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-amber-50 dark:bg-amber-950">
+            <Zap size={13} className="fill-amber-400 text-amber-400" />
+            <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+              Búsqueda en vivo — Ta-Ta (15), El Dorado (17), GDU/Disco/Devoto/Géant (102) — todas las sucursales
+            </span>
+            {loadingVivo && <RefreshCw size={12} className="animate-spin text-amber-500 ml-auto" />}
+            {resultadosVivo && !loadingVivo && (
+              <span className="text-xs text-amber-600 dark:text-amber-500 ml-auto tabular-nums">
+                {resultadosVivo.length.toLocaleString("es-UY")} resultados
+              </span>
+            )}
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+                <th className="table-th">Producto</th>
+                <th className="table-th hidden md:table-cell">Marca</th>
+                <th className="table-th">Tienda</th>
+                <th className="table-th">Sucursal</th>
+                <th className="table-th text-right">Precio</th>
+                <th className="table-th w-8" />
+              </tr>
+            </thead>
+            <tbody>
+              {loadingVivo
+                ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
+                : !resultadosVivo
+                ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-sm">
+                      {q.length < 2
+                        ? "Escribí al menos 2 caracteres para buscar en vivo."
+                        : "Escribí para buscar en vivo…"}
+                    </td>
+                  </tr>
+                )
+                : resultadosVivo.length === 0
+                ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-sm">
+                      Sin resultados en ninguna cadena para "{q}".
+                    </td>
+                  </tr>
+                )
+                : resultadosVivo.map((p, i) => (
+                  <tr key={`${p.tienda}-${p.sucursal_id}-${p.sku}-${i}`} className="table-tr">
+                    <td className="table-td">
+                      <div className="font-medium text-slate-800 dark:text-slate-200 leading-tight max-w-xs truncate">
+                        {p.nombre ?? "—"}
+                      </div>
+                      {p.sku && <div className="text-[11px] text-slate-400 mt-0.5">SKU {p.sku}</div>}
+                    </td>
+                    <td className="table-td text-slate-600 dark:text-slate-400 hidden md:table-cell">
+                      {p.marca ?? "—"}
+                    </td>
+                    <td className="table-td">
+                      <TiendaBadge tienda={p.tienda} />
+                    </td>
+                    <td className="table-td text-xs text-slate-500 dark:text-slate-400">
+                      {p.sucursal_nombre ?? "—"}
+                    </td>
+                    <td className="table-td text-right">
+                      <PrecioBadge precio={p.precio} precioLista={p.precio_lista} />
+                    </td>
+                    <td className="table-td">
+                      <a
+                        href={p.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-slate-400 hover:text-brand-600 transition-colors"
+                        title="Ver en tienda"
+                      >
+                        <ExternalLink size={13} />
+                      </a>
+                    </td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Tabla */}
-      <div className="card overflow-x-auto p-0">
+      {!modoVivo && <div className="card overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
@@ -644,10 +768,10 @@ export default function PreciosPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       {/* Paginación */}
-      {activeResult && activeResult.total > PAGE_SIZE && (
+      {!modoVivo && activeResult && activeResult.total > PAGE_SIZE && (
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span className="text-slate-500 dark:text-slate-400">
             {((page - 1) * PAGE_SIZE + 1).toLocaleString("es-UY")}–
