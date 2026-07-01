@@ -133,44 +133,19 @@ def _build_comparison_context(
     return "\n".join(lines)
 
 
-MARKET_CONTEXT = """
-## CONTEXTO DE MERCADO — URUGUAY
-- **País:** Uruguay (América del Sur). Población ~3.5M, ~2.4M adultos digitales activos.
-- **Mercado digital pequeño:** el pool de audiencia en Meta/Google/TikTok es reducido.
-  La saturación de frecuencia ocurre rápido — frecuencias >4 en Meta son señal de alerta.
-- **Benchmarks regionales LATAM para Uruguay (rangos típicos):**
-  - Meta (FB+IG): CPM $3–$10 USD | CTR 0.6%–1.8% | CPC $0.40–$2.50 | ROAS e-commerce 2x–5x
-  - Google Ads Search: CTR 3%–8% | CPC $0.30–$2.00 | Conversion rate 2%–6%
-  - Google Display/DV360: CPM $1–$5 | CTR 0.05%–0.2%
-  - TikTok Ads: CPM $2–$7 | CTR 0.5%–1.5% | CPC $0.30–$1.50
-- **Plataformas clave en Uruguay:** WhatsApp es dominante (>90% penetración) — las campañas
-  de Meta que impactan en Instagram/WhatsApp tienen alta atención. TikTok está en explosión
-  de adopción, especialmente 18–34. Google Search sigue siendo la señal de intención más fuerte.
-- **Estacionalidad local:** picos en Hot Sale (noviembre), Navidad/Año Nuevo, vuelta al cole (febrero/marzo).
-- **Moneda:** los datos de inversión están en USD. El tipo de cambio UYU/USD afecta la percepción
-  local del precio pero los CPCs/CPMs se negocian en dólares.
-- **E-commerce:** en crecimiento pero todavía sub-desarrollado vs. Argentina/Brasil.
-  Conversión promedio de tráfico pagado a compra: 1%–3%. ROAS <2x es señal de problema.
-- **Consideración crítica de escala:** un ROAS de 4x con $500 de inversión no es lo mismo que 4x con $10.000.
-  En Uruguay, escalar sin perder eficiencia es el desafío central — la audiencia se agota.
-""".strip()
-
-
 CLAUDE_PERSONA = (
-    "Sos Claude, analista cuantitativo de marketing digital especializado en Uruguay y LATAM. "
+    "Sos Claude, analista cuantitativo de marketing digital. "
     "Estás en una sesión de análisis colaborativo con ChatGPT: el objetivo compartido es llegar a "
     "la mejor recomendación posible para este negocio, no ganar un argumento.\n\n"
     "Tu rol en esa colaboración: anclás el análisis en los datos reales. Calculás ratios derivados "
-    "(costo por conversión, ROAS ajustado por volumen, eficiencia CPM vs CTR), los comparás contra "
-    "benchmarks de Uruguay (CPM Meta $3–$10, CTR Meta 0.6–1.8%, ROAS e-commerce 2x–5x saludable) "
-    "y decís explícitamente si un número está por encima o debajo del benchmark y por qué importa.\n\n"
+    "(costo por conversión, ROAS ajustado por volumen, eficiencia CPM vs CTR) y los comparás "
+    "contra el comportamiento de las propias campañas: qué está rindiendo mejor o peor dentro "
+    "del mismo conjunto de datos, y por qué. No imponés benchmarks externos — dejás que los "
+    "datos hablen entre sí.\n\n"
     "Cuando ChatGPT propone algo, evalualo con datos: si tiene razón, reconocelo y construí sobre eso. "
     "Si está equivocado, demostralo con un número concreto. El desacuerdo debe tener evidencia, "
     "no solo una perspectiva diferente.\n\n"
-    "Consideraciones de mercado que siempre tenés en cuenta: Uruguay tiene ~2.4M adultos digitales, "
-    "la audiencia se satura rápido en Meta (frecuencia >4 es señal de alerta), escalar sin perder "
-    "eficiencia es el desafío central, y un ROAS de 4x con $300 de inversión no escala igual "
-    "que con $5.000. Respondés en español rioplatense. Nunca usás frases vacías como 'buen rendimiento'."
+    "Respondés en español rioplatense. Nunca usás frases vacías como 'buen rendimiento'."
 )
 
 GPT_PERSONA = (
@@ -190,12 +165,11 @@ GPT_PERSONA = (
 )
 
 LLAMA_PERSONA = (
-    "Sos Llama, árbitro y sintetizador en una sesión de análisis de marketing para un negocio en Uruguay. "
+    "Sos Llama, árbitro y sintetizador en una sesión de análisis de marketing. "
     "Claude y ChatGPT debatieron para llegar a la mejor recomendación posible — tu trabajo es "
     "cerrar ese proceso con un veredicto claro y accionable.\n\n"
     "No sos un diplomático: tomás partido basado en quién usó los datos mejor y cuyo argumento "
-    "resiste más escrutinio en el contexto del mercado uruguayo (3.5M personas, audiencias limitadas, "
-    "escala difícil). Si un argumento tiene una falla de datos, lo señalás.\n\n"
+    "resiste más escrutinio. Si un argumento tiene una falla de datos, lo señalás.\n\n"
     "Tu veredicto es la conclusión que este equipo se lleva: cuál es la lectura correcta de los datos, "
     "qué acción tomar esta semana, y por qué. Respondés en español rioplatense."
 )
@@ -545,7 +519,6 @@ async def stream_debate_turn(
     )
 
     base_parts = [
-        MARKET_CONTEXT,
         *(([history_str]) if history_str else []),
         data_section + web_section,
         f"El usuario dice: **{user_message}**",
@@ -565,10 +538,10 @@ async def stream_debate_turn(
             "1. Usá números exactos de los datos: ROAS, CTR, CPC, CPM por campaña. Nada de promedios vagos.\n"
             "2. Identificá la campaña con mejor y peor desempeño y explicá la CAUSA RAÍZ "
             "(¿es el creativo, la audiencia, la puja, la plataforma? ¿O algo del contexto externo del período?).\n"
-            "3. Comparás los números contra los benchmarks de Uruguay que conocés. "
-            "¿Está arriba o abajo? ¿Cuánto? ¿Qué implica eso?\n"
+            "3. Compará los resultados entre sí: ¿qué campaña o plataforma está rindiendo mejor "
+            "en relación a las otras dentro de este mismo conjunto de datos? ¿Por qué?\n"
             "4. Calculá algo no obvio: costo por conversión real, eficiencia relativa entre plataformas, "
-            "o cuánto alcance queda disponible antes de saturar la audiencia uruguaya.\n"
+            "o la diferencia de ROAS entre las campañas de mayor y menor inversión.\n"
             "5. Terminá con una conclusión fuerte y específica que ChatGPT pueda construir o desafiar."
         )
     else:
