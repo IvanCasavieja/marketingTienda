@@ -56,54 +56,37 @@ def _tata_search_url(term: str, region_id: str, first: int = 20) -> str:
 
 
 def buscar_tata(term: str) -> list[ProductRecord]:
-    records: list[ProductRecord] = []
-    lock = threading.Lock()
-
-    def _una(sucursal: dict):
-        url = _tata_search_url(term, sucursal["region_id"])
-        data = tata._fetch(url)
-        if data is None:
-            return
-        search = (data.get("data") or {}).get("search") or {}
-        edges = (search.get("products") or {}).get("edges") or []
-        parsed = [tata._parse_node(e["node"], sucursal) for e in edges]
-        with lock:
-            records.extend(parsed)
-
-    with ThreadPoolExecutor(max_workers=len(tata.SUCURSALES)) as ex:
-        list(ex.map(_una, tata.SUCURSALES))
-
-    return records
+    """Ta-Ta tiene precio nacional uniforme — con 1 sucursal es suficiente."""
+    sucursal = tata.SUCURSALES[0]  # Montevideo
+    url  = _tata_search_url(term, sucursal["region_id"], first=30)
+    data = tata._fetch(url)
+    if data is None:
+        return []
+    search = (data.get("data") or {}).get("search") or {}
+    edges  = (search.get("products") or {}).get("edges") or []
+    return [tata._parse_node(e["node"], sucursal) for e in edges]
 
 
 # ── El Dorado ─────────────────────────────────────────────────────────────────
 
 def buscar_eldorado(term: str) -> list[ProductRecord]:
-    records: list[ProductRecord] = []
-    lock = threading.Lock()
-
-    def _una(sucursal: dict):
-        r = eldorado._get(eldorado._IS_URL, {
-            "query":                term,
-            "count":                20,
-            "locale":               "es-UY",
-            "from":                 0,
-            "to":                   19,
-            "regionId":             sucursal["region_id"],
-            "hideUnavailableItems": "false",
-        })
-        data = r.json()
-        parsed = []
-        for raw in data.get("products") or []:
-            rec = eldorado._parse_product_is(raw, sucursal)
-            if rec is not None:
-                parsed.append(rec)
-        with lock:
-            records.extend(parsed)
-
-    with ThreadPoolExecutor(max_workers=len(eldorado.SUCURSALES)) as ex:
-        list(ex.map(_una, eldorado.SUCURSALES))
-
+    """El Dorado tiene precio nacional uniforme — con 1 sucursal es suficiente."""
+    sucursal = eldorado.SUCURSALES[0]  # Montevideo
+    r = eldorado._get(eldorado._IS_URL, {
+        "query":                term,
+        "count":                30,
+        "locale":               "es-UY",
+        "from":                 0,
+        "to":                   29,
+        "regionId":             sucursal["region_id"],
+        "hideUnavailableItems": "false",
+    })
+    data = r.json()
+    records = []
+    for raw in data.get("products") or []:
+        rec = eldorado._parse_product_is(raw, sucursal)
+        if rec is not None:
+            records.append(rec)
     return records
 
 
@@ -205,7 +188,7 @@ def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[Produc
                 f"{base_url}/graphql",
                 json=payload,
                 headers=_MAGENTO_HEADERS,
-                timeout=12,
+                timeout=8,
             )
             r.raise_for_status()
             data = r.json()

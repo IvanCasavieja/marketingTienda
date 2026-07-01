@@ -65,7 +65,7 @@ _SESSION.headers.update(_HEADERS)
 def _fetch(url: str, retries: int = 3) -> dict | None:
     for attempt in range(retries):
         try:
-            r = _SESSION.get(url, timeout=20)
+            r = _SESSION.get(url, timeout=8)
             if r.status_code == 200:
                 return r.json()
             if r.status_code == 429:

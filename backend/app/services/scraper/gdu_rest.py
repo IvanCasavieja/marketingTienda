@@ -106,7 +106,7 @@ def _get_jwt(cache_dir: Path, force_refresh: bool = False) -> str:
             "scope":      "ecom_products_api ecom_products_prices_api",
         },
         headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": _UA},
-        timeout=20,
+        timeout=8,
     )
     r.raise_for_status()
     payload     = r.json()
@@ -134,7 +134,7 @@ def _llamar(session: requests.Session, method: str, url: str, **kwargs) -> reque
     """HTTP con retry/backoff exponencial."""
     for attempt in range(1, 4):
         try:
-            resp = session.request(method, url, timeout=30, **kwargs)
+            resp = session.request(method, url, timeout=8, **kwargs)
             if resp.status_code == 200:
                 return resp
             if resp.status_code == 429:
