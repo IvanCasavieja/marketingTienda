@@ -70,8 +70,7 @@ def buscar_tata(term: str) -> list[ProductRecord]:
         with lock:
             records.extend(parsed)
 
-    # max_workers=5: Render free tier (0.1 vCPU) se satura con 15 hilos simultáneos
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    with ThreadPoolExecutor(max_workers=len(tata.SUCURSALES)) as ex:
         list(ex.map(_una, tata.SUCURSALES))
 
     return records
@@ -84,16 +83,20 @@ def buscar_eldorado(term: str) -> list[ProductRecord]:
     lock = threading.Lock()
 
     def _una(sucursal: dict):
-        r = eldorado._get(eldorado._IS_URL, {
-            "query":                term,
-            "count":                20,
-            "locale":               "es-UY",
-            "from":                 0,
-            "to":                   19,
-            "regionId":             sucursal["region_id"],
-            "hideUnavailableItems": "false",
-        })
-        data = r.json()
+        try:
+            r = eldorado._get(eldorado._IS_URL, {
+                "query":                term,
+                "count":                20,
+                "locale":               "es-UY",
+                "from":                 0,
+                "to":                   19,
+                "regionId":             sucursal["region_id"],
+                "hideUnavailableItems": "false",
+            })
+            data = r.json()
+        except Exception as exc:
+            log.warning("ElDorado live: %s falló — %s", sucursal["nombre"], exc)
+            return
         parsed = []
         for raw in data.get("products") or []:
             rec = eldorado._parse_product_is(raw, sucursal)
@@ -102,8 +105,7 @@ def buscar_eldorado(term: str) -> list[ProductRecord]:
         with lock:
             records.extend(parsed)
 
-    # max_workers=5: Render free tier (0.1 vCPU) se satura con 17 hilos simultáneos
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    with ThreadPoolExecutor(max_workers=len(eldorado.SUCURSALES)) as ex:
         list(ex.map(_una, eldorado.SUCURSALES))
 
     return records
