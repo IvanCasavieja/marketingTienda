@@ -66,6 +66,11 @@ def _es_relevante(nombre: str, term: str) -> bool:
     return any(p in nombre_lower for p in palabras)
 
 
+def _es_codigo(term: str) -> bool:
+    """True si el término es puramente numérico — barcode EAN o SKU interno."""
+    return term.strip().isdigit()
+
+
 def buscar_tata(term: str) -> list[ProductRecord]:
     records: list[ProductRecord] = []
     lock = threading.Lock()
@@ -80,7 +85,7 @@ def buscar_tata(term: str) -> list[ProductRecord]:
         parsed = []
         for e in edges:
             d = tata._parse_node(e["node"], sucursal)
-            if not _es_relevante(d["nombre"], term):
+            if not _es_codigo(term) and not _es_relevante(d["nombre"], term):
                 continue
             parsed.append(ProductRecord(
                 tienda=d["tienda"],
@@ -128,7 +133,7 @@ def buscar_eldorado(term: str) -> list[ProductRecord]:
         parsed = []
         for raw in data.get("products") or []:
             rec = eldorado._parse_product_is(raw, sucursal)
-            if rec is not None and _es_relevante(rec.nombre, term):
+            if rec is not None and (_es_codigo(term) or _es_relevante(rec.nombre, term)):
                 parsed.append(rec)
         with lock:
             records.extend(parsed)
@@ -152,48 +157,69 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
     categorias:  dict[str, str | None] = {}
     seen_ids:    set[str]              = set()
 
-    # GDU busca Name= como substring exacto → buscar cada palabra por separado y unir
-    palabras = [w for w in term.split() if w.isalpha() and len(w) >= 3] or [term]
+    def _registrar_item(item: dict) -> None:
+        pid = item["id"]
+        if pid in seen_ids:
+            return
+        seen_ids.add(pid)
+        desc = item.get("description", {})
+        name = desc.get("name", pid)
+        barcodes_list = item.get("barcodes") or []
+        barcode = barcodes_list[0].get("barcode") if barcodes_list else None
+        categoria = None
+        for df in item.get("dynamicFields") or []:
+            if df.get("fieldName") == "FILTER|Categoría":
+                categoria = df.get("fieldValue")
+                break
+        product_ids.append(pid)
+        names[pid]      = name
+        barcodes[pid]   = barcode
+        categorias[pid] = categoria
 
-    def _buscar_palabra(word: str) -> None:
+    def _buscar_param(param_name: str, param_value: str) -> None:
         page, total_pages = 1, None
         while True:
             try:
                 r = gdu._llamar(
                     session, "GET",
                     f"{gdu._BASE_PRODS}/api/accounts/{gdu._ACCOUNT}/products",
-                    params={"Page": page, "ItemsPerPage": gdu._PAGE_SIZE, "IsActive": True, "Name": word},
+                    params={"Page": page, "ItemsPerPage": gdu._PAGE_SIZE, "IsActive": True, param_name: param_value},
                 )
                 data = r.json()
             except Exception as exc:
-                log.warning("GDU live: error buscando '%s' pág %d — %s", word, page, exc)
+                log.warning("GDU live: error buscando %s='%s' pág %d — %s", param_name, param_value, page, exc)
                 break
             if total_pages is None:
                 total_pages = min(data.get("totalPageCount", 1), _GDU_MAX_PAGES)
             for item in data.get("items", []):
-                pid = item["id"]
-                if pid in seen_ids:
-                    continue
-                seen_ids.add(pid)
-                desc = item.get("description", {})
-                name = desc.get("name", pid)
-                barcodes_list = item.get("barcodes") or []
-                barcode = barcodes_list[0].get("barcode") if barcodes_list else None
-                categoria = None
-                for df in item.get("dynamicFields") or []:
-                    if df.get("fieldName") == "FILTER|Categoría":
-                        categoria = df.get("fieldValue")
-                        break
-                product_ids.append(pid)
-                names[pid]      = name
-                barcodes[pid]   = barcode
-                categorias[pid] = categoria
+                _registrar_item(item)
             if page >= total_pages:
                 break
             page += 1
 
-    for palabra in palabras:
-        _buscar_palabra(palabra)
+    term_clean = term.strip()
+    if _es_codigo(term_clean):
+        if len(term_clean) in (12, 13, 14):
+            # EAN barcode — buscar por Barcode= en la API de productos GDU
+            _buscar_param("Barcode", term_clean)
+        # También intentar como product ID directo (ej: "110025")
+        if not product_ids:
+            try:
+                r = gdu._llamar(
+                    session, "GET",
+                    f"{gdu._BASE_PRODS}/api/accounts/{gdu._ACCOUNT}/products/{term_clean}",
+                )
+                _registrar_item(r.json())
+            except Exception:
+                pass
+        # Fallback: buscar como Name= por si el término numérico está en el nombre
+        if not product_ids:
+            _buscar_param("Name", term_clean)
+    else:
+        # Búsqueda por nombre: OR de cada palabra significativa
+        palabras = [w for w in term_clean.split() if w.isalpha() and len(w) >= 3] or [term_clean]
+        for palabra in palabras:
+            _buscar_param("Name", palabra)
 
     api_records: list[ProductRecord] = []
     for i in range(0, len(product_ids), gdu._PRICE_BATCH):
