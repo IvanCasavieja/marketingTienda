@@ -138,9 +138,10 @@ export default function PreciosPage() {
         })
     : [];
 
-  const cheapest = visible.find((r) => r.precio !== null);
+  const cheapest   = visible.find((r) => r.precio !== null);
   const hasResults = results !== null && results.length > 0;
-  const isActive   = hasResults || loading || streaming;
+  const hasSearched = results !== null; // true aunque haya 0 resultados
+  const isActive   = hasSearched || loading || streaming;
 
   return (
     /* h-full + flex-col hace que la página ocupe exactamente el viewport sin crecer */
@@ -148,7 +149,7 @@ export default function PreciosPage() {
 
       {/* ── Barra de búsqueda ──────────────────────────────────────────────── */}
       <div className={`shrink-0 transition-all duration-500 ${isActive ? "" : "mt-16"}`}>
-        {!isActive && (
+        {!hasSearched && !loading && !streaming && (
           <div className="text-center mb-6">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-600/10 mb-3">
               <Search size={22} className="text-brand-600" />
@@ -187,8 +188,8 @@ export default function PreciosPage() {
         </form>
       </div>
 
-      {/* ── Estado inicial vacío ───────────────────────────────────────────── */}
-      {!isActive && (
+      {/* ── Estado inicial vacío (solo antes de la primera búsqueda) ────────── */}
+      {!hasSearched && !loading && !streaming && (
         <div className="mt-10 text-center space-y-5">
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-w-sm mx-auto">
             {Object.entries(CADENA_CONFIG).map(([key, cfg]) => (
