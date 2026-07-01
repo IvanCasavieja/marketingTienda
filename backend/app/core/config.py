@@ -13,7 +13,8 @@ class Settings(BaseSettings):
 
     # App
     APP_ENV: str = "development"
-    APP_SECRET_KEY: str  # Required — must be set in .env; no default prevents silent token invalidation on restart
+    APP_SECRET_KEY: str  # Required — used for the scraper sync endpoint (X-Sync-Key header)
+    JWT_SECRET_KEY: str = ""  # JWT signing key — defaults to APP_SECRET_KEY if not set
     APP_ALLOWED_ORIGINS: str = "http://localhost:3000"
     FRONTEND_URL: str = "https://marketing-tienda.vercel.app"
     API_V1_PREFIX: str = "/api/v1"
