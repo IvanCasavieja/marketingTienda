@@ -152,7 +152,7 @@ async def generate_optimization_recommendations(metrics: List[Dict], date_from: 
 Genera recomendaciones de optimización específicas y accionables:
 
 1. **REDISTRIBUCIÓN DE PRESUPUESTO** (qué plataformas merecen más/menos inversión y por qué)
-2. **OPTIMIZACIÓN DE PUJAS** (campañas con CPC/CPM fuera de benchmark)
+2. **OPTIMIZACIÓN DE PUJAS** (campañas con CPC/CPM significativamente más alto o bajo que el resto)
 3. **AUDIENCIAS Y SEGMENTACIÓN** (recomendaciones basadas en CTR y tasa de conversión)
 4. **CREATIVOS Y MENSAJES** (inferencias sobre qué puede estar fallando o funcionando bien)
 5. **ESTRATEGIA CROSS-PLATFORM** (cómo combinar mejor los canales para maximizar ROAS)
