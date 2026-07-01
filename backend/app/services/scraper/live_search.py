@@ -259,23 +259,24 @@ def buscar_botiga(term: str) -> list[ProductRecord]:
 
 def buscar_todas(term: str, cache_dir: Path = _DATA_DIR) -> dict[str, list[ProductRecord]]:
     """Busca `term` en Ta-Ta, El Dorado, GDU, FarmaShop y Botiga en paralelo.
-    Devuelve {cadena: [ProductRecord, ...]} — una entrada por (producto × sucursal)."""
+    Devuelve {cadena: [ProductRecord, ...]}. Si una cadena falla, devuelve lista
+    vacía para esa cadena y continúa con las demás (nunca lanza excepción)."""
+    futs: dict[str, "Future"] = {}
     with ThreadPoolExecutor(max_workers=5) as ex:
-        fut_tata      = ex.submit(buscar_tata, term)
-        fut_eldorado  = ex.submit(buscar_eldorado, term)
-        fut_gdu       = ex.submit(buscar_gdu, term, cache_dir)
-        fut_farmashop = ex.submit(buscar_farmashop, term)
-        fut_botiga    = ex.submit(buscar_botiga, term)
-
-        resultados = {
-            "Ta-Ta":     fut_tata.result(),
-            "ElDorado":  fut_eldorado.result(),
-            "GDU":       fut_gdu.result(),
-            "FarmaShop": fut_farmashop.result(),
-            "Botiga":    fut_botiga.result(),
+        futs = {
+            "Ta-Ta":     ex.submit(buscar_tata, term),
+            "ElDorado":  ex.submit(buscar_eldorado, term),
+            "GDU":       ex.submit(buscar_gdu, term, cache_dir),
+            "FarmaShop": ex.submit(buscar_farmashop, term),
+            "Botiga":    ex.submit(buscar_botiga, term),
         }
-
-    for cadena, records in resultados.items():
-        log.info("live_search: %s — %d registros para '%s'", cadena, len(records), term)
+        resultados: dict[str, list[ProductRecord]] = {}
+        for cadena, fut in futs.items():
+            try:
+                resultados[cadena] = fut.result()
+                log.info("live_search: %s — %d registros para '%s'", cadena, len(resultados[cadena]), term)
+            except Exception as exc:
+                log.error("live_search: %s falló — %s", cadena, exc, exc_info=True)
+                resultados[cadena] = []
 
     return resultados
