@@ -62,6 +62,7 @@ class ProductRecord:
     categoria:       Optional[str]   = None
     sucursal_id:     Optional[str]   = None  # branch ID para tiendas multi-sucursal
     sucursal_nombre: Optional[str]   = None  # nombre legible de la sucursal
+    relevancia:      float           = 0.0   # score 0-100 respecto al término buscado
     error:           Optional[str]   = None
     raw:             dict            = field(default_factory=dict)
 
