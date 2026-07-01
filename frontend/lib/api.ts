@@ -275,6 +275,26 @@ export interface Producto {
   actualizado_en: string | null;
 }
 
+export interface ProductoVivo {
+  tienda:          string;
+  url:             string;
+  nombre:          string | null;
+  precio:          number | null;
+  precio_lista:    number | null;
+  sku:             string | null;
+  barcode:         string | null;
+  marca:           string | null;
+  categoria:       string | null;
+  sucursal_id:     string | null;
+  sucursal_nombre: string | null;
+}
+
+export interface BuscarVivoResponse {
+  query: string;
+  total: number;
+  items: ProductoVivo[];
+}
+
 export interface PreciosListResponse {
   total:     number;
   page:      number;
@@ -371,6 +391,9 @@ export const preciosApi = {
 
   historialFechas: () =>
     api.get<string[]>("/precios/historial/fechas"),
+
+  buscarVivo: (q: string) =>
+    api.get<BuscarVivoResponse>("/precios/buscar-vivo", { params: { q } }),
 
   historial: (params: {
     fecha:          string;
