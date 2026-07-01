@@ -8,6 +8,8 @@ from app.core.config import settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 fernet = Fernet(settings.ENCRYPTION_KEY.encode())
 
+_JWT_SECRET = settings.JWT_SECRET_KEY or settings.APP_SECRET_KEY
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -23,7 +25,7 @@ def create_access_token(subject: Any, expires_delta: timedelta | None = None) ->
     )
     return jwt.encode(
         {"sub": str(subject), "exp": expire, "type": "access"},
-        settings.APP_SECRET_KEY,
+        _JWT_SECRET,
         algorithm=settings.JWT_ALGORITHM,
     )
 
@@ -32,14 +34,14 @@ def create_refresh_token(subject: Any) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
     return jwt.encode(
         {"sub": str(subject), "exp": expire, "type": "refresh"},
-        settings.APP_SECRET_KEY,
+        _JWT_SECRET,
         algorithm=settings.JWT_ALGORITHM,
     )
 
 
 def decode_token(token: str) -> dict:
     try:
-        return jwt.decode(token, settings.APP_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        return jwt.decode(token, _JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
     except JWTError:
         return {}
 
