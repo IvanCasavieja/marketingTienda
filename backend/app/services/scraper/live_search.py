@@ -66,7 +66,22 @@ def buscar_tata(term: str) -> list[ProductRecord]:
             return
         search = (data.get("data") or {}).get("search") or {}
         edges = (search.get("products") or {}).get("edges") or []
-        parsed = [tata._parse_node(e["node"], sucursal) for e in edges]
+        parsed = []
+        for e in edges:
+            d = tata._parse_node(e["node"], sucursal)
+            parsed.append(ProductRecord(
+                tienda=d["tienda"],
+                nombre=d["nombre"],
+                precio=d["precio"],
+                precio_lista=d["precio_lista"],
+                sku=d["sku"],
+                barcode=d["barcode"],
+                marca=d["marca"],
+                categoria=None,
+                url=d["url"],
+                sucursal_id=d["sucursal_id"],
+                sucursal_nombre=d["sucursal_nombre"],
+            ))
         with lock:
             records.extend(parsed)
 

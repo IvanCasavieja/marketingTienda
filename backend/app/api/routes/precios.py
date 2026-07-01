@@ -643,31 +643,34 @@ async def buscar_vivo_stream(
     def _run_search():
         try:
             for cadena, records, error in buscar_todas_streaming(q, _DATA_DIR):
-                items = [
-                    {
-                        "tienda":          r.tienda,
-                        "nombre":          r.nombre,
-                        "precio":          r.precio,
-                        "precio_lista":    r.precio_lista,
-                        "sku":             r.sku,
-                        "barcode":         r.barcode,
-                        "marca":           r.marca,
-                        "url":             r.url,
-                        "sucursal_id":     r.sucursal_id,
-                        "sucursal_nombre": r.sucursal_nombre,
-                    }
-                    for r in records
-                    if r.nombre and r.precio is not None
-                ]
-                payload: dict = {"cadena": cadena, "items": items}
-                if error:
-                    payload["error"] = error
-                loop.call_soon_threadsafe(
-                    queue.put_nowait,
-                    json.dumps(payload),
-                )
+                try:
+                    items = [
+                        {
+                            "tienda":          r.tienda,
+                            "nombre":          r.nombre,
+                            "precio":          r.precio,
+                            "precio_lista":    r.precio_lista,
+                            "sku":             r.sku,
+                            "barcode":         r.barcode,
+                            "marca":           r.marca,
+                            "url":             r.url,
+                            "sucursal_id":     r.sucursal_id,
+                            "sucursal_nombre": r.sucursal_nombre,
+                        }
+                        for r in records
+                        if r.nombre and r.precio is not None
+                    ]
+                    payload: dict = {"cadena": cadena, "items": items}
+                    if error:
+                        payload["error"] = error
+                    loop.call_soon_threadsafe(queue.put_nowait, json.dumps(payload))
+                    logger.info("buscar_vivo_stream: %s OK — %d items para '%s'", cadena, len(items), q)
+                except Exception as chain_exc:
+                    logger.error("buscar_vivo_stream: error serializando %s — %s", cadena, chain_exc, exc_info=True)
+                    fallback = json.dumps({"cadena": cadena, "items": [], "error": f"Error interno: {chain_exc}"})
+                    loop.call_soon_threadsafe(queue.put_nowait, fallback)
         except Exception as exc:
-            logger.error("buscar_vivo_stream: error para '%s': %s", q, exc, exc_info=True)
+            logger.error("buscar_vivo_stream: error iterando cadenas para '%s' — %s", q, exc, exc_info=True)
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
 
