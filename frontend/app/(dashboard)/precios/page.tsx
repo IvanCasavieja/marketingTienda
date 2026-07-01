@@ -373,10 +373,11 @@ export default function PreciosPage() {
                       href={p.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="shrink-0 text-slate-300 dark:text-slate-600 hover:text-brand-600 dark:hover:text-brand-400 opacity-0 group-hover:opacity-100 transition-all"
+                      className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-all opacity-0 group-hover:opacity-100"
                       title="Ver en tienda"
                     >
-                      <ExternalLink size={14} />
+                      <ExternalLink size={11} />
+                      Ver
                     </a>
                   </div>
                 );
