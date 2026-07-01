@@ -320,7 +320,7 @@ def buscar_todas_streaming(term: str, cache_dir: Path = _DATA_DIR):
             try:
                 records = fut.result()
                 log.info("live_search streaming: %s — %d registros para '%s'", cadena, len(records), term)
-                yield cadena, records
+                yield cadena, records, None
             except Exception as exc:
                 log.error("live_search streaming: %s falló — %s", cadena, exc, exc_info=True)
-                yield cadena, []
+                yield cadena, [], str(exc)

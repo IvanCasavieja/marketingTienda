@@ -642,7 +642,7 @@ async def buscar_vivo_stream(
 
     def _run_search():
         try:
-            for cadena, records in buscar_todas_streaming(q, _DATA_DIR):
+            for cadena, records, error in buscar_todas_streaming(q, _DATA_DIR):
                 items = [
                     {
                         "tienda":          r.tienda,
@@ -659,9 +659,12 @@ async def buscar_vivo_stream(
                     for r in records
                     if r.nombre and r.precio is not None
                 ]
+                payload: dict = {"cadena": cadena, "items": items}
+                if error:
+                    payload["error"] = error
                 loop.call_soon_threadsafe(
                     queue.put_nowait,
-                    json.dumps({"cadena": cadena, "items": items}),
+                    json.dumps(payload),
                 )
         except Exception as exc:
             logger.error("buscar_vivo_stream: error para '%s': %s", q, exc, exc_info=True)
