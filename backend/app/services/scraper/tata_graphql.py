@@ -60,6 +60,9 @@ _HEADERS = {
 
 _SESSION = requests.Session()
 _SESSION.headers.update(_HEADERS)
+# Pool generoso: la búsqueda en vivo lanza 15 sucursales en paralelo
+_SESSION.mount("https://", requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=20))
+_SESSION.mount("http://",  requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=20))
 
 
 def _fetch(url: str, retries: int = 3) -> dict | None:
