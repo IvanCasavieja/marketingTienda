@@ -58,16 +58,16 @@ export default function PreciosPage() {
   const [sortDir,   setSortDir]   = useState<"asc" | "desc">("asc");
   const [filterCadena, setFilterCadena] = useState<string | null>(null);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inputRef    = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const buscar = useCallback(async (term: string) => {
-    if (term.length < 2) { setResults(null); setFilterCadena(null); return; }
+    const t = term.trim();
+    if (t.length < 2) return;
     setLoading(true);
     try {
-      const { data } = await preciosApi.buscarVivo(term);
+      const { data } = await preciosApi.buscarVivo(t);
       setResults(data.items);
-      setLastQuery(term);
+      setLastQuery(t);
       setFilterCadena(null);
     } catch {
       toast.error("Error al buscar");
@@ -76,12 +76,6 @@ export default function PreciosPage() {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => buscar(q), 700);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [q, buscar]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -125,19 +119,25 @@ export default function PreciosPage() {
         </div>
 
         {/* Input */}
-        <div className="relative group">
+        <form onSubmit={(e) => { e.preventDefault(); buscar(q); }} className="relative group">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
           <input
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Ej: arroz 5kg, leche entera, jabón dove…"
-            className="w-full pl-11 pr-12 py-3.5 text-base rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 shadow-sm transition-all"
+            placeholder="Ej: arroz 5kg, leche entera, jabón dove… (Enter para buscar)"
+            className="w-full pl-11 pr-32 py-3.5 text-base rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 shadow-sm transition-all"
+            disabled={loading}
           />
-          {loading && (
-            <Loader2 size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-500 animate-spin" />
-          )}
-        </div>
+          <button
+            type="submit"
+            disabled={loading || q.trim().length < 2}
+            className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+            {loading ? "Buscando…" : "Buscar"}
+          </button>
+        </form>
       </div>
 
       {/* Estado vacío */}
