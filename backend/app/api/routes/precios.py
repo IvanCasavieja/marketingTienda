@@ -598,7 +598,7 @@ async def buscar_vivo(
         from app.services.scraper.live_search import buscar_todas
         resultados = await asyncio.wait_for(
             loop.run_in_executor(None, buscar_todas, q),
-            timeout=25.0,
+            timeout=90.0,
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="La búsqueda tardó demasiado. Probá con menos palabras.")
