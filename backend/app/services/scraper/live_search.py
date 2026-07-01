@@ -70,7 +70,8 @@ def buscar_tata(term: str) -> list[ProductRecord]:
         with lock:
             records.extend(parsed)
 
-    with ThreadPoolExecutor(max_workers=len(tata.SUCURSALES)) as ex:
+    # max_workers=5: Render free tier (0.1 vCPU) se satura con 15 hilos simultáneos
+    with ThreadPoolExecutor(max_workers=5) as ex:
         list(ex.map(_una, tata.SUCURSALES))
 
     return records
@@ -101,7 +102,8 @@ def buscar_eldorado(term: str) -> list[ProductRecord]:
         with lock:
             records.extend(parsed)
 
-    with ThreadPoolExecutor(max_workers=len(eldorado.SUCURSALES)) as ex:
+    # max_workers=5: Render free tier (0.1 vCPU) se satura con 17 hilos simultáneos
+    with ThreadPoolExecutor(max_workers=5) as ex:
         list(ex.map(_una, eldorado.SUCURSALES))
 
     return records
