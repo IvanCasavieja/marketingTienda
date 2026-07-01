@@ -342,18 +342,23 @@ def _parse_prices(
         cadena        = meta["cadena"]
         pid           = rec["productId"]
         name          = names.get(pid, pid)
-        precio        = rec["price"]["currentPrice"]
-        precio_normal = rec["price"]["normalPrice"]
+        current       = rec["price"]["currentPrice"]
+        normal        = rec["price"]["normalPrice"]
 
-        if not precio:  # 0 o None — producto sin precio en esta sucursal
+        # currentPrice=0 significa sin promoción activa → usar normalPrice
+        precio = current or normal
+        if not precio:
             continue
+
+        # precio_lista solo si hay descuento real
+        precio_lista_val = normal if (normal and normal > precio) else None
 
         out.append(ProductRecord(
             tienda          = cadena,
             url             = _construir_url(cadena, pid, pl_id),
             nombre          = name,
             precio          = precio,
-            precio_lista    = precio_normal,
+            precio_lista    = precio_lista_val,
             sku             = pid,
             barcode         = barcodes.get(pid),
             categoria       = categorias.get(pid),
