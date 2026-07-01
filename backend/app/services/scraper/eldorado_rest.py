@@ -72,7 +72,7 @@ ELDORADO_PHASES_BY_STORE: dict[int, list[dict]] = {
 def _get(url: str, params: dict) -> requests.Response:
     for attempt in range(1, 4):
         try:
-            r = requests.get(url, params=params, headers=_HEADERS, timeout=30)
+            r = requests.get(url, params=params, headers=_HEADERS, timeout=8)
             if r.status_code in (200, 206):
                 return r
             if r.status_code == 429:
