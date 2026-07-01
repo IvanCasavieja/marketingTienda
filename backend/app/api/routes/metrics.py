@@ -62,11 +62,6 @@ async def get_campaign_metrics(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if settings.DEMO_MODE:
-        from app.services.demo_data import get_demo_metrics_by_day
-        platform_list = [p.strip() for p in platforms.split(",")] if platforms else None
-        return get_demo_metrics_by_day(date_from, date_to, platform_list)
-
     try:
         platform_list = [Platform(p.strip()) for p in platforms.split(",")] if platforms else list(Platform)
     except ValueError as e:
@@ -82,10 +77,6 @@ async def get_summary(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if settings.DEMO_MODE:
-        from app.services.demo_data import get_demo_summary
-        return get_demo_summary(date_from, date_to)
-
     result = await db.execute(
         select(
             CampaignMetric.platform,

@@ -26,9 +26,7 @@ PROGRESO_GDU        = _DATA_DIR / "progreso_gdu.json"
 PROGRESO_GDU_REST   = _DATA_DIR / "progreso_gdu_rest.json"
 PROGRESO_TATA       = _DATA_DIR / "progreso_tata.json"
 PROGRESO_FARMASHOP  = _DATA_DIR / "progreso_farmashop.json"
-PROGRESO_TI         = _DATA_DIR / "progreso_ti.json"
 PROGRESO_BOTIGA     = _DATA_DIR / "progreso_botiga.json"
-PROGRESO_PIGALLE    = _DATA_DIR / "progreso_pigalle.json"
 PROGRESO_ELDORADO   = _DATA_DIR / "progreso_eldorado.json"
 
 DOMINIOS_GDU = {
@@ -467,58 +465,6 @@ def run_farmashop_fase(fase: int):
 
 
 # ---------------------------------------------------------------------------
-# Tienda Inglesa — HTML server-rendered (Hanoi/iMasDev)
-# ---------------------------------------------------------------------------
-
-def _guardar_productos_ti(resultado: dict, prog: dict) -> int:
-    guardados = 0
-    for slug, info in resultado.items():
-        if "error" in info:
-            log.warning("TI %s ERROR: %s", slug, info["error"])
-            continue
-        prods = info.get("productos", [])
-        records = [
-            ProductRecord(
-                tienda="Tienda Inglesa", url=pr["url"], nombre=pr["nombre"],
-                precio=float(pr["precio"]) if pr["precio"] is not None else None,
-                precio_lista=float(pr["precio_lista"]) if pr.get("precio_lista") is not None else None,
-                sku=str(pr["sku"]) if pr.get("sku") else None,
-                barcode=None, marca=None, categoria=slug,
-            )
-            for pr in prods
-        ]
-        guardados += store.guardar_bulk(records)
-        prog["completados"].append(slug)
-        guardar_progreso(PROGRESO_TI, prog)
-        log.info("TI %s: %d productos", slug, len(prods))
-    return guardados
-
-
-def run_ti_fase(fase: int):
-    from .tienda_inglesa import bajar_varias, TI_FASES
-
-    cats = TI_FASES.get(fase)
-    if not cats:
-        log.error("TI: fase %d no existe", fase)
-        return
-
-    prog        = cargar_progreso(PROGRESO_TI)
-    completados = set(prog["completados"])
-    pendientes  = [c for c in cats if c not in completados]
-
-    log.info("TI Fase %d: %d cats, %d pendientes", fase, len(cats), len(pendientes))
-    if not pendientes:
-        log.info("TI Fase %d: ya completada", fase)
-        return
-
-    resultado = bajar_varias(pendientes)
-    guardados = _guardar_productos_ti(resultado, prog)
-    prog["total_guardados"] = prog.get("total_guardados", 0) + guardados
-    guardar_progreso(PROGRESO_TI, prog)
-    log.info("TI Fase %d terminada: %d productos", fase, guardados)
-
-
-# ---------------------------------------------------------------------------
 # Botiga — Magento 2.4 GraphQL (mismo backend que Farmashop, distinto store-view)
 # ---------------------------------------------------------------------------
 
@@ -592,57 +538,6 @@ def run_botiga_fase(fase: int):
 
 
 # ---------------------------------------------------------------------------
-# Pigalle — Magento 2.4 HTML (GraphQL roto server-side)
-# ---------------------------------------------------------------------------
-
-def _guardar_productos_pigalle(resultado: dict, prog: dict) -> int:
-    guardados = 0
-    for nombre_cat, info in resultado.items():
-        if "error" in info:
-            log.warning("Pigalle %s ERROR: %s", nombre_cat, info["error"])
-            continue
-        prods = info.get("productos", [])
-        records = [
-            ProductRecord(
-                tienda="Pigalle", url=pr["url"], nombre=pr["nombre"],
-                precio=pr["precio"], precio_lista=pr.get("precio_lista"),
-                sku=None, barcode=None,
-                marca=None, categoria=pr.get("categoria"),
-            )
-            for pr in prods
-        ]
-        guardados += store.guardar_bulk(records)
-        prog["completados"].append(nombre_cat)
-        guardar_progreso(PROGRESO_PIGALLE, prog)
-        log.info("Pigalle %s: %d productos", nombre_cat, len(prods))
-    return guardados
-
-
-def run_pigalle_fase(fase: int):
-    from .pigalle_html import bajar_varias, PIGALLE_FASES
-
-    cats = PIGALLE_FASES.get(fase)
-    if not cats:
-        log.error("Pigalle: fase %d no existe", fase)
-        return
-
-    prog        = cargar_progreso(PROGRESO_PIGALLE)
-    completados = set(prog["completados"])
-    pendientes  = [c for c in cats if c not in completados]
-
-    log.info("Pigalle Fase %d: %d cats, %d pendientes", fase, len(cats), len(pendientes))
-    if not pendientes:
-        log.info("Pigalle Fase %d: ya completada", fase)
-        return
-
-    resultado = bajar_varias(pendientes)
-    guardados = _guardar_productos_pigalle(resultado, prog)
-    prog["total_guardados"] = prog.get("total_guardados", 0) + guardados
-    guardar_progreso(PROGRESO_PIGALLE, prog)
-    log.info("Pigalle Fase %d terminada: %d productos", fase, guardados)
-
-
-# ---------------------------------------------------------------------------
 # El Dorado — VTEX IO Catalog System REST (sin autenticación)
 # ---------------------------------------------------------------------------
 
@@ -689,12 +584,12 @@ def run_eldorado_fase(fase: int) -> None:
 # ---------------------------------------------------------------------------
 
 def run_full():
-    """Raspa Tata, Farmashop, GDU REST, Botiga, Pigalle y El Dorado."""
+    """Raspa Tata, Farmashop, GDU REST, Botiga y El Dorado."""
     log.info("=== FULL SCAN INICIADO ===")
 
     store.limpiar()
-    for _prog in (PROGRESO_GDU, PROGRESO_TATA, PROGRESO_FARMASHOP, PROGRESO_TI,
-                  PROGRESO_BOTIGA, PROGRESO_PIGALLE, PROGRESO_ELDORADO):
+    for _prog in (PROGRESO_GDU, PROGRESO_TATA, PROGRESO_FARMASHOP,
+                  PROGRESO_BOTIGA, PROGRESO_ELDORADO):
         if _prog.exists():
             _prog.unlink()
 
@@ -706,8 +601,6 @@ def run_full():
         run_gdu_fase(fase)
     for fase in (1, 2, 3, 4):
         run_botiga_fase(fase)
-    for fase in (1, 2, 3, 4):
-        run_pigalle_fase(fase)
     for fase in (1, 2, 3, 4):
         run_eldorado_fase(fase)
 

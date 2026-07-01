@@ -9,10 +9,6 @@ asyncpg>=0.29.0
 alembic==1.13.2
 psycopg2-binary==2.9.9
 
-# Cache / Queue
-redis==5.0.8
-celery==5.4.0
-
 # Auth & Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4

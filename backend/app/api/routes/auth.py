@@ -1,3 +1,4 @@
+import logging
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
@@ -22,6 +23,9 @@ from app.schemas.auth import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_logger = logging.getLogger(__name__)
+_RESET_TOKEN_TTL = 3600  # 1 hora
 
 _COOKIE_MAX_AGE_ACCESS  = settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
 _COOKIE_MAX_AGE_REFRESH = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
@@ -143,11 +147,6 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         .where(User.id == current_user.id)
     )
     return _user_response(result.scalar_one())
-
-
-import logging as _logging
-_logger = _logging.getLogger(__name__)
-_RESET_TOKEN_TTL = 3600  # 1 hora
 
 
 @router.post("/forgot-password", status_code=200)
