@@ -150,7 +150,7 @@ def _parse_product_is(raw: dict, sucursal: dict) -> ProductRecord | None:
     precio = offer.get("Price")
     lista  = offer.get("ListPrice")
 
-    if precio is None:
+    if not precio:  # None o 0 — producto sin precio en esta sucursal
         return None
 
     ref_ids = sku_item.get("referenceId") or []
