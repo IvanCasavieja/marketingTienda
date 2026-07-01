@@ -304,12 +304,16 @@ def buscar_todas_streaming(term: str, cache_dir: Path = _DATA_DIR):
     La cadena más rápida aparece primero — ideal para streaming SSE."""
     from concurrent.futures import as_completed
     with ThreadPoolExecutor(max_workers=5) as ex:
+        # GDU usa búsqueda por Name (substring) — tokens como "5kg" no matchean
+        # "5 Kg" (con espacio). Usamos solo las palabras alfabéticas de 3+ chars.
+        gdu_term = " ".join(w for w in term.split() if w.isalpha() and len(w) >= 3) or term
+
         futs = {
-            ex.submit(buscar_tata,      term):            "Ta-Ta",
-            ex.submit(buscar_eldorado,  term):            "ElDorado",
-            ex.submit(buscar_gdu,       term, cache_dir): "GDU",
-            ex.submit(buscar_farmashop, term):            "FarmaShop",
-            ex.submit(buscar_botiga,    term):            "Botiga",
+            ex.submit(buscar_tata,      term):             "Ta-Ta",
+            ex.submit(buscar_eldorado,  term):             "ElDorado",
+            ex.submit(buscar_gdu,       gdu_term, cache_dir): "GDU",
+            ex.submit(buscar_farmashop, term):             "FarmaShop",
+            ex.submit(buscar_botiga,    term):             "Botiga",
         }
         for fut in as_completed(futs):
             cadena = futs[fut]
