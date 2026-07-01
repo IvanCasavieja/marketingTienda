@@ -345,6 +345,9 @@ def _parse_prices(
         precio        = rec["price"]["currentPrice"]
         precio_normal = rec["price"]["normalPrice"]
 
+        if not precio:  # 0 o None — producto sin precio en esta sucursal
+            continue
+
         out.append(ProductRecord(
             tienda          = cadena,
             url             = _construir_url(cadena, pid, pl_id),
