@@ -253,11 +253,6 @@ def _run_gdu_fase_solo(fase: int) -> int:
     return sum(store.contar().values())
 
 
-def _run_blocking_gdu() -> int:
-    from app.services.scraper.fases import run_gdu_only
-    return run_gdu_only()
-
-
 async def _execute_gdu_rest() -> None:
     """
     Scan GDU vía REST API (1 registro por producto × sucursal).
@@ -523,20 +518,16 @@ async def get_progress() -> dict:
         "scan_type":  _scan_type,
         "gdu":        {"completados": 0, "total": gdu_total,  "guardados": 0, "pct": 0.0},
         "gdu_rest":   {"completados": 0, "total": 4,          "guardados": 0, "pct": 0.0},
-        "tata":       {"completados": 0, "total": 31,          "guardados": 0, "pct": 0.0},
-        "farmashop":  {"completados": 0, "total": 16,          "guardados": 0, "pct": 0.0},
-        "ti":         {"completados": 0, "total": 14,          "guardados": 0, "pct": 0.0},
-        "botiga":     {"completados": 0, "total": 16,          "guardados": 0, "pct": 0.0},
-        "pigalle":    {"completados": 0, "total": 10,          "guardados": 0, "pct": 0.0},
+        "tata":       {"completados": 0, "total": 31,         "guardados": 0, "pct": 0.0},
+        "farmashop":  {"completados": 0, "total": 16,         "guardados": 0, "pct": 0.0},
+        "botiga":     {"completados": 0, "total": 16,         "guardados": 0, "pct": 0.0},
     }
 
     prog_files = {
         "gdu":       ("progreso_gdu.json",        gdu_total),
         "tata":      ("progreso_tata.json",        31),
         "farmashop": ("progreso_farmashop.json",   16),
-        "ti":        ("progreso_ti.json",          14),
         "botiga":    ("progreso_botiga.json",      16),
-        "pigalle":   ("progreso_pigalle.json",     10),
     }
     for key, (fname, total) in prog_files.items():
         prog_path = _DATA_DIR / fname
