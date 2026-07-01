@@ -56,7 +56,7 @@ export default function PreciosPage() {
   const [streaming,    setStreaming]     = useState(false);
   const [results,      setResults]      = useState<ProductoVivo[] | null>(null);
   const [lastQuery,    setLastQuery]    = useState("");
-  const [sortDir,      setSortDir]      = useState<"asc" | "desc">("asc");
+  const [sortMode,     setSortMode]     = useState<"relevancia" | "precio-asc" | "precio-desc">("relevancia");
   const [filterCadena, setFilterCadena] = useState<string | null>(null);
   const [cadenasDone,  setCadenasDone]  = useState<string[]>([]);
   const [cadenaErrors, setCadenaErrors] = useState<Record<string, string>>({});
@@ -77,6 +77,7 @@ export default function PreciosPage() {
     setResults([]);
     setLastQuery(t);
     setFilterCadena(null);
+    setSortMode("relevancia");
     setCadenasDone([]);
     setCadenaErrors({});
 
@@ -133,17 +134,34 @@ export default function PreciosPage() {
 
   const cadenas = results ? [...new Set(results.map((r) => r.tienda))].sort() : [];
 
+  function calcRelevancia(nombre: string | null, query: string): number {
+    if (!nombre) return 0;
+    const palabras = query.toLowerCase().split(/\s+/).filter(p => p.length >= 2);
+    const n = nombre.toLowerCase();
+    return palabras.filter(p => n.includes(p)).length;
+  }
+
   const visible = results
     ? [...results]
         .filter((r) => !filterCadena || r.tienda === filterCadena)
         .sort((a, b) => {
+          if (sortMode === "relevancia") {
+            const ra = calcRelevancia(a.nombre, lastQuery);
+            const rb = calcRelevancia(b.nombre, lastQuery);
+            if (rb !== ra) return rb - ra;
+            return (a.precio ?? Infinity) - (b.precio ?? Infinity);
+          }
           const pa = a.precio ?? Infinity;
           const pb = b.precio ?? Infinity;
-          return sortDir === "asc" ? pa - pb : pb - pa;
+          return sortMode === "precio-asc" ? pa - pb : pb - pa;
         })
     : [];
 
-  const cheapest   = visible.find((r) => r.precio !== null);
+  const cheapest = results
+    ? results.filter(r => r.precio !== null).reduce<ProductoVivo | null>(
+        (min, r) => !min || (r.precio ?? Infinity) < (min.precio ?? Infinity) ? r : min, null
+      ) ?? undefined
+    : undefined;
   const hasResults = results !== null && results.length > 0;
   const hasSearched = results !== null; // true aunque haya 0 resultados
   const isActive   = hasSearched || loading || streaming;
@@ -274,11 +292,13 @@ export default function PreciosPage() {
               ))}
             </div>
             <button
-              onClick={() => setSortDir((d) => d === "asc" ? "desc" : "asc")}
+              onClick={() => setSortMode(m =>
+                m === "relevancia" ? "precio-asc" : m === "precio-asc" ? "precio-desc" : "relevancia"
+              )}
               className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors shrink-0"
             >
-              <TrendingDown size={13} className={sortDir === "desc" ? "rotate-180 transition-transform" : "transition-transform"} />
-              {sortDir === "asc" ? "Menor precio primero" : "Mayor precio primero"}
+              <TrendingDown size={13} className={sortMode === "precio-desc" ? "rotate-180 transition-transform" : "transition-transform"} />
+              {sortMode === "relevancia" ? "Por relevancia" : sortMode === "precio-asc" ? "Precio: menor primero" : "Precio: mayor primero"}
             </button>
           </div>
 

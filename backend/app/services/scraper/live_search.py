@@ -133,44 +133,54 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
     session     = gdu._build_session(jwt)
     branch_meta = gdu._load_branch_meta()
 
-    product_ids: list[str]            = []
-    names:       dict[str, str]       = {}
+    product_ids: list[str]             = []
+    names:       dict[str, str]        = {}
     barcodes:    dict[str, str | None] = {}
     categorias:  dict[str, str | None] = {}
+    seen_ids:    set[str]              = set()
 
-    page, total_pages = 1, None
-    while True:
-        r = gdu._llamar(
-            session, "GET",
-            f"{gdu._BASE_PRODS}/api/accounts/{gdu._ACCOUNT}/products",
-            params={"Page": page, "ItemsPerPage": gdu._PAGE_SIZE, "IsActive": True, "Name": term},
-        )
-        data = r.json()
-        if total_pages is None:
-            total_pages = min(data.get("totalPageCount", 1), _GDU_MAX_PAGES)
+    # GDU busca Name= como substring exacto → buscar cada palabra por separado y unir
+    palabras = [w for w in term.split() if w.isalpha() and len(w) >= 3] or [term]
 
-        for item in data.get("items", []):
-            pid  = item["id"]
-            desc = item.get("description", {})
-            name = desc.get("name", pid)
+    def _buscar_palabra(word: str) -> None:
+        page, total_pages = 1, None
+        while True:
+            try:
+                r = gdu._llamar(
+                    session, "GET",
+                    f"{gdu._BASE_PRODS}/api/accounts/{gdu._ACCOUNT}/products",
+                    params={"Page": page, "ItemsPerPage": gdu._PAGE_SIZE, "IsActive": True, "Name": word},
+                )
+                data = r.json()
+            except Exception as exc:
+                log.warning("GDU live: error buscando '%s' pág %d — %s", word, page, exc)
+                break
+            if total_pages is None:
+                total_pages = min(data.get("totalPageCount", 1), _GDU_MAX_PAGES)
+            for item in data.get("items", []):
+                pid = item["id"]
+                if pid in seen_ids:
+                    continue
+                seen_ids.add(pid)
+                desc = item.get("description", {})
+                name = desc.get("name", pid)
+                barcodes_list = item.get("barcodes") or []
+                barcode = barcodes_list[0].get("barcode") if barcodes_list else None
+                categoria = None
+                for df in item.get("dynamicFields") or []:
+                    if df.get("fieldName") == "FILTER|Categoría":
+                        categoria = df.get("fieldValue")
+                        break
+                product_ids.append(pid)
+                names[pid]      = name
+                barcodes[pid]   = barcode
+                categorias[pid] = categoria
+            if page >= total_pages:
+                break
+            page += 1
 
-            barcodes_list = item.get("barcodes") or []
-            barcode = barcodes_list[0].get("barcode") if barcodes_list else None
-
-            categoria = None
-            for df in item.get("dynamicFields") or []:
-                if df.get("fieldName") == "FILTER|Categoría":
-                    categoria = df.get("fieldValue")
-                    break
-
-            product_ids.append(pid)
-            names[pid]      = name
-            barcodes[pid]   = barcode
-            categorias[pid] = categoria
-
-        if page >= total_pages:
-            break
-        page += 1
+    for palabra in palabras:
+        _buscar_palabra(palabra)
 
     records: list[ProductRecord] = []
     for i in range(0, len(product_ids), gdu._PRICE_BATCH):
