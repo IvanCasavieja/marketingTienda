@@ -41,3 +41,18 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     return user
+
+
+def require_permission(permission: str):
+    """Dependencia de FastAPI que verifica que el usuario tenga un permiso específico."""
+    async def _check(user: User = Depends(get_current_user)) -> User:
+        if user.is_superuser:
+            return user
+        role_perms = (user.role.permissions if user.role else []) or []
+        if permission not in role_perms:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permiso requerido: {permission}",
+            )
+        return user
+    return _check

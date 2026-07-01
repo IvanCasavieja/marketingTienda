@@ -28,6 +28,9 @@ ALL_PERMISSIONS: dict[str, str] = {
     "connections.view":        "Ver las conexiones de plataformas vinculadas (Meta, Google, etc.)",
     "connections.manage":      "Agregar, configurar y eliminar conexiones de plataformas",
 
+    # Precios
+    "precios.search":          "Buscar y comparar precios en vivo en supermercados",
+
     # IA
     "ai.use":                  "Usar el chat de IA, análisis automáticos y debate de campañas",
 }
@@ -48,6 +51,7 @@ DEFAULT_ROLES: list[dict] = [
             "cenefas.view", "cenefas.generate", "cenefas.edit", "cenefas.import", "cenefas.delete",
             "analytics.view", "analytics.export",
             "connections.view", "connections.manage",
+            "precios.search",
             "ai.use",
         ],
         "is_system": True,
@@ -58,6 +62,7 @@ DEFAULT_ROLES: list[dict] = [
         "permissions": [
             "cenefas.view", "cenefas.generate", "cenefas.edit", "cenefas.import",
             "analytics.view",
+            "precios.search",
             "ai.use",
         ],
         "is_system": True,
