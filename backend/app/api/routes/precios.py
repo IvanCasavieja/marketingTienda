@@ -625,11 +625,35 @@ async def buscar_vivo(
     return {"query": q, "total": len(items), "items": items}
 
 
+def _resolver_barcode(barcode: str) -> str | None:
+    """Consulta Open Food Facts para obtener el nombre de un producto por EAN.
+    Retorna el nombre del producto o None si no se encuentra."""
+    import requests as _req
+    try:
+        r = _req.get(
+            f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json",
+            headers={"User-Agent": "MarketingTienda/1.0"},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("status") == 1:
+                product = data.get("product", {})
+                return (
+                    product.get("product_name_es")
+                    or product.get("product_name")
+                    or product.get("generic_name_es")
+                    or product.get("generic_name")
+                )
+    except Exception:
+        pass
+    return None
+
+
 @router.get("/buscar-vivo-stream")
 async def buscar_vivo_stream(
     q: str = Query(..., min_length=2, description="Término de búsqueda"),
     _: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     """Búsqueda EN VIVO con SSE — devuelve resultados cadena por cadena en cuanto
     cada una termina. Evita el timeout de 30s de Render free tier porque los headers
@@ -638,30 +662,19 @@ async def buscar_vivo_stream(
     import asyncio, json, threading
     from app.services.scraper.live_search import buscar_todas_streaming, _DATA_DIR
 
-    # Si el término es puramente numérico, asumir barcode o SKU:
-    # buscar en la DB local para resolver a nombre de producto y usar ese para live search.
+    # Si el término es puramente numérico, resolver barcode → nombre via Open Food Facts
     search_term = q.strip()
-    barcode_original: str | None = None
     if search_term.isdigit():
-        barcode_original = search_term
-        row = await db.execute(
-            select(Producto.nombre)
-            .where(
-                (Producto.barcode == search_term) | (Producto.sku == search_term)
-            )
-            .order_by(Producto.actualizado_en.desc())
-            .limit(1)
+        nombre = await asyncio.get_event_loop().run_in_executor(
+            None, _resolver_barcode, search_term
         )
-        nombre_db = row.scalar_one_or_none()
-        if nombre_db:
-            search_term = nombre_db
+        if nombre:
+            search_term = nombre
         else:
-            # No está en la DB — retornar evento de error inmediato
             async def _not_found():
                 payload = json.dumps({
                     "done": True,
-                    "error": f"Código {search_term} no encontrado en la base de datos local. "
-                             "Probá buscar por nombre del producto.",
+                    "error": f"Código {search_term} no encontrado. Probá buscar por nombre del producto.",
                 })
                 yield f"data: {payload}\n\n"
             return StreamingResponse(_not_found(), media_type="text/event-stream")
