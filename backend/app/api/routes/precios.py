@@ -570,6 +570,21 @@ async def scraper_trigger_botiga(_: User = Depends(get_current_user)):
     return {"message": "Botiga scan iniciado"}
 
 
+@router.delete("/vaciar", status_code=200)
+async def vaciar_catalogo(
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Borra todos los registros de productos y su historial. Solo superusuarios."""
+    from sqlalchemy import text
+    from app.models.precio_historial import PrecioHistorial
+    if not _.is_superuser:
+        raise HTTPException(status_code=403, detail="Solo superusuarios pueden vaciar el catálogo")
+    await db.execute(text("TRUNCATE TABLE precio_historial, productos RESTART IDENTITY CASCADE"))
+    logger.info("vaciar_catalogo: tablas productos y precio_historial vaciadas")
+    return {"message": "Catálogo vaciado correctamente"}
+
+
 @router.get("/buscar-vivo")
 async def buscar_vivo(
     q: str = Query(..., min_length=2, description="Término de búsqueda"),

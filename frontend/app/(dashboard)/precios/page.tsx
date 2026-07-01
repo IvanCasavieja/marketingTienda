@@ -1,37 +1,20 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { preciosApi, type Producto, type ProductoVivo, type PreciosListResponse, type TiendaStats } from "@/lib/api";
+import { preciosApi, type ProductoVivo } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
-import { Search, ExternalLink, ChevronLeft, ChevronRight, Tag, Scale, ArrowUpDown, ArrowUp, ArrowDown, GitCompare, Download, RefreshCw, Clock, History, X, FileSpreadsheet, Zap } from "lucide-react";
+import { Search, ExternalLink, Zap, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import Link from "next/link";
 
 const TIENDA_COLORS: Record<string, string> = {
-  "Disco":           "bg-blue-50 text-blue-700",
-  "Devoto":          "bg-green-50 text-green-700",
-  "Géant":           "bg-purple-50 text-purple-700",
-  "Ta-Ta":           "bg-red-50 text-red-700",
-  "Farmashop":       "bg-orange-50 text-orange-700",
-  "Tienda Inglesa":  "bg-teal-50 text-teal-700",
-};
-
-const TIENDA_BADGE_DOTS: Record<string, string> = {
-  "Disco":           "bg-blue-500",
-  "Devoto":          "bg-green-500",
-  "Géant":           "bg-purple-500",
-  "Ta-Ta":           "bg-red-500",
-  "Farmashop":       "bg-orange-500",
-  "Tienda Inglesa":  "bg-teal-500",
-};
-
-type ProgressData = {
-  running:   boolean;
-  scan_type: "full" | "gdu" | null;
-  gdu: { completados: number; total: number; guardados: number; pct: number };
+  "Disco":   "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  "Devoto":  "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300",
+  "Geant":   "bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
+  "Ta-Ta":   "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300",
+  "ElDorado":"bg-yellow-50 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300",
 };
 
 function TiendaBadge({ tienda }: { tienda: string }) {
-  const cls = TIENDA_COLORS[tienda] ?? "bg-slate-100 text-slate-600";
+  const cls = TIENDA_COLORS[tienda] ?? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
   return (
     <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${cls}`}>
       {tienda}
@@ -63,9 +46,9 @@ function PrecioBadge({ precio, precioLista }: { precio: number | null; precioLis
 function SkeletonRow() {
   return (
     <tr className="border-b border-slate-50 dark:border-slate-800 animate-pulse">
-      {[55, 30, 25, 15, 10].map((w, i) => (
+      {[50, 20, 15, 20, 15].map((w, i) => (
         <td key={i} className="px-4 py-3">
-          <div className={`h-3 bg-slate-100 dark:bg-slate-800 rounded w-${w < 20 ? "[60px]" : "[140px]"}`} />
+          <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded" style={{ width: `${w}%` }} />
         </td>
       ))}
       <td className="px-4 py-3" />
@@ -73,678 +56,147 @@ function SkeletonRow() {
   );
 }
 
-const PAGE_SIZE = 50;
-
 export default function PreciosPage() {
-  const [tiendas,    setTiendas]    = useState<string[]>([]);
-  const [categorias, setCategorias] = useState<string[]>([]);
-  const [result,     setResult]     = useState<PreciosListResponse | null>(null);
-  const [loading,    setLoading]    = useState(true);
-  const [stats,        setStats]        = useState<TiendaStats[] | null>(null);
-  const [scraperInfo,  setScraperInfo]  = useState<{ status: string; last_run: string | null; next_run: string | null; last_total: number | null } | null>(null);
-  const [triggering,    setTriggering]    = useState(false);
-  const [triggeringGdu, setTriggeringGdu] = useState(false);
-  const [progress,      setProgress]      = useState<ProgressData | null>(null);
+  const [q,         setQ]         = useState("");
+  const [loading,   setLoading]   = useState(false);
+  const [results,   setResults]   = useState<ProductoVivo[] | null>(null);
+  const [lastQuery, setLastQuery] = useState("");
 
-  const [q,            setQ]           = useState("");
-  const [tienda,       setTienda]      = useState("");
-  const [categoria,    setCategoria]   = useState("");
-  const [marca,        setMarca]       = useState("");
-  const [conDescuento, setConDescuento] = useState(false);
-  const [sortBy,       setSortBy]      = useState("nombre");
-  const [sortDir,      setSortDir]     = useState<"asc" | "desc">("asc");
-  const [page,         setPage]        = useState(1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef    = useRef<HTMLInputElement>(null);
 
-  const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevRunning   = useRef<boolean>(false);
-
-  const refreshStats = useCallback(() => {
-    preciosApi.estadisticas().then(({ data }) => setStats(data.tiendas)).catch(() => {});
-    preciosApi.scraperStatus().then(({ data }) => setScraperInfo(data)).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    preciosApi.tiendas().then(({ data }) => setTiendas(data)).catch(() => {});
-    refreshStats();
-    preciosApi.scraperProgress().then(({ data }) => setProgress(data)).catch(() => {});
-    preciosApi.historialFechas().then(({ data }) => setFechasHistorial(data)).catch(() => {});
-  }, [refreshStats]);
-
-  // Polling — activo solo mientras el scan está corriendo
-  useEffect(() => {
-    if (!progress?.running) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const { data } = await preciosApi.scraperProgress();
-        setProgress(data);
-
-        if (!data.running && prevRunning.current) {
-          // Scan terminó — refrescar todo
-          refreshStats();
-          load(1);
-          const guardados = data.gdu.guardados;
-          toast.success(
-            guardados
-              ? `Scan completado — ${guardados.toLocaleString("es-UY")} productos GDU actualizados`
-              : "Scan completado"
-          );
-        }
-        prevRunning.current = data.running;
-      } catch {}
-    }, 3000);
-
-    prevRunning.current = true;
-    return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progress?.running]);
-
-  useEffect(() => {
-    preciosApi.categorias(tienda || undefined)
-      .then(({ data }) => setCategorias(data))
-      .catch(() => {});
-    setCategoria("");
-  }, [tienda]);
-
-  const load = useCallback(async (newPage = 1) => {
+  const buscar = useCallback(async (term: string) => {
+    if (term.length < 2) { setResults(null); return; }
     setLoading(true);
     try {
-      const { data } = await preciosApi.list({
-        q:             q             || undefined,
-        tienda:        tienda        || undefined,
-        categoria:     categoria     || undefined,
-        marca:         marca         || undefined,
-        con_descuento: conDescuento  || undefined,
-        sort_by:       sortBy,
-        sort_dir:      sortDir,
-        page:          newPage,
-        page_size:     PAGE_SIZE,
-      });
-      setResult(data);
-      setPage(newPage);
+      const { data } = await preciosApi.buscarVivo(term);
+      setResults(data.items);
+      setLastQuery(term);
     } catch {
-      toast.error("Error al cargar productos");
+      toast.error("Error al buscar — revisá la conexión");
+      setResults(null);
     } finally {
       setLoading(false);
     }
-  }, [q, tienda, categoria, marca, conDescuento, sortBy, sortDir]);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => load(1), 350);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [q, tienda, categoria, marca, conDescuento, sortBy, sortDir]);
-
-  const [modoVivo,       setModoVivo]       = useState(false);
-  const [loadingVivo,    setLoadingVivo]    = useState(false);
-  const [resultadosVivo, setResultadosVivo] = useState<ProductoVivo[] | null>(null);
-
-  const buscarVivo = useCallback(async (term: string) => {
-    if (term.length < 2) { setResultadosVivo(null); return; }
-    setLoadingVivo(true);
-    try {
-      const { data } = await preciosApi.buscarVivo(term);
-      setResultadosVivo(data.items);
-    } catch {
-      toast.error("Error en búsqueda en vivo");
-      setResultadosVivo(null);
-    } finally {
-      setLoadingVivo(false);
-    }
   }, []);
 
   useEffect(() => {
-    if (!modoVivo) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => buscarVivo(q), 600);
+    debounceRef.current = setTimeout(() => buscar(q), 700);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [modoVivo, q, buscarVivo]);
+  }, [q, buscar]);
 
-  const [exporting,         setExporting]         = useState(false);
-  const [exportingExcel,    setExportingExcel]    = useState(false);
-  const [fechasHistorial,   setFechasHistorial]   = useState<string[]>([]);
-  const [fechaSeleccionada, setFechaSeleccionada] = useState<string | null>(null);
-  const [historialResult,   setHistorialResult]   = useState<{ total: number; page: number; items: Producto[] } | null>(null);
-  const [loadingHistorial,  setLoadingHistorial]  = useState(false);
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const scanActive    = progress?.running ?? false;
-  const activeResult  = fechaSeleccionada ? historialResult : result;
-  const activeLoading = fechaSeleccionada ? loadingHistorial : loading;
-  const totalPages    = activeResult ? Math.ceil(activeResult.total / PAGE_SIZE) : 1;
-
-  async function handleTrigger() {
-    setTriggering(true);
-    try {
-      await preciosApi.scraperTrigger();
-      toast.success("Scraping completo iniciado — puede tardar hasta 2 horas");
-      setTimeout(() => {
-        preciosApi.scraperProgress().then(({ data }) => setProgress(data)).catch(() => {});
-        refreshStats();
-      }, 1500);
-    } catch {
-      toast.error("Ya hay un scraping en curso");
-    } finally {
-      setTriggering(false);
-    }
-  }
-
-  async function handleTriggerGdu() {
-    setTriggeringGdu(true);
-    try {
-      await preciosApi.scraperTriggerGdu();
-      toast.success("Scan GDU iniciado — Geant, Disco y Devoto");
-      setTimeout(() => {
-        preciosApi.scraperProgress().then(({ data }) => setProgress(data)).catch(() => {});
-        refreshStats();
-      }, 1500);
-    } catch {
-      toast.error("Ya hay un scraping en curso");
-    } finally {
-      setTriggeringGdu(false);
-    }
-  }
-
-  async function handleExport() {
-    setExporting(true);
-    try {
-      const { data } = await preciosApi.exportCsv({
-        q:             q             || undefined,
-        tienda:        tienda        || undefined,
-        categoria:     categoria     || undefined,
-        marca:         marca         || undefined,
-        con_descuento: conDescuento  || undefined,
-        limit:         10000,
-      });
-      const url = URL.createObjectURL(data as Blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `precios_${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error("Error al exportar CSV");
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function handleExportExcel() {
-    setExportingExcel(true);
-    try {
-      const { data } = await preciosApi.exportExcel();
-      const url = URL.createObjectURL(data as Blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `precios_historial_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error("Error al exportar Excel");
-    } finally {
-      setExportingExcel(false);
-    }
-  }
-
-  const loadHistorial = useCallback(async (fecha: string, newPage = 1) => {
-    setLoadingHistorial(true);
-    try {
-      const { data } = await preciosApi.historial({
-        fecha,
-        q:             q             || undefined,
-        tienda:        tienda        || undefined,
-        categoria:     categoria     || undefined,
-        marca:         marca         || undefined,
-        con_descuento: conDescuento  || undefined,
-        sort_by:       sortBy,
-        sort_dir:      sortDir,
-        page:          newPage,
-        page_size:     PAGE_SIZE,
-      });
-      setHistorialResult({ total: data.total, page: data.page, items: data.items });
-      setPage(newPage);
-    } catch {
-      toast.error("Error al cargar historial");
-    } finally {
-      setLoadingHistorial(false);
-    }
-  }, [q, tienda, categoria, marca, conDescuento, sortBy, sortDir]);
-
-  useEffect(() => {
-    if (!fechaSeleccionada) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => loadHistorial(fechaSeleccionada, 1), 350);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [fechaSeleccionada, q, tienda, categoria, marca, conDescuento, sortBy, sortDir, loadHistorial]);
-
-  function handleFechaSelect(fecha: string) {
-    setFechaSeleccionada(fecha);
-    setPage(1);
-    setHistorialResult(null);
-  }
-
-  function handleSalirHistorial() {
-    setFechaSeleccionada(null);
-    setHistorialResult(null);
-    load(1);
-  }
-
-  function handleSort(col: string) {
-    if (sortBy === col) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortBy(col);
-      setSortDir("asc");
-    }
-    setPage(1);
-  }
-
-  function SortIcon({ col }: { col: string }) {
-    if (sortBy !== col) return <ArrowUpDown size={11} className="opacity-30" />;
-    return sortDir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />;
-  }
+  const tiendas = results
+    ? [...new Set(results.map((r) => r.tienda))].sort()
+    : [];
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
+    <div className="p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
+
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="section-title flex items-center gap-2">
-            <Tag size={17} className="text-brand-600" />
-            Catálogo de precios
-          </h1>
-          <p className="section-sub mt-0.5">
-            {result
-              ? `${result.total.toLocaleString("es-UY")} productos de supermercados uruguayos`
-              : "Cargando…"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={handleExport}
-            disabled={exporting}
-            className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-50"
-            title="Exportar vista actual como CSV"
-          >
-            <Download size={13} />
-            {exporting ? "Exportando…" : "CSV"}
-          </button>
-          <button
-            onClick={handleExportExcel}
-            disabled={exportingExcel}
-            className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-50"
-            title="Descargar historial completo como Excel (una hoja por fecha)"
-          >
-            <FileSpreadsheet size={13} />
-            {exportingExcel ? "Generando…" : "Excel"}
-          </button>
-          <Link href="/precios/comparar" className="btn-secondary text-xs px-3 py-1.5">
-            <Scale size={13} />
-            Comparar
-          </Link>
-        </div>
+      <div className="space-y-1">
+        <h1 className="section-title flex items-center gap-2">
+          <Zap size={17} className="text-brand-600" />
+          Buscar producto en vivo
+        </h1>
+        <p className="section-sub">
+          Ta-Ta · El Dorado · Disco · Devoto · Géant — todas las sucursales, en tiempo real
+        </p>
       </div>
 
-      {/* Scraper status */}
-      {scraperInfo && (
-        <div className="card px-4 py-3 space-y-2.5">
-          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-            <div className={`w-2 h-2 rounded-full shrink-0 ${
-              (scanActive || scraperInfo.status === "running") ? "bg-amber-400 animate-pulse" :
-              scraperInfo.status.startsWith("error") ? "bg-red-400" : "bg-emerald-400"
-            }`} />
-            <span className="font-medium text-slate-700 dark:text-slate-300">
-              {scanActive ? (
-                progress?.scan_type === "gdu"
-                  ? "Escaneando GDU…"
-                  : "Scraping en curso…"
-              ) : "Scraper"}
-            </span>
-            {scraperInfo.last_run && !scanActive && (
-              <span className="flex items-center gap-1">
-                <Clock size={11} />
-                Último: {new Date(scraperInfo.last_run).toLocaleString("es-UY")}
-                {scraperInfo.last_total && ` · ${scraperInfo.last_total.toLocaleString("es-UY")} productos`}
-              </span>
-            )}
-            {scraperInfo.next_run && !scanActive && scraperInfo.status !== "running" && (
-              <span className="text-slate-400">
-                Próximo: {new Date(scraperInfo.next_run).toLocaleString("es-UY")}
-              </span>
-            )}
-            <div className="ml-auto flex items-center gap-1">
-              <button
-                onClick={handleTriggerGdu}
-                disabled={triggeringGdu || scanActive || scraperInfo.status === "running"}
-                className="btn-ghost text-[11px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
-                title="Escanear solo Geant, Disco y Devoto"
-              >
-                <RefreshCw size={11} className={triggeringGdu ? "animate-spin" : ""} />
-                Solo GDU
-              </button>
-              <button
-                onClick={handleTrigger}
-                disabled={triggering || scanActive || scraperInfo.status === "running"}
-                className="btn-ghost text-[11px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
-                title="Iniciar scraping completo de todas las tiendas"
-              >
-                <RefreshCw size={11} className={triggering ? "animate-spin" : ""} />
-                Escanear todo
-              </button>
-            </div>
-          </div>
-
-          {/* Barra de progreso — visible cuando hay un scan activo */}
-          {scanActive && progress && (
-            <div className="space-y-1.5 pt-0.5">
-              <div className="flex items-center justify-between text-xs text-slate-500">
-                <span>
-                  {progress.scan_type === "gdu"
-                    ? "Geant · Disco · Devoto"
-                    : "Todas las tiendas"}
-                  {" — "}
-                  <span className="tabular-nums">
-                    {progress.gdu.completados.toLocaleString("es-UY")}
-                  </span>
-                  {" de "}
-                  <span className="tabular-nums">
-                    {progress.gdu.total.toLocaleString("es-UY")}
-                  </span>
-                  {" categorías "}
-                  <span className="text-slate-400">({progress.gdu.pct}%)</span>
-                </span>
-                <span className="font-medium text-slate-700 dark:text-slate-300 tabular-nums">
-                  {progress.gdu.guardados.toLocaleString("es-UY")} productos encontrados
-                </span>
-              </div>
-              <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-brand-500 rounded-full transition-all duration-700"
-                  style={{ width: `${Math.max(progress.gdu.pct, 0.5)}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Stats por tienda */}
-      {stats && (
-        <div className="flex flex-wrap gap-2">
-          {stats.map((s) => (
-            <div key={s.tienda} className="card px-3 py-2 flex items-center gap-2">
-              <div
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  TIENDA_BADGE_DOTS[s.tienda] ?? "bg-slate-400"
-                }`}
-              />
-              <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{s.tienda}</span>
-              <span className="text-xs text-slate-400">{s.total.toLocaleString("es-UY")}</span>
-              {s.con_descuento > 0 && (
-                <span className="text-[10px] bg-red-50 text-red-500 px-1.5 py-0.5 rounded-full">
-                  {s.con_descuento} ofertas
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Historial de fechas */}
-      {fechasHistorial.length > 0 && (
-        <div className="card px-4 py-3 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 shrink-0">
-            <History size={13} />
-            Historial
-          </div>
-          <div className="flex flex-wrap gap-1.5 flex-1">
-            {fechasHistorial.map((f) => {
-              const label = new Date(f + "T12:00:00").toLocaleDateString("es-UY", { day: "2-digit", month: "short", year: "numeric" });
-              const activa = fechaSeleccionada === f;
-              return (
-                <button
-                  key={f}
-                  onClick={() => activa ? handleSalirHistorial() : handleFechaSelect(f)}
-                  className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
-                    activa
-                      ? "bg-brand-600 text-white border-brand-600"
-                      : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-brand-400 hover:text-brand-600"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          {fechaSeleccionada && (
-            <button
-              onClick={handleSalirHistorial}
-              className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 shrink-0"
-            >
-              <X size={12} /> Ver actual
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Banner snapshot activo */}
-      {fechaSeleccionada && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-brand-50 border border-brand-200 rounded-xl text-sm text-brand-700">
-          <History size={14} />
-          <span>
-            Viendo snapshot del{" "}
-            <strong>
-              {new Date(fechaSeleccionada + "T12:00:00").toLocaleDateString("es-UY", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-            </strong>
-            {historialResult && ` — ${historialResult.total.toLocaleString("es-UY")} productos`}
-          </span>
-        </div>
-      )}
-
-      {/* Filtros */}
-      <div className="card p-4 flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nombre, SKU, código de barras…"
-            className="input pl-8 text-sm"
-          />
-        </div>
-
-        <button
-          onClick={() => { setModoVivo((v) => !v); setResultadosVivo(null); }}
-          className={`flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border transition-colors shrink-0 ${
-            modoVivo
-              ? "bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-950 dark:border-amber-700 dark:text-amber-400"
-              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 hover:border-brand-400 hover:text-brand-600"
-          }`}
-          title={modoVivo ? "Búsqueda en vivo activa — golpea las APIs en tiempo real" : "Activar búsqueda en vivo (todas las cadenas y sucursales, en tiempo real)"}
-        >
-          <Zap size={13} className={modoVivo ? "fill-amber-400 text-amber-400" : ""} />
-          En vivo
-        </button>
-
-        <select
-          value={tienda}
-          onChange={(e) => { setTienda(e.target.value); setPage(1); }}
-          className="input text-sm min-w-[140px] w-auto"
-        >
-          <option value="">Todas las tiendas</option>
-          {tiendas.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-
-        <select
-          value={categoria}
-          onChange={(e) => { setCategoria(e.target.value); setPage(1); }}
-          className="input text-sm min-w-[200px] w-auto"
-          disabled={categorias.length === 0}
-        >
-          <option value="">Todas las categorías</option>
-          {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-
+      {/* Buscador */}
+      <div className="relative">
+        <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
-          value={marca}
-          onChange={(e) => setMarca(e.target.value)}
-          placeholder="Marca…"
-          className="input text-sm min-w-[140px] w-auto"
+          ref={inputRef}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Ej: arroz 5kg, leche entera, jabón dove…"
+          className="input pl-11 pr-4 py-3 text-base w-full rounded-xl"
         />
-
-        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer select-none whitespace-nowrap">
-          <input
-            type="checkbox"
-            checked={conDescuento}
-            onChange={(e) => { setConDescuento(e.target.checked); setPage(1); }}
-            className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-          />
-          Solo ofertas
-        </label>
+        {loading && (
+          <RefreshCw size={15} className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-500 animate-spin" />
+        )}
       </div>
 
-      {/* Tabla en vivo */}
-      {modoVivo && (
+      {/* Resultados */}
+      {q.length < 2 && !results && (
+        <div className="text-center py-20 text-slate-400">
+          <Search size={36} className="mx-auto mb-3 opacity-20" />
+          <p className="text-sm">Escribí al menos 2 caracteres para buscar</p>
+        </div>
+      )}
+
+      {loading && (
         <div className="card overflow-x-auto p-0">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-amber-50 dark:bg-amber-950">
-            <Zap size={13} className="fill-amber-400 text-amber-400" />
-            <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
-              Búsqueda en vivo — Ta-Ta (15), El Dorado (17), GDU/Disco/Devoto/Géant (102) — todas las sucursales
-            </span>
-            {loadingVivo && <RefreshCw size={12} className="animate-spin text-amber-500 ml-auto" />}
-            {resultadosVivo && !loadingVivo && (
-              <span className="text-xs text-amber-600 dark:text-amber-500 ml-auto tabular-nums">
-                {resultadosVivo.length.toLocaleString("es-UY")} resultados
-              </span>
-            )}
-          </div>
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
-                <th className="table-th">Producto</th>
-                <th className="table-th hidden md:table-cell">Marca</th>
-                <th className="table-th">Tienda</th>
-                <th className="table-th">Sucursal</th>
-                <th className="table-th text-right">Precio</th>
-                <th className="table-th w-8" />
-              </tr>
-            </thead>
-            <tbody>
-              {loadingVivo
-                ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
-                : !resultadosVivo
-                ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-sm">
-                      {q.length < 2
-                        ? "Escribí al menos 2 caracteres para buscar en vivo."
-                        : "Escribí para buscar en vivo…"}
-                    </td>
-                  </tr>
-                )
-                : resultadosVivo.length === 0
-                ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-sm">
-                      Sin resultados en ninguna cadena para "{q}".
-                    </td>
-                  </tr>
-                )
-                : resultadosVivo.map((p, i) => (
-                  <tr key={`${p.tienda}-${p.sucursal_id}-${p.sku}-${i}`} className="table-tr">
-                    <td className="table-td">
-                      <div className="font-medium text-slate-800 dark:text-slate-200 leading-tight max-w-xs truncate">
-                        {p.nombre ?? "—"}
-                      </div>
-                      {p.sku && <div className="text-[11px] text-slate-400 mt-0.5">SKU {p.sku}</div>}
-                    </td>
-                    <td className="table-td text-slate-600 dark:text-slate-400 hidden md:table-cell">
-                      {p.marca ?? "—"}
-                    </td>
-                    <td className="table-td">
-                      <TiendaBadge tienda={p.tienda} />
-                    </td>
-                    <td className="table-td text-xs text-slate-500 dark:text-slate-400">
-                      {p.sucursal_nombre ?? "—"}
-                    </td>
-                    <td className="table-td text-right">
-                      <PrecioBadge precio={p.precio} precioLista={p.precio_lista} />
-                    </td>
-                    <td className="table-td">
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-slate-400 hover:text-brand-600 transition-colors"
-                        title="Ver en tienda"
-                      >
-                        <ExternalLink size={13} />
-                      </a>
-                    </td>
-                  </tr>
-                ))
-              }
-            </tbody>
+            <tbody>{Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)}</tbody>
           </table>
         </div>
       )}
 
-      {/* Tabla */}
-      {!modoVivo && <div className="card overflow-x-auto p-0">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
-              <th className="table-th cursor-pointer hover:text-slate-700" onClick={() => handleSort("nombre")}>
-                <span className="flex items-center gap-1">Producto <SortIcon col="nombre" /></span>
-              </th>
-              <th className="table-th hidden md:table-cell">Marca</th>
-              <th className="table-th hidden lg:table-cell cursor-pointer hover:text-slate-700" onClick={() => handleSort("categoria")}>
-                <span className="flex items-center gap-1">Categoría <SortIcon col="categoria" /></span>
-              </th>
-              <th className="table-th cursor-pointer hover:text-slate-700" onClick={() => handleSort("tienda")}>
-                <span className="flex items-center gap-1">Tienda <SortIcon col="tienda" /></span>
-              </th>
-              <th className="table-th text-right cursor-pointer hover:text-slate-700" onClick={() => handleSort("precio")}>
-                <span className="flex items-center justify-end gap-1">Precio <SortIcon col="precio" /></span>
-              </th>
-              <th className="table-th w-8" />
-            </tr>
-          </thead>
-          <tbody>
-            {activeLoading
-              ? Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} />)
-              : (activeResult?.items ?? []).map((p: Producto) => (
-                  <tr key={p.id} className="table-tr">
-                    <td className="table-td">
-                      <div className="font-medium text-slate-800 dark:text-slate-200 leading-tight max-w-xs truncate">
-                        {p.nombre ?? "—"}
-                      </div>
-                      {p.sku && (
-                        <div className="text-[11px] text-slate-400 mt-0.5">SKU {p.sku}</div>
-                      )}
-                    </td>
-                    <td className="table-td text-slate-600 dark:text-slate-400 hidden md:table-cell">
-                      {p.marca ?? "—"}
-                    </td>
-                    <td className="table-td text-slate-500 dark:text-slate-400 text-xs hidden lg:table-cell max-w-[200px] truncate">
-                      {p.categoria ?? "—"}
-                    </td>
-                    <td className="table-td">
-                      <TiendaBadge tienda={p.tienda} />
-                    </td>
-                    <td className="table-td text-right">
-                      <PrecioBadge precio={p.precio} precioLista={p.precio_lista} />
-                    </td>
-                    <td className="table-td">
-                      <div className="flex items-center gap-2">
-                        {p.barcode && (
-                          <Link
-                            href={`/precios/comparar?barcode=${encodeURIComponent(p.barcode)}`}
-                            className="text-slate-300 hover:text-brand-600 transition-colors"
-                            title="Comparar en otras tiendas"
-                          >
-                            <GitCompare size={13} />
-                          </Link>
-                        )}
+      {!loading && results !== null && (
+        <>
+          {/* Resumen */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              <span className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
+                {results.length.toLocaleString("es-UY")}
+              </span>{" "}
+              resultados para <span className="italic">"{lastQuery}"</span>
+            </span>
+            {tiendas.map((t) => {
+              const n = results.filter((r) => r.tienda === t).length;
+              return (
+                <span key={t} className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 tabular-nums">
+                  {t} ({n})
+                </span>
+              );
+            })}
+          </div>
+
+          {results.length === 0 ? (
+            <div className="text-center py-16 text-slate-400">
+              <p className="text-sm">Sin resultados en ninguna cadena para <span className="italic">"{lastQuery}"</span>.</p>
+              <p className="text-xs mt-1 text-slate-300 dark:text-slate-600">Probá con menos palabras o sin especificaciones (ej: "arroz saman" en vez de "arroz saman parboiled 5kg").</p>
+            </div>
+          ) : (
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+                    <th className="table-th">Producto</th>
+                    <th className="table-th hidden md:table-cell">Marca</th>
+                    <th className="table-th">Tienda</th>
+                    <th className="table-th">Sucursal</th>
+                    <th className="table-th text-right">Precio</th>
+                    <th className="table-th w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.map((p, i) => (
+                    <tr key={`${p.tienda}-${p.sucursal_id}-${i}`} className="table-tr">
+                      <td className="table-td">
+                        <div className="font-medium text-slate-800 dark:text-slate-200 leading-tight max-w-xs">
+                          {p.nombre ?? "—"}
+                        </div>
+                        {p.sku && <div className="text-[11px] text-slate-400 mt-0.5">SKU {p.sku}</div>}
+                      </td>
+                      <td className="table-td text-slate-500 dark:text-slate-400 hidden md:table-cell">
+                        {p.marca ?? "—"}
+                      </td>
+                      <td className="table-td">
+                        <TiendaBadge tienda={p.tienda} />
+                      </td>
+                      <td className="table-td text-xs text-slate-500 dark:text-slate-400">
+                        {p.sucursal_nombre ?? "—"}
+                      </td>
+                      <td className="table-td text-right">
+                        <PrecioBadge precio={p.precio} precioLista={p.precio_lista} />
+                      </td>
+                      <td className="table-td">
                         <a
                           href={p.url}
                           target="_blank"
@@ -754,50 +206,14 @@ export default function PreciosPage() {
                         >
                           <ExternalLink size={13} />
                         </a>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-            }
-            {!activeLoading && activeResult?.items.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-sm">
-                  Sin productos para los filtros seleccionados.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>}
-
-      {/* Paginación */}
-      {!modoVivo && activeResult && activeResult.total > PAGE_SIZE && (
-        <div className="flex items-center justify-between text-sm text-slate-500">
-          <span className="text-slate-500 dark:text-slate-400">
-            {((page - 1) * PAGE_SIZE + 1).toLocaleString("es-UY")}–
-            {Math.min(page * PAGE_SIZE, activeResult.total).toLocaleString("es-UY")} de{" "}
-            {activeResult.total.toLocaleString("es-UY")}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => fechaSeleccionada ? loadHistorial(fechaSeleccionada, page - 1) : load(page - 1)}
-              disabled={page <= 1 || activeLoading}
-              className="btn-ghost p-1.5 disabled:opacity-30"
-            >
-              <ChevronLeft size={15} />
-            </button>
-            <span className="px-3 text-slate-500 dark:text-slate-400 tabular-nums">
-              {page} / {totalPages}
-            </span>
-            <button
-              onClick={() => fechaSeleccionada ? loadHistorial(fechaSeleccionada, page + 1) : load(page + 1)}
-              disabled={page >= totalPages || activeLoading}
-              className="btn-ghost p-1.5 disabled:opacity-30"
-            >
-              <ChevronRight size={15} />
-            </button>
-          </div>
-        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
