@@ -20,6 +20,7 @@ APIs:
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Generator
@@ -369,6 +370,40 @@ def _parse_prices(
             sucursal_id     = pl_id,
             sucursal_nombre = meta["nombre"],
         ))
+
+
+# ── Precio retail desde HTML (Blazor Server) ──────────────────────────────────
+
+# La API Azure devuelve precios internos/costo para productos frescos (rotisería).
+# El precio al consumidor viene del HTML del website (Blazor Server, server-rendered).
+# Esta función extrae ese precio real para corregir los precios del live search.
+
+_HTML_PRICE_RE = re.compile(
+    r'class="mon">\$</span>\s*<span class="val">([\d.,]+)<'
+)
+
+
+def _fetch_html_precio(cadena: str, product_id: str) -> float | None:
+    """
+    Obtiene el precio real al consumidor desde el HTML renderizado del website.
+    Solo usado en live search (buscar_gdu). El batch scraper sigue usando la API.
+    """
+    base = _DOMINIOS.get(cadena, "https://www.devoto.com.uy")
+    url = f"{base}/product/p/{product_id}"
+    try:
+        r = requests.get(
+            url,
+            headers={"User-Agent": _UA, "Accept": "text/html"},
+            timeout=8,
+        )
+        if r.status_code != 200:
+            return None
+        m = _HTML_PRICE_RE.search(r.text)
+        if m:
+            return float(m.group(1).replace(".", "").replace(",", "."))
+    except Exception:
+        pass
+    return None
 
 
 # ── División en fases ─────────────────────────────────────────────────────────

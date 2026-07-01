@@ -21,9 +21,11 @@ Cadenas con búsqueda por keyword real:
 import json
 import logging
 import os
+import re
 import threading
 import urllib.parse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import replace
 from pathlib import Path
 
 import requests as _requests
@@ -182,12 +184,57 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
     for palabra in palabras:
         _buscar_palabra(palabra)
 
-    records: list[ProductRecord] = []
+    api_records: list[ProductRecord] = []
     for i in range(0, len(product_ids), gdu._PRICE_BATCH):
         batch = product_ids[i:i + gdu._PRICE_BATCH]
         price_records = gdu._get_prices_batch(session, batch)
-        gdu._parse_prices(price_records, names, barcodes, categorias, branch_meta, records)
+        gdu._parse_prices(price_records, names, barcodes, categorias, branch_meta, api_records)
 
+    # Precio real al consumidor desde HTML del website (Blazor Server, server-rendered).
+    # La API Azure devuelve precios internos/costo para productos frescos de rotisería.
+    # Fetch desde Devoto (una sola cadena por SKU) — el precio es el mismo para todas.
+    _MAX_HTML = 40
+
+    sku_url_map: dict[str, str] = {}
+    for r in api_records:
+        if r.sku and r.sku not in sku_url_map and r.tienda == "Devoto":
+            sku_url_map[r.sku] = r.url
+            if len(sku_url_map) >= _MAX_HTML:
+                break
+    for r in api_records:
+        if r.sku and r.sku not in sku_url_map:
+            sku_url_map[r.sku] = r.url
+            if len(sku_url_map) >= _MAX_HTML:
+                break
+
+    html_prices: dict[str, float] = {}
+    if sku_url_map:
+        def _fetch_one(item: tuple[str, str]) -> tuple[str, float | None]:
+            sku, url = item
+            m = re.search(r"/product/p/(\d+)", url)
+            if not m:
+                return sku, None
+            return sku, gdu._fetch_html_precio("Devoto", m.group(1))
+
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for sku, price in ex.map(_fetch_one, sku_url_map.items()):
+                if price is not None:
+                    html_prices[sku] = price
+
+    if not html_prices:
+        return api_records
+
+    records: list[ProductRecord] = []
+    for r in api_records:
+        if r.sku:
+            html_p = html_prices.get(r.sku)
+            if html_p is not None and html_p != r.precio:
+                r = replace(
+                    r,
+                    precio=html_p,
+                    precio_lista=r.precio if r.precio and r.precio < html_p else r.precio_lista,
+                )
+        records.append(r)
     return records
 
 
@@ -331,21 +378,13 @@ def buscar_todas(term: str, cache_dir: Path = _DATA_DIR) -> dict[str, list[Produ
 def buscar_todas_streaming(term: str, cache_dir: Path = _DATA_DIR):
     """Generador síncrono que hace yield de (cadena, records) en orden de llegada.
     La cadena más rápida aparece primero — ideal para streaming SSE."""
-    from concurrent.futures import as_completed
     with ThreadPoolExecutor(max_workers=5) as ex:
-        # GDU busca Name= como substring exacto en el nombre del producto.
-        # "carne peceto" no matchea "Peceto entero" porque "carne peceto" no
-        # aparece como substring. Usamos la última palabra alfa significativa
-        # (el corte/producto específico): "carne peceto"→"peceto", "arroz 5kg"→"arroz".
-        alpha_words = [w for w in term.split() if w.isalpha() and len(w) >= 3]
-        gdu_term = alpha_words[-1] if alpha_words else term
-
         futs = {
-            ex.submit(buscar_tata,      term):             "Ta-Ta",
-            ex.submit(buscar_eldorado,  term):             "ElDorado",
-            ex.submit(buscar_gdu,       gdu_term, cache_dir): "GDU",
-            ex.submit(buscar_farmashop, term):             "FarmaShop",
-            ex.submit(buscar_botiga,    term):             "Botiga",
+            ex.submit(buscar_tata,      term):            "Ta-Ta",
+            ex.submit(buscar_eldorado,  term):            "ElDorado",
+            ex.submit(buscar_gdu,       term, cache_dir): "GDU",
+            ex.submit(buscar_farmashop, term):            "FarmaShop",
+            ex.submit(buscar_botiga,    term):            "Botiga",
         }
         for fut in as_completed(futs):
             cadena = futs[fut]

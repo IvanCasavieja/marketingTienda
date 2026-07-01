@@ -189,6 +189,7 @@ async def generate_cenefas(
     otra_alcohol: str = Form(default="Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
     banco: str = Form(default=""),
     margin_cm: float = Form(default=0.0),
+    desc_margin_cm: float = Form(default=1.0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
