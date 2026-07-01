@@ -273,6 +273,7 @@ export interface ProductoVivo {
   categoria:       string | null;
   sucursal_id:     string | null;
   sucursal_nombre: string | null;
+  relevancia:      number;
 }
 
 export interface BuscarVivoResponse {

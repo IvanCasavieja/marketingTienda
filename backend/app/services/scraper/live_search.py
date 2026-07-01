@@ -29,6 +29,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import requests as _requests
+from rapidfuzz import fuzz as _fuzz
 
 from . import eldorado_rest as eldorado
 from . import gdu_rest as gdu
@@ -40,6 +41,37 @@ log = logging.getLogger(__name__)
 _DATA_DIR = Path(os.environ.get("SCRAPER_DATA_DIR", "/tmp/scraper"))
 
 _GDU_MAX_PAGES = 20  # tope de seguridad: 20 páginas x 100 = 2000 productos por término
+_MIN_SCORE     = 55.0  # threshold mínimo de relevancia (0-100)
+
+
+def _es_codigo(term: str) -> bool:
+    """True si el término es puramente numérico — barcode EAN o SKU interno."""
+    return term.strip().isdigit()
+
+
+def score_match(nombre: str, term: str) -> float:
+    """Relevancia 0–100 entre búsqueda y nombre de producto.
+
+    Combina token_set_ratio (insensible al orden de palabras, útil cuando distintos
+    supers nombran el mismo producto diferente) con cobertura de tokens (% de las
+    palabras del término que aparecen en el nombre). Un resultado necesita ≥55 para
+    no ser descartado.
+    """
+    n = (nombre or "").lower().strip()
+    t = (term  or "").lower().strip()
+    if not n or not t:
+        return 0.0
+    if t in n:
+        return 100.0
+    tsr = _fuzz.token_set_ratio(t, n)
+    palabras = [w for w in t.split() if len(w) >= 3]
+    if not palabras:
+        return float(tsr)
+    cobertura = sum(
+        1 for p in palabras
+        if _fuzz.partial_ratio(p, n) >= 80
+    ) / len(palabras)
+    return round(tsr * 0.55 + cobertura * 100 * 0.45, 1)
 
 
 # ── Ta-Ta ─────────────────────────────────────────────────────────────────────
@@ -57,20 +89,6 @@ def _tata_search_url(term: str, region_id: str, first: int = 20) -> str:
     return f"https://www.tata.com.uy/api/graphql?operationName=ProductsQuery&variables={qs}"
 
 
-def _es_relevante(nombre: str, term: str) -> bool:
-    """Al menos una palabra del término (≥3 chars) aparece en el nombre del producto."""
-    palabras = [w.lower() for w in term.split() if len(w) >= 3]
-    if not palabras:
-        return True
-    nombre_lower = (nombre or "").lower()
-    return any(p in nombre_lower for p in palabras)
-
-
-def _es_codigo(term: str) -> bool:
-    """True si el término es puramente numérico — barcode EAN o SKU interno."""
-    return term.strip().isdigit()
-
-
 def buscar_tata(term: str) -> list[ProductRecord]:
     records: list[ProductRecord] = []
     lock = threading.Lock()
@@ -85,7 +103,8 @@ def buscar_tata(term: str) -> list[ProductRecord]:
         parsed = []
         for e in edges:
             d = tata._parse_node(e["node"], sucursal)
-            if not _es_codigo(term) and not _es_relevante(d["nombre"], term):
+            score = 100.0 if _es_codigo(term) else score_match(d["nombre"], term)
+            if score < _MIN_SCORE:
                 continue
             parsed.append(ProductRecord(
                 tienda=d["tienda"],
@@ -99,6 +118,7 @@ def buscar_tata(term: str) -> list[ProductRecord]:
                 url=d["url"],
                 sucursal_id=d["sucursal_id"],
                 sucursal_nombre=d["sucursal_nombre"],
+                relevancia=score,
             ))
         with lock:
             records.extend(parsed)
@@ -133,8 +153,12 @@ def buscar_eldorado(term: str) -> list[ProductRecord]:
         parsed = []
         for raw in data.get("products") or []:
             rec = eldorado._parse_product_is(raw, sucursal)
-            if rec is not None and (_es_codigo(term) or _es_relevante(rec.nombre, term)):
-                parsed.append(rec)
+            if rec is None:
+                continue
+            score = 100.0 if _es_codigo(term) else score_match(rec.nombre, term)
+            if score < _MIN_SCORE:
+                continue
+            parsed.append(replace(rec, relevancia=score))
         with lock:
             records.extend(parsed)
 
@@ -218,11 +242,26 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
         for palabra in palabras:
             _buscar_param("Name", palabra)
 
+    # Filtrar por relevancia ANTES del batch de precios — cada llamada de precios
+    # cuesta una request a la API de GDU; descartar irrelevantes aquí ahorra tiempo.
+    if not _es_codigo(term_clean):
+        product_ids = [
+            pid for pid in product_ids
+            if score_match(names.get(pid, ""), term_clean) >= _MIN_SCORE
+        ]
+
     api_records: list[ProductRecord] = []
     for i in range(0, len(product_ids), gdu._PRICE_BATCH):
         batch = product_ids[i:i + gdu._PRICE_BATCH]
         price_records = gdu._get_prices_batch(session, batch)
         gdu._parse_prices(price_records, names, barcodes, categorias, branch_meta, api_records)
+
+    # Asignar score de relevancia a cada record (nombres vienen del catálogo, ya disponibles)
+    scored: list[ProductRecord] = []
+    for r in api_records:
+        s = 100.0 if _es_codigo(term_clean) else score_match(r.nombre or "", term_clean)
+        scored.append(replace(r, relevancia=s))
+    api_records = scored
 
     # Precio real al consumidor desde HTML del website (Blazor Server, server-rendered).
     # La API Azure devuelve precios internos/costo para productos frescos de rotisería.
@@ -301,16 +340,6 @@ _MAGENTO_PAGE_SIZE = 50
 _MAGENTO_MAX       = 300
 
 
-def _magento_relevante(nombre: str, term: str) -> bool:
-    """Verifica que al menos una palabra clave del término aparezca en el nombre.
-    Filtra falsos positivos que Magento retorna por sinónimos o búsqueda en descripciones."""
-    palabras = [w.lower() for w in term.split() if len(w) >= 4]
-    if not palabras:
-        return True
-    nombre_lower = (nombre or "").lower()
-    return any(p in nombre_lower for p in palabras)
-
-
 def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[ProductRecord]:
     records: list[ProductRecord] = []
     current_page = 1
@@ -341,7 +370,8 @@ def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[Produc
 
         for item in items:
             nombre_item = item.get("name") or ""
-            if not _magento_relevante(nombre_item, term):
+            score = score_match(nombre_item, term)
+            if score < _MIN_SCORE:
                 continue
 
             mp          = (item.get("price_range") or {}).get("minimum_price") or {}
@@ -365,6 +395,7 @@ def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[Produc
                 url             = url,
                 sucursal_id     = None,
                 sucursal_nombre = None,
+                relevancia      = score,
             ))
 
         if len(records) >= total:

@@ -134,21 +134,12 @@ export default function PreciosPage() {
 
   const cadenas = results ? [...new Set(results.map((r) => r.tienda))].sort() : [];
 
-  function calcRelevancia(nombre: string | null, query: string): number {
-    if (!nombre) return 0;
-    const palabras = query.toLowerCase().split(/\s+/).filter(p => p.length >= 2);
-    const n = nombre.toLowerCase();
-    return palabras.filter(p => n.includes(p)).length;
-  }
-
   const visible = results
     ? [...results]
         .filter((r) => !filterCadena || r.tienda === filterCadena)
         .sort((a, b) => {
           if (sortMode === "relevancia") {
-            const ra = calcRelevancia(a.nombre, lastQuery);
-            const rb = calcRelevancia(b.nombre, lastQuery);
-            if (rb !== ra) return rb - ra;
+            if (b.relevancia !== a.relevancia) return b.relevancia - a.relevancia;
             return (a.precio ?? Infinity) - (b.precio ?? Infinity);
           }
           const pa = a.precio ?? Infinity;
