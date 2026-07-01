@@ -1,4 +1,4 @@
-from datetime import date, date as date_type
+from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, delete
 from typing import List, Dict
@@ -70,7 +70,7 @@ async def sync_platform(db: AsyncSession, platform: Platform, date_from: date, d
             account_id=row["account_id"],
             campaign_id=row["campaign_id"],
             campaign_name=row["campaign_name"],
-            date=date_type.fromisoformat(row["date"]) if isinstance(row["date"], str) else row["date"],
+            date=date.fromisoformat(row["date"]) if isinstance(row["date"], str) else row["date"],
             impressions=row["impressions"],
             clicks=row["clicks"],
             spend=row["spend"],

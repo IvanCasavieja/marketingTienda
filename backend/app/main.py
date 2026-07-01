@@ -30,25 +30,10 @@ async def lifespan(app: FastAPI):
     # Solución: uvicorn arranca solo, migraciones corren acá en background.
     def _run_alembic():
         """Ejecuta scripts/migrate.py en thread pool (es código síncrono)."""
-        import os, sys
-        from sqlalchemy import create_engine, inspect, text as sa_text
+        import os
         raw_url = os.environ.get("DATABASE_URL", "")
         if not raw_url:
             return
-        sync_url = raw_url.replace("postgresql+asyncpg://", "postgresql://")
-        eng = create_engine(sync_url)
-        try:
-            with eng.connect() as conn:
-                tables = inspect(eng).get_table_names()
-                if "alembic_version" not in tables and "teams" in tables:
-                    conn.execute(sa_text(
-                        "CREATE TABLE alembic_version "
-                        "(version_num VARCHAR(32) NOT NULL CONSTRAINT alembic_version_pkc PRIMARY KEY)"
-                    ))
-                    conn.execute(sa_text("INSERT INTO alembic_version (version_num) VALUES ('0001')"))
-                    conn.commit()
-        finally:
-            eng.dispose()
         from alembic import command
         from alembic.config import Config
         command.upgrade(Config("alembic.ini"), "head")
@@ -157,4 +142,18 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    from sqlalchemy import text
+    from app.core.database import AsyncSessionLocal
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        db_ok = False
+
+    if not db_ok:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "db": "error"},
+        )
+    return {"status": "ok", "db": "ok"}

@@ -11,8 +11,6 @@ Endpoint de sincronización (requiere APP_SECRET_KEY en header X-Sync-Key):
   POST /precios/sync         — bulk upsert desde el scraper (INSERT ... ON CONFLICT)
 """
 
-import csv
-import io
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -31,7 +29,6 @@ from app.models.producto import Producto
 from app.models.user import User
 from app.schemas.precios import (
     ProductoOut, SyncPayload, SyncResult, PreciosListResponse,
-    CompararResponse, CompararGrupo, CompararTiendaItem,
     PreciosStats, TiendaStats,
 )
 
@@ -240,187 +237,6 @@ async def listar_precios(
     )
 
 
-@router.get("/comparar", response_model=CompararResponse)
-async def comparar_precios(
-    q:       Optional[str] = Query(None, description="Búsqueda por nombre o barcode"),
-    barcode: Optional[str] = Query(None, description="Barcode exacto"),
-    limit:   int           = Query(30, ge=1, le=100),
-    _: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Compara el mismo producto (por barcode) en distintas tiendas.
-    Agrupa productos con barcode compartido entre >=2 tiendas.
-    """
-    base = select(Producto).where(Producto.barcode.isnot(None), Producto.barcode != "")
-
-    if barcode:
-        base = base.where(Producto.barcode == barcode)
-    elif q:
-        like = f"%{q}%"
-        base = base.where(
-            Producto.nombre.ilike(like) | Producto.barcode.ilike(like)
-        )
-    else:
-        return CompararResponse(grupos=[], total=0)
-
-    result = await db.execute(base.order_by(Producto.barcode, Producto.tienda))
-    rows = result.scalars().all()
-
-    from collections import defaultdict
-    by_barcode: dict[str, list] = defaultdict(list)
-    for p in rows:
-        by_barcode[p.barcode].append(p)
-
-    grupos = []
-    for bc, prods in by_barcode.items():
-        tiendas_set = {p.tienda for p in prods}
-        if len(tiendas_set) < 2:
-            continue
-        nombre_ref = next((p.nombre for p in prods if p.nombre), None)
-        items = [
-            CompararTiendaItem(
-                tienda=p.tienda,
-                precio=p.precio,
-                precio_lista=p.precio_lista,
-                url=p.url,
-                nombre=p.nombre,
-            )
-            for p in sorted(prods, key=lambda x: x.tienda)
-        ]
-        grupos.append(CompararGrupo(
-            barcode=bc,
-            nombre_ref=nombre_ref,
-            n_tiendas=len(tiendas_set),
-            tiendas=items,
-        ))
-
-    grupos.sort(key=lambda g: -g.n_tiendas)
-    grupos = grupos[:limit]
-    return CompararResponse(grupos=grupos, total=len(grupos))
-
-
-@router.get("/export.csv")
-async def exportar_csv(
-    tienda:     Optional[str]   = Query(None),
-    categoria:  Optional[str]   = Query(None),
-    marca:      Optional[str]   = Query(None),
-    q:          Optional[str]   = Query(None),
-    precio_min: Optional[float] = Query(None),
-    precio_max: Optional[float] = Query(None),
-    con_descuento: Optional[bool] = Query(None),
-    limit:      int             = Query(10000, ge=1, le=50000),
-    _: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Exporta el catálogo filtrado como CSV."""
-    base = select(Producto)
-    filters = []
-    if tienda:        filters.append(Producto.tienda == tienda)
-    if categoria:     filters.append(Producto.categoria.ilike(f"%{categoria}%"))
-    if marca:         filters.append(Producto.marca.ilike(f"%{marca}%"))
-    if q:
-        like = f"%{q}%"
-        filters.append(
-            Producto.nombre.ilike(like) | Producto.sku.ilike(like) | Producto.barcode.ilike(like)
-        )
-    if precio_min is not None: filters.append(Producto.precio >= precio_min)
-    if precio_max is not None: filters.append(Producto.precio <= precio_max)
-    if con_descuento:
-        filters.append(Producto.precio_lista.isnot(None) & (Producto.precio_lista > Producto.precio))
-    for f in filters:
-        base = base.where(f)
-
-    result = await db.execute(base.order_by(Producto.nombre).limit(limit))
-    items = result.scalars().all()
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["tienda","nombre","precio","precio_lista","sku","barcode","marca","categoria","url"])
-    for p in items:
-        writer.writerow([
-            p.tienda, p.nombre, p.precio, p.precio_lista,
-            p.sku, p.barcode, p.marca, p.categoria, p.url,
-        ])
-
-    filename = f"precios_{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.csv"
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode("utf-8-sig")),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@router.get("/historial/exportar-excel")
-async def exportar_excel_historial(
-    _: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Exporta historial completo como Excel — una hoja por fecha de scan.
-
-    Usa write_only=True + stream_results para memoria constante (~20MB) sin importar
-    cuántas filas haya. Sin esto openpyxl acumula ~1M cell objects en RAM y crashea.
-    """
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
-    from openpyxl.cell import WriteOnlyCell
-    from app.models.precio_historial import PrecioHistorial
-
-    fechas_result = await db.execute(
-        select(PrecioHistorial.fecha_scan).distinct().order_by(PrecioHistorial.fecha_scan.desc())
-    )
-    fechas = [r[0] for r in fechas_result.all()]
-
-    if not fechas:
-        raise HTTPException(status_code=404, detail="No hay datos históricos disponibles")
-
-    COL_HEADERS = ["Tienda", "Nombre", "Precio", "Precio Lista", "SKU", "Barcode", "Marca", "Categoría", "URL"]
-    header_fill = PatternFill("solid", fgColor="1E3A5F")
-    header_font = Font(bold=True, color="FFFFFF")
-    center      = Alignment(horizontal="center")
-
-    wb = Workbook(write_only=True)
-
-    for fecha in fechas:
-        ws = wb.create_sheet(title=str(fecha))
-
-        # Fila de cabecera con estilo usando WriteOnlyCell
-        header_row = []
-        for h in COL_HEADERS:
-            c = WriteOnlyCell(ws, value=h)
-            c.font  = header_font
-            c.fill  = header_fill
-            c.alignment = center
-            header_row.append(c)
-        ws.append(header_row)
-
-        result = await db.stream(
-            select(
-                PrecioHistorial.tienda, PrecioHistorial.nombre,
-                PrecioHistorial.precio, PrecioHistorial.precio_lista,
-                PrecioHistorial.sku, PrecioHistorial.barcode,
-                PrecioHistorial.marca, PrecioHistorial.categoria,
-                PrecioHistorial.url,
-            )
-            .where(PrecioHistorial.fecha_scan == fecha)
-            .order_by(PrecioHistorial.tienda, PrecioHistorial.nombre)
-            .execution_options(yield_per=500)
-        )
-        async for row in result:
-            ws.append(list(row))
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-
-    filename = f"precios_historial_{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.xlsx"
-    return StreamingResponse(
-        output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
 @router.get("/historial/fechas", response_model=list[str])
 async def historial_fechas(
     _: User = Depends(get_current_user),
@@ -452,11 +268,11 @@ async def historial_precios(
     db: AsyncSession = Depends(get_db),
 ):
     """Catálogo de precios de una fecha específica (snapshot histórico)."""
-    from datetime import date as date_type
+    from datetime import date
     from app.models.precio_historial import PrecioHistorial
 
     try:
-        fecha_dt = date_type.fromisoformat(fecha)
+        fecha_dt = date.fromisoformat(fecha)
     except ValueError:
         raise HTTPException(status_code=400, detail="Formato de fecha inválido (usar YYYY-MM-DD)")
 
@@ -536,38 +352,6 @@ async def scraper_progress(_: User = Depends(get_current_user)):
     """Progreso en tiempo real del scan activo (lee JSON de checkpoint)."""
     from app.services.scraper_sync import get_progress
     return await get_progress()
-
-
-@router.post("/scraper/trigger", status_code=202)
-async def scraper_trigger(_: User = Depends(get_current_user)):
-    """Dispara un scraping manual completo (todas las tiendas)."""
-    from app.services.scraper_sync import trigger_manual
-    launched = await trigger_manual()
-    if not launched:
-        raise HTTPException(status_code=409, detail="Ya hay un scraping en curso")
-    return {"message": "Scraping completo iniciado"}
-
-
-@router.post("/scraper/trigger-gdu", status_code=202)
-async def scraper_trigger_gdu(_: User = Depends(get_current_user)):
-    """Dispara un scan de solo GDU (Geant, Disco, Devoto). Actualiza únicamente
-    registros GDU en PostgreSQL via upsert por URL — no toca Tata ni Farmashop."""
-    from app.services.scraper_sync import trigger_gdu
-    launched = await trigger_gdu()
-    if not launched:
-        raise HTTPException(status_code=409, detail="Ya hay un scraping en curso")
-    return {"message": "GDU scan iniciado"}
-
-
-@router.post("/scraper/trigger-botiga", status_code=202)
-async def scraper_trigger_botiga(_: User = Depends(get_current_user)):
-    """Dispara un scan de solo Botiga (botiga.farmashop.com.uy, Magento GraphQL).
-    Upsert por URL en PostgreSQL — no toca otras tiendas."""
-    from app.services.scraper_sync import trigger_botiga
-    launched = await trigger_botiga()
-    if not launched:
-        raise HTTPException(status_code=409, detail="Ya hay un scraping en curso")
-    return {"message": "Botiga scan iniciado"}
 
 
 @router.delete("/vaciar", status_code=200)

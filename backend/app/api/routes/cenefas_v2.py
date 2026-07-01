@@ -202,7 +202,7 @@ async def update_template(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    tmpl = await _get_owned_template(template_id, current_user, db)
+    tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
     if tmpl.is_builtin:
         raise HTTPException(status_code=403, detail="No se pueden modificar templates del sistema")
 
@@ -221,7 +221,7 @@ async def rename_template(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    tmpl = await _get_owned_template(template_id, current_user, db)
+    tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
     if tmpl.is_builtin:
         raise HTTPException(status_code=403, detail="No se pueden modificar templates del sistema")
     name = (payload.get("name") or "").strip()
@@ -237,7 +237,7 @@ async def delete_template(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    tmpl = await _get_owned_template(template_id, current_user, db)
+    tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
     if tmpl.is_builtin:
         raise HTTPException(status_code=403, detail="No se pueden eliminar templates del sistema")
     await db.delete(tmpl)
@@ -326,6 +326,8 @@ async def _get_owned_template(
     template_id: uuid.UUID,
     current_user: User,
     db: AsyncSession,
+    *,
+    write_check: bool = False,
 ) -> CenefaTemplateV2:
     result = await db.execute(
         select(CenefaTemplateV2).where(CenefaTemplateV2.id == template_id)
@@ -333,6 +335,9 @@ async def _get_owned_template(
     tmpl = result.scalar_one_or_none()
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template no encontrado")
+    if write_check and not tmpl.is_builtin and not current_user.is_superuser:
+        if tmpl.created_by != current_user.id:
+            raise HTTPException(status_code=403, detail="No tenés permiso para modificar este template")
     return tmpl
 
 
