@@ -285,6 +285,18 @@ export const preciosApi = {
   buscarVivo: (q: string) =>
     api.get<BuscarVivoResponse>("/precios/buscar-vivo", { params: { q } }),
 
+  buscarVivoStream: (q: string, signal?: AbortSignal): Promise<Response> => {
+    const token = getAccessToken();
+    return fetch(
+      `${BASE_URL}/precios/buscar-vivo-stream?q=${encodeURIComponent(q)}`,
+      {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        credentials: "include",
+        signal,
+      },
+    );
+  },
+
   vaciarCatalogo: () =>
     api.delete<{ message: string }>("/precios/vaciar"),
 };

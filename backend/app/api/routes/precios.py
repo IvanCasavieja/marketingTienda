@@ -625,6 +625,70 @@ async def buscar_vivo(
     return {"query": q, "total": len(items), "items": items}
 
 
+@router.get("/buscar-vivo-stream")
+async def buscar_vivo_stream(
+    q: str = Query(..., min_length=2, description="Término de búsqueda"),
+    _: User = Depends(get_current_user),
+):
+    """Búsqueda EN VIVO con SSE — devuelve resultados cadena por cadena en cuanto
+    cada una termina. Evita el timeout de 30s de Render free tier porque los headers
+    HTTP (incluyendo CORS) se envían con el primer byte, antes de que cualquier
+    cadena termine."""
+    import asyncio, json, threading
+    from app.services.scraper.live_search import buscar_todas_streaming, _DATA_DIR
+
+    loop = asyncio.get_event_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def _run_search():
+        try:
+            for cadena, records in buscar_todas_streaming(q, _DATA_DIR):
+                items = [
+                    {
+                        "tienda":          r.tienda,
+                        "nombre":          r.nombre,
+                        "precio":          r.precio,
+                        "precio_lista":    r.precio_lista,
+                        "sku":             r.sku,
+                        "barcode":         r.barcode,
+                        "marca":           r.marca,
+                        "url":             r.url,
+                        "sucursal_id":     r.sucursal_id,
+                        "sucursal_nombre": r.sucursal_nombre,
+                    }
+                    for r in records
+                    if r.nombre and r.precio is not None
+                ]
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    json.dumps({"cadena": cadena, "items": items}),
+                )
+        except Exception as exc:
+            logger.error("buscar_vivo_stream: error para '%s': %s", q, exc, exc_info=True)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
+
+    threading.Thread(target=_run_search, daemon=True).start()
+
+    async def generate():
+        try:
+            while True:
+                msg = await asyncio.wait_for(queue.get(), timeout=120.0)
+                if msg is None:
+                    yield 'data: {"done":true}\n\n'
+                    break
+                yield f"data: {msg}\n\n"
+        except asyncio.TimeoutError:
+            logger.error("buscar_vivo_stream: timeout esperando cola para '%s'", q)
+            yield 'data: {"done":true,"error":"timeout"}\n\n'
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/{producto_id}", response_model=ProductoOut)
 async def obtener_precio(
     producto_id: int,

@@ -280,3 +280,26 @@ def buscar_todas(term: str, cache_dir: Path = _DATA_DIR) -> dict[str, list[Produ
                 resultados[cadena] = []
 
     return resultados
+
+
+def buscar_todas_streaming(term: str, cache_dir: Path = _DATA_DIR):
+    """Generador síncrono que hace yield de (cadena, records) en orden de llegada.
+    La cadena más rápida aparece primero — ideal para streaming SSE."""
+    from concurrent.futures import as_completed
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        futs = {
+            ex.submit(buscar_tata,      term):            "Ta-Ta",
+            ex.submit(buscar_eldorado,  term):            "ElDorado",
+            ex.submit(buscar_gdu,       term, cache_dir): "GDU",
+            ex.submit(buscar_farmashop, term):            "FarmaShop",
+            ex.submit(buscar_botiga,    term):            "Botiga",
+        }
+        for fut in as_completed(futs):
+            cadena = futs[fut]
+            try:
+                records = fut.result()
+                log.info("live_search streaming: %s — %d registros para '%s'", cadena, len(records), term)
+                yield cadena, records
+            except Exception as exc:
+                log.error("live_search streaming: %s falló — %s", cadena, exc, exc_info=True)
+                yield cadena, []

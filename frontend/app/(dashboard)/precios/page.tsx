@@ -51,33 +51,81 @@ function SkeletonCard() {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function PreciosPage() {
-  const [q,         setQ]         = useState("");
-  const [loading,   setLoading]   = useState(false);
-  const [results,   setResults]   = useState<ProductoVivo[] | null>(null);
-  const [lastQuery, setLastQuery] = useState("");
-  const [sortDir,   setSortDir]   = useState<"asc" | "desc">("asc");
+  const [q,            setQ]            = useState("");
+  const [loading,      setLoading]      = useState(false);
+  const [streaming,    setStreaming]     = useState(false);
+  const [results,      setResults]      = useState<ProductoVivo[] | null>(null);
+  const [lastQuery,    setLastQuery]    = useState("");
+  const [sortDir,      setSortDir]      = useState<"asc" | "desc">("asc");
   const [filterCadena, setFilterCadena] = useState<string | null>(null);
+  const [cadenasDone,  setCadenasDone]  = useState<string[]>([]);
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef   = useRef<HTMLInputElement>(null);
+  const abortRef   = useRef<AbortController | null>(null);
 
   const buscar = useCallback(async (term: string) => {
     const t = term.trim();
     if (t.length < 2) return;
+
+    // Cancelar búsqueda anterior si hay una activa
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     setLoading(true);
+    setStreaming(false);
+    setResults([]);
+    setLastQuery(t);
+    setFilterCadena(null);
+    setCadenasDone([]);
+
     try {
-      const { data } = await preciosApi.buscarVivo(t);
-      setResults(data.items);
-      setLastQuery(t);
-      setFilterCadena(null);
-    } catch {
+      const response = await preciosApi.buscarVivoStream(t, ctrl.signal);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const reader  = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer    = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop()!;
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6).trim();
+          if (!payload) continue;
+          try {
+            const data = JSON.parse(payload);
+            if (data.done) {
+              setLoading(false);
+              setStreaming(false);
+            } else if (data.cadena !== undefined) {
+              setStreaming(true);
+              setLoading(false);
+              setCadenasDone((prev) => [...prev, data.cadena]);
+              setResults((prev) => [...(prev ?? []), ...(data.items as ProductoVivo[])]);
+            }
+          } catch { /* línea incompleta o malformada */ }
+        }
+      }
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return;
       toast.error("Error al buscar");
-      setResults(null);
+      setResults((prev) => prev ?? []);
     } finally {
       setLoading(false);
+      setStreaming(false);
     }
   }, []);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const ALL_CADENAS = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga"];
 
   // Cadenas únicas en resultados
   const cadenas = results
@@ -101,17 +149,17 @@ export default function PreciosPage() {
     <div className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
 
       {/* Hero search */}
-      <div className={`transition-all duration-500 ${results !== null || loading ? "mb-6" : "mb-0 mt-20"}`}>
-        <div className={`text-center transition-all duration-500 ${results !== null || loading ? "mb-4" : "mb-8"}`}>
+      <div className={`transition-all duration-500 ${results !== null || loading || streaming ? "mb-6" : "mb-0 mt-20"}`}>
+        <div className={`text-center transition-all duration-500 ${results !== null || loading || streaming ? "mb-4" : "mb-8"}`}>
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-600/10 mb-4">
             <Search size={22} className="text-brand-600" />
           </div>
           <h1 className={`font-bold text-slate-900 dark:text-slate-100 transition-all duration-500 ${
-            results !== null || loading ? "text-xl" : "text-3xl"
+            results !== null || loading || streaming ? "text-xl" : "text-3xl"
           }`}>
             Buscar precios en vivo
           </h1>
-          {!(results !== null || loading) && (
+          {!(results !== null || loading || streaming) && (
             <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm">
               Ta-Ta · El Dorado · Disco · Devoto · Géant · FarmaShop · Botiga — en tiempo real
             </p>
@@ -140,8 +188,8 @@ export default function PreciosPage() {
         </form>
       </div>
 
-      {/* Estado vacío */}
-      {!loading && results === null && q.length < 2 && (
+      {/* Estado vacío inicial */}
+      {!loading && !streaming && results === null && (
         <div className="mt-16 text-center space-y-6">
           <div className="grid grid-cols-3 gap-3 max-w-sm mx-auto">
             {Object.entries(CADENA_CONFIG).map(([key, cfg]) => (
@@ -155,15 +203,58 @@ export default function PreciosPage() {
         </div>
       )}
 
-      {/* Skeleton */}
-      {loading && (
-        <div className="card p-0 overflow-hidden">
-          {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+      {/* Skeleton — solo si loading y sin resultados todavía */}
+      {loading && (!results || results.length === 0) && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <Loader2 size={12} className="animate-spin" />
+            Consultando cadenas…
+          </div>
+          <div className="card p-0 overflow-hidden">
+            {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
         </div>
       )}
 
-      {/* Resultados */}
-      {!loading && results !== null && (
+      {/* Indicador de streaming parcial */}
+      {streaming && results !== null && results.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap">
+          {ALL_CADENAS.map((c) => {
+            const done = cadenasDone.includes(c);
+            const cfg  = CADENA_CONFIG[c] ?? CADENA_CONFIG["ElDorado"];
+            return (
+              <span
+                key={c}
+                className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full font-medium transition-all ${
+                  done
+                    ? cfg.bg
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600"
+                }`}
+              >
+                {done
+                  ? <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                  : <Loader2 size={9} className="animate-spin opacity-60" />
+                }
+                {cfg?.label ?? c}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Sin resultados al finalizar el stream */}
+      {!loading && !streaming && results !== null && results.length === 0 && (
+        <div className="text-center py-16 text-slate-400 space-y-2">
+          <Search size={32} className="mx-auto opacity-20" />
+          <p className="text-sm">Sin resultados para <em>"{lastQuery}"</em></p>
+          <p className="text-xs text-slate-300 dark:text-slate-600">
+            Probá con menos palabras, ej: "arroz saman" en vez de "arroz saman parboiled 5kg"
+          </p>
+        </div>
+      )}
+
+      {/* Resultados — visible desde que llega la primera cadena */}
+      {results !== null && results.length > 0 && (
         <div className="space-y-4">
 
           {/* Barra de control */}
@@ -222,12 +313,8 @@ export default function PreciosPage() {
           )}
 
           {visible.length === 0 ? (
-            <div className="text-center py-16 text-slate-400 space-y-2">
-              <Search size={32} className="mx-auto opacity-20" />
-              <p className="text-sm">Sin resultados para <em>"{lastQuery}"</em></p>
-              <p className="text-xs text-slate-300 dark:text-slate-600">
-                Probá con menos palabras, ej: "arroz saman" en vez de "arroz saman parboiled 5kg"
-              </p>
+            <div className="text-center py-8 text-slate-400 text-sm">
+              Ningún resultado en <em>{CADENA_CONFIG[filterCadena!]?.label ?? filterCadena}</em> para este término.
             </div>
           ) : (
             <div className="card p-0 overflow-hidden divide-y divide-slate-50 dark:divide-slate-800/60">
