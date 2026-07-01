@@ -593,13 +593,12 @@ async def buscar_vivo(
     """Búsqueda EN VIVO de un producto — no usa la base de datos, golpea las
     APIs de Ta-Ta, El Dorado, GDU, FarmaShop y Botiga en paralelo."""
     import asyncio
-    from app.services.scraper.live_search import buscar_todas
-
     loop = asyncio.get_running_loop()
     try:
+        from app.services.scraper.live_search import buscar_todas
         resultados = await loop.run_in_executor(None, buscar_todas, q)
     except Exception as exc:
-        logger.error("buscar_vivo: error inesperado para '%s': %s", q, exc, exc_info=True)
+        logger.error("buscar_vivo: error para '%s': %s", q, exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno en búsqueda en vivo")
 
     items = []
