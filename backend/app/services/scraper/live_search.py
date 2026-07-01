@@ -191,6 +191,16 @@ _MAGENTO_PAGE_SIZE = 50
 _MAGENTO_MAX       = 300
 
 
+def _magento_relevante(nombre: str, term: str) -> bool:
+    """Verifica que al menos una palabra clave del término aparezca en el nombre.
+    Filtra falsos positivos que Magento retorna por sinónimos o búsqueda en descripciones."""
+    palabras = [w.lower() for w in term.split() if len(w) >= 4]
+    if not palabras:
+        return True
+    nombre_lower = (nombre or "").lower()
+    return any(p in nombre_lower for p in palabras)
+
+
 def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[ProductRecord]:
     records: list[ProductRecord] = []
     current_page = 1
@@ -220,15 +230,22 @@ def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[Produc
             break
 
         for item in items:
+            nombre_item = item.get("name") or ""
+            if not _magento_relevante(nombre_item, term):
+                continue
+
             mp          = (item.get("price_range") or {}).get("minimum_price") or {}
             final_price = (mp.get("final_price") or {}).get("value")
             reg_price   = (mp.get("regular_price") or {}).get("value")
+            if not final_price:
+                continue
+
             url_key     = item.get("url_key") or ""
             url         = f"{base_url}/{url_key}" if url_key else base_url
 
             records.append(ProductRecord(
                 tienda          = tienda_nombre,
-                nombre          = item.get("name"),
+                nombre          = nombre_item,
                 precio          = final_price,
                 precio_lista    = reg_price if reg_price and reg_price > (final_price or 0) else None,
                 sku             = item.get("sku"),
