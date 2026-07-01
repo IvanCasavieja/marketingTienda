@@ -345,19 +345,23 @@ def _parse_prices(
         current       = rec["price"]["currentPrice"]
         normal        = rec["price"]["normalPrice"]
 
-        # currentPrice=0 significa sin promoción activa → usar normalPrice
-        precio = current or normal
-        if not precio:
+        # normalPrice = precio de mostrador (lo que paga cualquiera)
+        # currentPrice = precio con tarjeta Hiper+ / promoción activa
+        # Si normalPrice=0 y currentPrice=0 → sin precio, saltear
+        # Si currentPrice < normalPrice → mostrar currentPrice con normalPrice tachado
+        # Si currentPrice = 0 (sin promo) → mostrar normalPrice sin descuento
+        precio_base = normal or current
+        if not precio_base:
             continue
 
-        # precio_lista solo si hay descuento real
-        precio_lista_val = normal if (normal and normal > precio) else None
+        precio_final = current if (current and current < precio_base) else precio_base
+        precio_lista_val = precio_base if (current and current < precio_base) else None
 
         out.append(ProductRecord(
             tienda          = cadena,
             url             = _construir_url(cadena, pid, pl_id),
             nombre          = name,
-            precio          = precio,
+            precio          = precio_final,
             precio_lista    = precio_lista_val,
             sku             = pid,
             barcode         = barcodes.get(pid),
