@@ -143,6 +143,18 @@ app.add_middleware(
 app.include_router(router, prefix=settings.API_V1_PREFIX)
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Convierte cualquier excepcion no manejada en JSONResponse antes de que
+    llegue al middleware — garantiza que CORSMiddleware siempre pueda inyectar
+    el header Access-Control-Allow-Origin, incluso en respuestas 500."""
+    logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error"},
+    )
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
