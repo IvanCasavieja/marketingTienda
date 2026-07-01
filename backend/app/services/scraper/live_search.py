@@ -61,7 +61,7 @@ def buscar_tata(term: str) -> list[ProductRecord]:
 
     def _una(sucursal: dict):
         url = _tata_search_url(term, sucursal["region_id"])
-        data = tata._fetch(url)
+        data = tata._fetch(url, retries=1, timeout=5, fast_fail=True)
         if data is None:
             return
         search = (data.get("data") or {}).get("search") or {}
@@ -92,7 +92,7 @@ def buscar_eldorado(term: str) -> list[ProductRecord]:
                 "to":                   19,
                 "regionId":             sucursal["region_id"],
                 "hideUnavailableItems": "false",
-            })
+            }, timeout=5, fast_fail=True)
             data = r.json()
         except Exception as exc:
             log.warning("ElDorado live: %s falló — %s", sucursal["nombre"], exc)

@@ -674,16 +674,24 @@ async def buscar_vivo_stream(
     threading.Thread(target=_run_search, daemon=True).start()
 
     async def generate():
-        try:
-            while True:
-                msg = await asyncio.wait_for(queue.get(), timeout=120.0)
-                if msg is None:
-                    yield 'data: {"done":true}\n\n'
-                    break
-                yield f"data: {msg}\n\n"
-        except asyncio.TimeoutError:
-            logger.error("buscar_vivo_stream: timeout esperando cola para '%s'", q)
-            yield 'data: {"done":true,"error":"timeout"}\n\n'
+        # Heartbeat every 5s — prevents Render/proxy from closing the connection
+        # during the 20-30s gap while El Dorado / Ta-Ta are resolving timeouts.
+        deadline = loop.time() + 120.0
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                logger.error("buscar_vivo_stream: timeout total para '%s'", q)
+                yield 'data: {"done":true,"error":"timeout"}\n\n'
+                break
+            try:
+                msg = await asyncio.wait_for(queue.get(), timeout=min(5.0, remaining))
+            except asyncio.TimeoutError:
+                yield ": keep-alive\n\n"  # SSE comment — browsers ignore, proxies see data
+                continue
+            if msg is None:
+                yield 'data: {"done":true}\n\n'
+                break
+            yield f"data: {msg}\n\n"
 
     return StreamingResponse(
         generate(),

@@ -65,20 +65,22 @@ _SESSION.mount("https://", requests.adapters.HTTPAdapter(pool_connections=20, po
 _SESSION.mount("http://",  requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=20))
 
 
-def _fetch(url: str, retries: int = 3) -> dict | None:
+def _fetch(url: str, retries: int = 3, timeout: int = 8, fast_fail: bool = False) -> dict | None:
     for attempt in range(retries):
         try:
-            r = _SESSION.get(url, timeout=8)
+            r = _SESSION.get(url, timeout=timeout)
             if r.status_code == 200:
                 return r.json()
             if r.status_code == 429:
+                if fast_fail:
+                    return None  # live search: fail fast instead of sleeping 30s
                 time.sleep(30)
                 continue
             if r.status_code >= 500:
                 time.sleep(2 ** attempt)
                 continue
         except Exception:
-            if attempt < retries - 1:
+            if attempt < retries - 1 and not fast_fail:
                 time.sleep(1.5)
     return None
 

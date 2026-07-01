@@ -69,25 +69,28 @@ ELDORADO_PHASES_BY_STORE: dict[int, list[dict]] = {
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
-def _get(url: str, params: dict) -> requests.Response:
-    for attempt in range(1, 4):
+def _get(url: str, params: dict, timeout: int = 8, fast_fail: bool = False) -> requests.Response:
+    max_attempts = 2 if fast_fail else 3
+    for attempt in range(1, max_attempts + 1):
         try:
-            r = requests.get(url, params=params, headers=_HEADERS, timeout=8)
+            r = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
             if r.status_code in (200, 206):
                 return r
             if r.status_code == 429:
+                if fast_fail:
+                    raise RuntimeError(f"ElDorado: rate limit (live search fast-fail)")
                 wait = int(r.headers.get("Retry-After", 30))
                 log.warning("ElDorado: rate limit — esperando %ds", wait)
                 time.sleep(wait)
                 continue
-            log.warning("ElDorado: HTTP %d intento %d/3 — %s", r.status_code, attempt, url)
+            log.warning("ElDorado: HTTP %d intento %d/%d — %s", r.status_code, attempt, max_attempts, url)
         except requests.exceptions.Timeout:
-            log.warning("ElDorado: timeout intento %d/3", attempt)
+            log.warning("ElDorado: timeout intento %d/%d", attempt, max_attempts)
         except requests.exceptions.ConnectionError as e:
-            log.warning("ElDorado: conexión intento %d/3 — %s", attempt, e)
-        if attempt < 3:
+            log.warning("ElDorado: conexión intento %d/%d — %s", attempt, max_attempts, e)
+        if attempt < max_attempts and not fast_fail:
             time.sleep(2 ** attempt)
-    raise RuntimeError(f"ElDorado: fallo definitivo tras 3 intentos — {url}")
+    raise RuntimeError(f"ElDorado: fallo definitivo tras {max_attempts} intentos — {url}")
 
 
 # ── Iterador de productos via Intelligent Search ──────────────────────────────
