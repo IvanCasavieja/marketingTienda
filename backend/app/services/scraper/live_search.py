@@ -8,12 +8,14 @@ para no duplicar lógica de normalización — solo cambia CÓMO se piden los da
 (filtrado por término en vez de paginar el catálogo completo).
 
 Cadenas con búsqueda por keyword real:
-  - Ta-Ta:     GraphQL "term"        — 15 sucursales en paralelo.
-  - El Dorado: VTEX IS "query"       — 17 sucursales en paralelo.
-  - GDU:       REST "Name" (param no documentado, descubierto por prueba) —
-               catálogo filtrado + precios de TODAS las sucursales en una sola
-               tanda de llamadas (la API de precios ya devuelve todas las
-               sucursales por producto, no hace falta iterar una por una).
+  - Ta-Ta:      GraphQL "term"        — 15 sucursales en paralelo.
+  - El Dorado:  VTEX IS "query"       — 17 sucursales en paralelo.
+  - GDU:        REST "Name" (param no documentado, descubierto por prueba) —
+                catálogo filtrado + precios de TODAS las sucursales en una sola
+                tanda de llamadas (la API de precios ya devuelve todas las
+                sucursales por producto, no hace falta iterar una por una).
+  - FarmaShop:  Magento 2 GraphQL — precio único, sin sucursales.
+  - Botiga:     Magento 2 GraphQL (mismo servidor que FarmaShop, store_view 22).
 """
 
 import json
@@ -23,6 +25,8 @@ import threading
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import requests as _requests
 
 from . import eldorado_rest as eldorado
 from . import gdu_rest as gdu
@@ -158,20 +162,117 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
     return records
 
 
+# ── FarmaShop / Botiga (Magento 2 GraphQL) ────────────────────────────────────
+
+_MAGENTO_QUERY = """
+query Search($search: String!, $pageSize: Int!, $currentPage: Int!) {
+  products(search: $search, pageSize: $pageSize, currentPage: $currentPage) {
+    total_count
+    items {
+      name
+      sku
+      price_range {
+        minimum_price {
+          final_price   { value }
+          regular_price { value }
+        }
+      }
+      url_key
+    }
+  }
+}
+"""
+
+_MAGENTO_HEADERS = {
+    "Content-Type": "application/json",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+}
+_MAGENTO_PAGE_SIZE = 50
+_MAGENTO_MAX       = 300
+
+
+def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[ProductRecord]:
+    records: list[ProductRecord] = []
+    current_page = 1
+
+    while len(records) < _MAGENTO_MAX:
+        payload = {
+            "query": _MAGENTO_QUERY,
+            "variables": {"search": term, "pageSize": _MAGENTO_PAGE_SIZE, "currentPage": current_page},
+        }
+        try:
+            r = _requests.post(
+                f"{base_url}/graphql",
+                json=payload,
+                headers=_MAGENTO_HEADERS,
+                timeout=12,
+            )
+            r.raise_for_status()
+            data = r.json()
+        except Exception as exc:
+            log.warning("magento %s: error en página %d — %s", tienda_nombre, current_page, exc)
+            break
+
+        products = (data.get("data") or {}).get("products") or {}
+        total    = products.get("total_count", 0)
+        items    = products.get("items") or []
+        if not items:
+            break
+
+        for item in items:
+            mp          = (item.get("price_range") or {}).get("minimum_price") or {}
+            final_price = (mp.get("final_price") or {}).get("value")
+            reg_price   = (mp.get("regular_price") or {}).get("value")
+            url_key     = item.get("url_key") or ""
+            url         = f"{base_url}/{url_key}" if url_key else base_url
+
+            records.append(ProductRecord(
+                tienda          = tienda_nombre,
+                nombre          = item.get("name"),
+                precio          = final_price,
+                precio_lista    = reg_price if reg_price and reg_price > (final_price or 0) else None,
+                sku             = item.get("sku"),
+                barcode         = None,
+                marca           = None,
+                categoria       = None,
+                url             = url,
+                sucursal_id     = None,
+                sucursal_nombre = None,
+            ))
+
+        if len(records) >= total:
+            break
+        current_page += 1
+
+    return records
+
+
+def buscar_farmashop(term: str) -> list[ProductRecord]:
+    return _buscar_magento(term, "https://tienda.farmashop.com.uy", "FarmaShop")
+
+
+def buscar_botiga(term: str) -> list[ProductRecord]:
+    return _buscar_magento(term, "https://botiga.farmashop.com.uy", "Botiga")
+
+
 # ── Orquestador ───────────────────────────────────────────────────────────────
 
 def buscar_todas(term: str, cache_dir: Path = _DATA_DIR) -> dict[str, list[ProductRecord]]:
-    """Busca `term` en Ta-Ta, El Dorado y GDU en paralelo.
+    """Busca `term` en Ta-Ta, El Dorado, GDU, FarmaShop y Botiga en paralelo.
     Devuelve {cadena: [ProductRecord, ...]} — una entrada por (producto × sucursal)."""
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        fut_tata     = ex.submit(buscar_tata, term)
-        fut_eldorado = ex.submit(buscar_eldorado, term)
-        fut_gdu      = ex.submit(buscar_gdu, term, cache_dir)
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        fut_tata      = ex.submit(buscar_tata, term)
+        fut_eldorado  = ex.submit(buscar_eldorado, term)
+        fut_gdu       = ex.submit(buscar_gdu, term, cache_dir)
+        fut_farmashop = ex.submit(buscar_farmashop, term)
+        fut_botiga    = ex.submit(buscar_botiga, term)
 
         resultados = {
             "Ta-Ta":     fut_tata.result(),
             "ElDorado":  fut_eldorado.result(),
             "GDU":       fut_gdu.result(),
+            "FarmaShop": fut_farmashop.result(),
+            "Botiga":    fut_botiga.result(),
         }
 
     for cadena, records in resultados.items():
