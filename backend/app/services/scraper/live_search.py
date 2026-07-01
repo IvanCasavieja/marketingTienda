@@ -323,9 +323,12 @@ def buscar_todas_streaming(term: str, cache_dir: Path = _DATA_DIR):
     La cadena más rápida aparece primero — ideal para streaming SSE."""
     from concurrent.futures import as_completed
     with ThreadPoolExecutor(max_workers=5) as ex:
-        # GDU usa búsqueda por Name (substring) — tokens como "5kg" no matchean
-        # "5 Kg" (con espacio). Usamos solo las palabras alfabéticas de 3+ chars.
-        gdu_term = " ".join(w for w in term.split() if w.isalpha() and len(w) >= 3) or term
+        # GDU busca Name= como substring exacto en el nombre del producto.
+        # "carne peceto" no matchea "Peceto entero" porque "carne peceto" no
+        # aparece como substring. Usamos la última palabra alfa significativa
+        # (el corte/producto específico): "carne peceto"→"peceto", "arroz 5kg"→"arroz".
+        alpha_words = [w for w in term.split() if w.isalpha() and len(w) >= 3]
+        gdu_term = alpha_words[-1] if alpha_words else term
 
         futs = {
             ex.submit(buscar_tata,      term):             "Ta-Ta",
