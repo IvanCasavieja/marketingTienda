@@ -8,11 +8,13 @@ import { toast } from "sonner";
 // ── Colores por cadena ────────────────────────────────────────────────────────
 
 const CADENA_CONFIG: Record<string, { bg: string; dot: string; label: string }> = {
-  "Disco":    { bg: "bg-blue-500/10 text-blue-600 dark:text-blue-400",    dot: "bg-blue-500",    label: "Disco" },
-  "Devoto":   { bg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500", label: "Devoto" },
-  "Geant":    { bg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",  dot: "bg-violet-500",  label: "Géant" },
-  "Ta-Ta":    { bg: "bg-rose-500/10 text-rose-600 dark:text-rose-400",    dot: "bg-rose-500",    label: "Ta-Ta" },
-  "ElDorado": { bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400", dot: "bg-amber-500",   label: "El Dorado" },
+  "Disco":     { bg: "bg-blue-500/10 text-blue-600 dark:text-blue-400",       dot: "bg-blue-500",    label: "Disco" },
+  "Devoto":    { bg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500", label: "Devoto" },
+  "Geant":     { bg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",   dot: "bg-violet-500",  label: "Géant" },
+  "Ta-Ta":     { bg: "bg-rose-500/10 text-rose-600 dark:text-rose-400",       dot: "bg-rose-500",    label: "Ta-Ta" },
+  "ElDorado":  { bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400",    dot: "bg-amber-500",   label: "El Dorado" },
+  "FarmaShop": { bg: "bg-teal-500/10 text-teal-600 dark:text-teal-400",       dot: "bg-teal-500",    label: "FarmaShop" },
+  "Botiga":    { bg: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400", dot: "bg-fuchsia-500", label: "Botiga" },
 };
 
 function CadenaBadge({ tienda }: { tienda: string }) {
@@ -117,7 +119,7 @@ export default function PreciosPage() {
           </h1>
           {!(results !== null || loading) && (
             <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm">
-              Ta-Ta · El Dorado · Disco · Devoto · Géant — todas las sucursales, en tiempo real
+              Ta-Ta · El Dorado · Disco · Devoto · Géant · FarmaShop · Botiga — en tiempo real
             </p>
           )}
         </div>
@@ -149,7 +151,7 @@ export default function PreciosPage() {
               </div>
             ))}
           </div>
-          <p className="text-xs text-slate-400">134 sucursales consultadas en tiempo real</p>
+          <p className="text-xs text-slate-400">134+ sucursales consultadas en tiempo real</p>
         </div>
       )}
 
