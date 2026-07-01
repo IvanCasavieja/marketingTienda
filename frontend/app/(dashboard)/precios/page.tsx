@@ -250,15 +250,23 @@ export default function PreciosPage() {
                 </span>
               ))}
               {/* Chips de cadenas con 0 resultados (completaron pero sin productos) */}
-              {!streaming && cadenasDone
+              {!streaming && hasSearched && cadenasDone
                 .filter(c => !cadenas.includes(c) && !cadenaErrors[c])
                 .map(c => (
-                  <span key={c} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
+                  <span key={c} title="Respondió pero sin resultados" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
                     {CADENA_CONFIG[c]?.label ?? c} · 0
                   </span>
                 ))}
-              {/* Chips de error para cadenas que fallaron */}
-              {!streaming && Object.entries(cadenaErrors).map(([c, err]) => (
+              {/* Chips de cadenas que nunca respondieron (timeout o corte de conexión) */}
+              {!streaming && hasSearched && ALL_CADENAS
+                .filter(c => !cadenasDone.includes(c) && !cadenaErrors[c])
+                .map(c => (
+                  <span key={c} title="Sin respuesta — posible bloqueo geográfico o timeout" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 line-through cursor-help">
+                    {CADENA_CONFIG[c]?.label ?? c}
+                  </span>
+                ))}
+              {/* Chips de error para cadenas que fallaron con excepción */}
+              {!streaming && hasSearched && Object.entries(cadenaErrors).map(([c, err]) => (
                 <span key={c} title={err} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 cursor-help">
                   <AlertTriangle size={9} />
                   {CADENA_CONFIG[c]?.label ?? c}
