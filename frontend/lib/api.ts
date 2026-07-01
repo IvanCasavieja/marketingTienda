@@ -285,16 +285,36 @@ export const preciosApi = {
   buscarVivo: (q: string) =>
     api.get<BuscarVivoResponse>("/precios/buscar-vivo", { params: { q } }),
 
-  buscarVivoStream: (q: string, signal?: AbortSignal): Promise<Response> => {
-    const token = getAccessToken();
-    return fetch(
-      `${BASE_URL}/precios/buscar-vivo-stream?q=${encodeURIComponent(q)}`,
-      {
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        credentials: "include",
-        signal,
-      },
-    );
+  buscarVivoStream: async (q: string, signal?: AbortSignal): Promise<Response> => {
+    const doFetch = () => {
+      const token = getAccessToken();
+      return fetch(
+        `${BASE_URL}/precios/buscar-vivo-stream?q=${encodeURIComponent(q)}`,
+        {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          credentials: "include",
+          signal,
+        },
+      );
+    };
+
+    let response = await doFetch();
+    if (response.status === 401) {
+      try {
+        const refreshRes = await axios.post(
+          `${BASE_URL}/auth/refresh`,
+          {},
+          { withCredentials: true },
+        );
+        const newToken = refreshRes.data?.access_token;
+        if (newToken) saveAccessToken(newToken);
+        response = await doFetch();
+      } catch {
+        clearAccessToken();
+        if (typeof window !== "undefined") window.location.href = "/login";
+      }
+    }
+    return response;
   },
 
   vaciarCatalogo: () =>
