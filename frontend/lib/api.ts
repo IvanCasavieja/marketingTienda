@@ -261,20 +261,6 @@ export const cenefasV2Api = {
 // Precios — catálogo de supermercados uruguayos
 // ---------------------------------------------------------------------------
 
-export interface Producto {
-  id:           number;
-  tienda:       string;
-  url:          string;
-  nombre:       string | null;
-  precio:       number | null;
-  precio_lista: number | null;
-  sku:          string | null;
-  barcode:      string | null;
-  marca:        string | null;
-  categoria:    string | null;
-  actualizado_en: string | null;
-}
-
 export interface ProductoVivo {
   tienda:          string;
   url:             string;
@@ -295,128 +281,10 @@ export interface BuscarVivoResponse {
   items: ProductoVivo[];
 }
 
-export interface PreciosListResponse {
-  total:     number;
-  page:      number;
-  page_size: number;
-  items:     Producto[];
-}
-
-export interface CompararTiendaItem {
-  tienda:       string;
-  precio:       number | null;
-  precio_lista: number | null;
-  url:          string;
-  nombre:       string | null;
-}
-
-export interface CompararGrupo {
-  barcode:    string;
-  nombre_ref: string | null;
-  n_tiendas:  number;
-  tiendas:    CompararTiendaItem[];
-}
-
-export interface CompararResponse {
-  grupos: CompararGrupo[];
-  total:  number;
-}
-
-export interface TiendaStats {
-  tienda:          string;
-  total:           number;
-  con_descuento:   number;
-  precio_promedio: number | null;
-}
-
-export interface PreciosStats {
-  total_productos: number;
-  tiendas:         TiendaStats[];
-}
-
 export const preciosApi = {
-  list: (params: {
-    tienda?:        string;
-    categoria?:     string;
-    marca?:         string;
-    q?:             string;
-    precio_min?:    number;
-    precio_max?:    number;
-    con_descuento?: boolean;
-    sort_by?:       string;
-    sort_dir?:      "asc" | "desc";
-    page?:          number;
-    page_size?:     number;
-  }) => api.get<PreciosListResponse>("/precios", { params }),
-
-  tiendas:    () => api.get<string[]>("/precios/tiendas"),
-  categorias: (tienda?: string) =>
-    api.get<string[]>("/precios/categorias", { params: tienda ? { tienda } : {} }),
-  get: (id: number) => api.get<Producto>(`/precios/${id}`),
-  comparar: (params: { q?: string; barcode?: string; limit?: number }) =>
-    api.get<CompararResponse>("/precios/comparar", { params }),
-  estadisticas: () => api.get<PreciosStats>("/precios/estadisticas"),
-  scraperStatus: () =>
-    api.get<{
-      enabled:    boolean;
-      status:     string;
-      last_run:   string | null;
-      last_total: number | null;
-      next_run:   string | null;
-      schedule:   string;
-    }>("/precios/scraper/status"),
-  scraperTrigger:    () => api.post("/precios/scraper/trigger"),
-  scraperTriggerGdu: () => api.post("/precios/scraper/trigger-gdu"),
-  scraperProgress:   () =>
-    api.get<{
-      running:   boolean;
-      scan_type: "full" | "gdu" | null;
-      gdu: { completados: number; total: number; guardados: number; pct: number };
-    }>("/precios/scraper/progress"),
-
-  exportCsv: (params: {
-    tienda?:        string;
-    categoria?:     string;
-    marca?:         string;
-    q?:             string;
-    precio_min?:    number;
-    precio_max?:    number;
-    con_descuento?: boolean;
-    limit?:         number;
-  }) =>
-    api.get<Blob>("/precios/export.csv", { params, responseType: "blob" }),
-
-  exportExcel: () =>
-    api.get<Blob>("/precios/historial/exportar-excel", { responseType: "blob" }),
-
-  historialFechas: () =>
-    api.get<string[]>("/precios/historial/fechas"),
-
   buscarVivo: (q: string) =>
     api.get<BuscarVivoResponse>("/precios/buscar-vivo", { params: { q } }),
 
   vaciarCatalogo: () =>
     api.delete<{ message: string }>("/precios/vaciar"),
-
-  historial: (params: {
-    fecha:          string;
-    tienda?:        string;
-    categoria?:     string;
-    marca?:         string;
-    q?:             string;
-    precio_min?:    number;
-    precio_max?:    number;
-    con_descuento?: boolean;
-    sort_by?:       string;
-    sort_dir?:      string;
-    page?:          number;
-    page_size?:     number;
-  }) =>
-    api.get<{
-      fecha:     string;
-      total:     number;
-      page:      number;
-      page_size: number;
-      items:     Producto[];
-    }>("/precios/historial", { params }),
 };
