@@ -658,7 +658,7 @@ async def buscar_vivo_stream(
                             "sucursal_nombre": r.sucursal_nombre,
                         }
                         for r in records
-                        if r.nombre and r.precio is not None
+                        if r.nombre and r.precio
                     ]
                     payload: dict = {"cadena": cadena, "items": items}
                     if error:

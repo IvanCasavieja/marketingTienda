@@ -57,6 +57,15 @@ def _tata_search_url(term: str, region_id: str, first: int = 20) -> str:
     return f"https://www.tata.com.uy/api/graphql?operationName=ProductsQuery&variables={qs}"
 
 
+def _es_relevante(nombre: str, term: str) -> bool:
+    """Al menos una palabra del término (≥3 chars) aparece en el nombre del producto."""
+    palabras = [w.lower() for w in term.split() if len(w) >= 3]
+    if not palabras:
+        return True
+    nombre_lower = (nombre or "").lower()
+    return any(p in nombre_lower for p in palabras)
+
+
 def buscar_tata(term: str) -> list[ProductRecord]:
     records: list[ProductRecord] = []
     lock = threading.Lock()
@@ -71,6 +80,8 @@ def buscar_tata(term: str) -> list[ProductRecord]:
         parsed = []
         for e in edges:
             d = tata._parse_node(e["node"], sucursal)
+            if not _es_relevante(d["nombre"], term):
+                continue
             parsed.append(ProductRecord(
                 tienda=d["tienda"],
                 nombre=d["nombre"],
@@ -117,7 +128,7 @@ def buscar_eldorado(term: str) -> list[ProductRecord]:
         parsed = []
         for raw in data.get("products") or []:
             rec = eldorado._parse_product_is(raw, sucursal)
-            if rec is not None:
+            if rec is not None and _es_relevante(rec.nombre, term):
                 parsed.append(rec)
         with lock:
             records.extend(parsed)
