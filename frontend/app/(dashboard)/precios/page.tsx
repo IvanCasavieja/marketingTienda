@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type ProductoVivo } from "@/lib/api";
 import { fMoneyExact } from "@/lib/format";
-import { Search, ExternalLink, Loader2, TrendingDown, Store } from "lucide-react";
+import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 // ── Colores por cadena ────────────────────────────────────────────────────────
@@ -59,6 +59,7 @@ export default function PreciosPage() {
   const [sortDir,      setSortDir]      = useState<"asc" | "desc">("asc");
   const [filterCadena, setFilterCadena] = useState<string | null>(null);
   const [cadenasDone,  setCadenasDone]  = useState<string[]>([]);
+  const [cadenaErrors, setCadenaErrors] = useState<Record<string, string>>({});
 
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -77,6 +78,7 @@ export default function PreciosPage() {
     setLastQuery(t);
     setFilterCadena(null);
     setCadenasDone([]);
+    setCadenaErrors({});
 
     try {
       const response = await preciosApi.buscarVivoStream(t, ctrl.signal);
@@ -108,6 +110,9 @@ export default function PreciosPage() {
               setLoading(false);
               setCadenasDone((prev) => [...prev, data.cadena]);
               setResults((prev) => [...(prev ?? []), ...(data.items as ProductoVivo[])]);
+              if (data.error) {
+                setCadenaErrors((prev) => ({ ...prev, [data.cadena]: data.error }));
+              }
             }
           } catch { /* línea incompleta */ }
         }
@@ -244,6 +249,13 @@ export default function PreciosPage() {
                   {CADENA_CONFIG[c]?.label ?? c}
                 </span>
               ))}
+              {/* Chips de error para cadenas que fallaron */}
+              {!streaming && Object.entries(cadenaErrors).map(([c, err]) => (
+                <span key={c} title={err} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 cursor-help">
+                  <AlertTriangle size={9} />
+                  {CADENA_CONFIG[c]?.label ?? c}
+                </span>
+              ))}
             </div>
             <button
               onClick={() => setSortDir((d) => d === "asc" ? "desc" : "asc")}
@@ -282,6 +294,16 @@ export default function PreciosPage() {
               <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400 py-16">
                 <Search size={28} className="opacity-20" />
                 <p className="text-sm">Sin resultados para <em>"{lastQuery}"</em></p>
+                {Object.keys(cadenaErrors).length > 0 && (
+                  <div className="mt-2 space-y-1 max-w-sm text-left">
+                    {Object.entries(cadenaErrors).map(([c, err]) => (
+                      <p key={c} className="text-[11px] text-amber-500 flex items-start gap-1">
+                        <AlertTriangle size={11} className="mt-0.5 shrink-0" />
+                        <span><strong>{CADENA_CONFIG[c]?.label ?? c}</strong>: {err}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
                 <p className="text-xs text-slate-300 dark:text-slate-600">
                   Probá con menos palabras, ej: "arroz saman" en vez de "arroz saman parboiled 5kg"
                 </p>
