@@ -56,26 +56,6 @@ class PreciosListResponse(BaseModel):
     items: list[ProductoOut]
 
 
-class CompararTiendaItem(BaseModel):
-    tienda:       str
-    precio:       Optional[float]
-    precio_lista: Optional[float]
-    url:          str
-    nombre:       Optional[str]
-
-
-class CompararGrupo(BaseModel):
-    barcode:    str
-    nombre_ref: Optional[str]
-    n_tiendas:  int
-    tiendas:    list[CompararTiendaItem]
-
-
-class CompararResponse(BaseModel):
-    grupos: list[CompararGrupo]
-    total:  int
-
-
 class TiendaStats(BaseModel):
     tienda:          str
     total:           int

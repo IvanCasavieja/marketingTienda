@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # Auto-sync de métricas (0 = desactivado)
     SYNC_INTERVAL_HOURS: int = 6
 
-    # Demo mode — devuelve datos ficticios en todos los endpoints de métricas
+    # Demo mode — cuando True, sync_metrics retorna inmediatamente sin llamar APIs externas
     DEMO_MODE: bool = False
 
     # Scraper nocturno de precios

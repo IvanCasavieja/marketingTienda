@@ -2,8 +2,6 @@ import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-
-logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -20,9 +18,30 @@ from app.services.claude_service import ANALYSIS_HANDLERS, stream_analysis
 from app.services.debate_service import run_debate, stream_debate, stream_debate_turn, stream_llama_verdict
 from app.connectors.sfmc import SFMCConnector
 
+logger = logging.getLogger(__name__)
+
 _ALL_HANDLERS = {**ANALYSIS_HANDLERS, "debate": run_debate}
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+async def _get_sfmc_data(date_from: date, date_to: date, context: str = "") -> tuple[list, list]:
+    if not settings.SFMC_CLIENT_ID:
+        return [], []
+    try:
+        sfmc = SFMCConnector(
+            client_id=settings.SFMC_CLIENT_ID,
+            client_secret=settings.SFMC_CLIENT_SECRET,
+            subdomain=settings.SFMC_SUBDOMAIN,
+            account_id=settings.SFMC_ACCOUNT_ID,
+        )
+        email_data = sfmc.normalize_email(await sfmc.fetch_email_performance(date_from, date_to))
+        whatsapp_data = sfmc.normalize_whatsapp(await sfmc.fetch_whatsapp_performance(date_from, date_to))
+        return email_data, whatsapp_data
+    except Exception as e:
+        suffix = f" ({context})" if context else ""
+        logger.warning("SFMC data unavailable%s: %s", suffix, e)
+        return [], []
 
 
 class AnalysisRequest(BaseModel):
@@ -68,21 +87,7 @@ async def analyze(
 
     try:
         if payload.analysis_type in ("full_report", "debate"):
-            email_data, whatsapp_data = [], []
-            if settings.SFMC_CLIENT_ID:
-                try:
-                    sfmc = SFMCConnector(
-                        client_id=settings.SFMC_CLIENT_ID,
-                        client_secret=settings.SFMC_CLIENT_SECRET,
-                        subdomain=settings.SFMC_SUBDOMAIN,
-                        account_id=settings.SFMC_ACCOUNT_ID,
-                    )
-                    raw_email = await sfmc.fetch_email_performance(payload.date_from, payload.date_to)
-                    email_data = sfmc.normalize_email(raw_email)
-                    raw_wa = await sfmc.fetch_whatsapp_performance(payload.date_from, payload.date_to)
-                    whatsapp_data = sfmc.normalize_whatsapp(raw_wa)
-                except Exception as sfmc_err:
-                    logger.warning("SFMC data unavailable, proceeding without it: %s", sfmc_err)
+            email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to)
             if payload.analysis_type == "debate":
                 result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to, payload.user_prompt)
             else:
@@ -182,20 +187,8 @@ async def analyze_stream(
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
 
     email_data, whatsapp_data = [], []
-    if payload.analysis_type == "full_report" and settings.SFMC_CLIENT_ID:
-        try:
-            sfmc = SFMCConnector(
-                client_id=settings.SFMC_CLIENT_ID,
-                client_secret=settings.SFMC_CLIENT_SECRET,
-                subdomain=settings.SFMC_SUBDOMAIN,
-                account_id=settings.SFMC_ACCOUNT_ID,
-            )
-            raw_email = await sfmc.fetch_email_performance(payload.date_from, payload.date_to)
-            email_data = sfmc.normalize_email(raw_email)
-            raw_wa = await sfmc.fetch_whatsapp_performance(payload.date_from, payload.date_to)
-            whatsapp_data = sfmc.normalize_whatsapp(raw_wa)
-        except Exception as sfmc_err:
-            logger.warning("SFMC data unavailable for stream, proceeding without it: %s", sfmc_err)
+    if payload.analysis_type == "full_report":
+        email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to, "stream")
 
     user_id = current_user.id
     analysis_type = payload.analysis_type
@@ -253,21 +246,7 @@ async def debate_stream(
 ):
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
 
-    email_data, whatsapp_data = [], []
-    if settings.SFMC_CLIENT_ID:
-        try:
-            sfmc = SFMCConnector(
-                client_id=settings.SFMC_CLIENT_ID,
-                client_secret=settings.SFMC_CLIENT_SECRET,
-                subdomain=settings.SFMC_SUBDOMAIN,
-                account_id=settings.SFMC_ACCOUNT_ID,
-            )
-            raw_email = await sfmc.fetch_email_performance(payload.date_from, payload.date_to)
-            email_data = sfmc.normalize_email(raw_email)
-            raw_wa = await sfmc.fetch_whatsapp_performance(payload.date_from, payload.date_to)
-            whatsapp_data = sfmc.normalize_whatsapp(raw_wa)
-        except Exception as sfmc_err:
-            logger.warning("SFMC unavailable for debate stream: %s", sfmc_err)
+    email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to, "debate stream")
 
     user_id = current_user.id
     platforms_list = [p.value for p in payload.platforms]
@@ -333,19 +312,7 @@ async def debate_turn(
     if payload.date_from_2 and payload.date_to_2:
         metrics_2 = await get_metrics(db, payload.platforms, payload.date_from_2, payload.date_to_2)
 
-    email_data, whatsapp_data = [], []
-    if settings.SFMC_CLIENT_ID:
-        try:
-            sfmc = SFMCConnector(
-                client_id=settings.SFMC_CLIENT_ID,
-                client_secret=settings.SFMC_CLIENT_SECRET,
-                subdomain=settings.SFMC_SUBDOMAIN,
-                account_id=settings.SFMC_ACCOUNT_ID,
-            )
-            email_data    = sfmc.normalize_email(await sfmc.fetch_email_performance(payload.date_from, payload.date_to))
-            whatsapp_data = sfmc.normalize_whatsapp(await sfmc.fetch_whatsapp_performance(payload.date_from, payload.date_to))
-        except Exception as e:
-            logger.warning("SFMC unavailable for debate turn: %s", e)
+    email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to, "debate turn")
 
     user_id        = current_user.id
     platforms_list = [p.value for p in payload.platforms]
@@ -433,19 +400,7 @@ async def debate_verdict(
     if payload.date_from_2 and payload.date_to_2:
         metrics_2 = await get_metrics(db, payload.platforms, payload.date_from_2, payload.date_to_2)
 
-    email_data, whatsapp_data = [], []
-    if settings.SFMC_CLIENT_ID:
-        try:
-            sfmc = SFMCConnector(
-                client_id=settings.SFMC_CLIENT_ID,
-                client_secret=settings.SFMC_CLIENT_SECRET,
-                subdomain=settings.SFMC_SUBDOMAIN,
-                account_id=settings.SFMC_ACCOUNT_ID,
-            )
-            email_data    = sfmc.normalize_email(await sfmc.fetch_email_performance(payload.date_from, payload.date_to))
-            whatsapp_data = sfmc.normalize_whatsapp(await sfmc.fetch_whatsapp_performance(payload.date_from, payload.date_to))
-        except Exception as e:
-            logger.warning("SFMC unavailable for debate verdict: %s", e)
+    email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to, "debate verdict")
 
     user_id        = current_user.id
     platforms_list = [p.value for p in payload.platforms]
