@@ -35,6 +35,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   const isMedios = true;
 
+  const userPerms: string[] = (currentUser as any)?.permissions ?? [];
+  const hasPerm = (p: string) =>
+    currentUser?.is_superuser || userPerms.includes(p);
+
   const navAll = [
     { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: "Analytics",                  restricted: true },
     { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: "Analytics",                  restricted: true },
@@ -42,7 +46,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/herramientas/cenefas",    label: "Generar cenefas",      icon: Presentation,     section: t("sidebar.herramientas"),    restricted: false },
     { href: "/herramientas/cenefas/v2", label: "Editor de plantillas", icon: Layers,           section: t("sidebar.herramientas"),    restricted: false },
     { href: "/herramientas/cenefas/v2/jobs", label: "Historial",       icon: Clock,            section: t("sidebar.herramientas"),    restricted: false },
-    { href: "/precios",                 label: "Buscar precios",       icon: Tag,              section: t("sidebar.comercial"),       restricted: false },
+    ...(hasPerm("precios.search")
+      ? [{ href: "/precios", label: "Buscar precios", icon: Tag, section: t("sidebar.comercial"), restricted: false }]
+      : []),
     { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion"),   restricted: false },
     { href: "/ayuda",                   label: "Guía de uso",          icon: HelpCircle,       section: t("sidebar.configuracion"),   restricted: false },
     ...(currentUser?.is_superuser

@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_permission
 from app.models.producto import Producto
 from app.models.user import User
 from app.schemas.precios import (
@@ -588,7 +588,7 @@ async def vaciar_catalogo(
 @router.get("/buscar-vivo")
 async def buscar_vivo(
     q: str = Query(..., min_length=2, description="Término de búsqueda"),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("precios.search")),
 ):
     """Búsqueda EN VIVO de un producto — no usa la base de datos, golpea las
     APIs de Ta-Ta, El Dorado, GDU, FarmaShop y Botiga en paralelo."""
@@ -653,7 +653,7 @@ def _resolver_barcode(barcode: str) -> str | None:
 @router.get("/buscar-vivo-stream")
 async def buscar_vivo_stream(
     q: str = Query(..., min_length=2, description="Término de búsqueda"),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("precios.search")),
 ):
     """Búsqueda EN VIVO con SSE — devuelve resultados cadena por cadena en cuanto
     cada una termina. Evita el timeout de 30s de Render free tier porque los headers
