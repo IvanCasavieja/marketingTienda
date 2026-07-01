@@ -199,20 +199,17 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
 
     term_clean = term.strip()
     if _es_codigo(term_clean):
-        if len(term_clean) in (12, 13, 14):
-            # EAN barcode — buscar por Barcode= en la API de productos GDU
-            _buscar_param("Barcode", term_clean)
-        # También intentar como product ID directo (ej: "110025")
-        if not product_ids:
-            try:
-                r = gdu._llamar(
-                    session, "GET",
-                    f"{gdu._BASE_PRODS}/api/accounts/{gdu._ACCOUNT}/products/{term_clean}",
-                )
-                _registrar_item(r.json())
-            except Exception:
-                pass
-        # Fallback: buscar como Name= por si el término numérico está en el nombre
+        # Término numérico: podría ser un product ID de GDU (ej: "110025")
+        # El endpoint SSE ya resolvió barcode → nombre antes de llegar aquí,
+        # así que lo más probable es que sea un ID interno de GDU.
+        try:
+            r = gdu._llamar(
+                session, "GET",
+                f"{gdu._BASE_PRODS}/api/accounts/{gdu._ACCOUNT}/products/{term_clean}",
+            )
+            _registrar_item(r.json())
+        except Exception:
+            pass
         if not product_ids:
             _buscar_param("Name", term_clean)
     else:

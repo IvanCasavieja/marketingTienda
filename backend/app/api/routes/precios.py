@@ -629,6 +629,7 @@ async def buscar_vivo(
 async def buscar_vivo_stream(
     q: str = Query(..., min_length=2, description="Término de búsqueda"),
     _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Búsqueda EN VIVO con SSE — devuelve resultados cadena por cadena en cuanto
     cada una termina. Evita el timeout de 30s de Render free tier porque los headers
@@ -637,12 +638,40 @@ async def buscar_vivo_stream(
     import asyncio, json, threading
     from app.services.scraper.live_search import buscar_todas_streaming, _DATA_DIR
 
+    # Si el término es puramente numérico, asumir barcode o SKU:
+    # buscar en la DB local para resolver a nombre de producto y usar ese para live search.
+    search_term = q.strip()
+    barcode_original: str | None = None
+    if search_term.isdigit():
+        barcode_original = search_term
+        row = await db.execute(
+            select(Producto.nombre)
+            .where(
+                (Producto.barcode == search_term) | (Producto.sku == search_term)
+            )
+            .order_by(Producto.actualizado_en.desc())
+            .limit(1)
+        )
+        nombre_db = row.scalar_one_or_none()
+        if nombre_db:
+            search_term = nombre_db
+        else:
+            # No está en la DB — retornar evento de error inmediato
+            async def _not_found():
+                payload = json.dumps({
+                    "done": True,
+                    "error": f"Código {search_term} no encontrado en la base de datos local. "
+                             "Probá buscar por nombre del producto.",
+                })
+                yield f"data: {payload}\n\n"
+            return StreamingResponse(_not_found(), media_type="text/event-stream")
+
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue = asyncio.Queue()
 
     def _run_search():
         try:
-            for cadena, records, error in buscar_todas_streaming(q, _DATA_DIR):
+            for cadena, records, error in buscar_todas_streaming(search_term, _DATA_DIR):
                 try:
                     items = [
                         {
