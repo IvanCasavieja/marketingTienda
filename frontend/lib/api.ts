@@ -395,6 +395,9 @@ export const preciosApi = {
   buscarVivo: (q: string) =>
     api.get<BuscarVivoResponse>("/precios/buscar-vivo", { params: { q } }),
 
+  vaciarCatalogo: () =>
+    api.delete<{ message: string }>("/precios/vaciar"),
+
   historial: (params: {
     fecha:          string;
     tienda?:        string;
