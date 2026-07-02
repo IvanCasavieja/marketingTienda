@@ -11,7 +11,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.tenant_migration import migrate_roles
-from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, Producto, PrecioHistorial
+from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob
 from app.models.role import Role  # noqa: F401 — registers with Base.metadata
 from app.api import router
 

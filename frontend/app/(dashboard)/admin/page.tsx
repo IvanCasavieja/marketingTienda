@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, authApi, preciosApi } from "@/lib/api";
+import { api, authApi } from "@/lib/api";
 import { CurrentUser } from "@/types";
 import {
   Users, UserPlus, KeyRound, ShieldAlert, ShieldCheck,
   Loader2, CheckCircle2, XCircle, ChevronDown, Presentation,
-  Upload, Plus, Trash2, Pencil, X, Shield, AlertTriangle,
+  Upload, Plus, Trash2, Pencil, X, Shield,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -326,63 +326,6 @@ function RoleEditorModal({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
-function DangerZone() {
-  const [confirming, setConfirming] = useState(false);
-  const [loading,    setLoading]    = useState(false);
-
-  async function handleVaciar() {
-    if (!confirming) { setConfirming(true); return; }
-    setLoading(true);
-    try {
-      await preciosApi.vaciarCatalogo();
-      toast.success("Catálogo vaciado — tablas productos y precio_historial truncadas");
-      setConfirming(false);
-    } catch {
-      toast.error("Error al vaciar el catálogo");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="card p-5 border border-rose-200 dark:border-rose-900 space-y-3">
-      <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-semibold text-sm">
-        <AlertTriangle size={15} />
-        Zona de peligro
-      </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm text-slate-700 dark:text-slate-300 font-medium">Vaciar catálogo de precios</p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Borra todos los registros de las tablas <code className="text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">productos</code> y{" "}
-            <code className="text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">precio_historial</code>. Libera espacio en la DB. Irreversible.
-          </p>
-        </div>
-        <button
-          onClick={handleVaciar}
-          disabled={loading}
-          className={`shrink-0 flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-medium transition-all disabled:opacity-50 ${
-            confirming
-              ? "bg-rose-600 hover:bg-rose-700 text-white"
-              : "bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400 border border-rose-200 dark:border-rose-800"
-          }`}
-        >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-          {confirming ? "¿Seguro? Hacé clic para confirmar" : "Vaciar catálogo"}
-        </button>
-      </div>
-      {confirming && !loading && (
-        <button onClick={() => setConfirming(false)} className="text-xs text-slate-400 hover:text-slate-600">
-          Cancelar
-        </button>
-      )}
-    </div>
-  );
-}
-
 export default function AdminPage() {
   const [me,          setMe]          = useState<CurrentUser | null>(null);
   const [users,       setUsers]       = useState<AdminUser[]>([]);
@@ -683,9 +626,6 @@ export default function AdminPage() {
           </div>
         )}
       </div>
-
-      {/* Zona de peligro */}
-      <DangerZone />
 
       {/* Role editor modal */}
       {editingRole !== undefined && editingRole !== (undefined as any) && (
