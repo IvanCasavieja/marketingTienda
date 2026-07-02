@@ -1,10 +1,5 @@
 """
-adapters.py — un adaptador por sitio. Cada adaptador sabe extraer un
-ProductRecord desde una URL de producto.
-
-GDU (Disco/Devoto/Géant): Blazor Server, HTML pre-renderizado.
-Farmashop: Magento 2.4 — los productos vienen de farmashop_graphql.py;
-           este adapter solo se usa si se pide una URL individual.
+adapters.py — adaptadores por sitio para extracción de ProductRecord desde una URL individual.
 """
 
 import re
@@ -184,9 +179,7 @@ class GDUAdapter(BaseAdapter):
 
 
 class FarmashopAdapter(BaseAdapter):
-    """Farmashop — Magento 2.4.
-    Los productos masivos vienen de farmashop_graphql.py.
-    Este adapter sirve para extraer una URL individual si se necesita."""
+    """Farmashop — Magento 2.4. Extrae una URL individual."""
 
     tienda   = "Farmashop"
     dominios = ("farmashop.com.uy",)

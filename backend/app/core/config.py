@@ -25,12 +25,6 @@ class Settings(BaseSettings):
     # Demo mode — cuando True, sync_metrics retorna inmediatamente sin llamar APIs externas
     DEMO_MODE: bool = False
 
-    # Scraper nocturno de precios
-    SCRAPER_ENABLED: bool = True
-    SCRAPER_HOUR:    int  = 0   # 00:10 UY (America/Montevideo)
-    SCRAPER_MINUTE:  int  = 10
-    SCRAPER_DATA_DIR: str = "/tmp/scraper"  # SQLite + checkpoints intermedios
-
     # Database
     DATABASE_URL: str
 
