@@ -240,7 +240,7 @@ async def delete_template(
     tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
     if tmpl.is_builtin:
         raise HTTPException(status_code=403, detail="No se pueden eliminar templates del sistema")
-    await db.delete(tmpl)
+    db.delete(tmpl)
 
 
 # ---------------------------------------------------------------------------

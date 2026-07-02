@@ -145,7 +145,7 @@ async def delete_role(
         raise HTTPException(status_code=404, detail="Rol no encontrado")
     if role.is_system:
         raise HTTPException(status_code=400, detail="No se pueden eliminar roles del sistema")
-    await db.delete(role)
+    db.delete(role)
     return None
 
 
