@@ -60,27 +60,14 @@ async def lifespan(app: FastAPI):
         sync_task = asyncio.create_task(run_auto_sync_loop())
         logger.info("auto_sync: loop iniciado (cada %dh)", settings.SYNC_INTERVAL_HOURS)
 
-    # Arrancar scraper nocturno de precios si está habilitado
-    scraper_task = None
-    if settings.SCRAPER_ENABLED:
-        import os
-        os.environ.setdefault("SCRAPER_DATA_DIR", settings.SCRAPER_DATA_DIR)
-        from app.services.scraper_sync import run_scraper_loop
-        scraper_task = asyncio.create_task(run_scraper_loop())
-        logger.info(
-            "scraper_sync: scheduler iniciado — diario %02d:%02d UY",
-            settings.SCRAPER_HOUR, settings.SCRAPER_MINUTE,
-        )
-
     yield
 
-    for task in (sync_task, scraper_task):
-        if task:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+    if sync_task:
+        sync_task.cancel()
+        try:
+            await sync_task
+        except asyncio.CancelledError:
+            pass
 
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
