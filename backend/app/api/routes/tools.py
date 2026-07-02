@@ -124,3 +124,105 @@ async def download_cenefa_template(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="plantilla_cenefas.xlsx"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Template CRUD (v1)
+# ---------------------------------------------------------------------------
+
+@router.get("/cenefas/builtin-templates")
+async def list_builtin_templates(
+    current_user: User = Depends(get_current_user),
+):
+    return [
+        {"slug": t["slug"], "name": t["name"], "format_name": t["format_name"]}
+        for t in _BUILTIN_TEMPLATES
+    ]
+
+
+@router.get("/cenefas/templates")
+async def list_templates(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(CenefaTemplate)
+        .where(CenefaTemplate.is_active == True)
+        .order_by(CenefaTemplate.created_at.desc())
+    )
+    return [
+        {
+            "id": t.id,
+            "name": t.name,
+            "format_name": t.format_name,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t in result.scalars().all()
+    ]
+
+
+@router.post("/cenefas/templates", status_code=201)
+async def create_template(
+    name: str = Form(...),
+    format_name: str = Form(default=""),
+    file: UploadFile = File(..., description="Plantilla PPTX"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not file.filename or not file.filename.lower().endswith(".pptx"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser .pptx")
+    data = await _read_limited(file, "template PPTX")
+    tmpl = CenefaTemplate(
+        name=name.strip(),
+        format_name=format_name.strip(),
+        file_bytes=data,
+        created_by=current_user.id,
+    )
+    db.add(tmpl)
+    await db.flush()
+    return {
+        "id": tmpl.id,
+        "name": tmpl.name,
+        "format_name": tmpl.format_name,
+        "created_at": tmpl.created_at.isoformat() if tmpl.created_at else None,
+    }
+
+
+@router.delete("/cenefas/templates/{template_id}", status_code=204)
+async def delete_template_v1(
+    template_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(CenefaTemplate).where(
+            CenefaTemplate.id == template_id,
+            CenefaTemplate.is_active == True,
+        )
+    )
+    tmpl = result.scalar_one_or_none()
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template no encontrado")
+    tmpl.is_active = False
+
+
+@router.get("/cenefas/templates/{template_id}/download")
+async def download_template_v1(
+    template_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(CenefaTemplate).where(
+            CenefaTemplate.id == template_id,
+            CenefaTemplate.is_active == True,
+        )
+    )
+    tmpl = result.scalar_one_or_none()
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template no encontrado")
+    return Response(
+        content=tmpl.file_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{tmpl.name}.pptx"'},
+    )

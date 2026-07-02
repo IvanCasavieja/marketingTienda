@@ -1,9 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from datetime import date
-from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.config import settings
 from app.models.user import User
@@ -19,21 +17,23 @@ class SFMCRequest(BaseModel):
     date_to: date
 
 
-@router.post("/email")
-async def get_email_performance(
-    payload: SFMCRequest,
-    current_user: User = Depends(get_current_user),
-    _db: AsyncSession = Depends(get_db),
-):
+def _get_sfmc_connector() -> SFMCConnector:
     if not settings.SFMC_CLIENT_ID:
         raise HTTPException(status_code=400, detail="Salesforce Marketing Cloud not configured")
-
-    connector = SFMCConnector(
+    return SFMCConnector(
         client_id=settings.SFMC_CLIENT_ID,
         client_secret=settings.SFMC_CLIENT_SECRET,
         subdomain=settings.SFMC_SUBDOMAIN,
         account_id=settings.SFMC_ACCOUNT_ID,
     )
+
+
+@router.post("/email")
+async def get_email_performance(
+    payload: SFMCRequest,
+    current_user: User = Depends(get_current_user),
+):
+    connector = _get_sfmc_connector()
     try:
         raw = await connector.fetch_email_performance(payload.date_from, payload.date_to)
         return connector.normalize_email(raw)
@@ -46,17 +46,8 @@ async def get_email_performance(
 async def get_whatsapp_performance(
     payload: SFMCRequest,
     current_user: User = Depends(get_current_user),
-    _db: AsyncSession = Depends(get_db),
 ):
-    if not settings.SFMC_CLIENT_ID:
-        raise HTTPException(status_code=400, detail="Salesforce Marketing Cloud not configured")
-
-    connector = SFMCConnector(
-        client_id=settings.SFMC_CLIENT_ID,
-        client_secret=settings.SFMC_CLIENT_SECRET,
-        subdomain=settings.SFMC_SUBDOMAIN,
-        account_id=settings.SFMC_ACCOUNT_ID,
-    )
+    connector = _get_sfmc_connector()
     try:
         raw = await connector.fetch_whatsapp_performance(payload.date_from, payload.date_to)
         return connector.normalize_whatsapp(raw)
