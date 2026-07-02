@@ -318,6 +318,4 @@ export const preciosApi = {
     return response;
   },
 
-  vaciarCatalogo: () =>
-    api.delete<{ message: string }>("/precios/vaciar"),
 };
