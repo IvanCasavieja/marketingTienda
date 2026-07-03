@@ -263,11 +263,14 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
         scored.append(replace(r, relevancia=s))
     api_records = scored
 
-    # Precio real al consumidor desde HTML del website (Blazor Server, server-rendered).
-    # La API Azure devuelve precios internos/costo para productos frescos de rotisería.
-    # Fetch desde Devoto (una sola cadena por SKU) — el precio es el mismo para todas.
+    # Precio online desde HTML del website de Devoto (Blazor Server, price pre-rendered).
+    # La API interna devuelve precios de GÓNDOLA (in-store) por sucursal, que pueden
+    # diferir del precio online que muestra la web. Como los links van al sitio online,
+    # usamos el precio HTML como precio canónico — es el que el usuario puede verificar.
+    # Excepción: si la API devuelve 0 o None (sin precio), se mantiene lo que haya.
     _MAX_HTML = 40
 
+    # Recopilar una URL por SKU (preferir Devoto como cadena canónica del grupo GDU)
     sku_url_map: dict[str, str] = {}
     for r in api_records:
         if r.sku and r.sku not in sku_url_map and r.tienda == "Devoto":
@@ -295,18 +298,18 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
                     html_prices[sku] = price
 
     if not html_prices:
+        log.warning("buscar_gdu: HTML fetch falló para todos los SKUs de '%s' — usando precios de API", term)
         return api_records
 
     records: list[ProductRecord] = []
     for r in api_records:
         if r.sku:
             html_p = html_prices.get(r.sku)
-            if html_p is not None and html_p != r.precio:
-                r = replace(
-                    r,
-                    precio=html_p,
-                    precio_lista=r.precio if r.precio and r.precio < html_p else r.precio_lista,
-                )
+            if html_p:
+                # Usar siempre el precio HTML (online) como precio canónico.
+                # El precio de la API puede ser precio de costo interno o precio de góndola,
+                # ninguno de los dos es verificable clickando el link — el HTML sí lo es.
+                r = replace(r, precio=html_p, precio_lista=None)
         records.append(r)
     return records
 
