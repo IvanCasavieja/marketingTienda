@@ -223,22 +223,29 @@ async def _fetch_web_context(date_from: date, date_to: date) -> Tuple[str, int]:
     prompt = (
         f"Soy analista de marketing digital en Uruguay. Necesito contexto real del período "
         f"{date_from} al {date_to} para interpretar métricas de campañas digitales.\n\n"
-        f"Buscá y resumí en español:\n"
-        f"1. **Eventos comerciales en Uruguay** en ese período: feriados, fechas especiales, "
-        f"campañas de descuento (Hot Sale, Black Friday, Cyber Monday, vuelta al cole, etc.) "
-        f"que pudieran impactar el comportamiento del consumidor digital.\n"
-        f"2. **Novedades de plataformas publicitarias** (Meta Ads, Google Ads, TikTok Ads) "
-        f"durante ese período: cambios de algoritmo, actualizaciones de políticas o nuevas "
-        f"funciones que puedan explicar variaciones de performance.\n"
-        f"3. **Contexto económico Uruguay**: tipo de cambio USD/UYU aproximado en esa fecha, "
-        f"alguna noticia económica relevante que afecte el consumo digital.\n\n"
-        f"Solo incluí lo concreto y verificable. Máximo 350 palabras."
+        f"Buscá en portales uruguayos (elpais.com.uy, elobservador.com.uy, ladiaria.com.uy, "
+        f"montevideo.com.uy, subrayado.com.uy,180.com.uy) y resumí en español:\n\n"
+        f"1. **Contexto cultural y social Uruguay**: noticias, eventos o tendencias relevantes "
+        f"del período que hayan captado la atención del público uruguayo — deportes, política, "
+        f"cultura popular, redes sociales, fenómenos virales locales — lo que sea que haya "
+        f"dominado la conversación y pueda explicar picos o caídas de atención del consumidor.\n"
+        f"2. **Eventos comerciales en Uruguay**: feriados, fechas especiales, campañas de "
+        f"descuento (Hot Sale, Black Friday, Cyber Monday, vuelta al cole, Día de la Madre, etc.) "
+        f"que impacten el comportamiento de compra digital.\n"
+        f"3. **Contexto económico Uruguay**: tipo de cambio USD/UYU, inflación, noticias "
+        f"económicas concretas que afecten el poder de compra o el consumo digital en el período.\n"
+        f"4. **Novedades de plataformas publicitarias** (Meta Ads, Google Ads, TikTok Ads): "
+        f"cambios de algoritmo, actualizaciones de políticas o nuevas funciones que puedan "
+        f"explicar variaciones de performance.\n\n"
+        f"Priorizá el punto 1 — el contexto cultural real es lo más difícil de inferir de los "
+        f"datos y lo más valioso para el análisis. Solo incluí lo concreto y verificable, "
+        f"con fuente si es posible. Máximo 500 palabras."
     )
 
     client = _openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     resp = await client.chat.completions.create(
         model="gpt-4o-search-preview",
-        max_tokens=600,
+        max_tokens=900,
         messages=[{"role": "user", "content": prompt}],
     )
     tokens = (resp.usage.prompt_tokens or 0) + (resp.usage.completion_tokens or 0)
@@ -526,9 +533,12 @@ async def stream_debate_turn(
 
     # ── Step 1: Claude ────────────────────────────────────────────────────────
     web_ctx_note = (
-        "\nIMPORTANTE: ChatGPT ya buscó contexto real del período (eventos Uruguay, "
-        "novedades de plataformas, contexto económico) — está incluido en los datos. "
-        "Usalo para contextualizar causas de variaciones en las métricas.\n"
+        "\nIMPORTANTE: ChatGPT ya buscó contexto real del período en portales uruguayos "
+        "(elpais.com.uy, elobservador.com.uy, ladiaria.com.uy, montevideo.com.uy) — "
+        "ese contexto cultural, social, económico y comercial está incluido en los datos. "
+        "Usalo activamente: si hay un evento cultural o noticia que dominó la atención del "
+        "público uruguayo, mencionalo como posible causa de variaciones en las métricas. "
+        "No lo ignorés — es la parte más valiosa del análisis.\n"
         if web_context else ""
     )
     if is_first_turn:
