@@ -37,6 +37,7 @@ export default function CampaignsPage() {
   const [cmpTo, setCmpTo]               = useState("");
   const [cmpMetrics, setCmpMetrics]     = useState<CampaignMetric[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number; key: string } | null>(null);
 
   async function loadMetrics() {
     setLoading(true);
@@ -135,6 +136,30 @@ export default function CampaignsPage() {
     }),
     { spend: 0, clicks: 0, conversions: 0, impressions: 0 }
   ), [displayed]);
+
+  const currentByCampaign = useMemo(() => {
+    const map: Record<string, { spend: number; clicks: number; conversions: number }> = {};
+    metrics.forEach((m) => {
+      const key = `${m.platform}::${m.campaign_name}`;
+      if (!map[key]) map[key] = { spend: 0, clicks: 0, conversions: 0 };
+      map[key].spend += m.spend;
+      map[key].clicks += m.clicks;
+      map[key].conversions += m.conversions;
+    });
+    return map;
+  }, [metrics]);
+
+  const cmpByCampaign = useMemo(() => {
+    const map: Record<string, { spend: number; clicks: number; conversions: number }> = {};
+    cmpMetrics.forEach((m) => {
+      const key = `${m.platform}::${m.campaign_name}`;
+      if (!map[key]) map[key] = { spend: 0, clicks: 0, conversions: 0 };
+      map[key].spend += m.spend;
+      map[key].clicks += m.clicks;
+      map[key].conversions += m.conversions;
+    });
+    return map;
+  }, [cmpMetrics]);
 
   const cmpTotals = useMemo(() => cmpMetrics.reduce(
     (acc, m) => ({
@@ -334,7 +359,13 @@ export default function CampaignsPage() {
               : displayed.map((m, i) => {
                 const cpa = m.conversions > 0 ? m.spend / m.conversions : null;
                 return (
-                  <tr key={i} className="table-tr">
+                  <tr key={i} className="table-tr"
+                    onMouseMove={comparing && cmpMetrics.length > 0 ? (e) => {
+                      const cmpKey = `${m.platform}::${m.campaign_name}`;
+                      if (cmpByCampaign[cmpKey]) setTooltipPos({ x: e.clientX, y: e.clientY, key: cmpKey });
+                    } : undefined}
+                    onMouseLeave={comparing && cmpMetrics.length > 0 ? () => setTooltipPos(null) : undefined}
+                  >
                     <td className="table-td"><PlatformBadge platform={m.platform} /></td>
                     <td className="table-td max-w-[200px]">
                       <span className="truncate block font-medium text-slate-800 dark:text-slate-200" title={m.campaign_name}>
@@ -372,6 +403,48 @@ export default function CampaignsPage() {
           </div>
         )}
       </div>
+      {/* Comparison hover tooltip */}
+      {tooltipPos && currentByCampaign[tooltipPos.key] && cmpByCampaign[tooltipPos.key] && (
+        <div
+          className="fixed z-50 pointer-events-none bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl shadow-xl p-3.5 w-60 text-xs"
+          style={{
+            left: Math.min(tooltipPos.x + 16, window.innerWidth - 256),
+            top: Math.max(tooltipPos.y - 130, 8),
+          }}
+        >
+          <p className="font-semibold text-slate-700 dark:text-slate-300 mb-2 truncate text-[11px]"
+            title={tooltipPos.key.split("::")[1]}>
+            {tooltipPos.key.split("::")[1]}
+          </p>
+          {(
+            [
+              { label: "Inversión", curr: currentByCampaign[tooltipPos.key].spend,       prev: cmpByCampaign[tooltipPos.key].spend,       fmt: (v: number) => `$${v.toFixed(2)}` },
+              { label: "Clicks",    curr: currentByCampaign[tooltipPos.key].clicks,       prev: cmpByCampaign[tooltipPos.key].clicks,       fmt: fNum },
+              { label: "Conv.",     curr: currentByCampaign[tooltipPos.key].conversions,  prev: cmpByCampaign[tooltipPos.key].conversions,  fmt: fNum },
+            ] as Array<{ label: string; curr: number; prev: number; fmt: (v: number) => string }>
+          ).map(({ label, curr, prev, fmt }) => {
+            const delta = prev > 0 ? ((curr - prev) / prev) * 100 : null;
+            return (
+              <div key={label} className="flex items-center justify-between mb-1.5">
+                <span className="text-slate-400 w-14 shrink-0">{label}</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-slate-400 text-[10px]">{fmt(prev)}</span>
+                  <span className="text-slate-300">→</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{fmt(curr)}</span>
+                  {delta !== null && (
+                    <span className={`text-[10px] font-bold shrink-0 ${delta >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                      {delta >= 0 ? "▲" : "▼"}{Math.abs(delta).toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <p className="text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+            Total campaña · período anterior → actual
+          </p>
+        </div>
+      )}
     </div>
   );
 }

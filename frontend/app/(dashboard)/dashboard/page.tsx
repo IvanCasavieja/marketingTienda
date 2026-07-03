@@ -20,11 +20,12 @@ import { fNum, fMoney } from "@/lib/format";
 import { useTranslation } from "react-i18next";
 
 const COLORS: Record<string, string> = {
-  meta:       "#1877F2",
-  google_ads: "#4285F4",
-  tiktok:     "#FF0050",
-  dv360:      "#34A853",
-  sfmc:       "#00A1E0",
+  meta:             "#1877F2",
+  google_ads:       "#4285F4",
+  tiktok:           "#FF0050",
+  dv360:            "#34A853",
+  sfmc:             "#00A1E0",
+  google_analytics: "#FF9900",
 };
 
 const PERIODS = [
@@ -106,13 +107,19 @@ function KPICard({ label, value, sub, icon, trend, gradient }: KPIProps) {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-card-hover rounded-xl px-3.5 py-2.5">
-      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">{label}</p>
-      {payload.map((p: any) => (
-        <p key={p.dataKey} className="text-sm font-bold" style={{ color: p.fill || p.stroke }}>
-          {p.name === "roas" ? `${p.value.toFixed(2)}x` : fMoney(p.value)}
-        </p>
-      ))}
+    <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-card-hover rounded-xl px-3.5 py-2.5 min-w-[148px]">
+      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">{label}</p>
+      {payload.map((p: any) => {
+        const isPrev = p.dataKey === "prevSpend" || p.dataKey === "prevRoas";
+        const isRoas = p.dataKey === "roas" || p.dataKey === "prevRoas";
+        const val = isRoas ? `${Number(p.value).toFixed(2)}x` : fMoney(p.value);
+        return (
+          <div key={p.dataKey} className="flex items-center justify-between gap-3 text-xs mb-0.5">
+            <span className="text-slate-400">{isPrev ? "Anterior" : "Actual"}</span>
+            <span className="font-bold" style={{ color: isPrev ? `${p.fill}70` : p.fill }}>{val}</span>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -293,18 +300,23 @@ export default function DashboardPage() {
     });
   }
 
-  const chartData = summary.map((s) => ({
-    name:  PLATFORM_LABELS[s.platform] || s.platform,
-    spend: s.spend,
-    roas:  s.avg_roas,
-    fill:  COLORS[s.platform] || "#6366f1",
-  }));
-
-  // Mapa de prevSummary por plataforma para comparación en tabla
+  // Mapa de prevSummary por plataforma para comparación en tabla y gráficos
   const prevByPlatform = prevSummary.reduce<Record<string, PlatformSummary>>((acc, s) => {
     acc[s.platform] = s;
     return acc;
   }, {});
+
+  const chartData = summary.map((s) => {
+    const prev = prevByPlatform[s.platform];
+    return {
+      name:      PLATFORM_LABELS[s.platform] || s.platform,
+      spend:     s.spend,
+      prevSpend: prev?.spend ?? 0,
+      roas:      s.avg_roas,
+      prevRoas:  prev?.avg_roas ?? 0,
+      fill:      COLORS[s.platform] || "#6366f1",
+    };
+  });
 
   const periodLabel = isCustom && customFrom && customTo
     ? `${customFrom} → ${customTo}`
@@ -479,9 +491,21 @@ export default function DashboardPage() {
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="card p-6">
-          <div className="mb-5">
+          <div className="mb-4">
             <p className="section-title">{t("dashboard.investmentByPlatform")}</p>
             <p className="section-sub mt-0.5">{t("dashboard.totalSpendNDays", { n: periodLabel })}</p>
+            {prevSummary.length > 0 && (
+              <div className="flex items-center gap-3 mt-1.5">
+                <span className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-slate-500 inline-block opacity-90" />
+                  Actual
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-600">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-slate-400 inline-block opacity-40" />
+                  Anterior
+                </span>
+              </div>
+            )}
           </div>
           {loading ? (
             <div className="h-52 skeleton rounded-xl" />
@@ -491,13 +515,18 @@ export default function DashboardPage() {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData} barSize={36}>
+              <BarChart data={chartData} barSize={28} barCategoryGap="30%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false}
                   tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="spend" radius={[6, 6, 0, 0]} name={t("dashboard.tableHeaders.investment")}>
+                <Bar dataKey="prevSpend" radius={[4, 4, 0, 0]} name="Período anterior">
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fill={entry.fill} fillOpacity={0.3} />
+                  ))}
+                </Bar>
+                <Bar dataKey="spend" radius={[6, 6, 0, 0]} name="Período actual">
                   {chartData.map((entry, i) => (
                     <Cell key={i} fill={entry.fill} fillOpacity={0.9} />
                   ))}
@@ -508,9 +537,21 @@ export default function DashboardPage() {
         </div>
 
         <div className="card p-6">
-          <div className="mb-5">
+          <div className="mb-4">
             <p className="section-title">{t("dashboard.roas")}</p>
             <p className="section-sub mt-0.5">{t("dashboard.revenueSlash")}</p>
+            {prevSummary.length > 0 && (
+              <div className="flex items-center gap-3 mt-1.5">
+                <span className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-slate-500 inline-block opacity-90" />
+                  Actual
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-600">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-slate-400 inline-block opacity-40" />
+                  Anterior
+                </span>
+              </div>
+            )}
           </div>
           {loading ? (
             <div className="h-52 skeleton rounded-xl" />
@@ -520,15 +561,20 @@ export default function DashboardPage() {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData} barSize={36}>
+              <BarChart data={chartData} barSize={28} barCategoryGap="30%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false}
                   tickFormatter={(v) => `${v.toFixed(1)}x`} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="roas" radius={[6, 6, 0, 0]} name="roas">
+                <Bar dataKey="prevRoas" radius={[4, 4, 0, 0]} name="Período anterior">
                   {chartData.map((entry, i) => (
-                    <Cell key={i} fill={entry.roas >= 2 ? "#10b981" : entry.roas >= 1 ? "#f59e0b" : "#ef4444"} fillOpacity={0.85} />
+                    <Cell key={i} fill={entry.fill} fillOpacity={0.3} />
+                  ))}
+                </Bar>
+                <Bar dataKey="roas" radius={[6, 6, 0, 0]} name="Período actual">
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fill={entry.fill} fillOpacity={0.9} />
                   ))}
                 </Bar>
               </BarChart>
