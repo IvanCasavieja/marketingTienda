@@ -7,7 +7,8 @@ from app.models.platform_connection import PlatformConnection, Platform
 from app.core.security import decrypt_token
 from app.core.config import settings
 from app.connectors import (
-    MetaAdsConnector, GoogleAdsConnector, TikTokAdsConnector, DV360Connector, SFMCConnector
+    MetaAdsConnector, GoogleAdsConnector, TikTokAdsConnector,
+    DV360Connector, SFMCConnector, GoogleAnalyticsConnector,
 )
 
 
@@ -47,6 +48,8 @@ async def sync_platform(db: AsyncSession, platform: Platform, date_from: date, d
             connector = TikTokAdsConnector(access_token, account_id)
         elif platform == Platform.DV360:
             connector = DV360Connector(access_token, account_id)
+        elif platform == Platform.GOOGLE_ANALYTICS:
+            connector = GoogleAnalyticsConnector(access_token, account_id)
         else:
             raise ValueError(f"Unsupported platform for sync: {platform}")
 

@@ -11,6 +11,7 @@ class Platform(str, enum.Enum):
     TIKTOK = "tiktok"
     DV360 = "dv360"
     SFMC = "sfmc"
+    GOOGLE_ANALYTICS = "google_analytics"
 
 
 class PlatformConnection(Base):

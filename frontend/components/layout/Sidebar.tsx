@@ -15,10 +15,11 @@ import { LANGUAGES, setLanguage, type LangCode } from "@/lib/i18n";
 import { useTheme } from "@/hooks/useTheme";
 
 const platforms = [
-  { key: "meta",       name: "Meta Ads",   color: "#1877F2", initial: "M" },
-  { key: "google_ads", name: "Google Ads", color: "#4285F4", initial: "G" },
-  { key: "tiktok",     name: "TikTok Ads", color: "#FF0050", initial: "T" },
-  { key: "dv360",      name: "DV360",      color: "#34A853", initial: "D" },
+  { key: "meta",             name: "Meta Ads",         color: "#1877F2", initial: "M"  },
+  { key: "google_ads",       name: "Google Ads",       color: "#4285F4", initial: "G"  },
+  { key: "google_analytics", name: "Google Analytics", color: "#FF9900", initial: "GA" },
+  { key: "tiktok",           name: "TikTok Ads",       color: "#FF0050", initial: "T"  },
+  { key: "dv360",            name: "DV360",            color: "#34A853", initial: "D"  },
 ];
 
 interface SidebarProps {

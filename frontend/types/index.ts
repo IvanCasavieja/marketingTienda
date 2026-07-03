@@ -1,4 +1,4 @@
-export type Platform = "meta" | "google_ads" | "tiktok" | "dv360" | "sfmc";
+export type Platform = "meta" | "google_ads" | "tiktok" | "dv360" | "sfmc" | "google_analytics";
 
 export interface CampaignMetric {
   platform: Platform;
@@ -58,17 +58,19 @@ export interface CurrentUser {
 }
 
 export const PLATFORM_LABELS: Record<Platform | string, string> = {
-  meta: "Meta Ads",
-  google_ads: "Google Ads",
-  tiktok: "TikTok Ads",
-  dv360: "DV360",
-  sfmc: "Salesforce MC",
+  meta:              "Meta Ads",
+  google_ads:        "Google Ads",
+  tiktok:            "TikTok Ads",
+  dv360:             "DV360",
+  sfmc:              "Salesforce MC",
+  google_analytics:  "Google Analytics",
 };
 
 export const PLATFORM_COLORS: Record<Platform | string, string> = {
-  meta: "#1877F2",
-  google_ads: "#4285F4",
-  tiktok: "#010101",
-  dv360: "#34A853",
-  sfmc: "#00A1E0",
+  meta:              "#1877F2",
+  google_ads:        "#4285F4",
+  tiktok:            "#010101",
+  dv360:             "#34A853",
+  sfmc:              "#00A1E0",
+  google_analytics:  "#FF9900",
 };

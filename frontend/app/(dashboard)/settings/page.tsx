@@ -8,10 +8,11 @@ import { useTranslation } from "react-i18next";
 
 
 const PLATFORM_OPTIONS = [
-  { value: "meta",       label: "Meta Ads",    color: "#1877F2", initial: "M", desc: "Facebook & Instagram Ads" },
-  { value: "google_ads", label: "Google Ads",  color: "#4285F4", initial: "G", desc: "Search, Display & YouTube" },
-  { value: "tiktok",     label: "TikTok Ads",  color: "#FF0050", initial: "T", desc: "TikTok for Business" },
-  { value: "dv360",      label: "DV360",       color: "#34A853", initial: "D", desc: "Display & Video 360" },
+  { value: "meta",             label: "Meta Ads",         color: "#1877F2", initial: "M",  desc: "Facebook & Instagram Ads" },
+  { value: "google_ads",       label: "Google Ads",       color: "#4285F4", initial: "G",  desc: "Search, Display & YouTube" },
+  { value: "google_analytics", label: "Google Analytics", color: "#FF9900", initial: "GA", desc: "GA4 — sesiones, conversiones y revenue" },
+  { value: "tiktok",           label: "TikTok Ads",       color: "#FF0050", initial: "T",  desc: "TikTok for Business" },
+  { value: "dv360",            label: "DV360",            color: "#34A853", initial: "D",  desc: "Display & Video 360" },
 ];
 
 const TOKEN_GUIDES: Record<string, { steps: string[]; link: string }> = {
@@ -30,6 +31,15 @@ const TOKEN_GUIDES: Record<string, { steps: string[]; link: string }> = {
   dv360: {
     steps: ["Usá las mismas credenciales OAuth de Google Cloud", "Habilitá la Display & Video 360 API", "El token es el mismo que Google Ads si usás el mismo OAuth scope"],
     link: "https://console.cloud.google.com/",
+  },
+  google_analytics: {
+    steps: [
+      "Andá a Google Cloud Console y habilitá 'Google Analytics Data API'",
+      "Usá las mismas credenciales OAuth 2.0 que Google Ads (client_id y client_secret)",
+      "El refresh_token es el mismo si autorizaste el scope analytics.readonly",
+      "El Account ID es el Property ID numérico de GA4 (ej: 123456789) — lo encontrás en GA4 → Admin → Property Settings",
+    ],
+    link: "https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com",
   },
 };
 
