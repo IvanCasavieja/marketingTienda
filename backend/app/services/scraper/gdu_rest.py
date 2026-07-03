@@ -164,7 +164,7 @@ _CHAIN_MAP = {
     "Disco":  "Disco",
     "Devoto": "Devoto",
     "Geant":  "Geant",
-    "GDU":    "Devoto",  # Express/Fresh Market operados bajo el paraguas GDU/Devoto
+    "GDU":    "excluir",  # Express/Fresh Market: sus IDs no son reconocidos en devoto.com.uy
 }
 
 
@@ -172,8 +172,9 @@ def _load_branch_meta() -> dict[str, dict]:
     """
     Carga {branch_id: {nombre, cadena}} desde el JSON empaquetado.
     Usa el campo 'chain' del JSON para clasificar (Disco/Devoto/Geant/GDU).
-    Las sucursales chain='GDU' se excluyen: son Express/Fresh Market sin sitio
-    web propio; sus IDs no son reconocidos por devoto.com.uy.
+    chain='GDU' → excluir: son Express/Fresh Market cuyo ?sc= no es reconocido
+    por devoto.com.uy (el sitio muestra el store default ignorando el parámetro).
+    chain='Devoto' incluye tanto Devoto clásico como Devoto Express.
     """
     json_path = _PKG_DIR / "sucursales_gdu.json"
     if not json_path.exists():

@@ -56,10 +56,11 @@ export default function PreciosPage() {
   const [streaming,    setStreaming]     = useState(false);
   const [results,      setResults]      = useState<ProductoVivo[] | null>(null);
   const [lastQuery,    setLastQuery]    = useState("");
-  const [sortMode,     setSortMode]     = useState<"relevancia" | "precio-asc" | "precio-desc">("relevancia");
-  const [filterCadena, setFilterCadena] = useState<string | null>(null);
-  const [cadenasDone,  setCadenasDone]  = useState<string[]>([]);
-  const [cadenaErrors, setCadenaErrors] = useState<Record<string, string>>({});
+  const [sortMode,       setSortMode]       = useState<"relevancia" | "precio-asc" | "precio-desc">("relevancia");
+  const [filterCadena,   setFilterCadena]   = useState<string | null>(null);
+  const [filterSucursal, setFilterSucursal] = useState<string | null>(null);
+  const [cadenasDone,    setCadenasDone]    = useState<string[]>([]);
+  const [cadenaErrors,   setCadenaErrors]   = useState<Record<string, string>>({});
 
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -77,6 +78,7 @@ export default function PreciosPage() {
     setResults([]);
     setLastQuery(t);
     setFilterCadena(null);
+    setFilterSucursal(null);
     setSortMode("relevancia");
     setCadenasDone([]);
     setCadenaErrors({});
@@ -134,9 +136,19 @@ export default function PreciosPage() {
 
   const cadenas = results ? [...new Set(results.map((r) => r.tienda))].sort() : [];
 
+  // Sucursales disponibles según la cadena activa (solo las que tienen nombre)
+  const sucursales = results
+    ? [...new Set(
+        results
+          .filter((r) => (!filterCadena || r.tienda === filterCadena) && r.sucursal_nombre)
+          .map((r) => r.sucursal_nombre!)
+      )].sort()
+    : [];
+
   const visible = results
     ? [...results]
         .filter((r) => !filterCadena || r.tienda === filterCadena)
+        .filter((r) => !filterSucursal || r.sucursal_nombre === filterSucursal)
         .sort((a, b) => {
           if (sortMode === "relevancia") {
             if (b.relevancia !== a.relevancia) return b.relevancia - a.relevancia;
@@ -223,7 +235,7 @@ export default function PreciosPage() {
 
           {/* Barra de control */}
           <div className="shrink-0 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
               <button
                 onClick={() => setFilterCadena(null)}
                 className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
@@ -240,7 +252,7 @@ export default function PreciosPage() {
                 return (
                   <button
                     key={c}
-                    onClick={() => setFilterCadena(filterCadena === c ? null : c)}
+                    onClick={() => { setFilterCadena(filterCadena === c ? null : c); setFilterSucursal(null); }}
                     className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
                       filterCadena === c
                         ? `${cfg?.dot ?? "bg-slate-500"} text-white`
@@ -282,15 +294,31 @@ export default function PreciosPage() {
                 </span>
               ))}
             </div>
-            <button
-              onClick={() => setSortMode(m =>
-                m === "relevancia" ? "precio-asc" : m === "precio-asc" ? "precio-desc" : "relevancia"
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Filtro de sucursal — solo visible cuando hay sucursales disponibles */}
+              {sucursales.length > 0 && (
+                <select
+                  value={filterSucursal ?? ""}
+                  onChange={(e) => setFilterSucursal(e.target.value || null)}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all max-w-[200px]"
+                >
+                  <option value="">Todas las sucursales</option>
+                  {sucursales.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
               )}
-              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors shrink-0"
-            >
-              <TrendingDown size={13} className={sortMode === "precio-desc" ? "rotate-180 transition-transform" : "transition-transform"} />
-              {sortMode === "relevancia" ? "Por relevancia" : sortMode === "precio-asc" ? "Precio: menor primero" : "Precio: mayor primero"}
-            </button>
+
+              <button
+                onClick={() => setSortMode(m =>
+                  m === "relevancia" ? "precio-asc" : m === "precio-asc" ? "precio-desc" : "relevancia"
+                )}
+                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+              >
+                <TrendingDown size={13} className={sortMode === "precio-desc" ? "rotate-180 transition-transform" : "transition-transform"} />
+                {sortMode === "relevancia" ? "Por relevancia" : sortMode === "precio-asc" ? "Precio: menor primero" : "Precio: mayor primero"}
+              </button>
+            </div>
           </div>
 
           {/* Banner más barato */}

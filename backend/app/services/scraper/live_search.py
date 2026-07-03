@@ -256,6 +256,34 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
         price_records = gdu._get_prices_batch(session, batch)
         gdu._parse_prices(price_records, names, barcodes, categorias, branch_meta, api_records)
 
+    # Deduplicar por (product_id, cadena, precio): sin deduplicar aparecerían ~50
+    # filas idénticas de Devoto todas al mismo precio. Conservar la sucursal con
+    # ID numérico más bajo (la más "estándar") como representante de cada precio.
+    # El precio en el website depende de la sucursal seleccionada en la sesión del
+    # usuario, no del ?sc= en la URL — lo que mostramos aquí es la variación real
+    # de precios que existe entre sucursales de la misma cadena.
+    dedup: dict[tuple, ProductRecord] = {}
+    for r in api_records:
+        key = (r.sku, r.tienda, r.precio)
+        existing = dedup.get(key)
+        if existing is None:
+            dedup[key] = r
+        else:
+            # Preferir la sucursal con ID numérico menor (tienda más estándar)
+            try:
+                if int(r.sucursal_id or "9999") < int(existing.sucursal_id or "9999"):
+                    dedup[key] = r
+            except (ValueError, TypeError):
+                pass
+    # Limpiar URL: quitar ?sc= porque el precio en el website depende de la sesión
+    # del usuario (sucursal seleccionada), no del parámetro URL. Un link con ?sc=119
+    # muestra el mismo precio que sin él si la sesión del usuario tiene otra tienda.
+    # La URL limpia abre el producto correctamente; el precio de la sesión es el real.
+    api_records = [
+        replace(r, url=r.url.split("?")[0] if r.url else r.url)
+        for r in dedup.values()
+    ]
+
     # Asignar score de relevancia a cada record (nombres vienen del catálogo, ya disponibles)
     scored: list[ProductRecord] = []
     for r in api_records:
