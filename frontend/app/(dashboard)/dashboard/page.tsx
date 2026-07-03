@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import {
   DollarSign, MousePointerClick, ShoppingCart,
-  TrendingUp, ArrowUpRight, ArrowDownRight, RefreshCw, AlertTriangle, ChevronDown,
+  TrendingUp, ArrowUpRight, ArrowDownRight, RefreshCw, AlertTriangle, ChevronDown, Calendar,
 } from "lucide-react";
 import { SkeletonCard, SkeletonRow } from "@/components/ui/SkeletonCard";
 import { toast } from "sonner";
@@ -37,7 +37,21 @@ const DF_LOCALES: Record<string, Locale> = { es, en: enUS, pt: ptBR };
 
 type CompareMode = "prev_period" | "prev_year";
 
-function getCompareDates(days: number, mode: CompareMode) {
+function getCompareDates(days: number, mode: CompareMode, customFrom?: string, customTo?: string) {
+  if (customFrom && customTo) {
+    // Rango personalizado: comparar con el mismo rango de días hacia atrás
+    const duration = Math.round((new Date(customTo).getTime() - new Date(customFrom).getTime()) / 86400000) + 1;
+    if (mode === "prev_year") {
+      return {
+        from: format(subYears(new Date(customFrom + "T00:00:00"), 1), "yyyy-MM-dd"),
+        to:   format(subYears(new Date(customTo   + "T00:00:00"), 1), "yyyy-MM-dd"),
+      };
+    }
+    return {
+      from: format(subDays(new Date(customFrom + "T00:00:00"), duration), "yyyy-MM-dd"),
+      to:   format(subDays(new Date(customFrom + "T00:00:00"), 1),        "yyyy-MM-dd"),
+    };
+  }
   if (mode === "prev_year") {
     return {
       from: format(subYears(subDays(new Date(), days), 1), "yyyy-MM-dd"),
@@ -50,8 +64,8 @@ function getCompareDates(days: number, mode: CompareMode) {
   };
 }
 
-function getCompareLabel(days: number, mode: CompareMode, locale: Locale): string {
-  const { from, to } = getCompareDates(days, mode);
+function getCompareLabel(days: number, mode: CompareMode, locale: Locale, customFrom?: string, customTo?: string): string {
+  const { from, to } = getCompareDates(days, mode, customFrom, customTo);
   const f = format(new Date(from + "T00:00:00"), "d MMM", { locale });
   const t = format(new Date(to   + "T00:00:00"), "d MMM", { locale });
   return `vs. ${f} – ${t}`;
@@ -108,6 +122,17 @@ function pctChange(curr: number, prev: number): number | undefined {
   return ((curr - prev) / prev) * 100;
 }
 
+function DeltaCell({ curr, prev }: { curr: number; prev: number }) {
+  const delta = prev === 0 ? null : ((curr - prev) / prev) * 100;
+  if (delta === null) return null;
+  const up = delta >= 0;
+  return (
+    <span className={`ml-1 text-[10px] font-semibold ${up ? "text-emerald-600" : "text-red-500"}`}>
+      {up ? "▲" : "▼"}{Math.abs(delta).toFixed(0)}%
+    </span>
+  );
+}
+
 export default function DashboardPage() {
   const { t, i18n } = useTranslation();
   const [summary, setSummary]         = useState<PlatformSummary[]>([]);
@@ -115,6 +140,9 @@ export default function DashboardPage() {
   const [loading, setLoading]         = useState(true);
   const [syncing, setSyncing]         = useState(false);
   const [period, setPeriod]           = useState(30);
+  const [isCustom, setIsCustom]       = useState(false);
+  const [customFrom, setCustomFrom]   = useState("");
+  const [customTo, setCustomTo]       = useState("");
   const [compareMode, setCompareMode] = useState<CompareMode>("prev_period");
   const [mounted, setMounted]         = useState(false);
   const [lastSyncDate, setLastSyncDate]   = useState<string | null>(null);
@@ -129,30 +157,33 @@ export default function DashboardPage() {
 
   const dayLabel = mounted ? format(new Date(), "EEEE d 'de' MMMM", { locale: dfLocale }) : "";
 
-  useEffect(() => { loadData(period, compareMode); }, [period, compareMode]);
+  useEffect(() => {
+    if (isCustom && customFrom && customTo) {
+      loadDataCustom(customFrom, customTo, compareMode);
+    } else if (!isCustom) {
+      loadData(period, compareMode);
+    }
+  }, [period, compareMode, isCustom, customFrom, customTo]);
 
-  // Cargar estado del auto-sync y detectar nuevos syncs automáticamente
   useEffect(() => {
     function fetchAutoSync() {
       metricsApi.getAutoSyncStatus()
         .then(({ data }) => {
           setAutoSyncStatus(data);
-          // Si el auto-sync corrió y tenemos datos nuevos, recargar métricas
           if (data.last_run && data.last_run !== lastAutoRunRef.current) {
             if (lastAutoRunRef.current !== null) {
-              // Hubo un sync nuevo mientras estaba abierto — recargar datos
-              loadData(period, compareMode);
+              if (isCustom && customFrom && customTo) loadDataCustom(customFrom, customTo, compareMode);
+              else loadData(period, compareMode);
             }
             lastAutoRunRef.current = data.last_run;
           }
         })
         .catch(() => {});
     }
-
     fetchAutoSync();
-    const interval = setInterval(fetchAutoSync, 5 * 60 * 1000); // cada 5 min
+    const interval = setInterval(fetchAutoSync, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [period, compareMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [period, compareMode, isCustom, customFrom, customTo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData(days: number, mode: CompareMode) {
     setLoading(true);
@@ -166,7 +197,28 @@ export default function DashboardPage() {
       ]);
       setSummary(curr.data);
       setPrevSummary(prev.data);
-      // Mostrar la fecha más reciente encontrada en los datos
+      const maxDate = curr.data.reduce((max: string | null, s: any) => {
+        if (!s.last_date) return max;
+        return !max || s.last_date > max ? s.last_date : max;
+      }, null);
+      setLastSyncDate(maxDate);
+    } catch {
+      toast.error(t("dashboard.loadError"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadDataCustom(from: string, to: string, mode: CompareMode) {
+    setLoading(true);
+    const cmp = getCompareDates(0, mode, from, to);
+    try {
+      const [curr, prev] = await Promise.all([
+        metricsApi.getSummary(from, to),
+        metricsApi.getSummary(cmp.from, cmp.to),
+      ]);
+      setSummary(curr.data);
+      setPrevSummary(prev.data);
       const maxDate = curr.data.reduce((max: string | null, s: any) => {
         if (!s.last_date) return max;
         return !max || s.last_date > max ? s.last_date : max;
@@ -182,7 +234,7 @@ export default function DashboardPage() {
   async function syncAll() {
     setSyncing(true);
     const today = format(new Date(), "yyyy-MM-dd");
-    const from  = format(subDays(new Date(), period), "yyyy-MM-dd");
+    const from  = isCustom && customFrom ? customFrom : format(subDays(new Date(), period), "yyyy-MM-dd");
     const platformList = ["meta", "google_ads", "tiktok", "dv360"];
     const results = await Promise.allSettled(platformList.map((p) => metricsApi.sync(p, from, today)));
 
@@ -192,7 +244,6 @@ export default function DashboardPage() {
         const { records_saved, status } = r.value.data;
         if (status !== "skipped" && records_saved > 0) synced++;
       } else {
-        // r.reason es el error de axios — mostrar el detail del backend
         const detail: string =
           r.reason?.response?.data?.detail ??
           `Error al sincronizar ${platformList[i]}`;
@@ -201,7 +252,8 @@ export default function DashboardPage() {
     });
 
     if (synced > 0) toast.success(t("dashboard.syncSuccess", { n: synced }));
-    await loadData(period, compareMode);
+    if (isCustom && customFrom && customTo) await loadDataCustom(customFrom, customTo, compareMode);
+    else await loadData(period, compareMode);
     setSyncing(false);
   }
 
@@ -248,6 +300,16 @@ export default function DashboardPage() {
     fill:  COLORS[s.platform] || "#6366f1",
   }));
 
+  // Mapa de prevSummary por plataforma para comparación en tabla
+  const prevByPlatform = prevSummary.reduce<Record<string, PlatformSummary>>((acc, s) => {
+    acc[s.platform] = s;
+    return acc;
+  }, {});
+
+  const periodLabel = isCustom && customFrom && customTo
+    ? `${customFrom} → ${customTo}`
+    : `${period}D`;
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -275,18 +337,34 @@ export default function DashboardPage() {
                 </span>
               )}
             </div>
+
+            {/* Selector de período */}
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
                 {PERIODS.map(({ label, days }) => (
-                  <button key={days} onClick={() => setPeriod(days)}
+                  <button key={days} onClick={() => { setPeriod(days); setIsCustom(false); }}
                     className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
-                      period === days
+                      !isCustom && period === days
                         ? "bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100"
                         : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                     }`}>
                     {label}
                   </button>
                 ))}
+                <button
+                  onClick={() => {
+                    setIsCustom(true);
+                    if (!customFrom) setCustomFrom(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+                    if (!customTo)   setCustomTo(format(new Date(), "yyyy-MM-dd"));
+                  }}
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center gap-1 ${
+                    isCustom
+                      ? "bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  }`}>
+                  <Calendar size={11} />
+                  Personalizado
+                </button>
               </div>
               <div className="relative">
                 <select
@@ -300,8 +378,28 @@ export default function DashboardPage() {
                 <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               </div>
             </div>
+
+            {/* Inputs de fecha personalizada */}
+            {isCustom && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+                />
+                <span className="text-slate-400 text-xs">→</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+                />
+              </div>
+            )}
+
             <p className="text-xs text-slate-400" suppressHydrationWarning>
-              {getCompareLabel(period, compareMode, dfLocale)}
+              {mounted && getCompareLabel(period, compareMode, dfLocale, isCustom ? customFrom : undefined, isCustom ? customTo : undefined)}
             </p>
           </div>
           <button onClick={syncAll} disabled={syncing} className="btn-secondary text-xs sm:text-sm">
@@ -319,7 +417,7 @@ export default function DashboardPage() {
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard label={t("dashboard.totalInvestment")} value={fMoney(totals.spend)}
-            sub={t("dashboard.lastNDays", { n: period })}
+            sub={t("dashboard.lastNDays", { n: periodLabel })}
             trend={pctChange(totals.spend, prevTotals.spend)}
             icon={<DollarSign size={18} className="text-white" />}
             gradient="from-brand-500 to-brand-600" />
@@ -341,7 +439,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Empty state — sin datos, guiar al usuario */}
+      {/* Empty state */}
       {!loading && summary.length === 0 && (
         <div className="card p-6 flex flex-col items-center gap-3 text-center border-dashed">
           <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
@@ -383,7 +481,7 @@ export default function DashboardPage() {
         <div className="card p-6">
           <div className="mb-5">
             <p className="section-title">{t("dashboard.investmentByPlatform")}</p>
-            <p className="section-sub mt-0.5">{t("dashboard.totalSpendNDays", { n: period })}</p>
+            <p className="section-sub mt-0.5">{t("dashboard.totalSpendNDays", { n: periodLabel })}</p>
           </div>
           {loading ? (
             <div className="h-52 skeleton rounded-xl" />
@@ -443,10 +541,10 @@ export default function DashboardPage() {
       <div className="card overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-slate-50 dark:border-slate-800 flex items-center justify-between">
           <p className="section-title">{t("dashboard.performanceByPlatform")}</p>
-          <span className="text-xs text-slate-400 dark:text-slate-500">{t("dashboard.lastNDaysShort", { n: period })}</span>
+          <span className="text-xs text-slate-400 dark:text-slate-500">{periodLabel}</span>
         </div>
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[480px]">
+        <table className="w-full min-w-[600px]">
           <thead>
             <tr className="border-b border-slate-50">
               {[
@@ -455,6 +553,7 @@ export default function DashboardPage() {
                 t("dashboard.tableHeaders.clicks"),
                 t("dashboard.tableHeaders.ctr"),
                 t("dashboard.tableHeaders.conversions"),
+                "CPA",
                 t("dashboard.tableHeaders.roas"),
               ].map((h) => (
                 <th key={h} className="table-th">{h}</th>
@@ -466,25 +565,46 @@ export default function DashboardPage() {
               Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
             ) : summary.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400 dark:text-slate-500">
+                <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-400 dark:text-slate-500">
                   {t("dashboard.noDataFull")}
                 </td>
               </tr>
             ) : (
-              summary.map((s) => (
-                <tr key={s.platform} className="table-tr">
-                  <td className="table-td"><PlatformBadge platform={s.platform} /></td>
-                  <td className="table-td font-semibold">{fMoney(s.spend)}</td>
-                  <td className="table-td">{fNum(s.clicks)}</td>
-                  <td className="table-td">{s.avg_ctr.toFixed(2)}%</td>
-                  <td className="table-td">{fNum(s.conversions)}</td>
-                  <td className="table-td">
-                    <span className={`font-bold ${s.avg_roas >= 2 ? "text-emerald-600" : s.avg_roas >= 1 ? "text-amber-500" : "text-red-500"}`}>
-                      {s.avg_roas.toFixed(2)}x
-                    </span>
-                  </td>
-                </tr>
-              ))
+              summary.map((s) => {
+                const prev = prevByPlatform[s.platform];
+                const cpaVal = s.conversions > 0 ? s.spend / s.conversions : null;
+                const prevCpa = prev && prev.conversions > 0 ? prev.spend / prev.conversions : 0;
+                return (
+                  <tr key={s.platform} className="table-tr">
+                    <td className="table-td"><PlatformBadge platform={s.platform} /></td>
+                    <td className="table-td font-semibold">
+                      {fMoney(s.spend)}
+                      {prev && <DeltaCell curr={s.spend} prev={prev.spend} />}
+                    </td>
+                    <td className="table-td">
+                      {fNum(s.clicks)}
+                      {prev && <DeltaCell curr={s.clicks} prev={prev.clicks} />}
+                    </td>
+                    <td className="table-td">{s.avg_ctr.toFixed(2)}%</td>
+                    <td className="table-td">
+                      {fNum(s.conversions)}
+                      {prev && <DeltaCell curr={s.conversions} prev={prev.conversions} />}
+                    </td>
+                    <td className="table-td text-slate-600 dark:text-slate-400">
+                      {cpaVal !== null ? `$${cpaVal.toFixed(2)}` : "—"}
+                      {prev && cpaVal !== null && prevCpa > 0 && (
+                        <DeltaCell curr={cpaVal} prev={prevCpa} />
+                      )}
+                    </td>
+                    <td className="table-td">
+                      <span className={`font-bold ${s.avg_roas >= 2 ? "text-emerald-600" : s.avg_roas >= 1 ? "text-amber-500" : "text-red-500"}`}>
+                        {s.avg_roas.toFixed(2)}x
+                      </span>
+                      {prev && <DeltaCell curr={s.avg_roas} prev={prev.avg_roas} />}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

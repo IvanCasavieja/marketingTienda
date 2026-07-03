@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 
 const PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"] as const;
 
-type SortKey = "spend" | "clicks" | "ctr" | "roas" | "conversions";
+type SortKey = "spend" | "clicks" | "ctr" | "roas" | "conversions" | "cpa";
 type SortDir = "asc" | "desc";
 
 function RoasBadge({ roas }: { roas: number }) {
@@ -46,7 +46,7 @@ export default function CampaignsPage() {
       if (comparing) reqs.push(metricsApi.getMetrics(cmpFrom, cmpTo, pf));
       const [main, cmp] = await Promise.all(reqs);
       setMetrics(main.data);
-      if (cmp) setCmpMetrics(cmp.data);
+      setCmpMetrics(cmp ? cmp.data : []);
     } catch {
       toast.error(t("campaigns.loadError"));
     } finally {
@@ -116,18 +116,34 @@ export default function CampaignsPage() {
   const displayed = useMemo(() => {
     let rows = [...metrics];
     if (search) rows = rows.filter((m) => m.campaign_name.toLowerCase().includes(search.toLowerCase()));
-    rows.sort((a, b) => sortDir === "desc" ? b[sortKey] - a[sortKey] : a[sortKey] - b[sortKey]);
+    rows.sort((a, b) => {
+      const getVal = (m: CampaignMetric) =>
+        sortKey === "cpa"
+          ? (m.conversions > 0 ? m.spend / m.conversions : Infinity)
+          : m[sortKey as keyof CampaignMetric] as number;
+      return sortDir === "desc" ? getVal(b) - getVal(a) : getVal(a) - getVal(b);
+    });
     return rows;
   }, [metrics, search, sortKey, sortDir]);
 
   const totals = useMemo(() => displayed.reduce(
-    (acc, m) => ({ spend: acc.spend + m.spend, clicks: acc.clicks + m.clicks, conversions: acc.conversions + m.conversions }),
-    { spend: 0, clicks: 0, conversions: 0 }
+    (acc, m) => ({
+      spend: acc.spend + m.spend,
+      clicks: acc.clicks + m.clicks,
+      conversions: acc.conversions + m.conversions,
+      impressions: acc.impressions + m.impressions,
+    }),
+    { spend: 0, clicks: 0, conversions: 0, impressions: 0 }
   ), [displayed]);
 
   const cmpTotals = useMemo(() => cmpMetrics.reduce(
-    (acc, m) => ({ spend: acc.spend + m.spend, clicks: acc.clicks + m.clicks, conversions: acc.conversions + m.conversions }),
-    { spend: 0, clicks: 0, conversions: 0 }
+    (acc, m) => ({
+      spend: acc.spend + m.spend,
+      clicks: acc.clicks + m.clicks,
+      conversions: acc.conversions + m.conversions,
+      impressions: acc.impressions + m.impressions,
+    }),
+    { spend: 0, clicks: 0, conversions: 0, impressions: 0 }
   ), [cmpMetrics]);
 
   function pct(curr: number, prev: number) {
@@ -173,22 +189,35 @@ export default function CampaignsPage() {
 
       {/* Summary row */}
       {!loading && displayed.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          {[
-            { label: t("campaigns.totalInvestment"), curr: totals.spend,       prev: cmpTotals.spend,       fmt: fMoney },
-            { label: t("campaigns.clicks"),          curr: totals.clicks,      prev: cmpTotals.clicks,      fmt: fNum },
-            { label: t("campaigns.conversions"),     curr: totals.conversions, prev: cmpTotals.conversions, fmt: fNum },
-          ].map(({ label, curr, prev, fmt }) => (
-            <div key={label} className="card p-4">
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{label}</p>
-              <div className="flex items-end gap-2">
-                <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{fmt(curr)}</p>
-                {comparing && <DeltaBadge curr={curr} prev={prev} />}
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            {[
+              { label: t("campaigns.totalInvestment"), curr: totals.spend,       prev: cmpTotals.spend,       fmt: fMoney },
+              { label: t("campaigns.clicks"),          curr: totals.clicks,      prev: cmpTotals.clicks,      fmt: fNum },
+              { label: t("campaigns.conversions"),     curr: totals.conversions, prev: cmpTotals.conversions, fmt: fNum },
+              {
+                label: "CPA promedio",
+                curr: totals.conversions > 0 ? totals.spend / totals.conversions : 0,
+                prev: cmpTotals.conversions > 0 ? cmpTotals.spend / cmpTotals.conversions : 0,
+                fmt: (v: number) => v > 0 ? `$${v.toFixed(2)}` : "—",
+              },
+            ].map(({ label, curr, prev, fmt }) => (
+              <div key={label} className="card p-4">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{label}</p>
+                <div className="flex items-end gap-2">
+                  <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{fmt(curr)}</p>
+                  {comparing && cmpTotals.spend > 0 && <DeltaBadge curr={curr} prev={prev} />}
+                </div>
+                {comparing && cmpTotals.spend > 0 && (
+                  <p className="text-xs text-slate-400 mt-0.5">{fmt(prev)} {t("campaigns.prevPeriod")}</p>
+                )}
+                {comparing && cmpTotals.spend === 0 && (
+                  <p className="text-xs text-slate-300 dark:text-slate-600 mt-0.5">Sin datos del período anterior</p>
+                )}
               </div>
-              {comparing && <p className="text-xs text-slate-400 mt-0.5">{fmt(prev)} {t("campaigns.prevPeriod")}</p>}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Filters */}
@@ -223,6 +252,7 @@ export default function CampaignsPage() {
             <option value="ctr">{t("campaigns.sortOptions.ctr")}</option>
             <option value="conversions">{t("campaigns.sortOptions.conversions")}</option>
             <option value="roas">{t("campaigns.sortOptions.roas")}</option>
+            <option value="cpa">CPA</option>
           </select>
           <button onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
             className="input py-2 px-3 text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
@@ -283,7 +313,9 @@ export default function CampaignsPage() {
               <th className="table-th">{t("campaigns.tableHeaders.investment")}</th>
               <th className="table-th">{t("campaigns.tableHeaders.clicks")}</th>
               <th className="table-th">{t("campaigns.tableHeaders.ctr")}</th>
+              <th className="table-th">CPM</th>
               <th className="table-th">{t("campaigns.tableHeaders.conv")}</th>
+              <th className="table-th">CPA</th>
               <th className="table-th">{t("campaigns.tableHeaders.roas")}</th>
             </tr>
           </thead>
@@ -293,32 +325,41 @@ export default function CampaignsPage() {
               : displayed.length === 0
               ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-14 text-center">
+                  <td colSpan={10} className="px-6 py-14 text-center">
                     <p className="text-sm text-slate-400">{t("campaigns.noData")}</p>
                     <p className="text-xs text-slate-300 mt-1">{t("campaigns.noDataSub")}</p>
                   </td>
                 </tr>
               )
-              : displayed.map((m, i) => (
-                <tr key={i} className="table-tr">
-                  <td className="table-td"><PlatformBadge platform={m.platform} /></td>
-                  <td className="table-td max-w-[220px]">
-                    <span className="truncate block font-medium text-slate-800 dark:text-slate-200" title={m.campaign_name}>
-                      {m.campaign_name}
-                    </span>
-                  </td>
-                  <td className="table-td text-slate-400 text-xs">{m.date}</td>
-                  <td className="table-td font-semibold">{fMoneyExact(m.spend)}</td>
-                  <td className="table-td">{fNum(m.clicks)}</td>
-                  <td className="table-td">
-                    <span className={`text-xs font-medium ${m.ctr > 3 ? "text-emerald-600" : m.ctr > 1 ? "text-slate-600 dark:text-slate-400" : "text-red-500"}`}>
-                      {m.ctr.toFixed(2)}%
-                    </span>
-                  </td>
-                  <td className="table-td">{m.conversions}</td>
-                  <td className="table-td"><RoasBadge roas={m.roas} /></td>
-                </tr>
-              ))}
+              : displayed.map((m, i) => {
+                const cpa = m.conversions > 0 ? m.spend / m.conversions : null;
+                return (
+                  <tr key={i} className="table-tr">
+                    <td className="table-td"><PlatformBadge platform={m.platform} /></td>
+                    <td className="table-td max-w-[200px]">
+                      <span className="truncate block font-medium text-slate-800 dark:text-slate-200" title={m.campaign_name}>
+                        {m.campaign_name}
+                      </span>
+                    </td>
+                    <td className="table-td text-slate-400 text-xs">{m.date}</td>
+                    <td className="table-td font-semibold">{fMoneyExact(m.spend)}</td>
+                    <td className="table-td">{fNum(m.clicks)}</td>
+                    <td className="table-td">
+                      <span className={`text-xs font-medium ${m.ctr > 3 ? "text-emerald-600" : m.ctr > 1 ? "text-slate-600 dark:text-slate-400" : "text-red-500"}`}>
+                        {m.ctr.toFixed(2)}%
+                      </span>
+                    </td>
+                    <td className="table-td text-slate-500 dark:text-slate-400 text-xs">
+                      {m.cpm > 0 ? `$${m.cpm.toFixed(2)}` : "—"}
+                    </td>
+                    <td className="table-td">{m.conversions}</td>
+                    <td className="table-td text-slate-600 dark:text-slate-400 text-xs font-medium">
+                      {cpa !== null ? `$${cpa.toFixed(2)}` : "—"}
+                    </td>
+                    <td className="table-td"><RoasBadge roas={m.roas} /></td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
         </div>
