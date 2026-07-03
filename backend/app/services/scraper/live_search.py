@@ -263,57 +263,7 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
         scored.append(replace(r, relevancia=s))
     api_records = scored
 
-    # Precio online desde HTML del website de Devoto (Blazor Server, price pre-rendered).
-    # La API interna devuelve precios de GÓNDOLA (in-store) por sucursal, que pueden
-    # diferir del precio online que muestra la web. Como los links van al sitio online,
-    # usamos el precio HTML como precio canónico — es el que el usuario puede verificar.
-    # Excepción: si la API devuelve 0 o None (sin precio), se mantiene lo que haya.
-    _MAX_HTML = 40
-
-    # Recopilar una URL por SKU (preferir Devoto como cadena canónica del grupo GDU)
-    sku_url_map: dict[str, str] = {}
-    for r in api_records:
-        if r.sku and r.sku not in sku_url_map and r.tienda == "Devoto":
-            sku_url_map[r.sku] = r.url
-            if len(sku_url_map) >= _MAX_HTML:
-                break
-    for r in api_records:
-        if r.sku and r.sku not in sku_url_map:
-            sku_url_map[r.sku] = r.url
-            if len(sku_url_map) >= _MAX_HTML:
-                break
-
-    html_prices: dict[str, float] = {}
-    if sku_url_map:
-        def _fetch_one(item: tuple[str, str]) -> tuple[str, float | None]:
-            sku, url = item
-            m = re.search(r"/product/p/(\d+)", url)
-            if not m:
-                return sku, None
-            return sku, gdu._fetch_html_precio("Devoto", m.group(1))
-
-        with ThreadPoolExecutor(max_workers=8) as ex:
-            for sku, price in ex.map(_fetch_one, sku_url_map.items()):
-                if price is not None:
-                    html_prices[sku] = price
-
-    if not html_prices:
-        log.warning("buscar_gdu: HTML fetch falló para todos los SKUs de '%s' — usando precios de API", term)
-        return api_records
-
-    records: list[ProductRecord] = []
-    for r in api_records:
-        if r.sku:
-            html_p = html_prices.get(r.sku)
-            # Solo corregir cuando el HTML es significativamente MÁS CARO que la API.
-            # Eso indica que la API devolvió un precio de costo interno (ej: pollo al horno
-            # $47 API vs $135 HTML). En ese caso el HTML es el precio real al consumidor.
-            # Si el HTML es igual o más barato, el API tiene el precio real de góndola y
-            # el link con ?sc= debería mostrarlo — no pisar con el precio del HTML genérico.
-            if html_p and r.precio and html_p > r.precio * 1.3:
-                r = replace(r, precio=html_p, precio_lista=r.precio)
-        records.append(r)
-    return records
+    return api_records
 
 
 # ── FarmaShop / Botiga (Magento 2 GraphQL) ────────────────────────────────────

@@ -164,10 +164,7 @@ _CHAIN_MAP = {
     "Disco":  "Disco",
     "Devoto": "Devoto",
     "Geant":  "Geant",
-    # "GDU" = sucursales Express/Fresh Market que no están en ninguno de los tres
-    # sitios web principales — se excluyen porque sus IDs no son reconocidos por
-    # devoto.com.uy y generarían links que caen al local por defecto del usuario.
-    "GDU":    "excluir",
+    "GDU":    "Devoto",  # Express/Fresh Market operados bajo el paraguas GDU/Devoto
 }
 
 
