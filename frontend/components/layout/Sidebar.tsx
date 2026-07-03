@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
   BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, ShieldCheck, HelpCircle, X, Tag,
-  Sun, Moon,
+  Sun, Moon, ClipboardList,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, connectionsApi } from "@/lib/api";
@@ -52,6 +52,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       : []),
     { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion"),   restricted: false },
     { href: "/ayuda",                   label: "Guía de uso",          icon: HelpCircle,       section: t("sidebar.configuracion"),   restricted: false },
+    { href: "/redexpress/planilla", label: "Planilla de pedidos", icon: ClipboardList, section: "Redexpress", restricted: false },
     ...(currentUser?.is_superuser
       ? [{ href: "/admin", label: "Administrador", icon: ShieldCheck, section: t("sidebar.configuracion"), restricted: false }]
       : []),

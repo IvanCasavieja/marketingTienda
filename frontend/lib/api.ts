@@ -319,3 +319,52 @@ export const preciosApi = {
   },
 
 };
+
+// ---------------------------------------------------------------------------
+// Redexpress — planilla de pedidos
+// ---------------------------------------------------------------------------
+
+export interface PlanillaRow {
+  id: number;
+  local_nombre: string;
+  year: number;
+  month: number;
+  a4_oferta_vertical: number | null;
+  cenefa_oferta_x3: number | null;
+  pinchos: number | null;
+  afiche_54x74: number | null;
+  cenefa_valle_del_sol: number | null;
+  cenefa_supremo_hogar: number | null;
+  bombas_3xa4: number | null;
+  bombas_a4: number | null;
+  bombas_74x54: number | null;
+  pinchos_bombas: number | null;
+  sticker_valle_del_sol: number | null;
+  sticker_carne: number | null;
+  cenefas_preciazos: number | null;
+  afiche_super_ahorro: number | null;
+  pinchos_dias_expres: number | null;
+  hojas_amarillas: string | null;
+  otros: string | null;
+  confirmado: boolean;
+  confirmed_at: string | null;
+  updated_at: string | null;
+  can_edit: boolean;
+}
+
+export const redexpressApi = {
+  getMeses: () => api.get<{ year: number; month: number }[]>("/redexpress/meses"),
+  crearMes: (year: number, month: number) => api.post("/redexpress/meses", { year, month }),
+  getPlanilla: (year: number, month: number) =>
+    api.get<PlanillaRow[]>(`/redexpress/planilla/${year}/${month}`),
+  updateRow: (year: number, month: number, local_nombre: string, data: Partial<PlanillaRow>) =>
+    api.patch<PlanillaRow>(`/redexpress/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}`, data),
+  confirmar: (year: number, month: number, local_nombre: string) =>
+    api.post(`/redexpress/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}/confirmar`),
+  desconfirmar: (year: number, month: number, local_nombre: string) =>
+    api.post(`/redexpress/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}/desconfirmar`),
+  getAsignaciones: () => api.get("/redexpress/asignaciones"),
+  createAsignacion: (user_id: number, local_nombre: string) =>
+    api.post("/redexpress/asignaciones", { user_id, local_nombre }),
+  deleteAsignacion: (id: number) => api.delete(`/redexpress/asignaciones/${id}`),
+};

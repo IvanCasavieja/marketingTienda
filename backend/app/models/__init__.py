@@ -6,9 +6,12 @@ from app.models.ai_analysis import AIAnalysis
 from app.models.cenefa_template import CenefaTemplate
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.cenefa_job import CenefaJob
+from app.models.planilla_pedido import PlanillaPedido
+from app.models.local_asignacion import LocalAsignacion
 
 __all__ = [
     "User", "PlatformConnection", "Platform",
     "CampaignMetric", "AuditLog", "AIAnalysis",
     "CenefaTemplate", "CenefaTemplateV2", "CenefaJob",
+    "PlanillaPedido", "LocalAsignacion",
 ]
