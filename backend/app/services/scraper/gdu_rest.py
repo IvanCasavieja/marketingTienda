@@ -160,10 +160,23 @@ def _llamar(session: requests.Session, method: str, url: str, **kwargs) -> reque
 
 # ── Metadatos de sucursales ───────────────────────────────────────────────────
 
+_CHAIN_MAP = {
+    "Disco":  "Disco",
+    "Devoto": "Devoto",
+    "Geant":  "Geant",
+    # "GDU" = sucursales Express/Fresh Market que no están en ninguno de los tres
+    # sitios web principales — se excluyen porque sus IDs no son reconocidos por
+    # devoto.com.uy y generarían links que caen al local por defecto del usuario.
+    "GDU":    "excluir",
+}
+
+
 def _load_branch_meta() -> dict[str, dict]:
     """
     Carga {branch_id: {nombre, cadena}} desde el JSON empaquetado.
-    Usa clasificación por rango de ID para robustez ante nombres sin "Devoto".
+    Usa el campo 'chain' del JSON para clasificar (Disco/Devoto/Geant/GDU).
+    Las sucursales chain='GDU' se excluyen: son Express/Fresh Market sin sitio
+    web propio; sus IDs no son reconocidos por devoto.com.uy.
     """
     json_path = _PKG_DIR / "sucursales_gdu.json"
     if not json_path.exists():
@@ -174,13 +187,13 @@ def _load_branch_meta() -> dict[str, dict]:
         data = json.load(f)
 
     result: dict[str, dict] = {}
-    for branches in data.values():
+    for chain_key, branches in data.items():
+        cadena = _CHAIN_MAP.get(chain_key, "excluir")
+        if cadena == "excluir":
+            continue
         for b in branches:
             bid = b["id"]
             if bid in _BRANCH_IDS_EXCLUIR:
-                continue
-            cadena = _clasificar_cadena(bid)
-            if cadena == "excluir":
                 continue
             result[bid] = {"nombre": b.get("nombre", bid), "cadena": cadena}
     return result

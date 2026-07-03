@@ -305,11 +305,13 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
     for r in api_records:
         if r.sku:
             html_p = html_prices.get(r.sku)
-            if html_p:
-                # Usar siempre el precio HTML (online) como precio canónico.
-                # El precio de la API puede ser precio de costo interno o precio de góndola,
-                # ninguno de los dos es verificable clickando el link — el HTML sí lo es.
-                r = replace(r, precio=html_p, precio_lista=None)
+            # Solo corregir cuando el HTML es significativamente MÁS CARO que la API.
+            # Eso indica que la API devolvió un precio de costo interno (ej: pollo al horno
+            # $47 API vs $135 HTML). En ese caso el HTML es el precio real al consumidor.
+            # Si el HTML es igual o más barato, el API tiene el precio real de góndola y
+            # el link con ?sc= debería mostrarlo — no pisar con el precio del HTML genérico.
+            if html_p and r.precio and html_p > r.precio * 1.3:
+                r = replace(r, precio=html_p, precio_lista=r.precio)
         records.append(r)
     return records
 
