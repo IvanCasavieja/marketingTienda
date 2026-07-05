@@ -4,7 +4,7 @@ from sqlalchemy import select, and_
 from pydantic import BaseModel
 from typing import List
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_permission
 from app.core.security import encrypt_token
 from app.models.user import User
 from app.models.platform_connection import PlatformConnection, Platform
@@ -33,7 +33,7 @@ class ConnectionOut(BaseModel):
 
 @router.get("/", response_model=List[ConnectionOut])
 async def list_connections(
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("connections.view")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(PlatformConnection))
@@ -43,7 +43,7 @@ async def list_connections(
 @router.post("/", response_model=ConnectionOut, status_code=status.HTTP_201_CREATED)
 async def create_connection(
     payload: ConnectionCreate,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("connections.manage")),
     db: AsyncSession = Depends(get_db),
 ):
     existing = await db.execute(
@@ -72,7 +72,7 @@ async def create_connection(
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_connection(
     connection_id: int,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("connections.manage")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -82,4 +82,4 @@ async def delete_connection(
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    db.delete(conn)
+    await db.delete(conn)

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from datetime import date
 from typing import List, Optional
 from app.core.database import get_db, AsyncSessionLocal
-from app.core.deps import get_current_user
+from app.core.deps import require_permission
 from app.core.config import settings
 from app.models.user import User
 from app.models.ai_analysis import AIAnalysis
@@ -76,7 +76,7 @@ class DebateVerdictRequest(BaseModel):
 @router.post("/analyze")
 async def analyze(
     payload: AnalysisRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
 ):
     handler = _ALL_HANDLERS.get(payload.analysis_type)
@@ -123,7 +123,7 @@ async def analyze(
 
 @router.get("/history")
 async def get_history(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -149,7 +149,7 @@ async def get_history(
 @router.get("/history/{analysis_id}")
 async def get_analysis(
     analysis_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -178,7 +178,7 @@ STREAMABLE_TYPES = {"full_report", "anomaly_detection", "optimization", "cross_p
 @router.post("/analyze/stream")
 async def analyze_stream(
     payload: AnalysisRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
 ):
     if payload.analysis_type not in STREAMABLE_TYPES:
@@ -241,7 +241,7 @@ async def analyze_stream(
 @router.post("/analyze/debate/stream")
 async def debate_stream(
     payload: AnalysisRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
 ):
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
@@ -303,7 +303,7 @@ async def debate_stream(
 @router.post("/debate/turn")
 async def debate_turn(
     payload: DebateTurnRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
 ):
     """Single conversational turn: Claude first, then ChatGPT. Auto-saves after every turn."""
@@ -391,7 +391,7 @@ async def debate_turn(
 @router.post("/debate/verdict")
 async def debate_verdict(
     payload: DebateVerdictRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
 ):
     """Request Llama verdict on the current conversation, then save full debate to DB."""

@@ -8,7 +8,7 @@ from datetime import date
 from typing import List, Optional
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import require_permission
 from app.models.user import User
 from app.models.campaign_metric import CampaignMetric
 from app.models.platform_connection import Platform
@@ -34,7 +34,7 @@ class SyncResponse(BaseModel):
 @router.post("/sync", response_model=SyncResponse)
 async def sync_metrics(
     payload: SyncRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("analytics.view")),
     db: AsyncSession = Depends(get_db),
 ):
     if settings.DEMO_MODE:
@@ -59,7 +59,7 @@ async def get_campaign_metrics(
     date_from: date,
     date_to: date,
     platforms: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("analytics.view")),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -74,7 +74,7 @@ async def get_campaign_metrics(
 async def get_summary(
     date_from: date,
     date_to: date,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("analytics.view")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -117,7 +117,7 @@ async def get_summary(
 
 
 @router.get("/auto-sync/status")
-async def auto_sync_status(_: User = Depends(get_current_user)):
+async def auto_sync_status(_: User = Depends(require_permission("analytics.view"))):
     """Estado del auto-sync: último run, próximo run e intervalo configurado."""
     from app.services.auto_sync import get_sync_status
     return await get_sync_status()

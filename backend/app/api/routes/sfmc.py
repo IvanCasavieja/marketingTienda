@@ -2,7 +2,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from datetime import date
-from app.core.deps import get_current_user
+from app.core.deps import require_permission
 from app.core.config import settings
 from app.models.user import User
 from app.connectors.sfmc import SFMCConnector
@@ -31,7 +31,7 @@ def _get_sfmc_connector() -> SFMCConnector:
 @router.post("/email")
 async def get_email_performance(
     payload: SFMCRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("analytics.view")),
 ):
     connector = _get_sfmc_connector()
     try:
@@ -45,7 +45,7 @@ async def get_email_performance(
 @router.post("/whatsapp")
 async def get_whatsapp_performance(
     payload: SFMCRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("analytics.view")),
 ):
     connector = _get_sfmc_connector()
     try:

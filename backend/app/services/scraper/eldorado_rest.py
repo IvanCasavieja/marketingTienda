@@ -58,14 +58,6 @@ SUCURSALES = [
     {"id": "eldoradouy2510", "nombre": "Florida",            "region_id": "v2.86F646CDE3A12758759620B06035858D"},
 ]
 
-# 4 fases: ~4-5 sucursales por fase
-ELDORADO_PHASES_BY_STORE: dict[int, list[dict]] = {
-    1: SUCURSALES[0:5],    # Montevideo, La Paz, Costa, Barros Blancos, Maldonado
-    2: SUCURSALES[5:9],    # San Carlos, Punta del Este, Rocha, Rocha Centro
-    3: SUCURSALES[9:13],   # Colonia, Treinta y Tres, Salto, Paysandú
-    4: SUCURSALES[13:17],  # Tacuarembó, Durazno, Rivera, Florida
-}
-
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -178,45 +170,3 @@ def _parse_product_is(raw: dict, sucursal: dict) -> ProductRecord | None:
     )
 
 
-# ── Scan por fase ─────────────────────────────────────────────────────────────
-
-def scan_fase(fase: int, fases: dict[int, list[dict]]) -> list[ProductRecord]:
-    """
-    Raspa los productos de El Dorado para las sucursales del rango dado.
-    `fases` es el resultado de `build_phases()` — dict {fase: [sucursales]}.
-    Una fila por (producto × sucursal).
-
-    Nota: la IS API de ElDorado limita el acceso a las posiciones 0-2499
-    (≈2500 productos más relevantes).  El catálogo completo tiene ~9565.
-    """
-    sucursales = fases.get(fase, [])
-    if not sucursales:
-        log.warning("ElDorado: fase %d vacía", fase)
-        return []
-
-    log.info("ElDorado: fase %d — %d sucursales", fase, len(sucursales))
-
-    records: list[ProductRecord] = []
-
-    for suc in sucursales:
-        suc_id    = suc["id"]
-        suc_count = 0
-
-        for raw in _iter_store_is(suc["region_id"]):
-            rec = _parse_product_is(raw, suc)
-            if rec is not None:
-                records.append(rec)
-                suc_count += 1
-
-        log.info("ElDorado [%s]: %d productos", suc["nombre"], suc_count)
-
-    log.info("ElDorado: fase %d completada — %d registros (sucursal×producto)", fase, len(records))
-    return records
-
-
-def build_phases(n: int = 4) -> dict[int, list[dict]]:
-    """
-    Retorna las fases con sus sucursales.
-    Compatible con la llamada en fases.py (_get_eldorado_phases → build_phases).
-    """
-    return ELDORADO_PHASES_BY_STORE

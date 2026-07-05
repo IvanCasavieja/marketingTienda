@@ -29,8 +29,13 @@ const TOKEN_GUIDES: Record<string, { steps: string[]; link: string }> = {
     link: "https://ads.tiktok.com/marketing_api/homepage",
   },
   dv360: {
-    steps: ["Usá las mismas credenciales OAuth de Google Cloud", "Habilitá la Display & Video 360 API", "El token es el mismo que Google Ads si usás el mismo OAuth scope"],
-    link: "https://console.cloud.google.com/",
+    steps: [
+      "Andá a Google Cloud Console y habilitá 'DoubleClick Bid Manager API'",
+      "Usá las mismas credenciales OAuth 2.0 que Google Ads (client_id y client_secret)",
+      "Pegá el refresh_token en el campo Access Token — DV360 lo cambia por un token vigente en cada sincronización",
+      "El Account ID es el Partner ID numérico de DV360",
+    ],
+    link: "https://console.cloud.google.com/apis/library/doubleclickbidmanager.googleapis.com",
   },
   google_analytics: {
     steps: [

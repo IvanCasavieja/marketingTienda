@@ -20,10 +20,8 @@ APIs:
 
 import json
 import logging
-import re
 import time
 from pathlib import Path
-from typing import Generator
 
 import requests
 
@@ -197,62 +195,6 @@ def _load_branch_meta() -> dict[str, dict]:
     return result
 
 
-# ── Iterador de productos ─────────────────────────────────────────────────────
-
-def _iter_products(
-    session: requests.Session,
-    page_from: int = 1,
-    page_to: int | None = None,
-) -> Generator[tuple[str, str, str | None, str | None], None, None]:
-    """
-    Genera (product_id, product_name, barcode, categoria) para cada producto activo.
-
-    page_from / page_to: rango de páginas de la API (1-indexed, page_to inclusive).
-    page_to=None significa hasta el final del catálogo.
-    """
-    page        = page_from
-    total_pages = None
-
-    while True:
-        r = _llamar(
-            session, "GET",
-            f"{_BASE_PRODS}/api/accounts/{_ACCOUNT}/products",
-            params={"Page": page, "ItemsPerPage": _PAGE_SIZE, "IsActive": True},
-        )
-        data = r.json()
-
-        if total_pages is None:
-            total_pages = data.get("totalPageCount", 1)
-            effective_to = min(page_to, total_pages) if page_to else total_pages
-            log.info(
-                "GDU REST: catálogo = %d productos en %d páginas "
-                "(procesando páginas %d–%d)",
-                data.get("totalItemCount", 0), total_pages,
-                page_from, effective_to,
-            )
-        else:
-            effective_to = min(page_to, total_pages) if page_to else total_pages
-
-        for item in data.get("items", []):
-            desc = item.get("description", {})
-            name = desc.get("name", item["id"])
-
-            barcodes_list = item.get("barcodes") or []
-            barcode = barcodes_list[0].get("barcode") if barcodes_list else None
-
-            categoria = None
-            for df in item.get("dynamicFields") or []:
-                if df.get("fieldName") == "FILTER|Categoría":
-                    categoria = df.get("fieldValue")
-                    break
-
-            yield item["id"], name, barcode, categoria
-
-        if page >= effective_to:
-            break
-        page += 1
-
-
 # ── Consulta de precios ───────────────────────────────────────────────────────
 
 def _get_prices_batch(session: requests.Session, product_ids: list[str]) -> list[dict]:
@@ -270,59 +212,6 @@ def _get_prices_batch(session: requests.Session, product_ids: list[str]) -> list
         params=params,
     )
     return r.json()
-
-
-# ── Scan por rango de páginas ─────────────────────────────────────────────────
-
-def scan_fase(
-    page_from: int,
-    page_to: int | None,
-    cache_dir: Path,
-) -> list[ProductRecord]:
-    """
-    Raspa productos y precios GDU para un rango de páginas del catálogo.
-    Retorna una lista de ProductRecord (1 por producto × sucursal).
-
-    Llamado por run_gdu_rest_fase() en fases.py.
-    """
-    jwt     = _get_jwt(cache_dir)
-    session = _build_session(jwt)
-    branch_meta = _load_branch_meta()
-    log.info("GDU REST: %d sucursales cargadas", len(branch_meta))
-
-    records: list[ProductRecord] = []
-    batch_ids:        list[str]            = []
-    batch_names:      dict[str, str]       = {}
-    batch_barcodes:   dict[str, str | None] = {}
-    batch_categorias: dict[str, str | None] = {}
-    total_prods  = 0
-
-    def _flush_batch():
-        nonlocal total_prods
-        if not batch_ids:
-            return
-        price_records = _get_prices_batch(session, batch_ids)
-        _parse_prices(price_records, batch_names, batch_barcodes, batch_categorias, branch_meta, records)
-        total_prods += len(batch_ids)
-        batch_ids.clear()
-        batch_names.clear()
-        batch_barcodes.clear()
-        batch_categorias.clear()
-
-    for product_id, product_name, barcode, categoria in _iter_products(session, page_from, page_to):
-        batch_ids.append(product_id)
-        batch_names[product_id]      = product_name
-        batch_barcodes[product_id]   = barcode
-        batch_categorias[product_id] = categoria
-
-        if len(batch_ids) >= _PRICE_BATCH:
-            _flush_batch()
-            if total_prods % 5000 == 0 and total_prods:
-                log.info("GDU REST: %d productos procesados, %d registros", total_prods, len(records))
-
-    _flush_batch()  # último batch parcial
-    log.info("GDU REST: fase completada — %d productos, %d registros (sucursal×producto)", total_prods, len(records))
-    return records
 
 
 def _parse_prices(
@@ -381,49 +270,3 @@ def _parse_prices(
             sucursal_id     = pl_id,
             sucursal_nombre = meta["nombre"],
         ))
-
-
-# ── Precio retail desde HTML (Blazor Server) ──────────────────────────────────
-
-# La API Azure devuelve precios internos/costo para productos frescos (rotisería).
-# El precio al consumidor viene del HTML del website (Blazor Server, server-rendered).
-# Esta función extrae ese precio real para corregir los precios del live search.
-
-_HTML_PRICE_RE = re.compile(
-    r'class="mon">\$</span>\s*<span class="val">([\d.,]+)<'
-)
-
-
-def _fetch_html_precio(cadena: str, product_id: str) -> float | None:
-    """
-    Obtiene el precio real al consumidor desde el HTML renderizado del website.
-    Solo usado en live search (buscar_gdu). El batch scraper sigue usando la API.
-    """
-    base = _DOMINIOS.get(cadena, "https://www.devoto.com.uy")
-    url = f"{base}/product/p/{product_id}"
-    try:
-        r = requests.get(
-            url,
-            headers={"User-Agent": _UA, "Accept": "text/html"},
-            timeout=8,
-        )
-        if r.status_code != 200:
-            return None
-        m = _HTML_PRICE_RE.search(r.text)
-        if m:
-            return float(m.group(1).replace(".", "").replace(",", "."))
-    except Exception:
-        pass
-    return None
-
-
-# ── División en fases ─────────────────────────────────────────────────────────
-# ~527 páginas totales divididas en 4 fases de ~132 páginas c/u.
-# page_to=None en la última fase para capturar hasta el final real del catálogo.
-
-GDU_REST_PHASES: dict[int, tuple[int, int | None]] = {
-    1: (1,   132),
-    2: (133, 264),
-    3: (265, 396),
-    4: (397, None),
-}

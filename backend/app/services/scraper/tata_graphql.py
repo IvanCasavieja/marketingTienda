@@ -10,10 +10,7 @@ regionId calculable como base64("SW#" + sellerId) sin consultar API.
 
 import json
 import time
-import random
-import threading
 import urllib.parse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
@@ -38,14 +35,6 @@ SUCURSALES = [
     {"seller_id": "tatauyartigas",      "nombre": "Artigas",        "region_id": "U1cjdGF0YXV5YXJ0aWdhcw=="},
     {"seller_id": "tatauytrinidad",     "nombre": "Trinidad",       "region_id": "U1cjdGF0YXV5dHJpbmlkYWQ="},
 ]
-
-# 4 fases: ~4 sucursales por fase (la 4 tiene 3)
-TATA_SUCURSAL_FASES: dict[int, list[dict]] = {
-    1: SUCURSALES[0:4],    # Montevideo, Canelones, Maldonado, Colonia
-    2: SUCURSALES[4:8],    # Rocha, Salto, Paysandú, Tacuarembó
-    3: SUCURSALES[8:12],   # Melo, Minas, Treinta y Tres, Rivera
-    4: SUCURSALES[12:15],  # Mercedes, Artigas, Trinidad
-}
 
 
 # ── HTTP ──────────────────────────────────────────────────────────────────────
@@ -120,74 +109,3 @@ def _parse_node(node: dict, sucursal: dict | None = None) -> dict:
     }
 
 
-# ── Descarga de categoría ─────────────────────────────────────────────────────
-
-def bajar_categoria(cat_facets: list, sucursal: dict | None = None,
-                    lote: int = 50) -> tuple:
-    """Baja TODOS los productos de una categoría paginando con requests.
-    Devuelve (lista_productos, total_declarado).
-    """
-    region_id = sucursal["region_id"] if sucursal else ""
-    productos = []
-    after     = "0"
-    total     = None
-    max_pags  = 5
-
-    pagina = 0
-    while pagina < max_pags:
-        url  = _build_url(cat_facets, first=lote, after=after, region_id=region_id)
-        data = _fetch(url)
-        if data is None:
-            break
-
-        search = (data.get("data") or {}).get("search") or {}
-        prods  = search.get("products") or {}
-
-        if total is None:
-            total    = (prods.get("pageInfo") or {}).get("totalCount", 0) or 0
-            max_pags = (total // lote) + 2
-
-        edges = prods.get("edges", [])
-        if not edges:
-            break
-
-        for e in edges:
-            productos.append(_parse_node(e["node"], sucursal))
-
-        if len(productos) >= total:
-            break
-
-        after  = str(len(productos))
-        pagina += 1
-        time.sleep(random.uniform(0.05, 0.15))
-
-    return productos, total or 0
-
-
-# ── Descarga por sucursal (categorías en paralelo) ────────────────────────────
-
-def bajar_sucursal(sucursal: dict, todas_cats: list[list],
-                   cat_workers: int = 4) -> dict:
-    """
-    Baja todas las categorías para UNA sucursal con requests.
-    Corre `cat_workers` categorías en paralelo.
-    """
-    resultado: dict = {}
-    lock = threading.Lock()
-
-    def _bajar_una(cat_facets: list):
-        slug = "/".join(cat_facets)
-        try:
-            prods, total = bajar_categoria(cat_facets, sucursal=sucursal)
-            with lock:
-                resultado[slug] = {"productos": prods, "total_declarado": total}
-        except Exception as e:
-            with lock:
-                resultado[slug] = {"error": str(e)[:120]}
-
-    with ThreadPoolExecutor(max_workers=cat_workers) as ex:
-        futures = [ex.submit(_bajar_una, cf) for cf in todas_cats]
-        for f in as_completed(futures):
-            f.result()   # propagar excepciones si las hay
-
-    return resultado

@@ -2,14 +2,37 @@ import httpx
 from datetime import date
 from typing import List
 from app.connectors.base import BaseConnector
+from app.core.config import settings
+
+_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 
 class DV360Connector(BaseConnector):
-    """Display & Video 360 connector via Reporting API v2."""
+    """Display & Video 360 connector via Reporting API v2.
+
+    Usa OAuth 2.0 con refresh_token (mismo mecanismo que Google Ads/GA4):
+    el valor guardado como access_token en la conexión es en realidad el
+    refresh_token de larga duración, y se cambia por un access_token vigente
+    en cada sync.
+    """
     BASE_URL = "https://doubleclickbidmanager.googleapis.com/v2"
 
-    async def _create_query(self, client: httpx.AsyncClient, date_from: date, date_to: date) -> str:
-        headers = {"Authorization": f"Bearer {self.access_token}"}
+    async def _get_access_token(self) -> str:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                _TOKEN_URL,
+                data={
+                    "client_id":     settings.DV360_CLIENT_ID,
+                    "client_secret": settings.DV360_CLIENT_SECRET,
+                    "refresh_token": self.access_token,
+                    "grant_type":    "refresh_token",
+                },
+            )
+            resp.raise_for_status()
+            return resp.json()["access_token"]
+
+    async def _create_query(self, client: httpx.AsyncClient, access_token: str, date_from: date, date_to: date) -> str:
+        headers = {"Authorization": f"Bearer {access_token}"}
         payload = {
             "metadata": {"title": "MKTG Platform Sync", "dataRange": {"customStartDate": {"year": date_from.year, "month": date_from.month, "day": date_from.day}, "customEndDate": {"year": date_to.year, "month": date_to.month, "day": date_to.day}}, "format": "CSV"},
             "params": {
@@ -24,9 +47,10 @@ class DV360Connector(BaseConnector):
         return resp.json()["queryId"]
 
     async def fetch_campaigns(self, date_from: date, date_to: date) -> List[dict]:
-        headers = {"Authorization": f"Bearer {self.access_token}"}
+        access_token = await self._get_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
         async with httpx.AsyncClient(timeout=120) as client:
-            query_id = await self._create_query(client, date_from, date_to)
+            query_id = await self._create_query(client, access_token, date_from, date_to)
             resp = await client.post(f"{self.BASE_URL}/queries/{query_id}:run", headers=headers)
             resp.raise_for_status()
             report_id = resp.json().get("key", {}).get("reportId")
