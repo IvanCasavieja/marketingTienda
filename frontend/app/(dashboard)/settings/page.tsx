@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { connectionsApi } from "@/lib/api";
 import { Connection } from "@/types";
-import { Plus, Trash2, CheckCircle2, XCircle, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, XCircle, ChevronDown, Eye, EyeOff, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
@@ -54,15 +54,38 @@ export default function SettingsPage() {
   const [showForm, setShowForm]       = useState(false);
   const [showGuide, setShowGuide]     = useState<string | null>(null);
   const [showTokens, setShowTokens]   = useState<Record<string, boolean>>({});
+  const [forbidden, setForbidden]     = useState(false);
   const [form, setForm] = useState({
     platform: "meta", account_id: "", account_name: "",
     access_token: "", refresh_token: "",
   });
 
   async function load() {
-    connectionsApi.list().then(({ data }) => setConnections(data)).catch(() => {});
+    connectionsApi.list()
+      .then(({ data }) => setConnections(data))
+      .catch((err) => {
+        if (err?.response?.status === 403) setForbidden(true);
+      });
   }
   useEffect(() => { load(); }, []);
+
+  if (forbidden) {
+    return (
+      <div className="animate-fade-in max-w-3xl">
+        <div className="card p-10 flex flex-col items-center text-center">
+          <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+            <Lock size={22} className="text-slate-300" />
+          </div>
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+            {t("settings.forbidden", "No tenés permiso para ver esta sección")}
+          </p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-xs">
+            {t("settings.forbiddenSub", "Pedile a un administrador que te asigne el permiso de conexiones si necesitás acceder.")}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();

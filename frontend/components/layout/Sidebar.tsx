@@ -34,31 +34,30 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [showLangMenu, setShowLangMenu] = useState(false);
 
-  const isMedios = true;
-
   const userPerms: string[] = (currentUser as any)?.permissions ?? [];
   const hasPerm = (p: string) =>
     currentUser?.is_superuser || userPerms.includes(p);
 
+  // perm: undefined = visible para cualquier usuario logueado.
+  // Cada valor corresponde 1:1 a un permiso realmente exigido por el backend
+  // (ver require_permission en las rutas) — si no lo tiene, ni se muestra el link.
   const navAll = [
-    { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: "Analytics",                  restricted: true },
-    { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: "Analytics",                  restricted: true },
-    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: "Analytics",                  restricted: true },
-    { href: "/herramientas/cenefas",    label: "Generar cenefas",      icon: Presentation,     section: t("sidebar.herramientas"),    restricted: false },
-    { href: "/herramientas/cenefas/v2", label: "Editor de plantillas", icon: Layers,           section: t("sidebar.herramientas"),    restricted: false },
-    { href: "/herramientas/cenefas/v2/jobs", label: "Historial",       icon: Clock,            section: t("sidebar.herramientas"),    restricted: false },
-    ...(hasPerm("precios.search")
-      ? [{ href: "/precios", label: "Buscar precios", icon: Tag, section: t("sidebar.comercial"), restricted: false }]
-      : []),
-    { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion"),   restricted: false },
-    { href: "/ayuda",                   label: "Guía de uso",          icon: HelpCircle,       section: t("sidebar.configuracion"),   restricted: false },
-    { href: "/redexpress/planilla", label: "Planilla de pedidos", icon: ClipboardList, section: "Redexpress", restricted: false },
+    { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: "Analytics",                perm: "analytics.view" },
+    { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: "Analytics",                perm: "analytics.view" },
+    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: "Analytics",                perm: "ai.use" },
+    { href: "/herramientas/cenefas",    label: "Generar cenefas",      icon: Presentation,     section: t("sidebar.herramientas") },
+    { href: "/herramientas/cenefas/v2", label: "Editor de plantillas", icon: Layers,           section: t("sidebar.herramientas") },
+    { href: "/herramientas/cenefas/v2/jobs", label: "Historial",       icon: Clock,            section: t("sidebar.herramientas") },
+    { href: "/precios",                 label: "Buscar precios",       icon: Tag,              section: t("sidebar.comercial"),     perm: "precios.search" },
+    { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion"), perm: "connections.view" },
+    { href: "/ayuda",                   label: "Guía de uso",          icon: HelpCircle,       section: t("sidebar.configuracion") },
+    { href: "/redexpress/planilla", label: "Planilla de pedidos", icon: ClipboardList, section: "Redexpress" },
     ...(currentUser?.is_superuser
-      ? [{ href: "/admin", label: "Administrador", icon: ShieldCheck, section: t("sidebar.configuracion"), restricted: false }]
+      ? [{ href: "/admin", label: "Administrador", icon: ShieldCheck, section: t("sidebar.configuracion") }]
       : []),
   ];
 
-  const nav = navAll.filter((item) => isMedios || !item.restricted);
+  const nav = navAll.filter((item) => !item.perm || hasPerm(item.perm));
 
   useEffect(() => {
     connectionsApi.list()

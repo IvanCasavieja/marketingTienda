@@ -25,13 +25,14 @@ async def migrate_roles(conn: AsyncConnection) -> None:
     ))
 
     for role in DEFAULT_ROLES:
+        # ON CONFLICT DO NOTHING — a propósito: esto es un seed inicial, no un
+        # sync perpetuo. Si hiciera DO UPDATE, cualquier permiso que un admin
+        # haya tildado/destildado a mano para estos roles desde el panel se
+        # revertiría en el próximo restart del backend.
         await conn.execute(text("""
             INSERT INTO roles (name, description, permissions, is_system)
             VALUES (:name, :desc, CAST(:perms AS json), :sys)
-            ON CONFLICT (name) DO UPDATE
-                SET description = EXCLUDED.description,
-                    permissions  = EXCLUDED.permissions,
-                    is_system    = EXCLUDED.is_system
+            ON CONFLICT (name) DO NOTHING
         """), {
             "name": role["name"],
             "desc": role["description"],
