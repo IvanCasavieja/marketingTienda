@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from jose import JWTError, jwt
+import jwt
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
 from app.core.config import settings
@@ -42,7 +42,7 @@ def create_refresh_token(subject: Any) -> str:
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, _JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-    except JWTError:
+    except jwt.PyJWTError:
         return {}
 
 

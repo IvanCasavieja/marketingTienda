@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
 from app.core.deps import get_current_user
 from app.models.user import User
@@ -68,6 +69,7 @@ def _user_response(user: User) -> UserResponse:
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 async def register(payload: UserRegister, request: Request, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none():
@@ -86,6 +88,7 @@ async def register(payload: UserRegister, request: Request, db: AsyncSession = D
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("10/minute")
 async def login(payload: UserLogin, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == payload.email, User.is_active == True))
     user = result.scalar_one_or_none()
@@ -150,7 +153,9 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
 
 
 @router.post("/forgot-password", status_code=200)
+@limiter.limit("5/minute")
 async def forgot_password(
+    request: Request,
     payload: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -181,7 +186,9 @@ async def forgot_password(
 
 
 @router.post("/reset-password", status_code=200)
+@limiter.limit("5/minute")
 async def reset_password(
+    request: Request,
     payload: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):

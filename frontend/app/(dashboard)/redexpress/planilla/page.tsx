@@ -1,75 +1,76 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { redexpressApi, PlanillaRow, authApi } from "@/lib/api";
 import { CheckCircle2, Clock, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { clsx } from "clsx";
-
-// ── Column definitions ─────────────────────────────────────────────────────────
-
-const GROUPS = [
-  {
-    label: "Ofertas",
-    color: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200",
-    cols: [
-      { key: "a4_oferta_vertical",  label: "A4 Oferta Vertical" },
-      { key: "cenefa_oferta_x3",    label: "Cenefa Oferta x3" },
-      { key: "pinchos",             label: "Pinchos" },
-      { key: "afiche_54x74",        label: "Afiche 54x74" },
-    ],
-  },
-  {
-    label: "VDS y Supremo",
-    color: "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200",
-    cols: [
-      { key: "cenefa_valle_del_sol",  label: "Cenefa Valle del Sol" },
-      { key: "cenefa_supremo_hogar",  label: "Cenefa Supremo Hogar" },
-    ],
-  },
-  {
-    label: "Bombas",
-    color: "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200",
-    cols: [
-      { key: "bombas_3xa4",    label: "Bombas 3xA4" },
-      { key: "bombas_a4",      label: "Bombas A4" },
-      { key: "bombas_74x54",   label: "Bombas 74x54" },
-      { key: "pinchos_bombas", label: "Pinchos Bombas" },
-    ],
-  },
-  {
-    label: "Stickers",
-    color: "bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200",
-    cols: [
-      { key: "sticker_valle_del_sol", label: "Sticker VDS" },
-      { key: "sticker_carne",         label: "Sticker Carne" },
-    ],
-  },
-  {
-    label: "Otros items",
-    color: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200",
-    cols: [
-      { key: "cenefas_preciazos",    label: "Cenefas Preciazos" },
-      { key: "afiche_super_ahorro",  label: "Afiche Super Ahorro" },
-      { key: "pinchos_dias_expres",  label: "Pinchos Días Expres" },
-      { key: "hojas_amarillas",      label: "Hojas Amarillas", isText: true },
-    ],
-  },
-] as const;
+import { useTranslation } from "react-i18next";
 
 type ColKey = string;
-
-const ALL_COLS: { key: ColKey; label: string; isText?: boolean; group: string }[] = GROUPS.flatMap(
-  (g) => g.cols.map((c) => ({ ...c, group: g.label }))
-);
-
-const MONTH_NAMES = [
-  "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-];
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function PlanillaPedidosPage() {
+  const { t } = useTranslation();
+
+  // Grupos/columnas y nombres de mes salen de i18n para que la planilla se vea
+  // en el idioma elegido (antes estaban hardcodeados en español).
+  const GROUPS = useMemo(() => [
+    {
+      label: t("redexpress.groups.ofertas"),
+      color: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200",
+      cols: [
+        { key: "a4_oferta_vertical",  label: t("redexpress.cols.a4OfertaVertical") },
+        { key: "cenefa_oferta_x3",    label: t("redexpress.cols.cenefaOfertaX3") },
+        { key: "pinchos",             label: t("redexpress.cols.pinchos") },
+        { key: "afiche_54x74",        label: t("redexpress.cols.afiche54x74") },
+      ],
+    },
+    {
+      label: t("redexpress.groups.vdsSupremo"),
+      color: "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200",
+      cols: [
+        { key: "cenefa_valle_del_sol",  label: t("redexpress.cols.cenefaValleDelSol") },
+        { key: "cenefa_supremo_hogar",  label: t("redexpress.cols.cenefaSupremoHogar") },
+      ],
+    },
+    {
+      label: t("redexpress.groups.bombas"),
+      color: "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200",
+      cols: [
+        { key: "bombas_3xa4",    label: t("redexpress.cols.bombas3xa4") },
+        { key: "bombas_a4",      label: t("redexpress.cols.bombasA4") },
+        { key: "bombas_74x54",   label: t("redexpress.cols.bombas74x54") },
+        { key: "pinchos_bombas", label: t("redexpress.cols.pinchosBombas") },
+      ],
+    },
+    {
+      label: t("redexpress.groups.stickers"),
+      color: "bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200",
+      cols: [
+        { key: "sticker_valle_del_sol", label: t("redexpress.cols.stickerValleDelSol") },
+        { key: "sticker_carne",         label: t("redexpress.cols.stickerCarne") },
+      ],
+    },
+    {
+      label: t("redexpress.groups.otrosItems"),
+      color: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200",
+      cols: [
+        { key: "cenefas_preciazos",    label: t("redexpress.cols.cenefasPreciazos") },
+        { key: "afiche_super_ahorro",  label: t("redexpress.cols.aficheSuperAhorro") },
+        { key: "pinchos_dias_expres",  label: t("redexpress.cols.pinchosDiasExpres") },
+        { key: "hojas_amarillas",      label: t("redexpress.cols.hojasAmarillas"), isText: true },
+      ],
+    },
+  ], [t]);
+
+  const ALL_COLS: { key: ColKey; label: string; isText?: boolean; group: string }[] = useMemo(
+    () => GROUPS.flatMap((g) => g.cols.map((c) => ({ ...c, group: g.label }))),
+    [GROUPS]
+  );
+
+  const MONTH_NAMES = t("redexpress.months", { returnObjects: true }) as string[];
+
   const [meses, setMeses]         = useState<{ year: number; month: number }[]>([]);
   const [selectedMes, setSelected] = useState<{ year: number; month: number } | null>(null);
   const [rows, setRows]           = useState<PlanillaRow[]>([]);
@@ -100,7 +101,7 @@ export default function PlanillaPedidosPage() {
         setSelected(last);
       }
     } catch {
-      toast.error("Error al cargar meses");
+      toast.error(t("redexpress.errorCargarMeses"));
     }
   }
 
@@ -115,7 +116,7 @@ export default function PlanillaPedidosPage() {
       const { data } = await redexpressApi.getPlanilla(year, month);
       setRows(data);
     } catch {
-      toast.error("Error al cargar la planilla");
+      toast.error(t("redexpress.errorCargarPlanilla"));
     } finally {
       setLoading(false);
     }
@@ -159,7 +160,7 @@ export default function PlanillaPedidosPage() {
         return next;
       });
     } catch {
-      toast.error(`Error al guardar ${localNombre}`);
+      toast.error(t("redexpress.errorGuardarLocal", { local: localNombre }));
     } finally {
       setSavingRow(null);
     }
@@ -185,9 +186,9 @@ export default function PlanillaPedidosPage() {
             : r
         )
       );
-      toast.success("Pedido confirmado");
+      toast.success(t("redexpress.pedidoConfirmado"));
     } catch {
-      toast.error("Error al confirmar");
+      toast.error(t("redexpress.errorConfirmar"));
     } finally {
       setConfirmingRow(null);
     }
@@ -202,21 +203,21 @@ export default function PlanillaPedidosPage() {
           r.local_nombre === row.local_nombre ? { ...r, confirmado: false, confirmed_at: null } : r
         )
       );
-      toast.success("Pedido desconfirmado");
+      toast.success(t("redexpress.pedidoDesconfirmado"));
     } catch {
-      toast.error("Error al desconfirmar");
+      toast.error(t("redexpress.errorDesconfirmar"));
     }
   }
 
   async function handleCrearMes() {
     try {
       await redexpressApi.crearMes(newYear, newMonth);
-      toast.success(`Mes ${MONTH_NAMES[newMonth]} ${newYear} creado`);
+      toast.success(t("redexpress.mesCreado", { month: MONTH_NAMES[newMonth], year: newYear }));
       setShowNewMes(false);
       await loadMeses();
       setSelected({ year: newYear, month: newMonth });
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || "Error al crear mes");
+      toast.error(e?.response?.data?.detail || t("redexpress.errorCrearMes"));
     }
   }
 
@@ -239,16 +240,16 @@ export default function PlanillaPedidosPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
-            Planilla de pedidos
+            {t("redexpress.title")}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Redexpress · cartelería mensual
+            {t("redexpress.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {rows.length > 0 && (
             <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg">
-              {confirmadoCount}/{rows.length} confirmados
+              {t("redexpress.confirmadosCount", { count: confirmadoCount, total: rows.length })}
             </span>
           )}
           {!isSuperuser && rows.some((r) => r.can_edit) && (
@@ -260,7 +261,7 @@ export default function PlanillaPedidosPage() {
                   : "border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300"
               }`}
             >
-              {filterOnly ? "Ver todos" : "Solo mi local"}
+              {filterOnly ? t("redexpress.verTodos") : t("redexpress.soloMiLocal")}
             </button>
           )}
           {isSuperuser && (
@@ -268,7 +269,7 @@ export default function PlanillaPedidosPage() {
               onClick={() => setShowNewMes((v) => !v)}
               className="btn-secondary text-xs py-2 px-3"
             >
-              <Plus size={13} /> Nuevo mes
+              <Plus size={13} /> {t("redexpress.nuevoMes")}
             </button>
           )}
         </div>
@@ -277,7 +278,7 @@ export default function PlanillaPedidosPage() {
       {/* New month form */}
       {showNewMes && isSuperuser && (
         <div className="card p-4 flex items-center gap-3 animate-slide-up">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Crear mes:</span>
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t("redexpress.crearMesLabel")}</span>
           <select
             value={newMonth}
             onChange={(e) => setNewMonth(Number(e.target.value))}
@@ -295,10 +296,10 @@ export default function PlanillaPedidosPage() {
             min={2024} max={2030}
           />
           <button onClick={handleCrearMes} className="btn-primary text-xs py-2 px-3">
-            Crear
+            {t("redexpress.crear")}
           </button>
           <button onClick={() => setShowNewMes(false)} className="btn-secondary text-xs py-2 px-3">
-            Cancelar
+            {t("redexpress.cancelar")}
           </button>
         </div>
       )}
@@ -320,7 +321,7 @@ export default function PlanillaPedidosPage() {
           </button>
         ))}
         {meses.length === 0 && !loading && (
-          <p className="text-sm text-slate-400">No hay meses cargados todavía.</p>
+          <p className="text-sm text-slate-400">{t("redexpress.noMeses")}</p>
         )}
       </div>
 
@@ -337,7 +338,7 @@ export default function PlanillaPedidosPage() {
               <thead className="sticky top-0 z-20">
                 <tr className="bg-slate-50 dark:bg-slate-950">
                   <th className="sticky left-0 z-30 bg-slate-50 dark:bg-slate-950 w-52 min-w-[200px] border-b border-r border-slate-200 dark:border-slate-800 px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-400 text-[11px] uppercase tracking-wide">
-                    Local
+                    {t("redexpress.local")}
                   </th>
                   {GROUPS.map((g) => (
                     <th
@@ -352,10 +353,10 @@ export default function PlanillaPedidosPage() {
                     </th>
                   ))}
                   <th className="border-b border-slate-200 dark:border-slate-800 px-2 py-1.5 text-center font-semibold text-[10px] uppercase tracking-wider bg-slate-100 dark:bg-slate-900 text-slate-500">
-                    Otros / notas
+                    {t("redexpress.otrosNotas")}
                   </th>
                   <th className="border-b border-slate-200 dark:border-slate-800 px-2 py-1.5 text-center font-semibold text-[10px] uppercase tracking-wider bg-slate-100 dark:bg-slate-900 text-slate-500">
-                    Estado
+                    {t("redexpress.estado")}
                   </th>
                 </tr>
                 {/* Column labels */}
@@ -371,7 +372,7 @@ export default function PlanillaPedidosPage() {
                     </th>
                   ))}
                   <th className="border-b border-slate-100 dark:border-slate-800 px-2 py-1.5 text-center font-medium text-slate-500 dark:text-slate-400" style={{ minWidth: 140 }}>
-                    Notas libres
+                    {t("redexpress.notasLibres")}
                   </th>
                   <th className="border-b border-slate-100 dark:border-slate-800 px-2 py-1.5" style={{ minWidth: 120 }} />
                 </tr>
@@ -445,7 +446,7 @@ export default function PlanillaPedidosPage() {
                               handleCellChange(row.local_nombre, "otros", e.target.value)
                             }
                             className="w-full rounded border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 bg-transparent text-xs py-1 px-1 outline-none transition-colors"
-                            placeholder="notas..."
+                            placeholder={t("redexpress.notasPlaceholder")}
                           />
                         ) : (
                           <span className="text-xs text-slate-500 dark:text-slate-400 truncate block max-w-[130px]" title={(row as any).otros || ""}>
@@ -459,7 +460,7 @@ export default function PlanillaPedidosPage() {
                         {row.confirmado ? (
                           <div className="flex items-center justify-center gap-1">
                             <span className="badge badge-green flex items-center gap-1 text-[10px]">
-                              <CheckCircle2 size={10} /> Confirmado
+                              <CheckCircle2 size={10} /> {t("redexpress.confirmado")}
                             </span>
                             {isSuperuser && (
                               <button
@@ -477,16 +478,16 @@ export default function PlanillaPedidosPage() {
                             className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition-colors whitespace-nowrap"
                           >
                             {isConfirming ? (
-                              <span className="flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> Confirmando...</span>
+                              <span className="flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> {t("redexpress.confirmando")}</span>
                             ) : hasEdits ? (
-                              <span className="flex items-center gap-1"><Clock size={10} /> Guardando...</span>
+                              <span className="flex items-center gap-1"><Clock size={10} /> {t("redexpress.guardandoEstado")}</span>
                             ) : (
-                              "Confirmar pedido"
+                              t("redexpress.confirmarPedido")
                             )}
                           </button>
                         ) : (
                           <span className="text-[10px] text-slate-300 dark:text-slate-600 flex items-center justify-center gap-1">
-                            <Clock size={10} /> Pendiente
+                            <Clock size={10} /> {t("redexpress.pendiente")}
                           </span>
                         )}
                       </td>
@@ -500,16 +501,16 @@ export default function PlanillaPedidosPage() {
           {/* Footer */}
           <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50 flex items-center justify-between">
             <p className="text-[11px] text-slate-400">
-              {confirmadoCount} de {rows.length} locales confirmados
+              {t("redexpress.footerConfirmados", { count: confirmadoCount, total: rows.length })}
             </p>
             <p className="text-[11px] text-slate-400">
-              Los cambios se guardan automáticamente al dejar de escribir
+              {t("redexpress.footerAutosave")}
             </p>
           </div>
         </div>
       ) : selectedMes ? (
         <div className="card p-12 flex flex-col items-center text-center gap-3">
-          <p className="text-sm text-slate-400">No hay datos para este mes.</p>
+          <p className="text-sm text-slate-400">{t("redexpress.noData")}</p>
         </div>
       ) : null}
     </div>

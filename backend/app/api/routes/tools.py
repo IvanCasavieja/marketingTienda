@@ -6,21 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.uploads import read_limited as _read_limited
 from app.models.user import User
 from app.models.cenefa_template import CenefaTemplate
 from app.services.cenefas_service import generate_pptx_bytes, generate_template_bytes
-
-_MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
-
-
-async def _read_limited(file: UploadFile, label: str = "archivo") -> bytes:
-    data = await file.read()
-    if len(data) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"El {label} supera el límite de 50 MB ({len(data) // (1024*1024)} MB recibidos)"
-        )
-    return data
 
 logger = logging.getLogger(__name__)
 

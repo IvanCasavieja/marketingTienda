@@ -100,4 +100,6 @@ Una vez que tengas VS Code abierto con la carpeta del proyecto, decile a Claude:
 - Análisis con Claude AI + Mesa Redonda (debate Claude vs ChatGPT vs Llama)
 - Generador de Cenefas PPTX con templates guardados
 - Multi-idioma (ES/EN/PT)
-- Sistema de equipos con join codes
+- Usuarios con roles y permisos granulares (Superadmin, Admin, Editor, Viewer, o roles
+  personalizados) — no hay equipos/organizaciones separadas: es una plataforma
+  single-tenant, un solo pool de usuarios con rol y permisos globales

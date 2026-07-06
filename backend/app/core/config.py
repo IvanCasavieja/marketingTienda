@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     )
 
     # App
-    APP_ENV: str = "development"
+    # Producción por defecto: si un despliegue nuevo olvida setear esta env var,
+    # que falle "cerrado" (docs/openapi deshabilitados) en vez de exponerlos.
+    APP_ENV: str = "production"
     APP_SECRET_KEY: str  # Required — used for the scraper sync endpoint (X-Sync-Key header)
     JWT_SECRET_KEY: str = ""  # JWT signing key — defaults to APP_SECRET_KEY if not set
     APP_ALLOWED_ORIGINS: str = "http://localhost:3000"

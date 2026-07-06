@@ -45,15 +45,15 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: "Analytics",                perm: "analytics.view" },
     { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: "Analytics",                perm: "analytics.view" },
     { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: "Analytics",                perm: "ai.use" },
-    { href: "/herramientas/cenefas",    label: "Generar cenefas",      icon: Presentation,     section: t("sidebar.herramientas") },
-    { href: "/herramientas/cenefas/v2", label: "Editor de plantillas", icon: Layers,           section: t("sidebar.herramientas") },
-    { href: "/herramientas/cenefas/v2/jobs", label: "Historial",       icon: Clock,            section: t("sidebar.herramientas") },
-    { href: "/precios",                 label: "Buscar precios",       icon: Tag,              section: t("sidebar.comercial"),     perm: "precios.search" },
+    { href: "/herramientas/cenefas",    label: t("sidebar.generarCenefas"),  icon: Presentation, section: t("sidebar.herramientas") },
+    { href: "/herramientas/cenefas/v2", label: t("sidebar.editorPlantillas"), icon: Layers,     section: t("sidebar.herramientas") },
+    { href: "/herramientas/cenefas/v2/jobs", label: t("sidebar.historial"), icon: Clock,        section: t("sidebar.herramientas") },
+    { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,           section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion"), perm: "connections.view" },
-    { href: "/ayuda",                   label: "Guía de uso",          icon: HelpCircle,       section: t("sidebar.configuracion") },
-    { href: "/redexpress/planilla", label: "Planilla de pedidos", icon: ClipboardList, section: "Redexpress" },
+    { href: "/ayuda",                   label: t("sidebar.guiaUso"),   icon: HelpCircle,       section: t("sidebar.configuracion") },
+    { href: "/redexpress/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpress") },
     ...(currentUser?.is_superuser
-      ? [{ href: "/admin", label: "Administrador", icon: ShieldCheck, section: t("sidebar.configuracion") }]
+      ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]
       : []),
   ];
 
@@ -212,10 +212,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             onClick={toggleTheme}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-slate-500
                        hover:bg-white/5 hover:text-slate-300 transition-all duration-150"
-            aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+            aria-label={theme === "dark" ? t("sidebar.toggleToLight") : t("sidebar.toggleToDark")}
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-            {theme === "dark" ? "Modo claro" : "Modo oscuro"}
+            {theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
           </button>
         </div>
 

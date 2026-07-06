@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.uploads import read_limited
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
@@ -65,7 +66,7 @@ async def import_pptx(
     if not file.filename or not file.filename.lower().endswith(".pptx"):
         raise HTTPException(status_code=400, detail="El archivo debe ser .pptx")
 
-    pptx_bytes = await file.read()
+    pptx_bytes = await read_limited(file, "PPTX")
 
     from app.services.cenefas.pptx_importer import import_pptx as _import
     try:
@@ -268,7 +269,7 @@ async def validate_csv(
     tmpl = await _get_owned_template(template_id, current_user, db)
     definition = tmpl.definition
 
-    excel_bytes = await excel.read()
+    excel_bytes = await read_limited(excel, "Excel")
     try:
         products = load_products_from_bytes(excel_bytes, vigencia, aclaracion, otra_alcohol, banco)
     except KeyError as e:
@@ -388,7 +389,7 @@ async def create_job(
     if not excel.filename or not excel.filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="El Excel debe ser .xlsx o .xlsm")
 
-    excel_bytes = await excel.read()
+    excel_bytes = await read_limited(excel, "Excel")
 
     # Parse image overrides: {var_name: "ext:base64"} → {var_name: (bytes, ext)}
     image_overrides: dict | None = None
@@ -455,7 +456,7 @@ async def get_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Consulta el estado de un job (polling)."""
-    job = await _get_owned_job(job_id, current_user, db)
+    job = await _get_job(job_id, db)
     return _job_to_dict(job, include_report=True)
 
 
@@ -466,7 +467,7 @@ async def download_job_result(
     db: AsyncSession = Depends(get_db),
 ):
     """Descarga el archivo generado una vez que el job está en estado 'done'."""
-    job = await _get_owned_job(job_id, current_user, db)
+    job = await _get_job(job_id, db)
 
     if job.status != "done":
         raise HTTPException(
@@ -500,11 +501,13 @@ async def download_job_result(
 # Helpers de jobs
 # ---------------------------------------------------------------------------
 
-async def _get_owned_job(
+async def _get_job(
     job_id: uuid.UUID,
-    current_user: User,
     db: AsyncSession,
 ) -> CenefaJob:
+    """Los jobs de generación son visibles para cualquier usuario autenticado
+    (no son un recurso privado por-usuario), de ahí que no se filtre por
+    created_by — a diferencia de los templates, que sí tienen dueño."""
     result = await db.execute(
         select(CenefaJob).where(CenefaJob.id == job_id)
     )
