@@ -11,6 +11,10 @@ import { fNum, fMoney, fMoneyExact } from "@/lib/format";
 import { useTranslation } from "react-i18next";
 
 const PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"] as const;
+// Meta Ads: sync manual pausado — conexión eliminada (2026-07-06), la data
+// que se ve en pantalla es un fixture fijo. Reactivar agregando "meta" acá
+// de nuevo una vez restablecida la conexión real (ver metrics_service.py).
+const SYNC_PLATFORMS = PLATFORMS.filter((p) => p !== "meta");
 
 type SortKey = "spend" | "clicks" | "ctr" | "roas" | "conversions" | "cpa";
 type SortDir = "asc" | "desc";
@@ -197,7 +201,7 @@ export default function CampaignsPage() {
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("campaigns.subtitle")}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {PLATFORMS.map((p) => (
+          {SYNC_PLATFORMS.map((p) => (
             <button key={p} onClick={() => syncPlatform(p)} disabled={!!syncing}
               className="btn-secondary text-xs py-2 px-3">
               <RefreshCw size={12} className={syncing === p ? "animate-spin" : ""} />

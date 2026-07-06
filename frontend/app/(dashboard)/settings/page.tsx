@@ -7,8 +7,11 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 
+// Meta Ads: oculto de las plataformas conectables — conexión pausada (2026-07-06).
+// Para reactivar: descomentar la entrada de "meta" en PLATFORM_OPTIONS y en
+// TOKEN_GUIDES, y ver la nota en backend/app/services/metrics_service.py.
 const PLATFORM_OPTIONS = [
-  { value: "meta",             label: "Meta Ads",         color: "#1877F2", initial: "M",  desc: "Facebook & Instagram Ads" },
+  // { value: "meta",          label: "Meta Ads",         color: "#1877F2", initial: "M",  desc: "Facebook & Instagram Ads" },
   { value: "google_ads",       label: "Google Ads",       color: "#4285F4", initial: "G",  desc: "Search, Display & YouTube" },
   { value: "google_analytics", label: "Google Analytics", color: "#FF9900", initial: "GA", desc: "GA4 — sesiones, conversiones y revenue" },
   { value: "tiktok",           label: "TikTok Ads",       color: "#FF0050", initial: "T",  desc: "TikTok for Business" },
@@ -16,10 +19,10 @@ const PLATFORM_OPTIONS = [
 ];
 
 const TOKEN_GUIDES: Record<string, { steps: string[]; link: string }> = {
-  meta: {
-    steps: ["Andá a developers.facebook.com", "Creá una app tipo 'Business'", "En Herramientas → Explorador de API → Generá token con permisos ads_read, read_insights"],
-    link: "https://developers.facebook.com/tools/explorer",
-  },
+  // meta: {
+  //   steps: ["Andá a developers.facebook.com", "Creá una app tipo 'Business'", "En Herramientas → Explorador de API → Generá token con permisos ads_read, read_insights"],
+  //   link: "https://developers.facebook.com/tools/explorer",
+  // },
   google_ads: {
     steps: ["Andá a Google Cloud Console", "Creá credenciales OAuth 2.0", "Habilitá la Google Ads API", "Obtenés el access token con scope: https://www.googleapis.com/auth/adwords"],
     link: "https://console.cloud.google.com/",
@@ -56,7 +59,7 @@ export default function SettingsPage() {
   const [showTokens, setShowTokens]   = useState<Record<string, boolean>>({});
   const [forbidden, setForbidden]     = useState(false);
   const [form, setForm] = useState({
-    platform: "meta", account_id: "", account_name: "",
+    platform: "google_ads", account_id: "", account_name: "",
     access_token: "", refresh_token: "",
   });
 
@@ -93,7 +96,7 @@ export default function SettingsPage() {
       await connectionsApi.create(form);
       toast.success(t("settings.saveSuccess"));
       setShowForm(false);
-      setForm({ platform: "meta", account_id: "", account_name: "", access_token: "", refresh_token: "" });
+      setForm({ platform: "google_ads", account_id: "", account_name: "", access_token: "", refresh_token: "" });
       await load();
     } catch {
       toast.error(t("settings.saveError"));

@@ -7,9 +7,10 @@ from app.models.platform_connection import PlatformConnection, Platform
 from app.core.security import decrypt_token
 from app.core.config import settings
 from app.connectors import (
-    MetaAdsConnector, GoogleAdsConnector, TikTokAdsConnector,
+    GoogleAdsConnector, TikTokAdsConnector,
     DV360Connector, SFMCConnector, GoogleAnalyticsConnector,
 )
+# MetaAdsConnector no se importa — ver nota de reactivación más abajo
 
 
 async def get_connections(db: AsyncSession, platform: Platform) -> list[PlatformConnection]:
@@ -36,9 +37,22 @@ async def sync_platform(db: AsyncSession, platform: Platform, date_from: date, d
         access_token = decrypt_token(conn.access_token_enc)
         account_id = conn.account_id
 
-        if platform == Platform.META:
-            connector = MetaAdsConnector(access_token, account_id)
-        elif platform == Platform.GOOGLE_ADS:
+        # --- Meta Ads: sync real pausado (2026-07-06) --------------------------
+        # Se eliminó la conexión real de Meta (platform_connections) y se reemplazó
+        # la data de campaign_metrics por un fixture random (ver
+        # app/data/meta_fake_campaigns.json y scripts/generate_meta_fake_data.py)
+        # mientras dura la auditoría de la plataforma.
+        #
+        # Para reactivar la sincronización real de Meta:
+        #   1. Descomentar `from app.connectors.meta import MetaAdsConnector` y el
+        #      export en app/connectors/__init__.py
+        #   2. Descomentar el import de MetaAdsConnector arriba en este archivo
+        #   3. Descomentar la rama `if platform == Platform.META` de abajo
+        #   4. Volver a crear la conexión real en Settings (o restaurar el backup
+        #      de platform_connections/campaign_metrics tomado antes de borrarla)
+        # if platform == Platform.META:
+        #     connector = MetaAdsConnector(access_token, account_id)
+        if platform == Platform.GOOGLE_ADS:
             connector = GoogleAdsConnector(
                 access_token, account_id, settings.GOOGLE_DEVELOPER_TOKEN,
                 client_id=settings.GOOGLE_CLIENT_ID,

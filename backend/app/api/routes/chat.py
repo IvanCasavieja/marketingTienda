@@ -199,7 +199,6 @@ CONEXIONES A PLATAFORMAS
 Ir a [Configuración]({_BASE_URL}/settings).
 
 Plataformas soportadas:
-- **Meta Ads**: conectar via OAuth con token de acceso de Meta Business. Requiere permiso `ads_read`.
 - **Google Ads**: conectar via OAuth con cuenta Google con acceso a la cuenta publicitaria. Requiere Customer ID.
 - **TikTok Ads**: conectar via OAuth con App ID y App Secret de TikTok for Business.
 - **DV360**: conectar via Google OAuth con acceso a Display & Video 360.

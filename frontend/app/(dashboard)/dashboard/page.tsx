@@ -242,7 +242,9 @@ export default function DashboardPage() {
     setSyncing(true);
     const today = format(new Date(), "yyyy-MM-dd");
     const from  = isCustom && customFrom ? customFrom : format(subDays(new Date(), period), "yyyy-MM-dd");
-    const platformList = ["meta", "google_ads", "tiktok", "dv360"];
+    // Meta Ads excluido — conexión pausada (2026-07-06), la data mostrada es un
+    // fixture fijo. Ver nota de reactivación en backend/app/services/metrics_service.py
+    const platformList = ["google_ads", "tiktok", "dv360"];
     const results = await Promise.allSettled(platformList.map((p) => metricsApi.sync(p, from, today)));
 
     let synced = 0;

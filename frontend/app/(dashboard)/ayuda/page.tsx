@@ -347,7 +347,7 @@ export default function AyudaPage() {
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { name: "Meta Ads",   color: "#1877F2", req: "Access Token + Account ID" },
+              // { name: "Meta Ads", color: "#1877F2", req: "Access Token + Account ID" }, // pausado — ver settings/page.tsx
               { name: "Google Ads", color: "#4285F4", req: "OAuth 2.0 (refresh token)" },
               { name: "TikTok Ads", color: "#FF0050", req: "Access Token + Advertiser ID" },
               { name: "DV360",      color: "#34A853", req: "Service Account JSON" },
