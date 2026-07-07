@@ -65,6 +65,89 @@ def _build_compact_context(metrics: List[Dict], email_data: List[Dict], whatsapp
     return "\n".join(lines)
 
 
+def _aggregate_by_platform_day(metrics: List[Dict]) -> Dict[str, List[Tuple[str, Dict]]]:
+    """metrics trae una fila por campaña por día (metrics_service.get_metrics no
+    pre-agrega) — acá se agrupa por (plataforma, día) sumando todas las campañas
+    de esa plataforma en ese día. Es la pieza que faltaba: sin esto, las funciones
+    de contexto de más abajo colapsan todo el período en un solo total y ningún
+    modelo puede correlacionar un pico o caída con una fecha concreta."""
+    by_key: dict = defaultdict(lambda: {
+        "spend": 0.0, "impressions": 0, "clicks": 0, "conversions": 0, "revenue": 0.0,
+    })
+    for m in metrics:
+        key = (m["platform"].upper(), m["date"])
+        d = by_key[key]
+        d["spend"]       += m["spend"]
+        d["impressions"] += m["impressions"]
+        d["clicks"]      += m["clicks"]
+        d["conversions"] += m["conversions"]
+        d["revenue"]     += m["revenue"]
+
+    by_platform: dict = defaultdict(list)
+    for (platform, day), d in by_key.items():
+        by_platform[platform].append((day, d))
+    for platform in by_platform:
+        by_platform[platform].sort(key=lambda x: x[0])
+    return by_platform
+
+
+def _build_daily_series_context(metrics: List[Dict], max_days: int = 120) -> str:
+    """Serie diaria agregada por plataforma (fecha, spend, CTR, ROAS) — para Claude
+    y ChatGPT, que tienen contexto grande. Sin esta serie, un evento cultural con
+    fecha puntual no tiene con qué cruzarse: el modelo nunca ve qué pasó un día
+    específico, solo el total del período completo."""
+    if not metrics:
+        return ""
+    by_platform = _aggregate_by_platform_day(metrics)
+    if not by_platform:
+        return ""
+
+    lines = ["## SERIE DIARIA POR PLATAFORMA (usar para ubicar picos/caídas en una fecha exacta)"]
+    for platform in sorted(by_platform):
+        days = by_platform[platform][-max_days:]
+        lines.append(f"\n### {platform}")
+        for day, d in days:
+            ctr  = (d["clicks"] / d["impressions"] * 100) if d["impressions"] > 0 else 0.0
+            roas = (d["revenue"] / d["spend"]) if d["spend"] > 0 else 0.0
+            lines.append(
+                f"- {day}: Spend=${d['spend']:.0f} | Clicks={d['clicks']} | "
+                f"CTR={ctr:.2f}% | Conv={d['conversions']} | ROAS={roas:.2f}x"
+            )
+    return "\n".join(lines)
+
+
+def _build_daily_highlights(metrics: List[Dict], max_lines: int = 8) -> str:
+    """Versión ultra-compacta de la serie diaria: solo los días con mayor desvío
+    de spend respecto al promedio de su propia plataforma. Para Llama (Groq tiene
+    un límite de 12k TPM y no admite la tabla completa de _build_daily_series_context)."""
+    if not metrics:
+        return ""
+    by_platform = _aggregate_by_platform_day(metrics)
+
+    scored: list = []
+    for platform, days in by_platform.items():
+        if len(days) < 3:
+            continue
+        avg_spend = sum(d["spend"] for _, d in days) / len(days)
+        if avg_spend <= 0:
+            continue
+        for day, d in days:
+            delta_pct = (d["spend"] - avg_spend) / avg_spend * 100
+            if abs(delta_pct) < 25:
+                continue
+            roas = (d["revenue"] / d["spend"]) if d["spend"] > 0 else 0.0
+            scored.append((abs(delta_pct), platform, day, delta_pct, roas))
+
+    if not scored:
+        return ""
+    scored.sort(key=lambda x: x[0], reverse=True)
+    lines = ["## DÍAS ATÍPICOS POR PLATAFORMA (vs. el promedio de esa plataforma en el período)"]
+    for _, platform, day, delta_pct, roas in scored[:max_lines]:
+        direction = "pico" if delta_pct > 0 else "caída"
+        lines.append(f"- [{platform}] {day}: {direction} de spend ({delta_pct:+.0f}% vs. promedio), ROAS ese día={roas:.2f}x")
+    return "\n".join(lines)
+
+
 def _build_comparison_context(
     metrics_1: List[Dict], metrics_2: List[Dict],
     date_from_1: date, date_to_1: date,
@@ -222,24 +305,25 @@ async def _fetch_web_context(date_from: date, date_to: date) -> Tuple[str, int]:
 
     prompt = (
         f"Soy analista de marketing digital en Uruguay. Necesito contexto real del período "
-        f"{date_from} al {date_to} para interpretar métricas de campañas digitales.\n\n"
+        f"{date_from} al {date_to} para interpretar una SERIE DIARIA de métricas de campañas — "
+        f"o sea, voy a cruzar cada hallazgo tuyo contra el número exacto de un día puntual dentro "
+        f"de ese rango. Un hallazgo sin fecha específica no me sirve para nada.\n\n"
         f"Buscá en portales uruguayos (elpais.com.uy, elobservador.com.uy, ladiaria.com.uy, "
-        f"montevideo.com.uy, subrayado.com.uy,180.com.uy) y resumí en español:\n\n"
-        f"1. **Contexto cultural y social Uruguay**: noticias, eventos o tendencias relevantes "
-        f"del período que hayan captado la atención del público uruguayo — deportes, política, "
-        f"cultura popular, redes sociales, fenómenos virales locales — lo que sea que haya "
-        f"dominado la conversación y pueda explicar picos o caídas de atención del consumidor.\n"
+        f"montevideo.com.uy, subrayado.com.uy, 180.com.uy) y resumí en español:\n\n"
+        f"1. **Contexto cultural y social Uruguay**: noticias, eventos o tendencias del período "
+        f"que hayan captado la atención del público uruguayo — deportes, política, cultura "
+        f"popular, redes sociales, fenómenos virales locales — con la fecha exacta en que pasó "
+        f"o dominó la conversación.\n"
         f"2. **Eventos comerciales en Uruguay**: feriados, fechas especiales, campañas de "
         f"descuento (Hot Sale, Black Friday, Cyber Monday, vuelta al cole, Día de la Madre, etc.) "
-        f"que impacten el comportamiento de compra digital.\n"
+        f"que caigan dentro de {date_from} y {date_to} — con su fecha exacta, no \"a fin de mes\".\n"
         f"3. **Contexto económico Uruguay**: tipo de cambio USD/UYU, inflación, noticias "
-        f"económicas concretas que afecten el poder de compra o el consumo digital en el período.\n"
+        f"económicas puntuales del período que afecten el consumo digital, con fecha.\n"
         f"4. **Novedades de plataformas publicitarias** (Meta Ads, Google Ads, TikTok Ads): "
-        f"cambios de algoritmo, actualizaciones de políticas o nuevas funciones que puedan "
-        f"explicar variaciones de performance.\n\n"
-        f"Priorizá el punto 1 — el contexto cultural real es lo más difícil de inferir de los "
-        f"datos y lo más valioso para el análisis. Solo incluí lo concreto y verificable, "
-        f"con fuente si es posible. Máximo 500 palabras."
+        f"cambios de algoritmo o políticas del período, con fecha si la tiene.\n\n"
+        f"FORMATO OBLIGATORIO: cada hallazgo como '- DD/MM: hallazgo (fuente si aplica)'. Si no "
+        f"podés precisar el día exacto, no lo incluyas — preferí 3 hallazgos con fecha certera "
+        f"a 10 vagos. Priorizá el punto 1. Máximo 500 palabras."
     )
 
     client = _openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
@@ -496,10 +580,13 @@ async def stream_debate_turn(
 ) -> AsyncIterator[dict]:
     """Sequential debate: ChatGPT fetches web context, Claude draws conclusions, ChatGPT responds."""
     compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
+    daily_ctx   = _build_daily_series_context(metrics)
     history_str = _build_history_str(history)
     is_first_turn = not any(m.get("speaker") in ("Claude", "ChatGPT") for m in history)
 
     data_section = f"Datos del período {date_from} al {date_to}:\n{compact_ctx}"
+    if daily_ctx:
+        data_section += f"\n\n{daily_ctx}"
     if metrics_2 and date_from_2 and date_to_2:
         compact_ctx_2   = _build_compact_context(metrics_2, [], [])
         comparison_ctx  = _build_comparison_context(
@@ -510,6 +597,8 @@ async def stream_debate_turn(
             f"Datos período actual ({date_from} al {date_to}):\n{compact_ctx}\n\n"
             f"{comparison_ctx}"
         )
+        if daily_ctx:
+            data_section += f"\n\n{daily_ctx}"
 
     # ── Step 0: ChatGPT busca contexto externo del período ────────────────────
     web_context = ""
@@ -534,11 +623,14 @@ async def stream_debate_turn(
     # ── Step 1: Claude ────────────────────────────────────────────────────────
     web_ctx_note = (
         "\nIMPORTANTE: ChatGPT ya buscó contexto real del período en portales uruguayos "
-        "(elpais.com.uy, elobservador.com.uy, ladiaria.com.uy, montevideo.com.uy) — "
-        "ese contexto cultural, social, económico y comercial está incluido en los datos. "
-        "Usalo activamente: si hay un evento cultural o noticia que dominó la atención del "
-        "público uruguayo, mencionalo como posible causa de variaciones en las métricas. "
-        "No lo ignorés — es la parte más valiosa del análisis.\n"
+        "(elpais.com.uy, elobservador.com.uy, ladiaria.com.uy, montevideo.com.uy), con fecha "
+        "exacta por hallazgo — está en '## CONTEXTO EXTERNO DEL PERÍODO'. Cruzalo con la "
+        "'## SERIE DIARIA POR PLATAFORMA': para cada hallazgo con fecha, fijate qué pasó ese "
+        "día puntual en la serie (no en el promedio del período) y decilo explícitamente: "
+        "'el DD/MM hubo un pico/caída de spend/CTR de X, coincide con [evento]'. Si un evento "
+        "no coincide con ningún movimiento real ese día, decilo también — es información útil "
+        "('no explica nada, hay que buscar otra causa'). No lo ignorés — es la parte más "
+        "valiosa del análisis.\n"
         if web_context else ""
     )
     if is_first_turn:
@@ -550,9 +642,12 @@ async def stream_debate_turn(
             "(¿es el creativo, la audiencia, la puja, la plataforma? ¿O algo del contexto externo del período?).\n"
             "3. Compará los resultados entre sí: ¿qué campaña o plataforma está rindiendo mejor "
             "en relación a las otras dentro de este mismo conjunto de datos? ¿Por qué?\n"
-            "4. Calculá algo no obvio: costo por conversión real, eficiencia relativa entre plataformas, "
+            "4. Mirá la serie diaria: identificá el día de mayor pico o caída de alguna plataforma "
+            "y explicalo — con el contexto cultural si hay un hallazgo fechado ese mismo día, o con "
+            "una causa interna (cambio de puja, pausa de campaña, etc.) si no lo hay.\n"
+            "5. Calculá algo no obvio: costo por conversión real, eficiencia relativa entre plataformas, "
             "o la diferencia de ROAS entre las campañas de mayor y menor inversión.\n"
-            "5. Terminá con una conclusión fuerte y específica que ChatGPT pueda construir o desafiar."
+            "6. Terminá con una conclusión fuerte y específica que ChatGPT pueda construir o desafiar."
         )
     else:
         last_gpt = next((m["content"] for m in reversed(history) if m.get("speaker") == "ChatGPT"), None)
@@ -575,7 +670,9 @@ async def stream_debate_turn(
             f"Claude analizó los datos y concluyó:\n\"{claude_content}\"\n\n"
             "Tu trabajo ahora es hacer avanzar el análisis — no dar una segunda opinión paralela:\n"
             "1. ¿En qué punto de Claude estás de acuerdo? Reconocelo y construí sobre eso con un dato adicional.\n"
-            "2. ¿Qué ángulo importante pasó por alto Claude? Mostralo con evidencia de los datos.\n"
+            "2. ¿Qué ángulo importante pasó por alto Claude? Mostralo con evidencia de los datos — en particular, "
+            "revisá si dejó sin explicar algún día atípico de la serie diaria, o si el contexto externo que vos "
+            "mismo buscaste tiene un hallazgo fechado que Claude no cruzó.\n"
             "3. ¿Qué oportunidad de escala o acción concreta emerge cuando combinás tu lectura con la de Claude?\n"
             "4. Cerrá con una pregunta técnica específica a Claude o al usuario que abra el próximo paso del análisis.\n"
             "El objetivo es que cuando termines de hablar, el análisis esté más avanzado que cuando Claude terminó."
@@ -612,15 +709,20 @@ async def stream_llama_verdict(
     date_to_2: date | None = None,
 ) -> AsyncIterator[dict]:
     """Llama reads the full debate and gives an on-demand verdict."""
-    compact_ctx  = _build_compact_context(metrics, email_data, whatsapp_data)
-    history_str  = _build_history_str(history, max_items=24)
+    compact_ctx    = _build_compact_context(metrics, email_data, whatsapp_data)
+    highlights_ctx = _build_daily_highlights(metrics)
+    history_str    = _build_history_str(history, max_items=24)
 
     data_section = f"Datos de referencia ({date_from} al {date_to}):\n{compact_ctx}"
+    if highlights_ctx:
+        data_section += f"\n\n{highlights_ctx}"
     if metrics_2 and date_from_2 and date_to_2:
         comparison_ctx = _build_comparison_context(
             metrics_2, metrics, date_from_2, date_to_2, date_from, date_to
         )
         data_section = f"{comparison_ctx}\n\nDetalle período actual:\n{compact_ctx}"
+        if highlights_ctx:
+            data_section += f"\n\n{highlights_ctx}"
 
     prompt = (
         f"Sos el árbitro de este debate sobre campañas de marketing ({date_from} al {date_to}).\n\n"
@@ -633,6 +735,9 @@ async def stream_llama_verdict(
         "**2. Veredicto**\n"
         "¿Quién tiene el argumento más sólido y por qué? Tomá partido claro — no 'ambos tienen razón'. "
         "Justificá con al menos 2 datos concretos de la conversación o de los datos. "
+        "Parte de tu criterio para elegir: ¿quién usó evidencia con fecha puntual (un día de "
+        "'## DÍAS ATÍPICOS' o un hallazgo del contexto cultural) en vez de hablar del período en "
+        "general? Eso pesa más que una afirmación genérica aunque suene razonable. "
         "Si los datos no son concluyentes, decilo y explicá qué información faltaría para decidir.\n"
         "Incluí una tabla markdown comparando las posiciones si ayuda a ilustrar el veredicto.\n\n"
         "**3. Plan de acción**\n"
