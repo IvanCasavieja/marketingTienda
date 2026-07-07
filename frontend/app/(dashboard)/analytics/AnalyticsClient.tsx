@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
-const ALL_PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"];
+const ALL_PLATFORMS = ["meta", "google_ads", "google_analytics", "tiktok", "dv360"];
 
 // Per-speaker design tokens
 const S = {
@@ -139,18 +139,16 @@ function LlamaGreetingBubble({ content }: { content: string }) {
 }
 
 function AiBubble({
-  speaker, content, isGreeting = false, loading = false, thinking, liveContent,
+  speaker, content, isGreeting = false, loading = false, liveContent,
 }: {
   speaker: "Claude" | "ChatGPT";
   content?: string;
   isGreeting?: boolean;
   loading?: boolean;
-  thinking?: string;
   liveContent?: string;
 }) {
   const cfg = S[speaker];
   const isLeft = cfg.side === "left";
-  const [thinkingOpen, setThinkingOpen] = useState(true);
 
   return (
     <div className={`flex items-end gap-2.5 animate-fade-in ${isLeft ? "flex-row" : "flex-row-reverse"}`}>
@@ -165,25 +163,6 @@ function AiBubble({
           <div className={`flex items-center gap-1.5 px-1 ${isLeft ? "" : "flex-row-reverse"}`}>
             <span className={`text-[11px] font-bold ${cfg.name}`}>{speaker}</span>
             <span className="text-[10px] text-slate-400">{cfg.label}</span>
-          </div>
-        )}
-
-        {/* Pensamiento en vivo (adaptive thinking de Claude / reasoning summary de gpt-5.5) */}
-        {!!thinking && (
-          <div className={`w-full rounded-xl border border-dashed ${cfg.border} bg-slate-50 dark:bg-slate-800/50 ${isLeft ? "rounded-bl-sm" : "rounded-br-sm"}`}>
-            <button
-              onClick={() => setThinkingOpen((v) => !v)}
-              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide"
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} animate-pulse`} />
-              Pensando…
-              <span className="ml-auto">{thinkingOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}</span>
-            </button>
-            {thinkingOpen && (
-              <div className="px-3 pb-2 text-xs italic text-slate-400 dark:text-slate-500 leading-relaxed max-h-32 overflow-y-auto whitespace-pre-wrap">
-                {thinking}
-              </div>
-            )}
           </div>
         )}
 
@@ -239,7 +218,7 @@ function WebContextBubble({ content }: { content: string }) {
 
 export default function AnalyticsPage() {
   const { t } = useTranslation();
-  const [platforms, setPlatforms]           = useState<string[]>(ALL_PLATFORMS);
+  const [platforms, setPlatforms]           = useState<string[]>([]);
   const [dateFrom, setDateFrom]             = useState("");
   const [dateTo, setDateTo]                 = useState("");
   const [compareMode, setCompareMode]       = useState(false);
@@ -254,13 +233,10 @@ export default function AnalyticsPage() {
   const [history, setHistory]               = useState<Analysis[]>([]);
   const [activeAnalysis, setActive]         = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
-  // Pensamiento y respuesta en vivo por hablante mientras streamea (Claude:
-  // adaptive thinking real; ChatGPT: reasoning summary de gpt-5.5). Se limpian
-  // cuando llega el evento "message" final de ese hablante.
-  const [liveThinking, setLiveThinking]     = useState<Record<string, string>>({});
-  const [liveText, setLiveText]             = useState<Record<string, string>>({});
   // true mientras ChatGPT busca contexto externo (paso previo al debate en sí):
   // Claude todavía no arrancó en este momento, así que no debe verse "pensando".
+  // El pensamiento de Claude/ChatGPT no se muestra en vivo (a pedido) — se
+  // consume server-side sin techo de effort y solo llega la respuesta final.
   const [searchingContext, setSearchingContext] = useState(false);
 
   const abortRef        = useRef<AbortController | null>(null);
@@ -306,6 +282,10 @@ export default function AnalyticsPage() {
   async function sendChatMessage() {
     const msg = chatInput.trim();
     if (!msg || loading || verdictLoading) return;
+    if (platforms.length === 0) {
+      toast.error(t("analytics.selectPlatform"));
+      return;
+    }
     setChatInput("");
 
     const userMsg: ChatMessage = { id: `u-${Date.now()}`, speaker: "user", type: "user", content: msg };
@@ -322,8 +302,6 @@ export default function AnalyticsPage() {
     setLoading(true);
     setErrorMsg("");
     currentSpeakers.current = new Set();
-    setLiveThinking({});
-    setLiveText({});
     setSearchingContext(false);
     abortRef.current = new AbortController();
 
@@ -361,24 +339,9 @@ export default function AnalyticsPage() {
                 type: "web_context",
                 content: parsed.content,
               }]);
-            } else if (parsed.type === "thinking_delta") {
-              // No se agrega a currentSpeakers acá — recién cuando llega el
-              // "message" final, para que la burbuja en vivo (pendingSpeakers)
-              // no desaparezca apenas empieza a pensar.
-              setSearchingContext(false); // por si la búsqueda de contexto falló sin avisar
-              setLiveThinking((prev) => ({
-                ...prev, [parsed.speaker]: (prev[parsed.speaker] ?? "") + parsed.content,
-              }));
-            } else if (parsed.type === "text_delta") {
-              setSearchingContext(false);
-              setLiveText((prev) => ({
-                ...prev, [parsed.speaker]: (prev[parsed.speaker] ?? "") + parsed.content,
-              }));
             } else if (parsed.type === "message") {
               setSearchingContext(false);
               currentSpeakers.current.add(parsed.speaker);
-              setLiveThinking((prev) => { const next = { ...prev }; delete next[parsed.speaker]; return next; });
-              setLiveText((prev) => { const next = { ...prev }; delete next[parsed.speaker]; return next; });
               setChatMessages((prev) => [...prev, {
                 id: `m-${Date.now()}-${parsed.speaker}`,
                 speaker: parsed.speaker,
@@ -699,17 +662,16 @@ export default function AnalyticsPage() {
                 );
               })}
 
-              {/* Typing indicators — con pensamiento y respuesta en vivo si ya llegaron deltas */}
+              {/* Typing indicators — ChatGPT muestra que está buscando contexto antes de arrancar */}
               {pendingSpeakers.map((speaker) => (
                 <AiBubble
                   key={`t-${speaker}`}
                   speaker={speaker}
                   loading
-                  thinking={liveThinking[speaker]}
                   liveContent={
-                    searchingContext && speaker === "ChatGPT" && !liveText[speaker]
+                    searchingContext && speaker === "ChatGPT"
                       ? "Buscando contexto del período…"
-                      : liveText[speaker]
+                      : undefined
                   }
                 />
               ))}
