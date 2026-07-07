@@ -8,7 +8,6 @@
     "connections": "Connections",
     "settings": "Settings",
     "logout": "Sign out",
-    "noTeam": "No team assigned",
     "platforms": "Platforms",
     "allPlatforms": "All platforms",
     "syncData": "Sync data",
@@ -51,23 +50,12 @@
     "subtitle": "Sign in with your work account",
     "email": "Email",
     "password": "Password",
-    "teamCode": "Team code",
-    "optional": "Optional",
     "signIn": "Sign in",
     "signingIn": "Signing in...",
     "wrongCredentials": "Incorrect email or password",
     "forgotPassword": "Forgot your password?",
     "tagline": "All your investment in one place.",
     "taglineSub": "Connect Meta, Google Ads, TikTok and DV360. Analyze with AI. Make better decisions.",
-    "joinTeamTitle": "Assign team",
-    "joinTeamSub": "Enter your invitation code to access the group's connections and metrics.",
-    "joinTeamCode": "Team code",
-    "joinTeamPaste": "Paste your code",
-    "joinTeamBtn": "Join team",
-    "joinTeamValidating": "Validating...",
-    "continueWithoutTeam": "Continue without team",
-    "invalidCode": "Invalid team code",
-    "joinTeamSuccess": "Team assigned successfully",
     "features": {
       "realtime": "Real-time data",
       "realtimeDesc": "Meta, Google, TikTok and DV360 unified",
@@ -117,7 +105,7 @@
       "s1": "How do I sync Google Ads?",
       "s2": "How do I generate banners?",
       "s3": "What is ROAS?",
-      "s4": "How do I invite my team?"
+      "s4": "How do I search for competitor prices?"
     }
   },
   "dashboard": {
@@ -261,18 +249,10 @@
     "deleteError": "Error deleting",
     "saveSuccess": "Connection saved successfully",
     "saveError": "Error saving connection",
-    "teamTitle": "Team",
-    "copyCode": "Copy invitation code",
-    "codeCopied": "Code copied to clipboard",
-    "members": "{{n}} member",
-    "members_plural": "{{n}} members",
-    "noMembers": "No other members in this team",
-    "admin": "Admin",
-    "removeMember": "Remove {{email}} from the team?",
-    "removeMemberSuccess": "Member removed from team",
-    "removeMemberError": "Error removing member",
     "securityTitle": "Secure token storage",
-    "securitySub": "All tokens are encrypted with AES-256 before being stored in the database. Never stored as plain text."
+    "securitySub": "All tokens are encrypted with AES-256 before being stored in the database. Never stored as plain text.",
+    "forbidden": "You don't have permission to view this section",
+    "forbiddenSub": "Ask an administrator to grant you the connections permission if you need access."
   },
   "cenefas": {
     "title": "Banner Generator",

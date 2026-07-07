@@ -413,25 +413,26 @@ export default function AyudaPage() {
         </Card>
       </section>
 
-      {/* ── Equipos ── */}
+      {/* ── Roles y permisos ── */}
       <section>
-        <SectionTitle icon={Users} title="Equipos y accesos" />
+        <SectionTitle icon={Users} title="Roles y permisos" />
         <Card>
           <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
-            La plataforma soporta múltiples equipos dentro de una misma organización. Cada equipo tiene su propio
-            código de invitación y tipo de acceso.
+            No hay equipos ni organizaciones separadas: todos los usuarios comparten la misma plataforma,
+            y lo que cada uno puede ver o hacer depende de su rol. Un Superadmin puede crear roles
+            personalizados con cualquier combinación de permisos desde el <Link href="/admin" className="text-brand-600 hover:underline">Panel de Admin</Link>.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="bg-blue-50 rounded-xl p-3">
-              <p className="text-xs font-semibold text-blue-700 mb-1">Medios Digitales</p>
+              <p className="text-xs font-semibold text-blue-700 mb-1">Superadmin / Editor</p>
               <p className="text-[11px] text-blue-600 leading-relaxed">
-                Acceso completo: Dashboard, Campañas, Análisis IA y Herramientas.
+                Acceso completo: Dashboard, Campañas, Análisis IA y Herramientas (Editor no gestiona usuarios ni roles).
               </p>
             </div>
             <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Otros equipos</p>
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Viewer / roles personalizados</p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                Acceso restringido a Herramientas (cenefas, editor, historial) sin métricas de plataformas.
+                Solo lectura por defecto (Viewer), o el conjunto exacto de permisos que le asigne un Superadmin.
               </p>
             </div>
           </div>

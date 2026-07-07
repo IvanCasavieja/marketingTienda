@@ -186,7 +186,7 @@ export default function JobsPage() {
         </a>
         <div>
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-200">Historial de generaciones</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Últimos 20 trabajos de tu equipo · Los archivos expiran a las 24 h</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Últimos 20 trabajos generados · Los archivos expiran a las 24 h</p>
         </div>
         <button onClick={loadJobs}
           className="ml-auto p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"

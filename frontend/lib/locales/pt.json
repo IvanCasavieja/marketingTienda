@@ -8,7 +8,6 @@
     "connections": "Conexões",
     "settings": "Configurações",
     "logout": "Sair",
-    "noTeam": "Sem equipe atribuída",
     "platforms": "Plataformas",
     "allPlatforms": "Todas as plataformas",
     "syncData": "Sincronizar",
@@ -51,23 +50,12 @@
     "subtitle": "Entre com sua conta de trabalho",
     "email": "E-mail",
     "password": "Senha",
-    "teamCode": "Código de equipe",
-    "optional": "Opcional",
     "signIn": "Entrar",
     "signingIn": "Entrando...",
     "wrongCredentials": "E-mail ou senha incorretos",
     "forgotPassword": "Esqueceu sua senha?",
     "tagline": "Todo o seu investimento em um só lugar.",
     "taglineSub": "Conecte Meta, Google Ads, TikTok e DV360. Analise com IA. Tome melhores decisões.",
-    "joinTeamTitle": "Atribuir equipe",
-    "joinTeamSub": "Insira o código de convite para acessar as conexões e métricas do grupo.",
-    "joinTeamCode": "Código de equipe",
-    "joinTeamPaste": "Cole seu código",
-    "joinTeamBtn": "Entrar na equipe",
-    "joinTeamValidating": "Validando...",
-    "continueWithoutTeam": "Continuar sem equipe",
-    "invalidCode": "Código de equipe inválido",
-    "joinTeamSuccess": "Equipe atribuída com sucesso",
     "features": {
       "realtime": "Dados em tempo real",
       "realtimeDesc": "Meta, Google, TikTok e DV360 unificados",
@@ -117,7 +105,7 @@
       "s1": "Como sincronizo o Google Ads?",
       "s2": "Como gero faixas?",
       "s3": "O que é ROAS?",
-      "s4": "Como convido minha equipe?"
+      "s4": "Como busco preços da concorrência?"
     }
   },
   "dashboard": {
@@ -261,18 +249,10 @@
     "deleteError": "Erro ao excluir",
     "saveSuccess": "Conexão salva com sucesso",
     "saveError": "Erro ao salvar conexão",
-    "teamTitle": "Equipe",
-    "copyCode": "Copiar código de convite",
-    "codeCopied": "Código copiado para a área de transferência",
-    "members": "{{n}} membro",
-    "members_plural": "{{n}} membros",
-    "noMembers": "Não há outros membros nesta equipe",
-    "admin": "Admin",
-    "removeMember": "Remover {{email}} da equipe?",
-    "removeMemberSuccess": "Membro removido da equipe",
-    "removeMemberError": "Erro ao remover membro",
     "securityTitle": "Armazenamento seguro de tokens",
-    "securitySub": "Todos os tokens são criptografados com AES-256 antes de serem armazenados no banco de dados. Nunca armazenados em texto simples."
+    "securitySub": "Todos os tokens são criptografados com AES-256 antes de serem armazenados no banco de dados. Nunca armazenados em texto simples.",
+    "forbidden": "Você não tem permissão para ver esta seção",
+    "forbiddenSub": "Peça a um administrador para atribuir a permissão de conexões se precisar de acesso."
   },
   "cenefas": {
     "title": "Gerador de Faixas",
