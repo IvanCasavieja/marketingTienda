@@ -450,14 +450,16 @@ export default function AnalyticsPage() {
 
   const hasDebateContent = chatMessages.some((m) => m.type === "debate");
   const llamaHasSpoken   = chatMessages.some((m) => m.speaker === "Llama" && m.type === "debate");
+  // Orden real del backend: ChatGPT busca contexto -> Claude responde -> ChatGPT
+  // responde. Se muestra un único hablante "pensando" a la vez (nunca los dos
+  // en simultáneo) para que se vea ese orden secuencial en vez de ambigüedad.
   const pendingSpeakers  = loading
-    ? (["Claude", "ChatGPT"] as const).filter((s) => {
-        if (currentSpeakers.current.has(s)) return false;
-        // Mientras ChatGPT busca contexto, Claude todavía no arrancó su turno
-        // — no mostrarlo como "pensando" hasta que termine esa búsqueda.
-        if (searchingContext && s === "Claude") return false;
-        return true;
-      })
+    ? (searchingContext
+        ? (["ChatGPT"] as const)
+        : (() => {
+            const next = (["Claude", "ChatGPT"] as const).find((s) => !currentSpeakers.current.has(s));
+            return next ? [next] : [];
+          })())
     : [];
   const debateHistory = history.filter((h) => h.analysis_type === "debate");
 
