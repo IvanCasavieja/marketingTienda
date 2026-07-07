@@ -259,6 +259,9 @@ export default function AnalyticsPage() {
   // cuando llega el evento "message" final de ese hablante.
   const [liveThinking, setLiveThinking]     = useState<Record<string, string>>({});
   const [liveText, setLiveText]             = useState<Record<string, string>>({});
+  // true mientras ChatGPT busca contexto externo (paso previo al debate en sí):
+  // Claude todavía no arrancó en este momento, así que no debe verse "pensando".
+  const [searchingContext, setSearchingContext] = useState(false);
 
   const abortRef        = useRef<AbortController | null>(null);
   const chatEndRef      = useRef<HTMLDivElement | null>(null);
@@ -321,6 +324,7 @@ export default function AnalyticsPage() {
     currentSpeakers.current = new Set();
     setLiveThinking({});
     setLiveText({});
+    setSearchingContext(false);
     abortRef.current = new AbortController();
 
     try {
@@ -347,7 +351,10 @@ export default function AnalyticsPage() {
           if (!event.startsWith("data: ")) continue;
           try {
             const parsed = JSON.parse(event.slice(6).trim());
-            if (parsed.type === "web_context") {
+            if (parsed.type === "web_search_start") {
+              setSearchingContext(true);
+            } else if (parsed.type === "web_context") {
+              setSearchingContext(false);
               setChatMessages((prev) => [...prev, {
                 id: `wc-${Date.now()}`,
                 speaker: "ChatGPT",
@@ -358,14 +365,17 @@ export default function AnalyticsPage() {
               // No se agrega a currentSpeakers acá — recién cuando llega el
               // "message" final, para que la burbuja en vivo (pendingSpeakers)
               // no desaparezca apenas empieza a pensar.
+              setSearchingContext(false); // por si la búsqueda de contexto falló sin avisar
               setLiveThinking((prev) => ({
                 ...prev, [parsed.speaker]: (prev[parsed.speaker] ?? "") + parsed.content,
               }));
             } else if (parsed.type === "text_delta") {
+              setSearchingContext(false);
               setLiveText((prev) => ({
                 ...prev, [parsed.speaker]: (prev[parsed.speaker] ?? "") + parsed.content,
               }));
             } else if (parsed.type === "message") {
+              setSearchingContext(false);
               currentSpeakers.current.add(parsed.speaker);
               setLiveThinking((prev) => { const next = { ...prev }; delete next[parsed.speaker]; return next; });
               setLiveText((prev) => { const next = { ...prev }; delete next[parsed.speaker]; return next; });
@@ -478,7 +488,13 @@ export default function AnalyticsPage() {
   const hasDebateContent = chatMessages.some((m) => m.type === "debate");
   const llamaHasSpoken   = chatMessages.some((m) => m.speaker === "Llama" && m.type === "debate");
   const pendingSpeakers  = loading
-    ? (["Claude", "ChatGPT"] as const).filter((s) => !currentSpeakers.current.has(s))
+    ? (["Claude", "ChatGPT"] as const).filter((s) => {
+        if (currentSpeakers.current.has(s)) return false;
+        // Mientras ChatGPT busca contexto, Claude todavía no arrancó su turno
+        // — no mostrarlo como "pensando" hasta que termine esa búsqueda.
+        if (searchingContext && s === "Claude") return false;
+        return true;
+      })
     : [];
   const debateHistory = history.filter((h) => h.analysis_type === "debate");
 
@@ -690,7 +706,11 @@ export default function AnalyticsPage() {
                   speaker={speaker}
                   loading
                   thinking={liveThinking[speaker]}
-                  liveContent={liveText[speaker]}
+                  liveContent={
+                    searchingContext && speaker === "ChatGPT" && !liveText[speaker]
+                      ? "Buscando contexto del período…"
+                      : liveText[speaker]
+                  }
                 />
               ))}
               {verdictLoading && <LlamaBubble loading />}

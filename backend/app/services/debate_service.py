@@ -297,7 +297,13 @@ async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str
 async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) -> AsyncIterator[dict]:
     """Versión en vivo de _ask_claude: yieldea el pensamiento (adaptive thinking)
     y la respuesta final token por token a medida que llegan, en vez de esperar
-    la respuesta completa. Termina con un evento {"kind": "done", ...}."""
+    la respuesta completa. Termina con un evento {"kind": "done", ...}.
+
+    IMPORTANTE: con thinking activado, el razonamiento consume del mismo
+    presupuesto que max_tokens (no es un budget aparte) — max_tokens tiene que
+    dejar margen de sobra para pensar Y escribir la respuesta, o el modelo se
+    queda sin espacio para el texto final (stop_reason="max_tokens" con
+    contenido vacío, sin ningún error visible)."""
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY no configurado")
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -320,6 +326,12 @@ async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) ->
                 yield {"kind": "text", "delta": delta.text}
         final = await stream.get_final_message()
         tokens = final.usage.input_tokens + final.usage.output_tokens
+        if not full_text and final.stop_reason == "max_tokens":
+            # Se quedó sin presupuesto pensando y no llegó a escribir nada —
+            # mejor decirlo explícitamente que devolver una burbuja vacía.
+            full_text.append(
+                "*(se quedó sin espacio pensando y no llegó a responder — probá de nuevo o con una pregunta más puntual)*"
+            )
     yield {"kind": "done", "content": "".join(full_text), "tokens": tokens}
 
 
@@ -359,9 +371,15 @@ async def _ask_gpt_stream(system: str, prompt: str, max_tokens: int = 800) -> As
         elif etype == "response.output_text.delta":
             full_text.append(event.delta)
             yield {"kind": "text", "delta": event.delta}
-        elif etype == "response.completed":
+        elif etype in ("response.completed", "response.incomplete"):
             usage = event.response.usage
             tokens = (usage.input_tokens or 0) + (usage.output_tokens or 0)
+            incomplete = getattr(event.response, "incomplete_details", None)
+            if not full_text and incomplete and incomplete.reason == "max_output_tokens":
+                # Se quedó sin presupuesto razonando y no llegó a escribir nada.
+                full_text.append(
+                    "*(se quedó sin espacio pensando y no llegó a responder — probá de nuevo o con una pregunta más puntual)*"
+                )
     yield {"kind": "done", "content": "".join(full_text), "tokens": tokens}
 
 
@@ -672,6 +690,10 @@ async def stream_debate_turn(
             data_section += f"\n\n{daily_ctx}"
 
     # ── Step 0: ChatGPT busca contexto externo del período ────────────────────
+    # Aviso explícito de que arranca la búsqueda: sin esto, el frontend mostraba
+    # a Claude como "pensando" desde el primer instante aunque todavía no había
+    # arrancado — recién empieza después de este paso.
+    yield {"type": "web_search_start", "speaker": "ChatGPT"}
     web_context = ""
     web_ctx_tokens = 0
     try:
@@ -734,7 +756,7 @@ async def stream_debate_turn(
     claude_prompt = "\n\n".join([*base_parts, claude_instructions])
     claude_content = ""
     claude_tokens = 0
-    async for chunk in _ask_claude_stream(CLAUDE_PERSONA, claude_prompt, 1400):
+    async for chunk in _ask_claude_stream(CLAUDE_PERSONA, claude_prompt, 4000):
         if chunk["kind"] == "thinking":
             yield {"type": "thinking_delta", "speaker": "Claude", "content": chunk["delta"]}
         elif chunk["kind"] == "text":
@@ -772,7 +794,7 @@ async def stream_debate_turn(
     gpt_prompt = "\n\n".join([*base_parts, gpt_instructions])
     gpt_content = ""
     gpt_tokens = 0
-    async for chunk in _ask_gpt_stream(GPT_PERSONA, gpt_prompt, 1400):
+    async for chunk in _ask_gpt_stream(GPT_PERSONA, gpt_prompt, 4000):
         if chunk["kind"] == "thinking":
             yield {"type": "thinking_delta", "speaker": "ChatGPT", "content": chunk["delta"]}
         elif chunk["kind"] == "text":
