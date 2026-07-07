@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.models.user import User
 from app.models.ai_analysis import AIAnalysis
 from app.models.platform_connection import Platform
-from app.services.metrics_service import get_metrics
+from app.services.metrics_service import get_metrics, get_available_platforms
 from app.services.claude_service import ANALYSIS_HANDLERS, stream_analysis
 from app.services.debate_service import run_debate, stream_debate, stream_debate_turn, stream_llama_verdict
 from app.connectors.sfmc import SFMCConnector
@@ -23,6 +23,23 @@ logger = logging.getLogger(__name__)
 _ALL_HANDLERS = {**ANALYSIS_HANDLERS, "debate": run_debate}
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+async def _assert_platforms_available(db: AsyncSession, platforms: List[Platform]) -> None:
+    """Corta antes de gastar un solo token de LLM si piden analizar una plataforma
+    sin conexión activa (ni fixture habilitado) — sin esto, get_metrics devuelve
+    una lista vacía en silencio y el análisis sigue adelante sobre datos que no
+    existen."""
+    available = await get_available_platforms(db)
+    missing = [p.value for p in platforms if p not in available]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Sin conexión activa para: {', '.join(missing)}. "
+                "Conectá la plataforma en Conexiones antes de analizarla."
+            ),
+        )
 
 
 async def _get_sfmc_data(date_from: date, date_to: date, context: str = "") -> tuple[list, list]:
@@ -73,6 +90,17 @@ class DebateVerdictRequest(BaseModel):
     date_to_2: Optional[date] = None
 
 
+@router.get("/available-platforms")
+async def available_platforms(
+    current_user: User = Depends(require_permission("ai.use")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Plataformas que hoy se pueden analizar (conexión activa o fixture habilitado
+    como Meta) — el frontend usa esto para deshabilitar las que no van a andar."""
+    available = await get_available_platforms(db)
+    return {"platforms": sorted(p.value for p in available)}
+
+
 @router.post("/analyze")
 async def analyze(
     payload: AnalysisRequest,
@@ -83,6 +111,7 @@ async def analyze(
     if not handler:
         raise HTTPException(status_code=400, detail=f"Unknown analysis type: {payload.analysis_type}")
 
+    await _assert_platforms_available(db, payload.platforms)
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
 
     try:
@@ -184,6 +213,7 @@ async def analyze_stream(
     if payload.analysis_type not in STREAMABLE_TYPES:
         raise HTTPException(status_code=400, detail="Use /analyze for debate analysis")
 
+    await _assert_platforms_available(db, payload.platforms)
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
 
     email_data, whatsapp_data = [], []
@@ -244,6 +274,7 @@ async def debate_stream(
     current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
 ):
+    await _assert_platforms_available(db, payload.platforms)
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
 
     email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to, "debate stream")
@@ -306,7 +337,9 @@ async def debate_turn(
     current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Single conversational turn: Claude first, then ChatGPT. Auto-saves after every turn."""
+    """Single conversational turn: ChatGPT first (ya con contexto web fresco), luego Claude
+    (rebate/valida con números). Auto-saves after every turn."""
+    await _assert_platforms_available(db, payload.platforms)
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
     metrics_2: list = []
     if payload.date_from_2 and payload.date_to_2:
@@ -395,6 +428,7 @@ async def debate_verdict(
     db: AsyncSession = Depends(get_db),
 ):
     """Request Llama verdict on the current conversation, then save full debate to DB."""
+    await _assert_platforms_available(db, payload.platforms)
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
     metrics_2: list = []
     if payload.date_from_2 and payload.date_to_2:

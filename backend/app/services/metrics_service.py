@@ -12,6 +12,11 @@ from app.connectors import (
 )
 # MetaAdsConnector no se importa — ver nota de reactivación más abajo
 
+# Meta no tiene PlatformConnection real (se borró al pausar la integración,
+# ver sync_platform más abajo) pero sí tiene datos fixture en campaign_metrics
+# — se habilita explícitamente para análisis aunque no tenga conexión activa.
+FIXTURE_PLATFORMS: set[Platform] = {Platform.META}
+
 
 async def get_connections(db: AsyncSession, platform: Platform) -> list[PlatformConnection]:
     result = await db.execute(
@@ -23,6 +28,16 @@ async def get_connections(db: AsyncSession, platform: Platform) -> list[Platform
         )
     )
     return result.scalars().all()
+
+
+async def get_available_platforms(db: AsyncSession) -> set[Platform]:
+    """Plataformas que hoy se pueden analizar: con conexión activa, o
+    explícitamente habilitadas por fixture (Meta, mientras dure la pausa)."""
+    result = await db.execute(
+        select(PlatformConnection.platform).where(PlatformConnection.is_active == True).distinct()
+    )
+    connected = set(result.scalars().all())
+    return connected | FIXTURE_PLATFORMS
 
 
 async def sync_platform(db: AsyncSession, platform: Platform, date_from: date, date_to: date) -> int:

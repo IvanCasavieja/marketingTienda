@@ -155,6 +155,7 @@ export const analyticsApi = {
     }),
   getHistory: () => api.get("/analytics/history"),
   getAnalysis: (id: number) => api.get(`/analytics/history/${id}`),
+  getAvailablePlatforms: () => api.get("/analytics/available-platforms"),
 };
 
 export const sfmcApi = {

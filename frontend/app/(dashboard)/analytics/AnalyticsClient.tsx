@@ -234,10 +234,16 @@ export default function AnalyticsPage() {
   const [activeAnalysis, setActive]         = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
   // true mientras ChatGPT busca contexto externo (paso previo al debate en sí):
-  // Claude todavía no arrancó en este momento, así que no debe verse "pensando".
-  // El pensamiento de Claude/ChatGPT no se muestra en vivo (a pedido) — se
-  // consume server-side sin techo de effort y solo llega la respuesta final.
+  // el otro hablante todavía no arrancó en este momento, así que no debe verse "pensando".
+  // El pensamiento completo de Claude/ChatGPT no se muestra en vivo (a pedido) — se
+  // consume server-side sin techo de effort. Sí se muestra un indicador corto de
+  // progreso (titulares que el propio modelo va marcando en su resumen de pensamiento,
+  // ej. "Calculando ROAS por campaña"), sin exponer el razonamiento completo.
   const [searchingContext, setSearchingContext] = useState(false);
+  const [progressText, setProgressText]     = useState<Record<string, string>>({});
+  // Plataformas con conexión activa (o fixture habilitado, ej. Meta) — las que no
+  // están acá se deshabilitan en el checklist para no analizar datos que no existen.
+  const [availablePlatforms, setAvailablePlatforms] = useState<string[] | null>(null);
 
   const abortRef        = useRef<AbortController | null>(null);
   const chatEndRef      = useRef<HTMLDivElement | null>(null);
@@ -252,6 +258,9 @@ export default function AnalyticsPage() {
     setDateTo2(format(subDays(from, 1), "yyyy-MM-dd"));
     setDateFrom2(format(subDays(from, 30), "yyyy-MM-dd"));
     analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
+    analyticsApi.getAvailablePlatforms()
+      .then(({ data }) => setAvailablePlatforms(data.platforms))
+      .catch(() => setAvailablePlatforms([])); // ante la duda, no dejar tildar nada
   }, []);
 
   useEffect(() => {
@@ -303,6 +312,7 @@ export default function AnalyticsPage() {
     setErrorMsg("");
     currentSpeakers.current = new Set();
     setSearchingContext(false);
+    setProgressText({});
     abortRef.current = new AbortController();
 
     try {
@@ -313,7 +323,12 @@ export default function AnalyticsPage() {
         compareMode ? dateFrom2 : undefined,
         compareMode ? dateTo2   : undefined,
       );
-      if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
+      if (!response.ok || !response.body) {
+        // 400 = plataforma sin conexión activa (chequeado server-side) — el checklist
+        // ya debería impedir llegar hasta acá, pero por las dudas mostramos el motivo real.
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? t("analytics.defaultError"));
+      }
 
       const reader  = response.body.getReader();
       const decoder = new TextDecoder();
@@ -339,9 +354,12 @@ export default function AnalyticsPage() {
                 type: "web_context",
                 content: parsed.content,
               }]);
+            } else if (parsed.type === "thinking_progress") {
+              setProgressText((prev) => ({ ...prev, [parsed.speaker]: parsed.text }));
             } else if (parsed.type === "message") {
               setSearchingContext(false);
               currentSpeakers.current.add(parsed.speaker);
+              setProgressText((prev) => { const next = { ...prev }; delete next[parsed.speaker]; return next; });
               setChatMessages((prev) => [...prev, {
                 id: `m-${Date.now()}-${parsed.speaker}`,
                 speaker: parsed.speaker,
@@ -389,7 +407,12 @@ export default function AnalyticsPage() {
         compareMode ? dateFrom2 : undefined,
         compareMode ? dateTo2   : undefined,
       );
-      if (!response.ok || !response.body) throw new Error(t("analytics.defaultError"));
+      if (!response.ok || !response.body) {
+        // 400 = plataforma sin conexión activa (chequeado server-side) — el checklist
+        // ya debería impedir llegar hasta acá, pero por las dudas mostramos el motivo real.
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? t("analytics.defaultError"));
+      }
 
       const reader  = response.body.getReader();
       const decoder = new TextDecoder();
@@ -450,14 +473,15 @@ export default function AnalyticsPage() {
 
   const hasDebateContent = chatMessages.some((m) => m.type === "debate");
   const llamaHasSpoken   = chatMessages.some((m) => m.speaker === "Llama" && m.type === "debate");
-  // Orden real del backend: ChatGPT busca contexto -> Claude responde -> ChatGPT
-  // responde. Se muestra un único hablante "pensando" a la vez (nunca los dos
+  // Orden real del backend: ChatGPT busca contexto -> ChatGPT responde primero
+  // (ya tiene el contexto fresco) -> Claude responde segundo (rebate/valida con
+  // números). Se muestra un único hablante "pensando" a la vez (nunca los dos
   // en simultáneo) para que se vea ese orden secuencial en vez de ambigüedad.
   const pendingSpeakers  = loading
     ? (searchingContext
         ? (["ChatGPT"] as const)
         : (() => {
-            const next = (["Claude", "ChatGPT"] as const).find((s) => !currentSpeakers.current.has(s));
+            const next = (["ChatGPT", "Claude"] as const).find((s) => !currentSpeakers.current.has(s));
             return next ? [next] : [];
           })())
     : [];
@@ -476,25 +500,37 @@ export default function AnalyticsPage() {
           <div className="card p-5">
             <p className="section-title mb-3">{t("analytics.platformsLabel")}</p>
             <div className="space-y-2">
-              {ALL_PLATFORMS.map((p) => (
-                <label key={p} className="flex items-center gap-3 cursor-pointer group">
-                  <div
-                    className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
-                      platforms.includes(p) ? "bg-brand-600 border-brand-600" : "border-slate-300 group-hover:border-brand-400"
-                    }`}
-                    onClick={() => setPlatforms((prev) =>
-                      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
-                    )}
+              {ALL_PLATFORMS.map((p) => {
+                // null = todavía no llegó la respuesta de disponibilidad — no
+                // deshabilitar todavía para evitar un parpadeo. Si falló el fetch
+                // se setea a [] a propósito (ver useEffect) y acá queda todo gris.
+                const isAvailable = availablePlatforms === null || availablePlatforms.includes(p);
+                return (
+                  <label
+                    key={p}
+                    className={`flex items-center gap-3 group ${isAvailable ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}
+                    title={isAvailable ? undefined : "Sin conexión activa — conectala en Conexiones"}
                   >
-                    {platforms.includes(p) && (
-                      <svg viewBox="0 0 10 8" className="w-2.5 h-2.5" fill="none">
-                        <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
-                  </div>
-                  <span className="text-sm text-slate-700 dark:text-slate-300">{PLATFORM_LABELS[p]}</span>
-                </label>
-              ))}
+                    <div
+                      className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
+                        platforms.includes(p) ? "bg-brand-600 border-brand-600" : `border-slate-300 ${isAvailable ? "group-hover:border-brand-400" : ""}`
+                      }`}
+                      onClick={() => {
+                        if (!isAvailable) return;
+                        setPlatforms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
+                      }}
+                    >
+                      {platforms.includes(p) && (
+                        <svg viewBox="0 0 10 8" className="w-2.5 h-2.5" fill="none">
+                          <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-sm text-slate-700 dark:text-slate-300">{PLATFORM_LABELS[p]}</span>
+                    {!isAvailable && <span className="text-[10px] text-slate-400 ml-auto shrink-0">Sin conexión</span>}
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -664,7 +700,9 @@ export default function AnalyticsPage() {
                 );
               })}
 
-              {/* Typing indicators — ChatGPT muestra que está buscando contexto antes de arrancar */}
+              {/* Typing indicators — ChatGPT muestra que está buscando contexto antes de
+                  arrancar; mientras piensa, un renglón corto de progreso (sin exponer el
+                  razonamiento completo) si el modelo ya marcó algún titular */}
               {pendingSpeakers.map((speaker) => (
                 <AiBubble
                   key={`t-${speaker}`}
@@ -673,7 +711,7 @@ export default function AnalyticsPage() {
                   liveContent={
                     searchingContext && speaker === "ChatGPT"
                       ? "Buscando contexto del período…"
-                      : undefined
+                      : progressText[speaker]
                   }
                 />
               ))}

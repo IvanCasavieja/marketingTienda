@@ -1,6 +1,7 @@
 """Multi-AI debate: Claude vs ChatGPT (rounds 1-2) + Llama synthesis (round 3 only)."""
 import asyncio
 import json
+import re
 from collections import defaultdict
 from datetime import date
 from typing import List, Dict, AsyncIterator, Tuple
@@ -674,7 +675,8 @@ async def stream_debate_turn(
     date_from_2: date | None = None,
     date_to_2: date | None = None,
 ) -> AsyncIterator[dict]:
-    """Sequential debate: ChatGPT fetches web context, Claude draws conclusions, ChatGPT responds."""
+    """Sequential debate: ChatGPT fetches web context and speaks first, Claude responds second
+    with the quantitative rebuttal/validation."""
     compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
     daily_ctx   = _build_daily_series_context(metrics)
     history_str = _build_history_str(history)
@@ -720,92 +722,103 @@ async def stream_debate_turn(
         f"El usuario dice: **{user_message}**",
     ]
 
-    # ── Step 1: Claude ────────────────────────────────────────────────────────
+    def _extract_progress(buf: str, already: int) -> Tuple[List[str], int]:
+        """Extrae los títulos en negrita ("**Calculando X**") que el modelo va
+        marcando en su propio resumen de pensamiento, como highlights cortos de
+        progreso — sin exponer el razonamiento completo."""
+        headers = re.findall(r"\*\*([^*]{3,80})\*\*", buf)
+        new = headers[already:]
+        return new, len(headers)
+
+    # ── Step 1: ChatGPT — ya tiene el contexto fresco, arranca el análisis ────
     web_ctx_note = (
-        "\nIMPORTANTE: ChatGPT ya buscó contexto real del período en portales uruguayos "
-        "(elpais.com.uy, elobservador.com.uy, ladiaria.com.uy, montevideo.com.uy), con fecha "
-        "exacta por hallazgo — está en '## CONTEXTO EXTERNO DEL PERÍODO'. Cruzalo con la "
+        "\nUsá tu propia búsqueda de contexto real del período (arriba, en "
+        "'## CONTEXTO EXTERNO DEL PERÍODO', con fecha exacta por hallazgo). Cruzala con la "
         "'## SERIE DIARIA POR PLATAFORMA': para cada hallazgo con fecha, fijate qué pasó ese "
         "día puntual en la serie (no en el promedio del período) y decilo explícitamente: "
         "'el DD/MM hubo un pico/caída de spend/CTR de X, coincide con [evento]'. Si un evento "
         "no coincide con ningún movimiento real ese día, decilo también — es información útil "
-        "('no explica nada, hay que buscar otra causa'). No lo ignorés — es la parte más "
-        "valiosa del análisis.\n"
+        "('no explica nada, hay que buscar otra causa').\n"
         if web_context else ""
     )
     if is_first_turn:
-        claude_instructions = (
+        gpt_instructions = (
             "Primer turno — analizá la pregunta del usuario con datos concretos:\n"
             + web_ctx_note +
             "1. Usá números exactos de los datos: ROAS, CTR, CPC, CPM por campaña. Nada de promedios vagos.\n"
-            "2. Identificá la campaña con mejor y peor desempeño y explicá la CAUSA RAÍZ "
+            "2. Identificá la campaña con mejor y peor desempeño y una lectura estratégica de por qué "
             "(¿es el creativo, la audiencia, la puja, la plataforma? ¿O algo del contexto externo del período?).\n"
-            "3. Compará los resultados entre sí: ¿qué campaña o plataforma está rindiendo mejor "
-            "en relación a las otras dentro de este mismo conjunto de datos? ¿Por qué?\n"
-            "4. Mirá la serie diaria: identificá el día de mayor pico o caída de alguna plataforma "
-            "y explicalo — con el contexto cultural si hay un hallazgo fechado ese mismo día, o con "
-            "una causa interna (cambio de puja, pausa de campaña, etc.) si no lo hay.\n"
-            "5. Calculá algo no obvio: costo por conversión real, eficiencia relativa entre plataformas, "
-            "o la diferencia de ROAS entre las campañas de mayor y menor inversión.\n"
-            "6. Terminá con una conclusión fuerte y específica que ChatGPT pueda construir o desafiar."
+            "3. Identificá una oportunidad de escala o un riesgo concreto que emerja de cruzar el contexto "
+            "con los datos.\n"
+            "4. Terminá con una conclusión fuerte y específica que Claude pueda validar o desafiar con "
+            "números más finos — dejale a él el trabajo cuantitativo de precisión."
         )
     else:
-        last_gpt = next((m["content"] for m in reversed(history) if m.get("speaker") == "ChatGPT"), None)
-        claude_instructions = (
+        last_claude = next((m["content"] for m in reversed(history) if m.get("speaker") == "Claude"), None)
+        gpt_instructions = (
             "Siguiente turno — avanzá el análisis, no lo repitas:\n"
-            + (f"ChatGPT propuso: \"{last_gpt[:600]}\"\n\n"
-               "Evaluá esa propuesta con datos. Si tiene razón en algo, reconocelo y construí sobre eso. "
-               "Si hay un error o una omisión, demostralo con un número concreto de los datos. "
-               "Luego avanzá: ¿qué conclusión nueva emerge de cruzar tu análisis con el de ChatGPT?" if last_gpt
+            + (f"Claude propuso: \"{last_claude[:600]}\"\n\n"
+               "Evaluá esa propuesta desde tu rol estratégico. Si tiene razón en algo, reconocelo y "
+               "construí sobre eso. Si falta contexto o hay una oportunidad de escala que no vio, mostrala. "
+               "Luego avanzá: ¿qué acción concreta emerge de cruzar tu lectura con la de Claude?" if last_claude
                else "Profundizá con evidencia nueva de los datos y avanzá hacia una conclusión accionable.")
-        )
-
-    claude_prompt = "\n\n".join([*base_parts, claude_instructions])
-    claude_content = ""
-    claude_tokens = 0
-    # No se reenvía el pensamiento en vivo al frontend (a pedido) — se consume
-    # el generador internamente y solo se yieldea la respuesta final, igual que
-    # antes de la Fase G, pero manteniendo el streaming a nivel SDK para evitar
-    # timeouts en prompts largos.
-    async for chunk in _ask_claude_stream(CLAUDE_PERSONA, claude_prompt, 16000):
-        if chunk["kind"] == "done":
-            claude_content = chunk["content"]
-            claude_tokens = chunk["tokens"]
-    yield {"type": "message", "speaker": "Claude", "role": "debate", "content": claude_content}
-
-    # ── Step 2: ChatGPT — lee la pregunta del usuario Y la respuesta de Claude ─
-    if is_first_turn:
-        gpt_instructions = (
-            f"Claude analizó los datos y concluyó:\n\"{claude_content}\"\n\n"
-            "Tu trabajo ahora es hacer avanzar el análisis — no dar una segunda opinión paralela:\n"
-            "1. ¿En qué punto de Claude estás de acuerdo? Reconocelo y construí sobre eso con un dato adicional.\n"
-            "2. ¿Qué ángulo importante pasó por alto Claude? Mostralo con evidencia de los datos — en particular, "
-            "revisá si dejó sin explicar algún día atípico de la serie diaria, o si el contexto externo que vos "
-            "mismo buscaste tiene un hallazgo fechado que Claude no cruzó.\n"
-            "3. ¿Qué oportunidad de escala o acción concreta emerge cuando combinás tu lectura con la de Claude?\n"
-            "4. Cerrá con una pregunta técnica específica a Claude o al usuario que abra el próximo paso del análisis.\n"
-            "El objetivo es que cuando termines de hablar, el análisis esté más avanzado que cuando Claude terminó."
-        )
-    else:
-        last_claude_hist = next((m["content"] for m in reversed(history) if m.get("speaker") == "Claude"), None)
-        gpt_instructions = (
-            f"Claude acaba de responder:\n\"{claude_content}\"\n\n"
-            "Avanzá el análisis:\n"
-            "1. Tomá el punto más sólido de Claude y extendelo con algo que él no dijo.\n"
-            "2. Corregí o matizá donde ves un error, con dato concreto.\n"
-            "3. Proponé la próxima acción que resulta de todo lo que se discutió hasta ahora, con número y plataforma.\n"
-            "El análisis debe converger hacia algo accionable, no expandirse indefinidamente."
-            + (f"\nContexto del turno anterior de Claude: \"{last_claude_hist[:400]}\"" if last_claude_hist else "")
         )
 
     gpt_prompt = "\n\n".join([*base_parts, gpt_instructions])
     gpt_content = ""
     gpt_tokens = 0
+    gpt_progress_buf = ""
+    gpt_progress_seen = 0
     async for chunk in _ask_gpt_stream(GPT_PERSONA, gpt_prompt, 16000):
-        if chunk["kind"] == "done":
+        if chunk["kind"] == "thinking":
+            gpt_progress_buf += chunk["delta"]
+            new_headers, gpt_progress_seen = _extract_progress(gpt_progress_buf, gpt_progress_seen)
+            for h in new_headers:
+                yield {"type": "thinking_progress", "speaker": "ChatGPT", "text": h.strip()}
+        elif chunk["kind"] == "done":
             gpt_content = chunk["content"]
             gpt_tokens = chunk["tokens"]
     yield {"type": "message", "speaker": "ChatGPT", "role": "debate", "content": gpt_content}
+
+    # ── Step 2: Claude — lee la pregunta del usuario Y la lectura de ChatGPT ──
+    if is_first_turn:
+        claude_instructions = (
+            f"ChatGPT ya buscó contexto real del período y concluyó:\n\"{gpt_content}\"\n\n"
+            "Tu trabajo es el análisis cuantitativo riguroso que haga avanzar la conversación:\n"
+            "1. Usá números exactos de los datos: ROAS, CTR, CPC, CPM por campaña. Nada de promedios vagos.\n"
+            "2. Identificá la campaña con mejor y peor desempeño y explicá la CAUSA RAÍZ.\n"
+            "3. Validá o corregí con datos concretos los hallazgos de contexto que trajo ChatGPT — "
+            "¿el pico o caída que él marcó realmente se ve en la serie diaria, con la magnitud que dice? "
+            "Si no coincide, decilo.\n"
+            "4. Calculá algo no obvio: costo por conversión real, eficiencia relativa entre plataformas, "
+            "o la diferencia de ROAS entre las campañas de mayor y menor inversión.\n"
+            "5. Terminá con una conclusión fuerte y específica."
+        )
+    else:
+        claude_instructions = (
+            f"ChatGPT acaba de responder:\n\"{gpt_content}\"\n\n"
+            "Avanzá el análisis con rigor cuantitativo:\n"
+            "1. Tomá el punto más sólido de ChatGPT y validalo o cuestionalo con un número concreto.\n"
+            "2. Corregí o matizá donde haga falta, con dato concreto.\n"
+            "3. Proponé la próxima acción que resulta de todo lo discutido hasta ahora, con número y plataforma.\n"
+            "El análisis debe converger hacia algo accionable, no expandirse indefinidamente."
+        )
+
+    claude_prompt = "\n\n".join([*base_parts, claude_instructions])
+    claude_content = ""
+    claude_tokens = 0
+    claude_progress_buf = ""
+    claude_progress_seen = 0
+    async for chunk in _ask_claude_stream(CLAUDE_PERSONA, claude_prompt, 16000):
+        if chunk["kind"] == "thinking":
+            claude_progress_buf += chunk["delta"]
+            new_headers, claude_progress_seen = _extract_progress(claude_progress_buf, claude_progress_seen)
+            for h in new_headers:
+                yield {"type": "thinking_progress", "speaker": "Claude", "text": h.strip()}
+        elif chunk["kind"] == "done":
+            claude_content = chunk["content"]
+            claude_tokens = chunk["tokens"]
+    yield {"type": "message", "speaker": "Claude", "role": "debate", "content": claude_content}
 
     tokens_by_model = {"Claude": claude_tokens, "ChatGPT": gpt_tokens + web_ctx_tokens}
     yield {"type": "tokens", "total": sum(tokens_by_model.values()), "by_model": tokens_by_model}
