@@ -295,15 +295,20 @@ async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str
 
 
 async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) -> AsyncIterator[dict]:
-    """Versión en vivo de _ask_claude: yieldea el pensamiento (adaptive thinking)
-    y la respuesta final token por token a medida que llegan, en vez de esperar
-    la respuesta completa. Termina con un evento {"kind": "done", ...}.
+    """Pide a Claude con adaptive thinking sin techo de effort (a pedido: el
+    razonamiento no se acota, piensa todo lo que necesite) y consume el stream
+    del SDK internamente — no se expone el pensamiento en vivo al frontend,
+    solo el evento final {"kind": "done", ...}. Se sigue usando streaming a
+    nivel SDK (en vez de messages.create) para evitar timeouts en prompts
+    largos, aunque no se reenvíen los deltas.
 
-    IMPORTANTE: con thinking activado, el razonamiento consume del mismo
-    presupuesto que max_tokens (no es un budget aparte) — max_tokens tiene que
-    dejar margen de sobra para pensar Y escribir la respuesta, o el modelo se
-    queda sin espacio para el texto final (stop_reason="max_tokens" con
-    contenido vacío, sin ningún error visible)."""
+    IMPORTANTE: el razonamiento consume del mismo presupuesto que max_tokens
+    (no es un budget aparte) — al no capar el effort, max_tokens tiene que ser
+    generoso (16000 en las llamadas del debate) para que un prompt largo no
+    deje al modelo sin espacio para el texto final (stop_reason="max_tokens"
+    con contenido vacío, sin ningún error visible). Sigue existiendo un riesgo
+    residual: nada impide matemáticamente que el modelo use el presupuesto
+    entero pensando, solo lo hace muy improbable con este margen."""
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY no configurado")
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -336,13 +341,15 @@ async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) ->
 
 
 async def _ask_gpt_stream(system: str, prompt: str, max_tokens: int = 800) -> AsyncIterator[dict]:
-    """Versión en vivo de _ask_gpt sobre gpt-5.4 (Responses API) — con razonamiento
-    real (no gpt-4o, que no tiene reasoning). gpt-5.4 en vez del flagship gpt-5.5:
-    mismo rango de razonamiento pero más barato/rápido, pensado para trabajo
-    profesional en vez de coding extremo — mejor fit para un debate conversacional
-    turno a turno. Effort "medium" es el punto de equilibrio calidad/latencia
-    documentado, no hace falta "high" para este caso. Yieldea el resumen del
-    razonamiento y la respuesta final a medida que llegan."""
+    """Pide a ChatGPT sobre gpt-5.4 (Responses API) con razonamiento real (no
+    gpt-4o, que no tiene reasoning) al máximo effort disponible (a pedido: no
+    acotar el razonamiento) y consume el stream internamente — no se expone el
+    pensamiento en vivo al frontend, solo el evento final {"kind": "done", ...}.
+    gpt-5.4 en vez del flagship gpt-5.5: mismo rango de razonamiento pero más
+    barato/rápido, mejor fit para un debate conversacional turno a turno que
+    coding extremo. Con effort "high" y sin techo, max_output_tokens tiene que
+    ser generoso (16000 en las llamadas del debate) para que el modelo no se
+    quede sin espacio para el texto final en prompts largos."""
     try:
         import openai as _openai
     except ImportError:
@@ -357,7 +364,7 @@ async def _ask_gpt_stream(system: str, prompt: str, max_tokens: int = 800) -> As
         instructions=system,
         input=prompt,
         max_output_tokens=max_tokens,
-        reasoning={"effort": "medium", "summary": "auto"},
+        reasoning={"effort": "high", "summary": "auto"},
         stream=True,
     )
     async for event in stream:
@@ -756,12 +763,12 @@ async def stream_debate_turn(
     claude_prompt = "\n\n".join([*base_parts, claude_instructions])
     claude_content = ""
     claude_tokens = 0
-    async for chunk in _ask_claude_stream(CLAUDE_PERSONA, claude_prompt, 4000):
-        if chunk["kind"] == "thinking":
-            yield {"type": "thinking_delta", "speaker": "Claude", "content": chunk["delta"]}
-        elif chunk["kind"] == "text":
-            yield {"type": "text_delta", "speaker": "Claude", "content": chunk["delta"]}
-        elif chunk["kind"] == "done":
+    # No se reenvía el pensamiento en vivo al frontend (a pedido) — se consume
+    # el generador internamente y solo se yieldea la respuesta final, igual que
+    # antes de la Fase G, pero manteniendo el streaming a nivel SDK para evitar
+    # timeouts en prompts largos.
+    async for chunk in _ask_claude_stream(CLAUDE_PERSONA, claude_prompt, 16000):
+        if chunk["kind"] == "done":
             claude_content = chunk["content"]
             claude_tokens = chunk["tokens"]
     yield {"type": "message", "speaker": "Claude", "role": "debate", "content": claude_content}
@@ -794,12 +801,8 @@ async def stream_debate_turn(
     gpt_prompt = "\n\n".join([*base_parts, gpt_instructions])
     gpt_content = ""
     gpt_tokens = 0
-    async for chunk in _ask_gpt_stream(GPT_PERSONA, gpt_prompt, 4000):
-        if chunk["kind"] == "thinking":
-            yield {"type": "thinking_delta", "speaker": "ChatGPT", "content": chunk["delta"]}
-        elif chunk["kind"] == "text":
-            yield {"type": "text_delta", "speaker": "ChatGPT", "content": chunk["delta"]}
-        elif chunk["kind"] == "done":
+    async for chunk in _ask_gpt_stream(GPT_PERSONA, gpt_prompt, 16000):
+        if chunk["kind"] == "done":
             gpt_content = chunk["content"]
             gpt_tokens = chunk["tokens"]
     yield {"type": "message", "speaker": "ChatGPT", "role": "debate", "content": gpt_content}

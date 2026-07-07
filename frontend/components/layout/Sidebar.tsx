@@ -8,19 +8,11 @@ import {
   Sun, Moon, ClipboardList,
 } from "lucide-react";
 import { clsx } from "clsx";
-import { authApi, connectionsApi } from "@/lib/api";
+import { authApi } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 import { useTranslation } from "react-i18next";
 import { LANGUAGES, setLanguage, type LangCode } from "@/lib/i18n";
 import { useTheme } from "@/hooks/useTheme";
-
-const platforms = [
-  { key: "meta",             name: "Meta Ads",         color: "#1877F2", initial: "M"  },
-  { key: "google_ads",       name: "Google Ads",       color: "#4285F4", initial: "G"  },
-  { key: "google_analytics", name: "Google Analytics", color: "#FF9900", initial: "GA" },
-  { key: "tiktok",           name: "TikTok Ads",       color: "#FF0050", initial: "T"  },
-  { key: "dv360",            name: "DV360",            color: "#34A853", initial: "D"  },
-];
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -30,7 +22,6 @@ interface SidebarProps {
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { t, i18n } = useTranslation();
-  const [connected, setConnected] = useState<Set<string>>(new Set());
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [showLangMenu, setShowLangMenu] = useState(false);
 
@@ -45,11 +36,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: "Analytics",                perm: "analytics.view" },
     { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: "Analytics",                perm: "analytics.view" },
     { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: "Analytics",                perm: "ai.use" },
+    { href: "/settings",                label: t("common.connections"),icon: Settings,         section: "Analytics",                perm: "connections.view" },
     { href: "/herramientas/cenefas",    label: t("sidebar.generarCenefas"),  icon: Presentation, section: t("sidebar.herramientas") },
     { href: "/herramientas/cenefas/v2", label: t("sidebar.editorPlantillas"), icon: Layers,     section: t("sidebar.herramientas") },
     { href: "/herramientas/cenefas/v2/jobs", label: t("sidebar.historial"), icon: Clock,        section: t("sidebar.herramientas") },
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,           section: t("sidebar.comercial"),     perm: "precios.search" },
-    { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.configuracion"), perm: "connections.view" },
     { href: "/ayuda",                   label: t("sidebar.guiaUso"),   icon: HelpCircle,       section: t("sidebar.configuracion") },
     { href: "/redexpress/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpress") },
     ...(currentUser?.is_superuser
@@ -60,11 +51,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const nav = navAll.filter((item) => !item.perm || hasPerm(item.perm));
 
   useEffect(() => {
-    connectionsApi.list()
-      .then(({ data }) => {
-        setConnected(new Set(data.filter((c: any) => c.is_active).map((c: any) => c.platform)));
-      })
-      .catch(() => {});
     authApi.me()
       .then(({ data }) => setCurrentUser(data))
       .catch(() => {});
@@ -147,32 +133,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               </div>
             );
           })}
-
-          {/* Platforms section */}
-          <div className="mt-5 mb-2">
-            <p className="px-3 mb-2 text-[10px] font-semibold text-slate-600 uppercase tracking-widest">
-              {t("sidebar.plataformas")}
-            </p>
-            {platforms.map((p) => {
-              const isConnected = connected.has(p.key);
-              return (
-                <div key={p.key}
-                  className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-slate-500">
-                  <div
-                    className="w-5 h-5 rounded-md flex items-center justify-center text-white text-[10px] font-bold shrink-0"
-                    style={{ backgroundColor: isConnected ? p.color : "#334155" }}>
-                    {p.initial}
-                  </div>
-                  <span className={`text-xs truncate ${isConnected ? "text-slate-300" : "text-slate-600"}`}>
-                    {p.name}
-                  </span>
-                  <div className={`ml-auto w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
-                    isConnected ? "bg-emerald-500" : "bg-slate-700"
-                  }`} />
-                </div>
-              );
-            })}
-          </div>
         </nav>
 
         <div className="mx-4 h-px bg-white/5 mb-3" />
