@@ -294,6 +294,77 @@ async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str
     return resp.choices[0].message.content, tokens
 
 
+async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) -> AsyncIterator[dict]:
+    """Versión en vivo de _ask_claude: yieldea el pensamiento (adaptive thinking)
+    y la respuesta final token por token a medida que llegan, en vez de esperar
+    la respuesta completa. Termina con un evento {"kind": "done", ...}."""
+    if not settings.ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY no configurado")
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    full_text: list[str] = []
+    async with client.messages.stream(
+        model="claude-sonnet-4-6",
+        max_tokens=max_tokens,
+        system=system,
+        thinking={"type": "adaptive", "display": "summarized"},
+        messages=[{"role": "user", "content": prompt}],
+    ) as stream:
+        async for event in stream:
+            if event.type != "content_block_delta":
+                continue
+            delta = event.delta
+            if delta.type == "thinking_delta":
+                yield {"kind": "thinking", "delta": delta.thinking}
+            elif delta.type == "text_delta":
+                full_text.append(delta.text)
+                yield {"kind": "text", "delta": delta.text}
+        final = await stream.get_final_message()
+        tokens = final.usage.input_tokens + final.usage.output_tokens
+    yield {"kind": "done", "content": "".join(full_text), "tokens": tokens}
+
+
+async def _ask_gpt_stream(system: str, prompt: str, max_tokens: int = 800) -> AsyncIterator[dict]:
+    """Versión en vivo de _ask_gpt sobre gpt-5.4 (Responses API) — con razonamiento
+    real (no gpt-4o, que no tiene reasoning). gpt-5.4 en vez del flagship gpt-5.5:
+    mismo rango de razonamiento pero más barato/rápido, pensado para trabajo
+    profesional en vez de coding extremo — mejor fit para un debate conversacional
+    turno a turno. Effort "medium" es el punto de equilibrio calidad/latencia
+    documentado, no hace falta "high" para este caso. Yieldea el resumen del
+    razonamiento y la respuesta final a medida que llegan."""
+    try:
+        import openai as _openai
+    except ImportError:
+        raise RuntimeError("Paquete 'openai' no instalado")
+    if not settings.OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY no configurado")
+    client = _openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    full_text: list[str] = []
+    tokens = 0
+    stream = await client.responses.create(
+        model="gpt-5.4",
+        instructions=system,
+        input=prompt,
+        max_output_tokens=max_tokens,
+        reasoning={"effort": "medium", "summary": "auto"},
+        stream=True,
+    )
+    async for event in stream:
+        etype = getattr(event, "type", "") or ""
+        # Nombre de evento no 100% confirmado contra la doc pública al momento
+        # de escribir esto — chequeo por substring en vez de un string exacto
+        # para no romper silenciosamente si el nombre real difiere un poco.
+        if "reasoning_summary_text" in etype and etype.endswith(".delta"):
+            piece = getattr(event, "delta", "")
+            yield {"kind": "thinking", "delta": piece if isinstance(piece, str) else str(piece)}
+        elif etype == "response.output_text.delta":
+            full_text.append(event.delta)
+            yield {"kind": "text", "delta": event.delta}
+        elif etype == "response.completed":
+            usage = event.response.usage
+            tokens = (usage.input_tokens or 0) + (usage.output_tokens or 0)
+    yield {"kind": "done", "content": "".join(full_text), "tokens": tokens}
+
+
 async def _fetch_web_context(date_from: date, date_to: date) -> Tuple[str, int]:
     """ChatGPT busca contexto real del período vía web search (gpt-4o-search-preview)."""
     try:
@@ -661,7 +732,16 @@ async def stream_debate_turn(
         )
 
     claude_prompt = "\n\n".join([*base_parts, claude_instructions])
-    claude_content, claude_tokens = await _ask_claude(CLAUDE_PERSONA, claude_prompt, 1400)
+    claude_content = ""
+    claude_tokens = 0
+    async for chunk in _ask_claude_stream(CLAUDE_PERSONA, claude_prompt, 1400):
+        if chunk["kind"] == "thinking":
+            yield {"type": "thinking_delta", "speaker": "Claude", "content": chunk["delta"]}
+        elif chunk["kind"] == "text":
+            yield {"type": "text_delta", "speaker": "Claude", "content": chunk["delta"]}
+        elif chunk["kind"] == "done":
+            claude_content = chunk["content"]
+            claude_tokens = chunk["tokens"]
     yield {"type": "message", "speaker": "Claude", "role": "debate", "content": claude_content}
 
     # ── Step 2: ChatGPT — lee la pregunta del usuario Y la respuesta de Claude ─
@@ -690,7 +770,16 @@ async def stream_debate_turn(
         )
 
     gpt_prompt = "\n\n".join([*base_parts, gpt_instructions])
-    gpt_content, gpt_tokens = await _ask_gpt(GPT_PERSONA, gpt_prompt, 1400)
+    gpt_content = ""
+    gpt_tokens = 0
+    async for chunk in _ask_gpt_stream(GPT_PERSONA, gpt_prompt, 1400):
+        if chunk["kind"] == "thinking":
+            yield {"type": "thinking_delta", "speaker": "ChatGPT", "content": chunk["delta"]}
+        elif chunk["kind"] == "text":
+            yield {"type": "text_delta", "speaker": "ChatGPT", "content": chunk["delta"]}
+        elif chunk["kind"] == "done":
+            gpt_content = chunk["content"]
+            gpt_tokens = chunk["tokens"]
     yield {"type": "message", "speaker": "ChatGPT", "role": "debate", "content": gpt_content}
 
     tokens_by_model = {"Claude": claude_tokens, "ChatGPT": gpt_tokens + web_ctx_tokens}

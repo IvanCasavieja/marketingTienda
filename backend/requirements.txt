@@ -29,7 +29,7 @@ google-auth==2.34.0
 google-auth-oauthlib>=1.0.0,<2.0.0
 
 # Claude AI
-anthropic==0.34.2
+anthropic==0.116.0
 
 # Debate feature — additional AI models
 openai>=1.40.0

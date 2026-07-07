@@ -139,15 +139,18 @@ function LlamaGreetingBubble({ content }: { content: string }) {
 }
 
 function AiBubble({
-  speaker, content, isGreeting = false, loading = false,
+  speaker, content, isGreeting = false, loading = false, thinking, liveContent,
 }: {
   speaker: "Claude" | "ChatGPT";
   content?: string;
   isGreeting?: boolean;
   loading?: boolean;
+  thinking?: string;
+  liveContent?: string;
 }) {
   const cfg = S[speaker];
   const isLeft = cfg.side === "left";
+  const [thinkingOpen, setThinkingOpen] = useState(true);
 
   return (
     <div className={`flex items-end gap-2.5 animate-fade-in ${isLeft ? "flex-row" : "flex-row-reverse"}`}>
@@ -164,15 +167,39 @@ function AiBubble({
             <span className="text-[10px] text-slate-400">{cfg.label}</span>
           </div>
         )}
+
+        {/* Pensamiento en vivo (adaptive thinking de Claude / reasoning summary de gpt-5.5) */}
+        {!!thinking && (
+          <div className={`w-full rounded-xl border border-dashed ${cfg.border} bg-slate-50 dark:bg-slate-800/50 ${isLeft ? "rounded-bl-sm" : "rounded-br-sm"}`}>
+            <button
+              onClick={() => setThinkingOpen((v) => !v)}
+              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} animate-pulse`} />
+              Pensando…
+              <span className="ml-auto">{thinkingOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}</span>
+            </button>
+            {thinkingOpen && (
+              <div className="px-3 pb-2 text-xs italic text-slate-400 dark:text-slate-500 leading-relaxed max-h-32 overflow-y-auto whitespace-pre-wrap">
+                {thinking}
+              </div>
+            )}
+          </div>
+        )}
+
         <div
           className={`bg-white dark:bg-slate-900 border ${cfg.border} shadow-sm px-4 py-3 text-sm leading-relaxed text-slate-700 dark:text-slate-300
             ${isLeft ? "rounded-2xl rounded-bl-sm" : "rounded-2xl rounded-br-sm"}
             ${isGreeting ? "opacity-75" : ""}
           `}
         >
-          {loading
+          {content
+            ? <Md text={content} />
+            : liveContent
+            ? <span className="whitespace-pre-wrap">{liveContent}</span>
+            : loading
             ? <TypingDots color={cfg.dot} />
-            : content && <Md text={content} />
+            : null
           }
         </div>
       </div>
@@ -227,6 +254,11 @@ export default function AnalyticsPage() {
   const [history, setHistory]               = useState<Analysis[]>([]);
   const [activeAnalysis, setActive]         = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
+  // Pensamiento y respuesta en vivo por hablante mientras streamea (Claude:
+  // adaptive thinking real; ChatGPT: reasoning summary de gpt-5.5). Se limpian
+  // cuando llega el evento "message" final de ese hablante.
+  const [liveThinking, setLiveThinking]     = useState<Record<string, string>>({});
+  const [liveText, setLiveText]             = useState<Record<string, string>>({});
 
   const abortRef        = useRef<AbortController | null>(null);
   const chatEndRef      = useRef<HTMLDivElement | null>(null);
@@ -287,6 +319,8 @@ export default function AnalyticsPage() {
     setLoading(true);
     setErrorMsg("");
     currentSpeakers.current = new Set();
+    setLiveThinking({});
+    setLiveText({});
     abortRef.current = new AbortController();
 
     try {
@@ -320,8 +354,21 @@ export default function AnalyticsPage() {
                 type: "web_context",
                 content: parsed.content,
               }]);
+            } else if (parsed.type === "thinking_delta") {
+              // No se agrega a currentSpeakers acá — recién cuando llega el
+              // "message" final, para que la burbuja en vivo (pendingSpeakers)
+              // no desaparezca apenas empieza a pensar.
+              setLiveThinking((prev) => ({
+                ...prev, [parsed.speaker]: (prev[parsed.speaker] ?? "") + parsed.content,
+              }));
+            } else if (parsed.type === "text_delta") {
+              setLiveText((prev) => ({
+                ...prev, [parsed.speaker]: (prev[parsed.speaker] ?? "") + parsed.content,
+              }));
             } else if (parsed.type === "message") {
               currentSpeakers.current.add(parsed.speaker);
+              setLiveThinking((prev) => { const next = { ...prev }; delete next[parsed.speaker]; return next; });
+              setLiveText((prev) => { const next = { ...prev }; delete next[parsed.speaker]; return next; });
               setChatMessages((prev) => [...prev, {
                 id: `m-${Date.now()}-${parsed.speaker}`,
                 speaker: parsed.speaker,
@@ -636,9 +683,15 @@ export default function AnalyticsPage() {
                 );
               })}
 
-              {/* Typing indicators */}
+              {/* Typing indicators — con pensamiento y respuesta en vivo si ya llegaron deltas */}
               {pendingSpeakers.map((speaker) => (
-                <AiBubble key={`t-${speaker}`} speaker={speaker} loading />
+                <AiBubble
+                  key={`t-${speaker}`}
+                  speaker={speaker}
+                  loading
+                  thinking={liveThinking[speaker]}
+                  liveContent={liveText[speaker]}
+                />
               ))}
               {verdictLoading && <LlamaBubble loading />}
 
