@@ -296,20 +296,20 @@ async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str
 
 
 async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) -> AsyncIterator[dict]:
-    """Pide a Claude con adaptive thinking sin techo de effort (a pedido: el
-    razonamiento no se acota, piensa todo lo que necesite) y consume el stream
-    del SDK internamente — no se expone el pensamiento en vivo al frontend,
-    solo el evento final {"kind": "done", ...}. Se sigue usando streaming a
-    nivel SDK (en vez de messages.create) para evitar timeouts en prompts
-    largos, aunque no se reenvíen los deltas.
+    """Pide a Claude con adaptive thinking y consume el stream del SDK
+    internamente — no se expone el pensamiento en vivo al frontend, solo el
+    evento final {"kind": "done", ...}. Se sigue usando streaming a nivel SDK
+    (en vez de messages.create) para evitar timeouts en prompts largos, aunque
+    no se reenvíen los deltas de texto.
 
     IMPORTANTE: el razonamiento consume del mismo presupuesto que max_tokens
-    (no es un budget aparte) — al no capar el effort, max_tokens tiene que ser
-    generoso (16000 en las llamadas del debate) para que un prompt largo no
-    deje al modelo sin espacio para el texto final (stop_reason="max_tokens"
-    con contenido vacío, sin ningún error visible). Sigue existiendo un riesgo
-    residual: nada impide matemáticamente que el modelo use el presupuesto
-    entero pensando, solo lo hace muy improbable con este margen."""
+    (no es un budget aparte). Se probó sin techo de effort (adaptive puro) y en
+    prompts largos (turnos de seguimiento con historial + serie diaria
+    acumulados) el modelo llegó a gastar los 16000 tokens enteros pensando y
+    devolver texto vacío (stop_reason="max_tokens"). output_config.effort="medium"
+    es el punto de equilibrio: piensa con más profundidad que "low", pero
+    acotado (no "adaptive" abierto), así que casi siempre deja margen para el
+    texto final dentro del mismo techo de 16000."""
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY no configurado")
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -319,6 +319,7 @@ async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) ->
         max_tokens=max_tokens,
         system=system,
         thinking={"type": "adaptive", "display": "summarized"},
+        output_config={"effort": "medium"},
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
         async for event in stream:
@@ -343,14 +344,14 @@ async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) ->
 
 async def _ask_gpt_stream(system: str, prompt: str, max_tokens: int = 800) -> AsyncIterator[dict]:
     """Pide a ChatGPT sobre gpt-5.4 (Responses API) con razonamiento real (no
-    gpt-4o, que no tiene reasoning) al máximo effort disponible (a pedido: no
-    acotar el razonamiento) y consume el stream internamente — no se expone el
-    pensamiento en vivo al frontend, solo el evento final {"kind": "done", ...}.
-    gpt-5.4 en vez del flagship gpt-5.5: mismo rango de razonamiento pero más
-    barato/rápido, mejor fit para un debate conversacional turno a turno que
-    coding extremo. Con effort "high" y sin techo, max_output_tokens tiene que
-    ser generoso (16000 en las llamadas del debate) para que el modelo no se
-    quede sin espacio para el texto final en prompts largos."""
+    gpt-4o, que no tiene reasoning) y consume el stream internamente — no se
+    expone el pensamiento en vivo al frontend, solo el evento final
+    {"kind": "done", ...}. gpt-5.4 en vez del flagship gpt-5.5: mismo rango de
+    razonamiento pero más barato/rápido, mejor fit para un debate conversacional
+    turno a turno que coding extremo. Effort "medium": punto de equilibrio
+    entre profundidad y no gastar todo el presupuesto pensando — con
+    max_output_tokens generoso (16000 en las llamadas del debate) como margen
+    extra de seguridad."""
     try:
         import openai as _openai
     except ImportError:
@@ -365,7 +366,7 @@ async def _ask_gpt_stream(system: str, prompt: str, max_tokens: int = 800) -> As
         instructions=system,
         input=prompt,
         max_output_tokens=max_tokens,
-        reasoning={"effort": "high", "summary": "auto"},
+        reasoning={"effort": "medium", "summary": "auto"},
         stream=True,
     )
     async for event in stream:
@@ -807,15 +808,12 @@ async def stream_debate_turn(
     claude_prompt = "\n\n".join([*base_parts, claude_instructions])
     claude_content = ""
     claude_tokens = 0
-    claude_progress_buf = ""
-    claude_progress_seen = 0
+    # Claude no marca su resumen de pensamiento con títulos en negrita (a
+    # diferencia del resumen de razonamiento de GPT) — _extract_progress no
+    # encontraría nada igual, así que ni se intenta acá. Frontend muestra
+    # los puntitos animados de "pensando" sin texto de progreso para Claude.
     async for chunk in _ask_claude_stream(CLAUDE_PERSONA, claude_prompt, 16000):
-        if chunk["kind"] == "thinking":
-            claude_progress_buf += chunk["delta"]
-            new_headers, claude_progress_seen = _extract_progress(claude_progress_buf, claude_progress_seen)
-            for h in new_headers:
-                yield {"type": "thinking_progress", "speaker": "Claude", "text": h.strip()}
-        elif chunk["kind"] == "done":
+        if chunk["kind"] == "done":
             claude_content = chunk["content"]
             claude_tokens = chunk["tokens"]
     yield {"type": "message", "speaker": "Claude", "role": "debate", "content": claude_content}
