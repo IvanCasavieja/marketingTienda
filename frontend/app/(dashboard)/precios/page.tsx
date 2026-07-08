@@ -5,7 +5,7 @@ import { fMoneyByCurrency } from "@/lib/format";
 import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
-import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
+import { CADENA_CONFIG, CADENA_CATEGORIA, CadenaBadge } from "@/components/precios/cadenaConfig";
 import DonTinoFloating from "@/components/DonTinoFloating";
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -135,6 +135,17 @@ export default function PreciosPage() {
   const cadenas = results
     ? Object.keys(cadenaCounts).sort((a, b) => cadenaCounts[b] - cadenaCounts[a])
     : [];
+
+  // Agrupadas por rubro — con 11-13 cadenas activas, un solo renglón sin
+  // orden temático era imposible de escanear. Orden dentro de cada grupo se
+  // mantiene por cantidad (heredado de `cadenas`).
+  const CATEGORIA_ORDEN = ["Supermercados", "Farmacia", "Electrónica"];
+  const cadenasPorCategoria = [...CATEGORIA_ORDEN, "Otros"]
+    .map((categoria) => ({
+      categoria,
+      items: cadenas.filter((c) => (CADENA_CATEGORIA[c] ?? "Otros") === categoria),
+    }))
+    .filter((g) => g.items.length > 0);
 
   // Sucursales disponibles según las cadenas activas (solo las que tienen nombre).
   // Agrupadas por cadena — Ta-Ta y El Dorado usan nombres de departamento (ej.
@@ -277,12 +288,13 @@ export default function PreciosPage() {
       {isActive && (
         <div className="flex-1 min-h-0 flex flex-col gap-2">
 
-          {/* Barra de control */}
-          <div className="shrink-0 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
+          {/* Barra de control — chips en su propia fila (necesitan todo el
+              ancho para no amontonarse) y los controles debajo, separados. */}
+          <div className="shrink-0 flex flex-col gap-2.5">
+            <div className="flex items-start gap-x-4 gap-y-1.5 flex-wrap">
               <button
                 onClick={() => { setFilterCadenas(new Set()); setFilterSucursal(null); }}
-                className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
+                className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all shrink-0 ${
                   filterCadenas.size === 0
                     ? "bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900"
                     : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -290,22 +302,31 @@ export default function PreciosPage() {
               >
                 Todas {results && `(${results.length})`}
               </button>
-              {cadenas.map((c) => {
-                const cfg = CADENA_CONFIG[c];
-                return (
-                  <button
-                    key={c}
-                    onClick={() => toggleCadena(c)}
-                    className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
-                      filterCadenas.has(c)
-                        ? `${cfg?.dot ?? "bg-slate-500"} text-white`
-                        : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
-                    }`}
-                  >
-                    {cfg?.label ?? c} · {cadenaCounts[c]}
-                  </button>
-                );
-              })}
+
+              {cadenasPorCategoria.map(({ categoria, items: chips }) => (
+                <div key={categoria} className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide shrink-0">
+                    {categoria}
+                  </span>
+                  {chips.map((c) => {
+                    const cfg = CADENA_CONFIG[c];
+                    return (
+                      <button
+                        key={c}
+                        onClick={() => toggleCadena(c)}
+                        className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
+                          filterCadenas.has(c)
+                            ? `${cfg?.dot ?? "bg-slate-500"} text-white`
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        }`}
+                      >
+                        {cfg?.label ?? c} · {cadenaCounts[c]}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+
               {/* Chips de progreso mientras streamea */}
               {streaming && ALL_CADENAS.filter(c => !cadenasDone.includes(c)).map(c => (
                 <span key={c} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
@@ -349,7 +370,10 @@ export default function PreciosPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+
+            {/* Controles — sucursal, orden, gráfico. Fila propia para no
+                competirle espacio a los chips de arriba. */}
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Filtro de sucursal — solo visible cuando hay sucursales disponibles.
                   Agrupado por cadena (optgroup) porque Ta-Ta y El Dorado nombran sus
                   sucursales por departamento y pueden coincidir (ej. "Montevideo" en ambas). */}
@@ -383,7 +407,7 @@ export default function PreciosPage() {
               {hasResults && (
                 <button
                   onClick={() => setShowChart(true)}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors ml-auto"
                 >
                   <BarChart3 size={13} />
                   Ver gráfico

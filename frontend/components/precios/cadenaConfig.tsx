@@ -18,6 +18,16 @@ export const CADENA_CONFIG: Record<string, { bg: string; dot: string; label: str
   "Electrohogar": { bg: "bg-lime-500/10 text-lime-600 dark:text-lime-400",       dot: "bg-lime-500",    label: "Electrohogar", border: "border-l-lime-500",    hex: "#84cc16" },
 };
 
+// Agrupación usada para ordenar los chips de filtro en /precios — con 13
+// cadenas sueltas es difícil escanear, agrupadas por rubro se entiende de un vistazo.
+export const CADENA_CATEGORIA: Record<string, string> = {
+  "Disco": "Supermercados", "Devoto": "Supermercados", "Geant": "Supermercados",
+  "Ta-Ta": "Supermercados", "ElDorado": "Supermercados",
+  "FarmaShop": "Farmacia", "Botiga": "Farmacia",
+  "Fama": "Electrónica", "Stienda": "Electrónica", "BlackDog": "Electrónica",
+  "CoverCompany": "Electrónica", "DIMM": "Electrónica", "Electrohogar": "Electrónica",
+};
+
 export function CadenaBadge({ tienda }: { tienda: string }) {
   const cfg = CADENA_CONFIG[tienda];
   if (!cfg) return (
