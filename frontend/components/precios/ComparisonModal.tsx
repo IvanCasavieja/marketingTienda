@@ -157,6 +157,7 @@ export default function ComparisonModal({
                       stroke={NUESTRO_COLOR}
                       strokeWidth={2}
                       strokeDasharray="6 4"
+                      ifOverflow="extendDomain"
                       label={{ value: "Nuestro precio", position: "insideTopRight", fill: NUESTRO_COLOR, fontSize: 11, fontWeight: 700 }}
                     />
                   )}
