@@ -42,11 +42,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/herramientas/cenefas/v2", label: t("sidebar.editorPlantillas"), icon: Layers,     section: t("sidebar.herramientas") },
     { href: "/herramientas/cenefas/v2/jobs", label: t("sidebar.historial"), icon: Clock,        section: t("sidebar.herramientas") },
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,           section: t("sidebar.comercial"),     perm: "precios.search" },
-    { href: "/ayuda",                   label: t("sidebar.guiaUso"),   icon: HelpCircle,       section: t("sidebar.comercial") },
     { href: "/redexpress/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpress") },
     ...(currentUser?.is_superuser
       ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]
       : []),
+    { href: "/ayuda",                   label: t("sidebar.guiaUso"),   icon: HelpCircle,       section: t("sidebar.guia") },
   ];
 
   const nav = navAll.filter((item) => !item.perm || hasPerm(item.perm));
