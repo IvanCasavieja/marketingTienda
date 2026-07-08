@@ -269,6 +269,7 @@ export interface ProductoVivo {
   sucursal_nombre: string | null;
   relevancia:      number;
   moneda:          string | null;
+  tienda_real:     string | null;
 }
 
 export interface BuscarVivoResponse {

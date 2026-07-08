@@ -24,3 +24,4 @@ class ProductRecord:
     moneda:          str             = "UYU"
     error:           Optional[str]   = None
     raw:             dict            = field(default_factory=dict)
+    tienda_real:     Optional[str]   = None  # si difiere de `tienda`, el link redirige a otra cadena (ver FarmaShop/Botiga en live_search.py)

@@ -335,7 +335,11 @@ _UA_HEADERS = {
 }
 
 
-def _resolver_url_magento(url_key: str, base_primario: str, base_alternativo: str) -> str:
+def _resolver_url_magento(
+    url_key: str,
+    base_primario: str, tienda_primaria: str,
+    base_alternativo: str, tienda_alternativa: str,
+) -> tuple[str, str]:
     """
     FarmaShop y Botiga comparten el mismo backend Magento (mismo store_code
     "default" en /graphql, catálogo idéntico) pero cada producto solo resuelve
@@ -344,18 +348,25 @@ def _resolver_url_magento(url_key: str, base_primario: str, base_alternativo: st
     Se verifica en vivo con un HEAD corto y, si el dominio primario da 404,
     se asume que vive en el alternativo (sin verificarlo también, para no
     duplicar la latencia — es mejor esfuerzo, no garantía).
+
+    Devuelve (url, tienda_real) — tienda_real distingue de la cadena bajo la
+    que el producto quedó listado cuando el link termina apuntando a la otra.
     """
     candidato = f"{base_primario}/{url_key}.html"
     try:
         r = _requests.head(candidato, headers=_UA_HEADERS, timeout=4, allow_redirects=True)
         if r.status_code == 200:
-            return candidato
+            return candidato, tienda_primaria
     except Exception:
         pass
-    return f"{base_alternativo}/{url_key}.html"
+    return f"{base_alternativo}/{url_key}.html", tienda_alternativa
 
 
-def _buscar_magento(term: str, base_url: str, base_alternativo: str, tienda_nombre: str) -> list[ProductRecord]:
+def _buscar_magento(
+    term: str,
+    base_url: str, tienda_nombre: str,
+    base_alternativo: str, tienda_alternativa: str,
+) -> list[ProductRecord]:
     records: list[ProductRecord] = []
     url_keys: list[str] = []
     current_page = 1
@@ -422,21 +433,25 @@ def _buscar_magento(term: str, base_url: str, base_alternativo: str, tienda_nomb
     # Resolver URLs en paralelo — cada HEAD es independiente y con timeout corto,
     # así que un lote de N productos no cuesta N veces la latencia de a uno.
     with ThreadPoolExecutor(max_workers=_MAGENTO_VERIFY_WORKERS) as ex:
-        urls_resueltas = list(ex.map(
-            lambda uk: _resolver_url_magento(uk, base_url, base_alternativo) if uk else base_url,
+        resueltos = list(ex.map(
+            lambda uk: _resolver_url_magento(uk, base_url, tienda_nombre, base_alternativo, tienda_alternativa)
+                       if uk else (base_url, tienda_nombre),
             url_keys,
         ))
-    records = [replace(rec, url=url) for rec, url in zip(records, urls_resueltas)]
+    records = [
+        replace(rec, url=url, tienda_real=(tienda_real if tienda_real != rec.tienda else None))
+        for rec, (url, tienda_real) in zip(records, resueltos)
+    ]
 
     return records
 
 
 def buscar_farmashop(term: str) -> list[ProductRecord]:
-    return _buscar_magento(term, _FARMASHOP_BASE, _BOTIGA_BASE, "FarmaShop")
+    return _buscar_magento(term, _FARMASHOP_BASE, "FarmaShop", _BOTIGA_BASE, "Botiga")
 
 
 def buscar_botiga(term: str) -> list[ProductRecord]:
-    return _buscar_magento(term, _BOTIGA_BASE, _FARMASHOP_BASE, "Botiga")
+    return _buscar_magento(term, _BOTIGA_BASE, "Botiga", _FARMASHOP_BASE, "FarmaShop")
 
 
 # ── Utilidades de precio en formato uruguayo (miles con punto, decimales con coma) ──

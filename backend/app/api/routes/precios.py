@@ -54,6 +54,7 @@ async def buscar_vivo(
                 "sucursal_nombre": r.sucursal_nombre,
                 "relevancia":      r.relevancia,
                 "moneda":          r.moneda,
+                "tienda_real":     r.tienda_real,
             })
 
     return {"query": q, "total": len(items), "items": items}
@@ -133,6 +134,7 @@ async def buscar_vivo_stream(
                             "sucursal_nombre": r.sucursal_nombre,
                             "relevancia":      r.relevancia,
                             "moneda":          r.moneda,
+                            "tienda_real":     r.tienda_real,
                         }
                         for r in records
                         if r.nombre and r.precio

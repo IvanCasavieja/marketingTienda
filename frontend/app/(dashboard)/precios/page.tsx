@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type ProductoVivo } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
-import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3 } from "lucide-react";
+import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
 import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
@@ -447,6 +447,15 @@ export default function PreciosPage() {
                             <CadenaBadge tienda={p.tienda} />
                             {p.sucursal_nombre && (
                               <span className="text-[11px] text-slate-400 truncate">{p.sucursal_nombre}</span>
+                            )}
+                            {p.tienda_real && p.tienda_real !== p.tienda && (
+                              <span
+                                title={`${CADENA_CONFIG[p.tienda]?.label ?? p.tienda} y ${CADENA_CONFIG[p.tienda_real]?.label ?? p.tienda_real} comparten catálogo — el link te lleva a ${CADENA_CONFIG[p.tienda_real]?.label ?? p.tienda_real}`}
+                                className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400 shrink-0"
+                              >
+                                <ArrowRight size={10} />
+                                en realidad es de {CADENA_CONFIG[p.tienda_real]?.label ?? p.tienda_real}
+                              </span>
                             )}
                           </div>
                         </div>
