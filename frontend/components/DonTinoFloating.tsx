@@ -1,24 +1,19 @@
 "use client";
 import { useState } from "react";
 import { preciosApi } from "@/lib/api";
-import { RobotMini } from "@/components/RobotMascot";
-import { MessageCircle, X, Send, BarChart3, Sparkles } from "lucide-react";
+import { RobotMascot } from "@/components/RobotMascot";
+import { X, Send, BarChart3, Sparkles } from "lucide-react";
 
-// ── Don Tino flotante — misma cara en todos lados, pero en "comparison" lo que
-// contesta viene de Claude/ChatGPT por detrás (ver backend/app/services/don_tino_precios.py).
+// ── Don Tino flotante — misma cara en todos lados, pero lo que contesta viene
+// de Claude/ChatGPT por detrás (ver backend/app/services/don_tino_precios.py).
 // El usuario nunca ve esos nombres, solo a Don Tino respondiendo. ─────────────
 
 type Contexto = "precios" | "comparison" | "analytics";
 
 type Msg = { role: "bot" | "user"; text: string };
 
-interface ItemBasico {
-  id: string;
-  tienda: string;
-  nombre: string;
-}
-
 interface ItemConPrecio {
+  id?: string; // solo presente cuando hay checklist para aplicar selección (comparison)
   tienda: string;
   nombre: string;
   precio: number;
@@ -27,16 +22,15 @@ interface ItemConPrecio {
 
 interface DonTinoFloatingProps {
   context: Contexto;
-  // context="precios"
-  hasResults?: boolean;
-  onOpenChart?: () => void;
-  // context="comparison"
   termino?: string;
-  items?: ItemBasico[];
-  chartItems?: ItemConPrecio[];
+  items?: ItemConPrecio[];
+  // context="comparison": los tildados actualmente, para el reporte + input de nuestro precio
+  chartItems?: { tienda: string; nombre: string; precio: number; moneda: string }[];
   ourPrice?: number | null;
   ourCurrency?: string | null;
   onApplySeleccion?: (ids: string[]) => void;
+  // context="precios": shortcut para abrir el gráfico
+  onOpenChart?: () => void;
 }
 
 function TypingDots() {
@@ -50,31 +44,34 @@ function TypingDots() {
 }
 
 export default function DonTinoFloating({
-  context, hasResults, onOpenChart,
-  termino, items, chartItems, ourPrice, ourCurrency, onApplySeleccion,
+  context, termino, items, chartItems, ourPrice, ourCurrency, onApplySeleccion, onOpenChart,
 }: DonTinoFloatingProps) {
   const [open, setOpen] = useState(false);
-  const [instruccion, setInstruccion] = useState("");
+  const [mensaje, setMensaje] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
 
-  async function limpiar() {
-    const texto = instruccion.trim();
+  const hayItems = !!items && items.length > 0;
+  const reporteItems = context === "comparison" ? chartItems : items;
+  const hayParaReporte = !!reporteItems && reporteItems.length > 0;
+
+  async function enviar() {
+    const texto = mensaje.trim();
     if (!texto || !items || !termino) return;
-    setInstruccion("");
+    setMensaje("");
     setMessages((prev) => [...prev, { role: "user", text: texto }]);
     setLoading(true);
     try {
-      const { data } = await preciosApi.limpiarConIA(
+      const { data } = await preciosApi.consultarIA(
         termino,
-        items.map((it) => ({ tienda: it.tienda, nombre: it.nombre })),
+        items.map((it) => ({ tienda: it.tienda, nombre: it.nombre, precio: it.precio, moneda: it.moneda })),
         texto,
       );
-      const idsAMantener = data.mantener
-        .map((n) => items[n - 1]?.id)
-        .filter((id): id is string => !!id);
-      onApplySeleccion?.(idsAMantener);
-      setMessages((prev) => [...prev, { role: "bot", text: data.comentario || "Listo, ya ajusté la selección." }]);
+      if (data.tipo === "seleccion" && data.mantener && onApplySeleccion) {
+        const ids = data.mantener.map((n) => items[n - 1]?.id).filter((id): id is string => !!id);
+        onApplySeleccion(ids);
+      }
+      setMessages((prev) => [...prev, { role: "bot", text: data.respuesta }]);
     } catch {
       setMessages((prev) => [...prev, { role: "bot", text: "No pude procesar el pedido — probá de nuevo." }]);
     } finally {
@@ -83,14 +80,19 @@ export default function DonTinoFloating({
   }
 
   async function generarReporte() {
-    if (!chartItems || chartItems.length === 0) {
-      setMessages((prev) => [...prev, { role: "bot", text: "Tildá algún producto en la lista primero para poder armar el reporte." }]);
+    if (!reporteItems || reporteItems.length === 0) {
+      setMessages((prev) => [...prev, {
+        role: "bot",
+        text: context === "comparison"
+          ? "Tildá algún producto en la lista primero para poder armar el reporte."
+          : "Buscá algo con resultados primero para que te pueda armar un reporte.",
+      }]);
       return;
     }
     setMessages((prev) => [...prev, { role: "user", text: "Generar reporte" }]);
     setLoading(true);
     try {
-      const { data } = await preciosApi.generarReporteIA(chartItems, ourPrice ?? null, ourCurrency ?? null);
+      const { data } = await preciosApi.generarReporteIA(reporteItems, ourPrice ?? null, ourCurrency ?? null);
       setMessages((prev) => [...prev, { role: "bot", text: data.reporte }]);
     } catch {
       setMessages((prev) => [...prev, { role: "bot", text: "No pude generar el reporte en este momento — probá de nuevo." }]);
@@ -101,8 +103,15 @@ export default function DonTinoFloating({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    limpiar();
+    enviar();
   }
+
+  const placeholderInicial =
+    context === "analytics"
+      ? "Preguntame lo que quieras sobre este análisis desde el chat de Home."
+      : hayItems
+      ? 'Preguntame algo (ej. "¿cuál es el más barato?") o pedime que filtre la lista.'
+      : "Buscá algún producto para que te pueda ayudar.";
 
   return (
     <div className="fixed bottom-5 right-5 z-[60] flex flex-col items-end gap-3">
@@ -110,8 +119,8 @@ export default function DonTinoFloating({
         <div className="w-80 max-h-[70vh] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-fade-in">
           {/* Header */}
           <div className="flex items-center gap-2.5 px-4 py-3 bg-brand-600 shrink-0">
-            <div className="w-7 h-7 rounded-full bg-white/15 border border-white/20 flex items-center justify-center shrink-0">
-              <RobotMini />
+            <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm overflow-visible">
+              <RobotMascot size={30} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-white text-xs font-bold leading-none">Don Tino</p>
@@ -126,22 +135,8 @@ export default function DonTinoFloating({
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto px-3.5 py-3 space-y-2.5 bg-slate-50/50 dark:bg-slate-950/40">
-            {context === "analytics" && messages.length === 0 && (
-              <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
-                Preguntame lo que quieras sobre este análisis desde el chat de Home.
-              </p>
-            )}
-            {context === "precios" && messages.length === 0 && (
-              <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
-                {hasResults
-                  ? "Abrí el gráfico comparativo y te ayudo a limpiarlo o a armar un reporte."
-                  : "Buscá algún producto primero para que te pueda ayudar."}
-              </p>
-            )}
-            {context === "comparison" && messages.length === 0 && (
-              <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
-                Decime qué querés ver — ej. "quiero solo los celulares, no accesorios" — o pedime un reporte del gráfico.
-              </p>
+            {messages.length === 0 && (
+              <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">{placeholderInicial}</p>
             )}
 
             {messages.map((m, i) => (
@@ -167,39 +162,38 @@ export default function DonTinoFloating({
           </div>
 
           {/* Footer / acciones */}
-          {context === "precios" && hasResults && (
-            <div className="px-3.5 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
-              <button
-                onClick={onOpenChart}
-                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-brand-600 text-white text-xs font-semibold hover:bg-brand-700 transition-colors"
-              >
-                <BarChart3 size={13} /> Abrir gráfico
-              </button>
-            </div>
-          )}
-
-          {context === "comparison" && (
+          {context !== "analytics" && (
             <div className="border-t border-slate-100 dark:border-slate-800 shrink-0">
-              <div className="px-3.5 pt-2.5">
+              <div className="px-3.5 pt-2.5 flex gap-2">
                 <button
                   onClick={generarReporte}
-                  disabled={loading}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-brand-200 dark:border-brand-800 text-brand-600 dark:text-brand-400 text-xs font-semibold hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors disabled:opacity-40"
+                  disabled={loading || !hayParaReporte}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-brand-200 dark:border-brand-800 text-brand-600 dark:text-brand-400 text-xs font-semibold hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors disabled:opacity-40"
                 >
-                  <Sparkles size={13} /> Generar reporte del gráfico
+                  <Sparkles size={13} /> Generar reporte
                 </button>
+                {context === "precios" && onOpenChart && (
+                  <button
+                    onClick={onOpenChart}
+                    disabled={!hayItems}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-40"
+                    title="Ver en gráfico"
+                  >
+                    <BarChart3 size={13} />
+                  </button>
+                )}
               </div>
               <form onSubmit={handleSubmit} className="flex gap-2 px-3.5 py-3">
                 <input
-                  value={instruccion}
-                  onChange={(e) => setInstruccion(e.target.value)}
-                  placeholder="Ej: solo los celulares"
-                  disabled={loading}
+                  value={mensaje}
+                  onChange={(e) => setMensaje(e.target.value)}
+                  placeholder={hayItems ? "Preguntame algo o pedime un filtro..." : "Buscá algo primero..."}
+                  disabled={loading || !hayItems}
                   className="flex-1 text-xs bg-slate-100 dark:bg-slate-800 rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 transition-all disabled:opacity-50"
                 />
                 <button
                   type="submit"
-                  disabled={!instruccion.trim() || loading}
+                  disabled={!mensaje.trim() || loading || !hayItems}
                   className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white disabled:opacity-40 hover:bg-brand-700 transition-colors shrink-0"
                 >
                   <Send size={13} />
@@ -213,10 +207,17 @@ export default function DonTinoFloating({
       {/* Burbuja colapsada */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-14 h-14 rounded-full bg-brand-600 hover:bg-brand-700 shadow-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+        className="w-16 h-16 rounded-full bg-white dark:bg-slate-800 shadow-lg border border-slate-100 dark:border-slate-700 flex items-center justify-center transition-all hover:scale-105 active:scale-95 relative"
         title="Don Tino"
       >
-        {open ? <X size={18} className="text-white" /> : <MessageCircle size={20} className="text-white" />}
+        {open ? (
+          <X size={18} className="text-slate-500" />
+        ) : (
+          <>
+            <RobotMascot size={44} />
+            <span className="absolute bottom-1 right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-800" />
+          </>
+        )}
       </button>
     </div>
   );

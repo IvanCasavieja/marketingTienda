@@ -278,9 +278,10 @@ export interface BuscarVivoResponse {
   items: ProductoVivo[];
 }
 
-export interface LimpiarIAResponse {
-  mantener: number[];
-  comentario: string;
+export interface ConsultarIAResponse {
+  tipo: "seleccion" | "respuesta";
+  mantener: number[] | null;
+  respuesta: string;
 }
 
 export interface ReporteIAResponse {
@@ -323,8 +324,12 @@ export const preciosApi = {
     return response;
   },
 
-  limpiarConIA: (termino: string, items: { tienda: string; nombre: string }[], instruccion: string) =>
-    api.post<LimpiarIAResponse>("/precios/ia/limpiar", { termino, items, instruccion }),
+  consultarIA: (
+    termino: string,
+    items: { tienda: string; nombre: string; precio: number; moneda: string }[],
+    mensaje: string,
+  ) =>
+    api.post<ConsultarIAResponse>("/precios/ia/consultar", { termino, items, mensaje }),
 
   generarReporteIA: (
     items: { tienda: string; nombre: string; precio: number; moneda: string }[],

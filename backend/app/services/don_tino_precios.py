@@ -35,35 +35,65 @@ def _strip_json_fence(text: str) -> str:
     return _JSON_FENCE_RE.sub("", text).strip()
 
 
-async def limpiar_resultados(termino: str, items: list[dict], instruccion: str) -> dict:
-    """items: [{"tienda": str, "nombre": str}, ...] en el orden que los mandó el
-    frontend (se numeran 1-indexado en el prompt, mismo orden en la respuesta).
+def _formatear_items_numerados(items: list[dict]) -> str:
+    lineas = []
+    for i, it in enumerate(items, start=1):
+        moneda = it.get("moneda") or "UYU"
+        simbolo = "U$S" if moneda == "USD" else "$"
+        precio = it.get("precio")
+        precio_txt = f"{simbolo} {precio:.2f} ({moneda})" if precio is not None else "sin precio"
+        lineas.append(f"{i}. [{it['tienda']}] {it['nombre']} — {precio_txt}")
+    return "\n".join(lineas)
 
-    Devuelve {"mantener": [1, 4, 7], "comentario": "..."} — si el parseo del JSON
-    de Claude falla, se devuelve mantener=todos los índices (nunca vaciar el
-    checklist por un fallo de parseo) con un comentario de error genérico.
+
+async def responder_consulta(termino: str, items: list[dict], mensaje: str) -> dict:
+    """Un único punto de entrada para todo lo que el usuario le escribe a Don
+    Tino sobre estos resultados: puede ser una instrucción de filtro ("quiero
+    solo los celulares") o una pregunta general ("¿cuál es el más barato de
+    DIMM?"). items: [{"tienda", "nombre", "precio", "moneda"}, ...] numerados
+    1-indexado en el prompt, mismo orden que la respuesta.
+
+    Devuelve {"tipo": "seleccion"|"respuesta", "mantener": [1,4,7] | None, "respuesta": "..."}.
+    "mantener" solo viene poblado cuando tipo="seleccion" — el frontend lo usa
+    para actualizar un checklist si existe; si no hay checklist en esa pantalla
+    (ej. la página de búsqueda sin gráfico abierto), simplemente se ignora.
+    Si el parseo del JSON falla, se devuelve tipo="respuesta" con un mensaje de
+    error — nunca se vacía nada por un fallo de parseo.
     """
-    listado = "\n".join(f"{i}. [{it['tienda']}] {it['nombre']}" for i, it in enumerate(items, start=1))
+    listado = _formatear_items_numerados(items)
     prompt = (
-        f'El usuario buscó "{termino}" en el comparador de precios de la competencia y te pidió: '
-        f'"{instruccion}"\n\n'
-        f"Estos son los productos encontrados, numerados:\n{listado}\n\n"
-        'Devolvé SOLO un objeto JSON, sin texto antes ni después, con este formato exacto:\n'
-        '{"mantener": [1, 4, 7], "comentario": "una frase corta en tu voz explicando qué sacaste y por qué"}\n\n'
-        '"mantener" es la lista de números de los productos que SÍ corresponden a lo que pidió el usuario. '
-        'Si ningún producto aplica, "mantener" debe ser una lista vacía.'
+        f'El usuario buscó "{termino}" en el comparador de precios de la competencia y ahora te escribió: '
+        f'"{mensaje}"\n\n'
+        f"Estos son los productos encontrados, numerados con su precio:\n{listado}\n\n"
+        'Primero decidí qué tipo de pedido es:\n'
+        '- Si te está pidiendo filtrar/quedarse solo con ciertos productos (ej. "quiero solo los celulares", '
+        '"sacá los accesorios"), es tipo "seleccion".\n'
+        '- Si te está haciendo una pregunta general sobre los datos (ej. "¿cuál es el más barato?", '
+        '"¿cuántos hay de DIMM?"), es tipo "respuesta".\n\n'
+        'Devolvé SOLO un objeto JSON, sin texto antes ni después:\n'
+        '- Para tipo "seleccion": {"tipo": "seleccion", "mantener": [1, 4, 7], "respuesta": '
+        '"una frase corta explicando qué sacaste y por qué"}\n'
+        '- Para tipo "respuesta": {"tipo": "respuesta", "mantener": null, "respuesta": '
+        '"la respuesta completa a la pregunta, con números concretos de la lista"}\n\n'
+        '"mantener" son los números de los productos que SÍ corresponden a lo pedido '
+        '(lista vacía si ninguno aplica).'
     )
     try:
-        content, _ = await _ask_claude(DON_TINO_BASE, prompt, max_tokens=500)
+        content, _ = await _ask_claude(DON_TINO_BASE, prompt, max_tokens=600)
         parsed = json.loads(_strip_json_fence(content))
-        mantener = [i for i in parsed.get("mantener", []) if isinstance(i, int) and 1 <= i <= len(items)]
-        comentario = str(parsed.get("comentario") or "").strip()
-        return {"mantener": mantener, "comentario": comentario}
+        tipo = parsed.get("tipo") if parsed.get("tipo") in ("seleccion", "respuesta") else "respuesta"
+        respuesta = str(parsed.get("respuesta") or "").strip()
+        mantener = None
+        if tipo == "seleccion":
+            crudo = parsed.get("mantener") or []
+            mantener = [i for i in crudo if isinstance(i, int) and 1 <= i <= len(items)]
+        return {"tipo": tipo, "mantener": mantener, "respuesta": respuesta or "Listo."}
     except Exception as exc:
-        log.warning("don_tino_precios.limpiar_resultados: fallo parseando respuesta — %s", exc)
+        log.warning("don_tino_precios.responder_consulta: fallo parseando respuesta — %s", exc)
         return {
-            "mantener": list(range(1, len(items) + 1)),
-            "comentario": "No pude interpretar bien tu pedido — te dejo la lista completa, probá reformulándolo.",
+            "tipo": "respuesta",
+            "mantener": None,
+            "respuesta": "No pude interpretar bien tu pedido — probá reformulándolo.",
         }
 
 

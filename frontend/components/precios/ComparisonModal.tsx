@@ -94,9 +94,13 @@ export default function ComparisonModal({
   const ourPriceNum = ourPriceRaw !== null && Number.isFinite(ourPriceRaw) ? ourPriceRaw : null;
   const hayMismaMoneda = ourPriceNum !== null && chartData.some((d) => d.moneda === ourCurrency);
 
-  // Para Don Tino: el pool completo (limpieza) y los tildados con precio (reporte).
+  // Para Don Tino: el pool completo con precio (preguntas + filtro) y los
+  // tildados (reporte). Los que no tienen precio quedan afuera — no se les
+  // puede preguntar nada numérico ni entran en un reporte.
   const itemsParaDonTino = useMemo(
-    () => withIds.map((it) => ({ id: it._id, tienda: it.tienda, nombre: it.nombre ?? "—" })),
+    () => withIds
+      .filter((it) => it.precio !== null)
+      .map((it) => ({ id: it._id, tienda: it.tienda, nombre: it.nombre ?? "—", precio: it.precio!, moneda: it.moneda ?? "UYU" })),
     [withIds]
   );
   const chartItemsParaReporte = useMemo(

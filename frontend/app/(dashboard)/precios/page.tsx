@@ -542,7 +542,10 @@ export default function PreciosPage() {
 
       <DonTinoFloating
         context="precios"
-        hasResults={hasResults}
+        termino={lastQuery}
+        items={visible
+          .filter((r) => r.precio !== null)
+          .map((r) => ({ tienda: r.tienda, nombre: r.nombre ?? "—", precio: r.precio!, moneda: r.moneda ?? "UYU" }))}
         onOpenChart={() => setShowChart(true)}
       />
     </div>

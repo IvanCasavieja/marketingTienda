@@ -3,7 +3,7 @@ precios.py — búsqueda EN VIVO de precios de supermercados uruguayos.
 
   GET  /precios/buscar-vivo        — búsqueda sincrónica (no SSE)
   GET  /precios/buscar-vivo-stream — búsqueda SSE cadena por cadena
-  POST /precios/ia/limpiar         — Don Tino filtra resultados por lenguaje natural
+  POST /precios/ia/consultar       — Don Tino responde preguntas o filtra resultados por lenguaje natural
   POST /precios/ia/reporte         — Don Tino genera un reporte escrito del gráfico
 """
 
@@ -192,22 +192,17 @@ async def buscar_vivo_stream(
 # vivo de ese momento.
 # ---------------------------------------------------------------------------
 
-class _ItemBasico(BaseModel):
-    tienda: str
-    nombre: str
-
-
-class LimpiarRequest(BaseModel):
-    termino: str
-    items: list[_ItemBasico]
-    instruccion: str
-
-
 class _ItemConPrecio(BaseModel):
     tienda: str
     nombre: str
     precio: float
     moneda: str
+
+
+class ConsultarRequest(BaseModel):
+    termino: str
+    items: list[_ItemConPrecio]
+    mensaje: str
 
 
 class ReporteRequest(BaseModel):
@@ -216,24 +211,24 @@ class ReporteRequest(BaseModel):
     nuestra_moneda: Optional[str] = None
 
 
-@router.post("/ia/limpiar")
-async def ia_limpiar(
-    payload: LimpiarRequest,
+@router.post("/ia/consultar")
+async def ia_consultar(
+    payload: ConsultarRequest,
     _: User = Depends(require_permission("precios.search")),
 ):
     if not payload.items:
-        return {"mantener": [], "comentario": "No hay productos para filtrar."}
+        return {"tipo": "respuesta", "mantener": None, "respuesta": "No hay productos para analizar todavía."}
 
-    from app.services.don_tino_precios import limpiar_resultados
+    from app.services.don_tino_precios import responder_consulta
 
     try:
-        return await limpiar_resultados(
+        return await responder_consulta(
             payload.termino,
             [it.model_dump() for it in payload.items],
-            payload.instruccion,
+            payload.mensaje,
         )
     except Exception as exc:
-        logger.error("ia_limpiar: error para '%s' — %s", payload.termino, exc, exc_info=True)
+        logger.error("ia_consultar: error para '%s' — %s", payload.termino, exc, exc_info=True)
         raise HTTPException(status_code=502, detail="No pude procesar el pedido en este momento")
 
 
