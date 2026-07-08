@@ -323,6 +323,10 @@ _MAGENTO_HEADERS = {
 _MAGENTO_PAGE_SIZE = 50
 _MAGENTO_MAX       = 300
 
+_FARMASHOP_BASE = "https://tienda.farmashop.com.uy"
+_BOTIGA_BASE    = "https://botiga.farmashop.com.uy"
+_MAGENTO_VERIFY_WORKERS = 8
+
 # Headers para requests GET simples (WooCommerce/Shopify/DIMM/Fama) — sin
 # Content-Type: algunos WAF (Wordfence en WooCommerce) bloquean con 403 un GET
 # que trae Content-Type: application/json, por parecer tráfico no-browser.
@@ -331,8 +335,29 @@ _UA_HEADERS = {
 }
 
 
-def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[ProductRecord]:
+def _resolver_url_magento(url_key: str, base_primario: str, base_alternativo: str) -> str:
+    """
+    FarmaShop y Botiga comparten el mismo backend Magento (mismo store_code
+    "default" en /graphql, catálogo idéntico) pero cada producto solo resuelve
+    como página real en UNO de los dos dominios — no hay ninguna señal en la
+    respuesta de GraphQL para saber cuál (categories vuelve vacío siempre).
+    Se verifica en vivo con un HEAD corto y, si el dominio primario da 404,
+    se asume que vive en el alternativo (sin verificarlo también, para no
+    duplicar la latencia — es mejor esfuerzo, no garantía).
+    """
+    candidato = f"{base_primario}/{url_key}.html"
+    try:
+        r = _requests.head(candidato, headers=_UA_HEADERS, timeout=4, allow_redirects=True)
+        if r.status_code == 200:
+            return candidato
+    except Exception:
+        pass
+    return f"{base_alternativo}/{url_key}.html"
+
+
+def _buscar_magento(term: str, base_url: str, base_alternativo: str, tienda_nombre: str) -> list[ProductRecord]:
     records: list[ProductRecord] = []
+    url_keys: list[str] = []
     current_page = 1
 
     while len(records) < _MAGENTO_MAX:
@@ -360,7 +385,7 @@ def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[Produc
             break
 
         for item in items:
-            nombre_item = item.get("name") or ""
+            nombre_item = html.unescape(item.get("name") or "")
             score = score_match(nombre_item, term)
             if score < _MIN_SCORE:
                 continue
@@ -371,9 +396,6 @@ def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[Produc
             if not final_price:
                 continue
 
-            url_key     = item.get("url_key") or ""
-            url         = f"{base_url}/{url_key}" if url_key else base_url
-
             records.append(ProductRecord(
                 tienda          = tienda_nombre,
                 nombre          = nombre_item,
@@ -383,25 +405,38 @@ def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[Produc
                 barcode         = None,
                 marca           = None,
                 categoria       = None,
-                url             = url,
+                url             = base_url,  # placeholder — se resuelve en paralelo más abajo
                 sucursal_id     = None,
                 sucursal_nombre = None,
                 relevancia      = score,
             ))
+            url_keys.append(item.get("url_key") or "")
 
         if len(records) >= total:
             break
         current_page += 1
 
+    if not records:
+        return records
+
+    # Resolver URLs en paralelo — cada HEAD es independiente y con timeout corto,
+    # así que un lote de N productos no cuesta N veces la latencia de a uno.
+    with ThreadPoolExecutor(max_workers=_MAGENTO_VERIFY_WORKERS) as ex:
+        urls_resueltas = list(ex.map(
+            lambda uk: _resolver_url_magento(uk, base_url, base_alternativo) if uk else base_url,
+            url_keys,
+        ))
+    records = [replace(rec, url=url) for rec, url in zip(records, urls_resueltas)]
+
     return records
 
 
 def buscar_farmashop(term: str) -> list[ProductRecord]:
-    return _buscar_magento(term, "https://tienda.farmashop.com.uy", "FarmaShop")
+    return _buscar_magento(term, _FARMASHOP_BASE, _BOTIGA_BASE, "FarmaShop")
 
 
 def buscar_botiga(term: str) -> list[ProductRecord]:
-    return _buscar_magento(term, "https://botiga.farmashop.com.uy", "Botiga")
+    return _buscar_magento(term, _BOTIGA_BASE, _FARMASHOP_BASE, "Botiga")
 
 
 # ── Utilidades de precio en formato uruguayo (miles con punto, decimales con coma) ──
