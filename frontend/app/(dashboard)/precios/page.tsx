@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type ProductoVivo } from "@/lib/api";
-import { fMoneyExact } from "@/lib/format";
+import { fMoneyByCurrency } from "@/lib/format";
 import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -15,6 +15,12 @@ const CADENA_CONFIG: Record<string, { bg: string; dot: string; label: string; bo
   "ElDorado":  { bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400",       dot: "bg-amber-500",   label: "El Dorado", border: "border-l-amber-500"   },
   "FarmaShop": { bg: "bg-teal-500/10 text-teal-600 dark:text-teal-400",          dot: "bg-teal-500",    label: "FarmaShop", border: "border-l-teal-500"    },
   "Botiga":    { bg: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400", dot: "bg-fuchsia-500", label: "Botiga",    border: "border-l-fuchsia-500" },
+  "Fama":         { bg: "bg-sky-500/10 text-sky-600 dark:text-sky-400",         dot: "bg-sky-500",     label: "Fama",         border: "border-l-sky-500"     },
+  "Stienda":      { bg: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400", dot: "bg-indigo-500",  label: "Stienda",      border: "border-l-indigo-500"  },
+  "BlackDog":     { bg: "bg-stone-500/10 text-stone-600 dark:text-stone-400",    dot: "bg-stone-500",   label: "Black Dog",    border: "border-l-stone-500"   },
+  "CoverCompany": { bg: "bg-orange-500/10 text-orange-600 dark:text-orange-400", dot: "bg-orange-500",  label: "Cover Company", border: "border-l-orange-500"  },
+  "DIMM":         { bg: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",       dot: "bg-cyan-500",    label: "DIMM",         border: "border-l-cyan-500"    },
+  "Electrohogar": { bg: "bg-lime-500/10 text-lime-600 dark:text-lime-400",       dot: "bg-lime-500",    label: "Electrohogar", border: "border-l-lime-500"    },
 };
 
 function CadenaBadge({ tienda }: { tienda: string }) {
@@ -132,7 +138,7 @@ export default function PreciosPage() {
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const ALL_CADENAS = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga"];
+  const ALL_CADENAS = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Fama", "Stienda", "BlackDog", "CoverCompany", "DIMM", "Electrohogar"];
 
   const cadenas = results ? [...new Set(results.map((r) => r.tienda))].sort() : [];
 
@@ -160,10 +166,19 @@ export default function PreciosPage() {
         })
     : [];
 
+  // "Más barato" solo compara resultados en la misma moneda que el más relevante —
+  // comparar USD contra UYU crudo daría un ganador sin sentido.
   const cheapest = results
-    ? results.filter(r => r.precio !== null).reduce<ProductoVivo | null>(
-        (min, r) => !min || (r.precio ?? Infinity) < (min.precio ?? Infinity) ? r : min, null
-      ) ?? undefined
+    ? (() => {
+        const conPrecio = results.filter(r => r.precio !== null);
+        if (conPrecio.length === 0) return undefined;
+        const monedaRef = [...conPrecio].sort((a, b) => b.relevancia - a.relevancia)[0].moneda;
+        return conPrecio
+          .filter(r => r.moneda === monedaRef)
+          .reduce<ProductoVivo | null>(
+            (min, r) => !min || (r.precio ?? Infinity) < (min.precio ?? Infinity) ? r : min, null
+          ) ?? undefined;
+      })()
     : undefined;
   const hasResults = results !== null && results.length > 0;
   const hasSearched = results !== null; // true aunque haya 0 resultados
@@ -182,7 +197,7 @@ export default function PreciosPage() {
             </div>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Buscar precios en vivo</h1>
             <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm">
-              Ta-Ta · El Dorado · Disco · Devoto · Géant · FarmaShop · Botiga — en tiempo real
+              Supermercados, farmacias y electrodomésticos — en tiempo real
             </p>
           </div>
         )}
@@ -225,7 +240,7 @@ export default function PreciosPage() {
               </div>
             ))}
           </div>
-          <p className="text-xs text-slate-400">134+ sucursales consultadas en tiempo real</p>
+          <p className="text-xs text-slate-400">13 cadenas · 134+ sucursales consultadas en tiempo real</p>
         </div>
       )}
 
@@ -329,7 +344,7 @@ export default function PreciosPage() {
                 Más barato: <strong>{cheapest.nombre}</strong> en{" "}
                 <strong>{CADENA_CONFIG[cheapest.tienda]?.label ?? cheapest.tienda}</strong>
                 {cheapest.sucursal_nombre && ` (${cheapest.sucursal_nombre})`} —{" "}
-                <strong>{fMoneyExact(cheapest.precio!)}</strong>
+                <strong>{fMoneyByCurrency(cheapest.precio!, cheapest.moneda)}</strong>
               </span>
             </div>
           )}
@@ -371,7 +386,7 @@ export default function PreciosPage() {
                 {/* Header */}
                 <div className="shrink-0 flex items-center px-4 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                   <div className="flex-1">Producto</div>
-                  <div className="w-20 text-right mr-3">Precio</div>
+                  <div className="w-28 text-right mr-3">Precio</div>
                   <div className="w-14 text-center">Ver</div>
                 </div>
 
@@ -415,7 +430,7 @@ export default function PreciosPage() {
                         </div>
 
                         {/* Precio */}
-                        <div className="text-right shrink-0 w-20">
+                        <div className="text-right shrink-0 w-28">
                           <div className="flex items-center gap-1.5 justify-end">
                             {hasDesc && (
                               <span className="text-[10px] font-bold bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400 px-1.5 py-0.5 rounded-full">
@@ -423,11 +438,11 @@ export default function PreciosPage() {
                               </span>
                             )}
                             <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                              {p.precio !== null ? fMoneyExact(p.precio) : "—"}
+                              {p.precio !== null ? fMoneyByCurrency(p.precio, p.moneda) : "—"}
                             </span>
                           </div>
                           {hasDesc && (
-                            <span className="text-[11px] text-slate-400 line-through">{fMoneyExact(p.precio_lista!)}</span>
+                            <span className="text-[11px] text-slate-400 line-through">{fMoneyByCurrency(p.precio_lista!, p.moneda)}</span>
                           )}
                         </div>
 

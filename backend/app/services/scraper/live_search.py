@@ -18,6 +18,7 @@ Cadenas con búsqueda por keyword real:
   - Botiga:     Magento 2 GraphQL (mismo servidor que FarmaShop, store_view 22).
 """
 
+import html
 import json
 import logging
 import os
@@ -322,6 +323,13 @@ _MAGENTO_HEADERS = {
 _MAGENTO_PAGE_SIZE = 50
 _MAGENTO_MAX       = 300
 
+# Headers para requests GET simples (WooCommerce/Shopify/DIMM/Fama) — sin
+# Content-Type: algunos WAF (Wordfence en WooCommerce) bloquean con 403 un GET
+# que trae Content-Type: application/json, por parecer tráfico no-browser.
+_UA_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+}
+
 
 def _buscar_magento(term: str, base_url: str, tienda_nombre: str) -> list[ProductRecord]:
     records: list[ProductRecord] = []
@@ -396,20 +404,291 @@ def buscar_botiga(term: str) -> list[ProductRecord]:
     return _buscar_magento(term, "https://botiga.farmashop.com.uy", "Botiga")
 
 
+# ── Utilidades de precio en formato uruguayo (miles con punto, decimales con coma) ──
+
+def _parse_precio_uy(raw: str) -> float | None:
+    """Convierte '1.149,00' o '1.158' a float. Sin separador de miles también funciona."""
+    if not raw:
+        return None
+    limpio = raw.strip().replace(".", "").replace(",", ".")
+    try:
+        return float(limpio)
+    except ValueError:
+        return None
+
+
+# ── WooCommerce genérico (Black Dog / Electrohogar) ────────────────────────────
+
+def _buscar_woocommerce(term: str, base_url: str, tienda_nombre: str) -> list[ProductRecord]:
+    records: list[ProductRecord] = []
+    try:
+        # Sin headers custom a propósito: el WAF (Wordfence) de estos sitios devuelve
+        # 403 ante un UA de Chrome sin el resto de headers típicos de un browser real
+        # (Accept, Sec-Ch-Ua, etc.), pero deja pasar el UA default de requests.
+        r = _requests.get(
+            f"{base_url}/wp-json/wc/store/products",
+            params={"search": term, "per_page": 30},
+            timeout=8,
+        )
+        r.raise_for_status()
+        items = r.json()
+    except Exception as exc:
+        log.warning("woocommerce %s: error buscando '%s' — %s", tienda_nombre, term, exc)
+        return records
+
+    for item in items or []:
+        nombre_item = html.unescape(item.get("name") or "")
+        score = score_match(nombre_item, term)
+        if score < _MIN_SCORE:
+            continue
+
+        prices = item.get("prices") or {}
+        raw_price   = prices.get("price")
+        raw_regular = prices.get("regular_price")
+        if not raw_price:
+            continue
+        minor = prices.get("currency_minor_unit", 2)
+        precio       = float(raw_price) / (10 ** minor)
+        precio_lista = float(raw_regular) / (10 ** minor) if raw_regular and raw_regular != raw_price else None
+
+        records.append(ProductRecord(
+            tienda          = tienda_nombre,
+            nombre          = nombre_item,
+            precio          = precio,
+            precio_lista    = precio_lista,
+            sku             = item.get("sku") or None,
+            barcode         = None,
+            marca           = None,
+            categoria       = None,
+            url             = item.get("permalink") or base_url,
+            sucursal_id     = None,
+            sucursal_nombre = None,
+            relevancia      = score,
+            moneda          = prices.get("currency_code") or "USD",
+        ))
+
+    return records
+
+
+def buscar_blackdog(term: str) -> list[ProductRecord]:
+    return _buscar_woocommerce(term, "https://www.bde.com.uy", "BlackDog")
+
+
+def buscar_electrohogar(term: str) -> list[ProductRecord]:
+    return _buscar_woocommerce(term, "https://electrohogar.uy", "Electrohogar")
+
+
+# ── Shopify (Cover Company) ─────────────────────────────────────────────────────
+
+def buscar_covercompany(term: str) -> list[ProductRecord]:
+    base_url = "https://covercompany.com.uy"
+    records: list[ProductRecord] = []
+    try:
+        r = _requests.get(
+            f"{base_url}/search/suggest.json",
+            params={"q": term, "resources[type]": "product", "resources[limit]": 10},
+            headers=_UA_HEADERS,
+            timeout=8,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as exc:
+        log.warning("CoverCompany: error buscando '%s' — %s", term, exc)
+        return records
+
+    products = ((data.get("resources") or {}).get("results") or {}).get("products") or []
+    for item in products:
+        nombre_item = item.get("title") or ""
+        score = score_match(nombre_item, term)
+        if score < _MIN_SCORE:
+            continue
+
+        raw_precio = item.get("price")
+        raw_lista  = item.get("compare_at_price_max")
+        if not raw_precio:
+            continue
+        precio       = float(raw_precio)
+        precio_lista = float(raw_lista) if raw_lista and float(raw_lista) > precio else None
+
+        url_path = (item.get("url") or "").split("?")[0]
+
+        records.append(ProductRecord(
+            tienda          = "CoverCompany",
+            nombre          = nombre_item,
+            precio          = precio,
+            precio_lista    = precio_lista,
+            sku             = str(item["id"]) if item.get("id") else None,
+            barcode         = None,
+            marca           = item.get("vendor") or None,
+            categoria       = item.get("type") or None,
+            url             = f"{base_url}{url_path}" if url_path else base_url,
+            sucursal_id     = None,
+            sucursal_nombre = None,
+            relevancia      = score,
+            moneda          = "UYU",
+        ))
+
+    return records
+
+
+# ── DIMM / Stienda (typeahead "buscador-sugerencias") ──────────────────────────
+# Mismo backend custom (CDN f.fcdn.app) para ambas tiendas. Endpoint encontrado
+# en el bundle JS minificado (Twitter Typeahead + Bloodhound) — no aparece en el
+# HTML ni en ningún sitemap de búsqueda.
+
+_MONTO_RE   = re.compile(r'class="monto">([\d.,]+)<')
+_MONEDA_RE  = re.compile(r'class="sim">([A-Z$]+)<')
+
+
+def _buscar_dimm_stienda(term: str, base_url: str, tienda_nombre: str) -> list[ProductRecord]:
+    records: list[ProductRecord] = []
+    try:
+        r = _requests.get(
+            f"{base_url}/ajax",
+            params={"service": "buscador-sugerencias", "q": term},
+            headers=_UA_HEADERS,
+            timeout=8,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as exc:
+        log.warning("%s: error buscando '%s' — %s", tienda_nombre, term, exc)
+        return records
+
+    for item in data.get("datos") or []:
+        if item.get("t") != "a":  # "c" = categoría, "all" = resumen — solo interesan productos
+            continue
+
+        nombre_item = item.get("nom") or ""
+        score = score_match(nombre_item, term)
+        if score < _MIN_SCORE:
+            continue
+
+        precio_match = _MONTO_RE.search(item.get("prV") or "")
+        if not precio_match:
+            continue
+        precio = _parse_precio_uy(precio_match.group(1))
+        if precio is None:
+            continue
+
+        lista_match  = _MONTO_RE.search(item.get("prL") or "")
+        precio_lista = _parse_precio_uy(lista_match.group(1)) if lista_match else None
+        if precio_lista == precio:
+            precio_lista = None
+
+        moneda_match = _MONEDA_RE.search(item.get("prV") or "")
+        moneda = moneda_match.group(1) if moneda_match else "USD"
+        moneda = "UYU" if moneda == "$" else moneda
+
+        records.append(ProductRecord(
+            tienda          = tienda_nombre,
+            nombre          = nombre_item,
+            precio          = precio,
+            precio_lista    = precio_lista,
+            sku             = None,
+            barcode         = None,
+            marca           = None,
+            categoria       = None,
+            url             = item.get("url") or base_url,
+            sucursal_id     = None,
+            sucursal_nombre = None,
+            relevancia      = score,
+            moneda          = moneda,
+        ))
+
+    return records
+
+
+def buscar_dimm(term: str) -> list[ProductRecord]:
+    return _buscar_dimm_stienda(term, "https://www.dimm.com.uy", "DIMM")
+
+
+def buscar_stienda(term: str) -> list[ProductRecord]:
+    return _buscar_dimm_stienda(term, "https://stienda.uy", "Stienda")
+
+
+# ── Fama (buscador dinámico) ────────────────────────────────────────────────────
+# Endpoint encontrado en un <script> inline que arma la URL para el plugin
+# EasyAutocomplete — tampoco aparece en HTML plano ni en sitemap.
+# Catálogo con precios mixtos: algunos productos en USD, otros en pesos ($).
+
+def buscar_fama(term: str) -> list[ProductRecord]:
+    base_url = "https://www.fama.com.uy"
+    records: list[ProductRecord] = []
+    try:
+        r = _requests.get(
+            f"{base_url}/productos/scripts/buscador_dinamico_productos.php",
+            params={"p": 0, "idc": 0, "q": term},
+            headers=_UA_HEADERS,
+            timeout=8,
+        )
+        r.raise_for_status()
+        items = r.json()
+    except Exception as exc:
+        log.warning("Fama: error buscando '%s' — %s", term, exc)
+        return records
+
+    for item in items or []:
+        if not item.get("tiene_precio"):
+            continue
+
+        nombre_item = item.get("text") or ""
+        score = score_match(nombre_item, term)
+        if score < _MIN_SCORE:
+            continue
+
+        precio_raw = (item.get("precio") or "").strip()
+        partes = precio_raw.split(maxsplit=1)
+        if len(partes) != 2:
+            continue
+        moneda = "UYU" if partes[0] == "$" else partes[0]
+        precio = _parse_precio_uy(partes[1])
+        if precio is None:
+            continue
+
+        url = item.get("url") or ""
+        if url and not url.startswith("http"):
+            url = f"{base_url}{url}"
+
+        records.append(ProductRecord(
+            tienda          = "Fama",
+            nombre          = nombre_item,
+            precio          = precio,
+            precio_lista    = None,
+            sku             = str(item["id"]) if item.get("id") else None,
+            barcode         = None,
+            marca           = None,
+            categoria       = None,
+            url             = url or base_url,
+            sucursal_id     = None,
+            sucursal_nombre = None,
+            relevancia      = score,
+            moneda          = moneda,
+        ))
+
+    return records
+
+
 # ── Orquestador ───────────────────────────────────────────────────────────────
 
 def buscar_todas(term: str, cache_dir: Path = _DATA_DIR) -> dict[str, list[ProductRecord]]:
-    """Busca `term` en Ta-Ta, El Dorado, GDU, FarmaShop y Botiga en paralelo.
+    """Busca `term` en todas las cadenas soportadas en paralelo.
     Devuelve {cadena: [ProductRecord, ...]}. Si una cadena falla, devuelve lista
     vacía para esa cadena y continúa con las demás (nunca lanza excepción)."""
     futs: dict[str, "Future"] = {}
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    with ThreadPoolExecutor(max_workers=11) as ex:
         futs = {
-            "Ta-Ta":     ex.submit(buscar_tata, term),
-            "ElDorado":  ex.submit(buscar_eldorado, term),
-            "GDU":       ex.submit(buscar_gdu, term, cache_dir),
-            "FarmaShop": ex.submit(buscar_farmashop, term),
-            "Botiga":    ex.submit(buscar_botiga, term),
+            "Ta-Ta":         ex.submit(buscar_tata, term),
+            "ElDorado":      ex.submit(buscar_eldorado, term),
+            "GDU":           ex.submit(buscar_gdu, term, cache_dir),
+            "FarmaShop":     ex.submit(buscar_farmashop, term),
+            "Botiga":        ex.submit(buscar_botiga, term),
+            "BlackDog":      ex.submit(buscar_blackdog, term),
+            "Electrohogar":  ex.submit(buscar_electrohogar, term),
+            "CoverCompany":  ex.submit(buscar_covercompany, term),
+            "DIMM":          ex.submit(buscar_dimm, term),
+            "Stienda":       ex.submit(buscar_stienda, term),
+            "Fama":          ex.submit(buscar_fama, term),
         }
         resultados: dict[str, list[ProductRecord]] = {}
         for cadena, fut in futs.items():
@@ -426,13 +705,19 @@ def buscar_todas(term: str, cache_dir: Path = _DATA_DIR) -> dict[str, list[Produ
 def buscar_todas_streaming(term: str, cache_dir: Path = _DATA_DIR):
     """Generador síncrono que hace yield de (cadena, records) en orden de llegada.
     La cadena más rápida aparece primero — ideal para streaming SSE."""
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    with ThreadPoolExecutor(max_workers=11) as ex:
         futs = {
-            ex.submit(buscar_tata,      term):            "Ta-Ta",
-            ex.submit(buscar_eldorado,  term):            "ElDorado",
-            ex.submit(buscar_gdu,       term, cache_dir): "GDU",
-            ex.submit(buscar_farmashop, term):            "FarmaShop",
-            ex.submit(buscar_botiga,    term):            "Botiga",
+            ex.submit(buscar_tata,         term):            "Ta-Ta",
+            ex.submit(buscar_eldorado,     term):            "ElDorado",
+            ex.submit(buscar_gdu,          term, cache_dir): "GDU",
+            ex.submit(buscar_farmashop,    term):            "FarmaShop",
+            ex.submit(buscar_botiga,       term):            "Botiga",
+            ex.submit(buscar_blackdog,     term):            "BlackDog",
+            ex.submit(buscar_electrohogar, term):            "Electrohogar",
+            ex.submit(buscar_covercompany, term):            "CoverCompany",
+            ex.submit(buscar_dimm,         term):            "DIMM",
+            ex.submit(buscar_stienda,      term):            "Stienda",
+            ex.submit(buscar_fama,         term):            "Fama",
         }
         for fut in as_completed(futs):
             cadena = futs[fut]

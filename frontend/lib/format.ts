@@ -10,3 +10,9 @@ export function fMoneyExact(n: number): string {
   const [integer, decimal] = n.toFixed(2).split(".");
   return "$" + integer.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "," + decimal;
 }
+
+export function fMoneyByCurrency(n: number, moneda?: string | null): string {
+  const [integer, decimal] = n.toFixed(2).split(".");
+  const formateado = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "," + decimal;
+  return moneda === "USD" ? "U$S " + formateado : "$" + formateado;
+}

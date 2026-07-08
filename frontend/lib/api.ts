@@ -275,6 +275,7 @@ export interface ProductoVivo {
   sucursal_id:     string | null;
   sucursal_nombre: string | null;
   relevancia:      number;
+  moneda:          string | null;
 }
 
 export interface BuscarVivoResponse {
