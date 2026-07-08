@@ -21,6 +21,7 @@ from app.schemas.auth import (
     UserResponse,
     ForgotPasswordRequest,
     ResetPasswordRequest,
+    ChangePasswordRequest,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -214,6 +215,28 @@ async def reset_password(
     user.hashed_password = hash_password(payload.new_password)
     await redis.delete(redis_key)  # token de un solo uso
     db.add(AuditLog(user_id=user.id, action="user.password_reset"))
+
+    return {"message": "Contraseña actualizada correctamente."}
+
+
+@router.post("/change-password", status_code=200)
+@limiter.limit("10/minute")
+async def change_password(
+    request: Request,
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Un usuario logueado cambia su propia contraseña sabiendo la actual —
+    distinto del flujo de /reset-password, que es para cuando no tenés acceso."""
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="La contraseña actual no es correcta")
+    if payload.new_password == payload.current_password:
+        raise HTTPException(status_code=400, detail="La nueva contraseña tiene que ser distinta de la actual")
+
+    current_user.hashed_password = hash_password(payload.new_password)
+    db.add(current_user)
+    db.add(AuditLog(user_id=current_user.id, action="user.password_change"))
 
     return {"message": "Contraseña actualizada correctamente."}
 

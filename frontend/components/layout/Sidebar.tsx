@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
   BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, ShieldCheck, HelpCircle, X, Tag,
-  Sun, Moon, ClipboardList,
+  Sun, Moon, ClipboardList, Bell,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi } from "@/lib/api";
@@ -13,6 +13,7 @@ import type { CurrentUser } from "@/types";
 import { useTranslation } from "react-i18next";
 import { LANGUAGES, setLanguage, type LangCode } from "@/lib/i18n";
 import { useTheme } from "@/hooks/useTheme";
+import { toast } from "sonner";
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -136,6 +137,31 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </nav>
 
         <div className="mx-4 h-px bg-white/5 mb-3" />
+
+        {/* Perfil + notificaciones */}
+        <div className="px-3 pb-2 flex items-center gap-1.5">
+          <Link
+            href="/perfil"
+            onClick={handleNavClick}
+            className="group flex items-center gap-2.5 flex-1 min-w-0 px-3 py-2 rounded-xl
+                       text-slate-400 hover:bg-white/5 hover:text-slate-200 transition-all duration-150"
+          >
+            <div className="w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 flex items-center justify-center text-[11px] font-bold shrink-0 group-hover:bg-brand-600/50">
+              {currentUser?.full_name?.charAt(0).toUpperCase() ?? "?"}
+            </div>
+            <span className="flex-1 min-w-0 truncate text-xs font-medium">
+              {currentUser?.full_name ?? t("sidebar.miPerfil")}
+            </span>
+          </Link>
+          <button
+            onClick={() => toast(t("sidebar.notificacionesProximamente"))}
+            aria-label={t("sidebar.notificaciones")}
+            title={t("sidebar.notificaciones")}
+            className="p-2 rounded-xl text-slate-500 hover:bg-white/5 hover:text-slate-300 transition-all duration-150 shrink-0"
+          >
+            <Bell size={16} />
+          </button>
+        </div>
 
         {/* Language selector */}
         <div className="px-3 pb-2 relative">

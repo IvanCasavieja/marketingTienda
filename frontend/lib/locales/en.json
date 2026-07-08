@@ -42,7 +42,10 @@
     "lightMode": "Light mode",
     "darkMode": "Dark mode",
     "toggleToLight": "Switch to light mode",
-    "toggleToDark": "Switch to dark mode"
+    "toggleToDark": "Switch to dark mode",
+    "miPerfil": "My profile",
+    "notificaciones": "Notifications",
+    "notificacionesProximamente": "Notifications — coming soon"
   },
   "login": {
     "welcome": "Welcome",

@@ -42,7 +42,10 @@
     "lightMode": "Modo claro",
     "darkMode": "Modo escuro",
     "toggleToLight": "Mudar para modo claro",
-    "toggleToDark": "Mudar para modo escuro"
+    "toggleToDark": "Mudar para modo escuro",
+    "miPerfil": "Meu perfil",
+    "notificaciones": "Notificações",
+    "notificacionesProximamente": "Notificações — em breve"
   },
   "login": {
     "welcome": "Bem-vindo",
