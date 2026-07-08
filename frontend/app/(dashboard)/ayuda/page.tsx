@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Megaphone, Brain, Presentation, Layers,
   Settings, MessageCircle, BarChart2, Upload,
   Download, Eye, GitBranch, Variable, Users, RefreshCw,
-  CheckCircle2, AlertTriangle, Clock, Tag, SlidersHorizontal, LineChart,
+  CheckCircle2, AlertTriangle, Clock, Tag, SlidersHorizontal, LineChart, ClipboardList,
   Loader2,
 } from "lucide-react";
 import { RobotMascot, RobotMini } from "@/components/RobotMascot";
@@ -116,6 +116,7 @@ export default function AyudaPage() {
           {showIA         && <Chip icon={Brain}        label="IA integrada" color="bg-purple-50 text-purple-600" />}
           {showCenefas    && <Chip icon={Presentation} label="Cenefas"      color="bg-emerald-50 text-emerald-600" />}
           {showPrecios    && <Chip icon={Tag}          label="Precios"      color="bg-cyan-50 text-cyan-600" />}
+          <Chip icon={ClipboardList} label="Pedidos"   color="bg-orange-50 text-orange-600" />
           <Chip icon={MessageCircle} label="Asistente" color="bg-amber-50 text-amber-600" />
         </div>
       </div>
@@ -406,6 +407,38 @@ export default function AyudaPage() {
         </Card>
       </section>
       )}
+
+      {/* ── Planilla de pedidos (Redexpress) — siempre visible, no depende de ningún permiso ── */}
+      <section>
+        <SectionTitle icon={ClipboardList} title="Planilla de pedidos" color="text-orange-600" />
+        <Card>
+          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
+            Cada local de Redexpress pide mensualmente el material de punto de venta que necesita
+            (cenefas, afiches, pinchos, stickers) completando su fila de la planilla del mes.
+            Los cambios se guardan solos a los pocos segundos de dejar de tipear — no hay botón de "Guardar".
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Tu local</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                Solo podés editar la fila del local que tenés asignado — el resto se ve pero no se puede tocar.
+              </p>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Confirmar pedido</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                Una vez cargado, confirmás el pedido y la fila queda bloqueada para evitar cambios accidentales.
+              </p>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Nuevo mes</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                Solo el Super Admin puede abrir un mes nuevo o desbloquear un pedido ya confirmado.
+              </p>
+            </div>
+          </div>
+        </Card>
+      </section>
 
       {/* ── Asistente — siempre visible, no depende de ningún permiso especial ── */}
       <section>
