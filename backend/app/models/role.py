@@ -65,8 +65,15 @@ DEFAULT_ROLES: list[dict] = [
     },
     {
         "name":        "Usuario",
-        "description": "Arranca sin permisos — se le arman a medida desde su perfil",
-        "permissions": [],
+        "description": "Acceso operativo estándar: cenefas, analytics, precios e IA — sin gestión de usuarios ni conexiones",
+        "permissions": [
+            "platform.users.view",
+            "cenefas.view", "cenefas.generate", "cenefas.edit", "cenefas.import", "cenefas.delete",
+            "analytics.view", "analytics.export",
+            "connections.view",
+            "precios.search",
+            "ai.use",
+        ],
         "is_system":   True,
         "view_only":   False,
     },
