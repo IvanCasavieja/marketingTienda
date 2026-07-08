@@ -7,7 +7,7 @@ import {
 import { X, Search, CheckCircle2, BarChart3 } from "lucide-react";
 import type { ProductoVivo } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
-import { CADENA_CONFIG, CadenaBadge } from "@/app/(dashboard)/precios/page";
+import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
 
 // ── Item con id estable (posición en el pool recibido — no cambia mientras
 // el modal está abierto, aunque el buscador del checklist filtre la vista) ──
