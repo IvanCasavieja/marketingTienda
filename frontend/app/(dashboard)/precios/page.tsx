@@ -2,28 +2,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type ProductoVivo } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
-import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle } from "lucide-react";
+import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
+import ComparisonModal from "@/components/precios/ComparisonModal";
 
 // ── Colores por cadena ────────────────────────────────────────────────────────
 
-const CADENA_CONFIG: Record<string, { bg: string; dot: string; label: string; border: string }> = {
-  "Disco":     { bg: "bg-blue-500/10 text-blue-600 dark:text-blue-400",         dot: "bg-blue-500",    label: "Disco",     border: "border-l-blue-500"    },
-  "Devoto":    { bg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500", label: "Devoto",    border: "border-l-emerald-500" },
-  "Geant":     { bg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",    dot: "bg-violet-500",  label: "Géant",     border: "border-l-violet-500"  },
-  "Ta-Ta":     { bg: "bg-rose-500/10 text-rose-600 dark:text-rose-400",          dot: "bg-rose-500",    label: "Ta-Ta",     border: "border-l-rose-500"    },
-  "ElDorado":  { bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400",       dot: "bg-amber-500",   label: "El Dorado", border: "border-l-amber-500"   },
-  "FarmaShop": { bg: "bg-teal-500/10 text-teal-600 dark:text-teal-400",          dot: "bg-teal-500",    label: "FarmaShop", border: "border-l-teal-500"    },
-  "Botiga":    { bg: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400", dot: "bg-fuchsia-500", label: "Botiga",    border: "border-l-fuchsia-500" },
-  "Fama":         { bg: "bg-sky-500/10 text-sky-600 dark:text-sky-400",         dot: "bg-sky-500",     label: "Fama",         border: "border-l-sky-500"     },
-  "Stienda":      { bg: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400", dot: "bg-indigo-500",  label: "Stienda",      border: "border-l-indigo-500"  },
-  "BlackDog":     { bg: "bg-stone-500/10 text-stone-600 dark:text-stone-400",    dot: "bg-stone-500",   label: "Black Dog",    border: "border-l-stone-500"   },
-  "CoverCompany": { bg: "bg-orange-500/10 text-orange-600 dark:text-orange-400", dot: "bg-orange-500",  label: "Cover Company", border: "border-l-orange-500"  },
-  "DIMM":         { bg: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",       dot: "bg-cyan-500",    label: "DIMM",         border: "border-l-cyan-500"    },
-  "Electrohogar": { bg: "bg-lime-500/10 text-lime-600 dark:text-lime-400",       dot: "bg-lime-500",    label: "Electrohogar", border: "border-l-lime-500"    },
+export const CADENA_CONFIG: Record<string, { bg: string; dot: string; label: string; border: string; hex: string }> = {
+  "Disco":     { bg: "bg-blue-500/10 text-blue-600 dark:text-blue-400",         dot: "bg-blue-500",    label: "Disco",     border: "border-l-blue-500",    hex: "#3b82f6" },
+  "Devoto":    { bg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500", label: "Devoto",    border: "border-l-emerald-500", hex: "#10b981" },
+  "Geant":     { bg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",    dot: "bg-violet-500",  label: "Géant",     border: "border-l-violet-500",  hex: "#8b5cf6" },
+  "Ta-Ta":     { bg: "bg-rose-500/10 text-rose-600 dark:text-rose-400",          dot: "bg-rose-500",    label: "Ta-Ta",     border: "border-l-rose-500",    hex: "#f43f5e" },
+  "ElDorado":  { bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400",       dot: "bg-amber-500",   label: "El Dorado", border: "border-l-amber-500",   hex: "#f59e0b" },
+  "FarmaShop": { bg: "bg-teal-500/10 text-teal-600 dark:text-teal-400",          dot: "bg-teal-500",    label: "FarmaShop", border: "border-l-teal-500",    hex: "#14b8a6" },
+  "Botiga":    { bg: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400", dot: "bg-fuchsia-500", label: "Botiga",    border: "border-l-fuchsia-500",  hex: "#d946ef" },
+  "Fama":         { bg: "bg-sky-500/10 text-sky-600 dark:text-sky-400",         dot: "bg-sky-500",     label: "Fama",         border: "border-l-sky-500",     hex: "#0ea5e9" },
+  "Stienda":      { bg: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400", dot: "bg-indigo-500",  label: "Stienda",      border: "border-l-indigo-500",  hex: "#6366f1" },
+  "BlackDog":     { bg: "bg-stone-500/10 text-stone-600 dark:text-stone-400",    dot: "bg-stone-500",   label: "Black Dog",    border: "border-l-stone-500",   hex: "#78716c" },
+  "CoverCompany": { bg: "bg-orange-500/10 text-orange-600 dark:text-orange-400", dot: "bg-orange-500",  label: "Cover Company", border: "border-l-orange-500", hex: "#f97316" },
+  "DIMM":         { bg: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",       dot: "bg-cyan-500",    label: "DIMM",         border: "border-l-cyan-500",    hex: "#06b6d4" },
+  "Electrohogar": { bg: "bg-lime-500/10 text-lime-600 dark:text-lime-400",       dot: "bg-lime-500",    label: "Electrohogar", border: "border-l-lime-500",    hex: "#84cc16" },
 };
 
-function CadenaBadge({ tienda }: { tienda: string }) {
+export function CadenaBadge({ tienda }: { tienda: string }) {
   const cfg = CADENA_CONFIG[tienda];
   if (!cfg) return (
     <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
@@ -63,10 +64,11 @@ export default function PreciosPage() {
   const [results,      setResults]      = useState<ProductoVivo[] | null>(null);
   const [lastQuery,    setLastQuery]    = useState("");
   const [sortMode,       setSortMode]       = useState<"relevancia" | "precio-asc" | "precio-desc">("relevancia");
-  const [filterCadena,   setFilterCadena]   = useState<string | null>(null);
+  const [filterCadenas,  setFilterCadenas]  = useState<Set<string>>(new Set());
   const [filterSucursal, setFilterSucursal] = useState<string | null>(null);
   const [cadenasDone,    setCadenasDone]    = useState<string[]>([]);
   const [cadenaErrors,   setCadenaErrors]   = useState<Record<string, string>>({});
+  const [showChart,      setShowChart]      = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -83,7 +85,7 @@ export default function PreciosPage() {
     setStreaming(false);
     setResults([]);
     setLastQuery(t);
-    setFilterCadena(null);
+    setFilterCadenas(new Set());
     setFilterSucursal(null);
     setSortMode("relevancia");
     setCadenasDone([]);
@@ -140,20 +142,31 @@ export default function PreciosPage() {
 
   const ALL_CADENAS = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Fama", "Stienda", "BlackDog", "CoverCompany", "DIMM", "Electrohogar"];
 
+  // Multi-selección: los chips se van sumando entre sí — solo "Todas" los apaga
+  // a todos de una. Vacío = mostrar todas las cadenas.
+  function toggleCadena(c: string) {
+    setFilterCadenas((prev) => {
+      const next = new Set(prev);
+      next.has(c) ? next.delete(c) : next.add(c);
+      return next;
+    });
+    setFilterSucursal(null);
+  }
+
   const cadenas = results ? [...new Set(results.map((r) => r.tienda))].sort() : [];
 
-  // Sucursales disponibles según la cadena activa (solo las que tienen nombre)
+  // Sucursales disponibles según las cadenas activas (solo las que tienen nombre)
   const sucursales = results
     ? [...new Set(
         results
-          .filter((r) => (!filterCadena || r.tienda === filterCadena) && r.sucursal_nombre)
+          .filter((r) => (filterCadenas.size === 0 || filterCadenas.has(r.tienda)) && r.sucursal_nombre)
           .map((r) => r.sucursal_nombre!)
       )].sort()
     : [];
 
   const visible = results
     ? [...results]
-        .filter((r) => !filterCadena || r.tienda === filterCadena)
+        .filter((r) => filterCadenas.size === 0 || filterCadenas.has(r.tienda))
         .filter((r) => !filterSucursal || r.sucursal_nombre === filterSucursal)
         .sort((a, b) => {
           if (sortMode === "relevancia") {
@@ -252,9 +265,9 @@ export default function PreciosPage() {
           <div className="shrink-0 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
               <button
-                onClick={() => setFilterCadena(null)}
+                onClick={() => { setFilterCadenas(new Set()); setFilterSucursal(null); }}
                 className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
-                  !filterCadena
+                  filterCadenas.size === 0
                     ? "bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900"
                     : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
                 }`}
@@ -267,9 +280,9 @@ export default function PreciosPage() {
                 return (
                   <button
                     key={c}
-                    onClick={() => { setFilterCadena(filterCadena === c ? null : c); setFilterSucursal(null); }}
+                    onClick={() => toggleCadena(c)}
                     className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
-                      filterCadena === c
+                      filterCadenas.has(c)
                         ? `${cfg?.dot ?? "bg-slate-500"} text-white`
                         : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
                     }`}
@@ -333,6 +346,16 @@ export default function PreciosPage() {
                 <TrendingDown size={13} className={sortMode === "precio-desc" ? "rotate-180 transition-transform" : "transition-transform"} />
                 {sortMode === "relevancia" ? "Por relevancia" : sortMode === "precio-asc" ? "Precio: menor primero" : "Precio: mayor primero"}
               </button>
+
+              {hasResults && (
+                <button
+                  onClick={() => setShowChart(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                >
+                  <BarChart3 size={13} />
+                  Ver gráfico
+                </button>
+              )}
             </div>
           </div>
 
@@ -394,12 +417,14 @@ export default function PreciosPage() {
                 <div className="flex-1 overflow-y-auto divide-y divide-slate-50 dark:divide-slate-800/50">
                   {visible.length === 0 ? (
                     <div className="py-8 text-center text-sm text-slate-400">
-                      Ningún resultado de <em>{CADENA_CONFIG[filterCadena!]?.label ?? filterCadena}</em> para este término.
+                      Ningún resultado de{" "}
+                      <em>{[...filterCadenas].map((c) => CADENA_CONFIG[c]?.label ?? c).join(", ")}</em>
+                      {" "}para este término.
                     </div>
                   ) : visible.map((p, i) => {
                     const hasDesc = p.precio_lista !== null && p.precio_lista > (p.precio ?? 0);
                     const pct     = hasDesc ? Math.round((1 - (p.precio ?? 0) / p.precio_lista!) * 100) : 0;
-                    const isCheap = p === cheapest && !filterCadena;
+                    const isCheap = p === cheapest && filterCadenas.size === 0;
                     const borderCfg = CADENA_CONFIG[p.tienda];
 
                     return (
@@ -467,6 +492,10 @@ export default function PreciosPage() {
             )}
           </div>
         </div>
+      )}
+
+      {showChart && (
+        <ComparisonModal items={visible} onClose={() => setShowChart(false)} />
       )}
     </div>
   );
