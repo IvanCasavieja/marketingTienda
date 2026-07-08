@@ -8,6 +8,7 @@ import { X, Search, CheckCircle2, BarChart3 } from "lucide-react";
 import type { ProductoVivo } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
 import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
+import DonTinoFloating from "@/components/DonTinoFloating";
 
 // ── Item con id estable (posición en el pool recibido — no cambia mientras
 // el modal está abierto, aunque el buscador del checklist filtre la vista) ──
@@ -34,10 +35,11 @@ const ChartTooltip = ({ active, payload }: any) => {
 };
 
 export default function ComparisonModal({
-  items, onClose,
+  items, onClose, termino,
 }: {
   items: ProductoVivo[];
   onClose: () => void;
+  termino?: string;
 }) {
   const withIds: ItemConId[] = useMemo(
     () => items.map((it, idx) => ({ ...it, _id: `${it.tienda}-${it.sucursal_id ?? "x"}-${it.sku ?? "x"}-${idx}` })),
@@ -91,6 +93,18 @@ export default function ComparisonModal({
   const ourPriceRaw = ourPrice.trim() ? Number(ourPrice) : null;
   const ourPriceNum = ourPriceRaw !== null && Number.isFinite(ourPriceRaw) ? ourPriceRaw : null;
   const hayMismaMoneda = ourPriceNum !== null && chartData.some((d) => d.moneda === ourCurrency);
+
+  // Para Don Tino: el pool completo (limpieza) y los tildados con precio (reporte).
+  const itemsParaDonTino = useMemo(
+    () => withIds.map((it) => ({ id: it._id, tienda: it.tienda, nombre: it.nombre ?? "—" })),
+    [withIds]
+  );
+  const chartItemsParaReporte = useMemo(
+    () => withIds
+      .filter((it) => selected.has(it._id) && it.precio !== null)
+      .map((it) => ({ tienda: it.tienda, nombre: it.nombre ?? "—", precio: it.precio!, moneda: it.moneda ?? "UYU" })),
+    [withIds, selected]
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -233,6 +247,16 @@ export default function ComparisonModal({
           <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cerrar</button>
         </div>
       </div>
+
+      <DonTinoFloating
+        context="comparison"
+        termino={termino ?? ""}
+        items={itemsParaDonTino}
+        chartItems={chartItemsParaReporte}
+        ourPrice={ourPriceNum}
+        ourCurrency={ourCurrency}
+        onApplySeleccion={(ids) => setSelected(new Set(ids))}
+      />
     </div>
   );
 }

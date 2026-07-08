@@ -6,6 +6,7 @@ import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarC
 import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
 import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
+import DonTinoFloating from "@/components/DonTinoFloating";
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
@@ -501,8 +502,14 @@ export default function PreciosPage() {
       )}
 
       {showChart && (
-        <ComparisonModal items={visible} onClose={() => setShowChart(false)} />
+        <ComparisonModal items={visible} onClose={() => setShowChart(false)} termino={lastQuery} />
       )}
+
+      <DonTinoFloating
+        context="precios"
+        hasResults={hasResults}
+        onOpenChart={() => setShowChart(true)}
+      />
     </div>
   );
 }

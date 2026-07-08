@@ -3,12 +3,16 @@ precios.py — búsqueda EN VIVO de precios de supermercados uruguayos.
 
   GET  /precios/buscar-vivo        — búsqueda sincrónica (no SSE)
   GET  /precios/buscar-vivo-stream — búsqueda SSE cadena por cadena
+  POST /precios/ia/limpiar         — Don Tino filtra resultados por lenguaje natural
+  POST /precios/ia/reporte         — Don Tino genera un reporte escrito del gráfico
 """
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from app.core.deps import get_current_user, require_permission
 from app.models.user import User
@@ -180,3 +184,76 @@ async def buscar_vivo_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Don Tino + IA sobre los resultados — stateless, no persiste nada ni dispara
+# scraping. Opera sobre los items que el frontend ya trajo con la búsqueda en
+# vivo de ese momento.
+# ---------------------------------------------------------------------------
+
+class _ItemBasico(BaseModel):
+    tienda: str
+    nombre: str
+
+
+class LimpiarRequest(BaseModel):
+    termino: str
+    items: list[_ItemBasico]
+    instruccion: str
+
+
+class _ItemConPrecio(BaseModel):
+    tienda: str
+    nombre: str
+    precio: float
+    moneda: str
+
+
+class ReporteRequest(BaseModel):
+    items: list[_ItemConPrecio]
+    nuestro_precio: Optional[float] = None
+    nuestra_moneda: Optional[str] = None
+
+
+@router.post("/ia/limpiar")
+async def ia_limpiar(
+    payload: LimpiarRequest,
+    _: User = Depends(require_permission("precios.search")),
+):
+    if not payload.items:
+        return {"mantener": [], "comentario": "No hay productos para filtrar."}
+
+    from app.services.don_tino_precios import limpiar_resultados
+
+    try:
+        return await limpiar_resultados(
+            payload.termino,
+            [it.model_dump() for it in payload.items],
+            payload.instruccion,
+        )
+    except Exception as exc:
+        logger.error("ia_limpiar: error para '%s' — %s", payload.termino, exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="No pude procesar el pedido en este momento")
+
+
+@router.post("/ia/reporte")
+async def ia_reporte(
+    payload: ReporteRequest,
+    _: User = Depends(require_permission("precios.search")),
+):
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="No hay productos seleccionados para el reporte")
+
+    from app.services.don_tino_precios import generar_reporte
+
+    try:
+        reporte = await generar_reporte(
+            [it.model_dump() for it in payload.items],
+            payload.nuestro_precio,
+            payload.nuestra_moneda,
+        )
+        return {"reporte": reporte}
+    except Exception as exc:
+        logger.error("ia_reporte: error generando reporte — %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="No pude generar el reporte en este momento")

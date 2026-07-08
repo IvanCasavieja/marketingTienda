@@ -278,6 +278,15 @@ export interface BuscarVivoResponse {
   items: ProductoVivo[];
 }
 
+export interface LimpiarIAResponse {
+  mantener: number[];
+  comentario: string;
+}
+
+export interface ReporteIAResponse {
+  reporte: string;
+}
+
 export const preciosApi = {
   buscarVivo: (q: string) =>
     api.get<BuscarVivoResponse>("/precios/buscar-vivo", { params: { q } }),
@@ -313,6 +322,16 @@ export const preciosApi = {
     }
     return response;
   },
+
+  limpiarConIA: (termino: string, items: { tienda: string; nombre: string }[], instruccion: string) =>
+    api.post<LimpiarIAResponse>("/precios/ia/limpiar", { termino, items, instruccion }),
+
+  generarReporteIA: (
+    items: { tienda: string; nombre: string; precio: number; moneda: string }[],
+    nuestro_precio?: number | null,
+    nuestra_moneda?: string | null,
+  ) =>
+    api.post<ReporteIAResponse>("/precios/ia/reporte", { items, nuestro_precio, nuestra_moneda }),
 
 };
 
