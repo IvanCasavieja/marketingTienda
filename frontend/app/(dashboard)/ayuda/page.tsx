@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Megaphone, Brain, Presentation, Layers,
   Settings, MessageCircle, BarChart2, Upload,
   Download, Eye, GitBranch, Variable, Users, RefreshCw,
-  CheckCircle2, AlertTriangle, Clock, ChevronRight, Tag, SlidersHorizontal, LineChart,
+  CheckCircle2, AlertTriangle, Clock, Tag, SlidersHorizontal, LineChart,
   Loader2,
 } from "lucide-react";
 import { RobotMascot, RobotMini } from "@/components/RobotMascot";
@@ -86,7 +86,6 @@ export default function AyudaPage() {
   const showCenefas    = hasPerm("cenefas.view");
   const showConexiones = hasPerm("connections.view");
   const showRoles      = hasPerm("platform.users.view");
-  const showCtaButtons = showConexiones || showPrecios || showCenefas;
 
   if (loading) {
     return (
@@ -478,36 +477,6 @@ export default function AyudaPage() {
         </Card>
       </section>
       )}
-
-      {/* ── CTA ── */}
-      <div className="bg-gradient-to-br from-brand-600 to-indigo-700 rounded-2xl p-6 text-center text-white">
-        <p className="text-lg font-bold mb-1">¿Todo claro?</p>
-        <p className="text-sm text-white/70 mb-4">
-          {showCtaButtons ? "Empezá por acá:" : "Cualquier duda, preguntale a Don Tino desde el Home."}
-        </p>
-        {showCtaButtons && (
-          <div className="flex gap-3 justify-center flex-wrap">
-            {showConexiones && (
-              <Link href="/settings"
-                className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-medium transition-colors">
-                <Settings size={14} /> Conectar plataformas
-              </Link>
-            )}
-            {showPrecios && (
-              <Link href="/precios"
-                className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-medium transition-colors">
-                <Tag size={14} /> Buscar precios
-              </Link>
-            )}
-            {showCenefas && (
-              <Link href="/herramientas/cenefas"
-                className="flex items-center gap-1.5 px-4 py-2 bg-white text-brand-700 hover:bg-white/90 rounded-xl text-sm font-medium transition-colors">
-                <Presentation size={14} /> Generar cenefas <ChevronRight size={14} />
-              </Link>
-            )}
-          </div>
-        )}
-      </div>
 
       <div className="pb-4" />
     </div>
