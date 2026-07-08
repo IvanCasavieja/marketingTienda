@@ -123,19 +123,42 @@ export default function PreciosPage() {
 
   const cadenas = results ? [...new Set(results.map((r) => r.tienda))].sort() : [];
 
-  // Sucursales disponibles según las cadenas activas (solo las que tienen nombre)
-  const sucursales = results
-    ? [...new Set(
-        results
-          .filter((r) => (filterCadenas.size === 0 || filterCadenas.has(r.tienda)) && r.sucursal_nombre)
-          .map((r) => r.sucursal_nombre!)
-      )].sort()
+  // Sucursales disponibles según las cadenas activas (solo las que tienen nombre).
+  // Agrupadas por cadena — Ta-Ta y El Dorado usan nombres de departamento (ej.
+  // "Montevideo", "Maldonado") que se repiten entre sí, así que la clave del filtro
+  // es "cadena||nombre" y no el nombre solo, para no mezclar sucursales de cadenas distintas.
+  const sucursalKey = (r: ProductoVivo) => `${r.tienda}||${r.sucursal_nombre}`;
+  const sucursalesPorCadena = results
+    ? (() => {
+        const vistos = new Set<string>();
+        const lista: { key: string; tienda: string; nombre: string }[] = [];
+        for (const r of results) {
+          if (!r.sucursal_nombre) continue;
+          if (filterCadenas.size > 0 && !filterCadenas.has(r.tienda)) continue;
+          const key = sucursalKey(r);
+          if (vistos.has(key)) continue;
+          vistos.add(key);
+          lista.push({ key, tienda: r.tienda, nombre: r.sucursal_nombre });
+        }
+        lista.sort((a, b) =>
+          (CADENA_CONFIG[a.tienda]?.label ?? a.tienda).localeCompare(CADENA_CONFIG[b.tienda]?.label ?? b.tienda) ||
+          a.nombre.localeCompare(b.nombre)
+        );
+        return lista;
+      })()
     : [];
+
+  const sucursalGroups: { tienda: string; items: typeof sucursalesPorCadena }[] = [];
+  for (const s of sucursalesPorCadena) {
+    const grupo = sucursalGroups.find((g) => g.tienda === s.tienda);
+    if (grupo) grupo.items.push(s);
+    else sucursalGroups.push({ tienda: s.tienda, items: [s] });
+  }
 
   const visible = results
     ? [...results]
         .filter((r) => filterCadenas.size === 0 || filterCadenas.has(r.tienda))
-        .filter((r) => !filterSucursal || r.sucursal_nombre === filterSucursal)
+        .filter((r) => !filterSucursal || sucursalKey(r) === filterSucursal)
         .sort((a, b) => {
           if (sortMode === "relevancia") {
             if (b.relevancia !== a.relevancia) return b.relevancia - a.relevancia;
@@ -291,16 +314,22 @@ export default function PreciosPage() {
               ))}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {/* Filtro de sucursal — solo visible cuando hay sucursales disponibles */}
-              {sucursales.length > 0 && (
+              {/* Filtro de sucursal — solo visible cuando hay sucursales disponibles.
+                  Agrupado por cadena (optgroup) porque Ta-Ta y El Dorado nombran sus
+                  sucursales por departamento y pueden coincidir (ej. "Montevideo" en ambas). */}
+              {sucursalesPorCadena.length > 0 && (
                 <select
                   value={filterSucursal ?? ""}
                   onChange={(e) => setFilterSucursal(e.target.value || null)}
                   className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all max-w-[200px]"
                 >
                   <option value="">Todas las sucursales</option>
-                  {sucursales.map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                  {sucursalGroups.map(({ tienda, items }) => (
+                    <optgroup key={tienda} label={CADENA_CONFIG[tienda]?.label ?? tienda}>
+                      {items.map((s) => (
+                        <option key={s.key} value={s.key}>{s.nombre}</option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               )}
@@ -445,7 +474,7 @@ export default function PreciosPage() {
                             href={p.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-all opacity-0 group-hover:opacity-100"
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:border-brand-500 hover:bg-brand-100 dark:hover:bg-brand-900/50 transition-all"
                             title="Ver en tienda"
                           >
                             <ExternalLink size={11} />
