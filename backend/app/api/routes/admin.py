@@ -1,4 +1,4 @@
-"""Endpoints de administración — solo superusuarios."""
+"""Endpoints de administración — Super Admin y Admin (con restricciones entre sí)."""
 import secrets
 import string
 
@@ -10,16 +10,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.security import hash_password
-from app.models.role import Role, ALL_PERMISSIONS
+from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
 from app.models.user import User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-def _require_superuser(current_user: User = Depends(get_current_user)) -> User:
-    if not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="Acceso denegado — solo administradores")
-    return current_user
+def _require_admin_panel(current_user: User = Depends(get_current_user)) -> User:
+    """Puede ver el panel (listar usuarios/roles/permisos)."""
+    if current_user.is_superuser or "platform.admin" in (current_user.permissions or []):
+        return current_user
+    raise HTTPException(status_code=403, detail="Acceso denegado — solo administradores")
+
+
+def _require_user_management(current_user: User = Depends(get_current_user)) -> User:
+    """Puede mutar: crear/editar usuarios, asignar roles y permisos, CRUD de roles."""
+    if current_user.is_superuser or "platform.users.manage" in (current_user.permissions or []):
+        return current_user
+    raise HTTPException(status_code=403, detail="Acceso denegado — permiso de gestión de usuarios requerido")
+
+
+async def _check_not_protected_admin(current_user: User, target_user: User, db: AsyncSession) -> None:
+    """Un Admin (no super) no puede modificar a otro Admin ni al Super Admin —
+    solo el Super Admin puede tocar esas cuentas."""
+    if current_user.is_superuser:
+        return
+    if target_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Solo el Super Admin puede modificar esta cuenta")
+    if target_user.role_id is not None:
+        role = await db.get(Role, target_user.role_id)
+        if role and role.name == "Admin":
+            raise HTTPException(status_code=403, detail="No podés modificar a otro Admin")
 
 
 def _temp_password(length: int = 16) -> str:
@@ -38,7 +59,7 @@ def _temp_password(length: int = 16) -> str:
 # ---------------------------------------------------------------------------
 
 @router.get("/permissions")
-async def list_permissions(_: User = Depends(_require_superuser)):
+async def list_permissions(_: User = Depends(_require_admin_panel)):
     return [
         {"key": key, "description": desc}
         for key, desc in ALL_PERMISSIONS.items()
@@ -63,7 +84,7 @@ class UpdateRoleRequest(BaseModel):
 
 @router.get("/roles")
 async def list_roles(
-    _: User = Depends(_require_superuser),
+    _: User = Depends(_require_admin_panel),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Role).order_by(Role.id))
@@ -75,6 +96,7 @@ async def list_roles(
             "description": r.description,
             "permissions": r.permissions or [],
             "is_system":   r.is_system,
+            "view_only":   r.view_only,
         }
         for r in roles
     ]
@@ -83,7 +105,7 @@ async def list_roles(
 @router.post("/roles", status_code=201)
 async def create_role(
     payload: CreateRoleRequest,
-    _: User = Depends(_require_superuser),
+    _: User = Depends(_require_user_management),
     db: AsyncSession = Depends(get_db),
 ):
     unknown = [p for p in payload.permissions if p not in ALL_PERMISSIONS]
@@ -102,14 +124,14 @@ async def create_role(
     )
     db.add(role)
     await db.flush()
-    return {"id": role.id, "name": role.name, "description": role.description, "permissions": role.permissions, "is_system": False}
+    return {"id": role.id, "name": role.name, "description": role.description, "permissions": role.permissions, "is_system": False, "view_only": False}
 
 
 @router.patch("/roles/{role_id}")
 async def update_role(
     role_id: int,
     payload: UpdateRoleRequest,
-    _: User = Depends(_require_superuser),
+    _: User = Depends(_require_user_management),
     db: AsyncSession = Depends(get_db),
 ):
     role = await db.get(Role, role_id)
@@ -131,13 +153,13 @@ async def update_role(
         role.description = payload.description
 
     db.add(role)
-    return {"id": role.id, "name": role.name, "description": role.description, "permissions": role.permissions, "is_system": role.is_system}
+    return {"id": role.id, "name": role.name, "description": role.description, "permissions": role.permissions, "is_system": role.is_system, "view_only": role.view_only}
 
 
 @router.delete("/roles/{role_id}", status_code=204)
 async def delete_role(
     role_id: int,
-    _: User = Depends(_require_superuser),
+    _: User = Depends(_require_user_management),
     db: AsyncSession = Depends(get_db),
 ):
     role = await db.get(Role, role_id)
@@ -158,11 +180,14 @@ class CreateUserRequest(BaseModel):
     full_name: str
     password: str
     role_id: int | None = None
-    is_superuser: bool = False
 
 
 class AssignRoleRequest(BaseModel):
     role_id: int | None
+
+
+class UpdatePermissionsRequest(BaseModel):
+    permissions: list[str]
 
 
 class UpdateUserRequest(BaseModel):
@@ -170,9 +195,18 @@ class UpdateUserRequest(BaseModel):
     email: EmailStr | None = None
 
 
+def _seed_permissions_for_role(role: Role | None) -> list[str]:
+    if role is None:
+        return []
+    perms = list(role.permissions or [])
+    if role.view_only:
+        perms = [p for p in perms if is_view_permission(p)]
+    return perms
+
+
 @router.get("/users")
 async def list_users(
-    _: User = Depends(_require_superuser),
+    _: User = Depends(_require_admin_panel),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(User).order_by(User.id))
@@ -192,7 +226,7 @@ async def list_users(
             "full_name":    u.full_name,
             "role_id":      u.role_id,
             "role_name":    roles_map[u.role_id].name if u.role_id and u.role_id in roles_map else None,
-            "permissions":  roles_map[u.role_id].permissions if u.role_id and u.role_id in roles_map else [],
+            "permissions":  u.permissions or [],
             "is_active":    u.is_active,
             "is_superuser": u.is_superuser,
             "created_at":   u.created_at.isoformat() if u.created_at else None,
@@ -204,24 +238,28 @@ async def list_users(
 @router.post("/users", status_code=201)
 async def create_user(
     payload: CreateUserRequest,
-    _: User = Depends(_require_superuser),
+    current_user: User = Depends(_require_user_management),
     db: AsyncSession = Depends(get_db),
 ):
     existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email ya registrado")
 
+    role: Role | None = None
     if payload.role_id is not None:
         role = await db.get(Role, payload.role_id)
         if not role:
             raise HTTPException(status_code=404, detail="Rol no encontrado")
+        if role.name == "Superadmin" and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Solo el Super Admin puede asignar ese rol")
 
     user = User(
         email=payload.email,
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
         role_id=payload.role_id,
-        is_superuser=payload.is_superuser,
+        permissions=_seed_permissions_for_role(role),
+        is_superuser=False,
     )
     db.add(user)
     await db.flush()
@@ -232,13 +270,14 @@ async def create_user(
 async def update_user(
     user_id: int,
     payload: UpdateUserRequest,
-    current_user: User = Depends(_require_superuser),
+    current_user: User = Depends(_require_user_management),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    await _check_not_protected_admin(current_user, user, db)
 
     if payload.email is not None and payload.email != user.email:
         existing = await db.execute(select(User).where(User.email == payload.email))
@@ -256,13 +295,14 @@ async def update_user(
 @router.post("/users/{user_id}/reset-password")
 async def reset_password(
     user_id: int,
-    _: User = Depends(_require_superuser),
+    current_user: User = Depends(_require_user_management),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    await _check_not_protected_admin(current_user, user, db)
 
     temp_pwd = _temp_password()
     user.hashed_password = hash_password(temp_pwd)
@@ -274,41 +314,84 @@ async def reset_password(
 async def assign_role(
     user_id: int,
     payload: AssignRoleRequest,
-    current_user: User = Depends(_require_superuser),
+    current_user: User = Depends(_require_user_management),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    await _check_not_protected_admin(current_user, user, db)
 
-    # Prevent removing Superadmin role from yourself
+    # Prevent removing your own role
     if user.id == current_user.id and payload.role_id is None:
         raise HTTPException(status_code=400, detail="No podés quitarte el rol a vos mismo")
 
+    role: Role | None = None
     if payload.role_id is not None:
         role = await db.get(Role, payload.role_id)
         if not role:
             raise HTTPException(status_code=404, detail="Rol no encontrado")
+        if role.name == "Superadmin" and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Solo el Super Admin puede asignar ese rol")
         # Sync is_superuser with Superadmin role
         user.is_superuser = role.name == "Superadmin"
+    else:
+        user.is_superuser = False
 
     user.role_id = payload.role_id
+    # Asignar un rol siembra el combo de permisos de ese rol — se puede
+    # afinar después por usuario vía /users/{id}/permissions.
+    user.permissions = _seed_permissions_for_role(role)
     db.add(user)
     return {"ok": True}
+
+
+@router.patch("/users/{user_id}/permissions")
+async def update_permissions(
+    user_id: int,
+    payload: UpdatePermissionsRequest,
+    current_user: User = Depends(_require_user_management),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    await _check_not_protected_admin(current_user, user, db)
+
+    unknown = [p for p in payload.permissions if p not in ALL_PERMISSIONS]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Permisos desconocidos: {unknown}")
+
+    if user.role_id is not None:
+        role = await db.get(Role, user.role_id)
+        if role and role.view_only:
+            no_view = [p for p in payload.permissions if not is_view_permission(p)]
+            if no_view:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Este usuario tiene un rol de solo lectura — no se le pueden dar estos permisos: {no_view}",
+                )
+
+    user.permissions = payload.permissions
+    db.add(user)
+    return {"permissions": user.permissions}
 
 
 @router.patch("/users/{user_id}/activate")
 async def toggle_active(
     user_id: int,
     payload: dict,
-    _: User = Depends(_require_superuser),
+    current_user: User = Depends(_require_user_management),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    await _check_not_protected_admin(current_user, user, db)
+
     user.is_active = bool(payload.get("is_active", True))
     db.add(user)
     return {"is_active": user.is_active}

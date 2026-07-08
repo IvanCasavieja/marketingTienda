@@ -351,7 +351,9 @@
       "nameRequired": "Name is required",
       "emailRequired": "Email is required",
       "updated": "User updated",
-      "saveError": "Error saving"
+      "saveError": "Error saving",
+      "viewOnlyNotice": "This user has the Viewer role — only \"view\" permissions can be checked",
+      "permissionsSaveError": "Error saving permissions"
     },
     "roleEditor": {
       "editTitle": "Edit role: {{name}}",

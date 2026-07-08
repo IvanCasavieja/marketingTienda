@@ -35,46 +35,47 @@ ALL_PERMISSIONS: dict[str, str] = {
     "ai.use":                  "Usar el chat de IA, análisis automáticos y debate de campañas",
 }
 
-# Permisos por rol predeterminado (is_system=True, no se pueden eliminar)
+# Sufijo que marca un permiso como "de solo lectura" — usado para restringir
+# qué puede tildarse en un usuario con rol view_only (Viewer).
+_VIEW_SUFFIX = ".view"
+
+
+def is_view_permission(permission: str) -> bool:
+    return permission.endswith(_VIEW_SUFFIX)
+
+
+# Roles del sistema (is_system=True, no se pueden eliminar ni renombrar).
+# Los permisos acá son solo el punto de partida al ASIGNAR el rol a un
+# usuario — de ahí en más los permisos reales viven en User.permissions y se
+# afinan uno por uno desde el perfil de cada usuario.
 DEFAULT_ROLES: list[dict] = [
     {
         "name":        "Superadmin",
-        "description": "Acceso total a todas las funcionalidades y configuración de la plataforma",
+        "description": "Acceso total sin restricciones — reservado para la cuenta principal, no asignable desde el panel",
         "permissions": list(ALL_PERMISSIONS.keys()),
         "is_system":   True,
+        "view_only":   False,
     },
     {
         "name":        "Admin",
-        "description": "Administrador con acceso al panel de gestión de usuarios, sin poder modificar otros admins",
-        "permissions": [
-            "platform.admin", "platform.users.view", "platform.users.manage",
-            "cenefas.view", "cenefas.generate", "cenefas.edit", "cenefas.import", "cenefas.delete",
-            "analytics.view", "analytics.export",
-            "connections.view", "connections.manage",
-            "precios.search",
-            "ai.use",
-        ],
-        "is_system": True,
+        "description": "Arranca con todos los permisos; se pueden destildar puntualmente por usuario. No puede modificar a otros Admins",
+        "permissions": list(ALL_PERMISSIONS.keys()),
+        "is_system":   True,
+        "view_only":   False,
     },
     {
-        "name":        "Editor",
-        "description": "Puede crear y exportar cenefas; ve analytics e IA. Sin acceso a gestión de usuarios",
-        "permissions": [
-            "cenefas.view", "cenefas.generate", "cenefas.edit", "cenefas.import",
-            "analytics.view",
-            "precios.search",
-            "ai.use",
-        ],
-        "is_system": True,
+        "name":        "Usuario",
+        "description": "Arranca sin permisos — se le arman a medida desde su perfil",
+        "permissions": [],
+        "is_system":   True,
+        "view_only":   False,
     },
     {
         "name":        "Viewer",
-        "description": "Solo lectura: puede ver cenefas y analytics, pero no crear ni exportar",
-        "permissions": [
-            "cenefas.view",
-            "analytics.view",
-        ],
-        "is_system": True,
+        "description": "Arranca sin permisos y solo puede tener tildados permisos de solo lectura (\"ver\")",
+        "permissions": [],
+        "is_system":   True,
+        "view_only":   True,
     },
 ]
 
@@ -87,6 +88,7 @@ class Role(Base):
     description: Mapped[str] = mapped_column(String(500), default="")
     permissions: Mapped[list] = mapped_column(JSON, default=list)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    view_only: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     users = relationship("User", back_populates="role")

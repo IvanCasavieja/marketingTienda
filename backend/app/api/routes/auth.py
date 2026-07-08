@@ -64,7 +64,7 @@ def _user_response(user: User) -> UserResponse:
         is_superuser=user.is_superuser,
         role_id=role.id if role else None,
         role_name=role.name if role else None,
-        permissions=role.permissions if role else [],
+        permissions=user.permissions or [],
     )
 
 

@@ -351,7 +351,9 @@
       "nameRequired": "El nombre es obligatorio",
       "emailRequired": "El email es obligatorio",
       "updated": "Usuario actualizado",
-      "saveError": "Error al guardar"
+      "saveError": "Error al guardar",
+      "viewOnlyNotice": "Este usuario tiene rol Viewer — solo puede tener tildados permisos de \"ver\"",
+      "permissionsSaveError": "Error al guardar los permisos"
     },
     "roleEditor": {
       "editTitle": "Editar rol: {{name}}",

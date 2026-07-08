@@ -32,6 +32,7 @@ interface RoleItem {
   description: string;
   permissions: string[];
   is_system: boolean;
+  view_only: boolean;
 }
 
 interface PermissionDef {
@@ -113,16 +114,40 @@ function BuiltinTemplatesSection() {
 // User editor modal
 // ---------------------------------------------------------------------------
 function UserEditorModal({
-  user, onClose, onSaved,
+  user, allRoles, allPerms, onClose, onSaved,
 }: {
   user: AdminUser;
+  allRoles: RoleItem[];
+  allPerms: PermissionDef[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { t } = useTranslation();
   const [fullName, setFullName] = useState(user.full_name);
   const [email,    setEmail]    = useState(user.email);
+  const [selected, setSelected] = useState<Set<string>>(new Set(user.permissions));
   const [saving,   setSaving]   = useState(false);
+
+  const role     = allRoles.find((r) => r.id === user.role_id) ?? null;
+  const viewOnly = role?.view_only ?? false;
+  const visiblePerms = viewOnly ? allPerms.filter((p) => p.key.endsWith(".view")) : allPerms;
+  const grouped  = groupPermissions(visiblePerms);
+
+  const PERM_GROUPS: Record<string, string> = {
+    "platform":    t("admin.permGroups.platform"),
+    "cenefas":     t("admin.permGroups.cenefas"),
+    "analytics":   t("admin.permGroups.analytics"),
+    "connections": t("admin.permGroups.connections"),
+    "ai":          t("admin.permGroups.ai"),
+  };
+
+  function toggle(key: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
 
   async function save() {
     if (!fullName.trim()) { toast.error(t("admin.userEditor.nameRequired")); return; }
@@ -130,6 +155,12 @@ function UserEditorModal({
     setSaving(true);
     try {
       await api.patch(`/admin/users/${user.id}`, { full_name: fullName, email });
+      try {
+        await api.patch(`/admin/users/${user.id}/permissions`, { permissions: [...selected] });
+      } catch (err: any) {
+        toast.error(err?.response?.data?.detail ?? t("admin.userEditor.permissionsSaveError"));
+        return;
+      }
       toast.success(t("admin.userEditor.updated"));
       onSaved();
       onClose();
@@ -142,34 +173,77 @@ function UserEditorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800">
           <Pencil size={16} className="text-brand-500" />
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">{t("admin.userEditor.title")}</h2>
           <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X size={18} /></button>
         </div>
-        <div className="px-6 py-5 space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{t("admin.userEditor.fullName")}</label>
-            <input
-              className="input text-sm w-full"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder={t("admin.userEditor.fullName")}
-            />
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{t("admin.userEditor.fullName")}</label>
+              <input
+                className="input text-sm w-full"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder={t("admin.userEditor.fullName")}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{t("admin.userEditor.email")}</label>
+              <input
+                type="email"
+                className="input text-sm w-full"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={t("admin.userEditor.emailPlaceholder")}
+              />
+            </div>
           </div>
+
+          {/* Permisos individuales — se prenden/apagan por usuario, no por rol */}
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{t("admin.userEditor.email")}</label>
-            <input
-              type="email"
-              className="input text-sm w-full"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={t("admin.userEditor.emailPlaceholder")}
-            />
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">{t("admin.roleEditor.permissionsLabel")}</p>
+            {viewOnly && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-2">{t("admin.userEditor.viewOnlyNotice")}</p>
+            )}
+            <div className="space-y-4">
+              {Object.entries(grouped).map(([ns, perms]) => (
+                <div key={ns}>
+                  <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+                    {PERM_GROUPS[ns] ?? ns}
+                  </p>
+                  <div className="space-y-1.5">
+                    {perms.map((p) => (
+                      <label key={p.key} className="flex items-start gap-3 cursor-pointer group">
+                        <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${
+                          selected.has(p.key)
+                            ? "bg-brand-600 border-brand-600"
+                            : "border-slate-300 group-hover:border-brand-400"
+                        }`}
+                          onClick={() => toggle(p.key)}
+                        >
+                          {selected.has(p.key) && <CheckCircle2 size={11} className="text-white" />}
+                        </div>
+                        <div onClick={() => toggle(p.key)}>
+                          <p className="text-xs font-medium text-slate-700 dark:text-slate-300 font-mono">{p.key}</p>
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-snug">{p.description}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="flex justify-end gap-2 px-6 pb-5">
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-slate-800">
           <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">{t("common.cancel")}</button>
           <button onClick={save} disabled={saving} className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
             {saving && <Loader2 size={13} className="animate-spin" />}
@@ -341,8 +415,11 @@ export default function AdminPage() {
   const [form, setForm] = useState({
     email: "", full_name: "", password: "",
     role_id: "" as string | number,
-    is_superuser: false,
   });
+
+  // Superadmin no se ofrece como rol asignable desde el panel — es un flag
+  // reservado para la cuenta principal, no algo que se elija en un select.
+  const assignableRoles = roles.filter((r) => r.name !== "Superadmin");
 
   useEffect(() => {
     // No disparamos /admin/* hasta confirmar que el usuario es superuser —
@@ -388,7 +465,7 @@ export default function AdminPage() {
       });
       toast.success(t("admin.createForm.created"));
       setShowForm(false);
-      setForm({ email: "", full_name: "", password: "", role_id: "", is_superuser: false });
+      setForm({ email: "", full_name: "", password: "", role_id: "" });
       await load();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("admin.createForm.createError"));
@@ -449,7 +526,7 @@ export default function AdminPage() {
   const ROLE_COLORS: Record<string, string> = {
     Superadmin: "bg-rose-100 text-rose-700",
     Admin:      "bg-brand-100 text-brand-700",
-    Editor:     "bg-amber-100 text-amber-700",
+    Usuario:    "bg-amber-100 text-amber-700",
     Viewer:     "bg-slate-100 text-slate-500",
   };
 
@@ -486,7 +563,7 @@ export default function AdminPage() {
               <select className="input text-sm w-full appearance-none pr-8" value={form.role_id}
                 onChange={(e) => setForm((f) => ({ ...f, role_id: e.target.value }))}>
                 <option value="">{t("admin.noRole")}</option>
-                {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                {assignableRoles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
               <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             </div>
@@ -604,18 +681,22 @@ export default function AdminPage() {
                   <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{u.email}</p>
                 </div>
 
-                {/* Role selector */}
-                <div className="relative shrink-0">
-                  <select
-                    value={u.role_id ?? ""}
-                    onChange={(e) => handleAssignRole(u.id, e.target.value)}
-                    className="appearance-none text-xs px-2 pr-6 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 outline-none cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
-                  >
-                    <option value="">{t("admin.noRole")}</option>
-                    {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                  </select>
-                  <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                </div>
+                {/* Role selector — el Super Admin no se reasigna desde acá */}
+                {u.is_superuser ? (
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 italic shrink-0 px-1">—</span>
+                ) : (
+                  <div className="relative shrink-0">
+                    <select
+                      value={u.role_id ?? ""}
+                      onChange={(e) => handleAssignRole(u.id, e.target.value)}
+                      className="appearance-none text-xs px-2 pr-6 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 outline-none cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
+                    >
+                      <option value="">{t("admin.noRole")}</option>
+                      {assignableRoles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                    <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  </div>
+                )}
 
                 <button onClick={() => setEditingUser(u)} title={t("admin.editUser")}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-all">
@@ -654,6 +735,8 @@ export default function AdminPage() {
       {editingUser && (
         <UserEditorModal
           user={editingUser}
+          allRoles={roles}
+          allPerms={allPerms}
           onClose={() => setEditingUser(null)}
           onSaved={load}
         />

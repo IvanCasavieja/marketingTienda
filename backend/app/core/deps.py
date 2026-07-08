@@ -44,12 +44,16 @@ async def get_current_user(
 
 
 def require_permission(permission: str):
-    """Dependencia de FastAPI que verifica que el usuario tenga un permiso específico."""
+    """Dependencia de FastAPI que verifica que el usuario tenga un permiso específico.
+
+    Los permisos viven en User.permissions (no en el rol) — el rol solo sirve
+    para sembrar ese valor al asignarlo; de ahí en más cada usuario tiene su
+    propia lista, editable desde su perfil."""
     async def _check(user: User = Depends(get_current_user)) -> User:
         if user.is_superuser:
             return user
-        role_perms = (user.role.permissions if user.role else []) or []
-        if permission not in role_perms:
+        user_perms = user.permissions or []
+        if permission not in user_perms:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permiso requerido: {permission}",

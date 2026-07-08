@@ -351,7 +351,9 @@
       "nameRequired": "O nome é obrigatório",
       "emailRequired": "O email é obrigatório",
       "updated": "Usuário atualizado",
-      "saveError": "Erro ao salvar"
+      "saveError": "Erro ao salvar",
+      "viewOnlyNotice": "Este usuário tem o papel Viewer — só pode ter marcadas permissões de \"ver\"",
+      "permissionsSaveError": "Erro ao salvar as permissões"
     },
     "roleEditor": {
       "editTitle": "Editar função: {{name}}",
