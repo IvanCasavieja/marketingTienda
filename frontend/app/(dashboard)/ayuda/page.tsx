@@ -1,12 +1,16 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   LayoutDashboard, Megaphone, Brain, Presentation, Layers,
   Settings, MessageCircle, BarChart2, Upload,
   Download, Eye, GitBranch, Variable, Users, RefreshCw,
   CheckCircle2, AlertTriangle, Clock, ChevronRight, Tag, SlidersHorizontal, LineChart,
+  Loader2,
 } from "lucide-react";
 import { RobotMascot, RobotMini } from "@/components/RobotMascot";
+import { authApi } from "@/lib/api";
+import type { CurrentUser } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,9 +62,40 @@ function Chip({ icon: Icon, label, color = "bg-slate-100 text-slate-600" }: {
 }
 
 // ---------------------------------------------------------------------------
-// Page
+// Page — cada sección solo se muestra si el usuario tiene el permiso de
+// "ver" esa parte de la plataforma. Un Viewer sin cenefas.view, por ejemplo,
+// no ve la guía de Cenefas porque tampoco puede entrar a esa sección real.
 // ---------------------------------------------------------------------------
 export default function AyudaPage() {
+  const [me, setMe] = useState<CurrentUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    authApi.me()
+      .then(({ data }) => setMe(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const perms = me?.permissions ?? [];
+  const hasPerm = (p: string) => !!me?.is_superuser || perms.includes(p);
+
+  const showAnalytics  = hasPerm("analytics.view");
+  const showIA         = hasPerm("ai.use");
+  const showPrecios    = hasPerm("precios.search");
+  const showCenefas    = hasPerm("cenefas.view");
+  const showConexiones = hasPerm("connections.view");
+  const showRoles      = hasPerm("platform.users.view");
+  const showCtaButtons = showConexiones || showPrecios || showCenefas;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 size={22} className="animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto py-6 space-y-10">
 
@@ -74,19 +109,20 @@ export default function AyudaPage() {
           <p className="text-xs font-semibold text-brand-500 uppercase tracking-widest mb-1">Guía de uso</p>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">¿Cómo funciona la plataforma?</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-lg">
-            Todo lo que necesitás saber para usar MKTG Platform: métricas, análisis IA, generación de cenefas y más.
+            Todo lo que necesitás saber para usar MKTG Platform, según lo que tu cuenta puede ver y hacer.
           </p>
         </div>
         <div className="flex gap-2 flex-wrap justify-center mt-1">
-          <Chip icon={BarChart2}   label="Analytics"        color="bg-blue-50 text-blue-600" />
-          <Chip icon={Brain}       label="IA integrada"     color="bg-purple-50 text-purple-600" />
-          <Chip icon={Presentation}label="Cenefas"          color="bg-emerald-50 text-emerald-600" />
-          <Chip icon={Tag}         label="Precios"          color="bg-cyan-50 text-cyan-600" />
-          <Chip icon={MessageCircle} label="Asistente"      color="bg-amber-50 text-amber-600" />
+          {showAnalytics  && <Chip icon={BarChart2}    label="Analytics"    color="bg-blue-50 text-blue-600" />}
+          {showIA         && <Chip icon={Brain}        label="IA integrada" color="bg-purple-50 text-purple-600" />}
+          {showCenefas    && <Chip icon={Presentation} label="Cenefas"      color="bg-emerald-50 text-emerald-600" />}
+          {showPrecios    && <Chip icon={Tag}          label="Precios"      color="bg-cyan-50 text-cyan-600" />}
+          <Chip icon={MessageCircle} label="Asistente" color="bg-amber-50 text-amber-600" />
         </div>
       </div>
 
       {/* ── Dashboard ── */}
+      {showAnalytics && (
       <section>
         <SectionTitle icon={LayoutDashboard} title="Dashboard" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -120,8 +156,10 @@ export default function AyudaPage() {
           </Card>
         </div>
       </section>
+      )}
 
       {/* ── Campañas ── */}
+      {showAnalytics && (
       <section>
         <SectionTitle icon={Megaphone} title="Campañas" />
         <Card>
@@ -144,8 +182,10 @@ export default function AyudaPage() {
           </div>
         </Card>
       </section>
+      )}
 
       {/* ── Análisis IA ── */}
+      {showIA && (
       <section>
         <SectionTitle icon={Brain} title="Análisis IA — La Triada" color="text-purple-600" />
         <Card>
@@ -171,8 +211,10 @@ export default function AyudaPage() {
           </div>
         </Card>
       </section>
+      )}
 
       {/* ── Buscador de precios ── */}
+      {showPrecios && (
       <section>
         <SectionTitle icon={Tag} title="Buscador de precios" color="text-cyan-600" />
         <Card>
@@ -211,8 +253,10 @@ export default function AyudaPage() {
           </div>
         </Card>
       </section>
+      )}
 
       {/* ── Generar Cenefas ── */}
+      {showCenefas && (
       <section>
         <SectionTitle icon={Presentation} title="Generar Cenefas" color="text-emerald-600" />
         <Card>
@@ -254,8 +298,10 @@ export default function AyudaPage() {
           ))}
         </div>
       </section>
+      )}
 
       {/* ── Editor de Plantillas ── */}
+      {showCenefas && (
       <section>
         <SectionTitle icon={Layers} title="Editor de Plantillas" color="text-indigo-600" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -311,8 +357,10 @@ export default function AyudaPage() {
           </div>
         </Card>
       </section>
+      )}
 
       {/* ── Conexiones ── */}
+      {showConexiones && (
       <section>
         <SectionTitle icon={Settings} title="Conexiones de plataformas" />
         <Card>
@@ -339,8 +387,10 @@ export default function AyudaPage() {
           </div>
         </Card>
       </section>
+      )}
 
       {/* ── Historial ── */}
+      {showCenefas && (
       <section>
         <SectionTitle icon={Clock} title="Historial de generaciones" />
         <Card>
@@ -356,8 +406,9 @@ export default function AyudaPage() {
           </div>
         </Card>
       </section>
+      )}
 
-      {/* ── Asistente ── */}
+      {/* ── Asistente — siempre visible, no depende de ningún permiso especial ── */}
       <section>
         <SectionTitle icon={MessageCircle} title="Asistente virtual" color="text-amber-600" />
         <Card>
@@ -385,6 +436,7 @@ export default function AyudaPage() {
       </section>
 
       {/* ── Roles y permisos ── */}
+      {showRoles && (
       <section>
         <SectionTitle icon={Users} title="Roles y permisos" />
         <Card>
@@ -425,25 +477,36 @@ export default function AyudaPage() {
           </div>
         </Card>
       </section>
+      )}
 
       {/* ── CTA ── */}
       <div className="bg-gradient-to-br from-brand-600 to-indigo-700 rounded-2xl p-6 text-center text-white">
         <p className="text-lg font-bold mb-1">¿Todo claro?</p>
-        <p className="text-sm text-white/70 mb-4">Empezá por conectar tus plataformas o generá tu primera cenefa.</p>
-        <div className="flex gap-3 justify-center flex-wrap">
-          <Link href="/settings"
-            className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-medium transition-colors">
-            <Settings size={14} /> Conectar plataformas
-          </Link>
-          <Link href="/precios"
-            className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-medium transition-colors">
-            <Tag size={14} /> Buscar precios
-          </Link>
-          <Link href="/herramientas/cenefas"
-            className="flex items-center gap-1.5 px-4 py-2 bg-white text-brand-700 hover:bg-white/90 rounded-xl text-sm font-medium transition-colors">
-            <Presentation size={14} /> Generar cenefas <ChevronRight size={14} />
-          </Link>
-        </div>
+        <p className="text-sm text-white/70 mb-4">
+          {showCtaButtons ? "Empezá por acá:" : "Cualquier duda, preguntale a Don Tino desde el Home."}
+        </p>
+        {showCtaButtons && (
+          <div className="flex gap-3 justify-center flex-wrap">
+            {showConexiones && (
+              <Link href="/settings"
+                className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-medium transition-colors">
+                <Settings size={14} /> Conectar plataformas
+              </Link>
+            )}
+            {showPrecios && (
+              <Link href="/precios"
+                className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-medium transition-colors">
+                <Tag size={14} /> Buscar precios
+              </Link>
+            )}
+            {showCenefas && (
+              <Link href="/herramientas/cenefas"
+                className="flex items-center gap-1.5 px-4 py-2 bg-white text-brand-700 hover:bg-white/90 rounded-xl text-sm font-medium transition-colors">
+                <Presentation size={14} /> Generar cenefas <ChevronRight size={14} />
+              </Link>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="pb-4" />

@@ -4,8 +4,8 @@ import { api, authApi } from "@/lib/api";
 import { CurrentUser } from "@/types";
 import {
   Users, UserPlus, KeyRound, ShieldAlert, ShieldCheck,
-  Loader2, CheckCircle2, XCircle, ChevronDown, Presentation,
-  Upload, Plus, Trash2, Pencil, X, Shield,
+  Loader2, CheckCircle2, XCircle, ChevronDown,
+  Plus, Trash2, Pencil, X, Shield,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -48,66 +48,6 @@ function groupPermissions(perms: PermissionDef[]) {
     groups[ns].push(p);
   }
   return groups;
-}
-
-// ---------------------------------------------------------------------------
-// Builtin templates section
-// ---------------------------------------------------------------------------
-const BUILTIN_SLUGS = [
-  { slug: "a4",      name: "Cenefa A4",    format: "A4" },
-  { slug: "pinchos", name: "Pinchos",      format: "Pinchos" },
-  { slug: "black",   name: "Cenefas 3xA4", format: "3xA4" },
-];
-
-function BuiltinTemplatesSection() {
-  const { t } = useTranslation();
-  const [uploading, setUploading] = useState<string | null>(null);
-
-  async function handleUpload(slug: string, file: File) {
-    setUploading(slug);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      await api.put(`/tools/cenefas/builtin-templates/${slug}`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      toast.success(t("admin.templates.updated"));
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? t("admin.templates.updateError"));
-    } finally {
-      setUploading(null);
-    }
-  }
-
-  return (
-    <div className="card overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-50 dark:border-slate-800 flex items-center gap-2">
-        <Presentation size={15} className="text-slate-400" />
-        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t("admin.templates.title")}</p>
-      </div>
-      <div className="divide-y divide-slate-50 dark:divide-slate-800">
-        {BUILTIN_SLUGS.map((bt) => (
-          <div key={bt.slug} className="flex items-center gap-4 px-5 py-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{bt.name}</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500">{bt.format} · slug: {bt.slug}</p>
-            </div>
-            <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
-              uploading === bt.slug
-                ? "bg-slate-100 text-slate-400 pointer-events-none"
-                : "bg-brand-50 text-brand-600 hover:bg-brand-100"
-            }`}>
-              {uploading === bt.slug ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-              {uploading === bt.slug ? t("admin.templates.uploading") : t("admin.templates.replace")}
-              <input type="file" accept=".pptx" className="hidden" disabled={!!uploading}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(bt.slug, f); e.target.value = ""; }}
-              />
-            </label>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -589,9 +529,6 @@ export default function AdminPage() {
           <button onClick={() => setTempPwd(null)} className="text-amber-600 hover:text-amber-800"><XCircle size={16} /></button>
         </div>
       )}
-
-      {/* Plantillas predeterminadas */}
-      <BuiltinTemplatesSection />
 
       {/* Roles */}
       <div className="card overflow-hidden">
