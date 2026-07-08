@@ -294,3 +294,27 @@ async def generar_reporte(
         max_tokens=700,
     )
     return reporte_final
+
+
+async def explicar_cambio_precio(
+    tienda: str, nombre: str, precio_anterior: float, precio_nuevo: float, moneda: str,
+) -> str:
+    """Frase corta para la notificación de un producto seguido en una lista
+    de monitoreo — un solo call barato, no un debate. Usado por
+    watchlist_service.py cuando el chequeo diario detecta un precio distinto."""
+    simbolo = "U$S" if moneda == "USD" else "$"
+    variacion_pct = (precio_nuevo - precio_anterior) / precio_anterior * 100 if precio_anterior else 0.0
+    prompt = (
+        f"Detectaste un cambio de precio en un producto que el usuario tiene en una lista de monitoreo:\n"
+        f"[{tienda}] {nombre}\n"
+        f"Precio anterior: {simbolo}{precio_anterior:.2f}\n"
+        f"Precio nuevo: {simbolo}{precio_nuevo:.2f} ({variacion_pct:+.1f}%)\n\n"
+        "Escribí UNA sola frase corta (para una notificación, no un párrafo) avisándole del cambio, "
+        "en tu voz. Mencioná el nombre del producto, la cadena, y los dos precios."
+    )
+    content, _ = await _ask_claude(
+        DON_TINO_BASE + " Tu tarea ahora: redactar una notificación de un solo cambio de precio.",
+        prompt,
+        max_tokens=150,
+    )
+    return content.strip()

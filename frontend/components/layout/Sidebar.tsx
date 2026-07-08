@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
   BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, ShieldCheck, HelpCircle, X, Tag,
-  Sun, Moon, ClipboardList, Bell,
+  Sun, Moon, ClipboardList, Bell, Star,
 } from "lucide-react";
 import { clsx } from "clsx";
-import { authApi } from "@/lib/api";
+import { authApi, watchlistApi, type Notificacion } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 import { useTranslation } from "react-i18next";
 import { LANGUAGES, setLanguage, type LangCode } from "@/lib/i18n";
@@ -25,6 +25,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { t, i18n } = useTranslation();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [notifCount, setNotifCount] = useState(0);
+  const [showNotifMenu, setShowNotifMenu] = useState(false);
+  const [notificaciones, setNotificaciones] = useState<Notificacion[] | null>(null);
 
   const userPerms: string[] = (currentUser as any)?.permissions ?? [];
   const hasPerm = (p: string) =>
@@ -42,6 +45,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/herramientas/cenefas/v2", label: t("sidebar.editorPlantillas"), icon: Layers,     section: t("sidebar.herramientas") },
     { href: "/herramientas/cenefas/v2/jobs", label: t("sidebar.historial"), icon: Clock,        section: t("sidebar.herramientas") },
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,           section: t("sidebar.comercial"),     perm: "precios.search" },
+    { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,        section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/redexpress/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpress") },
     ...(currentUser?.is_superuser
       ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]
@@ -55,7 +59,32 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     authApi.me()
       .then(({ data }) => setCurrentUser(data))
       .catch(() => {});
+    watchlistApi.notificacionesNoLeidasCount()
+      .then(({ data }) => setNotifCount(data.count))
+      .catch(() => {});
   }, []);
+
+  async function abrirNotificaciones() {
+    const yaAbierto = showNotifMenu;
+    setShowNotifMenu((v) => !v);
+    if (yaAbierto) return;
+    try {
+      const { data } = await watchlistApi.notificaciones();
+      setNotificaciones(data);
+    } catch {
+      setNotificaciones([]);
+    }
+  }
+
+  async function marcarTodasLeidas() {
+    try {
+      await watchlistApi.marcarTodasLeidas();
+      setNotifCount(0);
+      setNotificaciones((prev) => prev?.map((n) => ({ ...n, leida: true })) ?? null);
+    } catch {
+      toast.error(t("sidebar.notificacionesError"));
+    }
+  }
 
   // Close sidebar on nav in mobile
   function handleNavClick() {
@@ -139,7 +168,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         <div className="mx-4 h-px bg-white/5 mb-3" />
 
         {/* Perfil + notificaciones */}
-        <div className="px-3 pb-2 flex items-center gap-1.5">
+        <div className="px-3 pb-2 flex items-center gap-1.5 relative">
           <Link
             href="/perfil"
             onClick={handleNavClick}
@@ -154,13 +183,52 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             </span>
           </Link>
           <button
-            onClick={() => toast(t("sidebar.notificacionesProximamente"))}
+            onClick={abrirNotificaciones}
             aria-label={t("sidebar.notificaciones")}
             title={t("sidebar.notificaciones")}
-            className="p-2 rounded-xl text-slate-500 hover:bg-white/5 hover:text-slate-300 transition-all duration-150 shrink-0"
+            className="relative p-2 rounded-xl text-slate-500 hover:bg-white/5 hover:text-slate-300 transition-all duration-150 shrink-0"
           >
             <Bell size={16} />
+            {notifCount > 0 && (
+              <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                {notifCount > 9 ? "9+" : notifCount}
+              </span>
+            )}
           </button>
+
+          {showNotifMenu && (
+            <div className="absolute bottom-full right-3 mb-1 w-72 bg-slate-800 border border-white/10 rounded-xl shadow-lg z-50 overflow-hidden">
+              <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-white/5">
+                <p className="text-xs font-semibold text-slate-200">{t("sidebar.notificaciones")}</p>
+                {notifCount > 0 && (
+                  <button onClick={marcarTodasLeidas} className="text-[11px] text-brand-400 hover:text-brand-300">
+                    {t("sidebar.marcarTodasLeidas")}
+                  </button>
+                )}
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                {notificaciones === null && (
+                  <p className="text-xs text-slate-500 text-center py-6">{t("common.loading")}</p>
+                )}
+                {notificaciones?.length === 0 && (
+                  <p className="text-xs text-slate-500 text-center py-6">{t("sidebar.sinNotificaciones")}</p>
+                )}
+                {notificaciones?.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`px-3.5 py-2.5 border-b border-white/5 last:border-0 ${n.leida ? "opacity-60" : ""}`}
+                  >
+                    <p className="text-xs text-slate-300 leading-snug">{n.mensaje}</p>
+                    {n.created_at && (
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        {new Date(n.created_at).toLocaleDateString(i18n.language, { day: "2-digit", month: "2-digit", year: "numeric" })}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Language selector */}

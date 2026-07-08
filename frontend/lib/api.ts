@@ -341,6 +341,56 @@ export const preciosApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Listas de monitoreo + notificaciones
+// ---------------------------------------------------------------------------
+
+export interface WatchlistItem {
+  id: number;
+  watchlist_id: number;
+  tienda: string;
+  sku: string | null;
+  nombre: string;
+  termino_busqueda: string;
+  url: string;
+  precio_actual: number;
+  moneda: string;
+  ultimo_chequeo: string | null;
+  created_at: string | null;
+}
+
+export interface WatchlistConItems {
+  id: number;
+  nombre: string;
+  created_at: string | null;
+  items: WatchlistItem[];
+}
+
+export interface Notificacion {
+  id: number;
+  tipo: string;
+  mensaje: string;
+  leida: boolean;
+  watchlist_item_id: number | null;
+  created_at: string | null;
+}
+
+export const watchlistApi = {
+  listar: () => api.get<WatchlistConItems[]>("/watchlist"),
+  crear: (nombre: string) => api.post<WatchlistConItems>("/watchlist", { nombre }),
+  eliminar: (id: number) => api.delete(`/watchlist/${id}`),
+  agregarItem: (
+    watchlistId: number,
+    item: { tienda: string; sku: string | null; nombre: string; termino_busqueda: string; url: string; precio: number; moneda: string },
+  ) => api.post<WatchlistItem>(`/watchlist/${watchlistId}/items`, item),
+  eliminarItem: (itemId: number) => api.delete(`/watchlist/items/${itemId}`),
+
+  notificaciones: () => api.get<Notificacion[]>("/notificaciones"),
+  notificacionesNoLeidasCount: () => api.get<{ count: number }>("/notificaciones/no-leidas/count"),
+  marcarLeida: (id: number) => api.post(`/notificaciones/${id}/marcar-leida`),
+  marcarTodasLeidas: () => api.post("/notificaciones/marcar-todas-leidas"),
+};
+
+// ---------------------------------------------------------------------------
 // Redexpress — planilla de pedidos
 // ---------------------------------------------------------------------------
 

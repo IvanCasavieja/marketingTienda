@@ -8,10 +8,15 @@ from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.cenefa_job import CenefaJob
 from app.models.planilla_pedido import PlanillaPedido
 from app.models.local_asignacion import LocalAsignacion
+from app.models.watchlist import Watchlist
+from app.models.watchlist_item import WatchlistItem
+from app.models.watchlist_precio_historial import WatchlistPrecioHistorial
+from app.models.notificacion import Notificacion
 
 __all__ = [
     "User", "PlatformConnection", "Platform",
     "CampaignMetric", "AuditLog", "AIAnalysis",
     "CenefaTemplate", "CenefaTemplateV2", "CenefaJob",
     "PlanillaPedido", "LocalAsignacion",
+    "Watchlist", "WatchlistItem", "WatchlistPrecioHistorial", "Notificacion",
 ]

@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
 import { CADENA_CONFIG, CADENA_CATEGORIA, CadenaBadge } from "@/components/precios/cadenaConfig";
 import DonTinoFloating from "@/components/DonTinoFloating";
+import SeguirButton from "@/components/precios/SeguirButton";
+import { WatchlistsProvider } from "@/components/precios/WatchlistsContext";
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
@@ -226,6 +228,7 @@ export default function PreciosPage() {
 
   return (
     /* h-full + flex-col hace que la página ocupe exactamente el viewport sin crecer */
+    <WatchlistsProvider>
     <div className="h-full flex flex-col gap-3 max-w-4xl mx-auto">
 
       {/* ── Barra de búsqueda ──────────────────────────────────────────────── */}
@@ -468,6 +471,7 @@ export default function PreciosPage() {
                   <div className="flex-1">Producto</div>
                   <div className="w-28 text-right mr-3">Precio</div>
                   <div className="w-14 text-center">Ver</div>
+                  <div className="w-5" />
                 </div>
 
                 {/* Filas */}
@@ -550,6 +554,23 @@ export default function PreciosPage() {
                             Ver
                           </a>
                         </div>
+
+                        {/* Seguir */}
+                        <div className="w-5 flex justify-center">
+                          {p.precio !== null && (
+                            <SeguirButton
+                              producto={{
+                                tienda: p.tienda,
+                                sku: p.sku,
+                                nombre: p.nombre ?? "—",
+                                termino_busqueda: lastQuery,
+                                url: p.url,
+                                precio: p.precio,
+                                moneda: p.moneda ?? "UYU",
+                              }}
+                            />
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -573,5 +594,6 @@ export default function PreciosPage() {
         onOpenChart={() => setShowChart(true)}
       />
     </div>
+    </WatchlistsProvider>
   );
 }

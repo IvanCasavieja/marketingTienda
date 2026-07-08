@@ -37,6 +37,7 @@
     "editorPlantillas": "Template editor",
     "historial": "History",
     "buscarPrecios": "Search prices",
+    "listasMonitoreo": "Watchlists",
     "guiaUso": "User guide",
     "planillaPedidos": "Order sheet",
     "administrador": "Admin",
@@ -46,7 +47,9 @@
     "toggleToDark": "Switch to dark mode",
     "miPerfil": "My profile",
     "notificaciones": "Notifications",
-    "notificacionesProximamente": "Notifications — coming soon"
+    "sinNotificaciones": "You don't have any notifications yet",
+    "marcarTodasLeidas": "Mark all as read",
+    "notificacionesError": "Couldn't mark as read"
   },
   "login": {
     "welcome": "Welcome",

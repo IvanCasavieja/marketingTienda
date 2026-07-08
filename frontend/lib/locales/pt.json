@@ -37,6 +37,7 @@
     "editorPlantillas": "Editor de modelos",
     "historial": "Histórico",
     "buscarPrecios": "Buscar preços",
+    "listasMonitoreo": "Listas de monitoramento",
     "guiaUso": "Guia de uso",
     "planillaPedidos": "Planilha de pedidos",
     "administrador": "Administrador",
@@ -46,7 +47,9 @@
     "toggleToDark": "Mudar para modo escuro",
     "miPerfil": "Meu perfil",
     "notificaciones": "Notificações",
-    "notificacionesProximamente": "Notificações — em breve"
+    "sinNotificaciones": "Você ainda não tem notificações",
+    "marcarTodasLeidas": "Marcar todas como lidas",
+    "notificacionesError": "Não foi possível marcar como lidas"
   },
   "login": {
     "welcome": "Bem-vindo",

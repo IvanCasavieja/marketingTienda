@@ -9,6 +9,7 @@ import type { ProductoVivo } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
 import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
 import DonTinoFloating from "@/components/DonTinoFloating";
+import SeguirButton from "@/components/precios/SeguirButton";
 
 // ── Item con id estable (posición en el pool recibido — no cambia mientras
 // el modal está abierto, aunque el buscador del checklist filtre la vista) ──
@@ -216,9 +217,9 @@ export default function ComparisonModal({
                   <div className="mb-1.5"><CadenaBadge tienda={tienda} /></div>
                   <div className="space-y-1.5">
                     {group.map((it) => (
-                      <label key={it._id} className="flex items-start gap-2 cursor-pointer group">
+                      <div key={it._id} className="flex items-start gap-2 group">
                         <div
-                          className={`mt-0.5 w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all ${
+                          className={`mt-0.5 w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all cursor-pointer ${
                             selected.has(it._id)
                               ? "bg-brand-600 border-brand-600"
                               : "border-slate-300 group-hover:border-brand-400"
@@ -227,14 +228,27 @@ export default function ComparisonModal({
                         >
                           {selected.has(it._id) && <CheckCircle2 size={9} className="text-white" />}
                         </div>
-                        <div onClick={() => toggle(it._id)} className="min-w-0">
+                        <div onClick={() => toggle(it._id)} className="min-w-0 flex-1 cursor-pointer">
                           <p className="text-[11.5px] font-medium text-slate-700 dark:text-slate-300 truncate leading-snug">{it.nombre ?? "—"}</p>
                           <p className="text-[10.5px] text-slate-400">
                             {it.sucursal_nombre ? `${it.sucursal_nombre} · ` : ""}
                             {it.precio !== null ? fMoneyByCurrency(it.precio, it.moneda) : "—"}
                           </p>
                         </div>
-                      </label>
+                        {it.precio !== null && (
+                          <SeguirButton
+                            producto={{
+                              tienda: it.tienda,
+                              sku: it.sku,
+                              nombre: it.nombre ?? "—",
+                              termino_busqueda: termino ?? "",
+                              url: it.url,
+                              precio: it.precio,
+                              moneda: it.moneda ?? "UYU",
+                            }}
+                          />
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>

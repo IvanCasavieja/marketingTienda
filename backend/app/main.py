@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.rate_limit import limiter
 from app.core.tenant_migration import migrate_roles
-from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, PlanillaPedido, LocalAsignacion  # noqa: F401
+from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, PlanillaPedido, LocalAsignacion, Watchlist, WatchlistItem, WatchlistPrecioHistorial, Notificacion  # noqa: F401
 from app.models.role import Role  # noqa: F401 — registers with Base.metadata
 from app.api import router
 
@@ -60,12 +60,26 @@ async def lifespan(app: FastAPI):
         sync_task = asyncio.create_task(run_auto_sync_loop())
         logger.info("auto_sync: loop iniciado (cada %dh)", settings.SYNC_INTERVAL_HOURS)
 
+    # Arrancar chequeo diario de listas de monitoreo de precios si está habilitado
+    watchlist_task = None
+    if settings.WATCHLIST_CHECK_INTERVAL_HOURS > 0:
+        from app.services.watchlist_service import run_watchlist_check_loop
+        watchlist_task = asyncio.create_task(run_watchlist_check_loop())
+        logger.info("watchlist_check: loop iniciado (cada %dh)", settings.WATCHLIST_CHECK_INTERVAL_HOURS)
+
     yield
 
     if sync_task:
         sync_task.cancel()
         try:
             await sync_task
+        except asyncio.CancelledError:
+            pass
+
+    if watchlist_task:
+        watchlist_task.cancel()
+        try:
+            await watchlist_task
         except asyncio.CancelledError:
             pass
 

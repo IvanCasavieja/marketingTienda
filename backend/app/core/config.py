@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # Auto-sync de métricas (0 = desactivado)
     SYNC_INTERVAL_HOURS: int = 6
 
+    # Chequeo diario de listas de monitoreo de precios (0 = desactivado)
+    WATCHLIST_CHECK_INTERVAL_HOURS: int = 24
+
     # Demo mode — cuando True, sync_metrics retorna inmediatamente sin llamar APIs externas
     DEMO_MODE: bool = False
 
