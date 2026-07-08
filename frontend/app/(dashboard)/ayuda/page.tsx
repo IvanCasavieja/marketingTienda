@@ -2,9 +2,9 @@
 import Link from "next/link";
 import {
   LayoutDashboard, Megaphone, Brain, Presentation, Layers,
-  Settings, MessageCircle, BarChart2, Upload, FileSpreadsheet,
-  Download, Eye, GitBranch, Variable, Zap, Users, RefreshCw,
-  CheckCircle2, AlertTriangle, Clock, ChevronRight,
+  Settings, MessageCircle, BarChart2, Upload,
+  Download, Eye, GitBranch, Variable, Users, RefreshCw,
+  CheckCircle2, AlertTriangle, Clock, ChevronRight, Tag, SlidersHorizontal, LineChart,
 } from "lucide-react";
 import { RobotMascot, RobotMini } from "@/components/RobotMascot";
 
@@ -81,6 +81,7 @@ export default function AyudaPage() {
           <Chip icon={BarChart2}   label="Analytics"        color="bg-blue-50 text-blue-600" />
           <Chip icon={Brain}       label="IA integrada"     color="bg-purple-50 text-purple-600" />
           <Chip icon={Presentation}label="Cenefas"          color="bg-emerald-50 text-emerald-600" />
+          <Chip icon={Tag}         label="Precios"          color="bg-cyan-50 text-cyan-600" />
           <Chip icon={MessageCircle} label="Asistente"      color="bg-amber-50 text-amber-600" />
         </div>
       </div>
@@ -96,7 +97,7 @@ export default function AyudaPage() {
             </p>
             <ul className="space-y-2 text-xs text-slate-600">
               <li className="flex items-start gap-2 text-slate-600 dark:text-slate-400"><CheckCircle2 size={13} className="text-emerald-500 mt-0.5 shrink-0" />Filtrá por rango de fechas y plataforma</li>
-              <li className="flex items-start gap-2 text-slate-600 dark:text-slate-400"><CheckCircle2 size={13} className="text-emerald-500 mt-0.5 shrink-0" />Detecta anomalías automáticamente con IA</li>
+              <li className="flex items-start gap-2 text-slate-600 dark:text-slate-400"><CheckCircle2 size={13} className="text-emerald-500 mt-0.5 shrink-0" />Alerta automáticamente si una campaña cae más de 30% vs el período anterior</li>
               <li className="flex items-start gap-2 text-slate-600 dark:text-slate-400"><CheckCircle2 size={13} className="text-emerald-500 mt-0.5 shrink-0" />Tendencias y variaciones respecto al período anterior</li>
             </ul>
           </Card>
@@ -146,36 +147,69 @@ export default function AyudaPage() {
 
       {/* ── Análisis IA ── */}
       <section>
-        <SectionTitle icon={Brain} title="Análisis IA" color="text-purple-600" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card>
-            <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-2">Análisis con Claude</p>
-            <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-              Seleccionás plataforma y rango de fechas. Claude (Anthropic) analiza tus métricas y
-              genera un reporte con insights, anomalías detectadas y recomendaciones accionables.
-            </p>
-          </Card>
-          <Card>
-            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">Modo Debate</p>
-            <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-3">
-              Tres IAs debaten tus métricas en 3 rondas:
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center text-[10px]">C</span>
-                <span className="text-slate-600 dark:text-slate-400"><strong className="text-slate-800 dark:text-slate-200">Claude</strong> — analista cuantitativo, foco estadístico</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center text-[10px]">G</span>
-                <span className="text-slate-600 dark:text-slate-400"><strong className="text-slate-800 dark:text-slate-200">ChatGPT</strong> — estratega creativo, ideas disruptivas</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 font-bold flex items-center justify-center text-[10px]">L</span>
-                <span className="text-slate-600 dark:text-slate-400"><strong className="text-slate-800 dark:text-slate-200">Llama</strong> — moderador pragmático, síntesis final</span>
-              </div>
+        <SectionTitle icon={Brain} title="Análisis IA — La Triada" color="text-purple-600" />
+        <Card>
+          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-3">
+            Elegís plataformas y rango de fechas: tres modelos debaten tus métricas reales desde
+            perspectivas distintas, en una conversación que podés seguir pregunta a pregunta.
+            Cada debate queda guardado — podés retomarlo más tarde o pedirle a <strong>Don Tino</strong> que
+            te lo resuma directo en el chat de Home.
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center text-[10px]">C</span>
+              <span className="text-slate-600 dark:text-slate-400"><strong className="text-slate-800 dark:text-slate-200">Claude</strong> — analista cuantitativo, foco estadístico</span>
             </div>
-          </Card>
-        </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center text-[10px]">G</span>
+              <span className="text-slate-600 dark:text-slate-400"><strong className="text-slate-800 dark:text-slate-200">ChatGPT</strong> — estratega creativo, con búsqueda web para contexto local</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 font-bold flex items-center justify-center text-[10px]">L</span>
+              <span className="text-slate-600 dark:text-slate-400"><strong className="text-slate-800 dark:text-slate-200">Llama</strong> — moderador pragmático, síntesis y plan de acción</span>
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      {/* ── Buscador de precios ── */}
+      <section>
+        <SectionTitle icon={Tag} title="Buscador de precios" color="text-cyan-600" />
+        <Card>
+          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
+            Compará precios <strong>en vivo</strong> (se busca en el momento, no hay base propia) en{" "}
+            <strong>13 cadenas uruguayas</strong>: supermercados (Disco, Devoto, Géant, Ta-Ta, El Dorado),
+            farmacias (FarmaShop, Botiga) y electrodomésticos/electrónica (Fama, Stienda, Black Dog,
+            Cover Company, DIMM, Electrohogar). Los precios de electrodomésticos suelen venir en dólares —
+            cada resultado muestra su moneda real, no se convierte automáticamente.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <SlidersHorizontal size={12} className="text-cyan-600" />
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Filtros que se suman</p>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                Los chips de cadena se van sumando al tocarlos (multi-selección) — solo el chip "Todas" los apaga a todos de una.
+              </p>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <LineChart size={12} className="text-cyan-600" />
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Gráfico comparativo</p>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                Botón "Ver gráfico": elegís qué productos entran con un checklist buscable, y podés cargar tu propio precio para verte posicionado contra la competencia.
+              </p>
+            </div>
+          </div>
+          <div className="bg-brand-50 dark:bg-brand-950/30 rounded-xl p-3 flex gap-2">
+            <MessageCircle size={14} className="text-brand-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-brand-700 dark:text-brand-400">
+              También podés pedirle el precio de un producto directo a <strong>Don Tino</strong> en el chat de Home, sin ir a esta pantalla.
+            </p>
+          </div>
+        </Card>
       </section>
 
       {/* ── Generar Cenefas ── */}
@@ -333,12 +367,16 @@ export default function AyudaPage() {
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">¿En qué te ayudo?</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                <strong className="text-slate-800 dark:text-slate-200">Don Tino</strong> (Llama 3.3 70B via Groq) conoce todas las funcionalidades de la plataforma.
-                Podés preguntarle cómo navegar hacia alguna sección, cómo generar un reporte,
-                qué significan las métricas o cualquier duda operativa.
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-3">
+                <strong className="text-slate-800 dark:text-slate-200">Don Tino</strong> (Llama 3.3 70B via Groq) conoce todas las funcionalidades de la plataforma
+                y además puede hacer cosas por vos, no solo describirlas:
               </p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+              <ul className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400 mb-3">
+                <li className="flex items-start gap-2"><Tag size={12} className="text-cyan-500 mt-0.5 shrink-0" />Buscarte el precio de un producto en las 13 cadenas, en vivo</li>
+                <li className="flex items-start gap-2"><Clock size={12} className="text-blue-500 mt-0.5 shrink-0" />Consultarte el estado de un trabajo de cenefas por su ID</li>
+                <li className="flex items-start gap-2"><Brain size={12} className="text-purple-500 mt-0.5 shrink-0" />Resumirte tu último debate de La Triada</li>
+              </ul>
+              <p className="text-xs text-slate-400 dark:text-slate-500">
                 Disponible desde el Home — abrí la tarjeta de chat debajo del saludo de Don Tino.
               </p>
             </div>
@@ -373,7 +411,8 @@ export default function AyudaPage() {
             <div className="bg-amber-50 dark:bg-amber-950/30 rounded-xl p-3">
               <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Usuario</p>
               <p className="text-[11px] text-amber-600 dark:text-amber-400/80 leading-relaxed">
-                Arranca sin ningún permiso activo — se le arma el combo a medida desde su perfil.
+                Arranca con un set operativo estándar (cenefas, analytics, precios e IA completos,
+                sin gestión de usuarios ni de conexiones) — se puede ajustar por persona.
               </p>
             </div>
             <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
@@ -395,6 +434,10 @@ export default function AyudaPage() {
           <Link href="/settings"
             className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-medium transition-colors">
             <Settings size={14} /> Conectar plataformas
+          </Link>
+          <Link href="/precios"
+            className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-medium transition-colors">
+            <Tag size={14} /> Buscar precios
           </Link>
           <Link href="/herramientas/cenefas"
             className="flex items-center gap-1.5 px-4 py-2 bg-white text-brand-700 hover:bg-white/90 rounded-xl text-sm font-medium transition-colors">
