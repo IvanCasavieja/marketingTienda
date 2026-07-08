@@ -54,9 +54,18 @@ def _muestra_nombres(items: list[dict], max_items: int = _MUESTRA_MAX) -> str:
 
 
 def _matches(nombre: str, incluir: list[str], excluir: list[str]) -> bool:
+    """Cada palabra de la keyword tiene que aparecer en el nombre, pero NO
+    necesariamente pegadas ni en ese orden — si se buscara la frase completa
+    como substring, "samsung galaxy" nunca matchearía "SAMSUNG Celular Galaxy
+    A17" (tiene "Celular" en el medio), aunque semánticamente sea exactamente
+    lo que se pidió."""
     n = nombre.lower()
-    ok_incluir = not incluir or any(k in n for k in incluir)
-    ok_excluir = not any(k in n for k in excluir)
+
+    def _todas_las_palabras(frase: str) -> bool:
+        return all(palabra in n for palabra in frase.split())
+
+    ok_incluir = not incluir or any(_todas_las_palabras(k) for k in incluir)
+    ok_excluir = not any(_todas_las_palabras(k) for k in excluir)
     return ok_incluir and ok_excluir
 
 
