@@ -14,13 +14,15 @@ from app.models.user import User
 from app.models.ai_analysis import AIAnalysis
 from app.models.platform_connection import Platform
 from app.services.metrics_service import get_metrics, get_available_platforms
-from app.services.claude_service import ANALYSIS_HANDLERS, stream_analysis
 from app.services.debate_service import run_debate, stream_debate, stream_debate_turn, stream_llama_verdict
 from app.connectors.sfmc import SFMCConnector
 
 logger = logging.getLogger(__name__)
 
-_ALL_HANDLERS = {**ANALYSIS_HANDLERS, "debate": run_debate}
+# La Triada (debate) es el único análisis de IA "standard" que sigue en pie —
+# reporte completo / detección de anomalías / optimización / cross-platform
+# se sacaron: estaban construidos pero ningún botón del frontend los llamaba.
+_ALL_HANDLERS = {"debate": run_debate}
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -65,7 +67,7 @@ class AnalysisRequest(BaseModel):
     platforms: List[Platform]
     date_from: date
     date_to: date
-    analysis_type: str = "full_report"
+    analysis_type: str = "debate"
     user_prompt: str = ""
 
 
@@ -115,14 +117,8 @@ async def analyze(
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
 
     try:
-        if payload.analysis_type in ("full_report", "debate"):
-            email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to)
-            if payload.analysis_type == "debate":
-                result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to, payload.user_prompt)
-            else:
-                result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to)
-        else:
-            result = await handler(metrics, payload.date_from, payload.date_to)
+        email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to)
+        result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to, payload.user_prompt)
     except RuntimeError as e:
         logger.error("Analysis handler failed: %s", e)
         raise HTTPException(status_code=502, detail="Analysis service temporarily unavailable")
@@ -201,71 +197,6 @@ async def get_analysis(
     }
 
 
-STREAMABLE_TYPES = {"full_report", "anomaly_detection", "optimization", "cross_platform"}
-
-
-@router.post("/analyze/stream")
-async def analyze_stream(
-    payload: AnalysisRequest,
-    current_user: User = Depends(require_permission("ai.use")),
-    db: AsyncSession = Depends(get_db),
-):
-    if payload.analysis_type not in STREAMABLE_TYPES:
-        raise HTTPException(status_code=400, detail="Use /analyze for debate analysis")
-
-    await _assert_platforms_available(db, payload.platforms)
-    metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
-
-    email_data, whatsapp_data = [], []
-    if payload.analysis_type == "full_report":
-        email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to, "stream")
-
-    user_id = current_user.id
-    analysis_type = payload.analysis_type
-    platforms_list = [p.value for p in payload.platforms]
-    platforms_str = ", ".join(platforms_list)
-    date_from = payload.date_from
-    date_to = payload.date_to
-
-    async def event_stream():
-        full_text = ""
-        usage: dict = {}
-        try:
-            async for chunk in stream_analysis(
-                analysis_type, metrics, email_data, whatsapp_data, date_from, date_to
-            ):
-                if chunk["type"] == "text":
-                    full_text += chunk["text"]
-                    yield f"data: {json.dumps({'text': chunk['text']})}\n\n"
-                elif chunk["type"] == "done":
-                    usage = chunk
-        except RuntimeError as e:
-            logger.error("Streaming analysis failed: %s", e)
-            yield f"data: {json.dumps({'error': 'Analysis service temporarily unavailable'})}\n\n"
-            return
-
-        async with AsyncSessionLocal() as save_db:
-            analysis = AIAnalysis(
-                user_id=user_id,
-                analysis_type=analysis_type,
-                platforms=platforms_list,
-                date_from=date_from,
-                date_to=date_to,
-                prompt_used=f"{analysis_type} | platforms: {platforms_str} | {date_from} to {date_to}",
-                result=full_text,
-                input_tokens=usage.get("input_tokens", 0),
-                output_tokens=usage.get("output_tokens", 0),
-            )
-            save_db.add(analysis)
-            await save_db.commit()
-            await save_db.refresh(analysis)
-            yield f"data: {json.dumps({'done': True, 'id': analysis.id})}\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 @router.post("/analyze/debate/stream")

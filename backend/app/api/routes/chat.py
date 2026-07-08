@@ -1,10 +1,22 @@
+import asyncio
+import json
+import logging
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
+
+from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.config import settings
+from app.models.ai_analysis import AIAnalysis
+from app.models.cenefa_job import CenefaJob
 from app.models.user import User
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 _BASE_URL = settings.FRONTEND_URL
@@ -55,14 +67,14 @@ MAPA DE SECCIONES Y URLS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SISTEMA DE ROLES Y PERMISOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-La plataforma tiene un sistema de roles estilo Discord, sin equipos ni organizaciones separadas. Hay 4 roles base (no eliminables):
+La plataforma tiene un sistema de roles sin equipos ni organizaciones separadas — un único pool de usuarios. Los permisos viven **por usuario individual**, no por rol: el rol solo sirve como punto de partida al asignarlo, después cada permiso se puede prender o apagar a mano desde el perfil de esa persona en el Panel de Admin. Hay 4 roles base (no eliminables):
 
-- **Superadmin**: acceso total, incluyendo crear/editar/eliminar roles, gestionar usuarios y acceder al Panel de Admin.
-- **Admin**: pensado como "igual a Superadmin pero sin poder tocar roles del sistema" — **PERO hoy tiene una limitación conocida: no otorga acceso real al Panel de Admin** (solo el flag interno de Superadmin lo hace). Si alguien necesita gestionar usuarios o roles, por ahora hay que asignarle directamente el rol Superadmin, no Admin.
-- **Editor**: puede crear templates de cenefas, generarlos, buscar precios y ver analytics.
-- **Viewer**: solo puede ver templates de cenefas y ver analytics. No puede generar ni editar.
+- **Super Admin**: acceso total sin restricciones, reservado para la cuenta principal de la plataforma — no se asigna desde el panel.
+- **Admin**: arranca con TODOS los permisos activos; se pueden destildar puntualmente por usuario. Un Admin puede gestionar usuarios (crear, editar, activar/desactivar, resetear contraseña) pero NO puede modificar a otro Admin ni al Super Admin — eso está reservado al Super Admin.
+- **Usuario**: arranca con un set operativo estándar (ver todo lo de cenefas/analytics/precios/IA, sin gestión de usuarios ni de conexiones) — se puede ajustar por persona.
+- **Viewer**: arranca sin permisos y solo puede tener tildados permisos de "ver" (los que terminan en `.view`) — nunca uno de generar, editar, eliminar, buscar o usar. Ve las secciones pero no puede accionar nada.
 
-Los Superadmin pueden crear roles personalizados en [Panel de Admin]({_BASE_URL}/admin) con cualquier nombre y cualquier combinación de los 15 permisos disponibles:
+Un Superadmin o un Admin pueden crear roles personalizados en [Panel de Admin]({_BASE_URL}/admin) con cualquier nombre y cualquier combinación de los 15 permisos disponibles (un Admin no puede tocar la cuenta de otro Admin ni la del Super Admin, como se explicó arriba):
 
 Permisos disponibles (agrupados):
 - PLATAFORMA: `platform.super`, `platform.admin`, `platform.users.view`, `platform.users.manage`
@@ -94,12 +106,6 @@ DASHBOARD Y MÉTRICAS
 ANÁLISIS CON IA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [Análisis IA]({_BASE_URL}/analytics): dos modos de análisis inteligente.
-
-**Análisis estándar (Claude)**: seleccionás el período, las plataformas y el tipo de análisis:
-- Reporte completo: visión ejecutiva completa con recomendaciones.
-- Detección de anomalías: identifica campañas con comportamiento inusual.
-- Recomendaciones de optimización: qué cambiar para mejorar el ROAS.
-- Comparativa cross-platform: eficiencia por canal y mix recomendado.
 
 **La Triada**: tres modelos debaten sobre los datos desde perspectivas distintas:
 - Claude (Anthropic): analista cuantitativo riguroso.
@@ -221,14 +227,15 @@ BUSCADOR DE PRECIOS EN VIVO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [Buscar precios]({_BASE_URL}/precios) — requiere el permiso `precios.search`.
 
-Busca precios EN VIVO (no guarda una base propia) en 7 cadenas uruguayas al mismo tiempo: Disco, Devoto y Géant (las tres vía la API de GDU — Grupo Disco Uruguay), Ta-Ta, El Dorado, FarmaShop y Botiga.
+Busca precios EN VIVO (no guarda una base propia) en 13 cadenas uruguayas al mismo tiempo: supermercados (Disco, Devoto y Géant vía la API de GDU, Ta-Ta, El Dorado), farmacias (FarmaShop, Botiga) y electrodomésticos/electrónica (Fama, Stienda, Black Dog, Cover Company, DIMM, Electrohogar). Los precios de electrodomésticos suelen venir en dólares (U$S) — cada resultado muestra su moneda real, no se convierte automáticamente.
 
 Cómo usarlo:
 1. Escribir el nombre del producto (mínimo 2 caracteres) y presionar Enter o el botón "Buscar". También se puede pegar un código de barras: el sistema resuelve el nombre del producto automáticamente antes de buscar.
 2. Mientras busca, aparecen chips de progreso por cadena (spinner mientras responde; se tacha si esa cadena no respondió a tiempo).
 3. Los resultados se completan en vivo a medida que cada cadena responde — no hace falta esperar a que terminen todas.
-4. Cada resultado muestra: nombre del producto, cadena + sucursal, precio actual, precio de lista tachado y % de descuento si aplica, y un botón "Ver" hacia la página del producto en la tienda. El precio más barato se destaca automáticamente.
-5. Se puede filtrar por cadena (chips arriba de la tabla) y, si la cadena tiene sucursales identificadas, por sucursal específica. El orden se alterna entre "Por relevancia", "Precio: menor primero" y "Precio: mayor primero".
+4. Cada resultado muestra: nombre del producto, cadena + sucursal, precio actual, precio de lista tachado y % de descuento si aplica, y un botón "Ver" hacia la página del producto en la tienda. El precio más barato se destaca automáticamente (solo compara dentro de la misma moneda).
+5. Los chips de cadena se van SUMANDO al tocarlos (multi-selección) — se puede filtrar por varias cadenas a la vez. Solo el chip "Todas" apaga la selección y vuelve a mostrar todo. Si la cadena tiene sucursales identificadas, también se puede filtrar por sucursal específica. El orden se alterna entre "Por relevancia", "Precio: menor primero" y "Precio: mayor primero".
+6. Botón "Ver gráfico": abre un gráfico comparativo de precios en un modal, con una lista de productos con checkbox al costado (se puede buscar dentro de esa lista) para elegir cuáles entran al gráfico, y un campo para cargar el precio propio y verlo como línea de referencia contra la competencia.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REDEXPRESS — PLANILLA DE PEDIDOS
@@ -279,8 +286,8 @@ Sí. Agregás una columna `dia` en el Excel con el valor del día (ej: "LUNES", 
 **Caso 8 — "¿Cómo genero cenefas con precio en dólares?"**
 Agregá una columna `moneda` en el Excel con el valor `U$S`. El sistema usará ese prefijo en lugar de `$` para todos los precios de ese producto.
 
-**Caso 9 — "La detección de anomalías marcó una campaña como problemática, ¿qué hago?"**
-Ir a [Análisis IA]({_BASE_URL}/analytics) y ejecutar "Detección de anomalías" para el período en cuestión. El análisis te dirá exactamente qué métrica cayó y cuánto. También podés ver la campaña en [Campañas]({_BASE_URL}/campaigns) para ver el detalle histórico y comparar manualmente.
+**Caso 9 — "El Dashboard marcó una campaña como problemática, ¿qué hago?"**
+El [Dashboard]({_BASE_URL}/dashboard) detecta automáticamente si una campaña cae más de 30% vs el período anterior y muestra una alerta. Para profundizar, andá a [Campañas]({_BASE_URL}/campaigns) y filtrá por esa campaña para ver el detalle histórico y comparar manualmente, o llevá el dato a [Análisis IA]({_BASE_URL}/analytics) → La Triada para que las tres IAs lo debatan.
 
 **Caso 10 — "¿Cómo sé qué plantilla usar para generar cenefas?"**
 Depende del caso de uso:
@@ -289,7 +296,7 @@ Depende del caso de uso:
 - Si solo necesitás salir rápido con el formato estándar: usá "Plantilla clásica" (A4, Pinchos o Cenefas 3xA4).
 
 **Caso 11 — "¿Dónde busco precios de la competencia?"**
-Ir a [Buscar precios]({_BASE_URL}/precios), escribir el nombre del producto (o pegar un código de barras) y presionar Enter. Los resultados de Disco, Devoto, Géant, Ta-Ta, El Dorado, FarmaShop y Botiga van apareciendo en vivo a medida que cada cadena responde.
+Ir a [Buscar precios]({_BASE_URL}/precios), escribir el nombre del producto (o pegar un código de barras) y presionar Enter. Los resultados de las 13 cadenas soportadas (supermercados, farmacias y electrodomésticos) van apareciendo en vivo a medida que cada una responde. También podés preguntarme el precio de un producto directo acá en el chat y lo busco por vos.
 
 **Caso 12 — "¿Cómo cargo el pedido de mi local en la Planilla de Redexpress?"**
 Ir a [Planilla de pedidos]({_BASE_URL}/redexpress/planilla), elegir el mes (pestañas arriba), completar las cantidades en la fila de tu local — se guarda solo — y al terminar hacer click en "Confirmar pedido" en esa fila. Si no ves tu local, necesitás que un Superadmin te lo asigne primero.
@@ -297,8 +304,19 @@ Ir a [Planilla de pedidos]({_BASE_URL}/redexpress/planilla), elegir el mes (pest
 **Caso 13 — "¿Cómo cambio el idioma de la plataforma?"**
 Abajo del todo en el menú lateral hay un selector con bandera + nombre de idioma. Click ahí y elegís Español, English o Português.
 
-**Caso 14 — "Le asigné el rol Admin a alguien para que gestione usuarios, pero no puede entrar a /admin"**
-Es una limitación conocida: hoy el rol "Admin" no otorga acceso real al Panel de Admin, solo el rol Superadmin lo hace. Asignale Superadmin en su lugar mientras se corrige.
+**Caso 14 — "¿Podés buscarme un precio, ver el estado de una cenefa o resumirme el último debate sin que tenga que navegar?"**
+Sí — para eso tengo herramientas propias (ver sección siguiente). Pedímelo directo en el chat, por ejemplo: "buscame el precio de coca cola 1.5l", "¿cómo va la cenefa job <id>?" o "resumime el último debate de La Triada".
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TUS HERRAMIENTAS (TOOL CALLING)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Además de responder con lo que sabés del prompt, tenés acceso a estas herramientas — usalas cada vez que la pregunta del usuario las necesite, no esperes a que te las pidan explícitamente:
+
+- **buscar_precio**: buscá el precio en vivo de un producto en las 13 cadenas soportadas. Usala cuando te pregunten el precio de algo o quieran comparar.
+- **consultar_estado_cenefa**: consultá el estado (pending/running/done/error) de un trabajo de generación de cenefas por su ID. Usala si mencionan un ID de trabajo o preguntan "¿ya terminó mi cenefa?".
+- **resumen_ultimo_debate**: traé el contenido del último debate de La Triada que generó este usuario, para resumirlo o comentarlo.
+
+Si una herramienta devuelve un error (ej: producto no encontrado, trabajo inexistente), decilo con claridad — no inventes un resultado.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RESOLUCIÓN DE PROBLEMAS COMUNES
@@ -313,10 +331,9 @@ RESOLUCIÓN DE PROBLEMAS COMUNES
 | El PPTX descargado tiene slides vacíos | El Excel tiene filas vacías entre los datos | Eliminar filas vacías del Excel y volver a generar |
 | No veo datos en el Dashboard | Las plataformas no están conectadas o la sincronización no corrió | Ir a [Configuración]({_BASE_URL}/settings) y verificar el estado de cada conexión |
 | Meta Ads muestra números raros o que no cierran | La integración está pausada — esos datos son un fixture de ejemplo, no reales | Ignorar esos números hasta que se reactive la conexión |
-| No tengo acceso a una sección | El rol asignado no tiene ese permiso | Contactar a un Superadmin para que actualice tu rol |
+| No tengo acceso a una sección | El rol o los permisos individuales asignados no incluyen esa función | Contactar a un Admin o Super Admin para que revise tus permisos en el Panel de Admin |
 | No encuentro resultados en Buscar precios | El producto no existe en las cadenas soportadas o el nombre no matchea | Probar con un nombre más genérico, o pegar el código de barras del producto |
-| No veo mi local en la Planilla de pedidos | No tenés una asignación de local todavía | Pedirle a un Superadmin que te asigne el/los locales correspondientes |
-| Le asigné el rol "Admin" a alguien y sigue sin poder entrar a /admin | Limitación conocida del rol Admin (ver Caso 14) | Asignarle el rol Superadmin en su lugar |"""
+| No veo mi local en la Planilla de pedidos | No tenés una asignación de local todavía | Pedirle a un Superadmin que te asigne el/los locales correspondientes |"""
 
 
 class _Msg(BaseModel):
@@ -335,12 +352,159 @@ class ChatResponse(BaseModel):
 
 _MAX_MESSAGE_LEN = 2_000
 _MAX_HISTORY_LEN = 10
+_MAX_TOOL_ITERS = 3  # tope de vueltas tool-call → resultado → tool-call, evita loops infinitos
+
+
+# ---------------------------------------------------------------------------
+# Tools — le dan a Don Tino acceso a datos reales de la plataforma
+# ---------------------------------------------------------------------------
+
+_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "buscar_precio",
+            "description": (
+                "Busca el precio en vivo de un producto en las 13 cadenas uruguayas soportadas "
+                "(supermercados, farmacias y electrodomésticos). Devuelve los resultados más "
+                "relevantes con tienda, nombre, precio y moneda."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "termino": {
+                        "type": "string",
+                        "description": "Nombre del producto a buscar, ej: 'coca cola 1.5l' o 'notebook hp'",
+                    }
+                },
+                "required": ["termino"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_estado_cenefa",
+            "description": "Consulta el estado (pending/running/done/error) de un trabajo de generación de cenefas por su ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_id": {"type": "string", "description": "El ID (UUID) del trabajo de cenefas a consultar"}
+                },
+                "required": ["job_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "resumen_ultimo_debate",
+            "description": "Trae el contenido del último debate de La Triada (Claude/ChatGPT/Llama) que generó este usuario, para resumirlo o comentarlo.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+]
+
+
+async def _tool_buscar_precio(termino: str) -> str:
+    termino = (termino or "").strip()
+    if len(termino) < 2:
+        return json.dumps({"error": "El término de búsqueda es muy corto"})
+
+    from app.services.scraper.live_search import buscar_todas
+
+    try:
+        resultados = await asyncio.wait_for(asyncio.to_thread(buscar_todas, termino), timeout=60.0)
+    except Exception as exc:
+        logger.warning("chat tool buscar_precio: error buscando '%s' — %s", termino, exc)
+        return json.dumps({"error": "Error al buscar precios en este momento"})
+
+    items = []
+    for records in resultados.values():
+        for r in records:
+            if r.nombre and r.precio is not None:
+                items.append({
+                    "tienda": r.tienda,
+                    "nombre": r.nombre,
+                    "precio": r.precio,
+                    "moneda": r.moneda,
+                    "sucursal": r.sucursal_nombre,
+                    "relevancia": r.relevancia,
+                })
+    items.sort(key=lambda x: x["relevancia"], reverse=True)
+    top = items[:12]
+    if not top:
+        return json.dumps({"resultados": [], "mensaje": f"No se encontraron resultados para '{termino}'"})
+    return json.dumps({"resultados": top}, ensure_ascii=False)
+
+
+async def _tool_estado_cenefa(job_id: str, current_user: User, db: AsyncSession) -> str:
+    try:
+        uid = uuid.UUID((job_id or "").strip())
+    except (ValueError, AttributeError):
+        return json.dumps({"error": "El ID de trabajo no es válido — tiene que ser un UUID"})
+
+    result = await db.execute(
+        select(CenefaJob).where(CenefaJob.id == uid, CenefaJob.created_by == current_user.id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        return json.dumps({"error": "No se encontró un trabajo de cenefas con ese ID para este usuario"})
+
+    return json.dumps({
+        "id": str(job.id),
+        "status": job.status,
+        "formato": job.format,
+        "tipo_export": job.export_type,
+        "productos": job.row_count,
+        "errores": job.error_count,
+        "creado": job.created_at.isoformat() if job.created_at else None,
+        "completado": job.completed_at.isoformat() if job.completed_at else None,
+    })
+
+
+async def _tool_resumen_debate(current_user: User, db: AsyncSession) -> str:
+    result = await db.execute(
+        select(AIAnalysis)
+        .where(AIAnalysis.user_id == current_user.id, AIAnalysis.analysis_type == "debate")
+        .order_by(AIAnalysis.created_at.desc())
+        .limit(1)
+    )
+    analysis = result.scalar_one_or_none()
+    if not analysis:
+        return json.dumps({"error": "Este usuario todavía no generó ningún debate de La Triada"})
+
+    try:
+        mensajes = json.loads(analysis.result).get("debate", [])
+    except (json.JSONDecodeError, AttributeError):
+        return json.dumps({"error": "No se pudo leer el contenido del último debate"})
+
+    resumen = [
+        {"hablante": m.get("speaker"), "contenido": (m.get("content") or "")[:500]}
+        for m in mensajes[-6:]
+    ]
+    return json.dumps({
+        "fecha": analysis.created_at.isoformat() if analysis.created_at else None,
+        "plataformas": analysis.platforms,
+        "mensajes": resumen,
+    }, ensure_ascii=False)
+
+
+async def _ejecutar_tool(name: str, args: dict, current_user: User, db: AsyncSession) -> str:
+    if name == "buscar_precio":
+        return await _tool_buscar_precio(args.get("termino", ""))
+    if name == "consultar_estado_cenefa":
+        return await _tool_estado_cenefa(args.get("job_id", ""), current_user, db)
+    if name == "resumen_ultimo_debate":
+        return await _tool_resumen_debate(current_user, db)
+    return json.dumps({"error": f"Herramienta desconocida: {name}"})
 
 
 @router.post("/message", response_model=ChatResponse)
 async def chat_message(
     body: ChatRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     if not settings.GROQ_API_KEY:
         raise HTTPException(status_code=503, detail="Chat AI not configured")
@@ -357,16 +521,42 @@ async def chat_message(
             messages.append({"role": msg.role, "content": msg.content})
         messages.append({"role": "user", "content": body.message})
 
-        completion = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            max_tokens=512,
-            temperature=0.7,
-        )
-        if not completion.choices:
-            raise HTTPException(status_code=500, detail="Error al contactar el servicio de IA")
-        reply = completion.choices[0].message.content or "No pude generar una respuesta."
-        return ChatResponse(reply=reply)
+        for _ in range(_MAX_TOOL_ITERS):
+            completion = await client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                tools=_TOOLS,
+                tool_choice="auto",
+                max_tokens=700,
+                temperature=0.7,
+            )
+            if not completion.choices:
+                raise HTTPException(status_code=500, detail="Error al contactar el servicio de IA")
 
+            msg = completion.choices[0].message
+            tool_calls = msg.tool_calls or []
+            if not tool_calls:
+                return ChatResponse(reply=msg.content or "No pude generar una respuesta.")
+
+            messages.append({
+                "role": "assistant",
+                "content": msg.content or "",
+                "tool_calls": [
+                    {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                    for tc in tool_calls
+                ],
+            })
+            for tc in tool_calls:
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                resultado = await _ejecutar_tool(tc.function.name, args, current_user, db)
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": resultado})
+
+        return ChatResponse(reply="No pude terminar de resolver tu consulta — probá reformularla o preguntá algo más puntual.")
+
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="Error al contactar el servicio de IA")
