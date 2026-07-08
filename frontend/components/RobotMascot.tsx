@@ -49,7 +49,7 @@ export function RobotMascot({ size = 90 }: { size?: number } = {}) {
         .robot-arm-l { animation: arm-wave 2.8s ease-in-out infinite; }
       `}</style>
 
-      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ overflow: "visible" }}>
       {/* Shadow under robot */}
       <ellipse className="robot-shadow" cx="40" cy="76" rx="22" ry="4" fill="#6366f1" />
 
