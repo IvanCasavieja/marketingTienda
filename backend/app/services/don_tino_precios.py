@@ -165,6 +165,17 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str) -> d
     else:
         mantener = [i for i, _ in candidatos]
 
+    if not mantener:
+        # Claude redactó "respuesta" ANTES de saber si el filtro iba a matchear
+        # algo de verdad — si terminó sin candidatos, esa frase puede ser
+        # optimista o directamente incorrecta. Se pisa con un mensaje preciso;
+        # el frontend además no toca la selección actual cuando mantener viene vacío.
+        return {
+            "tipo": "seleccion",
+            "mantener": [],
+            "respuesta": "No encontré ningún producto que coincida con eso — dejé tu selección como estaba.",
+        }
+
     return {"tipo": "seleccion", "mantener": mantener, "respuesta": respuesta or "Listo."}
 
 

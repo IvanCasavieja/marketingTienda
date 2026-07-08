@@ -67,7 +67,11 @@ export default function DonTinoFloating({
         items.map((it) => ({ tienda: it.tienda, nombre: it.nombre, precio: it.precio, moneda: it.moneda })),
         texto,
       );
-      if (data.tipo === "seleccion" && data.mantener && onApplySeleccion) {
+      // data.mantener=[] (sin matches) NO debe vaciar la selección actual — un
+      // array vacío es "truthy" en JS, así que sin este chequeo explícito de
+      // longitud se aplicaría igual y borraría todo lo que el usuario ya tenía
+      // tildado por una consulta que no encontró nada.
+      if (data.tipo === "seleccion" && data.mantener && data.mantener.length > 0 && onApplySeleccion) {
         const ids = data.mantener.map((n) => items[n - 1]?.id).filter((id): id is string => !!id);
         onApplySeleccion(ids);
       }
