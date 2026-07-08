@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type ProductoVivo } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
-import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight } from "lucide-react";
+import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
 import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
@@ -38,6 +38,7 @@ export default function PreciosPage() {
   const [cadenasDone,    setCadenasDone]    = useState<string[]>([]);
   const [cadenaErrors,   setCadenaErrors]   = useState<Record<string, string>>({});
   const [showChart,      setShowChart]      = useState(false);
+  const [showDiagnostico, setShowDiagnostico] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -122,7 +123,18 @@ export default function PreciosPage() {
     setFilterSucursal(null);
   }
 
-  const cadenas = results ? [...new Set(results.map((r) => r.tienda))].sort() : [];
+  // Conteo por cadena una sola vez — se reusa para ordenar los chips (más
+  // resultados primero, mucho más útil que orden alfabético con 13 cadenas) y
+  // para pintar el número en cada chip sin recalcular un .filter() por chip.
+  const cadenaCounts = results
+    ? results.reduce<Record<string, number>>((acc, r) => {
+        acc[r.tienda] = (acc[r.tienda] ?? 0) + 1;
+        return acc;
+      }, {})
+    : {};
+  const cadenas = results
+    ? Object.keys(cadenaCounts).sort((a, b) => cadenaCounts[b] - cadenaCounts[a])
+    : [];
 
   // Sucursales disponibles según las cadenas activas (solo las que tienen nombre).
   // Agrupadas por cadena — Ta-Ta y El Dorado usan nombres de departamento (ej.
@@ -188,6 +200,18 @@ export default function PreciosPage() {
   const hasResults = results !== null && results.length > 0;
   const hasSearched = results !== null; // true aunque haya 0 resultados
   const isActive   = hasSearched || loading || streaming;
+
+  // Cadenas sin datos (0 resultados, sin respuesta, o error) — se agrupan
+  // detrás de un toggle en vez de mezclarse con los chips de filtro reales,
+  // que ya son 11-13 y no dan abasto visualmente si se suma todo junto.
+  const cadenasSinResultado = !streaming && hasSearched
+    ? cadenasDone.filter((c) => !cadenas.includes(c) && !cadenaErrors[c])
+    : [];
+  const cadenasSinRespuesta = !streaming && hasSearched
+    ? ALL_CADENAS.filter((c) => !cadenasDone.includes(c) && !cadenaErrors[c])
+    : [];
+  const cadenasConError = !streaming && hasSearched ? Object.keys(cadenaErrors) : [];
+  const totalDiagnostico = cadenasSinResultado.length + cadenasSinRespuesta.length + cadenasConError.length;
 
   return (
     /* h-full + flex-col hace que la página ocupe exactamente el viewport sin crecer */
@@ -267,7 +291,6 @@ export default function PreciosPage() {
                 Todas {results && `(${results.length})`}
               </button>
               {cadenas.map((c) => {
-                const n   = results!.filter((r) => r.tienda === c).length;
                 const cfg = CADENA_CONFIG[c];
                 return (
                   <button
@@ -279,7 +302,7 @@ export default function PreciosPage() {
                         : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
                     }`}
                   >
-                    {cfg?.label ?? c} · {n}
+                    {cfg?.label ?? c} · {cadenaCounts[c]}
                   </button>
                 );
               })}
@@ -290,29 +313,41 @@ export default function PreciosPage() {
                   {CADENA_CONFIG[c]?.label ?? c}
                 </span>
               ))}
-              {/* Chips de cadenas con 0 resultados (completaron pero sin productos) */}
-              {!streaming && hasSearched && cadenasDone
-                .filter(c => !cadenas.includes(c) && !cadenaErrors[c])
-                .map(c => (
-                  <span key={c} title="Respondió pero sin resultados" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
-                    {CADENA_CONFIG[c]?.label ?? c} · 0
-                  </span>
-                ))}
-              {/* Chips de cadenas que nunca respondieron (timeout o corte de conexión) */}
-              {!streaming && hasSearched && ALL_CADENAS
-                .filter(c => !cadenasDone.includes(c) && !cadenaErrors[c])
-                .map(c => (
-                  <span key={c} title="Sin respuesta — posible bloqueo geográfico o timeout" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 line-through cursor-help">
-                    {CADENA_CONFIG[c]?.label ?? c}
-                  </span>
-                ))}
-              {/* Chips de error para cadenas que fallaron con excepción */}
-              {!streaming && hasSearched && Object.entries(cadenaErrors).map(([c, err]) => (
-                <span key={c} title={err} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 cursor-help">
-                  <AlertTriangle size={9} />
-                  {CADENA_CONFIG[c]?.label ?? c}
-                </span>
-              ))}
+
+              {/* Diagnóstico (0 resultados / sin respuesta / error) — agrupado
+                  detrás de un toggle para no competir visualmente con los chips
+                  de filtro reales, que ya son bastantes. */}
+              {totalDiagnostico > 0 && (
+                <div className="w-full">
+                  <button
+                    onClick={() => setShowDiagnostico((v) => !v)}
+                    className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors mt-0.5"
+                  >
+                    {showDiagnostico ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                    {totalDiagnostico} {totalDiagnostico === 1 ? "cadena sin datos" : "cadenas sin datos"}
+                  </button>
+                  {showDiagnostico && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {cadenasSinResultado.map((c) => (
+                        <span key={c} title="Respondió pero sin resultados" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
+                          {CADENA_CONFIG[c]?.label ?? c} · 0
+                        </span>
+                      ))}
+                      {cadenasSinRespuesta.map((c) => (
+                        <span key={c} title="Sin respuesta — posible bloqueo geográfico o timeout" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 line-through cursor-help">
+                          {CADENA_CONFIG[c]?.label ?? c}
+                        </span>
+                      ))}
+                      {cadenasConError.map((c) => (
+                        <span key={c} title={cadenaErrors[c]} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 cursor-help">
+                          <AlertTriangle size={9} />
+                          {CADENA_CONFIG[c]?.label ?? c}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {/* Filtro de sucursal — solo visible cuando hay sucursales disponibles.
