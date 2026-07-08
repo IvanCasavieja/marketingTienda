@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Eye, EyeOff, Loader2, BarChart3, TrendingUp, Brain, Zap } from "lucide-react";
+import { Eye, EyeOff, Loader2, BarChart3, Brain, Tag, Presentation } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { RobotMascot, RobotMini } from "@/components/RobotMascot";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,10 +17,10 @@ export default function LoginPage() {
   const [loading, setLoading]   = useState(false);
 
   const features = [
-    { icon: BarChart3,  label: t("login.features.realtime"), desc: t("login.features.realtimeDesc") },
-    { icon: Brain,      label: t("login.features.ai"),       desc: t("login.features.aiDesc") },
-    { icon: TrendingUp, label: t("login.features.roas"),     desc: t("login.features.roasDesc") },
-    { icon: Zap,        label: t("login.features.alerts"),   desc: t("login.features.alertsDesc") },
+    { icon: BarChart3,   label: t("login.features.realtime"), desc: t("login.features.realtimeDesc") },
+    { icon: Brain,       label: t("login.features.ai"),       desc: t("login.features.aiDesc") },
+    { icon: Tag,         label: t("login.features.precios"),  desc: t("login.features.preciosDesc") },
+    { icon: Presentation,label: t("login.features.cenefas"),  desc: t("login.features.cenefasDesc") },
   ];
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
@@ -51,11 +52,25 @@ export default function LoginPage() {
         </div>
 
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-14">
+          <div className="flex items-center gap-3 mb-12">
             <div className="w-9 h-9 rounded-xl bg-brand-500 flex items-center justify-center">
               <BarChart3 size={18} className="text-white" />
             </div>
             <span className="text-white font-bold text-lg tracking-tight">MKTG Platform</span>
+          </div>
+
+          {/* Don Tino + saludo */}
+          <div className="flex items-start gap-5 mb-6">
+            <div className="relative shrink-0">
+              <RobotMascot size={110} />
+              <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-400 rounded-full border-2 border-navy-900" />
+            </div>
+            <div className="pt-3">
+              <div className="inline-flex items-center gap-1.5 bg-white/10 backdrop-blur rounded-full px-3 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="text-xs text-white/90 font-medium">{t("login.mascotGreeting")} 👋</span>
+              </div>
+            </div>
           </div>
 
           <h1 className="text-4xl font-bold text-white leading-tight mb-4">
@@ -84,9 +99,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm animate-fade-in">
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-8 lg:hidden">
-            <div className="w-8 h-8 rounded-xl bg-brand-500 flex items-center justify-center">
-              <BarChart3 size={16} className="text-white" />
-            </div>
+            <RobotMini />
             <span className="font-bold text-slate-800 dark:text-slate-100">MKTG Platform</span>
           </div>
 

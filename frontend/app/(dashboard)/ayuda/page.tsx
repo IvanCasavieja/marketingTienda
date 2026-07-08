@@ -6,66 +6,7 @@ import {
   Download, Eye, GitBranch, Variable, Zap, Users, RefreshCw,
   CheckCircle2, AlertTriangle, Clock, ChevronRight,
 } from "lucide-react";
-
-// ---------------------------------------------------------------------------
-// Robot mascot (same as home page)
-// ---------------------------------------------------------------------------
-function RobotMascot() {
-  return (
-    <>
-      <style>{`
-        @keyframes robot-float  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-        @keyframes robot-shadow { 0%,100%{transform:scaleX(1);opacity:.15} 50%{transform:scaleX(.7);opacity:.07} }
-        @keyframes robot-blink  { 0%,88%,100%{transform:scaleY(1)} 92%{transform:scaleY(.08)} }
-        @keyframes antenna-pulse{ 0%,100%{opacity:1;r:3} 50%{opacity:.4;r:4.5} }
-        @keyframes light-1 { 0%,100%{opacity:1} 20%,60%{opacity:.2} }
-        @keyframes light-2 { 0%,100%{opacity:.2} 40%{opacity:1} }
-        @keyframes light-3 { 0%,100%{opacity:.2} 70%{opacity:1} }
-        @keyframes arm-wave {
-          0%,100%{transform:rotate(0deg);transform-origin:20px 40px}
-          25%{transform:rotate(-18deg);transform-origin:20px 40px}
-          75%{transform:rotate(10deg);transform-origin:20px 40px}
-        }
-        .rb-body{animation:robot-float 2.8s ease-in-out infinite}
-        .rb-shadow{animation:robot-shadow 2.8s ease-in-out infinite}
-        .rb-eye-l{animation:robot-blink 3.5s ease-in-out infinite;transform-origin:32px 24px}
-        .rb-eye-r{animation:robot-blink 3.5s ease-in-out infinite;transform-origin:48px 24px;animation-delay:.05s}
-        .rb-ant{animation:antenna-pulse 1.4s ease-in-out infinite}
-        .rb-l1{animation:light-1 1.8s ease-in-out infinite}
-        .rb-l2{animation:light-2 1.8s ease-in-out infinite}
-        .rb-l3{animation:light-3 1.8s ease-in-out infinite}
-        .rb-arm{animation:arm-wave 2.8s ease-in-out infinite}
-      `}</style>
-      <svg width="110" height="110" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <ellipse className="rb-shadow" cx="40" cy="76" rx="22" ry="4" fill="#6366f1" />
-        <g className="rb-body">
-          <rect x="22" y="38" width="36" height="26" rx="8" fill="#4f46e5" />
-          <rect x="29" y="44" width="22" height="13" rx="4" fill="#4338ca" />
-          <circle className="rb-l1" cx="34" cy="50" r="2.5" fill="#a5f3fc" />
-          <circle className="rb-l2" cx="40" cy="50" r="2.5" fill="#6ee7b7" />
-          <circle className="rb-l3" cx="46" cy="50" r="2.5" fill="#fca5a5" />
-          <g className="rb-arm">
-            <rect x="10" y="40" width="10" height="18" rx="5" fill="#4f46e5" />
-            <circle cx="15" cy="60" r="5" fill="#6366f1" />
-          </g>
-          <rect x="60" y="40" width="10" height="18" rx="5" fill="#4f46e5" />
-          <circle cx="65" cy="60" r="5" fill="#6366f1" />
-          <rect x="35" y="32" width="10" height="8" rx="3" fill="#6366f1" />
-          <rect x="18" y="10" width="44" height="30" rx="12" fill="#6366f1" />
-          <rect x="26" y="19" width="12" height="10" rx="5" fill="white" />
-          <rect x="42" y="19" width="12" height="10" rx="5" fill="white" />
-          <circle className="rb-eye-l" cx="32" cy="24" r="4" fill="#1e1b4b" />
-          <circle className="rb-eye-r" cx="48" cy="24" r="4" fill="#1e1b4b" />
-          <circle cx="33" cy="22" r="1.5" fill="white" />
-          <circle cx="49" cy="22" r="1.5" fill="white" />
-          <path d="M30 33 Q40 39 50 33" stroke="white" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-          <line x1="40" y1="10" x2="40" y2="3" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
-          <circle className="rb-ant" cx="40" cy="2" r="3" fill="#a5b4fc" />
-        </g>
-      </svg>
-    </>
-  );
-}
+import { RobotMascot, RobotMini } from "@/components/RobotMascot";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -126,7 +67,7 @@ export default function AyudaPage() {
       {/* ── Hero ── */}
       <div className="flex flex-col items-center text-center gap-3 py-4">
         <div className="relative">
-          <RobotMascot />
+          <RobotMascot size={110} />
           <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white" />
         </div>
         <div>
@@ -388,25 +329,17 @@ export default function AyudaPage() {
         <Card>
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 rounded-2xl bg-brand-500/10 flex items-center justify-center shrink-0">
-              <svg width="20" height="20" viewBox="0 0 80 80" fill="none">
-                <rect x="18" y="10" width="44" height="30" rx="12" fill="#6366f1" />
-                <rect x="26" y="19" width="12" height="10" rx="5" fill="white" />
-                <rect x="42" y="19" width="12" height="10" rx="5" fill="white" />
-                <circle cx="32" cy="24" r="4" fill="#1e1b4b" />
-                <circle cx="48" cy="24" r="4" fill="#1e1b4b" />
-                <path d="M30 33 Q40 39 50 33" stroke="white" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-                <rect x="22" y="38" width="36" height="26" rx="8" fill="#4f46e5" />
-              </svg>
+              <RobotMini />
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">¿En qué te ayudo?</p>
               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                El asistente (Llama 3.3 70B via Groq) conoce todas las funcionalidades de la plataforma.
+                <strong className="text-slate-800 dark:text-slate-200">Don Tino</strong> (Llama 3.3 70B via Groq) conoce todas las funcionalidades de la plataforma.
                 Podés preguntarle cómo navegar hacia alguna sección, cómo generar un reporte,
                 qué significan las métricas o cualquier duda operativa.
               </p>
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
-                Disponible desde el menú principal → ícono del robot (esquina superior izquierda del dashboard).
+                Disponible desde el Home — abrí la tarjeta de chat debajo del saludo de Don Tino.
               </p>
             </div>
           </div>
@@ -418,21 +351,36 @@ export default function AyudaPage() {
         <SectionTitle icon={Users} title="Roles y permisos" />
         <Card>
           <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
-            No hay equipos ni organizaciones separadas: todos los usuarios comparten la misma plataforma,
-            y lo que cada uno puede ver o hacer depende de su rol. Un Superadmin puede crear roles
-            personalizados con cualquier combinación de permisos desde el <Link href="/admin" className="text-brand-600 hover:underline">Panel de Admin</Link>.
+            No hay equipos ni organizaciones separadas: todos los usuarios comparten la misma plataforma.
+            Los permisos viven <strong>por usuario</strong>, no por rol — el rol solo define el punto de
+            partida al asignarlo; después cada permiso se prende o apaga individualmente desde el perfil
+            de esa persona en el <Link href="/admin" className="text-brand-600 hover:underline">Panel de Admin</Link>.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="bg-blue-50 rounded-xl p-3">
-              <p className="text-xs font-semibold text-blue-700 mb-1">Superadmin / Editor</p>
-              <p className="text-[11px] text-blue-600 leading-relaxed">
-                Acceso completo: Dashboard, Campañas, Análisis IA y Herramientas (Editor no gestiona usuarios ni roles).
+            <div className="bg-rose-50 dark:bg-rose-950/30 rounded-xl p-3">
+              <p className="text-xs font-semibold text-rose-700 dark:text-rose-400 mb-1">Super Admin</p>
+              <p className="text-[11px] text-rose-600 dark:text-rose-400/80 leading-relaxed">
+                Acceso total sin restricciones. Reservado para la cuenta principal — no se asigna desde el panel.
+              </p>
+            </div>
+            <div className="bg-brand-50 dark:bg-brand-950/30 rounded-xl p-3">
+              <p className="text-xs font-semibold text-brand-700 dark:text-brand-400 mb-1">Admin</p>
+              <p className="text-[11px] text-brand-600 dark:text-brand-400/80 leading-relaxed">
+                Arranca con todos los permisos tildados; se pueden destildar puntualmente por usuario.
+                No puede modificar a otro Admin ni al Super Admin.
+              </p>
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-950/30 rounded-xl p-3">
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Usuario</p>
+              <p className="text-[11px] text-amber-600 dark:text-amber-400/80 leading-relaxed">
+                Arranca sin ningún permiso activo — se le arma el combo a medida desde su perfil.
               </p>
             </div>
             <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Viewer / roles personalizados</p>
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Viewer</p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                Solo lectura por defecto (Viewer), o el conjunto exacto de permisos que le asigne un Superadmin.
+                Arranca sin permisos y solo puede tener tildados permisos de "ver" — nunca uno de
+                generar, editar, eliminar o gestionar.
               </p>
             </div>
           </div>

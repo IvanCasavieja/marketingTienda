@@ -232,10 +232,10 @@ export default function PreciosPage() {
       {/* ── Estado inicial vacío (solo antes de la primera búsqueda) ────────── */}
       {!hasSearched && !loading && !streaming && (
         <div className="mt-10 text-center space-y-5">
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-w-sm mx-auto">
+          <div className="flex flex-wrap justify-center gap-2 max-w-2xl mx-auto">
             {Object.entries(CADENA_CONFIG).map(([key, cfg]) => (
-              <div key={key} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium ${cfg.bg}`}>
-                <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
+              <div key={key} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${cfg.bg}`}>
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
                 {cfg.label}
               </div>
             ))}
