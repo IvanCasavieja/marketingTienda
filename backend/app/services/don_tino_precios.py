@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import statistics
+import unicodedata
 
 from app.services.debate_service import _ask_claude, _ask_gpt
 
@@ -43,6 +44,16 @@ def _strip_json_fence(text: str) -> str:
     """Los modelos a veces envuelven el JSON en ```json ... ``` a pesar de que se
     les pide texto plano — se le hace strip antes de json.loads en vez de fallar."""
     return _JSON_FENCE_RE.sub("", text).strip()
+
+
+def _normalizar(s: str) -> str:
+    """minúsculas + sin tildes + sin espacios de sobra. Sin esto, un "tipo":
+    "selección" (bien escrito, con tilde — lo más natural para un modelo que
+    habla español) no matchea el "seleccion" literal que le pedimos en el
+    prompt, y cae en silencio al camino de "respuesta" aunque el texto narrado
+    diga que sí filtró."""
+    s = s.strip().lower()
+    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
 
 
 def _muestra_nombres(items: list[dict], max_items: int = _MUESTRA_MAX) -> str:
@@ -125,9 +136,16 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str) -> d
         f'"{mensaje}"\n\n'
         f"Ejemplos reales de productos encontrados (hay {len(items)} en total, esto es solo una muestra):\n{muestra}\n\n"
         'Primero decidí qué tipo de pedido es:\n'
-        '- "seleccion" si te pide filtrar/quedarse solo con ciertos productos (ej. "quiero solo los Galaxy A17", '
-        '"sacá los accesorios").\n'
-        '- "respuesta" si es una pregunta general sobre los datos (ej. "¿cuál es el más barato?").\n\n'
+        '- "seleccion" si te pide filtrar/quedarse solo con ciertos productos, aunque lo pida de forma '
+        'informal o indirecta (ej. "quiero solo los Galaxy A17", "sacá los accesorios", "te animás a '
+        'dejarme solo los Galaxy?", "che, quedate solo con...") — cualquier variante de "mostrame/'
+        'dejame/filtrá esto" cuenta como "seleccion".\n'
+        '- "respuesta" únicamente si es una pregunta general sobre los datos, sin pedir que cambies '
+        'lo que se ve (ej. "¿cuál es el más barato?").\n\n'
+        'IMPORTANTE: el campo "tipo" tiene que ser EXACTAMENTE el string "seleccion" (así, sin tilde) o '
+        '"respuesta" — nada más. Y el campo "respuesta" tiene que ser consistente con "tipo": si "tipo" '
+        'es "respuesta", no digas frases como "filtré" o "dejé solo" porque no vas a aplicar ningún '
+        'cambio.\n\n'
         'Para "seleccion": NO cuentes ni enumeres productos todavía (eso viene en un paso aparte). Dame '
         'palabras clave de qué nombre hay que buscar, usando la forma real en que aparecen en los ejemplos '
         'de arriba (ej. si el usuario dice "Galaxy 17" pero los productos dicen "Galaxy A17", la palabra '
@@ -143,7 +161,7 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str) -> d
     try:
         content, _ = await _ask_claude(DON_TINO_BASE, prompt, max_tokens=500)
         parsed = json.loads(_strip_json_fence(content))
-        tipo = parsed.get("tipo") if parsed.get("tipo") in ("seleccion", "respuesta") else "respuesta"
+        tipo = "seleccion" if _normalizar(str(parsed.get("tipo") or "")) == "seleccion" else "respuesta"
         respuesta = str(parsed.get("respuesta") or "").strip()
     except Exception as exc:
         log.warning("don_tino_precios.responder_consulta: fallo parseando respuesta — %s", exc)
