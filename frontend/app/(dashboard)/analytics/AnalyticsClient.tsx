@@ -495,7 +495,7 @@ export default function AnalyticsPage() {
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Claude · ChatGPT · Llama — debate con tus datos de campañas</p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 items-stretch">
         {/* ── Left panel ── */}
         <div className="space-y-4">
           <div className="card p-5">
@@ -600,7 +600,7 @@ export default function AnalyticsPage() {
                 <Clock size={14} className="text-slate-400" />
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Debates anteriores</p>
               </div>
-              <div className="divide-y divide-slate-50 dark:divide-slate-800 max-h-[340px] overflow-y-auto">
+              <div className="divide-y divide-slate-50 dark:divide-slate-800 max-h-[240px] overflow-y-auto">
                 {debateHistory.slice(0, 8).map((h) => (
                   <button key={h.id} onClick={() => loadFromHistory(h.id)}
                     className={`w-full flex items-center gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left ${activeAnalysis === h.id ? "bg-brand-50/50" : ""}`}>
@@ -620,7 +620,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* ── Chat ── */}
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3 h-full">
           {errorMsg && (
             <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
@@ -633,8 +633,8 @@ export default function AnalyticsPage() {
           )}
 
           <div
-            className="flex flex-col rounded-2xl overflow-hidden border border-slate-200/80 shadow-xl"
-            style={{ height: "calc(100vh - 175px)", minHeight: "640px" }}
+            className="flex-1 flex flex-col rounded-2xl overflow-hidden border border-slate-200/80 shadow-xl"
+            style={{ minHeight: "640px" }}
           >
             {/* ── Header ── */}
             <div className="shrink-0 bg-slate-900 px-5 py-3.5 flex items-center gap-4">
