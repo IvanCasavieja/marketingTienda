@@ -585,14 +585,21 @@ export default function PreciosPage() {
         <ComparisonModal items={visible} onClose={() => setShowChart(false)} termino={lastQuery} />
       )}
 
-      <DonTinoFloating
-        context="precios"
-        termino={lastQuery}
-        items={visible
-          .filter((r) => r.precio !== null)
-          .map((r) => ({ tienda: r.tienda, nombre: r.nombre ?? "—", precio: r.precio!, moneda: r.moneda ?? "UYU" }))}
-        onOpenChart={() => setShowChart(true)}
-      />
+      {/* Con el gráfico abierto, ComparisonModal ya monta su propia mascota
+          flotante (con onApplySeleccion conectado al checklist) en el mismo
+          lugar de la pantalla — si esta también se mostrara, quedarían dos
+          superpuestas y el usuario terminaría hablándole a la que NO puede
+          tocar la selección (esta, la de /precios, no tiene esa conexión). */}
+      {!showChart && (
+        <DonTinoFloating
+          context="precios"
+          termino={lastQuery}
+          items={visible
+            .filter((r) => r.precio !== null)
+            .map((r) => ({ tienda: r.tienda, nombre: r.nombre ?? "—", precio: r.precio!, moneda: r.moneda ?? "UYU" }))}
+          onOpenChart={() => setShowChart(true)}
+        />
+      )}
     </div>
     </WatchlistsProvider>
   );

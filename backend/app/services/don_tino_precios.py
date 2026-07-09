@@ -82,30 +82,51 @@ def _matches(nombre: str, incluir: list[str], excluir: list[str]) -> bool:
 
 async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[int, dict]]) -> list[int]:
     """candidatos: [(índice_original, item), ...] ya prefiltrados por palabra
-    clave — acotado a lo sumo a _REFINAR_MAX, así que acá SÍ es confiable
-    pedirle a Claude que los revise uno por uno con criterio real, no solo
-    texto. Esto es lo que agarra el caso "pedí celulares, el filtro de palabra
-    clave también trajo una tablet o un accesorio que coincide por texto pero
-    no es lo que se pidió". Devuelve los índices ORIGINALES a mantener.
+    clave. Antes de mandarlos a Claude se AGRUPAN por (tienda, nombre): la
+    revisión semántica es una decisión por PRODUCTO, no por sucursal — el
+    mismo producto puede aparecer 8 veces (una por sucursal de Ta-Ta/El
+    Dorado/GDU) con el nombre IDÉNTICO. Sin agrupar, Claude ve varias líneas
+    numeradas que se leen exactamente igual y tiende a tratarlas como
+    duplicados a limpiar, quedándose con una sola en vez de con todas — se
+    vio en producción con "Celular Samsung Galaxy A06 Negro" repetido por
+    sucursal, donde solo una quedaba tildada. Agrupando, Claude toma UNA
+    decisión por producto único y acá se expande a todas las sucursales de
+    ese grupo. Devuelve los índices ORIGINALES a mantener.
     """
-    listado = "\n".join(f"{n}. [{it['tienda']}] {it['nombre']}" for n, (_, it) in enumerate(candidatos, start=1))
+    grupos: dict[tuple[str, str], list[int]] = {}
+    item_de_grupo: dict[tuple[str, str], dict] = {}
+    for idx, it in candidatos:
+        key = (it["tienda"], it["nombre"])
+        grupos.setdefault(key, []).append(idx)
+        item_de_grupo.setdefault(key, it)
+
+    claves = list(grupos.keys())
+    if len(claves) > _REFINAR_MAX:
+        # Demasiados productos únicos para una revisión confiable uno por uno
+        # — nos quedamos con el filtro de palabras clave tal cual.
+        return [idx for idxs in grupos.values() for idx in idxs]
+
+    listado = "\n".join(f"{n}. [{tienda}] {nombre}" for n, (tienda, nombre) in enumerate(claves, start=1))
     prompt = (
         f'El usuario buscó "{termino}" y te pidió: "{mensaje}"\n\n'
-        f"Estos productos ya pasaron un filtro de palabras clave, pero puede haber falsos positivos — "
-        f"por ejemplo, si pidió \"celulares\" y hay una tablet o un accesorio que coincide por texto pero "
-        f"no es lo que pidió. Revisalos uno por uno con criterio real (qué tipo de producto es, no solo "
-        f"si el texto matchea):\n{listado}\n\n"
+        f"Estos son los PRODUCTOS ÚNICOS que ya pasaron un filtro de palabras clave (si un producto se "
+        f"vende en varias sucursales, acá aparece una sola vez representándolas a todas), pero puede "
+        f"haber falsos positivos — por ejemplo, si pidió \"celulares\" y hay una tablet o un accesorio "
+        f"que coincide por texto pero no es lo que pidió. Revisalos uno por uno con criterio real (qué "
+        f"tipo de producto es, no solo si el texto matchea):\n{listado}\n\n"
         'Devolvé SOLO un JSON: {"mantener": [1, 3, 5]} — los números de los que SÍ corresponden '
         'de verdad a lo que pidió el usuario. Si todos corresponden, incluilos todos.'
     )
     try:
         content, _ = await _ask_claude(DON_TINO_BASE, prompt, max_tokens=400)
         parsed = json.loads(_strip_json_fence(content))
-        mantener_local = [i for i in parsed.get("mantener", []) if isinstance(i, int) and 1 <= i <= len(candidatos)]
-        return [candidatos[i - 1][0] for i in mantener_local]
+        mantener_local = [i for i in parsed.get("mantener", []) if isinstance(i, int) and 1 <= i <= len(claves)]
+        claves_mantener = {claves[i - 1] for i in mantener_local}
     except Exception as exc:
         log.warning("don_tino_precios._afinar_seleccion: fallo, uso el filtro de palabras clave sin afinar — %s", exc)
-        return [idx for idx, _ in candidatos]
+        claves_mantener = set(claves)
+
+    return [idx for key in claves if key in claves_mantener for idx in grupos[key]]
 
 
 async def responder_consulta(termino: str, items: list[dict], mensaje: str) -> dict:
