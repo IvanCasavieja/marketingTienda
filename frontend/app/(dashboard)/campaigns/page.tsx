@@ -10,11 +10,12 @@ import { SkeletonRow } from "@/components/ui/SkeletonCard";
 import { fNum, fMoney, fMoneyExact } from "@/lib/format";
 import { useTranslation } from "react-i18next";
 
-const PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"] as const;
-// Meta Ads: sync manual pausado — conexión eliminada (2026-07-06), la data
-// que se ve en pantalla es un fixture fijo. Reactivar agregando "meta" acá
-// de nuevo una vez restablecida la conexión real (ver metrics_service.py).
-const SYNC_PLATFORMS = PLATFORMS.filter((p) => p !== "meta");
+const PLATFORMS = ["meta", "google_ads", "google_analytics", "tiktok", "dv360"] as const;
+// Meta Ads y Google Analytics: no tienen conexión OAuth activa (Meta se dio
+// de baja el 2026-07-06; GA4 todavía no está conectada) — la data que se ve
+// en pantalla es un fixture fijo (ver FIXTURE_PLATFORMS en metrics_service.py).
+// Reactivar acá una vez restablecida/creada la conexión real.
+const SYNC_PLATFORMS = PLATFORMS.filter((p) => p !== "meta" && p !== "google_analytics");
 
 type SortKey = "spend" | "clicks" | "ctr" | "roas" | "conversions" | "cpa";
 type SortDir = "asc" | "desc";
