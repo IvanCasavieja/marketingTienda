@@ -707,10 +707,27 @@ async def stream_debate_turn(
     web_context = ""
     web_ctx_tokens = 0
     try:
-        web_context, web_ctx_tokens = await _fetch_web_context(date_from, date_to)
-        yield {"type": "web_context", "speaker": "ChatGPT", "content": web_context}
+        web_context, tok1 = await _fetch_web_context(date_from, date_to)
+        web_ctx_tokens += tok1
     except Exception:
-        pass  # continúa sin contexto web si falla
+        web_context = ""  # continúa sin contexto web si falla
+
+    # Si hay comparación de períodos, buscamos contexto también del período base —
+    # sin esto, los modelos tienen la tabla numérica del período base pero ningún
+    # hallazgo (noticias, feriados, eventos) para explicar POR QUÉ cambió.
+    if metrics_2 and date_from_2 and date_to_2:
+        try:
+            web_context_2, tok2 = await _fetch_web_context(date_from_2, date_to_2)
+            web_ctx_tokens += tok2
+            if web_context_2:
+                current_block = f"### Período actual ({date_from} al {date_to})\n{web_context}" if web_context else ""
+                base_block    = f"### Período base ({date_from_2} al {date_to_2})\n{web_context_2}"
+                web_context   = "\n\n".join(p for p in (current_block, base_block) if p)
+        except Exception:
+            pass  # sigue solo con el contexto del período actual si falla el del base
+
+    if web_context:
+        yield {"type": "web_context", "speaker": "ChatGPT", "content": web_context}
 
     web_section = (
         f"\n\n## CONTEXTO EXTERNO DEL PERÍODO (búsqueda web en tiempo real)\n{web_context}"
@@ -742,6 +759,17 @@ async def stream_debate_turn(
         "('no explica nada, hay que buscar otra causa').\n"
         if web_context else ""
     )
+    if metrics_2 and date_from_2 and date_to_2:
+        web_ctx_note += (
+            "\nHay una '## COMPARATIVA DE PERÍODOS' (período base vs. período actual). No te "
+            "limites a citar los números de esa tabla: explicá QUÉ CAMBIÓ entre un período y otro "
+            "y POR QUÉ. Atá cada delta relevante (spend, ROAS, CTR, CPA) al contexto correspondiente "
+            "de CADA período por separado — el contexto del período actual no explica lo que pasó en "
+            "el período base, son hallazgos distintos con fechas distintas. Si algo mejoró, decí qué "
+            "cambió en el período actual que lo explica; si empeoró, decí qué faltó o qué fue distinto "
+            "respecto al período base. Si no hay contexto suficiente para justificar un delta, decilo "
+            "en vez de inventar una causa.\n"
+        )
     if is_first_turn:
         gpt_instructions = (
             "Primer turno — analizá la pregunta del usuario con datos concretos:\n"

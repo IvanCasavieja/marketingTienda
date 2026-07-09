@@ -7,7 +7,7 @@ import { es, enUS, ptBR } from "date-fns/locale";
 import type { Locale } from "date-fns";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell,
+  ResponsiveContainer, Cell, PieChart, Pie,
 } from "recharts";
 import {
   DollarSign, MousePointerClick, ShoppingCart,
@@ -27,6 +27,29 @@ const COLORS: Record<string, string> = {
   sfmc:             "#00A1E0",
   google_analytics: "#FF9900",
 };
+
+const OBJECTIVE_COLORS: Record<string, string> = {
+  branding:   "#6366f1",
+  traffic:    "#f59e0b",
+  conversion: "#10b981",
+  unknown:    "#94a3b8",
+};
+
+const OBJECTIVE_LABELS: Record<string, string> = {
+  branding:   "Branding",
+  traffic:    "Tráfico",
+  conversion: "Conversión",
+  unknown:    "Sin clasificar",
+};
+
+interface ObjectiveBucket {
+  objective: string;
+  spend: number;
+  revenue: number;
+  conversions: number;
+  pct: number;
+  roas: number;
+}
 
 const PERIODS = [
   { label: "7D",  days: 7 },
@@ -144,6 +167,7 @@ export default function DashboardPage() {
   const { t, i18n } = useTranslation();
   const [summary, setSummary]         = useState<PlatformSummary[]>([]);
   const [prevSummary, setPrevSummary] = useState<PlatformSummary[]>([]);
+  const [byObjective, setByObjective] = useState<ObjectiveBucket[]>([]);
   const [loading, setLoading]         = useState(true);
   const [syncing, setSyncing]         = useState(false);
   const [period, setPeriod]           = useState(30);
@@ -198,12 +222,14 @@ export default function DashboardPage() {
     const from  = format(subDays(new Date(), days), "yyyy-MM-dd");
     const cmp   = getCompareDates(days, mode);
     try {
-      const [curr, prev] = await Promise.all([
+      const [curr, prev, objective] = await Promise.all([
         metricsApi.getSummary(from, today),
         metricsApi.getSummary(cmp.from, cmp.to),
+        metricsApi.getSpendByObjective(from, today),
       ]);
       setSummary(curr.data);
       setPrevSummary(prev.data);
+      setByObjective(objective.data.by_objective);
       const maxDate = curr.data.reduce((max: string | null, s: any) => {
         if (!s.last_date) return max;
         return !max || s.last_date > max ? s.last_date : max;
@@ -220,12 +246,14 @@ export default function DashboardPage() {
     setLoading(true);
     const cmp = getCompareDates(0, mode, from, to);
     try {
-      const [curr, prev] = await Promise.all([
+      const [curr, prev, objective] = await Promise.all([
         metricsApi.getSummary(from, to),
         metricsApi.getSummary(cmp.from, cmp.to),
+        metricsApi.getSpendByObjective(from, to),
       ]);
       setSummary(curr.data);
       setPrevSummary(prev.data);
+      setByObjective(objective.data.by_objective);
       const maxDate = curr.data.reduce((max: string | null, s: any) => {
         if (!s.last_date) return max;
         return !max || s.last_date > max ? s.last_date : max;
@@ -583,6 +611,65 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           )}
         </div>
+      </div>
+
+      {/* Inversión por objetivo de funnel */}
+      <div className="card p-6">
+        <div className="mb-4">
+          <p className="section-title">Inversión por objetivo de funnel</p>
+          <p className="section-sub mt-0.5">Branding vs. tráfico vs. conversión — {periodLabel}</p>
+        </div>
+        {loading ? (
+          <div className="h-52 skeleton rounded-xl" />
+        ) : byObjective.length === 0 ? (
+          <div className="h-52 flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">
+            {t("dashboard.noDataSync")}
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row items-center gap-6">
+            <div className="w-full sm:w-52 h-[200px] shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={byObjective}
+                    dataKey="spend"
+                    nameKey="objective"
+                    innerRadius={55}
+                    outerRadius={85}
+                    paddingAngle={2}
+                    strokeWidth={0}
+                  >
+                    {byObjective.map((entry) => (
+                      <Cell key={entry.objective} fill={OBJECTIVE_COLORS[entry.objective] ?? "#94a3b8"} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number, _name, item: any) => [
+                      fMoney(value), OBJECTIVE_LABELS[item.payload.objective] ?? item.payload.objective,
+                    ]}
+                    contentStyle={{ borderRadius: 12, border: "1px solid #f1f5f9", fontSize: 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="flex-1 w-full space-y-2.5">
+              {byObjective.map((b) => (
+                <div key={b.objective} className="flex items-center gap-3">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: OBJECTIVE_COLORS[b.objective] ?? "#94a3b8" }} />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 w-28 shrink-0">
+                    {OBJECTIVE_LABELS[b.objective] ?? b.objective}
+                  </span>
+                  <span className="text-xs text-slate-400 w-14 shrink-0">{b.pct.toFixed(1)}%</span>
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex-1 text-right">{fMoney(b.spend)}</span>
+                  <span className={`text-xs font-bold w-16 text-right ${b.roas >= 2 ? "text-emerald-600" : b.roas >= 1 ? "text-amber-500" : "text-red-500"}`}>
+                    {b.roas.toFixed(2)}x
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Platform table */}

@@ -27,12 +27,16 @@ ACCOUNTS = [
     "120912345678901",
 ]
 
+# objective: "branding" | "traffic" | "conversion" — clasificación manual del objetivo
+# de campaña, guardada en raw_data (ver gen_row). No viene de una conexión real (no hay
+# ninguna hoy, ver FIXTURE_PLATFORMS en metrics_service.py) — el día que haya una conexión
+# real, el conector debería mapear el objective nativo de la plataforma acá en vez de esto.
 CAMPAIGNS = [
-    {"campaign_id": "23851000000010001", "campaign_name": "Meta | Awareness Video | Marca",        "account_id": ACCOUNTS[0], "impr_range": (40000, 120000), "ctr_range": (0.8, 1.8), "cpm_range": (25, 55), "cvr_range": (0.5, 1.5), "aov_range": (30, 70)},
-    {"campaign_id": "23851000000010002", "campaign_name": "Meta | Remarketing Carrito Abandonado",  "account_id": ACCOUNTS[0], "impr_range": (8000, 25000),  "ctr_range": (2.0, 4.0), "cpm_range": (15, 35), "cvr_range": (3.0, 7.0), "aov_range": (40, 90)},
-    {"campaign_id": "23851000000010003", "campaign_name": "Meta | Lanzamiento Categoria Hogar",     "account_id": ACCOUNTS[0], "impr_range": (15000, 45000), "ctr_range": (1.2, 2.5), "cpm_range": (20, 40), "cvr_range": (1.5, 3.5), "aov_range": (35, 80)},
-    {"campaign_id": "23851000000010004", "campaign_name": "Meta | Promo Fin de Semana",             "account_id": ACCOUNTS[1], "impr_range": (20000, 60000), "ctr_range": (1.5, 3.2), "cpm_range": (18, 38), "cvr_range": (2.0, 5.0), "aov_range": (25, 60)},
-    {"campaign_id": "23851000000010005", "campaign_name": "Meta | Ecommerce Conversiones",          "account_id": ACCOUNTS[1], "impr_range": (25000, 70000), "ctr_range": (1.8, 3.5), "cpm_range": (22, 45), "cvr_range": (2.5, 6.0), "aov_range": (30, 75)},
+    {"campaign_id": "23851000000010001", "campaign_name": "Meta | Awareness Video | Marca",        "account_id": ACCOUNTS[0], "objective": "branding",   "impr_range": (40000, 120000), "ctr_range": (0.8, 1.8), "cpm_range": (25, 55), "cvr_range": (0.5, 1.5), "aov_range": (30, 70)},
+    {"campaign_id": "23851000000010002", "campaign_name": "Meta | Remarketing Carrito Abandonado",  "account_id": ACCOUNTS[0], "objective": "conversion", "impr_range": (8000, 25000),  "ctr_range": (2.0, 4.0), "cpm_range": (15, 35), "cvr_range": (3.0, 7.0), "aov_range": (40, 90)},
+    {"campaign_id": "23851000000010003", "campaign_name": "Meta | Lanzamiento Categoria Hogar",     "account_id": ACCOUNTS[0], "objective": "traffic",    "impr_range": (15000, 45000), "ctr_range": (1.2, 2.5), "cpm_range": (20, 40), "cvr_range": (1.5, 3.5), "aov_range": (35, 80)},
+    {"campaign_id": "23851000000010004", "campaign_name": "Meta | Promo Fin de Semana",             "account_id": ACCOUNTS[1], "objective": "conversion", "impr_range": (20000, 60000), "ctr_range": (1.5, 3.2), "cpm_range": (18, 38), "cvr_range": (2.0, 5.0), "aov_range": (25, 60)},
+    {"campaign_id": "23851000000010005", "campaign_name": "Meta | Ecommerce Conversiones",          "account_id": ACCOUNTS[1], "objective": "conversion", "impr_range": (25000, 70000), "ctr_range": (1.8, 3.5), "cpm_range": (22, 45), "cvr_range": (2.5, 6.0), "aov_range": (30, 75)},
 ]
 
 
@@ -74,6 +78,7 @@ def gen_row(camp: dict, day: date) -> dict:
         "cpc": round(safe_divide(spend, clicks), 4),
         "cpm": round(safe_divide(spend, impressions) * 1000, 4),
         "roas": round(safe_divide(revenue, spend), 4),
+        "raw_data": {"objective": camp["objective"]},
     }
 
 

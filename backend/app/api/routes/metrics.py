@@ -12,7 +12,9 @@ from app.core.deps import require_permission
 from app.models.user import User
 from app.models.campaign_metric import CampaignMetric
 from app.models.platform_connection import Platform
-from app.services.metrics_service import sync_platform, get_metrics, get_ga4_funnel, AD_SPEND_PLATFORMS
+from app.services.metrics_service import (
+    sync_platform, get_metrics, get_ga4_funnel, get_spend_by_objective, AD_SPEND_PLATFORMS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,18 @@ async def get_ga4_funnel_route(
     """Embudo ecommerce de GA4 (sessions -> page_views -> view_item -> add_to_cart ->
     begin_checkout -> purchase), agregado por canal y por día, para la página /canales."""
     return await get_ga4_funnel(db, date_from, date_to)
+
+
+@router.get("/spend-by-objective")
+async def get_spend_by_objective_route(
+    date_from: date,
+    date_to: date,
+    current_user: User = Depends(require_permission("analytics.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Inversión de canales pagos agrupada por objetivo de funnel
+    (branding/traffic/conversion), para el gráfico del Dashboard."""
+    return await get_spend_by_objective(db, date_from, date_to)
 
 
 @router.get("/auto-sync/status")

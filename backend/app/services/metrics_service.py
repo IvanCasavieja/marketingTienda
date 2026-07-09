@@ -252,3 +252,49 @@ async def get_ga4_funnel(
         d["revenue"] = round(d["revenue"], 2)
 
     return {"totals": totals, "by_channel": by_channel_list, "daily": daily_list}
+
+
+_OBJECTIVE_ORDER = ("branding", "traffic", "conversion", "unknown")
+
+
+async def get_spend_by_objective(
+    db: AsyncSession,
+    date_from: date,
+    date_to: date,
+) -> Dict:
+    """Agrega el spend de canales pagos (AD_SPEND_PLATFORMS) por objetivo de funnel
+    (branding/traffic/conversion), leído de raw_data.objective (ver generate_meta_fake_data.py
+    / generate_tiktok_fake_data.py). Filas sin ese campo (conexiones reales que todavía no lo
+    mapean) se agrupan como "unknown" en vez de perderse."""
+    result = await db.execute(
+        select(CampaignMetric).where(
+            and_(
+                CampaignMetric.date >= date_from,
+                CampaignMetric.date <= date_to,
+                CampaignMetric.platform.in_(AD_SPEND_PLATFORMS),
+            )
+        )
+    )
+    rows = result.scalars().all()
+
+    buckets: Dict[str, Dict] = {}
+    for r in rows:
+        objective = (r.raw_data or {}).get("objective") or "unknown"
+        b = buckets.setdefault(objective, {"objective": objective, "spend": 0.0, "revenue": 0.0, "conversions": 0})
+        b["spend"]       += r.spend or 0.0
+        b["revenue"]     += r.revenue or 0.0
+        b["conversions"] += r.conversions or 0
+
+    total_spend = sum(b["spend"] for b in buckets.values())
+    by_objective = []
+    for objective in _OBJECTIVE_ORDER:
+        if objective not in buckets:
+            continue
+        b = buckets[objective]
+        b["spend"]      = round(b["spend"], 2)
+        b["revenue"]    = round(b["revenue"], 2)
+        b["pct"]        = round(b["spend"] / total_spend * 100, 1) if total_spend else 0.0
+        b["roas"]       = round(b["revenue"] / b["spend"], 4) if b["spend"] else 0.0
+        by_objective.append(b)
+
+    return {"total_spend": round(total_spend, 2), "by_objective": by_objective}

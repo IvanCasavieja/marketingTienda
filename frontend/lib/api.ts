@@ -101,6 +101,8 @@ export const metricsApi = {
     }>("/metrics/auto-sync/status"),
   getGa4Funnel: (date_from: string, date_to: string) =>
     api.get("/metrics/ga4-funnel", { params: { date_from, date_to } }),
+  getSpendByObjective: (date_from: string, date_to: string) =>
+    api.get("/metrics/spend-by-objective", { params: { date_from, date_to } }),
 };
 
 export const analyticsApi = {
