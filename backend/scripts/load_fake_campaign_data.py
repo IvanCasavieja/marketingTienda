@@ -30,6 +30,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sqlalchemy import delete  # noqa: E402
 
 from app.core.database import AsyncSessionLocal  # noqa: E402
+# Import completo de app.models (no solo CampaignMetric) — si no, SQLAlchemy
+# no puede resolver la relación User.role al compilar el DELETE/INSERT y
+# tira "InvalidRequestError: ... expression 'Role' failed to locate a name".
+import app.models  # noqa: E402,F401
+from app.models.role import Role  # noqa: E402,F401
 from app.models.campaign_metric import CampaignMetric  # noqa: E402
 from app.models.platform_connection import Platform  # noqa: E402
 
