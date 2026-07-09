@@ -12,6 +12,7 @@ from app.models.watchlist import Watchlist
 from app.models.watchlist_item import WatchlistItem
 from app.models.watchlist_precio_historial import WatchlistPrecioHistorial
 from app.models.notificacion import Notificacion
+from app.models.cotizacion_dolar import CotizacionDolar
 
 __all__ = [
     "User", "PlatformConnection", "Platform",
@@ -19,4 +20,5 @@ __all__ = [
     "CenefaTemplate", "CenefaTemplateV2", "CenefaJob",
     "PlanillaPedido", "LocalAsignacion",
     "Watchlist", "WatchlistItem", "WatchlistPrecioHistorial", "Notificacion",
+    "CotizacionDolar",
 ]

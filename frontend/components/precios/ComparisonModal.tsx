@@ -1,11 +1,11 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine,
 } from "recharts";
 import { X, Search, CheckCircle2, BarChart3 } from "lucide-react";
-import type { ProductoVivo } from "@/lib/api";
+import { preciosApi, type ProductoVivo, type CotizacionDolar } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
 import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
 import DonTinoFloating from "@/components/DonTinoFloating";
@@ -23,6 +23,23 @@ function truncar(nombre: string | null, max = 26): string {
   return n.length > max ? n.slice(0, max - 1) + "…" : n;
 }
 
+// Compra/venta se usan para direcciones distintas — no es la misma tasa ida y
+// vuelta. USD→UYU usa "venta" (lo que cuesta en pesos conseguir esos dólares).
+// UYU→USD usa "compra" (lo que valen esos pesos si se los cambia por dólares).
+function convertir(
+  precio: number,
+  monedaOrigen: string | null,
+  monedaDestino: "UYU" | "USD",
+  cot: CotizacionDolar | null,
+): number | null {
+  const origen = monedaOrigen ?? "UYU";
+  if (origen === monedaDestino) return precio;
+  if (!cot) return null;
+  if (origen === "USD" && monedaDestino === "UYU") return precio * cot.venta;
+  if (origen === "UYU" && monedaDestino === "USD") return precio / cot.compra;
+  return null; // otras monedas: no hay tasa para convertir
+}
+
 const ChartTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
@@ -31,6 +48,11 @@ const ChartTooltip = ({ active, payload }: any) => {
       <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 leading-snug">{d.nombreCompleto}</p>
       <p className="text-[11px] text-slate-400 mb-1">{d.cadenaLabel}{d.sucursal ? ` · ${d.sucursal}` : ""}</p>
       <p className="text-sm font-bold" style={{ color: d.fill }}>{fMoneyByCurrency(d.precio, d.moneda)}</p>
+      {d.monedaOriginal !== d.moneda && (
+        <p className="text-[10.5px] text-slate-400 mt-0.5">
+          Original: {fMoneyByCurrency(d.precioOriginal, d.monedaOriginal)}
+        </p>
+      )}
     </div>
   );
 };
@@ -53,6 +75,15 @@ export default function ComparisonModal({
   const [busqueda, setBusqueda] = useState("");
   const [ourPrice, setOurPrice] = useState("");
   const [ourCurrency, setOurCurrency] = useState<"UYU" | "USD">("UYU");
+  const [monedaVista, setMonedaVista] = useState<"UYU" | "USD">("UYU");
+  const [cotizacion, setCotizacion] = useState<CotizacionDolar | null>(null);
+  const [cotizacionError, setCotizacionError] = useState(false);
+
+  useEffect(() => {
+    preciosApi.cotizacionDolar()
+      .then(({ data }) => setCotizacion(data))
+      .catch(() => setCotizacionError(true));
+  }, []);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -77,23 +108,38 @@ export default function ComparisonModal({
     return groups;
   }, [filtrados]);
 
+  const seleccionados = useMemo(
+    () => withIds.filter((it) => selected.has(it._id) && it.precio !== null),
+    [withIds, selected]
+  );
+
   const chartData = useMemo(() => {
-    return withIds
-      .filter((it) => selected.has(it._id) && it.precio !== null)
-      .map((it) => ({
-        name: truncar(it.nombre),
-        nombreCompleto: it.nombre ?? "—",
-        cadenaLabel: CADENA_CONFIG[it.tienda]?.label ?? it.tienda,
-        sucursal: it.sucursal_nombre,
-        precio: it.precio!,
-        moneda: it.moneda,
-        fill: CADENA_CONFIG[it.tienda]?.hex ?? "#94a3b8",
-      }));
-  }, [withIds, selected]);
+    return seleccionados
+      .map((it) => {
+        const convertido = convertir(it.precio!, it.moneda, monedaVista, cotizacion);
+        if (convertido === null) return null;
+        return {
+          name: truncar(it.nombre),
+          nombreCompleto: it.nombre ?? "—",
+          cadenaLabel: CADENA_CONFIG[it.tienda]?.label ?? it.tienda,
+          sucursal: it.sucursal_nombre,
+          precio: convertido,
+          precioOriginal: it.precio!,
+          monedaOriginal: it.moneda ?? "UYU",
+          moneda: monedaVista,
+          fill: CADENA_CONFIG[it.tienda]?.hex ?? "#94a3b8",
+        };
+      })
+      .filter((d): d is NonNullable<typeof d> => d !== null);
+  }, [seleccionados, monedaVista, cotizacion]);
+
+  // Tildados que no entraron al gráfico porque su moneda es distinta a
+  // monedaVista y todavía no tenemos cotización para convertirlos.
+  const omitidosPorCotizacion = seleccionados.length - chartData.length;
 
   const ourPriceRaw = ourPrice.trim() ? Number(ourPrice) : null;
   const ourPriceNum = ourPriceRaw !== null && Number.isFinite(ourPriceRaw) ? ourPriceRaw : null;
-  const hayMismaMoneda = ourPriceNum !== null && chartData.some((d) => d.moneda === ourCurrency);
+  const ourPriceConvertido = ourPriceNum !== null ? convertir(ourPriceNum, ourCurrency, monedaVista, cotizacion) : null;
 
   // Para Don Tino: el pool completo con precio (preguntas + filtro) y los
   // tildados (reporte). Los que no tienen precio quedan afuera — no se les
@@ -127,7 +173,7 @@ export default function ComparisonModal({
 
           {/* Columna izquierda: precio propio + gráfico */}
           <div className="flex-1 min-w-0 p-5 flex flex-col gap-4 overflow-y-auto">
-            <div className="flex items-end gap-2">
+            <div className="flex items-end gap-3 flex-wrap">
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Nuestro precio</label>
                 <input
@@ -150,11 +196,42 @@ export default function ComparisonModal({
                   <option value="USD">U$S</option>
                 </select>
               </div>
+              <div className="ml-auto">
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Mostrar gráfico en</label>
+                <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  {(["UYU", "USD"] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setMonedaVista(m)}
+                      className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        monedaVista === m
+                          ? "bg-brand-600 text-white"
+                          : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+                      }`}
+                    >
+                      {m === "UYU" ? "Pesos" : "Dólares"}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
+
+            {cotizacion && (
+              <p className="text-[10.5px] text-slate-400 dark:text-slate-500 -mt-3">
+                Cotización BROU {cotizacion.fecha} — compra ${cotizacion.compra.toFixed(2)} · venta ${cotizacion.venta.toFixed(2)}
+              </p>
+            )}
+            {cotizacionError && !cotizacion && (
+              <p className="text-[10.5px] text-amber-500 -mt-3">
+                No se pudo obtener la cotización del dólar — los productos en otra moneda no se muestran en el gráfico.
+              </p>
+            )}
 
             {chartData.length === 0 ? (
               <div className="flex-1 min-h-[280px] flex items-center justify-center text-sm text-slate-400 text-center px-6">
-                Tildá uno o más productos de la lista para armar el gráfico comparativo.
+                {seleccionados.length === 0
+                  ? "Tildá uno o más productos de la lista para armar el gráfico comparativo."
+                  : `Los productos tildados están en ${seleccionados[0].moneda ?? "otra moneda"} y todavía no hay cotización para pasarlos a ${monedaVista === "UYU" ? "pesos" : "dólares"}.`}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={340}>
@@ -170,9 +247,9 @@ export default function ComparisonModal({
                   />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip content={<ChartTooltip />} />
-                  {ourPriceNum !== null && hayMismaMoneda && (
+                  {ourPriceConvertido !== null && (
                     <ReferenceLine
-                      y={ourPriceNum}
+                      y={ourPriceConvertido}
                       stroke={NUESTRO_COLOR}
                       strokeWidth={2}
                       strokeDasharray="6 4"
@@ -191,9 +268,17 @@ export default function ComparisonModal({
 
             {ourPriceNum !== null && (
               <p className="text-[11px] text-slate-400 dark:text-slate-500 -mt-2">
-                {hayMismaMoneda
-                  ? "La línea punteada muestra nuestro precio contra los productos seleccionados en la misma moneda."
-                  : `No hay productos en ${ourCurrency} tildados en la lista — no se puede dibujar la línea de referencia.`}
+                {ourPriceConvertido !== null
+                  ? "La línea punteada muestra nuestro precio contra los productos seleccionados, todos convertidos a la misma moneda."
+                  : "No hay cotización disponible para convertir nuestro precio a la moneda del gráfico — no se puede dibujar la línea de referencia."}
+              </p>
+            )}
+
+            {omitidosPorCotizacion > 0 && (
+              <p className="text-[11px] text-amber-500 -mt-2">
+                {omitidosPorCotizacion === 1
+                  ? "1 producto tildado no se muestra en el gráfico por estar en otra moneda sin cotización disponible."
+                  : `${omitidosPorCotizacion} productos tildados no se muestran en el gráfico por estar en otra moneda sin cotización disponible.`}
               </p>
             )}
           </div>

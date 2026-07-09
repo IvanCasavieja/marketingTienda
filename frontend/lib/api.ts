@@ -338,7 +338,16 @@ export const preciosApi = {
   ) =>
     api.post<ReporteIAResponse>("/precios/ia/reporte", { items, nuestro_precio, nuestra_moneda }),
 
+  cotizacionDolar: () => api.get<CotizacionDolar>("/precios/cotizacion-dolar"),
+
 };
+
+export interface CotizacionDolar {
+  fecha:   string;
+  compra:  number;
+  venta:   number;
+  fuente:  string;
+}
 
 // ---------------------------------------------------------------------------
 // Listas de monitoreo + notificaciones

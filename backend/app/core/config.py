@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Chequeo diario de listas de monitoreo de precios (0 = desactivado)
     WATCHLIST_CHECK_INTERVAL_HOURS: int = 24
 
+    # Actualización diaria (8am hora Montevideo) de la cotización del dólar BROU
+    COTIZACION_AUTO_UPDATE: bool = True
+
     # Demo mode — cuando True, sync_metrics retorna inmediatamente sin llamar APIs externas
     DEMO_MODE: bool = False
 

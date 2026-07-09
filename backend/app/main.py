@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.rate_limit import limiter
 from app.core.tenant_migration import migrate_roles
-from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, PlanillaPedido, LocalAsignacion, Watchlist, WatchlistItem, WatchlistPrecioHistorial, Notificacion  # noqa: F401
+from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, PlanillaPedido, LocalAsignacion, Watchlist, WatchlistItem, WatchlistPrecioHistorial, Notificacion, CotizacionDolar  # noqa: F401
 from app.models.role import Role  # noqa: F401 — registers with Base.metadata
 from app.api import router
 
@@ -67,6 +67,13 @@ async def lifespan(app: FastAPI):
         watchlist_task = asyncio.create_task(run_watchlist_check_loop())
         logger.info("watchlist_check: loop iniciado (cada %dh)", settings.WATCHLIST_CHECK_INTERVAL_HOURS)
 
+    # Arrancar actualización diaria (8am Montevideo) de la cotización del dólar BROU
+    cotizacion_task = None
+    if settings.COTIZACION_AUTO_UPDATE:
+        from app.services.cotizacion_service import run_cotizacion_check_loop
+        cotizacion_task = asyncio.create_task(run_cotizacion_check_loop())
+        logger.info("cotizacion_service: loop iniciado (diario 8am Montevideo)")
+
     yield
 
     if sync_task:
@@ -80,6 +87,13 @@ async def lifespan(app: FastAPI):
         watchlist_task.cancel()
         try:
             await watchlist_task
+        except asyncio.CancelledError:
+            pass
+
+    if cotizacion_task:
+        cotizacion_task.cancel()
+        try:
+            await cotizacion_task
         except asyncio.CancelledError:
             pass
 

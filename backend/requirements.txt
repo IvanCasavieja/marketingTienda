@@ -23,6 +23,9 @@ python-dotenv==1.0.1
 httpx==0.27.2
 aiohttp>=3.10.5
 
+# zoneinfo (stdlib) necesita esta base de datos IANA — python:3.11-slim no la trae instalada
+tzdata>=2024.1
+
 # Platform SDKs (connectors use httpx directly, only auth libs needed)
 google-api-python-client==2.145.0
 google-auth==2.34.0

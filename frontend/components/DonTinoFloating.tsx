@@ -71,17 +71,11 @@ export default function DonTinoFloating({
       // array vacío es "truthy" en JS, así que sin este chequeo explícito de
       // longitud se aplicaría igual y borraría todo lo que el usuario ya tenía
       // tildado por una consulta que no encontró nada.
-      let idsAplicados: string[] = [];
       if (data.tipo === "seleccion" && data.mantener && data.mantener.length > 0 && onApplySeleccion) {
-        idsAplicados = data.mantener.map((n) => items[n - 1]?.id).filter((id): id is string => !!id);
+        const idsAplicados = data.mantener.map((n) => items[n - 1]?.id).filter((id): id is string => !!id);
         onApplySeleccion(idsAplicados);
       }
-      // DEBUG TEMPORAL — sacar una vez resuelto: para ver en el chat mismo qué
-      // devolvió el backend sin depender de que alguien abra DevTools.
-      const debug = `\n\n[debug: tipo=${data.tipo} · items_enviados=${items.length} · mantener=${
-        data.mantener ? `${data.mantener.length} índices (${data.mantener.slice(0, 10).join(",")}${data.mantener.length > 10 ? "…" : ""})` : "null"
-      } · ids_aplicados=${idsAplicados.length}]`;
-      setMessages((prev) => [...prev, { role: "bot", text: data.respuesta + debug }]);
+      setMessages((prev) => [...prev, { role: "bot", text: data.respuesta }]);
     } catch {
       setMessages((prev) => [...prev, { role: "bot", text: "No pude procesar el pedido — probá de nuevo." }]);
     } finally {

@@ -5,6 +5,7 @@ precios.py — búsqueda EN VIVO de precios de supermercados uruguayos.
   GET  /precios/buscar-vivo-stream — búsqueda SSE cadena por cadena
   POST /precios/ia/consultar       — Don Tino responde preguntas o filtra resultados por lenguaje natural
   POST /precios/ia/reporte         — Don Tino genera un reporte escrito del gráfico
+  GET  /precios/cotizacion-dolar   — cotización BROU del día, para convertir el gráfico entre UYU/USD
 """
 
 import logging
@@ -252,3 +253,22 @@ async def ia_reporte(
     except Exception as exc:
         logger.error("ia_reporte: error generando reporte — %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="No pude generar el reporte en este momento")
+
+
+@router.get("/cotizacion-dolar")
+async def cotizacion_dolar(
+    _: User = Depends(require_permission("precios.search")),
+):
+    """Cotización BROU del día — usada para convertir el gráfico comparativo entre UYU y USD."""
+    from app.services.cotizacion_service import get_cotizacion_actual
+
+    registro = await get_cotizacion_actual()
+    if not registro:
+        raise HTTPException(status_code=503, detail="No se pudo obtener la cotización del dólar")
+
+    return {
+        "fecha": registro.fecha.isoformat(),
+        "compra": registro.compra,
+        "venta": registro.venta,
+        "fuente": registro.fuente,
+    }
