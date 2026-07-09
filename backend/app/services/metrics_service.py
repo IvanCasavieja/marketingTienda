@@ -20,6 +20,12 @@ from app.connectors import (
 # contra Meta en los informes mientras tanto.
 FIXTURE_PLATFORMS: set[Platform] = {Platform.META, Platform.GOOGLE_ANALYTICS}
 
+# Plataformas con gasto publicitario real — todas menos las que son puramente
+# de medición (GA4 no tiene spend propio, ver nota de FIXTURE_PLATFORMS arriba).
+# Usada como default en /metrics/ y /metrics/summary para no mezclar revenue
+# de GA4 (con spend=0) en los KPIs de inversión/ROAS de canales pagos.
+AD_SPEND_PLATFORMS: list[Platform] = [p for p in Platform if p != Platform.GOOGLE_ANALYTICS]
+
 
 async def get_connections(db: AsyncSession, platform: Platform) -> list[PlatformConnection]:
     result = await db.execute(
@@ -158,3 +164,90 @@ async def get_metrics(
         }
         for r in rows
     ]
+
+
+async def get_ga4_funnel(
+    db: AsyncSession,
+    date_from: date,
+    date_to: date,
+) -> Dict:
+    """Agrega el embudo ecommerce de GA4 (raw_data) por canal y por día."""
+    result = await db.execute(
+        select(CampaignMetric).where(
+            and_(
+                CampaignMetric.platform == Platform.GOOGLE_ANALYTICS,
+                CampaignMetric.date >= date_from,
+                CampaignMetric.date <= date_to,
+            )
+        ).order_by(CampaignMetric.date)
+    )
+    rows = result.scalars().all()
+
+    FUNNEL_KEYS = ("sessions", "users", "page_views", "view_item", "add_to_cart", "begin_checkout", "purchase")
+
+    totals: Dict = {k: 0 for k in FUNNEL_KEYS}
+    totals["revenue"] = 0.0
+    engagement_sum = 0.0
+    duration_sum = 0.0
+
+    by_channel: Dict[str, Dict] = {}
+    by_day: Dict[str, Dict] = {}
+
+    for r in rows:
+        rd = r.raw_data or {}
+        channel = r.campaign_name
+
+        if channel not in by_channel:
+            ch = {k: 0 for k in FUNNEL_KEYS}
+            ch["channel"] = channel
+            ch["revenue"] = 0.0
+            ch["_engagement_sum"] = 0.0
+            ch["_duration_sum"] = 0.0
+            ch["_n"] = 0
+            by_channel[channel] = ch
+        ch = by_channel[channel]
+
+        day = str(r.date)
+        if day not in by_day:
+            by_day[day] = {"date": day, "sessions": 0, "revenue": 0.0}
+        d = by_day[day]
+
+        for k in FUNNEL_KEYS:
+            v = int(rd.get(k) or 0)
+            totals[k] += v
+            ch[k] += v
+        d["sessions"] += int(rd.get("sessions") or 0)
+
+        totals["revenue"] += r.revenue or 0.0
+        ch["revenue"] += r.revenue or 0.0
+        d["revenue"] += r.revenue or 0.0
+
+        eng = float(rd.get("engagement_rate") or 0.0)
+        dur = float(rd.get("avg_session_duration_sec") or 0.0)
+        engagement_sum += eng
+        duration_sum += dur
+        ch["_engagement_sum"] += eng
+        ch["_duration_sum"] += dur
+        ch["_n"] += 1
+
+    n = len(rows)
+    totals["engagement_rate"] = round(engagement_sum / n, 4) if n else 0.0
+    totals["avg_session_duration_sec"] = round(duration_sum / n, 1) if n else 0.0
+    totals["revenue"] = round(totals["revenue"], 2)
+
+    by_channel_list = []
+    for ch in by_channel.values():
+        n_ch = ch.pop("_n")
+        eng_sum = ch.pop("_engagement_sum")
+        dur_sum = ch.pop("_duration_sum")
+        ch["engagement_rate"] = round(eng_sum / n_ch, 4) if n_ch else 0.0
+        ch["avg_session_duration_sec"] = round(dur_sum / n_ch, 1) if n_ch else 0.0
+        ch["revenue"] = round(ch["revenue"], 2)
+        by_channel_list.append(ch)
+    by_channel_list.sort(key=lambda c: c["revenue"], reverse=True)
+
+    daily_list = sorted(by_day.values(), key=lambda d: d["date"])
+    for d in daily_list:
+        d["revenue"] = round(d["revenue"], 2)
+
+    return {"totals": totals, "by_channel": by_channel_list, "daily": daily_list}

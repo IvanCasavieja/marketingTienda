@@ -99,6 +99,8 @@ export const metricsApi = {
       interval_hours: number;
       active: boolean;
     }>("/metrics/auto-sync/status"),
+  getGa4Funnel: (date_from: string, date_to: string) =>
+    api.get("/metrics/ga4-funnel", { params: { date_from, date_to } }),
 };
 
 export const analyticsApi = {

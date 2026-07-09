@@ -28,6 +28,8 @@
   },
   "sidebar": {
     "mktgPlatform": "MKTG Platform",
+    "medios": "MEDIOS",
+    "analyticsGa4": "Analytics GA4",
     "herramientas": "HERRAMIENTAS",
     "comercial": "COMERCIAL",
     "guia": "GUÍA",
@@ -154,6 +156,38 @@
     },
     "syncSuccess": "Sincronizadas {{n}} plataforma(s) correctamente",
     "syncError": "No se pudo sincronizar ninguna plataforma"
+  },
+  "canales": {
+    "title": "Analytics GA4",
+    "subtitle": "Sesiones, embudo de conversión y canales de adquisición medidos por Google Analytics",
+    "loadError": "No se pudo cargar la data de Analytics",
+    "noData": "Sin datos de Analytics para este período",
+    "kpiSessions": "Sesiones",
+    "kpiUsersOf": "{{n}} usuarios",
+    "kpiUsers": "Usuarios",
+    "allChannels": "Todos los canales",
+    "kpiConversionRate": "Tasa de conversión",
+    "kpiPurchases": "{{n}} compras",
+    "kpiRevenue": "Revenue",
+    "funnelTitle": "Embudo de conversión",
+    "funnelSub": "Del total de sesiones hasta la compra",
+    "stageSessions": "Sesiones",
+    "stagePageViews": "Page views",
+    "stageViewItem": "Vio producto",
+    "stageAddToCart": "Agregó al carrito",
+    "stageBeginCheckout": "Inició checkout",
+    "stagePurchase": "Compró",
+    "channelsTitle": "Canales de adquisición",
+    "channelsSub": "Ordenado por revenue",
+    "trendTitle": "Tendencia de sesiones",
+    "trendSub": "Evolución diaria en el período",
+    "tableHeaders": {
+      "channel": "Canal",
+      "sessions": "Sesiones",
+      "conversionRate": "Tasa conv.",
+      "engagement": "Engagement",
+      "revenue": "Revenue"
+    }
   },
   "campaigns": {
     "title": "Campañas",

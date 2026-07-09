@@ -28,6 +28,8 @@
   },
   "sidebar": {
     "mktgPlatform": "MKTG Platform",
+    "medios": "MEDIA",
+    "analyticsGa4": "Analytics GA4",
     "herramientas": "TOOLS",
     "comercial": "COMMERCIAL",
     "guia": "GUIDE",
@@ -154,6 +156,38 @@
     },
     "syncSuccess": "{{n}} platform(s) synced successfully",
     "syncError": "Could not sync any platform"
+  },
+  "canales": {
+    "title": "Analytics GA4",
+    "subtitle": "Sessions, conversion funnel and acquisition channels measured by Google Analytics",
+    "loadError": "Couldn't load Analytics data",
+    "noData": "No Analytics data for this period",
+    "kpiSessions": "Sessions",
+    "kpiUsersOf": "{{n}} users",
+    "kpiUsers": "Users",
+    "allChannels": "All channels",
+    "kpiConversionRate": "Conversion rate",
+    "kpiPurchases": "{{n}} purchases",
+    "kpiRevenue": "Revenue",
+    "funnelTitle": "Conversion funnel",
+    "funnelSub": "From total sessions to purchase",
+    "stageSessions": "Sessions",
+    "stagePageViews": "Page views",
+    "stageViewItem": "Viewed item",
+    "stageAddToCart": "Added to cart",
+    "stageBeginCheckout": "Began checkout",
+    "stagePurchase": "Purchased",
+    "channelsTitle": "Acquisition channels",
+    "channelsSub": "Sorted by revenue",
+    "trendTitle": "Sessions trend",
+    "trendSub": "Daily evolution over the period",
+    "tableHeaders": {
+      "channel": "Channel",
+      "sessions": "Sessions",
+      "conversionRate": "Conv. rate",
+      "engagement": "Engagement",
+      "revenue": "Revenue"
+    }
   },
   "campaigns": {
     "title": "Campaigns",

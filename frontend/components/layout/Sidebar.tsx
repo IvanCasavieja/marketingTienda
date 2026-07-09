@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
   BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, ShieldCheck, HelpCircle, X, Tag,
-  Sun, Moon, ClipboardList, Bell, Star,
+  Sun, Moon, ClipboardList, Bell, Star, Activity,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, watchlistApi, type Notificacion } from "@/lib/api";
@@ -37,10 +37,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   // Cada valor corresponde 1:1 a un permiso realmente exigido por el backend
   // (ver require_permission en las rutas) — si no lo tiene, ni se muestra el link.
   const navAll = [
-    { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: "Analytics",                perm: "analytics.view" },
-    { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: "Analytics",                perm: "analytics.view" },
-    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: "Analytics",                perm: "ai.use" },
-    { href: "/settings",                label: t("common.connections"),icon: Settings,         section: "Analytics",                perm: "connections.view" },
+    { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: t("sidebar.medios"),         perm: "analytics.view" },
+    { href: "/canales",                 label: t("sidebar.analyticsGa4"), icon: Activity,      section: t("sidebar.medios"),         perm: "analytics.view" },
+    { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: t("sidebar.medios"),         perm: "analytics.view" },
+    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: t("sidebar.medios"),         perm: "ai.use" },
+    { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.medios"),         perm: "connections.view" },
     { href: "/herramientas/cenefas",    label: t("sidebar.generarCenefas"),  icon: Presentation, section: t("sidebar.herramientas") },
     { href: "/herramientas/cenefas/v2", label: t("sidebar.editorPlantillas"), icon: Layers,     section: t("sidebar.herramientas") },
     { href: "/herramientas/cenefas/v2/jobs", label: t("sidebar.historial"), icon: Clock,        section: t("sidebar.herramientas") },

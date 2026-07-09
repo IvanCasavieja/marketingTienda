@@ -12,7 +12,7 @@ from app.core.deps import require_permission
 from app.models.user import User
 from app.models.campaign_metric import CampaignMetric
 from app.models.platform_connection import Platform
-from app.services.metrics_service import sync_platform, get_metrics
+from app.services.metrics_service import sync_platform, get_metrics, get_ga4_funnel, AD_SPEND_PLATFORMS
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ async def get_campaign_metrics(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        platform_list = [Platform(p.strip()) for p in platforms.split(",")] if platforms else list(Platform)
+        platform_list = [Platform(p.strip()) for p in platforms.split(",")] if platforms else AD_SPEND_PLATFORMS
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid platform: {e}")
 
@@ -94,7 +94,7 @@ async def get_summary(
             and_(
                 CampaignMetric.date >= date_from,
                 CampaignMetric.date <= date_to,
-                CampaignMetric.platform.in_(list(Platform)),
+                CampaignMetric.platform.in_(AD_SPEND_PLATFORMS),
             )
         )
         .group_by(CampaignMetric.platform)
@@ -114,6 +114,18 @@ async def get_summary(
         }
         for row in result.all()
     ]
+
+
+@router.get("/ga4-funnel")
+async def get_ga4_funnel_route(
+    date_from: date,
+    date_to: date,
+    current_user: User = Depends(require_permission("analytics.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Embudo ecommerce de GA4 (sessions -> page_views -> view_item -> add_to_cart ->
+    begin_checkout -> purchase), agregado por canal y por día, para la página /canales."""
+    return await get_ga4_funnel(db, date_from, date_to)
 
 
 @router.get("/auto-sync/status")
