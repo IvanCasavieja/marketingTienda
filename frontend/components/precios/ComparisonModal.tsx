@@ -217,12 +217,23 @@ export default function ComparisonModal({
             </div>
 
             {cotizacion && (
-              <p className="text-[10.5px] text-slate-400 dark:text-slate-500 -mt-3">
-                Cotización BROU {cotizacion.fecha} — compra ${cotizacion.compra.toFixed(2)} · venta ${cotizacion.venta.toFixed(2)}
-              </p>
+              <div className="-mt-1 inline-flex self-start items-stretch rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-[11px]">
+                <div className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1.5">
+                  Cotización BROU
+                  <span className="text-slate-400 dark:text-slate-500 font-normal">{cotizacion.fecha}</span>
+                </div>
+                <div className="px-2.5 py-1 border-l border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center">
+                  <span className="text-[9px] text-slate-400 uppercase tracking-wide leading-tight">Compra</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300 tabular-nums leading-tight">${cotizacion.compra.toFixed(2)}</span>
+                </div>
+                <div className="px-2.5 py-1 border-l border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center">
+                  <span className="text-[9px] text-slate-400 uppercase tracking-wide leading-tight">Venta</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300 tabular-nums leading-tight">${cotizacion.venta.toFixed(2)}</span>
+                </div>
+              </div>
             )}
             {cotizacionError && !cotizacion && (
-              <p className="text-[10.5px] text-amber-500 -mt-3">
+              <p className="text-[10.5px] text-amber-500 -mt-1">
                 No se pudo obtener la cotización del dólar — los productos en otra moneda no se muestran en el gráfico.
               </p>
             )}
