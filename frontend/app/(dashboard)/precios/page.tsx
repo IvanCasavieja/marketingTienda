@@ -567,6 +567,8 @@ export default function PreciosPage() {
                                 url: p.url,
                                 precio: p.precio,
                                 moneda: p.moneda ?? "UYU",
+                                sucursal_id: p.sucursal_id,
+                                sucursal_nombre: p.sucursal_nombre,
                               }}
                             />
                           )}

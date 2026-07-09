@@ -57,7 +57,16 @@ async def chequear_item(item: WatchlistItem) -> ProductRecord | None:
     propia cadena con el término de búsqueda original. Match por sku si el
     item lo tiene; si no (DIMM/Stienda, únicas 2 de 13 cadenas sin sku en el
     scraper), por nombre exacto (case-insensitive). None si ya no aparece
-    (descontinuado o renombrado)."""
+    (descontinuado o renombrado).
+
+    Ta-Ta/ElDorado/GDU devuelven una fila por (producto × sucursal) — el mismo
+    sku puede aparecer ~15-17 veces con precios distintos. Si el item tiene
+    sucursal_id guardado (chains multi-sucursal), se filtra primero por esa
+    sucursal exacta antes de matchear por sku/nombre — de lo contrario el
+    chequeo terminaría comparando sucursales distintas entre corridas y
+    generando falsos "cambios de precio". Si la sucursal seguida ya no
+    aparece en absoluto, se trata igual que "producto no encontrado" (no se
+    cae a otra sucursal)."""
     buscar_fn = _BUSCAR_POR_CADENA.get(item.tienda)
     if not buscar_fn:
         logger.warning("watchlist: cadena desconocida '%s' para item %s", item.tienda, item.id)
@@ -69,14 +78,20 @@ async def chequear_item(item: WatchlistItem) -> ProductRecord | None:
         logger.warning("watchlist: error re-buscando item %s (%s) — %s", item.id, item.tienda, exc)
         return None
 
+    candidatos = resultados
+    if item.sucursal_id:
+        candidatos = [r for r in candidatos if r.sucursal_id == item.sucursal_id]
+        if not candidatos:
+            return None
+
     if item.sku:
-        for r in resultados:
+        for r in candidatos:
             if r.sku == item.sku:
                 return r
         return None
 
     nombre_lower = item.nombre.strip().lower()
-    for r in resultados:
+    for r in candidatos:
         if (r.nombre or "").strip().lower() == nombre_lower:
             return r
     return None

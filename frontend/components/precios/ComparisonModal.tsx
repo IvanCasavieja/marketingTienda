@@ -341,6 +341,8 @@ export default function ComparisonModal({
                               url: it.url,
                               precio: it.precio,
                               moneda: it.moneda ?? "UYU",
+                              sucursal_id: it.sucursal_id,
+                              sucursal_nombre: it.sucursal_nombre,
                             }}
                           />
                         )}

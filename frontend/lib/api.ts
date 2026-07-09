@@ -363,6 +363,8 @@ export interface WatchlistItem {
   url: string;
   precio_actual: number;
   moneda: string;
+  sucursal_id: string | null;
+  sucursal_nombre: string | null;
   ultimo_chequeo: string | null;
   created_at: string | null;
 }
@@ -389,7 +391,10 @@ export const watchlistApi = {
   eliminar: (id: number) => api.delete(`/watchlist/${id}`),
   agregarItem: (
     watchlistId: number,
-    item: { tienda: string; sku: string | null; nombre: string; termino_busqueda: string; url: string; precio: number; moneda: string },
+    item: {
+      tienda: string; sku: string | null; nombre: string; termino_busqueda: string; url: string;
+      precio: number; moneda: string; sucursal_id?: string | null; sucursal_nombre?: string | null;
+    },
   ) => api.post<WatchlistItem>(`/watchlist/${watchlistId}/items`, item),
   eliminarItem: (itemId: number) => api.delete(`/watchlist/items/${itemId}`),
 

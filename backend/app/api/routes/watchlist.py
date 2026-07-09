@@ -46,6 +46,10 @@ class AgregarItemRequest(BaseModel):
     url: str
     precio: float
     moneda: str
+    # Ta-Ta/ElDorado/GDU tienen precio distinto por sucursal — sin esto el
+    # chequeo diario no puede saber cuál sucursal seguir (ver watchlist_service.py).
+    sucursal_id: Optional[str] = None
+    sucursal_nombre: Optional[str] = None
 
 
 def _item_to_dict(item: WatchlistItem) -> dict:
@@ -59,6 +63,8 @@ def _item_to_dict(item: WatchlistItem) -> dict:
         "url": item.url,
         "precio_actual": item.precio_actual,
         "moneda": item.moneda,
+        "sucursal_id": item.sucursal_id,
+        "sucursal_nombre": item.sucursal_nombre,
         "ultimo_chequeo": item.ultimo_chequeo.isoformat() if item.ultimo_chequeo else None,
         "created_at": item.created_at.isoformat() if item.created_at else None,
     }
@@ -151,6 +157,8 @@ async def agregar_item(
         url=payload.url,
         precio_actual=payload.precio,
         moneda=payload.moneda,
+        sucursal_id=payload.sucursal_id,
+        sucursal_nombre=payload.sucursal_nombre,
     )
     db.add(item)
     await db.commit()

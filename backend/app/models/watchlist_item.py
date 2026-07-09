@@ -16,6 +16,13 @@ class WatchlistItem(Base):
     # matchear por nombre exacto para esos casos.
     sku: Mapped[str | None] = mapped_column(String(120), nullable=True)
     nombre: Mapped[str] = mapped_column(String(300), nullable=False)
+    # Ta-Ta/ElDorado/GDU devuelven una fila por (producto × sucursal) con precios
+    # distintos por sucursal — sin este dato, el chequeo diario no puede saber
+    # cuál de las ~15-17 sucursales con el mismo SKU es la que el usuario siguió
+    # (ver chequear_item en watchlist_service.py). None en el resto de las cadenas,
+    # que no tienen concepto de sucursal (single listing).
+    sucursal_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    sucursal_nombre: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Término de búsqueda original — necesario para poder re-invocar el mismo
     # adapter de la cadena y volver a encontrar este producto en el chequeo diario.
     termino_busqueda: Mapped[str] = mapped_column(String(200), nullable=False)

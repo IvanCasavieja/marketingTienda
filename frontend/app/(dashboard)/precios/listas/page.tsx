@@ -112,8 +112,11 @@ export default function ListasMonitoreoPage() {
                 <div key={item.id} className="flex items-center gap-3 px-5 py-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{item.nombre}</p>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <CadenaBadge tienda={item.tienda} />
+                      {item.sucursal_nombre && (
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">{item.sucursal_nombre}</span>
+                      )}
                       <span className="text-[11px] text-slate-400">
                         Último chequeo: {formatFecha(item.ultimo_chequeo)}
                       </span>

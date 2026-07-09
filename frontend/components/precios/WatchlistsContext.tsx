@@ -6,6 +6,7 @@ interface ProductoParaMatch {
   tienda: string;
   sku: string | null;
   nombre: string;
+  sucursal_id?: string | null;
 }
 
 interface WatchlistsContextValue {
@@ -19,9 +20,15 @@ const WatchlistsContext = createContext<WatchlistsContextValue | null>(null);
 
 // Mismo criterio que watchlist_service.py del lado del backend: match por sku
 // si el producto lo tiene, si no por nombre exacto (case-insensitive) — DIMM
-// y Stienda son las únicas cadenas sin sku.
-function coincide(item: { tienda: string; sku: string | null; nombre: string }, producto: ProductoParaMatch): boolean {
+// y Stienda son las únicas cadenas sin sku. En cadenas multi-sucursal
+// (Ta-Ta/ElDorado/GDU) también exige la misma sucursal — si no, la estrellita
+// mostraría "ya seguís esto" en una sucursal que en realidad no se monitorea.
+function coincide(
+  item: { tienda: string; sku: string | null; nombre: string; sucursal_id: string | null },
+  producto: ProductoParaMatch,
+): boolean {
   if (item.tienda !== producto.tienda) return false;
+  if ((item.sucursal_id ?? null) !== (producto.sucursal_id ?? null)) return false;
   if (producto.sku) return item.sku === producto.sku;
   return item.nombre.trim().toLowerCase() === producto.nombre.trim().toLowerCase();
 }

@@ -13,6 +13,10 @@ interface ProductoParaSeguir {
   url: string;
   precio: number;
   moneda: string;
+  // Ta-Ta/ElDorado/GDU tienen precio distinto por sucursal — sin esto el
+  // monitoreo diario no sabe cuál de las ~15-17 sucursales seguir.
+  sucursal_id?: string | null;
+  sucursal_nombre?: string | null;
 }
 
 export default function SeguirButton({ producto }: { producto: ProductoParaSeguir }) {
@@ -39,6 +43,7 @@ export default function SeguirButton({ producto }: { producto: ProductoParaSegui
         tienda: producto.tienda, sku: producto.sku, nombre: producto.nombre,
         termino_busqueda: producto.termino_busqueda, url: producto.url,
         precio: producto.precio, moneda: producto.moneda,
+        sucursal_id: producto.sucursal_id, sucursal_nombre: producto.sucursal_nombre,
       });
       await refrescar();
       toast.success("Agregado a la lista de monitoreo");
@@ -59,6 +64,7 @@ export default function SeguirButton({ producto }: { producto: ProductoParaSegui
         tienda: producto.tienda, sku: producto.sku, nombre: producto.nombre,
         termino_busqueda: producto.termino_busqueda, url: producto.url,
         precio: producto.precio, moneda: producto.moneda,
+        sucursal_id: producto.sucursal_id, sucursal_nombre: producto.sucursal_nombre,
       });
       await refrescar();
       setNuevoNombre("");
@@ -85,6 +91,11 @@ export default function SeguirButton({ producto }: { producto: ProductoParaSegui
       {open && (
         <div className="absolute right-0 top-full mt-1 z-50 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-2.5 text-left">
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide px-1 mb-1.5">Agregar a lista</p>
+          {producto.sucursal_nombre && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 px-1 mb-1.5 leading-snug">
+              Vas a seguir el precio de <span className="font-medium text-slate-700 dark:text-slate-300">{producto.sucursal_nombre}</span> — no el de otras sucursales.
+            </p>
+          )}
           <div className="space-y-0.5 max-h-40 overflow-y-auto mb-2">
             {listas.length === 0 && (
               <p className="text-xs text-slate-400 px-1 py-1">No tenés listas todavía.</p>
