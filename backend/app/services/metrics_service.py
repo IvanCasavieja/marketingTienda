@@ -15,7 +15,10 @@ from app.connectors import (
 # Meta no tiene PlatformConnection real (se borró al pausar la integración,
 # ver sync_platform más abajo) pero sí tiene datos fixture en campaign_metrics
 # — se habilita explícitamente para análisis aunque no tenga conexión activa.
-FIXTURE_PLATFORMS: set[Platform] = {Platform.META}
+# GA4 todavía no tiene una conexión OAuth real conectada, pero también tiene
+# datos fixture (ver scripts/generate_ga4_fake_data.py) para poder cruzarla
+# contra Meta en los informes mientras tanto.
+FIXTURE_PLATFORMS: set[Platform] = {Platform.META, Platform.GOOGLE_ANALYTICS}
 
 
 async def get_connections(db: AsyncSession, platform: Platform) -> list[PlatformConnection]:
