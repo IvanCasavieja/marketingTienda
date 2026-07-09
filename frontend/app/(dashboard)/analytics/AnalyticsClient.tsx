@@ -265,7 +265,7 @@ export default function AnalyticsPage() {
   }, []);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [chatMessages, loading, verdictLoading]);
 
   function accumulateTokens(event: { total: number; by_model: Record<string, number> }) {
@@ -600,7 +600,7 @@ export default function AnalyticsPage() {
                 <Clock size={14} className="text-slate-400" />
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Debates anteriores</p>
               </div>
-              <div className="divide-y divide-slate-50 dark:divide-slate-800">
+              <div className="divide-y divide-slate-50 dark:divide-slate-800 max-h-[340px] overflow-y-auto">
                 {debateHistory.slice(0, 8).map((h) => (
                   <button key={h.id} onClick={() => loadFromHistory(h.id)}
                     className={`w-full flex items-center gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left ${activeAnalysis === h.id ? "bg-brand-50/50" : ""}`}>
