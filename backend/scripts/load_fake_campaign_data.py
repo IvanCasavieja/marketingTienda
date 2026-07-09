@@ -1,12 +1,13 @@
 """
 Carga los fixtures de datos falsos (meta_fake_campaigns.json,
-ga4_fake_campaigns.json) directo en la tabla campaign_metrics.
+ga4_fake_campaigns.json, tiktok_fake_campaigns.json) directo en la tabla
+campaign_metrics.
 
 No pasa por sync_platform(): esas plataformas no tienen una conexión real
-activa (Meta se dio de baja, GA4 todavía no está conectada), así que el
-sync normal fallaría con "No active connection". Este loader es la manera
-de poblar la tabla con data ficticia para poder analizar/cruzar plataformas
-en los informes mientras tanto.
+activa (Meta se dio de baja, GA4 y TikTok todavía no están conectadas), así
+que el sync normal fallaría con "No active connection". Este loader es la
+manera de poblar la tabla con data ficticia para poder analizar/cruzar
+plataformas en los informes mientras tanto.
 
 Idempotente — antes de insertar borra las filas existentes de esa plataforma
 en el rango de fechas del fixture, así se puede correr de nuevo (por ejemplo
@@ -16,6 +17,7 @@ Uso:
   python scripts/load_fake_campaign_data.py           # carga todos los fixtures
   python scripts/load_fake_campaign_data.py meta       # solo Meta
   python scripts/load_fake_campaign_data.py ga4        # solo GA4
+  python scripts/load_fake_campaign_data.py tiktok     # solo TikTok
 
 Requiere DATABASE_URL apuntando a la base real (mismo .env que usa la app).
 """
@@ -41,8 +43,9 @@ from app.models.platform_connection import Platform  # noqa: E402
 DATA_DIR = Path(__file__).resolve().parent.parent / "app" / "data"
 
 FIXTURES: dict[str, tuple[str, Platform]] = {
-    "meta": ("meta_fake_campaigns.json", Platform.META),
-    "ga4":  ("ga4_fake_campaigns.json", Platform.GOOGLE_ANALYTICS),
+    "meta":   ("meta_fake_campaigns.json", Platform.META),
+    "ga4":    ("ga4_fake_campaigns.json", Platform.GOOGLE_ANALYTICS),
+    "tiktok": ("tiktok_fake_campaigns.json", Platform.TIKTOK),
 }
 
 
