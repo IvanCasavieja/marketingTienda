@@ -222,6 +222,7 @@ async def get_planilla(
 async def get_mi_planilla(
     year: int,
     month: int,
+    local: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -229,16 +230,28 @@ async def get_mi_planilla(
     de /planilla/{year}/{month} (que trae las filas de TODOS los locales y solo
     oculta el botón de editar), acá solo viajan por red la(s) fila(s) del/de
     los local(es) asignados al usuario logueado. Sin permiso redexpress.view:
-    el acceso lo da directamente estar en LocalAsignacion."""
-    assigned = await _get_user_locals(db, current_user.id)
-    if not assigned:
-        return []
+    el acceso lo da directamente estar en LocalAsignacion.
+
+    Los superadmins no tienen LocalAsignacion propia: pueden pasar ?local=X
+    para inspeccionar cualquier sucursal (misma pantalla "Mi pedido", con un
+    selector). Sin ese query param, ven la pantalla vacía por defecto."""
+    if current_user.is_superuser:
+        if not local:
+            return []
+        if local not in LOCALES_SET:
+            raise HTTPException(status_code=400, detail="Local no válido")
+        target_locales = {local}
+    else:
+        assigned = await _get_user_locals(db, current_user.id)
+        if not assigned:
+            return []
+        target_locales = assigned
 
     result = await db.execute(
         select(PlanillaPedido).where(
             PlanillaPedido.year == year,
             PlanillaPedido.month == month,
-            PlanillaPedido.local_nombre.in_(assigned),
+            PlanillaPedido.local_nombre.in_(target_locales),
         )
     )
     rows = result.scalars().all()

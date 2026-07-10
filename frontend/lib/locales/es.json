@@ -561,7 +561,10 @@
     "miPedido": {
       "title": "Mi pedido",
       "subtitle": "Cargá las cantidades de material que vas a necesitar este mes para tu sucursal.",
-      "noLocalAssigned": "Todavía no tenés una sucursal asignada. Hablá con Valentina para que te la asigne."
+      "noLocalAssigned": "Todavía no tenés una sucursal asignada. Hablá con Valentina para que te la asigne.",
+      "selectLocalLabel": "Sucursal",
+      "selectLocalPlaceholder": "Seleccioná una sucursal para ver su pedido",
+      "noLocalSelected": "Elegí una sucursal arriba para ver y completar su pedido."
     }
   },
   "herramientas": {

@@ -561,7 +561,10 @@
     "miPedido": {
       "title": "My order",
       "subtitle": "Enter the quantities of material your store needs this month.",
-      "noLocalAssigned": "You don't have a store assigned yet. Ask Valentina to assign you one."
+      "noLocalAssigned": "You don't have a store assigned yet. Ask Valentina to assign you one.",
+      "selectLocalLabel": "Store",
+      "selectLocalPlaceholder": "Select a store to view its order",
+      "noLocalSelected": "Pick a store above to view and fill in its order."
     }
   },
   "herramientas": {

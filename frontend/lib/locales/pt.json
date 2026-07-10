@@ -561,7 +561,10 @@
     "miPedido": {
       "title": "Meu pedido",
       "subtitle": "Informe as quantidades de material que sua loja vai precisar este mês.",
-      "noLocalAssigned": "Você ainda não tem uma loja atribuída. Peça para a Valentina te atribuir uma."
+      "noLocalAssigned": "Você ainda não tem uma loja atribuída. Peça para a Valentina te atribuir uma.",
+      "selectLocalLabel": "Loja",
+      "selectLocalPlaceholder": "Selecione uma loja para ver o pedido",
+      "noLocalSelected": "Escolha uma loja acima para ver e preencher o pedido."
     }
   },
   "herramientas": {

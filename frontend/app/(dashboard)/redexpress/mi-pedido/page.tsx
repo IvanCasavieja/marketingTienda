@@ -67,6 +67,9 @@ export default function MiPedidoPage() {
   const MONTH_NAMES = t("redexpress.months", { returnObjects: true }) as string[];
 
   const [assignedLocal, setAssignedLocal] = useState<string | null | undefined>(undefined); // undefined = todavía no sabemos
+  const [isSuperuser, setIsSuperuser] = useState(false);
+  const [locales, setLocales]       = useState<string[]>([]); // solo para superadmin (selector)
+  const [selectedLocal, setSelectedLocal] = useState<string | null>(null); // elección manual del superadmin
   const [meses, setMeses]           = useState<{ year: number; month: number }[]>([]);
   const [selectedMes, setSelected]  = useState<{ year: number; month: number } | null>(null);
   const [rows, setRows]             = useState<PlanillaRow[]>([]);
@@ -77,9 +80,21 @@ export default function MiPedidoPage() {
   const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
   const pendingSaves = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
+  // Local "activo": para sucursales es la propia (fija), para superadmin es
+  // la que elija en el selector (arranca vacío = pantalla general sin datos).
+  const activeLocal = isSuperuser ? selectedLocal : (assignedLocal ?? null);
+
   useEffect(() => {
     authApi.me()
-      .then(({ data }) => setAssignedLocal(data.assigned_locales?.[0] ?? null))
+      .then(({ data }) => {
+        setAssignedLocal(data.assigned_locales?.[0] ?? null);
+        setIsSuperuser(!!data.is_superuser);
+        if (data.is_superuser) {
+          redexpressApi.getLocales()
+            .then(({ data: locs }) => setLocales(locs.map((l) => l.local_nombre)))
+            .catch(() => setLocales([]));
+        }
+      })
       .catch(() => setAssignedLocal(null));
     loadMeses();
   }, []);
@@ -95,14 +110,15 @@ export default function MiPedidoPage() {
   }
 
   useEffect(() => {
-    if (selectedMes) loadPlanilla(selectedMes.year, selectedMes.month);
-  }, [selectedMes]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (selectedMes && activeLocal) loadPlanilla(selectedMes.year, selectedMes.month, activeLocal);
+    else setRows([]);
+  }, [selectedMes, activeLocal]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadPlanilla(year: number, month: number) {
+  async function loadPlanilla(year: number, month: number, local: string) {
     setLoading(true);
     setEdits({});
     try {
-      const { data } = await redexpressApi.getMiPlanilla(year, month);
+      const { data } = await redexpressApi.getMiPlanilla(year, month, isSuperuser ? local : undefined);
       setRows(data);
     } catch {
       toast.error(t("redexpress.errorCargarPlanilla"));
@@ -192,26 +208,57 @@ export default function MiPedidoPage() {
         </p>
       </div>
 
-      {assignedLocal === null && (
-        <div className="card p-8 flex flex-col items-center text-center gap-2">
-          <Store size={22} className="text-slate-300" />
-          <p className="text-sm text-slate-500 dark:text-slate-400">{t("redexpress.miPedido.noLocalAssigned")}</p>
-        </div>
-      )}
-
-      {assignedLocal && (
+      {assignedLocal !== undefined && (
         <>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300">
-              <Store size={12} /> {assignedLocal}
-            </span>
-            {miRow?.confirmado && (
-              <span className="badge badge-green flex items-center gap-1 text-[10px]">
-                <CheckCircle2 size={10} /> {t("redexpress.confirmado")}
+          {isSuperuser ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <label htmlFor="mi-pedido-local-select" className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                {t("redexpress.miPedido.selectLocalLabel")}
+              </label>
+              <select
+                id="mi-pedido-local-select"
+                value={selectedLocal ?? ""}
+                onChange={(e) => setSelectedLocal(e.target.value || null)}
+                className="input text-sm max-w-xs"
+              >
+                <option value="">{t("redexpress.miPedido.selectLocalPlaceholder")}</option>
+                {locales.map((loc) => (
+                  <option key={loc} value={loc}>{loc}</option>
+                ))}
+              </select>
+              {miRow?.confirmado && (
+                <span className="badge badge-green flex items-center gap-1 text-[10px]">
+                  <CheckCircle2 size={10} /> {t("redexpress.confirmado")}
+                </span>
+              )}
+            </div>
+          ) : assignedLocal === null ? (
+            <div className="card p-8 flex flex-col items-center text-center gap-2">
+              <Store size={22} className="text-slate-300" />
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t("redexpress.miPedido.noLocalAssigned")}</p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300">
+                <Store size={12} /> {assignedLocal}
               </span>
-            )}
-          </div>
+              {miRow?.confirmado && (
+                <span className="badge badge-green flex items-center gap-1 text-[10px]">
+                  <CheckCircle2 size={10} /> {t("redexpress.confirmado")}
+                </span>
+              )}
+            </div>
+          )}
 
+          {isSuperuser && !activeLocal && (
+            <div className="card p-8 flex flex-col items-center text-center gap-2">
+              <Store size={22} className="text-slate-300" />
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t("redexpress.miPedido.noLocalSelected")}</p>
+            </div>
+          )}
+
+          {activeLocal && (
+          <>
           {/* Month tabs */}
           <div className="flex gap-1.5 flex-wrap">
             {meses.map((m) => (
@@ -310,6 +357,8 @@ export default function MiPedidoPage() {
               <p className="text-sm text-slate-400">{t("redexpress.noData")}</p>
             </div>
           ) : null}
+          </>
+          )}
         </>
       )}
     </div>

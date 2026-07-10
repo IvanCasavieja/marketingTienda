@@ -70,7 +70,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/redexpress/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpress"), perm: "redexpress.view" },
     // Sin perm: el acceso no es por permiso sino por tener una sucursal
     // asignada (LocalAsignacion) — por eso se filtra acá, no vía hasPerm().
-    ...((currentUser?.assigned_locales?.length ?? 0) > 0
+    // Los superadmins también entran (ven un selector de sucursal en la página).
+    ...((currentUser?.assigned_locales?.length ?? 0) > 0 || currentUser?.is_superuser
       ? [{ href: "/redexpress/mi-pedido", label: t("sidebar.miPedido"), icon: ClipboardList, section: t("sidebar.redexpress") }]
       : []),
     ...(currentUser?.is_superuser
