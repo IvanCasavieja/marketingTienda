@@ -7,8 +7,11 @@ import { RefreshCw, Search, TrendingUp, TrendingDown, Minus, Download } from "lu
 import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
 import { SkeletonRow } from "@/components/ui/SkeletonCard";
+import DeltaBadge from "@/components/ui/DeltaBadge";
+import SearchableChecklist from "@/components/ui/SearchableChecklist";
 import { fNum, fMoney, fMoneyExact } from "@/lib/format";
 import { useTranslation } from "react-i18next";
+import { pctChange, getCompareDates } from "@/lib/period";
 
 const PLATFORMS = ["meta", "google_ads", "tiktok", "dv360"] as const;
 // Meta Ads: sync manual pausado — conexión eliminada (2026-07-06), la data
@@ -31,7 +34,8 @@ export default function CampaignsPage() {
   const [loading, setLoading]           = useState(true);
   const [syncing, setSyncing]           = useState<string | null>(null);
   const [filterPlatform, setFilter]     = useState("all");
-  const [search, setSearch]             = useState("");
+  const [selectedCampaigns, setSelectedCampaigns] = useState<Set<string>>(new Set());
+  const [showCampaignPicker, setShowCampaignPicker] = useState(false);
   const [sortKey, setSortKey]           = useState<SortKey>("spend");
   const [sortDir, setSortDir]           = useState<SortDir>("desc");
   const [dateFrom, setDateFrom]         = useState("");
@@ -120,7 +124,9 @@ export default function CampaignsPage() {
 
   const displayed = useMemo(() => {
     let rows = [...metrics];
-    if (search) rows = rows.filter((m) => m.campaign_name.toLowerCase().includes(search.toLowerCase()));
+    if (selectedCampaigns.size > 0) {
+      rows = rows.filter((m) => selectedCampaigns.has(`${m.platform}::${m.campaign_name}`));
+    }
     rows.sort((a, b) => {
       const getVal = (m: CampaignMetric) =>
         sortKey === "cpa"
@@ -129,7 +135,18 @@ export default function CampaignsPage() {
       return sortDir === "desc" ? getVal(b) - getVal(a) : getVal(a) - getVal(b);
     });
     return rows;
-  }, [metrics, search, sortKey, sortDir]);
+  }, [metrics, selectedCampaigns, sortKey, sortDir]);
+
+  const uniqueCampaigns = useMemo(() => {
+    const map = new Map<string, { key: string; platform: string; campaign_name: string; spend: number }>();
+    metrics.forEach((m) => {
+      const key = `${m.platform}::${m.campaign_name}`;
+      const existing = map.get(key);
+      if (existing) existing.spend += m.spend;
+      else map.set(key, { key, platform: m.platform, campaign_name: m.campaign_name, spend: m.spend });
+    });
+    return Array.from(map.values()).sort((a, b) => b.spend - a.spend);
+  }, [metrics]);
 
   const totals = useMemo(() => displayed.reduce(
     (acc, m) => ({
@@ -174,23 +191,6 @@ export default function CampaignsPage() {
     }),
     { spend: 0, clicks: 0, conversions: 0, impressions: 0 }
   ), [cmpMetrics]);
-
-  function pct(curr: number, prev: number) {
-    if (prev === 0) return null;
-    return ((curr - prev) / prev) * 100;
-  }
-
-  function DeltaBadge({ curr, prev }: { curr: number; prev: number }) {
-    const delta = pct(curr, prev);
-    if (delta === null) return null;
-    const up = delta >= 0;
-    return (
-      <span className={`text-[10px] font-semibold ${up ? "text-emerald-600" : "text-red-500"}`}>
-        {up ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}%
-      </span>
-    );
-  }
-
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -265,12 +265,17 @@ export default function CampaignsPage() {
           ))}
         </div>
 
-        {/* Search */}
-        <div className="relative flex-1 min-w-[180px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("campaigns.searchPlaceholder")} className="input pl-8 py-2 text-xs" />
-        </div>
+        {/* Selector de campañas: buscar + tildar un subconjunto específico */}
+        <button onClick={() => setShowCampaignPicker((v) => !v)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 flex items-center gap-1.5 ${
+            showCampaignPicker ? "bg-brand-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+          }`}>
+          <Search size={12} />
+          Campañas
+          {selectedCampaigns.size > 0 && (
+            <span className="bg-white/25 rounded-full px-1.5 text-[10px] font-bold">{selectedCampaigns.size}</span>
+          )}
+        </button>
 
         {/* Sort */}
         <div className="flex items-center gap-1">
@@ -325,10 +330,39 @@ export default function CampaignsPage() {
                 className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
                 {t("campaigns.prevYear")}
               </button>
+              <button onClick={() => {
+                const cmp = getCompareDates(0, "prev_period", dateFrom, dateTo);
+                setCmpFrom(cmp.from); setCmpTo(cmp.to);
+              }}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+                {t("dashboard.prevPeriod")}
+              </button>
             </div>
           )}
         </div>
       </div>
+
+      {/* Panel de selección de campañas */}
+      {showCampaignPicker && (
+        <div className="card overflow-hidden h-72">
+          <SearchableChecklist
+            items={uniqueCampaigns}
+            selected={selectedCampaigns}
+            onToggle={(id) => setSelectedCampaigns((prev) => {
+              const next = new Set(prev);
+              next.has(id) ? next.delete(id) : next.add(id);
+              return next;
+            })}
+            getId={(c) => c.key}
+            getSearchText={(c) => c.campaign_name}
+            getGroup={(c) => PLATFORM_LABELS[c.platform] || c.platform}
+            renderLabel={(c) => c.campaign_name}
+            renderSubtitle={(c) => fMoney(c.spend)}
+            searchPlaceholder="Buscar campaña..."
+            emptyMessage={(q) => `Sin campañas para "${q}"`}
+          />
+        </div>
+      )}
 
       {/* Table */}
       <div className="card overflow-hidden flex flex-col">
@@ -407,6 +441,56 @@ export default function CampaignsPage() {
           </div>
         )}
       </div>
+
+      {/* Comparar campañas seleccionadas — vista persistente, sin necesidad de hover */}
+      {comparing && selectedCampaigns.size > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-50 dark:border-slate-800">
+            <p className="section-title">Comparar campañas seleccionadas</p>
+            <p className="section-sub mt-0.5">Período actual vs. de comparación</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px]">
+              <thead>
+                <tr className="border-b border-slate-50 dark:border-slate-800">
+                  <th className="table-th">{t("campaigns.tableHeaders.campaign")}</th>
+                  <th className="table-th">{t("campaigns.tableHeaders.investment")}</th>
+                  <th className="table-th">{t("campaigns.tableHeaders.clicks")}</th>
+                  <th className="table-th">{t("campaigns.tableHeaders.conv")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(selectedCampaigns).map((key) => {
+                  const curr = currentByCampaign[key];
+                  const cmp = cmpByCampaign[key];
+                  if (!curr) return null;
+                  const label = key.split("::")[1];
+                  return (
+                    <tr key={key} className="table-tr">
+                      <td className="table-td max-w-[200px]">
+                        <span className="truncate block font-medium text-slate-800 dark:text-slate-200" title={label}>{label}</span>
+                      </td>
+                      <td className="table-td font-semibold">
+                        {fMoneyExact(curr.spend)}
+                        {cmp && <DeltaBadge curr={curr.spend} prev={cmp.spend} />}
+                      </td>
+                      <td className="table-td">
+                        {fNum(curr.clicks)}
+                        {cmp && <DeltaBadge curr={curr.clicks} prev={cmp.clicks} />}
+                      </td>
+                      <td className="table-td">
+                        {fNum(curr.conversions)}
+                        {cmp && <DeltaBadge curr={curr.conversions} prev={cmp.conversions} />}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Comparison hover tooltip */}
       {tooltipPos && currentByCampaign[tooltipPos.key] && cmpByCampaign[tooltipPos.key] && (
         <div
@@ -426,24 +510,17 @@ export default function CampaignsPage() {
               { label: "Clicks",    curr: currentByCampaign[tooltipPos.key].clicks,       prev: cmpByCampaign[tooltipPos.key].clicks,       fmt: fNum },
               { label: "Conv.",     curr: currentByCampaign[tooltipPos.key].conversions,  prev: cmpByCampaign[tooltipPos.key].conversions,  fmt: fNum },
             ] as Array<{ label: string; curr: number; prev: number; fmt: (v: number) => string }>
-          ).map(({ label, curr, prev, fmt }) => {
-            const delta = prev > 0 ? ((curr - prev) / prev) * 100 : null;
-            return (
-              <div key={label} className="flex items-center justify-between mb-1.5">
-                <span className="text-slate-400 w-14 shrink-0">{label}</span>
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-slate-400 text-[10px]">{fmt(prev)}</span>
-                  <span className="text-slate-300">→</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">{fmt(curr)}</span>
-                  {delta !== null && (
-                    <span className={`text-[10px] font-bold shrink-0 ${delta >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                      {delta >= 0 ? "▲" : "▼"}{Math.abs(delta).toFixed(0)}%
-                    </span>
-                  )}
-                </div>
+          ).map(({ label, curr, prev, fmt }) => (
+            <div key={label} className="flex items-center justify-between mb-1.5">
+              <span className="text-slate-400 w-14 shrink-0">{label}</span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-slate-400 text-[10px]">{fmt(prev)}</span>
+                <span className="text-slate-300">→</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{fmt(curr)}</span>
+                {pctChange(curr, prev) !== undefined && <DeltaBadge curr={curr} prev={prev} />}
               </div>
-            );
-          })}
+            </div>
+          ))}
           <p className="text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
             Total campaña · período anterior → actual
           </p>

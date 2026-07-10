@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { metricsApi } from "@/lib/api";
 import { PlatformSummary, PLATFORM_LABELS } from "@/types";
-import { format, subDays, subYears } from "date-fns";
+import { format, subDays } from "date-fns";
 import { es, enUS, ptBR } from "date-fns/locale";
 import type { Locale } from "date-fns";
 import {
@@ -11,13 +11,16 @@ import {
 } from "recharts";
 import {
   DollarSign, MousePointerClick, ShoppingCart,
-  TrendingUp, ArrowUpRight, ArrowDownRight, RefreshCw, AlertTriangle, ChevronDown, Calendar,
+  TrendingUp, RefreshCw, AlertTriangle, ChevronDown, Calendar,
 } from "lucide-react";
 import { SkeletonCard, SkeletonRow } from "@/components/ui/SkeletonCard";
 import { toast } from "sonner";
 import PlatformBadge from "@/components/ui/PlatformBadge";
+import DeltaBadge from "@/components/ui/DeltaBadge";
+import KPICard from "@/components/ui/KPICard";
 import { fNum, fMoney } from "@/lib/format";
 import { useTranslation } from "react-i18next";
+import { CompareMode, getCompareDates, getCompareLabel } from "@/lib/period";
 
 const COLORS: Record<string, string> = {
   meta:             "#1877F2",
@@ -59,74 +62,6 @@ const PERIODS = [
 
 const DF_LOCALES: Record<string, Locale> = { es, en: enUS, pt: ptBR };
 
-type CompareMode = "prev_period" | "prev_year";
-
-function getCompareDates(days: number, mode: CompareMode, customFrom?: string, customTo?: string) {
-  if (customFrom && customTo) {
-    // Rango personalizado: comparar con el mismo rango de días hacia atrás
-    const duration = Math.round((new Date(customTo).getTime() - new Date(customFrom).getTime()) / 86400000) + 1;
-    if (mode === "prev_year") {
-      return {
-        from: format(subYears(new Date(customFrom + "T00:00:00"), 1), "yyyy-MM-dd"),
-        to:   format(subYears(new Date(customTo   + "T00:00:00"), 1), "yyyy-MM-dd"),
-      };
-    }
-    return {
-      from: format(subDays(new Date(customFrom + "T00:00:00"), duration), "yyyy-MM-dd"),
-      to:   format(subDays(new Date(customFrom + "T00:00:00"), 1),        "yyyy-MM-dd"),
-    };
-  }
-  if (mode === "prev_year") {
-    return {
-      from: format(subYears(subDays(new Date(), days), 1), "yyyy-MM-dd"),
-      to:   format(subYears(new Date(), 1), "yyyy-MM-dd"),
-    };
-  }
-  return {
-    from: format(subDays(new Date(), days * 2), "yyyy-MM-dd"),
-    to:   format(subDays(new Date(), days + 1), "yyyy-MM-dd"),
-  };
-}
-
-function getCompareLabel(days: number, mode: CompareMode, locale: Locale, customFrom?: string, customTo?: string): string {
-  const { from, to } = getCompareDates(days, mode, customFrom, customTo);
-  const f = format(new Date(from + "T00:00:00"), "d MMM", { locale });
-  const t = format(new Date(to   + "T00:00:00"), "d MMM", { locale });
-  return `vs. ${f} – ${t}`;
-}
-
-interface KPIProps {
-  label: string;
-  value: string;
-  sub: string;
-  icon: React.ReactNode;
-  trend?: number;
-  gradient: string;
-}
-
-function KPICard({ label, value, sub, icon, trend, gradient }: KPIProps) {
-  const up = trend !== undefined ? trend >= 0 : null;
-  return (
-    <div className="card card-hover p-5 animate-slide-up">
-      <div className="flex items-start justify-between mb-4">
-        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shadow-sm`}>
-          {icon}
-        </div>
-        {trend !== undefined && (
-          <span className={`flex items-center gap-0.5 text-xs font-semibold px-2 py-0.5 rounded-full
-            ${up ? "text-emerald-600 bg-emerald-50" : "text-red-500 bg-red-50"}`}>
-            {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-            {Math.abs(trend).toFixed(1)}%
-          </span>
-        )}
-      </div>
-      <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-0.5">{value}</p>
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>
-    </div>
-  );
-}
-
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
@@ -146,22 +81,6 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     </div>
   );
 };
-
-function pctChange(curr: number, prev: number): number | undefined {
-  if (prev === 0) return undefined;
-  return ((curr - prev) / prev) * 100;
-}
-
-function DeltaCell({ curr, prev }: { curr: number; prev: number }) {
-  const delta = prev === 0 ? null : ((curr - prev) / prev) * 100;
-  if (delta === null) return null;
-  const up = delta >= 0;
-  return (
-    <span className={`ml-1 text-[10px] font-semibold ${up ? "text-emerald-600" : "text-red-500"}`}>
-      {up ? "▲" : "▼"}{Math.abs(delta).toFixed(0)}%
-    </span>
-  );
-}
 
 export default function DashboardPage() {
   const { t, i18n } = useTranslation();
@@ -460,22 +379,22 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard label={t("dashboard.totalInvestment")} value={fMoney(totals.spend)}
             sub={t("dashboard.lastNDays", { n: periodLabel })}
-            trend={pctChange(totals.spend, prevTotals.spend)}
+            curr={totals.spend} prev={prevTotals.spend}
             icon={<DollarSign size={18} className="text-white" />}
             gradient="from-brand-500 to-brand-600" />
           <KPICard label={t("dashboard.totalClicks")} value={fNum(totals.clicks)}
             sub={t("dashboard.allPlatforms")}
-            trend={pctChange(totals.clicks, prevTotals.clicks)}
+            curr={totals.clicks} prev={prevTotals.clicks}
             icon={<MousePointerClick size={18} className="text-white" />}
             gradient="from-slate-600 to-slate-700" />
           <KPICard label={t("dashboard.conversions")} value={fNum(totals.conversions)}
             sub={`CPA: $${cpa.toFixed(2)}`}
-            trend={pctChange(totals.conversions, prevTotals.conversions)}
+            curr={totals.conversions} prev={prevTotals.conversions}
             icon={<ShoppingCart size={18} className="text-white" />}
             gradient="from-emerald-500 to-emerald-600" />
           <KPICard label={t("dashboard.globalRoas")} value={`${globalRoas.toFixed(2)}x`}
             sub={t("dashboard.revenueInversion")}
-            trend={pctChange(globalRoas, prevRoas)}
+            curr={globalRoas} prev={prevRoas}
             icon={<TrendingUp size={18} className="text-white" />}
             gradient="from-amber-500 to-orange-500" />
         </div>
@@ -714,28 +633,28 @@ export default function DashboardPage() {
                     <td className="table-td"><PlatformBadge platform={s.platform} /></td>
                     <td className="table-td font-semibold">
                       {fMoney(s.spend)}
-                      {prev && <DeltaCell curr={s.spend} prev={prev.spend} />}
+                      {prev && <DeltaBadge curr={s.spend} prev={prev.spend} />}
                     </td>
                     <td className="table-td">
                       {fNum(s.clicks)}
-                      {prev && <DeltaCell curr={s.clicks} prev={prev.clicks} />}
+                      {prev && <DeltaBadge curr={s.clicks} prev={prev.clicks} />}
                     </td>
                     <td className="table-td">{s.avg_ctr.toFixed(2)}%</td>
                     <td className="table-td">
                       {fNum(s.conversions)}
-                      {prev && <DeltaCell curr={s.conversions} prev={prev.conversions} />}
+                      {prev && <DeltaBadge curr={s.conversions} prev={prev.conversions} />}
                     </td>
                     <td className="table-td text-slate-600 dark:text-slate-400">
                       {cpaVal !== null ? `$${cpaVal.toFixed(2)}` : "—"}
                       {prev && cpaVal !== null && prevCpa > 0 && (
-                        <DeltaCell curr={cpaVal} prev={prevCpa} />
+                        <DeltaBadge curr={cpaVal} prev={prevCpa} />
                       )}
                     </td>
                     <td className="table-td">
                       <span className={`font-bold ${s.avg_roas >= 2 ? "text-emerald-600" : s.avg_roas >= 1 ? "text-amber-500" : "text-red-500"}`}>
                         {s.avg_roas.toFixed(2)}x
                       </span>
-                      {prev && <DeltaCell curr={s.avg_roas} prev={prev.avg_roas} />}
+                      {prev && <DeltaBadge curr={s.avg_roas} prev={prev.avg_roas} />}
                     </td>
                   </tr>
                 );

@@ -184,7 +184,7 @@ async def get_ga4_funnel(
     )
     rows = result.scalars().all()
 
-    FUNNEL_KEYS = ("sessions", "users", "page_views", "view_item", "add_to_cart", "begin_checkout", "purchase")
+    FUNNEL_KEYS = ("sessions", "users", "page_views", "view_item", "add_to_cart", "begin_checkout", "purchase", "new_buyers")
 
     totals: Dict = {k: 0 for k in FUNNEL_KEYS}
     totals["revenue"] = 0.0
@@ -210,7 +210,7 @@ async def get_ga4_funnel(
 
         day = str(r.date)
         if day not in by_day:
-            by_day[day] = {"date": day, "sessions": 0, "revenue": 0.0}
+            by_day[day] = {"date": day, "sessions": 0, "users": 0, "purchase": 0, "revenue": 0.0}
         d = by_day[day]
 
         for k in FUNNEL_KEYS:
@@ -218,6 +218,8 @@ async def get_ga4_funnel(
             totals[k] += v
             ch[k] += v
         d["sessions"] += int(rd.get("sessions") or 0)
+        d["users"] += int(rd.get("users") or 0)
+        d["purchase"] += int(rd.get("purchase") or 0)
 
         totals["revenue"] += r.revenue or 0.0
         ch["revenue"] += r.revenue or 0.0
@@ -235,6 +237,7 @@ async def get_ga4_funnel(
     totals["engagement_rate"] = round(engagement_sum / n, 4) if n else 0.0
     totals["avg_session_duration_sec"] = round(duration_sum / n, 1) if n else 0.0
     totals["revenue"] = round(totals["revenue"], 2)
+    totals["avg_order_value"] = round(totals["revenue"] / totals["purchase"], 2) if totals["purchase"] else 0.0
 
     by_channel_list = []
     for ch in by_channel.values():
@@ -244,12 +247,14 @@ async def get_ga4_funnel(
         ch["engagement_rate"] = round(eng_sum / n_ch, 4) if n_ch else 0.0
         ch["avg_session_duration_sec"] = round(dur_sum / n_ch, 1) if n_ch else 0.0
         ch["revenue"] = round(ch["revenue"], 2)
+        ch["avg_order_value"] = round(ch["revenue"] / ch["purchase"], 2) if ch["purchase"] else 0.0
         by_channel_list.append(ch)
     by_channel_list.sort(key=lambda c: c["revenue"], reverse=True)
 
     daily_list = sorted(by_day.values(), key=lambda d: d["date"])
     for d in daily_list:
         d["revenue"] = round(d["revenue"], 2)
+        d["avg_order_value"] = round(d["revenue"] / d["purchase"], 2) if d["purchase"] else 0.0
 
     return {"totals": totals, "by_channel": by_channel_list, "daily": daily_list}
 

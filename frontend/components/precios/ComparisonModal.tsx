@@ -4,12 +4,13 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine,
 } from "recharts";
-import { X, Search, CheckCircle2, BarChart3 } from "lucide-react";
+import { X, BarChart3 } from "lucide-react";
 import { preciosApi, type ProductoVivo, type CotizacionDolar } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
 import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
 import DonTinoFloating from "@/components/DonTinoFloating";
 import SeguirButton from "@/components/precios/SeguirButton";
+import SearchableChecklist from "@/components/ui/SearchableChecklist";
 
 // ── Item con id estable (posición en el pool recibido — no cambia mientras
 // el modal está abierto, aunque el buscador del checklist filtre la vista) ──
@@ -72,7 +73,6 @@ export default function ComparisonModal({
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(withIds.slice(0, PRESELECCION_INICIAL).map((it) => it._id))
   );
-  const [busqueda, setBusqueda] = useState("");
   const [ourPrice, setOurPrice] = useState("");
   const [ourCurrency, setOurCurrency] = useState<"UYU" | "USD">("UYU");
   const [monedaVista, setMonedaVista] = useState<"UYU" | "USD">("UYU");
@@ -92,21 +92,6 @@ export default function ComparisonModal({
       return next;
     });
   }
-
-  const filtrados = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    if (!q) return withIds;
-    return withIds.filter((it) => (it.nombre ?? "").toLowerCase().includes(q));
-  }, [withIds, busqueda]);
-
-  const agrupados = useMemo(() => {
-    const groups: Record<string, ItemConId[]> = {};
-    for (const it of filtrados) {
-      if (!groups[it.tienda]) groups[it.tienda] = [];
-      groups[it.tienda].push(it);
-    }
-    return groups;
-  }, [filtrados]);
 
   const seleccionados = useMemo(
     () => withIds.filter((it) => selected.has(it._id) && it.precio !== null),
@@ -296,65 +281,39 @@ export default function ComparisonModal({
 
           {/* Columna derecha: checklist de productos */}
           <div className="w-full md:w-[300px] shrink-0 border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800 flex flex-col min-h-0">
-            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="relative">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Filtrar productos..."
-                  className="input text-xs w-full pl-7 py-1.5"
-                />
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-4">
-              {Object.entries(agrupados).map(([tienda, group]) => (
-                <div key={tienda}>
-                  <div className="mb-1.5"><CadenaBadge tienda={tienda} /></div>
-                  <div className="space-y-1.5">
-                    {group.map((it) => (
-                      <div key={it._id} className="flex items-start gap-2 group">
-                        <div
-                          className={`mt-0.5 w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all cursor-pointer ${
-                            selected.has(it._id)
-                              ? "bg-brand-600 border-brand-600"
-                              : "border-slate-300 group-hover:border-brand-400"
-                          }`}
-                          onClick={() => toggle(it._id)}
-                        >
-                          {selected.has(it._id) && <CheckCircle2 size={9} className="text-white" />}
-                        </div>
-                        <div onClick={() => toggle(it._id)} className="min-w-0 flex-1 cursor-pointer">
-                          <p className="text-[11.5px] font-medium text-slate-700 dark:text-slate-300 truncate leading-snug">{it.nombre ?? "—"}</p>
-                          <p className="text-[10.5px] text-slate-400">
-                            {it.sucursal_nombre ? `${it.sucursal_nombre} · ` : ""}
-                            {it.precio !== null ? fMoneyByCurrency(it.precio, it.moneda) : "—"}
-                          </p>
-                        </div>
-                        {it.precio !== null && (
-                          <SeguirButton
-                            producto={{
-                              tienda: it.tienda,
-                              sku: it.sku,
-                              nombre: it.nombre ?? "—",
-                              termino_busqueda: termino ?? "",
-                              url: it.url,
-                              precio: it.precio,
-                              moneda: it.moneda ?? "UYU",
-                              sucursal_id: it.sucursal_id,
-                              sucursal_nombre: it.sucursal_nombre,
-                            }}
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {filtrados.length === 0 && (
-                <p className="text-xs text-slate-400 text-center py-6">Sin productos para "{busqueda}"</p>
+            <SearchableChecklist
+              items={withIds}
+              selected={selected}
+              onToggle={toggle}
+              getId={(it) => it._id}
+              getSearchText={(it) => it.nombre ?? ""}
+              getGroup={(it) => it.tienda}
+              renderGroupHeader={(tienda) => <CadenaBadge tienda={tienda} />}
+              renderLabel={(it) => it.nombre ?? "—"}
+              renderSubtitle={(it) => (
+                <>
+                  {it.sucursal_nombre ? `${it.sucursal_nombre} · ` : ""}
+                  {it.precio !== null ? fMoneyByCurrency(it.precio, it.moneda) : "—"}
+                </>
               )}
-            </div>
+              renderExtra={(it) => it.precio !== null ? (
+                <SeguirButton
+                  producto={{
+                    tienda: it.tienda,
+                    sku: it.sku,
+                    nombre: it.nombre ?? "—",
+                    termino_busqueda: termino ?? "",
+                    url: it.url,
+                    precio: it.precio,
+                    moneda: it.moneda ?? "UYU",
+                    sucursal_id: it.sucursal_id,
+                    sucursal_nombre: it.sucursal_nombre,
+                  }}
+                />
+              ) : null}
+              searchPlaceholder="Filtrar productos..."
+              emptyMessage={(q) => `Sin productos para "${q}"`}
+            />
           </div>
         </div>
 

@@ -60,6 +60,7 @@ PURCHASE_RATE_DEL_CHECKOUT = (0.55, 0.75)  # % de checkouts que se completan
 USERS_RATE_DE_SESSIONS  = (0.75, 0.95)   # usuarios únicos vs. sesiones totales
 ENGAGEMENT_RATE         = (0.45, 0.72)
 AVG_SESSION_DURATION    = (60, 240)      # segundos
+NEW_BUYER_RATE          = (0.55, 0.85)   # % de purchases que son de un comprador nuevo
 
 
 def daterange(d_from: date, d_to: date):
@@ -78,6 +79,7 @@ def gen_row(channel: dict, day: date) -> dict:
     purchase = round(begin_checkout * random.uniform(*PURCHASE_RATE_DEL_CHECKOUT))
     aov = random.uniform(*channel["aov_range"])
     revenue = round(purchase * aov, 2)
+    new_buyers = round(purchase * random.uniform(*NEW_BUYER_RATE))
 
     return {
         "platform": "google_analytics",
@@ -104,6 +106,7 @@ def gen_row(channel: dict, day: date) -> dict:
             "add_to_cart": add_to_cart,
             "begin_checkout": begin_checkout,
             "purchase": purchase,
+            "new_buyers": new_buyers,
             "engagement_rate": round(random.uniform(*ENGAGEMENT_RATE), 4),
             "avg_session_duration_sec": round(random.uniform(*AVG_SESSION_DURATION), 1),
             "aov": round(aov, 2),
