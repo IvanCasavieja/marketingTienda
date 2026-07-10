@@ -73,7 +73,21 @@ function tryParseDebate(result: string): ChatMessage[] | null {
 }
 
 function Md({ text }: { text: string }) {
-  return <div className="prose-analysis"><ReactMarkdown>{text}</ReactMarkdown></div>;
+  return (
+    <div className="prose-analysis">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          table: ({ children }) => <div className="table-scroll"><table className="w-full mb-3">{children}</table></div>,
+          tr: ({ children }) => <tr className="table-tr">{children}</tr>,
+          th: ({ children }) => <th className="table-th">{children}</th>,
+          td: ({ children }) => <td className="table-td">{children}</td>,
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 function TypingDots({ color }: { color: string }) {
@@ -490,13 +504,13 @@ export default function AnalyticsPage() {
   const debateHistory = history.filter((h) => h.analysis_type === "debate");
 
   return (
-    <div className="animate-fade-in space-y-5">
-      <div>
+    <div className="animate-fade-in flex flex-col h-[calc(100vh-140px)]">
+      <div className="shrink-0 mb-5">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">La Triada</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Claude · ChatGPT · Llama — debate con tus datos de campañas</p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 items-stretch">
+      <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 items-stretch">
         {/* ── Left panel ── */}
         <div className="space-y-4">
           <div className="card p-5">
@@ -621,7 +635,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* ── Chat ── */}
-        <div className="flex flex-col gap-3 h-full">
+        <div className="flex flex-col gap-3 h-full min-h-0">
           {errorMsg && (
             <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
@@ -633,10 +647,7 @@ export default function AnalyticsPage() {
             </div>
           )}
 
-          <div
-            className="flex-1 flex flex-col rounded-2xl overflow-hidden border border-slate-200/80 shadow-xl"
-            style={{ minHeight: "640px" }}
-          >
+          <div className="flex-1 min-h-0 flex flex-col rounded-2xl overflow-hidden border border-slate-200/80 shadow-xl">
             {/* ── Header ── */}
             <div className="shrink-0 bg-slate-900 px-5 py-3.5 flex items-center gap-4">
               {/* Speaker pills */}
@@ -679,7 +690,7 @@ export default function AnalyticsPage() {
             </div>
 
             {/* ── Messages ── */}
-            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-slate-50/60 dark:bg-slate-900/50">
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5 space-y-4 bg-slate-50/60 dark:bg-slate-900/50">
               {chatMessages.map((msg) => {
                 if (msg.type === "web_context") {
                   return <WebContextBubble key={msg.id} content={msg.content} />;
