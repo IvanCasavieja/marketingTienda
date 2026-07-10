@@ -472,7 +472,9 @@ export interface PlanillaRow {
   sticker_valle_del_sol: number | null;
   sticker_carne: number | null;
   cenefas_preciazos: number | null;
+  cenefas_a4_preciazos: number | null;
   afiche_super_ahorro: number | null;
+  afiche_grande_preciazos: number | null;
   pinchos_dias_expres: number | null;
   hojas_amarillas: string | null;
   otros: string | null;

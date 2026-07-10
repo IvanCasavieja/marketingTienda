@@ -33,8 +33,14 @@ class PlanillaPedido(Base):
     sticker_carne: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Otros items
+    # cenefas_preciazos == "Cenefas 3xA4 Preciazos" y afiche_super_ahorro ==
+    # "Afiche A4 Super Ahorro" (ver mapeo original en scripts/import_redexpress.py)
+    # — las columnas *_a4_preciazos / *_grande_preciazos son las variantes
+    # hermanas que faltaban, agregadas al separar los límites de pedido.
     cenefas_preciazos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cenefas_a4_preciazos: Mapped[int | None] = mapped_column(Integer, nullable=True)
     afiche_super_ahorro: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    afiche_grande_preciazos: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pinchos_dias_expres: Mapped[int | None] = mapped_column(Integer, nullable=True)
     hojas_amarillas: Mapped[str | None] = mapped_column(String(50), nullable=True)
     otros: Mapped[str | None] = mapped_column(Text, nullable=True)

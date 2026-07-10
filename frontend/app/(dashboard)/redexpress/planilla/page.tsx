@@ -20,53 +20,60 @@ export default function PlanillaPedidosPage() {
       label: t("redexpress.groups.ofertas"),
       color: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200",
       cols: [
-        { key: "a4_oferta_vertical",  label: t("redexpress.cols.a4OfertaVertical") },
-        { key: "cenefa_oferta_x3",    label: t("redexpress.cols.cenefaOfertaX3") },
-        { key: "pinchos",             label: t("redexpress.cols.pinchos") },
-        { key: "afiche_54x74",        label: t("redexpress.cols.afiche54x74") },
+        { key: "a4_oferta_vertical",  label: t("redexpress.cols.a4OfertaVertical"), max: 200 },
+        { key: "cenefa_oferta_x3",    label: t("redexpress.cols.cenefaOfertaX3"),   max: 300 },
+        { key: "pinchos",             label: t("redexpress.cols.pinchos"),          max: 100 },
+        { key: "afiche_54x74",        label: t("redexpress.cols.afiche54x74"),      max: 20 },
       ],
     },
     {
       label: t("redexpress.groups.vdsSupremo"),
       color: "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200",
       cols: [
-        { key: "cenefa_valle_del_sol",  label: t("redexpress.cols.cenefaValleDelSol") },
-        { key: "cenefa_supremo_hogar",  label: t("redexpress.cols.cenefaSupremoHogar") },
+        { key: "cenefa_valle_del_sol",  label: t("redexpress.cols.cenefaValleDelSol"),  max: 100 },
+        { key: "cenefa_supremo_hogar",  label: t("redexpress.cols.cenefaSupremoHogar"), max: 100 },
       ],
     },
     {
       label: t("redexpress.groups.bombas"),
       color: "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200",
       cols: [
-        { key: "bombas_3xa4",    label: t("redexpress.cols.bombas3xa4") },
-        { key: "bombas_a4",      label: t("redexpress.cols.bombasA4") },
-        { key: "bombas_74x54",   label: t("redexpress.cols.bombas74x54") },
-        { key: "pinchos_bombas", label: t("redexpress.cols.pinchosBombas") },
+        { key: "bombas_3xa4",    label: t("redexpress.cols.bombas3xa4"),    max: 200 },
+        { key: "bombas_a4",      label: t("redexpress.cols.bombasA4"),      max: 200 },
+        { key: "bombas_74x54",   label: t("redexpress.cols.bombas74x54"),   max: 20 },
+        { key: "pinchos_bombas", label: t("redexpress.cols.pinchosBombas"), max: 100 },
       ],
     },
     {
       label: t("redexpress.groups.stickers"),
       color: "bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200",
       cols: [
-        { key: "sticker_valle_del_sol", label: t("redexpress.cols.stickerValleDelSol") },
-        { key: "sticker_carne",         label: t("redexpress.cols.stickerCarne") },
+        { key: "sticker_valle_del_sol", label: t("redexpress.cols.stickerValleDelSol"), max: 100 },
+        { key: "sticker_carne",         label: t("redexpress.cols.stickerCarne"),       max: 100 },
       ],
     },
     {
       label: t("redexpress.groups.otrosItems"),
       color: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200",
       cols: [
-        { key: "cenefas_preciazos",    label: t("redexpress.cols.cenefasPreciazos") },
-        { key: "afiche_super_ahorro",  label: t("redexpress.cols.aficheSuperAhorro") },
-        { key: "pinchos_dias_expres",  label: t("redexpress.cols.pinchosDiasExpres") },
-        { key: "hojas_amarillas",      label: t("redexpress.cols.hojasAmarillas"), isText: true },
+        { key: "cenefas_preciazos",       label: t("redexpress.cols.cenefasPreciazos"),       max: 100 },
+        { key: "cenefas_a4_preciazos",    label: t("redexpress.cols.cenefasA4Preciazos"),     max: 100 },
+        { key: "afiche_super_ahorro",     label: t("redexpress.cols.aficheSuperAhorro"),      max: 10 },
+        { key: "afiche_grande_preciazos", label: t("redexpress.cols.aficheGrandePreciazos"),  max: 10 },
+        { key: "pinchos_dias_expres",     label: t("redexpress.cols.pinchosDiasExpres"),      max: 100 },
+        { key: "hojas_amarillas",         label: t("redexpress.cols.hojasAmarillas"), isText: true },
       ],
     },
   ], [t]);
 
-  const ALL_COLS: { key: ColKey; label: string; isText?: boolean; group: string }[] = useMemo(
+  const ALL_COLS: { key: ColKey; label: string; isText?: boolean; max?: number; group: string }[] = useMemo(
     () => GROUPS.flatMap((g) => g.cols.map((c) => ({ ...c, group: g.label }))),
     [GROUPS]
+  );
+
+  const COL_MAX: Record<string, number> = useMemo(
+    () => Object.fromEntries(ALL_COLS.filter((c) => c.max !== undefined).map((c) => [c.key, c.max as number])),
+    [ALL_COLS]
   );
 
   const MONTH_NAMES = t("redexpress.months", { returnObjects: true }) as string[];
@@ -167,6 +174,14 @@ export default function PlanillaPedidosPage() {
   }
 
   function handleCellChange(localNombre: string, colKey: string, value: string) {
+    const max = COL_MAX[colKey];
+    if (max !== undefined && value !== "") {
+      const num = parseInt(value, 10);
+      if (!isNaN(num) && num > max) {
+        value = String(max);
+        toast.warning(t("redexpress.limiteMaximo", { max }));
+      }
+    }
     setEdits((prev) => ({
       ...prev,
       [localNombre]: { ...(prev[localNombre] || {}), [colKey]: value },
@@ -419,6 +434,7 @@ export default function PlanillaPedidosPage() {
                               <input
                                 type={col.isText ? "text" : "number"}
                                 min={0}
+                                max={col.max}
                                 value={val}
                                 onChange={(e) =>
                                   handleCellChange(row.local_nombre, col.key, e.target.value)

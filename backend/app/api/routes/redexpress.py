@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
 from datetime import datetime, timezone
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.deps import get_current_user, require_permission
 from app.core.database import get_db
@@ -80,21 +80,26 @@ LOCALES_SET = set(LOCALES)
 
 
 class PlanillaRowUpdate(BaseModel):
-    a4_oferta_vertical: Optional[int] = None
-    cenefa_oferta_x3: Optional[int] = None
-    pinchos: Optional[int] = None
-    afiche_54x74: Optional[int] = None
-    cenefa_valle_del_sol: Optional[int] = None
-    cenefa_supremo_hogar: Optional[int] = None
-    bombas_3xa4: Optional[int] = None
-    bombas_a4: Optional[int] = None
-    bombas_74x54: Optional[int] = None
-    pinchos_bombas: Optional[int] = None
-    sticker_valle_del_sol: Optional[int] = None
-    sticker_carne: Optional[int] = None
-    cenefas_preciazos: Optional[int] = None
-    afiche_super_ahorro: Optional[int] = None
-    pinchos_dias_expres: Optional[int] = None
+    # Topes por sucursal (no es un pool compartido entre locales) según la
+    # lista de máximos por ítem que definió el negocio. Rechaza con 422 si
+    # se supera — el frontend además clampea antes de llegar a guardar.
+    a4_oferta_vertical: Optional[int] = Field(default=None, ge=0, le=200)
+    cenefa_oferta_x3: Optional[int] = Field(default=None, ge=0, le=300)
+    pinchos: Optional[int] = Field(default=None, ge=0, le=100)
+    afiche_54x74: Optional[int] = Field(default=None, ge=0, le=20)
+    cenefa_valle_del_sol: Optional[int] = Field(default=None, ge=0, le=100)
+    cenefa_supremo_hogar: Optional[int] = Field(default=None, ge=0, le=100)
+    bombas_3xa4: Optional[int] = Field(default=None, ge=0, le=200)
+    bombas_a4: Optional[int] = Field(default=None, ge=0, le=200)
+    bombas_74x54: Optional[int] = Field(default=None, ge=0, le=20)
+    pinchos_bombas: Optional[int] = Field(default=None, ge=0, le=100)
+    sticker_valle_del_sol: Optional[int] = Field(default=None, ge=0, le=100)
+    sticker_carne: Optional[int] = Field(default=None, ge=0, le=100)
+    cenefas_preciazos: Optional[int] = Field(default=None, ge=0, le=100)        # Cenefas 3xA4 Preciazos
+    cenefas_a4_preciazos: Optional[int] = Field(default=None, ge=0, le=100)
+    afiche_super_ahorro: Optional[int] = Field(default=None, ge=0, le=10)       # Afiche A4 Super Ahorro
+    afiche_grande_preciazos: Optional[int] = Field(default=None, ge=0, le=10)
+    pinchos_dias_expres: Optional[int] = Field(default=None, ge=0, le=100)
     hojas_amarillas: Optional[str] = None
     otros: Optional[str] = None
 
@@ -118,7 +123,9 @@ def _row_to_dict(row: PlanillaPedido, can_edit: bool) -> dict:
         "sticker_valle_del_sol": row.sticker_valle_del_sol,
         "sticker_carne": row.sticker_carne,
         "cenefas_preciazos": row.cenefas_preciazos,
+        "cenefas_a4_preciazos": row.cenefas_a4_preciazos,
         "afiche_super_ahorro": row.afiche_super_ahorro,
+        "afiche_grande_preciazos": row.afiche_grande_preciazos,
         "pinchos_dias_expres": row.pinchos_dias_expres,
         "hojas_amarillas": row.hojas_amarillas,
         "otros": row.otros,
