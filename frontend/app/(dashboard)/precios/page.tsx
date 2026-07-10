@@ -55,8 +55,8 @@ export default function PreciosPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   const buscar = useCallback(async (term: string) => {
-    const t = term.trim();
-    if (t.length < 2) return;
+    const termino = term.trim();
+    if (termino.length < 2) return;
 
     abortRef.current?.abort();
     const ctrl = new AbortController();
@@ -65,7 +65,7 @@ export default function PreciosPage() {
     setLoading(true);
     setStreaming(false);
     setResults([]);
-    setLastQuery(t);
+    setLastQuery(termino);
     setFilterCadenas(new Set());
     setFilterSucursal(null);
     setSortMode("relevancia");
@@ -73,7 +73,7 @@ export default function PreciosPage() {
     setCadenaErrors({});
 
     try {
-      const response = await preciosApi.buscarVivoStream(t, ctrl.signal);
+      const response = await preciosApi.buscarVivoStream(termino, ctrl.signal);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const reader  = response.body!.getReader();
