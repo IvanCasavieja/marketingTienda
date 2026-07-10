@@ -155,7 +155,8 @@
       "platformLowRoas": "{{platform}}: ROAS of {{roas}}x — consider pausing or adjusting budget"
     },
     "syncSuccess": "{{n}} platform(s) synced successfully",
-    "syncError": "Could not sync any platform"
+    "syncError": "Could not sync any platform",
+    "loadError": "Couldn't load dashboard data"
   },
   "canales": {
     "title": "Analytics GA4",
@@ -187,6 +188,24 @@
       "conversionRate": "Conv. rate",
       "engagement": "Engagement",
       "revenue": "Revenue"
+    },
+    "custom": "Custom",
+    "compare": "Compare",
+    "newBuyers": "New buyers",
+    "transactions": "Transactions",
+    "avgOrderValue": "Average order value",
+    "engagementRate": "Engagement rate",
+    "avgSessionDuration": "Average session duration",
+    "current": "Current",
+    "comparison": "Comparison",
+    "variationByStage": "Variation by stage",
+    "dayN": "Day {{n}}",
+    "trendMetrics": {
+      "sessions": "Sessions",
+      "purchase": "Transactions",
+      "revenue": "Revenue",
+      "avgOrderValue": "Average order value",
+      "users": "Users"
     }
   },
   "campaigns": {
@@ -222,7 +241,13 @@
     "syncError": "Error syncing {{platform}}",
     "syncSuccess": "{{platform}}: {{n}} records synced",
     "loadError": "Error loading metrics",
-    "footer": "{{n}} campaigns · {{spend}} total investment"
+    "footer": "{{n}} campaigns · {{spend}} total investment",
+    "noCampaignsFor": "No campaigns for \"{{q}}\"",
+    "compareSelected": "Compare selected campaigns",
+    "compareSelectedSub": "Current period vs. comparison period",
+    "avgCpa": "Average CPA",
+    "noPrevPeriodData": "No data for the previous period",
+    "tooltipFooter": "Total campaign · previous period → current"
   },
   "analytics": {
     "title": "AI Analysis",
@@ -422,6 +447,41 @@
       "analytics": "Analytics",
       "connections": "Connections",
       "ai": "Artificial Intelligence"
+    },
+    "tabs": {
+      "users": "Users & Roles",
+      "auditLog": "Audit log",
+      "aiUsage": "AI usage"
+    },
+    "auditLog": {
+      "title": "Audit log",
+      "entryCount": "{{count}} entry",
+      "entryCount_plural": "{{count}} entries",
+      "loadError": "Couldn't load the audit log.",
+      "empty": "No activity recorded yet.",
+      "tableHeaders": {
+        "date": "Date",
+        "user": "User",
+        "action": "Action",
+        "resource": "Resource",
+        "details": "Details"
+      },
+      "loadMore": "Load more"
+    },
+    "aiUsage": {
+      "loadError": "Couldn't load AI usage.",
+      "totalCost": "Total estimated cost",
+      "inputTokens": "Input tokens",
+      "outputTokens": "Output tokens",
+      "dailyCost": "Daily cost",
+      "dailyCostSub": "Estimated, in USD",
+      "noUsage": "No AI usage recorded for this period.",
+      "cost": "Cost",
+      "byProvider": "Cost by provider",
+      "byFeature": "Cost by feature",
+      "noData": "No data.",
+      "topUsers": "Top users by cost",
+      "deletedUser": "Deleted user"
     }
   },
   "redexpress": {
@@ -457,7 +517,21 @@
     "errorCrearMes": "Error creating month",
     "errorCargarMeses": "Error loading months",
     "errorCargarPlanilla": "Error loading the sheet",
-    "months": ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    "months": [
+      "",
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December"
+    ],
     "groups": {
       "ofertas": "Offers",
       "vdsSupremo": "VDS & Supremo",
@@ -482,6 +556,77 @@
       "aficheSuperAhorro": "Super Ahorro poster",
       "pinchosDiasExpres": "Pinchos Días Expres",
       "hojasAmarillas": "Yellow sheets"
+    }
+  },
+  "herramientas": {
+    "title": "Tools",
+    "subtitle": "Generators and utilities for the marketing team.",
+    "openTool": "Open tool",
+    "cenefas": {
+      "tag": "Classic",
+      "title": "Generate banners",
+      "description": "Upload the product Excel and a base PPTX template to generate the banners instantly. Fast flow for everyday use."
+    },
+    "editor": {
+      "tag": "Editor",
+      "title": "Template editor",
+      "description": "Design or import a template visually, map Excel variables, configure rules, and generate banners with your own design."
+    }
+  },
+  "precios": {
+    "title": "Search live prices",
+    "subtitle": "Supermarkets, pharmacies and electronics — in real time",
+    "searchPlaceholder": "E.g: 5kg rice, whole milk, dove soap… (Enter to search)",
+    "searching": "Searching…",
+    "search": "Search",
+    "searchError": "Search error",
+    "chainsCoverage": "13 chains · 134+ branches queried in real time",
+    "all": "All",
+    "categorias": {
+      "supermercados": "Supermarkets",
+      "farmacia": "Pharmacy",
+      "electronica": "Electronics",
+      "otros": "Other"
+    },
+    "chainNoData": "chain with no data",
+    "chainNoData_plural": "chains with no data",
+    "noResultsTooltip": "Responded but with no results",
+    "noResponseTooltip": "No response — possible geo-block or timeout",
+    "allBranches": "All branches",
+    "sortRelevance": "By relevance",
+    "sortPriceAsc": "Price: lowest first",
+    "sortPriceDesc": "Price: highest first",
+    "viewChart": "View chart",
+    "cheapest": "Cheapest",
+    "at": "at",
+    "noResultsFor": "No results for",
+    "noResultsHint": "Try fewer words, e.g: \"saman rice\" instead of \"saman parboiled rice 5kg\"",
+    "tableHeaders": {
+      "product": "Product",
+      "price": "Price",
+      "view": "View"
+    },
+    "noResultsFilteredFrom": "No results from",
+    "noResultsFilteredFor": "for this term.",
+    "bestPrice": "best price",
+    "sharedCatalogTooltip": "{{chain1}} and {{chain2}} share a catalog — the link takes you to {{chain2}}",
+    "actuallyFrom": "actually from",
+    "viewInStore": "View in store",
+    "listas": {
+      "loadError": "Couldn't load the monitoring lists",
+      "listDeleted": "List deleted",
+      "listDeleteError": "Couldn't delete the list",
+      "itemDeleteError": "Couldn't remove the product from the list",
+      "subtitle": "Products you're tracking from the competition — checked automatically every day, we'll notify you if the price changes.",
+      "emptyStart": "You're not tracking any products yet. Go to",
+      "emptyEnd": ", open the comparison chart and tap the star on any product to start tracking it.",
+      "productCount": "{{count}} product",
+      "productCount_plural": "{{count}} products",
+      "deleteList": "Delete list",
+      "emptyList": "This list doesn't have any products yet.",
+      "lastCheck": "Last check",
+      "neverChecked": "not checked yet",
+      "unfollow": "Stop tracking"
     }
   }
 }

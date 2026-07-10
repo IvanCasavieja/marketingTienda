@@ -225,7 +225,7 @@ export default function CampaignsPage() {
               { label: t("campaigns.clicks"),          curr: totals.clicks,      prev: cmpTotals.clicks,      fmt: fNum },
               { label: t("campaigns.conversions"),     curr: totals.conversions, prev: cmpTotals.conversions, fmt: fNum },
               {
-                label: "CPA promedio",
+                label: t("campaigns.avgCpa"),
                 curr: totals.conversions > 0 ? totals.spend / totals.conversions : 0,
                 prev: cmpTotals.conversions > 0 ? cmpTotals.spend / cmpTotals.conversions : 0,
                 fmt: (v: number) => v > 0 ? `$${v.toFixed(2)}` : "—",
@@ -241,7 +241,7 @@ export default function CampaignsPage() {
                   <p className="text-xs text-slate-400 mt-0.5">{fmt(prev)} {t("campaigns.prevPeriod")}</p>
                 )}
                 {comparing && cmpTotals.spend === 0 && (
-                  <p className="text-xs text-slate-300 dark:text-slate-600 mt-0.5">Sin datos del período anterior</p>
+                  <p className="text-xs text-slate-300 dark:text-slate-600 mt-0.5">{t("campaigns.noPrevPeriodData")}</p>
                 )}
               </div>
             ))}
@@ -271,7 +271,7 @@ export default function CampaignsPage() {
             showCampaignPicker ? "bg-brand-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
           }`}>
           <Search size={12} />
-          Campañas
+          {t("common.campaigns")}
           {selectedCampaigns.size > 0 && (
             <span className="bg-white/25 rounded-full px-1.5 text-[10px] font-bold">{selectedCampaigns.size}</span>
           )}
@@ -358,8 +358,8 @@ export default function CampaignsPage() {
             getGroup={(c) => PLATFORM_LABELS[c.platform] || c.platform}
             renderLabel={(c) => c.campaign_name}
             renderSubtitle={(c) => fMoney(c.spend)}
-            searchPlaceholder="Buscar campaña..."
-            emptyMessage={(q) => `Sin campañas para "${q}"`}
+            searchPlaceholder={t("campaigns.searchPlaceholder")}
+            emptyMessage={(q) => t("campaigns.noCampaignsFor", { q })}
           />
         </div>
       )}
@@ -446,8 +446,8 @@ export default function CampaignsPage() {
       {comparing && selectedCampaigns.size > 0 && (
         <div className="card overflow-hidden">
           <div className="px-4 sm:px-6 py-4 border-b border-slate-50 dark:border-slate-800">
-            <p className="section-title">Comparar campañas seleccionadas</p>
-            <p className="section-sub mt-0.5">Período actual vs. de comparación</p>
+            <p className="section-title">{t("campaigns.compareSelected")}</p>
+            <p className="section-sub mt-0.5">{t("campaigns.compareSelectedSub")}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px]">
@@ -506,9 +506,9 @@ export default function CampaignsPage() {
           </p>
           {(
             [
-              { label: "Inversión", curr: currentByCampaign[tooltipPos.key].spend,       prev: cmpByCampaign[tooltipPos.key].spend,       fmt: (v: number) => `$${v.toFixed(2)}` },
-              { label: "Clicks",    curr: currentByCampaign[tooltipPos.key].clicks,       prev: cmpByCampaign[tooltipPos.key].clicks,       fmt: fNum },
-              { label: "Conv.",     curr: currentByCampaign[tooltipPos.key].conversions,  prev: cmpByCampaign[tooltipPos.key].conversions,  fmt: fNum },
+              { label: t("campaigns.tableHeaders.investment"), curr: currentByCampaign[tooltipPos.key].spend,       prev: cmpByCampaign[tooltipPos.key].spend,       fmt: (v: number) => `$${v.toFixed(2)}` },
+              { label: t("campaigns.tableHeaders.clicks"),     curr: currentByCampaign[tooltipPos.key].clicks,       prev: cmpByCampaign[tooltipPos.key].clicks,       fmt: fNum },
+              { label: t("campaigns.tableHeaders.conv"),       curr: currentByCampaign[tooltipPos.key].conversions,  prev: cmpByCampaign[tooltipPos.key].conversions,  fmt: fNum },
             ] as Array<{ label: string; curr: number; prev: number; fmt: (v: number) => string }>
           ).map(({ label, curr, prev, fmt }) => (
             <div key={label} className="flex items-center justify-between mb-1.5">
@@ -522,7 +522,7 @@ export default function CampaignsPage() {
             </div>
           ))}
           <p className="text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
-            Total campaña · período anterior → actual
+            {t("campaigns.tooltipFooter")}
           </p>
         </div>
       )}

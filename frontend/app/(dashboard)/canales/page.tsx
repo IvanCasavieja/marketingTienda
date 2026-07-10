@@ -36,13 +36,14 @@ const CHANNEL_COLORS: Record<string, string> = {
 
 type TrendMetricKey = "sessions" | "purchase" | "revenue" | "avg_order_value" | "users";
 
-const TREND_METRICS: { key: TrendMetricKey; label: string }[] = [
-  { key: "sessions",        label: "Sesiones" },
-  { key: "purchase",        label: "Transacciones" },
-  { key: "revenue",         label: "Ingresos" },
-  { key: "avg_order_value", label: "Ticket promedio" },
-  { key: "users",           label: "Usuarios" },
-];
+const TREND_METRIC_KEYS: TrendMetricKey[] = ["sessions", "purchase", "revenue", "avg_order_value", "users"];
+const TREND_METRIC_I18N: Record<TrendMetricKey, string> = {
+  sessions:         "canales.trendMetrics.sessions",
+  purchase:         "canales.trendMetrics.purchase",
+  revenue:          "canales.trendMetrics.revenue",
+  avg_order_value:  "canales.trendMetrics.avgOrderValue",
+  users:            "canales.trendMetrics.users",
+};
 
 function formatTrendValue(key: TrendMetricKey, v: number): string {
   return key === "revenue" || key === "avg_order_value" ? fMoney(v) : fNum(v);
@@ -202,14 +203,14 @@ export default function CanalesPage() {
                     : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 }`}>
                 <Calendar size={11} />
-                Personalizado
+                {t("canales.custom")}
               </button>
             </div>
             <button onClick={() => setComparing((c) => !c)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
                 comparing ? "bg-brand-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
               }`}>
-              Comparar
+              {t("canales.compare")}
             </button>
             {comparing && (
               <div className="relative">
@@ -220,7 +221,7 @@ export default function CanalesPage() {
                 >
                   <option value="prev_period">{t("dashboard.prevPeriod")}</option>
                   <option value="prev_year">{t("dashboard.prevYear")}</option>
-                  <option value="custom">Personalizado</option>
+                  <option value="custom">{t("canales.custom")}</option>
                 </select>
                 <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               </div>
@@ -277,12 +278,12 @@ export default function CanalesPage() {
               curr={comparing && cmpTotals ? totals.users : undefined} prev={comparing && cmpTotals ? cmpTotals.users : undefined}
               icon={<Users size={18} className="text-white" />}
               gradient="from-slate-600 to-slate-700" />
-            <KPICard label="Compradores nuevos" value={fNum(totals.new_buyers)}
+            <KPICard label={t("canales.newBuyers")} value={fNum(totals.new_buyers)}
               sub={t("canales.allChannels")}
               curr={comparing && cmpTotals ? totals.new_buyers : undefined} prev={comparing && cmpTotals ? cmpTotals.new_buyers : undefined}
               icon={<UserPlus size={18} className="text-white" />}
               gradient="from-teal-500 to-teal-600" />
-            <KPICard label="Transacciones" value={fNum(totals.purchase)}
+            <KPICard label={t("canales.transactions")} value={fNum(totals.purchase)}
               sub={t("canales.allChannels")}
               curr={comparing && cmpTotals ? totals.purchase : undefined} prev={comparing && cmpTotals ? cmpTotals.purchase : undefined}
               icon={<ShoppingCart size={18} className="text-white" />}
@@ -297,7 +298,7 @@ export default function CanalesPage() {
               curr={comparing && cmpTotals ? conversionRate : undefined} prev={comparing && cmpTotals ? cmpConversionRate : undefined}
               icon={<Percent size={18} className="text-white" />}
               gradient="from-emerald-500 to-emerald-600" />
-            <KPICard label="Ticket promedio" value={fMoney(totals.avg_order_value)}
+            <KPICard label={t("canales.avgOrderValue")} value={fMoney(totals.avg_order_value)}
               sub={t("canales.allChannels")}
               curr={comparing && cmpTotals ? totals.avg_order_value : undefined} prev={comparing && cmpTotals ? cmpTotals.avg_order_value : undefined}
               icon={<Receipt size={18} className="text-white" />}
@@ -308,14 +309,14 @@ export default function CanalesPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="card p-4 flex items-center justify-between">
               <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Engagement rate</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{t("canales.engagementRate")}</p>
                 <p className="text-lg font-bold text-slate-900 dark:text-slate-100">{(totals.engagement_rate * 100).toFixed(1)}%</p>
               </div>
               {comparing && cmpTotals && <DeltaBadge curr={totals.engagement_rate} prev={cmpTotals.engagement_rate} variant="pill" />}
             </div>
             <div className="card p-4 flex items-center justify-between">
               <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Duración promedio de sesión</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{t("canales.avgSessionDuration")}</p>
                 <p className="text-lg font-bold text-slate-900 dark:text-slate-100">{Math.round(totals.avg_session_duration_sec)}s</p>
               </div>
               {comparing && cmpTotals && <DeltaBadge curr={totals.avg_session_duration_sec} prev={cmpTotals.avg_session_duration_sec} variant="pill" />}
@@ -330,7 +331,7 @@ export default function CanalesPage() {
               </div>
               <div className={comparing && cmpTotals ? "grid grid-cols-1 md:grid-cols-2 gap-6" : ""}>
                 <div>
-                  {comparing && cmpTotals && <p className="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wide">Actual</p>}
+                  {comparing && cmpTotals && <p className="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wide">{t("canales.current")}</p>}
                   <div className="space-y-2.5">
                     {funnelStages.map((stage, i) => (
                       <FunnelBar key={stage.label} label={stage.label} value={stage.value} max={funnelMax}
@@ -340,7 +341,7 @@ export default function CanalesPage() {
                 </div>
                 {comparing && cmpTotals && (
                   <div>
-                    <p className="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wide">Comparación</p>
+                    <p className="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wide">{t("canales.comparison")}</p>
                     <div className="space-y-2.5">
                       {cmpFunnelStages.map((stage, i) => (
                         <FunnelBar key={stage.label} label={stage.label} value={stage.value} max={cmpFunnelMax}
@@ -352,7 +353,7 @@ export default function CanalesPage() {
               </div>
               {comparing && cmpTotals && (
                 <div className="mt-5 pt-4 border-t border-slate-50 dark:border-slate-800">
-                  <p className="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wide">Variación por escalón</p>
+                  <p className="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wide">{t("canales.variationByStage")}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {funnelStages.map((stage, i) => (
                       <div key={stage.label} className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2">
@@ -372,14 +373,14 @@ export default function CanalesPage() {
                   <p className="section-sub mt-0.5">{t("canales.trendSub")}</p>
                 </div>
                 <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-                  {TREND_METRICS.map(({ key, label }) => (
+                  {TREND_METRIC_KEYS.map((key) => (
                     <button key={key} onClick={() => setTrendMetric(key)}
                       className={`px-2 py-1 rounded-md text-[10.5px] font-semibold transition-all duration-150 ${
                         trendMetric === key
                           ? "bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100"
                           : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                       }`}>
-                      {label}
+                      {t(TREND_METRIC_I18N[key])}
                     </button>
                   ))}
                 </div>
@@ -388,25 +389,25 @@ export default function CanalesPage() {
                 <>
                   <div className="flex items-center gap-3 mb-2">
                     <span className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
-                      <span className="w-2.5 h-0.5 bg-brand-500 inline-block" /> Actual
+                      <span className="w-2.5 h-0.5 bg-brand-500 inline-block" /> {t("canales.current")}
                     </span>
                     <span className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-600">
-                      <span className="w-2.5 h-0.5 bg-slate-400 inline-block" /> Comparación
+                      <span className="w-2.5 h-0.5 bg-slate-400 inline-block" /> {t("canales.comparison")}
                     </span>
                   </div>
                   <ResponsiveContainer width="100%" height={230}>
                     <LineChart data={trendChartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                       <XAxis dataKey="idx" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false}
-                        tickFormatter={(i) => `Día ${i}`} minTickGap={30} />
+                        tickFormatter={(i) => t("canales.dayN", { n: i })} minTickGap={30} />
                       <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                       <Tooltip
                         formatter={(v: any) => formatTrendValue(trendMetric, Number(v))}
-                        labelFormatter={(i) => `Día ${i}`}
+                        labelFormatter={(i) => t("canales.dayN", { n: i })}
                         contentStyle={{ borderRadius: 12, border: "1px solid #f1f5f9", fontSize: 12 }}
                       />
-                      <Line type="monotone" dataKey="curr" name="Actual" stroke="#6366f1" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="cmp" name="Comparación" stroke="#94a3b8" strokeWidth={2} strokeDasharray="4 3" dot={false} />
+                      <Line type="monotone" dataKey="curr" name={t("canales.current")} stroke="#6366f1" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="cmp" name={t("canales.comparison")} stroke="#94a3b8" strokeWidth={2} strokeDasharray="4 3" dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </>
@@ -425,7 +426,7 @@ export default function CanalesPage() {
                     <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                     <Tooltip
                       labelFormatter={(d) => d ? format(new Date(d + "T00:00:00"), "d MMM yyyy") : ""}
-                      formatter={(v: any) => [formatTrendValue(trendMetric, Number(v)), TREND_METRICS.find((m) => m.key === trendMetric)?.label]}
+                      formatter={(v: any) => [formatTrendValue(trendMetric, Number(v)), t(TREND_METRIC_I18N[trendMetric])]}
                       contentStyle={{ borderRadius: 12, border: "1px solid #f1f5f9", fontSize: 12 }}
                     />
                     <Area type="monotone" dataKey="curr" stroke="#6366f1" strokeWidth={2} fill="url(#trendGradient)" />

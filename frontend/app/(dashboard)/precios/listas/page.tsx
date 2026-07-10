@@ -5,14 +5,16 @@ import { fMoneyByCurrency } from "@/lib/format";
 import { CadenaBadge } from "@/components/precios/cadenaConfig";
 import { Loader2, Star, Trash2, ExternalLink, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
-function formatFecha(iso: string | null): string {
-  if (!iso) return "todavía sin chequear";
+function formatFecha(iso: string | null, locale: string, sinChequear: string): string {
+  if (!iso) return sinChequear;
   const d = new Date(iso);
-  return d.toLocaleDateString("es-UY", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 export default function ListasMonitoreoPage() {
+  const { t, i18n } = useTranslation();
   const [listas, setListas] = useState<WatchlistConItems[] | null>(null);
   const [borrando, setBorrando] = useState<number | null>(null);
 
@@ -25,7 +27,7 @@ export default function ListasMonitoreoPage() {
       const { data } = await watchlistApi.listar();
       setListas(data);
     } catch {
-      toast.error("No se pudieron cargar las listas de monitoreo");
+      toast.error(t("precios.listas.loadError"));
       setListas([]);
     }
   }
@@ -35,9 +37,9 @@ export default function ListasMonitoreoPage() {
     try {
       await watchlistApi.eliminar(id);
       setListas((prev) => prev?.filter((l) => l.id !== id) ?? null);
-      toast.success("Lista eliminada");
+      toast.success(t("precios.listas.listDeleted"));
     } catch {
-      toast.error("No se pudo eliminar la lista");
+      toast.error(t("precios.listas.listDeleteError"));
     } finally {
       setBorrando(null);
     }
@@ -52,7 +54,7 @@ export default function ListasMonitoreoPage() {
         ) ?? null
       );
     } catch {
-      toast.error("No se pudo sacar el producto de la lista");
+      toast.error(t("precios.listas.itemDeleteError"));
     }
   }
 
@@ -69,9 +71,9 @@ export default function ListasMonitoreoPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Listas de monitoreo</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("sidebar.listasMonitoreo")}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-          Productos que seguís de la competencia — se chequean solos todos los días y te avisamos si cambia el precio.
+          {t("precios.listas.subtitle")}
         </p>
       </div>
 
@@ -81,9 +83,9 @@ export default function ListasMonitoreoPage() {
             <Star size={22} className="text-brand-600" />
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">
-            Todavía no seguís ningún producto. Andá a{" "}
-            <a href="/precios" className="text-brand-600 hover:underline">Buscar precios</a>, abrí el
-            gráfico comparativo y tocá la estrellita en cualquier producto para empezar a seguirlo.
+            {t("precios.listas.emptyStart")}{" "}
+            <a href="/precios" className="text-brand-600 hover:underline">{t("sidebar.buscarPrecios")}</a>
+            {t("precios.listas.emptyEnd")}
           </p>
         </div>
       )}
@@ -93,19 +95,19 @@ export default function ListasMonitoreoPage() {
           <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-slate-100 dark:border-slate-800">
             <ClipboardList size={15} className="text-brand-500 shrink-0" />
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 flex-1 truncate">{lista.nombre}</p>
-            <span className="text-xs text-slate-400 shrink-0">{lista.items.length} producto(s)</span>
+            <span className="text-xs text-slate-400 shrink-0">{t("precios.listas.productCount", { count: lista.items.length })}</span>
             <button
               onClick={() => eliminarLista(lista.id)}
               disabled={borrando === lista.id}
               className="text-slate-300 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400 transition-colors shrink-0 disabled:opacity-40"
-              title="Eliminar lista"
+              title={t("precios.listas.deleteList")}
             >
               <Trash2 size={14} />
             </button>
           </div>
 
           {lista.items.length === 0 ? (
-            <p className="text-xs text-slate-400 text-center py-6">Esta lista todavía no tiene productos.</p>
+            <p className="text-xs text-slate-400 text-center py-6">{t("precios.listas.emptyList")}</p>
           ) : (
             <div className="divide-y divide-slate-50 dark:divide-slate-800">
               {lista.items.map((item) => (
@@ -118,7 +120,7 @@ export default function ListasMonitoreoPage() {
                         <span className="text-[11px] text-slate-500 dark:text-slate-400">{item.sucursal_nombre}</span>
                       )}
                       <span className="text-[11px] text-slate-400">
-                        Último chequeo: {formatFecha(item.ultimo_chequeo)}
+                        {t("precios.listas.lastCheck")}: {formatFecha(item.ultimo_chequeo, i18n.language, t("precios.listas.neverChecked"))}
                       </span>
                     </div>
                   </div>
@@ -130,14 +132,14 @@ export default function ListasMonitoreoPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shrink-0"
-                    title="Ver en la tienda"
+                    title={t("precios.viewInStore")}
                   >
                     <ExternalLink size={14} />
                   </a>
                   <button
                     onClick={() => eliminarItem(lista.id, item.id)}
                     className="text-slate-300 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400 transition-colors shrink-0"
-                    title="Dejar de seguir"
+                    title={t("precios.listas.unfollow")}
                   >
                     <Trash2 size={14} />
                   </button>

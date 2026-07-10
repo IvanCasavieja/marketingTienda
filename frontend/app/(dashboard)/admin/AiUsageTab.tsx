@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { DollarSign, Cpu, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { adminApi, type AiUsageSummary } from "@/lib/api";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 
@@ -63,6 +64,7 @@ function BreakdownBar({ label, color, value, max }: { label: string; color: stri
 }
 
 export default function AiUsageTab() {
+  const { t, i18n } = useTranslation();
   const [data, setData] = useState<AiUsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(30);
@@ -77,7 +79,7 @@ export default function AiUsageTab() {
       const { data } = await adminApi.aiUsageSummary(from, today);
       setData(data);
     } catch {
-      toast.error("No se pudo cargar el uso de IA.");
+      toast.error(t("admin.aiUsage.loadError"));
     } finally {
       setLoading(false);
     }
@@ -120,32 +122,32 @@ export default function AiUsageTab() {
             <DollarSign size={18} className="text-white" />
           </div>
           <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{fUsd(data.total_cost_usd)}</p>
-          <p className="text-xs text-slate-500 mt-0.5">Costo estimado total</p>
+          <p className="text-xs text-slate-500 mt-0.5">{t("admin.aiUsage.totalCost")}</p>
         </div>
         <div className="card p-5">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center shadow-sm mb-3">
             <ArrowDownToLine size={18} className="text-white" />
           </div>
-          <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{data.total_input_tokens.toLocaleString("es-UY")}</p>
-          <p className="text-xs text-slate-500 mt-0.5">Tokens de entrada</p>
+          <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{data.total_input_tokens.toLocaleString(i18n.language)}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{t("admin.aiUsage.inputTokens")}</p>
         </div>
         <div className="card p-5">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center shadow-sm mb-3">
             <ArrowUpFromLine size={18} className="text-white" />
           </div>
-          <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{data.total_output_tokens.toLocaleString("es-UY")}</p>
-          <p className="text-xs text-slate-500 mt-0.5">Tokens de salida</p>
+          <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{data.total_output_tokens.toLocaleString(i18n.language)}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{t("admin.aiUsage.outputTokens")}</p>
         </div>
       </div>
 
       <div className="card p-6">
         <div className="mb-4">
-          <p className="section-title">Costo diario</p>
-          <p className="section-sub mt-0.5">Estimado, en USD</p>
+          <p className="section-title">{t("admin.aiUsage.dailyCost")}</p>
+          <p className="section-sub mt-0.5">{t("admin.aiUsage.dailyCostSub")}</p>
         </div>
         {data.daily.length === 0 ? (
           <div className="h-52 flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">
-            Sin uso de IA registrado en este período.
+            {t("admin.aiUsage.noUsage")}
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
@@ -162,7 +164,7 @@ export default function AiUsageTab() {
               <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <Tooltip
                 labelFormatter={(d) => d ? format(new Date(d + "T00:00:00"), "d MMM yyyy") : ""}
-                formatter={(v: any) => [fUsd(Number(v)), "Costo"]}
+                formatter={(v: any) => [fUsd(Number(v)), t("admin.aiUsage.cost")]}
                 contentStyle={{ borderRadius: 12, border: "1px solid #f1f5f9", fontSize: 12 }}
               />
               <Area type="monotone" dataKey="cost_usd" stroke="#6366f1" strokeWidth={2} fill="url(#aiCostGradient)" />
@@ -174,10 +176,10 @@ export default function AiUsageTab() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="card p-6">
           <div className="mb-4">
-            <p className="section-title">Costo por proveedor</p>
+            <p className="section-title">{t("admin.aiUsage.byProvider")}</p>
           </div>
           {data.by_provider.length === 0 ? (
-            <p className="text-sm text-slate-400">Sin datos.</p>
+            <p className="text-sm text-slate-400">{t("admin.aiUsage.noData")}</p>
           ) : (
             <div className="space-y-3">
               {data.by_provider.map((p) => (
@@ -190,10 +192,10 @@ export default function AiUsageTab() {
 
         <div className="card p-6">
           <div className="mb-4">
-            <p className="section-title">Costo por feature</p>
+            <p className="section-title">{t("admin.aiUsage.byFeature")}</p>
           </div>
           {data.by_feature.length === 0 ? (
-            <p className="text-sm text-slate-400">Sin datos.</p>
+            <p className="text-sm text-slate-400">{t("admin.aiUsage.noData")}</p>
           ) : (
             <div className="space-y-3">
               {data.by_feature.map((f) => (
@@ -208,15 +210,15 @@ export default function AiUsageTab() {
       <div className="card overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-slate-50 dark:border-slate-800 flex items-center gap-2">
           <Cpu size={15} className="text-slate-400" />
-          <p className="section-title">Top usuarios por costo</p>
+          <p className="section-title">{t("admin.aiUsage.topUsers")}</p>
         </div>
         {data.by_user.length === 0 ? (
-          <p className="text-sm text-slate-400 px-6 py-6">Sin datos.</p>
+          <p className="text-sm text-slate-400 px-6 py-6">{t("admin.aiUsage.noData")}</p>
         ) : (
           <div className="divide-y divide-slate-50 dark:divide-slate-800">
             {data.by_user.map((u, i) => (
               <div key={u.user_id ?? i} className="flex items-center justify-between px-5 py-2.5">
-                <span className="text-sm text-slate-700 dark:text-slate-300">{u.user_email ?? "Usuario eliminado"}</span>
+                <span className="text-sm text-slate-700 dark:text-slate-300">{u.user_email ?? t("admin.aiUsage.deletedUser")}</span>
                 <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{fUsd(u.cost_usd)}</span>
               </div>
             ))}

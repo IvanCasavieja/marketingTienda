@@ -1,32 +1,35 @@
 "use client";
 import Link from "next/link";
 import { Presentation, Layers, ChevronRight } from "lucide-react";
-
-const tools = [
-  {
-    href:        "/herramientas/cenefas",
-    title:       "Generar cenefas",
-    description: "Cargá el Excel de productos y una plantilla PPTX para generar las cenefas al instante. Flujo rápido para el día a día.",
-    icon:        Presentation,
-    tag:         "Clásico",
-    tagColor:    "bg-slate-500/10 text-slate-400",
-  },
-  {
-    href:        "/herramientas/cenefas/v2",
-    title:       "Editor de plantillas",
-    description: "Diseñá o importá una plantilla visualmente, asignás variables del Excel, configurás reglas y generás cenefas con tu diseño.",
-    icon:        Layers,
-    tag:         "Editor",
-    tagColor:    "bg-brand-500/10 text-brand-400",
-  },
-];
+import { useTranslation } from "react-i18next";
 
 export default function HerramientasPage() {
+  const { t } = useTranslation();
+
+  const tools = [
+    {
+      href:        "/herramientas/cenefas",
+      title:       t("herramientas.cenefas.title"),
+      description: t("herramientas.cenefas.description"),
+      icon:        Presentation,
+      tag:         t("herramientas.cenefas.tag"),
+      tagColor:    "bg-slate-500/10 text-slate-400",
+    },
+    {
+      href:        "/herramientas/cenefas/v2",
+      title:       t("herramientas.editor.title"),
+      description: t("herramientas.editor.description"),
+      icon:        Layers,
+      tag:         t("herramientas.editor.tag"),
+      tagColor:    "bg-brand-500/10 text-brand-400",
+    },
+  ];
+
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="section-title">Herramientas</h1>
-        <p className="section-sub mt-1">Generadores y utilidades para el equipo de marketing.</p>
+        <h1 className="section-title">{t("herramientas.title")}</h1>
+        <p className="section-sub mt-1">{t("herramientas.subtitle")}</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -46,7 +49,7 @@ export default function HerramientasPage() {
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">{description}</p>
             </div>
             <div className="flex items-center gap-1 text-xs text-brand-400 font-medium mt-auto">
-              Abrir herramienta <ChevronRight size={13} />
+              {t("herramientas.openTool")} <ChevronRight size={13} />
             </div>
           </Link>
         ))}

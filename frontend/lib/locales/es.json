@@ -155,7 +155,8 @@
       "platformLowRoas": "{{platform}}: ROAS de {{roas}}x — considera pausar o ajustar presupuesto"
     },
     "syncSuccess": "Sincronizadas {{n}} plataforma(s) correctamente",
-    "syncError": "No se pudo sincronizar ninguna plataforma"
+    "syncError": "No se pudo sincronizar ninguna plataforma",
+    "loadError": "Error al cargar los datos del dashboard"
   },
   "canales": {
     "title": "Analytics GA4",
@@ -187,6 +188,24 @@
       "conversionRate": "Tasa conv.",
       "engagement": "Engagement",
       "revenue": "Revenue"
+    },
+    "custom": "Personalizado",
+    "compare": "Comparar",
+    "newBuyers": "Compradores nuevos",
+    "transactions": "Transacciones",
+    "avgOrderValue": "Ticket promedio",
+    "engagementRate": "Engagement rate",
+    "avgSessionDuration": "Duración promedio de sesión",
+    "current": "Actual",
+    "comparison": "Comparación",
+    "variationByStage": "Variación por escalón",
+    "dayN": "Día {{n}}",
+    "trendMetrics": {
+      "sessions": "Sesiones",
+      "purchase": "Transacciones",
+      "revenue": "Ingresos",
+      "avgOrderValue": "Ticket promedio",
+      "users": "Usuarios"
     }
   },
   "campaigns": {
@@ -222,7 +241,13 @@
     "syncError": "Error al sincronizar {{platform}}",
     "syncSuccess": "{{platform}}: {{n}} registros sincronizados",
     "loadError": "Error cargando métricas",
-    "footer": "{{n}} campañas · {{spend}} de inversión total"
+    "footer": "{{n}} campañas · {{spend}} de inversión total",
+    "noCampaignsFor": "Sin campañas para \"{{q}}\"",
+    "compareSelected": "Comparar campañas seleccionadas",
+    "compareSelectedSub": "Período actual vs. de comparación",
+    "avgCpa": "CPA promedio",
+    "noPrevPeriodData": "Sin datos del período anterior",
+    "tooltipFooter": "Total campaña · período anterior → actual"
   },
   "analytics": {
     "title": "Análisis con IA",
@@ -422,6 +447,41 @@
       "analytics": "Analytics",
       "connections": "Conexiones",
       "ai": "Inteligencia Artificial"
+    },
+    "tabs": {
+      "users": "Usuarios y Roles",
+      "auditLog": "Auditoría",
+      "aiUsage": "Uso de IA"
+    },
+    "auditLog": {
+      "title": "Auditoría",
+      "entryCount": "{{count}} registro",
+      "entryCount_plural": "{{count}} registros",
+      "loadError": "No se pudo cargar el historial de auditoría.",
+      "empty": "Sin actividad registrada todavía.",
+      "tableHeaders": {
+        "date": "Fecha",
+        "user": "Usuario",
+        "action": "Acción",
+        "resource": "Recurso",
+        "details": "Detalle"
+      },
+      "loadMore": "Cargar más"
+    },
+    "aiUsage": {
+      "loadError": "No se pudo cargar el uso de IA.",
+      "totalCost": "Costo estimado total",
+      "inputTokens": "Tokens de entrada",
+      "outputTokens": "Tokens de salida",
+      "dailyCost": "Costo diario",
+      "dailyCostSub": "Estimado, en USD",
+      "noUsage": "Sin uso de IA registrado en este período.",
+      "cost": "Costo",
+      "byProvider": "Costo por proveedor",
+      "byFeature": "Costo por feature",
+      "noData": "Sin datos.",
+      "topUsers": "Top usuarios por costo",
+      "deletedUser": "Usuario eliminado"
     }
   },
   "redexpress": {
@@ -457,7 +517,21 @@
     "errorCrearMes": "Error al crear mes",
     "errorCargarMeses": "Error al cargar meses",
     "errorCargarPlanilla": "Error al cargar la planilla",
-    "months": ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+    "months": [
+      "",
+      "Enero",
+      "Febrero",
+      "Marzo",
+      "Abril",
+      "Mayo",
+      "Junio",
+      "Julio",
+      "Agosto",
+      "Septiembre",
+      "Octubre",
+      "Noviembre",
+      "Diciembre"
+    ],
     "groups": {
       "ofertas": "Ofertas",
       "vdsSupremo": "VDS y Supremo",
@@ -482,6 +556,77 @@
       "aficheSuperAhorro": "Afiche Super Ahorro",
       "pinchosDiasExpres": "Pinchos Días Expres",
       "hojasAmarillas": "Hojas Amarillas"
+    }
+  },
+  "herramientas": {
+    "title": "Herramientas",
+    "subtitle": "Generadores y utilidades para el equipo de marketing.",
+    "openTool": "Abrir herramienta",
+    "cenefas": {
+      "tag": "Clásico",
+      "title": "Generar cenefas",
+      "description": "Cargá el Excel de productos y una plantilla PPTX para generar las cenefas al instante. Flujo rápido para el día a día."
+    },
+    "editor": {
+      "tag": "Editor",
+      "title": "Editor de plantillas",
+      "description": "Diseñá o importá una plantilla visualmente, asignás variables del Excel, configurás reglas y generás cenefas con tu diseño."
+    }
+  },
+  "precios": {
+    "title": "Buscar precios en vivo",
+    "subtitle": "Supermercados, farmacias y electrodomésticos — en tiempo real",
+    "searchPlaceholder": "Ej: arroz 5kg, leche entera, jabón dove… (Enter para buscar)",
+    "searching": "Buscando…",
+    "search": "Buscar",
+    "searchError": "Error al buscar",
+    "chainsCoverage": "13 cadenas · 134+ sucursales consultadas en tiempo real",
+    "all": "Todas",
+    "categorias": {
+      "supermercados": "Supermercados",
+      "farmacia": "Farmacia",
+      "electronica": "Electrónica",
+      "otros": "Otros"
+    },
+    "chainNoData": "cadena sin datos",
+    "chainNoData_plural": "cadenas sin datos",
+    "noResultsTooltip": "Respondió pero sin resultados",
+    "noResponseTooltip": "Sin respuesta — posible bloqueo geográfico o timeout",
+    "allBranches": "Todas las sucursales",
+    "sortRelevance": "Por relevancia",
+    "sortPriceAsc": "Precio: menor primero",
+    "sortPriceDesc": "Precio: mayor primero",
+    "viewChart": "Ver gráfico",
+    "cheapest": "Más barato",
+    "at": "en",
+    "noResultsFor": "Sin resultados para",
+    "noResultsHint": "Probá con menos palabras, ej: \"arroz saman\" en vez de \"arroz saman parboiled 5kg\"",
+    "tableHeaders": {
+      "product": "Producto",
+      "price": "Precio",
+      "view": "Ver"
+    },
+    "noResultsFilteredFrom": "Ningún resultado de",
+    "noResultsFilteredFor": "para este término.",
+    "bestPrice": "mejor precio",
+    "sharedCatalogTooltip": "{{chain1}} y {{chain2}} comparten catálogo — el link te lleva a {{chain2}}",
+    "actuallyFrom": "en realidad es de",
+    "viewInStore": "Ver en tienda",
+    "listas": {
+      "loadError": "No se pudieron cargar las listas de monitoreo",
+      "listDeleted": "Lista eliminada",
+      "listDeleteError": "No se pudo eliminar la lista",
+      "itemDeleteError": "No se pudo sacar el producto de la lista",
+      "subtitle": "Productos que seguís de la competencia — se chequean solos todos los días y te avisamos si cambia el precio.",
+      "emptyStart": "Todavía no seguís ningún producto. Andá a",
+      "emptyEnd": ", abrí el gráfico comparativo y tocá la estrellita en cualquier producto para empezar a seguirlo.",
+      "productCount": "{{count}} producto",
+      "productCount_plural": "{{count}} productos",
+      "deleteList": "Eliminar lista",
+      "emptyList": "Esta lista todavía no tiene productos.",
+      "lastCheck": "Último chequeo",
+      "neverChecked": "todavía sin chequear",
+      "unfollow": "Dejar de seguir"
     }
   }
 }

@@ -9,6 +9,14 @@ import { CADENA_CONFIG, CADENA_CATEGORIA, CadenaBadge } from "@/components/preci
 import DonTinoFloating from "@/components/DonTinoFloating";
 import SeguirButton from "@/components/precios/SeguirButton";
 import { WatchlistsProvider } from "@/components/precios/WatchlistsContext";
+import { useTranslation } from "react-i18next";
+
+const CATEGORIA_KEYS: Record<string, string> = {
+  "Supermercados": "precios.categorias.supermercados",
+  "Farmacia":       "precios.categorias.farmacia",
+  "Electrónica":    "precios.categorias.electronica",
+  "Otros":          "precios.categorias.otros",
+};
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
@@ -29,6 +37,7 @@ function SkeletonRow() {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function PreciosPage() {
+  const { t } = useTranslation();
   const [q,            setQ]            = useState("");
   const [loading,      setLoading]      = useState(false);
   const [streaming,    setStreaming]     = useState(false);
@@ -102,7 +111,7 @@ export default function PreciosPage() {
       }
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
-      toast.error("Error al buscar");
+      toast.error(t("precios.searchError"));
       setResults((prev) => prev ?? []);
     } finally {
       setLoading(false);
@@ -238,16 +247,16 @@ export default function PreciosPage() {
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-600/10 mb-3">
               <Search size={22} className="text-brand-600" />
             </div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Buscar precios en vivo</h1>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">{t("precios.title")}</h1>
             <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm">
-              Supermercados, farmacias y electrodomésticos — en tiempo real
+              {t("precios.subtitle")}
             </p>
           </div>
         )}
         {isActive && (
           <div className="flex items-center gap-3 mb-3">
             <Search size={16} className="text-brand-600 shrink-0" />
-            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">Buscar precios en vivo</h1>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">{t("precios.title")}</h1>
           </div>
         )}
 
@@ -257,7 +266,7 @@ export default function PreciosPage() {
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Ej: arroz 5kg, leche entera, jabón dove… (Enter para buscar)"
+            placeholder={t("precios.searchPlaceholder")}
             className="w-full pl-11 pr-32 py-3 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 shadow-sm transition-all"
             disabled={loading}
           />
@@ -267,7 +276,7 @@ export default function PreciosPage() {
             className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2"
           >
             {loading ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
-            {loading ? "Buscando…" : "Buscar"}
+            {loading ? t("precios.searching") : t("precios.search")}
           </button>
         </form>
       </div>
@@ -283,7 +292,7 @@ export default function PreciosPage() {
               </div>
             ))}
           </div>
-          <p className="text-xs text-slate-400">13 cadenas · 134+ sucursales consultadas en tiempo real</p>
+          <p className="text-xs text-slate-400">{t("precios.chainsCoverage")}</p>
         </div>
       )}
 
@@ -303,13 +312,13 @@ export default function PreciosPage() {
                     : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
                 }`}
               >
-                Todas {results && `(${results.length})`}
+                {t("precios.all")} {results && `(${results.length})`}
               </button>
 
               {cadenasPorCategoria.map(({ categoria, items: chips }) => (
                 <div key={categoria} className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide shrink-0">
-                    {categoria}
+                    {CATEGORIA_KEYS[categoria] ? t(CATEGORIA_KEYS[categoria]) : categoria}
                   </span>
                   {chips.map((c) => {
                     const cfg = CADENA_CONFIG[c];
@@ -348,17 +357,17 @@ export default function PreciosPage() {
                     className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors mt-0.5"
                   >
                     {showDiagnostico ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                    {totalDiagnostico} {totalDiagnostico === 1 ? "cadena sin datos" : "cadenas sin datos"}
+                    {totalDiagnostico} {totalDiagnostico === 1 ? t("precios.chainNoData") : t("precios.chainNoData_plural")}
                   </button>
                   {showDiagnostico && (
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
                       {cadenasSinResultado.map((c) => (
-                        <span key={c} title="Respondió pero sin resultados" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
+                        <span key={c} title={t("precios.noResultsTooltip")} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
                           {CADENA_CONFIG[c]?.label ?? c} · 0
                         </span>
                       ))}
                       {cadenasSinRespuesta.map((c) => (
-                        <span key={c} title="Sin respuesta — posible bloqueo geográfico o timeout" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 line-through cursor-help">
+                        <span key={c} title={t("precios.noResponseTooltip")} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 line-through cursor-help">
                           {CADENA_CONFIG[c]?.label ?? c}
                         </span>
                       ))}
@@ -386,7 +395,7 @@ export default function PreciosPage() {
                   onChange={(e) => setFilterSucursal(e.target.value || null)}
                   className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all max-w-[200px]"
                 >
-                  <option value="">Todas las sucursales</option>
+                  <option value="">{t("precios.allBranches")}</option>
                   {sucursalGroups.map(({ tienda, items }) => (
                     <optgroup key={tienda} label={CADENA_CONFIG[tienda]?.label ?? tienda}>
                       {items.map((s) => (
@@ -404,7 +413,7 @@ export default function PreciosPage() {
                 className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
               >
                 <TrendingDown size={13} className={sortMode === "precio-desc" ? "rotate-180 transition-transform" : "transition-transform"} />
-                {sortMode === "relevancia" ? "Por relevancia" : sortMode === "precio-asc" ? "Precio: menor primero" : "Precio: mayor primero"}
+                {sortMode === "relevancia" ? t("precios.sortRelevance") : sortMode === "precio-asc" ? t("precios.sortPriceAsc") : t("precios.sortPriceDesc")}
               </button>
 
               {hasResults && (
@@ -413,7 +422,7 @@ export default function PreciosPage() {
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors ml-auto"
                 >
                   <BarChart3 size={13} />
-                  Ver gráfico
+                  {t("precios.viewChart")}
                 </button>
               )}
             </div>
@@ -424,7 +433,7 @@ export default function PreciosPage() {
             <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900 text-sm">
               <Store size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span className="text-emerald-700 dark:text-emerald-400 text-xs">
-                Más barato: <strong>{cheapest.nombre}</strong> en{" "}
+                {t("precios.cheapest")}: <strong>{cheapest.nombre}</strong> {t("precios.at")}{" "}
                 <strong>{CADENA_CONFIG[cheapest.tienda]?.label ?? cheapest.tienda}</strong>
                 {cheapest.sucursal_nombre && ` (${cheapest.sucursal_nombre})`} —{" "}
                 <strong>{fMoneyByCurrency(cheapest.precio!, cheapest.moneda)}</strong>
@@ -446,7 +455,7 @@ export default function PreciosPage() {
             {!loading && !streaming && results !== null && results.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400 py-16">
                 <Search size={28} className="opacity-20" />
-                <p className="text-sm">Sin resultados para <em>"{lastQuery}"</em></p>
+                <p className="text-sm">{t("precios.noResultsFor")} <em>"{lastQuery}"</em></p>
                 {Object.keys(cadenaErrors).length > 0 && (
                   <div className="mt-2 space-y-1 max-w-sm text-left">
                     {Object.entries(cadenaErrors).map(([c, err]) => (
@@ -458,7 +467,7 @@ export default function PreciosPage() {
                   </div>
                 )}
                 <p className="text-xs text-slate-300 dark:text-slate-600">
-                  Probá con menos palabras, ej: "arroz saman" en vez de "arroz saman parboiled 5kg"
+                  {t("precios.noResultsHint")}
                 </p>
               </div>
             )}
@@ -468,9 +477,9 @@ export default function PreciosPage() {
               <>
                 {/* Header */}
                 <div className="shrink-0 flex items-center px-4 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  <div className="flex-1">Producto</div>
-                  <div className="w-28 text-right mr-3">Precio</div>
-                  <div className="w-14 text-center">Ver</div>
+                  <div className="flex-1">{t("precios.tableHeaders.product")}</div>
+                  <div className="w-28 text-right mr-3">{t("precios.tableHeaders.price")}</div>
+                  <div className="w-14 text-center">{t("precios.tableHeaders.view")}</div>
                   <div className="w-5" />
                 </div>
 
@@ -478,9 +487,9 @@ export default function PreciosPage() {
                 <div className="flex-1 overflow-y-auto divide-y divide-slate-50 dark:divide-slate-800/50">
                   {visible.length === 0 ? (
                     <div className="py-8 text-center text-sm text-slate-400">
-                      Ningún resultado de{" "}
+                      {t("precios.noResultsFilteredFrom")}{" "}
                       <em>{[...filterCadenas].map((c) => CADENA_CONFIG[c]?.label ?? c).join(", ")}</em>
-                      {" "}para este término.
+                      {" "}{t("precios.noResultsFilteredFor")}
                     </div>
                   ) : visible.map((p, i) => {
                     const hasDesc = p.precio_lista !== null && p.precio_lista > (p.precio ?? 0);
@@ -503,7 +512,7 @@ export default function PreciosPage() {
                             </span>
                             {isCheap && (
                               <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide bg-emerald-500 text-white px-1.5 py-0.5 rounded-full">
-                                mejor precio
+                                {t("precios.bestPrice")}
                               </span>
                             )}
                           </div>
@@ -514,11 +523,14 @@ export default function PreciosPage() {
                             )}
                             {p.tienda_real && p.tienda_real !== p.tienda && (
                               <span
-                                title={`${CADENA_CONFIG[p.tienda]?.label ?? p.tienda} y ${CADENA_CONFIG[p.tienda_real]?.label ?? p.tienda_real} comparten catálogo — el link te lleva a ${CADENA_CONFIG[p.tienda_real]?.label ?? p.tienda_real}`}
+                                title={t("precios.sharedCatalogTooltip", {
+                                  chain1: CADENA_CONFIG[p.tienda]?.label ?? p.tienda,
+                                  chain2: CADENA_CONFIG[p.tienda_real]?.label ?? p.tienda_real,
+                                })}
                                 className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400 shrink-0"
                               >
                                 <ArrowRight size={10} />
-                                en realidad es de {CADENA_CONFIG[p.tienda_real]?.label ?? p.tienda_real}
+                                {t("precios.actuallyFrom")} {CADENA_CONFIG[p.tienda_real]?.label ?? p.tienda_real}
                               </span>
                             )}
                           </div>
@@ -548,10 +560,10 @@ export default function PreciosPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:border-brand-500 hover:bg-brand-100 dark:hover:bg-brand-900/50 transition-all"
-                            title="Ver en tienda"
+                            title={t("precios.viewInStore")}
                           >
                             <ExternalLink size={11} />
-                            Ver
+                            {t("precios.tableHeaders.view")}
                           </a>
                         </div>
 

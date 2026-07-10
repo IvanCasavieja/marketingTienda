@@ -217,7 +217,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </button>
 
           {showNotifMenu && (
-            <div className="absolute bottom-full right-3 mb-1 w-72 bg-slate-800 border border-white/10 rounded-xl shadow-lg z-50 overflow-hidden">
+            <div className="absolute bottom-full left-3 mb-1 w-72 max-w-[calc(100vw-1.5rem)] bg-slate-800 border border-white/10 rounded-xl shadow-lg z-50 overflow-hidden">
               <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-white/5">
                 <p className="text-xs font-semibold text-slate-200">{t("sidebar.notificaciones")}</p>
                 {notifCount > 0 && (

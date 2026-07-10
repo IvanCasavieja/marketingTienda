@@ -501,7 +501,7 @@ export default function AdminPage() {
               ? "bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100"
               : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
           }`}>
-          <Users size={13} /> Usuarios y Roles
+          <Users size={13} /> {t("admin.tabs.users")}
         </button>
         <button onClick={() => setActiveTab("auditoria")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
@@ -509,7 +509,7 @@ export default function AdminPage() {
               ? "bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100"
               : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
           }`}>
-          <History size={13} /> Auditoría
+          <History size={13} /> {t("admin.tabs.auditLog")}
         </button>
         <button onClick={() => setActiveTab("ia")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
@@ -517,7 +517,7 @@ export default function AdminPage() {
               ? "bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100"
               : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
           }`}>
-          <Cpu size={13} /> Uso de IA
+          <Cpu size={13} /> {t("admin.tabs.aiUsage")}
         </button>
       </div>
 
