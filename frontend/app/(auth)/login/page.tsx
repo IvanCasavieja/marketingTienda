@@ -112,7 +112,7 @@ export default function LoginPage() {
                 {t("login.email")}
               </label>
               <input
-                type="email"
+                type="text"
                 name="email"
                 autoComplete="email"
                 required

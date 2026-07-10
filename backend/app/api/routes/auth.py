@@ -13,6 +13,7 @@ from app.core.security import hash_password, verify_password, create_access_toke
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.audit_log import AuditLog
+from app.models.local_asignacion import LocalAsignacion
 from app.schemas.auth import (
     UserRegister,
     UserLogin,
@@ -55,7 +56,7 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _user_response(user: User) -> UserResponse:
+def _user_response(user: User, assigned_locales: list[str] | None = None) -> UserResponse:
     role = user.role
     return UserResponse(
         id=user.id,
@@ -66,6 +67,7 @@ def _user_response(user: User) -> UserResponse:
         role_id=role.id if role else None,
         role_name=role.name if role else None,
         permissions=user.permissions or [],
+        assigned_locales=assigned_locales or [],
     )
 
 
@@ -150,7 +152,11 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         .options(selectinload(User.role))
         .where(User.id == current_user.id)
     )
-    return _user_response(result.scalar_one())
+    locales_result = await db.execute(
+        select(LocalAsignacion.local_nombre).where(LocalAsignacion.user_id == current_user.id)
+    )
+    assigned_locales = list(locales_result.scalars().all())
+    return _user_response(result.scalar_one(), assigned_locales)
 
 
 @router.post("/forgot-password", status_code=200)

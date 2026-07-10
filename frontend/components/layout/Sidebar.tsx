@@ -68,6 +68,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,           section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,        section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/redexpress/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpress"), perm: "redexpress.view" },
+    // Sin perm: el acceso no es por permiso sino por tener una sucursal
+    // asignada (LocalAsignacion) — por eso se filtra acá, no vía hasPerm().
+    ...((currentUser?.assigned_locales?.length ?? 0) > 0
+      ? [{ href: "/redexpress/mi-pedido", label: t("sidebar.miPedido"), icon: ClipboardList, section: t("sidebar.redexpress") }]
+      : []),
     ...(currentUser?.is_superuser
       ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]
       : []),

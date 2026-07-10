@@ -51,7 +51,8 @@
     "notificaciones": "Notifications",
     "sinNotificaciones": "You don't have any notifications yet",
     "marcarTodasLeidas": "Mark all as read",
-    "notificacionesError": "Couldn't mark as read"
+    "notificacionesError": "Couldn't mark as read",
+    "miPedido": "My order"
   },
   "login": {
     "welcome": "Welcome",
@@ -556,6 +557,11 @@
       "aficheSuperAhorro": "Super Ahorro poster",
       "pinchosDiasExpres": "Pinchos Días Expres",
       "hojasAmarillas": "Yellow sheets"
+    },
+    "miPedido": {
+      "title": "My order",
+      "subtitle": "Enter the quantities of material your store needs this month.",
+      "noLocalAssigned": "You don't have a store assigned yet. Ask Valentina to assign you one."
     }
   },
   "herramientas": {

@@ -154,7 +154,7 @@ async def get_locales(
 @router.get("/meses")
 async def get_meses(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("redexpress.view")),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(PlanillaPedido.year, PlanillaPedido.month)
@@ -218,6 +218,33 @@ async def get_planilla(
     ]
 
 
+@router.get("/mi-planilla/{year}/{month}")
+async def get_mi_planilla(
+    year: int,
+    month: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Versión angosta de get_planilla para usuarios de sucursal — a diferencia
+    de /planilla/{year}/{month} (que trae las filas de TODOS los locales y solo
+    oculta el botón de editar), acá solo viajan por red la(s) fila(s) del/de
+    los local(es) asignados al usuario logueado. Sin permiso redexpress.view:
+    el acceso lo da directamente estar en LocalAsignacion."""
+    assigned = await _get_user_locals(db, current_user.id)
+    if not assigned:
+        return []
+
+    result = await db.execute(
+        select(PlanillaPedido).where(
+            PlanillaPedido.year == year,
+            PlanillaPedido.month == month,
+            PlanillaPedido.local_nombre.in_(assigned),
+        )
+    )
+    rows = result.scalars().all()
+    return [_row_to_dict(r, True) for r in rows]
+
+
 @router.patch("/planilla/{year}/{month}/{local_nombre:path}")
 async def update_row(
     year: int,
@@ -225,7 +252,7 @@ async def update_row(
     local_nombre: str,
     update: PlanillaRowUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("redexpress.view")),
+    current_user: User = Depends(get_current_user),
 ):
     if not current_user.is_superuser:
         assigned = await _get_user_locals(db, current_user.id)
@@ -258,7 +285,7 @@ async def confirmar_pedido(
     month: int,
     local_nombre: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("redexpress.view")),
+    current_user: User = Depends(get_current_user),
 ):
     if not current_user.is_superuser:
         assigned = await _get_user_locals(db, current_user.id)

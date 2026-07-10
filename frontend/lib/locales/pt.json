@@ -51,7 +51,8 @@
     "notificaciones": "Notificações",
     "sinNotificaciones": "Você ainda não tem notificações",
     "marcarTodasLeidas": "Marcar todas como lidas",
-    "notificacionesError": "Não foi possível marcar como lidas"
+    "notificacionesError": "Não foi possível marcar como lidas",
+    "miPedido": "Meu pedido"
   },
   "login": {
     "welcome": "Bem-vindo",
@@ -556,6 +557,11 @@
       "aficheSuperAhorro": "Cartaz Super Ahorro",
       "pinchosDiasExpres": "Pinchos Días Expres",
       "hojasAmarillas": "Folhas Amarelas"
+    },
+    "miPedido": {
+      "title": "Meu pedido",
+      "subtitle": "Informe as quantidades de material que sua loja vai precisar este mês.",
+      "noLocalAssigned": "Você ainda não tem uma loja atribuída. Peça para a Valentina te atribuir uma."
     }
   },
   "herramientas": {

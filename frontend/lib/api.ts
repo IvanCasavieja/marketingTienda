@@ -487,6 +487,8 @@ export const redexpressApi = {
   crearMes: (year: number, month: number) => api.post("/redexpress/meses", { year, month }),
   getPlanilla: (year: number, month: number) =>
     api.get<PlanillaRow[]>(`/redexpress/planilla/${year}/${month}`),
+  getMiPlanilla: (year: number, month: number) =>
+    api.get<PlanillaRow[]>(`/redexpress/mi-planilla/${year}/${month}`),
   updateRow: (year: number, month: number, local_nombre: string, data: Partial<PlanillaRow>) =>
     api.patch<PlanillaRow>(`/redexpress/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}`, data),
   confirmar: (year: number, month: number, local_nombre: string) =>

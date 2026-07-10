@@ -51,7 +51,8 @@
     "notificaciones": "Notificaciones",
     "sinNotificaciones": "Todavía no tenés notificaciones",
     "marcarTodasLeidas": "Marcar todas como leídas",
-    "notificacionesError": "No se pudieron marcar como leídas"
+    "notificacionesError": "No se pudieron marcar como leídas",
+    "miPedido": "Mi pedido"
   },
   "login": {
     "welcome": "Bienvenido",
@@ -556,6 +557,11 @@
       "aficheSuperAhorro": "Afiche Super Ahorro",
       "pinchosDiasExpres": "Pinchos Días Expres",
       "hojasAmarillas": "Hojas Amarillas"
+    },
+    "miPedido": {
+      "title": "Mi pedido",
+      "subtitle": "Cargá las cantidades de material que vas a necesitar este mes para tu sucursal.",
+      "noLocalAssigned": "Todavía no tenés una sucursal asignada. Hablá con Valentina para que te la asigne."
     }
   },
   "herramientas": {

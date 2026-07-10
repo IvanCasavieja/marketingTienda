@@ -89,6 +89,7 @@ export interface CurrentUser {
   role_id: number | null;
   role_name: string | null;
   permissions: string[];
+  assigned_locales: string[];
 }
 
 export const PLATFORM_LABELS: Record<Platform | string, string> = {
