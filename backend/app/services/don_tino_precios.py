@@ -17,7 +17,8 @@ import re
 import statistics
 import unicodedata
 
-from app.services.debate_service import _ask_claude, _ask_gpt
+from app.services.debate_service import _ask_claude, _ask_gpt, _ASK_CLAUDE_META, _ASK_GPT_META
+from app.services.ai_usage_service import log_ai_usage
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +39,13 @@ _REFINAR_MAX  = 60  # tope de candidatos para el paso 2 (revisión semántica) �
                     # por debajo de esto, Claude SÍ puede revisar uno por uno de
                     # forma confiable. Por encima, nos quedamos con el filtro de
                     # palabras clave solo (sin la segunda pasada).
+
+
+async def _log_uso(db, user_id, meta: tuple[str, str], input_tokens: int, output_tokens: int) -> None:
+    """db/user_id son opcionales — sin ellos (llamadas sin contexto de request/DB
+    a mano) simplemente no se loguea, no se rompe el flujo stateless de este módulo."""
+    if db is not None and user_id is not None:
+        await log_ai_usage(db, user_id, "don_tino_precios", meta[0], meta[1], input_tokens, output_tokens)
 
 
 def _strip_json_fence(text: str) -> str:
@@ -80,7 +88,7 @@ def _matches(nombre: str, incluir: list[str], excluir: list[str]) -> bool:
     return ok_incluir and ok_excluir
 
 
-async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[int, dict]]) -> list[int]:
+async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[int, dict]], db=None, user_id=None) -> list[int]:
     """candidatos: [(índice_original, item), ...] ya prefiltrados por palabra
     clave. Antes de mandarlos a Claude se AGRUPAN por (tienda, nombre): la
     revisión semántica es una decisión por PRODUCTO, no por sucursal — el
@@ -118,7 +126,8 @@ async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[i
         'de verdad a lo que pidió el usuario. Si todos corresponden, incluilos todos.'
     )
     try:
-        content, _ = await _ask_claude(DON_TINO_BASE, prompt, max_tokens=400)
+        content, in_tok, out_tok = await _ask_claude(DON_TINO_BASE, prompt, max_tokens=400)
+        await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
         parsed = json.loads(_strip_json_fence(content))
         mantener_local = [i for i in parsed.get("mantener", []) if isinstance(i, int) and 1 <= i <= len(claves)]
         claves_mantener = {claves[i - 1] for i in mantener_local}
@@ -129,7 +138,7 @@ async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[i
     return [idx for key in claves if key in claves_mantener for idx in grupos[key]]
 
 
-async def responder_consulta(termino: str, items: list[dict], mensaje: str) -> dict:
+async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=None, user_id=None) -> dict:
     """Un único punto de entrada para todo lo que el usuario le escribe a Don
     Tino sobre estos resultados: puede ser una instrucción de filtro ("quiero
     solo los que sean Galaxy A17") o una pregunta general ("¿cuál es el más
@@ -180,7 +189,8 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str) -> d
         '"la respuesta a la pregunta — si necesitás precios exactos y la muestra no alcanza, decilo"}'
     )
     try:
-        content, _ = await _ask_claude(DON_TINO_BASE, prompt, max_tokens=500)
+        content, in_tok, out_tok = await _ask_claude(DON_TINO_BASE, prompt, max_tokens=500)
+        await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
         parsed = json.loads(_strip_json_fence(content))
         tipo = "seleccion" if _normalizar(str(parsed.get("tipo") or "")) == "seleccion" else "respuesta"
         respuesta = str(parsed.get("respuesta") or "").strip()
@@ -200,7 +210,7 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str) -> d
     candidatos = [(i, it) for i, it in enumerate(items, start=1) if _matches(it["nombre"], incluir, excluir)]
 
     if candidatos and len(candidatos) <= _REFINAR_MAX:
-        mantener = await _afinar_seleccion(termino, mensaje, candidatos)
+        mantener = await _afinar_seleccion(termino, mensaje, candidatos, db, user_id)
     else:
         mantener = [i for i, _ in candidatos]
 
@@ -283,6 +293,8 @@ async def generar_reporte(
     items: list[dict],
     nuestro_precio: float | None = None,
     nuestra_moneda: str | None = None,
+    db=None,
+    user_id=None,
 ) -> str:
     """items: [{"tienda": str, "nombre": str, "precio": float, "moneda": str}, ...]
 
@@ -318,11 +330,12 @@ async def generar_reporte(
         "(ya te digo si está por encima o debajo de la mediana — explicá qué implica eso). "
         "Sé concreto, citá los números tal cual te los di — máximo 3 párrafos cortos."
     )
-    analisis_cuantitativo, _ = await _ask_claude(
+    analisis_cuantitativo, in_tok, out_tok = await _ask_claude(
         DON_TINO_BASE + " Tu tarea ahora: interpretar estadísticas de precios de la competencia.",
         prompt_cuantitativo,
         max_tokens=600,
     )
+    await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
 
     prompt_estrategico = (
         f"{datos_completos}\n\n"
@@ -330,11 +343,12 @@ async def generar_reporte(
         "rango de precios? ¿hay una oportunidad de posicionamiento clara? Si hay nuestro precio, decí si "
         "conviene sostenerlo, bajarlo o si está bien donde está, y por qué. Concreto — máximo 3 párrafos cortos."
     )
-    analisis_estrategico, _ = await _ask_gpt(
+    analisis_estrategico, in_tok, out_tok = await _ask_gpt(
         DON_TINO_BASE + " Tu tarea ahora: lectura estratégica de posicionamiento de precios.",
         prompt_estrategico,
         max_tokens=600,
     )
+    await _log_uso(db, user_id, _ASK_GPT_META, in_tok, out_tok)
 
     prompt_sintesis = (
         f"{datos_completos}\n\n"
@@ -347,16 +361,18 @@ async def generar_reporte(
         "3. Una recomendación concreta y corta\n"
         "Máximo 4 párrafos cortos, directo, sin relleno."
     )
-    reporte_final, _ = await _ask_claude(
+    reporte_final, in_tok, out_tok = await _ask_claude(
         DON_TINO_BASE + " Tu tarea ahora: redactar el reporte final que va a leer el usuario.",
         prompt_sintesis,
         max_tokens=700,
     )
+    await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
     return reporte_final
 
 
 async def explicar_cambio_precio(
     tienda: str, nombre: str, precio_anterior: float, precio_nuevo: float, moneda: str,
+    db=None, user_id=None,
 ) -> str:
     """Frase corta para la notificación de un producto seguido en una lista
     de monitoreo — un solo call barato, no un debate. Usado por
@@ -371,9 +387,10 @@ async def explicar_cambio_precio(
         "Escribí UNA sola frase corta (para una notificación, no un párrafo) avisándole del cambio, "
         "en tu voz. Mencioná el nombre del producto, la cadena, y los dos precios."
     )
-    content, _ = await _ask_claude(
+    content, in_tok, out_tok = await _ask_claude(
         DON_TINO_BASE + " Tu tarea ahora: redactar una notificación de un solo cambio de precio.",
         prompt,
         max_tokens=150,
     )
+    await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
     return content.strip()

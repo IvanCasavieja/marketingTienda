@@ -16,4 +16,9 @@ class Notificacion(Base):
     watchlist_item_id: Mapped[int | None] = mapped_column(
         ForeignKey("watchlist_items.id", ondelete="SET NULL"), nullable=True
     )
+    # Origen genérico (más allá de watchlist) para poder deduplicar y filtrar
+    # sin agregar una FK nueva por cada feature que empiece a notificar —
+    # ej. origen_tipo="campaign_alert", origen_ref="google_ads:12345:roas_baja".
+    origen_tipo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    origen_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

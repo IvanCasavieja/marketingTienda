@@ -259,7 +259,7 @@ LLAMA_PERSONA = (
 )
 
 
-async def _ask_claude(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str, int]:
+async def _ask_claude(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str, int, int]:
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY no configurado")
     def _sync():
@@ -270,12 +270,11 @@ async def _ask_claude(system: str, prompt: str, max_tokens: int = 800) -> Tuple[
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
-        tokens = resp.usage.input_tokens + resp.usage.output_tokens
-        return resp.content[0].text, tokens
+        return resp.content[0].text, resp.usage.input_tokens, resp.usage.output_tokens
     return await asyncio.to_thread(_sync)
 
 
-async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str, int]:
+async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str, int, int]:
     try:
         import openai as _openai
     except ImportError:
@@ -291,8 +290,7 @@ async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str
             {"role": "user", "content": prompt},
         ],
     )
-    tokens = (resp.usage.prompt_tokens or 0) + (resp.usage.completion_tokens or 0)
-    return resp.choices[0].message.content, tokens
+    return resp.choices[0].message.content, resp.usage.prompt_tokens or 0, resp.usage.completion_tokens or 0
 
 
 async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) -> AsyncIterator[dict]:
@@ -332,14 +330,14 @@ async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) ->
                 full_text.append(delta.text)
                 yield {"kind": "text", "delta": delta.text}
         final = await stream.get_final_message()
-        tokens = final.usage.input_tokens + final.usage.output_tokens
+        input_tokens, output_tokens = final.usage.input_tokens, final.usage.output_tokens
         if not full_text and final.stop_reason == "max_tokens":
             # Se quedó sin presupuesto pensando y no llegó a escribir nada —
             # mejor decirlo explícitamente que devolver una burbuja vacía.
             full_text.append(
                 "*(se quedó sin espacio pensando y no llegó a responder — probá de nuevo o con una pregunta más puntual)*"
             )
-    yield {"kind": "done", "content": "".join(full_text), "tokens": tokens}
+    yield {"kind": "done", "content": "".join(full_text), "input_tokens": input_tokens, "output_tokens": output_tokens}
 
 
 async def _ask_gpt_stream(system: str, prompt: str, max_tokens: int = 800) -> AsyncIterator[dict]:
@@ -360,7 +358,8 @@ async def _ask_gpt_stream(system: str, prompt: str, max_tokens: int = 800) -> As
         raise RuntimeError("OPENAI_API_KEY no configurado")
     client = _openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     full_text: list[str] = []
-    tokens = 0
+    input_tokens = 0
+    output_tokens = 0
     stream = await client.responses.create(
         model="gpt-5.4",
         instructions=system,
@@ -382,17 +381,18 @@ async def _ask_gpt_stream(system: str, prompt: str, max_tokens: int = 800) -> As
             yield {"kind": "text", "delta": event.delta}
         elif etype in ("response.completed", "response.incomplete"):
             usage = event.response.usage
-            tokens = (usage.input_tokens or 0) + (usage.output_tokens or 0)
+            input_tokens = usage.input_tokens or 0
+            output_tokens = usage.output_tokens or 0
             incomplete = getattr(event.response, "incomplete_details", None)
             if not full_text and incomplete and incomplete.reason == "max_output_tokens":
                 # Se quedó sin presupuesto razonando y no llegó a escribir nada.
                 full_text.append(
                     "*(se quedó sin espacio pensando y no llegó a responder — probá de nuevo o con una pregunta más puntual)*"
                 )
-    yield {"kind": "done", "content": "".join(full_text), "tokens": tokens}
+    yield {"kind": "done", "content": "".join(full_text), "input_tokens": input_tokens, "output_tokens": output_tokens}
 
 
-async def _fetch_web_context(date_from: date, date_to: date) -> Tuple[str, int]:
+async def _fetch_web_context(date_from: date, date_to: date) -> Tuple[str, int, int]:
     """ChatGPT busca contexto real del período vía web search (gpt-4o-search-preview)."""
     try:
         import openai as _openai
@@ -430,11 +430,10 @@ async def _fetch_web_context(date_from: date, date_to: date) -> Tuple[str, int]:
         max_tokens=900,
         messages=[{"role": "user", "content": prompt}],
     )
-    tokens = (resp.usage.prompt_tokens or 0) + (resp.usage.completion_tokens or 0)
-    return resp.choices[0].message.content, tokens
+    return resp.choices[0].message.content, resp.usage.prompt_tokens or 0, resp.usage.completion_tokens or 0
 
 
-async def _ask_llama(system: str, prompt: str, max_tokens: int = 900) -> Tuple[str, int]:
+async def _ask_llama(system: str, prompt: str, max_tokens: int = 900) -> Tuple[str, int, int]:
     try:
         from groq import AsyncGroq
     except ImportError:
@@ -450,16 +449,26 @@ async def _ask_llama(system: str, prompt: str, max_tokens: int = 900) -> Tuple[s
             {"role": "user", "content": prompt},
         ],
     )
-    tokens = (resp.usage.prompt_tokens or 0) + (resp.usage.completion_tokens or 0)
-    return resp.choices[0].message.content, tokens
+    return resp.choices[0].message.content, resp.usage.prompt_tokens or 0, resp.usage.completion_tokens or 0
 
 
-async def _race(speaker: str, round_n: int, role: str, coro, queue: asyncio.Queue) -> None:
+# (provider, model) por función de bajo nivel — usado para armar los eventos
+# "usage_detail" que alimentan el tracking de costo de IA (ver ai_usage_service.py).
+_ASK_CLAUDE_META = ("anthropic", "claude-sonnet-4-6")
+_ASK_GPT_META = ("openai", "gpt-4o")
+_ASK_GPT_STREAM_META = ("openai", "gpt-5.4")
+_FETCH_WEB_CONTEXT_META = ("openai", "gpt-4o-search-preview")
+_ASK_LLAMA_META = ("groq", "llama-3.3-70b-versatile")
+
+
+async def _race(speaker: str, round_n: int, role: str, coro, queue: asyncio.Queue, meta: Tuple[str, str]) -> None:
     try:
-        content, tokens = await coro
+        content, input_tokens, output_tokens = await coro
         await queue.put({
             "ok": True, "speaker": speaker, "round": round_n,
-            "role": role, "content": content, "tokens": tokens,
+            "role": role, "content": content,
+            "input_tokens": input_tokens, "output_tokens": output_tokens,
+            "provider": meta[0], "model": meta[1],
         })
     except Exception as exc:
         await queue.put({"ok": False, "speaker": speaker, "error": str(exc)})
@@ -543,12 +552,13 @@ async def stream_debate(
     focus_line = f"Pregunta del equipo: **{user_prompt.strip()}**\n\n" if user_prompt.strip() else ""
 
     tokens_by_model: Dict[str, int] = {}
+    usage_items: List[dict] = []
 
     # ── Round 1 — cada uno toma una posición fuerte con datos ──
     yield {"type": "round_start", "round": 1}
     q1: asyncio.Queue = asyncio.Queue()
-    asyncio.create_task(_race("Claude",  1, "analysis", _ask_claude(CLAUDE_PERSONA, _r1_prompt(data_context, focus), 900), q1))
-    asyncio.create_task(_race("ChatGPT", 1, "analysis", _ask_gpt(GPT_PERSONA, _r1_prompt(data_context, focus), 900), q1))
+    asyncio.create_task(_race("Claude",  1, "analysis", _ask_claude(CLAUDE_PERSONA, _r1_prompt(data_context, focus), 900), q1, _ASK_CLAUDE_META))
+    asyncio.create_task(_race("ChatGPT", 1, "analysis", _ask_gpt(GPT_PERSONA, _r1_prompt(data_context, focus), 900), q1, _ASK_GPT_META))
 
     r1: Dict[str, str] = {}
     for _ in range(2):
@@ -556,14 +566,16 @@ async def stream_debate(
         if not item["ok"]:
             raise RuntimeError(f"Round 1 · {item['speaker']}: {item['error']}")
         r1[item["speaker"]] = item["content"]
-        tokens_by_model[item["speaker"]] = item["tokens"]
+        tokens = item["input_tokens"] + item["output_tokens"]
+        tokens_by_model[item["speaker"]] = tokens
+        usage_items.append({"provider": item["provider"], "model": item["model"], "input_tokens": item["input_tokens"], "output_tokens": item["output_tokens"]})
         yield {"type": "message", "speaker": item["speaker"], "round": 1, "role": "analysis", "content": item["content"]}
 
     # ── Round 2 — réplica cruzada: atacan el argumento del otro y hacen preguntas ──
     yield {"type": "round_start", "round": 2}
     q2: asyncio.Queue = asyncio.Queue()
-    asyncio.create_task(_race("Claude",  2, "rebuttal", _ask_claude(CLAUDE_PERSONA, _r2_claude_prompt(r1["ChatGPT"]), 700), q2))
-    asyncio.create_task(_race("ChatGPT", 2, "rebuttal", _ask_gpt(GPT_PERSONA, _r2_gpt_prompt(r1["Claude"]), 700), q2))
+    asyncio.create_task(_race("Claude",  2, "rebuttal", _ask_claude(CLAUDE_PERSONA, _r2_claude_prompt(r1["ChatGPT"]), 700), q2, _ASK_CLAUDE_META))
+    asyncio.create_task(_race("ChatGPT", 2, "rebuttal", _ask_gpt(GPT_PERSONA, _r2_gpt_prompt(r1["Claude"]), 700), q2, _ASK_GPT_META))
 
     r2: Dict[str, str] = {}
     for _ in range(2):
@@ -571,21 +583,25 @@ async def stream_debate(
         if not item["ok"]:
             raise RuntimeError(f"Round 2 · {item['speaker']}: {item['error']}")
         r2[item["speaker"]] = item["content"]
-        tokens_by_model[item["speaker"]] = tokens_by_model.get(item["speaker"], 0) + item["tokens"]
+        tokens = item["input_tokens"] + item["output_tokens"]
+        tokens_by_model[item["speaker"]] = tokens_by_model.get(item["speaker"], 0) + tokens
+        usage_items.append({"provider": item["provider"], "model": item["model"], "input_tokens": item["input_tokens"], "output_tokens": item["output_tokens"]})
         yield {"type": "message", "speaker": item["speaker"], "round": 2, "role": "rebuttal", "content": item["content"]}
 
     # ── Round 3 — Llama da un veredicto con postura, no solo síntesis ──
     yield {"type": "round_start", "round": 3}
-    r3_content, r3_tokens = await _ask_llama(
+    r3_content, r3_input_tokens, r3_output_tokens = await _ask_llama(
         LLAMA_PERSONA,
         _r3_prompt(r1, r2, compact_ctx, date_from, date_to, focus_line),
         1000,
     )
-    tokens_by_model["Llama"] = r3_tokens
+    tokens_by_model["Llama"] = r3_input_tokens + r3_output_tokens
+    usage_items.append({"provider": _ASK_LLAMA_META[0], "model": _ASK_LLAMA_META[1], "input_tokens": r3_input_tokens, "output_tokens": r3_output_tokens})
     yield {"type": "message", "speaker": "Llama", "round": 3, "role": "synthesis", "content": r3_content}
 
     total_tokens = sum(tokens_by_model.values())
     yield {"type": "tokens", "total": total_tokens, "by_model": tokens_by_model}
+    yield {"type": "usage_detail", "items": usage_items}
 
 
 async def run_debate(
@@ -612,7 +628,7 @@ async def run_debate(
     for r in r1_results:
         if isinstance(r, Exception):
             raise RuntimeError(f"Error en Round 1: {r}") from r
-    (r1_claude, t_r1_claude), (r1_gpt, t_r1_gpt) = r1_results
+    (r1_claude, t_r1_claude_in, t_r1_claude_out), (r1_gpt, t_r1_gpt_in, t_r1_gpt_out) = r1_results
 
     r2_results = await asyncio.gather(
         _ask_claude(CLAUDE_PERSONA, _r2_claude_prompt(r1_gpt), 700),
@@ -622,17 +638,21 @@ async def run_debate(
     for r in r2_results:
         if isinstance(r, Exception):
             raise RuntimeError(f"Error en Round 2: {r}") from r
-    (r2_claude, t_r2_claude), (r2_gpt, t_r2_gpt) = r2_results
+    (r2_claude, t_r2_claude_in, t_r2_claude_out), (r2_gpt, t_r2_gpt_in, t_r2_gpt_out) = r2_results
 
     r1 = {"Claude": r1_claude, "ChatGPT": r1_gpt}
     r2 = {"Claude": r2_claude, "ChatGPT": r2_gpt}
-    r3_llama, t_r3 = await _ask_llama(
+    r3_llama, t_r3_in, t_r3_out = await _ask_llama(
         LLAMA_PERSONA,
         _r3_prompt(r1, r2, compact_ctx, date_from, date_to, focus_line),
         1000,
     )
 
-    total_tokens = t_r1_claude + t_r1_gpt + t_r2_claude + t_r2_gpt + t_r3
+    total_tokens = (
+        t_r1_claude_in + t_r1_claude_out + t_r1_gpt_in + t_r1_gpt_out
+        + t_r2_claude_in + t_r2_claude_out + t_r2_gpt_in + t_r2_gpt_out
+        + t_r3_in + t_r3_out
+    )
     debate = [
         {"speaker": "Claude",  "round": 1, "role": "analysis",  "content": r1_claude},
         {"speaker": "ChatGPT", "round": 1, "role": "analysis",  "content": r1_gpt},
@@ -640,12 +660,20 @@ async def run_debate(
         {"speaker": "ChatGPT", "round": 2, "role": "rebuttal",  "content": r2_gpt},
         {"speaker": "Llama",   "round": 3, "role": "synthesis", "content": r3_llama},
     ]
+    usage_items = [
+        {"provider": _ASK_CLAUDE_META[0], "model": _ASK_CLAUDE_META[1], "input_tokens": t_r1_claude_in, "output_tokens": t_r1_claude_out},
+        {"provider": _ASK_GPT_META[0], "model": _ASK_GPT_META[1], "input_tokens": t_r1_gpt_in, "output_tokens": t_r1_gpt_out},
+        {"provider": _ASK_CLAUDE_META[0], "model": _ASK_CLAUDE_META[1], "input_tokens": t_r2_claude_in, "output_tokens": t_r2_claude_out},
+        {"provider": _ASK_GPT_META[0], "model": _ASK_GPT_META[1], "input_tokens": t_r2_gpt_in, "output_tokens": t_r2_gpt_out},
+        {"provider": _ASK_LLAMA_META[0], "model": _ASK_LLAMA_META[1], "input_tokens": t_r3_in, "output_tokens": t_r3_out},
+    ]
 
     return {
         "result": json.dumps({"debate": debate}, ensure_ascii=False),
         "input_tokens": total_tokens,
         "output_tokens": 0,
         "analysis_type": "debate",
+        "usage_items": usage_items,
     }
 
 
@@ -706,9 +734,11 @@ async def stream_debate_turn(
     yield {"type": "web_search_start", "speaker": "ChatGPT"}
     web_context = ""
     web_ctx_tokens = 0
+    usage_items: List[dict] = []
     try:
-        web_context, tok1 = await _fetch_web_context(date_from, date_to)
-        web_ctx_tokens += tok1
+        web_context, tok1_in, tok1_out = await _fetch_web_context(date_from, date_to)
+        web_ctx_tokens += tok1_in + tok1_out
+        usage_items.append({"provider": _FETCH_WEB_CONTEXT_META[0], "model": _FETCH_WEB_CONTEXT_META[1], "input_tokens": tok1_in, "output_tokens": tok1_out})
     except Exception:
         web_context = ""  # continúa sin contexto web si falla
 
@@ -717,8 +747,9 @@ async def stream_debate_turn(
     # hallazgo (noticias, feriados, eventos) para explicar POR QUÉ cambió.
     if metrics_2 and date_from_2 and date_to_2:
         try:
-            web_context_2, tok2 = await _fetch_web_context(date_from_2, date_to_2)
-            web_ctx_tokens += tok2
+            web_context_2, tok2_in, tok2_out = await _fetch_web_context(date_from_2, date_to_2)
+            web_ctx_tokens += tok2_in + tok2_out
+            usage_items.append({"provider": _FETCH_WEB_CONTEXT_META[0], "model": _FETCH_WEB_CONTEXT_META[1], "input_tokens": tok2_in, "output_tokens": tok2_out})
             if web_context_2:
                 current_block = f"### Período actual ({date_from} al {date_to})\n{web_context}" if web_context else ""
                 base_block    = f"### Período base ({date_from_2} al {date_to_2})\n{web_context_2}"
@@ -806,7 +837,8 @@ async def stream_debate_turn(
                 yield {"type": "thinking_progress", "speaker": "ChatGPT", "text": h.strip()}
         elif chunk["kind"] == "done":
             gpt_content = chunk["content"]
-            gpt_tokens = chunk["tokens"]
+            gpt_tokens = chunk["input_tokens"] + chunk["output_tokens"]
+            usage_items.append({"provider": _ASK_GPT_STREAM_META[0], "model": _ASK_GPT_STREAM_META[1], "input_tokens": chunk["input_tokens"], "output_tokens": chunk["output_tokens"]})
     yield {"type": "message", "speaker": "ChatGPT", "role": "debate", "content": gpt_content}
 
     # ── Step 2: Claude — lee la pregunta del usuario Y la lectura de ChatGPT ──
@@ -843,11 +875,13 @@ async def stream_debate_turn(
     async for chunk in _ask_claude_stream(CLAUDE_PERSONA, claude_prompt, 16000):
         if chunk["kind"] == "done":
             claude_content = chunk["content"]
-            claude_tokens = chunk["tokens"]
+            claude_tokens = chunk["input_tokens"] + chunk["output_tokens"]
+            usage_items.append({"provider": _ASK_CLAUDE_META[0], "model": _ASK_CLAUDE_META[1], "input_tokens": chunk["input_tokens"], "output_tokens": chunk["output_tokens"]})
     yield {"type": "message", "speaker": "Claude", "role": "debate", "content": claude_content}
 
     tokens_by_model = {"Claude": claude_tokens, "ChatGPT": gpt_tokens + web_ctx_tokens}
     yield {"type": "tokens", "total": sum(tokens_by_model.values()), "by_model": tokens_by_model}
+    yield {"type": "usage_detail", "items": usage_items}
 
 
 async def stream_llama_verdict(
@@ -898,6 +932,8 @@ async def stream_llama_verdict(
         "y qué métrica debería mejorar como resultado. Sé específico — nada de 'optimizar el presupuesto'."
     )
 
-    content, tokens = await _ask_llama(LLAMA_PERSONA, prompt, 1400)
+    content, input_tokens, output_tokens = await _ask_llama(LLAMA_PERSONA, prompt, 1400)
+    tokens = input_tokens + output_tokens
     yield {"type": "message", "speaker": "Llama", "role": "synthesis", "content": content}
     yield {"type": "tokens", "total": tokens, "by_model": {"Llama": tokens}}
+    yield {"type": "usage_detail", "items": [{"provider": _ASK_LLAMA_META[0], "model": _ASK_LLAMA_META[1], "input_tokens": input_tokens, "output_tokens": output_tokens}]}

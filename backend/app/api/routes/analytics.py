@@ -15,6 +15,7 @@ from app.models.ai_analysis import AIAnalysis
 from app.models.platform_connection import Platform
 from app.services.metrics_service import get_metrics, get_available_platforms
 from app.services.debate_service import run_debate, stream_debate, stream_debate_turn, stream_llama_verdict
+from app.services.ai_usage_service import log_ai_usage
 from app.connectors.sfmc import SFMCConnector
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,8 @@ async def analyze(
         output_tokens=result["output_tokens"],
     )
     db.add(analysis)
+    for item in result.get("usage_items", []):
+        await log_ai_usage(db, current_user.id, "debate", item["provider"], item["model"], item["input_tokens"], item["output_tokens"])
     await db.flush()
 
     return {
@@ -221,6 +224,7 @@ async def debate_stream(
     async def event_stream():
         all_messages = []
         total_tokens = 0
+        usage_items: list = []
         try:
             async for event in stream_debate(metrics, email_data, whatsapp_data, date_from, date_to, user_prompt):
                 if event.get("type") == "message":
@@ -232,6 +236,8 @@ async def debate_stream(
                     })
                 elif event.get("type") == "tokens":
                     total_tokens = event.get("total", 0)
+                elif event.get("type") == "usage_detail":
+                    usage_items = event.get("items", [])
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except RuntimeError as exc:
             logger.error("Debate stream failed: %s", exc)
@@ -251,6 +257,8 @@ async def debate_stream(
                 output_tokens=0,
             )
             save_db.add(analysis)
+            for item in usage_items:
+                await log_ai_usage(save_db, user_id, "debate", item["provider"], item["model"], item["input_tokens"], item["output_tokens"])
             await save_db.commit()
             await save_db.refresh(analysis)
             yield f"data: {json.dumps({'type': 'done', 'id': analysis.id})}\n\n"
@@ -285,6 +293,7 @@ async def debate_turn(
     async def event_stream():
         new_messages: list = []
         turn_tokens = 0
+        usage_items: list = []
         try:
             async for event in stream_debate_turn(
                 payload.history, payload.user_message,
@@ -299,6 +308,8 @@ async def debate_turn(
                     })
                 elif event.get("type") == "tokens":
                     turn_tokens = event.get("total", 0)
+                elif event.get("type") == "usage_detail":
+                    usage_items = event.get("items", [])
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except RuntimeError as exc:
             logger.error("Debate turn failed: %s", exc)
@@ -343,6 +354,10 @@ async def debate_turn(
                 await save_db.refresh(analysis)
                 conv_id = analysis.id
 
+            for item in usage_items:
+                await log_ai_usage(save_db, user_id, "debate", item["provider"], item["model"], item["input_tokens"], item["output_tokens"])
+            await save_db.commit()
+
         yield f"data: {json.dumps({'type': 'session', 'conversation_id': conv_id})}\n\n"
 
     return StreamingResponse(
@@ -374,6 +389,7 @@ async def debate_verdict(
     async def event_stream():
         llama_content = ""
         llama_tokens  = 0
+        usage_items: list = []
         try:
             async for event in stream_llama_verdict(
                 payload.history, metrics, email_data, whatsapp_data,
@@ -384,6 +400,8 @@ async def debate_verdict(
                     llama_content = event.get("content", "")
                 elif event.get("type") == "tokens":
                     llama_tokens = event.get("total", 0)
+                elif event.get("type") == "usage_detail":
+                    usage_items = event.get("items", [])
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except RuntimeError as exc:
             logger.error("Debate verdict failed: %s", exc)
@@ -407,6 +425,8 @@ async def debate_verdict(
                 if existing:
                     existing.result       = json.dumps({"debate": prior}, ensure_ascii=False)
                     existing.input_tokens = (existing.input_tokens or 0) + llama_tokens
+                    for item in usage_items:
+                        await log_ai_usage(save_db, user_id, "debate", item["provider"], item["model"], item["input_tokens"], item["output_tokens"])
                     await save_db.commit()
                     await save_db.refresh(existing)
                     yield f"data: {json.dumps({'type': 'done', 'id': existing.id})}\n\n"
@@ -421,6 +441,8 @@ async def debate_verdict(
                 input_tokens=llama_tokens, output_tokens=0,
             )
             save_db.add(analysis)
+            for item in usage_items:
+                await log_ai_usage(save_db, user_id, "debate", item["provider"], item["model"], item["input_tokens"], item["output_tokens"])
             await save_db.commit()
             await save_db.refresh(analysis)
             yield f"data: {json.dumps({'type': 'done', 'id': analysis.id})}\n\n"

@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.models.ai_analysis import AIAnalysis
 from app.models.cenefa_job import CenefaJob
 from app.models.user import User
+from app.services.ai_usage_service import log_ai_usage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -532,6 +533,13 @@ async def chat_message(
             )
             if not completion.choices:
                 raise HTTPException(status_code=500, detail="Error al contactar el servicio de IA")
+
+            usage = completion.usage
+            if usage:
+                await log_ai_usage(
+                    db, current_user.id, "don_tino_home", "groq", "llama-3.3-70b-versatile",
+                    usage.prompt_tokens or 0, usage.completion_tokens or 0,
+                )
 
             msg = completion.choices[0].message
             tool_calls = msg.tool_calls or []

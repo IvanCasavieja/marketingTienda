@@ -28,6 +28,40 @@ export interface PlatformSummary {
   avg_roas: number;
 }
 
+export interface Ga4FunnelTotals {
+  sessions: number;
+  users: number;
+  page_views: number;
+  view_item: number;
+  add_to_cart: number;
+  begin_checkout: number;
+  purchase: number;
+  new_buyers: number;
+  revenue: number;
+  engagement_rate: number;
+  avg_session_duration_sec: number;
+  avg_order_value: number;
+}
+
+export interface Ga4ChannelRow extends Ga4FunnelTotals {
+  channel: string;
+}
+
+export interface Ga4DailyRow {
+  date: string;
+  sessions: number;
+  users: number;
+  purchase: number;
+  revenue: number;
+  avg_order_value: number;
+}
+
+export interface Ga4FunnelResponse {
+  totals: Ga4FunnelTotals;
+  by_channel: Ga4ChannelRow[];
+  daily: Ga4DailyRow[];
+}
+
 export interface Analysis {
   id: number;
   analysis_type: string;

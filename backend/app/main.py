@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.rate_limit import limiter
 from app.core.tenant_migration import migrate_roles
-from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, PlanillaPedido, LocalAsignacion, Watchlist, WatchlistItem, WatchlistPrecioHistorial, Notificacion, CotizacionDolar  # noqa: F401
+from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, PlanillaPedido, LocalAsignacion, Watchlist, WatchlistItem, WatchlistPrecioHistorial, Notificacion, CotizacionDolar, AIUsageLog  # noqa: F401
 from app.models.role import Role  # noqa: F401 — registers with Base.metadata
 from app.api import router
 
@@ -67,6 +67,13 @@ async def lifespan(app: FastAPI):
         watchlist_task = asyncio.create_task(run_watchlist_check_loop())
         logger.info("watchlist_check: loop iniciado (cada %dh)", settings.WATCHLIST_CHECK_INTERVAL_HOURS)
 
+    # Arrancar chequeo de anomalías de campañas de Medios (dashboard/canales/campaigns)
+    campaign_alerts_task = None
+    if settings.CAMPAIGN_ALERTS_CHECK_INTERVAL_HOURS > 0:
+        from app.services.campaign_alerts_service import run_campaign_alerts_loop
+        campaign_alerts_task = asyncio.create_task(run_campaign_alerts_loop())
+        logger.info("campaign_alerts_check: loop iniciado (cada %dh)", settings.CAMPAIGN_ALERTS_CHECK_INTERVAL_HOURS)
+
     # Arrancar actualización diaria (8am Montevideo) de la cotización del dólar BROU
     cotizacion_task = None
     if settings.COTIZACION_AUTO_UPDATE:
@@ -87,6 +94,13 @@ async def lifespan(app: FastAPI):
         watchlist_task.cancel()
         try:
             await watchlist_task
+        except asyncio.CancelledError:
+            pass
+
+    if campaign_alerts_task:
+        campaign_alerts_task.cancel()
+        try:
+            await campaign_alerts_task
         except asyncio.CancelledError:
             pass
 

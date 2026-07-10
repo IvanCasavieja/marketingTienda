@@ -110,6 +110,11 @@ async def _procesar_item(db, item: WatchlistItem) -> None:
     if encontrado.precio == precio_anterior and encontrado.moneda == moneda_anterior:
         return  # sin cambios
 
+    if encontrado.moneda == moneda_anterior:
+        tipo = "precio_sube" if encontrado.precio > precio_anterior else "precio_baja"
+    else:
+        tipo = "precio_cambio"  # cambió la moneda — no comparable numéricamente
+
     db.add(WatchlistPrecioHistorial(
         watchlist_item_id=item.id,
         precio=encontrado.precio,
@@ -119,10 +124,18 @@ async def _procesar_item(db, item: WatchlistItem) -> None:
     item.precio_actual = encontrado.precio
     item.moneda = encontrado.moneda
 
+    # user_id vive en Watchlist, no en WatchlistItem — se resuelve antes de
+    # pedirle la explicación a la IA para poder loguear el uso a nombre del dueño.
+    wl_result = await db.execute(select(Watchlist).where(Watchlist.id == item.watchlist_id))
+    wl = wl_result.scalar_one_or_none()
+    if not wl:
+        return
+
     try:
         from app.services.don_tino_precios import explicar_cambio_precio
         mensaje = await explicar_cambio_precio(
             item.tienda, item.nombre, precio_anterior, encontrado.precio, encontrado.moneda,
+            db=db, user_id=wl.user_id,
         )
     except Exception as exc:
         logger.warning("watchlist: fallo generando explicación IA para item %s — %s", item.id, exc)
@@ -132,15 +145,9 @@ async def _procesar_item(db, item: WatchlistItem) -> None:
             f"a {simbolo}{encontrado.precio:.2f}."
         )
 
-    # user_id vive en Watchlist, no en WatchlistItem.
-    wl_result = await db.execute(select(Watchlist).where(Watchlist.id == item.watchlist_id))
-    wl = wl_result.scalar_one_or_none()
-    if not wl:
-        return
-
     db.add(Notificacion(
         user_id=wl.user_id,
-        tipo="precio_cambio",
+        tipo=tipo,
         mensaje=mensaje,
         watchlist_item_id=item.id,
     ))

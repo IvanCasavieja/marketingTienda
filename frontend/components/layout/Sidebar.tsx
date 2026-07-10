@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
   BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, ShieldCheck, HelpCircle, X, Tag,
-  Sun, Moon, ClipboardList, Bell, Star, Activity,
+  Sun, Moon, ClipboardList, Bell, Star, Activity, TrendingUp, TrendingDown, AlertTriangle,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { authApi, watchlistApi, type Notificacion } from "@/lib/api";
@@ -18,6 +18,25 @@ import { toast } from "sonner";
 interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
+}
+
+// Subida de precio = malo para quien monitorea (rojo); bajada = bueno (verde).
+// Alertas de campaña ("Medios") comparten un solo ícono de advertencia — la
+// distinción de causa ya está en el mensaje mismo.
+function notifIcon(tipo: string) {
+  switch (tipo) {
+    case "precio_baja":
+      return <TrendingDown size={13} className="text-emerald-400 shrink-0 mt-0.5" />;
+    case "precio_sube":
+      return <TrendingUp size={13} className="text-red-400 shrink-0 mt-0.5" />;
+    case "roas_baja":
+    case "gasto_sube":
+    case "conversiones_baja":
+    case "sin_conversiones":
+      return <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5" />;
+    default:
+      return <Bell size={13} className="text-slate-400 shrink-0 mt-0.5" />;
+  }
 }
 
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
@@ -47,7 +66,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/herramientas/cenefas/v2/jobs", label: t("sidebar.historial"), icon: Clock,        section: t("sidebar.herramientas") },
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,           section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,        section: t("sidebar.comercial"),     perm: "precios.search" },
-    { href: "/redexpress/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpress") },
+    { href: "/redexpress/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpress"), perm: "redexpress.view" },
     ...(currentUser?.is_superuser
       ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]
       : []),
@@ -217,14 +236,17 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 {notificaciones?.map((n) => (
                   <div
                     key={n.id}
-                    className={`px-3.5 py-2.5 border-b border-white/5 last:border-0 ${n.leida ? "opacity-60" : ""}`}
+                    className={`px-3.5 py-2.5 border-b border-white/5 last:border-0 flex items-start gap-2 ${n.leida ? "opacity-60" : ""}`}
                   >
-                    <p className="text-xs text-slate-300 leading-snug">{n.mensaje}</p>
-                    {n.created_at && (
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        {new Date(n.created_at).toLocaleDateString(i18n.language, { day: "2-digit", month: "2-digit", year: "numeric" })}
-                      </p>
-                    )}
+                    {notifIcon(n.tipo)}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-slate-300 leading-snug">{n.mensaje}</p>
+                      {n.created_at && (
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          {new Date(n.created_at).toLocaleDateString(i18n.language, { day: "2-digit", month: "2-digit", year: "numeric" })}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

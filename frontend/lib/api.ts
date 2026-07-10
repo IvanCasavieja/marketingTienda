@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from "axios";
+import type { Ga4FunnelResponse } from "@/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -100,7 +101,7 @@ export const metricsApi = {
       active: boolean;
     }>("/metrics/auto-sync/status"),
   getGa4Funnel: (date_from: string, date_to: string) =>
-    api.get("/metrics/ga4-funnel", { params: { date_from, date_to } }),
+    api.get<Ga4FunnelResponse>("/metrics/ga4-funnel", { params: { date_from, date_to } }),
   getSpendByObjective: (date_from: string, date_to: string) =>
     api.get("/metrics/spend-by-objective", { params: { date_from, date_to } }),
 };
@@ -386,6 +387,8 @@ export interface Notificacion {
   mensaje: string;
   leida: boolean;
   watchlist_item_id: number | null;
+  origen_tipo: string | null;
+  origen_ref: string | null;
   created_at: string | null;
 }
 
@@ -406,6 +409,45 @@ export const watchlistApi = {
   notificacionesNoLeidasCount: () => api.get<{ count: number }>("/notificaciones/no-leidas/count"),
   marcarLeida: (id: number) => api.post(`/notificaciones/${id}/marcar-leida`),
   marcarTodasLeidas: () => api.post("/notificaciones/marcar-todas-leidas"),
+};
+
+// ---------------------------------------------------------------------------
+// Admin — audit log y uso/costo de IA
+// ---------------------------------------------------------------------------
+
+export interface AuditLogEntry {
+  id: number;
+  user_id: number | null;
+  user_email: string | null;
+  action: string;
+  resource: string | null;
+  resource_id: string | null;
+  details: Record<string, unknown> | null;
+  ip_address: string | null;
+  created_at: string | null;
+}
+
+export interface AiUsageByKey {
+  cost_usd: number;
+}
+
+export interface AiUsageSummary {
+  date_from: string;
+  date_to: string;
+  total_cost_usd: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  by_provider: ({ provider: string } & AiUsageByKey)[];
+  by_feature: ({ feature: string } & AiUsageByKey)[];
+  by_user: ({ user_id: number | null; user_email: string | null } & AiUsageByKey)[];
+  daily: ({ date: string } & AiUsageByKey)[];
+}
+
+export const adminApi = {
+  auditLog: (limit = 50, offset = 0) =>
+    api.get<AuditLogEntry[]>("/admin/audit-log", { params: { limit, offset } }),
+  aiUsageSummary: (dateFrom?: string, dateTo?: string) =>
+    api.get<AiUsageSummary>("/admin/ai-usage/summary", { params: { date_from: dateFrom, date_to: dateTo } }),
 };
 
 // ---------------------------------------------------------------------------

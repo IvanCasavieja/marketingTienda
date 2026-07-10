@@ -5,7 +5,7 @@ from typing import Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_permission
 from app.core.database import get_db
 from app.models.user import User
 from app.models.planilla_pedido import PlanillaPedido
@@ -141,7 +141,7 @@ async def _get_user_locals(db: AsyncSession, user_id: int) -> set[str]:
 @router.get("/locales")
 async def get_locales(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("redexpress.view")),
 ):
     result = await db.execute(select(LocalAsignacion))
     asigs = result.scalars().all()
@@ -154,7 +154,7 @@ async def get_locales(
 @router.get("/meses")
 async def get_meses(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("redexpress.view")),
 ):
     result = await db.execute(
         select(PlanillaPedido.year, PlanillaPedido.month)
@@ -198,7 +198,7 @@ async def get_planilla(
     year: int,
     month: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("redexpress.view")),
 ):
     result = await db.execute(
         select(PlanillaPedido).where(
@@ -225,7 +225,7 @@ async def update_row(
     local_nombre: str,
     update: PlanillaRowUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("redexpress.view")),
 ):
     if not current_user.is_superuser:
         assigned = await _get_user_locals(db, current_user.id)
@@ -258,7 +258,7 @@ async def confirmar_pedido(
     month: int,
     local_nombre: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("redexpress.view")),
 ):
     if not current_user.is_superuser:
         assigned = await _get_user_locals(db, current_user.id)

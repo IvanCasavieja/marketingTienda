@@ -14,7 +14,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import get_db
 from app.core.deps import get_current_user, require_permission
 from app.models.user import User
 
@@ -215,7 +217,8 @@ class ReporteRequest(BaseModel):
 @router.post("/ia/consultar")
 async def ia_consultar(
     payload: ConsultarRequest,
-    _: User = Depends(require_permission("precios.search")),
+    current_user: User = Depends(require_permission("precios.search")),
+    db: AsyncSession = Depends(get_db),
 ):
     if not payload.items:
         return {"tipo": "respuesta", "mantener": None, "respuesta": "No hay productos para analizar todavía."}
@@ -227,6 +230,7 @@ async def ia_consultar(
             payload.termino,
             [it.model_dump() for it in payload.items],
             payload.mensaje,
+            db, current_user.id,
         )
     except Exception as exc:
         logger.error("ia_consultar: error para '%s' — %s", payload.termino, exc, exc_info=True)
@@ -236,7 +240,8 @@ async def ia_consultar(
 @router.post("/ia/reporte")
 async def ia_reporte(
     payload: ReporteRequest,
-    _: User = Depends(require_permission("precios.search")),
+    current_user: User = Depends(require_permission("precios.search")),
+    db: AsyncSession = Depends(get_db),
 ):
     if not payload.items:
         raise HTTPException(status_code=400, detail="No hay productos seleccionados para el reporte")
@@ -248,6 +253,7 @@ async def ia_reporte(
             [it.model_dump() for it in payload.items],
             payload.nuestro_precio,
             payload.nuestra_moneda,
+            db, current_user.id,
         )
         return {"reporte": reporte}
     except Exception as exc:

@@ -206,6 +206,8 @@ async def listar_notificaciones(
             "mensaje": n.mensaje,
             "leida": n.leida,
             "watchlist_item_id": n.watchlist_item_id,
+            "origen_tipo": n.origen_tipo,
+            "origen_ref": n.origen_ref,
             "created_at": n.created_at.isoformat() if n.created_at else None,
         }
         for n in notifs
