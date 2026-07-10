@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -47,6 +47,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const [notifCount, setNotifCount] = useState(0);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
   const [notificaciones, setNotificaciones] = useState<Notificacion[] | null>(null);
+  const notifWrapRef = useRef<HTMLDivElement>(null);
 
   const userPerms: string[] = (currentUser as any)?.permissions ?? [];
   const hasPerm = (p: string) =>
@@ -83,6 +84,18 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       .then(({ data }) => setNotifCount(data.count))
       .catch(() => {});
   }, []);
+
+  // Cerrar el dropdown de notificaciones al hacer clic fuera
+  useEffect(() => {
+    if (!showNotifMenu) return;
+    function handler(e: MouseEvent) {
+      if (notifWrapRef.current && !notifWrapRef.current.contains(e.target as Node)) {
+        setShowNotifMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showNotifMenu]);
 
   async function abrirNotificaciones() {
     const yaAbierto = showNotifMenu;
@@ -202,6 +215,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               {currentUser?.full_name ?? t("sidebar.miPerfil")}
             </span>
           </Link>
+          <div ref={notifWrapRef} className="contents">
           <button
             onClick={abrirNotificaciones}
             aria-label={t("sidebar.notificaciones")}
@@ -252,6 +266,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               </div>
             </div>
           )}
+          </div>
         </div>
 
         {/* Language selector */}
