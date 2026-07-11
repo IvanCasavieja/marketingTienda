@@ -268,25 +268,15 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
         price_records = gdu._get_prices_batch(session, batch)
         gdu._parse_prices(price_records, names, barcodes, categorias, branch_meta, api_records)
 
-    # Deduplicar por (product_id, cadena, precio): sin deduplicar aparecerían ~50
-    # filas idénticas de Devoto todas al mismo precio. Conservar la sucursal con
-    # ID numérico más bajo (la más "estándar") como representante de cada precio.
-    # El precio en el website depende de la sucursal seleccionada en la sesión del
-    # usuario, no del ?sc= en la URL — lo que mostramos aquí es la variación real
-    # de precios que existe entre sucursales de la misma cadena.
+    # Deduplicar por (product_id, cadena, sucursal): solo protege contra un
+    # duplicado literal de la MISMA sucursal (si la API llegara a repetir un
+    # registro), nunca colapsa sucursales distintas aunque compartan precio —
+    # mostrar el precio real de CADA sucursal es el objetivo del comparador,
+    # no un detalle a esconder.
     dedup: dict[tuple, ProductRecord] = {}
     for r in api_records:
-        key = (r.sku, r.tienda, r.precio)
-        existing = dedup.get(key)
-        if existing is None:
-            dedup[key] = r
-        else:
-            # Preferir la sucursal con ID numérico menor (tienda más estándar)
-            try:
-                if int(r.sucursal_id or "9999") < int(existing.sucursal_id or "9999"):
-                    dedup[key] = r
-            except (ValueError, TypeError):
-                pass
+        key = (r.sku, r.tienda, r.sucursal_id)
+        dedup.setdefault(key, r)
     # Limpiar URL: quitar ?sc= porque el precio en el website depende de la sesión
     # del usuario (sucursal seleccionada), no del parámetro URL. Un link con ?sc=119
     # muestra el mismo precio que sin él si la sesión del usuario tiene otra tienda.
@@ -754,30 +744,61 @@ def _loi_throttle() -> None:
         _loi_last_call = time.monotonic()
 
 
-def buscar_loi(term: str) -> list[ProductRecord]:
-    if _es_codigo(term):
-        return []  # la API pública de LOi no documenta búsqueda por barcode/SKU
+_LOI_MAX_INTENTOS = 3  # tope de reintentos con término progresivamente más corto
 
+
+def _loi_pedir(q: str) -> dict | None:
     _loi_throttle()
-    records: list[ProductRecord] = []
     try:
         r = _requests.get(
             "https://loi.com.uy/api/v1/products.json",
-            params={"q": term, "per_page": 24},
+            params={"q": q, "per_page": 24},
             headers={"User-Agent": _LOI_USER_AGENT, "Accept": "application/json"},
             timeout=8,
         )
         if r.status_code == 429:
-            log.warning("LOi: rate-limited (429) buscando '%s'", term)
-            return records
+            log.warning("LOi: rate-limited (429) buscando '%s'", q)
+            return None
         r.raise_for_status()
-        data = r.json()
+        return r.json()
     except Exception as exc:
-        log.warning("LOi: error buscando '%s' — %s", term, exc)
+        log.warning("LOi: error buscando '%s' — %s", q, exc)
+        return None
+
+
+def buscar_loi(term: str) -> list[ProductRecord]:
+    if _es_codigo(term):
+        return []  # la API pública de LOi no documenta búsqueda por barcode/SKU
+
+    # A diferencia del buscador web de LOi (Algolia, tolerante), su API pública
+    # /api/v1/products.json exige que TODAS las palabras del término existan
+    # literalmente en el nombre del producto — "celular samsung galaxy" da 0
+    # resultados ahí porque ningún producto dice "celular" en el título, aunque
+    # "samsung galaxy" solo (sacando la palabra de categoría) sí encuentra los
+    # mismos productos que se ven en su web. Como en español la palabra de
+    # categoría suele ir primero ("celular samsung", "heladera whirlpool"), se
+    # reintenta sacando palabras desde el principio hasta encontrar algo o
+    # agotar el tope — sin esto, cualquier término de categoría+marca+modelo
+    # devolvía "0 resultados" de forma incorrecta pese a existir en su catálogo.
+    palabras = term.split()
+    intentos = [term] + [" ".join(palabras[i:]) for i in range(1, len(palabras))]
+    intentos = intentos[:_LOI_MAX_INTENTOS]
+
+    data = None
+    for intento in intentos:
+        data = _loi_pedir(intento)
+        if data and data.get("products"):
+            break
+
+    records: list[ProductRecord] = []
+    if not data:
         return records
 
     for item in data.get("products") or []:
         nombre_item = item.get("title") or ""
+        # La relevancia se mide SIEMPRE contra el término original completo —
+        # el achique de arriba es solo para encontrar candidatos en la API de
+        # LOi, no para relajar qué se considera un resultado válido.
         score = score_match(nombre_item, term)
         if score < _MIN_SCORE:
             continue

@@ -264,8 +264,20 @@ export default function PreciosPage() {
   // Cadenas sin datos (0 resultados, sin respuesta, o error) — se agrupan
   // detrás de un toggle en vez de mezclarse con los chips de filtro reales,
   // que ya son 11-13 y no dan abasto visualmente si se suma todo junto.
+  //
+  // "GDU" es una fuente paraguas (el backend consulta Disco+Devoto+Géant de
+  // una), pero cada producto vuelve etiquetado con su tienda real — "GDU"
+  // como string nunca aparece en un resultado. Sin este caso especial, "GDU"
+  // siempre se marcaba como "sin resultado" aunque Disco/Devoto/Géant sí
+  // hubieran traído productos, porque la comparación literal contra "GDU"
+  // nunca daba match.
+  const GDU_MIEMBROS = ["Disco", "Devoto", "Geant"];
   const cadenasSinResultado = !streaming && hasSearched
-    ? cadenasDone.filter((c) => !cadenas.includes(c) && !cadenaErrors[c])
+    ? cadenasDone.filter((c) => {
+        if (cadenaErrors[c]) return false;
+        if (c === "GDU") return !GDU_MIEMBROS.some((m) => cadenas.includes(m));
+        return !cadenas.includes(c);
+      })
     : [];
   const cadenasSinRespuesta = !streaming && hasSearched
     ? queriedCadenas.filter((c) => !cadenasDone.includes(c) && !cadenaErrors[c])
