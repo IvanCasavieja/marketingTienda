@@ -598,6 +598,10 @@
     "searchError": "Erro ao buscar",
     "chainsCoverage": "13 redes · 134+ lojas consultadas em tempo real",
     "all": "Todas",
+    "sources": "Fontes",
+    "sourcesTitle": "Quais redes consultar",
+    "sourcesReset": "Redefinir",
+    "sourcesLoiNote": "LOi fica desativada por padrão (catálogo geral, sem relação com a maioria das buscas) — ative apenas quando realmente procurar algo que ela possa vender.",
     "categorias": {
       "supermercados": "Supermercados",
       "farmacia": "Farmácia",

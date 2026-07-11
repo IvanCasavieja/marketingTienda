@@ -598,6 +598,10 @@
     "searchError": "Search error",
     "chainsCoverage": "13 chains · 134+ branches queried in real time",
     "all": "All",
+    "sources": "Sources",
+    "sourcesTitle": "Which chains to query",
+    "sourcesReset": "Reset",
+    "sourcesLoiNote": "LOi is off by default (general catalog, unrelated to most searches) — add it only when you're actually looking for something it might sell.",
     "categorias": {
       "supermercados": "Supermarkets",
       "farmacia": "Pharmacy",

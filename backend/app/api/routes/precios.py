@@ -94,6 +94,10 @@ def _resolver_barcode(barcode: str) -> str | None:
 @router.get("/buscar-vivo-stream")
 async def buscar_vivo_stream(
     q: str = Query(..., min_length=2, description="Término de búsqueda"),
+    cadenas: Optional[str] = Query(
+        None,
+        description="Cadenas a consultar, separadas por coma. Si se omite, se usan las cadenas por defecto (LOi queda afuera salvo que se la seleccione a propósito).",
+    ),
     _: User = Depends(require_permission("precios.search")),
 ):
     """Búsqueda EN VIVO con SSE — devuelve resultados cadena por cadena en cuanto
@@ -101,7 +105,16 @@ async def buscar_vivo_stream(
     HTTP (incluyendo CORS) se envían con el primer byte, antes de que cualquier
     cadena termine."""
     import asyncio, json, threading
-    from app.services.scraper.live_search import buscar_todas_streaming, _DATA_DIR
+    from app.services.scraper.live_search import buscar_todas_streaming, _DATA_DIR, _CADENAS_TODAS
+
+    # Filtramos contra la lista real de cadenas soportadas — así un valor
+    # desconocido o vacío nunca rompe la búsqueda, simplemente se ignora.
+    cadenas_seleccionadas: Optional[list[str]] = None
+    if cadenas:
+        pedidas = {c.strip() for c in cadenas.split(",") if c.strip()}
+        validas = [c for c in _CADENAS_TODAS if c in pedidas]
+        if validas:
+            cadenas_seleccionadas = validas
 
     # Si el término es puramente numérico, resolver barcode → nombre via Open Food Facts
     search_term = q.strip()
@@ -125,7 +138,7 @@ async def buscar_vivo_stream(
 
     def _run_search():
         try:
-            for cadena, records, error in buscar_todas_streaming(search_term, _DATA_DIR):
+            for cadena, records, error in buscar_todas_streaming(search_term, _DATA_DIR, cadenas_seleccionadas):
                 try:
                     items = [
                         {

@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import threading
+import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
@@ -57,6 +58,16 @@ def score_match(nombre: str, term: str) -> float:
     supers nombran el mismo producto diferente) con cobertura de tokens (% de las
     palabras del término que aparecen en el nombre). Un resultado necesita ≥55 para
     no ser descartado.
+
+    Nota: cuando el término mezcla una marca con una palabra de categoría genérica
+    que no aparece literalmente en el nombre del producto (ej. "celular samsung" vs.
+    "Samsung Galaxy A57 5G", que no dice "celular"), este puntaje no alcanza para
+    distinguir eso de un falso positivo real de otra categoría (ej. "Auriculares
+    Samsung Galaxy Buds") — ambos dan el mismo score porque a los dos les "falta"
+    la misma palabra. Exigir que todas las palabras estén presentes literalmente
+    rechaza los dos casos por igual (probado y descartado); arreglarlo bien
+    requeriría cruzar contra la categoría real del producto, que no todos los
+    adapters exponen.
     """
     n = (nombre or "").lower().strip()
     t = (term  or "").lower().strip()
@@ -719,28 +730,137 @@ def buscar_fama(term: str) -> list[ProductRecord]:
     return records
 
 
+# ── LOi (API pública documentada — /api/v1/products.json) ─────────────────────
+# A diferencia del resto de este archivo, LOi publica su propia API con límites
+# de uso documentados (/developer-ai.txt, /llms-full.txt): 60 req/min para
+# búsqueda, y piden identificarse con un User-Agent descriptivo en vez de
+# simular un navegador. Por eso esta cadena NO reusa _UA_HEADERS (que finge ser
+# Chrome) y tiene su propio limitador de velocidad — puesto a propósito, no
+# heredado del resto del archivo (que no tiene ninguno).
+
+_LOI_USER_AGENT   = "PrecioCompetitivoBot/1.0 (uso interno, solo lectura de precios publicos)"
+_LOI_MIN_INTERVAL = 1.1  # seg entre pedidos — bien por debajo del límite de 60/min documentado
+_loi_lock         = threading.Lock()
+_loi_last_call    = 0.0
+
+
+def _loi_throttle() -> None:
+    global _loi_last_call
+    with _loi_lock:
+        ahora = time.monotonic()
+        espera = _loi_last_call + _LOI_MIN_INTERVAL - ahora
+        if espera > 0:
+            time.sleep(espera)
+        _loi_last_call = time.monotonic()
+
+
+def buscar_loi(term: str) -> list[ProductRecord]:
+    if _es_codigo(term):
+        return []  # la API pública de LOi no documenta búsqueda por barcode/SKU
+
+    _loi_throttle()
+    records: list[ProductRecord] = []
+    try:
+        r = _requests.get(
+            "https://loi.com.uy/api/v1/products.json",
+            params={"q": term, "per_page": 24},
+            headers={"User-Agent": _LOI_USER_AGENT, "Accept": "application/json"},
+            timeout=8,
+        )
+        if r.status_code == 429:
+            log.warning("LOi: rate-limited (429) buscando '%s'", term)
+            return records
+        r.raise_for_status()
+        data = r.json()
+    except Exception as exc:
+        log.warning("LOi: error buscando '%s' — %s", term, exc)
+        return records
+
+    for item in data.get("products") or []:
+        nombre_item = item.get("title") or ""
+        score = score_match(nombre_item, term)
+        if score < _MIN_SCORE:
+            continue
+
+        precio_info = item.get("price") or {}
+        precio = precio_info.get("amount")
+        if precio is None:
+            continue
+        precio_lista = precio_info.get("original_amount")
+        if precio_lista is not None and precio_lista <= precio:
+            precio_lista = None
+
+        marca_info      = item.get("brand") or {}
+        categoria_info   = item.get("category") or {}
+
+        records.append(ProductRecord(
+            tienda          = "LOi",
+            nombre          = nombre_item,
+            precio          = float(precio),
+            precio_lista    = float(precio_lista) if precio_lista is not None else None,
+            sku             = item.get("sku") or (str(item["id"]) if item.get("id") else None),
+            barcode         = None,
+            marca           = marca_info.get("name") or None,
+            categoria       = categoria_info.get("name") or None,
+            url             = item.get("url") or "https://loi.com.uy",
+            sucursal_id     = None,
+            sucursal_nombre = None,
+            relevancia      = score,
+            moneda          = precio_info.get("currency") or "UYU",
+        ))
+
+    return records
+
+
 # ── Orquestador ───────────────────────────────────────────────────────────────
 
-def buscar_todas(term: str, cache_dir: Path = _DATA_DIR) -> dict[str, list[ProductRecord]]:
-    """Busca `term` en todas las cadenas soportadas en paralelo.
+# LOi queda afuera de la selección por defecto: a diferencia del resto de estas
+# cadenas (supermercados/farmacias/electro que compiten directo con nuestro
+# rubro), LOi es un catálogo general (celulares, hogar, belleza...) sin
+# relación con la mayoría de lo que se busca acá — traerlo siempre significaría
+# gastar presupuesto de su rate limit documentado en búsquedas donde nunca iba
+# a aparecer (ej. "coca cola"). Se busca solo si el usuario la selecciona a
+# propósito desde el filtro de cadenas.
+_CADENAS_DEFAULT = [
+    "Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "BlackDog",
+    "Electrohogar", "CoverCompany", "DIMM", "Stienda", "Fama",
+]
+_CADENAS_OPT_IN = ["LOi"]
+_CADENAS_TODAS  = _CADENAS_DEFAULT + _CADENAS_OPT_IN
+
+
+def _tareas_disponibles(term: str, cache_dir: Path) -> dict[str, tuple]:
+    return {
+        "Ta-Ta":         (buscar_tata,         (term,)),
+        "ElDorado":      (buscar_eldorado,     (term,)),
+        "GDU":           (buscar_gdu,          (term, cache_dir)),
+        "FarmaShop":     (buscar_farmashop,    (term,)),
+        "Botiga":        (buscar_botiga,       (term,)),
+        "BlackDog":      (buscar_blackdog,     (term,)),
+        "Electrohogar":  (buscar_electrohogar, (term,)),
+        "CoverCompany":  (buscar_covercompany, (term,)),
+        "DIMM":          (buscar_dimm,         (term,)),
+        "Stienda":       (buscar_stienda,      (term,)),
+        "Fama":          (buscar_fama,         (term,)),
+        "LOi":           (buscar_loi,          (term,)),
+    }
+
+
+def buscar_todas(
+    term: str,
+    cache_dir: Path = _DATA_DIR,
+    cadenas: list[str] | None = None,
+) -> dict[str, list[ProductRecord]]:
+    """Busca `term` en las cadenas seleccionadas en paralelo (todas las de
+    _CADENAS_DEFAULT si `cadenas` es None — ver _CADENAS_OPT_IN).
     Devuelve {cadena: [ProductRecord, ...]}. Si una cadena falla, devuelve lista
     vacía para esa cadena y continúa con las demás (nunca lanza excepción)."""
-    futs: dict[str, "Future"] = {}
-    with ThreadPoolExecutor(max_workers=11) as ex:
-        futs = {
-            "Ta-Ta":         ex.submit(buscar_tata, term),
-            "ElDorado":      ex.submit(buscar_eldorado, term),
-            "GDU":           ex.submit(buscar_gdu, term, cache_dir),
-            "FarmaShop":     ex.submit(buscar_farmashop, term),
-            "Botiga":        ex.submit(buscar_botiga, term),
-            "BlackDog":      ex.submit(buscar_blackdog, term),
-            "Electrohogar":  ex.submit(buscar_electrohogar, term),
-            "CoverCompany":  ex.submit(buscar_covercompany, term),
-            "DIMM":          ex.submit(buscar_dimm, term),
-            "Stienda":       ex.submit(buscar_stienda, term),
-            "Fama":          ex.submit(buscar_fama, term),
-        }
-        resultados: dict[str, list[ProductRecord]] = {}
+    seleccion = set(cadenas) if cadenas is not None else set(_CADENAS_DEFAULT)
+    activas = {c: t for c, t in _tareas_disponibles(term, cache_dir).items() if c in seleccion}
+
+    resultados: dict[str, list[ProductRecord]] = {}
+    with ThreadPoolExecutor(max_workers=max(len(activas), 1)) as ex:
+        futs = {cadena: ex.submit(fn, *args) for cadena, (fn, args) in activas.items()}
         for cadena, fut in futs.items():
             try:
                 resultados[cadena] = fut.result()
@@ -752,23 +872,15 @@ def buscar_todas(term: str, cache_dir: Path = _DATA_DIR) -> dict[str, list[Produ
     return resultados
 
 
-def buscar_todas_streaming(term: str, cache_dir: Path = _DATA_DIR):
-    """Generador síncrono que hace yield de (cadena, records) en orden de llegada.
-    La cadena más rápida aparece primero — ideal para streaming SSE."""
-    with ThreadPoolExecutor(max_workers=11) as ex:
-        futs = {
-            ex.submit(buscar_tata,         term):            "Ta-Ta",
-            ex.submit(buscar_eldorado,     term):            "ElDorado",
-            ex.submit(buscar_gdu,          term, cache_dir): "GDU",
-            ex.submit(buscar_farmashop,    term):            "FarmaShop",
-            ex.submit(buscar_botiga,       term):            "Botiga",
-            ex.submit(buscar_blackdog,     term):            "BlackDog",
-            ex.submit(buscar_electrohogar, term):            "Electrohogar",
-            ex.submit(buscar_covercompany, term):            "CoverCompany",
-            ex.submit(buscar_dimm,         term):            "DIMM",
-            ex.submit(buscar_stienda,      term):            "Stienda",
-            ex.submit(buscar_fama,         term):            "Fama",
-        }
+def buscar_todas_streaming(term: str, cache_dir: Path = _DATA_DIR, cadenas: list[str] | None = None):
+    """Generador síncrono que hace yield de (cadena, records, error) en orden de
+    llegada. La cadena más rápida aparece primero — ideal para streaming SSE.
+    `cadenas` selecciona qué cadenas consultar (_CADENAS_DEFAULT si es None)."""
+    seleccion = set(cadenas) if cadenas is not None else set(_CADENAS_DEFAULT)
+    activas = {c: t for c, t in _tareas_disponibles(term, cache_dir).items() if c in seleccion}
+
+    with ThreadPoolExecutor(max_workers=max(len(activas), 1)) as ex:
+        futs = {ex.submit(fn, *args): cadena for cadena, (fn, args) in activas.items()}
         for fut in as_completed(futs):
             cadena = futs[fut]
             try:

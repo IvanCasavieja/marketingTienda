@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preciosApi, type ProductoVivo } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
-import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp, SlidersHorizontal, Check } from "lucide-react";
 import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
 import { CADENA_CONFIG, CADENA_CATEGORIA, CadenaBadge } from "@/components/precios/cadenaConfig";
@@ -17,6 +17,12 @@ const CATEGORIA_KEYS: Record<string, string> = {
   "Electrónica":    "precios.categorias.electronica",
   "Otros":          "precios.categorias.otros",
 };
+
+// Cadenas consultadas por defecto — debe reflejar _CADENAS_DEFAULT en
+// backend/app/services/scraper/live_search.py. LOi queda fuera de esta lista
+// a propósito (ver comentario junto a sourceCadenas en el componente).
+const CADENAS_DEFAULT = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Fama", "Stienda", "BlackDog", "CoverCompany", "DIMM", "Electrohogar"];
+const CADENAS_TODAS    = [...CADENAS_DEFAULT, "LOi"];
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
@@ -51,8 +57,19 @@ export default function PreciosPage() {
   const [showChart,      setShowChart]      = useState(false);
   const [showDiagnostico, setShowDiagnostico] = useState(false);
 
+  // Fuentes a consultar EN LA PRÓXIMA búsqueda (se elige antes de buscar, a
+  // diferencia de filterCadenas que filtra resultados ya traídos). LOi queda
+  // afuera por defecto: es un catálogo general sin relación con la mayoría de
+  // los términos que se buscan acá, y consultarlo consume presupuesto de su
+  // rate limit documentado (60 req/min) sin necesidad — que la persona lo
+  // sume a propósito cuando de verdad busca algo que LOi podría vender.
+  const [sourceCadenas, setSourceCadenas] = useState<Set<string>>(new Set(CADENAS_DEFAULT));
+  const [queriedCadenas, setQueriedCadenas] = useState<string[]>(CADENAS_DEFAULT);
+  const [showFuentes, setShowFuentes] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const fuentesRef = useRef<HTMLDivElement>(null);
 
   const buscar = useCallback(async (term: string) => {
     const termino = term.trim();
@@ -72,8 +89,11 @@ export default function PreciosPage() {
     setCadenasDone([]);
     setCadenaErrors({});
 
+    const activas = Array.from(sourceCadenas);
+    setQueriedCadenas(activas);
+
     try {
-      const response = await preciosApi.buscarVivoStream(termino, ctrl.signal);
+      const response = await preciosApi.buscarVivoStream(termino, ctrl.signal, activas);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const reader  = response.body!.getReader();
@@ -117,11 +137,29 @@ export default function PreciosPage() {
       setLoading(false);
       setStreaming(false);
     }
-  }, []);
+  }, [sourceCadenas]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const ALL_CADENAS = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Fama", "Stienda", "BlackDog", "CoverCompany", "DIMM", "Electrohogar"];
+  // Cerrar el panel de fuentes al hacer clic afuera.
+  useEffect(() => {
+    if (!showFuentes) return;
+    const onClick = (e: MouseEvent) => {
+      if (fuentesRef.current && !fuentesRef.current.contains(e.target as Node)) {
+        setShowFuentes(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [showFuentes]);
+
+  function toggleFuente(c: string) {
+    setSourceCadenas((prev) => {
+      const next = new Set(prev);
+      next.has(c) ? next.delete(c) : next.add(c);
+      return next;
+    });
+  }
 
   // Multi-selección: los chips se van sumando entre sí — solo "Todas" los apaga
   // a todos de una. Vacío = mostrar todas las cadenas.
@@ -230,7 +268,7 @@ export default function PreciosPage() {
     ? cadenasDone.filter((c) => !cadenas.includes(c) && !cadenaErrors[c])
     : [];
   const cadenasSinRespuesta = !streaming && hasSearched
-    ? ALL_CADENAS.filter((c) => !cadenasDone.includes(c) && !cadenaErrors[c])
+    ? queriedCadenas.filter((c) => !cadenasDone.includes(c) && !cadenaErrors[c])
     : [];
   const cadenasConError = !streaming && hasSearched ? Object.keys(cadenaErrors) : [];
   const totalDiagnostico = cadenasSinResultado.length + cadenasSinRespuesta.length + cadenasConError.length;
@@ -279,6 +317,73 @@ export default function PreciosPage() {
             {loading ? t("precios.searching") : t("precios.search")}
           </button>
         </form>
+
+        {/* Fuentes a consultar — elegido ANTES de buscar (a diferencia de los
+            chips de filtro, que filtran resultados ya traídos). */}
+        <div className="relative mt-2" ref={fuentesRef}>
+          <button
+            type="button"
+            onClick={() => setShowFuentes((v) => !v)}
+            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+          >
+            <SlidersHorizontal size={12} />
+            {t("precios.sources")} ({sourceCadenas.size}/{CADENAS_TODAS.length})
+          </button>
+
+          {showFuentes && (
+            <div className="absolute z-20 mt-2 w-72 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                  {t("precios.sourcesTitle")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSourceCadenas(new Set(CADENAS_DEFAULT))}
+                  className="text-[11px] text-brand-600 hover:underline"
+                >
+                  {t("precios.sourcesReset")}
+                </button>
+              </div>
+
+              {[...CATEGORIA_ORDEN, "Otros"].map((categoria) => {
+                const items = CADENAS_TODAS.filter((c) => (CADENA_CATEGORIA[c] ?? "Otros") === categoria);
+                if (items.length === 0) return null;
+                return (
+                  <div key={categoria}>
+                    <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">
+                      {CATEGORIA_KEYS[categoria] ? t(CATEGORIA_KEYS[categoria]) : categoria}
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {items.map((c) => {
+                        const cfg = CADENA_CONFIG[c];
+                        const active = sourceCadenas.has(c);
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => toggleFuente(c)}
+                            className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full font-medium transition-all ${
+                              active
+                                ? `${cfg?.dot ?? "bg-slate-500"} text-white`
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
+                            }`}
+                          >
+                            {active && <Check size={10} />}
+                            {cfg?.label ?? c}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+                {t("precios.sourcesLoiNote")}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Estado inicial vacío (solo antes de la primera búsqueda) ────────── */}
@@ -340,7 +445,7 @@ export default function PreciosPage() {
               ))}
 
               {/* Chips de progreso mientras streamea */}
-              {streaming && ALL_CADENAS.filter(c => !cadenasDone.includes(c)).map(c => (
+              {streaming && queriedCadenas.filter(c => !cadenasDone.includes(c)).map(c => (
                 <span key={c} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
                   <Loader2 size={9} className="animate-spin" />
                   {CADENA_CONFIG[c]?.label ?? c}

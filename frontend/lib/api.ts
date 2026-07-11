@@ -316,11 +316,13 @@ export const preciosApi = {
   buscarVivo: (q: string) =>
     api.get<BuscarVivoResponse>("/precios/buscar-vivo", { params: { q } }),
 
-  buscarVivoStream: async (q: string, signal?: AbortSignal): Promise<Response> => {
+  buscarVivoStream: async (q: string, signal?: AbortSignal, cadenas?: string[]): Promise<Response> => {
     const doFetch = () => {
       const token = getAccessToken();
+      const params = new URLSearchParams({ q });
+      if (cadenas && cadenas.length > 0) params.set("cadenas", cadenas.join(","));
       return fetch(
-        `${BASE_URL}/precios/buscar-vivo-stream?q=${encodeURIComponent(q)}`,
+        `${BASE_URL}/precios/buscar-vivo-stream?${params.toString()}`,
         {
           headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           credentials: "include",
