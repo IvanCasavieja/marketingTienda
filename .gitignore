@@ -7,3 +7,6 @@ gdu_sucursales/
 frontend/.env.local.dev
 backend/.env
 backend/.env.scraper
+
+# Entorno aislado para probar Google Meridian (MMM) — no es parte del backend
+.venv-meridian/
