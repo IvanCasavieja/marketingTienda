@@ -174,7 +174,8 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
     if user.tokens_invalidated_at is not None:
         iat = data.get("iat")
         issued_at = datetime.fromtimestamp(iat, tz=timezone.utc) if iat else None
-        if not issued_at or issued_at < user.tokens_invalidated_at:
+        # Mismo margen de 2s que en get_current_user — ver comentario ahí.
+        if not issued_at or issued_at < user.tokens_invalidated_at - timedelta(seconds=2):
             raise HTTPException(status_code=401, detail="Token invalidado — volvé a iniciar sesión")
 
     access_token  = create_access_token(user.id)
@@ -279,6 +280,7 @@ async def reset_password(
 @limiter.limit("10/minute")
 async def change_password(
     request: Request,
+    response: Response,
     payload: ChangePasswordRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -314,6 +316,21 @@ async def change_password(
     db.add(current_user)
     db.add(AuditLog(user_id=current_user.id, action="user.password_change"))
 
-    return {"message": "Contraseña actualizada correctamente."}
+    # tokens_invalidated_at recién puesto mata cualquier token viejo — incluido
+    # el que se está usando en este mismo request. Sin emitir uno nuevo acá, la
+    # siguiente llamada del frontend (incluso /auth/me) rebota con 401, el
+    # intento de refresh también falla (el refresh token quedó invalidado
+    # igual) y el interceptor manda a la persona de vuelta a /login — quedaba
+    # forzada a loguearse de nuevo justo después de cambiar la contraseña.
+    access_token = create_access_token(current_user.id)
+    refresh_token = create_refresh_token(current_user.id)
+    _set_auth_cookies(response, access_token, refresh_token)
+
+    return {
+        "message": "Contraseña actualizada correctamente.",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }
 
 

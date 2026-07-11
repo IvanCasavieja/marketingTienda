@@ -93,8 +93,15 @@ export const authApi = {
   forgotPassword: (email: string) => api.post("/auth/forgot-password", { email }),
   resetPassword: (token: string, new_password: string) =>
     api.post("/auth/reset-password", { token, new_password }),
-  changePassword: (current_password: string, new_password: string) =>
-    api.post("/auth/change-password", { current_password, new_password }),
+  changePassword: async (current_password: string, new_password: string) => {
+    const res = await api.post("/auth/change-password", { current_password, new_password });
+    // El backend invalida el token viejo al cambiar la contraseña (por
+    // seguridad) y emite uno nuevo en la misma respuesta — sin guardarlo acá,
+    // la siguiente request se cae con 401 y el interceptor manda a /login,
+    // como si cambiar la contraseña te hubiera desconectado.
+    if (res.data?.access_token) saveAccessToken(res.data.access_token);
+    return res;
+  },
 };
 
 export const metricsApi = {

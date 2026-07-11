@@ -93,10 +93,17 @@ async def get_current_user(
     # de "cerrar sesión" o de cambiar la contraseña, hasta que expirara solo
     # (hasta 7 días para el refresh token). Cualquier token emitido antes de
     # esta marca queda invalidado, sin tocar la firma ni una lista de baneados.
+    #
+    # El margen de 2s es porque JWT codifica "iat" en segundos enteros (le
+    # trunca los microsegundos), mientras que tokens_invalidated_at en la base
+    # los conserva — sin este margen, un token emitido el mismo segundo en que
+    # se invalida (ej. el que devuelve /change-password para no cortar la
+    # sesión) podía quedar del lado "anterior" solo por el redondeo, y la
+    # persona terminaba desconectada justo después de cambiar la contraseña.
     if user.tokens_invalidated_at is not None:
         iat = payload.get("iat")
         issued_at = datetime.fromtimestamp(iat, tz=timezone.utc) if iat else None
-        if not issued_at or issued_at < user.tokens_invalidated_at:
+        if not issued_at or issued_at < user.tokens_invalidated_at - timedelta(seconds=2):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalidado — volvé a iniciar sesión")
 
     if request.url.path not in _PASSWORD_CHANGE_EXEMPT_PATHS and await _needs_password_change(user, db):
