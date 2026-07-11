@@ -6,6 +6,7 @@ from lxml import etree
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
+from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
 from pptx.util import Cm, Pt
 
@@ -272,7 +273,7 @@ def _embed_vector_image(slide, img_bytes: bytes, ext: str, bounds: dict) -> None
         f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
         f'</p:pic>'
     )
-    slide.shapes._spTree.append(etree.fromstring(pic_xml.encode()))
+    slide.shapes._spTree.append(parse_xml(pic_xml.encode()))
 
 
 def add_image_placeholder(slide, comp: dict, label: str) -> None:

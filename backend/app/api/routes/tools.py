@@ -1,11 +1,12 @@
 import logging
 import pathlib
+import re
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import require_permission
 from app.core.uploads import read_limited as _read_limited
 from app.models.user import User
 from app.models.cenefa_template import CenefaTemplate
@@ -24,6 +25,14 @@ _BUILTIN_TEMPLATES = [
 ]
 
 
+def _safe_filename(name: str) -> str:
+    """El nombre del template es texto libre cargado por el usuario y termina
+    reflejado sin escapar en el header Content-Disposition — una comilla ahí
+    rompe el parámetro filename= y permite manipular la respuesta. Sacamos
+    comillas, backslashes y cualquier caracter de control (CR/LF incluidos)."""
+    cleaned = re.sub(r'[\x00-\x1f\x7f"\\]', "", name)
+    return cleaned.strip() or "template"
+
 
 # ---------------------------------------------------------------------------
 # Generation
@@ -41,7 +50,7 @@ async def generate_cenefas(
     banco: str = Form(default=""),
     margin_cm: float = Form(default=0.0),
     desc_margin_cm: float = Form(default=1.0),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.generate")),
     db: AsyncSession = Depends(get_db),
 ):
     if not excel.filename or not excel.filename.lower().endswith((".xlsx", ".xlsm")):
@@ -105,7 +114,7 @@ async def generate_cenefas(
 
 @router.get("/cenefas/template")
 async def download_cenefa_template(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.view")),
 ):
     xlsx_bytes = generate_template_bytes()
     return Response(
@@ -121,7 +130,7 @@ async def download_cenefa_template(
 
 @router.get("/cenefas/builtin-templates")
 async def list_builtin_templates(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.view")),
 ):
     return [
         {"slug": t["slug"], "name": t["name"], "format_name": t["format_name"]}
@@ -131,7 +140,7 @@ async def list_builtin_templates(
 
 @router.get("/cenefas/templates")
 async def list_templates(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -155,7 +164,7 @@ async def create_template(
     name: str = Form(...),
     format_name: str = Form(default=""),
     file: UploadFile = File(..., description="Plantilla PPTX"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.import")),
     db: AsyncSession = Depends(get_db),
 ):
     if not file.filename or not file.filename.lower().endswith(".pptx"):
@@ -180,7 +189,7 @@ async def create_template(
 @router.delete("/cenefas/templates/{template_id}", status_code=204)
 async def delete_template_v1(
     template_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.delete")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -192,13 +201,15 @@ async def delete_template_v1(
     tmpl = result.scalar_one_or_none()
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template no encontrado")
+    if tmpl.created_by != current_user.id and not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="No tenés permiso para eliminar el template de otro usuario")
     tmpl.is_active = False
 
 
 @router.get("/cenefas/templates/{template_id}/download")
 async def download_template_v1(
     template_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -213,5 +224,5 @@ async def download_template_v1(
     return Response(
         content=tmpl.file_bytes,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f'attachment; filename="{tmpl.name}.pptx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(tmpl.name)}.pptx"'},
     )

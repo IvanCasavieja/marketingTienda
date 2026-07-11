@@ -23,6 +23,17 @@ export function clearAccessToken(): void {
   if (typeof window !== "undefined") localStorage.removeItem(TOKEN_KEY);
 }
 
+// El backend exige este header en cualquier request que escriba/borre datos
+// (POST/PUT/PATCH/DELETE) — una cookie sola puede viajar en un request
+// cross-site forjado por otro sitio (CSRF), pero nadie fuera de nuestro
+// propio origen puede leer este token de localStorage para forjar el header.
+// Los fetch() crudos de este archivo (streaming) no pasan por el interceptor
+// de axios, así que necesitan agregarlo a mano.
+function authHeader(): Record<string, string> {
+  const token = getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 // ── Axios instance ────────────────────────────────────────────────────────────
 export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
@@ -110,7 +121,7 @@ export const analyticsApi = {
   streamDebate: (platforms: string[], date_from: string, date_to: string, user_prompt: string = "", signal?: AbortSignal) =>
     fetch(`${BASE_URL}/analytics/analyze/debate/stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeader() },
       credentials: "include",
       signal,
       body: JSON.stringify({ platforms, date_from, date_to, analysis_type: "debate", user_prompt }),
@@ -124,7 +135,7 @@ export const analyticsApi = {
   ) =>
     fetch(`${BASE_URL}/analytics/debate/turn`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeader() },
       credentials: "include",
       signal,
       body: JSON.stringify({
@@ -142,7 +153,7 @@ export const analyticsApi = {
   ) =>
     fetch(`${BASE_URL}/analytics/debate/verdict`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeader() },
       credentials: "include",
       signal,
       body: JSON.stringify({
@@ -166,7 +177,8 @@ export const sfmcApi = {
 export const connectionsApi = {
   list: () => api.get("/connections/"),
   create: (data: object) => api.post("/connections/", data),
-  delete: (id: number) => api.delete(`/connections/${id}`),
+  delete: (id: number, current_password: string) =>
+    api.delete(`/connections/${id}`, { data: { current_password } }),
 };
 
 export const toolsApi = {

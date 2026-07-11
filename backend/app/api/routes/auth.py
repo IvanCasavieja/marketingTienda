@@ -1,5 +1,6 @@
 import logging
 import secrets
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +11,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, _needs_password_change
 from app.models.user import User
 from app.models.audit_log import AuditLog
 from app.models.local_asignacion import LocalAsignacion
@@ -56,7 +57,9 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _user_response(user: User, assigned_locales: list[str] | None = None) -> UserResponse:
+def _user_response(
+    user: User, assigned_locales: list[str] | None = None, must_change_password: bool = False
+) -> UserResponse:
     role = user.role
     return UserResponse(
         id=user.id,
@@ -68,6 +71,7 @@ def _user_response(user: User, assigned_locales: list[str] | None = None) -> Use
         role_name=role.name if role else None,
         permissions=user.permissions or [],
         assigned_locales=assigned_locales or [],
+        must_change_password=must_change_password,
     )
 
 
@@ -82,6 +86,7 @@ async def register(payload: UserRegister, request: Request, db: AsyncSession = D
         email=payload.email,
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
+        password_changed_at=datetime.now(timezone.utc),  # elegida por el propio dueño desde el vamos
     )
     db.add(user)
     await db.flush()
@@ -90,15 +95,47 @@ async def register(payload: UserRegister, request: Request, db: AsyncSession = D
     return _user_response(user)
 
 
+_LOGIN_FAIL_LIMIT = 5
+_LOGIN_LOCKOUT_MINUTES = 15
+
+
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 async def login(payload: UserLogin, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    """Bloqueo por intentos fallidos, persistido en la propia fila del
+    usuario (no en Redis) — además del límite por IP de arriba, que un
+    atacante puede esquivar mandando un X-Forwarded-For distinto en cada
+    request (uvicorn confía en ese header por default). Esto no depende de
+    la IP en absoluto ni de que Redis esté arriba: a la cuenta objetivo se la
+    protege igual, y queda visible/reseteable desde el panel de admin."""
     result = await db.execute(select(User).where(User.email == payload.email, User.is_active == True))
     user = result.scalar_one_or_none()
 
+    now = datetime.now(timezone.utc)
+
+    if user and user.locked_until and user.locked_until > now:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Cuenta bloqueada por intentos fallidos — probá de nuevo después de las {user.locked_until.strftime('%H:%M')} UTC",
+        )
+
     if not user or not verify_password(payload.password, user.hashed_password):
+        if user:
+            user.failed_login_attempts += 1
+            if user.failed_login_attempts >= _LOGIN_FAIL_LIMIT:
+                user.locked_until = now + timedelta(minutes=_LOGIN_LOCKOUT_MINUTES)
+            db.add(user)
+            # get_db() solo hace commit si el endpoint termina sin excepción —
+            # como acá siempre levantamos una en el camino de fallo, sin este
+            # commit explícito el conteo de intentos se revertía siempre y el
+            # bloqueo nunca se activaba (comprobado en vivo: sin esto, una
+            # cuenta "bloqueada" seguía aceptando la contraseña correcta).
+            await db.commit()
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    db.add(user)
     db.add(AuditLog(user_id=user.id, action="user.login", ip_address=_client_ip(request)))
 
     access_token  = create_access_token(user.id)
@@ -134,6 +171,12 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
+    if user.tokens_invalidated_at is not None:
+        iat = data.get("iat")
+        issued_at = datetime.fromtimestamp(iat, tz=timezone.utc) if iat else None
+        if not issued_at or issued_at < user.tokens_invalidated_at:
+            raise HTTPException(status_code=401, detail="Token invalidado — volvé a iniciar sesión")
+
     access_token  = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
     _set_auth_cookies(response, access_token, refresh_token)
@@ -156,7 +199,8 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         select(LocalAsignacion.local_nombre).where(LocalAsignacion.user_id == current_user.id)
     )
     assigned_locales = list(locales_result.scalars().all())
-    return _user_response(result.scalar_one(), assigned_locales)
+    must_change = await _needs_password_change(current_user, db)
+    return _user_response(result.scalar_one(), assigned_locales, must_change)
 
 
 @router.post("/forgot-password", status_code=200)
@@ -218,7 +262,13 @@ async def reset_password(
     if not user:
         raise HTTPException(status_code=400, detail="Token inválido o expirado")
 
+    now = datetime.now(timezone.utc)
     user.hashed_password = hash_password(payload.new_password)
+    user.tokens_invalidated_at = now
+    user.password_changed_at = now
+    user.must_change_password = False  # la eligió el propio dueño de la cuenta
+    user.failed_login_attempts = 0
+    user.locked_until = None
     await redis.delete(redis_key)  # token de un solo uso
     db.add(AuditLog(user_id=user.id, action="user.password_reset"))
 
@@ -234,13 +284,33 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
 ):
     """Un usuario logueado cambia su propia contraseña sabiendo la actual —
-    distinto del flujo de /reset-password, que es para cuando no tenés acceso."""
+    distinto del flujo de /reset-password, que es para cuando no tenés acceso.
+
+    Los logins de sucursal (usuario = contraseña = nombre del local, sin dueño
+    individual — ver create_sucursal_users.py) quedan afuera de este flujo:
+    la contraseña es pública a propósito dentro del local, así que cualquiera
+    que la supiera podría entrar una vez y cambiarla, dejando afuera para
+    siempre al resto del personal real. Cambiarla es una decisión de un
+    superadmin (vía /admin/users/{id}/reset-password), no autoservicio."""
+    has_local = await db.execute(
+        select(LocalAsignacion).where(LocalAsignacion.user_id == current_user.id).limit(1)
+    )
+    if has_local.scalar_one_or_none():
+        raise HTTPException(
+            status_code=403,
+            detail="Los usuarios de sucursal no pueden cambiar su propia contraseña — pedile a un administrador que la resetee",
+        )
+
     if not verify_password(payload.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="La contraseña actual no es correcta")
     if payload.new_password == payload.current_password:
         raise HTTPException(status_code=400, detail="La nueva contraseña tiene que ser distinta de la actual")
 
+    now = datetime.now(timezone.utc)
     current_user.hashed_password = hash_password(payload.new_password)
+    current_user.tokens_invalidated_at = now
+    current_user.password_changed_at = now
+    current_user.must_change_password = False
     db.add(current_user)
     db.add(AuditLog(user_id=current_user.id, action="user.password_change"))
 

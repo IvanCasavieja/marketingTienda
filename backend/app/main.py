@@ -139,6 +139,10 @@ async def security_headers(request: Request, call_next):
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # API pura (JSON) — no sirve HTML propio, así que no hace falta script-src
+    # ni nada por el estilo, pero igual bloqueamos que se embeba en un frame y
+    # cualquier fallback a "default-src" laxo en navegadores viejos.
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
     return response
 
 # CORS — registered last so it becomes the outermost middleware and injects

@@ -90,6 +90,7 @@ export interface CurrentUser {
   role_name: string | null;
   permissions: string[];
   assigned_locales: string[];
+  must_change_password: boolean;
 }
 
 export const PLATFORM_LABELS: Record<Platform | string, string> = {

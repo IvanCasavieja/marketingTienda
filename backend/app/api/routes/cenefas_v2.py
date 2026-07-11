@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import require_permission
 from app.core.uploads import read_limited
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
@@ -60,7 +60,7 @@ _BUILTIN_PPTX = {
 async def import_pptx(
     file: UploadFile = File(..., description="Archivo PPTX a importar"),
     name: str = Form(default="Template importado"),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("cenefas.import")),
 ):
     """Parsea un PPTX y devuelve una definición v2 lista para cargar en el editor."""
     if not file.filename or not file.filename.lower().endswith(".pptx"):
@@ -79,7 +79,7 @@ async def import_pptx(
 
 
 @router.get("/builtin-definitions")
-async def get_builtin_definitions(_: User = Depends(get_current_user)):
+async def get_builtin_definitions(_: User = Depends(require_permission("cenefas.view"))):
     """Devuelve las definiciones v2 de los templates predeterminados.
     Las parsea una vez al primer request y cachea en memoria."""
     global _builtin_definitions_cache
@@ -116,7 +116,7 @@ async def get_builtin_definitions(_: User = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 
 @router.get("/formats")
-async def list_formats(_: User = Depends(get_current_user)):
+async def list_formats(_: User = Depends(require_permission("cenefas.view"))):
     """Devuelve los formatos disponibles con sus dimensiones."""
     return [
         {
@@ -138,7 +138,7 @@ async def list_formats(_: User = Depends(get_current_user)):
 
 @router.get("/templates")
 async def list_templates(
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -161,7 +161,7 @@ async def list_templates(
 @router.post("/templates", status_code=status.HTTP_201_CREATED)
 async def create_template(
     payload: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.edit")),
     db: AsyncSession = Depends(get_db),
 ):
     _validate_template_payload(payload)
@@ -181,7 +181,7 @@ async def create_template(
 @router.get("/templates/{template_id}")
 async def get_template(
     template_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     tmpl = await _get_owned_template(template_id, current_user, db)
@@ -200,7 +200,7 @@ async def get_template(
 async def update_template(
     template_id: uuid.UUID,
     payload: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.edit")),
     db: AsyncSession = Depends(get_db),
 ):
     tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
@@ -219,7 +219,7 @@ async def update_template(
 async def rename_template(
     template_id: uuid.UUID,
     payload: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.edit")),
     db: AsyncSession = Depends(get_db),
 ):
     tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
@@ -235,7 +235,7 @@ async def rename_template(
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_template(
     template_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.delete")),
     db: AsyncSession = Depends(get_db),
 ):
     tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
@@ -256,7 +256,7 @@ async def validate_csv(
     aclaracion: str = Form(default=""),
     otra_alcohol: str = Form(default="Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
     banco: str = Form(default=""),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     """Valida el CSV contra un template v2 sin generar el PPTX.
@@ -375,7 +375,7 @@ async def create_job(
         default="{}",
         description='JSON {variable_name: "ext:base64"} con imágenes a inyectar en componentes de imagen',
     ),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.generate")),
     db: AsyncSession = Depends(get_db),
 ):
     """Inicia un job de generación async. Acepta templates v1 (PPTX) y v2 (componentes JSON)."""
@@ -436,7 +436,7 @@ async def create_job(
 
 @router.get("/jobs")
 async def list_jobs(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     """Lista los últimos 20 jobs."""
@@ -452,7 +452,7 @@ async def list_jobs(
 @router.get("/jobs/{job_id}")
 async def get_job(
     job_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     """Consulta el estado de un job (polling)."""
@@ -463,7 +463,7 @@ async def get_job(
 @router.get("/jobs/{job_id}/download")
 async def download_job_result(
     job_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     """Descarga el archivo generado una vez que el job está en estado 'done'."""

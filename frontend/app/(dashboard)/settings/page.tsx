@@ -2,16 +2,13 @@
 import { useEffect, useState } from "react";
 import { connectionsApi } from "@/lib/api";
 import { Connection } from "@/types";
-import { Plus, Trash2, CheckCircle2, XCircle, ChevronDown, Eye, EyeOff, Lock } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, XCircle, ChevronDown, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 
-// Meta Ads: oculto de las plataformas conectables — conexión pausada (2026-07-06).
-// Para reactivar: descomentar la entrada de "meta" en PLATFORM_OPTIONS y en
-// TOKEN_GUIDES, y ver la nota en backend/app/services/metrics_service.py.
 const PLATFORM_OPTIONS = [
-  // { value: "meta",          label: "Meta Ads",         color: "#1877F2", initial: "M",  desc: "Facebook & Instagram Ads" },
+  { value: "meta",             label: "Meta Ads",         color: "#1877F2", initial: "M",  desc: "Facebook & Instagram Ads" },
   { value: "google_ads",       label: "Google Ads",       color: "#4285F4", initial: "G",  desc: "Search, Display & YouTube" },
   { value: "google_analytics", label: "Google Analytics", color: "#FF9900", initial: "GA", desc: "GA4 — sesiones, conversiones y revenue" },
   { value: "tiktok",           label: "TikTok Ads",       color: "#FF0050", initial: "T",  desc: "TikTok for Business" },
@@ -19,10 +16,10 @@ const PLATFORM_OPTIONS = [
 ];
 
 const TOKEN_GUIDES: Record<string, { steps: string[]; link: string }> = {
-  // meta: {
-  //   steps: ["Andá a developers.facebook.com", "Creá una app tipo 'Business'", "En Herramientas → Explorador de API → Generá token con permisos ads_read, read_insights"],
-  //   link: "https://developers.facebook.com/tools/explorer",
-  // },
+  meta: {
+    steps: ["Andá a developers.facebook.com", "Creá una app tipo 'Business'", "En Herramientas → Explorador de API → Generá token con permisos ads_read, read_insights"],
+    link: "https://developers.facebook.com/tools/explorer",
+  },
   google_ads: {
     steps: ["Andá a Google Cloud Console", "Creá credenciales OAuth 2.0", "Habilitá la Google Ads API", "Obtenés el access token con scope: https://www.googleapis.com/auth/adwords"],
     link: "https://console.cloud.google.com/",
@@ -56,12 +53,13 @@ export default function SettingsPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [showForm, setShowForm]       = useState(false);
   const [showGuide, setShowGuide]     = useState<string | null>(null);
-  const [showTokens, setShowTokens]   = useState<Record<string, boolean>>({});
   const [forbidden, setForbidden]     = useState(false);
   const [form, setForm] = useState({
     platform: "google_ads", account_id: "", account_name: "",
-    access_token: "", refresh_token: "",
+    access_token: "", refresh_token: "", current_password: "",
   });
+  const [deletingId, setDeletingId]     = useState<number | null>(null);
+  const [deletePassword, setDeletePassword] = useState("");
 
   async function load() {
     connectionsApi.list()
@@ -96,20 +94,23 @@ export default function SettingsPage() {
       await connectionsApi.create(form);
       toast.success(t("settings.saveSuccess"));
       setShowForm(false);
-      setForm({ platform: "google_ads", account_id: "", account_name: "", access_token: "", refresh_token: "" });
+      setForm({ platform: "google_ads", account_id: "", account_name: "", access_token: "", refresh_token: "", current_password: "" });
       await load();
-    } catch {
-      toast.error(t("settings.saveError"));
+    } catch (e: any) {
+      toast.error(e?.response?.status === 403 ? t("settings.wrongPassword") : t("settings.saveError"));
     }
   }
 
   async function handleDelete(id: number) {
-    if (!confirm(t("settings.deleteConfirm"))) return;
     try {
-      await connectionsApi.delete(id);
+      await connectionsApi.delete(id, deletePassword);
       toast.success(t("settings.deleteSuccess"));
+      setDeletingId(null);
+      setDeletePassword("");
       await load();
-    } catch { toast.error(t("settings.deleteError")); }
+    } catch (e: any) {
+      toast.error(e?.response?.status === 403 ? t("settings.wrongPassword") : t("settings.deleteError"));
+    }
   }
 
   const selectedPlatform = PLATFORM_OPTIONS.find((p) => p.value === form.platform);
@@ -194,30 +195,28 @@ export default function SettingsPage() {
               </div>
               <div className="col-span-2">
                 <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">{t("settings.accessToken")}</label>
-                <div className="relative">
-                  <input required type={showTokens.access ? "text" : "password"} value={form.access_token}
-                    onChange={(e) => setForm({ ...form, access_token: e.target.value })}
-                    className="input text-sm pr-10 font-mono" placeholder="EAABxxxxxx..." />
-                  <button type="button" onClick={() => setShowTokens({ ...showTokens, access: !showTokens.access })}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                    {showTokens.access ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
+                <input required type="password" value={form.access_token}
+                  onChange={(e) => setForm({ ...form, access_token: e.target.value })}
+                  className="input text-sm font-mono" placeholder="EAABxxxxxx..." autoComplete="off" />
               </div>
               <div className="col-span-2">
                 <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
                   {t("settings.refreshToken")} <span className="text-slate-400 dark:text-slate-500 font-normal">({t("settings.optional")})</span>
                 </label>
-                <div className="relative">
-                  <input type={showTokens.refresh ? "text" : "password"} value={form.refresh_token}
-                    onChange={(e) => setForm({ ...form, refresh_token: e.target.value })}
-                    className="input text-sm pr-10 font-mono" />
-                  <button type="button" onClick={() => setShowTokens({ ...showTokens, refresh: !showTokens.refresh })}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                    {showTokens.refresh ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
+                <input type="password" value={form.refresh_token}
+                  onChange={(e) => setForm({ ...form, refresh_token: e.target.value })}
+                  className="input text-sm font-mono" autoComplete="off" />
               </div>
+            </div>
+
+            <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+                {t("settings.confirmPassword")}
+              </label>
+              <input required type="password" value={form.current_password}
+                onChange={(e) => setForm({ ...form, current_password: e.target.value })}
+                className="input text-sm" autoComplete="current-password" />
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t("settings.confirmPasswordSub")}</p>
             </div>
 
             <div className="flex gap-3 pt-1">
@@ -241,27 +240,53 @@ export default function SettingsPage() {
         ) : (
           connections.map((c) => {
             const plat = PLATFORM_OPTIONS.find((p) => p.value === c.platform);
+            const isDeleting = deletingId === c.id;
             return (
-              <div key={c.id} className="card card-hover p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
-                  style={{ backgroundColor: plat?.color || "#6366f1" }}>
-                  {plat?.initial || "?"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{plat?.label || c.platform}</p>
-                    {c.is_active
-                      ? <span className="badge badge-green flex items-center gap-1"><CheckCircle2 size={10} />{t("settings.active")}</span>
-                      : <span className="badge badge-red flex items-center gap-1"><XCircle size={10} />{t("settings.inactive")}</span>}
+              <div key={c.id} className="card card-hover p-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
+                    style={{ backgroundColor: plat?.color || "#6366f1" }}>
+                    {plat?.initial || "?"}
                   </div>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                    {c.account_name ? `${c.account_name} · ` : ""}{c.account_id}
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{plat?.label || c.platform}</p>
+                      {c.is_active
+                        ? <span className="badge badge-green flex items-center gap-1"><CheckCircle2 size={10} />{t("settings.active")}</span>
+                        : <span className="badge badge-red flex items-center gap-1"><XCircle size={10} />{t("settings.inactive")}</span>}
+                    </div>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                      {c.account_name ? `${c.account_name} · ` : ""}{c.account_id}
+                    </p>
+                  </div>
+                  <button onClick={() => { setDeletingId(isDeleting ? null : c.id); setDeletePassword(""); }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all">
+                    <Trash2 size={15} />
+                  </button>
                 </div>
-                <button onClick={() => handleDelete(c.id)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all">
-                  <Trash2 size={15} />
-                </button>
+                {isDeleting && (
+                  <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 space-y-2 animate-slide-up">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{t("settings.deleteConfirm")}</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="password"
+                        autoFocus
+                        placeholder={t("settings.confirmPassword") as string}
+                        value={deletePassword}
+                        onChange={(e) => setDeletePassword(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleDelete(c.id); }}
+                        className="input text-sm flex-1"
+                        autoComplete="current-password"
+                      />
+                      <button onClick={() => handleDelete(c.id)} className="btn-primary text-xs py-2 px-3 shrink-0">
+                        {t("settings.deleteConfirmBtn")}
+                      </button>
+                      <button onClick={() => { setDeletingId(null); setDeletePassword(""); }} className="btn-secondary text-xs py-2 px-3 shrink-0">
+                        {t("common.cancel")}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })

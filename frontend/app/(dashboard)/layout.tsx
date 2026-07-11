@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { authApi } from "@/lib/api";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { Menu, BarChart3 } from "lucide-react";
+import ChangePasswordForm from "@/components/ChangePasswordForm";
+import { Menu, BarChart3, ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 const Sidebar = dynamic(() => import("@/components/layout/Sidebar"), { ssr: false });
@@ -23,11 +24,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // en Vercel, porque pertenece a otro dominio. Por eso la única fuente de verdad
   // es esta llamada a /auth/me — y no pintamos contenido protegido hasta tenerla.
   const [authChecked, setAuthChecked] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   useEffect(() => {
     authApi
       .me()
-      .then(() => setAuthChecked(true))
+      .then(({ data }) => {
+        setMustChangePassword(!!data.must_change_password);
+        setAuthChecked(true);
+      })
       .catch((err) => {
         if (err?.response?.status === 401 || err?.response?.status === 403) {
           router.replace("/login");
@@ -43,6 +48,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // El backend ya rechaza cualquier otro endpoint con 403 mientras esto esté
+  // pendiente (ver PASSWORD_CHANGE_REQUIRED) — este gate es la contraparte en
+  // el front: no deja montar ninguna pantalla real hasta que se resuelva.
+  if (mustChangePassword) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
+        <div className="card w-full max-w-md p-6 animate-fade-in">
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldAlert size={18} className="text-amber-500" />
+            <h1 className="text-base font-bold text-slate-900 dark:text-slate-100">Tenés que actualizar tu contraseña</h1>
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+            Por seguridad, necesitamos que elijas una contraseña nueva antes de seguir — o porque es la primera vez
+            que entrás con la que te dieron, o porque ya pasaron más de 20 días desde el último cambio.
+          </p>
+          <ChangePasswordForm onSuccess={() => setMustChangePassword(false)} />
+        </div>
       </div>
     );
   }

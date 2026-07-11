@@ -90,6 +90,7 @@ class UserResponse(BaseModel):
     role_name: str | None = None
     permissions: list[str] = []
     assigned_locales: list[str] = []
+    must_change_password: bool = False
 
     class Config:
         from_attributes = True

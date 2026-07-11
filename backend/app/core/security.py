@@ -20,20 +20,20 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(subject: Any, expires_delta: timedelta | None = None) -> str:
-    expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES))
     return jwt.encode(
-        {"sub": str(subject), "exp": expire, "type": "access"},
+        {"sub": str(subject), "iat": now, "exp": expire, "type": "access"},
         _JWT_SECRET,
         algorithm=settings.JWT_ALGORITHM,
     )
 
 
 def create_refresh_token(subject: Any) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
     return jwt.encode(
-        {"sub": str(subject), "exp": expire, "type": "refresh"},
+        {"sub": str(subject), "iat": now, "exp": expire, "type": "refresh"},
         _JWT_SECRET,
         algorithm=settings.JWT_ALGORITHM,
     )

@@ -7,19 +7,15 @@ from app.models.platform_connection import PlatformConnection, Platform
 from app.core.security import decrypt_token
 from app.core.config import settings
 from app.connectors import (
-    GoogleAdsConnector, TikTokAdsConnector,
+    MetaAdsConnector, GoogleAdsConnector, TikTokAdsConnector,
     DV360Connector, SFMCConnector, GoogleAnalyticsConnector,
 )
-# MetaAdsConnector no se importa — ver nota de reactivación más abajo
 
-# Meta no tiene PlatformConnection real (se borró al pausar la integración,
-# ver sync_platform más abajo) pero sí tiene datos fixture en campaign_metrics
-# — se habilita explícitamente para análisis aunque no tenga conexión activa.
-# GA4 y TikTok todavía no tienen una conexión OAuth real conectada, pero también
+# GA4 y TikTok todavía no tienen una conexión OAuth real conectada, pero
 # tienen datos fixture (ver scripts/generate_ga4_fake_data.py y
 # scripts/generate_tiktok_fake_data.py) para poder cruzarlas contra Meta en
 # los informes mientras tanto.
-FIXTURE_PLATFORMS: set[Platform] = {Platform.META, Platform.GOOGLE_ANALYTICS, Platform.TIKTOK}
+FIXTURE_PLATFORMS: set[Platform] = {Platform.GOOGLE_ANALYTICS, Platform.TIKTOK}
 
 # Plataformas con gasto publicitario real — todas menos las que son puramente
 # de medición (GA4 no tiene spend propio, ver nota de FIXTURE_PLATFORMS arriba).
@@ -62,22 +58,9 @@ async def sync_platform(db: AsyncSession, platform: Platform, date_from: date, d
         access_token = decrypt_token(conn.access_token_enc)
         account_id = conn.account_id
 
-        # --- Meta Ads: sync real pausado (2026-07-06) --------------------------
-        # Se eliminó la conexión real de Meta (platform_connections) y se reemplazó
-        # la data de campaign_metrics por un fixture random (ver
-        # app/data/meta_fake_campaigns.json y scripts/generate_meta_fake_data.py)
-        # mientras dura la auditoría de la plataforma.
-        #
-        # Para reactivar la sincronización real de Meta:
-        #   1. Descomentar `from app.connectors.meta import MetaAdsConnector` y el
-        #      export en app/connectors/__init__.py
-        #   2. Descomentar el import de MetaAdsConnector arriba en este archivo
-        #   3. Descomentar la rama `if platform == Platform.META` de abajo
-        #   4. Volver a crear la conexión real en Settings (o restaurar el backup
-        #      de platform_connections/campaign_metrics tomado antes de borrarla)
-        # if platform == Platform.META:
-        #     connector = MetaAdsConnector(access_token, account_id)
-        if platform == Platform.GOOGLE_ADS:
+        if platform == Platform.META:
+            connector = MetaAdsConnector(access_token, account_id)
+        elif platform == Platform.GOOGLE_ADS:
             connector = GoogleAdsConnector(
                 access_token, account_id, settings.GOOGLE_DEVELOPER_TOKEN,
                 client_id=settings.GOOGLE_CLIENT_ID,

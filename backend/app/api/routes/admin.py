@@ -1,7 +1,7 @@
 """Endpoints de administración — Super Admin y Admin (con restricciones entre sí)."""
 import secrets
 import string
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
@@ -11,8 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.security import hash_password
+from app.core.rate_limit import limiter
 from app.models.ai_usage_log import AIUsageLog
 from app.models.audit_log import AuditLog
+from app.models.local_asignacion import LocalAsignacion
 from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
 from app.models.user import User
 
@@ -40,17 +42,51 @@ def _require_user_management(current_user: User = Depends(get_current_user)) -> 
     raise HTTPException(status_code=403, detail="Acceso denegado — permiso de gestión de usuarios requerido")
 
 
+_ADMIN_TIER_PERMISSIONS = {"platform.super", "platform.admin", "platform.users.manage"}
+
+
 async def _check_not_protected_admin(current_user: User, target_user: User, db: AsyncSession) -> None:
     """Un Admin (no super) no puede modificar a otro Admin ni al Super Admin —
-    solo el Super Admin puede tocar esas cuentas."""
+    solo el Super Admin puede tocar esas cuentas.
+
+    Protege por rol Y por permiso individual: los permisos viven en
+    User.permissions y pueden divergir del rol después de asignados, así que
+    alcanzar con mirar el nombre del rol dejaba a un usuario "Usuario" con
+    platform.users.manage tildado a mano sin ninguna protección entre pares."""
     if current_user.is_superuser:
         return
     if target_user.is_superuser:
         raise HTTPException(status_code=403, detail="Solo el Super Admin puede modificar esta cuenta")
+    if _ADMIN_TIER_PERMISSIONS & set(target_user.permissions or []):
+        raise HTTPException(status_code=403, detail="No podés modificar a otro administrador")
     if target_user.role_id is not None:
         role = await db.get(Role, target_user.role_id)
         if role and role.name == "Admin":
             raise HTTPException(status_code=403, detail="No podés modificar a otro Admin")
+
+
+def _ensure_can_grant(current_user: User, permissions: list[str]) -> None:
+    """Nadie puede otorgar (a un rol o a un usuario) un permiso que no tiene
+    él mismo — sin esto, cualquier cuenta con platform.users.manage podía
+    crearse un rol con TODOS los permisos y asignárselo, sin ser Superadmin."""
+    if current_user.is_superuser:
+        return
+    missing = [p for p in permissions if p not in (current_user.permissions or [])]
+    if missing:
+        raise HTTPException(
+            status_code=403,
+            detail=f"No podés otorgar permisos que vos mismo no tenés: {missing}",
+        )
+
+
+def _ensure_not_self(current_user: User, user_id: int) -> None:
+    """Un Admin (no super) no puede tocar su propio rol/permisos — si pudiera,
+    la restricción de 'no otorgar lo que no tenés' se podría esquivar
+    escalando de a poco entre varias cuentas con este mismo permiso."""
+    if current_user.is_superuser:
+        return
+    if user_id == current_user.id:
+        raise HTTPException(status_code=403, detail="No podés modificar tu propio rol o permisos")
 
 
 def _temp_password(length: int = 16) -> str:
@@ -113,6 +149,7 @@ async def list_roles(
 
 
 @router.post("/roles", status_code=201)
+@limiter.limit("20/minute")
 async def create_role(
     payload: CreateRoleRequest,
     request: Request,
@@ -122,6 +159,7 @@ async def create_role(
     unknown = [p for p in payload.permissions if p not in ALL_PERMISSIONS]
     if unknown:
         raise HTTPException(status_code=422, detail=f"Permisos desconocidos: {unknown}")
+    _ensure_can_grant(current_user, payload.permissions)
 
     existing = await db.execute(select(Role).where(Role.name == payload.name))
     if existing.scalar_one_or_none():
@@ -143,6 +181,7 @@ async def create_role(
 
 
 @router.patch("/roles/{role_id}")
+@limiter.limit("20/minute")
 async def update_role(
     role_id: int,
     payload: UpdateRoleRequest,
@@ -158,6 +197,12 @@ async def update_role(
         unknown = [p for p in payload.permissions if p not in ALL_PERMISSIONS]
         if unknown:
             raise HTTPException(status_code=422, detail=f"Permisos desconocidos: {unknown}")
+        if role.is_system and not current_user.is_superuser:
+            raise HTTPException(
+                status_code=403,
+                detail="Solo el Super Admin puede cambiar los permisos de un rol del sistema",
+            )
+        _ensure_can_grant(current_user, payload.permissions)
         role.permissions = payload.permissions
 
     if payload.name is not None:
@@ -177,6 +222,7 @@ async def update_role(
 
 
 @router.delete("/roles/{role_id}", status_code=204)
+@limiter.limit("20/minute")
 async def delete_role(
     role_id: int,
     request: Request,
@@ -261,6 +307,7 @@ async def list_users(
 
 
 @router.post("/users", status_code=201)
+@limiter.limit("20/minute")
 async def create_user(
     payload: CreateUserRequest,
     request: Request,
@@ -286,6 +333,10 @@ async def create_user(
         role_id=payload.role_id,
         permissions=_seed_permissions_for_role(role),
         is_superuser=False,
+        # La contraseña la eligió quien está creando la cuenta, no su dueño —
+        # se lo obliga a poner una propia en el primer login.
+        must_change_password=True,
+        password_changed_at=datetime.now(timezone.utc),
     )
     db.add(user)
     await db.flush()
@@ -297,6 +348,7 @@ async def create_user(
 
 
 @router.patch("/users/{user_id}")
+@limiter.limit("20/minute")
 async def update_user(
     user_id: int,
     payload: UpdateUserRequest,
@@ -328,6 +380,7 @@ async def update_user(
 
 
 @router.post("/users/{user_id}/reset-password")
+@limiter.limit("20/minute")
 async def reset_password(
     user_id: int,
     request: Request,
@@ -341,7 +394,20 @@ async def reset_password(
     await _check_not_protected_admin(current_user, user, db)
 
     temp_pwd = _temp_password()
+    now = datetime.now(timezone.utc)
     user.hashed_password = hash_password(temp_pwd)
+    user.tokens_invalidated_at = now
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    # Los logins de sucursal (LocalAsignacion) quedan afuera de la política de
+    # renovación — comparten contraseña a propósito y ya no pueden cambiarla
+    # ellos mismos, así que "obligarlos" a hacerlo los dejaría trabados.
+    is_sucursal = (await db.execute(
+        select(LocalAsignacion).where(LocalAsignacion.user_id == user.id).limit(1)
+    )).scalar_one_or_none() is not None
+    if not is_sucursal:
+        user.must_change_password = True
+    user.password_changed_at = now
     db.add(user)
     db.add(AuditLog(
         user_id=current_user.id, action="admin.user.reset_password", resource="user", resource_id=str(user.id),
@@ -351,6 +417,7 @@ async def reset_password(
 
 
 @router.patch("/users/{user_id}/role")
+@limiter.limit("20/minute")
 async def assign_role(
     user_id: int,
     payload: AssignRoleRequest,
@@ -363,10 +430,7 @@ async def assign_role(
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     await _check_not_protected_admin(current_user, user, db)
-
-    # Prevent removing your own role
-    if user.id == current_user.id and payload.role_id is None:
-        raise HTTPException(status_code=400, detail="No podés quitarte el rol a vos mismo")
+    _ensure_not_self(current_user, user_id)
 
     role: Role | None = None
     if payload.role_id is not None:
@@ -375,6 +439,7 @@ async def assign_role(
             raise HTTPException(status_code=404, detail="Rol no encontrado")
         if role.name == "Superadmin" and not current_user.is_superuser:
             raise HTTPException(status_code=403, detail="Solo el Super Admin puede asignar ese rol")
+        _ensure_can_grant(current_user, _seed_permissions_for_role(role))
         # Sync is_superuser with Superadmin role
         user.is_superuser = role.name == "Superadmin"
     else:
@@ -394,6 +459,7 @@ async def assign_role(
 
 
 @router.patch("/users/{user_id}/permissions")
+@limiter.limit("20/minute")
 async def update_permissions(
     user_id: int,
     payload: UpdatePermissionsRequest,
@@ -406,10 +472,12 @@ async def update_permissions(
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     await _check_not_protected_admin(current_user, user, db)
+    _ensure_not_self(current_user, user_id)
 
     unknown = [p for p in payload.permissions if p not in ALL_PERMISSIONS]
     if unknown:
         raise HTTPException(status_code=422, detail=f"Permisos desconocidos: {unknown}")
+    _ensure_can_grant(current_user, payload.permissions)
 
     if user.role_id is not None:
         role = await db.get(Role, user.role_id)
@@ -432,6 +500,7 @@ async def update_permissions(
 
 
 @router.patch("/users/{user_id}/activate")
+@limiter.limit("20/minute")
 async def toggle_active(
     user_id: int,
     payload: dict,
