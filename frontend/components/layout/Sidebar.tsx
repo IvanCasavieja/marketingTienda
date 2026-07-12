@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -161,7 +161,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   // Marca una sola notificación como leída, sin navegar — cubre "leer una por
   // una" como acción independiente del click que navega a la sección.
-  async function marcarUnaLeida(n: Notificacion, e?: MouseEvent) {
+  async function marcarUnaLeida(n: Notificacion, e?: ReactMouseEvent) {
     e?.stopPropagation();
     if (n.leida) return;
     setNotificaciones((prev) => prev?.map((x) => (x.id === n.id ? { ...x, leida: true } : x)) ?? null);
