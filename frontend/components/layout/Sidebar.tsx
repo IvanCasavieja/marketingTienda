@@ -8,12 +8,18 @@ import {
   Sun, Moon, ClipboardList, Bell, Star, Activity, TrendingUp, TrendingDown, AlertTriangle,
 } from "lucide-react";
 import { clsx } from "clsx";
+import { ES, GB, BR } from "country-flag-icons/react/3x2";
 import { authApi, watchlistApi, type Notificacion } from "@/lib/api";
 import type { CurrentUser } from "@/types";
 import { useTranslation } from "react-i18next";
 import { LANGUAGES, setLanguage, type LangCode } from "@/lib/i18n";
 import { useTheme } from "@/hooks/useTheme";
 import { toast } from "sonner";
+
+// Los flags de country-flag-icons devuelven emoji de bandera regional, que
+// Windows no renderiza como imagen (muestra el codigo de pais en texto) —
+// estos SVG se ven iguales en todos los sistemas operativos.
+const FLAG_ICONS: Record<string, typeof ES> = { ES, GB, BR };
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -133,6 +139,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { theme, toggle: toggleTheme } = useTheme();
   const tenantLabel = "MKTG Platform";
   const currentLang = LANGUAGES.find((l) => l.code === i18n.language) ?? LANGUAGES[0];
+  const CurrentFlag = FLAG_ICONS[currentLang.country];
 
   return (
     <>
@@ -282,11 +289,16 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-sm text-slate-500
                        hover:bg-white/5 hover:text-slate-300 transition-all duration-150">
             <Globe size={15} className="shrink-0" />
-            <span className="flex-1 text-left text-xs">{currentLang.flag} {currentLang.label}</span>
+            <span className="flex-1 flex items-center gap-1.5 text-left text-xs">
+              <CurrentFlag className="w-4 h-auto rounded-[2px] shrink-0" />
+              {currentLang.label}
+            </span>
           </button>
           {showLangMenu && (
             <div className="absolute bottom-full left-3 right-3 mb-1 bg-slate-800 border border-white/10 rounded-xl overflow-hidden shadow-lg z-50">
-              {LANGUAGES.map((lang) => (
+              {LANGUAGES.map((lang) => {
+                const Flag = FLAG_ICONS[lang.country];
+                return (
                 <button
                   key={lang.code}
                   onClick={() => { setLanguage(lang.code as LangCode); setShowLangMenu(false); }}
@@ -296,10 +308,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                       ? "bg-brand-600 text-white"
                       : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
                   )}>
-                  <span>{lang.flag}</span>
+                  <Flag className="w-4 h-auto rounded-[2px] shrink-0" />
                   <span className="text-xs font-medium">{lang.label}</span>
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -7,9 +7,9 @@ import pt from "./locales/pt.json";
 const STORAGE_KEY = "mktg_lang";
 
 export const LANGUAGES = [
-  { code: "es", label: "Español", flag: "🇪🇸" },
-  { code: "en", label: "English", flag: "🇬🇧" },
-  { code: "pt", label: "Português", flag: "🇧🇷" },
+  { code: "es", label: "Español", country: "ES" },
+  { code: "en", label: "English", country: "GB" },
+  { code: "pt", label: "Português", country: "BR" },
 ] as const;
 
 export type LangCode = "es" | "en" | "pt";
