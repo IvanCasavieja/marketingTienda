@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import { preciosApi, type ProductoVivo } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
-import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp, SlidersHorizontal, Check } from "lucide-react";
+import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp, SlidersHorizontal, Check, Download } from "lucide-react";
 import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
 import { CADENA_CONFIG, CADENA_CATEGORIA, CadenaBadge } from "@/components/precios/cadenaConfig";
@@ -243,6 +244,32 @@ export default function PreciosPage() {
         })
     : [];
 
+  // Exporta exactamente lo que se ve en pantalla (respeta filtros/orden activos).
+  function handleExportExcel() {
+    const rows = visible.map((r) => ({
+      Cadena:    CADENA_CONFIG[r.tienda]?.label ?? r.tienda,
+      Producto:  r.nombre ?? "—",
+      Marca:     r.marca ?? "—",
+      Precio:    r.precio ?? "",
+      Moneda:    r.moneda ?? "UYU",
+      "Precio lista": r.precio_lista ?? "",
+      Sucursal:  r.sucursal_nombre ?? "—",
+      Categoría: r.categoria ?? "—",
+      SKU:       r.sku ?? "—",
+      URL:       r.url,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [
+      { wch: 16 }, { wch: 40 }, { wch: 16 }, { wch: 10 }, { wch: 8 },
+      { wch: 12 }, { wch: 24 }, { wch: 16 }, { wch: 16 }, { wch: 40 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Precios");
+    const fecha = new Date().toISOString().slice(0, 10);
+    const nombreQuery = q.trim().replace(/[^a-zA-Z0-9]+/g, "_").slice(0, 40) || "busqueda";
+    XLSX.writeFile(wb, `precios_${nombreQuery}_${fecha}.xlsx`);
+  }
+
   // "Más barato" solo compara resultados en la misma moneda que el más relevante —
   // comparar USD contra UYU crudo daría un ganador sin sentido.
   const cheapest = results
@@ -336,7 +363,7 @@ export default function PreciosPage() {
           <button
             type="button"
             onClick={() => setShowFuentes((v) => !v)}
-            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
           >
             <SlidersHorizontal size={12} />
             {t("precios.sources")} ({sourceCadenas.size}/{CADENAS_TODAS.length})
@@ -345,7 +372,7 @@ export default function PreciosPage() {
           {showFuentes && (
             <div className="absolute z-20 mt-2 w-72 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg p-3 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">
                   {t("precios.sourcesTitle")}
                 </span>
                 <button
@@ -377,7 +404,7 @@ export default function PreciosPage() {
                             className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full font-medium transition-all ${
                               active
                                 ? `${cfg?.dot ?? "bg-slate-500"} text-white`
-                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
                             }`}
                           >
                             {active && <Check size={10} />}
@@ -534,13 +561,22 @@ export default function PreciosPage() {
               </button>
 
               {hasResults && (
-                <button
-                  onClick={() => setShowChart(true)}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors ml-auto"
-                >
-                  <BarChart3 size={13} />
-                  {t("precios.viewChart")}
-                </button>
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    onClick={handleExportExcel}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                  >
+                    <Download size={13} />
+                    {t("precios.downloadExcel")}
+                  </button>
+                  <button
+                    onClick={() => setShowChart(true)}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                  >
+                    <BarChart3 size={13} />
+                    {t("precios.viewChart")}
+                  </button>
+                </div>
               )}
             </div>
           </div>

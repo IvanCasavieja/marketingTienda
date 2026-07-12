@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
   BarChart3, ChevronRight, Presentation, Globe, Layers, Clock, ShieldCheck, HelpCircle, X, Tag,
-  Sun, Moon, ClipboardList, Bell, Star, Activity, TrendingUp, TrendingDown, AlertTriangle,
+  Sun, Moon, ClipboardList, Bell, Star, Activity, TrendingUp, TrendingDown, AlertTriangle, Check,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
@@ -28,25 +28,53 @@ interface SidebarProps {
 
 // Subida de precio = malo para quien monitorea (rojo); bajada = bueno (verde).
 // Alertas de campaña ("Medios") comparten un solo ícono de advertencia — la
-// distinción de causa ya está en el mensaje mismo.
+// distinción de causa ya está en el mensaje mismo. El fondo de color (chip)
+// usa el mismo lenguaje "*-500 a opacidad moderada" que el resto de la app
+// para que el color se lea bien sobre el navy oscuro fijo del sidebar.
 function notifIcon(tipo: string) {
   switch (tipo) {
     case "precio_baja":
-      return <TrendingDown size={13} className="text-emerald-400 shrink-0 mt-0.5" />;
+      return (
+        <span className="w-6 h-6 rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
+          <TrendingDown size={13} className="text-emerald-400" />
+        </span>
+      );
     case "precio_sube":
-      return <TrendingUp size={13} className="text-red-400 shrink-0 mt-0.5" />;
+      return (
+        <span className="w-6 h-6 rounded-full bg-red-500/15 flex items-center justify-center shrink-0">
+          <TrendingUp size={13} className="text-red-400" />
+        </span>
+      );
     case "roas_baja":
     case "gasto_sube":
     case "conversiones_baja":
     case "sin_conversiones":
-      return <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5" />;
+      return (
+        <span className="w-6 h-6 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+          <AlertTriangle size={13} className="text-amber-400" />
+        </span>
+      );
     default:
-      return <Bell size={13} className="text-slate-400 shrink-0 mt-0.5" />;
+      return (
+        <span className="w-6 h-6 rounded-full bg-slate-500/15 flex items-center justify-center shrink-0">
+          <Bell size={13} className="text-slate-400" />
+        </span>
+      );
   }
+}
+
+// A dónde navegar al clickear una notificación — se deriva de los campos que
+// ya existen (watchlist_item_id, origen_tipo), sin necesidad de un campo
+// nuevo. Cualquier tipo futuro no mapeado no navega, en vez de adivinar.
+function resolverDestino(n: Notificacion): string | null {
+  if (n.watchlist_item_id != null) return "/precios/listas";
+  if (n.origen_tipo === "campaign_alert") return "/campaigns";
+  return null;
 }
 
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { t, i18n } = useTranslation();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -129,6 +157,28 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     } catch {
       toast.error(t("sidebar.notificacionesError"));
     }
+  }
+
+  // Marca una sola notificación como leída, sin navegar — cubre "leer una por
+  // una" como acción independiente del click que navega a la sección.
+  async function marcarUnaLeida(n: Notificacion, e?: MouseEvent) {
+    e?.stopPropagation();
+    if (n.leida) return;
+    setNotificaciones((prev) => prev?.map((x) => (x.id === n.id ? { ...x, leida: true } : x)) ?? null);
+    setNotifCount((c) => Math.max(0, c - 1));
+    try {
+      await watchlistApi.marcarLeida(n.id);
+    } catch {
+      // no revertimos el estado optimista por un fallo de red puntual — la
+      // próxima carga de la lista se resincroniza sola
+    }
+  }
+
+  function irANotificacion(n: Notificacion) {
+    marcarUnaLeida(n);
+    const destino = resolverDestino(n);
+    setShowNotifMenu(false);
+    if (destino) router.push(destino);
   }
 
   // Close sidebar on nav in mobile
@@ -244,38 +294,57 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </button>
 
           {showNotifMenu && (
-            <div className="absolute bottom-full left-3 mb-1 w-72 max-w-[calc(100vw-1.5rem)] bg-slate-800 border border-white/10 rounded-xl shadow-lg z-50 overflow-hidden">
-              <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-white/5">
+            <div className="absolute bottom-full left-3 mb-1 w-80 max-w-[calc(100vw-1.5rem)] bg-slate-800 border border-white/10 rounded-xl shadow-lg z-50 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
                 <p className="text-xs font-semibold text-slate-200">{t("sidebar.notificaciones")}</p>
                 {notifCount > 0 && (
-                  <button onClick={marcarTodasLeidas} className="text-[11px] text-brand-400 hover:text-brand-300">
+                  <button onClick={marcarTodasLeidas} className="text-[11px] text-brand-400 hover:text-brand-300 font-medium">
                     {t("sidebar.marcarTodasLeidas")}
                   </button>
                 )}
               </div>
-              <div className="max-h-72 overflow-y-auto">
+              <div className="max-h-80 overflow-y-auto">
                 {notificaciones === null && (
                   <p className="text-xs text-slate-500 text-center py-6">{t("common.loading")}</p>
                 )}
                 {notificaciones?.length === 0 && (
                   <p className="text-xs text-slate-500 text-center py-6">{t("sidebar.sinNotificaciones")}</p>
                 )}
-                {notificaciones?.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`px-3.5 py-2.5 border-b border-white/5 last:border-0 flex items-start gap-2 ${n.leida ? "opacity-60" : ""}`}
-                  >
-                    {notifIcon(n.tipo)}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-slate-300 leading-snug">{n.mensaje}</p>
-                      {n.created_at && (
-                        <p className="text-[10px] text-slate-500 mt-1">
-                          {new Date(n.created_at).toLocaleDateString(i18n.language, { day: "2-digit", month: "2-digit", year: "numeric" })}
+                {notificaciones?.map((n) => {
+                  const destino = resolverDestino(n);
+                  return (
+                    <div
+                      key={n.id}
+                      onClick={() => irANotificacion(n)}
+                      className={clsx(
+                        "px-4 py-3 border-b border-white/5 last:border-0 flex items-start gap-2.5 transition-colors",
+                        destino ? "cursor-pointer hover:bg-white/5" : "cursor-default",
+                        !n.leida && "bg-brand-500/[0.06]"
+                      )}
+                    >
+                      {notifIcon(n.tipo)}
+                      <div className="min-w-0 flex-1">
+                        <p className={clsx("text-xs leading-snug", n.leida ? "text-slate-400" : "text-slate-200")}>
+                          {n.mensaje}
                         </p>
+                        {n.created_at && (
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            {new Date(n.created_at).toLocaleDateString(i18n.language, { day: "2-digit", month: "2-digit", year: "numeric" })}
+                          </p>
+                        )}
+                      </div>
+                      {!n.leida ? (
+                        <button
+                          onClick={(e) => marcarUnaLeida(n, e)}
+                          title={t("sidebar.marcarLeida")}
+                          className="shrink-0 mt-0.5 w-4 h-4 rounded-full border border-brand-400/60 hover:bg-brand-500/20 hover:border-brand-400 transition-colors"
+                        />
+                      ) : (
+                        <Check size={13} className="shrink-0 mt-0.5 text-slate-600" />
                       )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

@@ -94,6 +94,8 @@ export default function DashboardPage() {
   const [customFrom, setCustomFrom]   = useState("");
   const [customTo, setCustomTo]       = useState("");
   const [compareMode, setCompareMode] = useState<CompareMode>("prev_period");
+  const [cmpFrom, setCmpFrom]         = useState("");
+  const [cmpTo, setCmpTo]             = useState("");
   const [mounted, setMounted]         = useState(false);
   const [lastSyncDate, setLastSyncDate]   = useState<string | null>(null);
   const [autoSyncStatus, setAutoSyncStatus] = useState<{
@@ -108,12 +110,13 @@ export default function DashboardPage() {
   const dayLabel = mounted ? format(new Date(), "EEEE d 'de' MMMM", { locale: dfLocale }) : "";
 
   useEffect(() => {
+    if (compareMode === "custom" && !(cmpFrom && cmpTo)) return;
     if (isCustom && customFrom && customTo) {
       loadDataCustom(customFrom, customTo, compareMode);
     } else if (!isCustom) {
       loadData(period, compareMode);
     }
-  }, [period, compareMode, isCustom, customFrom, customTo]);
+  }, [period, compareMode, isCustom, customFrom, customTo, cmpFrom, cmpTo]);
 
   useEffect(() => {
     function fetchAutoSync() {
@@ -139,7 +142,7 @@ export default function DashboardPage() {
     setLoading(true);
     const today = format(new Date(), "yyyy-MM-dd");
     const from  = format(subDays(new Date(), days), "yyyy-MM-dd");
-    const cmp   = getCompareDates(days, mode);
+    const cmp   = mode === "custom" ? { from: cmpFrom, to: cmpTo } : getCompareDates(days, mode);
     try {
       const [curr, prev, objective] = await Promise.all([
         metricsApi.getSummary(from, today),
@@ -335,6 +338,7 @@ export default function DashboardPage() {
                 >
                   <option value="prev_period">{t("dashboard.prevPeriod")}</option>
                   <option value="prev_year">{t("dashboard.prevYear")}</option>
+                  <option value="custom">{t("canales.custom")}</option>
                 </select>
                 <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               </div>
@@ -359,8 +363,28 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Inputs de fecha personalizada para la comparación */}
+            {compareMode === "custom" && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-slate-400 text-xs">vs.</span>
+                <input
+                  type="date"
+                  value={cmpFrom}
+                  onChange={(e) => setCmpFrom(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+                />
+                <span className="text-slate-400 text-xs">→</span>
+                <input
+                  type="date"
+                  value={cmpTo}
+                  onChange={(e) => setCmpTo(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+                />
+              </div>
+            )}
+
             <p className="text-xs text-slate-400" suppressHydrationWarning>
-              {mounted && getCompareLabel(period, compareMode, dfLocale, isCustom ? customFrom : undefined, isCustom ? customTo : undefined)}
+              {mounted && compareMode !== "custom" && getCompareLabel(period, compareMode, dfLocale, isCustom ? customFrom : undefined, isCustom ? customTo : undefined)}
             </p>
           </div>
           <button onClick={syncAll} disabled={syncing} className="btn-secondary text-xs sm:text-sm">

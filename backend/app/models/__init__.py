@@ -11,6 +11,7 @@ from app.models.local_asignacion import LocalAsignacion
 from app.models.watchlist import Watchlist
 from app.models.watchlist_item import WatchlistItem
 from app.models.watchlist_precio_historial import WatchlistPrecioHistorial
+from app.models.watchlist_share import WatchlistShare
 from app.models.notificacion import Notificacion
 from app.models.cotizacion_dolar import CotizacionDolar
 from app.models.ai_usage_log import AIUsageLog
@@ -20,6 +21,6 @@ __all__ = [
     "CampaignMetric", "AuditLog", "AIAnalysis",
     "CenefaTemplate", "CenefaTemplateV2", "CenefaJob",
     "PlanillaPedido", "LocalAsignacion",
-    "Watchlist", "WatchlistItem", "WatchlistPrecioHistorial", "Notificacion",
+    "Watchlist", "WatchlistItem", "WatchlistPrecioHistorial", "WatchlistShare", "Notificacion",
     "CotizacionDolar", "AIUsageLog",
 ]

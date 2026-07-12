@@ -51,6 +51,7 @@
     "notificaciones": "Notificaciones",
     "sinNotificaciones": "Todavía no tenés notificaciones",
     "marcarTodasLeidas": "Marcar todas como leídas",
+    "marcarLeida": "Marcar como leída",
     "notificacionesError": "No se pudieron marcar como leídas",
     "miPedido": "Mi pedido"
   },
@@ -617,6 +618,7 @@
     "sortPriceAsc": "Precio: menor primero",
     "sortPriceDesc": "Precio: mayor primero",
     "viewChart": "Ver gráfico",
+    "downloadExcel": "Descargar Excel",
     "cheapest": "Más barato",
     "at": "en",
     "noResultsFor": "Sin resultados para",
@@ -646,7 +648,44 @@
       "emptyList": "Esta lista todavía no tiene productos.",
       "lastCheck": "Último chequeo",
       "neverChecked": "todavía sin chequear",
-      "unfollow": "Dejar de seguir"
+      "unfollow": "Dejar de seguir",
+      "tabMine": "Mis listas",
+      "tabShared": "Compartidas conmigo",
+      "tabFinished": "Finalizadas",
+      "sharedBy": "Compartida por {{name}}",
+      "finishedBadge": "Finalizada",
+      "editDuration": "Editar duración del monitoreo",
+      "saveDuration": "Guardar",
+      "durationUnlimited": "Sin límite",
+      "durationUntil": "Hasta {{date}}",
+      "durationSaved": "Duración actualizada",
+      "durationSaveError": "No se pudo actualizar la duración",
+      "finalizeNow": "Finalizar ahora",
+      "finalized": "Lista finalizada",
+      "finalizeError": "No se pudo finalizar la lista",
+      "leaveShared": "Dejar de ver esta lista",
+      "emptyShared": "Todavía no tenés listas compartidas con vos.",
+      "emptyFinished": "Todavía no hay listas finalizadas.",
+      "exportError": "No se pudo exportar el historial",
+      "historialCols": {
+        "producto": "Producto",
+        "tienda": "Cadena",
+        "precio": "Precio",
+        "moneda": "Moneda",
+        "fecha": "Fecha"
+      },
+      "compartir": {
+        "title": "Compartir lista",
+        "loadError": "No se pudo cargar la lista de usuarios",
+        "added": "Usuario agregado",
+        "addError": "No se pudo compartir con ese usuario",
+        "removeError": "No se pudo quitar el acceso",
+        "currentlyShared": "Compartida con",
+        "revoke": "Quitar acceso",
+        "addNew": "Agregar usuario",
+        "searchPlaceholder": "Buscar por nombre o email...",
+        "noUsers": "No hay usuarios disponibles"
+      }
     }
   }
 }

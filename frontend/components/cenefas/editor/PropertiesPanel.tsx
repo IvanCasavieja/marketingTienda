@@ -26,11 +26,11 @@ export default function PropertiesPanel() {
   if (!comp) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center p-6">
-        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-          <span className="text-slate-300 text-lg">✦</span>
+        <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
+          <span className="text-slate-300 dark:text-slate-600 text-lg">✦</span>
         </div>
-        <p className="text-sm text-slate-500 font-medium">Ningún componente seleccionado</p>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Ningún componente seleccionado</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
           Clic sobre un elemento del canvas para editar sus propiedades
         </p>
       </div>
@@ -54,22 +54,22 @@ export default function PropertiesPanel() {
   return (
     <div className="flex-1 overflow-y-auto min-h-0">
       {/* Header del componente */}
-      <div className="p-4 border-b border-slate-100 flex items-start justify-between gap-2">
+      <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <input
-            className="w-full text-sm font-semibold text-slate-800 bg-transparent border-b border-transparent hover:border-slate-200 focus:border-brand-400 focus:outline-none pb-0.5"
+            className="w-full text-sm font-semibold text-slate-800 dark:text-slate-100 bg-transparent border-b border-transparent hover:border-slate-200 dark:border-slate-700 dark:hover:border-slate-700 focus:border-brand-400 focus:outline-none pb-0.5"
             value={comp.name}
             onChange={(e) => set("name", e.target.value)}
           />
-          <span className="text-[10px] text-slate-400 capitalize">{comp.type}</span>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 capitalize">{comp.type}</span>
         </div>
         <div className="flex gap-1">
           <button
             onClick={() => set("locked", !comp.locked)}
             className={`p-1.5 rounded-lg transition-colors ${
               comp.locked
-                ? "bg-amber-50 text-amber-500"
-                : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                ? "bg-amber-50 dark:bg-amber-950/40 text-amber-500"
+                : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
             }`}
             title={comp.locked ? "Desbloquear" : "Bloquear"}
           >
@@ -77,7 +77,7 @@ export default function PropertiesPanel() {
           </button>
           <button
             onClick={() => deleteComponent(comp.id)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
             title="Eliminar componente"
           >
             <Trash2 size={14} />
@@ -91,7 +91,7 @@ export default function PropertiesPanel() {
           <Section label="Contenido">
             {/* Toggle modo compuesto */}
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-slate-500">Texto compuesto</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Texto compuesto</span>
               <button
                 onClick={() => {
                   if (comp.segments?.length) {
@@ -106,7 +106,7 @@ export default function PropertiesPanel() {
                   }
                 }}
                 className={`relative inline-flex w-9 h-5 rounded-full transition-colors ${
-                  comp.segments?.length ? "bg-brand-500" : "bg-slate-200"
+                  comp.segments?.length ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-700"
                 }`}
                 title={comp.segments?.length ? "Volver a modo simple" : "Activar texto compuesto (múltiples variables/estilos)"}
               >
@@ -126,7 +126,7 @@ export default function PropertiesPanel() {
               <div className="space-y-3">
                 {/* Variable selector */}
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase mb-1">Variable CSV</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase mb-1">Variable CSV</p>
                   <select
                     className="input w-full text-sm"
                     value={comp.variable ?? ""}
@@ -144,7 +144,7 @@ export default function PropertiesPanel() {
                 {/* Texto fijo — solo cuando no hay variable */}
                 {!comp.variable && (
                   <div>
-                    <p className="text-[10px] text-slate-400 uppercase mb-1">Texto fijo</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase mb-1">Texto fijo</p>
                     <input
                       type="text"
                       className="input w-full text-sm"
@@ -152,7 +152,7 @@ export default function PropertiesPanel() {
                       value={comp.static_value ?? ""}
                       onChange={(e) => set("static_value", e.target.value || undefined)}
                     />
-                    <p className="text-[10px] text-slate-400 mt-1">
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                       Aparece igual en todas las cenefas generadas.
                     </p>
                   </div>
@@ -160,7 +160,7 @@ export default function PropertiesPanel() {
 
                 {/* Transformación */}
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase mb-1">Transformación</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase mb-1">Transformación</p>
                   <select
                     className="input w-full text-sm"
                     value={comp.transform ?? "none"}
@@ -201,7 +201,7 @@ export default function PropertiesPanel() {
                 <img
                   src={`data:image/${comp.image_ext ?? "png"};base64,${comp.image_data}`}
                   alt="preview"
-                  className="max-h-24 w-auto rounded border border-slate-200 object-contain"
+                  className="max-h-24 w-auto rounded border border-slate-200 dark:border-slate-700 object-contain"
                 />
                 <button
                   onClick={() => { set("image_data", undefined); set("image_ext", undefined); }}
@@ -211,18 +211,18 @@ export default function PropertiesPanel() {
                 </button>
               </div>
             ) : (
-              <p className="text-[10px] text-slate-400 italic mb-1">
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 italic mb-1">
                 Sin imagen — se mostrará un placeholder gris (o la imagen que subas al generar)
               </p>
             )}
             <label className="mt-2 flex flex-col gap-1">
-              <span className="text-[10px] text-slate-400 uppercase">
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">
                 {comp.image_data ? "Reemplazar imagen" : "Subir imagen al template"}
               </span>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
-                className="text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-slate-100 file:text-slate-600 hover:file:bg-slate-200"
+                className="text-xs text-slate-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-slate-100 dark:file:bg-slate-800 file:text-slate-600 dark:file:text-slate-300 hover:file:bg-slate-200 dark:hover:file:bg-slate-700"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
@@ -245,7 +245,7 @@ export default function PropertiesPanel() {
           <div className="grid grid-cols-2 gap-2">
             {(["x", "y", "width", "height"] as const).map((key) => (
               <label key={key} className="flex flex-col gap-1">
-                <span className="text-[10px] text-slate-400 uppercase">{key}</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">{key}</span>
                 <input
                   type="number"
                   step="0.1"
@@ -264,7 +264,7 @@ export default function PropertiesPanel() {
           <Section label="Estilo">
             <div className="space-y-3">
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-slate-400 uppercase">Tamaño (pt)</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">Tamaño (pt)</span>
                 <input
                   type="number"
                   min={6}
@@ -277,11 +277,11 @@ export default function PropertiesPanel() {
 
               <div className="flex gap-2">
                 <label className="flex flex-col gap-1 flex-1">
-                  <span className="text-[10px] text-slate-400 uppercase">Color</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">Color</span>
                   <div className="flex gap-1.5">
                     <input
                       type="color"
-                      className="w-8 h-9 rounded border border-slate-200 cursor-pointer p-0.5"
+                      className="w-8 h-9 rounded border border-slate-200 dark:border-slate-700 cursor-pointer p-0.5"
                       value={comp.style.color ?? "#1e293b"}
                       onChange={(e) => setStyle("color", e.target.value)}
                     />
@@ -303,7 +303,7 @@ export default function PropertiesPanel() {
                     checked={comp.style.font_bold ?? false}
                     onChange={(e) => setStyle("font_bold", e.target.checked)}
                   />
-                  <span className="text-sm text-slate-600">Negrita</span>
+                  <span className="text-sm text-slate-600 dark:text-slate-300">Negrita</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -312,12 +312,12 @@ export default function PropertiesPanel() {
                     checked={comp.style.auto_fit ?? true}
                     onChange={(e) => setStyle("auto_fit", e.target.checked)}
                   />
-                  <span className="text-sm text-slate-600">Auto-ajuste</span>
+                  <span className="text-sm text-slate-600 dark:text-slate-300">Auto-ajuste</span>
                 </label>
               </div>
 
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-slate-400 uppercase">Alineación</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">Alineación</span>
                 <div className="flex gap-1">
                   {(["left", "center", "right"] as const).map((a) => (
                     <button
@@ -325,8 +325,8 @@ export default function PropertiesPanel() {
                       onClick={() => setStyle("align", a)}
                       className={`flex-1 py-1.5 rounded border text-xs transition-all ${
                         (comp.style.align ?? "center") === a
-                          ? "bg-brand-50 border-brand-400 text-brand-600 font-medium"
-                          : "border-slate-200 text-slate-500 hover:border-slate-300"
+                          ? "bg-brand-50 dark:bg-brand-950/40 border-brand-400 text-brand-600 dark:text-brand-400 font-medium"
+                          : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
                       }`}
                     >
                       {a === "left" ? "←" : a === "center" ? "↔" : "→"}
@@ -363,7 +363,7 @@ export default function PropertiesPanel() {
             return (
               <div className="space-y-0.5">
                 {compRules.length === 0 && !showRuleForm && (
-                  <p className="text-[10px] text-slate-400 italic">
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
                     Siempre visible — sin reglas
                   </p>
                 )}
@@ -409,7 +409,7 @@ function Section({
 }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+      <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
         {label}
       </p>
       {children}
@@ -460,16 +460,16 @@ function SegmentsEditor({
   return (
     <div className="space-y-2">
       {segments.map((seg, idx) => (
-        <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden">
+        <div key={idx} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
           {/* Header del segmento */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border-b border-slate-100">
-            <GripVertical size={12} className="text-slate-300" />
-            <span className="text-[10px] font-semibold text-slate-400 uppercase flex-1">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800">
+            <GripVertical size={12} className="text-slate-300 dark:text-slate-600" />
+            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase flex-1">
               Segmento {idx + 1}
             </span>
             <button
               onClick={() => removeSeg(idx)}
-              className="p-0.5 text-slate-300 hover:text-rose-500 transition-colors"
+              className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-rose-500 transition-colors"
             >
               <Trash2 size={11} />
             </button>
@@ -484,8 +484,8 @@ function SegmentsEditor({
                   onClick={() => updateSeg(idx, { type: t, value: "" })}
                   className={`flex-1 py-1 text-xs rounded border transition-all ${
                     seg.type === t
-                      ? "bg-brand-50 border-brand-400 text-brand-600 font-medium"
-                      : "border-slate-200 text-slate-400 hover:border-slate-300"
+                      ? "bg-brand-50 dark:bg-brand-950/40 border-brand-400 text-brand-600 dark:text-brand-400 font-medium"
+                      : "border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:border-slate-300 dark:hover:border-slate-600"
                   }`}
                 >
                   {t === "static" ? "Texto fijo" : "Variable"}
@@ -533,7 +533,7 @@ function SegmentsEditor({
             {/* Estilos del segmento */}
             <div className="grid grid-cols-2 gap-1.5">
               <label className="flex flex-col gap-0.5">
-                <span className="text-[9px] text-slate-400 uppercase">Tamaño (pt)</span>
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase">Tamaño (pt)</span>
                 <input
                   type="number"
                   min={6}
@@ -547,11 +547,11 @@ function SegmentsEditor({
                 />
               </label>
               <label className="flex flex-col gap-0.5">
-                <span className="text-[9px] text-slate-400 uppercase">Color</span>
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase">Color</span>
                 <div className="flex gap-1">
                   <input
                     type="color"
-                    className="w-7 h-8 rounded border border-slate-200 cursor-pointer p-0.5 shrink-0"
+                    className="w-7 h-8 rounded border border-slate-200 dark:border-slate-700 cursor-pointer p-0.5 shrink-0"
                     value={seg.style?.color ?? "#1e293b"}
                     onChange={(e) => updateSegStyle(idx, "color", e.target.value)}
                   />
@@ -574,9 +574,9 @@ function SegmentsEditor({
                   updateSegStyle(idx, "font_bold", e.target.checked ? true : undefined)
                 }
               />
-              <span className="text-xs text-slate-600">Negrita</span>
+              <span className="text-xs text-slate-600 dark:text-slate-300">Negrita</span>
               {seg.style?.font_bold === undefined && (
-                <span className="text-[9px] text-slate-400">(hereda del estilo base)</span>
+                <span className="text-[9px] text-slate-400 dark:text-slate-500">(hereda del estilo base)</span>
               )}
             </label>
           </div>
@@ -585,7 +585,7 @@ function SegmentsEditor({
 
       <button
         onClick={addSeg}
-        className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-brand-600 border border-dashed border-brand-300 rounded-lg hover:bg-brand-50 transition-colors"
+        className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-brand-600 dark:text-brand-400 border border-dashed border-brand-300 dark:border-brand-800 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-950/40 transition-colors"
       >
         <Plus size={12} /> Agregar segmento
       </button>
@@ -626,23 +626,23 @@ function FormatOverridesSection({
           const ov = comp.format_overrides[fmt] ?? {};
           const isOpen = open === fmt;
           return (
-            <div key={fmt} className="border border-slate-200 rounded-lg overflow-hidden">
+            <div key={fmt} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
               <button
                 onClick={() => setOpen(isOpen ? null : fmt)}
-                className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 <span>{fmt.toUpperCase()}</span>
-                <span className="text-slate-400">
+                <span className="text-slate-400 dark:text-slate-500">
                   {Object.keys(ov).length > 0
                     ? `${Object.keys(ov).length} override${Object.keys(ov).length > 1 ? "s" : ""}`
                     : "heredado"}
                 </span>
               </button>
               {isOpen && (
-                <div className="px-3 pb-3 pt-1 bg-slate-50 grid grid-cols-2 gap-2">
+                <div className="px-3 pb-3 pt-1 bg-slate-50 dark:bg-slate-800/60 grid grid-cols-2 gap-2">
                   {(["x", "y", "width", "height"] as const).map((k) => (
                     <label key={k} className="flex flex-col gap-1">
-                      <span className="text-[10px] text-slate-400 uppercase">{k}</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">{k}</span>
                       <input
                         type="number"
                         step="0.1"
@@ -656,7 +656,7 @@ function FormatOverridesSection({
                     </label>
                   ))}
                   <label className="flex flex-col gap-1 col-span-2">
-                    <span className="text-[10px] text-slate-400 uppercase">Font size (pt)</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">Font size (pt)</span>
                     <input
                       type="number"
                       step="1"

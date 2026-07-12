@@ -395,11 +395,32 @@ export interface WatchlistItem {
   created_at: string | null;
 }
 
+export type WatchlistEstado = "activa" | "finalizada";
+
 export interface WatchlistConItems {
   id: number;
   nombre: string;
   created_at: string | null;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
+  estado: WatchlistEstado;
+  es_propia: boolean;
+  compartida_por: string | null;
   items: WatchlistItem[];
+}
+
+export interface WatchlistHistorialFila {
+  producto: string;
+  tienda: string;
+  precio: number;
+  moneda: string;
+  checked_at: string | null;
+}
+
+export interface UsuarioCompartible {
+  id: number;
+  email: string;
+  full_name: string;
 }
 
 export interface Notificacion {
@@ -415,7 +436,10 @@ export interface Notificacion {
 
 export const watchlistApi = {
   listar: () => api.get<WatchlistConItems[]>("/watchlist"),
-  crear: (nombre: string) => api.post<WatchlistConItems>("/watchlist", { nombre }),
+  crear: (nombre: string, fecha_fin?: string | null) =>
+    api.post<WatchlistConItems>("/watchlist", { nombre, fecha_fin }),
+  actualizar: (id: number, payload: { fecha_fin?: string | null; estado?: WatchlistEstado }) =>
+    api.patch<WatchlistConItems>(`/watchlist/${id}`, payload),
   eliminar: (id: number) => api.delete(`/watchlist/${id}`),
   agregarItem: (
     watchlistId: number,
@@ -425,6 +449,11 @@ export const watchlistApi = {
     },
   ) => api.post<WatchlistItem>(`/watchlist/${watchlistId}/items`, item),
   eliminarItem: (itemId: number) => api.delete(`/watchlist/items/${itemId}`),
+  historial: (id: number) => api.get<WatchlistHistorialFila[]>(`/watchlist/${id}/historial`),
+  usuariosCompartibles: () => api.get<UsuarioCompartible[]>("/watchlist/usuarios-compartibles"),
+  listarCompartidos: (id: number) => api.get<UsuarioCompartible[]>(`/watchlist/${id}/compartidos`),
+  compartir: (id: number, userId: number) => api.post(`/watchlist/${id}/compartir`, { user_id: userId }),
+  dejarDeCompartir: (id: number, userId: number) => api.delete(`/watchlist/${id}/compartir/${userId}`),
 
   notificaciones: () => api.get<Notificacion[]>("/notificaciones"),
   notificacionesNoLeidasCount: () => api.get<{ count: number }>("/notificaciones/no-leidas/count"),

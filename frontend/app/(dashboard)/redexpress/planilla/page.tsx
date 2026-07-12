@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState, useRef, useMemo } from "react";
+import * as XLSX from "xlsx";
 import { redexpressApi, PlanillaRow, authApi } from "@/lib/api";
-import { CheckCircle2, Clock, Plus, RefreshCw } from "lucide-react";
+import { CheckCircle2, Clock, Plus, RefreshCw, Download } from "lucide-react";
 import { toast } from "sonner";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
@@ -18,7 +19,7 @@ export default function PlanillaPedidosPage() {
   const GROUPS = useMemo(() => [
     {
       label: t("redexpress.groups.ofertas"),
-      color: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200",
+      color: "bg-blue-100 dark:bg-blue-500/20 text-blue-800 dark:text-blue-300",
       cols: [
         { key: "a4_oferta_vertical",  label: t("redexpress.cols.a4OfertaVertical"), max: 200 },
         { key: "cenefa_oferta_x3",    label: t("redexpress.cols.cenefaOfertaX3"),   max: 300 },
@@ -28,7 +29,7 @@ export default function PlanillaPedidosPage() {
     },
     {
       label: t("redexpress.groups.vdsSupremo"),
-      color: "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200",
+      color: "bg-purple-100 dark:bg-purple-500/20 text-purple-800 dark:text-purple-300",
       cols: [
         { key: "cenefa_valle_del_sol",  label: t("redexpress.cols.cenefaValleDelSol"),  max: 100 },
         { key: "cenefa_supremo_hogar",  label: t("redexpress.cols.cenefaSupremoHogar"), max: 100 },
@@ -36,7 +37,7 @@ export default function PlanillaPedidosPage() {
     },
     {
       label: t("redexpress.groups.bombas"),
-      color: "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200",
+      color: "bg-orange-100 dark:bg-orange-500/20 text-orange-800 dark:text-orange-300",
       cols: [
         { key: "bombas_3xa4",    label: t("redexpress.cols.bombas3xa4"),    max: 200 },
         { key: "bombas_a4",      label: t("redexpress.cols.bombasA4"),      max: 200 },
@@ -46,7 +47,7 @@ export default function PlanillaPedidosPage() {
     },
     {
       label: t("redexpress.groups.stickers"),
-      color: "bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200",
+      color: "bg-pink-100 dark:bg-pink-500/20 text-pink-800 dark:text-pink-300",
       cols: [
         { key: "sticker_valle_del_sol", label: t("redexpress.cols.stickerValleDelSol"), max: 100 },
         { key: "sticker_carne",         label: t("redexpress.cols.stickerCarne"),       max: 100 },
@@ -54,7 +55,7 @@ export default function PlanillaPedidosPage() {
     },
     {
       label: t("redexpress.groups.otrosItems"),
-      color: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200",
+      color: "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300",
       cols: [
         { key: "cenefas_preciazos",       label: t("redexpress.cols.cenefasPreciazos"),       max: 100 },
         { key: "cenefas_a4_preciazos",    label: t("redexpress.cols.cenefasA4Preciazos"),     max: 100 },
@@ -249,6 +250,28 @@ export default function PlanillaPedidosPage() {
     return v !== null && v !== undefined ? String(v) : "";
   }
 
+  function handleExportExcel() {
+    if (!selectedMes) return;
+    const data = visibleRows.map((row) => {
+      const out: Record<string, string | number> = { [t("redexpress.local")]: row.local_nombre };
+      for (const col of ALL_COLS) {
+        const v = getCellValue(row, col.key);
+        out[`${col.group} — ${col.label}`] = col.isText ? v : (v === "" ? "" : Number(v));
+      }
+      out[t("redexpress.otrosNotas")] = row.otros ?? "";
+      out[t("redexpress.estado")] = row.confirmado
+        ? t("redexpress.confirmarPedido")
+        : t("redexpress.pendiente");
+      return out;
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [{ wch: 24 }, ...ALL_COLS.map(() => ({ wch: 14 })), { wch: 20 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Planilla");
+    const mesNombre = MONTH_NAMES[selectedMes.month - 1] ?? String(selectedMes.month);
+    XLSX.writeFile(wb, `planilla_${mesNombre}_${selectedMes.year}.xlsx`);
+  }
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
@@ -263,17 +286,26 @@ export default function PlanillaPedidosPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {rows.length > 0 && (
-            <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg">
+            <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg">
               {t("redexpress.confirmadosCount", { count: confirmadoCount, total: rows.length })}
             </span>
+          )}
+          {rows.length > 0 && (
+            <button
+              onClick={handleExportExcel}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+            >
+              <Download size={13} />
+              {t("precios.downloadExcel")}
+            </button>
           )}
           {!isSuperuser && rows.some((r) => r.can_edit) && (
             <button
               onClick={() => setFilterOnly((f) => !f)}
               className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
                 filterOnly
-                  ? "border-brand-500 text-brand-600 bg-brand-50 dark:bg-brand-900/20"
-                  : "border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300"
+                  ? "border-brand-500 text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/20"
+                  : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
               }`}
             >
               {filterOnly ? t("redexpress.verTodos") : t("redexpress.soloMiLocal")}
@@ -336,7 +368,7 @@ export default function PlanillaPedidosPage() {
           </button>
         ))}
         {meses.length === 0 && !loading && (
-          <p className="text-sm text-slate-400">{t("redexpress.noMeses")}</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500">{t("redexpress.noMeses")}</p>
         )}
       </div>
 
@@ -403,7 +435,7 @@ export default function PlanillaPedidosPage() {
                       className={clsx(
                         "border-b border-slate-100 dark:border-slate-800 transition-colors",
                         row.confirmado
-                          ? "bg-emerald-50/60 dark:bg-emerald-900/10"
+                          ? "bg-emerald-50/60 dark:bg-emerald-500/10"
                           : row.can_edit
                           ? "bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50"
                           : "bg-slate-50/50 dark:bg-slate-900/30"
@@ -481,7 +513,7 @@ export default function PlanillaPedidosPage() {
                             {isSuperuser && (
                               <button
                                 onClick={() => handleDesconfirmar(row)}
-                                className="text-[10px] text-slate-400 hover:text-red-500 ml-1"
+                                className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-red-500 ml-1"
                               >
                                 ✕
                               </button>
@@ -516,17 +548,17 @@ export default function PlanillaPedidosPage() {
 
           {/* Footer */}
           <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50 flex items-center justify-between">
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
               {t("redexpress.footerConfirmados", { count: confirmadoCount, total: rows.length })}
             </p>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
               {t("redexpress.footerAutosave")}
             </p>
           </div>
         </div>
       ) : selectedMes ? (
         <div className="card p-12 flex flex-col items-center text-center gap-3">
-          <p className="text-sm text-slate-400">{t("redexpress.noData")}</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500">{t("redexpress.noData")}</p>
         </div>
       ) : null}
     </div>

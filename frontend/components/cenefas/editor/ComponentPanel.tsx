@@ -46,7 +46,7 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
       {
         label: "Precio anterior",
         type: "text", variable: "precioAnterior", transform: "price_full",
-        icon: <Type size={14} />, color: "text-slate-400",
+        icon: <Type size={14} />, color: "text-slate-400 dark:text-slate-500",
         defaults: { style: { font_size: 28, color: "#94A3B8" },
                     base_bounds: { x: 1, y: 6, width: 8, height: 1.8 } },
       },
@@ -65,7 +65,7 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
       {
         label: "Descripción",
         type: "text", variable: "descripcion", transform: "smart_bold",
-        icon: <Type size={14} />, color: "text-slate-600",
+        icon: <Type size={14} />, color: "text-slate-600 dark:text-slate-300",
         defaults: { style: { font_size: 16, align: "center" },
                     base_bounds: { x: 0.5, y: 4, width: 10, height: 3 } },
       },
@@ -79,35 +79,35 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
       {
         label: "Banco / Beneficio",
         type: "text", variable: "banco", transform: "none",
-        icon: <Type size={14} />, color: "text-slate-500",
+        icon: <Type size={14} />, color: "text-slate-500 dark:text-slate-400",
         defaults: { style: { font_size: 11, color: "#1E3A5F" },
                     base_bounds: { x: 0.5, y: 14.5, width: 10, height: 1 } },
       },
       {
         label: "Aclaración",
         type: "text", variable: "aclaracion", transform: "none",
-        icon: <Type size={14} />, color: "text-slate-400",
+        icon: <Type size={14} />, color: "text-slate-400 dark:text-slate-500",
         defaults: { style: { font_size: 9 },
                     base_bounds: { x: 0.5, y: 27.5, width: 10, height: 1.5 } },
       },
       {
         label: "Segunda aclaración",
         type: "text", variable: "segundaAclaracion", transform: "none",
-        icon: <Type size={14} />, color: "text-slate-400",
+        icon: <Type size={14} />, color: "text-slate-400 dark:text-slate-500",
         defaults: { style: { font_size: 9 },
                     base_bounds: { x: 0.5, y: 29.5, width: 10, height: 1.5 } },
       },
       {
         label: "Vigencia",
         type: "text", variable: "vigencia", transform: "none",
-        icon: <Type size={14} />, color: "text-slate-400",
+        icon: <Type size={14} />, color: "text-slate-400 dark:text-slate-500",
         defaults: { style: { font_size: 10 },
                     base_bounds: { x: 0.5, y: 26, width: 10, height: 1 } },
       },
       {
         label: "Código SKU",
         type: "text", variable: "codigoSKU", transform: "none",
-        icon: <Type size={14} />, color: "text-slate-400",
+        icon: <Type size={14} />, color: "text-slate-400 dark:text-slate-500",
         defaults: { style: { font_size: 10 },
                     base_bounds: { x: 0.5, y: 0.5, width: 4, height: 0.8 } },
       },
@@ -119,21 +119,21 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
       {
         label: "Día",
         type: "text", variable: "dia", transform: "uppercase",
-        icon: <Type size={14} />, color: "text-slate-500",
+        icon: <Type size={14} />, color: "text-slate-500 dark:text-slate-400",
         defaults: { style: { font_size: 14, font_bold: true },
                     base_bounds: { x: 0.5, y: 25, width: 3, height: 1 } },
       },
       {
         label: "Mes",
         type: "text", variable: "mes", transform: "none",
-        icon: <Type size={14} />, color: "text-slate-500",
+        icon: <Type size={14} />, color: "text-slate-500 dark:text-slate-400",
         defaults: { style: { font_size: 12 },
                     base_bounds: { x: 3.5, y: 25, width: 3.5, height: 1 } },
       },
       {
         label: "Año",
         type: "text", variable: "año", transform: "none",
-        icon: <Type size={14} />, color: "text-slate-400",
+        icon: <Type size={14} />, color: "text-slate-400 dark:text-slate-500",
         defaults: { style: { font_size: 10 },
                     base_bounds: { x: 7.5, y: 25, width: 2.5, height: 1 } },
       },
@@ -165,7 +165,7 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
         label: "Texto fijo",
         type: "text",
         static_value: "Texto fijo",
-        icon: <Type size={14} />, color: "text-slate-400",
+        icon: <Type size={14} />, color: "text-slate-400 dark:text-slate-500",
         defaults: { style: { font_size: 10, align: "center" },
                     base_bounds: { x: 0.5, y: 1, width: 10, height: 0.8 },
                     static_value: "Texto fijo" },
@@ -207,7 +207,7 @@ export default function ComponentPanel() {
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
         {CATALOG.map((section) => (
           <div key={section.category}>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+            <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
               {section.category}
             </p>
             <div className="space-y-1">
@@ -215,13 +215,13 @@ export default function ComponentPanel() {
                 <button
                   key={item.label}
                   onClick={() => handleAdd(item)}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent hover:border-slate-200 transition-all group"
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all group"
                 >
                   <span className={`${item.color} flex-shrink-0`}>{item.icon}</span>
                   <span className="flex-1">{item.label}</span>
                   <Plus
                     size={12}
-                    className="text-slate-300 group-hover:text-brand-500 flex-shrink-0"
+                    className="text-slate-300 dark:text-slate-600 group-hover:text-brand-500 flex-shrink-0"
                   />
                 </button>
               ))}
@@ -232,8 +232,8 @@ export default function ComponentPanel() {
 
       {/* Lista de componentes en el canvas */}
       {template.components.length > 0 && (
-        <div className="border-t border-slate-100 p-3">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+        <div className="border-t border-slate-100 dark:border-slate-800 p-3">
+          <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
             En el canvas ({template.components.length})
           </p>
           <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -246,7 +246,7 @@ export default function ComponentPanel() {
                 >
                   <button
                     onClick={() => selectComponent(comp.id)}
-                    className="flex-1 flex items-center gap-2 px-2 py-1 rounded text-left text-xs text-slate-600 hover:bg-slate-50 truncate"
+                    className="flex-1 flex items-center gap-2 px-2 py-1 rounded text-left text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 truncate"
                   >
                     <span
                       className="w-2 h-2 rounded-full flex-shrink-0"
@@ -263,21 +263,21 @@ export default function ComponentPanel() {
                   </button>
                   <button
                     onClick={() => updateComponent(comp.id, { visible: !comp.visible })}
-                    className="p-0.5 text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100"
+                    className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 opacity-0 group-hover:opacity-100"
                     title={comp.visible ? "Ocultar" : "Mostrar"}
                   >
                     {comp.visible ? <Eye size={12} /> : <EyeOff size={12} />}
                   </button>
                   <button
                     onClick={() => updateComponent(comp.id, { locked: !comp.locked })}
-                    className="p-0.5 text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100"
+                    className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 opacity-0 group-hover:opacity-100"
                     title={comp.locked ? "Desbloquear" : "Bloquear"}
                   >
                     <Lock size={12} className={comp.locked ? "text-amber-400" : ""} />
                   </button>
                   <button
                     onClick={() => deleteComponent(comp.id)}
-                    className="p-0.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                    className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100"
                     title="Eliminar"
                   >
                     <Trash2 size={12} />

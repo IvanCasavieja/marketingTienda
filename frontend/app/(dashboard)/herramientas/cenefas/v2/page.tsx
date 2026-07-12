@@ -211,7 +211,7 @@ export default function EditorPage() {
             <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-800">
               {VARIABLES_REFERENCE.map(({ name, desc }) => (
                 <div key={name} className="flex items-center gap-3 px-5 py-2.5">
-                  <code className="text-[11px] font-mono text-brand-700 shrink-0 bg-brand-50 border border-brand-100 px-1.5 py-0.5 rounded">
+                  <code className="text-[11px] font-mono text-brand-700 dark:text-brand-400 shrink-0 bg-brand-50 dark:bg-brand-950/40 border border-brand-100 dark:border-brand-900 px-1.5 py-0.5 rounded">
                     {`<<${name}>>`}
                   </code>
                   <span className="text-xs text-slate-500 dark:text-slate-400">{desc}</span>
@@ -226,7 +226,7 @@ export default function EditorPage() {
       <header className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex-shrink-0">
         <a
           href="/herramientas/cenefas"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           <ChevronLeft size={16} />
         </a>
@@ -236,7 +236,7 @@ export default function EditorPage() {
           {nameEditing ? (
             <input
               autoFocus
-              className="text-sm font-semibold text-slate-800 bg-transparent border-b border-brand-400 focus:outline-none w-64"
+              className="text-sm font-semibold text-slate-800 dark:text-slate-100 bg-transparent border-b border-brand-400 focus:outline-none w-64"
               value={template.name}
               onChange={(e) => setTemplateName(e.target.value)}
               onBlur={() => setNameEditing(false)}
@@ -267,7 +267,7 @@ export default function EditorPage() {
         {/* Referencia de variables */}
         <button
           onClick={() => setVarModalOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:border-brand-400 transition-all"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-300 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/70 hover:border-brand-400 dark:hover:border-brand-700 transition-all"
         >
           <BookOpen size={13} />
           Guía de variables
@@ -309,14 +309,14 @@ export default function EditorPage() {
                               }}
                             />
                             <button onClick={() => handleRenameTmpl(t.id)} className="p-1 text-emerald-600 hover:text-emerald-700"><Check size={13} /></button>
-                            <button onClick={() => setEditingTmplId(null)} className="p-1 text-slate-400 hover:text-slate-600"><X size={13} /></button>
+                            <button onClick={() => setEditingTmplId(null)} className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"><X size={13} /></button>
                           </div>
                         ) : isDel ? (
                           <div className="px-3 py-2">
-                            <p className="text-xs text-rose-600 mb-1.5">¿Borrar "{t.name}"?</p>
+                            <p className="text-xs text-rose-600 dark:text-rose-400 mb-1.5">¿Borrar "{t.name}"?</p>
                             <div className="flex gap-2">
-                              <button onClick={() => handleDeleteTmpl(t.id)} className="text-xs font-semibold text-rose-600 hover:text-rose-800 px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100">Sí, borrar</button>
-                              <button onClick={() => setDeletingTmplId(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancelar</button>
+                              <button onClick={() => handleDeleteTmpl(t.id)} className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/70">Sí, borrar</button>
+                              <button onClick={() => setDeletingTmplId(null)} className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">Cancelar</button>
                             </div>
                           </div>
                         ) : (
@@ -379,7 +379,7 @@ export default function EditorPage() {
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             isDirty
               ? "bg-brand-600 hover:bg-brand-700 text-white"
-              : "bg-slate-100 text-slate-400 cursor-default"
+              : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-default"
           }`}
         >
           {saving ? (

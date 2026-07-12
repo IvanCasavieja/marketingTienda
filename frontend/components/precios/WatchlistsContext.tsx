@@ -44,7 +44,10 @@ export function WatchlistsProvider({ children }: { children: ReactNode }) {
   const refrescar = useCallback(async () => {
     try {
       const { data } = await watchlistApi.listar();
-      setListas(data);
+      // La estrellita solo debe ofrecer agregar a listas propias y activas —
+      // no tiene sentido agregar un producto a una lista ajena (compartida
+      // conmigo, de solo lectura) o a una ya finalizada.
+      setListas(data.filter((l) => l.es_propia && l.estado === "activa"));
     } catch {
       // silencioso — el feature de seguir queda inerte pero no rompe la página
     } finally {

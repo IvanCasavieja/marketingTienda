@@ -51,6 +51,7 @@
     "notificaciones": "Notifications",
     "sinNotificaciones": "You don't have any notifications yet",
     "marcarTodasLeidas": "Mark all as read",
+    "marcarLeida": "Mark as read",
     "notificacionesError": "Couldn't mark as read",
     "miPedido": "My order"
   },
@@ -617,6 +618,7 @@
     "sortPriceAsc": "Price: lowest first",
     "sortPriceDesc": "Price: highest first",
     "viewChart": "View chart",
+    "downloadExcel": "Download Excel",
     "cheapest": "Cheapest",
     "at": "at",
     "noResultsFor": "No results for",
@@ -646,7 +648,44 @@
       "emptyList": "This list doesn't have any products yet.",
       "lastCheck": "Last check",
       "neverChecked": "not checked yet",
-      "unfollow": "Stop tracking"
+      "unfollow": "Stop tracking",
+      "tabMine": "My lists",
+      "tabShared": "Shared with me",
+      "tabFinished": "Finished",
+      "sharedBy": "Shared by {{name}}",
+      "finishedBadge": "Finished",
+      "editDuration": "Edit monitoring duration",
+      "saveDuration": "Save",
+      "durationUnlimited": "No time limit",
+      "durationUntil": "Until {{date}}",
+      "durationSaved": "Duration updated",
+      "durationSaveError": "Couldn't update the duration",
+      "finalizeNow": "Finish now",
+      "finalized": "List finished",
+      "finalizeError": "Couldn't finish the list",
+      "leaveShared": "Stop viewing this list",
+      "emptyShared": "No lists have been shared with you yet.",
+      "emptyFinished": "No finished lists yet.",
+      "exportError": "Couldn't export the history",
+      "historialCols": {
+        "producto": "Product",
+        "tienda": "Chain",
+        "precio": "Price",
+        "moneda": "Currency",
+        "fecha": "Date"
+      },
+      "compartir": {
+        "title": "Share list",
+        "loadError": "Couldn't load the user list",
+        "added": "User added",
+        "addError": "Couldn't share with that user",
+        "removeError": "Couldn't revoke access",
+        "currentlyShared": "Shared with",
+        "revoke": "Revoke access",
+        "addNew": "Add user",
+        "searchPlaceholder": "Search by name or email...",
+        "noUsers": "No users available"
+      }
     }
   }
 }

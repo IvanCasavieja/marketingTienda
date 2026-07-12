@@ -7,7 +7,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -15,6 +15,7 @@ from app.core.redis_client import get_redis
 from app.models.watchlist import Watchlist
 from app.models.watchlist_item import WatchlistItem
 from app.models.watchlist_precio_historial import WatchlistPrecioHistorial
+from app.models.watchlist_share import WatchlistShare
 from app.models.notificacion import Notificacion
 from app.services.scraper.live_search import (
     buscar_tata, buscar_eldorado, buscar_gdu,
@@ -145,12 +146,19 @@ async def _procesar_item(db, item: WatchlistItem) -> None:
             f"a {simbolo}{encontrado.precio:.2f}."
         )
 
-    db.add(Notificacion(
-        user_id=wl.user_id,
-        tipo=tipo,
-        mensaje=mensaje,
-        watchlist_item_id=item.id,
-    ))
+    # Notifica al dueño y a todos los usuarios con los que la lista está
+    # compartida — mismo patrón de fan-out que campaign_alerts_service.py,
+    # cada colaborador recibe "como si fuera suya" (mismo watchlist_item_id).
+    shares_result = await db.execute(select(WatchlistShare.user_id).where(WatchlistShare.watchlist_id == wl.id))
+    destinatarios = {wl.user_id, *shares_result.scalars().all()}
+
+    for user_id in destinatarios:
+        db.add(Notificacion(
+            user_id=user_id,
+            tipo=tipo,
+            mensaje=mensaje,
+            watchlist_item_id=item.id,
+        ))
 
 
 async def run_watchlist_check_loop() -> None:
@@ -199,7 +207,24 @@ async def _execute_check() -> None:
 
     try:
         async with AsyncSessionLocal() as db:
-            result = await db.execute(select(WatchlistItem))
+            hoy = datetime.now(timezone.utc).date()
+            finalizadas = await db.execute(
+                update(Watchlist)
+                .where(Watchlist.estado == "activa", Watchlist.fecha_fin.is_not(None), Watchlist.fecha_fin < hoy)
+                .values(estado="finalizada")
+            )
+            await db.commit()
+            if finalizadas.rowcount:
+                logger.info("watchlist_check: %d lista(s) pasaron a finalizada por vencimiento", finalizadas.rowcount)
+
+            # Listas finalizadas dejan de scrapear/notificar — ver el estado
+            # como un pausar, no un borrar (el historial de precios sigue
+            # intacto para el Excel de la sección "Finalizadas").
+            result = await db.execute(
+                select(WatchlistItem)
+                .join(Watchlist, Watchlist.id == WatchlistItem.watchlist_id)
+                .where(Watchlist.estado == "activa")
+            )
             items = result.scalars().all()
 
             chequeados = cambios = errores = 0

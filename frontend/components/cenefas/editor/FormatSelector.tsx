@@ -22,7 +22,7 @@ export default function FormatSelector({ formats }: Props) {
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             activeFormat === fmt.id
               ? "bg-brand-600 text-white shadow-sm"
-              : "bg-white border border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-600"
+              : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-300 dark:hover:border-brand-600 hover:text-brand-600 dark:hover:text-brand-400"
           }`}
         >
           {fmt.label}
@@ -34,7 +34,7 @@ export default function FormatSelector({ formats }: Props) {
 
       {/* Separador */}
       {allFormats.length > enabledFormats.length && (
-        <span className="text-slate-300 text-xs mx-1">|</span>
+        <span className="text-slate-300 dark:text-slate-600 text-xs mx-1">|</span>
       )}
 
       {/* Formatos desactivados (toggle para agregar) */}
@@ -45,7 +45,7 @@ export default function FormatSelector({ formats }: Props) {
             key={fmt.id}
             onClick={() => { toggleFormat(fmt.id); setActiveFormat(fmt.id); }}
             title={`Agregar formato ${fmt.label}`}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-300 text-slate-400 hover:border-brand-400 hover:text-brand-500 transition-all"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-300 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:border-brand-400 hover:text-brand-500 dark:hover:text-brand-400 transition-all"
           >
             + {fmt.label}
           </button>

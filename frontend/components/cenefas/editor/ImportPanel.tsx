@@ -83,12 +83,12 @@ export default function ImportPanel({ onDismiss }: Props) {
 
   return (
     <div className="w-full max-w-2xl">
-      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 w-full overflow-hidden">
 
         {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b border-slate-100">
-          <h2 className="text-base font-semibold text-slate-800">Elegir base para el template</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
+        <div className="px-6 pt-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">Elegir base para el template</h2>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
             Empezá desde un template predeterminado, importá un PPTX propio o diseñá desde cero.
           </p>
         </div>
@@ -98,35 +98,35 @@ export default function ImportPanel({ onDismiss }: Props) {
           {/* --- Plantillas predeterminadas --- */}
           <section>
             <div className="flex items-center gap-2 mb-3">
-              <LayoutTemplate size={13} className="text-slate-400" />
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              <LayoutTemplate size={13} className="text-slate-400 dark:text-slate-500" />
+              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 Plantillas predeterminadas
               </span>
             </div>
             {loading ? (
-              <div className="flex items-center gap-2 text-xs text-slate-400">
+              <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
                 <Loader2 size={13} className="animate-spin" /> Cargando…
               </div>
             ) : builtins.length === 0 ? (
-              <p className="text-xs text-slate-400">No hay plantillas disponibles</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">No hay plantillas disponibles</p>
             ) : (
               <div className="grid grid-cols-3 gap-3">
                 {builtins.map((b) => (
                   <button
                     key={b.slug}
                     onClick={() => handleSelectBuiltin(b)}
-                    className="group flex flex-col gap-2 p-4 rounded-xl border border-slate-200 hover:border-brand-400 hover:bg-brand-50 transition-all text-left"
+                    className="group flex flex-col gap-2 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-all text-left"
                   >
                     {/* Miniatura del formato */}
                     <FormatThumb formatId={b.format_id} />
                     <div>
-                      <p className="text-sm font-semibold text-slate-700 group-hover:text-brand-700">
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 group-hover:text-brand-700 dark:group-hover:text-brand-400">
                         {b.name}
                       </p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                         {FORMAT_LABELS[b.format_id] ?? b.format_id}
                       </p>
-                      <p className="text-[10px] text-slate-400">
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
                         {b.definition.components.length} componentes
                       </p>
                     </div>
@@ -139,8 +139,8 @@ export default function ImportPanel({ onDismiss }: Props) {
           {/* --- Importar PPTX --- */}
           <section>
             <div className="flex items-center gap-2 mb-3">
-              <FileUp size={13} className="text-slate-400" />
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              <FileUp size={13} className="text-slate-400 dark:text-slate-500" />
+              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 Importar PPTX propio
               </span>
             </div>
@@ -148,20 +148,20 @@ export default function ImportPanel({ onDismiss }: Props) {
               onDrop={onDrop}
               onDragOver={(e) => e.preventDefault()}
               onClick={() => !uploading && fileInputRef.current?.click()}
-              className="relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 hover:border-brand-300 hover:bg-brand-50/50 transition-all cursor-pointer p-6"
+              className="relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-brand-300 dark:hover:border-brand-700 hover:bg-brand-50/50 dark:hover:bg-brand-950/20 transition-all cursor-pointer p-6"
             >
               {uploading ? (
                 <>
                   <Loader2 size={20} className="animate-spin text-brand-500" />
-                  <p className="text-xs text-slate-500">Importando…</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Importando…</p>
                 </>
               ) : (
                 <>
-                  <Upload size={20} className="text-slate-400" />
-                  <p className="text-xs text-slate-600 font-medium">
+                  <Upload size={20} className="text-slate-400 dark:text-slate-500" />
+                  <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
                     Arrastrá o hacé clic para subir un .pptx
                   </p>
-                  <p className="text-[10px] text-slate-400">
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500">
                     Los placeholders {"<<PRECIO>>"}, {"<<DESCRIPCION>>"}, etc. se detectan automáticamente
                   </p>
                 </>
@@ -178,15 +178,15 @@ export default function ImportPanel({ onDismiss }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between">
+        <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <button
             onClick={onDismiss}
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
           >
             <Pencil size={12} />
             Empezar desde cero
           </button>
-          <p className="text-[10px] text-slate-400">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">
             Podés cambiar el template más adelante desde el menú Cargar
           </p>
         </div>
@@ -208,16 +208,16 @@ function FormatThumb({ formatId }: { formatId: string }) {
 
   return (
     <div
-      className="rounded border border-slate-200 bg-slate-50 overflow-hidden"
+      className="rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden"
       style={{ width: cfg.w, height: cfg.h }}
     >
       {cfg.rows && cfg.cols ? (
         // Grilla 2D (pinchos: 3 cols × 2 filas)
         <div className="w-full h-full flex flex-col">
           {Array.from({ length: cfg.rows }).map((_, r) => (
-            <div key={r} className="flex flex-1 border-b border-slate-200 last:border-0">
+            <div key={r} className="flex flex-1 border-b border-slate-200 dark:border-slate-700 last:border-0">
               {Array.from({ length: cfg.cols! }).map((_, c) => (
-                <div key={c} className="flex-1 border-r border-slate-200 last:border-0 bg-white" />
+                <div key={c} className="flex-1 border-r border-slate-200 dark:border-slate-700 last:border-0 bg-white" />
               ))}
             </div>
           ))}
@@ -226,14 +226,14 @@ function FormatThumb({ formatId }: { formatId: string }) {
         // Filas apiladas (3xA4: 3 franjas horizontales)
         <div className="w-full h-full flex flex-col">
           {Array.from({ length: cfg.rows }).map((_, i) => (
-            <div key={i} className="flex-1 w-full border-b border-slate-200 last:border-0 bg-white" />
+            <div key={i} className="flex-1 w-full border-b border-slate-200 dark:border-slate-700 last:border-0 bg-white" />
           ))}
         </div>
       ) : cfg.cols ? (
         // Columnas (no usado actualmente)
         <div className="w-full h-full flex">
           {Array.from({ length: cfg.cols }).map((_, i) => (
-            <div key={i} className="flex-1 h-full border-r border-slate-200 last:border-0 bg-white" />
+            <div key={i} className="flex-1 h-full border-r border-slate-200 dark:border-slate-700 last:border-0 bg-white" />
           ))}
         </div>
       ) : (
