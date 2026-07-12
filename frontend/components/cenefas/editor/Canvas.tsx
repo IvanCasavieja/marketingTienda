@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
-import type Konva from "konva";
+import Konva from "konva";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent } from "@/types/cenefas";
 
@@ -66,6 +65,126 @@ function applyFormatLayout(
 }
 
 // ---------------------------------------------------------------------------
+// Cache de imagenes base64 (una por componente), fuera del ciclo de Konva
+// ---------------------------------------------------------------------------
+
+// Formatos que los navegadores pueden mostrar en data URLs
+const _WEB_EXTS = new Set(["jpeg", "jpg", "png", "gif", "webp", "svg+xml"]);
+
+function useImageCache(components: CenefaComponent[]) {
+  const cacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const [, bump] = useState(0);
+
+  useEffect(() => {
+    const cache = cacheRef.current;
+    const validIds = new Set<string>();
+
+    for (const comp of components) {
+      if (!comp.image_data || !comp.image_ext || !_WEB_EXTS.has(comp.image_ext)) continue;
+      validIds.add(comp.id);
+      const cacheKey = `${comp.id}:${comp.image_data}`;
+      if (cache.has(cacheKey)) continue;
+
+      // Invalidar una entrada vieja de este mismo componente si cambio la imagen
+      for (const k of cache.keys()) {
+        if (k.startsWith(`${comp.id}:`)) cache.delete(k);
+      }
+
+      const el = new window.Image();
+      el.onload = () => { cache.set(cacheKey, el); bump((n) => n + 1); };
+      el.src = `data:image/${comp.image_ext};base64,${comp.image_data}`;
+    }
+
+    // Podar componentes que ya no existen o dejaron de tener imagen valida
+    for (const k of cache.keys()) {
+      const id = k.slice(0, k.indexOf(":"));
+      if (!validIds.has(id)) cache.delete(k);
+    }
+  }, [components]);
+
+  return (comp: CenefaComponent) => cacheRef.current.get(`${comp.id}:${comp.image_data}`);
+}
+
+// ---------------------------------------------------------------------------
+// Construccion imperativa de un shape (equivalente al viejo <ComponentShape>)
+// ---------------------------------------------------------------------------
+
+const CENEFA_COMP_NAME = "cenefa-comp";
+
+function buildComponentGroup({
+  comp, pageLeft, pageTop, isSelected, draggable, image, onSelect, onDragEnd,
+}: {
+  comp: CenefaComponent;
+  pageLeft: number;
+  pageTop: number;
+  isSelected: boolean;
+  draggable: boolean;
+  image?: HTMLImageElement;
+  onSelect: () => void;
+  onDragEnd: (x: number, y: number) => void;
+}): Konva.Group {
+  const color = COMP_COLORS[comp.type] ?? "#64748b";
+  const b = comp.base_bounds;
+  const x = pageLeft + scalePx(b.x);
+  const y = pageTop  + scalePx(b.y);
+  const w = Math.max(scalePx(b.width),  20);
+  const h = Math.max(scalePx(b.height), 10);
+  const imgInvalid = comp.type === "image" && !!comp.image_data && !_WEB_EXTS.has(comp.image_ext ?? "");
+
+  const group = new Konva.Group({ name: CENEFA_COMP_NAME, x, y, width: w, height: h, draggable });
+  group.on("click tap", onSelect);
+  group.on("dragend", (e) => onDragEnd(e.target.x(), e.target.y()));
+
+  if (image) {
+    group.add(new Konva.Image({ image, width: w, height: h, cornerRadius: comp.locked ? 0 : 2 }));
+    if (isSelected) {
+      group.add(new Konva.Rect({
+        width: w, height: h, fill: "transparent",
+        stroke: color, strokeWidth: 2, cornerRadius: 2,
+      }));
+    } else if (!comp.locked) {
+      group.add(new Konva.Rect({
+        width: w, height: h, fill: "transparent",
+        stroke: `${color}55`, strokeWidth: 1, dash: [4, 3],
+      }));
+    }
+    return group;
+  }
+
+  group.add(new Konva.Rect({
+    width: w, height: h,
+    fill: comp.type === "shape" && comp.style?.background_color ? comp.style.background_color : `${color}22`,
+    stroke: isSelected ? color : `${color}88`,
+    strokeWidth: isSelected ? 2 : 1,
+    cornerRadius: 3,
+    dash: comp.locked ? [4, 3] : undefined,
+  }));
+
+  const text =
+    imgInvalid
+      ? `⚠ Re-importá el PPTX\n(${comp.image_ext ?? "?"} no soportado)`
+      : comp.segments?.length
+        ? `${comp.name}\n${comp.segments.map((s) => s.type === "static" ? `"${s.value}"` : `{${s.value}}`).join(" + ")}`
+        : comp.variable
+          ? `${comp.name}\n(${comp.variable})`
+          : comp.static_value
+            ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
+            : comp.name;
+
+  group.add(new Konva.Text({
+    x: 4, y: 4, width: w - 8, height: h - 8,
+    text,
+    fontSize: Math.min(11, Math.max(7, h / 2.5)),
+    fill: imgInvalid ? "#F59E0B" : (comp.type === "shape" && comp.style?.background_color ? "#00000055" : color),
+    fontFamily: "Inter, system-ui, sans-serif",
+    ellipsis: true,
+    wrap: "word",
+  }));
+
+  return group;
+}
+
+// ---------------------------------------------------------------------------
 // Componente principal
 // ---------------------------------------------------------------------------
 
@@ -75,21 +194,14 @@ export default function Canvas({ className = "" }: CanvasProps) {
   const { template, activeFormat, selectedComponentId, selectComponent, updateComponent } =
     useEditorStore();
 
-  const [mounted, setMounted] = useState(false);
-  const transformerRef = useRef<Konva.Transformer>(null);
-  const selectedRef    = useRef<Konva.Group>(null);
+  const containerRef    = useRef<HTMLDivElement>(null);
+  const stageRef        = useRef<Konva.Stage | null>(null);
+  const bgLayerRef      = useRef<Konva.Layer | null>(null);
+  const compLayerRef    = useRef<Konva.Layer | null>(null);
+  const transformerRef  = useRef<Konva.Transformer | null>(null);
+  const selectedNodeRef = useRef<Konva.Group | null>(null);
 
-  useEffect(() => setMounted(true), []);
-
-  useEffect(() => {
-    if (!transformerRef.current) return;
-    if (selectedRef.current && isEditMode) {
-      transformerRef.current.nodes([selectedRef.current]);
-    } else {
-      transformerRef.current.nodes([]);
-    }
-    transformerRef.current.getLayer()?.batchDraw();
-  });
+  const getImage = useImageCache(template.components);
 
   const masterFormat = template.master_format;
   const isEditMode   = activeFormat === masterFormat;
@@ -109,14 +221,143 @@ export default function Canvas({ className = "" }: CanvasProps) {
     masterFormat,
   );
 
-  if (!mounted) {
-    return (
-      <div
-        className={`bg-slate-100 rounded-lg flex items-center justify-center ${className}`}
-        style={{ width: stageW, height: stageH }}
-      />
-    );
-  }
+  // Montaje: crear Stage/Layers/Transformer una sola vez. Todo esto vive
+  // adentro de un efecto (nunca corre en el servidor), asi que el contenedor
+  // se puede renderizar siempre sin riesgo de mismatch de hidratacion.
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const stage = new Konva.Stage({ container: containerRef.current, width: stageW, height: stageH });
+    const bgLayer = new Konva.Layer();
+    const compLayer = new Konva.Layer();
+    const transformer = new Konva.Transformer({
+      rotateEnabled: false,
+      boundBoxFunc: (old, next) => (next.width < 20 || next.height < 10 ? old : next),
+    });
+
+    stage.add(bgLayer);
+    stage.add(compLayer);
+    compLayer.add(transformer);
+    stage.on("mousedown", (e) => {
+      if (e.target === stage) selectComponent(null);
+    });
+
+    stageRef.current = stage;
+    bgLayerRef.current = bgLayer;
+    compLayerRef.current = compLayer;
+    transformerRef.current = transformer;
+
+    return () => {
+      stage.destroy();
+      stageRef.current = null;
+      bgLayerRef.current = null;
+      compLayerRef.current = null;
+      transformerRef.current = null;
+      selectedNodeRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Tamaño del stage (cambia al cambiar de formato)
+  useEffect(() => {
+    stageRef.current?.width(stageW);
+    stageRef.current?.height(stageH);
+  }, [stageW, stageH]);
+
+  // Fondo de pagina (sombra + rect blanco + etiqueta de formato)
+  useEffect(() => {
+    const layer = bgLayerRef.current;
+    if (!layer) return;
+    layer.destroyChildren();
+
+    layer.add(new Konva.Rect({
+      x: pageLeft + 4, y: pageTop + 4, width: pageW, height: pageH,
+      fill: "rgba(0,0,0,0.08)", cornerRadius: 2,
+    }));
+
+    const pageRect = new Konva.Rect({
+      x: pageLeft, y: pageTop, width: pageW, height: pageH,
+      fill: "white", stroke: "#cbd5e1", strokeWidth: 1, cornerRadius: 2,
+    });
+    pageRect.on("click", () => selectComponent(null));
+    layer.add(pageRect);
+
+    layer.add(new Konva.Text({
+      x: pageLeft, y: pageTop - 22,
+      text: `${activeFormat.toUpperCase()}  ${dims.w}×${dims.h} cm`,
+      fontSize: 10, fill: "#94a3b8", fontFamily: "Inter, system-ui, sans-serif",
+    }));
+
+    layer.batchDraw();
+  }, [pageLeft, pageTop, pageW, pageH, activeFormat, dims.w, dims.h, selectComponent]);
+
+  // Componentes: se reconstruye toda la capa en cada cambio relevante (igual
+  // de simple que el reconciliador de React, sin diffing fino — para la
+  // cantidad de componentes tipica de una cenefa el costo es despreciable).
+  useEffect(() => {
+    const layer = compLayerRef.current;
+    const transformer = transformerRef.current;
+    if (!layer || !transformer) return;
+
+    layer.find(`.${CENEFA_COMP_NAME}`).forEach((n) => n.destroy());
+
+    let selectedNode: Konva.Group | null = null;
+
+    for (const comp of displayComps) {
+      const isSelected = comp.id === selectedComponentId && isEditMode;
+      const group = buildComponentGroup({
+        comp, pageLeft, pageTop, isSelected,
+        draggable: isEditMode && !comp.locked,
+        image: getImage(comp),
+        onSelect: () => { if (isEditMode) selectComponent(comp.id); },
+        onDragEnd: (x, y) => {
+          const newX = +Math.max(0, Math.min((x - pageLeft) / PX_PER_CM, dims.w - comp.base_bounds.width)).toFixed(2);
+          const newY = +Math.max(0, Math.min((y - pageTop)  / PX_PER_CM, dims.h - comp.base_bounds.height)).toFixed(2);
+          updateComponent(comp.id, {
+            base_bounds: { ...comp.base_bounds, x: newX, y: newY },
+          });
+        },
+      });
+      layer.add(group);
+      if (isSelected) selectedNode = group;
+    }
+
+    transformer.moveToTop();
+    selectedNodeRef.current = selectedNode;
+    transformer.nodes(selectedNode ? [selectedNode] : []);
+    layer.batchDraw();
+  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, selectComponent, updateComponent]);
+
+  // Handler de fin de transformacion (resize), registrado una sola vez
+  useEffect(() => {
+    const transformer = transformerRef.current;
+    if (!transformer) return;
+
+    function handleTransformEnd() {
+      const node = selectedNodeRef.current;
+      if (!node) return;
+      const scaleX = node.scaleX();
+      const scaleY = node.scaleY();
+      node.scaleX(1);
+      node.scaleY(1);
+
+      const { template: t, selectedComponentId: selId } = useEditorStore.getState();
+      const comp = t.components.find((c) => c.id === selId);
+      if (!comp) return;
+
+      updateComponent(comp.id, {
+        base_bounds: {
+          x:      +((node.x() - pageLeft) / PX_PER_CM).toFixed(2),
+          y:      +((node.y() - pageTop)  / PX_PER_CM).toFixed(2),
+          width:  +((node.width()  * scaleX) / PX_PER_CM).toFixed(2),
+          height: +((node.height() * scaleY) / PX_PER_CM).toFixed(2),
+        },
+      });
+    }
+
+    transformer.on("transformend", handleTransformEnd);
+    return () => { transformer.off("transformend", handleTransformEnd); };
+  }, [pageLeft, pageTop, updateComponent]);
 
   return (
     <div className={`relative overflow-auto bg-slate-200 rounded-lg ${className}`}>
@@ -126,201 +367,7 @@ export default function Canvas({ className = "" }: CanvasProps) {
           Vista previa — {activeFormat.toUpperCase()} (solo lectura)
         </div>
       )}
-
-      <Stage
-        width={stageW}
-        height={stageH}
-        onMouseDown={(e) => {
-          if (e.target === e.target.getStage()) selectComponent(null);
-        }}
-      >
-        {/* Fondo de la página */}
-        <Layer>
-          <Rect x={pageLeft + 4} y={pageTop + 4} width={pageW} height={pageH}
-            fill="rgba(0,0,0,0.08)" cornerRadius={2} />
-          <Rect x={pageLeft} y={pageTop} width={pageW} height={pageH}
-            fill="white" stroke="#cbd5e1" strokeWidth={1} cornerRadius={2}
-            onClick={() => selectComponent(null)} />
-          <Text x={pageLeft} y={pageTop - 22}
-            text={`${activeFormat.toUpperCase()}  ${dims.w}×${dims.h} cm`}
-            fontSize={10} fill="#94a3b8" fontFamily="Inter, system-ui, sans-serif" />
-        </Layer>
-
-        {/* Componentes */}
-        <Layer>
-          {displayComps.map((comp) => (
-            <ComponentShape
-              key={comp.id}
-              comp={comp}
-              pageLeft={pageLeft}
-              pageTop={pageTop}
-              isSelected={comp.id === selectedComponentId && isEditMode}
-              shapeRef={comp.id === selectedComponentId && isEditMode ? selectedRef : undefined}
-              draggable={isEditMode && !comp.locked}
-              onSelect={() => { if (isEditMode) selectComponent(comp.id); }}
-              onDragEnd={(x, y) => {
-                const newX = +Math.max(0, Math.min((x - pageLeft) / PX_PER_CM, dims.w - comp.base_bounds.width)).toFixed(2);
-                const newY = +Math.max(0, Math.min((y - pageTop)  / PX_PER_CM, dims.h - comp.base_bounds.height)).toFixed(2);
-                updateComponent(comp.id, {
-                  base_bounds: { ...comp.base_bounds, x: newX, y: newY },
-                });
-              }}
-            />
-          ))}
-
-          <Transformer
-            ref={transformerRef}
-            rotateEnabled={false}
-            boundBoxFunc={(old, next) =>
-              next.width < 20 || next.height < 10 ? old : next
-            }
-            onTransformEnd={() => {
-              const node = selectedRef.current;
-              if (!node) return;
-              const scaleX = node.scaleX();
-              const scaleY = node.scaleY();
-              node.scaleX(1);
-              node.scaleY(1);
-              const comp = template.components.find((c) => c.id === selectedComponentId);
-              if (!comp) return;
-              updateComponent(comp.id, {
-                base_bounds: {
-                  x:      +((node.x() - pageLeft) / PX_PER_CM).toFixed(2),
-                  y:      +((node.y() - pageTop)  / PX_PER_CM).toFixed(2),
-                  width:  +((node.width()  * scaleX) / PX_PER_CM).toFixed(2),
-                  height: +((node.height() * scaleY) / PX_PER_CM).toFixed(2),
-                },
-              });
-            }}
-          />
-        </Layer>
-      </Stage>
+      <div ref={containerRef} />
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Shape individual
-// ---------------------------------------------------------------------------
-
-interface ComponentShapeProps {
-  comp:       CenefaComponent;
-  pageLeft:   number;
-  pageTop:    number;
-  isSelected: boolean;
-  draggable:  boolean;
-  shapeRef?:  React.RefObject<Konva.Group>;
-  onSelect:   () => void;
-  onDragEnd:  (x: number, y: number) => void;
-}
-
-// Formatos que los navegadores pueden mostrar en data URLs
-const _WEB_EXTS = new Set(["jpeg", "jpg", "png", "gif", "webp", "svg+xml"]);
-
-function useBase64Image(imageData?: string, imageExt?: string) {
-  const [img, setImg] = useState<HTMLImageElement | null>(null);
-  useEffect(() => {
-    if (!imageData || !imageExt || !_WEB_EXTS.has(imageExt)) {
-      setImg(null);
-      return;
-    }
-    const el = new window.Image();
-    el.src = `data:image/${imageExt};base64,${imageData}`;
-    el.onload  = () => setImg(el);
-    el.onerror = () => setImg(null);
-    return () => { el.onload = null; el.onerror = null; };
-  }, [imageData, imageExt]);
-  return img;
-}
-
-function ComponentShape({
-  comp, pageLeft, pageTop, isSelected, draggable, shapeRef, onSelect, onDragEnd,
-}: ComponentShapeProps) {
-  const color = COMP_COLORS[comp.type] ?? "#64748b";
-  const b     = comp.base_bounds;
-  const x     = pageLeft + scalePx(b.x);
-  const y     = pageTop  + scalePx(b.y);
-  const w     = Math.max(scalePx(b.width),  20);
-  const h     = Math.max(scalePx(b.height), 10);
-
-  const loadedImg  = useBase64Image(comp.image_data, comp.image_ext);
-  const imgInvalid = comp.type === "image" && comp.image_data && !_WEB_EXTS.has(comp.image_ext ?? "");
-
-  return (
-    <Group
-      ref={shapeRef as React.RefObject<Konva.Group> | undefined}
-      x={x} y={y} width={w} height={h}
-      draggable={draggable}
-      onClick={onSelect}
-      onTap={onSelect}
-      onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
-    >
-      {/* Imagen real cuando está disponible */}
-      {loadedImg ? (
-        <>
-          <KonvaImage
-            image={loadedImg}
-            width={w} height={h}
-            cornerRadius={comp.locked ? 0 : 2}
-          />
-          {/* Borde de selección encima de la imagen */}
-          {isSelected && (
-            <Rect width={w} height={h}
-              fill="transparent"
-              stroke={color} strokeWidth={2}
-              cornerRadius={2}
-            />
-          )}
-          {/* Borde tenue cuando no está seleccionado pero es un componente editable */}
-          {!isSelected && !comp.locked && (
-            <Rect width={w} height={h}
-              fill="transparent"
-              stroke={`${color}55`} strokeWidth={1}
-              dash={[4, 3]}
-            />
-          )}
-        </>
-      ) : (
-        /* Placeholder coloreado para imágenes sin datos o shapes/textos */
-        <>
-          <Rect
-            width={w} height={h}
-            fill={
-              comp.type === "shape" && comp.style?.background_color
-                ? comp.style.background_color
-                : `${color}22`
-            }
-            stroke={isSelected ? color : `${color}88`}
-            strokeWidth={isSelected ? 2 : 1}
-            cornerRadius={3}
-            dash={comp.locked ? [4, 3] : undefined}
-          />
-          <Text
-            x={4} y={4} width={w - 8} height={h - 8}
-            text={
-              imgInvalid
-                ? `⚠ Re-importá el PPTX\n(${comp.image_ext ?? "?"} no soportado)`
-                : comp.segments?.length
-                  ? `${comp.name}\n${comp.segments.map((s) => s.type === "static" ? `"${s.value}"` : `{${s.value}}`).join(" + ")}`
-                  : comp.variable
-                    ? `${comp.name}\n(${comp.variable})`
-                    : comp.static_value
-                      ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
-                      : comp.name
-            }
-            fontSize={Math.min(11, Math.max(7, h / 2.5))}
-            fill={
-              imgInvalid
-                ? "#F59E0B"
-                : comp.type === "shape" && comp.style?.background_color
-                  ? "#00000055"
-                  : color
-            }
-            fontFamily="Inter, system-ui, sans-serif"
-            ellipsis wrap="word"
-          />
-        </>
-      )}
-    </Group>
   );
 }

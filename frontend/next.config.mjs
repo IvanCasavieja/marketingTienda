@@ -26,6 +26,17 @@ const csp = [
 ].join("; ");
 
 const nextConfig = {
+  // El editor de cenefas (herramientas/cenefas/v2) usa Konva directo; konva
+  // soporta opcionalmente node-canvas para renderizar en Node y el bundler
+  // intenta resolver ese require("canvas") al armar el bundle de servidor
+  // aunque Canvas.tsx nunca ejecuta Konva ahi (todo el uso vive dentro de
+  // useEffect, client-only). Sin este alias, el build falla con "Module not
+  // found: Can't resolve 'canvas'".
+  turbopack: {
+    resolveAlias: {
+      canvas: "./stubs/empty-canvas.js",
+    },
+  },
   async headers() {
     return [
       {
