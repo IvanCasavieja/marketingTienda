@@ -360,7 +360,7 @@ export default function Canvas({ className = "" }: CanvasProps) {
   }, [pageLeft, pageTop, updateComponent]);
 
   return (
-    <div className={`relative overflow-auto bg-slate-200 rounded-lg ${className}`}>
+    <div className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg ${className}`}>
       {/* Badge modo preview */}
       {!isEditMode && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">
