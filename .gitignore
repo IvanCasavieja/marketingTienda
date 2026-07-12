@@ -11,5 +11,17 @@ backend/.env.scraper
 # Entorno aislado para probar Google Meridian (MMM) — no es parte del backend
 .venv-meridian/
 
+# Output derivado del pipeline de Meridian (CSV export + reporte HTML) —
+# regenerable con export_metrics_for_meridian.py + fit_model.py, no es fuente
+# de verdad
+meridian_mmm/data/
+meridian_mmm/output/
+
+# Bytecode de Python — backend/ ya lo ignora en su propio .gitignore, esto
+# cubre codigo Python fuera de esa carpeta (ej. meridian_mmm/)
+__pycache__/
+*.pyc
+*.pyo
+
 # Config local de Claude Code — específica de cada máquina/sesión, no del proyecto
 .claude/
