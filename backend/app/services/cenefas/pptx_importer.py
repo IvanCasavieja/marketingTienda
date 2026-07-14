@@ -91,6 +91,8 @@ _FORMATS_DIM = {
     "a3":      (29.7,  42.0,  1),
     "3xa4":    (21.0,  9.9,   3),   # slide de una franja; 3 en A4 portrait
     "pinchos": (7.0,   14.85, 6),   # slide de un pincho; grilla 3×2 en A4
+    "a5":      (14.85, 21.0,  1),
+    "6xa4":    (7.0,   14.85, 6),   # slide de una celda; grilla 3×2 en A4 (arte propio)
 }
 
 
@@ -381,6 +383,15 @@ def _extract_style(shape) -> dict:
                             break
             if b is not None:
                 style["font_bold"] = bool(b)
+        except Exception:
+            pass
+        try:
+            from pptx.oxml.ns import qn as _qn_s
+            rPr = first_run._r.find(_qn_s("a:rPr"))
+            if rPr is not None:
+                strike = rPr.get("strike")
+                if strike is not None and strike != "noStrike":
+                    style["strikethrough"] = True
         except Exception:
             pass
         try:

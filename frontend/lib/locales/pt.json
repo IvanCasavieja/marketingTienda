@@ -35,7 +35,7 @@
     "guia": "GUIA",
     "configuracion": "CONFIGURAÇÕES",
     "redexpress": "Redexpress",
-    "generarCenefas": "Gerar faixas",
+    "cenefas": "Faixas",
     "editorPlantillas": "Editor de modelos",
     "historial": "Histórico",
     "buscarPrecios": "Buscar preços",
@@ -363,7 +363,43 @@
     "orUploadNew": "ou envie um PPTX personalizado",
     "cancel": "Cancelar",
     "downloadTemplate": "Baixar planilha modelo",
-    "builtinTemplates": "Predefinidos"
+    "builtinTemplates": "Predefinidos",
+    "destino": {
+      "title": "Para onde vamos?",
+      "subtitle": "Escolha que tipo de faixa você quer gerar.",
+      "rompe_precios": {
+        "label": "Rompe Precios do fim de semana",
+        "description": "Preço atual, preço anterior riscado e vigência — sem mecânica de combos."
+      },
+      "redexpress": {
+        "label": "RedExpress",
+        "description": "Planilhas e mecânicas de combo/M x N para as lojas RedExpress."
+      }
+    },
+    "rompePrecios": {
+      "sizesTitle": "Modelos por tamanho",
+      "uploadTemplate": "Enviar modelo",
+      "replace": "Substituir",
+      "templateSaved": "Modelo salvo",
+      "templateSaveError": "Erro ao salvar o modelo",
+      "uploadTemplateFor": "Enviar modelo para {{size}}",
+      "choosePptx": "Escolher arquivo .pptx…",
+      "saving": "Salvando…",
+      "saveTemplate": "Salvar modelo",
+      "cocarda": "Imagem de selo",
+      "cocardaHint": "Selo ou badge que substitui a variável \"imagen\" no modelo (opcional)"
+    },
+    "previewStep": {
+      "title": "Pré-visualização antes de baixar",
+      "subtitle": "Arraste ou redimensione qualquer elemento para ajustá-lo. {{count}} produto(s) no total — o primeiro é mostrado como referência.",
+      "back": "Voltar",
+      "confirmAndDownload": "Confirmar e baixar",
+      "generatingPreview": "Gerando pré-visualização…",
+      "previewError": "Erro ao gerar a pré-visualização",
+      "generateError": "Erro ao gerar o arquivo",
+      "downloaded": "Faixa gerada e baixada",
+      "confirmError": "Erro ao confirmar"
+    }
   },
   "admin": {
     "title": "Painel de Administração",

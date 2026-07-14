@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
+import { useSuperuserGuard } from "@/hooks/useSuperuserGuard";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaFormat, CenefaTemplateRecord } from "@/types/cenefas";
 import ComponentPanel  from "@/components/cenefas/editor/ComponentPanel";
@@ -57,6 +58,7 @@ export type LeftPanel = "components" | "rules" | "variables";
 // ---------------------------------------------------------------------------
 
 export default function EditorPage() {
+  const allowed = useSuperuserGuard();
   const {
     template, templateId, isDirty,
     leftPanel, setLeftPanel,
@@ -191,6 +193,8 @@ export default function EditorPage() {
     { id: "rules",      label: "Reglas",       icon: <GitBranch size={13} /> },
     { id: "variables",  label: "Variables",    icon: <Variable size={13} />  },
   ];
+
+  if (!allowed) return null;
 
   return (
     <div className="flex flex-col h-[calc(100vh-2rem)] -m-8 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-card bg-white dark:bg-slate-900">

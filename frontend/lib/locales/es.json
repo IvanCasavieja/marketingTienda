@@ -35,7 +35,7 @@
     "guia": "GUÍA",
     "configuracion": "CONFIGURACIÓN",
     "redexpress": "Redexpress",
-    "generarCenefas": "Generar cenefas",
+    "cenefas": "Cenefas",
     "editorPlantillas": "Editor de plantillas",
     "historial": "Historial",
     "buscarPrecios": "Buscar precios",
@@ -363,7 +363,43 @@
     "orUploadNew": "o subí un PPTX personalizado",
     "cancel": "Cancelar",
     "downloadTemplate": "Descargar plantilla Excel",
-    "builtinTemplates": "Predeterminadas"
+    "builtinTemplates": "Predeterminadas",
+    "destino": {
+      "title": "¿A dónde vas?",
+      "subtitle": "Elegí qué tipo de cenefa querés generar.",
+      "rompe_precios": {
+        "label": "Rompe Precios del finde",
+        "description": "Precio actual, precio anterior tachado y vigencia — sin mecánica de combos."
+      },
+      "redexpress": {
+        "label": "RedExpress",
+        "description": "Planillas y mecánicas de combo/M x N para las sucursales RedExpress."
+      }
+    },
+    "rompePrecios": {
+      "sizesTitle": "Plantillas por tamaño",
+      "uploadTemplate": "Subir plantilla",
+      "replace": "Reemplazar",
+      "templateSaved": "Plantilla guardada",
+      "templateSaveError": "Error al guardar la plantilla",
+      "uploadTemplateFor": "Subir plantilla para {{size}}",
+      "choosePptx": "Elegir archivo .pptx…",
+      "saving": "Guardando…",
+      "saveTemplate": "Guardar plantilla",
+      "cocarda": "Imagen de cocarda",
+      "cocardaHint": "Badge o sello que reemplaza la variable \"imagen\" en la plantilla (opcional)"
+    },
+    "previewStep": {
+      "title": "Preview antes de descargar",
+      "subtitle": "Arrastrá o redimensioná cualquier elemento para ajustarlo. {{count}} producto(s) en total — se muestra el primero como referencia.",
+      "back": "Volver",
+      "confirmAndDownload": "Confirmar y descargar",
+      "generatingPreview": "Generando preview…",
+      "previewError": "Error al generar el preview",
+      "generateError": "Error al generar el archivo",
+      "downloaded": "Cenefa generada y descargada",
+      "confirmError": "Error al confirmar"
+    }
   },
   "admin": {
     "title": "Panel de Administrador",

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { cenefasV2Api } from "@/lib/api";
+import { useSuperuserGuard } from "@/hooks/useSuperuserGuard";
 import type { CenefaJob, CenefaJobIssue } from "@/types/cenefas";
 import {
   ChevronLeft, Download, Loader2, CheckCircle2,
@@ -13,6 +14,7 @@ import { es } from "date-fns/locale";
 const STATUS_CONFIG = {
   pending: { label: "En espera",   color: "text-slate-400",   bg: "bg-slate-100",   icon: <Clock      size={12} /> },
   running: { label: "Generando…",  color: "text-blue-600",    bg: "bg-blue-50",     icon: <Loader2    size={12} className="animate-spin" /> },
+  preview: { label: "Esperando confirmación", color: "text-amber-600", bg: "bg-amber-50", icon: <Clock size={12} /> },
   done:    { label: "Listo",       color: "text-emerald-600", bg: "bg-emerald-50",  icon: <CheckCircle2 size={12} /> },
   error:   { label: "Error",       color: "text-red-600",     bg: "bg-red-50",      icon: <AlertCircle size={12} /> },
 };
@@ -35,6 +37,7 @@ const ISSUE_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function JobsPage() {
+  const allowed = useSuperuserGuard();
   const [jobs,     setJobs]     = useState<CenefaJob[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -110,6 +113,8 @@ export default function JobsPage() {
     try { return format(parseISO(iso), "dd MMM yyyy HH:mm", { locale: es }); }
     catch { return iso; }
   }
+
+  if (!allowed) return null;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">

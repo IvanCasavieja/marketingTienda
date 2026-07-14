@@ -38,6 +38,22 @@ FORMATS: dict[str, dict] = {
         "slot_rows": 2,
         "scale":     0.5,
     },
+    "a5": {
+        "label":     "A5",
+        "width_cm":  14.85,  # A4 / 2
+        "height_cm": 21.0,
+        "slots":     1,
+        "scale":     0.707,
+    },
+    "6xa4": {
+        "label":     "6xA4",
+        "width_cm":  7.0,    # 21 / 3 columnas — misma grilla que "pinchos",
+        "height_cm": 14.85,  # 29.7 / 2 filas   pero registrado aparte: el arte es distinto
+        "slots":     6,
+        "slot_cols": 3,
+        "slot_rows": 2,
+        "scale":     0.5,
+    },
 }
 
 

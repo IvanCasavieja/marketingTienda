@@ -35,7 +35,7 @@
     "guia": "GUIDE",
     "configuracion": "SETTINGS",
     "redexpress": "Redexpress",
-    "generarCenefas": "Generate banners",
+    "cenefas": "Banners",
     "editorPlantillas": "Template editor",
     "historial": "History",
     "buscarPrecios": "Search prices",
@@ -363,7 +363,43 @@
     "orUploadNew": "or upload a custom PPTX",
     "cancel": "Cancel",
     "downloadTemplate": "Download Excel template",
-    "builtinTemplates": "Built-in"
+    "builtinTemplates": "Built-in",
+    "destino": {
+      "title": "Where to?",
+      "subtitle": "Choose which kind of banner you want to generate.",
+      "rompe_precios": {
+        "label": "Weekend Price Crash",
+        "description": "Current price, crossed-out previous price, and validity dates — no combo mechanics."
+      },
+      "redexpress": {
+        "label": "RedExpress",
+        "description": "Order sheets and combo/multi-buy mechanics for RedExpress stores."
+      }
+    },
+    "rompePrecios": {
+      "sizesTitle": "Templates by size",
+      "uploadTemplate": "Upload template",
+      "replace": "Replace",
+      "templateSaved": "Template saved",
+      "templateSaveError": "Error saving template",
+      "uploadTemplateFor": "Upload template for {{size}}",
+      "choosePptx": "Choose a .pptx file…",
+      "saving": "Saving…",
+      "saveTemplate": "Save template",
+      "cocarda": "Badge image",
+      "cocardaHint": "Badge or seal that replaces the \"imagen\" variable in the template (optional)"
+    },
+    "previewStep": {
+      "title": "Preview before download",
+      "subtitle": "Drag or resize any element to adjust it. {{count}} product(s) total — the first one is shown as a reference.",
+      "back": "Back",
+      "confirmAndDownload": "Confirm and download",
+      "generatingPreview": "Generating preview…",
+      "previewError": "Error generating the preview",
+      "generateError": "Error generating the file",
+      "downloaded": "Banner generated and downloaded",
+      "confirmError": "Error confirming"
+    }
   },
   "admin": {
     "title": "Admin Panel",

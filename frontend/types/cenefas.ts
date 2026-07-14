@@ -23,6 +23,7 @@ export interface ComponentStyle {
   font_family?: string;
   font_size?: number;
   font_bold?: boolean;
+  strikethrough?: boolean;
   color?: string;
   background_color?: string;
   align?: "left" | "center" | "right";
@@ -36,6 +37,7 @@ export interface TextSegment {
   style?: {
     font_size?: number;
     font_bold?: boolean;
+    strikethrough?: boolean;
     color?: string;
   };
 }
@@ -107,6 +109,7 @@ export interface CenefaTemplateRecord {
   id: string;
   name: string;
   formats: string[];
+  category?: string | null;
   is_builtin: boolean;
   created_at: string;
   updated_at: string;
@@ -132,7 +135,7 @@ export interface CenefaJobIssue {
 
 export interface CenefaJob {
   id: string;
-  status: "pending" | "running" | "done" | "error";
+  status: "pending" | "running" | "preview" | "done" | "error";
   format: string;
   export_type: string;
   row_count?: number;
@@ -149,6 +152,9 @@ export interface CenefaJob {
     critical_errors: number;
     status: "ok" | "warning" | "error";
   };
+  // Solo presentes cuando status === "preview" (ver PreviewStep)
+  template_def?: CenefaTemplate;
+  preview_product?: Record<string, string>;
 }
 
 export interface ValidationReport {

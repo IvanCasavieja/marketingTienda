@@ -309,6 +309,15 @@ export default function PropertiesPanel() {
                   <input
                     type="checkbox"
                     className="rounded text-brand-600"
+                    checked={comp.style.strikethrough ?? false}
+                    onChange={(e) => setStyle("strikethrough", e.target.checked)}
+                  />
+                  <span className="text-sm text-slate-600 dark:text-slate-300">Tachado</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded text-brand-600"
                     checked={comp.style.auto_fit ?? true}
                     onChange={(e) => setStyle("auto_fit", e.target.checked)}
                   />
@@ -576,6 +585,20 @@ function SegmentsEditor({
               />
               <span className="text-xs text-slate-600 dark:text-slate-300">Negrita</span>
               {seg.style?.font_bold === undefined && (
+                <span className="text-[9px] text-slate-400 dark:text-slate-500">(hereda del estilo base)</span>
+              )}
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="rounded text-brand-600"
+                checked={!!seg.style?.strikethrough}
+                onChange={(e) =>
+                  updateSegStyle(idx, "strikethrough", e.target.checked ? true : undefined)
+                }
+              />
+              <span className="text-xs text-slate-600 dark:text-slate-300">Tachado</span>
+              {seg.style?.strikethrough === undefined && (
                 <span className="text-[9px] text-slate-400 dark:text-slate-500">(hereda del estilo base)</span>
               )}
             </label>

@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
+import { useSuperuserGuard } from "@/hooks/useSuperuserGuard";
 import type { CenefaFormat, CenefaJob, CenefaTemplate, CenefaTemplateRecord } from "@/types/cenefas";
 
 type Step     = 1 | 2 | 3;
@@ -43,6 +44,7 @@ const BUILTINS = [
 // ---------------------------------------------------------------------------
 
 export default function GenerarPage() {
+  const allowed = useSuperuserGuard();
   const [step, setStep] = useState<Step>(1);
 
   // Configuración
@@ -244,6 +246,8 @@ export default function GenerarPage() {
       toast.error("Error al descargar");
     }
   }
+
+  if (!allowed) return null;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

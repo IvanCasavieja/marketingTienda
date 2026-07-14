@@ -5,7 +5,7 @@ import logging
 import pathlib
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +17,12 @@ from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
 from app.services.cenefas.data_engine import load_products_from_bytes
-from app.services.cenefas.jobs import run_generation_job, pop_job_result
+from app.services.cenefas.jobs import (
+    confirm_generation_job,
+    peek_job_products,
+    pop_job_result,
+    run_generation_job,
+)
 from app.services.cenefas.layout_engine import FORMATS
 from app.services.cenefas.rules_engine import evaluate_rules
 from app.services.cenefas.validation_engine import build_summary, validate_products
@@ -138,18 +143,21 @@ async def list_formats(_: User = Depends(require_permission("cenefas.view"))):
 
 @router.get("/templates")
 async def list_templates(
+    category: str | None = Query(default=None),
     _: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(CenefaTemplateV2).order_by(CenefaTemplateV2.created_at.desc())
-    )
+    query = select(CenefaTemplateV2).order_by(CenefaTemplateV2.created_at.desc())
+    if category is not None:
+        query = query.where(CenefaTemplateV2.category == category)
+    result = await db.execute(query)
     templates = result.scalars().all()
     return [
         {
             "id":         str(t.id),
             "name":       t.name,
             "formats":    t.formats,
+            "category":   t.category,
             "is_builtin": t.is_builtin,
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "updated_at": t.updated_at.isoformat() if t.updated_at else None,
@@ -171,6 +179,7 @@ async def create_template(
         name=payload["name"].strip(),
         definition=payload,
         formats=payload.get("formats", []),
+        category=payload.get("category"),
     )
     db.add(tmpl)
     await db.flush()
@@ -189,6 +198,7 @@ async def get_template(
         "id":         str(tmpl.id),
         "name":       tmpl.name,
         "formats":    tmpl.formats,
+        "category":   tmpl.category,
         "is_builtin": tmpl.is_builtin,
         "definition": tmpl.definition,
         "created_at": tmpl.created_at.isoformat() if tmpl.created_at else None,
@@ -212,6 +222,8 @@ async def update_template(
     tmpl.name       = payload["name"].strip()
     tmpl.definition = payload
     tmpl.formats    = payload.get("formats", tmpl.formats)
+    if "category" in payload:
+        tmpl.category = payload.get("category")
     return {"id": str(tmpl.id), "name": tmpl.name}
 
 
@@ -362,11 +374,16 @@ def _validate_template_payload(payload: dict) -> None:
 async def create_job(
     background_tasks: BackgroundTasks,
     excel: UploadFile = File(..., description="Archivo Excel con hoja 'Cenefas'"),
-    format_id: str = Form(default="a4", description="Formato destino: a4 | a3 | 3xa4 | pinchos"),
+    format_id: str | None = Form(
+        default=None,
+        description="Formato destino: a4 | a3 | 3xa4 | pinchos | a5 | 6xa4. "
+                    "Si se omite, se usa el master_format detectado de la plantilla.",
+    ),
     export_type: str = Form(default="pptx", description="Tipo de salida: pptx"),
     builtin_slug: str | None = Form(None, description="Slug de plantilla predeterminada (v1)"),
     template_v1_id: int | None = Form(None, description="ID de template v1 del equipo"),
     template_v2_id: uuid.UUID | None = Form(None, description="UUID de template v2 del equipo"),
+    template_upload: UploadFile | None = File(None, description="PPTX subido al vuelo, sin guardar como plantilla"),
     vigencia: str = Form(default=""),
     aclaracion: str = Form(default=""),
     otra_alcohol: str = Form(default="Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
@@ -378,18 +395,20 @@ async def create_job(
     current_user: User = Depends(require_permission("cenefas.generate")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Inicia un job de generación async. Acepta templates v1 (PPTX) y v2 (componentes JSON)."""
-    if format_id not in FORMATS:
+    """Inicia un job de generación async. Acepta templates v1 (PPTX), v2 (componentes JSON)
+    y un PPTX subido al vuelo (sin guardarlo como plantilla del equipo)."""
+    if format_id is not None and format_id not in FORMATS:
         raise HTTPException(status_code=400, detail=f"Formato inválido. Disponibles: {list(FORMATS)}")
-    if not builtin_slug and not template_v1_id and not template_v2_id:
+    if not builtin_slug and not template_v1_id and not template_v2_id and not template_upload:
         raise HTTPException(
             status_code=400,
-            detail="Debés especificar builtin_slug, template_v1_id o template_v2_id",
+            detail="Debés especificar builtin_slug, template_v1_id, template_v2_id o template_upload",
         )
     if not excel.filename or not excel.filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="El Excel debe ser .xlsx o .xlsm")
 
     excel_bytes = await read_limited(excel, "Excel")
+    template_upload_bytes = await read_limited(template_upload, "PPTX") if template_upload else None
 
     # Parse image overrides: {var_name: "ext:base64"} → {var_name: (bytes, ext)}
     image_overrides: dict | None = None
@@ -408,7 +427,7 @@ async def create_job(
     job = CenefaJob(
         created_by=current_user.id,
         status="pending",
-        format=format_id,
+        format=format_id or "",  # se resuelve en run_generation_job si viene vacío
         export_type=export_type,
     )
     db.add(job)
@@ -423,6 +442,7 @@ async def create_job(
         builtin_slug=builtin_slug,
         template_v1_id=template_v1_id,
         template_v2_id=template_v2_id,
+        template_upload_bytes=template_upload_bytes,
         target_format=format_id,
         vigencia=vigencia,
         aclaracion=aclaracion,
@@ -432,6 +452,44 @@ async def create_job(
     )
 
     return {"job_id": str(job_id), "status": "pending", "format": format_id}
+
+
+@router.post("/jobs/{job_id}/confirm", status_code=status.HTTP_202_ACCEPTED)
+async def confirm_job(
+    job_id: uuid.UUID,
+    payload: dict,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_permission("cenefas.generate")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Confirma el preview (con los componentes eventualmente reposicionados
+    por el usuario) y dispara la generación final del PPTX.
+
+    payload: {"components": [{"id": "...", "base_bounds": {"x","y","width","height"}}]}
+    — solo hace falta mandar los que se movieron, el resto conserva su
+    posición original."""
+    job = await _get_job(job_id, db)
+    if job.status != "preview":
+        raise HTTPException(
+            status_code=409,
+            detail=f"El job no está en estado 'preview' (estado actual: {job.status})",
+        )
+
+    position_overrides = payload.get("components") or []
+
+    # Marcarlo "running" ya mismo (no al empezar el background task) para
+    # que un segundo POST /confirm mientras el primero corre choque con el
+    # 409 de arriba en vez de disparar dos renders en paralelo.
+    job.status = "running"
+    await db.commit()
+
+    background_tasks.add_task(
+        confirm_generation_job,
+        job_id=job_id,
+        position_overrides=position_overrides,
+    )
+
+    return {"job_id": str(job_id), "status": "running"}
 
 
 @router.get("/jobs")
@@ -545,4 +603,10 @@ def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
         # Expose error message so the frontend can display it instead of "Error desconocido"
         if job.status == "error":
             d["validation_report"] = {"error": job.validation_report.get("error", "Error interno")}
+    if job.status == "preview":
+        staged = peek_job_products(job.id)
+        if staged:
+            template_def, products, _target_format = staged
+            d["template_def"]     = template_def
+            d["preview_product"]  = products[0] if products else {}
     return d

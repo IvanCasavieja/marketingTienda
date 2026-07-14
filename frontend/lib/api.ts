@@ -189,11 +189,6 @@ export const connectionsApi = {
 };
 
 export const toolsApi = {
-  generateCenefas: (formData: FormData) =>
-    api.post("/tools/cenefas/generate", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      responseType: "blob",
-    }),
   getCenefaTemplates: () => api.get("/tools/cenefas/templates"),
   createCenefaTemplate: (formData: FormData) =>
     api.post("/tools/cenefas/templates", formData, {
@@ -222,6 +217,7 @@ import type {
   CenefaJob,
   CenefaTemplate,
   CenefaTemplateRecord,
+  ComponentBounds,
 } from "@/types/cenefas";
 
 export const cenefasV2Api = {
@@ -229,10 +225,11 @@ export const cenefasV2Api = {
   getFormats: () => api.get<CenefaFormat[]>("/tools/cenefas/v2/formats"),
 
   // Templates
-  listTemplates: () => api.get<CenefaTemplateRecord[]>("/tools/cenefas/v2/templates"),
+  listTemplates: (params?: { category?: string }) =>
+    api.get<CenefaTemplateRecord[]>("/tools/cenefas/v2/templates", { params }),
   getTemplate: (id: string) =>
     api.get<CenefaTemplateRecord>(`/tools/cenefas/v2/templates/${id}`),
-  createTemplate: (payload: CenefaTemplate) =>
+  createTemplate: (payload: CenefaTemplate & { category?: string }) =>
     api.post<{ id: string; name: string; created_at: string }>(
       "/tools/cenefas/v2/templates",
       payload
@@ -252,6 +249,11 @@ export const cenefasV2Api = {
       "/tools/cenefas/v2/jobs",
       formData,
       { headers: { "Content-Type": "multipart/form-data" } }
+    ),
+  confirmJob: (id: string, components: { id: string; base_bounds: ComponentBounds }[]) =>
+    api.post<{ job_id: string; status: string }>(
+      `/tools/cenefas/v2/jobs/${id}/confirm`,
+      { components }
     ),
   downloadJob: (id: string) =>
     api.get(`/tools/cenefas/v2/jobs/${id}/download`, { responseType: "blob" }),

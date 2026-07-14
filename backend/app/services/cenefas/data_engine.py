@@ -83,6 +83,7 @@ _ALIASES: dict[str, str] = {
     # ── Legacy Excel → canónico ───────────────────────────────────────────
     "precio":             "precioActual",
     "precios":            "precioActual",
+    "regular":            "precioAnterior",   # excel de "rompe precios del finde"
     "scotland20%":        "precioBanco",
     "scotia20%":          "precioBanco",
     "pbanco":             "precioBanco",

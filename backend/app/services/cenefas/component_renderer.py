@@ -24,6 +24,8 @@ FORMAT_SLIDES: dict[str, tuple] = {
     "a3":      (Cm(29.7),  Cm(42.0)),
     "3xa4":    (Cm(21.0),  Cm(29.7)),   # A4 portrait completo, 3 franjas verticales
     "pinchos": (Cm(21.0),  Cm(29.7)),   # A4 portrait completo, grilla 3×2
+    "a5":      (Cm(14.85), Cm(21.0)),
+    "6xa4":    (Cm(21.0),  Cm(29.7)),   # A4 portrait completo, grilla 3×2 (arte propio)
 }
 
 ALIGN_MAP = {
@@ -175,6 +177,9 @@ def _apply_run_style(run, style: dict, bold_override: bool | None = None) -> Non
         font.color.rgb = hex_to_rgb(style["color"])
     if style.get("font_family"):
         font.name = style["font_family"]
+    # python-pptx no expone tachado en Font — hay que bajar al XML crudo.
+    if style.get("strikethrough"):
+        run._r.get_or_add_rPr().set("strike", "sngStrike")
 
 
 def add_shape_component(slide, comp: dict) -> None:
@@ -408,6 +413,30 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     return bands
 
 
+def patch_image_overrides(
+    components: list[dict], image_overrides: dict[str, tuple[bytes, str]]
+) -> list[dict]:
+    """Inyecta imágenes subidas (ej. cocarda) en los componentes de imagen que
+    referencien esa variable. Se usa tanto acá como en el paso de preview
+    (jobs.py), para que la imagen ya esté horneada en el template_def antes
+    de que el usuario llegue a reposicionar."""
+    import base64 as _b64
+
+    patched = []
+    for c in components:
+        var = c.get("variable")
+        if c.get("type") == "image" and var and var in image_overrides:
+            img_bytes, img_ext = image_overrides[var]
+            patched.append({
+                **c,
+                "image_data": _b64.b64encode(img_bytes).decode(),
+                "image_ext":  img_ext,
+            })
+        else:
+            patched.append(c)
+    return patched
+
+
 # ---------------------------------------------------------------------------
 # Entry points
 # ---------------------------------------------------------------------------
@@ -427,27 +456,12 @@ def render_template_to_pptx(
     Returns (pptx_bytes, missing_vars) donde missing_vars es la lista de
     variables que el template usa pero que no fueron encontradas en el Excel.
     """
-    import base64 as _b64
-
     master_format = template_def.get("master_format", "a4")
     components    = template_def.get("components", [])
     rules         = template_def.get("rules", [])
 
-    # Inject uploaded images into matching image components
     if image_overrides:
-        patched = []
-        for c in components:
-            var = c.get("variable")
-            if c.get("type") == "image" and var and var in image_overrides:
-                img_bytes, img_ext = image_overrides[var]
-                patched.append({
-                    **c,
-                    "image_data": _b64.b64encode(img_bytes).decode(),
-                    "image_ext":  img_ext,
-                })
-            else:
-                patched.append(c)
-        components = patched
+        components = patch_image_overrides(components, image_overrides)
     fmt_info      = get_format(target_format)
     slots         = fmt_info["slots"]
 
@@ -474,14 +488,19 @@ def render_template_to_pptx(
         for pg in page_groups:
             slide = prs.slides.add_slide(blank_layout)
             if bg_comps:
-                laid_bg = compute_layout(bg_comps, target_format, master_format)
+                # Los componentes de un slot_bands ya vienen en coordenadas
+                # absolutas (una página con N celdas pre-armadas) — nunca hay
+                # que re-escalarlos contra target_format, solo posicionarlos
+                # tal cual quedaron en master_format. Ver bug histórico: esto
+                # antes escalaba por target_format y comprimía la grilla.
+                laid_bg = compute_layout(bg_comps, master_format, master_format)
                 _render_slide(slide, laid_bg, {}, missing_vars=missing_vars)
             for band_idx, band_comps in enumerate(slot_bands):
                 if band_idx >= len(pg):
                     break
                 product       = pg[band_idx]
                 visibility    = evaluate_rules(rules, product)
-                laid_band     = compute_layout(band_comps, target_format, master_format)
+                laid_band     = compute_layout(band_comps, master_format, master_format)
                 visible_comps = apply_visibility(laid_band, visibility)
                 _render_slide(slide, visible_comps, product, missing_vars=missing_vars)
 

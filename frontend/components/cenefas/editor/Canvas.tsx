@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Konva from "konva";
 import { useEditorStore } from "@/store/editor";
-import type { CenefaComponent } from "@/types/cenefas";
+import type { CenefaComponent, CenefaTemplate } from "@/types/cenefas";
 
 // ---------------------------------------------------------------------------
 // Constantes de escala y dimensiones de formatos
@@ -15,6 +15,8 @@ const FORMAT_DIMS: Record<string, { w: number; h: number }> = {
   a3:      { w: 29.7,  h: 42.0  },
   "3xa4":  { w: 21.0,  h: 9.9   },  // franja horizontal única (1/3 A4)
   pinchos: { w: 7.0,   h: 14.85 },  // pincho individual (grilla 3×2 en A4)
+  a5:      { w: 14.85, h: 21.0  },
+  "6xa4":  { w: 7.0,   h: 14.85 },  // celda individual (grilla 3×2 en A4)
 };
 
 const COMP_COLORS: Record<string, string> = {
@@ -111,8 +113,21 @@ function useImageCache(components: CenefaComponent[]) {
 
 const CENEFA_COMP_NAME = "cenefa-comp";
 
+// Resuelve el texto a mostrar cuando hay datos reales (previewData) — una
+// aproximación simple, sin replicar el motor de transforms del backend
+// (price_integer, combo_price, etc): alcanza para ver dónde cae cada cosa.
+function resolveComponentText(comp: CenefaComponent, previewData: Record<string, string>): string {
+  if (comp.segments?.length) {
+    return comp.segments
+      .map((seg) => (seg.type === "static" ? seg.value : previewData[seg.value] ?? ""))
+      .join("");
+  }
+  if (comp.variable) return previewData[comp.variable] ?? comp.static_value ?? "";
+  return comp.static_value ?? "";
+}
+
 function buildComponentGroup({
-  comp, pageLeft, pageTop, isSelected, draggable, image, onSelect, onDragEnd,
+  comp, pageLeft, pageTop, isSelected, draggable, image, previewData, onSelect, onDragEnd,
 }: {
   comp: CenefaComponent;
   pageLeft: number;
@@ -120,6 +135,7 @@ function buildComponentGroup({
   isSelected: boolean;
   draggable: boolean;
   image?: HTMLImageElement;
+  previewData?: Record<string, string>;
   onSelect: () => void;
   onDragEnd: (x: number, y: number) => void;
 }): Konva.Group {
@@ -163,13 +179,15 @@ function buildComponentGroup({
   const text =
     imgInvalid
       ? `⚠ Re-importá el PPTX\n(${comp.image_ext ?? "?"} no soportado)`
-      : comp.segments?.length
-        ? `${comp.name}\n${comp.segments.map((s) => s.type === "static" ? `"${s.value}"` : `{${s.value}}`).join(" + ")}`
-        : comp.variable
-          ? `${comp.name}\n(${comp.variable})`
-          : comp.static_value
-            ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
-            : comp.name;
+      : previewData
+        ? resolveComponentText(comp, previewData)
+        : comp.segments?.length
+          ? `${comp.name}\n${comp.segments.map((s) => s.type === "static" ? `"${s.value}"` : `{${s.value}}`).join(" + ")}`
+          : comp.variable
+            ? `${comp.name}\n(${comp.variable})`
+            : comp.static_value
+              ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
+              : comp.name;
 
   group.add(new Konva.Text({
     x: 4, y: 4, width: w - 8, height: h - 8,
@@ -177,6 +195,7 @@ function buildComponentGroup({
     fontSize: Math.min(11, Math.max(7, h / 2.5)),
     fill: imgInvalid ? "#F59E0B" : (comp.type === "shape" && comp.style?.background_color ? "#00000055" : color),
     fontFamily: "Inter, system-ui, sans-serif",
+    textDecoration: comp.style?.strikethrough ? "line-through" : undefined,
     ellipsis: true,
     wrap: "word",
   }));
@@ -188,11 +207,39 @@ function buildComponentGroup({
 // Componente principal
 // ---------------------------------------------------------------------------
 
-interface CanvasProps { className?: string }
+interface CanvasProps {
+  className?: string;
+  // Todas opcionales — si no se pasan, cae al store global del editor
+  // (comportamiento original, sin cambios). PreviewStep las pasa todas
+  // explícitamente y mantiene su propio estado local, sin tocar el store.
+  template?: CenefaTemplate;
+  activeFormat?: string;
+  selectedComponentId?: string | null;
+  onSelectComponent?: (id: string | null) => void;
+  onUpdateComponent?: (id: string, updates: Partial<CenefaComponent>) => void;
+  // Datos reales de un producto para reemplazar los placeholders {variable}
+  // por su valor resuelto — y habilita edición sin importar activeFormat
+  // vs master_format (en el preview solo existe el formato que se va a
+  // generar, no tiene sentido el modo "solo lectura" del editor standalone).
+  previewData?: Record<string, string>;
+}
 
-export default function Canvas({ className = "" }: CanvasProps) {
-  const { template, activeFormat, selectedComponentId, selectComponent, updateComponent } =
-    useEditorStore();
+export default function Canvas({
+  className = "",
+  template: propTemplate,
+  activeFormat: propActiveFormat,
+  selectedComponentId: propSelectedComponentId,
+  onSelectComponent,
+  onUpdateComponent,
+  previewData,
+}: CanvasProps) {
+  const store = useEditorStore();
+  const template             = propTemplate ?? store.template;
+  const activeFormat         = propActiveFormat ?? store.activeFormat;
+  const selectedComponentId  = propSelectedComponentId !== undefined ? propSelectedComponentId : store.selectedComponentId;
+  const selectComponent      = onSelectComponent ?? store.selectComponent;
+  const updateComponent      = onUpdateComponent ?? store.updateComponent;
+  const interactive          = previewData !== undefined; // true en PreviewStep
 
   const containerRef    = useRef<HTMLDivElement>(null);
   const stageRef        = useRef<Konva.Stage | null>(null);
@@ -204,7 +251,7 @@ export default function Canvas({ className = "" }: CanvasProps) {
   const getImage = useImageCache(template.components);
 
   const masterFormat = template.master_format;
-  const isEditMode   = activeFormat === masterFormat;
+  const isEditMode   = interactive || activeFormat === masterFormat;
   const dims         = FORMAT_DIMS[activeFormat] ?? FORMAT_DIMS.a4;
   const pageW        = scalePx(dims.w);
   const pageH        = scalePx(dims.h);
@@ -309,6 +356,7 @@ export default function Canvas({ className = "" }: CanvasProps) {
         comp, pageLeft, pageTop, isSelected,
         draggable: isEditMode && !comp.locked,
         image: getImage(comp),
+        previewData,
         onSelect: () => { if (isEditMode) selectComponent(comp.id); },
         onDragEnd: (x, y) => {
           const newX = +Math.max(0, Math.min((x - pageLeft) / PX_PER_CM, dims.w - comp.base_bounds.width)).toFixed(2);
@@ -326,7 +374,15 @@ export default function Canvas({ className = "" }: CanvasProps) {
     selectedNodeRef.current = selectedNode;
     transformer.nodes(selectedNode ? [selectedNode] : []);
     layer.batchDraw();
-  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, selectComponent, updateComponent]);
+  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, selectComponent, updateComponent]);
+
+  // "Última versión conocida" de template/selectedComponentId — evita closures
+  // viejas dentro de handleTransformEnd sin depender de useEditorStore.getState(),
+  // que no existe cuando estas props vienen de afuera (ej. PreviewStep).
+  const latestRef = useRef({ template, selectedComponentId });
+  useEffect(() => {
+    latestRef.current = { template, selectedComponentId };
+  }, [template, selectedComponentId]);
 
   // Handler de fin de transformacion (resize), registrado una sola vez
   useEffect(() => {
@@ -341,7 +397,7 @@ export default function Canvas({ className = "" }: CanvasProps) {
       node.scaleX(1);
       node.scaleY(1);
 
-      const { template: t, selectedComponentId: selId } = useEditorStore.getState();
+      const { template: t, selectedComponentId: selId } = latestRef.current;
       const comp = t.components.find((c) => c.id === selId);
       if (!comp) return;
 
@@ -361,8 +417,8 @@ export default function Canvas({ className = "" }: CanvasProps) {
 
   return (
     <div className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg ${className}`}>
-      {/* Badge modo preview */}
-      {!isEditMode && (
+      {/* Badge modo preview (solo en el editor standalone, no en PreviewStep) */}
+      {!interactive && !isEditMode && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">
           Vista previa — {activeFormat.toUpperCase()} (solo lectura)
         </div>
