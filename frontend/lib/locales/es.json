@@ -724,5 +724,140 @@
         "noUsers": "No hay usuarios disponibles"
       }
     }
+  },
+  "ayuda": {
+    "title": "¿Cómo funciona la plataforma?",
+    "subtitle": "Todo lo que necesitás saber para usar MKTG Platform, según lo que tu cuenta puede ver y hacer.",
+    "chips": {
+      "analytics": "Analytics",
+      "ia": "IA integrada",
+      "cenefas": "Cenefas",
+      "precios": "Precios",
+      "pedidos": "Pedidos",
+      "asistente": "Asistente"
+    },
+    "dashboard": {
+      "introPre": "El",
+      "introPost": "muestra el resumen de rendimiento de todas tus plataformas publicitarias conectadas en un solo lugar: gasto total, impresiones, clics, conversiones y ROAS.",
+      "bullet1": "Filtrá por rango de fechas y plataforma",
+      "bullet2": "Alerta automáticamente si una campaña cae más de 30% vs el período anterior",
+      "bullet3": "Tendencias y variaciones respecto al período anterior",
+      "metricsTitle": "Métricas clave",
+      "metrics": {
+        "spend": "Inversión total",
+        "ctr": "Tasa de clics",
+        "cpm": "Costo por mil impresiones",
+        "roas": "Retorno sobre inversión",
+        "cpc": "Costo por clic"
+      }
+    },
+    "campanas": {
+      "intro": "Tabla detallada de todas las campañas de todas las plataformas. Podés ordenar, filtrar y exportar los datos.",
+      "features": {
+        "sync":        { "label": "Sync manual",  "desc": "Actualizá métricas al instante" },
+        "export":      { "label": "Exportar CSV", "desc": "Descargá el reporte completo" },
+        "filtros":     { "label": "Filtros",      "desc": "Por plataforma, fecha, campaña" },
+        "comparacion": { "label": "Comparación",  "desc": "Período actual vs anterior" }
+      }
+    },
+    "analisisIA": {
+      "title": "Análisis IA — La Triada",
+      "introPre": "Elegís plataformas y rango de fechas: tres modelos debaten tus métricas reales desde perspectivas distintas, en una conversación que podés seguir pregunta a pregunta. Cada debate queda guardado — podés retomarlo más tarde o pedirle a",
+      "introPost": "que te lo resuma directo en el chat de Home.",
+      "claude": "analista cuantitativo, foco estadístico",
+      "chatgpt": "estratega creativo, con búsqueda web para contexto local",
+      "llama": "moderador pragmático, síntesis y plan de acción"
+    },
+    "precios": {
+      "introPre": "Compará precios",
+      "introBold": "en vivo",
+      "introPost": "(se busca en el momento, no hay base propia) en 13 cadenas uruguayas: supermercados (Disco, Devoto, Géant, Ta-Ta, El Dorado), farmacias (FarmaShop, Botiga) y electrodomésticos/electrónica (Fama, Stienda, Black Dog, Cover Company, DIMM, Electrohogar). Los precios de electrodomésticos suelen venir en dólares — cada resultado muestra su moneda real, no se convierte automáticamente.",
+      "filtros": {
+        "title": "Filtros que se suman",
+        "desc": "Los chips de cadena se van sumando al tocarlos (multi-selección) — solo el chip \"Todas\" los apaga a todos de una."
+      },
+      "grafico": {
+        "title": "Gráfico comparativo",
+        "desc": "Botón \"Ver gráfico\": elegís qué productos entran con un checklist buscable, y podés cargar tu propio precio para verte posicionado contra la competencia."
+      },
+      "donTinoPre": "También podés pedirle el precio de un producto directo a",
+      "donTinoPost": "en el chat de Home, sin ir a esta pantalla."
+    },
+    "cenefas": {
+      "intro": "Convertí un Excel con productos en una presentación PowerPoint lista para imprimir. El sistema genera automáticamente las láminas con precios, descripciones y promociones formateadas.",
+      "steps": {
+        "destino":    { "title": "Elegir destino",        "desc": "Al entrar elegís a dónde vas: RedExpress (planillas y mecánicas de combo/M x N) o Rompe Precios del finde (precio actual, anterior tachado y vigencia)." },
+        "excel":      { "title": "Subir el Excel",        "desc": "Cargás el archivo con los productos. Las columnas detectadas automáticamente incluyen DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc." },
+        "preview":    { "title": "Ver el preview",        "desc": "Antes de descargar podés ver una vista previa de referencia con los datos reales cargados." },
+        "confirmar":  { "title": "Confirmar y descargar", "desc": "Se genera el PPTX en segundos. Podés descargar el resultado desde la misma pantalla." }
+      },
+      "warningPre": "Los archivos generados se guardan por",
+      "warningBold": "24 horas",
+      "warningPost": ". Descargalos antes de que venzan.",
+      "formats": {
+        "a4":      { "desc": "21 × 29.7 cm · 1 slot",   "sub": "1 producto por slide" },
+        "a3":      { "desc": "29.7 × 42 cm",            "sub": "Formato grande" },
+        "tresXa4": { "desc": "3 franjas verticales",    "sub": "3 productos por slide" },
+        "pinchos": { "desc": "7 × 14.85 cm · grid 3×2", "sub": "6 por slide" }
+      }
+    },
+    "editorPlantillas": {
+      "title": "Editor de Plantillas",
+      "canvas":    { "title": "Canvas visual",           "desc": "Editor WYSIWYG basado en Konva.js. Ves en tiempo real cómo se verá cada componente en el formato elegido." },
+      "reglas":    { "title": "Reglas de visibilidad",    "desc": "Definís cuándo aparece cada componente según los datos del producto. Condiciones AND/OR/NOT con múltiples operadores." },
+      "variables": { "title": "Variables",                "desc": "Mapeás cada campo del Excel a un componente del template: precio, descripción, mecánica, combo, etc." },
+      "startTitle": "Formas de empezar un template",
+      "predeterminada": { "title": "Plantilla predeterminada", "desc": "Cenefa A4, Pinchos o 3xA4 ya configurados y listos para usar." },
+      "importar": {
+        "title": "Importar PPTX",
+        "descPre": "Subís tu propio .pptx y los placeholders",
+        "descPost": "se detectan automáticamente."
+      },
+      "desdeCero": { "title": "Desde cero", "desc": "Creás cada componente manualmente, definís bounds, estilos y transforms." }
+    },
+    "conexiones": {
+      "title": "Conexiones de plataformas",
+      "introPre": "Desde",
+      "introPost": "conectás cada cuenta publicitaria. Los tokens se guardan cifrados. Una vez conectados, la sincronización es automática.",
+      "googleAds": "OAuth 2.0 (refresh token)",
+      "tiktokAds": "Access Token + Advertiser ID",
+      "dv360": "Service Account JSON"
+    },
+    "historial": {
+      "introPre": "En",
+      "introPost": "encontrás todos los trabajos de generación de cenefas: estado, formato usado, fecha y el botón de descarga (disponible por 24 hs desde la generación).",
+      "status": {
+        "done": "done — listo para descargar",
+        "running": "running — en proceso",
+        "error": "error — revisar validación",
+        "pending": "pending — en cola"
+      }
+    },
+    "pedidos": {
+      "title": "Planilla de pedidos",
+      "intro": "Cada local de Redexpres pide mensualmente el material de punto de venta que necesita (cenefas, afiches, pinchos, stickers) completando su fila de la planilla del mes. Los cambios se guardan solos a los pocos segundos de dejar de tipear — no hay botón de \"Guardar\".",
+      "tuLocal":   { "title": "Tu local",         "desc": "Solo podés editar la fila del local que tenés asignado — el resto se ve pero no se puede tocar." },
+      "confirmar": { "title": "Confirmar pedido", "desc": "Una vez cargado, confirmás el pedido y la fila queda bloqueada para evitar cambios accidentales." },
+      "nuevoMes":  { "title": "Nuevo mes",        "desc": "Solo el Super Admin puede abrir un mes nuevo o desbloquear un pedido ya confirmado." }
+    },
+    "asistente": {
+      "title": "Asistente virtual",
+      "greeting": "¿En qué te ayudo?",
+      "introPost": "(Llama 3.3 70B via Groq) conoce todas las funcionalidades de la plataforma y además puede hacer cosas por vos, no solo describirlas:",
+      "feature1": "Buscarte el precio de un producto en las 13 cadenas, en vivo",
+      "feature2": "Consultarte el estado de un trabajo de cenefas por su ID",
+      "feature3": "Resumirte tu último debate de La Triada",
+      "footer": "Disponible desde el Home — abrí la tarjeta de chat debajo del saludo de Don Tino."
+    },
+    "roles": {
+      "title": "Roles y permisos",
+      "introPre": "No hay equipos ni organizaciones separadas: todos los usuarios comparten la misma plataforma. Los permisos viven",
+      "introBold": "por usuario",
+      "introMid": "no por rol — el rol solo define el punto de partida al asignarlo; después cada permiso se prende o apaga individualmente desde el perfil de esa persona en el",
+      "superAdmin": { "title": "Super Admin", "desc": "Acceso total sin restricciones. Reservado para la cuenta principal — no se asigna desde el panel." },
+      "admin":      { "title": "Admin", "desc": "Arranca con todos los permisos tildados; se pueden destildar puntualmente por usuario. No puede modificar a otro Admin ni al Super Admin." },
+      "usuario":    { "title": "Usuario", "desc": "Arranca con un set operativo estándar (cenefas, analytics, precios e IA completos, sin gestión de usuarios ni de conexiones) — se puede ajustar por persona." },
+      "viewer":     { "title": "Viewer", "desc": "Arranca sin permisos y solo puede tener tildados permisos de \"ver\" — nunca uno de generar, editar, eliminar o gestionar." }
+    }
   }
 }

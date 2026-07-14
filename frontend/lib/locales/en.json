@@ -724,5 +724,140 @@
         "noUsers": "No users available"
       }
     }
+  },
+  "ayuda": {
+    "title": "How does the platform work?",
+    "subtitle": "Everything you need to know to use MKTG Platform, based on what your account can see and do.",
+    "chips": {
+      "analytics": "Analytics",
+      "ia": "Built-in AI",
+      "cenefas": "Banners",
+      "precios": "Prices",
+      "pedidos": "Orders",
+      "asistente": "Assistant"
+    },
+    "dashboard": {
+      "introPre": "The",
+      "introPost": "shows a performance summary of all your connected ad platforms in one place: total spend, impressions, clicks, conversions and ROAS.",
+      "bullet1": "Filter by date range and platform",
+      "bullet2": "Automatically alerts you if a campaign drops more than 30% vs the previous period",
+      "bullet3": "Trends and variations compared to the previous period",
+      "metricsTitle": "Key metrics",
+      "metrics": {
+        "spend": "Total investment",
+        "ctr": "Click-through rate",
+        "cpm": "Cost per thousand impressions",
+        "roas": "Return on ad spend",
+        "cpc": "Cost per click"
+      }
+    },
+    "campanas": {
+      "intro": "Detailed table of all campaigns across all platforms. You can sort, filter and export the data.",
+      "features": {
+        "sync":        { "label": "Manual sync",   "desc": "Refresh metrics instantly" },
+        "export":      { "label": "Export CSV",    "desc": "Download the full report" },
+        "filtros":     { "label": "Filters",       "desc": "By platform, date, campaign" },
+        "comparacion": { "label": "Comparison",    "desc": "Current period vs previous" }
+      }
+    },
+    "analisisIA": {
+      "title": "AI Analysis — The Triad",
+      "introPre": "Choose platforms and a date range: three models debate your real metrics from different angles, in a conversation you can follow question by question. Every debate is saved — you can pick it up later or ask",
+      "introPost": "to summarize it right in the Home chat.",
+      "claude": "quantitative analyst, statistical focus",
+      "chatgpt": "creative strategist, with web search for local context",
+      "llama": "pragmatic moderator, synthesis and action plan"
+    },
+    "precios": {
+      "introPre": "Compare",
+      "introBold": "live",
+      "introPost": "prices (searched on the spot, no database of our own) across 13 Uruguayan chains: supermarkets (Disco, Devoto, Géant, Ta-Ta, El Dorado), pharmacies (FarmaShop, Botiga) and appliances/electronics (Fama, Stienda, Black Dog, Cover Company, DIMM, Electrohogar). Appliance prices are often in dollars — each result shows its real currency, it's not auto-converted.",
+      "filtros": {
+        "title": "Filters stack up",
+        "desc": "Chain chips add up as you tap them (multi-select) — only the \"All\" chip turns them all off at once."
+      },
+      "grafico": {
+        "title": "Comparison chart",
+        "desc": "\"View chart\" button: pick which products go in with a searchable checklist, and you can load your own price to see where you stand against the competition."
+      },
+      "donTinoPre": "You can also ask for a product's price directly to",
+      "donTinoPost": "in the Home chat, without going to this screen."
+    },
+    "cenefas": {
+      "intro": "Turn an Excel of products into a print-ready PowerPoint deck. The system automatically generates the slides with formatted prices, descriptions and promotions.",
+      "steps": {
+        "destino":    { "title": "Choose a destination",   "desc": "When you enter you choose where to go: RedExpress (order sheets and combo/multi-buy mechanics) or Weekend Price Crash (current price, crossed-out previous price and validity dates)." },
+        "excel":      { "title": "Upload the Excel",       "desc": "Load the file with the products. Automatically detected columns include DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc." },
+        "preview":    { "title": "Check the preview",      "desc": "Before downloading you can see a reference preview with the real data loaded." },
+        "confirmar":  { "title": "Confirm and download",   "desc": "The PPTX is generated in seconds. You can download the result from the same screen." }
+      },
+      "warningPre": "Generated files are kept for",
+      "warningBold": "24 hours",
+      "warningPost": ". Download them before they expire.",
+      "formats": {
+        "a4":      { "desc": "21 × 29.7 cm · 1 slot",   "sub": "1 product per slide" },
+        "a3":      { "desc": "29.7 × 42 cm",            "sub": "Large format" },
+        "tresXa4": { "desc": "3 vertical strips",       "sub": "3 products per slide" },
+        "pinchos": { "desc": "7 × 14.85 cm · 3×2 grid", "sub": "6 per slide" }
+      }
+    },
+    "editorPlantillas": {
+      "title": "Template Editor",
+      "canvas":    { "title": "Visual canvas",       "desc": "Konva.js-based WYSIWYG editor. See in real time how each component will look in the chosen format." },
+      "reglas":    { "title": "Visibility rules",    "desc": "Define when each component appears based on the product's data. AND/OR/NOT conditions with multiple operators." },
+      "variables": { "title": "Variables",            "desc": "Map each Excel field to a template component: price, description, mechanic, combo, etc." },
+      "startTitle": "Ways to start a template",
+      "predeterminada": { "title": "Default template", "desc": "A4, Pinchos or 3xA4 banner, already configured and ready to use." },
+      "importar": {
+        "title": "Import PPTX",
+        "descPre": "Upload your own .pptx and the placeholders",
+        "descPost": "are detected automatically."
+      },
+      "desdeCero": { "title": "From scratch", "desc": "Create each component by hand, define bounds, styles and transforms." }
+    },
+    "conexiones": {
+      "title": "Platform connections",
+      "introPre": "From",
+      "introPost": "you connect each ad account. Tokens are stored encrypted. Once connected, syncing is automatic.",
+      "googleAds": "OAuth 2.0 (refresh token)",
+      "tiktokAds": "Access Token + Advertiser ID",
+      "dv360": "Service Account JSON"
+    },
+    "historial": {
+      "introPre": "In",
+      "introPost": "you'll find every banner generation job: status, format used, date and the download button (available for 24h after generation).",
+      "status": {
+        "done": "done — ready to download",
+        "running": "running — in progress",
+        "error": "error — check validation",
+        "pending": "pending — queued"
+      }
+    },
+    "pedidos": {
+      "title": "Order sheet",
+      "intro": "Each RedExpres store places its monthly order for point-of-sale material (banners, posters, skewers, stickers) by filling in its row of the month's sheet. Changes save on their own a few seconds after you stop typing — there's no \"Save\" button.",
+      "tuLocal":   { "title": "Your store",       "desc": "You can only edit the row of the store assigned to you — the rest is visible but can't be touched." },
+      "confirmar": { "title": "Confirm order",    "desc": "Once loaded, you confirm the order and the row gets locked to avoid accidental changes." },
+      "nuevoMes":  { "title": "New month",        "desc": "Only the Super Admin can open a new month or unlock an already-confirmed order." }
+    },
+    "asistente": {
+      "title": "Virtual assistant",
+      "greeting": "How can I help?",
+      "introPost": "(Llama 3.3 70B via Groq) knows every feature of the platform and can also do things for you, not just describe them:",
+      "feature1": "Look up a product's price across the 13 chains, live",
+      "feature2": "Check the status of a banner generation job by its ID",
+      "feature3": "Summarize your latest Triad debate",
+      "footer": "Available from Home — open the chat card below Don Tino's greeting."
+    },
+    "roles": {
+      "title": "Roles and permissions",
+      "introPre": "There are no separate teams or organizations: all users share the same platform. Permissions live",
+      "introBold": "per user",
+      "introMid": "not per role — the role only sets the starting point when assigned; after that, each permission is toggled individually from that person's profile in the",
+      "superAdmin": { "title": "Super Admin", "desc": "Full unrestricted access. Reserved for the main account — not assignable from the panel." },
+      "admin":      { "title": "Admin", "desc": "Starts with every permission checked; individual ones can be unchecked per user. Can't modify another Admin or the Super Admin." },
+      "usuario":    { "title": "User", "desc": "Starts with a standard operational set (full banners, analytics, prices and AI, no user or connection management) — adjustable per person." },
+      "viewer":     { "title": "Viewer", "desc": "Starts with no permissions and can only have \"view\" permissions checked — never generate, edit, delete or manage." }
+    }
   }
 }
