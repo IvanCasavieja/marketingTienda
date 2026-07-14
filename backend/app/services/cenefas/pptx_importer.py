@@ -478,6 +478,10 @@ def _make_common(shape, z_index: int) -> dict | None:
         return None
     return {
         "id":               str(uuid.uuid4()),
+        # id del shape original en el PPTX fuente — permite que el render
+        # final mute ESE shape en vez de reconstruir todo desde cero, así se
+        # preserva el master/layout/diseño del archivo (ver component_renderer).
+        "_source_shape_id": shape.shape_id,
         "base_bounds":      {"x": left, "y": top, "width": width, "height": height},
         "format_overrides": {},
         "z_index":          z_index,

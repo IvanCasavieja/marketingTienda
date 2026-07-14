@@ -35,11 +35,12 @@ REDIS_RESULT_TTL = 86_400
 _job_results: dict[str, bytes] = {}
 
 # Etapa intermedia entre "parseado" y "renderizado final": guarda la
-# definición de componentes + productos reales mientras el usuario ve el
-# preview y reposiciona. Se consume (pop) al confirmar. Mismo ciclo de vida
-# en memoria que _job_results — se pierde si el server reinicia antes de
-# confirmar, igual que ya pasaba con el resultado final.
-_job_products: dict[str, tuple[dict, list, str]] = {}
+# definición de componentes + productos reales (+ los bytes del pptx origen,
+# si existen, para preservar el diseño al renderizar) mientras el usuario ve
+# el preview y reposiciona. Se consume (pop) al confirmar. Mismo ciclo de
+# vida en memoria que _job_results — se pierde si el server reinicia antes
+# de confirmar, igual que ya pasaba con el resultado final.
+_job_products: dict[str, tuple[dict, list, str, bytes | None]] = {}
 
 
 def store_job_result(job_id: uuid.UUID, pptx_bytes: bytes) -> None:
@@ -50,15 +51,18 @@ def pop_job_result(job_id: uuid.UUID) -> bytes | None:
     return _job_results.pop(str(job_id), None)
 
 
-def store_job_products(job_id: uuid.UUID, template_def: dict, products: list, target_format: str) -> None:
-    _job_products[str(job_id)] = (template_def, products, target_format)
+def store_job_products(
+    job_id: uuid.UUID, template_def: dict, products: list, target_format: str,
+    source_pptx_bytes: bytes | None = None,
+) -> None:
+    _job_products[str(job_id)] = (template_def, products, target_format, source_pptx_bytes)
 
 
-def peek_job_products(job_id: uuid.UUID) -> tuple[dict, list, str] | None:
+def peek_job_products(job_id: uuid.UUID) -> tuple[dict, list, str, bytes | None] | None:
     return _job_products.get(str(job_id))
 
 
-def pop_job_products(job_id: uuid.UUID) -> tuple[dict, list, str] | None:
+def pop_job_products(job_id: uuid.UUID) -> tuple[dict, list, str, bytes | None] | None:
     return _job_products.pop(str(job_id), None)
 
 
@@ -101,8 +105,11 @@ async def run_generation_job(
                 template_def = await asyncio.to_thread(
                     import_pptx, template_upload_bytes, "Plantilla subida"
                 )
+                source_pptx_bytes = template_upload_bytes
             else:
-                template_def = await _resolve_template_def(db, builtin_slug, template_v1_id, template_v2_id)
+                template_def, source_pptx_bytes = await _resolve_template_def(
+                    db, builtin_slug, template_v1_id, template_v2_id
+                )
             if image_overrides:
                 template_def = {
                     **template_def,
@@ -114,7 +121,7 @@ async def run_generation_job(
             # diseños de hoja completa (a4) como de celda única (pinchos/3xa4).
             resolved_format = target_format or template_def.get("master_format", "a4")
 
-            store_job_products(job_id, template_def, products, resolved_format)
+            store_job_products(job_id, template_def, products, resolved_format, source_pptx_bytes)
 
             job.status            = "preview"
             job.format            = resolved_format
@@ -161,7 +168,7 @@ async def confirm_generation_job(
             await db.commit()
             return
 
-        template_def, products, target_format = staged
+        template_def, products, target_format, source_pptx_bytes = staged
 
         try:
             if position_overrides:
@@ -176,6 +183,7 @@ async def confirm_generation_job(
 
             pptx_bytes, missing_vars = await asyncio.to_thread(
                 render_template_to_pptx, template_def, products, target_format,
+                None, source_pptx_bytes,  # image_overrides ya horneado, source_pptx_bytes
             )
             store_job_result(job_id, pptx_bytes)
 
@@ -207,14 +215,14 @@ async def _get_job(db, job_id: uuid.UUID) -> CenefaJob | None:
     return result.scalar_one_or_none()
 
 
-async def _resolve_template_v2(db, template_id: uuid.UUID) -> dict:
+async def _resolve_template_v2(db, template_id: uuid.UUID) -> tuple[dict, bytes | None]:
     result = await db.execute(
         select(CenefaTemplateV2).where(CenefaTemplateV2.id == template_id)
     )
     tmpl = result.scalar_one_or_none()
     if tmpl is None:
         raise ValueError(f"Template v2 {template_id} no encontrado")
-    return tmpl.definition
+    return tmpl.definition, tmpl.source_pptx
 
 
 async def _resolve_template_def(
@@ -222,16 +230,22 @@ async def _resolve_template_def(
     builtin_slug:   str | None,
     template_v1_id: int | None,
     template_v2_id: uuid.UUID | None,
-) -> dict:
+) -> tuple[dict, bytes | None]:
     """Unifica los 3 orígenes posibles de plantilla en una definición de
     componentes v2 — para builtin/v1 (pptx crudo, sin datos de posición)
     corre el importer, así RedExpress también puede reposicionar en el
-    preview aunque su plantilla nunca haya pasado por el editor v2."""
+    preview aunque su plantilla nunca haya pasado por el editor v2.
+
+    Devuelve también los bytes crudos del pptx origen cuando existen — el
+    render final los usa para preservar el diseño (ver component_renderer).
+    Para un template v2 armado a mano en el editor (sin source_pptx en la
+    DB), es None y el render cae al canvas en blanco de siempre."""
     if template_v2_id is not None:
         return await _resolve_template_v2(db, template_v2_id)
 
     pptx_bytes = await _resolve_template_pptx(db, builtin_slug, template_v1_id)
-    return await asyncio.to_thread(import_pptx, pptx_bytes, "Plantilla importada")
+    template_def = await asyncio.to_thread(import_pptx, pptx_bytes, "Plantilla importada")
+    return template_def, pptx_bytes
 
 
 async def _resolve_template_pptx(

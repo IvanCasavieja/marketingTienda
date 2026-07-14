@@ -229,7 +229,7 @@ export const cenefasV2Api = {
     api.get<CenefaTemplateRecord[]>("/tools/cenefas/v2/templates", { params }),
   getTemplate: (id: string) =>
     api.get<CenefaTemplateRecord>(`/tools/cenefas/v2/templates/${id}`),
-  createTemplate: (payload: CenefaTemplate & { category?: string }) =>
+  createTemplate: (payload: CenefaTemplate & { category?: string; source_pptx_b64?: string }) =>
     api.post<{ id: string; name: string; created_at: string }>(
       "/tools/cenefas/v2/templates",
       payload

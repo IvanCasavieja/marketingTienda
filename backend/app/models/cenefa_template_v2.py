@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, LargeBinary, String, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,6 +26,11 @@ class CenefaTemplateV2(Base):
     # para que un destino nuevo no requiera migración. Necesario porque dos
     # destinos pueden compartir el mismo id de formato (ej. "a4").
     category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # PPTX crudo del que se importó esta definición (si vino de un archivo
+    # subido, no de un template armado a mano en el editor v2). El render
+    # final lo usa como base para preservar el diseño de fondo/master/layout
+    # del archivo original — ver component_renderer.render_template_to_pptx.
+    source_pptx: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

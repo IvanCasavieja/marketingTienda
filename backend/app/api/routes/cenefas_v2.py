@@ -174,12 +174,25 @@ async def create_template(
 ):
     _validate_template_payload(payload)
 
+    # source_pptx_b64: bytes del PPTX original en base64 (si el template vino
+    # de importar un archivo, no de armarlo desde cero en el editor) — se
+    # guarda aparte, no adentro del JSONB, para que el render final pueda
+    # preservar el diseño (ver component_renderer.render_template_to_pptx).
+    source_pptx_b64 = payload.pop("source_pptx_b64", None)
+    source_pptx = None
+    if source_pptx_b64:
+        try:
+            source_pptx = _b64.b64decode(source_pptx_b64)
+        except Exception:
+            source_pptx = None
+
     tmpl = CenefaTemplateV2(
         created_by=current_user.id,
         name=payload["name"].strip(),
         definition=payload,
         formats=payload.get("formats", []),
         category=payload.get("category"),
+        source_pptx=source_pptx,
     )
     db.add(tmpl)
     await db.flush()
@@ -613,7 +626,7 @@ def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
     if job.status == "preview":
         staged = peek_job_products(job.id)
         if staged:
-            template_def, products, _target_format = staged
+            template_def, products, _target_format, _source_pptx = staged
             d["template_def"]     = template_def
             d["preview_product"]  = products[0] if products else {}
     return d

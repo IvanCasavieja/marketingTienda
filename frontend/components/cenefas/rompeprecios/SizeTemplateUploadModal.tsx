@@ -16,6 +16,15 @@ interface SizeTemplateUploadModalProps {
   onSaved: () => void;
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function SizeTemplateUploadModal({ sizeId, sizeLabel, onClose, onSaved }: SizeTemplateUploadModalProps) {
   const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
@@ -29,12 +38,16 @@ export default function SizeTemplateUploadModal({ sizeId, sizeLabel, onClose, on
       const fd = new FormData();
       fd.append("file", file);
       fd.append("name", `Rompe Precios del Finde — ${sizeLabel}`);
-      const { data: definition } = await cenefasV2Api.importPptx(fd);
+      const [{ data: definition }, source_pptx_b64] = await Promise.all([
+        cenefasV2Api.importPptx(fd),
+        fileToBase64(file),
+      ]);
 
       await cenefasV2Api.createTemplate({
         ...definition,
         formats: [sizeId],
         category: "rompe_precios",
+        source_pptx_b64,
       });
 
       toast.success(t("cenefas.rompePrecios.templateSaved"));
