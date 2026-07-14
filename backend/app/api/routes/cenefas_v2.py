@@ -626,7 +626,6 @@ def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
     if job.status == "preview":
         staged = peek_job_products(job.id)
         if staged:
-            template_def, products, _target_format, _source_pptx = staged
-            d["template_def"]     = template_def
-            d["preview_product"]  = products[0] if products else {}
+            d["template_def"]     = staged.template_def
+            d["preview_product"]  = staged.products[0] if staged.products else {}
     return d
