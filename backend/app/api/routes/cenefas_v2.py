@@ -434,6 +434,13 @@ async def create_job(
     await db.flush()
     await db.refresh(job)
     job_id = job.id
+    # Commit explícito acá: BackgroundTasks corre en un momento del ciclo de
+    # request/response que no está garantizado a ser posterior al commit
+    # automático de la dependencia get_db — sin esto, run_generation_job
+    # puede abrir su propia sesión y no encontrar todavía esta fila, y el
+    # job queda colgado en "pending" para siempre (get_job hace return sin
+    # tocar el status).
+    await db.commit()
 
     background_tasks.add_task(
         run_generation_job,
