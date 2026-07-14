@@ -34,7 +34,7 @@
     "comercial": "COMERCIAL",
     "guia": "GUIA",
     "configuracion": "CONFIGURAÇÕES",
-    "redexpress": "Redexpress",
+    "redexpress": "Redexpres",
     "cenefas": "Faixas",
     "editorPlantillas": "Editor de modelos",
     "historial": "Histórico",
@@ -367,13 +367,14 @@
     "destino": {
       "title": "Para onde vamos?",
       "subtitle": "Escolha que tipo de faixa você quer gerar.",
+      "change": "Trocar destino",
       "rompe_precios": {
         "label": "Rompe Precios do fim de semana",
         "description": "Preço atual, preço anterior riscado e vigência — sem mecânica de combos."
       },
       "redexpress": {
-        "label": "RedExpress",
-        "description": "Planilhas e mecânicas de combo/M x N para as lojas RedExpress."
+        "label": "Redexpres",
+        "description": "Planilhas e mecânicas de combo/M x N para as lojas Redexpres."
       }
     },
     "rompePrecios": {
@@ -528,7 +529,7 @@
   },
   "redexpress": {
     "title": "Planilha de pedidos",
-    "subtitle": "Redexpress · sinalização mensal",
+    "subtitle": "Redexpres · sinalização mensal",
     "confirmadosCount": "{{count}}/{{total}} confirmados",
     "verTodos": "Ver todos",
     "soloMiLocal": "Somente minha loja",

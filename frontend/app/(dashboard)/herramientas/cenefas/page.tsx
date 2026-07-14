@@ -1,7 +1,7 @@
 "use client";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Presentation } from "lucide-react";
+import { ArrowLeftRight, Presentation } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import DestinoModal, { type CenefaDestino } from "@/components/cenefas/DestinoModal";
 import RedExpressPanel from "@/components/cenefas/redexpress/RedExpressPanel";
@@ -27,21 +27,36 @@ function CenefasHost() {
     router.replace(`/herramientas/cenefas?destino=${d}`);
   }
 
+  function changeDestino() {
+    setDestino(null);
+    router.replace("/herramientas/cenefas");
+  }
+
   return (
     <div className="animate-fade-in w-full space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0">
-          <Presentation size={22} className="text-emerald-500" />
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+            <Presentation size={22} className="text-emerald-500" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+              {destino === "rompe_precios" ? t("cenefas.destino.rompe_precios.label") : t("cenefas.title")}
+            </h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+              {destino === "rompe_precios" ? t("cenefas.destino.rompe_precios.description") : t("cenefas.subtitle")}
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-            {destino === "rompe_precios" ? t("cenefas.destino.rompe_precios.label") : t("cenefas.title")}
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            {destino === "rompe_precios" ? t("cenefas.destino.rompe_precios.description") : t("cenefas.subtitle")}
-          </p>
-        </div>
+        {destino !== null && (
+          <button
+            onClick={changeDestino}
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shrink-0"
+          >
+            <ArrowLeftRight size={13} /> {t("cenefas.destino.change")}
+          </button>
+        )}
       </div>
 
       {destino === "redexpress" && <RedExpressPanel />}

@@ -34,7 +34,7 @@
     "comercial": "COMERCIAL",
     "guia": "GUÍA",
     "configuracion": "CONFIGURACIÓN",
-    "redexpress": "Redexpress",
+    "redexpress": "Redexpres",
     "cenefas": "Cenefas",
     "editorPlantillas": "Editor de plantillas",
     "historial": "Historial",
@@ -367,13 +367,14 @@
     "destino": {
       "title": "¿A dónde vas?",
       "subtitle": "Elegí qué tipo de cenefa querés generar.",
+      "change": "Cambiar destino",
       "rompe_precios": {
         "label": "Rompe Precios del finde",
         "description": "Precio actual, precio anterior tachado y vigencia — sin mecánica de combos."
       },
       "redexpress": {
-        "label": "RedExpress",
-        "description": "Planillas y mecánicas de combo/M x N para las sucursales RedExpress."
+        "label": "Redexpres",
+        "description": "Planillas y mecánicas de combo/M x N para las sucursales Redexpres."
       }
     },
     "rompePrecios": {
@@ -528,7 +529,7 @@
   },
   "redexpress": {
     "title": "Planilla de pedidos",
-    "subtitle": "Redexpress · cartelería mensual",
+    "subtitle": "Redexpres · cartelería mensual",
     "confirmadosCount": "{{count}}/{{total}} confirmados",
     "verTodos": "Ver todos",
     "soloMiLocal": "Solo mi local",

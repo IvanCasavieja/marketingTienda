@@ -34,7 +34,7 @@
     "comercial": "COMMERCIAL",
     "guia": "GUIDE",
     "configuracion": "SETTINGS",
-    "redexpress": "Redexpress",
+    "redexpress": "Redexpres",
     "cenefas": "Banners",
     "editorPlantillas": "Template editor",
     "historial": "History",
@@ -367,13 +367,14 @@
     "destino": {
       "title": "Where to?",
       "subtitle": "Choose which kind of banner you want to generate.",
+      "change": "Change destination",
       "rompe_precios": {
         "label": "Weekend Price Crash",
         "description": "Current price, crossed-out previous price, and validity dates — no combo mechanics."
       },
       "redexpress": {
-        "label": "RedExpress",
-        "description": "Order sheets and combo/multi-buy mechanics for RedExpress stores."
+        "label": "Redexpres",
+        "description": "Order sheets and combo/multi-buy mechanics for Redexpres stores."
       }
     },
     "rompePrecios": {
@@ -528,7 +529,7 @@
   },
   "redexpress": {
     "title": "Order sheet",
-    "subtitle": "Redexpress · monthly signage",
+    "subtitle": "Redexpres · monthly signage",
     "confirmadosCount": "{{count}}/{{total}} confirmed",
     "verTodos": "View all",
     "soloMiLocal": "My store only",

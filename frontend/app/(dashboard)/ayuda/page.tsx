@@ -413,7 +413,7 @@ export default function AyudaPage() {
         <SectionTitle icon={ClipboardList} title="Planilla de pedidos" color="text-orange-600" />
         <Card>
           <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
-            Cada local de Redexpress pide mensualmente el material de punto de venta que necesita
+            Cada local de Redexpres pide mensualmente el material de punto de venta que necesita
             (cenefas, afiches, pinchos, stickers) completando su fila de la planilla del mes.
             Los cambios se guardan solos a los pocos segundos de dejar de tipear — no hay botón de "Guardar".
           </p>
