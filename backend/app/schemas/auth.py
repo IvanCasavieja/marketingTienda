@@ -2,6 +2,25 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 import re
 
 
+def _validate_password_strength(v: str) -> str:
+    """Compartido entre los 3 schemas que piden una contraseña nueva
+    (registro, reset y change-password) — junta TODAS las reglas que
+    faltan en un solo mensaje en vez de cortar en la primera, para que el
+    usuario no tenga que ir a los tumbos probando de a un requisito."""
+    faltantes = []
+    if len(v) < 12:
+        faltantes.append("al menos 12 caracteres")
+    if not re.search(r"[A-Z]", v):
+        faltantes.append("una letra mayúscula")
+    if not re.search(r"[0-9]", v):
+        faltantes.append("un número")
+    if not re.search(r"[^a-zA-Z0-9]", v):
+        faltantes.append("un símbolo")
+    if faltantes:
+        raise ValueError("La contraseña debe tener " + ", ".join(faltantes) + ".")
+    return v
+
+
 class UserRegister(BaseModel):
     email: EmailStr
     full_name: str
@@ -10,15 +29,7 @@ class UserRegister(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if len(v) < 12:
-            raise ValueError("Password must be at least 12 characters")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Password must contain an uppercase letter")
-        if not re.search(r"[0-9]", v):
-            raise ValueError("Password must contain a digit")
-        if not re.search(r"[^a-zA-Z0-9]", v):
-            raise ValueError("Password must contain a special character")
-        return v
+        return _validate_password_strength(v)
 
 
 class UserLogin(BaseModel):
@@ -51,15 +62,7 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if len(v) < 12:
-            raise ValueError("Password must be at least 12 characters")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Password must contain an uppercase letter")
-        if not re.search(r"[0-9]", v):
-            raise ValueError("Password must contain a digit")
-        if not re.search(r"[^a-zA-Z0-9]", v):
-            raise ValueError("Password must contain a special character")
-        return v
+        return _validate_password_strength(v)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -69,15 +72,7 @@ class ChangePasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if len(v) < 12:
-            raise ValueError("Password must be at least 12 characters")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Password must contain an uppercase letter")
-        if not re.search(r"[0-9]", v):
-            raise ValueError("Password must contain a digit")
-        if not re.search(r"[^a-zA-Z0-9]", v):
-            raise ValueError("Password must contain a special character")
-        return v
+        return _validate_password_strength(v)
 
 
 class UserResponse(BaseModel):

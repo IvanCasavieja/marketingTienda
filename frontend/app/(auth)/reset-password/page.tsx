@@ -3,6 +3,7 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { authApi } from "@/lib/api";
+import { extractErrorDetail } from "@/lib/errors";
 import { toast } from "sonner";
 import { BarChart3, Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -32,8 +33,8 @@ function ResetForm() {
       await authApi.resetPassword(token, password);
       setDone(true);
       setTimeout(() => router.push("/login"), 3000);
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail ?? t("resetPassword.errorToast");
+    } catch (err) {
+      const detail = extractErrorDetail(err, t("resetPassword.errorToast"));
       setError(detail);
       toast.error(detail);
     } finally {

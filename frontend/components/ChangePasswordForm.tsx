@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { authApi } from "@/lib/api";
+import { extractErrorDetail } from "@/lib/errors";
 import { Eye, EyeOff, Loader2, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,9 +27,8 @@ export default function ChangePasswordForm({ onSuccess }: { onSuccess?: () => vo
       setNewPwd("");
       setConfirmPwd("");
       onSuccess?.();
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail;
-      toast.error(typeof detail === "string" ? detail : "Error al cambiar la contraseña");
+    } catch (err) {
+      toast.error(extractErrorDetail(err, "Error al cambiar la contraseña"));
     } finally {
       setSaving(false);
     }
