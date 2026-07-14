@@ -35,14 +35,14 @@ function notifIcon(tipo: string) {
   switch (tipo) {
     case "precio_baja":
       return (
-        <span className="w-6 h-6 rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
-          <TrendingDown size={13} className="text-emerald-400" />
+        <span className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-500/15 flex items-center justify-center shrink-0">
+          <TrendingDown size={13} className="text-emerald-600 dark:text-emerald-400" />
         </span>
       );
     case "precio_sube":
       return (
-        <span className="w-6 h-6 rounded-full bg-red-500/15 flex items-center justify-center shrink-0">
-          <TrendingUp size={13} className="text-red-400" />
+        <span className="w-6 h-6 rounded-full bg-red-100 dark:bg-red-500/15 flex items-center justify-center shrink-0">
+          <TrendingUp size={13} className="text-red-600 dark:text-red-400" />
         </span>
       );
     case "roas_baja":
@@ -50,14 +50,14 @@ function notifIcon(tipo: string) {
     case "conversiones_baja":
     case "sin_conversiones":
       return (
-        <span className="w-6 h-6 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
-          <AlertTriangle size={13} className="text-amber-400" />
+        <span className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-500/15 flex items-center justify-center shrink-0">
+          <AlertTriangle size={13} className="text-amber-600 dark:text-amber-400" />
         </span>
       );
     default:
       return (
-        <span className="w-6 h-6 rounded-full bg-slate-500/15 flex items-center justify-center shrink-0">
-          <Bell size={13} className="text-slate-400" />
+        <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-500/15 flex items-center justify-center shrink-0">
+          <Bell size={13} className="text-slate-500 dark:text-slate-400" />
         </span>
       );
   }
@@ -292,11 +292,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </button>
 
           {showNotifMenu && (
-            <div className="absolute bottom-full left-3 mb-1 w-80 max-w-[calc(100vw-1.5rem)] bg-slate-800 border border-white/10 rounded-xl shadow-lg z-50 overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-                <p className="text-xs font-semibold text-slate-200">{t("sidebar.notificaciones")}</p>
+            <div className="absolute bottom-full left-8 mb-2 w-80 max-w-[calc(100vw-3rem)] bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-xl shadow-lg z-50 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-white/5">
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{t("sidebar.notificaciones")}</p>
                 {notifCount > 0 && (
-                  <button onClick={marcarTodasLeidas} className="text-[11px] text-brand-400 hover:text-brand-300 font-medium">
+                  <button onClick={marcarTodasLeidas} className="text-[11px] text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 font-medium">
                     {t("sidebar.marcarTodasLeidas")}
                   </button>
                 )}
@@ -315,18 +315,18 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                       key={n.id}
                       onClick={() => irANotificacion(n)}
                       className={clsx(
-                        "px-4 py-3 border-b border-white/5 last:border-0 flex items-start gap-2.5 transition-colors",
-                        destino ? "cursor-pointer hover:bg-white/5" : "cursor-default",
-                        !n.leida && "bg-brand-500/[0.06]"
+                        "px-5 py-3.5 border-b border-slate-100 dark:border-white/5 last:border-0 flex items-start gap-3 transition-colors",
+                        destino ? "cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5" : "cursor-default",
+                        !n.leida && "bg-brand-50/60 dark:bg-brand-500/[0.06]"
                       )}
                     >
                       {notifIcon(n.tipo)}
                       <div className="min-w-0 flex-1">
-                        <p className={clsx("text-xs leading-snug", n.leida ? "text-slate-400" : "text-slate-200")}>
+                        <p className={clsx("text-xs leading-snug", n.leida ? "text-slate-500 dark:text-slate-400" : "text-slate-800 dark:text-slate-200")}>
                           {n.mensaje}
                         </p>
                         {n.created_at && (
-                          <p className="text-[10px] text-slate-500 mt-1">
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
                             {new Date(n.created_at).toLocaleDateString(i18n.language, { day: "2-digit", month: "2-digit", year: "numeric" })}
                           </p>
                         )}
@@ -338,7 +338,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                           className="shrink-0 mt-0.5 w-4 h-4 rounded-full border border-brand-400/60 hover:bg-brand-500/20 hover:border-brand-400 transition-colors"
                         />
                       ) : (
-                        <Check size={13} className="shrink-0 mt-0.5 text-slate-600" />
+                        <Check size={13} className="shrink-0 mt-0.5 text-slate-400 dark:text-slate-600" />
                       )}
                     </div>
                   );
