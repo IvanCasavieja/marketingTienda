@@ -152,6 +152,8 @@ export interface CenefaJob {
     critical_errors: number;
     status: "ok" | "warning" | "error";
   };
+  // Solo presente cuando status === "error" (ver _job_to_dict en cenefas_v2.py)
+  validation_report?: { error?: string };
   // Solo presentes cuando status === "preview" (ver PreviewStep)
   template_def?: CenefaTemplate;
   preview_product?: Record<string, string>;
