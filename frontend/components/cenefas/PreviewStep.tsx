@@ -72,12 +72,16 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
       const components = Object.entries(dirtyBounds.current).map(([id, base_bounds]) => ({ id, base_bounds }));
       await cenefasV2Api.confirmJob(jobId, components);
 
-      // Poll hasta "done", después descarga automática
+      // Poll hasta "done", después descarga automática. OJO: no pisar el
+      // estado `job` acá con setJob(data) — apenas se confirma, el status
+      // pasa a "running" y _job_to_dict() deja de mandar template_def/
+      // preview_product (solo van con status="preview"), así que
+      // sobreescribir job vaciaba el Canvas (previewData quedaba en {})
+      // justo al confirmar, antes incluso de terminar de renderizar.
       await new Promise<void>((resolve, reject) => {
         const iv = setInterval(async () => {
           try {
             const { data } = await cenefasV2Api.getJob(jobId);
-            setJob(data);
             if (data.status === "done") {
               clearInterval(iv);
               resolve();

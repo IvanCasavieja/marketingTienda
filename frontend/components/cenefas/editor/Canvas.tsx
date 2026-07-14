@@ -261,12 +261,22 @@ export default function Canvas({
   const pageLeft     = margin;
   const pageTop      = margin;
 
-  // Aplicar layout del formato activo para la vista previa
+  // Aplicar layout del formato activo para la vista previa, y corregir para
+  // mostrar cajas de texto más anchas que la propia hoja: es un truco de
+  // autoría de PowerPoint (caja invisible mucho más ancha que la diapositiva,
+  // con el texto centrado adentro, para que el centrado no dependa de la
+  // cantidad de dígitos) — no es un error de la plantilla ni algo que este
+  // código esté agrandando, pero acá se ve tal cual el shape crudo, sin el
+  // ajuste que el motor de export sí aplica al generar el archivo final. Solo
+  // afecta cómo se dibuja el preview — no toca los bounds guardados.
   const displayComps = applyFormatLayout(
     [...template.components].sort((a, b) => a.z_index - b.z_index),
     activeFormat,
     masterFormat,
-  );
+  ).map((comp) => {
+    if (comp.type !== "text" || comp.base_bounds.width <= dims.w) return comp;
+    return { ...comp, base_bounds: { ...comp.base_bounds, x: 0, width: dims.w } };
+  });
 
   // Montaje: crear Stage/Layers/Transformer una sola vez. Todo esto vive
   // adentro de un efecto (nunca corre en el servidor), asi que el contenedor
@@ -416,7 +426,7 @@ export default function Canvas({
   }, [pageLeft, pageTop, updateComponent]);
 
   return (
-    <div className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg ${className}`}>
+    <div className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-center items-start ${className}`}>
       {/* Badge modo preview (solo en el editor standalone, no en PreviewStep) */}
       {!interactive && !isEditMode && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">
