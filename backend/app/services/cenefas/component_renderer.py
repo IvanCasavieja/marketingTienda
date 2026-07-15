@@ -628,6 +628,22 @@ def render_template_to_pptx(
             prs = None
         preserve_source = prs is not None
 
+    if preserve_source:
+        # El fondo extraído del MASTER (pptx_importer.py, name="fondo",
+        # _source_shape_id=None a propósito) no tiene un shape real en el
+        # slide para mutar — cualquier slide que comparta layout/master ya lo
+        # hereda visualmente solo con add_slide(), sin dibujar nada de nuevo.
+        # Si no se filtra acá, _place_component nunca encuentra shape para
+        # mutar y cae al fallback de "crear uno nuevo" en CADA render — y
+        # como _duplicate_slide() copia lo que el slide base tenga en ese
+        # momento, cada producto siguiente arrastra una copia extra apilada
+        # sobre la anterior (bug real, visto con productos duplicando el
+        # diseño 2-3 veces encimados).
+        components = [
+            c for c in components
+            if not (c.get("type") == "image" and c.get("variable") is None and c.get("_source_shape_id") is None)
+        ]
+
     if not preserve_source:
         slide_w, slide_h = FORMAT_SLIDES.get(target_format, FORMAT_SLIDES["a4"])
         prs = Presentation()

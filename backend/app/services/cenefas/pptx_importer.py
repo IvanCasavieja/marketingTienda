@@ -304,9 +304,60 @@ def _resolve_theme_color(shape, schemeClr) -> str | None:
     return None
 
 
-def _extract_font_color(run) -> str | None:
+def _resolve_scheme_colors(slide) -> dict[str, str]:
+    """Resuelve clrScheme + clrMap del theme del master a hex reales — sin
+    esto, cualquier run con color de tema (ej. texto blanco a propósito sobre
+    un fondo oscuro, algo muy común en diseños reales) se pierde silenciosamente
+    al recrearse: python-pptx expone el color de tema como un slot ("bg1",
+    "accent1"...), nunca como RGB directo, así que hay que ir a buscar el RGB
+    al theme.xml del master nosotros mismos."""
     try:
-        rgb = run.font.color.rgb
+        from pptx.oxml.ns import qn as _qn
+
+        master = slide.slide_layout.slide_master
+        theme_part = master.part.part_related_by(
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
+        )
+        from lxml import etree
+        theme_el = etree.fromstring(theme_part.blob)
+        clr_scheme_el = theme_el.find(".//" + _qn("a:clrScheme"))
+        scheme: dict[str, str] = {}
+        if clr_scheme_el is not None:
+            for child in clr_scheme_el:
+                tag = child.tag.split("}")[-1]
+                srgb = child.find(_qn("a:srgbClr"))
+                sysclr = child.find(_qn("a:sysClr"))
+                val = srgb.get("val") if srgb is not None else (sysclr.get("lastClr") if sysclr is not None else None)
+                if val:
+                    scheme[tag] = val
+
+        # bg1/tx1/bg2/tx2 pasan por un mapa de indirección propio del master
+        # (clrMap) antes de resolver contra el clrScheme — accentN/hlink no.
+        clr_map_el = master._element.find(_qn("p:clrMap"))
+        clr_map = dict(clr_map_el.attrib) if clr_map_el is not None else {}
+
+        resolved: dict[str, str] = dict(scheme)
+        for slot, target in clr_map.items():
+            if target in scheme:
+                resolved[slot] = scheme[target]
+        return resolved
+    except Exception:
+        return {}
+
+
+def _extract_font_color(run, theme_colors: dict[str, str] | None = None) -> str | None:
+    try:
+        from pptx.enum.dml import MSO_COLOR_TYPE, MSO_THEME_COLOR
+
+        color = run.font.color
+        if color.type == MSO_COLOR_TYPE.SCHEME:
+            if theme_colors:
+                slot = MSO_THEME_COLOR.to_xml(color.theme_color)
+                hexval = theme_colors.get(slot)
+                if hexval:
+                    return f"#{hexval}"
+            return None
+        rgb = color.rgb
         return f"#{rgb.red:02X}{rgb.green:02X}{rgb.blue:02X}"
     except Exception:
         return None
@@ -318,13 +369,12 @@ def _get_shape_text(shape) -> str:
     return "".join(r.text for p in shape.text_frame.paragraphs for r in p.runs)
 
 
-def _detect_placeholder(text: str) -> tuple[str, str, str] | None:
-    m = _RE_PLACEHOLDER.search(text)
-    if not m:
-        return None
-    root = m.group(1).lower()
+def _resolve_placeholder(root: str, suffix: str) -> tuple[str, str, str]:
+    """Resuelve un match de _RE_PLACEHOLDER (root en minúscula + sufijo
+    numérico opcional) a (variable_name, tipo, transform) — compartido entre
+    el caso de un solo placeholder por shape y el de varios (_build_segments)."""
     # Reconstruct full name including numeric suffix (e.g. "aclaracion" + "2" → "aclaracion2")
-    full = root + m.group(2)
+    full = root + suffix
     if full in _PLACEHOLDER_MAP:
         return _PLACEHOLDER_MAP[full]
     if root in _PLACEHOLDER_MAP:
@@ -335,7 +385,38 @@ def _detect_placeholder(text: str) -> tuple[str, str, str] | None:
     return (full, "text", "none")
 
 
-def _extract_style(shape) -> dict:
+def _detect_placeholder(text: str) -> tuple[str, str, str] | None:
+    m = _RE_PLACEHOLDER.search(text)
+    if not m:
+        return None
+    return _resolve_placeholder(m.group(1).lower(), m.group(2))
+
+
+def _build_segments(text: str, matches: list) -> tuple[list[dict], list[tuple[str, str]]]:
+    """Parte el texto de un shape con 2+ placeholders <<...>> en segmentos que
+    alternan texto estático y variable, para que cada uno se resuelva de forma
+    independiente aunque compartan el mismo cuadro de texto — ej. un diseñador
+    escribió "<<Aclaracion1>> <<Aclaracion2>> <<Aclaracion3>>" todo en un solo
+    cuadro en vez de 3 cuadros separados. Antes de esto, _detect_placeholder
+    (con .search(), un solo match) solo agarraba el primero y perdía el resto
+    — literalmente el mismo <<...>> que delimita cada variable en el resto del
+    sistema es lo que se usa acá para encontrar los límites de cada segmento."""
+    segments: list[dict] = []
+    seg_vars: list[tuple[str, str]] = []
+    pos = 0
+    for m in matches:
+        if m.start() > pos:
+            segments.append({"type": "static", "value": text[pos:m.start()]})
+        var_name, var_type, transform = _resolve_placeholder(m.group(1).lower(), m.group(2))
+        segments.append({"type": "variable", "value": var_name, "transform": transform})
+        seg_vars.append((var_name, var_type))
+        pos = m.end()
+    if pos < len(text):
+        segments.append({"type": "static", "value": text[pos:]})
+    return segments, seg_vars
+
+
+def _extract_style(shape, theme_colors: dict[str, str] | None = None) -> dict:
     style: dict = {}
     if not shape.has_text_frame:
         return style
@@ -402,7 +483,7 @@ def _extract_style(shape) -> dict:
                 style["font_family"] = font.name
         except Exception:
             pass
-        color = _extract_font_color(first_run)
+        color = _extract_font_color(first_run, theme_colors)
         if color:
             style["color"] = color
     # Max font across all runs (spacer runs set line height)
@@ -497,7 +578,7 @@ def _make_common(shape, z_index: int) -> dict | None:
 # Parseo de shapes individuales
 # ---------------------------------------------------------------------------
 
-def _parse_shape(shape, z_index: int) -> dict | None:
+def _parse_shape(shape, z_index: int, theme_colors: dict[str, str] | None = None) -> dict | None:
     common = _make_common(shape, z_index)
     if common is None:
         return None
@@ -518,7 +599,7 @@ def _parse_shape(shape, z_index: int) -> dict | None:
     # Shape con texto
     if shape.has_text_frame:
         text = _get_shape_text(shape).strip()
-        style = _extract_style(shape)
+        style = _extract_style(shape, theme_colors)
 
         # Recompute bounds for bottom-anchored shapes with spacer overflow runs.
         # PowerPoint positions these using anchor=b + large spacer + baseline shift.
@@ -543,9 +624,28 @@ def _parse_shape(shape, z_index: int) -> dict | None:
             style.pop("_b_ins_emu", None)
             style.pop("_baseline", None)
 
+        placeholder_matches = list(_RE_PLACEHOLDER.finditer(text))
+        if len(placeholder_matches) > 1:
+            segments, seg_vars = _build_segments(text, placeholder_matches)
+            return {**common, "type": "text", "name": (text[:30] or "texto"),
+                    "variable": None, "segments": segments,
+                    "style": style, "_seg_vars": seg_vars}
+
         ph = _detect_placeholder(text)
         if ph:
             var_name, var_type, transform = ph
+            # TODO(cocarda/imagen): un <<imagen>> escrito como texto (no una
+            # imagen insertada de verdad en el shape) SIEMPRE cae acá con
+            # type="text" — más abajo, _parse_shape solo produce type="image"
+            # para shapes cuyo shape_type ya es MSO_SHAPE_TYPE.PICTURE. Como
+            # patch_image_overrides() (component_renderer.py) solo parchea
+            # componentes con type=="image", la cocarda de Rompe Precios NUNCA
+            # se aplica mientras el pptx tenga el placeholder como texto — hay
+            # que pedirle al diseñador que inserte una imagen real (Insertar >
+            # Imágenes) en esa posición. Pendiente: decidir si vale la pena
+            # detectar var_name=="imagen" acá y forzar type="image" con un
+            # placeholder gris hasta que se reemplace, en vez de solo avisar
+            # por missing_vars como hace hoy.
             return {**common, "type": "text", "name": var_name,
                     "variable": var_name, "transform": transform,
                     "style": style, "_var_type": var_type}
@@ -584,6 +684,7 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
     components: list[dict]          = []
     variables_seen: dict[str, dict] = {}
     z_index = 0
+    theme_colors = _resolve_scheme_colors(slide)
 
     # ── 1. Imágenes del slide master (fondo visual del template) ──────────
     try:
@@ -604,6 +705,15 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
                 "type":       "image",
                 "name":       "fondo",
                 "variable":   None,
+                # None a propósito (pisa lo que puso _make_common): este
+                # shape_id es del MASTER, un namespace de ids totalmente
+                # aparte del slide — nunca va a matchear un shape real ahí, y
+                # si coincidiera por casualidad con el id de otro shape del
+                # slide sería peor (mutaría el shape equivocado). El render
+                # (component_renderer.py) usa este None como señal explícita
+                # de "fondo heredado del master, no hay nada que dibujar de
+                # nuevo cuando se preserva el diseño original".
+                "_source_shape_id": None,
                 "image_data": b64,
                 "image_ext":  ext,
                 "style":      {},
@@ -615,7 +725,7 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
 
     # ── 2. Shapes del slide (datos variables + imágenes embebidas) ────────
     for shape in _flatten_shapes(slide.shapes):
-        comp = _parse_shape(shape, z_index)
+        comp = _parse_shape(shape, z_index, theme_colors)
         if comp is None:
             continue
 
@@ -634,6 +744,15 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado") -> dict:
             }
         else:
             comp.pop("_var_type", None)
+
+        # Componente multi-segmento (varios <<...>> en un mismo cuadro) — cada
+        # variable que usa también tiene que quedar en el panel de Variables.
+        for seg_var, seg_type in comp.pop("_seg_vars", []):
+            if seg_var not in variables_seen:
+                variables_seen[seg_var] = {
+                    "type":       seg_type,
+                    "csv_column": _CSV_COLUMN_MAP.get(seg_var, seg_var.upper()),
+                }
 
     variables = [
         {

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { preciosApi } from "@/lib/api";
 import { RobotMascot } from "@/components/RobotMascot";
 import { X, Send, BarChart3, Sparkles } from "lucide-react";
@@ -54,6 +54,20 @@ export default function DonTinoFloating({
   const hayItems = !!items && items.length > 0;
   const reporteItems = context === "comparison" ? chartItems : items;
   const hayParaReporte = !!reporteItems && reporteItems.length > 0;
+
+  // Tip proactivo: en /precios, apenas hay resultados y todavía no se habló
+  // con Don Tino, le avisamos que puede filtrar la lista por pedido — si no,
+  // nadie se entera de que existe esta función salvo que la pruebe por las
+  // suyas. Solo una vez (mientras no haya mensajes propios todavía).
+  useEffect(() => {
+    if (context === "precios" && hayItems && messages.length === 0) {
+      setMessages([{
+        role: "bot",
+        text: '¡Hola! ¿Sabías que puedo filtrarte los productos que me pidas en esta sección? Por ejemplo: "dejame solo los Galaxy A16" o "sacá los que no sean Samsung".',
+      }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context, hayItems]);
 
   async function enviar() {
     const texto = mensaje.trim();

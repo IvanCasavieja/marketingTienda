@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine,
 } from "recharts";
-import { X, BarChart3 } from "lucide-react";
+import { X, BarChart3, Store } from "lucide-react";
 import { preciosApi, type ProductoVivo, type CotizacionDolar } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
 import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
@@ -117,6 +117,52 @@ export default function ComparisonModal({
     () => withIds.filter((it) => selected.has(it._id) && it.precio !== null),
     [withIds, selected]
   );
+
+  // Vista agrupada del checklist — mismo criterio que el gráfico (cadena +
+  // producto + precio): varias sucursales con el mismo precio comparten una
+  // sola fila con un checkbox, en vez de una fila casi idéntica por cada una
+  // (mismo problema que tenía el gráfico antes de agruparse, acá en la lista
+  // de selección). Tildar la fila tilda TODAS sus sucursales a la vez — total
+  // el gráfico las iba a mostrar como una sola barra de todos modos. El
+  // botón "×N" reusa el mismo modal de sucursales que ya abren las barras
+  // del gráfico, para ver el detalle sin salir del checklist.
+  const withIdsGrouped = useMemo(() => {
+    const porGrupo = new Map<string, ItemConId & { _sucursales: ItemConId[] }>();
+    let sinPrecioIdx = 0;
+    for (const it of withIds) {
+      const key = it.precio !== null && it.nombre
+        ? `${it.tienda}::${it.nombre}::${it.precio}::${it.moneda ?? "UYU"}`
+        : `__sin_precio_${sinPrecioIdx++}`;
+      const existente = porGrupo.get(key);
+      if (existente) existente._sucursales.push(it);
+      else porGrupo.set(key, { ...it, _sucursales: [it] });
+    }
+    return Array.from(porGrupo.values());
+  }, [withIds]);
+
+  // El checklist necesita "está tildado" a nivel de grupo — se muestra
+  // tildado solo si TODAS sus sucursales lo están, para no mostrar un
+  // estado ambiguo de "tildado a medias".
+  const selectedGrupos = useMemo(() => {
+    const next = new Set<string>();
+    for (const g of withIdsGrouped) {
+      if (g._sucursales.every((s) => selected.has(s._id))) next.add(g._id);
+    }
+    return next;
+  }, [withIdsGrouped, selected]);
+
+  function toggleGrupo(grupoId: string) {
+    const grupo = withIdsGrouped.find((g) => g._id === grupoId);
+    if (!grupo) return;
+    const todosMarcados = grupo._sucursales.every((s) => selected.has(s._id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const s of grupo._sucursales) {
+        todosMarcados ? next.delete(s._id) : next.add(s._id);
+      }
+      return next;
+    });
+  }
 
   // Agrupa por (cadena, producto, precio) — varias sucursales de la misma
   // cadena con el mismo precio para el mismo producto comparten una sola
@@ -347,9 +393,9 @@ export default function ComparisonModal({
           {/* Columna derecha: checklist de productos */}
           <div className="w-full md:w-[300px] shrink-0 border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800 flex flex-col min-h-0">
             <SearchableChecklist
-              items={withIds}
-              selected={selected}
-              onToggle={toggle}
+              items={withIdsGrouped}
+              selected={selectedGrupos}
+              onToggle={toggleGrupo}
               getId={(it) => it._id}
               getSearchText={(it) => it.nombre ?? ""}
               getGroup={(it) => it.tienda}
@@ -357,25 +403,52 @@ export default function ComparisonModal({
               renderLabel={(it) => it.nombre ?? "—"}
               renderSubtitle={(it) => (
                 <>
-                  {it.sucursal_nombre ? `${it.sucursal_nombre} · ` : ""}
+                  {it._sucursales.length > 1
+                    ? `×${it._sucursales.length} sucursales · `
+                    : it.sucursal_nombre ? `${it.sucursal_nombre} · ` : ""}
                   {it.precio !== null ? fMoneyByCurrency(it.precio, it.moneda) : "—"}
                 </>
               )}
-              renderExtra={(it) => it.precio !== null ? (
-                <SeguirButton
-                  producto={{
-                    tienda: it.tienda,
-                    sku: it.sku,
-                    nombre: it.nombre ?? "—",
-                    termino_busqueda: termino ?? "",
-                    url: it.url,
-                    precio: it.precio,
-                    moneda: it.moneda ?? "UYU",
-                    sucursal_id: it.sucursal_id,
-                    sucursal_nombre: it.sucursal_nombre,
-                  }}
-                />
-              ) : null}
+              renderExtra={(it) => {
+                if (it.precio === null) return null;
+                if (it._sucursales.length > 1) {
+                  return (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSucursalesModal({
+                          name: "", nombreCompleto: it.nombre ?? "—",
+                          cadenaLabel: CADENA_CONFIG[it.tienda]?.label ?? it.tienda,
+                          precio: it.precio!, precioOriginal: it.precio!,
+                          monedaOriginal: it.moneda ?? "UYU",
+                          moneda: (it.moneda === "USD" ? "USD" : "UYU"),
+                          fill: "",
+                          sucursales: it._sucursales.map((s) => s.sucursal_nombre ?? "—"),
+                        });
+                      }}
+                      title="Ver sucursales"
+                      className="shrink-0 text-slate-300 hover:text-brand-500 transition-colors"
+                    >
+                      <Store size={12} />
+                    </button>
+                  );
+                }
+                return (
+                  <SeguirButton
+                    producto={{
+                      tienda: it.tienda,
+                      sku: it.sku,
+                      nombre: it.nombre ?? "—",
+                      termino_busqueda: termino ?? "",
+                      url: it.url,
+                      precio: it.precio,
+                      moneda: it.moneda ?? "UYU",
+                      sucursal_id: it.sucursal_id,
+                      sucursal_nombre: it.sucursal_nombre,
+                    }}
+                  />
+                );
+              }}
               searchPlaceholder="Filtrar productos..."
               emptyMessage={(q) => `Sin productos para "${q}"`}
             />

@@ -679,6 +679,7 @@
     "productIndexClear": "Remover filtro de produto",
     "productIndexChain": "{{count}} rede",
     "productIndexChains": "{{count}} redes",
+    "productIndexApply": "Ver resultados",
     "listas": {
       "loadError": "Não foi possível carregar as listas de monitoramento",
       "listDeleted": "Lista excluída",

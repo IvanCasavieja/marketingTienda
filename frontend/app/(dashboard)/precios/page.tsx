@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { preciosApi, type ProductoVivo } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
-import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp, SlidersHorizontal, Check, Download, X } from "lucide-react";
+import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp, SlidersHorizontal, Check, Download, X, Filter } from "lucide-react";
 import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
 import { CADENA_CONFIG, CADENA_CATEGORIA, CadenaBadge } from "@/components/precios/cadenaConfig";
@@ -61,11 +61,14 @@ export default function PreciosPage() {
   const [sortMode,       setSortMode]       = useState<"relevancia" | "precio-asc" | "precio-desc">("relevancia");
   const [filterCadenas,  setFilterCadenas]  = useState<Set<string>>(new Set());
   const [filterSucursal, setFilterSucursal] = useState<string | null>(null);
-  // Filtro por nombre exacto de producto, alimentado por el panel lateral de
-  // "índice de productos" — ver nombresUnicos. Independiente de filterCadenas/
-  // filterSucursal: se puede combinar con ellos (ej. "este producto, pero solo
-  // en Ta-Ta"), ambos entran en el mismo .filter() encadenado de `visible`.
-  const [filterNombre,   setFilterNombre]   = useState<string | null>(null);
+  // Filtro por nombre(s) exacto(s) de producto — multi-selección, alimentado
+  // tanto por el modal de "índice de productos" (click manual) como por Don
+  // Tino (onApplySeleccion, cuando el usuario le pide un filtro en lenguaje
+  // natural). Independiente de filterCadenas/filterSucursal: se puede
+  // combinar con ellos (ej. "este producto, pero solo en Ta-Ta"), los tres
+  // entran en el mismo .filter() encadenado de `visible`.
+  const [filterNombres,  setFilterNombres]  = useState<Set<string>>(new Set());
+  const [showProductIndex, setShowProductIndex] = useState(false);
   const [panelFiltro,    setPanelFiltro]    = useState("");
   // Fila (agrupada) sobre la que se clickeó "×N sucursales" — abre el modal
   // que lista cada sucursal individual con su propio link y botón Seguir.
@@ -103,7 +106,7 @@ export default function PreciosPage() {
     setLastQuery(termino);
     setFilterCadenas(new Set());
     setFilterSucursal(null);
-    setFilterNombre(null);
+    setFilterNombres(new Set());
     setPanelFiltro("");
     setSortMode("relevancia");
     setCadenasDone([]);
@@ -192,12 +195,16 @@ export default function PreciosPage() {
     setFilterSucursal(null);
   }
 
-  // Selección desde el panel lateral de "índice de productos" (nombresUnicos
-  // más abajo) — filtro exclusivo (un nombre a la vez, clic de nuevo lo
-  // saca). A propósito NO toca filterCadenas/filterSucursal: combinarlos es
-  // válido ("este producto puntual, pero solo en Ta-Ta").
+  // Selección desde el modal de "índice de productos" (nombresUnicos más
+  // abajo) — multi-selección, suma/saca nombres del filtro (mismo patrón que
+  // toggleCadena). A propósito NO toca filterCadenas/filterSucursal:
+  // combinarlos es válido ("estos productos puntuales, pero solo en Ta-Ta").
   function toggleNombre(nombre: string) {
-    setFilterNombre((prev) => (prev === nombre ? null : nombre));
+    setFilterNombres((prev) => {
+      const next = new Set(prev);
+      next.has(nombre) ? next.delete(nombre) : next.add(nombre);
+      return next;
+    });
   }
 
   // Conteo por cadena una sola vez — se reusa para ordenar los chips (más
@@ -260,7 +267,7 @@ export default function PreciosPage() {
     ? [...results]
         .filter((r) => filterCadenas.size === 0 || filterCadenas.has(r.tienda))
         .filter((r) => !filterSucursal || sucursalKey(r) === filterSucursal)
-        .filter((r) => !filterNombre || r.nombre === filterNombre)
+        .filter((r) => filterNombres.size === 0 || (!!r.nombre && filterNombres.has(r.nombre)))
         .sort((a, b) => {
           if (sortMode === "relevancia") {
             if (b.relevancia !== a.relevancia) return b.relevancia - a.relevancia;
@@ -395,12 +402,9 @@ export default function PreciosPage() {
   const totalDiagnostico = cadenasSinResultado.length + cadenasSinRespuesta.length + cadenasConError.length;
 
   return (
-    /* h-full + flex-col hace que la página ocupe exactamente el viewport sin crecer.
-       max-w-6xl (en vez de 4xl) porque ahora hay que hacerle lugar al panel
-       lateral de índice de productos — ver el cierre de este return. */
+    /* h-full + flex-col hace que la página ocupe exactamente el viewport sin crecer */
     <WatchlistsProvider>
-    <div className="h-full flex gap-4 max-w-6xl mx-auto">
-    <div className="flex-1 min-w-0 h-full flex flex-col gap-3">
+    <div className="h-full flex flex-col gap-3 max-w-4xl mx-auto">
 
       {/* ── Barra de búsqueda ──────────────────────────────────────────────── */}
       <div className={`shrink-0 transition-all duration-500 ${isActive ? "" : "mt-16"}`}>
@@ -534,7 +538,7 @@ export default function PreciosPage() {
           <div className="shrink-0 flex flex-col gap-2.5">
             <div className="flex items-start gap-x-4 gap-y-1.5 flex-wrap">
               <button
-                onClick={() => { setFilterCadenas(new Set()); setFilterSucursal(null); setFilterNombre(null); }}
+                onClick={() => { setFilterCadenas(new Set()); setFilterSucursal(null); setFilterNombres(new Set()); }}
                 className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all shrink-0 ${
                   filterCadenas.size === 0
                     ? "bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900"
@@ -644,6 +648,25 @@ export default function PreciosPage() {
                 <TrendingDown size={13} className={sortMode === "precio-desc" ? "rotate-180 transition-transform" : "transition-transform"} />
                 {sortMode === "relevancia" ? t("precios.sortRelevance") : sortMode === "precio-asc" ? t("precios.sortPriceAsc") : t("precios.sortPriceDesc")}
               </button>
+
+              {hasResults && (
+                <button
+                  onClick={() => setShowProductIndex(true)}
+                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                    filterNombres.size > 0
+                      ? "border-brand-400 bg-brand-50 dark:bg-brand-950/30 text-brand-600 dark:text-brand-400"
+                      : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400"
+                  }`}
+                >
+                  <Filter size={13} />
+                  {t("precios.productIndexTitle")}
+                  {filterNombres.size > 0 && (
+                    <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-brand-600 text-white text-[10px] font-bold leading-none">
+                      {filterNombres.size}
+                    </span>
+                  )}
+                </button>
+              )}
 
               {hasResults && (
                 <div className="flex items-center gap-2 ml-auto">
@@ -930,61 +953,98 @@ export default function PreciosPage() {
         </div>
       )}
 
-      </div>{/* fin columna principal */}
+      {/* Modal de índice de productos — reemplaza el panel lateral fijo de
+          antes (los nombres largos quedaban cortados en 256px, y el panel
+          competía mal con el resto en modo claro). Ahora es un botón en la
+          barra de controles que abre esto: más ancho, nombres completos, y
+          multi-selección (clickear varios nombres los suma al filtro, como
+          los chips de cadena) — necesario porque Don Tino también puede
+          aplicar varios nombres de una via onApplySeleccion. Unifica por
+          nombre EXACTO de producto entre TODAS las cadenas (no por precio ni
+          por cadena, a diferencia de la agrupación de la lista de arriba). */}
+      {showProductIndex && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setShowProductIndex(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t("precios.productIndexTitle")}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{t("precios.productIndexHint")}</p>
+              </div>
+              <button
+                onClick={() => setShowProductIndex(false)}
+                className="ml-auto shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                <X size={18} />
+              </button>
+            </div>
 
-      {/* ── Panel lateral: índice de productos únicos ───────────────────────
-          "Costadito" pedido para poder acotar de una sola cadena a "quiero
-          ver este producto puntual en todos lados", sin depender de tener el
-          nombre exacto de memoria — unifica por nombre EXACTO de producto
-          entre TODAS las cadenas (no por precio ni por cadena, a diferencia
-          de la agrupación de la lista principal de arriba). Solo en pantallas
-          grandes (lg+): en mobile no hay lugar para una tercera columna. */}
-      {isActive && hasResults && (
-        <div className="hidden lg:flex flex-col w-64 shrink-0 h-full py-0">
-          <div className="flex-1 min-h-0 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden flex flex-col shadow-sm">
-            <div className="shrink-0 px-3.5 py-3 border-b border-slate-100 dark:border-slate-800">
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{t("precios.productIndexTitle")}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">{t("precios.productIndexHint")}</p>
+            <div className="px-5 pt-3 pb-2 shrink-0 flex items-center gap-2">
               <input
+                autoFocus
                 value={panelFiltro}
                 onChange={(e) => setPanelFiltro(e.target.value)}
                 placeholder={t("precios.productIndexSearch")}
-                className="mt-2 w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+                className="flex-1 text-sm px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500"
               />
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {filterNombre && (
+              {filterNombres.size > 0 && (
                 <button
-                  onClick={() => setFilterNombre(null)}
-                  className="w-full flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800"
+                  onClick={() => setFilterNombres(new Set())}
+                  className="shrink-0 flex items-center gap-1 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline whitespace-nowrap"
                 >
-                  <X size={11} /> {t("precios.productIndexClear")}
+                  <X size={12} /> {t("precios.productIndexClear")}
                 </button>
               )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-2 pb-2">
               {nombresUnicos
                 .filter((n) => !panelFiltro.trim() || n.nombre.toLowerCase().includes(panelFiltro.trim().toLowerCase()))
-                .map((n) => (
-                  <button
-                    key={n.nombre}
-                    onClick={() => toggleNombre(n.nombre)}
-                    className={`w-full text-left px-3.5 py-2 text-xs border-b border-slate-50 dark:border-slate-800/50 last:border-0 transition-colors ${
-                      filterNombre === n.nombre
-                        ? "bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-400 font-semibold"
-                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                    }`}
-                  >
-                    <span className="block truncate">{n.nombre}</span>
-                    <span className="text-[10px] text-slate-400">
-                      {n.cadenas.size === 1
-                        ? t("precios.productIndexChain", { count: n.cadenas.size })
-                        : t("precios.productIndexChains", { count: n.cadenas.size })}
-                      {" · "}{n.count}
-                    </span>
-                  </button>
-                ))}
+                .map((n) => {
+                  const activo = filterNombres.has(n.nombre);
+                  return (
+                    <button
+                      key={n.nombre}
+                      onClick={() => toggleNombre(n.nombre)}
+                      className={`w-full flex items-start gap-2.5 text-left px-3 py-2.5 rounded-lg transition-colors ${
+                        activo
+                          ? "bg-brand-50 dark:bg-brand-950/40"
+                          : "hover:bg-slate-50 dark:hover:bg-slate-800"
+                      }`}
+                    >
+                      <span className={`mt-0.5 shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${
+                        activo ? "bg-brand-600 border-brand-600" : "border-slate-300 dark:border-slate-600"
+                      }`}>
+                        {activo && <Check size={11} className="text-white" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className={`block text-sm ${activo ? "text-brand-700 dark:text-brand-400 font-semibold" : "text-slate-700 dark:text-slate-300"}`}>
+                          {n.nombre}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          {n.cadenas.size === 1
+                            ? t("precios.productIndexChain", { count: n.cadenas.size })
+                            : t("precios.productIndexChains", { count: n.cadenas.size })}
+                          {" · "}{n.count}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
               {nombresUnicos.length === 0 && (
-                <p className="text-xs text-slate-400 text-center py-6">—</p>
+                <p className="text-xs text-slate-400 text-center py-8">—</p>
               )}
+            </div>
+
+            <div className="flex justify-end px-5 py-3 border-t border-slate-100 dark:border-slate-800">
+              <button onClick={() => setShowProductIndex(false)} className="btn-primary text-sm px-4 py-2">
+                {t("precios.productIndexApply")}{filterNombres.size > 0 ? ` (${filterNombres.size})` : ""}
+              </button>
             </div>
           </div>
         </div>
@@ -1005,7 +1065,13 @@ export default function PreciosPage() {
           termino={lastQuery}
           items={visible
             .filter((r) => r.precio !== null)
-            .map((r) => ({ tienda: r.tienda, nombre: r.nombre ?? "—", precio: r.precio!, moneda: r.moneda ?? "UYU" }))}
+            .map((r) => ({ id: r.nombre ?? "", tienda: r.tienda, nombre: r.nombre ?? "—", precio: r.precio!, moneda: r.moneda ?? "UYU" }))}
+          // Reusa el mismo endpoint/mecanismo que ya usa ComparisonModal para
+          // "tildar por pedido en lenguaje natural" — acá `id` es el propio
+          // nombre del producto (no hay un id de fila estable en esta pantalla,
+          // y filtrar por nombre es justo lo que ya hace filterNombres), así
+          // que "mantener" se traduce directo a qué nombres dejar filtrados.
+          onApplySeleccion={(ids) => setFilterNombres(new Set(ids.filter(Boolean)))}
           onOpenChart={() => setShowChart(true)}
         />
       )}

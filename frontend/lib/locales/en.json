@@ -679,6 +679,7 @@
     "productIndexClear": "Clear product filter",
     "productIndexChain": "{{count}} chain",
     "productIndexChains": "{{count}} chains",
+    "productIndexApply": "View results",
     "listas": {
       "loadError": "Couldn't load the monitoring lists",
       "listDeleted": "List deleted",
