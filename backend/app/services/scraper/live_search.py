@@ -187,11 +187,15 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
     session     = gdu._build_session(jwt)
     branch_meta = gdu._load_branch_meta()
 
-    product_ids: list[str]             = []
-    names:       dict[str, str]        = {}
-    barcodes:    dict[str, str | None] = {}
-    categorias:  dict[str, str | None] = {}
-    seen_ids:    set[str]              = set()
+    product_ids:      list[str]             = []
+    names:            dict[str, str]        = {}
+    barcodes:         dict[str, str | None] = {}
+    categorias:       dict[str, str | None] = {}
+    seen_ids:         set[str]              = set()
+    # Productos cuyo catálogo trae dynamicFields["FRONT_BACKEND|precioDolar"]
+    # ="true" — la API de precios los devuelve igual en pesos crudos, sin
+    # avisar; hay que reconvertirlos en gdu._parse_prices (ver ahí el porqué).
+    precio_dolar_ids: set[str]              = set()
 
     def _registrar_item(item: dict) -> None:
         pid = item["id"]
@@ -204,9 +208,11 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
         barcode = barcodes_list[0].get("barcode") if barcodes_list else None
         categoria = None
         for df in item.get("dynamicFields") or []:
-            if df.get("fieldName") == "FILTER|Categoría":
+            field_name = df.get("fieldName")
+            if field_name == "FILTER|Categoría":
                 categoria = df.get("fieldValue")
-                break
+            elif field_name == "FRONT_BACKEND|precioDolar" and str(df.get("fieldValue")).lower() == "true":
+                precio_dolar_ids.add(pid)
         product_ids.append(pid)
         names[pid]      = name
         barcodes[pid]   = barcode
@@ -262,11 +268,18 @@ def buscar_gdu(term: str, cache_dir: Path = _DATA_DIR) -> list[ProductRecord]:
             if score_match(names.get(pid, ""), term_clean) >= _MIN_SCORE
         ]
 
+    # Solo se pide la cotización si de verdad hay algún producto en dólares en
+    # este batch — la gran mayoría de búsquedas no la necesita.
+    cotizacion_compra = gdu._get_cotizacion_compra(cache_dir) if precio_dolar_ids else None
+
     api_records: list[ProductRecord] = []
     for i in range(0, len(product_ids), gdu._PRICE_BATCH):
         batch = product_ids[i:i + gdu._PRICE_BATCH]
         price_records = gdu._get_prices_batch(session, batch)
-        gdu._parse_prices(price_records, names, barcodes, categorias, branch_meta, api_records)
+        gdu._parse_prices(
+            price_records, names, barcodes, categorias, branch_meta, api_records,
+            precio_dolar_ids=precio_dolar_ids, cotizacion_compra=cotizacion_compra,
+        )
 
     # Deduplicar por (product_id, cadena, sucursal): solo protege contra un
     # duplicado literal de la MISMA sucursal (si la API llegara a repetir un

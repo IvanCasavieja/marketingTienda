@@ -119,6 +119,55 @@ def _get_jwt(cache_dir: Path, force_refresh: bool = False) -> str:
     return token
 
 
+# ── Cotización dólar (para productos con precioDolar=true) ──────────────────
+# La API de precios de GDU siempre devuelve currentPrice/normalPrice en pesos,
+# sin importar qué moneda muestra el sitio real al público — el campo
+# dynamicFields["FRONT_BACKEND|precioDolar"]="true" del catálogo es lo único
+# que indica que ESE producto en particular se vende en dólares (el sitio
+# hace la conversión a último momento, en el front). Sin esto, un microondas
+# que el sitio muestra "U$S 169" salía acá como "$6.591" (el valor crudo en
+# pesos, mal etiquetado como si fueran pesos). Reusa el mismo parseo del
+# portlet de BROU que ya usa cotizacion_service.py, pero con fetch síncrono
+# (requests, no httpx) porque este módulo corre en threadpool sin loop async
+# propio — y con cache en archivo de un día, mismo patrón que _get_jwt.
+
+def _get_cotizacion_compra(cache_dir: Path) -> float:
+    from app.services.cotizacion_service import _BROU_URL, parse_brou_usd
+
+    cache_file = cache_dir / "gdu_cotizacion_cache.json"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    if cache_file.exists():
+        try:
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            if time.time() < cached.get("expires_at", 0):
+                return cached["compra"]
+        except Exception:
+            pass
+
+    try:
+        r = requests.get(_BROU_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        r.raise_for_status()
+        compra, _venta = parse_brou_usd(r.text)
+    except Exception as exc:
+        log.warning("GDU REST: no se pudo obtener cotización BROU (productos precioDolar) — %s", exc)
+        # Cache vieja como último recurso, aunque haya vencido — mejor una
+        # cotización de ayer que ninguna (dejaría precios en dólares sin
+        # convertir, mostrados en pesos crudos).
+        if cache_file.exists():
+            try:
+                return json.loads(cache_file.read_text(encoding="utf-8"))["compra"]
+            except Exception:
+                pass
+        return 40.0  # fallback burdo — mejor que reventar la búsqueda entera
+
+    cache_file.write_text(
+        json.dumps({"compra": compra, "expires_at": time.time() + 86400}, indent=2),
+        encoding="utf-8",
+    )
+    return compra
+
+
 def _build_session(jwt: str) -> requests.Session:
     s = requests.Session()
     s.headers.update({
@@ -215,16 +264,25 @@ def _get_prices_batch(session: requests.Session, product_ids: list[str]) -> list
 
 
 def _parse_prices(
-    price_records: list[dict],
-    names:         dict[str, str],
-    barcodes:      dict[str, str | None],
-    categorias:    dict[str, str | None],
-    branch_meta:   dict[str, dict],
-    out:           list[ProductRecord],
+    price_records:     list[dict],
+    names:             dict[str, str],
+    barcodes:          dict[str, str | None],
+    categorias:        dict[str, str | None],
+    branch_meta:       dict[str, dict],
+    out:               list[ProductRecord],
+    precio_dolar_ids:  set[str] | None = None,
+    cotizacion_compra: float | None = None,
 ) -> None:
     """
     Convierte raw price records en ProductRecord (1 por producto × sucursal).
     Modifica `out` in-place.
+
+    precio_dolar_ids: product IDs cuyo dynamicFields trae
+    "FRONT_BACKEND|precioDolar"="true" (ver buscar_gdu) — la API de precios
+    siempre devuelve currentPrice/normalPrice en pesos para TODOS los
+    productos, incluidos estos, así que hay que reconvertirlos a USD acá
+    (dividiendo por cotizacion_compra) para que coincidan con lo que el sitio
+    real muestra, en vez de mostrar el valor crudo en pesos mal etiquetado.
     """
     for rec in price_records:
         pl_id = rec.get("priceListId", "")
@@ -258,12 +316,20 @@ def _parse_prices(
         precio_final = current if (current and current < precio_base) else precio_base
         precio_lista_val = precio_base if (current and current < precio_base) else None
 
+        moneda = "UYU"
+        if precio_dolar_ids and pid in precio_dolar_ids and cotizacion_compra:
+            moneda = "USD"
+            precio_final = round(precio_final / cotizacion_compra, 2)
+            if precio_lista_val is not None:
+                precio_lista_val = round(precio_lista_val / cotizacion_compra, 2)
+
         out.append(ProductRecord(
             tienda          = cadena,
             url             = _construir_url(cadena, pid, pl_id),
             nombre          = name,
             precio          = precio_final,
             precio_lista    = precio_lista_val,
+            moneda          = moneda,
             sku             = pid,
             barcode         = barcodes.get(pid),
             categoria       = categorias.get(pid),

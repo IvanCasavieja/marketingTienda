@@ -31,13 +31,13 @@ _BROU_URL = (
 _HORA_CHEQUEO = 8  # 8am hora de Montevideo
 
 
-async def fetch_brou_usd() -> tuple[float, float]:
-    """Devuelve (compra, venta) del dólar BROU (fila "Dólar", no "Dólar eBROU")."""
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.get(_BROU_URL, headers={"User-Agent": "Mozilla/5.0"})
-        resp.raise_for_status()
-
-    soup = BeautifulSoup(resp.text, "lxml")
+def parse_brou_usd(html: str) -> tuple[float, float]:
+    """Extrae (compra, venta) del HTML del portlet de BROU (fila "Dólar", no
+    "Dólar eBROU"). Separado de fetch_brou_usd() para poder reusar el parseo
+    desde un fetch síncrono (ver gdu_rest.py — necesita esto para reconvertir
+    a USD los productos con precioDolar=true, desde código sync que corre en
+    threadpool, donde no se puede simplemente await-ear la versión async)."""
+    soup = BeautifulSoup(html, "lxml")
     for row in soup.select("table tbody tr"):
         moneda_el = row.select_one("p.moneda")
         if not moneda_el or moneda_el.get_text(strip=True) != "Dólar":
@@ -50,6 +50,14 @@ async def fetch_brou_usd() -> tuple[float, float]:
         return compra, venta
 
     raise ValueError("No se encontró la fila 'Dólar' en la tabla de cotizaciones BROU")
+
+
+async def fetch_brou_usd() -> tuple[float, float]:
+    """Devuelve (compra, venta) del dólar BROU (fila "Dólar", no "Dólar eBROU")."""
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(_BROU_URL, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+    return parse_brou_usd(resp.text)
 
 
 async def actualizar_cotizacion_hoy() -> CotizacionDolar:
