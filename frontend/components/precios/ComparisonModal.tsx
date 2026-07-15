@@ -19,6 +19,20 @@ type ItemConId = ProductoVivo & { _id: string };
 const PRESELECCION_INICIAL = 8;
 const NUESTRO_COLOR = "#eab308"; // amarillo — distinto de cualquier cadena, para que resalte como "nosotros"
 
+// Una barra del gráfico — puede representar varias sucursales de la misma
+// cadena agrupadas por tener el mismo precio (ver chartData más abajo).
+interface ChartBarData {
+  name: string;
+  nombreCompleto: string;
+  cadenaLabel: string;
+  precio: number;
+  precioOriginal: number;
+  monedaOriginal: string;
+  moneda: "UYU" | "USD";
+  fill: string;
+  sucursales: string[];
+}
+
 function truncar(nombre: string | null, max = 26): string {
   const n = nombre ?? "—";
   return n.length > max ? n.slice(0, max - 1) + "…" : n;
@@ -44,10 +58,15 @@ function convertir(
 const ChartTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
+  const nSucursales = d.sucursales?.length ?? 0;
   return (
     <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-card-hover rounded-xl px-3.5 py-2.5 max-w-[220px]">
       <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 leading-snug">{d.nombreCompleto}</p>
-      <p className="text-[11px] text-slate-400 mb-1">{d.cadenaLabel}{d.sucursal ? ` · ${d.sucursal}` : ""}</p>
+      <p className="text-[11px] text-slate-400 mb-1">
+        {d.cadenaLabel}
+        {nSucursales === 1 ? ` · ${d.sucursales[0]}` : ""}
+        {nSucursales > 1 ? ` · ${nSucursales} sucursales — click para verlas` : ""}
+      </p>
       <p className="text-sm font-bold" style={{ color: d.fill }}>{fMoneyByCurrency(d.precio, d.moneda)}</p>
       {d.monedaOriginal !== d.moneda && (
         <p className="text-[10.5px] text-slate-400 mt-0.5">
@@ -78,6 +97,7 @@ export default function ComparisonModal({
   const [monedaVista, setMonedaVista] = useState<"UYU" | "USD">("UYU");
   const [cotizacion, setCotizacion] = useState<CotizacionDolar | null>(null);
   const [cotizacionError, setCotizacionError] = useState(false);
+  const [sucursalesModal, setSucursalesModal] = useState<ChartBarData | null>(null);
 
   useEffect(() => {
     preciosApi.cotizacionDolar()
@@ -98,29 +118,43 @@ export default function ComparisonModal({
     [withIds, selected]
   );
 
-  const chartData = useMemo(() => {
-    return seleccionados
-      .map((it) => {
-        const convertido = convertir(it.precio!, it.moneda, monedaVista, cotizacion);
-        if (convertido === null) return null;
-        return {
-          name: truncar(it.nombre),
-          nombreCompleto: it.nombre ?? "—",
-          cadenaLabel: CADENA_CONFIG[it.tienda]?.label ?? it.tienda,
-          sucursal: it.sucursal_nombre,
-          precio: convertido,
-          precioOriginal: it.precio!,
-          monedaOriginal: it.moneda ?? "UYU",
-          moneda: monedaVista,
-          fill: CADENA_CONFIG[it.tienda]?.hex ?? "#94a3b8",
-        };
-      })
-      .filter((d): d is NonNullable<typeof d> => d !== null);
-  }, [seleccionados, monedaVista, cotizacion]);
+  // Agrupa por (cadena, producto, precio) — varias sucursales de la misma
+  // cadena con el mismo precio para el mismo producto comparten una sola
+  // barra (ver `sucursales`); si el precio difiere entre sucursales siguen
+  // siendo barras separadas. Esto evita que cadenas con muchas sucursales
+  // (Disco/Devoto/Géant, o cualquier otra que reporte por sucursal) saturen
+  // el gráfico con barras casi idénticas — ver ChartBarData arriba.
+  const { chartData, omitidosPorCotizacion } = useMemo(() => {
+    const porGrupo = new Map<string, ChartBarData>();
+    let omitidos = 0;
 
-  // Tildados que no entraron al gráfico porque su moneda es distinta a
-  // monedaVista y todavía no tenemos cotización para convertirlos.
-  const omitidosPorCotizacion = seleccionados.length - chartData.length;
+    for (const it of seleccionados) {
+      const convertido = convertir(it.precio!, it.moneda, monedaVista, cotizacion);
+      if (convertido === null) { omitidos++; continue; }
+
+      const key = `${it.tienda}::${it.nombre ?? ""}::${convertido}`;
+      const existente = porGrupo.get(key);
+      if (existente) {
+        if (it.sucursal_nombre && !existente.sucursales.includes(it.sucursal_nombre)) {
+          existente.sucursales.push(it.sucursal_nombre);
+        }
+        continue;
+      }
+      porGrupo.set(key, {
+        name: truncar(it.nombre),
+        nombreCompleto: it.nombre ?? "—",
+        cadenaLabel: CADENA_CONFIG[it.tienda]?.label ?? it.tienda,
+        precio: convertido,
+        precioOriginal: it.precio!,
+        monedaOriginal: it.moneda ?? "UYU",
+        moneda: monedaVista,
+        fill: CADENA_CONFIG[it.tienda]?.hex ?? "#94a3b8",
+        sucursales: it.sucursal_nombre ? [it.sucursal_nombre] : [],
+      });
+    }
+
+    return { chartData: Array.from(porGrupo.values()), omitidosPorCotizacion: omitidos };
+  }, [seleccionados, monedaVista, cotizacion]);
 
   const ourPriceRaw = ourPrice.trim() ? Number(ourPrice) : null;
   const ourPriceNum = ourPriceRaw !== null && Number.isFinite(ourPriceRaw) ? ourPriceRaw : null;
@@ -253,9 +287,34 @@ export default function ComparisonModal({
                       label={{ value: "Nuestro precio", position: "insideTopRight", fill: NUESTRO_COLOR, fontSize: 11, fontWeight: 700 }}
                     />
                   )}
-                  <Bar dataKey="precio" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                  <Bar
+                    dataKey="precio"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={48}
+                    label={(props: any) => {
+                      const entry: ChartBarData | undefined = chartData[props.index];
+                      if (!entry || entry.sucursales.length <= 1) return <g />;
+                      return (
+                        <text
+                          x={props.x + props.width / 2}
+                          y={props.y - 6}
+                          textAnchor="middle"
+                          fontSize={10}
+                          fontWeight={700}
+                          fill="#64748b"
+                        >
+                          ×{entry.sucursales.length}
+                        </text>
+                      );
+                    }}
+                  >
                     {chartData.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
+                      <Cell
+                        key={i}
+                        fill={entry.fill}
+                        style={{ cursor: entry.sucursales.length > 1 ? "pointer" : "default" }}
+                        onClick={() => { if (entry.sucursales.length > 1) setSucursalesModal(entry); }}
+                      />
                     ))}
                   </Bar>
                 </BarChart>
@@ -275,6 +334,12 @@ export default function ComparisonModal({
                 {omitidosPorCotizacion === 1
                   ? "1 producto tildado no se muestra en el gráfico por estar en otra moneda sin cotización disponible."
                   : `${omitidosPorCotizacion} productos tildados no se muestran en el gráfico por estar en otra moneda sin cotización disponible.`}
+              </p>
+            )}
+
+            {chartData.some((d) => d.sucursales.length > 1) && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 -mt-2">
+                Las barras marcadas con "×N" agrupan varias sucursales con el mismo precio — hacé click para verlas.
               </p>
             )}
           </div>
@@ -322,6 +387,41 @@ export default function ComparisonModal({
           <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cerrar</button>
         </div>
       </div>
+
+      {/* Modal de sucursales — se abre al clickear una barra agrupada */}
+      {sucursalesModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setSucursalesModal(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm max-h-[70vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{sucursalesModal.nombreCompleto}</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {sucursalesModal.cadenaLabel} · {fMoneyByCurrency(sucursalesModal.precio, sucursalesModal.moneda)} · {sucursalesModal.sucursales.length} sucursales
+                </p>
+              </div>
+              <button
+                onClick={() => setSucursalesModal(null)}
+                className="ml-auto shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-3">
+              {sucursalesModal.sucursales.map((s) => (
+                <p key={s} className="text-sm text-slate-600 dark:text-slate-300 py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-0">
+                  {s}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <DonTinoFloating
         context="comparison"
