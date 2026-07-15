@@ -746,6 +746,17 @@ def _loi_throttle() -> None:
 
 _LOI_MAX_INTENTOS = 3  # tope de reintentos con término progresivamente más corto
 
+# La API pública de LOi (/api/v1/products.json) devuelve precio.amount /
+# precio.original_amount SIN IVA — el sitio real (loi.com.uy) muestra el
+# precio final CON IVA al consumidor. Verificado con un caso real:
+# microondas-midea-manual-20l-mmop01mz-mmpfbk devuelve amount=63.115/
+# original_amount=81.148 por API, pero el sitio muestra USD 77 / USD 99 —
+# ambos coinciden con multiplicar por 1.22 (IVA básico de Uruguay), con un
+# error menor a 0.001. Sin este ajuste, todo lo que trae LOi se muestra ~18%
+# más barato de lo que realmente cuesta (el % de descuento sale bien igual,
+# porque surge de dividir dos precios que arrastran el mismo error).
+_LOI_IVA = 1.22
+
 
 def _loi_pedir(q: str) -> dict | None:
     _loi_throttle()
@@ -810,6 +821,12 @@ def buscar_loi(term: str) -> list[ProductRecord]:
         precio_lista = precio_info.get("original_amount")
         if precio_lista is not None and precio_lista <= precio:
             precio_lista = None
+
+        # Ver _LOI_IVA arriba — la API entrega neto, hay que llevarlo al
+        # precio con IVA que realmente se paga (el que muestra el sitio).
+        precio = round(precio * _LOI_IVA, 2)
+        if precio_lista is not None:
+            precio_lista = round(precio_lista * _LOI_IVA, 2)
 
         marca_info      = item.get("brand") or {}
         categoria_info   = item.get("category") or {}
