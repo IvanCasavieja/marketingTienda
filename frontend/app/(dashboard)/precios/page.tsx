@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { preciosApi, type ProductoVivo } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
-import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp, SlidersHorizontal, Check, Download } from "lucide-react";
+import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp, SlidersHorizontal, Check, Download, X } from "lucide-react";
 import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
 import { CADENA_CONFIG, CADENA_CATEGORIA, CadenaBadge } from "@/components/precios/cadenaConfig";
@@ -24,6 +24,14 @@ const CATEGORIA_KEYS: Record<string, string> = {
 // a propósito (ver comentario junto a sourceCadenas en el componente).
 const CADENAS_DEFAULT = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Fama", "Stienda", "BlackDog", "CoverCompany", "DIMM", "Electrohogar"];
 const CADENAS_TODAS    = [...CADENAS_DEFAULT, "LOi"];
+
+// Una fila de la lista de resultados — puede representar varias sucursales
+// de la misma cadena agrupadas por tener el mismo precio para el mismo
+// producto (ver `visibleGrouped` más abajo). Mismo patrón que ChartBarData
+// en ComparisonModal.tsx, aplicado acá a la lista en sí (no a un gráfico).
+interface GroupedProducto extends ProductoVivo {
+  _sucursales: ProductoVivo[];
+}
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
@@ -53,6 +61,15 @@ export default function PreciosPage() {
   const [sortMode,       setSortMode]       = useState<"relevancia" | "precio-asc" | "precio-desc">("relevancia");
   const [filterCadenas,  setFilterCadenas]  = useState<Set<string>>(new Set());
   const [filterSucursal, setFilterSucursal] = useState<string | null>(null);
+  // Filtro por nombre exacto de producto, alimentado por el panel lateral de
+  // "índice de productos" — ver nombresUnicos. Independiente de filterCadenas/
+  // filterSucursal: se puede combinar con ellos (ej. "este producto, pero solo
+  // en Ta-Ta"), ambos entran en el mismo .filter() encadenado de `visible`.
+  const [filterNombre,   setFilterNombre]   = useState<string | null>(null);
+  const [panelFiltro,    setPanelFiltro]    = useState("");
+  // Fila (agrupada) sobre la que se clickeó "×N sucursales" — abre el modal
+  // que lista cada sucursal individual con su propio link y botón Seguir.
+  const [sucursalesModalRow, setSucursalesModalRow] = useState<GroupedProducto | null>(null);
   const [cadenasDone,    setCadenasDone]    = useState<string[]>([]);
   const [cadenaErrors,   setCadenaErrors]   = useState<Record<string, string>>({});
   const [showChart,      setShowChart]      = useState(false);
@@ -86,6 +103,8 @@ export default function PreciosPage() {
     setLastQuery(termino);
     setFilterCadenas(new Set());
     setFilterSucursal(null);
+    setFilterNombre(null);
+    setPanelFiltro("");
     setSortMode("relevancia");
     setCadenasDone([]);
     setCadenaErrors({});
@@ -173,6 +192,14 @@ export default function PreciosPage() {
     setFilterSucursal(null);
   }
 
+  // Selección desde el panel lateral de "índice de productos" (nombresUnicos
+  // más abajo) — filtro exclusivo (un nombre a la vez, clic de nuevo lo
+  // saca). A propósito NO toca filterCadenas/filterSucursal: combinarlos es
+  // válido ("este producto puntual, pero solo en Ta-Ta").
+  function toggleNombre(nombre: string) {
+    setFilterNombre((prev) => (prev === nombre ? null : nombre));
+  }
+
   // Conteo por cadena una sola vez — se reusa para ordenar los chips (más
   // resultados primero, mucho más útil que orden alfabético con 13 cadenas) y
   // para pintar el número en cada chip sin recalcular un .filter() por chip.
@@ -233,6 +260,7 @@ export default function PreciosPage() {
     ? [...results]
         .filter((r) => filterCadenas.size === 0 || filterCadenas.has(r.tienda))
         .filter((r) => !filterSucursal || sucursalKey(r) === filterSucursal)
+        .filter((r) => !filterNombre || r.nombre === filterNombre)
         .sort((a, b) => {
           if (sortMode === "relevancia") {
             if (b.relevancia !== a.relevancia) return b.relevancia - a.relevancia;
@@ -242,6 +270,60 @@ export default function PreciosPage() {
           const pb = b.precio ?? Infinity;
           return sortMode === "precio-asc" ? pa - pb : pb - pa;
         })
+    : [];
+
+  // Agrupa `visible` por (cadena, producto, precio, moneda) para pintar la
+  // lista: varias sucursales de la misma cadena con el mismo precio para el
+  // mismo producto comparten una sola fila (`_sucursales`), con un botón
+  // "×N" que abre un modal listando cada sucursal — mismo patrón que
+  // ComparisonModal.tsx aplica al gráfico comparativo, acá aplicado a la
+  // lista de resultados en sí (no a un gráfico). Achica listas de cadenas
+  // con muchas sucursales (Disco/Devoto/Géant, o cualquiera con datos por
+  // sucursal) sin perder ningún dato — cada fila colapsada guarda el detalle
+  // completo en `_sucursales` para el modal.
+  //
+  // Filas sin precio (precio === null) NUNCA se agrupan entre sí — "mismo
+  // precio" no aplica ahí, agruparlas mezclaría productos sin relación.
+  const visibleGrouped: GroupedProducto[] = (() => {
+    const porGrupo = new Map<string, GroupedProducto>();
+    let sinPrecioIdx = 0;
+    for (const r of visible) {
+      const key = r.precio !== null && r.nombre
+        ? `${r.tienda}::${r.nombre}::${r.precio}::${r.moneda ?? "UYU"}`
+        : `__sin_precio_${sinPrecioIdx++}`;
+      const existente = porGrupo.get(key);
+      if (existente) {
+        existente._sucursales.push(r);
+      } else {
+        porGrupo.set(key, { ...r, _sucursales: [r] });
+      }
+    }
+    return Array.from(porGrupo.values());
+  })();
+
+  // Índice de nombres de producto únicos, para el panel lateral — se arma
+  // sobre `results` crudo (no `visible`) a propósito, así siempre muestra el
+  // universo completo sin importar qué chips de cadena/sucursal estén
+  // activos en ese momento. Clickear un nombre ahí filtra `visible` a ese
+  // producto exacto en TODAS las cadenas donde aparezca (ver toggleNombre) —
+  // pensado para acotar de "una cadena a la vez" a "este producto puntual,
+  // dondequiera que esté". Ordenado por cantidad de cadenas distintas que lo
+  // tienen — más cadenas primero, porque es la señal más fuerte de "esto es
+  // el mismo producto en varios lados" (empate: alfabético).
+  const nombresUnicos = results
+    ? (() => {
+        const conteo = new Map<string, { nombre: string; count: number; cadenas: Set<string> }>();
+        for (const r of results) {
+          if (!r.nombre) continue;
+          const entry = conteo.get(r.nombre) ?? { nombre: r.nombre, count: 0, cadenas: new Set<string>() };
+          entry.count++;
+          entry.cadenas.add(r.tienda);
+          conteo.set(r.nombre, entry);
+        }
+        return Array.from(conteo.values()).sort(
+          (a, b) => b.cadenas.size - a.cadenas.size || a.nombre.localeCompare(b.nombre)
+        );
+      })()
     : [];
 
   // Exporta exactamente lo que se ve en pantalla (respeta filtros/orden activos).
@@ -313,9 +395,12 @@ export default function PreciosPage() {
   const totalDiagnostico = cadenasSinResultado.length + cadenasSinRespuesta.length + cadenasConError.length;
 
   return (
-    /* h-full + flex-col hace que la página ocupe exactamente el viewport sin crecer */
+    /* h-full + flex-col hace que la página ocupe exactamente el viewport sin crecer.
+       max-w-6xl (en vez de 4xl) porque ahora hay que hacerle lugar al panel
+       lateral de índice de productos — ver el cierre de este return. */
     <WatchlistsProvider>
-    <div className="h-full flex flex-col gap-3 max-w-4xl mx-auto">
+    <div className="h-full flex gap-4 max-w-6xl mx-auto">
+    <div className="flex-1 min-w-0 h-full flex flex-col gap-3">
 
       {/* ── Barra de búsqueda ──────────────────────────────────────────────── */}
       <div className={`shrink-0 transition-all duration-500 ${isActive ? "" : "mt-16"}`}>
@@ -449,7 +534,7 @@ export default function PreciosPage() {
           <div className="shrink-0 flex flex-col gap-2.5">
             <div className="flex items-start gap-x-4 gap-y-1.5 flex-wrap">
               <button
-                onClick={() => { setFilterCadenas(new Set()); setFilterSucursal(null); }}
+                onClick={() => { setFilterCadenas(new Set()); setFilterSucursal(null); setFilterNombre(null); }}
                 className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all shrink-0 ${
                   filterCadenas.size === 0
                     ? "bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900"
@@ -638,26 +723,31 @@ export default function PreciosPage() {
 
                 {/* Filas */}
                 <div className="flex-1 overflow-y-auto divide-y divide-slate-50 dark:divide-slate-800/50">
-                  {visible.length === 0 ? (
+                  {visibleGrouped.length === 0 ? (
                     <div className="py-8 text-center text-sm text-slate-400">
                       {t("precios.noResultsFilteredFrom")}{" "}
                       <em>{[...filterCadenas].map((c) => CADENA_CONFIG[c]?.label ?? c).join(", ")}</em>
                       {" "}{t("precios.noResultsFilteredFor")}
                     </div>
-                  ) : visible.map((p, i) => {
+                  ) : visibleGrouped.map((p, i) => {
                     const hasDesc = p.precio_lista !== null && p.precio_lista > (p.precio ?? 0);
                     const pct     = hasDesc ? Math.round((1 - (p.precio ?? 0) / p.precio_lista!) * 100) : 0;
-                    const isCheap = p === cheapest && filterCadenas.size === 0;
+                    // `cheapest` viene de `results` crudo — con la agrupación, puede
+                    // haber terminado adentro de cualquier fila (no necesariamente la
+                    // primera _sucursal), por eso se busca con .includes() en vez de
+                    // comparar referencia directa contra `p`.
+                    const isCheap = !!cheapest && filterCadenas.size === 0 && p._sucursales.includes(cheapest);
                     const borderCfg = CADENA_CONFIG[p.tienda];
+                    const agrupada = p._sucursales.length > 1;
 
                     return (
                       <div
-                        key={`${p.tienda}-${p.sucursal_id}-${i}`}
+                        key={`${p.tienda}-${p.sku ?? "x"}-${p.precio ?? "np"}-${i}`}
                         className={`flex items-center gap-3 px-4 py-2.5 border-l-[3px] hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group ${
                           borderCfg?.border ?? "border-l-slate-200"
                         } ${isCheap ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
                       >
-                        {/* Nombre + cadena + sucursal */}
+                        {/* Nombre + cadena + sucursal(es) */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
@@ -671,9 +761,16 @@ export default function PreciosPage() {
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <CadenaBadge tienda={p.tienda} />
-                            {p.sucursal_nombre && (
+                            {agrupada ? (
+                              <button
+                                onClick={() => setSucursalesModalRow(p)}
+                                className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:underline shrink-0"
+                              >
+                                ×{p._sucursales.length} {t("precios.branches")}
+                              </button>
+                            ) : p.sucursal_nombre ? (
                               <span className="text-[11px] text-slate-400 truncate">{p.sucursal_nombre}</span>
-                            )}
+                            ) : null}
                             {p.tienda_real && p.tienda_real !== p.tienda && (
                               <span
                                 title={t("precios.sharedCatalogTooltip", {
@@ -706,23 +803,37 @@ export default function PreciosPage() {
                           )}
                         </div>
 
-                        {/* Link */}
+                        {/* Link — con varias sucursales agrupadas no hay un solo link
+                            posible (cada una tiene su propia URL), así que este botón
+                            abre el mismo modal que el badge "×N" de arriba. */}
                         <div className="w-14 flex justify-center">
-                          <a
-                            href={p.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:border-brand-500 hover:bg-brand-100 dark:hover:bg-brand-900/50 transition-all"
-                            title={t("precios.viewInStore")}
-                          >
-                            <ExternalLink size={11} />
-                            {t("precios.tableHeaders.view")}
-                          </a>
+                          {agrupada ? (
+                            <button
+                              onClick={() => setSucursalesModalRow(p)}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:border-brand-500 hover:bg-brand-100 dark:hover:bg-brand-900/50 transition-all"
+                              title={t("precios.viewBranches")}
+                            >
+                              <Store size={11} />
+                              ×{p._sucursales.length}
+                            </button>
+                          ) : (
+                            <a
+                              href={p.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:border-brand-500 hover:bg-brand-100 dark:hover:bg-brand-900/50 transition-all"
+                              title={t("precios.viewInStore")}
+                            >
+                              <ExternalLink size={11} />
+                              {t("precios.tableHeaders.view")}
+                            </a>
+                          )}
                         </div>
 
-                        {/* Seguir */}
+                        {/* Seguir — solo tiene sentido para una sucursal puntual; en
+                            filas agrupadas se elige cuál seguir desde el modal. */}
                         <div className="w-5 flex justify-center">
-                          {p.precio !== null && (
+                          {!agrupada && p.precio !== null && (
                             <SeguirButton
                               producto={{
                                 tienda: p.tienda,
@@ -744,6 +855,137 @@ export default function PreciosPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de sucursales — se abre al clickear el badge/botón "×N" de una
+          fila agrupada. A diferencia del modal equivalente en
+          ComparisonModal.tsx (que solo informa, es de solo lectura), acá cada
+          sucursal tiene su propio link "Ver" y su propio botón "Seguir",
+          porque cada una tiene su propia URL y puede seguirse por separado. */}
+      {sucursalesModalRow && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setSucursalesModalRow(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md max-h-[70vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{sucursalesModalRow.nombre ?? "—"}</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {CADENA_CONFIG[sucursalesModalRow.tienda]?.label ?? sucursalesModalRow.tienda}
+                  {sucursalesModalRow.precio !== null && ` · ${fMoneyByCurrency(sucursalesModalRow.precio, sucursalesModalRow.moneda)}`}
+                  {" · "}{sucursalesModalRow._sucursales.length} {t("precios.branches")}
+                </p>
+              </div>
+              <button
+                onClick={() => setSucursalesModalRow(null)}
+                className="ml-auto shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-2">
+              {sucursalesModalRow._sucursales.map((it, idx) => (
+                <div
+                  key={`${it.sucursal_id ?? idx}`}
+                  className="flex items-center gap-2 py-2 border-b border-slate-50 dark:border-slate-800/60 last:border-0"
+                >
+                  <span className="flex-1 min-w-0 text-sm text-slate-600 dark:text-slate-300 truncate">
+                    {it.sucursal_nombre ?? "—"}
+                  </span>
+                  <a
+                    href={it.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:border-brand-500 hover:bg-brand-100 dark:hover:bg-brand-900/50 transition-all"
+                    title={t("precios.viewInStore")}
+                  >
+                    <ExternalLink size={10} />
+                    {t("precios.tableHeaders.view")}
+                  </a>
+                  {it.precio !== null && (
+                    <SeguirButton
+                      producto={{
+                        tienda: it.tienda,
+                        sku: it.sku,
+                        nombre: it.nombre ?? "—",
+                        termino_busqueda: lastQuery,
+                        url: it.url,
+                        precio: it.precio,
+                        moneda: it.moneda ?? "UYU",
+                        sucursal_id: it.sucursal_id,
+                        sucursal_nombre: it.sucursal_nombre,
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      </div>{/* fin columna principal */}
+
+      {/* ── Panel lateral: índice de productos únicos ───────────────────────
+          "Costadito" pedido para poder acotar de una sola cadena a "quiero
+          ver este producto puntual en todos lados", sin depender de tener el
+          nombre exacto de memoria — unifica por nombre EXACTO de producto
+          entre TODAS las cadenas (no por precio ni por cadena, a diferencia
+          de la agrupación de la lista principal de arriba). Solo en pantallas
+          grandes (lg+): en mobile no hay lugar para una tercera columna. */}
+      {isActive && hasResults && (
+        <div className="hidden lg:flex flex-col w-64 shrink-0 h-full py-0">
+          <div className="flex-1 min-h-0 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden flex flex-col shadow-sm">
+            <div className="shrink-0 px-3.5 py-3 border-b border-slate-100 dark:border-slate-800">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{t("precios.productIndexTitle")}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">{t("precios.productIndexHint")}</p>
+              <input
+                value={panelFiltro}
+                onChange={(e) => setPanelFiltro(e.target.value)}
+                placeholder={t("precios.productIndexSearch")}
+                className="mt-2 w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {filterNombre && (
+                <button
+                  onClick={() => setFilterNombre(null)}
+                  className="w-full flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800"
+                >
+                  <X size={11} /> {t("precios.productIndexClear")}
+                </button>
+              )}
+              {nombresUnicos
+                .filter((n) => !panelFiltro.trim() || n.nombre.toLowerCase().includes(panelFiltro.trim().toLowerCase()))
+                .map((n) => (
+                  <button
+                    key={n.nombre}
+                    onClick={() => toggleNombre(n.nombre)}
+                    className={`w-full text-left px-3.5 py-2 text-xs border-b border-slate-50 dark:border-slate-800/50 last:border-0 transition-colors ${
+                      filterNombre === n.nombre
+                        ? "bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-400 font-semibold"
+                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <span className="block truncate">{n.nombre}</span>
+                    <span className="text-[10px] text-slate-400">
+                      {n.cadenas.size === 1
+                        ? t("precios.productIndexChain", { count: n.cadenas.size })
+                        : t("precios.productIndexChains", { count: n.cadenas.size })}
+                      {" · "}{n.count}
+                    </span>
+                  </button>
+                ))}
+              {nombresUnicos.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-6">—</p>
+              )}
+            </div>
           </div>
         </div>
       )}
