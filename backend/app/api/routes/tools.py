@@ -1,6 +1,6 @@
 import logging
 import re
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -42,13 +42,15 @@ def _safe_filename(name: str) -> str:
 
 @router.get("/cenefas/template")
 async def download_cenefa_template(
+    destino: str = Query("redexpress", description="redexpress | rompe_precios"),
     current_user: User = Depends(require_permission("cenefas.view")),
 ):
-    xlsx_bytes = generate_template_bytes()
+    xlsx_bytes = generate_template_bytes(destino)
+    filename = "plantilla_rompe_precios.xlsx" if destino == "rompe_precios" else "plantilla_redexpress.xlsx"
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="plantilla_cenefas.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

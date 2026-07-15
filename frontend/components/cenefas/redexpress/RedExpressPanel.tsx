@@ -112,13 +112,13 @@ export default function RedExpressPanel() {
 
   async function handleDownloadTemplate() {
     try {
-      const { data } = await toolsApi.downloadExcelTemplate();
+      const { data } = await toolsApi.downloadExcelTemplate("redexpress");
       const url = URL.createObjectURL(new Blob([data], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = "plantilla_cenefas.xlsx";
+      a.download = "plantilla_redexpress.xlsx";
       a.click();
       URL.revokeObjectURL(url);
     } catch {

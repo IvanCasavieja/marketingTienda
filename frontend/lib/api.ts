@@ -197,8 +197,8 @@ export const toolsApi = {
   deleteCenefaTemplate: (id: number) => api.delete(`/tools/cenefas/templates/${id}`),
   downloadCenefaTemplate: (id: number) =>
     api.get(`/tools/cenefas/templates/${id}/download`, { responseType: "blob" }),
-  downloadExcelTemplate: () =>
-    api.get("/tools/cenefas/template", { responseType: "blob" }),
+  downloadExcelTemplate: (destino: "redexpress" | "rompe_precios" = "redexpress") =>
+    api.get("/tools/cenefas/template", { params: { destino }, responseType: "blob" }),
   getBuiltinTemplates: () =>
     api.get<{ slug: string; name: string; format_name: string }[]>("/tools/cenefas/builtin-templates"),
 };

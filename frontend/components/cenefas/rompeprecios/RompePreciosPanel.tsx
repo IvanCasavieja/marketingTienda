@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { CheckCircle2, FileSpreadsheet, Image as ImageIcon, Loader2, Plus, Send, X } from "lucide-react";
-import { cenefasV2Api } from "@/lib/api";
+import { cenefasV2Api, toolsApi } from "@/lib/api";
 import type { CenefaTemplateRecord } from "@/types/cenefas";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -59,6 +59,22 @@ export default function RompePreciosPanel() {
   }
 
   useEffect(loadTemplates, [t]);
+
+  async function handleDownloadTemplate() {
+    try {
+      const { data } = await toolsApi.downloadExcelTemplate("rompe_precios");
+      const url = URL.createObjectURL(new Blob([data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "plantilla_rompe_precios.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error(t("cenefas.unknownError"));
+    }
+  }
 
   const canSubmit = !!excel && !!selectedSize && !submitting;
 
@@ -150,7 +166,17 @@ export default function RompePreciosPanel() {
         </div>
 
         <div className="card p-6 space-y-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.filesSection")}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.filesSection")}</p>
+            <button
+              type="button"
+              onClick={handleDownloadTemplate}
+              className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+            >
+              <FileSpreadsheet size={13} />
+              {t("cenefas.downloadTemplate")}
+            </button>
+          </div>
           <FileDropField
             label={t("cenefas.excelLabel")}
             hint={t("cenefas.excelHint")}

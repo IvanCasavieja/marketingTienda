@@ -29,8 +29,9 @@ CANONICAL_VARS: frozenset[str] = frozenset({
     "banco",              # nombre o logo del banco (texto o imagen)
     "descripcion",        # nombre del producto
     "mecanica",           # mecánica / tipo de oferta ("Precio Final", "2X$X"...)
-    "aclaracion",         # texto de aclaración por producto
+    "aclaracion",         # texto de aclaración por producto (= "aclaracion1", ver alias abajo)
     "aclaracion2",        # segunda aclaración (alias Excel-friendly de segundaAclaracion)
+    "aclaracion3",        # tercera aclaración — plantillas "Rompe Precios" con 3 slots de legales
     "segundaAclaracion",  # segunda aclaración (ej: aviso de alcohol)
     "vigencia",           # texto de vigencia
     "codigoSKU",          # código de artículo
@@ -68,7 +69,9 @@ _ALIASES: dict[str, str] = {
     "titulo":             "mecanica",    # backward compat: columna "titulo" → var "mecanica"
     "mecanica":           "mecanica",
     "aclaracion":         "aclaracion",
+    "aclaracion1":        "aclaracion",   # alias amigable — misma variable que "aclaracion"
     "aclaracion2":        "aclaracion2",
+    "aclaracion3":        "aclaracion3",
     "segundaaclaracion":  "segundaAclaracion",
     "vigencia":           "vigencia",
     "codigosku":          "codigoSKU",
@@ -385,25 +388,76 @@ def load_products_from_bytes(
 # ---------------------------------------------------------------------------
 # Generación de plantilla Excel de descarga
 # ---------------------------------------------------------------------------
+#
+# Dos plantillas, una por destino de Cenefas — comparten estilo pero tienen
+# columnas distintas porque cada destino soporta variables distintas
+# (Rompe Precios explícitamente no tiene mecánica de combo/M x N).
 
-def generate_template_bytes() -> bytes:
+def generate_template_bytes(destino: str = "redexpress") -> bytes:
+    if destino == "rompe_precios":
+        return _build_template_workbook(
+            headers=["descripcion", "precio", "precioAnterior", "vigencia", "aclaracion1", "aclaracion2", "aclaracion3"],
+            col_widths=[36, 12, 14, 30, 30, 30, 30],
+            examples=[
+                ("ACEITE GIRASOL FAMILIA 1.5L",  139, 169, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.",                                                ""),
+                ("ARROZ BLUE PATNA 1KG",          55,  69, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "",                                                                ""),
+                ("CERVEZA PILSEN LATA 473ML",     59,  75, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.", "Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
+                ("YOGUR CONAPROLE FRUTILLA 1KG",  89, 109, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "",                                                                ""),
+                ("DETERGENTE OMO LÍQUIDO 3L",    229, 279, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.",                                                ""),
+            ],
+            var_docs=[
+                ("descripcion",    "Nombre del producto",                       "Texto",  "Corresponde a <<Descripcion>> en la plantilla PPTX. Palabras en MAYÚSCULAS se ven en negrita."),
+                ("precio",         "Precio actual (el que se muestra grande)",  "Precio", "Corresponde a <<Precio>>. Número (139) o texto ($139) — con número se auto-formatea con $."),
+                ("precioAnterior", "Precio anterior — se muestra tachado",      "Precio", "Corresponde a <<precioAnterior>>. Dejar vacío si el producto no tenía un precio previo."),
+                ("vigencia",       "Texto de vigencia de la oferta",            "Texto",  "Corresponde a <<Vigencia>>. Si se deja vacío acá, usa la vigencia general de la pantalla de Rompe Precios."),
+                ("aclaracion1",    "Primera aclaración / legal",                "Texto",  "Corresponde a <<Aclaracion1>>."),
+                ("aclaracion2",    "Segunda aclaración",                        "Texto",  "Corresponde a <<Aclaracion2>>. Dejar vacío si no aplica."),
+                ("aclaracion3",    "Tercera aclaración (ej. alcohol)",          "Texto",  "Corresponde a <<Aclaracion3>>. Dejar vacío si no aplica."),
+                ("imagen (cocarda)", "Sello/badge de la promo",                 "Imagen — NO es columna", "Se sube UNA sola vez desde la pantalla de Rompe Precios (no por producto) — no hace falta agregarla acá."),
+            ],
+        )
+
+    # RedExpress — columnas y ejemplos extraídos del Excel real de referencia
+    # (planilla ya usada con la plantilla A4 REDEX.pptx), no inventados.
+    return _build_template_workbook(
+        headers=["DESCRIPCION", "precioActual", "OFERTADET", "OFERTA", "ACLARACION", "OTRA ACLARACION", "VIGENCIA", "CODIGO"],
+        col_widths=[36, 14, 14, 14, 32, 40, 30, 16],
+        examples=[
+            ("ACEITE GIRASOL FAMILIA 1.5L",   139, "",      "",      "Precio válido en todos los locales.", "",                                                                "Válido del 10 al 16 de julio", "84512"),
+            ("ARROZ BLUE PATNA 1KG",           59, "Combo", "3x150", "Descuento aplicado en caja.",         "",                                                                "Válido del 10 al 16 de julio", "63321"),
+            ("GASEOSA COCA-COLA 1.5L",         89, "M x N", "3x2",   "Llevando 3 pagás 2.",                 "",                                                                "Válido del 10 al 16 de julio", "41207"),
+            ("CERVEZA PILSEN LATA 473ML",      69, "Combo", "6x360", "Descuento aplicado en caja.",         "Prohibida la venta de bebidas alcohólicas a menores de 18 años", "Válido del 10 al 16 de julio", "55890/55891"),
+            ("YOGUR CONAPROLE FRUTILLA 1KG",   99, "",      "",      "Precio válido en todos los locales.", "",                                                                "Válido del 10 al 16 de julio", "72190"),
+            ("PAPEL HIGIÉNICO SCOTT X4",      119, "M x N", "2x1",   "Llevando 2 pagás 1.",                 "",                                                                "Válido del 10 al 16 de julio", "30044"),
+            ("JAMÓN COOK FUD FETEADO 200G",   149, "",      "",      "Descuento aplicado en caja.",         "",                                                                "Válido del 10 al 16 de julio", "18765-18770"),
+            ("DETERGENTE OMO LÍQUIDO 3L",     259, "Combo", "2x460", "Descuento aplicado en caja.",         "",                                                                "Válido del 10 al 16 de julio", "91002"),
+            ("VINO TANNAT RESERVA 750ML",     349, "",      "",      "Precio válido en todos los locales.", "Prohibida la venta de bebidas alcohólicas a menores de 18 años", "Válido del 10 al 16 de julio", "67788"),
+            ("GALLETITAS TITA CHOCOLATE X6",   79, "M x N", "3x2",   "Llevando 3 pagás 2.",                 "",                                                                "Válido del 10 al 16 de julio", "20456"),
+        ],
+        var_docs=[
+            ("DESCRIPCION",     "Nombre del producto",                                     "Texto",  "Corresponde a <<Descripcion>>. Palabras en MAYÚSCULAS se ven en negrita."),
+            ("precioActual",    "Precio unitario del producto",                            "Precio", "Corresponde a <<Precio>>. Si OFERTADET=Combo o M x N, se usa como precio 'la unidad' en la mecánica, y el precio grande final sale de OFERTA."),
+            ("OFERTADET",       "Tipo de mecánica: 'Combo', 'M x N', o vacío = precio fijo","Lista",  "Vacío = OFERTA y la mecánica quedan en blanco (solo precio)."),
+            ("OFERTA",          "Detalle de la mecánica según OFERTADET",                  "Texto",  "Combo: 'CANTIDADxPRECIO_TOTAL' (ej. '3x150'). M x N: 'CANTIDADxPAGADAS' (ej. '3x2')."),
+            ("ACLARACION",      "Aclaración principal debajo del producto",                "Texto",  "Corresponde a <<Aclaracion1>>. Ej: 'Descuento aplicado en caja.'"),
+            ("OTRA ACLARACION", "Segunda aclaración (legales, restricciones)",             "Texto",  "Corresponde a <<OtraAclaracion1>>. Usar para el disclaimer de alcohol en bebidas."),
+            ("VIGENCIA",        "Texto de vigencia de la oferta",                          "Texto",  "Corresponde a <<Vigencia1>>. Ej: 'Válido del 10 al 16 de julio'."),
+            ("CODIGO",          "Código de artículo",                                      "Texto",  "No se muestra directo, pero si tiene '/' o un rango ('123-456') activa el texto 'unidad' junto al precio."),
+        ],
+        dropdown={"OFERTADET": ["Combo", "M x N", ""]},
+    )
+
+
+def _build_template_workbook(
+    headers:    list[str],
+    col_widths: list[int],
+    examples:   list[tuple],
+    var_docs:   list[tuple],
+    dropdown:   dict[str, list[str]] | None = None,
+) -> bytes:
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
-
-    # Columnas canónicas para cenefas de plato del día / precio por producto
-    HEADERS = [
-        "DIA", "DESCRIPCION", "precioActual",
-        "ACLARACION", "ACLARACION2", "DESCUENTO", "codigoSKU",
-    ]
-
-    EXAMPLES: list[tuple] = [
-        ("LUNES 1",      "STROGONOFF DE POLLO CON ARROZ",      189,  "Descuento aplicado en caja.", "",                                          "FALSE", "72187"),
-        ("MARTES 2",     "FELIPE JAMÓN Y QUESO",               199,  "Descuento aplicado en caja.", "",                                          "FALSE", "1332"),
-        ("MIÉRCOLES 3",  "RAVIOLES CON SALSA CARUSO",          199,  "Descuento aplicado en caja.", "Precio final con el 30% ya aplicado.",       "FALSE", "12736"),
-        ("JUEVES 4",     "MILANESA DE POLLO CON PURÉ",         249,  "Descuento aplicado en caja.", "",                                          "FALSE", "52508"),
-        ("VIERNES 5",    "FEIJOADA CON ARROZ",                 215,  "Descuento aplicado en caja.", "",                                          "FALSE", "17876"),
-    ]
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -413,13 +467,13 @@ def generate_template_bytes() -> bytes:
     header_font = Font(bold=True, color="FFFFFF", size=11)
     even_fill   = PatternFill("solid", fgColor="EEF2F7")
 
-    for col, name in enumerate(HEADERS, 1):
+    for col, name in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=name)
         cell.fill      = header_fill
         cell.font      = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    for row_idx, data in enumerate(EXAMPLES, 2):
+    for row_idx, data in enumerate(examples, 2):
         fill = even_fill if row_idx % 2 == 0 else None
         for col_idx, value in enumerate(data, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
@@ -427,24 +481,24 @@ def generate_template_bytes() -> bytes:
             if fill:
                 cell.fill = fill
 
-    # DIA, DESCRIPCION, precioActual, ACLARACION, ACLARACION2, DESCUENTO, codigoSKU
-    col_widths = [14, 36, 14, 32, 40, 10, 12]
     for col, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.row_dimensions[1].height = 26
     ws.freeze_panes = "A2"
 
-    # Validación: DESCUENTO (columna F = 6)
-    dv_desc = DataValidation(type="list", formula1='"TRUE,FALSE"', allow_blank=True)
-    dv_desc.sqref = "F2:F5000"
-    ws.add_data_validation(dv_desc)
+    for header_name, options in (dropdown or {}).items():
+        col_idx = headers.index(header_name) + 1
+        col_letter = get_column_letter(col_idx)
+        dv = DataValidation(type="list", formula1=f'"{",".join(options)}"', allow_blank=True)
+        dv.sqref = f"{col_letter}2:{col_letter}5000"
+        ws.add_data_validation(dv)
 
     # ── Hoja de referencia de variables ──────────────────────────────────────
     ws2 = wb.create_sheet("Variables")
     ws2.column_dimensions["A"].width = 20
     ws2.column_dimensions["B"].width = 42
-    ws2.column_dimensions["C"].width = 18
-    ws2.column_dimensions["D"].width = 40
+    ws2.column_dimensions["C"].width = 20
+    ws2.column_dimensions["D"].width = 46
 
     inst_font = Font(bold=True, color="FFFFFF", size=11)
     inst_fill = PatternFill("solid", fgColor="1E3A5F")
@@ -455,16 +509,7 @@ def generate_template_bytes() -> bytes:
         cell.alignment = Alignment(horizontal="center", vertical="center")
     ws2.row_dimensions[1].height = 24
 
-    VAR_DOCS = [
-        ("DIA",          "Día, número o fecha",                             "Texto",     "Ej: LUNES 1 / MARTES 2 / 01/06/2026. Cualquier texto funciona."),
-        ("DESCRIPCION",  "Nombre del plato / producto",                     "Texto",     "Palabras en MAYÚSCULAS se renderizan en negrita."),
-        ("precioActual", "Precio del producto",                             "Precio",    "Número (189) o texto ($189). Con número se auto-formatea con $."),
-        ("ACLARACION",   "Aclaración principal por producto",               "Texto",     "Ej: 'Descuento aplicado en caja.' Si vacío, usa la aclaración global."),
-        ("ACLARACION2",  "Segunda aclaración (opcional)",                   "Texto",     "Ej: 'Precio final con el 30% ya aplicado.' Dejar vacío si no aplica."),
-        ("DESCUENTO",    "Indica si el producto tiene descuento activo",    "TRUE/FALSE","Controla visibilidad de elementos como cocarda o badge. TRUE = mostrar."),
-        ("codigoSKU",    "Código de artículo",                              "Texto",     "Identificador interno del producto."),
-    ]
-    for row_idx, data in enumerate(VAR_DOCS, 2):
+    for row_idx, data in enumerate(var_docs, 2):
         for col_idx, value in enumerate(data, 1):
             cell = ws2.cell(row=row_idx, column=col_idx, value=value)
             cell.alignment = Alignment(vertical="center", wrap_text=True)

@@ -30,7 +30,9 @@ _PLACEHOLDER_MAP: dict[str, tuple[str, str, str]] = {
     "descripcion":        ("descripcion",       "text",  "smart_bold"),
     "titulo":             ("mecanica",           "text",  "upper"),
     "aclaracion":         ("aclaracion",        "text",  "none"),
+    "aclaracion1":        ("aclaracion",        "text",  "none"),  # alias — misma variable que "aclaracion"
     "aclaracion2":        ("aclaracion2",       "text",  "none"),
+    "aclaracion3":        ("aclaracion3",       "text",  "none"),
     "segundaaclaracion":  ("segundaAclaracion", "text",  "none"),
     "vigencia":           ("vigencia",          "text",  "none"),
     "codigosku":          ("codigoSKU",         "text",  "none"),
@@ -68,6 +70,7 @@ _CSV_COLUMN_MAP: dict[str, str] = {
     "mecanica":          "mecanica",
     "aclaracion":        "aclaracion",
     "aclaracion2":       "aclaracion2",
+    "aclaracion3":       "aclaracion3",
     "segundaAclaracion": "segundaAclaracion",
     "vigencia":          "vigencia",
     "codigoSKU":         "codigoSKU",
