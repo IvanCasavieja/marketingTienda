@@ -3,6 +3,7 @@ from datetime import date
 from typing import List
 from app.connectors.base import BaseConnector
 from app.core.config import settings
+from app.core.http_retry import request_with_retry
 
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
 
@@ -19,7 +20,8 @@ class DV360Connector(BaseConnector):
 
     async def _get_access_token(self) -> str:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
+            resp = await request_with_retry(
+                client, "POST",
                 _TOKEN_URL,
                 data={
                     "client_id":     settings.DV360_CLIENT_ID,
@@ -42,7 +44,7 @@ class DV360Connector(BaseConnector):
                 "filters": [{"type": "FILTER_PARTNER", "value": self.account_id}],
             },
         }
-        resp = await client.post(f"{self.BASE_URL}/queries", json=payload, headers=headers)
+        resp = await request_with_retry(client, "POST", f"{self.BASE_URL}/queries", json=payload, headers=headers)
         resp.raise_for_status()
         return resp.json()["queryId"]
 
@@ -51,19 +53,19 @@ class DV360Connector(BaseConnector):
         headers = {"Authorization": f"Bearer {access_token}"}
         async with httpx.AsyncClient(timeout=120) as client:
             query_id = await self._create_query(client, access_token, date_from, date_to)
-            resp = await client.post(f"{self.BASE_URL}/queries/{query_id}:run", headers=headers)
+            resp = await request_with_retry(client, "POST", f"{self.BASE_URL}/queries/{query_id}:run", headers=headers)
             resp.raise_for_status()
             report_id = resp.json().get("key", {}).get("reportId")
 
             # Poll until report is done (linear backoff: 3s → 15s cap)
             import asyncio
             for attempt in range(20):
-                r = await client.get(f"{self.BASE_URL}/queries/{query_id}/reports/{report_id}", headers=headers)
+                r = await request_with_retry(client, "GET", f"{self.BASE_URL}/queries/{query_id}/reports/{report_id}", headers=headers)
                 r.raise_for_status()
                 status = r.json().get("metadata", {}).get("status", {}).get("state")
                 if status == "DONE":
                     download_url = r.json()["metadata"]["googleCloudStoragePath"]
-                    csv_resp = await client.get(download_url)
+                    csv_resp = await request_with_retry(client, "GET", download_url)
                     return self._parse_csv(csv_resp.text)
                 if status == "FAILED":
                     raise ValueError("DV360 report generation failed")

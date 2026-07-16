@@ -2,6 +2,7 @@ import httpx
 from datetime import date
 from typing import List
 from app.connectors.base import BaseConnector
+from app.core.http_retry import request_with_retry
 
 # Códigos de error de Meta que indican token inválido / expirado
 _META_TOKEN_ERROR_CODES = {190, 102, 200, 467, 463}
@@ -44,7 +45,7 @@ class MetaAdsConnector(BaseConnector):
         try:
             async with httpx.AsyncClient(timeout=60) as client:
                 while url:
-                    resp = await client.get(url, params=params)
+                    resp = await request_with_retry(client, "GET", url, params=params)
                     if not resp.is_success:
                         raise ValueError(_parse_meta_error(resp))
                     data = resp.json()

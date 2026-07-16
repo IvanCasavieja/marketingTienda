@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,14 +8,17 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+import structlog
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.core.logging_config import configure_logging
 from app.core.rate_limit import limiter
 from app.core.tenant_migration import migrate_roles
 from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, PlanillaPedido, LocalAsignacion, Watchlist, WatchlistItem, WatchlistPrecioHistorial, Notificacion, CotizacionDolar, AIUsageLog  # noqa: F401
 from app.models.role import Role  # noqa: F401 — registers with Base.metadata
 from app.api import router
 
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -143,6 +147,22 @@ async def security_headers(request: Request, call_next):
     # ni nada por el estilo, pero igual bloqueamos que se embeba en un frame y
     # cualquier fallback a "default-src" laxo en navegadores viejos.
     response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    return response
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Liga un request_id a todos los logs que se emitan durante este
+    request (incluido el handler de excepción no manejada más abajo) vía
+    contextvars de structlog — permite filtrar/agrupar por request_id en
+    los logs de un incidente en vez de solo tener líneas sueltas."""
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    try:
+        response = await call_next(request)
+    finally:
+        structlog.contextvars.clear_contextvars()
+    response.headers["X-Request-ID"] = request_id
     return response
 
 # CORS — registered last so it becomes the outermost middleware and injects

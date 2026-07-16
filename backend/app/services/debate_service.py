@@ -9,6 +9,7 @@ from typing import List, Dict, AsyncIterator, Tuple
 import anthropic
 
 from app.core.config import settings
+from app.core.llm_retry import llm_call_with_retry
 from app.services.claude_service import _build_metrics_context, _build_sfmc_context
 
 
@@ -271,7 +272,7 @@ async def _ask_claude(system: str, prompt: str, max_tokens: int = 800) -> Tuple[
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text, resp.usage.input_tokens, resp.usage.output_tokens
-    return await asyncio.to_thread(_sync)
+    return await llm_call_with_retry(lambda: asyncio.to_thread(_sync), label="_ask_claude")
 
 
 async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str, int, int]:
@@ -282,13 +283,16 @@ async def _ask_gpt(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str
     if not settings.OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY no configurado")
     client = _openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    resp = await client.chat.completions.create(
-        model="gpt-4o",
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
+    resp = await llm_call_with_retry(
+        lambda: client.chat.completions.create(
+            model="gpt-4o",
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+        ),
+        label="_ask_gpt",
     )
     return resp.choices[0].message.content, resp.usage.prompt_tokens or 0, resp.usage.completion_tokens or 0
 
@@ -441,13 +445,16 @@ async def _ask_llama(system: str, prompt: str, max_tokens: int = 900) -> Tuple[s
     if not settings.GROQ_API_KEY:
         raise RuntimeError("GROQ_API_KEY no configurado")
     client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-    resp = await client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
+    resp = await llm_call_with_retry(
+        lambda: client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+        ),
+        label="_ask_llama",
     )
     return resp.choices[0].message.content, resp.usage.prompt_tokens or 0, resp.usage.completion_tokens or 0
 

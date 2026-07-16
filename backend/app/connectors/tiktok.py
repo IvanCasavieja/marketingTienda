@@ -2,6 +2,7 @@ import httpx
 from datetime import date
 from typing import List
 from app.connectors.base import BaseConnector
+from app.core.http_retry import request_with_retry
 
 
 class TikTokAdsConnector(BaseConnector):
@@ -28,7 +29,7 @@ class TikTokAdsConnector(BaseConnector):
         async with httpx.AsyncClient(timeout=30) as client:
             while True:
                 params["page"] = page
-                resp = await client.get(f"{self.BASE_URL}/report/integrated/get/", headers=headers, params=params)
+                resp = await request_with_retry(client, "GET", f"{self.BASE_URL}/report/integrated/get/", headers=headers, params=params)
                 resp.raise_for_status()
                 body = resp.json()
 

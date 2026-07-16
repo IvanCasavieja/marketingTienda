@@ -2,6 +2,7 @@ import httpx
 from datetime import date
 from typing import List, Dict
 from app.connectors.base import BaseConnector
+from app.core.http_retry import request_with_retry
 
 
 class SFMCConnector:
@@ -26,7 +27,7 @@ class SFMCConnector:
             "account_id": self.account_id,
         }
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, json=payload)
+            resp = await request_with_retry(client, "POST", url, json=payload)
             resp.raise_for_status()
             self._access_token = resp.json()["access_token"]
         return self._access_token
@@ -50,7 +51,7 @@ class SFMCConnector:
         async with httpx.AsyncClient(timeout=30) as client:
             while True:
                 params["$page"] = page
-                resp = await client.get(f"{base}/data/v1/analytics/tracking/sends", headers=headers, params=params)
+                resp = await request_with_retry(client, "GET", f"{base}/data/v1/analytics/tracking/sends", headers=headers, params=params)
                 resp.raise_for_status()
                 data = resp.json()
                 items = data.get("items", [])
@@ -70,7 +71,7 @@ class SFMCConnector:
             "$fields": "messageKey,name,status,sent,delivered,read,failed,createdDate",
         }
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(f"{base}/messaging/v1/whatsapp/definitions", headers=headers, params=params)
+            resp = await request_with_retry(client, "GET", f"{base}/messaging/v1/whatsapp/definitions", headers=headers, params=params)
             if resp.status_code == 200:
                 return resp.json().get("items", [])
         return []

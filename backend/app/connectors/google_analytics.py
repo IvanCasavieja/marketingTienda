@@ -22,6 +22,7 @@ import httpx
 
 from app.connectors.base import BaseConnector
 from app.core.config import settings
+from app.core.http_retry import request_with_retry
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +37,8 @@ class GoogleAnalyticsConnector(BaseConnector):
 
     async def _get_access_token(self) -> str:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
+            resp = await request_with_retry(
+                client, "POST",
                 _TOKEN_URL,
                 data={
                     "client_id":     settings.GOOGLE_CLIENT_ID,
@@ -73,7 +75,7 @@ class GoogleAnalyticsConnector(BaseConnector):
         }
 
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(url, json=payload, headers=headers)
+            resp = await request_with_retry(client, "POST", url, json=payload, headers=headers)
             if not resp.is_success:
                 detail = resp.text[:300]
                 raise ValueError(f"GA4 API error {resp.status_code}: {detail}")

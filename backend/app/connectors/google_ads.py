@@ -2,6 +2,7 @@ import httpx
 from datetime import date
 from typing import List
 from app.connectors.base import BaseConnector
+from app.core.http_retry import request_with_retry
 
 
 class GoogleAdsConnector(BaseConnector):
@@ -16,7 +17,8 @@ class GoogleAdsConnector(BaseConnector):
 
     async def _get_access_token(self) -> str:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
+            resp = await request_with_retry(
+                client, "POST",
                 "https://oauth2.googleapis.com/token",
                 data={
                     "client_id": self.client_id,
@@ -52,7 +54,7 @@ class GoogleAdsConnector(BaseConnector):
         url = f"{self.BASE_URL}/customers/{self.account_id.replace('-', '')}/googleAds:searchStream"
 
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(url, json={"query": query}, headers=headers)
+            resp = await request_with_retry(client, "POST", url, json={"query": query}, headers=headers)
             resp.raise_for_status()
             return resp.json()
 
