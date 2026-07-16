@@ -428,6 +428,21 @@ async def dejar_de_compartir(
 
 # ── Notificaciones ────────────────────────────────────────────────────────────
 
+def _notif_visible(user: User, n: Notificacion) -> bool:
+    """Re-chequea el permiso al leer, no solo al crear — si a un usuario le
+    sacan analytics.view después de que ya se le generaron alertas de
+    campañas (campaign_alerts_service.py), esas notificaciones viejas no
+    deberían seguir apareciendo solo porque ya existen en la tabla. Las de
+    listas de monitoreo (watchlist_service.py, sin origen_tipo) están
+    gateadas por precios.search en su lugar."""
+    if user.is_superuser:
+        return True
+    perms = user.permissions or []
+    if n.origen_tipo == "campaign_alert":
+        return "analytics.view" in perms
+    return "precios.search" in perms
+
+
 @router.get("/notificaciones")
 async def listar_notificaciones(
     current_user: User = Depends(get_current_user),
@@ -439,7 +454,7 @@ async def listar_notificaciones(
         .order_by(Notificacion.created_at.desc())
         .limit(50)
     )
-    notifs = result.scalars().all()
+    notifs = [n for n in result.scalars().all() if _notif_visible(current_user, n)]
     return [
         {
             "id": n.id,
@@ -463,7 +478,8 @@ async def contar_no_leidas(
     result = await db.execute(
         select(Notificacion).where(Notificacion.user_id == current_user.id, Notificacion.leida == False)
     )
-    return {"count": len(result.scalars().all())}
+    count = sum(1 for n in result.scalars().all() if _notif_visible(current_user, n))
+    return {"count": count}
 
 
 @router.post("/notificaciones/{notif_id}/marcar-leida")
