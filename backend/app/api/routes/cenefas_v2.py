@@ -488,7 +488,7 @@ async def confirm_job(
     payload: {"components": [{"id": "...", "base_bounds": {"x","y","width","height"}}]}
     — solo hace falta mandar los que se movieron, el resto conserva su
     posición original."""
-    job = await _get_job(job_id, db)
+    job = await _get_job(job_id, current_user, db)
     if job.status != "preview":
         raise HTTPException(
             status_code=409,
@@ -524,7 +524,7 @@ async def list_jobs(
         .limit(20)
     )
     jobs = result.scalars().all()
-    return [_job_to_dict(j) for j in jobs]
+    return [await _job_to_dict(j) for j in jobs]
 
 
 @router.get("/jobs/{job_id}")
@@ -534,8 +534,8 @@ async def get_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Consulta el estado de un job (polling)."""
-    job = await _get_job(job_id, db)
-    return _job_to_dict(job, include_report=True)
+    job = await _get_job(job_id, current_user, db)
+    return await _job_to_dict(job, include_report=True)
 
 
 @router.get("/jobs/{job_id}/download")
@@ -545,7 +545,7 @@ async def download_job_result(
     db: AsyncSession = Depends(get_db),
 ):
     """Descarga el archivo generado una vez que el job está en estado 'done'."""
-    job = await _get_job(job_id, db)
+    job = await _get_job(job_id, current_user, db)
 
     if job.status != "done":
         raise HTTPException(
@@ -555,7 +555,7 @@ async def download_job_result(
     if not job.result_path:
         raise HTTPException(status_code=404, detail="Resultado no disponible")
 
-    result_bytes = pop_job_result(job.id)
+    result_bytes = await pop_job_result(job.id)
     if not result_bytes:
         raise HTTPException(
             status_code=410,
@@ -581,21 +581,26 @@ async def download_job_result(
 
 async def _get_job(
     job_id: uuid.UUID,
+    current_user: User,
     db: AsyncSession,
 ) -> CenefaJob:
-    """Los jobs de generación son visibles para cualquier usuario autenticado
-    (no son un recurso privado por-usuario), de ahí que no se filtre por
-    created_by — a diferencia de los templates, que sí tienen dueño."""
+    """Los jobs solo son visibles para quien los creó o para un superusuario —
+    mismo criterio que _get_owned_template. Los Excel subidos a un job pueden
+    traer precios/datos de negocio de la sucursal que los generó, así que no
+    deberían quedar accesibles por UUID para cualquier otro usuario con
+    cenefas.view."""
     result = await db.execute(
         select(CenefaJob).where(CenefaJob.id == job_id)
     )
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job no encontrado")
+    if job.created_by != current_user.id and not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="No tenés permiso para acceder a este job")
     return job
 
 
-def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
+async def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
     d = {
         "id":          str(job.id),
         "status":      job.status,
@@ -624,7 +629,7 @@ def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
         if job.status == "error":
             d["validation_report"] = {"error": job.validation_report.get("error", "Error interno")}
     if job.status == "preview":
-        staged = peek_job_products(job.id)
+        staged = await peek_job_products(job.id)
         if staged:
             d["template_def"]     = staged.template_def
             d["preview_product"]  = staged.products[0] if staged.products else {}

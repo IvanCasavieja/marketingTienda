@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import pathlib
+import pickle
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -9,6 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
+from app.core.redis_client import get_redis
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template import CenefaTemplate
 from app.models.cenefa_template_v2 import CenefaTemplateV2
@@ -28,13 +30,16 @@ _BUILTIN_FILES = {
     "black":   "Bases cenefas BLACK 1.pptx",
 }
 
-REDIS_INPUT_TTL  = 3_600
-REDIS_RESULT_TTL = 86_400
+# Input (Excel parseado + template_def, entre preview y confirm) y output
+# (PPTX final, entre confirm y download) viven en Redis, no en un dict del
+# proceso — un restart/redeploy a mitad de un job (ej. Render reciclando el
+# dyno) ya no lo deja atascado para siempre ni filtra memoria: Redis expira
+# solo la entrada si nadie la reclama.
+REDIS_INPUT_TTL  = 3_600   # 1h para confirmar un preview
+REDIS_RESULT_TTL = 86_400  # 24h para descargar el PPTX ya generado
 
-# Cache en memoria — reemplaza Redis para input/output de jobs.
-# Funciona en deployments single-process (Render free tier).
-# Los bytes se eliminan al descargar o al reiniciar el servidor.
-_job_results: dict[str, bytes] = {}
+_RESULT_PREFIX   = "cenefa_job_result:"
+_PRODUCTS_PREFIX = "cenefa_job_staged:"
 
 
 @dataclass
@@ -63,27 +68,33 @@ class StagedJob:
     banco:              str = ""
 
 
-_job_products: dict[str, StagedJob] = {}
+async def store_job_result(job_id: uuid.UUID, pptx_bytes: bytes) -> None:
+    await get_redis().set(f"{_RESULT_PREFIX}{job_id}", pptx_bytes, ex=REDIS_RESULT_TTL)
 
 
-def store_job_result(job_id: uuid.UUID, pptx_bytes: bytes) -> None:
-    _job_results[str(job_id)] = pptx_bytes
+async def pop_job_result(job_id: uuid.UUID) -> bytes | None:
+    key = f"{_RESULT_PREFIX}{job_id}"
+    r = get_redis()
+    async with r.pipeline(transaction=True) as pipe:
+        value, _ = await pipe.get(key).delete(key).execute()
+    return value
 
 
-def pop_job_result(job_id: uuid.UUID) -> bytes | None:
-    return _job_results.pop(str(job_id), None)
+async def store_job_products(job_id: uuid.UUID, staged: StagedJob) -> None:
+    await get_redis().set(f"{_PRODUCTS_PREFIX}{job_id}", pickle.dumps(staged), ex=REDIS_INPUT_TTL)
 
 
-def store_job_products(job_id: uuid.UUID, staged: StagedJob) -> None:
-    _job_products[str(job_id)] = staged
+async def peek_job_products(job_id: uuid.UUID) -> StagedJob | None:
+    raw = await get_redis().get(f"{_PRODUCTS_PREFIX}{job_id}")
+    return pickle.loads(raw) if raw else None
 
 
-def peek_job_products(job_id: uuid.UUID) -> StagedJob | None:
-    return _job_products.get(str(job_id))
-
-
-def pop_job_products(job_id: uuid.UUID) -> StagedJob | None:
-    return _job_products.pop(str(job_id), None)
+async def pop_job_products(job_id: uuid.UUID) -> StagedJob | None:
+    key = f"{_PRODUCTS_PREFIX}{job_id}"
+    r = get_redis()
+    async with r.pipeline(transaction=True) as pipe:
+        raw, _ = await pipe.get(key).delete(key).execute()
+    return pickle.loads(raw) if raw else None
 
 
 async def run_generation_job(
@@ -142,7 +153,7 @@ async def run_generation_job(
             # diseños de hoja completa (a4) como de celda única (pinchos/3xa4).
             resolved_format = target_format or template_def.get("master_format", "a4")
 
-            store_job_products(job_id, StagedJob(
+            await store_job_products(job_id, StagedJob(
                 template_def=template_def,
                 products=products,
                 target_format=resolved_format,
@@ -192,7 +203,7 @@ async def confirm_generation_job(
             logger.error("confirm_generation_job: job %s not found", job_id)
             return
 
-        staged = pop_job_products(job_id)
+        staged = await pop_job_products(job_id)
         if staged is None:
             job.status            = "error"
             job.validation_report = {"error": "No hay preview pendiente para este job (¿ya se confirmó o expiró?)"}
@@ -236,7 +247,7 @@ async def confirm_generation_job(
                     render_template_to_pptx, template_def, staged.products, staged.target_format,
                     None, staged.source_pptx_bytes,  # image_overrides ya horneado, source_pptx_bytes
                 )
-            store_job_result(job_id, pptx_bytes)
+            await store_job_result(job_id, pptx_bytes)
 
             report = dict(job.validation_report or {})
             report["missing_vars"] = missing_vars
