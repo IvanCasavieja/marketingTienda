@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Sparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { convertidorApi, type ConvertidorRow, type DescripcionSugerencia } from "@/lib/api";
@@ -26,6 +26,13 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
   } | null>(null);
   const [state, setState] = useState<Map<number, RowState>>(new Map());
   const [approvingAll, setApprovingAll] = useState(false);
+  // Si el usuario cierra el modal a mitad de "Aprobar todas", el for-loop de
+  // approveAll sigue corriendo (JS no cancela un await por un unmount) —
+  // este flag corta el loop entre iteraciones y evita setState en un
+  // componente ya desmontado. Los PATCH que ya salieron antes de cerrar
+  // siguen su curso igual (correcto: ya se comprometió a guardarlos).
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   useEscapeKey(onClose);
 
@@ -63,9 +70,9 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
     setState((prev) => new Map(prev).set(rowId, { ...row, status: "approving" }));
     try {
       await onApprove(rowId, sku, row.value);
-      setState((prev) => new Map(prev).set(rowId, { ...row, status: "approved" }));
+      if (mountedRef.current) setState((prev) => new Map(prev).set(rowId, { ...row, status: "approved" }));
     } catch {
-      setState((prev) => new Map(prev).set(rowId, { ...row, status: "error" }));
+      if (mountedRef.current) setState((prev) => new Map(prev).set(rowId, { ...row, status: "error" }));
     }
   }
 
@@ -75,10 +82,11 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
     // pendientes en handleExport de ConvertidorGrid — no golpear el PATCH
     // con N requests concurrentes, y poder mostrar progreso fila por fila.
     for (const row of rows) {
+      if (!mountedRef.current) break;
       const s = state.get(row.row_id);
       if (s && s.status === "pending") await approveOne(row.row_id, row.codigo);
     }
-    setApprovingAll(false);
+    if (mountedRef.current) setApprovingAll(false);
   }
 
   const visibleRows = rows.filter((r) => state.has(r.row_id));

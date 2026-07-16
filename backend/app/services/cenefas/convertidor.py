@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.sku_descripcion import SkuDescripcion
 from app.services.cenefas.formatters import parse_price_raw
+from app.services.cenefas.validation_engine import DESCRIPTION_MAX_CHARS, DESCRIPTION_WARN_CHARS
 
 # ---------------------------------------------------------------------------
 # Normalización de headers del Excel de entrada
@@ -195,6 +196,14 @@ def _compute_warnings(row: dict) -> list[str]:
         w.append("missing_description")
     elif not _has_letters(descripcion):
         w.append("descripcion_invalida")  # descripción esperaba texto, vino solo números/símbolos
+    elif len(descripcion) > DESCRIPTION_MAX_CHARS:
+        # Es para un cartel de precio, no un párrafo -- mismos umbrales que
+        # ya usa validation_engine.py para el generador de Cenefas, así no
+        # hay que inventar un límite nuevo acá. Por encima de MAX_CHARS es
+        # overflow muy probable (mismo peso que un tipo de dato incorrecto).
+        w.append("descripcion_larga")
+    elif len(descripcion) > DESCRIPTION_WARN_CHARS:
+        w.append("descripcion_algo_larga")  # posible truncado, solo informativo
 
     precio_raw = row.get("precio_raw", "").strip()
     if not precio_raw:
@@ -268,17 +277,25 @@ async def match_rows(parsed: list[dict], db: AsyncSession, current_user_id: int)
         )
         catalogo.update(dict(result.all()))
 
-    rows = []
-    nuevas: dict[str, str] = {}  # sku -> descripcion, solo SKUs sin match que el Excel resuelve
-    for i, r in enumerate(parsed):
-        catalogo_desc = catalogo.get(r["codigo"], "")
-        if catalogo_desc:
-            descripcion = catalogo_desc
-        else:
-            descripcion = r["descripcion_excel"]
-            if descripcion and r["codigo"] not in nuevas:
-                nuevas[r["codigo"]] = descripcion[:_MAX_DESCRIPCION_LEN]
+    # Primera pasada: para cada SKU nuevo (sin match en catálogo) que el
+    # Excel resuelve, decidir el valor único que se va a aprender —
+    # primera ocurrencia gana si el SKU está repetido, y ya truncado a
+    # _MAX_DESCRIPCION_LEN. Esto se calcula ANTES de armar las filas para
+    # que, si el mismo SKU nuevo aparece dos veces con descripciones
+    # distintas (o una de ellas viene larga), TODAS sus filas terminen
+    # mostrando exactamente el mismo texto que se guarda en el catálogo —
+    # nunca una versión distinta o sin truncar solo por ser la 2ª ocurrencia.
+    nuevas: dict[str, str] = {}
+    for r in parsed:
+        if r["codigo"] in catalogo or r["codigo"] in nuevas:
+            continue
+        descripcion_excel = r["descripcion_excel"]
+        if descripcion_excel:
+            nuevas[r["codigo"]] = descripcion_excel[:_MAX_DESCRIPCION_LEN]
 
+    rows = []
+    for i, r in enumerate(parsed):
+        descripcion = catalogo.get(r["codigo"]) or nuevas.get(r["codigo"], "")
         row = {**r, "descripcion": descripcion}
         rows.append({
             "row_id":              i,
@@ -326,6 +343,8 @@ _WARN_COL = {
     "nombre_articulo_invalido":  2,
     "missing_description":       3,
     "descripcion_invalida":      3,
+    "descripcion_larga":         3,
+    "descripcion_algo_larga":    3,
     "moneda_invalida":           4,
     "missing_precio_anterior":   5,
     "precio_anterior_invalido":  5,
@@ -340,8 +359,11 @@ _WARN_COL = {
 # Warnings de "tipo incorrecto" (hay contenido, pero no del tipo esperado
 # para esa columna) — más severos que un simple "falta el dato", porque
 # apuntan a la columna exacta donde el Excel de origen viene corrido.
+# descripcion_algo_larga NO entra acá a propósito: es solo informativo
+# (posible truncado), no evidencia de columnas corridas — mismo criterio
+# que WARN_CHARS vs. MAX_CHARS en validation_engine.py.
 _INVALID_TYPE_CODES = {
-    "nombre_articulo_invalido", "descripcion_invalida", "moneda_invalida",
+    "nombre_articulo_invalido", "descripcion_invalida", "descripcion_larga", "moneda_invalida",
     "precio_anterior_invalido", "precio_invalido", "oferta_det_invalido",
     "descripcion_web_invalida",
 }

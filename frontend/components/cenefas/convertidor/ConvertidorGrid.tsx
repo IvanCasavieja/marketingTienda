@@ -27,7 +27,7 @@ type ColumnKey = "codigo" | "nombre_articulo" | "descripcion" | "moneda" | "prec
 const COLUMNS: { key: ColumnKey; i18nKey: string; editable?: boolean; warningCodes?: string[] }[] = [
   { key: "codigo",          i18nKey: "codigo" },
   { key: "nombre_articulo", i18nKey: "nombreArticulo", warningCodes: ["nombre_articulo_invalido"] },
-  { key: "descripcion",     i18nKey: "descripcion",     editable: true, warningCodes: ["missing_description", "descripcion_invalida"] },
+  { key: "descripcion",     i18nKey: "descripcion",     editable: true, warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
   { key: "moneda",          i18nKey: "moneda",          warningCodes: ["moneda_invalida"] },
   { key: "precio_anterior", i18nKey: "precioAnterior",  warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
   { key: "precio",          i18nKey: "precio",          warningCodes: ["missing_price", "precio_invalido"] },
@@ -40,12 +40,29 @@ const COLUMNS: { key: ColumnKey; i18nKey: string; editable?: boolean; warningCod
 // para esa columna) — más severos que un simple "falta el dato": apuntan a
 // la columna exacta donde el Excel de origen viene corrido.
 const INVALID_TYPE_CODES = new Set([
-  "nombre_articulo_invalido", "descripcion_invalida", "moneda_invalida",
+  "nombre_articulo_invalido", "descripcion_invalida", "descripcion_larga", "moneda_invalida",
   "precio_anterior_invalido", "precio_invalido", "oferta_det_invalido",
   "descripcion_web_invalida",
 ]);
 
 const HAS_LETTER_RE = /\p{L}/u;
+// Mismos umbrales que DESCRIPTION_WARN_CHARS/DESCRIPTION_MAX_CHARS en
+// backend/app/services/cenefas/validation_engine.py — duplicados acá (no
+// hay endpoint que los exponga) para recalcular el warning client-side sin
+// esperar un round-trip al backend en cada tecla.
+const DESCRIPTION_WARN_CHARS = 60;
+const DESCRIPTION_MAX_CHARS = 100;
+const DESCRIPCION_WARNING_CODES = ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"];
+
+function computeDescripcionWarnings(currentWarnings: string[], value: string): string[] {
+  const warnings = currentWarnings.filter((w) => !DESCRIPCION_WARNING_CODES.includes(w));
+  const trimmed = value.trim();
+  if (!trimmed) warnings.push("missing_description");
+  else if (!HAS_LETTER_RE.test(trimmed)) warnings.push("descripcion_invalida");
+  else if (trimmed.length > DESCRIPTION_MAX_CHARS) warnings.push("descripcion_larga");
+  else if (trimmed.length > DESCRIPTION_WARN_CHARS) warnings.push("descripcion_algo_larga");
+  return warnings;
+}
 
 interface Props {
   rows: ConvertidorRow[];
@@ -118,13 +135,11 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
   function handleDescripcionChange(rowId: number, sku: string, value: string) {
     const trimmed = value.trim();
     setRows((prev) =>
-      (prev ?? []).map((r) => {
-        if (r.row_id !== rowId) return r;
-        const warnings = r.warnings.filter((w) => w !== "missing_description" && w !== "descripcion_invalida");
-        if (!trimmed) warnings.push("missing_description");
-        else if (!HAS_LETTER_RE.test(trimmed)) warnings.push("descripcion_invalida"); // descripción esperaba texto, no solo números
-        return { ...r, descripcion: value, warnings };
-      })
+      (prev ?? []).map((r) =>
+        r.row_id === rowId
+          ? { ...r, descripcion: value, warnings: computeDescripcionWarnings(r.warnings, value) }
+          : r
+      )
     );
 
     if (pendingSaves.current[rowId]) clearTimeout(pendingSaves.current[rowId]);
@@ -163,11 +178,7 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
     setRows((prev) =>
       (prev ?? []).map((r) =>
         r.row_id === rowId
-          ? {
-              ...r,
-              descripcion: value,
-              warnings: r.warnings.filter((w) => w !== "missing_description" && w !== "descripcion_invalida"),
-            }
+          ? { ...r, descripcion: value, warnings: computeDescripcionWarnings(r.warnings, value) }
           : r
       )
     );
