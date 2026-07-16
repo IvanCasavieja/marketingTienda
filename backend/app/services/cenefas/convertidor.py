@@ -15,6 +15,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.sku_descripcion import SkuDescripcion
@@ -39,6 +40,10 @@ def _norm(name) -> str:
 _INPUT_ALIASES: dict[str, str] = {
     "codigo":         "codigo",
     "nombrearticulo": "nombre_articulo",
+    # "descripcion_excel", no "descripcion" -- ese nombre ya lo usa el campo
+    # de salida que llena match_rows() desde el catálogo; si coincidieran,
+    # el merge en match_rows pisaría uno con el otro sin querer.
+    "descripcion":    "descripcion_excel",
     "moneda":         "moneda",
     "precioant":      "precio_anterior",
     "precio":         "precio",
@@ -107,7 +112,9 @@ def parse_input_excel(excel_bytes: bytes) -> list[dict]:
     """Detecta la fila de headers real (puede no ser la fila 1 — el export
     real de gestión trae una fila de título + una fila en blanco antes),
     mapea columnas por nombre normalizado, y extrae por fila: codigo,
-    nombre_articulo, moneda, precio_anterior, precio, oferta, oferta_det,
+    nombre_articulo, descripcion_excel (si el Excel ya trae una columna
+    "Descripción" propia -- ver match_rows() para cómo se prioriza contra
+    el catálogo), moneda, precio_anterior, precio, oferta, oferta_det,
     descripcion_web. Columnas no reconocidas se ignoran."""
     wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), read_only=True, data_only=True)
     ws = wb[wb.sheetnames[0]]
@@ -159,6 +166,7 @@ def parse_input_excel(excel_bytes: bytes) -> list[dict]:
         parsed.append({
             "codigo":            codigo,
             "nombre_articulo":   _clean_str(cell(row, "nombre_articulo")),
+            "descripcion_excel": _clean_str(cell(row, "descripcion_excel")),
             "moneda":            _clean_str(cell(row, "moneda")) or "$",
             "precio_anterior":   _parse_price_or_none(precio_anterior_raw),
             "precio_anterior_raw": precio_anterior_raw,
@@ -234,9 +242,23 @@ def _chunks(items: list, size: int):
         yield items[i:i + size]
 
 
-async def match_rows(parsed: list[dict], db: AsyncSession) -> list[dict]:
+_MAX_DESCRIPCION_LEN = 300  # mismo límite que SkuDescripcion.descripcion (String(300))
+
+
+async def match_rows(parsed: list[dict], db: AsyncSession, current_user_id: int) -> tuple[list[dict], int]:
     """Bulk lookup por SKU (un SELECT por cada 1000 códigos distintos, no
-    N queries) + cómputo de warnings por fila."""
+    N queries) + cómputo de warnings por fila.
+
+    Precedencia de la descripción, por fila: el catálogo (sku_descripciones)
+    siempre gana si ya tiene ese SKU -- se asume más confiable/ya curado que
+    lo que traiga el Excel. Si el catálogo no tiene el SKU pero el Excel sí
+    trae su propia columna "Descripción" con contenido, esa es información
+    NUEVA: se usa para resolver la fila y además se aprende (INSERT) en el
+    catálogo compartido, para que el próximo import de cualquier usuario ya
+    la traiga resuelta.
+
+    Devuelve (rows, learned_count) -- learned_count es cuántas filas
+    realmente se insertaron en sku_descripciones en esta llamada."""
     skus = sorted({r["codigo"] for r in parsed if r["codigo"]})
     catalogo: dict[str, str] = {}
     for chunk in _chunks(skus, 1000):
@@ -247,11 +269,20 @@ async def match_rows(parsed: list[dict], db: AsyncSession) -> list[dict]:
         catalogo.update(dict(result.all()))
 
     rows = []
+    nuevas: dict[str, str] = {}  # sku -> descripcion, solo SKUs sin match que el Excel resuelve
     for i, r in enumerate(parsed):
-        row = {**r, "descripcion": catalogo.get(r["codigo"], "")}
+        catalogo_desc = catalogo.get(r["codigo"], "")
+        if catalogo_desc:
+            descripcion = catalogo_desc
+        else:
+            descripcion = r["descripcion_excel"]
+            if descripcion and r["codigo"] not in nuevas:
+                nuevas[r["codigo"]] = descripcion[:_MAX_DESCRIPCION_LEN]
+
+        row = {**r, "descripcion": descripcion}
         rows.append({
             "row_id":              i,
-            "matched":             r["codigo"] in catalogo,
+            "matched":             bool(descripcion),
             "codigo":              row["codigo"],
             "nombre_articulo":     row["nombre_articulo"],
             "descripcion":         row["descripcion"],
@@ -265,7 +296,17 @@ async def match_rows(parsed: list[dict], db: AsyncSession) -> list[dict]:
             "descripcion_web":     row["descripcion_web"],
             "warnings":            _compute_warnings(row),
         })
-    return rows
+
+    learned_count = 0
+    if nuevas:
+        stmt = pg_insert(SkuDescripcion).values([
+            {"sku": sku, "descripcion": desc, "updated_by_id": current_user_id}
+            for sku, desc in nuevas.items()
+        ]).on_conflict_do_nothing(index_elements=["sku"])
+        result = await db.execute(stmt)
+        learned_count = result.rowcount or 0
+
+    return rows, learned_count
 
 
 # ---------------------------------------------------------------------------

@@ -685,6 +685,20 @@
       "oferta": "Oferta",
       "ofertaDet": "Tipo de Oferta",
       "descripcionWeb": "Descrição Web"
+    },
+    "learnedToast": "Adicionamos {{count}} descrições novas ao seu dicionário a partir deste Excel.",
+    "learnedBadge": "+{{count}} novas no catálogo",
+    "ai": {
+      "button": "Gerar com IA",
+      "modalTitle": "Sugestões de descrição geradas com IA",
+      "loading": "Gerando sugestões…",
+      "notConfigured": "A geração com IA não está configurada neste ambiente.",
+      "genericError": "Não conseguimos gerar as sugestões. Tente novamente em alguns minutos.",
+      "approve": "Aprovar",
+      "approveAll": "Aprovar todas",
+      "approving": "Aprovando…",
+      "failedCount": "Não conseguimos gerar sugestão para {{count}} produto(s) — complete manualmente.",
+      "truncatedNotice": "Geramos sugestões para {{processed}} de {{requested}} produtos — reabra este modal para o restante."
     }
   },
   "precios": {

@@ -3,21 +3,15 @@ import { useState, ChangeEvent, FormEvent } from "react";
 import { FileSpreadsheet, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { convertidorApi, type ConvertidorRow } from "@/lib/api";
+import { convertidorApi, type ConvertidorRow, type ConvertidorSummary } from "@/lib/api";
 import { FileDropField } from "@/components/cenefas/redexpress/RedExpressPanel";
 import ConvertidorGrid from "./ConvertidorGrid";
-
-interface Summary {
-  total: number;
-  matched_count: number;
-  unmatched_count: number;
-}
 
 export default function ConvertidorPanel() {
   const { t } = useTranslation();
   const [excel, setExcel] = useState<File | null>(null);
   const [rows, setRows] = useState<ConvertidorRow[] | null>(null);
-  const [summary, setSummary] = useState<Summary | null>(null);
+  const [summary, setSummary] = useState<ConvertidorSummary | null>(null);
   const [loading, setLoading] = useState(false);
 
   function reset() {
@@ -35,7 +29,15 @@ export default function ConvertidorPanel() {
       fd.append("excel", excel);
       const { data } = await convertidorApi.preview(fd);
       setRows(data.rows);
-      setSummary({ total: data.total, matched_count: data.matched_count, unmatched_count: data.unmatched_count });
+      setSummary({
+        total: data.total,
+        matched_count: data.matched_count,
+        unmatched_count: data.unmatched_count,
+        learned_count: data.learned_count,
+      });
+      if (data.learned_count > 0) {
+        toast.success(t("convertidor.learnedToast", { count: data.learned_count }));
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("convertidor.unknownError"));
     } finally {

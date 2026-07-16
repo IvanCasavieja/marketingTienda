@@ -298,11 +298,30 @@ export interface ConvertidorRow {
   warnings: string[];
 }
 
-export interface ConvertidorPreviewResponse {
-  rows: ConvertidorRow[];
+export interface ConvertidorSummary {
   total: number;
   matched_count: number;
   unmatched_count: number;
+  learned_count: number;
+}
+
+export interface ConvertidorPreviewResponse extends ConvertidorSummary {
+  rows: ConvertidorRow[];
+}
+
+export interface DescripcionSugerencia {
+  row_id: number;
+  codigo: string;
+  descripcion: string;
+  too_long: boolean;
+}
+
+export interface GenerarDescripcionesIAResponse {
+  suggestions: DescripcionSugerencia[];
+  failed_row_ids: number[];
+  requested_count: number;
+  processed_count: number;
+  truncated: boolean;
 }
 
 export const convertidorApi = {
@@ -317,6 +336,10 @@ export const convertidorApi = {
     ),
   export: (rows: ConvertidorRow[]) =>
     api.post("/tools/cenefas/convertidor/export", { rows }, { responseType: "blob" }),
+  generarDescripcionesIA: (
+    rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion_web: string }[]
+  ) =>
+    api.post<GenerarDescripcionesIAResponse>("/tools/cenefas/convertidor/descripciones/generar-ia", { rows }),
 };
 
 // ---------------------------------------------------------------------------

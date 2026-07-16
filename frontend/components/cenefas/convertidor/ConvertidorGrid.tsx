@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Download, Loader2, Target } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Sparkles, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { convertidorApi, type ConvertidorRow } from "@/lib/api";
+import { convertidorApi, type ConvertidorRow, type ConvertidorSummary } from "@/lib/api";
+import ConvertidorAiModal from "./ConvertidorAiModal";
 
 // Virtualización manual (sin librería nueva): solo se renderizan las filas
 // visibles ± un buffer, con dos <tr> espaciadores para mantener el alto de
@@ -46,16 +47,10 @@ const INVALID_TYPE_CODES = new Set([
 
 const HAS_LETTER_RE = /\p{L}/u;
 
-interface Summary {
-  total: number;
-  matched_count: number;
-  unmatched_count: number;
-}
-
 interface Props {
   rows: ConvertidorRow[];
   setRows: Dispatch<SetStateAction<ConvertidorRow[] | null>>;
-  summary: Summary | null;
+  summary: ConvertidorSummary | null;
   onReset: () => void;
 }
 
@@ -65,6 +60,7 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
   const [exporting, setExporting] = useState(false);
   const [savingRowId, setSavingRowId] = useState<number | null>(null);
   const [pendingFocusRowId, setPendingFocusRowId] = useState<number | null>(null);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
   const pendingSaves = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const dlRef = useRef<HTMLAnchorElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -155,6 +151,29 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
     flushSave(rowId, sku, value);
   }
 
+  // Callback que usa el modal de IA al aprobar una sugerencia (individual o
+  // en bloque) — reusa flushSave (el mismo PATCH + toast que ya existe, no
+  // se duplica lógica de guardado), agregando solo la actualización
+  // inmediata que handleDescripcionChange hace al tipear. No comparte
+  // código con handleDescripcionChange porque ese además programa el
+  // debounce, y acá hace falta guardar ya (el usuario ya aprobó).
+  async function commitDescripcion(rowId: number, sku: string, value: string) {
+    const trimmed = value.trim();
+    if (!trimmed || !HAS_LETTER_RE.test(trimmed)) return;
+    setRows((prev) =>
+      (prev ?? []).map((r) =>
+        r.row_id === rowId
+          ? {
+              ...r,
+              descripcion: value,
+              warnings: r.warnings.filter((w) => w !== "missing_description" && w !== "descripcion_invalida"),
+            }
+          : r
+      )
+    );
+    await flushSave(rowId, sku, value);
+  }
+
   async function handleExport() {
     setExporting(true);
     try {
@@ -221,15 +240,29 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
             <span className="badge badge-blue">
               {t("convertidor.matchedSummary", { matched: summary.matched_count, total: summary.total })}
             </span>
+            {summary.learned_count > 0 && (
+              <span className="badge badge-green">
+                {t("convertidor.learnedBadge", { count: summary.learned_count })}
+              </span>
+            )}
           </div>
         )}
       </div>
 
       {rowsNeedingDescripcion.length > 0 && (
         <div className="card p-3 space-y-2">
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            {t("convertidor.unmatchedNavTitle", { count: rowsNeedingDescripcion.length })}
-          </p>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {t("convertidor.unmatchedNavTitle", { count: rowsNeedingDescripcion.length })}
+            </p>
+            <button
+              type="button"
+              onClick={() => setAiModalOpen(true)}
+              className="btn-secondary text-xs flex items-center gap-1.5"
+            >
+              <Sparkles size={13} /> {t("convertidor.ai.button")}
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2">
             {rowsNeedingDescripcion.map((row) => (
               <button
@@ -322,6 +355,14 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
         {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
         {exporting ? t("convertidor.exporting") : t("convertidor.download")}
       </button>
+
+      {aiModalOpen && (
+        <ConvertidorAiModal
+          rows={rowsNeedingDescripcion}
+          onApprove={commitDescripcion}
+          onClose={() => setAiModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

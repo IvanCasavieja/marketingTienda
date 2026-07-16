@@ -5,15 +5,17 @@ rápido, a diferencia de renderizar PPTX — no hay razón para repetir acá el
 patrón de jobs del generador de Cenefas."""
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_permission
+from app.core.rate_limit import limiter
 from app.core.uploads import read_limited
 from app.models.sku_descripcion import SkuDescripcion
 from app.models.user import User
@@ -24,6 +26,7 @@ from app.services.cenefas.convertidor import (
     normalize_sku,
     parse_input_excel,
 )
+from app.services.cenefas.convertidor_ai import _ROWS_MAX_PER_REQUEST, generar_descripciones
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,7 @@ router = APIRouter(prefix="/tools/cenefas/convertidor", tags=["cenefas-convertid
 @router.post("/preview")
 async def preview(
     excel: UploadFile = File(...),
-    _: User = Depends(require_permission("cenefas.view")),
+    current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     excel_bytes = await read_limited(excel, "Excel")
@@ -45,13 +48,16 @@ async def preview(
         logger.error("convertidor preview parse error: %s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=f"Error al parsear el archivo: {e}")
 
-    rows = await match_rows(parsed, db)
+    rows, learned_count = await match_rows(parsed, db, current_user.id)
+    if learned_count:
+        await db.commit()
     matched = sum(1 for r in rows if r["matched"])
     return {
         "rows": rows,
         "total": len(rows),
         "matched_count": matched,
         "unmatched_count": len(rows) - matched,
+        "learned_count": learned_count,
     }
 
 
@@ -130,3 +136,49 @@ async def export(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="convertidor_cenefas.xlsx"'},
     )
+
+
+class GenerarDescripcionItem(BaseModel):
+    row_id: int
+    codigo: str
+    nombre_articulo: str = ""
+    descripcion_web: str = ""
+
+
+class GenerarDescripcionesRequest(BaseModel):
+    rows: list[GenerarDescripcionItem]
+
+
+@router.post("/descripciones/generar-ia")
+@limiter.limit("5/minute")
+async def generar_descripciones_ia(
+    request: Request,
+    payload: GenerarDescripcionesRequest,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Genera sugerencias de descripción con Claude para filas sin match —
+    nunca escribe en el catálogo acá, eso lo hace el PATCH existente cuando
+    el usuario aprueba una sugerencia desde el modal de revisión."""
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="La generación con IA no está configurada en este ambiente")
+    if not payload.rows:
+        raise HTTPException(status_code=400, detail="No hay productos para generar")
+
+    truncated = len(payload.rows) > _ROWS_MAX_PER_REQUEST
+    items = [r.model_dump() for r in payload.rows[:_ROWS_MAX_PER_REQUEST]]
+
+    try:
+        result = await generar_descripciones(items, db, current_user.id)
+    except Exception as exc:
+        logger.error("generar_descripciones_ia: error — %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="No pude generar las descripciones en este momento")
+
+    await db.commit()  # persiste el ai_usage_log acumulado en generar_descripciones
+    return {
+        "suggestions": result["suggestions"],
+        "failed_row_ids": result["failed_row_ids"],
+        "requested_count": len(payload.rows),
+        "processed_count": len(items),
+        "truncated": truncated,
+    }

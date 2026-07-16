@@ -685,6 +685,20 @@
       "oferta": "Offer",
       "ofertaDet": "Offer Type",
       "descripcionWeb": "Web Description"
+    },
+    "learnedToast": "We added {{count}} new descriptions to your dictionary from this Excel.",
+    "learnedBadge": "+{{count}} new to catalog",
+    "ai": {
+      "button": "Generate with AI",
+      "modalTitle": "AI-generated description suggestions",
+      "loading": "Generating suggestions…",
+      "notConfigured": "AI generation is not configured in this environment.",
+      "genericError": "We couldn't generate the suggestions. Try again in a few minutes.",
+      "approve": "Approve",
+      "approveAll": "Approve all",
+      "approving": "Approving…",
+      "failedCount": "We couldn't generate a suggestion for {{count}} product(s) — fill them in by hand.",
+      "truncatedNotice": "We generated suggestions for {{processed}} of {{requested}} products — reopen this modal for the rest."
     }
   },
   "precios": {
