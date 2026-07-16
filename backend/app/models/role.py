@@ -14,7 +14,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     "platform.users.manage":   "Crear, editar, activar/desactivar y cambiar el rol de usuarios",
 
     # Cenefas
-    "cenefas.view":            "Ver templates de cenefas guardados",
+    "cenefas.view":            "Ver templates de cenefas guardados, usar el Convertidor de Excel y corregir el catálogo compartido de descripciones",
     "cenefas.generate":        "Generar cenefas desde un archivo Excel y exportar a PPTX",
     "cenefas.edit":            "Crear y editar templates en el editor visual",
     "cenefas.import":          "Importar templates desde archivos PPTX",

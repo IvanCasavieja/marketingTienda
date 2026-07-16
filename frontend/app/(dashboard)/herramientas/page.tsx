@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Presentation, Layers, ChevronRight } from "lucide-react";
+import { Presentation, Layers, FileSpreadsheet, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export default function HerramientasPage() {
@@ -22,6 +22,14 @@ export default function HerramientasPage() {
       icon:        Layers,
       tag:         t("herramientas.editor.tag"),
       tagColor:    "bg-brand-500/10 text-brand-400",
+    },
+    {
+      href:        "/herramientas/convertidor",
+      title:       t("herramientas.convertidor.title"),
+      description: t("herramientas.convertidor.description"),
+      icon:        FileSpreadsheet,
+      tag:         t("herramientas.convertidor.tag"),
+      tagColor:    "bg-amber-500/10 text-amber-400",
     },
   ];
 

@@ -6,6 +6,7 @@ import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
   BarChart3, ChevronRight, Presentation, Globe, ShieldCheck, HelpCircle, X, Tag,
   Sun, Moon, ClipboardList, Bell, Star, Activity, TrendingUp, TrendingDown, AlertTriangle, Check,
+  FileSpreadsheet,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
@@ -96,6 +97,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: t("sidebar.medios"),         perm: "ai.use" },
     { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.medios"),         perm: "connections.view" },
     { href: "/herramientas/cenefas",    label: t("sidebar.cenefas"),  icon: Presentation, section: t("sidebar.herramientas"), perm: "cenefas.view" },
+    { href: "/herramientas/convertidor", label: t("sidebar.convertidor"), icon: FileSpreadsheet, section: t("sidebar.herramientas"), perm: "cenefas.view" },
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,           section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,        section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/redexpress/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpress"), perm: "redexpress.view" },

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.routes import auth, connections, metrics, analytics, sfmc, tools, chat, cenefas_v2, admin, precios, redexpress, watchlist
+from app.api.routes import auth, connections, metrics, analytics, sfmc, tools, chat, cenefas_v2, cenefas_convertidor, admin, precios, redexpress, watchlist
 
 router = APIRouter()
 router.include_router(auth.router)
@@ -10,6 +10,7 @@ router.include_router(sfmc.router)
 router.include_router(tools.router)
 router.include_router(chat.router)
 router.include_router(cenefas_v2.router)
+router.include_router(cenefas_convertidor.router)
 router.include_router(admin.router)
 router.include_router(precios.router)
 router.include_router(redexpress.router)

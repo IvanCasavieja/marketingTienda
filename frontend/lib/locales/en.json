@@ -37,6 +37,7 @@
     "configuracion": "SETTINGS",
     "redexpress": "Redexpres",
     "cenefas": "Banners",
+    "convertidor": "Excel Converter",
     "editorPlantillas": "Template editor",
     "historial": "History",
     "buscarPrecios": "Search prices",
@@ -646,6 +647,40 @@
       "tag": "Editor",
       "title": "Template editor",
       "description": "Design or import a template visually, map Excel variables, configure rules, and generate banners with your own design."
+    },
+    "convertidor": {
+      "tag": "Descriptions",
+      "title": "Excel Converter",
+      "description": "Upload the raw Excel from the management system and get a clean one, with correct descriptions already matched by SKU."
+    }
+  },
+  "convertidor": {
+    "title": "Excel Converter",
+    "subtitle": "Upload the management system Excel and get a clean one, with correct descriptions.",
+    "intro": "Upload the file exactly as downloaded from the management system. We'll match it by code against the description catalog and highlight what's missing.",
+    "excelLabel": "Management Excel",
+    "process": "Process Excel",
+    "processing": "Processing…",
+    "unknownError": "Unknown error",
+    "changeFile": "Upload another file",
+    "legendMissing": "No description — needs to be filled in",
+    "legendWarning": "Missing data in the source Excel",
+    "matchedSummary": "{{matched}} of {{total}} products matched automatically",
+    "saveError": "Could not save the description to the catalog",
+    "descripcionPlaceholder": "Fill in description…",
+    "exporting": "Generating…",
+    "download": "Download Excel",
+    "downloaded": "Excel downloaded",
+    "columns": {
+      "codigo": "Code",
+      "nombreArticulo": "Item Name",
+      "descripcion": "Description",
+      "moneda": "Currency",
+      "precioAnterior": "Previous Price",
+      "precio": "Price",
+      "oferta": "Offer",
+      "ofertaDet": "Offer Type",
+      "descripcionWeb": "Web Description"
     }
   },
   "precios": {

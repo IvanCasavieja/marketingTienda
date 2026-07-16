@@ -278,6 +278,46 @@ export const cenefasV2Api = {
 };
 
 // ---------------------------------------------------------------------------
+// Convertidor de Excel
+// ---------------------------------------------------------------------------
+
+export interface ConvertidorRow {
+  row_id: number;
+  codigo: string;
+  nombre_articulo: string;
+  descripcion: string;
+  moneda: string;
+  precio_anterior: number | null;
+  precio: number | null;
+  oferta: string;
+  oferta_det: string;
+  descripcion_web: string;
+  matched: boolean;
+  warnings: string[];
+}
+
+export interface ConvertidorPreviewResponse {
+  rows: ConvertidorRow[];
+  total: number;
+  matched_count: number;
+  unmatched_count: number;
+}
+
+export const convertidorApi = {
+  preview: (formData: FormData) =>
+    api.post<ConvertidorPreviewResponse>("/tools/cenefas/convertidor/preview", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+  updateDescripcion: (sku: string, descripcion: string) =>
+    api.patch<{ sku: string; descripcion: string }>(
+      `/tools/cenefas/convertidor/descripciones/${encodeURIComponent(sku)}`,
+      { descripcion }
+    ),
+  export: (rows: ConvertidorRow[]) =>
+    api.post("/tools/cenefas/convertidor/export", { rows }, { responseType: "blob" }),
+};
+
+// ---------------------------------------------------------------------------
 // Precios — catálogo de supermercados uruguayos
 // ---------------------------------------------------------------------------
 
