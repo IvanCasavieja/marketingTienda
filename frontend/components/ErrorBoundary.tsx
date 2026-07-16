@@ -1,6 +1,9 @@
 "use client";
 import { Component, ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+// Componente de clase — no puede usar el hook useTranslation(), así que llama
+// directo a la instancia de i18next (misma que usa react-i18next por debajo).
+import i18n from "@/lib/i18n";
 
 interface Props {
   children: ReactNode;
@@ -27,9 +30,9 @@ export default class ErrorBoundary extends Component<Props, State> {
             <AlertTriangle size={24} className="text-red-500" />
           </div>
           <div>
-            <p className="font-semibold text-slate-800">Algo salió mal</p>
+            <p className="font-semibold text-slate-800">{i18n.t("errorBoundary.title")}</p>
             <p className="text-sm text-slate-500 mt-1 max-w-sm">
-              {this.state.error.message || "Error inesperado en la aplicación"}
+              {this.state.error.message || i18n.t("errorBoundary.defaultMessage")}
             </p>
           </div>
           <button
@@ -37,7 +40,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             className="flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700 border border-brand-200 hover:border-brand-300 px-4 py-2 rounded-lg transition-colors"
           >
             <RefreshCw size={14} />
-            Reintentar
+            {i18n.t("errorBoundary.retry")}
           </button>
         </div>
       );

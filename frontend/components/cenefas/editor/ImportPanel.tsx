@@ -36,7 +36,7 @@ export default function ImportPanel({ onDismiss }: Props) {
     cenefasV2Api
       .getBuiltinDefinitions()
       .then(({ data }) => setBuiltins(data))
-      .catch(() => {})
+      .catch(() => toast.error("No se pudieron cargar las plantillas predeterminadas"))
       .finally(() => setLoading(false));
   }, []);
 

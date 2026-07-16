@@ -4,6 +4,7 @@ import { X, FileType2, Loader2 } from "lucide-react";
 import { cenefasV2Api } from "@/lib/api";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 // Subir o reemplazar la plantilla de UN tamaño de Rompe Precios. Sin edición
 // Konva acá — el reposicionamiento pasa en PreviewStep, esto solo importa
@@ -30,6 +31,8 @@ export default function SizeTemplateUploadModal({ sizeId, sizeLabel, onClose, on
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEscapeKey(onClose);
 
   async function handleSave() {
     if (!file) return;
@@ -62,14 +65,17 @@ export default function SizeTemplateUploadModal({ sizeId, sizeLabel, onClose, on
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="size-upload-modal-title"
         className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <p id="size-upload-modal-title" className="text-sm font-semibold text-slate-800 dark:text-slate-100">
             {t("cenefas.rompePrecios.uploadTemplateFor", { size: sizeLabel })}
           </p>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <button onClick={onClose} aria-label={t("common.close")} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
             <X size={18} />
           </button>
         </div>

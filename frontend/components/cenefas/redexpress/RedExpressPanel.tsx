@@ -54,7 +54,7 @@ export default function RedExpressPanel() {
   useEffect(() => {
     toolsApi.getCenefaTemplates()
       .then(({ data }) => setTemplates(data))
-      .catch(() => {})
+      .catch(() => toast.error("No se pudieron cargar los templates guardados"))
       .finally(() => setLoadingTemplates(false));
   }, []);
 
@@ -553,7 +553,7 @@ function ComboField({
         <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-52 overflow-y-auto">
           {options.length === 0 ? (
             <p className="px-3 py-3 text-xs text-slate-400 text-center">
-              Sin opciones guardadas — escribí un valor y hacé clic en "Guardar".
+              Sin opciones guardadas — escribí un valor y hacé clic en &quot;Guardar&quot;.
             </p>
           ) : options.map((opt, idx) => (
             <div

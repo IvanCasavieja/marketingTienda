@@ -23,6 +23,7 @@
     "to": "To",
     "language": "Language",
     "openMenu": "Open menu",
+    "close": "Close",
     "metaFixtureLabel": "DEMO",
     "metaFixtureTooltip": "Sample data — the Meta Ads integration is paused, these aren't real numbers"
   },
@@ -102,6 +103,26 @@
     "successTitle": "Password updated",
     "successSub": "Your password was changed successfully. Redirecting to login...",
     "errorToast": "Invalid or expired token"
+  },
+  "changePassword": {
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "hint": "At least 12 characters, uppercase letter, number and symbol",
+    "saving": "Saving…",
+    "submit": "Update password",
+    "mismatch": "New passwords do not match",
+    "successToast": "Password updated successfully",
+    "errorToast": "Error changing password"
+  },
+  "passwordGate": {
+    "title": "You need to update your password",
+    "subtitle": "For security, you need to choose a new password before continuing — either because it's your first time logging in with the one you were given, or because more than 20 days have passed since your last change."
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "defaultMessage": "Unexpected application error",
+    "retry": "Retry"
   },
   "home": {
     "greeting": "Hi, {{name}}",

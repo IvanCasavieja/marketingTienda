@@ -23,6 +23,7 @@
     "to": "Hasta",
     "language": "Idioma",
     "openMenu": "Abrir menú",
+    "close": "Cerrar",
     "metaFixtureLabel": "DEMO",
     "metaFixtureTooltip": "Datos de ejemplo — la integración con Meta Ads está pausada, no son cifras reales"
   },
@@ -102,6 +103,26 @@
     "successTitle": "Contraseña actualizada",
     "successSub": "Tu contraseña fue cambiada correctamente. Redirigiendo al login...",
     "errorToast": "Token inválido o expirado"
+  },
+  "changePassword": {
+    "currentPassword": "Contraseña actual",
+    "newPassword": "Contraseña nueva",
+    "confirmPassword": "Confirmar contraseña nueva",
+    "hint": "Mín. 12 caracteres, mayúscula, número y símbolo",
+    "saving": "Guardando…",
+    "submit": "Actualizar contraseña",
+    "mismatch": "Las contraseñas nuevas no coinciden",
+    "successToast": "Contraseña actualizada correctamente",
+    "errorToast": "Error al cambiar la contraseña"
+  },
+  "passwordGate": {
+    "title": "Tenés que actualizar tu contraseña",
+    "subtitle": "Por seguridad, necesitamos que elijas una contraseña nueva antes de seguir — o porque es la primera vez que entrás con la que te dieron, o porque ya pasaron más de 20 días desde el último cambio."
+  },
+  "errorBoundary": {
+    "title": "Algo salió mal",
+    "defaultMessage": "Error inesperado en la aplicación",
+    "retry": "Reintentar"
   },
   "home": {
     "greeting": "Hola, {{name}}",

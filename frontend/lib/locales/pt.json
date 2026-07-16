@@ -23,6 +23,7 @@
     "to": "Até",
     "language": "Idioma",
     "openMenu": "Abrir menu",
+    "close": "Fechar",
     "metaFixtureLabel": "DEMO",
     "metaFixtureTooltip": "Dados de exemplo — a integração com o Meta Ads está pausada, não são números reais"
   },
@@ -102,6 +103,26 @@
     "successTitle": "Senha atualizada",
     "successSub": "Sua senha foi alterada com sucesso. Redirecionando para o login...",
     "errorToast": "Token inválido ou expirado"
+  },
+  "changePassword": {
+    "currentPassword": "Senha atual",
+    "newPassword": "Nova senha",
+    "confirmPassword": "Confirmar nova senha",
+    "hint": "Mín. 12 caracteres, maiúscula, número e símbolo",
+    "saving": "Salvando…",
+    "submit": "Atualizar senha",
+    "mismatch": "As novas senhas não coincidem",
+    "successToast": "Senha atualizada com sucesso",
+    "errorToast": "Erro ao alterar a senha"
+  },
+  "passwordGate": {
+    "title": "Você precisa atualizar sua senha",
+    "subtitle": "Por segurança, você precisa escolher uma nova senha antes de continuar — seja porque é a primeira vez que você entra com a que lhe deram, ou porque já se passaram mais de 20 dias desde a última alteração."
+  },
+  "errorBoundary": {
+    "title": "Algo deu errado",
+    "defaultMessage": "Erro inesperado na aplicação",
+    "retry": "Tentar novamente"
   },
   "home": {
     "greeting": "Olá, {{name}}",

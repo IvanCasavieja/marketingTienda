@@ -273,7 +273,7 @@ export default function AnalyticsPage() {
     // Default period 2 = previous 30 days
     setDateTo2(format(subDays(from, 1), "yyyy-MM-dd"));
     setDateFrom2(format(subDays(from, 30), "yyyy-MM-dd"));
-    analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => {});
+    analyticsApi.getHistory().then(({ data }) => setHistory(data)).catch(() => toast.error(t("analytics.loadError")));
     analyticsApi.getAvailablePlatforms()
       .then(({ data }) => setAvailablePlatforms(data.platforms))
       .catch(() => setAvailablePlatforms([])); // ante la duda, no dejar tildar nada

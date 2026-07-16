@@ -102,7 +102,7 @@ export default function GenerarPage() {
         const tmpl = tmplRes.data.find((t: any) => t.id === paramId);
         if (tmpl?.formats?.[0]) setFormatId(tmpl.formats[0]);
       }
-    }).catch(() => {});
+    }).catch(() => toast.error("No se pudieron cargar los templates/formatos"));
   }, []);
 
   // Polling del job
@@ -785,7 +785,7 @@ function TemplateList({
               </>
             ) : isDeleting ? (
               <>
-                <span className="flex-1 text-sm text-rose-600">¿Eliminar "{t.name}"?</span>
+                <span className="flex-1 text-sm text-rose-600">¿Eliminar &quot;{t.name}&quot;?</span>
                 <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
                   className="text-xs font-semibold text-rose-600 hover:text-rose-800 px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100">
                   Sí, borrar
@@ -925,7 +925,7 @@ function ComboField({
         <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-52 overflow-y-auto">
           {options.length === 0 ? (
             <p className="px-3 py-3 text-xs text-slate-400 text-center">
-              Sin opciones guardadas — escribí un valor y hacé clic en "Guardar".
+              Sin opciones guardadas — escribí un valor y hacé clic en &quot;Guardar&quot;.
             </p>
           ) : options.map((opt, idx) => (
             <div

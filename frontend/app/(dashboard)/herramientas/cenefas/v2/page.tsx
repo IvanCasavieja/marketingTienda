@@ -81,8 +81,8 @@ export default function EditorPage() {
   const tmplMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    cenefasV2Api.getFormats().then(({ data }) => setFormats(data)).catch(() => {});
-    cenefasV2Api.listTemplates().then(({ data }) => setSavedTmpls(data)).catch(() => {});
+    cenefasV2Api.getFormats().then(({ data }) => setFormats(data)).catch(() => toast.error("No se pudieron cargar los formatos"));
+    cenefasV2Api.listTemplates().then(({ data }) => setSavedTmpls(data)).catch(() => toast.error("No se pudieron cargar los templates guardados"));
     initNew();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -317,7 +317,7 @@ export default function EditorPage() {
                           </div>
                         ) : isDel ? (
                           <div className="px-3 py-2">
-                            <p className="text-xs text-rose-600 dark:text-rose-400 mb-1.5">¿Borrar "{t.name}"?</p>
+                            <p className="text-xs text-rose-600 dark:text-rose-400 mb-1.5">¿Borrar &quot;{t.name}&quot;?</p>
                             <div className="flex gap-2">
                               <button onClick={() => handleDeleteTmpl(t.id)} className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/70">Sí, borrar</button>
                               <button onClick={() => setDeletingTmplId(null)} className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">Cancelar</button>

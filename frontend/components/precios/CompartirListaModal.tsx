@@ -4,6 +4,7 @@ import { watchlistApi, type UsuarioCompartible } from "@/lib/api";
 import { X, UserPlus, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 export default function CompartirListaModal({
   watchlistId,
@@ -19,6 +20,8 @@ export default function CompartirListaModal({
   const [compartidos, setCompartidos] = useState<UsuarioCompartible[] | null>(null);
   const [query, setQuery] = useState("");
   const [procesando, setProcesando] = useState<number | null>(null);
+
+  useEscapeKey(onClose);
 
   useEffect(() => {
     Promise.all([watchlistApi.usuariosCompartibles(), watchlistApi.listarCompartidos(watchlistId)])
@@ -63,15 +66,18 @@ export default function CompartirListaModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="compartir-modal-title"
         className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t("precios.listas.compartir.title")}</p>
+            <p id="compartir-modal-title" className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t("precios.listas.compartir.title")}</p>
             <p className="text-xs text-slate-400 truncate">{nombre}</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0">
+          <button onClick={onClose} aria-label={t("common.close")} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0">
             <X size={18} />
           </button>
         </div>

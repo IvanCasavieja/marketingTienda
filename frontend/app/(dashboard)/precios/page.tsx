@@ -716,7 +716,7 @@ export default function PreciosPage() {
             {!loading && !streaming && results !== null && results.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400 py-16">
                 <Search size={28} className="opacity-20" />
-                <p className="text-sm">{t("precios.noResultsFor")} <em>"{lastQuery}"</em></p>
+                <p className="text-sm">{t("precios.noResultsFor")} <em>&quot;{lastQuery}&quot;</em></p>
                 {Object.keys(cadenaErrors).length > 0 && (
                   <div className="mt-2 space-y-1 max-w-sm text-left">
                     {Object.entries(cadenaErrors).map(([c, err]) => (

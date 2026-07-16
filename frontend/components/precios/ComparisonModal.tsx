@@ -11,6 +11,7 @@ import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
 import DonTinoFloating from "@/components/DonTinoFloating";
 import SeguirButton from "@/components/precios/SeguirButton";
 import SearchableChecklist from "@/components/ui/SearchableChecklist";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 // ── Item con id estable (posición en el pool recibido — no cambia mientras
 // el modal está abierto, aunque el buscador del checklist filtre la vista) ──
@@ -98,6 +99,8 @@ export default function ComparisonModal({
   const [cotizacion, setCotizacion] = useState<CotizacionDolar | null>(null);
   const [cotizacionError, setCotizacionError] = useState(false);
   const [sucursalesModal, setSucursalesModal] = useState<ChartBarData | null>(null);
+
+  useEscapeKey(() => (sucursalesModal ? setSucursalesModal(null) : onClose()));
 
   useEffect(() => {
     preciosApi.cotizacionDolar()
@@ -224,13 +227,13 @@ export default function ComparisonModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div role="dialog" aria-modal="true" aria-labelledby="comparison-modal-title" className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800">
           <BarChart3 size={18} className="text-brand-500" />
-          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">Comparar precios</h2>
-          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X size={18} /></button>
+          <h2 id="comparison-modal-title" className="text-base font-semibold text-slate-800 dark:text-slate-100">Comparar precios</h2>
+          <button onClick={onClose} aria-label="Cerrar" className="ml-auto text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X size={18} /></button>
         </div>
 
         {/* Body — dos columnas */}
@@ -385,7 +388,7 @@ export default function ComparisonModal({
 
             {chartData.some((d) => d.sucursales.length > 1) && (
               <p className="text-[11px] text-slate-400 dark:text-slate-500 -mt-2">
-                Las barras marcadas con "×N" agrupan varias sucursales con el mismo precio — hacé click para verlas.
+                Las barras marcadas con &quot;×N&quot; agrupan varias sucursales con el mismo precio — hacé click para verlas.
               </p>
             )}
           </div>
@@ -468,18 +471,22 @@ export default function ComparisonModal({
           onClick={() => setSucursalesModal(null)}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sucursales-modal-title"
             className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm max-h-[70vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{sucursalesModal.nombreCompleto}</p>
+                <p id="sucursales-modal-title" className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{sucursalesModal.nombreCompleto}</p>
                 <p className="text-xs text-slate-400 mt-0.5">
                   {sucursalesModal.cadenaLabel} · {fMoneyByCurrency(sucursalesModal.precio, sucursalesModal.moneda)} · {sucursalesModal.sucursales.length} sucursales
                 </p>
               </div>
               <button
                 onClick={() => setSucursalesModal(null)}
+                aria-label="Cerrar"
                 className="ml-auto shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
               >
                 <X size={16} />
