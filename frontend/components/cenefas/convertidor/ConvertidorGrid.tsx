@@ -1,7 +1,7 @@
 "use client";
-import { useMemo, useRef, useState, ChangeEvent, Dispatch, SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, ChangeEvent, Dispatch, SetStateAction } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { convertidorApi, type ConvertidorRow } from "@/lib/api";
@@ -64,8 +64,11 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
   const [scrollTop, setScrollTop] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [savingRowId, setSavingRowId] = useState<number | null>(null);
+  const [pendingFocusRowId, setPendingFocusRowId] = useState<number | null>(null);
   const pendingSaves = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const dlRef = useRef<HTMLAnchorElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const descripcionInputRefs = useRef<Map<number, HTMLInputElement>>(new Map());
 
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_ROWS);
   const visibleCount = Math.ceil(CONTAINER_HEIGHT / ROW_HEIGHT) + BUFFER_ROWS * 2;
@@ -73,6 +76,36 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
   const visibleRows = useMemo(() => rows.slice(startIndex, endIndex), [rows, startIndex, endIndex]);
   const topSpacer = startIndex * ROW_HEIGHT;
   const bottomSpacer = (rows.length - endIndex) * ROW_HEIGHT;
+
+  // Botonera de navegación rápida: filas que todavía necesitan descripción
+  // (missing_description se recalcula en cada edit, así que esta lista se
+  // achica sola a medida que se van completando).
+  const rowsNeedingDescripcion = useMemo(
+    () => rows.filter((r) => r.warnings.includes("missing_description")),
+    [rows]
+  );
+
+  function scrollToRow(rowId: number) {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const target = Math.max(0, rowId * ROW_HEIGHT - CONTAINER_HEIGHT / 2 + ROW_HEIGHT / 2);
+    container.scrollTop = target;
+    setScrollTop(target);
+    setPendingFocusRowId(rowId);
+  }
+
+  // Una vez que la fila objetivo entra en el rango virtualizado (post-scroll),
+  // enfocar su input de descripción para poder tipear de una.
+  useEffect(() => {
+    if (pendingFocusRowId === null) return;
+    if (!visibleRows.some((r) => r.row_id === pendingFocusRowId)) return;
+    const input = descripcionInputRefs.current.get(pendingFocusRowId);
+    if (input) {
+      input.focus();
+      input.select();
+    }
+    setPendingFocusRowId(null);
+  }, [visibleRows, pendingFocusRowId]);
 
   async function flushSave(rowId: number, sku: string, descripcion: string) {
     setSavingRowId(rowId);
@@ -176,8 +209,33 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
         )}
       </div>
 
+      {rowsNeedingDescripcion.length > 0 && (
+        <div className="card p-3 space-y-2">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {t("convertidor.unmatchedNavTitle", { count: rowsNeedingDescripcion.length })}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {rowsNeedingDescripcion.map((row) => (
+              <button
+                key={row.row_id}
+                type="button"
+                onClick={() => scrollToRow(row.row_id)}
+                className="badge badge-red flex items-center gap-1 hover:brightness-110 transition-[filter] cursor-pointer max-w-[220px]"
+                title={t("convertidor.unmatchedNavGo")}
+              >
+                <Target size={11} className="shrink-0" />
+                <span className="truncate">
+                  {row.codigo} · {row.nombre_articulo || "—"}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="card overflow-hidden p-0">
         <div
+          ref={scrollContainerRef}
           className="overflow-auto"
           style={{ height: CONTAINER_HEIGHT }}
           onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
@@ -208,6 +266,10 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
                       {c.editable ? (
                         <div className="flex items-center gap-1">
                           <input
+                            ref={(el) => {
+                              if (el) descripcionInputRefs.current.set(row.row_id, el);
+                              else descripcionInputRefs.current.delete(row.row_id);
+                            }}
                             type="text"
                             value={row.descripcion}
                             onChange={(e: ChangeEvent<HTMLInputElement>) =>

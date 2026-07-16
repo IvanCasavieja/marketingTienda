@@ -667,6 +667,8 @@
     "legendWarning": "Dado faltante no Excel de origem",
     "legendInvalidType": "Dado com um formato que não corresponde a essa coluna (ex: texto onde se espera um preço)",
     "matchedSummary": "{{matched}} de {{total}} produtos correspondidos automaticamente",
+    "unmatchedNavTitle": "Produtos sem descrição ({{count}}) — clique para ir direto",
+    "unmatchedNavGo": "Ir para este produto",
     "saveError": "Não foi possível salvar a descrição no catálogo",
     "descripcionPlaceholder": "Preencher descrição…",
     "exporting": "Gerando…",

@@ -667,6 +667,8 @@
     "legendWarning": "Missing data in the source Excel",
     "legendInvalidType": "Data with a format that doesn't match that column (e.g: text where a price is expected)",
     "matchedSummary": "{{matched}} of {{total}} products matched automatically",
+    "unmatchedNavTitle": "Products missing a description ({{count}}) — click to jump to it",
+    "unmatchedNavGo": "Go to this product",
     "saveError": "Could not save the description to the catalog",
     "descripcionPlaceholder": "Fill in description…",
     "exporting": "Generating…",
