@@ -9,7 +9,7 @@ from app.core.deps import require_permission
 from app.core.uploads import read_limited as _read_limited
 from app.models.user import User
 from app.models.cenefa_template import CenefaTemplate
-from app.services.cenefas_service import generate_template_bytes
+from app.services.cenefas.data_engine import generate_template_bytes
 
 logger = logging.getLogger(__name__)
 
