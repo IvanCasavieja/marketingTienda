@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useRef, useState, ChangeEvent, Dispatch, SetStateAction } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { convertidorApi, type ConvertidorRow } from "@/lib/api";
@@ -147,6 +147,10 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
               {t("convertidor.legendWarning")}
             </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-violet-400" />
+              {t("convertidor.legendShifted")}
+            </span>
             <span className="badge badge-blue">
               {t("convertidor.matchedSummary", { matched: summary.matched_count, total: summary.total })}
             </span>
@@ -179,34 +183,51 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
                   <td colSpan={COLUMNS.length} />
                 </tr>
               )}
-              {visibleRows.map((row) => (
-                <tr key={row.row_id} style={{ height: ROW_HEIGHT }} className="border-b border-slate-100 dark:border-slate-800">
-                  {COLUMNS.map((c) => (
-                    <td key={c.key} className={clsx("px-2 py-1 align-middle", warningClass(row, c.warningCode))}>
-                      {c.editable ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="text"
-                            value={row.descripcion}
-                            onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                              handleDescripcionChange(row.row_id, row.codigo, e.target.value)
-                            }
-                            className="w-full rounded border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 bg-transparent text-xs py-1 px-1 outline-none transition-colors"
-                            placeholder={t("convertidor.descripcionPlaceholder")}
-                          />
-                          {savingRowId === row.row_id && (
-                            <Loader2 size={11} className="shrink-0 animate-spin text-slate-400" />
-                          )}
-                        </div>
-                      ) : (
-                        <span className="block truncate text-slate-700 dark:text-slate-300" title={String(row[c.key] ?? "")}>
-                          {row[c.key] === null || row[c.key] === undefined || row[c.key] === "" ? "—" : String(row[c.key])}
-                        </span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {visibleRows.map((row) => {
+                const rowShifted = row.warnings.includes("shifted_columns");
+                return (
+                  <tr
+                    key={row.row_id}
+                    style={{ height: ROW_HEIGHT }}
+                    className={clsx(
+                      "border-b border-slate-100 dark:border-slate-800",
+                      rowShifted && "border-l-4 border-l-violet-400 dark:border-l-violet-500"
+                    )}
+                  >
+                    {COLUMNS.map((c) => (
+                      <td key={c.key} className={clsx("px-2 py-1 align-middle", warningClass(row, c.warningCode))}>
+                        {c.editable ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={row.descripcion}
+                              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                handleDescripcionChange(row.row_id, row.codigo, e.target.value)
+                              }
+                              className="w-full rounded border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 bg-transparent text-xs py-1 px-1 outline-none transition-colors"
+                              placeholder={t("convertidor.descripcionPlaceholder")}
+                            />
+                            {savingRowId === row.row_id && (
+                              <Loader2 size={11} className="shrink-0 animate-spin text-slate-400" />
+                            )}
+                          </div>
+                        ) : (
+                          <span className="flex items-center gap-1 truncate text-slate-700 dark:text-slate-300" title={String(row[c.key] ?? "")}>
+                            {c.key === "codigo" && rowShifted && (
+                              <span title={t("convertidor.shiftedTooltip")} className="inline-flex shrink-0">
+                                <AlertTriangle size={12} className="text-violet-500" />
+                              </span>
+                            )}
+                            <span className="truncate">
+                              {row[c.key] === null || row[c.key] === undefined || row[c.key] === "" ? "—" : String(row[c.key])}
+                            </span>
+                          </span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
               {bottomSpacer > 0 && (
                 <tr style={{ height: bottomSpacer }}>
                   <td colSpan={COLUMNS.length} />

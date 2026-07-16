@@ -665,6 +665,8 @@
     "changeFile": "Subir otro archivo",
     "legendMissing": "Sin descripción — hay que completarla",
     "legendWarning": "Dato faltante en el Excel de origen",
+    "legendShifted": "Posibles columnas corridas — revisar toda la fila",
+    "shiftedTooltip": "La moneda o la oferta det de esta fila no tienen el formato esperado — probablemente el Excel de origen trae las columnas corridas para este producto. No confíes solo en la descripción: revisá también precio, oferta y oferta det.",
     "matchedSummary": "{{matched}} de {{total}} productos matcheados automáticamente",
     "saveError": "No se pudo guardar la descripción en el catálogo",
     "descripcionPlaceholder": "Completar descripción…",

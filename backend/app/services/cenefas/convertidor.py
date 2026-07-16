@@ -72,6 +72,31 @@ def _clean_str(raw) -> str:
     return str(raw).strip() if raw is not None else ""
 
 
+# Monedas válidas conocidas del sistema (ver CANONICAL_VARS en data_engine.py:
+# "moneda: prefijo de moneda '$' o 'U$S'"). Cualquier otra cosa no vacía en
+# esa columna es sospechosa.
+_VALID_MONEDAS = {"$", "u$s", "us$", "usd", "uyu"}
+# OFERTADET nunca debería ser un número puro — es una categoría ("Combo",
+# "M x N", "Precio fijo", vacío) o texto legado ("2da al 50%", "% descuento").
+_NUMERIC_RE = re.compile(r"^\d+([.,]\d+)?$")
+
+
+def _looks_shifted(row: dict) -> bool:
+    """Señal de que el Excel de origen trae las columnas corridas para esta
+    fila — ej. SKU 551406 real: "TERMO 1" con "1L C/PICO SELECTA" colado en
+    la columna MONEDA y "649" (un precio) colado en OFERTADET. No intenta
+    "arreglar" la fila, solo avisar: con las columnas corridas, cualquier
+    otro campo de la fila puede estar mal aunque no dispare su propio
+    warning de "vacío"."""
+    moneda = row["moneda"].strip().lower()
+    if moneda and moneda not in _VALID_MONEDAS:
+        return True
+    oferta_det = row["oferta_det"].strip()
+    if oferta_det and _NUMERIC_RE.match(oferta_det):
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Parseo del Excel de entrada
 # ---------------------------------------------------------------------------
@@ -146,6 +171,8 @@ def parse_input_excel(excel_bytes: bytes) -> list[dict]:
 
 def _compute_warnings(row: dict) -> list[str]:
     w = []
+    if _looks_shifted(row):
+        w.append("shifted_columns")
     if not row["descripcion"].strip():
         w.append("missing_description")
     if not row["precio"]:
@@ -224,6 +251,7 @@ def build_output_workbook(rows: list[dict]) -> bytes:
     even_fill      = PatternFill("solid", fgColor="EEF2F7")
     warn_fill      = PatternFill("solid", fgColor="FDE68A")  # ámbar — advertencia informativa
     no_match_fill  = PatternFill("solid", fgColor="FCA5A5")  # rojo — sin descripción, acción obligatoria
+    shifted_fill   = PatternFill("solid", fgColor="DDD6FE")  # violeta — fila con columnas posiblemente corridas
 
     for col, name in enumerate(_OUTPUT_HEADERS, 1):
         cell = ws.cell(row=1, column=col, value=name)
@@ -235,6 +263,7 @@ def build_output_workbook(rows: list[dict]) -> bytes:
         # Recalculado server-side, no confía en lo que mandó el cliente —
         # única fuente de verdad, compartida con match_rows() en preview.
         warnings = _compute_warnings(r)
+        shifted = "shifted_columns" in warnings
         zebra = even_fill if row_idx % 2 == 0 else None
         for col_idx, field in enumerate(_OUTPUT_FIELDS, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=r.get(field))
@@ -244,6 +273,11 @@ def build_output_workbook(rows: list[dict]) -> bytes:
                 cell.fill = no_match_fill
             elif warn_code:
                 cell.fill = warn_fill
+            elif shifted:
+                # Violeta para toda la fila: con las columnas corridas
+                # cualquier campo puede estar mal, no solo el que dispara
+                # su propio warning de "vacío".
+                cell.fill = shifted_fill
             elif zebra:
                 cell.fill = zebra
 

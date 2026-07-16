@@ -665,6 +665,8 @@
     "changeFile": "Upload another file",
     "legendMissing": "No description — needs to be filled in",
     "legendWarning": "Missing data in the source Excel",
+    "legendShifted": "Possible shifted columns — check the whole row",
+    "shiftedTooltip": "This row's currency or offer type don't have the expected format — the source Excel likely has shifted columns for this product. Don't trust just the description: also check price, offer, and offer type.",
     "matchedSummary": "{{matched}} of {{total}} products matched automatically",
     "saveError": "Could not save the description to the catalog",
     "descripcionPlaceholder": "Fill in description…",
