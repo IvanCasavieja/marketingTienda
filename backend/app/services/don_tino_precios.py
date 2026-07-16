@@ -381,14 +381,24 @@ async def explicar_cambio_precio(
     variacion_pct = (precio_nuevo - precio_anterior) / precio_anterior * 100 if precio_anterior else 0.0
     prompt = (
         f"Detectaste un cambio de precio en un producto que el usuario tiene en una lista de monitoreo:\n"
-        f"[{tienda}] {nombre}\n"
+        f"Cadena monitoreada (competencia, NO Tienda Inglesa): {tienda}\n"
+        f"Producto: {nombre}\n"
         f"Precio anterior: {simbolo}{precio_anterior:.2f}\n"
         f"Precio nuevo: {simbolo}{precio_nuevo:.2f} ({variacion_pct:+.1f}%)\n\n"
-        "Escribí UNA sola frase corta (para una notificación, no un párrafo) avisándole del cambio, "
-        "en tu voz. Mencioná el nombre del producto, la cadena, y los dos precios."
+        f"Escribí UNA sola frase corta (para una notificación, no un párrafo) avisándole del cambio, "
+        f"en tu voz. Mencioná el nombre del producto, los dos precios, y la cadena — que es "
+        f"literalmente \"{tienda}\", tal cual está escrita arriba. No la reemplaces por ninguna otra."
     )
     content, in_tok, out_tok = await _ask_claude(
-        DON_TINO_BASE + " Tu tarea ahora: redactar una notificación de un solo cambio de precio.",
+        # Sin DON_TINO_BASE completo a propósito: ese system prompt te ubica
+        # como "el asistente de Tienda Inglesa" — en un prompt tan corto como
+        # este, Claude terminaba mencionando "Tienda Inglesa" como si fuera la
+        # cadena del cambio de precio, en vez de la competencia real (ver
+        # tienda arriba). Acá alcanza con la voz/tono de Don Tino, sin el
+        # anclaje de identidad que causaba la confusión.
+        "Sos Don Tino, un asistente que habla en primera persona, en español rioplatense, "
+        "directo y útil. Nunca mencionás que sos un modelo de lenguaje. "
+        "Tu tarea ahora: redactar una notificación de un solo cambio de precio de la competencia.",
         prompt,
         max_tokens=150,
     )
