@@ -941,3 +941,79 @@ def buscar_todas_streaming(term: str, cache_dir: Path = _DATA_DIR, cadenas: list
             except Exception as exc:
                 log.error("live_search streaming: %s falló — %s", cadena, exc, exc_info=True)
                 yield cadena, [], str(exc)
+
+
+# ── Caché corto de resultados ──────────────────────────────────────────────────
+# Una sola búsqueda ya dispara ~40-70 requests HTTP repartidos en ~11 sitios
+# externos (15 sucursales de Ta-Ta, 17 de El Dorado, paginado de GDU/Magento,
+# etc.) y ninguna de esas cadenas —salvo LOi, que publica su propio límite—
+# tiene rate limit propio. Un doble clic, un usuario indeciso reintentando el
+# mismo término, o un script pegándole seguido al endpoint repite ese fan-out
+# completo cada vez. Este caché de 60s evita repetir el trabajo (y el tráfico
+# hacia terceros) cuando el mismo término + misma selección de cadenas ya se
+# buscó hace poco; el rate limit en la ruta HTTP (ver precios.py) cubre el caso
+# de términos distintos buscados muy seguido, que esto no puede prevenir.
+_CACHE_TTL = 60.0  # segundos
+_cache_lock = threading.Lock()
+_cache: dict[tuple, tuple[float, dict]] = {}
+
+
+def _cache_key(term: str, cadenas: list[str]) -> tuple:
+    return (term.strip().lower(), tuple(sorted(cadenas)))
+
+
+def _cache_get(key: tuple) -> dict | None:
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and time.monotonic() - hit[0] < _CACHE_TTL:
+            return hit[1]
+        return None
+
+
+def _cache_put(key: tuple, value: dict) -> None:
+    now = time.monotonic()
+    with _cache_lock:
+        _cache[key] = (now, value)
+        # Purga oportunista de entradas vencidas en cada escritura — con un TTL
+        # de 60s esto acota el tamaño del dict a lo buscado en la última
+        # ventana, en vez de crecer sin límite durante la vida del proceso.
+        vencidas = [k for k, (ts, _) in _cache.items() if now - ts >= _CACHE_TTL]
+        for k in vencidas:
+            del _cache[k]
+
+
+def buscar_todas_cached(
+    term: str,
+    cache_dir: Path = _DATA_DIR,
+    cadenas: list[str] | None = None,
+) -> dict[str, list[ProductRecord]]:
+    """Como buscar_todas, pero sirve del caché de 60s si el mismo término (+
+    misma selección de cadenas) ya se buscó recientemente."""
+    seleccion = cadenas if cadenas is not None else _CADENAS_DEFAULT
+    key = _cache_key(term, seleccion)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+    resultado = buscar_todas(term, cache_dir, cadenas)
+    _cache_put(key, resultado)
+    return resultado
+
+
+def buscar_todas_streaming_cached(term: str, cache_dir: Path = _DATA_DIR, cadenas: list[str] | None = None):
+    """Como buscar_todas_streaming, pero si hay un resultado cacheado reciente
+    para el mismo término + cadenas lo sirve de una sola vez (no hay nada que
+    esperar) en vez de volver a golpear las cadenas externas."""
+    seleccion = cadenas if cadenas is not None else _CADENAS_DEFAULT
+    key = _cache_key(term, seleccion)
+    cached = _cache_get(key)
+    if cached is not None:
+        for cadena, records in cached.items():
+            yield cadena, records, None
+        return
+
+    acumulado: dict[str, list[ProductRecord]] = {}
+    for cadena, records, error in buscar_todas_streaming(term, cache_dir, cadenas):
+        if error is None:
+            acumulado[cadena] = records
+        yield cadena, records, error
+    _cache_put(key, acumulado)

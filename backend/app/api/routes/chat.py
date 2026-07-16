@@ -3,7 +3,7 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,8 @@ from typing import List
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.config import settings
+from app.core.rate_limit import limiter
+from app.core.llm_retry import llm_call_with_retry
 from app.models.ai_analysis import AIAnalysis
 from app.models.cenefa_job import CenefaJob
 from app.models.user import User
@@ -502,7 +504,9 @@ async def _ejecutar_tool(name: str, args: dict, current_user: User, db: AsyncSes
 
 
 @router.post("/message", response_model=ChatResponse)
+@limiter.limit("15/minute")
 async def chat_message(
+    request: Request,
     body: ChatRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -523,13 +527,16 @@ async def chat_message(
         messages.append({"role": "user", "content": body.message})
 
         for _ in range(_MAX_TOOL_ITERS):
-            completion = await client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-                tools=_TOOLS,
-                tool_choice="auto",
-                max_tokens=700,
-                temperature=0.7,
+            completion = await llm_call_with_retry(
+                lambda: client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages,
+                    tools=_TOOLS,
+                    tool_choice="auto",
+                    max_tokens=700,
+                    temperature=0.7,
+                ),
+                label="chat_message",
             )
             if not completion.choices:
                 raise HTTPException(status_code=500, detail="Error al contactar el servicio de IA")

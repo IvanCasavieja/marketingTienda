@@ -1,6 +1,6 @@
 import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -10,6 +10,7 @@ from typing import List, Optional
 from app.core.database import get_db, AsyncSessionLocal
 from app.core.deps import require_permission
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.models.user import User
 from app.models.ai_analysis import AIAnalysis
 from app.models.platform_connection import Platform
@@ -105,7 +106,9 @@ async def available_platforms(
 
 
 @router.post("/analyze")
+@limiter.limit("10/minute")
 async def analyze(
+    request: Request,
     payload: AnalysisRequest,
     current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
@@ -203,7 +206,9 @@ async def get_analysis(
 
 
 @router.post("/analyze/debate/stream")
+@limiter.limit("10/minute")
 async def debate_stream(
+    request: Request,
     payload: AnalysisRequest,
     current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
@@ -271,7 +276,9 @@ async def debate_stream(
 
 
 @router.post("/debate/turn")
+@limiter.limit("10/minute")
 async def debate_turn(
+    request: Request,
     payload: DebateTurnRequest,
     current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),
@@ -368,7 +375,9 @@ async def debate_turn(
 
 
 @router.post("/debate/verdict")
+@limiter.limit("10/minute")
 async def debate_verdict(
+    request: Request,
     payload: DebateVerdictRequest,
     current_user: User = Depends(require_permission("ai.use")),
     db: AsyncSession = Depends(get_db),

@@ -11,13 +11,14 @@ precios.py — búsqueda EN VIVO de precios de supermercados uruguayos.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_permission
+from app.core.rate_limit import limiter
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,9 @@ router = APIRouter(prefix="/precios", tags=["precios"])
 
 
 @router.get("/buscar-vivo")
+@limiter.limit("20/minute")
 async def buscar_vivo(
+    request: Request,
     q: str = Query(..., min_length=2, description="Término de búsqueda"),
     _: User = Depends(require_permission("precios.search")),
 ):
@@ -34,9 +37,9 @@ async def buscar_vivo(
     import asyncio
     loop = asyncio.get_running_loop()
     try:
-        from app.services.scraper.live_search import buscar_todas
+        from app.services.scraper.live_search import buscar_todas_cached
         resultados = await asyncio.wait_for(
-            loop.run_in_executor(None, buscar_todas, q),
+            loop.run_in_executor(None, buscar_todas_cached, q),
             timeout=90.0,
         )
     except asyncio.TimeoutError:
@@ -92,7 +95,9 @@ def _resolver_barcode(barcode: str) -> str | None:
 
 
 @router.get("/buscar-vivo-stream")
+@limiter.limit("20/minute")
 async def buscar_vivo_stream(
+    request: Request,
     q: str = Query(..., min_length=2, description="Término de búsqueda"),
     cadenas: Optional[str] = Query(
         None,
@@ -105,7 +110,7 @@ async def buscar_vivo_stream(
     HTTP (incluyendo CORS) se envían con el primer byte, antes de que cualquier
     cadena termine."""
     import asyncio, json, threading
-    from app.services.scraper.live_search import buscar_todas_streaming, _DATA_DIR, _CADENAS_TODAS
+    from app.services.scraper.live_search import buscar_todas_streaming_cached, _DATA_DIR, _CADENAS_TODAS
 
     # Filtramos contra la lista real de cadenas soportadas — así un valor
     # desconocido o vacío nunca rompe la búsqueda, simplemente se ignora.
@@ -138,7 +143,7 @@ async def buscar_vivo_stream(
 
     def _run_search():
         try:
-            for cadena, records, error in buscar_todas_streaming(search_term, _DATA_DIR, cadenas_seleccionadas):
+            for cadena, records, error in buscar_todas_streaming_cached(search_term, _DATA_DIR, cadenas_seleccionadas):
                 try:
                     items = [
                         {
@@ -228,7 +233,9 @@ class ReporteRequest(BaseModel):
 
 
 @router.post("/ia/consultar")
+@limiter.limit("15/minute")
 async def ia_consultar(
+    request: Request,
     payload: ConsultarRequest,
     current_user: User = Depends(require_permission("precios.search")),
     db: AsyncSession = Depends(get_db),
@@ -251,7 +258,9 @@ async def ia_consultar(
 
 
 @router.post("/ia/reporte")
+@limiter.limit("15/minute")
 async def ia_reporte(
+    request: Request,
     payload: ReporteRequest,
     current_user: User = Depends(require_permission("precios.search")),
     db: AsyncSession = Depends(get_db),
