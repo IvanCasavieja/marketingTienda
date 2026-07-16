@@ -2,7 +2,6 @@
 import asyncio
 import logging
 import pathlib
-import pickle
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -10,7 +9,6 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from app.core.redis_client import get_redis
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template import CenefaTemplate
 from app.models.cenefa_template_v2 import CenefaTemplateV2
@@ -30,16 +28,28 @@ _BUILTIN_FILES = {
     "black":   "Bases cenefas BLACK 1.pptx",
 }
 
-# Input (Excel parseado + template_def, entre preview y confirm) y output
-# (PPTX final, entre confirm y download) viven en Redis, no en un dict del
-# proceso — un restart/redeploy a mitad de un job (ej. Render reciclando el
-# dyno) ya no lo deja atascado para siempre ni filtra memoria: Redis expira
-# solo la entrada si nadie la reclama.
-REDIS_INPUT_TTL  = 3_600   # 1h para confirmar un preview
-REDIS_RESULT_TTL = 86_400  # 24h para descargar el PPTX ya generado
-
-_RESULT_PREFIX   = "cenefa_job_result:"
-_PRODUCTS_PREFIX = "cenefa_job_staged:"
+# Cache en memoria del proceso, NO Redis — a propósito.
+#
+# El 15/07 se cambió esto a Redis para que un job sobreviva a un
+# restart/redeploy de Render a mitad de generación (antes quedaba atascado
+# para siempre). Pero Render no tiene ningún Redis provisionado en
+# producción — REDIS_URL cae al default "localhost:6379", que no existe en
+# ese entorno, y todo /herramientas/cenefas empezó a tirar
+# "Error 111 connecting to localhost:6379. Connection refused." al toque.
+#
+# Se revirtió a memoria el 16/07 para desbloquear la herramienta ya, sin
+# gastar en un plan Starter de Redis en Render (el free tier de Redis ahí
+# expira solo a los 90 días, lo cual reintroduce este mismo problema más
+# adelante sin avisar). Cuando haya presupuesto para el Starter ($10/mes,
+# sin vencimiento), volver a la versión con Redis: ver commit 7b4b01d
+# ("fix(cenefas): jobs v2 durables en Redis...") — esa misma versión trae
+# además el chequeo de dueño/admin en _get_job, que si sigue vigente en
+# cenefas_v2.py no hay que volver a tocarlo, solo estas 5 funciones.
+#
+# Contrapartida de estar en memoria: un restart de Render a mitad de un job
+# lo deja inaccesible (hay que regenerar desde cero) y el proceso puede ir
+# acumulando bytes de jobs que nadie descargó, hasta el próximo restart.
+_job_results: dict[str, bytes] = {}
 
 
 @dataclass
@@ -68,33 +78,31 @@ class StagedJob:
     banco:              str = ""
 
 
+_job_products: dict[str, StagedJob] = {}
+
+
+# async sin await adentro, a propósito: cenefas_v2.py llama a estas 5
+# funciones con `await` (quedó así de cuando usaban Redis). Mantenerlas
+# async evita tener que tocar ese archivo — que en el mismo commit del
+# 15/07 sumó el chequeo de dueño/admin, y ese sí queda vigente.
 async def store_job_result(job_id: uuid.UUID, pptx_bytes: bytes) -> None:
-    await get_redis().set(f"{_RESULT_PREFIX}{job_id}", pptx_bytes, ex=REDIS_RESULT_TTL)
+    _job_results[str(job_id)] = pptx_bytes
 
 
 async def pop_job_result(job_id: uuid.UUID) -> bytes | None:
-    key = f"{_RESULT_PREFIX}{job_id}"
-    r = get_redis()
-    async with r.pipeline(transaction=True) as pipe:
-        value, _ = await pipe.get(key).delete(key).execute()
-    return value
+    return _job_results.pop(str(job_id), None)
 
 
 async def store_job_products(job_id: uuid.UUID, staged: StagedJob) -> None:
-    await get_redis().set(f"{_PRODUCTS_PREFIX}{job_id}", pickle.dumps(staged), ex=REDIS_INPUT_TTL)
+    _job_products[str(job_id)] = staged
 
 
 async def peek_job_products(job_id: uuid.UUID) -> StagedJob | None:
-    raw = await get_redis().get(f"{_PRODUCTS_PREFIX}{job_id}")
-    return pickle.loads(raw) if raw else None
+    return _job_products.get(str(job_id))
 
 
 async def pop_job_products(job_id: uuid.UUID) -> StagedJob | None:
-    key = f"{_PRODUCTS_PREFIX}{job_id}"
-    r = get_redis()
-    async with r.pipeline(transaction=True) as pipe:
-        raw, _ = await pipe.get(key).delete(key).execute()
-    return pickle.loads(raw) if raw else None
+    return _job_products.pop(str(job_id), None)
 
 
 async def run_generation_job(
