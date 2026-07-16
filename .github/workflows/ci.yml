@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend (lint + type-check)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run type-check
+
+  backend:
+    name: Backend (sintaxis + imports)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # Dummies solo para que la app pueda importarse — no se conecta a nada
+      # real acá, así que no hace falta Postgres/Redis levantados en el runner.
+      APP_SECRET_KEY: ci-dummy-secret-not-used-in-prod
+      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci_dummy
+      REDIS_URL: redis://localhost:6379/0
+      ENCRYPTION_KEY: "Y2q_vIGd2FgQ4CqY3Fh3du3ZehOWmx4pVHPfpJC44bA="
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Chequeo de sintaxis (compileall)
+        run: python -m compileall -q app migrations
+      - name: Chequeo de imports (detecta ImportError/circular imports que compileall no ve)
+        run: python -c "import app.main"
