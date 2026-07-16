@@ -691,7 +691,7 @@
     "ai": {
       "button": "Gerar com IA",
       "modalTitle": "Sugestões de descrição geradas com IA",
-      "loading": "Gerando sugestões…",
+      "loading": "Don Tino está cavando os dados para montar as descrições…",
       "notConfigured": "A geração com IA não está configurada neste ambiente.",
       "genericError": "Não conseguimos gerar as sugestões. Tente novamente em alguns minutos.",
       "approve": "Aprovar",

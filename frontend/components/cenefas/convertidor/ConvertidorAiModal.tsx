@@ -4,6 +4,7 @@ import { Check, Loader2, Sparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { convertidorApi, type ConvertidorRow, type DescripcionSugerencia } from "@/lib/api";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { DonTinoTrabajando } from "@/components/DonTinoTrabajando";
 
 interface Props {
   rows: ConvertidorRow[]; // ya filtradas por el caller: solo las que faltan descripción
@@ -101,8 +102,8 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           {loading && (
-            <div className="flex flex-col items-center gap-2 py-10">
-              <Loader2 className="animate-spin text-slate-400" />
+            <div className="flex flex-col items-center gap-3 py-8">
+              <DonTinoTrabajando size={72} />
               <p className="text-xs text-slate-400">{t("convertidor.ai.loading")}</p>
             </div>
           )}
