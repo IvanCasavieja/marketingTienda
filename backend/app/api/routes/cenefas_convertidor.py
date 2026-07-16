@@ -97,16 +97,18 @@ async def update_descripcion(
 
 
 class ConvertidorRowIn(BaseModel):
-    row_id:           int
-    codigo:           str
-    nombre_articulo:  str = ""
-    descripcion:      str = ""
-    moneda:           str = "$"
-    precio_anterior:  float | None = None
-    precio:           float | None = None
-    oferta:           str = ""
-    oferta_det:       str = ""
-    descripcion_web:  str = ""
+    row_id:                int
+    codigo:                str
+    nombre_articulo:       str = ""
+    descripcion:           str = ""
+    moneda:                str = "$"
+    precio_anterior:       float | None = None
+    precio_anterior_raw:   str = ""
+    precio:                float | None = None
+    precio_raw:            str = ""
+    oferta:                str = ""
+    oferta_det:            str = ""
+    descripcion_web:       str = ""
 
 
 class ExportRequest(BaseModel):

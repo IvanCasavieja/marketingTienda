@@ -72,29 +72,31 @@ def _clean_str(raw) -> str:
     return str(raw).strip() if raw is not None else ""
 
 
-# Monedas válidas conocidas del sistema (ver CANONICAL_VARS en data_engine.py:
-# "moneda: prefijo de moneda '$' o 'U$S'"). Cualquier otra cosa no vacía en
-# esa columna es sospechosa.
+# ---------------------------------------------------------------------------
+# Validación por tipo esperado de columna
+# ---------------------------------------------------------------------------
+#
+# Cada columna del Excel de gestión tiene un tipo de contenido esperado —
+# precio es numérico, nombre/descripción son texto, moneda es un símbolo de
+# un set chico conocido, oferta det es una categoría (nunca un número). Si
+# el valor de una celda no matchea el tipo esperado de SU columna, eso es la
+# señal real de columnas corridas para esa fila — no una heurística de
+# "pinta" sobre la fila entera, sino una razón concreta y localizada: "acá
+# esperaba X y encontré Y". OFERTA queda sin validar a propósito: en los
+# datos reales es legítimamente polimórfica (texto "PVP OFERTA", un precio
+# repetido, o una mecánica "2x599"), no hay un tipo único que reclamarle.
+
 _VALID_MONEDAS = {"$", "u$s", "us$", "usd", "uyu"}
-# OFERTADET nunca debería ser un número puro — es una categoría ("Combo",
-# "M x N", "Precio fijo", vacío) o texto legado ("2da al 50%", "% descuento").
-_NUMERIC_RE = re.compile(r"^\d+([.,]\d+)?$")
+_NUMERIC_RE  = re.compile(r"^[\$\s]*-?\d[\d.,]*\s*$")
+_LETTER_RE   = re.compile(r"[^\W\d_]")  # al menos una letra (unicode-aware)
 
 
-def _looks_shifted(row: dict) -> bool:
-    """Señal de que el Excel de origen trae las columnas corridas para esta
-    fila — ej. SKU 551406 real: "TERMO 1" con "1L C/PICO SELECTA" colado en
-    la columna MONEDA y "649" (un precio) colado en OFERTADET. No intenta
-    "arreglar" la fila, solo avisar: con las columnas corridas, cualquier
-    otro campo de la fila puede estar mal aunque no dispare su propio
-    warning de "vacío"."""
-    moneda = row["moneda"].strip().lower()
-    if moneda and moneda not in _VALID_MONEDAS:
-        return True
-    oferta_det = row["oferta_det"].strip()
-    if oferta_det and _NUMERIC_RE.match(oferta_det):
-        return True
-    return False
+def _is_numeric_like(raw: str) -> bool:
+    return bool(_NUMERIC_RE.match(raw.strip()))
+
+
+def _has_letters(raw: str) -> bool:
+    return bool(_LETTER_RE.search(raw))
 
 
 # ---------------------------------------------------------------------------
@@ -152,15 +154,19 @@ def parse_input_excel(excel_bytes: bytes) -> list[dict]:
         if not codigo:
             continue
 
+        precio_raw          = _clean_str(cell(row, "precio"))
+        precio_anterior_raw = _clean_str(cell(row, "precio_anterior"))
         parsed.append({
-            "codigo":           codigo,
-            "nombre_articulo":  _clean_str(cell(row, "nombre_articulo")),
-            "moneda":           _clean_str(cell(row, "moneda")) or "$",
-            "precio_anterior":  _parse_price_or_none(cell(row, "precio_anterior")),
-            "precio":           _parse_price_or_none(cell(row, "precio")),
-            "oferta":           _clean_str(cell(row, "oferta")),
-            "oferta_det":       _clean_str(cell(row, "oferta_det")),
-            "descripcion_web":  _clean_str(cell(row, "descripcion_web")),
+            "codigo":            codigo,
+            "nombre_articulo":   _clean_str(cell(row, "nombre_articulo")),
+            "moneda":            _clean_str(cell(row, "moneda")) or "$",
+            "precio_anterior":   _parse_price_or_none(precio_anterior_raw),
+            "precio_anterior_raw": precio_anterior_raw,
+            "precio":            _parse_price_or_none(precio_raw),
+            "precio_raw":        precio_raw,
+            "oferta":            _clean_str(cell(row, "oferta")),
+            "oferta_det":        _clean_str(cell(row, "oferta_det")),
+            "descripcion_web":   _clean_str(cell(row, "descripcion_web")),
         })
     return parsed
 
@@ -170,21 +176,56 @@ def parse_input_excel(excel_bytes: bytes) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _compute_warnings(row: dict) -> list[str]:
+    """Un warning por columna, cada uno con su propio motivo: vacío (falta
+    el dato) o inválido (hay contenido, pero no del tipo que esa columna
+    espera — la señal real de columnas corridas, localizada en la columna
+    exacta que no cierra)."""
     w = []
-    if _looks_shifted(row):
-        w.append("shifted_columns")
-    if not row["descripcion"].strip():
+
+    descripcion = row["descripcion"].strip()
+    if not descripcion:
         w.append("missing_description")
-    if not row["precio"]:
+    elif not _has_letters(descripcion):
+        w.append("descripcion_invalida")  # descripción esperaba texto, vino solo números/símbolos
+
+    precio_raw = row.get("precio_raw", "").strip()
+    if not precio_raw:
         w.append("missing_price")
-    if not row["precio_anterior"]:
+    elif not _is_numeric_like(precio_raw):
+        w.append("precio_invalido")  # precio esperaba número, vino texto
+
+    precio_anterior_raw = row.get("precio_anterior_raw", "").strip()
+    if not precio_anterior_raw:
         w.append("missing_precio_anterior")
+    elif not _is_numeric_like(precio_anterior_raw):
+        w.append("precio_anterior_invalido")
+
+    # OFERTA sin validar de tipo a propósito: en los datos reales es texto
+    # ("PVP OFERTA"), un precio repetido, o una mecánica ("2x599") — no hay
+    # un único tipo esperado que reclamarle, solo si está vacía o no.
     if not row["oferta"]:
         w.append("missing_oferta")
-    if not row["oferta_det"]:
+
+    oferta_det = row["oferta_det"].strip()
+    if not oferta_det:
         w.append("missing_oferta_det")
-    if not row["descripcion_web"]:
+    elif _is_numeric_like(oferta_det):
+        w.append("oferta_det_invalido")  # oferta det es una categoría, nunca un número puro
+
+    descripcion_web = row["descripcion_web"].strip()
+    if not descripcion_web:
         w.append("missing_descripcion_web")
+    elif not _has_letters(descripcion_web):
+        w.append("descripcion_web_invalida")
+
+    moneda = row["moneda"].strip().lower()
+    if moneda and moneda not in _VALID_MONEDAS:
+        w.append("moneda_invalida")  # moneda espera un símbolo de un set chico conocido
+
+    nombre_articulo = row["nombre_articulo"].strip()
+    if nombre_articulo and not _has_letters(nombre_articulo):
+        w.append("nombre_articulo_invalido")
+
     return w
 
 
@@ -207,13 +248,22 @@ async def match_rows(parsed: list[dict], db: AsyncSession) -> list[dict]:
 
     rows = []
     for i, r in enumerate(parsed):
-        descripcion = catalogo.get(r["codigo"], "")
-        row = {**r, "descripcion": descripcion}
+        row = {**r, "descripcion": catalogo.get(r["codigo"], "")}
         rows.append({
-            "row_id":    i,
-            "matched":   r["codigo"] in catalogo,
-            "warnings":  _compute_warnings(row),
-            **row,
+            "row_id":              i,
+            "matched":             r["codigo"] in catalogo,
+            "codigo":              row["codigo"],
+            "nombre_articulo":     row["nombre_articulo"],
+            "descripcion":         row["descripcion"],
+            "moneda":              row["moneda"],
+            "precio_anterior":     row["precio_anterior"],
+            "precio_anterior_raw": row["precio_anterior_raw"],
+            "precio":              row["precio"],
+            "precio_raw":          row["precio_raw"],
+            "oferta":              row["oferta"],
+            "oferta_det":          row["oferta_det"],
+            "descripcion_web":     row["descripcion_web"],
+            "warnings":            _compute_warnings(row),
         })
     return rows
 
@@ -232,12 +282,27 @@ _OUTPUT_FIELDS = [
 ]
 # warning code -> índice de columna 1-based que se resalta
 _WARN_COL = {
-    "missing_description":     3,
-    "missing_precio_anterior": 5,
-    "missing_price":           6,
-    "missing_oferta":          7,
-    "missing_oferta_det":      8,
-    "missing_descripcion_web": 9,
+    "nombre_articulo_invalido":  2,
+    "missing_description":       3,
+    "descripcion_invalida":      3,
+    "moneda_invalida":           4,
+    "missing_precio_anterior":   5,
+    "precio_anterior_invalido":  5,
+    "missing_price":             6,
+    "precio_invalido":           6,
+    "missing_oferta":            7,
+    "missing_oferta_det":        8,
+    "oferta_det_invalido":       8,
+    "missing_descripcion_web":   9,
+    "descripcion_web_invalida":  9,
+}
+# Warnings de "tipo incorrecto" (hay contenido, pero no del tipo esperado
+# para esa columna) — más severos que un simple "falta el dato", porque
+# apuntan a la columna exacta donde el Excel de origen viene corrido.
+_INVALID_TYPE_CODES = {
+    "nombre_articulo_invalido", "descripcion_invalida", "moneda_invalida",
+    "precio_anterior_invalido", "precio_invalido", "oferta_det_invalido",
+    "descripcion_web_invalida",
 }
 
 
@@ -249,9 +314,9 @@ def build_output_workbook(rows: list[dict]) -> bytes:
     header_fill    = PatternFill("solid", fgColor="1E3A5F")
     header_font    = Font(bold=True, color="FFFFFF", size=11)
     even_fill      = PatternFill("solid", fgColor="EEF2F7")
-    warn_fill      = PatternFill("solid", fgColor="FDE68A")  # ámbar — advertencia informativa
+    warn_fill      = PatternFill("solid", fgColor="FDE68A")  # ámbar — falta el dato
     no_match_fill  = PatternFill("solid", fgColor="FCA5A5")  # rojo — sin descripción, acción obligatoria
-    shifted_fill   = PatternFill("solid", fgColor="DDD6FE")  # violeta — fila con columnas posiblemente corridas
+    invalid_fill   = PatternFill("solid", fgColor="DDD6FE")  # violeta — hay dato, pero no del tipo que esa columna espera
 
     for col, name in enumerate(_OUTPUT_HEADERS, 1):
         cell = ws.cell(row=1, column=col, value=name)
@@ -260,10 +325,10 @@ def build_output_workbook(rows: list[dict]) -> bytes:
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     for row_idx, r in enumerate(rows, 2):
-        # Recalculado server-side, no confía en lo que mandó el cliente —
-        # única fuente de verdad, compartida con match_rows() en preview.
+        # Recalculado server-side a partir de los mismos campos _raw que
+        # ya viajaron en el preview — no confía en el array "warnings" que
+        # mandó el cliente, única fuente de verdad para el coloreado.
         warnings = _compute_warnings(r)
-        shifted = "shifted_columns" in warnings
         zebra = even_fill if row_idx % 2 == 0 else None
         for col_idx, field in enumerate(_OUTPUT_FIELDS, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=r.get(field))
@@ -271,13 +336,10 @@ def build_output_workbook(rows: list[dict]) -> bytes:
             warn_code = next((w for w, c in _WARN_COL.items() if c == col_idx and w in warnings), None)
             if warn_code == "missing_description":
                 cell.fill = no_match_fill
+            elif warn_code in _INVALID_TYPE_CODES:
+                cell.fill = invalid_fill
             elif warn_code:
                 cell.fill = warn_fill
-            elif shifted:
-                # Violeta para toda la fila: con las columnas corridas
-                # cualquier campo puede estar mal, no solo el que dispara
-                # su propio warning de "vacío".
-                cell.fill = shifted_fill
             elif zebra:
                 cell.fill = zebra
 

@@ -288,7 +288,9 @@ export interface ConvertidorRow {
   descripcion: string;
   moneda: string;
   precio_anterior: number | null;
+  precio_anterior_raw: string;
   precio: number | null;
+  precio_raw: string;
   oferta: string;
   oferta_det: string;
   descripcion_web: string;
