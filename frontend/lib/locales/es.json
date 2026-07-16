@@ -670,6 +670,7 @@
     "unmatchedNavTitle": "Productos sin descripción ({{count}}) — clic para ir directo",
     "unmatchedNavGo": "Ir a este producto",
     "saveError": "No se pudo guardar la descripción en el catálogo",
+    "savedToCatalog": "Descripción guardada en el catálogo (SKU {{sku}})",
     "descripcionPlaceholder": "Completar descripción…",
     "exporting": "Generando…",
     "download": "Descargar Excel",

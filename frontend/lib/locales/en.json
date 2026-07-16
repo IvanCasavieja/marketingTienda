@@ -670,6 +670,7 @@
     "unmatchedNavTitle": "Products missing a description ({{count}}) — click to jump to it",
     "unmatchedNavGo": "Go to this product",
     "saveError": "Could not save the description to the catalog",
+    "savedToCatalog": "Description saved to the catalog (SKU {{sku}})",
     "descripcionPlaceholder": "Fill in description…",
     "exporting": "Generating…",
     "download": "Download Excel",

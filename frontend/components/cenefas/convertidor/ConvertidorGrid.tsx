@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, ChangeEvent, Dispatch, SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from "react";
 import clsx from "clsx";
 import { ArrowLeft, Download, Loader2, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -111,6 +111,7 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
     setSavingRowId(rowId);
     try {
       await convertidorApi.updateDescripcion(sku, descripcion);
+      toast.success(t("convertidor.savedToCatalog", { sku }));
     } catch {
       toast.error(t("convertidor.saveError"));
     } finally {
@@ -137,6 +138,21 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
       delete pendingSaves.current[rowId];
       flushSave(rowId, sku, value);
     }, SAVE_DEBOUNCE_MS);
+  }
+
+  // Enter guarda ya (sin esperar el debounce de 800ms) — así el usuario
+  // tiene una confirmación inmediata en vez de tener que confiar en que
+  // el guardado automático silencioso funcionó.
+  function handleDescripcionKeyDown(e: KeyboardEvent<HTMLInputElement>, rowId: number, sku: string) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const value = e.currentTarget.value.trim();
+    if (!value || !HAS_LETTER_RE.test(value)) return;
+    if (pendingSaves.current[rowId]) {
+      clearTimeout(pendingSaves.current[rowId]);
+      delete pendingSaves.current[rowId];
+    }
+    flushSave(rowId, sku, value);
   }
 
   async function handleExport() {
@@ -275,6 +291,7 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
                             onChange={(e: ChangeEvent<HTMLInputElement>) =>
                               handleDescripcionChange(row.row_id, row.codigo, e.target.value)
                             }
+                            onKeyDown={(e) => handleDescripcionKeyDown(e, row.row_id, row.codigo)}
                             className="w-full rounded border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 bg-transparent text-xs py-1 px-1 outline-none transition-colors"
                             placeholder={t("convertidor.descripcionPlaceholder")}
                           />
