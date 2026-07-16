@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, authApi } from "@/lib/api";
-import { CurrentUser } from "@/types";
+import { api } from "@/lib/api";
+import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import {
   Users, UserPlus, KeyRound, ShieldAlert, ShieldCheck,
   Loader2, CheckCircle2, XCircle, ChevronDown,
@@ -346,7 +346,7 @@ function RoleEditorModal({
 
 export default function AdminPage() {
   const { t } = useTranslation();
-  const [me,          setMe]          = useState<CurrentUser | null>(null);
+  const { allowed, checked } = usePermissionGuard({ requireSuperuser: true });
   const [users,       setUsers]       = useState<AdminUser[]>([]);
   const [roles,       setRoles]       = useState<RoleItem[]>([]);
   const [allPerms,    setAllPerms]    = useState<PermissionDef[]>([]);
@@ -366,22 +366,18 @@ export default function AdminPage() {
   // reservado para la cuenta principal, no algo que se elija en un select.
   const assignableRoles = roles.filter((r) => r.name !== "Superadmin");
 
+  // No disparamos /admin/* hasta confirmar que el usuario es superuser —
+  // evita requests innecesarios (y un toast de error confuso) para
+  // cualquier usuario logueado que entre a esta ruta sin ser admin.
   useEffect(() => {
-    // No disparamos /admin/* hasta confirmar que el usuario es superuser —
-    // evita requests innecesarios (y un toast de error confuso) para
-    // cualquier usuario logueado que entre a esta ruta sin ser admin.
-    authApi
-      .me()
-      .then(({ data }) => {
-        setMe(data);
-        if (data.is_superuser) {
-          load();
-        } else {
-          setLoading(false);
-        }
-      })
-      .catch(() => setLoading(false));
-  }, []);
+    if (!checked) return;
+    if (allowed) {
+      load();
+    } else {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checked, allowed]);
 
   async function load() {
     setLoading(true);
@@ -459,7 +455,7 @@ export default function AdminPage() {
     }
   }
 
-  if (!loading && me && !me.is_superuser) {
+  if (checked && !allowed) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
         <ShieldAlert size={40} className="text-rose-400" />

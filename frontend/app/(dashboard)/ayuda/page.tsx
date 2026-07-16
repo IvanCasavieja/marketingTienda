@@ -1,5 +1,4 @@
 "use client";
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   LayoutDashboard, Megaphone, Brain, Presentation, Layers,
@@ -10,8 +9,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { RobotMascot, RobotMini } from "@/components/RobotMascot";
-import { authApi } from "@/lib/api";
-import type { CurrentUser } from "@/types";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { hasPermission } from "@/lib/permissions";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,18 +68,9 @@ function Chip({ icon: Icon, label, color = "bg-slate-100 text-slate-600" }: {
 // ---------------------------------------------------------------------------
 export default function AyudaPage() {
   const { t } = useTranslation();
-  const [me, setMe] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user: me, loading } = useCurrentUser();
 
-  useEffect(() => {
-    authApi.me()
-      .then(({ data }) => setMe(data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const perms = me?.permissions ?? [];
-  const hasPerm = (p: string) => !!me?.is_superuser || perms.includes(p);
+  const hasPerm = (p: string) => hasPermission(me, p);
 
   const showAnalytics  = hasPerm("analytics.view");
   const showIA         = hasPerm("ai.use");

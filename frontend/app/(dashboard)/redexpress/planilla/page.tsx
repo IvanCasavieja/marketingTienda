@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { redexpressApi, PlanillaRow, authApi } from "@/lib/api";
+import { redexpressApi, PlanillaRow } from "@/lib/api";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { CheckCircle2, Clock, Plus, RefreshCw, Download } from "lucide-react";
 import { toast } from "sonner";
 import { clsx } from "clsx";
@@ -83,7 +84,8 @@ export default function PlanillaPedidosPage() {
   const [selectedMes, setSelected] = useState<{ year: number; month: number } | null>(null);
   const [rows, setRows]           = useState<PlanillaRow[]>([]);
   const [loading, setLoading]     = useState(false);
-  const [isSuperuser, setIsSuperuser] = useState(false);
+  const { user: currentUser } = useCurrentUser();
+  const isSuperuser = currentUser?.is_superuser ?? false;
   const [savingRow, setSavingRow] = useState<string | null>(null);
   const [confirmingRow, setConfirmingRow] = useState<string | null>(null);
   const [showNewMes, setShowNewMes] = useState(false);
@@ -96,7 +98,6 @@ export default function PlanillaPedidosPage() {
   const pendingSaves = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
-    authApi.me().then(({ data }) => setIsSuperuser(data.is_superuser)).catch(() => {});
     loadMeses();
   }, []);
 

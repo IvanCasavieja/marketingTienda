@@ -1,7 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
-import { authApi } from "@/lib/api";
-import type { CurrentUser } from "@/types";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Loader2, KeyRound, ShieldCheck } from "lucide-react";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
 
@@ -13,15 +11,7 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 export default function PerfilPage() {
-  const [me, setMe] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    authApi.me()
-      .then(({ data }) => setMe(data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const { user: me, loading } = useCurrentUser();
 
   if (loading) {
     return (

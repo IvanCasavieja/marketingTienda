@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { authApi, chatApi } from "@/lib/api";
-import type { CurrentUser } from "@/types";
+import { chatApi } from "@/lib/api";
 import { Send, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { RobotMascot, RobotMini } from "@/components/RobotMascot";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,7 +16,7 @@ type BotMessage = { role: "bot" | "user"; text: string; ts: Date };
 // ---------------------------------------------------------------------------
 export default function HomePage() {
   const { t } = useTranslation();
-  const [user, setUser]     = useState<CurrentUser | null>(null);
+  const { user } = useCurrentUser();
   const [messages, setMessages] = useState<BotMessage[]>([]);
   const [input, setInput]   = useState("");
   const [open, setOpen]     = useState(false);
@@ -31,17 +31,15 @@ export default function HomePage() {
   ];
 
   useEffect(() => {
-    authApi.me().then(({ data }) => {
-      setUser(data);
-      const name = data.full_name?.split(" ")[0] ?? "";
-      const greeting = name ? t("home.greeting", { name }) : t("home.greetingNoName");
-      setMessages([{
-        role: "bot",
-        text: `${greeting}! ${t("home.assistantWelcome")}`,
-        ts: new Date(),
-      }]);
-    }).catch(() => {});
-  }, [t]);
+    if (!user) return;
+    const name = user.full_name?.split(" ")[0] ?? "";
+    const greeting = name ? t("home.greeting", { name }) : t("home.greetingNoName");
+    setMessages([{
+      role: "bot",
+      text: `${greeting}! ${t("home.assistantWelcome")}`,
+      ts: new Date(),
+    }]);
+  }, [user, t]);
 
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });

@@ -10,10 +10,11 @@ import {
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
 import { authApi, watchlistApi, type Notificacion } from "@/lib/api";
-import type { CurrentUser } from "@/types";
 import { useTranslation } from "react-i18next";
 import { LANGUAGES, setLanguage, type LangCode } from "@/lib/i18n";
 import { useTheme } from "@/hooks/useTheme";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { hasPermission } from "@/lib/permissions";
 import { toast } from "sonner";
 
 // Los flags de country-flag-icons devuelven emoji de bandera regional, que
@@ -76,16 +77,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { t, i18n } = useTranslation();
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const { user: currentUser } = useCurrentUser();
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
   const [notificaciones, setNotificaciones] = useState<Notificacion[] | null>(null);
   const notifWrapRef = useRef<HTMLDivElement>(null);
 
-  const userPerms: string[] = (currentUser as any)?.permissions ?? [];
-  const hasPerm = (p: string) =>
-    currentUser?.is_superuser || userPerms.includes(p);
+  const hasPerm = (p: string) => hasPermission(currentUser, p);
 
   // perm: undefined = visible para cualquier usuario logueado.
   // Cada valor corresponde 1:1 a un permiso realmente exigido por el backend
@@ -115,9 +114,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const nav = navAll.filter((item) => !item.perm || hasPerm(item.perm));
 
   useEffect(() => {
-    authApi.me()
-      .then(({ data }) => setCurrentUser(data))
-      .catch(() => {});
     watchlistApi.notificacionesNoLeidasCount()
       .then(({ data }) => setNotifCount(data.count))
       .catch(() => {});

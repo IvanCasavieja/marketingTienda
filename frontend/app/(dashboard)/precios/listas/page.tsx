@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
-import { authApi, watchlistApi, type WatchlistConItems } from "@/lib/api";
+import { watchlistApi, type WatchlistConItems } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
 import { CadenaBadge } from "@/components/precios/cadenaConfig";
 import CompartirListaModal from "@/components/precios/CompartirListaModal";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import {
   Loader2, Star, Trash2, ExternalLink, ClipboardList, Share2, CalendarClock,
   CheckCircle2, LogOut, Download, Pencil, X, Check,
@@ -22,8 +23,9 @@ function formatFecha(iso: string | null, locale: string, sinChequear: string): s
 
 export default function ListasMonitoreoPage() {
   const { t, i18n } = useTranslation();
+  const { user: currentUser } = useCurrentUser();
+  const currentUserId = currentUser?.id ?? null;
   const [listas, setListas] = useState<WatchlistConItems[] | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>("mias");
   const [borrando, setBorrando] = useState<number | null>(null);
   const [compartiendoLista, setCompartiendoLista] = useState<WatchlistConItems | null>(null);
@@ -36,7 +38,6 @@ export default function ListasMonitoreoPage() {
 
   useEffect(() => {
     cargar();
-    authApi.me().then(({ data }) => setCurrentUserId(data.id)).catch(() => {});
   }, []);
 
   async function cargar() {

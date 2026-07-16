@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState, useRef, useMemo } from "react";
-import { redexpressApi, PlanillaRow, authApi } from "@/lib/api";
+import { redexpressApi, PlanillaRow } from "@/lib/api";
 import { CheckCircle2, Clock, RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 // Misma lógica de datos/guardado que planilla/page.tsx (la de Valentina),
 // pero con una sola fila — la del local asignado al usuario logueado — en
@@ -75,8 +76,10 @@ export default function MiPedidoPage() {
 
   const MONTH_NAMES = t("redexpress.months", { returnObjects: true }) as string[];
 
-  const [assignedLocal, setAssignedLocal] = useState<string | null | undefined>(undefined); // undefined = todavía no sabemos
-  const [isSuperuser, setIsSuperuser] = useState(false);
+  const { user: currentUser, loading: loadingUser } = useCurrentUser();
+  const isSuperuser = currentUser?.is_superuser ?? false;
+  // undefined = todavía no sabemos (usuario sin resolver todavía)
+  const assignedLocal = loadingUser ? undefined : (currentUser?.assigned_locales?.[0] ?? null);
   const [locales, setLocales]       = useState<string[]>([]); // solo para superadmin (selector)
   const [selectedLocal, setSelectedLocal] = useState<string | null>(null); // elección manual del superadmin
   const [meses, setMeses]           = useState<{ year: number; month: number }[]>([]);
@@ -94,17 +97,14 @@ export default function MiPedidoPage() {
   const activeLocal = isSuperuser ? selectedLocal : (assignedLocal ?? null);
 
   useEffect(() => {
-    authApi.me()
-      .then(({ data }) => {
-        setAssignedLocal(data.assigned_locales?.[0] ?? null);
-        setIsSuperuser(!!data.is_superuser);
-        if (data.is_superuser) {
-          redexpressApi.getLocales()
-            .then(({ data: locs }) => setLocales(locs.map((l) => l.local_nombre)))
-            .catch(() => setLocales([]));
-        }
-      })
-      .catch(() => setAssignedLocal(null));
+    if (currentUser?.is_superuser) {
+      redexpressApi.getLocales()
+        .then(({ data: locs }) => setLocales(locs.map((l) => l.local_nombre)))
+        .catch(() => setLocales([]));
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
     loadMeses();
   }, []);
 
