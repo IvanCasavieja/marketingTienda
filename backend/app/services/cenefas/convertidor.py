@@ -71,7 +71,14 @@ def normalize_sku(raw) -> str:
 def _parse_price_or_none(raw) -> float | None:
     if raw is None or str(raw).strip() == "":
         return None
-    return parse_price_raw(raw)
+    # parse_price_raw exige que el string empiece con un dígito (ver
+    # formatters.py) -- un precio tipo "$150,50" no matchea y devolvería
+    # 0.0 en silencio. _is_numeric_like sí tolera un "$" adelante, así que
+    # sin este strip la validación diría "está bien" mientras el valor
+    # real usado en la fila/export quedaba en cero. Mismo patrón que ya
+    # usa data_engine.py antes de llamar a esta misma función.
+    clean = re.sub(r"^[^\d]*", "", str(raw).strip())
+    return parse_price_raw(clean) if clean else 0.0
 
 
 def _clean_str(raw) -> str:

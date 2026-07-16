@@ -45,6 +45,9 @@ def normalize_sku(raw) -> str | None:
     return s or None
 
 
+_MAX_DESCRIPCION_LEN = 300  # mismo límite que SkuDescripcion.descripcion (String(300))
+
+
 def parse_diccionario(path: str) -> list[tuple[str, str]]:
     """Lee columnas SKU (A) y Descripción cenefa (C). Descripción gestión
     (B) se ignora a propósito -- no se persiste, es la descripción mala."""
@@ -64,7 +67,11 @@ def parse_diccionario(path: str) -> list[tuple[str, str]]:
         if sku in vistos:
             continue  # primer valor gana si el SKU está duplicado en el Excel
         vistos.add(sku)
-        pares.append((sku, descripcion))
+        # Sin este truncado, una sola fila más larga que la columna de la
+        # tabla (String(300)) tira el executemany() del batch entero con una
+        # excepción de asyncpg no manejada -- match_rows() y el PATCH ya
+        # truncan/rechazan del mismo modo, esto lo alinea acá también.
+        pares.append((sku, descripcion[:_MAX_DESCRIPCION_LEN]))
     return pares
 
 

@@ -70,7 +70,7 @@ class DescripcionUpdate(BaseModel):
         return v.strip()
 
 
-@router.patch("/descripciones/{sku}")
+@router.patch("/descripciones/{sku:path}")
 async def update_descripcion(
     sku: str,
     payload: DescripcionUpdate,

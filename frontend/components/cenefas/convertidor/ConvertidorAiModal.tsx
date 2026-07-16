@@ -14,6 +14,12 @@ interface Props {
 
 type RowState = { value: string; status: "pending" | "approving" | "approved" | "error" };
 
+// Mismo umbral que DESCRIPTION_WARN_CHARS en
+// backend/app/services/cenefas/validation_engine.py (60) — se recalcula acá
+// en vivo mientras el usuario edita la sugerencia, no solo el "too_long"
+// estático que vino del backend al momento de generarla.
+const DESCRIPTION_WARN_CHARS = 60;
+
 export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
@@ -84,7 +90,10 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
     for (const row of rows) {
       if (!mountedRef.current) break;
       const s = state.get(row.row_id);
-      if (s && s.status === "pending") await approveOne(row.row_id, row.codigo);
+      // "error" también se reintenta acá -- si no, una fila que falló en un
+      // intento individual quedaría trabada ahí para siempre salvo que el
+      // usuario la reintente fila por fila.
+      if (s && (s.status === "pending" || s.status === "error")) await approveOne(row.row_id, row.codigo);
     }
     if (mountedRef.current) setApprovingAll(false);
   }
@@ -157,6 +166,16 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                       onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, value: e.target.value }))}
                       className="input text-xs w-full"
                     />
+                    {s.value.trim().length > DESCRIPTION_WARN_CHARS && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                        {t("convertidor.ai.tooLong")}
+                      </p>
+                    )}
+                    {s.status === "error" && (
+                      <p className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">
+                        {t("convertidor.ai.rowError")}
+                      </p>
+                    )}
                   </div>
                   {s.status === "approved" ? (
                     <Check size={16} className="text-emerald-500 shrink-0" />
@@ -164,10 +183,14 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                     <button
                       onClick={() => approveOne(row.row_id, row.codigo)}
                       disabled={s.status === "approving" || approvingAll}
-                      className="btn-secondary text-xs shrink-0 disabled:opacity-50"
+                      className={`text-xs shrink-0 disabled:opacity-50 ${
+                        s.status === "error" ? "btn-secondary border-red-300 text-red-600 dark:text-red-400" : "btn-secondary"
+                      }`}
                     >
                       {s.status === "approving" ? (
                         <Loader2 size={13} className="animate-spin" />
+                      ) : s.status === "error" ? (
+                        t("convertidor.ai.retry")
                       ) : (
                         t("convertidor.ai.approve")
                       )}

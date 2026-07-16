@@ -77,7 +77,12 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
   const [exporting, setExporting] = useState(false);
   const [savingRowId, setSavingRowId] = useState<number | null>(null);
   const [pendingFocusRowId, setPendingFocusRowId] = useState<number | null>(null);
-  const [aiModalOpen, setAiModalOpen] = useState(false);
+  // Snapshot fijo tomado al abrir el modal, NO la lista viva
+  // rowsNeedingDescripcion -- esa se achica sola a medida que se aprueban
+  // filas (porque quita el warning missing_description), y si el modal
+  // recibiera esa lista directamente cada fila aprobada desaparecería del
+  // modal en vez de quedar mostrando el check verde.
+  const [aiModalRows, setAiModalRows] = useState<ConvertidorRow[] | null>(null);
   const pendingSaves = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const dlRef = useRef<HTMLAnchorElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -120,13 +125,20 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
     setPendingFocusRowId(null);
   }, [visibleRows, pendingFocusRowId]);
 
-  async function flushSave(rowId: number, sku: string, descripcion: string) {
+  // Devuelve si el guardado salió bien -- nunca lanza, porque el uso más
+  // común (debounce/Enter en la grilla) es fire-and-forget con el toast
+  // como única señal. commitDescripcion (usado por el modal de IA) sí
+  // necesita saber el resultado real para no marcar "aprobado" un guardado
+  // que en realidad falló -- ver ahí abajo.
+  async function flushSave(rowId: number, sku: string, descripcion: string): Promise<boolean> {
     setSavingRowId(rowId);
     try {
       await convertidorApi.updateDescripcion(sku, descripcion);
       toast.success(t("convertidor.savedToCatalog", { sku }));
+      return true;
     } catch {
       toast.error(t("convertidor.saveError"));
+      return false;
     } finally {
       setSavingRowId((cur) => (cur === rowId ? null : cur));
     }
@@ -174,7 +186,12 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
   // debounce, y acá hace falta guardar ya (el usuario ya aprobó).
   async function commitDescripcion(rowId: number, sku: string, value: string) {
     const trimmed = value.trim();
-    if (!trimmed || !HAS_LETTER_RE.test(trimmed)) return;
+    if (!trimmed || !HAS_LETTER_RE.test(trimmed)) {
+      // El modal marca "aprobado" solo si esta promesa resuelve sin lanzar
+      // -- una sugerencia vacía o sin letras nunca debería contarse como
+      // guardada, aunque el usuario haya clickeado "Aprobar".
+      throw new Error("Descripción inválida: no puede quedar vacía ni sin letras");
+    }
     setRows((prev) =>
       (prev ?? []).map((r) =>
         r.row_id === rowId
@@ -182,7 +199,8 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
           : r
       )
     );
-    await flushSave(rowId, sku, value);
+    const ok = await flushSave(rowId, sku, value);
+    if (!ok) throw new Error("No se pudo guardar la descripción");
   }
 
   async function handleExport() {
@@ -268,7 +286,7 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
             </p>
             <button
               type="button"
-              onClick={() => setAiModalOpen(true)}
+              onClick={() => setAiModalRows(rowsNeedingDescripcion)}
               className="btn-secondary text-xs flex items-center gap-1.5"
             >
               <Sparkles size={13} /> {t("convertidor.ai.button")}
@@ -367,11 +385,11 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
         {exporting ? t("convertidor.exporting") : t("convertidor.download")}
       </button>
 
-      {aiModalOpen && (
+      {aiModalRows && (
         <ConvertidorAiModal
-          rows={rowsNeedingDescripcion}
+          rows={aiModalRows}
           onApprove={commitDescripcion}
-          onClose={() => setAiModalOpen(false)}
+          onClose={() => setAiModalRows(null)}
         />
       )}
     </div>
