@@ -418,6 +418,7 @@
       "subtitle": "Arraste ou redimensione qualquer elemento para ajustá-lo. {{count}} produto(s) no total — o primeiro é mostrado como referência.",
       "back": "Voltar",
       "confirmAndDownload": "Confirmar e baixar",
+      "downloadAgain": "Baixar de novo",
       "generatingPreview": "Gerando pré-visualização…",
       "previewError": "Erro ao gerar a pré-visualização",
       "generateError": "Erro ao gerar o arquivo",

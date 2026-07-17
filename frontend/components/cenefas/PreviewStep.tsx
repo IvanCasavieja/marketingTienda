@@ -24,6 +24,7 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
   const [template, setTemplate] = useState<CenefaTemplate | null>(null);
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const dirtyBounds = useRef<Record<string, ComponentBounds>>({});
@@ -66,9 +67,30 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
     }
   }
 
+  async function triggerDownload() {
+    const { data: blob } = await cenefasV2Api.downloadJob(jobId);
+    const url = URL.createObjectURL(new Blob([blob]));
+    if (dlRef.current) {
+      dlRef.current.href = url;
+      dlRef.current.download = `cenefa_${jobId.slice(0, 8)}.pptx`;
+      dlRef.current.click();
+    }
+    URL.revokeObjectURL(url);
+    toast.success(t("cenefas.previewStep.downloaded"));
+  }
+
   async function handleConfirm() {
     setConfirming(true);
     try {
+      // Un job ya confirmado no se puede volver a confirmar (el backend
+      // devuelve 409 — es un guard a propósito contra renders duplicados).
+      // Si ya se confirmó en esta sesión, solo volvemos a descargar el
+      // mismo archivo ya generado, sin tocar el job de nuevo.
+      if (confirmed) {
+        await triggerDownload();
+        return;
+      }
+
       const components = Object.entries(dirtyBounds.current).map(([id, base_bounds]) => ({ id, base_bounds }));
       await cenefasV2Api.confirmJob(jobId, components);
 
@@ -95,15 +117,8 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
         }, 1200);
       });
 
-      const { data: blob } = await cenefasV2Api.downloadJob(jobId);
-      const url = URL.createObjectURL(new Blob([blob]));
-      if (dlRef.current) {
-        dlRef.current.href = url;
-        dlRef.current.download = `cenefa_${jobId.slice(0, 8)}.pptx`;
-        dlRef.current.click();
-      }
-      URL.revokeObjectURL(url);
-      toast.success(t("cenefas.previewStep.downloaded"));
+      await triggerDownload();
+      setConfirmed(true);
     } catch (e: any) {
       toast.error(e?.message ?? t("cenefas.previewStep.confirmError"));
     } finally {
@@ -147,7 +162,10 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
           <button onClick={handleConfirm} disabled={confirming} className="btn-primary text-xs py-2 px-4 disabled:opacity-50">
             {confirming
               ? <span className="flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> {t("cenefas.generating")}</span>
-              : <span className="flex items-center gap-1.5"><Download size={13} /> {t("cenefas.previewStep.confirmAndDownload")}</span>
+              : <span className="flex items-center gap-1.5">
+                  <Download size={13} />
+                  {confirmed ? t("cenefas.previewStep.downloadAgain") : t("cenefas.previewStep.confirmAndDownload")}
+                </span>
             }
           </button>
         </div>

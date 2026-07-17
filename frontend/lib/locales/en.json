@@ -418,6 +418,7 @@
       "subtitle": "Drag or resize any element to adjust it. {{count}} product(s) total — the first one is shown as a reference.",
       "back": "Back",
       "confirmAndDownload": "Confirm and download",
+      "downloadAgain": "Download again",
       "generatingPreview": "Generating preview…",
       "previewError": "Error generating the preview",
       "generateError": "Error generating the file",
