@@ -481,12 +481,47 @@ async def _race(speaker: str, round_n: int, role: str, coro, queue: asyncio.Queu
         await queue.put({"ok": False, "speaker": speaker, "error": str(exc)})
 
 
-def _build_data_context(metrics_ctx: str, sfmc_ctx: str, date_from: date, date_to: date) -> str:
-    return (
-        f"Período: {date_from} al {date_to}\n\n"
-        f"## CAMPAÑAS PAGAS\n{metrics_ctx}\n\n"
-        f"## COMUNICACIONES\n{sfmc_ctx}"
-    )
+def _build_meridian_context(meridian_summary: List[Dict]) -> str:
+    """Resumen por canal del modelo de Marketing Mix (Meridian) — impacto
+    incremental real sobre la revenue de GA4, no la auto-atribución de cada
+    plataforma. Devuelve "" (no se inyecta nada) si todavía no se importó
+    ninguna corrida, o si la última se fiteó con menos de 52 semanas de
+    historia (reliable=False, ver meridian_mmm/README.md) — con pocos datos
+    los intervalos de confianza son anchos y mostrarle esto a los modelos
+    como si fuera un hallazgo sólido sería engañoso. Se activa solo, sin
+    tocar código, en cuanto scripts/import_meridian_summary.py cargue una
+    corrida con 52+ semanas."""
+    if not meridian_summary or not all(r.get("reliable") for r in meridian_summary):
+        return ""
+    lines = [
+        "## MERIDIAN — IMPACTO INCREMENTAL REAL POR CANAL (Marketing Mix "
+        "Model, no auto-atribución de plataforma)",
+        "Si el ROAS que reporta la propia plataforma para un canal difiere de "
+        "su ROI incremental acá, priorizá este número y explicá por qué "
+        "difieren — esto mide impacto real sobre la revenue de GA4 "
+        "controlando por los demás canales; el ROAS de plataforma se "
+        "auto-atribuye.",
+    ]
+    for row in sorted(meridian_summary, key=lambda r: r["pct_of_contribution"], reverse=True):
+        lines.append(
+            f"- {row['channel'].upper()}: ROI incremental={row['roi']:.2f}x | "
+            f"% de la contribución total={row['pct_of_contribution']:.1f}% | "
+            f"spend=${row['spend']:.0f} ({row['pct_of_spend']:.1f}% del spend total)"
+        )
+    return "\n".join(lines)
+
+
+def _build_data_context(
+    metrics_ctx: str, sfmc_ctx: str, date_from: date, date_to: date, meridian_ctx: str = ""
+) -> str:
+    parts = [
+        f"Período: {date_from} al {date_to}",
+        f"## CAMPAÑAS PAGAS\n{metrics_ctx}",
+        f"## COMUNICACIONES\n{sfmc_ctx}",
+    ]
+    if meridian_ctx:
+        parts.append(meridian_ctx)
+    return "\n\n".join(parts)
 
 
 def _r1_prompt(data_context: str, focus: str) -> str:
@@ -549,10 +584,12 @@ async def stream_debate(
     date_from: date,
     date_to: date,
     user_prompt: str = "",
+    meridian_summary: List[Dict] | None = None,
 ) -> AsyncIterator[dict]:
     metrics_ctx = _build_metrics_context(metrics)
     sfmc_ctx = _build_sfmc_context(email_data, whatsapp_data)
-    data_context = _build_data_context(metrics_ctx, sfmc_ctx, date_from, date_to)
+    meridian_ctx = _build_meridian_context(meridian_summary or [])
+    data_context = _build_data_context(metrics_ctx, sfmc_ctx, date_from, date_to, meridian_ctx)
     compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
 
     focus = f"\n\nContexto de la pregunta del equipo: **{user_prompt.strip()}**" if user_prompt.strip() else ""
@@ -618,10 +655,12 @@ async def run_debate(
     date_from: date,
     date_to: date,
     user_prompt: str = "",
+    meridian_summary: List[Dict] | None = None,
 ) -> Dict:
     metrics_ctx = _build_metrics_context(metrics)
     sfmc_ctx = _build_sfmc_context(email_data, whatsapp_data)
-    data_context = _build_data_context(metrics_ctx, sfmc_ctx, date_from, date_to)
+    meridian_ctx = _build_meridian_context(meridian_summary or [])
+    data_context = _build_data_context(metrics_ctx, sfmc_ctx, date_from, date_to, meridian_ctx)
     compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
 
     focus = f"\n\nContexto de la pregunta del equipo: **{user_prompt.strip()}**" if user_prompt.strip() else ""
@@ -710,12 +749,14 @@ async def stream_debate_turn(
     metrics_2: List[Dict] | None = None,
     date_from_2: date | None = None,
     date_to_2: date | None = None,
+    meridian_summary: List[Dict] | None = None,
 ) -> AsyncIterator[dict]:
     """Sequential debate: ChatGPT fetches web context and speaks first, Claude responds second
     with the quantitative rebuttal/validation."""
-    compact_ctx = _build_compact_context(metrics, email_data, whatsapp_data)
-    daily_ctx   = _build_daily_series_context(metrics)
-    history_str = _build_history_str(history)
+    compact_ctx  = _build_compact_context(metrics, email_data, whatsapp_data)
+    daily_ctx    = _build_daily_series_context(metrics)
+    meridian_ctx = _build_meridian_context(meridian_summary or [])
+    history_str  = _build_history_str(history)
     is_first_turn = not any(m.get("speaker") in ("Claude", "ChatGPT") for m in history)
 
     data_section = f"Datos del período {date_from} al {date_to}:\n{compact_ctx}"
@@ -733,6 +774,8 @@ async def stream_debate_turn(
         )
         if daily_ctx:
             data_section += f"\n\n{daily_ctx}"
+    if meridian_ctx:
+        data_section += f"\n\n{meridian_ctx}"
 
     # ── Step 0: ChatGPT busca contexto externo del período ────────────────────
     # Aviso explícito de que arranca la búsqueda: sin esto, el frontend mostraba
@@ -901,10 +944,12 @@ async def stream_llama_verdict(
     metrics_2: List[Dict] | None = None,
     date_from_2: date | None = None,
     date_to_2: date | None = None,
+    meridian_summary: List[Dict] | None = None,
 ) -> AsyncIterator[dict]:
     """Llama reads the full debate and gives an on-demand verdict."""
     compact_ctx    = _build_compact_context(metrics, email_data, whatsapp_data)
     highlights_ctx = _build_daily_highlights(metrics)
+    meridian_ctx   = _build_meridian_context(meridian_summary or [])
     history_str    = _build_history_str(history, max_items=24)
 
     data_section = f"Datos de referencia ({date_from} al {date_to}):\n{compact_ctx}"
@@ -917,6 +962,8 @@ async def stream_llama_verdict(
         data_section = f"{comparison_ctx}\n\nDetalle período actual:\n{compact_ctx}"
         if highlights_ctx:
             data_section += f"\n\n{highlights_ctx}"
+    if meridian_ctx:
+        data_section += f"\n\n{meridian_ctx}"
 
     prompt = (
         f"Sos el árbitro de este debate sobre campañas de marketing ({date_from} al {date_to}).\n\n"

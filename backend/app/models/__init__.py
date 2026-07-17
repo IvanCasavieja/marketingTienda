@@ -16,6 +16,7 @@ from app.models.notificacion import Notificacion
 from app.models.cotizacion_dolar import CotizacionDolar
 from app.models.ai_usage_log import AIUsageLog
 from app.models.sku_descripcion import SkuDescripcion
+from app.models.meridian_channel_summary import MeridianChannelSummary
 
 __all__ = [
     "User", "PlatformConnection", "Platform",
@@ -23,5 +24,5 @@ __all__ = [
     "CenefaTemplate", "CenefaTemplateV2", "CenefaJob",
     "PlanillaPedido", "LocalAsignacion",
     "Watchlist", "WatchlistItem", "WatchlistPrecioHistorial", "WatchlistShare", "Notificacion",
-    "CotizacionDolar", "AIUsageLog", "SkuDescripcion",
+    "CotizacionDolar", "AIUsageLog", "SkuDescripcion", "MeridianChannelSummary",
 ]

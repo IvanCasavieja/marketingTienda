@@ -25,6 +25,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 from meridian import constants
+from meridian.analysis.analyzer import Analyzer
 from meridian.analysis.summarizer import Summarizer
 from meridian.data.data_frame_input_data_builder import DataFrameInputDataBuilder
 from meridian.model.model import Meridian
@@ -34,6 +35,7 @@ HERE = Path(__file__).resolve().parent
 DATA_PATH = HERE / "data" / "weekly_metrics.csv"
 OUTPUT_DIR = HERE / "output"
 REPORT_FILENAME = "meridian_summary.html"
+CHANNEL_SUMMARY_FILENAME = "meridian_channel_summary.csv"
 
 # Reducidos para una corrida rapida con pocas semanas de datos. Subir una vez
 # que haya suficiente historia real (ver docstring arriba).
@@ -63,6 +65,31 @@ def load_input_data():
         time_col="time",
     )
     return builder.build(), channels
+
+
+def export_channel_summary(mmm: Meridian, n_weeks: int) -> Path:
+    """Guarda un CSV compacto por canal (spend, ROI, % de contribución a la
+    revenue) además del HTML completo — para que debate_service.py pueda
+    inyectar estos números como contexto real en La Triada sin tener que
+    parsear HTML. La columna `reliable` marca si el modelo tenía 52+ semanas
+    de historia al momento de esta corrida: debate_service.py se guía por
+    esa columna para decidir si usa el archivo, no hace falta chequearlo acá."""
+    metrics = Analyzer(mmm).summary_metrics(aggregate_geos=True, aggregate_times=True)
+    posterior_mean = metrics.sel(distribution="posterior", metric="mean")
+    df = (
+        posterior_mean[["spend", "pct_of_spend", "incremental_outcome", "pct_of_contribution", "roi", "mroi"]]
+        .to_dataframe()
+        .reset_index()
+    )
+    # metric/distribution quedan como columnas constantes ("mean"/"posterior")
+    # al hacer to_dataframe() de un Dataset ya reducido con .sel() — no aportan
+    # nada por fila, solo ruido.
+    df = df.drop(columns=["metric", "distribution"], errors="ignore")
+    df = df[df[constants.CHANNEL] != constants.ALL_CHANNELS].copy()
+    df.insert(0, "reliable", n_weeks >= 52)
+    out_path = OUTPUT_DIR / CHANNEL_SUMMARY_FILENAME
+    df.to_csv(out_path, index=False)
+    return out_path
 
 
 def main() -> None:
@@ -97,6 +124,11 @@ def main() -> None:
         filepath=str(OUTPUT_DIR),
     )
     print(f"Listo -> {OUTPUT_DIR / REPORT_FILENAME}")
+
+    print("Exportando resumen por canal...")
+    channel_summary_path = export_channel_summary(mmm, n_weeks)
+    print(f"Listo -> {channel_summary_path}")
+
     if n_weeks < 52:
         print(
             f"Recordatorio: {n_weeks} semanas de datos — revisar los intervalos de "

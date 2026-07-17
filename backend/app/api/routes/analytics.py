@@ -14,6 +14,7 @@ from app.core.rate_limit import limiter
 from app.models.user import User
 from app.models.ai_analysis import AIAnalysis
 from app.models.platform_connection import Platform
+from app.models.meridian_channel_summary import MeridianChannelSummary
 from app.services.metrics_service import get_metrics, get_available_platforms
 from app.services.debate_service import run_debate, stream_debate, stream_debate_turn, stream_llama_verdict
 from app.services.ai_usage_service import log_ai_usage
@@ -27,6 +28,27 @@ logger = logging.getLogger(__name__)
 _ALL_HANDLERS = {"debate": run_debate}
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+async def _get_meridian_summary(db: AsyncSession) -> List[dict]:
+    """Última corrida importada del modelo de Marketing Mix (Meridian), si
+    existe — ver scripts/import_meridian_summary.py. debate_service.py
+    decide por sí solo si la usa (solo si reliable=True en todas las filas),
+    así que acá no hace falta filtrar nada, alcanza con traer lo que haya."""
+    result = await db.execute(select(MeridianChannelSummary))
+    return [
+        {
+            "channel": row.channel,
+            "spend": row.spend,
+            "pct_of_spend": row.pct_of_spend,
+            "incremental_outcome": row.incremental_outcome,
+            "pct_of_contribution": row.pct_of_contribution,
+            "roi": row.roi,
+            "mroi": row.mroi,
+            "reliable": row.reliable,
+        }
+        for row in result.scalars().all()
+    ]
 
 
 async def _assert_platforms_available(db: AsyncSession, platforms: List[Platform]) -> None:
@@ -119,10 +141,14 @@ async def analyze(
 
     await _assert_platforms_available(db, payload.platforms)
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
+    meridian_summary = await _get_meridian_summary(db)
 
     try:
         email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to)
-        result = await handler(metrics, email_data, whatsapp_data, payload.date_from, payload.date_to, payload.user_prompt)
+        result = await handler(
+            metrics, email_data, whatsapp_data, payload.date_from, payload.date_to, payload.user_prompt,
+            meridian_summary=meridian_summary,
+        )
     except RuntimeError as e:
         logger.error("Analysis handler failed: %s", e)
         raise HTTPException(status_code=502, detail="Analysis service temporarily unavailable")
@@ -215,6 +241,7 @@ async def debate_stream(
 ):
     await _assert_platforms_available(db, payload.platforms)
     metrics = await get_metrics(db, payload.platforms, payload.date_from, payload.date_to)
+    meridian_summary = await _get_meridian_summary(db)
 
     email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to, "debate stream")
 
@@ -231,7 +258,10 @@ async def debate_stream(
         total_tokens = 0
         usage_items: list = []
         try:
-            async for event in stream_debate(metrics, email_data, whatsapp_data, date_from, date_to, user_prompt):
+            async for event in stream_debate(
+                metrics, email_data, whatsapp_data, date_from, date_to, user_prompt,
+                meridian_summary=meridian_summary,
+            ):
                 if event.get("type") == "message":
                     all_messages.append({
                         "speaker": event["speaker"],
@@ -290,6 +320,7 @@ async def debate_turn(
     metrics_2: list = []
     if payload.date_from_2 and payload.date_to_2:
         metrics_2 = await get_metrics(db, payload.platforms, payload.date_from_2, payload.date_to_2)
+    meridian_summary = await _get_meridian_summary(db)
 
     email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to, "debate turn")
 
@@ -307,6 +338,7 @@ async def debate_turn(
                 metrics, email_data, whatsapp_data,
                 payload.date_from, payload.date_to,
                 metrics_2 or None, payload.date_from_2, payload.date_to_2,
+                meridian_summary=meridian_summary,
             ):
                 if event.get("type") == "message":
                     new_messages.append({
@@ -388,6 +420,7 @@ async def debate_verdict(
     metrics_2: list = []
     if payload.date_from_2 and payload.date_to_2:
         metrics_2 = await get_metrics(db, payload.platforms, payload.date_from_2, payload.date_to_2)
+    meridian_summary = await _get_meridian_summary(db)
 
     email_data, whatsapp_data = await _get_sfmc_data(payload.date_from, payload.date_to, "debate verdict")
 
@@ -404,6 +437,7 @@ async def debate_verdict(
                 payload.history, metrics, email_data, whatsapp_data,
                 payload.date_from, payload.date_to,
                 metrics_2 or None, payload.date_from_2, payload.date_to_2,
+                meridian_summary=meridian_summary,
             ):
                 if event.get("type") == "message":
                     llama_content = event.get("content", "")
