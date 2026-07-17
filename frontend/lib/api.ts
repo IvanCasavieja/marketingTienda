@@ -294,6 +294,10 @@ export interface ConvertidorRow {
   oferta: string;
   oferta_det: string;
   descripcion_web: string;
+  vigencia: string;
+  aclaracion1: string;
+  aclaracion2: string;
+  aclaracion3: string;
   matched: boolean;
   warnings: string[];
 }
@@ -344,8 +348,8 @@ export const convertidorApi = {
     api.get<{ items: SkuDescripcionItem[]; total: number }>("/tools/cenefas/convertidor/descripciones", {
       params: { q: q || undefined, limit, offset },
     }),
-  export: (rows: ConvertidorRow[]) =>
-    api.post("/tools/cenefas/convertidor/export", { rows }, { responseType: "blob" }),
+  export: (rows: ConvertidorRow[], destino: string = "redexpres") =>
+    api.post("/tools/cenefas/convertidor/export", { rows, destino }, { responseType: "blob" }),
   generarDescripcionesIA: (
     rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion_web: string }[]
   ) =>

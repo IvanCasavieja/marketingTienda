@@ -5,6 +5,7 @@ import { ArrowLeft, Download, Loader2, Sparkles, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { convertidorApi, type ConvertidorRow, type ConvertidorSummary } from "@/lib/api";
+import type { CenefaDestino } from "@/components/cenefas/DestinoModal";
 import ConvertidorAiModal from "./ConvertidorAiModal";
 
 // Virtualización manual (sin librería nueva): solo se renderizan las filas
@@ -16,7 +17,17 @@ const CONTAINER_HEIGHT = 560;
 const BUFFER_ROWS = 8;
 const SAVE_DEBOUNCE_MS = 800;
 
-type ColumnKey = "codigo" | "nombre_articulo" | "descripcion" | "moneda" | "precio_anterior" | "precio" | "oferta" | "oferta_det" | "descripcion_web";
+type ColumnKey =
+  | "codigo" | "nombre_articulo" | "descripcion" | "moneda" | "precio_anterior" | "precio"
+  | "oferta" | "oferta_det" | "descripcion_web"
+  | "vigencia" | "aclaracion1" | "aclaracion2" | "aclaracion3";
+
+// "descripcion" es editable con lógica propia (guardado al catálogo
+// compartido + sugerencias IA, ver handleDescripcionChange más abajo).
+// "simple" es edición local nomás (no persiste a ningún lado hasta
+// exportar) — vigencia y aclaracion1/2/3 no tienen catálogo ni columna en
+// gestión, son texto libre que se completa acá mismo o se deja vacío.
+type EditableKind = "descripcion" | "simple";
 
 // Cada columna tiene un tipo de dato esperado — precio es numérico,
 // descripción/nombre son texto, moneda es un símbolo de un set chico
@@ -24,16 +35,31 @@ type ColumnKey = "codigo" | "nombre_articulo" | "descripcion" | "moneda" | "prec
 // lista los códigos que el backend ya calculó por columna, en orden de
 // severidad: vacío ("missing_*") o tipo incorrecto ("*_invalido/a") —
 // nunca ambos a la vez para el mismo campo.
-const COLUMNS: { key: ColumnKey; i18nKey: string; editable?: boolean; warningCodes?: string[] }[] = [
+const COLUMNS_REDEXPRES: { key: ColumnKey; i18nKey: string; editable?: EditableKind; warningCodes?: string[] }[] = [
   { key: "codigo",          i18nKey: "codigo" },
   { key: "nombre_articulo", i18nKey: "nombreArticulo", warningCodes: ["nombre_articulo_invalido"] },
-  { key: "descripcion",     i18nKey: "descripcion",     editable: true, warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
+  { key: "descripcion",     i18nKey: "descripcion",     editable: "descripcion", warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
   { key: "moneda",          i18nKey: "moneda",          warningCodes: ["moneda_invalida"] },
   { key: "precio_anterior", i18nKey: "precioAnterior",  warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
   { key: "precio",          i18nKey: "precio",          warningCodes: ["missing_price", "precio_invalido"] },
   { key: "oferta",          i18nKey: "oferta",          warningCodes: ["missing_oferta"] },
   { key: "oferta_det",      i18nKey: "ofertaDet",       warningCodes: ["missing_oferta_det", "oferta_det_invalido"] },
   { key: "descripcion_web", i18nKey: "descripcionWeb",  warningCodes: ["missing_descripcion_web", "descripcion_web_invalida"] },
+];
+
+// Rompe Precios no tiene mecánica de oferta/moneda/descripcion_web — en
+// cambio suma vigencia y aclaracion1/2/3, sin columna candidata en gestión
+// (ver convertidor.py), así que quedan como texto libre editable sin warnings.
+const COLUMNS_ROMPE_PRECIOS: { key: ColumnKey; i18nKey: string; editable?: EditableKind; warningCodes?: string[] }[] = [
+  { key: "codigo",          i18nKey: "codigo" },
+  { key: "nombre_articulo", i18nKey: "nombreArticulo", warningCodes: ["nombre_articulo_invalido"] },
+  { key: "descripcion",     i18nKey: "descripcion",     editable: "descripcion", warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
+  { key: "precio_anterior", i18nKey: "precioAnterior",  warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
+  { key: "precio",          i18nKey: "precio",          warningCodes: ["missing_price", "precio_invalido"] },
+  { key: "vigencia",        i18nKey: "vigencia",        editable: "simple" },
+  { key: "aclaracion1",     i18nKey: "aclaracion1",     editable: "simple" },
+  { key: "aclaracion2",     i18nKey: "aclaracion2",     editable: "simple" },
+  { key: "aclaracion3",     i18nKey: "aclaracion3",     editable: "simple" },
 ];
 
 // Warnings de "tipo incorrecto" (hay contenido, pero no del tipo esperado
@@ -69,10 +95,12 @@ interface Props {
   setRows: Dispatch<SetStateAction<ConvertidorRow[] | null>>;
   summary: ConvertidorSummary | null;
   onReset: () => void;
+  destino: CenefaDestino;
 }
 
-export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Props) {
+export default function ConvertidorGrid({ rows, setRows, summary, onReset, destino }: Props) {
   const { t } = useTranslation();
+  const COLUMNS = destino === "rompe_precios" ? COLUMNS_ROMPE_PRECIOS : COLUMNS_REDEXPRES;
   const [scrollTop, setScrollTop] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [savingRowId, setSavingRowId] = useState<number | null>(null);
@@ -142,6 +170,13 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
     } finally {
       setSavingRowId((cur) => (cur === rowId ? null : cur));
     }
+  }
+
+  // Edición "simple" (vigencia, aclaracion1/2/3): sin catálogo compartido ni
+  // debounce a un backend — solo actualiza el estado local, va al export tal
+  // cual quede tipeado.
+  function handleSimpleFieldChange(rowId: number, key: ColumnKey, value: string) {
+    setRows((prev) => (prev ?? []).map((r) => (r.row_id === rowId ? { ...r, [key]: value } : r)));
   }
 
   function handleDescripcionChange(rowId: number, sku: string, value: string) {
@@ -216,7 +251,7 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
         if (row && row.descripcion.trim()) await flushSave(rowId, row.codigo, row.descripcion);
       }
 
-      const { data: blob } = await convertidorApi.export(rows);
+      const { data: blob } = await convertidorApi.export(rows, destino);
       const url = URL.createObjectURL(new Blob([blob]));
       if (dlRef.current) {
         dlRef.current.href = url;
@@ -341,7 +376,7 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
                 <tr key={row.row_id} style={{ height: ROW_HEIGHT }} className="border-b border-slate-100 dark:border-slate-800">
                   {COLUMNS.map((c) => (
                     <td key={c.key} className={clsx("px-2 py-1 align-middle", warningClass(row, c.warningCodes))}>
-                      {c.editable ? (
+                      {c.editable === "descripcion" ? (
                         <div className="flex items-center gap-1">
                           <input
                             ref={(el) => {
@@ -361,6 +396,15 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset }: Pro
                             <Loader2 size={11} className="shrink-0 animate-spin text-slate-400" />
                           )}
                         </div>
+                      ) : c.editable === "simple" ? (
+                        <input
+                          type="text"
+                          value={String(row[c.key] ?? "")}
+                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                            handleSimpleFieldChange(row.row_id, c.key, e.target.value)
+                          }
+                          className="w-full rounded border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 bg-transparent text-xs py-1 px-1 outline-none transition-colors"
+                        />
                       ) : (
                         <span className="block truncate text-slate-700 dark:text-slate-300" title={String(row[c.key] ?? "")}>
                           {row[c.key] === null || row[c.key] === undefined || row[c.key] === "" ? "—" : String(row[c.key])}

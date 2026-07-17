@@ -672,6 +672,18 @@
   "convertidor": {
     "title": "Convertidor de Excel",
     "subtitle": "Subí el Excel de gestión y armá uno limpio, con las descripciones correctas.",
+    "destino": {
+      "title": "¿Qué Excel vas a limpiar?",
+      "subtitle": "Elegí para qué destino es, las columnas de salida cambian según cuál sea.",
+      "rompe_precios": {
+        "label": "Rompe Precios del finde",
+        "description": "Descripción, precio, precio anterior, vigencia y aclaraciones — sin mecánica de oferta."
+      },
+      "redexpres": {
+        "label": "Redexpres",
+        "description": "Con moneda, oferta y oferta det — mismas columnas que hoy."
+      }
+    },
     "intro": "Subí el Excel tal cual se descarga de gestión. Lo vamos a matchear por código contra el catálogo de descripciones y a resaltar lo que falta completar.",
     "excelLabel": "Excel de gestión",
     "process": "Procesar Excel",
@@ -699,7 +711,11 @@
       "precio": "Precio",
       "oferta": "Oferta",
       "ofertaDet": "Oferta Det",
-      "descripcionWeb": "Descripción Web"
+      "descripcionWeb": "Descripción Web",
+      "vigencia": "Vigencia",
+      "aclaracion1": "Aclaración 1",
+      "aclaracion2": "Aclaración 2",
+      "aclaracion3": "Aclaración 3"
     },
     "learnedToast": "Agregamos {{count}} descripciones nuevas a tu diccionario a partir de este Excel.",
     "learnedBadge": "+{{count}} nuevas al catálogo",

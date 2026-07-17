@@ -5,9 +5,14 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { convertidorApi, type ConvertidorRow, type ConvertidorSummary } from "@/lib/api";
 import { FileDropField } from "@/components/cenefas/redexpres/RedExpresPanel";
+import type { CenefaDestino } from "@/components/cenefas/DestinoModal";
 import ConvertidorGrid from "./ConvertidorGrid";
 
-export default function ConvertidorPanel() {
+interface ConvertidorPanelProps {
+  destino: CenefaDestino;
+}
+
+export default function ConvertidorPanel({ destino }: ConvertidorPanelProps) {
   const { t } = useTranslation();
   const [excel, setExcel] = useState<File | null>(null);
   const [rows, setRows] = useState<ConvertidorRow[] | null>(null);
@@ -27,6 +32,7 @@ export default function ConvertidorPanel() {
     try {
       const fd = new FormData();
       fd.append("excel", excel);
+      fd.append("destino", destino);
       const { data } = await convertidorApi.preview(fd);
       setRows(data.rows);
       setSummary({
@@ -46,7 +52,7 @@ export default function ConvertidorPanel() {
   }
 
   if (rows) {
-    return <ConvertidorGrid rows={rows} setRows={setRows} summary={summary} onReset={reset} />;
+    return <ConvertidorGrid rows={rows} setRows={setRows} summary={summary} onReset={reset} destino={destino} />;
   }
 
   return (

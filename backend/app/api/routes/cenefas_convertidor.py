@@ -5,7 +5,7 @@ rápido, a diferencia de renderizar PPTX — no hay razón para repetir acá el
 patrón de jobs del generador de Cenefas."""
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_, select
@@ -36,6 +36,7 @@ router = APIRouter(prefix="/tools/cenefas/convertidor", tags=["cenefas-convertid
 @router.post("/preview")
 async def preview(
     excel: UploadFile = File(...),
+    destino: str = Form(default="redexpres"),
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -48,7 +49,7 @@ async def preview(
         logger.error("convertidor preview parse error: %s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=f"Error al parsear el archivo: {e}")
 
-    rows, learned_count = await match_rows(parsed, db, current_user.id)
+    rows, learned_count = await match_rows(parsed, db, current_user.id, destino)
     if learned_count:
         await db.commit()
     matched = sum(1 for r in rows if r["matched"])
@@ -132,10 +133,15 @@ class ConvertidorRowIn(BaseModel):
     oferta:                str = ""
     oferta_det:            str = ""
     descripcion_web:       str = ""
+    vigencia:              str = ""
+    aclaracion1:            str = ""
+    aclaracion2:            str = ""
+    aclaracion3:            str = ""
 
 
 class ExportRequest(BaseModel):
     rows: list[ConvertidorRowIn]
+    destino: str = "redexpres"
 
 
 @router.post("/export")
@@ -147,7 +153,7 @@ async def export(
     browser (no vuelve a leer la base) — lo que se ve en el grid es
     exactamente lo que se descarga, sin depender de si el debounce del
     último PATCH ya disparó o no."""
-    xlsx_bytes = build_output_workbook([r.model_dump() for r in payload.rows])
+    xlsx_bytes = build_output_workbook([r.model_dump() for r in payload.rows], payload.destino)
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

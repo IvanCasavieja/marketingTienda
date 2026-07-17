@@ -672,6 +672,18 @@
   "convertidor": {
     "title": "Conversor de Excel",
     "subtitle": "Envie o Excel da gestão e gere um limpo, com as descrições corretas.",
+    "destino": {
+      "title": "Qual Excel você vai limpar?",
+      "subtitle": "Escolha o destino — as colunas de saída mudam conforme qual seja.",
+      "rompe_precios": {
+        "label": "Rompe Precios del finde",
+        "description": "Descrição, preço, preço anterior, vigência e observações — sem mecânica de oferta."
+      },
+      "redexpres": {
+        "label": "Redexpres",
+        "description": "Com moeda, oferta e detalhe da oferta — mesmas colunas de hoje."
+      }
+    },
     "intro": "Envie o arquivo exatamente como baixado da gestão. Vamos cruzá-lo por código com o catálogo de descrições e destacar o que falta preencher.",
     "excelLabel": "Excel da gestão",
     "process": "Processar Excel",
@@ -699,7 +711,11 @@
       "precio": "Preço",
       "oferta": "Oferta",
       "ofertaDet": "Tipo de Oferta",
-      "descripcionWeb": "Descrição Web"
+      "descripcionWeb": "Descrição Web",
+      "vigencia": "Vigência",
+      "aclaracion1": "Observação 1",
+      "aclaracion2": "Observação 2",
+      "aclaracion3": "Observação 3"
     },
     "learnedToast": "Adicionamos {{count}} descrições novas ao seu dicionário a partir deste Excel.",
     "learnedBadge": "+{{count}} novas no catálogo",

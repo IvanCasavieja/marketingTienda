@@ -672,6 +672,18 @@
   "convertidor": {
     "title": "Excel Converter",
     "subtitle": "Upload the management system Excel and get a clean one, with correct descriptions.",
+    "destino": {
+      "title": "Which Excel are you cleaning up?",
+      "subtitle": "Pick the destination — the output columns change depending on it.",
+      "rompe_precios": {
+        "label": "Rompe Precios del finde",
+        "description": "Description, price, previous price, validity dates and remarks — no offer mechanics."
+      },
+      "redexpres": {
+        "label": "Redexpres",
+        "description": "With currency, offer and offer detail — same columns as today."
+      }
+    },
     "intro": "Upload the file exactly as downloaded from the management system. We'll match it by code against the description catalog and highlight what's missing.",
     "excelLabel": "Management Excel",
     "process": "Process Excel",
@@ -699,7 +711,11 @@
       "precio": "Price",
       "oferta": "Offer",
       "ofertaDet": "Offer Type",
-      "descripcionWeb": "Web Description"
+      "descripcionWeb": "Web Description",
+      "vigencia": "Validity",
+      "aclaracion1": "Remark 1",
+      "aclaracion2": "Remark 2",
+      "aclaracion3": "Remark 3"
     },
     "learnedToast": "We added {{count}} new descriptions to your dictionary from this Excel.",
     "learnedBadge": "+{{count}} new to catalog",

@@ -222,11 +222,16 @@ def parse_input_excel(excel_bytes: bytes) -> list[dict]:
 # Matching contra el catálogo + warnings
 # ---------------------------------------------------------------------------
 
-def _compute_warnings(row: dict) -> list[str]:
+def _compute_warnings(row: dict, destino: str = "redexpres") -> list[str]:
     """Un warning por columna, cada uno con su propio motivo: vacío (falta
     el dato) o inválido (hay contenido, pero no del tipo que esa columna
     espera — la señal real de columnas corridas, localizada en la columna
-    exacta que no cierra)."""
+    exacta que no cierra).
+
+    destino="rompe_precios": esa mecánica no tiene oferta/oferta_det/moneda/
+    descripcion_web (no existen en su Excel de salida), y vigencia/aclaracion
+    son texto libre opcional sin validación — solo se chequean
+    descripcion/precio/precio_anterior, compartidos con Redexpres."""
     w = []
 
     descripcion = row["descripcion"].strip()
@@ -254,6 +259,9 @@ def _compute_warnings(row: dict) -> list[str]:
         w.append("missing_precio_anterior")
     elif not _is_numeric_like(precio_anterior_raw):
         w.append("precio_anterior_invalido")
+
+    if destino == "rompe_precios":
+        return w
 
     # OFERTA sin validar de tipo a propósito: en los datos reales es texto
     # ("PVP OFERTA"), un precio repetido, o una mecánica ("2x599") — no hay
@@ -292,7 +300,9 @@ def _chunks(items: list, size: int):
 _MAX_DESCRIPCION_LEN = 300  # mismo límite que SkuDescripcion.descripcion (String(300))
 
 
-async def match_rows(parsed: list[dict], db: AsyncSession, current_user_id: int) -> tuple[list[dict], int]:
+async def match_rows(
+    parsed: list[dict], db: AsyncSession, current_user_id: int, destino: str = "redexpres"
+) -> tuple[list[dict], int]:
     """Bulk lookup por SKU (un SELECT por cada 1000 códigos distintos, no
     N queries) + cómputo de warnings por fila.
 
@@ -349,7 +359,14 @@ async def match_rows(parsed: list[dict], db: AsyncSession, current_user_id: int)
             "oferta":              row["oferta"],
             "oferta_det":          row["oferta_det"],
             "descripcion_web":     row["descripcion_web"],
-            "warnings":            _compute_warnings(row),
+            # Sin columna candidata en gestión para ninguna de estas cuatro
+            # (ver convertidor.py docstring) — quedan vacías, editables a
+            # mano en la grilla solo para destino="rompe_precios".
+            "vigencia":            "",
+            "aclaracion1":         "",
+            "aclaracion2":         "",
+            "aclaracion3":         "",
+            "warnings":            _compute_warnings(row, destino),
         })
 
     learned_count = 0
@@ -406,8 +423,43 @@ _INVALID_TYPE_CODES = {
     "descripcion_web_invalida",
 }
 
+# ── Set de salida para destino="rompe_precios" ──────────────────────────────
+# Sin oferta/oferta_det/moneda/descripcion_web (no existen en esa mecánica).
+# codigo/nombre_articulo se mantienen por trazabilidad aunque el importador
+# de Cenefas no los use — mismo criterio que Redexpres. vigencia/aclaracion1-3
+# no tienen columna candidata en gestión (ver match_rows) y quedan vacías,
+# completables a mano acá o en la grilla antes de exportar.
+_OUTPUT_HEADERS_ROMPE_PRECIOS = [
+    "Código", "Nombre Artículo", "Descripción",
+    "Precio Anterior", "Precio", "Vigencia",
+    "Aclaración 1", "Aclaración 2", "Aclaración 3",
+]
+_OUTPUT_FIELDS_ROMPE_PRECIOS = [
+    "codigo", "nombre_articulo", "descripcion",
+    "precio_anterior", "precio", "vigencia",
+    "aclaracion1", "aclaracion2", "aclaracion3",
+]
+_WARN_COL_ROMPE_PRECIOS = {
+    "nombre_articulo_invalido":  2,
+    "missing_description":       3,
+    "descripcion_invalida":      3,
+    "descripcion_larga":         3,
+    "descripcion_algo_larga":    3,
+    "missing_precio_anterior":   4,
+    "precio_anterior_invalido":  4,
+    "missing_price":             5,
+    "precio_invalido":           5,
+}
 
-def build_output_workbook(rows: list[dict]) -> bytes:
+
+def build_output_workbook(rows: list[dict], destino: str = "redexpres") -> bytes:
+    if destino == "rompe_precios":
+        headers, fields, warn_col = _OUTPUT_HEADERS_ROMPE_PRECIOS, _OUTPUT_FIELDS_ROMPE_PRECIOS, _WARN_COL_ROMPE_PRECIOS
+        col_widths = [16, 36, 36, 14, 12, 26, 30, 30, 30]
+    else:
+        headers, fields, warn_col = _OUTPUT_HEADERS, _OUTPUT_FIELDS, _WARN_COL
+        col_widths = [16, 36, 36, 10, 14, 12, 14, 14, 40]
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Cenefas"
@@ -419,7 +471,7 @@ def build_output_workbook(rows: list[dict]) -> bytes:
     no_match_fill  = PatternFill("solid", fgColor="FCA5A5")  # rojo — sin descripción, acción obligatoria
     invalid_fill   = PatternFill("solid", fgColor="DDD6FE")  # violeta — hay dato, pero no del tipo que esa columna espera
 
-    for col, name in enumerate(_OUTPUT_HEADERS, 1):
+    for col, name in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=name)
         cell.fill = header_fill
         cell.font = header_font
@@ -429,12 +481,12 @@ def build_output_workbook(rows: list[dict]) -> bytes:
         # Recalculado server-side a partir de los mismos campos _raw que
         # ya viajaron en el preview — no confía en el array "warnings" que
         # mandó el cliente, única fuente de verdad para el coloreado.
-        warnings = _compute_warnings(r)
+        warnings = _compute_warnings(r, destino)
         zebra = even_fill if row_idx % 2 == 0 else None
-        for col_idx, field in enumerate(_OUTPUT_FIELDS, 1):
+        for col_idx, field in enumerate(fields, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=r.get(field))
             cell.alignment = Alignment(vertical="center")
-            warn_code = next((w for w, c in _WARN_COL.items() if c == col_idx and w in warnings), None)
+            warn_code = next((w for w, c in warn_col.items() if c == col_idx and w in warnings), None)
             if warn_code == "missing_description":
                 cell.fill = no_match_fill
             elif warn_code in _INVALID_TYPE_CODES:
@@ -444,7 +496,7 @@ def build_output_workbook(rows: list[dict]) -> bytes:
             elif zebra:
                 cell.fill = zebra
 
-    for col, width in enumerate([16, 36, 36, 10, 14, 12, 14, 14, 40], 1):
+    for col, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.row_dimensions[1].height = 26
     ws.freeze_panes = "A2"
