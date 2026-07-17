@@ -41,6 +41,7 @@ export default function SizeTemplateUploadModal({ sizeId, sizeLabel, onClose, on
       const fd = new FormData();
       fd.append("file", file);
       fd.append("name", `Rompe Precios del Finde — ${sizeLabel}`);
+      fd.append("category", "rompe_precios");
       const [{ data: definition }, source_pptx_b64] = await Promise.all([
         cenefasV2Api.importPptx(fd),
         fileToBase64(file),

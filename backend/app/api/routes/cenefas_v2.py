@@ -65,6 +65,7 @@ _BUILTIN_PPTX = {
 async def import_pptx(
     file: UploadFile = File(..., description="Archivo PPTX a importar"),
     name: str = Form(default="Template importado"),
+    category: str | None = Form(default=None),
     _: User = Depends(require_permission("cenefas.import")),
 ):
     """Parsea un PPTX y devuelve una definición v2 lista para cargar en el editor."""
@@ -75,7 +76,7 @@ async def import_pptx(
 
     from app.services.cenefas.pptx_importer import import_pptx as _import
     try:
-        definition = _import(pptx_bytes, name=name.strip() or "Template importado")
+        definition = _import(pptx_bytes, name=name.strip() or "Template importado", category=category)
     except Exception as exc:
         logger.warning("import_pptx error: %s", exc)
         raise HTTPException(status_code=422, detail=f"No se pudo parsear el PPTX: {exc}")

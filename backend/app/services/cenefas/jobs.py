@@ -71,6 +71,7 @@ class StagedJob:
     target_format:      str
     source_pptx_bytes:  bytes | None
     use_legacy_engine:  bool
+    category:           str | None = None
     excel_bytes:        bytes | None = None
     vigencia:           str = ""
     aclaracion:         str = ""
@@ -146,8 +147,9 @@ async def run_generation_job(
                     import_pptx, template_upload_bytes, "Plantilla subida"
                 )
                 source_pptx_bytes = template_upload_bytes
+                category = None
             else:
-                template_def, source_pptx_bytes = await _resolve_template_def(
+                template_def, source_pptx_bytes, category = await _resolve_template_def(
                     db, builtin_slug, template_v1_id, template_v2_id
                 )
             if image_overrides:
@@ -167,6 +169,7 @@ async def run_generation_job(
                 target_format=resolved_format,
                 source_pptx_bytes=source_pptx_bytes,
                 use_legacy_engine=use_legacy_engine,
+                category=category,
                 excel_bytes=excel_bytes,
                 vigencia=vigencia,
                 aclaracion=aclaracion,
@@ -254,6 +257,7 @@ async def confirm_generation_job(
                 pptx_bytes, missing_vars = await asyncio.to_thread(
                     render_template_to_pptx, template_def, staged.products, staged.target_format,
                     None, staged.source_pptx_bytes,  # image_overrides ya horneado, source_pptx_bytes
+                    staged.category,
                 )
             await store_job_result(job_id, pptx_bytes)
 
@@ -285,14 +289,14 @@ async def _get_job(db, job_id: uuid.UUID) -> CenefaJob | None:
     return result.scalar_one_or_none()
 
 
-async def _resolve_template_v2(db, template_id: uuid.UUID) -> tuple[dict, bytes | None]:
+async def _resolve_template_v2(db, template_id: uuid.UUID) -> tuple[dict, bytes | None, str | None]:
     result = await db.execute(
         select(CenefaTemplateV2).where(CenefaTemplateV2.id == template_id)
     )
     tmpl = result.scalar_one_or_none()
     if tmpl is None:
         raise ValueError(f"Template v2 {template_id} no encontrado")
-    return tmpl.definition, tmpl.source_pptx
+    return tmpl.definition, tmpl.source_pptx, tmpl.category
 
 
 async def _resolve_template_def(
@@ -300,22 +304,23 @@ async def _resolve_template_def(
     builtin_slug:   str | None,
     template_v1_id: int | None,
     template_v2_id: uuid.UUID | None,
-) -> tuple[dict, bytes | None]:
+) -> tuple[dict, bytes | None, str | None]:
     """Unifica los 3 orígenes posibles de plantilla en una definición de
     componentes v2 — para builtin/v1 (pptx crudo, sin datos de posición)
     corre el importer, así Redexpres también puede reposicionar en el
     preview aunque su plantilla nunca haya pasado por el editor v2.
 
     Devuelve también los bytes crudos del pptx origen cuando existen — el
-    render final los usa para preservar el diseño (ver component_renderer).
-    Para un template v2 armado a mano en el editor (sin source_pptx en la
-    DB), es None y el render cae al canvas en blanco de siempre."""
+    render final los usa para preservar el diseño (ver component_renderer) —
+    y la categoría del template v2 (None para builtin/v1, que siempre son
+    Redexpres): render_template_to_pptx la usa para restringir a Rompe
+    Precios los ajustes de precio que no deben tocar otras plantillas."""
     if template_v2_id is not None:
         return await _resolve_template_v2(db, template_v2_id)
 
     pptx_bytes = await _resolve_template_pptx(db, builtin_slug, template_v1_id)
     template_def = await asyncio.to_thread(import_pptx, pptx_bytes, "Plantilla importada")
-    return template_def, pptx_bytes
+    return template_def, pptx_bytes, None
 
 
 async def _resolve_template_pptx(

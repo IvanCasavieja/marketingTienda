@@ -446,6 +446,7 @@ def _render_slide(
     slot_offset_y: float = 0.0,
     missing_vars: set | None = None,
     shape_map: dict[int, object] | None = None,
+    dedupe_currency_prefix: bool = False,
 ) -> None:
     shape_map = shape_map or {}
     for comp in comp_layout:
@@ -466,12 +467,27 @@ def _render_slide(
         if segments:
             # Resolve variable segments from product data, store as "_resolved"
             resolved = []
-            for seg in segments:
+            for i, seg in enumerate(segments):
                 if seg.get("type") == "variable":
                     seg_var = seg.get("value", "")
                     seg_val = str(product.get(seg_var, "") or "") if seg_var else ""
                     if seg_var and seg_var not in product and missing_vars is not None:
                         missing_vars.add(seg_var)
+                    # data_engine.py ya le antepone "$"/"U$S " a los valores de
+                    # precio formateados (necesario para plantillas con el
+                    # precio en un solo run, ej. RedExpress). Si el segmento
+                    # estático justo anterior YA es ese mismo símbolo (el
+                    # diseño lo separó como run propio, con su propio tamaño
+                    # — ver "$" 96pt + "<<Precio>>" 200pt en Rompe Precios), no
+                    # duplicarlo: sin este chequeo queda "$" + "$139" = "$$139".
+                    # Restringido a destinos que lo pidieron explícitamente
+                    # (dedupe_currency_prefix, hoy solo Rompe Precios) — para
+                    # cualquier otra plantilla con 2+ placeholders (ej.
+                    # aclaracion1/2/3) esto no aplica y no cambia nada.
+                    if dedupe_currency_prefix and i > 0 and segments[i - 1].get("type") == "static":
+                        prev = segments[i - 1].get("value", "").strip()
+                        if prev in ("U$S", "$") and seg_val.strip().startswith(prev):
+                            seg_val = seg_val.strip()[len(prev):].lstrip()
                 else:
                     seg_val = seg.get("value", "")
                 resolved.append({**seg, "_resolved": seg_val})
@@ -573,6 +589,7 @@ def render_template_to_pptx(
     target_format: str = "a4",
     image_overrides: dict[str, tuple[bytes, str]] | None = None,
     source_pptx_bytes: bytes | None = None,
+    category: str | None = None,
 ) -> tuple[bytes, list[str]]:
     """Genera PPTX desde una definición v2 y una lista de productos.
 
@@ -589,12 +606,17 @@ def render_template_to_pptx(
     el resultado solo tiene los shapes que SÍ se lograron extraer, y
     cualquier diseño que viva en el layout/master del archivo se pierde.
 
+    category: destino del template (ej. "rompe_precios") — habilita el
+    dedupe de símbolo de moneda duplicado en segmentos (ver _render_slide),
+    restringido a propósito a Rompe Precios.
+
     Returns (pptx_bytes, missing_vars) donde missing_vars es la lista de
     variables que el template usa pero que no fueron encontradas en el Excel.
     """
     master_format = template_def.get("master_format", "a4")
     components    = template_def.get("components", [])
     rules         = template_def.get("rules", [])
+    dedupe_currency_prefix = category == "rompe_precios"
 
     if image_overrides:
         components = patch_image_overrides(components, image_overrides)
@@ -673,20 +695,20 @@ def render_template_to_pptx(
                 # tal cual quedaron en master_format. Ver bug histórico: esto
                 # antes escalaba por target_format y comprimía la grilla.
                 laid_bg = compute_layout(bg_comps, master_format, master_format)
-                _render_slide(slide, laid_bg, {}, missing_vars=missing_vars, shape_map=shape_map)
+                _render_slide(slide, laid_bg, {}, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
             for band_idx, band_comps in enumerate(slot_bands):
                 laid_band = compute_layout(band_comps, master_format, master_format)
                 if band_idx < len(pg):
                     product       = pg[band_idx]
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
-                    _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map)
+                    _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
                 elif preserve_source:
                     # Página parcial (menos productos que celdas) y estamos
                     # preservando el diseño original: si no se limpia, la
                     # celda sin producto queda con lo que tuviera el archivo
                     # fuente (ej. datos de ejemplo del diseñador).
-                    _render_slide(slide, laid_band, {}, shape_map=shape_map)
+                    _render_slide(slide, laid_band, {}, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
                 # Sin preserve_source: no hay nada que limpiar, la celda
                 # simplemente nunca tuvo shapes creados (comportamiento
                 # de siempre para el canvas en blanco).
@@ -720,7 +742,7 @@ def render_template_to_pptx(
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
 
-            _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map)
+            _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
 
     buf = io.BytesIO()
     prs.save(buf)
