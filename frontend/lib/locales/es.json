@@ -728,6 +728,7 @@
     "empty": "Todavía no hay nada cargado — se completa al usar el Convertidor de Excel.",
     "totalCount": "{{count}} entrada",
     "totalCount_plural": "{{count}} entradas",
+    "pageOf": "Página {{page}} de {{total}}",
     "edit": "Editar",
     "editSuccess": "Descripción actualizada",
     "editError": "No se pudo guardar el cambio",

@@ -728,6 +728,7 @@
     "empty": "Nothing loaded yet — it fills up as the Excel Converter gets used.",
     "totalCount": "{{count}} entry",
     "totalCount_plural": "{{count}} entries",
+    "pageOf": "Page {{page}} of {{total}}",
     "edit": "Edit",
     "editSuccess": "Description updated",
     "editError": "Couldn't save the change",

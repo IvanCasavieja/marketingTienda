@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Search, Pencil, Check, X, Loader2 } from "lucide-react";
+import { BookOpen, Search, Pencil, Check, X, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { convertidorApi, type SkuDescripcionItem } from "@/lib/api";
@@ -10,21 +10,24 @@ import { convertidorApi, type SkuDescripcionItem } from "@/lib/api";
 // entradas nacen de un import del Convertidor o de una corrección puntual.
 // Editar acá reusa el mismo PATCH que ya usa el Convertidor.
 
+const PAGE_SIZE = 100;
+
 export default function DiccionarioPage() {
   const { t } = useTranslation();
   const [items, setItems] = useState<SkuDescripcionItem[]>([]);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [editingSku, setEditingSku] = useState<string | null>(null);
   const [editDescripcion, setEditDescripcion] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function load(query: string) {
+  async function load(query: string, pageArg: number) {
     setLoading(true);
     try {
-      const { data } = await convertidorApi.listarDescripciones(query);
+      const { data } = await convertidorApi.listarDescripciones(query, PAGE_SIZE, pageArg * PAGE_SIZE);
       setItems(data.items);
       setTotal(data.total);
     } catch {
@@ -35,16 +38,24 @@ export default function DiccionarioPage() {
   }
 
   useEffect(() => {
-    load("");
+    load("", 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => load(q), 350);
+    debounceRef.current = setTimeout(() => { setPage(0); load(q, 0); }, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
+
+  function goToPage(newPage: number) {
+    setEditingSku(null);
+    setPage(newPage);
+    load(q, newPage);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function startEdit(item: SkuDescripcionItem) {
     setEditingSku(item.sku);
@@ -168,7 +179,30 @@ export default function DiccionarioPage() {
       </div>
 
       {!loading && items.length > 0 && (
-        <p className="text-xs text-slate-400">{t("diccionario.totalCount", { count: total })}</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-400">{t("diccionario.totalCount", { count: total })}</p>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => goToPage(page - 1)}
+                disabled={page === 0}
+                className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-xs text-slate-400">
+                {t("diccionario.pageOf", { page: page + 1, total: totalPages })}
+              </span>
+              <button
+                onClick={() => goToPage(page + 1)}
+                disabled={page + 1 >= totalPages}
+                className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
