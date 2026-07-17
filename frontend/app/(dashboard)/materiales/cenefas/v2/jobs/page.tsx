@@ -185,7 +185,7 @@ export default function JobsPage() {
       )}
 
       <div className="flex items-center gap-3">
-        <a href="/herramientas/cenefas/v2/generar"
+        <a href="/materiales/cenefas/v2/generar"
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
           <ChevronLeft size={18} />
         </a>
@@ -212,7 +212,7 @@ export default function JobsPage() {
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
               Cuando generes cenefas desde el editor, aparecerán acá.
             </p>
-            <a href="/herramientas/cenefas/v2/generar"
+            <a href="/materiales/cenefas/v2/generar"
               className="inline-flex items-center gap-1.5 mt-4 text-xs text-brand-600 hover:text-brand-700 font-medium">
               Generar ahora →
             </a>

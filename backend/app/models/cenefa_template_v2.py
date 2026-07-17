@@ -22,7 +22,7 @@ class CenefaTemplateV2(Base):
     definition: Mapped[dict] = mapped_column(JSONB, nullable=False)
     # Ej: ['a4', 'a3', 'pinchos']
     formats: Mapped[list] = mapped_column(ARRAY(String), nullable=False, default=list)
-    # Destino: 'redexpress' | 'rompe_precios' | ... — string libre, sin enum,
+    # Destino: 'redexpres' | 'rompe_precios' | ... — string libre, sin enum,
     # para que un destino nuevo no requiera migración. Necesario porque dos
     # destinos pueden compartir el mismo id de formato (ej. "a4").
     category: Mapped[str | None] = mapped_column(String(50), nullable=True)

@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 // pero el array está pensado para sumar un tercero con solo agregar una
 // entrada — no hay ninguna otra parte del código que dependa del conteo.
 
-export type CenefaDestino = "redexpress" | "rompe_precios";
+export type CenefaDestino = "redexpres" | "rompe_precios";
 
 interface DestinoModalProps {
   onSelect: (destino: CenefaDestino) => void;
@@ -17,7 +17,7 @@ export default function DestinoModal({ onSelect }: DestinoModalProps) {
 
   const DESTINOS: { id: CenefaDestino; icon: React.ElementType; color: string }[] = [
     { id: "rompe_precios", icon: PartyPopper, color: "text-rose-500 bg-rose-500/10" },
-    { id: "redexpress",    icon: Store,       color: "text-emerald-500 bg-emerald-500/10" },
+    { id: "redexpres",    icon: Store,       color: "text-emerald-500 bg-emerald-500/10" },
   ];
 
   return (

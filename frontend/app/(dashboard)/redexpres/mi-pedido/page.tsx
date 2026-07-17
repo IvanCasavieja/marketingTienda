@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef, useMemo } from "react";
-import { redexpressApi, PlanillaRow } from "@/lib/api";
+import { redexpresApi, PlanillaRow } from "@/lib/api";
 import { CheckCircle2, Clock, RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
 import { clsx } from "clsx";
@@ -10,7 +10,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 // Misma lógica de datos/guardado que planilla/page.tsx (la de Valentina),
 // pero con una sola fila — la del local asignado al usuario logueado — en
 // vez de una tabla con las ~65 sucursales. Reusa el mismo endpoint de
-// confirmar, pero llama a /redexpress/mi-planilla en vez de /redexpress/planilla
+// confirmar, pero llama a /redexpres/mi-planilla en vez de /redexpres/planilla
 // (ese devuelve solo la fila propia, nunca la de otras sucursales).
 
 export default function MiPedidoPage() {
@@ -18,51 +18,51 @@ export default function MiPedidoPage() {
 
   const GROUPS: { label: string; color: string; cols: { key: string; label: string; max?: number; isText?: boolean }[] }[] = useMemo(() => [
     {
-      label: t("redexpress.groups.ofertas"),
+      label: t("redexpres.groups.ofertas"),
       color: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200",
       cols: [
-        { key: "a4_oferta_vertical",  label: t("redexpress.cols.a4OfertaVertical"), max: 200 },
-        { key: "cenefa_oferta_x3",    label: t("redexpress.cols.cenefaOfertaX3"),   max: 300 },
-        { key: "pinchos",             label: t("redexpress.cols.pinchos"),          max: 100 },
-        { key: "afiche_54x74",        label: t("redexpress.cols.afiche54x74"),      max: 20 },
+        { key: "a4_oferta_vertical",  label: t("redexpres.cols.a4OfertaVertical"), max: 200 },
+        { key: "cenefa_oferta_x3",    label: t("redexpres.cols.cenefaOfertaX3"),   max: 300 },
+        { key: "pinchos",             label: t("redexpres.cols.pinchos"),          max: 100 },
+        { key: "afiche_54x74",        label: t("redexpres.cols.afiche54x74"),      max: 20 },
       ],
     },
     {
-      label: t("redexpress.groups.vdsSupremo"),
+      label: t("redexpres.groups.vdsSupremo"),
       color: "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200",
       cols: [
-        { key: "cenefa_valle_del_sol",  label: t("redexpress.cols.cenefaValleDelSol"),  max: 100 },
-        { key: "cenefa_supremo_hogar",  label: t("redexpress.cols.cenefaSupremoHogar"), max: 100 },
+        { key: "cenefa_valle_del_sol",  label: t("redexpres.cols.cenefaValleDelSol"),  max: 100 },
+        { key: "cenefa_supremo_hogar",  label: t("redexpres.cols.cenefaSupremoHogar"), max: 100 },
       ],
     },
     {
-      label: t("redexpress.groups.bombas"),
+      label: t("redexpres.groups.bombas"),
       color: "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200",
       cols: [
-        { key: "bombas_3xa4",    label: t("redexpress.cols.bombas3xa4"),    max: 200 },
-        { key: "bombas_a4",      label: t("redexpress.cols.bombasA4"),      max: 200 },
-        { key: "bombas_74x54",   label: t("redexpress.cols.bombas74x54"),   max: 20 },
-        { key: "pinchos_bombas", label: t("redexpress.cols.pinchosBombas"), max: 100 },
+        { key: "bombas_3xa4",    label: t("redexpres.cols.bombas3xa4"),    max: 200 },
+        { key: "bombas_a4",      label: t("redexpres.cols.bombasA4"),      max: 200 },
+        { key: "bombas_74x54",   label: t("redexpres.cols.bombas74x54"),   max: 20 },
+        { key: "pinchos_bombas", label: t("redexpres.cols.pinchosBombas"), max: 100 },
       ],
     },
     {
-      label: t("redexpress.groups.stickers"),
+      label: t("redexpres.groups.stickers"),
       color: "bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200",
       cols: [
-        { key: "sticker_valle_del_sol", label: t("redexpress.cols.stickerValleDelSol"), max: 100 },
-        { key: "sticker_carne",         label: t("redexpress.cols.stickerCarne"),       max: 100 },
+        { key: "sticker_valle_del_sol", label: t("redexpres.cols.stickerValleDelSol"), max: 100 },
+        { key: "sticker_carne",         label: t("redexpres.cols.stickerCarne"),       max: 100 },
       ],
     },
     {
-      label: t("redexpress.groups.otrosItems"),
+      label: t("redexpres.groups.otrosItems"),
       color: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200",
       cols: [
-        { key: "cenefas_preciazos",       label: t("redexpress.cols.cenefasPreciazos"),      max: 100 },
-        { key: "cenefas_a4_preciazos",    label: t("redexpress.cols.cenefasA4Preciazos"),    max: 100 },
-        { key: "afiche_super_ahorro",     label: t("redexpress.cols.aficheSuperAhorro"),     max: 10 },
-        { key: "afiche_grande_preciazos", label: t("redexpress.cols.aficheGrandePreciazos"), max: 10 },
-        { key: "pinchos_dias_expres",     label: t("redexpress.cols.pinchosDiasExpres"),     max: 100 },
-        { key: "hojas_amarillas",         label: t("redexpress.cols.hojasAmarillas"), isText: true },
+        { key: "cenefas_preciazos",       label: t("redexpres.cols.cenefasPreciazos"),      max: 100 },
+        { key: "cenefas_a4_preciazos",    label: t("redexpres.cols.cenefasA4Preciazos"),    max: 100 },
+        { key: "afiche_super_ahorro",     label: t("redexpres.cols.aficheSuperAhorro"),     max: 10 },
+        { key: "afiche_grande_preciazos", label: t("redexpres.cols.aficheGrandePreciazos"), max: 10 },
+        { key: "pinchos_dias_expres",     label: t("redexpres.cols.pinchosDiasExpres"),     max: 100 },
+        { key: "hojas_amarillas",         label: t("redexpres.cols.hojasAmarillas"), isText: true },
       ],
     },
   ], [t]);
@@ -74,7 +74,7 @@ export default function MiPedidoPage() {
     [GROUPS]
   );
 
-  const MONTH_NAMES = t("redexpress.months", { returnObjects: true }) as string[];
+  const MONTH_NAMES = t("redexpres.months", { returnObjects: true }) as string[];
 
   const { user: currentUser, loading: loadingUser } = useCurrentUser();
   const isSuperuser = currentUser?.is_superuser ?? false;
@@ -98,7 +98,7 @@ export default function MiPedidoPage() {
 
   useEffect(() => {
     if (currentUser?.is_superuser) {
-      redexpressApi.getLocales()
+      redexpresApi.getLocales()
         .then(({ data: locs }) => setLocales(locs.map((l) => l.local_nombre)))
         .catch(() => setLocales([]));
     }
@@ -110,11 +110,11 @@ export default function MiPedidoPage() {
 
   async function loadMeses() {
     try {
-      const { data } = await redexpressApi.getMeses();
+      const { data } = await redexpresApi.getMeses();
       setMeses(data);
       if (data.length > 0) setSelected(data[data.length - 1]);
     } catch {
-      toast.error(t("redexpress.errorCargarMeses"));
+      toast.error(t("redexpres.errorCargarMeses"));
     }
   }
 
@@ -127,10 +127,10 @@ export default function MiPedidoPage() {
     setLoading(true);
     setEdits({});
     try {
-      const { data } = await redexpressApi.getMiPlanilla(year, month, isSuperuser ? local : undefined);
+      const { data } = await redexpresApi.getMiPlanilla(year, month, isSuperuser ? local : undefined);
       setRows(data);
     } catch {
-      toast.error(t("redexpress.errorCargarPlanilla"));
+      toast.error(t("redexpres.errorCargarPlanilla"));
     } finally {
       setLoading(false);
     }
@@ -157,7 +157,7 @@ export default function MiPedidoPage() {
           if (typeof payload[key] === "number" && isNaN(payload[key] as number)) payload[key] = null;
         }
       }
-      const { data: updated } = await redexpressApi.updateRow(
+      const { data: updated } = await redexpresApi.updateRow(
         selectedMes.year, selectedMes.month, localNombre, payload
       );
       setRows((prev) => prev.map((r) => r.local_nombre === localNombre ? updated : r));
@@ -167,7 +167,7 @@ export default function MiPedidoPage() {
         return next;
       });
     } catch {
-      toast.error(t("redexpress.errorGuardarLocal", { local: localNombre }));
+      toast.error(t("redexpres.errorGuardarLocal", { local: localNombre }));
     } finally {
       setSavingRow(null);
     }
@@ -179,7 +179,7 @@ export default function MiPedidoPage() {
       const num = parseInt(value, 10);
       if (!isNaN(num) && num > max) {
         value = String(max);
-        toast.warning(t("redexpress.limiteMaximo", { max }));
+        toast.warning(t("redexpres.limiteMaximo", { max }));
       }
     }
     setEdits((prev) => ({ ...prev, [localNombre]: { ...(prev[localNombre] || {}), [colKey]: value } }));
@@ -197,13 +197,13 @@ export default function MiPedidoPage() {
     if (!selectedMes) return;
     setConfirming(true);
     try {
-      await redexpressApi.confirmar(selectedMes.year, selectedMes.month, row.local_nombre);
+      await redexpresApi.confirmar(selectedMes.year, selectedMes.month, row.local_nombre);
       setRows((prev) => prev.map((r) =>
         r.local_nombre === row.local_nombre ? { ...r, confirmado: true, confirmed_at: new Date().toISOString() } : r
       ));
-      toast.success(t("redexpress.pedidoConfirmado"));
+      toast.success(t("redexpres.pedidoConfirmado"));
     } catch {
-      toast.error(t("redexpress.errorConfirmar"));
+      toast.error(t("redexpres.errorConfirmar"));
     } finally {
       setConfirming(false);
     }
@@ -218,10 +218,10 @@ export default function MiPedidoPage() {
     <div className="space-y-4 animate-fade-in max-w-3xl">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
-          {t("redexpress.miPedido.title")}
+          {t("redexpres.miPedido.title")}
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-          {t("redexpress.miPedido.subtitle")}
+          {t("redexpres.miPedido.subtitle")}
         </p>
       </div>
 
@@ -230,7 +230,7 @@ export default function MiPedidoPage() {
           {isSuperuser ? (
             <div className="flex items-center gap-2 flex-wrap">
               <label htmlFor="mi-pedido-local-select" className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                {t("redexpress.miPedido.selectLocalLabel")}
+                {t("redexpres.miPedido.selectLocalLabel")}
               </label>
               <select
                 id="mi-pedido-local-select"
@@ -238,21 +238,21 @@ export default function MiPedidoPage() {
                 onChange={(e) => setSelectedLocal(e.target.value || null)}
                 className="input text-sm max-w-xs"
               >
-                <option value="">{t("redexpress.miPedido.selectLocalPlaceholder")}</option>
+                <option value="">{t("redexpres.miPedido.selectLocalPlaceholder")}</option>
                 {locales.map((loc) => (
                   <option key={loc} value={loc}>{loc}</option>
                 ))}
               </select>
               {miRow?.confirmado && (
                 <span className="badge badge-green flex items-center gap-1 text-[10px]">
-                  <CheckCircle2 size={10} /> {t("redexpress.confirmado")}
+                  <CheckCircle2 size={10} /> {t("redexpres.confirmado")}
                 </span>
               )}
             </div>
           ) : assignedLocal === null ? (
             <div className="card p-8 flex flex-col items-center text-center gap-2">
               <Store size={22} className="text-slate-300" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">{t("redexpress.miPedido.noLocalAssigned")}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t("redexpres.miPedido.noLocalAssigned")}</p>
             </div>
           ) : (
             <div className="flex items-center gap-2 flex-wrap">
@@ -261,7 +261,7 @@ export default function MiPedidoPage() {
               </span>
               {miRow?.confirmado && (
                 <span className="badge badge-green flex items-center gap-1 text-[10px]">
-                  <CheckCircle2 size={10} /> {t("redexpress.confirmado")}
+                  <CheckCircle2 size={10} /> {t("redexpres.confirmado")}
                 </span>
               )}
             </div>
@@ -270,7 +270,7 @@ export default function MiPedidoPage() {
           {isSuperuser && !activeLocal && (
             <div className="card p-8 flex flex-col items-center text-center gap-2">
               <Store size={22} className="text-slate-300" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">{t("redexpress.miPedido.noLocalSelected")}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t("redexpres.miPedido.noLocalSelected")}</p>
             </div>
           )}
 
@@ -293,7 +293,7 @@ export default function MiPedidoPage() {
               </button>
             ))}
             {meses.length === 0 && !loading && (
-              <p className="text-sm text-slate-400">{t("redexpress.noMeses")}</p>
+              <p className="text-sm text-slate-400">{t("redexpres.noMeses")}</p>
             )}
           </div>
 
@@ -332,7 +332,7 @@ export default function MiPedidoPage() {
 
               <div className="card p-4">
                 <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  {t("redexpress.notasLibres")}
+                  {t("redexpres.notasLibres")}
                 </label>
                 <input
                   type="text"
@@ -340,18 +340,18 @@ export default function MiPedidoPage() {
                   disabled={!isEditable}
                   onChange={(e) => handleCellChange(miRow.local_nombre, "otros", e.target.value)}
                   className="input text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
-                  placeholder={t("redexpress.notasPlaceholder")}
+                  placeholder={t("redexpres.notasPlaceholder")}
                 />
               </div>
 
               <div className="card p-4 flex items-center justify-between flex-wrap gap-2">
                 <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
                   {isSaving && <RefreshCw size={11} className="animate-spin text-brand-400" />}
-                  {t("redexpress.footerAutosave")}
+                  {t("redexpres.footerAutosave")}
                 </p>
                 {miRow.confirmado ? (
                   <span className="badge badge-green flex items-center gap-1 text-xs">
-                    <CheckCircle2 size={12} /> {t("redexpress.confirmado")}
+                    <CheckCircle2 size={12} /> {t("redexpres.confirmado")}
                   </span>
                 ) : (
                   <button
@@ -360,11 +360,11 @@ export default function MiPedidoPage() {
                     className="btn-primary text-xs py-2 px-4 disabled:opacity-50"
                   >
                     {confirming ? (
-                      <span className="flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" /> {t("redexpress.confirmando")}</span>
+                      <span className="flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" /> {t("redexpres.confirmando")}</span>
                     ) : hasEdits ? (
-                      <span className="flex items-center gap-1.5"><Clock size={12} /> {t("redexpress.guardandoEstado")}</span>
+                      <span className="flex items-center gap-1.5"><Clock size={12} /> {t("redexpres.guardandoEstado")}</span>
                     ) : (
-                      t("redexpress.confirmarPedido")
+                      t("redexpres.confirmarPedido")
                     )}
                   </button>
                 )}
@@ -372,7 +372,7 @@ export default function MiPedidoPage() {
             </div>
           ) : selectedMes ? (
             <div className="card p-12 flex flex-col items-center text-center gap-3">
-              <p className="text-sm text-slate-400">{t("redexpress.noData")}</p>
+              <p className="text-sm text-slate-400">{t("redexpres.noData")}</p>
             </div>
           ) : null}
           </>

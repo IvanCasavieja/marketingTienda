@@ -31,11 +31,11 @@
     "mktgPlatform": "MKTG Platform",
     "medios": "MEDIA",
     "analyticsGa4": "Analytics GA4",
-    "herramientas": "TOOLS",
+    "materiales": "MATERIALS",
     "comercial": "COMMERCIAL",
     "guia": "GUIDE",
     "configuracion": "SETTINGS",
-    "redexpress": "Redexpres",
+    "redexpres": "Redexpres",
     "cenefas": "Banners",
     "convertidor": "Excel Converter",
     "editorPlantillas": "Template editor",
@@ -394,7 +394,7 @@
         "label": "Weekend Price Crash",
         "description": "Current price, crossed-out previous price, and validity dates — no combo mechanics."
       },
-      "redexpress": {
+      "redexpres": {
         "label": "Redexpres",
         "description": "Order sheets and combo/multi-buy mechanics for Redexpres stores."
       }
@@ -549,7 +549,7 @@
       "deletedUser": "Deleted user"
     }
   },
-  "redexpress": {
+  "redexpres": {
     "title": "Order sheet",
     "subtitle": "Redexpres · monthly signage",
     "confirmadosCount": "{{count}}/{{total}} confirmed",
@@ -634,8 +634,8 @@
       "noLocalSelected": "Pick a store above to view and fill in its order."
     }
   },
-  "herramientas": {
-    "title": "Tools",
+  "materiales": {
+    "title": "Materials",
     "subtitle": "Generators and utilities for the marketing team.",
     "openTool": "Open tool",
     "cenefas": {
@@ -653,6 +653,14 @@
       "title": "Excel Converter",
       "description": "Upload the raw Excel from the management system and get a clean one, with correct descriptions already matched by SKU."
     }
+  },
+  "tinin": {
+    "title": "Tinín",
+    "subtitle": "Your assistant",
+    "placeholderInicial": "Ask me about templates, destinations, or ask me to save a description (e.g. \"save SKU 12345: CAÑUELAS Oil 900ml\").",
+    "inputPlaceholder": "Type your question...",
+    "notConfigured": "The assistant is not configured in this environment.",
+    "genericError": "I couldn't process your request — try again in a few minutes."
   },
   "convertidor": {
     "title": "Excel Converter",
@@ -872,7 +880,7 @@
     "cenefas": {
       "intro": "Turn an Excel of products into a print-ready PowerPoint deck. The system automatically generates the slides with formatted prices, descriptions and promotions.",
       "steps": {
-        "destino":    { "title": "Choose a destination",   "desc": "When you enter you choose where to go: RedExpress (order sheets and combo/multi-buy mechanics) or Weekend Price Crash (current price, crossed-out previous price and validity dates)." },
+        "destino":    { "title": "Choose a destination",   "desc": "When you enter you choose where to go: Redexpres (order sheets and combo/multi-buy mechanics) or Weekend Price Crash (current price, crossed-out previous price and validity dates)." },
         "excel":      { "title": "Upload the Excel",       "desc": "Load the file with the products. Automatically detected columns include DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc." },
         "preview":    { "title": "Check the preview",      "desc": "Before downloading you can see a reference preview with the real data loaded." },
         "confirmar":  { "title": "Confirm and download",   "desc": "The PPTX is generated in seconds. You can download the result from the same screen." }

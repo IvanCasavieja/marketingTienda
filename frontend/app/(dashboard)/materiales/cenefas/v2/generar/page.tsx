@@ -280,7 +280,7 @@ export default function GenerarPage() {
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <a href="/herramientas/cenefas/v2"
+        <a href="/materiales/cenefas/v2"
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
           <ChevronLeft size={18} />
         </a>
@@ -739,7 +739,7 @@ function TemplateList({
       <p className="text-xs text-amber-600 flex items-center gap-1.5 mt-1.5">
         <AlertCircle size={13} />
         No hay templates v2.{" "}
-        <a href="/herramientas/cenefas/v2" className="underline">Creá uno en el editor</a>.
+        <a href="/materiales/cenefas/v2" className="underline">Creá uno en el editor</a>.
       </p>
     );
   }

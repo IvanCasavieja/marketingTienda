@@ -14,7 +14,7 @@ import unicodedata
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,6 +66,37 @@ def normalize_sku(raw) -> str:
     if s.endswith(".0"):
         s = s[:-2]
     return s
+
+
+async def upsert_sku_descripcion(db: AsyncSession, sku: str, descripcion: str, user_id: int) -> str:
+    """Upsert vía ON CONFLICT DO UPDATE — evita una condición de carrera real
+    si dos personas completan el mismo SKU sin match al mismo tiempo.
+    Compartido entre el PATCH manual del Convertidor y la tool de Tinín, para
+    no duplicar el statement en dos lugares. No commitea — el caller decide
+    cuándo (el PATCH lo hace solo, Tinín puede encadenar varias llamadas en
+    un mismo turno de tool-use antes de commitear una vez)."""
+    sku_norm = normalize_sku(sku)
+    if not sku_norm:
+        raise ValueError("SKU inválido")
+    descripcion = descripcion.strip()
+    if not descripcion:
+        raise ValueError("La descripción no puede quedar vacía")
+    descripcion = descripcion[:300]
+
+    stmt = pg_insert(SkuDescripcion).values(
+        sku=sku_norm,
+        descripcion=descripcion,
+        updated_by_id=user_id,
+    ).on_conflict_do_update(
+        index_elements=["sku"],
+        set_={
+            "descripcion": descripcion,
+            "updated_by_id": user_id,
+            "updated_at": func.now(),
+        },
+    )
+    await db.execute(stmt)
+    return sku_norm
 
 
 def _parse_price_or_none(raw) -> float | None:

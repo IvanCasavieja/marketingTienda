@@ -393,7 +393,7 @@ def load_products_from_bytes(
 # columnas distintas porque cada destino soporta variables distintas
 # (Rompe Precios explícitamente no tiene mecánica de combo/M x N).
 
-def generate_template_bytes(destino: str = "redexpress") -> bytes:
+def generate_template_bytes(destino: str = "redexpres") -> bytes:
     if destino == "rompe_precios":
         return _build_template_workbook(
             headers=["descripcion", "precio", "precioAnterior", "vigencia", "aclaracion1", "aclaracion2", "aclaracion3"],
@@ -417,7 +417,7 @@ def generate_template_bytes(destino: str = "redexpress") -> bytes:
             ],
         )
 
-    # RedExpress — columnas y ejemplos extraídos del Excel real de referencia
+    # Redexpres — columnas y ejemplos extraídos del Excel real de referencia
     # (planilla ya usada con la plantilla A4 REDEX.pptx), no inventados.
     return _build_template_workbook(
         headers=["DESCRIPCION", "precioActual", "OFERTADET", "OFERTA", "ACLARACION", "OTRA ACLARACION", "VIGENCIA", "CODIGO"],

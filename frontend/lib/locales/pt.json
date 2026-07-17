@@ -31,11 +31,11 @@
     "mktgPlatform": "MKTG Platform",
     "medios": "MÍDIA",
     "analyticsGa4": "Analytics GA4",
-    "herramientas": "FERRAMENTAS",
+    "materiales": "MATERIAIS",
     "comercial": "COMERCIAL",
     "guia": "GUIA",
     "configuracion": "CONFIGURAÇÕES",
-    "redexpress": "Redexpres",
+    "redexpres": "Redexpres",
     "cenefas": "Faixas",
     "convertidor": "Conversor de Excel",
     "editorPlantillas": "Editor de modelos",
@@ -394,7 +394,7 @@
         "label": "Rompe Precios do fim de semana",
         "description": "Preço atual, preço anterior riscado e vigência — sem mecânica de combos."
       },
-      "redexpress": {
+      "redexpres": {
         "label": "Redexpres",
         "description": "Planilhas e mecânicas de combo/M x N para as lojas Redexpres."
       }
@@ -549,7 +549,7 @@
       "deletedUser": "Usuário excluído"
     }
   },
-  "redexpress": {
+  "redexpres": {
     "title": "Planilha de pedidos",
     "subtitle": "Redexpres · sinalização mensal",
     "confirmadosCount": "{{count}}/{{total}} confirmados",
@@ -634,8 +634,8 @@
       "noLocalSelected": "Escolha uma loja acima para ver e preencher o pedido."
     }
   },
-  "herramientas": {
-    "title": "Ferramentas",
+  "materiales": {
+    "title": "Materiais",
     "subtitle": "Geradores e utilitários para a equipe de marketing.",
     "openTool": "Abrir ferramenta",
     "cenefas": {
@@ -653,6 +653,14 @@
       "title": "Conversor de Excel",
       "description": "Envie o Excel bruto da gestão e gere um limpo, com as descrições corretas já correspondidas por SKU."
     }
+  },
+  "tinin": {
+    "title": "Tinín",
+    "subtitle": "Seu assistente",
+    "placeholderInicial": "Pergunte sobre templates, destinos, ou peça para eu salvar uma descrição (ex.: \"salva SKU 12345: Óleo CAÑUELAS 900ml\").",
+    "inputPlaceholder": "Digite sua pergunta...",
+    "notConfigured": "O assistente não está configurado neste ambiente.",
+    "genericError": "Não consegui processar seu pedido — tente novamente em alguns minutos."
   },
   "convertidor": {
     "title": "Conversor de Excel",
@@ -872,7 +880,7 @@
     "cenefas": {
       "intro": "Transforme uma planilha Excel com produtos em uma apresentação PowerPoint pronta para impressão. O sistema gera automaticamente as lâminas com preços, descrições e promoções formatadas.",
       "steps": {
-        "destino":    { "title": "Escolher destino",        "desc": "Ao entrar você escolhe para onde ir: RedExpress (planilhas e mecânicas de combo/M x N) ou Rompe Precios do fim de semana (preço atual, preço anterior riscado e vigência)." },
+        "destino":    { "title": "Escolher destino",        "desc": "Ao entrar você escolhe para onde ir: Redexpres (planilhas e mecânicas de combo/M x N) ou Rompe Precios do fim de semana (preço atual, preço anterior riscado e vigência)." },
         "excel":      { "title": "Enviar o Excel",          "desc": "Você carrega o arquivo com os produtos. As colunas detectadas automaticamente incluem DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc." },
         "preview":    { "title": "Ver o preview",           "desc": "Antes de baixar você pode ver uma prévia de referência com os dados reais carregados." },
         "confirmar":  { "title": "Confirmar e baixar",      "desc": "O PPTX é gerado em segundos. Você pode baixar o resultado na mesma tela." }

@@ -26,7 +26,7 @@ const csp = [
 ].join("; ");
 
 const nextConfig = {
-  // El editor de cenefas (herramientas/cenefas/v2) usa Konva directo; konva
+  // El editor de cenefas (materiales/cenefas/v2) usa Konva directo; konva
   // soporta opcionalmente node-canvas para renderizar en Node y el bundler
   // intenta resolver ese require("canvas") al armar el bundle de servidor
   // aunque Canvas.tsx nunca ejecuta Konva ahi (todo el uso vive dentro de
@@ -36,6 +36,17 @@ const nextConfig = {
     resolveAlias: {
       canvas: "./stubs/empty-canvas.js",
     },
+  },
+  // Redirects de compatibilidad tras los renames "Herramientas"->"Materiales"
+  // y "redexpress"->"redexpres" — cualquier bookmark o link viejo guardado
+  // sigue funcionando en vez de tirar 404.
+  async redirects() {
+    return [
+      { source: "/herramientas", destination: "/materiales", permanent: true },
+      { source: "/herramientas/:path*", destination: "/materiales/:path*", permanent: true },
+      { source: "/redexpress", destination: "/redexpres", permanent: true },
+      { source: "/redexpress/:path*", destination: "/redexpres/:path*", permanent: true },
+    ];
   },
   async headers() {
     return [

@@ -34,7 +34,7 @@ _BUILTIN_FILES = {
 # restart/redeploy de Render a mitad de generación (antes quedaba atascado
 # para siempre). Pero Render no tiene ningún Redis provisionado en
 # producción — REDIS_URL cae al default "localhost:6379", que no existe en
-# ese entorno, y todo /herramientas/cenefas empezó a tirar
+# ese entorno, y todo /materiales/cenefas empezó a tirar
 # "Error 111 connecting to localhost:6379. Connection refused." al toque.
 #
 # Se revirtió a memoria el 16/07 para desbloquear la herramienta ya, sin
@@ -56,7 +56,7 @@ _job_results: dict[str, bytes] = {}
 class StagedJob:
     """Lo que queda guardado entre el preview y la confirmación.
 
-    use_legacy_engine=True (RedExpress: builtin/v1/subida al vuelo) → el
+    use_legacy_engine=True (Redexpres: builtin/v1/subida al vuelo) → el
     render final usa render_engine.generate_pptx_bytes con excel_bytes +
     template_bytes crudos — el motor viejo, probado, con todo el ajuste
     fino de tamaño/centrado de precio que component_renderer no replica.
@@ -221,7 +221,7 @@ async def confirm_generation_job(
 
         try:
             if staged.use_legacy_engine:
-                # RedExpress: el render final pasa por el motor viejo tal
+                # Redexpres: el render final pasa por el motor viejo tal
                 # cual, sin tocar nada — es el que ya tiene calibrado el
                 # achicado/centrado de precio y demás ajustes de layout A4
                 # que component_renderer no replica. Los position_overrides
@@ -231,7 +231,7 @@ async def confirm_generation_job(
                 # automático podría romper justo lo que queremos preservar.
                 if position_overrides:
                     logger.info(
-                        "job %s: se ignoran %d overrides de posición (motor legado, RedExpress)",
+                        "job %s: se ignoran %d overrides de posición (motor legado, Redexpres)",
                         job_id, len(position_overrides),
                     )
                 pptx_bytes = await asyncio.to_thread(
@@ -303,7 +303,7 @@ async def _resolve_template_def(
 ) -> tuple[dict, bytes | None]:
     """Unifica los 3 orígenes posibles de plantilla en una definición de
     componentes v2 — para builtin/v1 (pptx crudo, sin datos de posición)
-    corre el importer, así RedExpress también puede reposicionar en el
+    corre el importer, así Redexpres también puede reposicionar en el
     preview aunque su plantilla nunca haya pasado por el editor v2.
 
     Devuelve también los bytes crudos del pptx origen cuando existen — el

@@ -2,6 +2,7 @@
 import { FileSpreadsheet } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import ConvertidorPanel from "@/components/cenefas/convertidor/ConvertidorPanel";
+import TininFloating from "@/components/cenefas/TininFloating";
 
 export default function ConvertidorPage() {
   const { t } = useTranslation();
@@ -19,6 +20,7 @@ export default function ConvertidorPage() {
       </div>
 
       <ConvertidorPanel />
+      <TininFloating contexto="convertidor" />
     </div>
   );
 }

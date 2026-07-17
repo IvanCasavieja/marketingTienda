@@ -1,5 +1,5 @@
 """
-Crea un usuario por sucursal de RedExpress — el "email" (login) es
+Crea un usuario por sucursal de Redexpres — el "email" (login) es
 literalmente el nombre del local (ej. "Nativo Florida"), la contraseña es
 el mismo texto. Sin rol ni permisos: el acceso a "Mi pedido" lo da
 directamente tener una fila en LocalAsignacion, no un permiso.
@@ -23,7 +23,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.security import hash_password
 from app.models.user import User
 from app.models.local_asignacion import LocalAsignacion
-from app.api.routes.redexpress import LOCALES
+from app.api.routes.redexpres import LOCALES
 
 
 async def main():

@@ -44,9 +44,9 @@ MKTG Platform es una plataforma interna de marketing digital con estos pilares:
 
 1. **Analytics**: centraliza métricas de campañas pagas (Google Ads, TikTok Ads, DV360, Google Analytics — Meta Ads está pausado, ver más abajo), con análisis automático por IA.
 
-2. **Herramientas**: genera materiales gráficos de punto de venta, en particular cenefas (banners de precios en formato PPTX) a partir de un Excel de productos.
+2. **Materiales**: genera materiales gráficos de punto de venta, en particular cenefas (banners de precios en formato PPTX) a partir de un Excel de productos.
 
-3. **Utilidades comerciales**: comparador de precios en vivo en supermercados uruguayos, y una planilla de pedidos mensual de cartelería (Redexpress) por local/sucursal.
+3. **Utilidades comerciales**: comparador de precios en vivo en supermercados uruguayos, y una planilla de pedidos mensual de cartelería (Redexpres) por local/sucursal.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MAPA DE SECCIONES Y URLS
@@ -58,13 +58,13 @@ MAPA DE SECCIONES Y URLS
 | Dashboard | {_BASE_URL}/dashboard | KPIs globales, gráficos, anomalías |
 | Campañas | {_BASE_URL}/campaigns | Métricas por campaña, filtros, exportar CSV |
 | Análisis IA | {_BASE_URL}/analytics | Reportes Claude + Mesa redonda IA (La Triada) |
-| Herramientas | {_BASE_URL}/herramientas | Listado de herramientas |
-| Cenefas (inicio) | {_BASE_URL}/herramientas/cenefas | Acceso al sistema de cenefas |
-| Editor de plantillas | {_BASE_URL}/herramientas/cenefas/v2 | Crear/editar templates de cenefas |
-| Generar cenefas | {_BASE_URL}/herramientas/cenefas/v2/generar | Generar PPTX desde Excel |
-| Historial de trabajos | {_BASE_URL}/herramientas/cenefas/v2/jobs | Ver trabajos anteriores |
+| Materiales | {_BASE_URL}/materiales | Listado de materiales |
+| Cenefas (inicio) | {_BASE_URL}/materiales/cenefas | Acceso al sistema de cenefas |
+| Editor de plantillas | {_BASE_URL}/materiales/cenefas/v2 | Crear/editar templates de cenefas |
+| Generar cenefas | {_BASE_URL}/materiales/cenefas/v2/generar | Generar PPTX desde Excel |
+| Historial de trabajos | {_BASE_URL}/materiales/cenefas/v2/jobs | Ver trabajos anteriores |
 | Buscar precios | {_BASE_URL}/precios | Comparar precios en vivo en supermercados uruguayos |
-| Planilla de pedidos | {_BASE_URL}/redexpress/planilla | Pedido mensual de cartelería POP por local |
+| Planilla de pedidos | {_BASE_URL}/redexpres/planilla | Pedido mensual de cartelería POP por local |
 | Configuración | {_BASE_URL}/settings | Conexiones a plataformas publicitarias |
 | Administración | {_BASE_URL}/admin | Gestión de usuarios y roles (solo Superadmin) |
 
@@ -127,10 +127,10 @@ HAY DOS PIPELINES:
 **A) Plantilla clásica (v1)**: cargás un PPTX plantilla fijo y el sistema rellena los placeholders con los datos del Excel. Para productos sin complejidad. Acceso desde la pestaña "Plantilla clásica" en la pantalla de generación.
 
 **B) Motor v2 (componentes inteligentes)**: sistema moderno y flexible.
-- Primero creás un template en el [Editor de plantillas]({_BASE_URL}/herramientas/cenefas/v2).
+- Primero creás un template en el [Editor de plantillas]({_BASE_URL}/materiales/cenefas/v2).
 - El editor tiene un canvas donde arrastrás y configurás componentes: texto, imagen, forma.
 - Cada componente de texto se vincula a una variable (ej: `precioActual`, `descripcion`).
-- Luego generás cenefas desde [Generar cenefas]({_BASE_URL}/herramientas/cenefas/v2/generar).
+- Luego generás cenefas desde [Generar cenefas]({_BASE_URL}/materiales/cenefas/v2/generar).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 LAS 17 VARIABLES CANÓNICAS DE CENEFAS
@@ -167,7 +167,7 @@ REGLAS IMPORTANTES:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FLUJO COMPLETO: GENERAR CENEFAS (paso a paso)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Ir a [Generar cenefas]({_BASE_URL}/herramientas/cenefas/v2/generar).
+Ir a [Generar cenefas]({_BASE_URL}/materiales/cenefas/v2/generar).
 
 **Paso 1 — Configuración:**
 1. Elegir tipo de plantilla: "Template del editor" (v2) o "Plantilla clásica" (v1).
@@ -196,7 +196,7 @@ Ir a [Generar cenefas]({_BASE_URL}/herramientas/cenefas/v2/generar).
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EDITOR DE PLANTILLAS v2
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Ir a [Editor de plantillas]({_BASE_URL}/herramientas/cenefas/v2) → "Nueva plantilla" o click en una existente.
+Ir a [Editor de plantillas]({_BASE_URL}/materiales/cenefas/v2) → "Nueva plantilla" o click en una existente.
 
 El editor tiene tres paneles:
 - **Izquierdo (Componentes / Reglas / Variables)**: catálogo de componentes listos para agregar.
@@ -242,9 +242,9 @@ Cómo usarlo:
 6. Botón "Ver gráfico": abre un gráfico comparativo de precios en un modal, con una lista de productos con checkbox al costado (se puede buscar dentro de esa lista) para elegir cuáles entran al gráfico, y un campo para cargar el precio propio y verlo como línea de referencia contra la competencia.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REDEXPRESS — PLANILLA DE PEDIDOS
+REDEXPRES — PLANILLA DE PEDIDOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[Planilla de pedidos]({_BASE_URL}/redexpress/planilla) — visible para cualquier usuario logueado; el control de acceso es por fila (por local asignado), no por permiso.
+[Planilla de pedidos]({_BASE_URL}/redexpres/planilla) — visible para cualquier usuario logueado; el control de acceso es por fila (por local asignado), no por permiso.
 
 Es la planilla mensual donde cada local/sucursal pide sus materiales de cartelería (cenefas, afiches, stickers, pinchos, etc.), agrupados en columnas: Ofertas, VDS y Supremo, Bombas, Stickers, Otros items, más una columna libre de notas.
 
@@ -302,8 +302,8 @@ Depende del caso de uso:
 **Caso 11 — "¿Dónde busco precios de la competencia?"**
 Ir a [Buscar precios]({_BASE_URL}/precios), escribir el nombre del producto (o pegar un código de barras) y presionar Enter. Los resultados de las 13 cadenas soportadas (supermercados, farmacias y electrodomésticos) van apareciendo en vivo a medida que cada una responde. También podés preguntarme el precio de un producto directo acá en el chat y lo busco por vos.
 
-**Caso 12 — "¿Cómo cargo el pedido de mi local en la Planilla de Redexpress?"**
-Ir a [Planilla de pedidos]({_BASE_URL}/redexpress/planilla), elegir el mes (pestañas arriba), completar las cantidades en la fila de tu local — se guarda solo — y al terminar hacer click en "Confirmar pedido" en esa fila. Si no ves tu local, necesitás que un Superadmin te lo asigne primero.
+**Caso 12 — "¿Cómo cargo el pedido de mi local en la Planilla de Redexpres?"**
+Ir a [Planilla de pedidos]({_BASE_URL}/redexpres/planilla), elegir el mes (pestañas arriba), completar las cantidades en la fila de tu local — se guarda solo — y al terminar hacer click en "Confirmar pedido" en esa fila. Si no ves tu local, necesitás que un Superadmin te lo asigne primero.
 
 **Caso 13 — "¿Cómo cambio el idioma de la plataforma?"**
 Abajo del todo en el menú lateral hay un selector con bandera + nombre de idioma. Click ahí y elegís Español, English o Português.

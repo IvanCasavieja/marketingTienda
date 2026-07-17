@@ -34,7 +34,7 @@ class PlanillaPedido(Base):
 
     # Otros items
     # cenefas_preciazos == "Cenefas 3xA4 Preciazos" y afiche_super_ahorro ==
-    # "Afiche A4 Super Ahorro" (ver mapeo original en scripts/import_redexpress.py)
+    # "Afiche A4 Super Ahorro" (ver mapeo original en scripts/import_redexpres.py)
     # — las columnas *_a4_preciazos / *_grande_preciazos son las variantes
     # hermanas que faltaban, agregadas al separar los límites de pedido.
     cenefas_preciazos: Mapped[int | None] = mapped_column(Integer, nullable=True)

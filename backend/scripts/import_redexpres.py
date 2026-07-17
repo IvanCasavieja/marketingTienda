@@ -1,6 +1,6 @@
 """
 Script de importación de datos históricos del Excel Redexpress.
-Uso: python backend/scripts/import_redexpress.py
+Uso: python backend/scripts/import_redexpres.py
 
 Requiere: openpyxl, psycopg2 (o asyncpg via DATABASE_URL)
 """

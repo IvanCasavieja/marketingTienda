@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import PreviewStep from "@/components/cenefas/PreviewStep";
 import SizeTemplateUploadModal from "@/components/cenefas/rompeprecios/SizeTemplateUploadModal";
-import { FileDropField } from "@/components/cenefas/redexpress/RedExpressPanel";
+import { FileDropField } from "@/components/cenefas/redexpres/RedExpresPanel";
 
 const SIZES: { id: string; label: string }[] = [
   { id: "a4",   label: "A4" },

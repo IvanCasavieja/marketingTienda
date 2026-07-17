@@ -31,8 +31,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     # Precios
     "precios.search":          "Buscar y comparar precios en vivo en supermercados",
 
-    # RedExpress
-    "redexpress.view":         "Ver y completar la planilla de pedidos RedExpress",
+    # Redexpres
+    "redexpres.view":          "Ver y completar la planilla de pedidos Redexpres",
 
     # IA
     "ai.use":                  "Usar el chat de IA, análisis automáticos y debate de campañas",

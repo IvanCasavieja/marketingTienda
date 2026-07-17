@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import Canvas from "@/components/cenefas/editor/Canvas";
 
-// Paso compartido por RedExpress y Rompe Precios: el job se generó hasta
+// Paso compartido por Redexpres y Rompe Precios: el job se generó hasta
 // quedar en status="preview" (ver jobs.py) con la definición de componentes
 // y la primera fila real de productos. Acá se muestra en el mismo Canvas del
 // editor v2, con datos resueltos en vez de {variable}, permitiendo arrastrar

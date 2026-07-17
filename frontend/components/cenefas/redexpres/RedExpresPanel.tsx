@@ -10,7 +10,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import PreviewStep from "@/components/cenefas/PreviewStep";
 
-// Extraído tal cual de la vieja /herramientas/cenefas/page.tsx — misma UI de
+// Extraído tal cual de la vieja /materiales/cenefas/page.tsx — misma UI de
 // siempre (plantillas guardadas, subida ad-hoc, Excel, config). Los únicos
 // dos cambios reales: el submit ahora crea un job async (con paso de preview
 // + reposicionar antes de descargar) en vez de generar y bajar de una, y se
@@ -24,7 +24,7 @@ interface TemplateInfo {
   created_at: string | null;
 }
 
-export default function RedExpressPanel() {
+export default function RedExpresPanel() {
   const { t } = useTranslation();
 
   // Generation state
@@ -112,13 +112,13 @@ export default function RedExpressPanel() {
 
   async function handleDownloadTemplate() {
     try {
-      const { data } = await toolsApi.downloadExcelTemplate("redexpress");
+      const { data } = await toolsApi.downloadExcelTemplate("redexpres");
       const url = URL.createObjectURL(new Blob([data], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = "plantilla_redexpress.xlsx";
+      a.download = "plantilla_redexpres.xlsx";
       a.click();
       URL.revokeObjectURL(url);
     } catch {

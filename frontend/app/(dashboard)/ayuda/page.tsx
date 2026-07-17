@@ -382,7 +382,7 @@ export default function AyudaPage() {
         <SectionTitle icon={Clock} title={t("sidebar.historial")} />
         <Card>
           <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-3">
-            {t("ayuda.historial.introPre")} <strong>{t("sidebar.herramientas")} → {t("sidebar.historial")}</strong> {t("ayuda.historial.introPost")}
+            {t("ayuda.historial.introPre")} <strong>{t("sidebar.materiales")} → {t("sidebar.historial")}</strong> {t("ayuda.historial.introPost")}
           </p>
           <div className="flex gap-3 flex-wrap">
             <Chip icon={CheckCircle2} label={t("ayuda.historial.status.done")}    color="bg-emerald-50 text-emerald-700" />

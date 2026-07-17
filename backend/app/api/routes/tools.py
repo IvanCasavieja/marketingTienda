@@ -35,18 +35,18 @@ def _safe_filename(name: str) -> str:
 # Generation
 # ---------------------------------------------------------------------------
 # El endpoint síncrono de generación (POST /cenefas/generate) se retiró —
-# tanto RedExpress como Rompe Precios generan ahora vía el pipeline de jobs
+# tanto Redexpres como Rompe Precios generan ahora vía el pipeline de jobs
 # async (POST /tools/cenefas/v2/jobs), que además deja el paso de preview +
 # reposicionar antes del render final. El motor viejo (generate_pptx_bytes /
 # render_engine.py) queda sin referencias pero no se borra.
 
 @router.get("/cenefas/template")
 async def download_cenefa_template(
-    destino: str = Query("redexpress", description="redexpress | rompe_precios"),
+    destino: str = Query("redexpres", description="redexpres | rompe_precios"),
     current_user: User = Depends(require_permission("cenefas.view")),
 ):
     xlsx_bytes = generate_template_bytes(destino)
-    filename = "plantilla_rompe_precios.xlsx" if destino == "rompe_precios" else "plantilla_redexpress.xlsx"
+    filename = "plantilla_rompe_precios.xlsx" if destino == "rompe_precios" else "plantilla_redexpres.xlsx"
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

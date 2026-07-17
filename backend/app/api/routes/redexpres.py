@@ -11,7 +11,7 @@ from app.models.user import User
 from app.models.planilla_pedido import PlanillaPedido
 from app.models.local_asignacion import LocalAsignacion
 
-router = APIRouter(prefix="/redexpress", tags=["redexpress"])
+router = APIRouter(prefix="/redexpres", tags=["redexpres"])
 
 LOCALES: list[str] = [
     "Nativo Florida",
@@ -148,7 +148,7 @@ async def _get_user_locals(db: AsyncSession, user_id: int) -> set[str]:
 @router.get("/locales")
 async def get_locales(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("redexpress.view")),
+    current_user: User = Depends(require_permission("redexpres.view")),
 ):
     result = await db.execute(select(LocalAsignacion))
     asigs = result.scalars().all()
@@ -205,7 +205,7 @@ async def get_planilla(
     year: int,
     month: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("redexpress.view")),
+    current_user: User = Depends(require_permission("redexpres.view")),
 ):
     result = await db.execute(
         select(PlanillaPedido).where(
@@ -236,7 +236,7 @@ async def get_mi_planilla(
     """Versión angosta de get_planilla para usuarios de sucursal — a diferencia
     de /planilla/{year}/{month} (que trae las filas de TODOS los locales y solo
     oculta el botón de editar), acá solo viajan por red la(s) fila(s) del/de
-    los local(es) asignados al usuario logueado. Sin permiso redexpress.view:
+    los local(es) asignados al usuario logueado. Sin permiso redexpres.view:
     el acceso lo da directamente estar en LocalAsignacion.
 
     Los superadmins no tienen LocalAsignacion propia: pueden pasar ?local=X

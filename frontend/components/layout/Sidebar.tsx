@@ -96,16 +96,16 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: t("sidebar.medios"),         perm: "analytics.view" },
     { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: t("sidebar.medios"),         perm: "ai.use" },
     { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.medios"),         perm: "connections.view" },
-    { href: "/herramientas/cenefas",    label: t("sidebar.cenefas"),  icon: Presentation, section: t("sidebar.herramientas"), perm: "cenefas.view" },
-    { href: "/herramientas/convertidor", label: t("sidebar.convertidor"), icon: FileSpreadsheet, section: t("sidebar.herramientas"), perm: "cenefas.view" },
+    { href: "/materiales/cenefas",    label: t("sidebar.cenefas"),  icon: Presentation, section: t("sidebar.materiales"), perm: "cenefas.view" },
+    { href: "/materiales/convertidor", label: t("sidebar.convertidor"), icon: FileSpreadsheet, section: t("sidebar.materiales"), perm: "cenefas.view" },
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,           section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,        section: t("sidebar.comercial"),     perm: "precios.search" },
-    { href: "/redexpress/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpress"), perm: "redexpress.view" },
+    { href: "/redexpres/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpres"), perm: "redexpres.view" },
     // Sin perm: el acceso no es por permiso sino por tener una sucursal
     // asignada (LocalAsignacion) — por eso se filtra acá, no vía hasPerm().
     // Los superadmins también entran (ven un selector de sucursal en la página).
     ...((currentUser?.assigned_locales?.length ?? 0) > 0 || currentUser?.is_superuser
-      ? [{ href: "/redexpress/mi-pedido", label: t("sidebar.miPedido"), icon: ClipboardList, section: t("sidebar.redexpress") }]
+      ? [{ href: "/redexpres/mi-pedido", label: t("sidebar.miPedido"), icon: ClipboardList, section: t("sidebar.redexpres") }]
       : []),
     ...(currentUser?.is_superuser
       ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]

@@ -1,6 +1,6 @@
 """
 Script standalone de importación — usa asyncpg directo, sin dependencias de la app.
-Uso: DATABASE_URL=postgresql+asyncpg://... python backend/scripts/import_redexpress_standalone.py
+Uso: DATABASE_URL=postgresql+asyncpg://... python backend/scripts/import_redexpres_standalone.py
 """
 import os
 import sys

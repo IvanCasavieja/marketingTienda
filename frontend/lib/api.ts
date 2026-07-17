@@ -197,7 +197,7 @@ export const toolsApi = {
   deleteCenefaTemplate: (id: number) => api.delete(`/tools/cenefas/templates/${id}`),
   downloadCenefaTemplate: (id: number) =>
     api.get(`/tools/cenefas/templates/${id}/download`, { responseType: "blob" }),
-  downloadExcelTemplate: (destino: "redexpress" | "rompe_precios" = "redexpress") =>
+  downloadExcelTemplate: (destino: "redexpres" | "rompe_precios" = "redexpres") =>
     api.get("/tools/cenefas/template", { params: { destino }, responseType: "blob" }),
   getBuiltinTemplates: () =>
     api.get<{ slug: string; name: string; format_name: string }[]>("/tools/cenefas/builtin-templates"),
@@ -340,6 +340,25 @@ export const convertidorApi = {
     rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion_web: string }[]
   ) =>
     api.post<GenerarDescripcionesIAResponse>("/tools/cenefas/convertidor/descripciones/generar-ia", { rows }),
+};
+
+export type TininContexto = "convertidor" | "rompe_precios" | "redexpres";
+
+export interface TininConsultarResponse {
+  respuesta: string;
+}
+
+export const tininApi = {
+  consultar: (
+    mensaje: string,
+    historial: { role: "user" | "assistant"; content: string }[],
+    contexto?: TininContexto
+  ) =>
+    api.post<TininConsultarResponse>("/tools/cenefas/convertidor/tinin/consultar", {
+      mensaje,
+      historial,
+      contexto,
+    }),
 };
 
 // ---------------------------------------------------------------------------
@@ -601,25 +620,25 @@ export interface PlanillaRow {
   can_edit: boolean;
 }
 
-export const redexpressApi = {
-  getMeses: () => api.get<{ year: number; month: number }[]>("/redexpress/meses"),
-  crearMes: (year: number, month: number) => api.post("/redexpress/meses", { year, month }),
+export const redexpresApi = {
+  getMeses: () => api.get<{ year: number; month: number }[]>("/redexpres/meses"),
+  crearMes: (year: number, month: number) => api.post("/redexpres/meses", { year, month }),
   getPlanilla: (year: number, month: number) =>
-    api.get<PlanillaRow[]>(`/redexpress/planilla/${year}/${month}`),
+    api.get<PlanillaRow[]>(`/redexpres/planilla/${year}/${month}`),
   getMiPlanilla: (year: number, month: number, local?: string) =>
-    api.get<PlanillaRow[]>(`/redexpress/mi-planilla/${year}/${month}`, {
+    api.get<PlanillaRow[]>(`/redexpres/mi-planilla/${year}/${month}`, {
       params: local ? { local } : undefined,
     }),
   getLocales: () =>
-    api.get<{ local_nombre: string; user_ids: number[] }[]>("/redexpress/locales"),
+    api.get<{ local_nombre: string; user_ids: number[] }[]>("/redexpres/locales"),
   updateRow: (year: number, month: number, local_nombre: string, data: Partial<PlanillaRow>) =>
-    api.patch<PlanillaRow>(`/redexpress/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}`, data),
+    api.patch<PlanillaRow>(`/redexpres/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}`, data),
   confirmar: (year: number, month: number, local_nombre: string) =>
-    api.post(`/redexpress/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}/confirmar`),
+    api.post(`/redexpres/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}/confirmar`),
   desconfirmar: (year: number, month: number, local_nombre: string) =>
-    api.post(`/redexpress/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}/desconfirmar`),
-  getAsignaciones: () => api.get("/redexpress/asignaciones"),
+    api.post(`/redexpres/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}/desconfirmar`),
+  getAsignaciones: () => api.get("/redexpres/asignaciones"),
   createAsignacion: (user_id: number, local_nombre: string) =>
-    api.post("/redexpress/asignaciones", { user_id, local_nombre }),
-  deleteAsignacion: (id: number) => api.delete(`/redexpress/asignaciones/${id}`),
+    api.post("/redexpres/asignaciones", { user_id, local_nombre }),
+  deleteAsignacion: (id: number) => api.delete(`/redexpres/asignaciones/${id}`),
 };

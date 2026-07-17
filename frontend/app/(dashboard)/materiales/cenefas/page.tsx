@@ -4,11 +4,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeftRight, Presentation } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import DestinoModal, { type CenefaDestino } from "@/components/cenefas/DestinoModal";
-import RedExpressPanel from "@/components/cenefas/redexpress/RedExpressPanel";
+import RedExpresPanel from "@/components/cenefas/redexpres/RedExpresPanel";
 import RompePreciosPanel from "@/components/cenefas/rompeprecios/RompePreciosPanel";
+import TininFloating from "@/components/cenefas/TininFloating";
 
 // Host: primero pregunta a qué destino se va (modal), después renderiza el
-// panel correspondiente. RedExpress y Rompe Precios son flujos completamente
+// panel correspondiente. Redexpres y Rompe Precios son flujos completamente
 // distintos (plantillas, variables, UI) que solo comparten PreviewStep.
 
 function CenefasHost() {
@@ -19,17 +20,17 @@ function CenefasHost() {
 
   useEffect(() => {
     const param = searchParams.get("destino");
-    if (param === "redexpress" || param === "rompe_precios") setDestino(param);
+    if (param === "redexpres" || param === "rompe_precios") setDestino(param);
   }, [searchParams]);
 
   function selectDestino(d: CenefaDestino) {
     setDestino(d);
-    router.replace(`/herramientas/cenefas?destino=${d}`);
+    router.replace(`/materiales/cenefas?destino=${d}`);
   }
 
   function changeDestino() {
     setDestino(null);
-    router.replace("/herramientas/cenefas");
+    router.replace("/materiales/cenefas");
   }
 
   return (
@@ -59,10 +60,12 @@ function CenefasHost() {
         )}
       </div>
 
-      {destino === "redexpress" && <RedExpressPanel />}
+      {destino === "redexpres" && <RedExpresPanel />}
       {destino === "rompe_precios" && <RompePreciosPanel />}
 
       {destino === null && <DestinoModal onSelect={selectDestino} />}
+
+      <TininFloating contexto={destino ?? undefined} />
     </div>
   );
 }

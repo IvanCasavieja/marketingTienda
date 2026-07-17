@@ -8,8 +8,6 @@ import logging
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -17,16 +15,16 @@ from app.core.database import get_db
 from app.core.deps import require_permission
 from app.core.rate_limit import limiter
 from app.core.uploads import read_limited
-from app.models.sku_descripcion import SkuDescripcion
 from app.models.user import User
 from app.services.cenefas.convertidor import (
     ConvertidorParseError,
     build_output_workbook,
     match_rows,
-    normalize_sku,
     parse_input_excel,
+    upsert_sku_descripcion,
 )
 from app.services.cenefas.convertidor_ai import _ROWS_MAX_PER_REQUEST, generar_descripciones
+from app.services.cenefas import tinin_agent
 
 logger = logging.getLogger(__name__)
 
@@ -77,27 +75,10 @@ async def update_descripcion(
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upsert vía ON CONFLICT DO UPDATE — evita una condición de carrera real
-    si dos personas completan el mismo SKU sin match al mismo tiempo."""
-    sku_norm = normalize_sku(sku)
-    if not sku_norm:
-        raise HTTPException(status_code=400, detail="SKU inválido")
-    if not payload.descripcion:
-        raise HTTPException(status_code=422, detail="La descripción no puede quedar vacía")
-
-    stmt = pg_insert(SkuDescripcion).values(
-        sku=sku_norm,
-        descripcion=payload.descripcion,
-        updated_by_id=current_user.id,
-    ).on_conflict_do_update(
-        index_elements=["sku"],
-        set_={
-            "descripcion": payload.descripcion,
-            "updated_by_id": current_user.id,
-            "updated_at": func.now(),
-        },
-    )
-    await db.execute(stmt)
+    try:
+        sku_norm = await upsert_sku_descripcion(db, sku, payload.descripcion, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     await db.commit()
     return {"sku": sku_norm, "descripcion": payload.descripcion}
 
@@ -182,3 +163,46 @@ async def generar_descripciones_ia(
         "processed_count": len(items),
         "truncated": truncated,
     }
+
+
+class TininHistorialItem(BaseModel):
+    role: str
+    content: str
+
+
+class TininConsultarRequest(BaseModel):
+    mensaje: str = Field(min_length=1, max_length=2000)
+    contexto: str | None = None
+    historial: list[TininHistorialItem] = []
+
+
+@router.post("/tinin/consultar")
+@limiter.limit("15/minute")
+async def tinin_consultar(
+    request: Request,
+    payload: TininConsultarRequest,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Chat de Tinín — guía sobre templates/destinos/flujo de generación, y
+    puede guardar una descripción en el catálogo compartido si se lo piden
+    explícitamente. No dispara generación de cenefas (ver tinin_agent.py)."""
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="El asistente no está configurado en este ambiente")
+
+    try:
+        result = await tinin_agent.consultar(
+            payload.mensaje,
+            [h.model_dump() for h in payload.historial],
+            payload.contexto,
+            db,
+            current_user.id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        logger.error("tinin_consultar: error — %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="No pude procesar tu consulta en este momento")
+
+    await db.commit()  # persiste el ai_usage_log acumulado + cualquier descripción guardada por la tool
+    return {"respuesta": result["respuesta"]}

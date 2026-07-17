@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { redexpressApi, PlanillaRow } from "@/lib/api";
+import { redexpresApi, PlanillaRow } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { CheckCircle2, Clock, Plus, RefreshCw, Download } from "lucide-react";
 import { toast } from "sonner";
@@ -19,51 +19,51 @@ export default function PlanillaPedidosPage() {
   // en el idioma elegido (antes estaban hardcodeados en español).
   const GROUPS = useMemo(() => [
     {
-      label: t("redexpress.groups.ofertas"),
+      label: t("redexpres.groups.ofertas"),
       color: "bg-blue-100 dark:bg-blue-500/20 text-blue-800 dark:text-blue-300",
       cols: [
-        { key: "a4_oferta_vertical",  label: t("redexpress.cols.a4OfertaVertical"), max: 200 },
-        { key: "cenefa_oferta_x3",    label: t("redexpress.cols.cenefaOfertaX3"),   max: 300 },
-        { key: "pinchos",             label: t("redexpress.cols.pinchos"),          max: 100 },
-        { key: "afiche_54x74",        label: t("redexpress.cols.afiche54x74"),      max: 20 },
+        { key: "a4_oferta_vertical",  label: t("redexpres.cols.a4OfertaVertical"), max: 200 },
+        { key: "cenefa_oferta_x3",    label: t("redexpres.cols.cenefaOfertaX3"),   max: 300 },
+        { key: "pinchos",             label: t("redexpres.cols.pinchos"),          max: 100 },
+        { key: "afiche_54x74",        label: t("redexpres.cols.afiche54x74"),      max: 20 },
       ],
     },
     {
-      label: t("redexpress.groups.vdsSupremo"),
+      label: t("redexpres.groups.vdsSupremo"),
       color: "bg-purple-100 dark:bg-purple-500/20 text-purple-800 dark:text-purple-300",
       cols: [
-        { key: "cenefa_valle_del_sol",  label: t("redexpress.cols.cenefaValleDelSol"),  max: 100 },
-        { key: "cenefa_supremo_hogar",  label: t("redexpress.cols.cenefaSupremoHogar"), max: 100 },
+        { key: "cenefa_valle_del_sol",  label: t("redexpres.cols.cenefaValleDelSol"),  max: 100 },
+        { key: "cenefa_supremo_hogar",  label: t("redexpres.cols.cenefaSupremoHogar"), max: 100 },
       ],
     },
     {
-      label: t("redexpress.groups.bombas"),
+      label: t("redexpres.groups.bombas"),
       color: "bg-orange-100 dark:bg-orange-500/20 text-orange-800 dark:text-orange-300",
       cols: [
-        { key: "bombas_3xa4",    label: t("redexpress.cols.bombas3xa4"),    max: 200 },
-        { key: "bombas_a4",      label: t("redexpress.cols.bombasA4"),      max: 200 },
-        { key: "bombas_74x54",   label: t("redexpress.cols.bombas74x54"),   max: 20 },
-        { key: "pinchos_bombas", label: t("redexpress.cols.pinchosBombas"), max: 100 },
+        { key: "bombas_3xa4",    label: t("redexpres.cols.bombas3xa4"),    max: 200 },
+        { key: "bombas_a4",      label: t("redexpres.cols.bombasA4"),      max: 200 },
+        { key: "bombas_74x54",   label: t("redexpres.cols.bombas74x54"),   max: 20 },
+        { key: "pinchos_bombas", label: t("redexpres.cols.pinchosBombas"), max: 100 },
       ],
     },
     {
-      label: t("redexpress.groups.stickers"),
+      label: t("redexpres.groups.stickers"),
       color: "bg-pink-100 dark:bg-pink-500/20 text-pink-800 dark:text-pink-300",
       cols: [
-        { key: "sticker_valle_del_sol", label: t("redexpress.cols.stickerValleDelSol"), max: 100 },
-        { key: "sticker_carne",         label: t("redexpress.cols.stickerCarne"),       max: 100 },
+        { key: "sticker_valle_del_sol", label: t("redexpres.cols.stickerValleDelSol"), max: 100 },
+        { key: "sticker_carne",         label: t("redexpres.cols.stickerCarne"),       max: 100 },
       ],
     },
     {
-      label: t("redexpress.groups.otrosItems"),
+      label: t("redexpres.groups.otrosItems"),
       color: "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300",
       cols: [
-        { key: "cenefas_preciazos",       label: t("redexpress.cols.cenefasPreciazos"),       max: 100 },
-        { key: "cenefas_a4_preciazos",    label: t("redexpress.cols.cenefasA4Preciazos"),     max: 100 },
-        { key: "afiche_super_ahorro",     label: t("redexpress.cols.aficheSuperAhorro"),      max: 10 },
-        { key: "afiche_grande_preciazos", label: t("redexpress.cols.aficheGrandePreciazos"),  max: 10 },
-        { key: "pinchos_dias_expres",     label: t("redexpress.cols.pinchosDiasExpres"),      max: 100 },
-        { key: "hojas_amarillas",         label: t("redexpress.cols.hojasAmarillas"), isText: true },
+        { key: "cenefas_preciazos",       label: t("redexpres.cols.cenefasPreciazos"),       max: 100 },
+        { key: "cenefas_a4_preciazos",    label: t("redexpres.cols.cenefasA4Preciazos"),     max: 100 },
+        { key: "afiche_super_ahorro",     label: t("redexpres.cols.aficheSuperAhorro"),      max: 10 },
+        { key: "afiche_grande_preciazos", label: t("redexpres.cols.aficheGrandePreciazos"),  max: 10 },
+        { key: "pinchos_dias_expres",     label: t("redexpres.cols.pinchosDiasExpres"),      max: 100 },
+        { key: "hojas_amarillas",         label: t("redexpres.cols.hojasAmarillas"), isText: true },
       ],
     },
   ], [t]);
@@ -78,7 +78,7 @@ export default function PlanillaPedidosPage() {
     [ALL_COLS]
   );
 
-  const MONTH_NAMES = t("redexpress.months", { returnObjects: true }) as string[];
+  const MONTH_NAMES = t("redexpres.months", { returnObjects: true }) as string[];
 
   const [meses, setMeses]         = useState<{ year: number; month: number }[]>([]);
   const [selectedMes, setSelected] = useState<{ year: number; month: number } | null>(null);
@@ -103,14 +103,14 @@ export default function PlanillaPedidosPage() {
 
   async function loadMeses() {
     try {
-      const { data } = await redexpressApi.getMeses();
+      const { data } = await redexpresApi.getMeses();
       setMeses(data);
       if (data.length > 0) {
         const last = data[data.length - 1];
         setSelected(last);
       }
     } catch {
-      toast.error(t("redexpress.errorCargarMeses"));
+      toast.error(t("redexpres.errorCargarMeses"));
     }
   }
 
@@ -122,10 +122,10 @@ export default function PlanillaPedidosPage() {
     setLoading(true);
     setEdits({});
     try {
-      const { data } = await redexpressApi.getPlanilla(year, month);
+      const { data } = await redexpresApi.getPlanilla(year, month);
       setRows(data);
     } catch {
-      toast.error(t("redexpress.errorCargarPlanilla"));
+      toast.error(t("redexpres.errorCargarPlanilla"));
     } finally {
       setLoading(false);
     }
@@ -159,7 +159,7 @@ export default function PlanillaPedidosPage() {
           }
         }
       }
-      const { data: updated } = await redexpressApi.updateRow(
+      const { data: updated } = await redexpresApi.updateRow(
         selectedMes.year, selectedMes.month, localNombre, payload
       );
       setRows((prev) => prev.map((r) => r.local_nombre === localNombre ? updated : r));
@@ -169,7 +169,7 @@ export default function PlanillaPedidosPage() {
         return next;
       });
     } catch {
-      toast.error(t("redexpress.errorGuardarLocal", { local: localNombre }));
+      toast.error(t("redexpres.errorGuardarLocal", { local: localNombre }));
     } finally {
       setSavingRow(null);
     }
@@ -181,7 +181,7 @@ export default function PlanillaPedidosPage() {
       const num = parseInt(value, 10);
       if (!isNaN(num) && num > max) {
         value = String(max);
-        toast.warning(t("redexpress.limiteMaximo", { max }));
+        toast.warning(t("redexpres.limiteMaximo", { max }));
       }
     }
     setEdits((prev) => ({
@@ -195,7 +195,7 @@ export default function PlanillaPedidosPage() {
     if (!selectedMes) return;
     setConfirmingRow(row.local_nombre);
     try {
-      await redexpressApi.confirmar(selectedMes.year, selectedMes.month, row.local_nombre);
+      await redexpresApi.confirmar(selectedMes.year, selectedMes.month, row.local_nombre);
       setRows((prev) =>
         prev.map((r) =>
           r.local_nombre === row.local_nombre
@@ -203,9 +203,9 @@ export default function PlanillaPedidosPage() {
             : r
         )
       );
-      toast.success(t("redexpress.pedidoConfirmado"));
+      toast.success(t("redexpres.pedidoConfirmado"));
     } catch {
-      toast.error(t("redexpress.errorConfirmar"));
+      toast.error(t("redexpres.errorConfirmar"));
     } finally {
       setConfirmingRow(null);
     }
@@ -214,27 +214,27 @@ export default function PlanillaPedidosPage() {
   async function handleDesconfirmar(row: PlanillaRow) {
     if (!selectedMes) return;
     try {
-      await redexpressApi.desconfirmar(selectedMes.year, selectedMes.month, row.local_nombre);
+      await redexpresApi.desconfirmar(selectedMes.year, selectedMes.month, row.local_nombre);
       setRows((prev) =>
         prev.map((r) =>
           r.local_nombre === row.local_nombre ? { ...r, confirmado: false, confirmed_at: null } : r
         )
       );
-      toast.success(t("redexpress.pedidoDesconfirmado"));
+      toast.success(t("redexpres.pedidoDesconfirmado"));
     } catch {
-      toast.error(t("redexpress.errorDesconfirmar"));
+      toast.error(t("redexpres.errorDesconfirmar"));
     }
   }
 
   async function handleCrearMes() {
     try {
-      await redexpressApi.crearMes(newYear, newMonth);
-      toast.success(t("redexpress.mesCreado", { month: MONTH_NAMES[newMonth], year: newYear }));
+      await redexpresApi.crearMes(newYear, newMonth);
+      toast.success(t("redexpres.mesCreado", { month: MONTH_NAMES[newMonth], year: newYear }));
       setShowNewMes(false);
       await loadMeses();
       setSelected({ year: newYear, month: newMonth });
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || t("redexpress.errorCrearMes"));
+      toast.error(e?.response?.data?.detail || t("redexpres.errorCrearMes"));
     }
   }
 
@@ -254,15 +254,15 @@ export default function PlanillaPedidosPage() {
   function handleExportExcel() {
     if (!selectedMes) return;
     const data = visibleRows.map((row) => {
-      const out: Record<string, string | number> = { [t("redexpress.local")]: row.local_nombre };
+      const out: Record<string, string | number> = { [t("redexpres.local")]: row.local_nombre };
       for (const col of ALL_COLS) {
         const v = getCellValue(row, col.key);
         out[`${col.group} — ${col.label}`] = col.isText ? v : (v === "" ? "" : Number(v));
       }
-      out[t("redexpress.otrosNotas")] = row.otros ?? "";
-      out[t("redexpress.estado")] = row.confirmado
-        ? t("redexpress.confirmarPedido")
-        : t("redexpress.pendiente");
+      out[t("redexpres.otrosNotas")] = row.otros ?? "";
+      out[t("redexpres.estado")] = row.confirmado
+        ? t("redexpres.confirmarPedido")
+        : t("redexpres.pendiente");
       return out;
     });
     const ws = XLSX.utils.json_to_sheet(data);
@@ -279,16 +279,16 @@ export default function PlanillaPedidosPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
-            {t("redexpress.title")}
+            {t("redexpres.title")}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            {t("redexpress.subtitle")}
+            {t("redexpres.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {rows.length > 0 && (
             <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg">
-              {t("redexpress.confirmadosCount", { count: confirmadoCount, total: rows.length })}
+              {t("redexpres.confirmadosCount", { count: confirmadoCount, total: rows.length })}
             </span>
           )}
           {rows.length > 0 && (
@@ -309,7 +309,7 @@ export default function PlanillaPedidosPage() {
                   : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
               }`}
             >
-              {filterOnly ? t("redexpress.verTodos") : t("redexpress.soloMiLocal")}
+              {filterOnly ? t("redexpres.verTodos") : t("redexpres.soloMiLocal")}
             </button>
           )}
           {isSuperuser && (
@@ -317,7 +317,7 @@ export default function PlanillaPedidosPage() {
               onClick={() => setShowNewMes((v) => !v)}
               className="btn-secondary text-xs py-2 px-3"
             >
-              <Plus size={13} /> {t("redexpress.nuevoMes")}
+              <Plus size={13} /> {t("redexpres.nuevoMes")}
             </button>
           )}
         </div>
@@ -326,7 +326,7 @@ export default function PlanillaPedidosPage() {
       {/* New month form */}
       {showNewMes && isSuperuser && (
         <div className="card p-4 flex items-center gap-3 animate-slide-up">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t("redexpress.crearMesLabel")}</span>
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t("redexpres.crearMesLabel")}</span>
           <select
             value={newMonth}
             onChange={(e) => setNewMonth(Number(e.target.value))}
@@ -344,10 +344,10 @@ export default function PlanillaPedidosPage() {
             min={2024} max={2030}
           />
           <button onClick={handleCrearMes} className="btn-primary text-xs py-2 px-3">
-            {t("redexpress.crear")}
+            {t("redexpres.crear")}
           </button>
           <button onClick={() => setShowNewMes(false)} className="btn-secondary text-xs py-2 px-3">
-            {t("redexpress.cancelar")}
+            {t("redexpres.cancelar")}
           </button>
         </div>
       )}
@@ -369,7 +369,7 @@ export default function PlanillaPedidosPage() {
           </button>
         ))}
         {meses.length === 0 && !loading && (
-          <p className="text-sm text-slate-400 dark:text-slate-500">{t("redexpress.noMeses")}</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500">{t("redexpres.noMeses")}</p>
         )}
       </div>
 
@@ -386,7 +386,7 @@ export default function PlanillaPedidosPage() {
               <thead className="sticky top-0 z-20">
                 <tr className="bg-slate-50 dark:bg-slate-950">
                   <th className="sticky left-0 z-30 bg-slate-50 dark:bg-slate-950 w-52 min-w-[200px] border-b border-r border-slate-200 dark:border-slate-800 px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-400 text-[11px] uppercase tracking-wide">
-                    {t("redexpress.local")}
+                    {t("redexpres.local")}
                   </th>
                   {GROUPS.map((g) => (
                     <th
@@ -401,10 +401,10 @@ export default function PlanillaPedidosPage() {
                     </th>
                   ))}
                   <th className="border-b border-slate-200 dark:border-slate-800 px-2 py-1.5 text-center font-semibold text-[10px] uppercase tracking-wider bg-slate-100 dark:bg-slate-900 text-slate-500">
-                    {t("redexpress.otrosNotas")}
+                    {t("redexpres.otrosNotas")}
                   </th>
                   <th className="border-b border-slate-200 dark:border-slate-800 px-2 py-1.5 text-center font-semibold text-[10px] uppercase tracking-wider bg-slate-100 dark:bg-slate-900 text-slate-500">
-                    {t("redexpress.estado")}
+                    {t("redexpres.estado")}
                   </th>
                 </tr>
                 {/* Column labels */}
@@ -420,7 +420,7 @@ export default function PlanillaPedidosPage() {
                     </th>
                   ))}
                   <th className="border-b border-slate-100 dark:border-slate-800 px-2 py-1.5 text-center font-medium text-slate-500 dark:text-slate-400" style={{ minWidth: 140 }}>
-                    {t("redexpress.notasLibres")}
+                    {t("redexpres.notasLibres")}
                   </th>
                   <th className="border-b border-slate-100 dark:border-slate-800 px-2 py-1.5" style={{ minWidth: 120 }} />
                 </tr>
@@ -495,7 +495,7 @@ export default function PlanillaPedidosPage() {
                               handleCellChange(row.local_nombre, "otros", e.target.value)
                             }
                             className="w-full rounded border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 bg-transparent text-xs py-1 px-1 outline-none transition-colors"
-                            placeholder={t("redexpress.notasPlaceholder")}
+                            placeholder={t("redexpres.notasPlaceholder")}
                           />
                         ) : (
                           <span className="text-xs text-slate-500 dark:text-slate-400 truncate block max-w-[130px]" title={(row as any).otros || ""}>
@@ -509,7 +509,7 @@ export default function PlanillaPedidosPage() {
                         {row.confirmado ? (
                           <div className="flex items-center justify-center gap-1">
                             <span className="badge badge-green flex items-center gap-1 text-[10px]">
-                              <CheckCircle2 size={10} /> {t("redexpress.confirmado")}
+                              <CheckCircle2 size={10} /> {t("redexpres.confirmado")}
                             </span>
                             {isSuperuser && (
                               <button
@@ -527,16 +527,16 @@ export default function PlanillaPedidosPage() {
                             className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition-colors whitespace-nowrap"
                           >
                             {isConfirming ? (
-                              <span className="flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> {t("redexpress.confirmando")}</span>
+                              <span className="flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> {t("redexpres.confirmando")}</span>
                             ) : hasEdits ? (
-                              <span className="flex items-center gap-1"><Clock size={10} /> {t("redexpress.guardandoEstado")}</span>
+                              <span className="flex items-center gap-1"><Clock size={10} /> {t("redexpres.guardandoEstado")}</span>
                             ) : (
-                              t("redexpress.confirmarPedido")
+                              t("redexpres.confirmarPedido")
                             )}
                           </button>
                         ) : (
                           <span className="text-[10px] text-slate-300 dark:text-slate-600 flex items-center justify-center gap-1">
-                            <Clock size={10} /> {t("redexpress.pendiente")}
+                            <Clock size={10} /> {t("redexpres.pendiente")}
                           </span>
                         )}
                       </td>
@@ -550,16 +550,16 @@ export default function PlanillaPedidosPage() {
           {/* Footer */}
           <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50 flex items-center justify-between">
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              {t("redexpress.footerConfirmados", { count: confirmadoCount, total: rows.length })}
+              {t("redexpres.footerConfirmados", { count: confirmadoCount, total: rows.length })}
             </p>
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              {t("redexpress.footerAutosave")}
+              {t("redexpres.footerAutosave")}
             </p>
           </div>
         </div>
       ) : selectedMes ? (
         <div className="card p-12 flex flex-col items-center text-center gap-3">
-          <p className="text-sm text-slate-400 dark:text-slate-500">{t("redexpress.noData")}</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500">{t("redexpres.noData")}</p>
         </div>
       ) : null}
     </div>

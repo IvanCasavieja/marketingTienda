@@ -3,32 +3,32 @@ import Link from "next/link";
 import { Presentation, Layers, FileSpreadsheet, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-export default function HerramientasPage() {
+export default function MaterialesPage() {
   const { t } = useTranslation();
 
   const tools = [
     {
-      href:        "/herramientas/cenefas",
-      title:       t("herramientas.cenefas.title"),
-      description: t("herramientas.cenefas.description"),
+      href:        "/materiales/cenefas",
+      title:       t("materiales.cenefas.title"),
+      description: t("materiales.cenefas.description"),
       icon:        Presentation,
-      tag:         t("herramientas.cenefas.tag"),
+      tag:         t("materiales.cenefas.tag"),
       tagColor:    "bg-slate-500/10 text-slate-400",
     },
     {
-      href:        "/herramientas/cenefas/v2",
-      title:       t("herramientas.editor.title"),
-      description: t("herramientas.editor.description"),
+      href:        "/materiales/cenefas/v2",
+      title:       t("materiales.editor.title"),
+      description: t("materiales.editor.description"),
       icon:        Layers,
-      tag:         t("herramientas.editor.tag"),
+      tag:         t("materiales.editor.tag"),
       tagColor:    "bg-brand-500/10 text-brand-400",
     },
     {
-      href:        "/herramientas/convertidor",
-      title:       t("herramientas.convertidor.title"),
-      description: t("herramientas.convertidor.description"),
+      href:        "/materiales/convertidor",
+      title:       t("materiales.convertidor.title"),
+      description: t("materiales.convertidor.description"),
       icon:        FileSpreadsheet,
-      tag:         t("herramientas.convertidor.tag"),
+      tag:         t("materiales.convertidor.tag"),
       tagColor:    "bg-amber-500/10 text-amber-400",
     },
   ];
@@ -36,8 +36,8 @@ export default function HerramientasPage() {
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="section-title">{t("herramientas.title")}</h1>
-        <p className="section-sub mt-1">{t("herramientas.subtitle")}</p>
+        <h1 className="section-title">{t("materiales.title")}</h1>
+        <p className="section-sub mt-1">{t("materiales.subtitle")}</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -57,7 +57,7 @@ export default function HerramientasPage() {
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">{description}</p>
             </div>
             <div className="flex items-center gap-1 text-xs text-brand-400 font-medium mt-auto">
-              {t("herramientas.openTool")} <ChevronRight size={13} />
+              {t("materiales.openTool")} <ChevronRight size={13} />
             </div>
           </Link>
         ))}

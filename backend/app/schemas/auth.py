@@ -33,7 +33,7 @@ class UserRegister(BaseModel):
 
 
 class UserLogin(BaseModel):
-    # No es EmailStr a propósito: los usuarios de sucursal de RedExpress
+    # No es EmailStr a propósito: los usuarios de sucursal de Redexpres
     # loguean con el nombre del local como "email" (ver create_sucursal_users.py),
     # no con una casilla real. El login de personal real sigue usando su email
     # normal, que sigue siendo un string válido con este tipo más laxo.

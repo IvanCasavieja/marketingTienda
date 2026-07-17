@@ -159,7 +159,7 @@ export default function EditorPage() {
         markSaved();
       }
 
-      window.location.href = `/herramientas/cenefas/v2/generar?template_id=${id}`;
+      window.location.href = `/materiales/cenefas/v2/generar?template_id=${id}`;
     } catch {
       toast.error("Error al guardar el template");
       setGenerating(false);
@@ -229,7 +229,7 @@ export default function EditorPage() {
       {/* ── Barra superior ── */}
       <header className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex-shrink-0">
         <a
-          href="/herramientas/cenefas"
+          href="/materiales/cenefas"
           className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           <ChevronLeft size={16} />
