@@ -11,6 +11,7 @@ import re
 from app.services.ai_usage_service import log_ai_usage
 from app.services.cenefas.validation_engine import DESCRIPTION_MAX_CHARS, DESCRIPTION_WARN_CHARS
 from app.services.debate_service import _ASK_CLAUDE_META, _ask_claude
+from app.services.tino_personas import TININ_BASE
 
 log = logging.getLogger(__name__)
 
@@ -25,10 +26,11 @@ _STYLE_RULES = f"""\
 - Es para un cartel de precio: tiene que ser CORTA. Apuntá a menos de {DESCRIPTION_WARN_CHARS} caracteres, nunca más de {DESCRIPTION_MAX_CHARS}.
 - No inventes datos (sabor, variedad, tamaño) que no estén sugeridos por el nombre o la descripción de origen."""
 
-_SYSTEM_PROMPT = f"""Sos un redactor de descripciones de productos para cenefas (carteles de \
-precio) de un supermercado uruguayo. Te paso productos con su nombre crudo del sistema de \
-gestión y/o una descripción web, y para cada uno tenés que devolver una descripción corta y \
-prolija para el cartel, siguiendo estas reglas de estilo:
+_SYSTEM_PROMPT = f"""{TININ_BASE}
+
+Te paso productos con su nombre crudo del sistema de gestión y/o una descripción web, y para \
+cada uno tenés que devolver una descripción corta y prolija para el cartel, siguiendo estas \
+reglas de estilo:
 
 {_STYLE_RULES}"""
 

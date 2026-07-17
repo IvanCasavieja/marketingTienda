@@ -89,7 +89,7 @@ export default function HomePage() {
         {/* Mascot + greeting */}
         <div className="flex flex-col items-center text-center gap-4">
           <div className="relative">
-            <RobotMascot />
+            <RobotMascot variant="tina" />
             <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white" />
           </div>
 
@@ -113,7 +113,7 @@ export default function HomePage() {
             className="w-full flex items-center gap-3 px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="w-8 h-8 rounded-xl bg-brand-500/10 flex items-center justify-center shrink-0">
-              <RobotMini />
+              <RobotMini variant="tina" />
             </div>
             <div className="flex-1 text-left">
               <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{t("home.assistantName")}</p>
@@ -133,7 +133,7 @@ export default function HomePage() {
                   <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
                     {m.role === "bot" && (
                       <div className="w-7 h-7 rounded-xl bg-brand-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <RobotMini />
+                        <RobotMini variant="tina" />
                       </div>
                     )}
                     <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
@@ -152,7 +152,7 @@ export default function HomePage() {
                 {typing && (
                   <div className="flex gap-3">
                     <div className="w-7 h-7 rounded-xl bg-brand-500/10 flex items-center justify-center shrink-0">
-                      <RobotMini />
+                      <RobotMini variant="tina" />
                     </div>
                     <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm flex gap-1 items-center">
                       <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0ms]" />

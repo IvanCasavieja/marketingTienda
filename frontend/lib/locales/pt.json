@@ -129,12 +129,12 @@
     "greeting": "Olá, {{name}}",
     "greetingNoName": "Bem-vindo",
     "waveEmoji": "👋",
-    "assistantReady": "Don Tino está pronto para ajudar",
-    "assistantName": "Don Tino",
+    "assistantReady": "Doña Tina está pronta para ajudar",
+    "assistantName": "Doña Tina",
     "assistantSubtitle": "Pergunte-me sobre a plataforma",
     "inputPlaceholder": "Digite sua pergunta...",
     "comingSoon": "Assistente com IA real · Powered by Llama 3.3 70B via Groq",
-    "assistantWelcome": "Sou o Don Tino, seu assistente MKTG Platform. Posso guiá-lo pelo uso da plataforma, explicar funcionalidades e ajudá-lo a aproveitar ao máximo. Como posso ajudá-lo hoje?",
+    "assistantWelcome": "Sou a Doña Tina, sua assistente MKTG Platform. Posso guiá-lo pelo uso da plataforma, explicar funcionalidades e ajudá-lo a aproveitar ao máximo. Como posso ajudá-lo hoje?",
     "suggestions": {
       "s1": "Como sincronizo o Google Ads?",
       "s2": "Como gero faixas?",
@@ -691,7 +691,7 @@
     "ai": {
       "button": "Gerar com IA",
       "modalTitle": "Sugestões de descrição geradas com IA",
-      "loading": "Don Tino arregaçou as mangas e está cavando os dados para tirar as descrições…",
+      "loading": "Tinín arregaçou as mangas e está cavando os dados para tirar as descrições…",
       "notConfigured": "A geração com IA não está configurada neste ambiente.",
       "genericError": "Não conseguimos gerar as sugestões. Tente novamente em alguns minutos.",
       "approve": "Aprovar",
@@ -933,7 +933,7 @@
       "feature1": "Buscar o preço de um produto nas 13 redes, ao vivo",
       "feature2": "Consultar o status de um trabalho de faixas pelo ID",
       "feature3": "Resumir seu último debate da Tríade",
-      "footer": "Disponível a partir da Home — abra o cartão de chat abaixo da saudação do Don Tino."
+      "footer": "Disponível a partir da Home — abra o cartão de chat abaixo da saudação da Doña Tina."
     },
     "roles": {
       "title": "Papéis e permissões",

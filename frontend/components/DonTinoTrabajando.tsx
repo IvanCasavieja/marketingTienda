@@ -1,13 +1,14 @@
 "use client";
 
-// Variante de Don Tino para pantallas de carga con IA trabajando "atrás de
-// escena" (ej. generando descripciones en el Convertidor de Excel). No
-// reusa <RobotMascot size={...}/> por composición: el pico tiene que ir
-// agarrado de la mano y moverse CON el brazo y CON el float del cuerpo, así
-// que necesita ser parte del mismo SVG/grupo animado, no un ícono aparte
-// superpuesto encima (esa primera versión quedaba con el pico flotando
-// suelto, sin agarrarse a ninguna mano). Por eso este archivo dibuja su
-// propia copia del robot — mismo diseño que RobotMascot.tsx, sin tocar ese
+// Tinín — el más chico de la familia Tino, picando piedra en las pantallas
+// de carga con IA trabajando "atrás de escena" (ej. generando descripciones
+// en el Convertidor de Excel). No reusa <RobotMascot size={...}/> por
+// composición: el pico tiene que ir agarrado de la mano y moverse CON el
+// brazo y CON el float del cuerpo, así que necesita ser parte del mismo
+// SVG/grupo animado, no un ícono aparte superpuesto encima (esa primera
+// versión quedaba con el pico flotando suelto, sin agarrarse a ninguna
+// mano). Por eso este archivo dibuja su propia copia del robot — mismo
+// diseño base que RobotMascot.tsx (variant="tinin"), sin tocar ese
 // componente para no afectar Home/Ayuda/Login — con el brazo derecho
 // modificado para sostener el pico y el swing de minero en vez del wave.
 export function DonTinoTrabajando({ size = 90 }: { size?: number }) {
@@ -75,6 +76,8 @@ export function DonTinoTrabajando({ size = 90 }: { size?: number }) {
           {/* Cuello + cabeza */}
           <rect x="35" y="32" width="10" height="8" rx="3" fill="#6366f1" />
           <rect x="18" y="10" width="44" height="30" rx="12" fill="#6366f1" />
+          {/* Gorrita de Tinín */}
+          <rect x="19" y="9" width="42" height="7" rx="3.5" fill="#f59e0b" />
           <rect x="26" y="19" width="12" height="10" rx="5" fill="white" />
           <rect x="42" y="19" width="12" height="10" rx="5" fill="white" />
           <circle className="dt-eye-l" cx="32" cy="24" r="4" fill="#1e1b4b" />

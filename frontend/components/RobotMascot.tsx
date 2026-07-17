@@ -1,10 +1,16 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// Don Tino — mascota robot de la plataforma (Home, Ayuda, Login)
+// La familia Tino — mascota de la plataforma. Mismo cuerpo base para los 3
+// hermanos, diferenciados por un accesorio propio vía `variant`:
+//   - "tino"  (default): Don Tino, precios en vivo — sin accesorio, el original.
+//   - "tina": Doña Tina, guía de la plataforma (Home/Ayuda) — moño.
+//   - "tinin": Tinín, el changador del Convertidor de Excel — gorrita.
 // ---------------------------------------------------------------------------
 
-export function RobotMascot({ size = 90 }: { size?: number } = {}) {
+export type TinoVariant = "tino" | "tina" | "tinin";
+
+export function RobotMascot({ size = 90, variant = "tino" }: { size?: number; variant?: TinoVariant } = {}) {
   return (
     <>
       <style>{`
@@ -74,6 +80,10 @@ export function RobotMascot({ size = 90 }: { size?: number } = {}) {
         <rect x="35" y="32" width="10" height="8" rx="3" fill="#6366f1" />
         {/* Head */}
         <rect x="18" y="10" width="44" height="30" rx="12" fill="#6366f1" />
+        {/* Gorrita de Tinín */}
+        {variant === "tinin" && (
+          <rect x="19" y="9" width="42" height="7" rx="3.5" fill="#f59e0b" />
+        )}
         {/* Eye whites */}
         <rect x="26" y="19" width="12" height="10" rx="5" fill="white" />
         <rect x="42" y="19" width="12" height="10" rx="5" fill="white" />
@@ -89,16 +99,25 @@ export function RobotMascot({ size = 90 }: { size?: number } = {}) {
         <line x1="40" y1="10" x2="40" y2="3" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
         {/* Antenna ball */}
         <circle className="robot-ant" cx="40" cy="2" r="3" fill="#a5b4fc" />
+        {/* Moño de Doña Tina */}
+        {variant === "tina" && (
+          <g>
+            <path d="M50 8 L44 12 L50 16 Z" fill="#f472b6" />
+            <path d="M54 8 L60 12 L54 16 Z" fill="#f472b6" />
+            <circle cx="52" cy="12" r="2" fill="#db2777" />
+          </g>
+        )}
       </g>
       </svg>
     </>
   );
 }
 
-export function RobotMini() {
+export function RobotMini({ variant = "tino" }: { variant?: TinoVariant } = {}) {
   return (
     <svg width="16" height="16" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect x="18" y="10" width="44" height="30" rx="12" fill="#6366f1" />
+      {variant === "tinin" && <rect x="19" y="9" width="42" height="7" rx="3.5" fill="#f59e0b" />}
       <rect x="26" y="19" width="12" height="10" rx="5" fill="white" />
       <rect x="42" y="19" width="12" height="10" rx="5" fill="white" />
       <circle cx="32" cy="24" r="4" fill="#1e1b4b" />
@@ -106,6 +125,13 @@ export function RobotMini() {
       <path d="M30 33 Q40 39 50 33" stroke="white" strokeWidth="2.5" strokeLinecap="round" fill="none" />
       <line x1="40" y1="10" x2="40" y2="3" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
       <circle cx="40" cy="2" r="3" fill="#a5b4fc" />
+      {variant === "tina" && (
+        <g>
+          <path d="M50 8 L44 12 L50 16 Z" fill="#f472b6" />
+          <path d="M54 8 L60 12 L54 16 Z" fill="#f472b6" />
+          <circle cx="52" cy="12" r="2" fill="#db2777" />
+        </g>
+      )}
       <rect x="22" y="38" width="36" height="26" rx="8" fill="#4f46e5" />
     </svg>
   );

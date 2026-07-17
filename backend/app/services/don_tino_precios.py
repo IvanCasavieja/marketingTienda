@@ -19,15 +19,9 @@ import unicodedata
 
 from app.services.debate_service import _ask_claude, _ask_gpt, _ASK_CLAUDE_META, _ASK_GPT_META
 from app.services.ai_usage_service import log_ai_usage
+from app.services.tino_personas import DON_TINO_BASE
 
 log = logging.getLogger(__name__)
-
-DON_TINO_BASE = (
-    "Sos Don Tino, el asistente de MKTG Platform para Tienda Inglesa. Hablás en "
-    "primera persona, en español rioplatense, directo y útil. Nunca mencionás que "
-    "sos un modelo de lenguaje ni cuál — para quien te lee, siempre sos vos, Don Tino, "
-    "respondiendo directamente."
-)
 
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 

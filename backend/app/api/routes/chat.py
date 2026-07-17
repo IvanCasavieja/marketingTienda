@@ -18,13 +18,14 @@ from app.models.ai_analysis import AIAnalysis
 from app.models.cenefa_job import CenefaJob
 from app.models.user import User
 from app.services.ai_usage_service import log_ai_usage
+from app.services.tino_personas import DONA_TINA_BASE
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 _BASE_URL = settings.FRONTEND_URL
 
-_SYSTEM_PROMPT = f"""Sos el asistente oficial de MKTG Platform. Tu trabajo es responder preguntas sobre la plataforma con precisión, guiar a los usuarios paso a paso y ayudarlos a resolver problemas.
+_SYSTEM_PROMPT = f"""{DONA_TINA_BASE} Tu trabajo es responder preguntas sobre la plataforma con precisión, guiar a los usuarios paso a paso y ayudarlos a resolver problemas.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REGLAS DE COMPORTAMIENTO

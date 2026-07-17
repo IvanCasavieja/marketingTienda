@@ -30,14 +30,16 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 const FEATURE_COLORS: Record<string, string> = {
-  debate:            "#6366f1",
-  don_tino_home:     "#f59e0b",
-  don_tino_precios:  "#10b981",
+  debate:                    "#6366f1",
+  don_tino_home:             "#f59e0b",
+  don_tino_precios:          "#10b981",
+  convertidor_descripciones: "#ec4899",
 };
 const FEATURE_LABELS: Record<string, string> = {
-  debate:            "La Triada (debate)",
-  don_tino_home:     "Don Tino (home)",
-  don_tino_precios:  "Don Tino (precios)",
+  debate:                    "La Triada (debate)",
+  don_tino_home:             "Doña Tina (home)",
+  don_tino_precios:          "Don Tino (precios)",
+  convertidor_descripciones: "Tinín (convertidor)",
 };
 
 // Los formatters de lib/format.ts están pensados para montos en pesos — acá
