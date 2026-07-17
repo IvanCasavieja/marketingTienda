@@ -439,8 +439,8 @@ export default function AdminPage() {
     try {
       await api.patch(`/admin/users/${user.id}/activate`, { is_active: !user.is_active });
       setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, is_active: !user.is_active } : u));
-    } catch {
-      toast.error(t("admin.toggleActiveError"));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? t("admin.toggleActiveError"));
     }
   }
 
