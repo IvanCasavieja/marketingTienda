@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_permission
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.core.llm_retry import llm_call_with_retry
@@ -78,7 +78,7 @@ La plataforma tiene un sistema de roles sin equipos ni organizaciones separadas 
 - **Usuario**: arranca con un set operativo estándar (ver todo lo de cenefas/analytics/precios/IA, sin gestión de usuarios ni de conexiones) — se puede ajustar por persona.
 - **Viewer**: arranca sin permisos y solo puede tener tildados permisos de "ver" (los que terminan en `.view`) — nunca uno de generar, editar, eliminar, buscar o usar. Ve las secciones pero no puede accionar nada.
 
-Un Superadmin o un Admin pueden crear roles personalizados en [Panel de Admin]({_BASE_URL}/admin) con cualquier nombre y cualquier combinación de los 15 permisos disponibles (un Admin no puede tocar la cuenta de otro Admin ni la del Super Admin, como se explicó arriba):
+Un Superadmin o un Admin pueden crear roles personalizados en [Panel de Admin]({_BASE_URL}/admin) con cualquier nombre y cualquier combinación de los 19 permisos disponibles (un Admin no puede tocar la cuenta de otro Admin ni la del Super Admin, como se explicó arriba):
 
 Permisos disponibles (agrupados):
 - PLATAFORMA: `platform.super`, `platform.admin`, `platform.users.view`, `platform.users.manage`
@@ -86,7 +86,8 @@ Permisos disponibles (agrupados):
 - ANALYTICS: `analytics.view`, `analytics.export`
 - CONEXIONES: `connections.view`, `connections.manage`
 - PRECIOS: `precios.search`
-- IA: `ai.use`
+- REDEXPRES: `redexpres.view`
+- IA: `ai.don_tino` (Don Tino), `ai.dona_tina` (Doña Tina), `ai.tinin` (Tinín), `ai.triada` (La Triada)
 
 Para cambiar el rol de un usuario: [Admin]({_BASE_URL}/admin) → sección Usuarios → dropdown de rol al lado del nombre (solo accesible por Superadmin).
 
@@ -509,7 +510,7 @@ async def _ejecutar_tool(name: str, args: dict, current_user: User, db: AsyncSes
 async def chat_message(
     request: Request,
     body: ChatRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("ai.don_tino")),
     db: AsyncSession = Depends(get_db),
 ):
     if not settings.GROQ_API_KEY:

@@ -237,7 +237,7 @@ class ReporteRequest(BaseModel):
 async def ia_consultar(
     request: Request,
     payload: ConsultarRequest,
-    current_user: User = Depends(require_permission("precios.search")),
+    current_user: User = Depends(require_permission("ai.dona_tina")),
     db: AsyncSession = Depends(get_db),
 ):
     if not payload.items:
@@ -262,7 +262,7 @@ async def ia_consultar(
 async def ia_reporte(
     request: Request,
     payload: ReporteRequest,
-    current_user: User = Depends(require_permission("precios.search")),
+    current_user: User = Depends(require_permission("ai.dona_tina")),
     db: AsyncSession = Depends(get_db),
 ):
     if not payload.items:

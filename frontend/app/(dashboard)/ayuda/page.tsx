@@ -73,7 +73,7 @@ export default function AyudaPage() {
   const hasPerm = (p: string) => hasPermission(me, p);
 
   const showAnalytics  = hasPerm("analytics.view");
-  const showIA         = hasPerm("ai.use");
+  const showIA         = hasPerm("ai.triada");
   const showPrecios    = hasPerm("precios.search");
   const showCenefas    = hasPerm("cenefas.view");
   const showConexiones = hasPerm("connections.view");

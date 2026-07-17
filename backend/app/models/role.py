@@ -34,8 +34,11 @@ ALL_PERMISSIONS: dict[str, str] = {
     # Redexpres
     "redexpres.view":          "Ver y completar la planilla de pedidos Redexpres",
 
-    # IA
-    "ai.use":                  "Usar el chat de IA, análisis automáticos y debate de campañas",
+    # IA — un permiso por agente de la familia "Tino" + La Triada
+    "ai.don_tino":             "Usar el chat de Don Tino, la guía general de la plataforma",
+    "ai.dona_tina":            "Usar a Doña Tina — consultas y reportes de precios con IA",
+    "ai.tinin":                "Usar a Tinín — generar descripciones con IA en el Convertidor de Excel",
+    "ai.triada":               "Usar La Triada — debate y análisis automático de campañas",
 }
 
 # Sufijo que marca un permiso como "de solo lectura" — usado para restringir
@@ -75,7 +78,7 @@ DEFAULT_ROLES: list[dict] = [
             "analytics.view", "analytics.export",
             "connections.view",
             "precios.search",
-            "ai.use",
+            "ai.don_tino", "ai.dona_tina", "ai.tinin", "ai.triada",
         ],
         "is_system":   True,
         "view_only":   False,

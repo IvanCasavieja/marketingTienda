@@ -171,7 +171,7 @@ class GenerarDescripcionesRequest(BaseModel):
 async def generar_descripciones_ia(
     request: Request,
     payload: GenerarDescripcionesRequest,
-    current_user: User = Depends(require_permission("cenefas.view")),
+    current_user: User = Depends(require_permission("ai.tinin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Genera sugerencias de descripción con Claude para filas sin match —
@@ -217,7 +217,7 @@ class TininConsultarRequest(BaseModel):
 async def tinin_consultar(
     request: Request,
     payload: TininConsultarRequest,
-    current_user: User = Depends(require_permission("cenefas.view")),
+    current_user: User = Depends(require_permission("ai.tinin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Chat de Tinín — guía sobre templates/destinos/flujo de generación, y

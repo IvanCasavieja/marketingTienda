@@ -118,7 +118,7 @@ class DebateVerdictRequest(BaseModel):
 
 @router.get("/available-platforms")
 async def available_platforms(
-    current_user: User = Depends(require_permission("ai.use")),
+    current_user: User = Depends(require_permission("ai.triada")),
     db: AsyncSession = Depends(get_db),
 ):
     """Plataformas que hoy se pueden analizar (conexión activa o fixture habilitado
@@ -132,7 +132,7 @@ async def available_platforms(
 async def analyze(
     request: Request,
     payload: AnalysisRequest,
-    current_user: User = Depends(require_permission("ai.use")),
+    current_user: User = Depends(require_permission("ai.triada")),
     db: AsyncSession = Depends(get_db),
 ):
     handler = _ALL_HANDLERS.get(payload.analysis_type)
@@ -180,7 +180,7 @@ async def analyze(
 
 @router.get("/history")
 async def get_history(
-    current_user: User = Depends(require_permission("ai.use")),
+    current_user: User = Depends(require_permission("ai.triada")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -206,7 +206,7 @@ async def get_history(
 @router.get("/history/{analysis_id}")
 async def get_analysis(
     analysis_id: int,
-    current_user: User = Depends(require_permission("ai.use")),
+    current_user: User = Depends(require_permission("ai.triada")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -236,7 +236,7 @@ async def get_analysis(
 async def debate_stream(
     request: Request,
     payload: AnalysisRequest,
-    current_user: User = Depends(require_permission("ai.use")),
+    current_user: User = Depends(require_permission("ai.triada")),
     db: AsyncSession = Depends(get_db),
 ):
     await _assert_platforms_available(db, payload.platforms)
@@ -310,7 +310,7 @@ async def debate_stream(
 async def debate_turn(
     request: Request,
     payload: DebateTurnRequest,
-    current_user: User = Depends(require_permission("ai.use")),
+    current_user: User = Depends(require_permission("ai.triada")),
     db: AsyncSession = Depends(get_db),
 ):
     """Single conversational turn: ChatGPT first (ya con contexto web fresco), luego Claude
@@ -411,7 +411,7 @@ async def debate_turn(
 async def debate_verdict(
     request: Request,
     payload: DebateVerdictRequest,
-    current_user: User = Depends(require_permission("ai.use")),
+    current_user: User = Depends(require_permission("ai.triada")),
     db: AsyncSession = Depends(get_db),
 ):
     """Request Llama verdict on the current conversation, then save full debate to DB."""

@@ -94,7 +94,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: t("sidebar.medios"),         perm: "analytics.view" },
     { href: "/canales",                 label: t("sidebar.analyticsGa4"), icon: Activity,      section: t("sidebar.medios"),         perm: "analytics.view" },
     { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: t("sidebar.medios"),         perm: "analytics.view" },
-    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: t("sidebar.medios"),         perm: "ai.use" },
+    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: t("sidebar.medios"),         perm: "ai.triada" },
     { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.medios"),         perm: "connections.view" },
     { href: "/materiales/cenefas",    label: t("sidebar.cenefas"),  icon: Presentation, section: t("sidebar.materiales"), perm: "cenefas.view" },
     { href: "/materiales/convertidor", label: t("sidebar.convertidor"), icon: FileSpreadsheet, section: t("sidebar.materiales"), perm: "cenefas.view" },
