@@ -43,11 +43,13 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
   useEscapeKey(onClose);
 
   useEffect(() => {
-    // Piso mínimo de 4s para la pantalla de Don Tino picando piedra — si
-    // Claude responde en 1s, apagar el loading de una deja la animación
-    // cortada antes de que se aprecie. Si tarda más de 4s, no se agrega
-    // espera extra (remaining da 0).
-    const MIN_LOADING_MS = 4000;
+    // Piso mínimo para la pantalla de Don Tino picando piedra — esto NUNCA
+    // corta la animación antes de que la IA real termine (Math.max abajo:
+    // si Claude tarda más que el piso, se espera lo que Claude tarde, sin
+    // techo). El piso solo entra a jugar cuando la respuesta llega rápido
+    // (lotes chicos, 1-3 productos) y evita que la animación se sienta
+    // cortada antes de disfrutarla.
+    const MIN_LOADING_MS = 6000;
     const start = Date.now();
     const finishLoading = () => {
       const remaining = Math.max(0, MIN_LOADING_MS - (Date.now() - start));

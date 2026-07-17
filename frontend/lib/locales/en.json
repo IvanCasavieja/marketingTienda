@@ -691,7 +691,7 @@
     "ai": {
       "button": "Generate with AI",
       "modalTitle": "AI-generated description suggestions",
-      "loading": "Don Tino is pickaxing through the data to write the descriptions…",
+      "loading": "Don Tino rolled up his sleeves and is pickaxing your descriptions out of the data…",
       "notConfigured": "AI generation is not configured in this environment.",
       "genericError": "We couldn't generate the suggestions. Try again in a few minutes.",
       "approve": "Approve",
