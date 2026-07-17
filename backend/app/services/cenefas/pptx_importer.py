@@ -392,27 +392,99 @@ def _detect_placeholder(text: str) -> tuple[str, str, str] | None:
     return _resolve_placeholder(m.group(1).lower(), m.group(2))
 
 
-def _build_segments(text: str, matches: list) -> tuple[list[dict], list[tuple[str, str]]]:
-    """Parte el texto de un shape con 2+ placeholders <<...>> en segmentos que
-    alternan texto estático y variable, para que cada uno se resuelva de forma
-    independiente aunque compartan el mismo cuadro de texto — ej. un diseñador
-    escribió "<<Aclaracion1>> <<Aclaracion2>> <<Aclaracion3>>" todo en un solo
-    cuadro en vez de 3 cuadros separados. Antes de esto, _detect_placeholder
-    (con .search(), un solo match) solo agarraba el primero y perdía el resto
-    — literalmente el mismo <<...>> que delimita cada variable en el resto del
-    sistema es lo que se usa acá para encontrar los límites de cada segmento."""
+def _run_style(run, theme_colors: dict[str, str] | None = None) -> dict:
+    """Estilo (tamaño, negrita, tachado, familia, color) de UN run puntual —
+    usado por _build_segments para que cada segmento de un cuadro con texto
+    mixto conserve su propio formato, en vez de heredar uniformemente el
+    estilo "de shape" que arma _extract_style a partir del primer run."""
+    style: dict = {}
+    font = run.font
+    try:
+        if font.size:
+            style["font_size"] = round(font.size.pt, 1)
+    except Exception:
+        pass
+    try:
+        b = font.bold
+        if b is None:
+            from pptx.oxml.ns import qn as _qn_b
+            rPr = run._r.find(_qn_b("a:rPr"))
+            if rPr is not None:
+                b_str = rPr.get("b")
+                if b_str is not None:
+                    b = b_str not in ("0", "false")
+        if b is not None:
+            style["font_bold"] = bool(b)
+    except Exception:
+        pass
+    try:
+        from pptx.oxml.ns import qn as _qn_s
+        rPr = run._r.find(_qn_s("a:rPr"))
+        if rPr is not None:
+            strike = rPr.get("strike")
+            if strike is not None and strike != "noStrike":
+                style["strikethrough"] = True
+    except Exception:
+        pass
+    try:
+        if font.name:
+            style["font_family"] = font.name
+    except Exception:
+        pass
+    color = _extract_font_color(run, theme_colors)
+    if color:
+        style["color"] = color
+    return style
+
+
+def _build_segments(
+    shape, text: str, matches: list, theme_colors: dict[str, str] | None = None
+) -> tuple[list[dict], list[tuple[str, str]]]:
+    """Parte el texto de un shape con texto estático + variable mezclados en
+    segmentos que se resuelven de forma independiente, cada uno con el
+    estilo real del run que lo originó — ej. un diseñador escribió
+    "<<Aclaracion1>> <<Aclaracion2>> <<Aclaracion3>>" todo en un solo cuadro
+    en vez de 3 cuadros separados (_detect_placeholder con un solo match se
+    quedaba con el primero y perdía el resto), o "$" + "<<Precio>>" con
+    tamaños de fuente distintos en la misma caja de precio de Rompe Precios
+    (antes se perdía el tamaño real del número, todo el cuadro quedaba con
+    el tamaño del primer run). El mismo <<...>> que delimita cada variable
+    en el resto del sistema es lo que se usa acá para encontrar los límites
+    de cada segmento; el estilo de cada uno sale del run real que lo cubre,
+    no de un único estilo "de shape"."""
+    # Mapea cada run a su rango [start, end) en el texto aplanado, en el
+    # mismo orden de concatenación que usa _get_shape_text() — pero medido
+    # sobre el texto SIN recortar (raw), porque _parse_shape le hace un
+    # .strip() antes de llegar acá y eso desplaza las posiciones.
+    raw = _get_shape_text(shape)
+    left_trim = len(raw) - len(raw.lstrip())
+
+    spans = []
+    pos = 0
+    for para in shape.text_frame.paragraphs:
+        for run in para.runs:
+            start = pos - left_trim
+            pos += len(run.text)
+            spans.append((start, pos - left_trim, run))
+
+    def _style_at(start: int, end: int) -> dict:
+        for s, e, run in spans:
+            if s < end and e > start:
+                return _run_style(run, theme_colors)
+        return {}
+
     segments: list[dict] = []
     seg_vars: list[tuple[str, str]] = []
     pos = 0
     for m in matches:
         if m.start() > pos:
-            segments.append({"type": "static", "value": text[pos:m.start()]})
+            segments.append({"type": "static", "value": text[pos:m.start()], "style": _style_at(pos, m.start())})
         var_name, var_type, transform = _resolve_placeholder(m.group(1).lower(), m.group(2))
-        segments.append({"type": "variable", "value": var_name, "transform": transform})
+        segments.append({"type": "variable", "value": var_name, "transform": transform, "style": _style_at(m.start(), m.end())})
         seg_vars.append((var_name, var_type))
         pos = m.end()
     if pos < len(text):
-        segments.append({"type": "static", "value": text[pos:]})
+        segments.append({"type": "static", "value": text[pos:], "style": _style_at(pos, len(text))})
     return segments, seg_vars
 
 
@@ -625,8 +697,14 @@ def _parse_shape(shape, z_index: int, theme_colors: dict[str, str] | None = None
             style.pop("_baseline", None)
 
         placeholder_matches = list(_RE_PLACEHOLDER.finditer(text))
-        if len(placeholder_matches) > 1:
-            segments, seg_vars = _build_segments(text, placeholder_matches)
+        non_empty_runs = [r for p in shape.text_frame.paragraphs for r in p.runs if r.text.strip()]
+        # 2+ placeholders en un cuadro (aclaracion1/2/3 compartiendo caja) O
+        # un solo placeholder pero con texto estático de otro run al lado
+        # (ej. "$" + "<<Precio>>" con tamaños distintos) — en ambos casos un
+        # único estilo "de shape" no alcanza, cada run puede traer su propio
+        # formato y hay que preservarlo por segmento.
+        if placeholder_matches and (len(placeholder_matches) > 1 or len(non_empty_runs) > 1):
+            segments, seg_vars = _build_segments(shape, text, placeholder_matches, theme_colors)
             return {**common, "type": "text", "name": (text[:30] or "texto"),
                     "variable": None, "segments": segments,
                     "style": style, "_seg_vars": seg_vars}
