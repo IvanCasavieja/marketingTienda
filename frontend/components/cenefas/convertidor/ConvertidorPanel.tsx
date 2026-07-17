@@ -61,8 +61,8 @@ export default function ConvertidorPanel({ destino }: ConvertidorPanelProps) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <FileDropField
           label={t("convertidor.excelLabel")}
-          hint=".xlsx"
-          accept=".xlsx,.xlsm"
+          hint=".xlsx / .csv"
+          accept=".xlsx,.xlsm,.csv"
           file={excel}
           onChange={(e: ChangeEvent<HTMLInputElement>) => e.target.files?.[0] && setExcel(e.target.files[0])}
           icon={FileSpreadsheet}

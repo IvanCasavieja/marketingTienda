@@ -7,6 +7,7 @@ la mecánica de oferta/oferta det (eso sigue siendo trabajo exclusivo del
 generador de Cenefas cuando el Excel de salida se vuelva a subir ahí) —
 solo transporta esas columnas tal cual del input al output.
 """
+import csv
 import io
 import re
 import unicodedata
@@ -147,17 +148,51 @@ def _has_letters(raw: str) -> bool:
 # Parseo del Excel de entrada
 # ---------------------------------------------------------------------------
 
-def parse_input_excel(excel_bytes: bytes) -> list[dict]:
+def _read_csv_rows(csv_bytes: bytes) -> list[tuple]:
+    """Lee un CSV (algunos exports de gestión, sobre todo Rompe Precios,
+    vienen así en vez de xlsx) tolerando las dos variantes regionales más
+    comunes: separador coma o punto y coma (frecuente acá, porque la coma
+    ya se usa como separador decimal), y encoding UTF-8 o Windows-1252
+    (típico de sistemas de gestión viejos que no exportan UTF-8 nativo)."""
+    text = None
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            text = csv_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        text = csv_bytes.decode("utf-8", errors="replace")
+
+    sample = text[:4096]
+    try:
+        delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t").delimiter
+    except csv.Error:
+        # El sniffer necesita al menos un par de filas consistentes para
+        # decidir — con muy pocas filas o un formato ambiguo, cae acá:
+        # cuenta cuál separador aparece más seguido en la muestra.
+        delimiter = ";" if sample.count(";") >= sample.count(",") else ","
+
+    return [tuple(row) for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
+
+
+def parse_input_excel(file_bytes: bytes, filename: str = "") -> list[dict]:
     """Detecta la fila de headers real (puede no ser la fila 1 — el export
     real de gestión trae una fila de título + una fila en blanco antes),
     mapea columnas por nombre normalizado, y extrae por fila: codigo,
     nombre_articulo, descripcion_excel (si el Excel ya trae una columna
     "Descripción" propia -- ver match_rows() para cómo se prioriza contra
     el catálogo), moneda, precio_anterior, precio, oferta, oferta_det,
-    descripcion_web. Columnas no reconocidas se ignoran."""
-    wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), read_only=True, data_only=True)
-    ws = wb[wb.sheetnames[0]]
-    rows = list(ws.iter_rows(min_row=1, max_row=None, values_only=True))
+    descripcion_web. Columnas no reconocidas se ignoran.
+
+    Acepta tanto .xlsx/.xlsm como .csv (ver _read_csv_rows) — decidido por
+    la extensión del archivo subido, no por su contenido."""
+    if filename.lower().endswith(".csv"):
+        rows = _read_csv_rows(file_bytes)
+    else:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        ws = wb[wb.sheetnames[0]]
+        rows = list(ws.iter_rows(min_row=1, max_row=None, values_only=True))
 
     header_row_idx: int | None = None
     col_map: dict[int, str] = {}
@@ -194,7 +229,10 @@ def parse_input_excel(excel_bytes: bytes) -> list[dict]:
 
     parsed: list[dict] = []
     for row in rows[header_row_idx + 1:]:
-        if codigo_col >= len(row) or row[codigo_col] is None:
+        # "not row[...]" en vez de "is None": una celda vacía de CSV llega
+        # como "" (nunca None, a diferencia de openpyxl) — este chequeo
+        # cubre las dos fuentes por igual.
+        if codigo_col >= len(row) or not row[codigo_col]:
             continue
         codigo = normalize_sku(row[codigo_col])
         if not codigo:

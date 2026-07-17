@@ -42,7 +42,7 @@ async def preview(
 ):
     excel_bytes = await read_limited(excel, "Excel")
     try:
-        parsed = parse_input_excel(excel_bytes)
+        parsed = parse_input_excel(excel_bytes, excel.filename or "")
     except ConvertidorParseError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
