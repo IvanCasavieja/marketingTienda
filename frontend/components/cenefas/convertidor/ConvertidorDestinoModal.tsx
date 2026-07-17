@@ -20,7 +20,7 @@ export default function ConvertidorDestinoModal({ onSelect }: ConvertidorDestino
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div className="flex items-start justify-center pt-12">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-lg p-6 space-y-5">
         <div>
           <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">{t("convertidor.destino.title")}</h2>
