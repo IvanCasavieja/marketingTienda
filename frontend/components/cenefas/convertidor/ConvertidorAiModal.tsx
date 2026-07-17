@@ -43,7 +43,7 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
   useEscapeKey(onClose);
 
   useEffect(() => {
-    // Piso mínimo para la pantalla de Don Tino picando piedra — esto NUNCA
+    // Piso mínimo para la pantalla de Tinín picando piedra — esto NUNCA
     // corta la animación antes de que la IA real termine (Math.max abajo:
     // si Claude tarda más que el piso, se espera lo que Claude tarde, sin
     // techo). El piso solo entra a jugar cuando la respuesta llega rápido

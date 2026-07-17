@@ -958,7 +958,7 @@ export default function PreciosPage() {
           competía mal con el resto en modo claro). Ahora es un botón en la
           barra de controles que abre esto: más ancho, nombres completos, y
           multi-selección (clickear varios nombres los suma al filtro, como
-          los chips de cadena) — necesario porque Don Tino también puede
+          los chips de cadena) — necesario porque Doña Tina también puede
           aplicar varios nombres de una via onApplySeleccion. Unifica por
           nombre EXACTO de producto entre TODAS las cadenas (no por precio ni
           por cadena, a diferencia de la agrupación de la lista de arriba). */}

@@ -4,9 +4,9 @@ import { preciosApi } from "@/lib/api";
 import { RobotMascot } from "@/components/RobotMascot";
 import { X, Send, BarChart3, Sparkles } from "lucide-react";
 
-// ── Don Tino flotante — misma cara en todos lados, pero lo que contesta viene
+// ── Doña Tina flotante — misma cara en todos lados, pero lo que contesta viene
 // de Claude/ChatGPT por detrás (ver backend/app/services/don_tino_precios.py).
-// El usuario nunca ve esos nombres, solo a Don Tino respondiendo. ─────────────
+// El usuario nunca ve esos nombres, solo a Doña Tina respondiendo. ─────────────
 
 type Contexto = "precios" | "comparison" | "analytics";
 
@@ -56,7 +56,7 @@ export default function DonTinoFloating({
   const hayParaReporte = !!reporteItems && reporteItems.length > 0;
 
   // Tip proactivo: en /precios, apenas hay resultados y todavía no se habló
-  // con Don Tino, le avisamos que puede filtrar la lista por pedido — si no,
+  // con Doña Tina, le avisamos que puede filtrar la lista por pedido — si no,
   // nadie se entera de que existe esta función salvo que la pruebe por las
   // suyas. Solo una vez (mientras no haya mensajes propios todavía).
   useEffect(() => {
@@ -138,10 +138,10 @@ export default function DonTinoFloating({
           {/* Header */}
           <div className="flex items-center gap-2.5 px-4 py-3 bg-brand-600 shrink-0">
             <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm overflow-visible">
-              <RobotMascot size={30} />
+              <RobotMascot size={30} variant="tina" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white text-xs font-bold leading-none">Don Tino</p>
+              <p className="text-white text-xs font-bold leading-none">Doña Tina</p>
               <p className="text-brand-100 text-[10px] mt-0.5">
                 {context === "comparison" ? "Analizando este gráfico" : "Tu asistente"}
               </p>
@@ -226,13 +226,13 @@ export default function DonTinoFloating({
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-16 h-16 rounded-full bg-white dark:bg-slate-800 shadow-lg border border-slate-100 dark:border-slate-700 flex items-center justify-center transition-all hover:scale-105 active:scale-95 relative"
-        title="Don Tino"
+        title="Doña Tina"
       >
         {open ? (
           <X size={18} className="text-slate-500" />
         ) : (
           <>
-            <RobotMascot size={44} />
+            <RobotMascot size={44} variant="tina" />
             <span className="absolute bottom-1 right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-800" />
           </>
         )}

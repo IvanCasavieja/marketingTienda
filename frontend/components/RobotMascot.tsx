@@ -3,8 +3,8 @@
 // ---------------------------------------------------------------------------
 // La familia Tino — mascota de la plataforma. Mismo cuerpo base para los 3
 // hermanos, diferenciados por un accesorio propio vía `variant`:
-//   - "tino"  (default): Don Tino, precios en vivo — sin accesorio, el original.
-//   - "tina": Doña Tina, guía de la plataforma (Home/Ayuda) — moño.
+//   - "tino"  (default): Don Tino, guía general de la plataforma (Home/Ayuda) — sin accesorio, el original.
+//   - "tina": Doña Tina, experta en precios en vivo — moño.
 //   - "tinin": Tinín, el changador del Convertidor de Excel — gorrita.
 // ---------------------------------------------------------------------------
 

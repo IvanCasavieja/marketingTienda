@@ -129,12 +129,12 @@
     "greeting": "Hi, {{name}}",
     "greetingNoName": "Welcome",
     "waveEmoji": "👋",
-    "assistantReady": "Doña Tina is ready to help",
-    "assistantName": "Doña Tina",
+    "assistantReady": "Don Tino is ready to help",
+    "assistantName": "Don Tino",
     "assistantSubtitle": "Ask me about the platform",
     "inputPlaceholder": "Type your question...",
     "comingSoon": "Real AI assistant · Powered by Llama 3.3 70B via Groq",
-    "assistantWelcome": "I'm Doña Tina, your MKTG Platform assistant. I can guide you through the platform, explain features, and help you get the most out of it. How can I help you today?",
+    "assistantWelcome": "I'm Don Tino, your MKTG Platform assistant. I can guide you through the platform, explain features, and help you get the most out of it. How can I help you today?",
     "suggestions": {
       "s1": "How do I sync Google Ads?",
       "s2": "How do I generate banners?",
@@ -933,7 +933,7 @@
       "feature1": "Look up a product's price across the 13 chains, live",
       "feature2": "Check the status of a banner generation job by its ID",
       "feature3": "Summarize your latest Triad debate",
-      "footer": "Available from Home — open the chat card below Doña Tina's greeting."
+      "footer": "Available from Home — open the chat card below Don Tino's greeting."
     },
     "roles": {
       "title": "Roles and permissions",

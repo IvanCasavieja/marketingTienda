@@ -209,7 +209,7 @@ export default function ComparisonModal({
   const ourPriceNum = ourPriceRaw !== null && Number.isFinite(ourPriceRaw) ? ourPriceRaw : null;
   const ourPriceConvertido = ourPriceNum !== null ? convertir(ourPriceNum, ourCurrency, monedaVista, cotizacion) : null;
 
-  // Para Don Tino: el pool completo con precio (preguntas + filtro) y los
+  // Para Doña Tina: el pool completo con precio (preguntas + filtro) y los
   // tildados (reporte). Los que no tienen precio quedan afuera — no se les
   // puede preguntar nada numérico ni entran en un reporte.
   const itemsParaDonTino = useMemo(

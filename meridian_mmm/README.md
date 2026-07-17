@@ -35,7 +35,19 @@ cd meridian_mmm
 ```
 
 Lee el CSV, corre el modelo (prior + posterior vía MCMC) y guarda el reporte
-en `meridian_mmm/output/meridian_summary.html`.
+en `meridian_mmm/output/meridian_summary.html`, más un resumen compacto por
+canal (ROI, % de contribución) en `meridian_mmm/output/meridian_channel_summary.csv`.
+
+## 3. Importar el resumen a la base (con el venv del backend)
+
+```
+cd backend
+venv/Scripts/python.exe scripts/import_meridian_summary.py
+```
+
+Sube ese CSV a la tabla `meridian_channel_summary` (reemplaza la corrida
+anterior entera, no acumula historial) — de ahí lo lee
+`debate_service.py` para dárselo como contexto a La Triada.
 
 ## Estado actual de los datos (2026-07-12)
 
@@ -52,9 +64,13 @@ Los `n_chains`/`n_adapt`/`n_burnin`/`n_keep` en `fit_model.py` están
 reducidos a propósito para que una corrida no tarde una eternidad con pocos
 datos — subirlos una vez que haya más semanas de historia real.
 
-## Pendiente / fuera de alcance de esta primera pasada
+## Conexión con La Triada
 
-Conectar la salida de Meridian (curvas de efectividad por canal,
-recomendaciones de presupuesto) como contexto para los análisis de IA de la
-plataforma (La Triada / Don Tino) — depende de tener un modelo validado con
-datos reales primero.
+`debate_service._build_meridian_context()` arma un bloque con el ROI
+incremental y % de contribución por canal (tabla `meridian_channel_summary`,
+ver paso 3) y lo suma al contexto de datos que ven Claude/ChatGPT/Llama.
+Queda dormido a propósito: solo se activa si TODAS las filas importadas
+tienen `reliable=True` (52+ semanas de historia al fitear) — con los
+fixtures actuales (14 semanas) el pipeline corre de punta a punta pero no
+le dice nada a los modelos todavía. Se prende solo, sin tocar código, en
+cuanto haya suficiente historia real y se reimporte una corrida confiable.

@@ -3,8 +3,8 @@ precios.py — búsqueda EN VIVO de precios de supermercados uruguayos.
 
   GET  /precios/buscar-vivo        — búsqueda sincrónica (no SSE)
   GET  /precios/buscar-vivo-stream — búsqueda SSE cadena por cadena
-  POST /precios/ia/consultar       — Don Tino responde preguntas o filtra resultados por lenguaje natural
-  POST /precios/ia/reporte         — Don Tino genera un reporte escrito del gráfico
+  POST /precios/ia/consultar       — Doña Tina responde preguntas o filtra resultados por lenguaje natural
+  POST /precios/ia/reporte         — Doña Tina genera un reporte escrito del gráfico
   GET  /precios/cotizacion-dolar   — cotización BROU del día, para convertir el gráfico entre UYU/USD
 """
 
@@ -208,7 +208,7 @@ async def buscar_vivo_stream(
 
 
 # ---------------------------------------------------------------------------
-# Don Tino + IA sobre los resultados — stateless, no persiste nada ni dispara
+# Doña Tina + IA sobre los resultados — stateless, no persiste nada ni dispara
 # scraping. Opera sobre los items que el frontend ya trajo con la búsqueda en
 # vivo de ese momento.
 # ---------------------------------------------------------------------------

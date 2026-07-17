@@ -129,12 +129,12 @@
     "greeting": "Olá, {{name}}",
     "greetingNoName": "Bem-vindo",
     "waveEmoji": "👋",
-    "assistantReady": "Doña Tina está pronta para ajudar",
-    "assistantName": "Doña Tina",
+    "assistantReady": "Don Tino está pronto para ajudar",
+    "assistantName": "Don Tino",
     "assistantSubtitle": "Pergunte-me sobre a plataforma",
     "inputPlaceholder": "Digite sua pergunta...",
     "comingSoon": "Assistente com IA real · Powered by Llama 3.3 70B via Groq",
-    "assistantWelcome": "Sou a Doña Tina, sua assistente MKTG Platform. Posso guiá-lo pelo uso da plataforma, explicar funcionalidades e ajudá-lo a aproveitar ao máximo. Como posso ajudá-lo hoje?",
+    "assistantWelcome": "Sou o Don Tino, seu assistente MKTG Platform. Posso guiá-lo pelo uso da plataforma, explicar funcionalidades e ajudá-lo a aproveitar ao máximo. Como posso ajudá-lo hoje?",
     "suggestions": {
       "s1": "Como sincronizo o Google Ads?",
       "s2": "Como gero faixas?",
@@ -933,7 +933,7 @@
       "feature1": "Buscar o preço de um produto nas 13 redes, ao vivo",
       "feature2": "Consultar o status de um trabalho de faixas pelo ID",
       "feature3": "Resumir seu último debate da Tríade",
-      "footer": "Disponível a partir da Home — abra o cartão de chat abaixo da saudação da Doña Tina."
+      "footer": "Disponível a partir da Home — abra o cartão de chat abaixo da saudação do Don Tino."
     },
     "roles": {
       "title": "Papéis e permissões",

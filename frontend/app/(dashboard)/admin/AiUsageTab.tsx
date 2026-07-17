@@ -37,8 +37,8 @@ const FEATURE_COLORS: Record<string, string> = {
 };
 const FEATURE_LABELS: Record<string, string> = {
   debate:                    "La Triada (debate)",
-  don_tino_home:             "Doña Tina (home)",
-  don_tino_precios:          "Don Tino (precios)",
+  don_tino_home:             "Don Tino (home)",
+  don_tino_precios:          "Doña Tina (precios)",
   convertidor_descripciones: "Tinín (convertidor)",
 };
 

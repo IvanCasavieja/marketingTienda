@@ -1,10 +1,13 @@
 """
 don_tino_precios.py — IA aplicada a los resultados del buscador de precios en vivo,
-presentada bajo la persona de Don Tino.
+presentada bajo la persona de Doña Tina (el nombre del archivo quedó de una
+primera versión donde este dominio era de Don Tino — ver tino_personas.py
+para el reparto vigente: Don Tino es la guía general de la plataforma, Doña
+Tina es la experta en precios).
 
 Por detrás usa Claude y ChatGPT (mismos helpers _ask_claude/_ask_gpt de
 debate_service.py que ya usa La Triada) pero el usuario nunca ve "Claude" ni
-"ChatGPT" — todo se devuelve en primera persona como Don Tino. No se reusan
+"ChatGPT" — todo se devuelve en primera persona como Doña Tina. No se reusan
 CLAUDE_PERSONA/GPT_PERSONA de debate_service.py: esas están armadas para un
 debate adversarial de métricas de campañas, tono equivocado para esto.
 
@@ -19,7 +22,7 @@ import unicodedata
 
 from app.services.debate_service import _ask_claude, _ask_gpt, _ASK_CLAUDE_META, _ASK_GPT_META
 from app.services.ai_usage_service import log_ai_usage
-from app.services.tino_personas import DON_TINO_BASE
+from app.services.tino_personas import DONA_TINA_BASE
 
 log = logging.getLogger(__name__)
 
@@ -120,7 +123,7 @@ async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[i
         'de verdad a lo que pidió el usuario. Si todos corresponden, incluilos todos.'
     )
     try:
-        content, in_tok, out_tok = await _ask_claude(DON_TINO_BASE, prompt, max_tokens=400)
+        content, in_tok, out_tok = await _ask_claude(DONA_TINA_BASE, prompt, max_tokens=400)
         await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
         parsed = json.loads(_strip_json_fence(content))
         mantener_local = [i for i in parsed.get("mantener", []) if isinstance(i, int) and 1 <= i <= len(claves)]
@@ -133,8 +136,8 @@ async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[i
 
 
 async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=None, user_id=None) -> dict:
-    """Un único punto de entrada para todo lo que el usuario le escribe a Don
-    Tino sobre estos resultados: puede ser una instrucción de filtro ("quiero
+    """Un único punto de entrada para todo lo que el usuario le escribe a Doña
+    Tina sobre estos resultados: puede ser una instrucción de filtro ("quiero
     solo los que sean Galaxy A17") o una pregunta general ("¿cuál es el más
     barato de DIMM?").
 
@@ -183,7 +186,7 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=N
         '"la respuesta a la pregunta — si necesitás precios exactos y la muestra no alcanza, decilo"}'
     )
     try:
-        content, in_tok, out_tok = await _ask_claude(DON_TINO_BASE, prompt, max_tokens=500)
+        content, in_tok, out_tok = await _ask_claude(DONA_TINA_BASE, prompt, max_tokens=500)
         await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
         parsed = json.loads(_strip_json_fence(content))
         tipo = "seleccion" if _normalizar(str(parsed.get("tipo") or "")) == "seleccion" else "respuesta"
@@ -304,7 +307,7 @@ async def generar_reporte(
 
     Patrón: Claude analiza en frío (lectura de los números) -> ChatGPT analiza
     en frío (lectura estratégica/posicionamiento) -> Claude sintetiza ambos en
-    el texto final, en primera persona como Don Tino. Los pasos 1 y 2 quedan
+    el texto final, en primera persona como Doña Tina. Los pasos 1 y 2 quedan
     internos, solo se devuelve el texto final.
     """
     stats = _stats_por_moneda(items)
@@ -325,7 +328,7 @@ async def generar_reporte(
         "Sé concreto, citá los números tal cual te los di — máximo 3 párrafos cortos."
     )
     analisis_cuantitativo, in_tok, out_tok = await _ask_claude(
-        DON_TINO_BASE + " Tu tarea ahora: interpretar estadísticas de precios de la competencia.",
+        DONA_TINA_BASE + " Tu tarea ahora: interpretar estadísticas de precios de la competencia.",
         prompt_cuantitativo,
         max_tokens=600,
     )
@@ -338,7 +341,7 @@ async def generar_reporte(
         "conviene sostenerlo, bajarlo o si está bien donde está, y por qué. Concreto — máximo 3 párrafos cortos."
     )
     analisis_estrategico, in_tok, out_tok = await _ask_gpt(
-        DON_TINO_BASE + " Tu tarea ahora: lectura estratégica de posicionamiento de precios.",
+        DONA_TINA_BASE + " Tu tarea ahora: lectura estratégica de posicionamiento de precios.",
         prompt_estrategico,
         max_tokens=600,
     )
@@ -356,7 +359,7 @@ async def generar_reporte(
         "Máximo 4 párrafos cortos, directo, sin relleno."
     )
     reporte_final, in_tok, out_tok = await _ask_claude(
-        DON_TINO_BASE + " Tu tarea ahora: redactar el reporte final que va a leer el usuario.",
+        DONA_TINA_BASE + " Tu tarea ahora: redactar el reporte final que va a leer el usuario.",
         prompt_sintesis,
         max_tokens=700,
     )
@@ -384,13 +387,13 @@ async def explicar_cambio_precio(
         f"literalmente \"{tienda}\", tal cual está escrita arriba. No la reemplaces por ninguna otra."
     )
     content, in_tok, out_tok = await _ask_claude(
-        # Sin DON_TINO_BASE completo a propósito: ese system prompt te ubica
+        # Sin DONA_TINA_BASE completo a propósito: ese system prompt te ubica
         # como "el asistente de Tienda Inglesa" — en un prompt tan corto como
         # este, Claude terminaba mencionando "Tienda Inglesa" como si fuera la
         # cadena del cambio de precio, en vez de la competencia real (ver
-        # tienda arriba). Acá alcanza con la voz/tono de Don Tino, sin el
+        # tienda arriba). Acá alcanza con la voz/tono de Doña Tina, sin el
         # anclaje de identidad que causaba la confusión.
-        "Sos Don Tino, un asistente que habla en primera persona, en español rioplatense, "
+        "Sos Doña Tina, una asistente que habla en primera persona, en español rioplatense, "
         "directo y útil. Nunca mencionás que sos un modelo de lenguaje. "
         "Tu tarea ahora: redactar una notificación de un solo cambio de precio de la competencia.",
         prompt,

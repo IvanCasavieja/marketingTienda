@@ -198,7 +198,7 @@ export default function AyudaPage() {
         <SectionTitle icon={Brain} title={t("ayuda.analisisIA.title")} color="text-purple-600" />
         <Card>
           <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-3">
-            {t("ayuda.analisisIA.introPre")} <strong>Doña Tina</strong> {t("ayuda.analisisIA.introPost")}
+            {t("ayuda.analisisIA.introPre")} <strong>Don Tino</strong> {t("ayuda.analisisIA.introPost")}
           </p>
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs">
@@ -249,7 +249,7 @@ export default function AyudaPage() {
           <div className="bg-brand-50 dark:bg-brand-950/30 rounded-xl p-3 flex gap-2">
             <MessageCircle size={14} className="text-brand-500 shrink-0 mt-0.5" />
             <p className="text-xs text-brand-700 dark:text-brand-400">
-              {t("ayuda.precios.donTinoPre")} <strong>Don Tino</strong> {t("ayuda.precios.donTinoPost")}
+              {t("ayuda.precios.donTinoPre")} <strong>Doña Tina</strong> {t("ayuda.precios.donTinoPost")}
             </p>
           </div>
         </Card>
@@ -430,12 +430,12 @@ export default function AyudaPage() {
         <Card>
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 rounded-2xl bg-brand-500/10 flex items-center justify-center shrink-0">
-              <RobotMini variant="tina" />
+              <RobotMini />
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">{t("ayuda.asistente.greeting")}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-3">
-                <strong className="text-slate-800 dark:text-slate-200">Doña Tina</strong> {t("ayuda.asistente.introPost")}
+                <strong className="text-slate-800 dark:text-slate-200">Don Tino</strong> {t("ayuda.asistente.introPost")}
               </p>
               <ul className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400 mb-3">
                 <li className="flex items-start gap-2"><Tag size={12} className="text-cyan-500 mt-0.5 shrink-0" />{t("ayuda.asistente.feature1")}</li>
