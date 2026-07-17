@@ -38,6 +38,7 @@
     "redexpres": "Redexpres",
     "cenefas": "Banners",
     "convertidor": "Excel Converter",
+    "diccionario": "Dictionary",
     "editorPlantillas": "Template editor",
     "historial": "History",
     "buscarPrecios": "Search prices",
@@ -652,6 +653,11 @@
       "tag": "Descriptions",
       "title": "Excel Converter",
       "description": "Upload the raw Excel from the management system and get a clean one, with correct descriptions already matched by SKU."
+    },
+    "diccionario": {
+      "tag": "Catalog",
+      "title": "Dictionary",
+      "description": "Browse, search and edit the shared SKU/description catalog that powers the Converter and Tinín."
     }
   },
   "tinin": {
@@ -711,6 +717,21 @@
       "failedCount": "We couldn't generate a suggestion for {{count}} product(s) — fill them in by hand.",
       "truncatedNotice": "We generated suggestions for {{processed}} of {{requested}} products — reopen this modal for the rest."
     }
+  },
+  "diccionario": {
+    "title": "Dictionary",
+    "subtitle": "Shared SKU/description catalog — fed by the Converter and by Tinín.",
+    "searchPlaceholder": "Search by SKU or description...",
+    "colSku": "SKU",
+    "colDescripcion": "Description",
+    "noResults": "No entries found.",
+    "empty": "Nothing loaded yet — it fills up as the Excel Converter gets used.",
+    "totalCount": "{{count}} entry",
+    "totalCount_plural": "{{count}} entries",
+    "edit": "Edit",
+    "editSuccess": "Description updated",
+    "editError": "Couldn't save the change",
+    "loadError": "Couldn't load the dictionary"
   },
   "precios": {
     "title": "Search live prices",

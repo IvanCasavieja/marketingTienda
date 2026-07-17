@@ -324,6 +324,12 @@ export interface GenerarDescripcionesIAResponse {
   truncated: boolean;
 }
 
+export interface SkuDescripcionItem {
+  sku: string;
+  descripcion: string;
+  updated_at: string | null;
+}
+
 export const convertidorApi = {
   preview: (formData: FormData) =>
     api.post<ConvertidorPreviewResponse>("/tools/cenefas/convertidor/preview", formData, {
@@ -334,6 +340,10 @@ export const convertidorApi = {
       `/tools/cenefas/convertidor/descripciones/${encodeURIComponent(sku)}`,
       { descripcion }
     ),
+  listarDescripciones: (q?: string, limit = 100, offset = 0) =>
+    api.get<{ items: SkuDescripcionItem[]; total: number }>("/tools/cenefas/convertidor/descripciones", {
+      params: { q: q || undefined, limit, offset },
+    }),
   export: (rows: ConvertidorRow[]) =>
     api.post("/tools/cenefas/convertidor/export", { rows }, { responseType: "blob" }),
   generarDescripcionesIA: (

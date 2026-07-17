@@ -5,9 +5,10 @@ rápido, a diferencia de renderizar PPTX — no hay razón para repetir acá el
 patrón de jobs del generador de Cenefas."""
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -15,6 +16,7 @@ from app.core.database import get_db
 from app.core.deps import require_permission
 from app.core.rate_limit import limiter
 from app.core.uploads import read_limited
+from app.models.sku_descripcion import SkuDescripcion
 from app.models.user import User
 from app.services.cenefas.convertidor import (
     ConvertidorParseError,
@@ -56,6 +58,40 @@ async def preview(
         "matched_count": matched,
         "unmatched_count": len(rows) - matched,
         "learned_count": learned_count,
+    }
+
+
+@router.get("/descripciones")
+async def listar_descripciones(
+    q: str | None = Query(None, description="Busca por SKU o descripción"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Diccionario — vista de consulta/búsqueda sobre el catálogo compartido
+    que alimentan el Convertidor y Tinín. No hay alta manual acá: las
+    entradas nacen de un import del Convertidor o de una corrección puntual
+    (esta misma pantalla reusa el PATCH de descripciones para editar)."""
+    stmt = select(SkuDescripcion)
+    count_stmt = select(func.count()).select_from(SkuDescripcion)
+    if q:
+        like = f"%{q.strip()}%"
+        filtro = or_(SkuDescripcion.sku.ilike(like), SkuDescripcion.descripcion.ilike(like))
+        stmt = stmt.where(filtro)
+        count_stmt = count_stmt.where(filtro)
+
+    total = (await db.execute(count_stmt)).scalar_one()
+    result = await db.execute(
+        stmt.order_by(SkuDescripcion.descripcion).offset(offset).limit(limit)
+    )
+    items = result.scalars().all()
+    return {
+        "items": [
+            {"sku": i.sku, "descripcion": i.descripcion, "updated_at": i.updated_at.isoformat() if i.updated_at else None}
+            for i in items
+        ],
+        "total": total,
     }
 
 

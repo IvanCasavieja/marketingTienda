@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Presentation, Layers, FileSpreadsheet, ChevronRight } from "lucide-react";
+import { Presentation, Layers, FileSpreadsheet, BookOpen, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export default function MaterialesPage() {
@@ -30,6 +30,14 @@ export default function MaterialesPage() {
       icon:        FileSpreadsheet,
       tag:         t("materiales.convertidor.tag"),
       tagColor:    "bg-amber-500/10 text-amber-400",
+    },
+    {
+      href:        "/materiales/diccionario",
+      title:       t("materiales.diccionario.title"),
+      description: t("materiales.diccionario.description"),
+      icon:        BookOpen,
+      tag:         t("materiales.diccionario.tag"),
+      tagColor:    "bg-emerald-500/10 text-emerald-400",
     },
   ];
 

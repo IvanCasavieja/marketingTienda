@@ -38,6 +38,7 @@
     "redexpres": "Redexpres",
     "cenefas": "Faixas",
     "convertidor": "Conversor de Excel",
+    "diccionario": "Dicionário",
     "editorPlantillas": "Editor de modelos",
     "historial": "Histórico",
     "buscarPrecios": "Buscar preços",
@@ -652,6 +653,11 @@
       "tag": "Descrições",
       "title": "Conversor de Excel",
       "description": "Envie o Excel bruto da gestão e gere um limpo, com as descrições corretas já correspondidas por SKU."
+    },
+    "diccionario": {
+      "tag": "Catálogo",
+      "title": "Dicionário",
+      "description": "Consulte, busque e edite o catálogo compartilhado de SKU e descrições que alimenta o Conversor e o Tinín."
     }
   },
   "tinin": {
@@ -711,6 +717,21 @@
       "failedCount": "Não conseguimos gerar sugestão para {{count}} produto(s) — complete manualmente.",
       "truncatedNotice": "Geramos sugestões para {{processed}} de {{requested}} produtos — reabra este modal para o restante."
     }
+  },
+  "diccionario": {
+    "title": "Dicionário",
+    "subtitle": "Catálogo compartilhado de SKU e descrições — alimentado pelo Conversor e pelo Tinín.",
+    "searchPlaceholder": "Buscar por SKU ou descrição...",
+    "colSku": "SKU",
+    "colDescripcion": "Descrição",
+    "noResults": "Nenhuma entrada encontrada.",
+    "empty": "Ainda não há nada cadastrado — se preenche ao usar o Conversor de Excel.",
+    "totalCount": "{{count}} entrada",
+    "totalCount_plural": "{{count}} entradas",
+    "edit": "Editar",
+    "editSuccess": "Descrição atualizada",
+    "editError": "Não foi possível salvar a alteração",
+    "loadError": "Não foi possível carregar o dicionário"
   },
   "precios": {
     "title": "Buscar preços ao vivo",
