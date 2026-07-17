@@ -137,6 +137,7 @@ class ConvertidorRowIn(BaseModel):
     aclaracion1:            str = ""
     aclaracion2:            str = ""
     aclaracion3:            str = ""
+    es_fiambre_kg:          bool = False
 
 
 class ExportRequest(BaseModel):
@@ -166,6 +167,7 @@ class GenerarDescripcionItem(BaseModel):
     codigo: str
     nombre_articulo: str = ""
     descripcion_web: str = ""
+    es_fiambre_kg: bool = False
 
 
 class GenerarDescripcionesRequest(BaseModel):

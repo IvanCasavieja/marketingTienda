@@ -298,6 +298,7 @@ export interface ConvertidorRow {
   aclaracion1: string;
   aclaracion2: string;
   aclaracion3: string;
+  es_fiambre_kg: boolean;
   matched: boolean;
   warnings: string[];
 }
@@ -351,7 +352,7 @@ export const convertidorApi = {
   export: (rows: ConvertidorRow[], destino: string = "redexpres") =>
     api.post("/tools/cenefas/convertidor/export", { rows, destino }, { responseType: "blob" }),
   generarDescripcionesIA: (
-    rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion_web: string }[]
+    rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion_web: string; es_fiambre_kg: boolean }[]
   ) =>
     api.post<GenerarDescripcionesIAResponse>("/tools/cenefas/convertidor/descripciones/generar-ia", { rows }),
 };

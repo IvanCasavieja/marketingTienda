@@ -6,13 +6,34 @@ import { convertidorApi, type ConvertidorRow, type DescripcionSugerencia } from 
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { DonTinoTrabajando } from "@/components/DonTinoTrabajando";
 
+interface PrecioOverride {
+  precio?: number;
+  precio_anterior?: number;
+}
+
 interface Props {
-  rows: ConvertidorRow[]; // ya filtradas por el caller: solo las que faltan descripción
-  onApprove: (rowId: number, sku: string, descripcion: string) => Promise<void>;
+  // ya filtradas y ordenadas por el caller: fiambres por kg primero, después
+  // el resto de las que faltan descripción
+  rows: ConvertidorRow[];
+  onApprove: (rowId: number, sku: string, descripcion: string, precioOverride?: PrecioOverride) => Promise<void>;
   onClose: () => void;
 }
 
-type RowState = { value: string; status: "pending" | "approving" | "approved" | "error" };
+type RowState = {
+  value: string;
+  // Solo se usan cuando la fila es es_fiambre_kg — precargados con el
+  // precio÷10 de la fila original, editables antes de aprobar. El precio
+  // NUNCA se persiste en el catálogo compartido (solo la descripción va por
+  // ese PATCH) — esto viaja únicamente al estado local de la grilla.
+  precio: string;
+  precioAnterior: string;
+  status: "pending" | "approving" | "approved" | "error";
+};
+
+function precioDividido(precio: number | null): string {
+  if (precio === null || precio === undefined) return "";
+  return String(Math.round((precio / 10) * 100) / 100);
+}
 
 // Mismo umbral que DESCRIPTION_WARN_CHARS en
 // backend/app/services/cenefas/validation_engine.py (60) — se recalcula acá
@@ -65,13 +86,20 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
           codigo: r.codigo,
           nombre_articulo: r.nombre_articulo,
           descripcion_web: r.descripcion_web,
+          es_fiambre_kg: r.es_fiambre_kg,
         }))
       )
       .then(({ data }) => {
         const next = new Map<number, RowState>();
-        data.suggestions.forEach((s: DescripcionSugerencia) =>
-          next.set(s.row_id, { value: s.descripcion, status: "pending" })
-        );
+        data.suggestions.forEach((s: DescripcionSugerencia) => {
+          const row = rows.find((r) => r.row_id === s.row_id);
+          next.set(s.row_id, {
+            value: s.descripcion,
+            precio: row?.es_fiambre_kg ? precioDividido(row.precio) : "",
+            precioAnterior: row?.es_fiambre_kg ? precioDividido(row.precio_anterior) : "",
+            status: "pending",
+          });
+        });
         setState(next);
         setMeta({
           failedRowIds: data.failed_row_ids,
@@ -89,8 +117,15 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
     const row = state.get(rowId);
     if (!row) return;
     setState((prev) => new Map(prev).set(rowId, { ...row, status: "approving" }));
+    const rowData = rows.find((r) => r.row_id === rowId);
+    const precioOverride: PrecioOverride | undefined = rowData?.es_fiambre_kg
+      ? {
+          precio: row.precio.trim() ? parseFloat(row.precio) : undefined,
+          precio_anterior: row.precioAnterior.trim() ? parseFloat(row.precioAnterior) : undefined,
+        }
+      : undefined;
     try {
-      await onApprove(rowId, sku, row.value);
+      await onApprove(rowId, sku, row.value, precioOverride);
       if (mountedRef.current) setState((prev) => new Map(prev).set(rowId, { ...row, status: "approved" }));
     } catch {
       if (mountedRef.current) setState((prev) => new Map(prev).set(rowId, { ...row, status: "error" }));
@@ -172,7 +207,12 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                   className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-2"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-slate-400 truncate">
+                    <p className="text-[10px] text-slate-400 truncate flex items-center gap-1.5">
+                      {row.es_fiambre_kg && (
+                        <span className="badge badge-yellow text-[9px] px-1.5 py-0 shrink-0">
+                          {t("convertidor.ai.fiambreKgBadge")}
+                        </span>
+                      )}
                       {row.codigo} · {row.nombre_articulo}
                     </p>
                     <input
@@ -181,6 +221,32 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                       onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, value: e.target.value }))}
                       className="input text-xs w-full"
                     />
+                    {row.es_fiambre_kg && (
+                      <div className="flex items-center gap-3 mt-1">
+                        <label className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
+                          {t("convertidor.columns.precio")}
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={s.precio}
+                            disabled={s.status === "approved" || s.status === "approving"}
+                            onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, precio: e.target.value }))}
+                            className="input text-xs w-20 py-0.5"
+                          />
+                        </label>
+                        <label className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
+                          {t("convertidor.columns.precioAnterior")}
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={s.precioAnterior}
+                            disabled={s.status === "approved" || s.status === "approving"}
+                            onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, precioAnterior: e.target.value }))}
+                            className="input text-xs w-20 py-0.5"
+                          />
+                        </label>
+                      </div>
+                    )}
                     {s.value.trim().length > DESCRIPTION_WARN_CHARS && (
                       <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
                         {t("convertidor.ai.tooLong")}

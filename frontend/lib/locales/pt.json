@@ -694,7 +694,7 @@
     "legendWarning": "Dado faltante, ou presente mas vale a pena revisar (ex: descrição um pouco longa)",
     "legendInvalidType": "Dado com um formato ou comprimento que não corresponde a essa coluna (ex: texto onde se espera um preço)",
     "matchedSummary": "{{matched}} de {{total}} produtos correspondidos automaticamente",
-    "unmatchedNavTitle": "Produtos sem descrição ({{count}}) — clique para ir direto",
+    "unmatchedNavTitle": "Produtos para revisar com IA ({{count}}) — clique para ir direto",
     "unmatchedNavGo": "Ir para este produto",
     "saveError": "Não foi possível salvar a descrição no catálogo",
     "savedToCatalog": "Descrição salva no catálogo (SKU {{sku}})",
@@ -720,7 +720,7 @@
     "learnedToast": "Adicionamos {{count}} descrições novas ao seu dicionário a partir deste Excel.",
     "learnedBadge": "+{{count}} novas no catálogo",
     "ai": {
-      "button": "Gerar com IA",
+      "button": "Gerar descrições e confirmar preços com IA",
       "modalTitle": "Sugestões de descrição geradas com IA",
       "loading": "Tinín arregaçou as mangas e está cavando os dados para tirar as descrições…",
       "notConfigured": "A geração com IA não está configurada neste ambiente.",
@@ -732,7 +732,8 @@
       "approveAll": "Aprovar todas",
       "approving": "Aprovando…",
       "failedCount": "Não conseguimos gerar sugestão para {{count}} produto(s) — complete manualmente.",
-      "truncatedNotice": "Geramos sugestões para {{processed}} de {{requested}} produtos — reabra este modal para o restante."
+      "truncatedNotice": "Geramos sugestões para {{processed}} de {{requested}} produtos — reabra este modal para o restante.",
+      "fiambreKgBadge": "Frios por kg → 100g"
     }
   },
   "diccionario": {

@@ -694,7 +694,7 @@
     "legendWarning": "Dato faltante, o presente pero conviene revisarlo (ej: descripción algo larga)",
     "legendInvalidType": "Dato con un formato o longitud que no corresponde a esa columna (ej: texto donde se espera un precio)",
     "matchedSummary": "{{matched}} de {{total}} productos matcheados automáticamente",
-    "unmatchedNavTitle": "Productos sin descripción ({{count}}) — clic para ir directo",
+    "unmatchedNavTitle": "Productos para revisar con IA ({{count}}) — clic para ir directo",
     "unmatchedNavGo": "Ir a este producto",
     "saveError": "No se pudo guardar la descripción en el catálogo",
     "savedToCatalog": "Descripción guardada en el catálogo (SKU {{sku}})",
@@ -720,7 +720,7 @@
     "learnedToast": "Agregamos {{count}} descripciones nuevas a tu diccionario a partir de este Excel.",
     "learnedBadge": "+{{count}} nuevas al catálogo",
     "ai": {
-      "button": "Generar con IA",
+      "button": "Generar descripciones y confirmar precios con IA",
       "modalTitle": "Sugerencias de descripción generadas con IA",
       "loading": "Tinín se arremangó y está picando piedra para sacarte las descripciones…",
       "notConfigured": "La generación con IA no está configurada en este ambiente.",
@@ -732,7 +732,8 @@
       "approveAll": "Aprobar todas",
       "approving": "Aprobando…",
       "failedCount": "No pudimos generar sugerencia para {{count}} producto(s) — completalos a mano.",
-      "truncatedNotice": "Generamos sugerencias para {{processed}} de {{requested}} productos — volvé a abrir este modal para el resto."
+      "truncatedNotice": "Generamos sugerencias para {{processed}} de {{requested}} productos — volvé a abrir este modal para el resto.",
+      "fiambreKgBadge": "Fiambre por kg → 100g"
     }
   },
   "diccionario": {

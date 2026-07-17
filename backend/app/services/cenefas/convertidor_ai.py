@@ -24,7 +24,8 @@ _STYLE_RULES = f"""\
 - El resto del texto en formato oración normal (minúsculas salvo inicio de oración o nombres propios).
 - Incluí cantidad/tamaño si se puede inferir de la fuente (ml, g, kg, L, unidades, etc.).
 - Es para un cartel de precio: tiene que ser CORTA. Apuntá a menos de {DESCRIPTION_WARN_CHARS} caracteres, nunca más de {DESCRIPTION_MAX_CHARS}.
-- No inventes datos (sabor, variedad, tamaño) que no estén sugeridos por el nombre o la descripción de origen."""
+- No inventes datos (sabor, variedad, tamaño) que no estén sugeridos por el nombre o la descripción de origen.
+- Si un producto viene marcado "[FIAMBRE POR KG]", la unidad en la descripción tiene que decir "100g", nunca "kg" — el precio de ese producto ya se va a recalcular aparte para esa unidad, así que el texto tiene que ser consistente con eso."""
 
 _SYSTEM_PROMPT = f"""{TININ_BASE}
 
@@ -60,6 +61,8 @@ def _build_prompt(items: list[dict]) -> str:
     lineas = []
     for n, it in enumerate(items, start=1):
         partes = []
+        if it.get("es_fiambre_kg"):
+            partes.append("[FIAMBRE POR KG]")
         if it["nombre_articulo"]:
             partes.append(f'nombre ERP: "{it["nombre_articulo"]}"')
         if it["descripcion_web"]:
@@ -75,8 +78,11 @@ def _build_prompt(items: list[dict]) -> str:
 
 
 async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
-    """items: [{"row_id", "codigo", "nombre_articulo", "descripcion_web"}, ...] — ya
-    filtrados por el caller a los que realmente necesitan sugerencia (sin descripción).
+    """items: [{"row_id", "codigo", "nombre_articulo", "descripcion_web",
+    "es_fiambre_kg"}, ...] — ya filtrados por el caller (filas sin descripción,
+    o fiambres todavía en kg que necesitan pasar a 100g). "es_fiambre_kg" es
+    opcional, solo cambia la redacción de la unidad (ver _STYLE_RULES) — el
+    precio÷10 correspondiente lo calcula el frontend, no esta función.
 
     Devuelve {"suggestions": [...], "failed_row_ids": [...]}. Nunca levanta por un chunk
     que falla — ese chunk se reporta en failed_row_ids y el resto de la respuesta sigue

@@ -694,7 +694,7 @@
     "legendWarning": "Missing data, or present but worth reviewing (e.g: description is a bit long)",
     "legendInvalidType": "Data with a format or length that doesn't match that column (e.g: text where a price is expected)",
     "matchedSummary": "{{matched}} of {{total}} products matched automatically",
-    "unmatchedNavTitle": "Products missing a description ({{count}}) — click to jump to it",
+    "unmatchedNavTitle": "Products to review with AI ({{count}}) — click to jump to it",
     "unmatchedNavGo": "Go to this product",
     "saveError": "Could not save the description to the catalog",
     "savedToCatalog": "Description saved to the catalog (SKU {{sku}})",
@@ -720,7 +720,7 @@
     "learnedToast": "We added {{count}} new descriptions to your dictionary from this Excel.",
     "learnedBadge": "+{{count}} new to catalog",
     "ai": {
-      "button": "Generate with AI",
+      "button": "Generate descriptions and confirm prices with AI",
       "modalTitle": "AI-generated description suggestions",
       "loading": "Tinín rolled up his sleeves and is pickaxing your descriptions out of the data…",
       "notConfigured": "AI generation is not configured in this environment.",
@@ -732,7 +732,8 @@
       "approveAll": "Approve all",
       "approving": "Approving…",
       "failedCount": "We couldn't generate a suggestion for {{count}} product(s) — fill them in by hand.",
-      "truncatedNotice": "We generated suggestions for {{processed}} of {{requested}} products — reopen this modal for the rest."
+      "truncatedNotice": "We generated suggestions for {{processed}} of {{requested}} products — reopen this modal for the rest.",
+      "fiambreKgBadge": "Deli item by kg → 100g"
     }
   },
   "diccionario": {

@@ -52,6 +52,7 @@ _INPUT_ALIASES: dict[str, str] = {
     "oferta":         "oferta",
     "ofertadet":      "oferta_det",
     "descripcionweb": "descripcion_web",
+    "comprador":      "comprador",
 }
 
 _HEADER_SCAN_ROWS = 10
@@ -252,8 +253,36 @@ def parse_input_excel(file_bytes: bytes, filename: str = "") -> list[dict]:
             "oferta":            _clean_str(cell(row, "oferta")),
             "oferta_det":        _clean_str(cell(row, "oferta_det")),
             "descripcion_web":   _clean_str(cell(row, "descripcion_web")),
+            "comprador":         _clean_str(cell(row, "comprador")),
         })
     return parsed
+
+
+# ---------------------------------------------------------------------------
+# Fiambres por kg -> deben ir a 100g (descripción) y precio÷10
+# ---------------------------------------------------------------------------
+#
+# Mismo criterio que ya usan dos reglas independientes del generador de
+# Cenefas (data_engine.py): "fiambr" en COMPRADOR es la señal de categoría
+# (ese precedente vive en process_row, líneas ~222-236), y "kg" como unidad
+# suelta en el texto es la señal de que todavía está en kilogramo (ese
+# criterio viene del precedente de subCategoria en _apply_legacy_compute).
+# Acá se combinan: a diferencia de ambos precedentes, esto NO calcula el
+# precio nuevo ni lo persiste en ningún lado — solo marca la fila para que
+# el frontend decida qué mostrar/sugerir.
+
+_RE_FIAMBRE = re.compile(r"fiambr", re.IGNORECASE)
+_RE_UNIDAD_KG = re.compile(r"(?:^|[\s.])kg\.?(?:$|[\s.,)])", re.IGNORECASE)
+
+
+def _tiene_unidad_kg(*textos: str) -> bool:
+    return any(_RE_UNIDAD_KG.search(t) for t in textos if t)
+
+
+def _es_fiambre_por_kg(comprador: str, nombre_articulo: str, descripcion: str, descripcion_web: str) -> bool:
+    if not comprador or not _RE_FIAMBRE.search(comprador):
+        return False
+    return _tiene_unidad_kg(nombre_articulo, descripcion, descripcion_web)
 
 
 # ---------------------------------------------------------------------------
@@ -404,6 +433,9 @@ async def match_rows(
             "aclaracion1":         "",
             "aclaracion2":         "",
             "aclaracion3":         "",
+            "es_fiambre_kg":       _es_fiambre_por_kg(
+                row["comprador"], row["nombre_articulo"], row["descripcion"], row["descripcion_web"]
+            ),
             "warnings":            _compute_warnings(row, destino),
         })
 

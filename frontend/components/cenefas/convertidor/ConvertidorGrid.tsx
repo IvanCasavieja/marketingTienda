@@ -131,6 +131,18 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
     [rows]
   );
 
+  // Fiambres cuyo nombre/descripción todavía dice "kg" — necesitan pasar a
+  // 100g (descripción + precio÷10) aunque ya tengan descripción matcheada
+  // del catálogo, por eso es un filtro aparte y no solo un warning más.
+  const rowsFiambresKg = useMemo(() => rows.filter((r) => r.es_fiambre_kg), [rows]);
+
+  // Combinado para el modal de IA: fiambres por kg primero, sin duplicar
+  // las que también les falta descripción.
+  const rowsParaIA = useMemo(() => {
+    const fiambresIds = new Set(rowsFiambresKg.map((r) => r.row_id));
+    return [...rowsFiambresKg, ...rowsNeedingDescripcion.filter((r) => !fiambresIds.has(r.row_id))];
+  }, [rowsFiambresKg, rowsNeedingDescripcion]);
+
   function scrollToRow(rowId: number) {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -219,7 +231,12 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
   // inmediata que handleDescripcionChange hace al tipear. No comparte
   // código con handleDescripcionChange porque ese además programa el
   // debounce, y acá hace falta guardar ya (el usuario ya aprobó).
-  async function commitDescripcion(rowId: number, sku: string, value: string) {
+  async function commitDescripcion(
+    rowId: number,
+    sku: string,
+    value: string,
+    precioOverride?: { precio?: number; precio_anterior?: number }
+  ) {
     const trimmed = value.trim();
     if (!trimmed || !HAS_LETTER_RE.test(trimmed)) {
       // El modal marca "aprobado" solo si esta promesa resuelve sin lanzar
@@ -230,7 +247,20 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
     setRows((prev) =>
       (prev ?? []).map((r) =>
         r.row_id === rowId
-          ? { ...r, descripcion: value, warnings: computeDescripcionWarnings(r.warnings, value) }
+          ? {
+              ...r,
+              descripcion: value,
+              warnings: computeDescripcionWarnings(r.warnings, value),
+              // El precio ajustado (÷10 para fiambres que pasan a 100g) solo
+              // se actualiza acá, en el estado local — nunca se manda al
+              // backend. sku_descripciones no tiene columnas de precio y así
+              // se mantiene: el PATCH de abajo (flushSave) sigue mandando
+              // únicamente la descripción, igual que siempre.
+              ...(precioOverride?.precio !== undefined ? { precio: precioOverride.precio } : {}),
+              ...(precioOverride?.precio_anterior !== undefined
+                ? { precio_anterior: precioOverride.precio_anterior }
+                : {}),
+            }
           : r
       )
     );
@@ -313,27 +343,27 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
         )}
       </div>
 
-      {rowsNeedingDescripcion.length > 0 && (
+      {rowsParaIA.length > 0 && (
         <div className="card p-3 space-y-2">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              {t("convertidor.unmatchedNavTitle", { count: rowsNeedingDescripcion.length })}
+              {t("convertidor.unmatchedNavTitle", { count: rowsParaIA.length })}
             </p>
             <button
               type="button"
-              onClick={() => setAiModalRows(rowsNeedingDescripcion)}
+              onClick={() => setAiModalRows(rowsParaIA)}
               className="btn-secondary text-xs flex items-center gap-1.5"
             >
               <Sparkles size={13} /> {t("convertidor.ai.button")}
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {rowsNeedingDescripcion.map((row) => (
+            {rowsParaIA.map((row) => (
               <button
                 key={row.row_id}
                 type="button"
                 onClick={() => scrollToRow(row.row_id)}
-                className="badge badge-red flex items-center gap-1 hover:brightness-110 transition-[filter] cursor-pointer max-w-[220px]"
+                className={`badge ${row.es_fiambre_kg ? "badge-yellow" : "badge-red"} flex items-center gap-1 hover:brightness-110 transition-[filter] cursor-pointer max-w-[220px]`}
                 title={t("convertidor.unmatchedNavGo")}
               >
                 <Target size={11} className="shrink-0" />
