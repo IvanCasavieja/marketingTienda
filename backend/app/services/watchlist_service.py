@@ -7,7 +7,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -174,11 +174,21 @@ async def run_watchlist_check_loop() -> None:
 
 
 async def _wait_initial() -> None:
+    """Cuánto esperar antes del primer chequeo del proceso. Se apoya en
+    WatchlistItem.ultimo_chequeo (Postgres) en vez de Redis — Redis no está
+    provisionado en Render, así que un GET ahí siempre fallaba y esta espera
+    caía siempre a la rama de "sin historial, 5 minutos", ignorando cuánto
+    hacía del último chequeo real. En el free tier el proceso se reinicia
+    seguido (duerme por inactividad y arranca de nuevo con el próximo
+    request) — sin este chequeo contra un lugar que sobrevive al reinicio,
+    el intervalo configurado (WATCHLIST_CHECK_INTERVAL_HOURS, 24hs por
+    default) nunca se respetaba de verdad."""
     try:
-        redis = get_redis()
-        raw = await redis.get(_REDIS_LAST_RUN)
-        if raw:
-            last_dt = datetime.fromisoformat(raw.decode())
+        async with AsyncSessionLocal() as db:
+            last_dt = (await db.execute(select(func.max(WatchlistItem.ultimo_chequeo)))).scalar_one_or_none()
+        if last_dt:
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
             elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
             wait = max(60, _interval_hours() * 3_600 - elapsed)
             logger.info(
