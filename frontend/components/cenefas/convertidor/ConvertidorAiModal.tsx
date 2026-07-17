@@ -43,6 +43,19 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
   useEscapeKey(onClose);
 
   useEffect(() => {
+    // Piso mínimo de 4s para la pantalla de Don Tino picando piedra — si
+    // Claude responde en 1s, apagar el loading de una deja la animación
+    // cortada antes de que se aprecie. Si tarda más de 4s, no se agrega
+    // espera extra (remaining da 0).
+    const MIN_LOADING_MS = 4000;
+    const start = Date.now();
+    const finishLoading = () => {
+      const remaining = Math.max(0, MIN_LOADING_MS - (Date.now() - start));
+      setTimeout(() => {
+        if (mountedRef.current) setLoading(false);
+      }, remaining);
+    };
+
     convertidorApi
       .generarDescripcionesIA(
         rows.map((r) => ({
@@ -66,7 +79,7 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
         });
       })
       .catch((err) => setLoadError(err?.response?.status === 503 ? "not_configured" : "generic"))
-      .finally(() => setLoading(false));
+      .finally(finishLoading);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
