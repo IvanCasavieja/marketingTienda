@@ -50,7 +50,7 @@ export default function ConvertidorPanel() {
   }
 
   return (
-    <div className="card p-6 space-y-4 max-w-xl">
+    <div className="card p-6 space-y-4 max-w-xl mx-auto">
       <p className="text-sm text-slate-500 dark:text-slate-400">{t("convertidor.intro")}</p>
       <form onSubmit={handleSubmit} className="space-y-4">
         <FileDropField
