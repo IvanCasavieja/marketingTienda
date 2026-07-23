@@ -40,18 +40,29 @@ function precioDividido(precio: number | null): string {
 // en vivo mientras el usuario edita la sugerencia, no solo el "too_long"
 // estático que vino del backend al momento de generarla.
 const DESCRIPTION_WARN_CHARS = 60;
+// Mismo tope que _ROWS_MAX_PER_REQUEST en
+// backend/app/services/cenefas/convertidor_ai.py — duplicado acá para poder
+// trocear el pedido en tandas de este tamaño y pedirlas todas en secuencia
+// (ver el efecto de carga más abajo), en vez de que el usuario tenga que
+// cerrar y reabrir el modal para las filas que quedan afuera de la primera.
+const ROWS_CHUNK_SIZE = 80;
+// slowapi limita /descripciones/generar-ia a 5 pedidos por minuto (ver
+// @limiter.limit en cenefas_convertidor.py) -- si una tanda pega 429, se
+// espera este piso (o el Retry-After real si vino en la respuesta) antes de
+// reintentarla una vez, en vez de darla por perdida de una.
+const RATE_LIMIT_RETRY_MS = 60000;
 
 export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<"not_configured" | "generic" | null>(null);
-  const [meta, setMeta] = useState<{
-    failedRowIds: number[];
-    truncated: boolean;
-    requested: number;
-    processed: number;
-  } | null>(null);
+  const [meta, setMeta] = useState<{ failedRowIds: number[] } | null>(null);
   const [state, setState] = useState<Map<number, RowState>>(new Map());
+  // Tandas 2+ (por encima de ROWS_CHUNK_SIZE) se piden solas en segundo
+  // plano, sin bloquear la pantalla -- las filas de la primera tanda ya son
+  // aprobables mientras el resto sigue cargando.
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreProgress, setLoadMoreProgress] = useState<{ done: number; total: number } | null>(null);
   const [approvingAll, setApprovingAll] = useState(false);
   // Si el usuario cierra el modal a mitad de "Aprobar todas", el for-loop de
   // approveAll sigue corriendo (JS no cancela un await por un unmount) —
@@ -63,6 +74,52 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
 
   useEscapeKey(onClose);
 
+  function buildRequestItem(r: ConvertidorRow) {
+    return {
+      row_id: r.row_id,
+      codigo: r.codigo,
+      nombre_articulo: r.nombre_articulo,
+      descripcion_web: r.descripcion_web,
+      es_fiambre_kg: r.es_fiambre_kg,
+    };
+  }
+
+  function applySuggestions(chunkRows: ConvertidorRow[], suggestions: DescripcionSugerencia[]) {
+    setState((prev) => {
+      const next = new Map(prev);
+      suggestions.forEach((s) => {
+        const row = chunkRows.find((r) => r.row_id === s.row_id);
+        next.set(s.row_id, {
+          value: s.descripcion,
+          precio: row?.es_fiambre_kg ? precioDividido(row.precio) : "",
+          precioAnterior: row?.es_fiambre_kg ? precioDividido(row.precio_anterior) : "",
+          status: "pending",
+        });
+      });
+      return next;
+    });
+  }
+
+  // Reintenta una vez ante 429 (esperando el Retry-After real si vino, o el
+  // piso de RATE_LIMIT_RETRY_MS) -- cualquier otro error se propaga tal cual
+  // para que el caller decida cómo tratarlo (loadError duro en la primera
+  // tanda, fail-soft por fila en las siguientes).
+  async function requestChunk(chunkRows: ConvertidorRow[], attemptedRetry = false) {
+    try {
+      const { data } = await convertidorApi.generarDescripcionesIA(chunkRows.map(buildRequestItem));
+      return { suggestions: data.suggestions, failedRowIds: data.failed_row_ids };
+    } catch (err: any) {
+      if (err?.response?.status === 429 && !attemptedRetry) {
+        const retryAfterHeader = err.response.headers?.["retry-after"];
+        const waitMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : RATE_LIMIT_RETRY_MS;
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        if (!mountedRef.current) throw err;
+        return requestChunk(chunkRows, true);
+      }
+      throw err;
+    }
+  }
+
   useEffect(() => {
     // Piso mínimo para la pantalla de Tinín picando piedra — esto NUNCA
     // corta la animación antes de que la IA real termine (Math.max abajo:
@@ -72,44 +129,61 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
     // cortada antes de disfrutarla.
     const MIN_LOADING_MS = 6000;
     const start = Date.now();
-    const finishLoading = () => {
+    const finishInitialLoading = () => {
       const remaining = Math.max(0, MIN_LOADING_MS - (Date.now() - start));
       setTimeout(() => {
         if (mountedRef.current) setLoading(false);
       }, remaining);
     };
 
-    convertidorApi
-      .generarDescripcionesIA(
-        rows.map((r) => ({
-          row_id: r.row_id,
-          codigo: r.codigo,
-          nombre_articulo: r.nombre_articulo,
-          descripcion_web: r.descripcion_web,
-          es_fiambre_kg: r.es_fiambre_kg,
-        }))
-      )
-      .then(({ data }) => {
-        const next = new Map<number, RowState>();
-        data.suggestions.forEach((s: DescripcionSugerencia) => {
-          const row = rows.find((r) => r.row_id === s.row_id);
-          next.set(s.row_id, {
-            value: s.descripcion,
-            precio: row?.es_fiambre_kg ? precioDividido(row.precio) : "",
-            precioAnterior: row?.es_fiambre_kg ? precioDividido(row.precio_anterior) : "",
-            status: "pending",
-          });
-        });
-        setState(next);
-        setMeta({
-          failedRowIds: data.failed_row_ids,
-          truncated: data.truncated,
-          requested: data.requested_count,
-          processed: data.processed_count,
-        });
-      })
-      .catch((err) => setLoadError(err?.response?.status === 503 ? "not_configured" : "generic"))
-      .finally(finishLoading);
+    const chunks: ConvertidorRow[][] = [];
+    for (let i = 0; i < rows.length; i += ROWS_CHUNK_SIZE) chunks.push(rows.slice(i, i + ROWS_CHUNK_SIZE));
+    if (chunks.length === 0) {
+      finishInitialLoading();
+      return;
+    }
+
+    (async () => {
+      let first;
+      try {
+        first = await requestChunk(chunks[0]);
+      } catch (err: any) {
+        if (mountedRef.current) setLoadError(err?.response?.status === 503 ? "not_configured" : "generic");
+        finishInitialLoading();
+        return;
+      }
+      if (!mountedRef.current) return;
+      applySuggestions(chunks[0], first.suggestions);
+      setMeta({ failedRowIds: first.failedRowIds });
+      finishInitialLoading();
+
+      // El resto de las tandas (si el archivo trae más de ROWS_CHUNK_SIZE
+      // productos sin descripción) se piden solas en secuencia, sin que el
+      // usuario tenga que cerrar y reabrir el modal -- las filas de la
+      // primera tanda ya se pueden ir aprobando mientras tanto.
+      if (chunks.length > 1) {
+        setLoadingMore(true);
+        for (let i = 1; i < chunks.length; i++) {
+          if (!mountedRef.current) return;
+          setLoadMoreProgress({ done: i * ROWS_CHUNK_SIZE, total: rows.length });
+          let result;
+          try {
+            result = await requestChunk(chunks[i]);
+          } catch {
+            result = { suggestions: [] as DescripcionSugerencia[], failedRowIds: chunks[i].map((r) => r.row_id) };
+          }
+          if (!mountedRef.current) return;
+          applySuggestions(chunks[i], result.suggestions);
+          setMeta((prev) => ({
+            failedRowIds: [...(prev?.failedRowIds ?? []), ...result.failedRowIds],
+          }));
+        }
+        if (mountedRef.current) {
+          setLoadingMore(false);
+          setLoadMoreProgress(null);
+        }
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -186,9 +260,10 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
             </p>
           )}
 
-          {!loading && !loadError && meta?.truncated && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              {t("convertidor.ai.truncatedNotice", { processed: meta.processed, requested: meta.requested })}
+          {!loading && !loadError && loadingMore && loadMoreProgress && (
+            <p className="text-xs text-slate-400 flex items-center gap-1.5">
+              <Loader2 size={11} className="animate-spin shrink-0" />
+              {t("convertidor.ai.loadingMore", { done: loadMoreProgress.done, total: loadMoreProgress.total })}
             </p>
           )}
           {!loading && !loadError && meta && meta.failedRowIds.length > 0 && (
@@ -286,10 +361,14 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
           <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800">
             <button
               onClick={approveAll}
-              disabled={approvingAll}
+              disabled={approvingAll || loadingMore}
               className="btn-primary w-full text-xs disabled:opacity-50"
             >
-              {approvingAll ? t("convertidor.ai.approving") : t("convertidor.ai.approveAll")}
+              {approvingAll
+                ? t("convertidor.ai.approving")
+                : loadingMore
+                ? t("convertidor.ai.loadingMore", { done: loadMoreProgress?.done ?? 0, total: loadMoreProgress?.total ?? 0 })
+                : t("convertidor.ai.approveAll")}
             </button>
           </div>
         )}

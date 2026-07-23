@@ -3,7 +3,7 @@ import { useState, ChangeEvent, FormEvent } from "react";
 import { FileSpreadsheet, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { convertidorApi, type ConvertidorRow, type ConvertidorSummary } from "@/lib/api";
+import { convertidorApi, type ConvertidorRow, type ConvertidorSummary, type MaPair } from "@/lib/api";
 import { FileDropField } from "@/components/cenefas/redexpres/RedExpresPanel";
 import type { CenefaDestino } from "@/components/cenefas/DestinoModal";
 import ConvertidorGrid from "./ConvertidorGrid";
@@ -17,11 +17,13 @@ export default function ConvertidorPanel({ destino }: ConvertidorPanelProps) {
   const [excel, setExcel] = useState<File | null>(null);
   const [rows, setRows] = useState<ConvertidorRow[] | null>(null);
   const [summary, setSummary] = useState<ConvertidorSummary | null>(null);
+  const [maPairs, setMaPairs] = useState<MaPair[]>([]);
   const [loading, setLoading] = useState(false);
 
   function reset() {
     setRows(null);
     setSummary(null);
+    setMaPairs([]);
     setExcel(null);
   }
 
@@ -41,6 +43,7 @@ export default function ConvertidorPanel({ destino }: ConvertidorPanelProps) {
         unmatched_count: data.unmatched_count,
         learned_count: data.learned_count,
       });
+      setMaPairs(data.ma_pairs);
       if (data.learned_count > 0) {
         toast.success(t("convertidor.learnedToast", { count: data.learned_count }));
       }
@@ -52,7 +55,16 @@ export default function ConvertidorPanel({ destino }: ConvertidorPanelProps) {
   }
 
   if (rows) {
-    return <ConvertidorGrid rows={rows} setRows={setRows} summary={summary} onReset={reset} destino={destino} />;
+    return (
+      <ConvertidorGrid
+        rows={rows}
+        setRows={setRows}
+        summary={summary}
+        maPairs={maPairs}
+        onReset={reset}
+        destino={destino}
+      />
+    );
   }
 
   return (

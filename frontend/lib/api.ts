@@ -294,6 +294,9 @@ export interface ConvertidorRow {
   oferta: string;
   oferta_det: string;
   descripcion_web: string;
+  comprador: string;
+  descuento: string;
+  descuento_det: string;
   vigencia: string;
   aclaracion1: string;
   aclaracion2: string;
@@ -310,8 +313,20 @@ export interface ConvertidorSummary {
   learned_count: number;
 }
 
+// Par "mismo producto, dos SKUs" (sufijo suelto M/A en el nombre) detectado
+// por el backend -- todavía sin unificar. "base" es el nombre más largo de
+// los dos, sin el sufijo, usado como punto de partida para la sugerencia IA.
+export interface MaPair {
+  sku1: string;
+  sku2: string;
+  nombre1: string;
+  nombre2: string;
+  base: string;
+}
+
 export interface ConvertidorPreviewResponse extends ConvertidorSummary {
   rows: ConvertidorRow[];
+  ma_pairs: MaPair[];
 }
 
 export interface DescripcionSugerencia {

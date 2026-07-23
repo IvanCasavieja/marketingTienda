@@ -20,8 +20,10 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _STYLE_RULES = f"""\
 - La marca del producto va SIEMPRE en MAYÚSCULA COMPLETA, la palabra entera (no solo la primera letra).
-  Ejemplos reales ya en el catálogo: "Aceite alto oleico CAÑUELAS. 900 ml", "Yogur natural YOGURISIMO Original. 460g".
-- El resto del texto en formato oración normal (minúsculas salvo inicio de oración o nombres propios).
+- Justo después de la marca (y de alguna palabra corta de variante/sabor que la siga inmediatamente, si la hay) va SIEMPRE un punto, separando la marca de lo que venga después (cantidad/tamaño u otra info) como si fuera el inicio de una nueva oración corta — incluso si la marca no está al final del todo del texto.
+  Ejemplos reales ya en el catálogo: "Aceite Alto Oleico CAÑUELAS. 900 ml", "Yogur Natural YOGURISIMO Original. 460g".
+  Si la marca queda al final de la descripción y no hay nada más después, NO pongas un punto colgado ahí — el punto separa dos partes, no es un cierre de oración.
+- El resto del texto en Formato De Título: CADA palabra empieza con mayúscula, sin excepciones para preposiciones/artículos cortos (ej. "Sin Piel", "Con Azúcar", "De Cerdo" — no "sin piel" ni "con azúcar"). Excepciones: la marca (ya va en mayúscula completa) y las unidades de medida (ml, g, kg, L, un, etc.), que siempre van en minúscula.
 - Incluí cantidad/tamaño si se puede inferir de la fuente (ml, g, kg, L, unidades, etc.).
 - Es para un cartel de precio: tiene que ser CORTA. Apuntá a menos de {DESCRIPTION_WARN_CHARS} caracteres, nunca más de {DESCRIPTION_MAX_CHARS}.
 - No inventes datos (sabor, variedad, tamaño) que no estén sugeridos por el nombre o la descripción de origen.

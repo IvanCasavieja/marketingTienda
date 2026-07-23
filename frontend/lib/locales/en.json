@@ -702,15 +702,19 @@
     "exporting": "Generating…",
     "download": "Download Excel",
     "downloaded": "Excel downloaded",
+    "cellBarPlaceholder": "Hover or focus a cell to see its full content",
     "columns": {
       "codigo": "Code",
       "nombreArticulo": "Item Name",
+      "comprador": "Buyer",
       "descripcion": "Description",
       "moneda": "Currency",
       "precioAnterior": "Previous Price",
       "precio": "Price",
       "oferta": "Offer",
       "ofertaDet": "Offer Type",
+      "descuentoProv": "Provider Discount",
+      "descuentoProvDet": "Provider Discount Detail",
       "descripcionWeb": "Web Description",
       "vigencia": "Validity",
       "aclaracion1": "Remark 1",
@@ -732,8 +736,21 @@
       "approveAll": "Approve all",
       "approving": "Approving…",
       "failedCount": "We couldn't generate a suggestion for {{count}} product(s) — fill them in by hand.",
-      "truncatedNotice": "We generated suggestions for {{processed}} of {{requested}} products — reopen this modal for the rest.",
+      "loadingMore": "Generating the rest in the background… ({{done}}/{{total}})",
       "fiambreKgBadge": "Deli item by kg → 100g"
+    },
+    "merge": {
+      "bannerTitle": "{{count}} possible duplicate product detected — same product under two SKUs",
+      "bannerTitle_plural": "{{count}} possible duplicate products detected — same product under two SKUs",
+      "review": "Review",
+      "notSameProduct": "Not the same product",
+      "modalTitle": "Merge products",
+      "combinedSkuNotice": "On confirm, this is saved under the combined SKU {{sku}} — searchable afterwards by either SKU separately.",
+      "descripcionUnica": "Single description",
+      "cancel": "Cancel",
+      "confirm": "Confirm merge",
+      "confirming": "Merging…",
+      "merged": "Products merged (SKU {{sku}})"
     }
   },
   "diccionario": {

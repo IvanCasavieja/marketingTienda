@@ -8,6 +8,7 @@ generador de Cenefas cuando el Excel de salida se vuelva a subir ahí) —
 solo transporta esas columnas tal cual del input al output.
 """
 import csv
+import difflib
 import io
 import re
 import unicodedata
@@ -53,6 +54,8 @@ _INPUT_ALIASES: dict[str, str] = {
     "ofertadet":      "oferta_det",
     "descripcionweb": "descripcion_web",
     "comprador":      "comprador",
+    "descuentoprov":     "descuento",
+    "descuentoprovdet":  "descuento_det",
 }
 
 _HEADER_SCAN_ROWS = 10
@@ -184,7 +187,8 @@ def parse_input_excel(file_bytes: bytes, filename: str = "") -> list[dict]:
     nombre_articulo, descripcion_excel (si el Excel ya trae una columna
     "Descripción" propia -- ver match_rows() para cómo se prioriza contra
     el catálogo), moneda, precio_anterior, precio, oferta, oferta_det,
-    descripcion_web. Columnas no reconocidas se ignoran.
+    descripcion_web, comprador, descuento, descuento_det. Columnas no
+    reconocidas se ignoran.
 
     Acepta tanto .xlsx/.xlsm como .csv (ver _read_csv_rows) — decidido por
     la extensión del archivo subido, no por su contenido."""
@@ -254,6 +258,8 @@ def parse_input_excel(file_bytes: bytes, filename: str = "") -> list[dict]:
             "oferta_det":        _clean_str(cell(row, "oferta_det")),
             "descripcion_web":   _clean_str(cell(row, "descripcion_web")),
             "comprador":         _clean_str(cell(row, "comprador")),
+            "descuento":         _clean_str(cell(row, "descuento")),
+            "descuento_det":     _clean_str(cell(row, "descuento_det")),
         })
     return parsed
 
@@ -367,9 +373,86 @@ def _chunks(items: list, size: int):
 _MAX_DESCRIPCION_LEN = 300  # mismo límite que SkuDescripcion.descripcion (String(300))
 
 
+# ---------------------------------------------------------------------------
+# Pares "mismo producto, dos SKUs" -- patrón real: sufijo suelto " M" / " A"
+# al final del nombre (ej. "CUADRIL S/HUESO M" / "CUADRIL SIN HUESO A"), no
+# exclusivo de una categoría -- confirmado también en NALGA con datos reales.
+# ---------------------------------------------------------------------------
+
+_MA_SIMILARITY_THRESHOLD = 0.6
+# Sufijo M/A suelto al final del nombre, con o sin comillas -- "COCA COLA" NO
+# matchea (la "A" es parte de la palabra, no un sufijo separado por espacio).
+_RE_MA_SUFFIX = re.compile(r'(?:^|\s)["\']*([MA])["\']*\s*$', re.IGNORECASE)
+
+
+def _ma_base_and_suffix(nombre_articulo: str) -> tuple[str, str] | None:
+    s = nombre_articulo.strip()
+    m = _RE_MA_SUFFIX.search(s)
+    if not m:
+        return None
+    base = s[:m.start()].strip()
+    return (base, m.group(1).upper()) if base else None
+
+
+def detect_ma_pairs(rows: list[dict], catalogo: dict[str, str]) -> list[dict]:
+    """Agrupa candidatos (nombre terminado en sufijo suelto M/A) por
+    comprador, y empareja greedy por similarity ratio (difflib) sobre la base
+    sin sufijo -- no exige igualdad exacta: "S/HUESO" vs "SIN HUESO" ~0.82.
+    Un par necesita un M y un A (nunca dos del mismo sufijo) del mismo
+    comprador. Saltea pares donde ambos SKUs ya resuelven a la misma
+    descripción en el catálogo (ya unificados antes, incluyendo por la
+    segunda pasada de fallback de SKU compuesto en match_rows)."""
+    candidatos: dict[str, list[dict]] = {}
+    for r in rows:
+        parsed = _ma_base_and_suffix(r["nombre_articulo"])
+        if not parsed:
+            continue
+        base, suffix = parsed
+        comprador = (r.get("comprador") or "").strip().lower()
+        candidatos.setdefault(comprador, []).append({
+            "codigo": r["codigo"],
+            "nombre_articulo": r["nombre_articulo"],
+            "base": base,
+            "suffix": suffix,
+        })
+
+    pairs: list[dict] = []
+    seen_skus: set[str] = set()
+    for items in candidatos.values():
+        used: set[int] = set()
+        for i, a in enumerate(items):
+            if i in used or a["codigo"] in seen_skus:
+                continue
+            best_j, best_ratio = None, 0.0
+            for j in range(i + 1, len(items)):
+                b = items[j]
+                if j in used or b["suffix"] == a["suffix"] or b["codigo"] in seen_skus:
+                    continue
+                ratio = difflib.SequenceMatcher(None, a["base"].lower(), b["base"].lower()).ratio()
+                if ratio > best_ratio:
+                    best_ratio, best_j = ratio, j
+            if best_j is None or best_ratio < _MA_SIMILARITY_THRESHOLD:
+                continue
+            b = items[best_j]
+            if catalogo.get(a["codigo"]) and catalogo.get(a["codigo"]) == catalogo.get(b["codigo"]):
+                continue  # ya unificados antes -- mismo SKU compuesto ya resuelve a ambos
+            used.add(i)
+            used.add(best_j)
+            seen_skus.add(a["codigo"])
+            seen_skus.add(b["codigo"])
+            pairs.append({
+                "sku1": a["codigo"],
+                "sku2": b["codigo"],
+                "nombre1": a["nombre_articulo"],
+                "nombre2": b["nombre_articulo"],
+                "base": a["base"] if len(a["base"]) >= len(b["base"]) else b["base"],
+            })
+    return pairs
+
+
 async def match_rows(
     parsed: list[dict], db: AsyncSession, current_user_id: int, destino: str = "redexpres"
-) -> tuple[list[dict], int]:
+) -> tuple[list[dict], int, list[dict]]:
     """Bulk lookup por SKU (un SELECT por cada 1000 códigos distintos, no
     N queries) + cómputo de warnings por fila.
 
@@ -381,8 +464,10 @@ async def match_rows(
     catálogo compartido, para que el próximo import de cualquier usuario ya
     la traiga resuelta.
 
-    Devuelve (rows, learned_count) -- learned_count es cuántas filas
-    realmente se insertaron en sku_descripciones en esta llamada."""
+    Devuelve (rows, learned_count, ma_pairs) -- learned_count es cuántas
+    filas realmente se insertaron en sku_descripciones en esta llamada;
+    ma_pairs son los pares "mismo producto, dos SKUs" detectados (ver
+    detect_ma_pairs) todavía sin unificar."""
     skus = sorted({r["codigo"] for r in parsed if r["codigo"]})
     catalogo: dict[str, str] = {}
     for chunk in _chunks(skus, 1000):
@@ -391,6 +476,21 @@ async def match_rows(
             .where(SkuDescripcion.sku.in_(chunk))
         )
         catalogo.update(dict(result.all()))
+
+    # Fallback para SKUs sueltos que ya fueron unificados antes: si un par
+    # M/A se unificó en una carga anterior, sku_descripciones solo tiene la
+    # entrada compuesta "SKU1-SKU2" -- sin este paso, una carga futura con
+    # cualquiera de los dos SKUs sueltos no matchearía más. Solo se busca lo
+    # que hace falta (faltantes), no todos los SKUs de este import.
+    faltantes = {s for s in skus if s not in catalogo}
+    if faltantes:
+        result = await db.execute(
+            select(SkuDescripcion.sku, SkuDescripcion.descripcion).where(SkuDescripcion.sku.contains("-"))
+        )
+        for compuesto, desc in result.all():
+            for parte in compuesto.split("-"):
+                if parte in faltantes:
+                    catalogo.setdefault(parte, desc)
 
     # Primera pasada: para cada SKU nuevo (sin match en catálogo) que el
     # Excel resuelve, decidir el valor único que se va a aprender —
@@ -426,6 +526,9 @@ async def match_rows(
             "oferta":              row["oferta"],
             "oferta_det":          row["oferta_det"],
             "descripcion_web":     row["descripcion_web"],
+            "comprador":           row["comprador"],
+            "descuento":           row["descuento"],
+            "descuento_det":       row["descuento_det"],
             # Sin columna candidata en gestión para ninguna de estas cuatro
             # (ver convertidor.py docstring) — quedan vacías, editables a
             # mano en la grilla solo para destino="rompe_precios".
@@ -439,6 +542,8 @@ async def match_rows(
             "warnings":            _compute_warnings(row, destino),
         })
 
+    ma_pairs = detect_ma_pairs(rows, catalogo)
+
     learned_count = 0
     if nuevas:
         stmt = pg_insert(SkuDescripcion).values([
@@ -448,7 +553,7 @@ async def match_rows(
         result = await db.execute(stmt)
         learned_count = result.rowcount or 0
 
-    return rows, learned_count
+    return rows, learned_count, ma_pairs
 
 
 # ---------------------------------------------------------------------------
@@ -456,30 +561,32 @@ async def match_rows(
 # ---------------------------------------------------------------------------
 
 _OUTPUT_HEADERS = [
-    "Código", "Nombre Artículo", "Descripción", "Moneda",
-    "Precio Anterior", "Precio", "Oferta", "Oferta Det", "Descripción Web",
+    "Código", "Nombre Artículo", "Comprador", "Descripción", "Moneda",
+    "Precio Anterior", "Precio", "Oferta", "Oferta Det",
+    "Descuento Prov", "Descuento Prov Det", "Descripción Web",
 ]
 _OUTPUT_FIELDS = [
-    "codigo", "nombre_articulo", "descripcion", "moneda",
-    "precio_anterior", "precio", "oferta", "oferta_det", "descripcion_web",
+    "codigo", "nombre_articulo", "comprador", "descripcion", "moneda",
+    "precio_anterior", "precio", "oferta", "oferta_det",
+    "descuento", "descuento_det", "descripcion_web",
 ]
 # warning code -> índice de columna 1-based que se resalta
 _WARN_COL = {
     "nombre_articulo_invalido":  2,
-    "missing_description":       3,
-    "descripcion_invalida":      3,
-    "descripcion_larga":         3,
-    "descripcion_algo_larga":    3,
-    "moneda_invalida":           4,
-    "missing_precio_anterior":   5,
-    "precio_anterior_invalido":  5,
-    "missing_price":             6,
-    "precio_invalido":           6,
-    "missing_oferta":            7,
-    "missing_oferta_det":        8,
-    "oferta_det_invalido":       8,
-    "missing_descripcion_web":   9,
-    "descripcion_web_invalida":  9,
+    "missing_description":       4,
+    "descripcion_invalida":      4,
+    "descripcion_larga":         4,
+    "descripcion_algo_larga":    4,
+    "moneda_invalida":           5,
+    "missing_precio_anterior":   6,
+    "precio_anterior_invalido":  6,
+    "missing_price":             7,
+    "precio_invalido":           7,
+    "missing_oferta":            8,
+    "missing_oferta_det":        9,
+    "oferta_det_invalido":       9,
+    "missing_descripcion_web":   12,
+    "descripcion_web_invalida":  12,
 }
 # Warnings de "tipo incorrecto" (hay contenido, pero no del tipo esperado
 # para esa columna) — más severos que un simple "falta el dato", porque
@@ -500,35 +607,35 @@ _INVALID_TYPE_CODES = {
 # no tienen columna candidata en gestión (ver match_rows) y quedan vacías,
 # completables a mano acá o en la grilla antes de exportar.
 _OUTPUT_HEADERS_ROMPE_PRECIOS = [
-    "Código", "Nombre Artículo", "Descripción",
-    "Precio Anterior", "Precio", "Vigencia",
-    "Aclaración 1", "Aclaración 2", "Aclaración 3",
+    "Código", "Nombre Artículo", "Comprador", "Descripción",
+    "Precio Anterior", "Precio", "Descuento Prov", "Descuento Prov Det",
+    "Vigencia", "Aclaración 1", "Aclaración 2", "Aclaración 3",
 ]
 _OUTPUT_FIELDS_ROMPE_PRECIOS = [
-    "codigo", "nombre_articulo", "descripcion",
-    "precio_anterior", "precio", "vigencia",
-    "aclaracion1", "aclaracion2", "aclaracion3",
+    "codigo", "nombre_articulo", "comprador", "descripcion",
+    "precio_anterior", "precio", "descuento", "descuento_det",
+    "vigencia", "aclaracion1", "aclaracion2", "aclaracion3",
 ]
 _WARN_COL_ROMPE_PRECIOS = {
     "nombre_articulo_invalido":  2,
-    "missing_description":       3,
-    "descripcion_invalida":      3,
-    "descripcion_larga":         3,
-    "descripcion_algo_larga":    3,
-    "missing_precio_anterior":   4,
-    "precio_anterior_invalido":  4,
-    "missing_price":             5,
-    "precio_invalido":           5,
+    "missing_description":       4,
+    "descripcion_invalida":      4,
+    "descripcion_larga":         4,
+    "descripcion_algo_larga":    4,
+    "missing_precio_anterior":   5,
+    "precio_anterior_invalido":  5,
+    "missing_price":             6,
+    "precio_invalido":           6,
 }
 
 
 def build_output_workbook(rows: list[dict], destino: str = "redexpres") -> bytes:
     if destino == "rompe_precios":
         headers, fields, warn_col = _OUTPUT_HEADERS_ROMPE_PRECIOS, _OUTPUT_FIELDS_ROMPE_PRECIOS, _WARN_COL_ROMPE_PRECIOS
-        col_widths = [16, 36, 36, 14, 12, 26, 30, 30, 30]
+        col_widths = [16, 36, 20, 36, 14, 12, 16, 16, 26, 30, 30, 30]
     else:
         headers, fields, warn_col = _OUTPUT_HEADERS, _OUTPUT_FIELDS, _WARN_COL
-        col_widths = [16, 36, 36, 10, 14, 12, 14, 14, 40]
+        col_widths = [16, 36, 20, 36, 10, 14, 12, 14, 14, 16, 16, 40]
 
     wb = openpyxl.Workbook()
     ws = wb.active

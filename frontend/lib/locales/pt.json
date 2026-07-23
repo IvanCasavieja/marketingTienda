@@ -702,15 +702,19 @@
     "exporting": "Gerando…",
     "download": "Baixar Excel",
     "downloaded": "Excel baixado",
+    "cellBarPlaceholder": "Passe o mouse ou foque uma célula para ver seu conteúdo completo",
     "columns": {
       "codigo": "Código",
       "nombreArticulo": "Nome do Artigo",
+      "comprador": "Comprador",
       "descripcion": "Descrição",
       "moneda": "Moeda",
       "precioAnterior": "Preço Anterior",
       "precio": "Preço",
       "oferta": "Oferta",
       "ofertaDet": "Tipo de Oferta",
+      "descuentoProv": "Desconto Fornecedor",
+      "descuentoProvDet": "Desconto Fornecedor Detalhe",
       "descripcionWeb": "Descrição Web",
       "vigencia": "Vigência",
       "aclaracion1": "Observação 1",
@@ -732,8 +736,21 @@
       "approveAll": "Aprovar todas",
       "approving": "Aprovando…",
       "failedCount": "Não conseguimos gerar sugestão para {{count}} produto(s) — complete manualmente.",
-      "truncatedNotice": "Geramos sugestões para {{processed}} de {{requested}} produtos — reabra este modal para o restante.",
+      "loadingMore": "Gerando o restante em segundo plano… ({{done}}/{{total}})",
       "fiambreKgBadge": "Frios por kg → 100g"
+    },
+    "merge": {
+      "bannerTitle": "{{count}} possível produto duplicado detectado — mesmo produto com dois SKUs",
+      "bannerTitle_plural": "{{count}} possíveis produtos duplicados detectados — mesmo produto com dois SKUs",
+      "review": "Revisar",
+      "notSameProduct": "Não é o mesmo produto",
+      "modalTitle": "Unificar produtos",
+      "combinedSkuNotice": "Ao confirmar, isso é salvo como o SKU combinado {{sku}} — pesquisável depois por qualquer um dos dois SKUs separadamente.",
+      "descripcionUnica": "Descrição única",
+      "cancel": "Cancelar",
+      "confirm": "Confirmar unificação",
+      "confirming": "Unificando…",
+      "merged": "Produtos unificados (SKU {{sku}})"
     }
   },
   "diccionario": {

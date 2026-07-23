@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Download, Loader2, Sparkles, Target } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Merge, Sparkles, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { convertidorApi, type ConvertidorRow, type ConvertidorSummary } from "@/lib/api";
+import { convertidorApi, type ConvertidorRow, type ConvertidorSummary, type MaPair } from "@/lib/api";
 import type { CenefaDestino } from "@/components/cenefas/DestinoModal";
 import ConvertidorAiModal from "./ConvertidorAiModal";
+import ConvertidorMergeModal from "./ConvertidorMergeModal";
 
 // Virtualización manual (sin librería nueva): solo se renderizan las filas
 // visibles ± un buffer, con dos <tr> espaciadores para mantener el alto de
@@ -18,8 +19,8 @@ const BUFFER_ROWS = 8;
 const SAVE_DEBOUNCE_MS = 800;
 
 type ColumnKey =
-  | "codigo" | "nombre_articulo" | "descripcion" | "moneda" | "precio_anterior" | "precio"
-  | "oferta" | "oferta_det" | "descripcion_web"
+  | "codigo" | "nombre_articulo" | "comprador" | "descripcion" | "moneda" | "precio_anterior" | "precio"
+  | "oferta" | "oferta_det" | "descuento" | "descuento_det" | "descripcion_web"
   | "vigencia" | "aclaracion1" | "aclaracion2" | "aclaracion3";
 
 // "descripcion" es editable con lógica propia (guardado al catálogo
@@ -38,12 +39,15 @@ type EditableKind = "descripcion" | "simple";
 const COLUMNS_REDEXPRES: { key: ColumnKey; i18nKey: string; editable?: EditableKind; warningCodes?: string[] }[] = [
   { key: "codigo",          i18nKey: "codigo" },
   { key: "nombre_articulo", i18nKey: "nombreArticulo", warningCodes: ["nombre_articulo_invalido"] },
+  { key: "comprador",       i18nKey: "comprador" },
   { key: "descripcion",     i18nKey: "descripcion",     editable: "descripcion", warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
   { key: "moneda",          i18nKey: "moneda",          warningCodes: ["moneda_invalida"] },
   { key: "precio_anterior", i18nKey: "precioAnterior",  warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
   { key: "precio",          i18nKey: "precio",          warningCodes: ["missing_price", "precio_invalido"] },
   { key: "oferta",          i18nKey: "oferta",          warningCodes: ["missing_oferta"] },
   { key: "oferta_det",      i18nKey: "ofertaDet",       warningCodes: ["missing_oferta_det", "oferta_det_invalido"] },
+  { key: "descuento",       i18nKey: "descuentoProv" },
+  { key: "descuento_det",   i18nKey: "descuentoProvDet" },
   { key: "descripcion_web", i18nKey: "descripcionWeb",  warningCodes: ["missing_descripcion_web", "descripcion_web_invalida"] },
 ];
 
@@ -53,9 +57,12 @@ const COLUMNS_REDEXPRES: { key: ColumnKey; i18nKey: string; editable?: EditableK
 const COLUMNS_ROMPE_PRECIOS: { key: ColumnKey; i18nKey: string; editable?: EditableKind; warningCodes?: string[] }[] = [
   { key: "codigo",          i18nKey: "codigo" },
   { key: "nombre_articulo", i18nKey: "nombreArticulo", warningCodes: ["nombre_articulo_invalido"] },
+  { key: "comprador",       i18nKey: "comprador" },
   { key: "descripcion",     i18nKey: "descripcion",     editable: "descripcion", warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
   { key: "precio_anterior", i18nKey: "precioAnterior",  warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
   { key: "precio",          i18nKey: "precio",          warningCodes: ["missing_price", "precio_invalido"] },
+  { key: "descuento",       i18nKey: "descuentoProv" },
+  { key: "descuento_det",   i18nKey: "descuentoProvDet" },
   { key: "vigencia",        i18nKey: "vigencia",        editable: "simple" },
   { key: "aclaracion1",     i18nKey: "aclaracion1",     editable: "simple" },
   { key: "aclaracion2",     i18nKey: "aclaracion2",     editable: "simple" },
@@ -94,17 +101,38 @@ interface Props {
   rows: ConvertidorRow[];
   setRows: Dispatch<SetStateAction<ConvertidorRow[] | null>>;
   summary: ConvertidorSummary | null;
+  maPairs: MaPair[];
   onReset: () => void;
   destino: CenefaDestino;
 }
 
-export default function ConvertidorGrid({ rows, setRows, summary, onReset, destino }: Props) {
+function maPairKey(sku1: string, sku2: string): string {
+  return `${sku1}|${sku2}`;
+}
+
+export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onReset, destino }: Props) {
   const { t } = useTranslation();
   const COLUMNS = destino === "rompe_precios" ? COLUMNS_ROMPE_PRECIOS : COLUMNS_REDEXPRES;
   const [scrollTop, setScrollTop] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [savingRowId, setSavingRowId] = useState<number | null>(null);
   const [pendingFocusRowId, setPendingFocusRowId] = useState<number | null>(null);
+  // Snapshot local: arranca desde la prop (calculada una vez por el backend
+  // al hacer preview) y se achica sola a medida que se unifican o descartan
+  // pares -- "descartar" no persiste entre sesiones, es solo estado local.
+  const [pendingPairs, setPendingPairs] = useState<MaPair[]>(maPairs);
+  const [dismissedPairKeys, setDismissedPairKeys] = useState<Set<string>>(new Set());
+  const [mergePair, setMergePair] = useState<MaPair | null>(null);
+  // Barra tipo Excel: separado en hover vs. foco (por teclado) para que,
+  // al sacar el mouse de la celda que además tiene el foco, la barra no
+  // quede vacía -- vuelve a mostrar la celda enfocada en vez de nada.
+  const [hoveredCell, setHoveredCell] = useState<{ rowId: number; key: ColumnKey } | null>(null);
+  const [focusedCell, setFocusedCell] = useState<{ rowId: number; key: ColumnKey } | null>(null);
+  const activeCell = hoveredCell ?? focusedCell;
+  const activeCellColumn = activeCell ? COLUMNS.find((c) => c.key === activeCell.key) : undefined;
+  const activeCellRow = activeCell ? rows.find((r) => r.row_id === activeCell.rowId) : undefined;
+  const activeCellValue =
+    activeCellColumn && activeCellRow ? String(activeCellRow[activeCellColumn.key] ?? "") : "";
   // Snapshot fijo tomado al abrir el modal, NO la lista viva
   // rowsNeedingDescripcion -- esa se achica sola a medida que se aprueban
   // filas (porque quita el warning missing_description), y si el modal
@@ -142,6 +170,44 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
     const fiambresIds = new Set(rowsFiambresKg.map((r) => r.row_id));
     return [...rowsFiambresKg, ...rowsNeedingDescripcion.filter((r) => !fiambresIds.has(r.row_id))];
   }, [rowsFiambresKg, rowsNeedingDescripcion]);
+
+  // Pares "mismo producto, dos SKUs" todavía vigentes -- ni unificados ni
+  // descartados en esta sesión.
+  const visiblePairs = useMemo(
+    () => pendingPairs.filter((p) => !dismissedPairKeys.has(maPairKey(p.sku1, p.sku2))),
+    [pendingPairs, dismissedPairKeys]
+  );
+
+  function dismissPair(pair: MaPair) {
+    setDismissedPairKeys((prev) => new Set(prev).add(maPairKey(pair.sku1, pair.sku2)));
+  }
+
+  // Unifica las dos filas en una sola con SKU combinado "SKU1-SKU2": el PATCH
+  // existente ya alcanza (mismo endpoint que la edición manual), no hace
+  // falta un endpoint nuevo. Se conservan el resto de los campos de la
+  // primera fila (precio, oferta, etc.) -- la segunda fila se descarta del
+  // grid, ya representada por el SKU combinado.
+  async function commitMerge(pair: MaPair, descripcion: string) {
+    const skuCombinado = `${pair.sku1}-${pair.sku2}`;
+    await convertidorApi.updateDescripcion(skuCombinado, descripcion);
+    setRows((prev) =>
+      (prev ?? [])
+        .filter((r) => r.codigo !== pair.sku2)
+        .map((r) =>
+          r.codigo === pair.sku1
+            ? {
+                ...r,
+                codigo: skuCombinado,
+                descripcion,
+                warnings: computeDescripcionWarnings(r.warnings, descripcion),
+              }
+            : r
+        )
+    );
+    setPendingPairs((prev) => prev.filter((p) => !(p.sku1 === pair.sku1 && p.sku2 === pair.sku2)));
+    setMergePair(null);
+    toast.success(t("convertidor.merge.merged", { sku: skuCombinado }));
+  }
 
   function scrollToRow(rowId: number) {
     const container = scrollContainerRef.current;
@@ -343,6 +409,42 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
         )}
       </div>
 
+      {visiblePairs.length > 0 && (
+        <div className="card p-3 space-y-2 border-l-4 border-l-brand-400">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {t("convertidor.merge.bannerTitle", { count: visiblePairs.length })}
+          </p>
+          <div className="space-y-1.5">
+            {visiblePairs.map((pair) => (
+              <div
+                key={maPairKey(pair.sku1, pair.sku2)}
+                className="flex items-center justify-between gap-3 flex-wrap text-xs bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2"
+              >
+                <span className="text-slate-600 dark:text-slate-300 truncate">
+                  {pair.sku1} · {pair.nombre1} <span className="text-slate-400">/</span> {pair.sku2} · {pair.nombre2}
+                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setMergePair(pair)}
+                    className="btn-secondary text-[11px] flex items-center gap-1 py-1"
+                  >
+                    <Merge size={11} /> {t("convertidor.merge.review")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => dismissPair(pair)}
+                    className="btn-ghost text-[11px] py-1"
+                  >
+                    {t("convertidor.merge.notSameProduct")}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {rowsParaIA.length > 0 && (
         <div className="card p-3 space-y-2">
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -376,6 +478,19 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
         </div>
       )}
 
+      <div className="h-9 flex items-center gap-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs">
+        {activeCellColumn ? (
+          <>
+            <span className="font-semibold text-slate-500 dark:text-slate-400 shrink-0">
+              {t(`convertidor.columns.${activeCellColumn.i18nKey}`)}:
+            </span>
+            <span className="truncate text-slate-800 dark:text-slate-100">{activeCellValue || "—"}</span>
+          </>
+        ) : (
+          <span className="text-slate-300 dark:text-slate-600">{t("convertidor.cellBarPlaceholder")}</span>
+        )}
+      </div>
+
       <div className="card overflow-hidden p-0">
         <div
           ref={scrollContainerRef}
@@ -405,7 +520,12 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
               {visibleRows.map((row) => (
                 <tr key={row.row_id} style={{ height: ROW_HEIGHT }} className="border-b border-slate-100 dark:border-slate-800">
                   {COLUMNS.map((c) => (
-                    <td key={c.key} className={clsx("px-2 py-1 align-middle", warningClass(row, c.warningCodes))}>
+                    <td
+                      key={c.key}
+                      className={clsx("px-2 py-1 align-middle", warningClass(row, c.warningCodes))}
+                      onMouseEnter={() => setHoveredCell({ rowId: row.row_id, key: c.key })}
+                      onMouseLeave={() => setHoveredCell(null)}
+                    >
                       {c.editable === "descripcion" ? (
                         <div className="flex items-center gap-1">
                           <input
@@ -419,6 +539,8 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
                               handleDescripcionChange(row.row_id, row.codigo, e.target.value)
                             }
                             onKeyDown={(e) => handleDescripcionKeyDown(e, row.row_id, row.codigo)}
+                            onFocus={() => setFocusedCell({ rowId: row.row_id, key: c.key })}
+                            onBlur={() => setFocusedCell(null)}
                             className="w-full rounded border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 bg-transparent text-xs py-1 px-1 outline-none transition-colors"
                             placeholder={t("convertidor.descripcionPlaceholder")}
                           />
@@ -433,6 +555,8 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
                           onChange={(e: ChangeEvent<HTMLInputElement>) =>
                             handleSimpleFieldChange(row.row_id, c.key, e.target.value)
                           }
+                          onFocus={() => setFocusedCell({ rowId: row.row_id, key: c.key })}
+                          onBlur={() => setFocusedCell(null)}
                           className="w-full rounded border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 bg-transparent text-xs py-1 px-1 outline-none transition-colors"
                         />
                       ) : (
@@ -466,6 +590,21 @@ export default function ConvertidorGrid({ rows, setRows, summary, onReset, desti
           onClose={() => setAiModalRows(null)}
         />
       )}
+
+      {mergePair && (() => {
+        const rowA = rows.find((r) => r.codigo === mergePair.sku1);
+        const rowB = rows.find((r) => r.codigo === mergePair.sku2);
+        if (!rowA || !rowB) return null;
+        return (
+          <ConvertidorMergeModal
+            pair={mergePair}
+            rowA={rowA}
+            rowB={rowB}
+            onConfirm={(descripcion) => commitMerge(mergePair, descripcion)}
+            onClose={() => setMergePair(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -49,7 +49,7 @@ async def preview(
         logger.error("convertidor preview parse error: %s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=f"Error al parsear el archivo: {e}")
 
-    rows, learned_count = await match_rows(parsed, db, current_user.id, destino)
+    rows, learned_count, ma_pairs = await match_rows(parsed, db, current_user.id, destino)
     if learned_count:
         await db.commit()
     matched = sum(1 for r in rows if r["matched"])
@@ -59,6 +59,7 @@ async def preview(
         "matched_count": matched,
         "unmatched_count": len(rows) - matched,
         "learned_count": learned_count,
+        "ma_pairs": ma_pairs,
     }
 
 
@@ -133,6 +134,9 @@ class ConvertidorRowIn(BaseModel):
     oferta:                str = ""
     oferta_det:            str = ""
     descripcion_web:       str = ""
+    comprador:             str = ""
+    descuento:             str = ""
+    descuento_det:         str = ""
     vigencia:              str = ""
     aclaracion1:            str = ""
     aclaracion2:            str = ""
