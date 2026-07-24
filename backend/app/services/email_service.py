@@ -1,25 +1,39 @@
-"""Servicio de email via Resend API — recuperación de contraseña."""
+"""Servicio de email via SendGrid API — recuperación de contraseña."""
+import re
+
 import httpx
 
 from app.core.config import settings
 
+_FROM_EMAIL_RE = re.compile(r"<(.+?)>")
+
+
+def _from_email() -> str:
+    """EMAIL_FROM admite formato 'Nombre <email>' o email pelado — la API
+    de SendGrid (a diferencia de Resend) quiere el email separado del nombre
+    para mandar."""
+    match = _FROM_EMAIL_RE.search(settings.EMAIL_FROM)
+    return match.group(1) if match else settings.EMAIL_FROM
+
 
 async def send_email(to: str, subject: str, html: str, plain: str) -> None:
     payload = {
-        "from": settings.EMAIL_FROM,
-        "to": [to],
+        "personalizations": [{"to": [{"email": to}]}],
+        "from": {"email": _from_email()},
         "subject": subject,
-        "html": html,
-        "text": plain,
+        "content": [
+            {"type": "text/plain", "value": plain},
+            {"type": "text/html", "value": html},
+        ],
     }
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.post(
-            "https://api.resend.com/emails",
+            "https://api.sendgrid.com/v3/mail/send",
             json=payload,
-            headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+            headers={"Authorization": f"Bearer {settings.SENDGRID_API_KEY}"},
         )
     if resp.status_code >= 400:
-        raise RuntimeError(f"Resend error {resp.status_code}: {resp.text}")
+        raise RuntimeError(f"SendGrid error {resp.status_code}: {resp.text}")
 
 
 def build_reset_email(reset_url: str) -> tuple[str, str]:

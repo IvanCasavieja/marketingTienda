@@ -86,9 +86,10 @@ class Settings(BaseSettings):
     SFMC_SUBDOMAIN: str = ""
     SFMC_ACCOUNT_ID: str = ""
 
-    # Resend (password reset emails) — free at resend.com
-    RESEND_API_KEY: str = ""
-    EMAIL_FROM: str = "MKTG Platform <onboarding@resend.dev>"
+    # SendGrid (password reset emails) — Single Sender Verification en
+    # sendgrid.com, sin necesitar dominio propio (ver EMAIL_FROM)
+    SENDGRID_API_KEY: str = ""
+    EMAIL_FROM: str = "MKTG Platform <onboarding@example.com>"
 
     @field_validator("ENCRYPTION_KEY", mode="after")
     @classmethod
