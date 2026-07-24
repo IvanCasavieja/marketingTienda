@@ -153,9 +153,9 @@ async def security_headers(request: Request, call_next):
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     """Liga un request_id a todos los logs que se emitan durante este
-    request (incluido el handler de excepción no manejada más abajo) vía
-    contextvars de structlog — permite filtrar/agrupar por request_id en
-    los logs de un incidente en vez de solo tener líneas sueltas."""
+    request vía contextvars de structlog — permite filtrar/agrupar por
+    request_id en los logs de un incidente en vez de solo tener líneas
+    sueltas."""
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     structlog.contextvars.bind_contextvars(request_id=request_id)
     try:
@@ -165,8 +165,32 @@ async def request_id_middleware(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     return response
 
+
+@app.middleware("http")
+async def error_handling_middleware(request: Request, call_next):
+    """Convierte cualquier excepción no manejada en JSONResponse acá adentro
+    en vez de vía `@app.exception_handler(Exception)`: Starlette engancha
+    ese handler en ServerErrorMiddleware, que queda por FUERA de
+    CORSMiddleware — un 500 generado ahí nunca sale con el header
+    Access-Control-Allow-Origin (el browser lo reporta como error de CORS en
+    vez de 500, ver incidente de /auth/forgot-password). Este middleware
+    corre dentro del wrap de CORS (ver comentario en su registro más abajo),
+    así que la respuesta de error sigue el camino normal y sale con los
+    headers de CORS puestos."""
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "Internal server error"},
+        )
+
 # CORS — registered last so it becomes the outermost middleware and injects
-# Access-Control-Allow-Origin on ALL responses, including 5xx errors.
+# Access-Control-Allow-Origin on ALL responses, including 5xx errors (los
+# 5xx no manejados se convierten en JSONResponse en error_handling_middleware
+# arriba — a propósito, ver su docstring — para que lleguen acá como una
+# respuesta normal en vez de escapar por ServerErrorMiddleware).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
@@ -177,18 +201,6 @@ app.add_middleware(
 
 
 app.include_router(router, prefix=settings.API_V1_PREFIX)
-
-
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    """Convierte cualquier excepcion no manejada en JSONResponse antes de que
-    llegue al middleware — garantiza que CORSMiddleware siempre pueda inyectar
-    el header Access-Control-Allow-Origin, incluso en respuestas 500."""
-    logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal server error"},
-    )
 
 
 @app.get("/health")

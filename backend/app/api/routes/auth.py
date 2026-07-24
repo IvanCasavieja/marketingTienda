@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 
@@ -218,12 +218,20 @@ async def forgot_password(
     user = result.scalar_one_or_none()
 
     if user:
-        from app.core.redis_client import get_redis
+        from app.models.password_reset_token import PasswordResetToken
         from app.services.email_service import send_email, build_reset_email
 
+        now = datetime.now(timezone.utc)
+        # Sin TTL nativo como tenía Redis — barremos vencidos acá en vez de
+        # un cron aparte, alcanza de sobra para el volumen de este endpoint.
+        await db.execute(delete(PasswordResetToken).where(PasswordResetToken.expires_at < now))
+
         token = secrets.token_urlsafe(32)
-        redis = get_redis()
-        await redis.setex(f"pwd_reset:{token}", _RESET_TOKEN_TTL, str(user.id))
+        db.add(PasswordResetToken(
+            token=token,
+            user_id=user.id,
+            expires_at=now + timedelta(seconds=_RESET_TOKEN_TTL),
+        ))
 
         reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
         html, plain = build_reset_email(reset_url)
@@ -244,33 +252,30 @@ async def reset_password(
     payload: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    from app.core.redis_client import get_redis
-
-    redis = get_redis()
-    redis_key = f"pwd_reset:{payload.token}"
-    raw = await redis.get(redis_key)
-
-    if not raw:
-        raise HTTPException(status_code=400, detail="Token inválido o expirado")
-
-    try:
-        user_id = int(raw.decode() if isinstance(raw, bytes) else raw)
-    except (ValueError, AttributeError):
-        raise HTTPException(status_code=400, detail="Token inválido o expirado")
-
-    result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+    from app.models.password_reset_token import PasswordResetToken
 
     now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(PasswordResetToken, User)
+        .join(User, User.id == PasswordResetToken.user_id)
+        .where(
+            PasswordResetToken.token == payload.token,
+            PasswordResetToken.expires_at > now,
+            User.is_active == True,
+        )
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+    reset_token, user = row
+
     user.hashed_password = hash_password(payload.new_password)
     user.tokens_invalidated_at = now
     user.password_changed_at = now
     user.must_change_password = False  # la eligió el propio dueño de la cuenta
     user.failed_login_attempts = 0
     user.locked_until = None
-    await redis.delete(redis_key)  # token de un solo uso
+    await db.delete(reset_token)  # token de un solo uso
     db.add(AuditLog(user_id=user.id, action="user.password_reset"))
 
     return {"message": "Contraseña actualizada correctamente."}
