@@ -922,7 +922,7 @@
     "precios": {
       "introPre": "Compare",
       "introBold": "live",
-      "introPost": "prices (searched on the spot, no database of our own) across 13 Uruguayan chains: supermarkets (Disco, Devoto, Géant, Ta-Ta, El Dorado), pharmacies (FarmaShop, Botiga) and appliances/electronics (Fama, Stienda, Black Dog, Cover Company, DIMM, Electrohogar). Appliance prices are often in dollars — each result shows its real currency, it's not auto-converted.",
+      "introPost": "prices (searched on the spot, no database of our own) across 14 Uruguayan chains: supermarkets (Disco, Devoto, Géant, Ta-Ta, El Dorado), pharmacies (FarmaShop, Botiga, Pigalle) and appliances/electronics (Fama, Stienda, Black Dog, Cover Company, DIMM, Electrohogar). Appliance prices are often in dollars — each result shows its real currency, it's not auto-converted.",
       "filtros": {
         "title": "Filters stack up",
         "desc": "Chain chips add up as you tap them (multi-select) — only the \"All\" chip turns them all off at once."

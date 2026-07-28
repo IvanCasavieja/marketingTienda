@@ -468,6 +468,80 @@ def buscar_botiga(term: str) -> list[ProductRecord]:
     return _buscar_magento(term, _BOTIGA_BASE, "Botiga", _FARMASHOP_BASE, "FarmaShop")
 
 
+# ── Pigalle (Magento 2 -- autosuggest ajax, no GraphQL) ────────────────────────
+# También Magento 2, pero el resolver products() de /graphql en esta instancia
+# devuelve "Internal server error" en cualquier búsqueda o filtro (motor de
+# búsqueda full-text mal configurado del lado de ellos, no hay nada para
+# arreglar de este lado) -- confirmado a mano contra su /graphql antes de
+# escribir esto. En cambio el autosuggest nativo de Magento
+# (/search/ajax/suggest/) sí funciona, porque corre sobre el índice de
+# quick-search en MySQL en vez del motor full-text roto.
+#
+# Contra de usar el autosuggest: devuelve ~5 resultados por término (es un
+# autocomplete, no un catálogo paginado) en vez de hasta 300 como
+# _buscar_magento. Aceptable en live_search porque el caso de uso es buscar
+# UN producto puntual (mismo criterio que el resto del módulo), no volcar
+# el catálogo completo.
+_PIGALLE_BASE = "https://www.pigalle.com.uy"
+# data-price-amount aparece antes o después de data-price-type según el caso
+# (con/sin "Special Price") -- el lookahead no consume, así que matchea el
+# atributo sin depender de en qué orden vengan los dos dentro del <span>.
+_PIGALLE_FINAL_PRICE_RE = re.compile(r'<span\b(?=[^>]*data-price-type="finalPrice")[^>]*\bdata-price-amount="([\d.]+)"')
+_PIGALLE_OLD_PRICE_RE = re.compile(r'<span\b(?=[^>]*data-price-type="oldPrice")[^>]*\bdata-price-amount="([\d.]+)"')
+
+
+def buscar_pigalle(term: str) -> list[ProductRecord]:
+    """precio = finalPrice; precio_lista = oldPrice cuando hay descuento activo.
+    Se ignora a propósito el precio "scotia" que trae el HTML (descuento de un
+    medio de pago específico, no un precio de lista/oferta general comparable
+    con el resto de las cadenas)."""
+    records: list[ProductRecord] = []
+    try:
+        r = _requests.get(
+            f"{_PIGALLE_BASE}/search/ajax/suggest/",
+            params={"q": term},
+            headers=_UA_HEADERS,
+            timeout=8,
+        )
+        r.raise_for_status()
+        items = r.json()
+    except Exception as exc:
+        log.warning("Pigalle: error buscando '%s' — %s", term, exc)
+        return records
+
+    for item in items or []:
+        if item.get("type") != "product":
+            continue
+        nombre_item = html.unescape(item.get("title") or "")
+        score = 100.0 if _es_codigo(term) else score_match(nombre_item, term)
+        if score < _MIN_SCORE:
+            continue
+
+        price_html = item.get("price") or ""
+        m_final = _PIGALLE_FINAL_PRICE_RE.search(price_html)
+        if not m_final:
+            continue
+        m_old = _PIGALLE_OLD_PRICE_RE.search(price_html)
+
+        records.append(ProductRecord(
+            tienda          = "Pigalle",
+            nombre          = nombre_item,
+            precio          = float(m_final.group(1)),
+            precio_lista    = float(m_old.group(1)) if m_old else None,
+            sku             = None,
+            barcode         = None,
+            marca           = None,
+            categoria       = None,
+            url             = item.get("url") or _PIGALLE_BASE,
+            sucursal_id     = None,
+            sucursal_nombre = None,
+            relevancia      = score,
+            moneda          = "UYU",
+        ))
+
+    return records
+
+
 # ── Utilidades de precio en formato uruguayo (miles con punto, decimales con coma) ──
 
 def _parse_precio_uy(raw: str) -> float | None:
@@ -873,7 +947,7 @@ def buscar_loi(term: str) -> list[ProductRecord]:
 # a aparecer (ej. "coca cola"). Se busca solo si el usuario la selecciona a
 # propósito desde el filtro de cadenas.
 _CADENAS_DEFAULT = [
-    "Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "BlackDog",
+    "Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Pigalle", "BlackDog",
     "Electrohogar", "CoverCompany", "DIMM", "Stienda", "Fama",
 ]
 _CADENAS_OPT_IN = ["LOi"]
@@ -887,6 +961,7 @@ def _tareas_disponibles(term: str, cache_dir: Path) -> dict[str, tuple]:
         "GDU":           (buscar_gdu,          (term, cache_dir)),
         "FarmaShop":     (buscar_farmashop,    (term,)),
         "Botiga":        (buscar_botiga,       (term,)),
+        "Pigalle":       (buscar_pigalle,      (term,)),
         "BlackDog":      (buscar_blackdog,     (term,)),
         "Electrohogar":  (buscar_electrohogar, (term,)),
         "CoverCompany":  (buscar_covercompany, (term,)),

@@ -22,7 +22,7 @@ const CATEGORIA_KEYS: Record<string, string> = {
 // Cadenas consultadas por defecto — debe reflejar _CADENAS_DEFAULT en
 // backend/app/services/scraper/live_search.py. LOi queda fuera de esta lista
 // a propósito (ver comentario junto a sourceCadenas en el componente).
-const CADENAS_DEFAULT = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Fama", "Stienda", "BlackDog", "CoverCompany", "DIMM", "Electrohogar"];
+const CADENAS_DEFAULT = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Pigalle", "Fama", "Stienda", "BlackDog", "CoverCompany", "DIMM", "Electrohogar"];
 const CADENAS_TODAS    = [...CADENAS_DEFAULT, "LOi"];
 
 // Una fila de la lista de resultados — puede representar varias sucursales

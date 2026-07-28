@@ -11,6 +11,7 @@ export const CADENA_CONFIG: Record<string, { bg: string; dot: string; label: str
   "ElDorado":  { bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400",       dot: "bg-amber-500",   label: "El Dorado", border: "border-l-amber-500",   hex: "#f59e0b" },
   "FarmaShop": { bg: "bg-teal-500/10 text-teal-600 dark:text-teal-400",          dot: "bg-teal-500",    label: "FarmaShop", border: "border-l-teal-500",    hex: "#14b8a6" },
   "Botiga":    { bg: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400", dot: "bg-fuchsia-500", label: "Botiga",    border: "border-l-fuchsia-500",  hex: "#d946ef" },
+  "Pigalle":   { bg: "bg-purple-500/10 text-purple-600 dark:text-purple-400",   dot: "bg-purple-500",  label: "Pigalle",   border: "border-l-purple-500",  hex: "#a855f7" },
   "Fama":         { bg: "bg-sky-500/10 text-sky-600 dark:text-sky-400",         dot: "bg-sky-500",     label: "Fama",         border: "border-l-sky-500",     hex: "#0ea5e9" },
   "Stienda":      { bg: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400", dot: "bg-indigo-500",  label: "Stienda",      border: "border-l-indigo-500",  hex: "#6366f1" },
   "BlackDog":     { bg: "bg-stone-500/10 text-stone-600 dark:text-stone-400",    dot: "bg-stone-500",   label: "Black Dog",    border: "border-l-stone-500",   hex: "#78716c" },
@@ -20,12 +21,12 @@ export const CADENA_CONFIG: Record<string, { bg: string; dot: string; label: str
   "LOi":          { bg: "bg-pink-500/10 text-pink-600 dark:text-pink-400",       dot: "bg-pink-500",    label: "LOi",          border: "border-l-pink-500",    hex: "#ec4899" },
 };
 
-// Agrupación usada para ordenar los chips de filtro en /precios — con 13
+// Agrupación usada para ordenar los chips de filtro en /precios — con 14
 // cadenas sueltas es difícil escanear, agrupadas por rubro se entiende de un vistazo.
 export const CADENA_CATEGORIA: Record<string, string> = {
   "Disco": "Supermercados", "Devoto": "Supermercados", "Geant": "Supermercados",
   "Ta-Ta": "Supermercados", "ElDorado": "Supermercados", "GDU": "Supermercados",
-  "FarmaShop": "Farmacia", "Botiga": "Farmacia",
+  "FarmaShop": "Farmacia", "Botiga": "Farmacia", "Pigalle": "Farmacia",
   "Fama": "Electrónica", "Stienda": "Electrónica", "BlackDog": "Electrónica",
   "CoverCompany": "Electrónica", "DIMM": "Electrónica", "Electrohogar": "Electrónica",
   "LOi": "Electrónica",

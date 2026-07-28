@@ -922,7 +922,7 @@
     "precios": {
       "introPre": "Compará precios",
       "introBold": "en vivo",
-      "introPost": "(se busca en el momento, no hay base propia) en 13 cadenas uruguayas: supermercados (Disco, Devoto, Géant, Ta-Ta, El Dorado), farmacias (FarmaShop, Botiga) y electrodomésticos/electrónica (Fama, Stienda, Black Dog, Cover Company, DIMM, Electrohogar). Los precios de electrodomésticos suelen venir en dólares — cada resultado muestra su moneda real, no se convierte automáticamente.",
+      "introPost": "(se busca en el momento, no hay base propia) en 14 cadenas uruguayas: supermercados (Disco, Devoto, Géant, Ta-Ta, El Dorado), farmacias (FarmaShop, Botiga, Pigalle) y electrodomésticos/electrónica (Fama, Stienda, Black Dog, Cover Company, DIMM, Electrohogar). Los precios de electrodomésticos suelen venir en dólares — cada resultado muestra su moneda real, no se convierte automáticamente.",
       "filtros": {
         "title": "Filtros que se suman",
         "desc": "Los chips de cadena se van sumando al tocarlos (multi-selección) — solo el chip \"Todas\" los apaga a todos de una."

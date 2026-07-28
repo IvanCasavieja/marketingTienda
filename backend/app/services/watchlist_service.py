@@ -19,7 +19,7 @@ from app.models.watchlist_share import WatchlistShare
 from app.models.notificacion import Notificacion
 from app.services.scraper.live_search import (
     buscar_tata, buscar_eldorado, buscar_gdu,
-    buscar_farmashop, buscar_botiga,
+    buscar_farmashop, buscar_botiga, buscar_pigalle,
     buscar_blackdog, buscar_electrohogar, buscar_covercompany,
     buscar_dimm, buscar_stienda, buscar_fama,
 )
@@ -36,6 +36,7 @@ _BUSCAR_POR_CADENA = {
     "Disco": buscar_gdu, "Devoto": buscar_gdu, "Geant": buscar_gdu,
     "FarmaShop": buscar_farmashop,
     "Botiga": buscar_botiga,
+    "Pigalle": buscar_pigalle,
     "BlackDog": buscar_blackdog,
     "Electrohogar": buscar_electrohogar,
     "CoverCompany": buscar_covercompany,
