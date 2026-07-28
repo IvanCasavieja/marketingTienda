@@ -18,6 +18,7 @@ from app.models.ai_usage_log import AIUsageLog
 from app.models.sku_descripcion import SkuDescripcion
 from app.models.meridian_channel_summary import MeridianChannelSummary
 from app.models.password_reset_token import PasswordResetToken
+from app.models.convertidor_header_alias import ConvertidorHeaderAlias
 
 __all__ = [
     "User", "PlatformConnection", "Platform",
@@ -26,4 +27,5 @@ __all__ = [
     "PlanillaPedido", "LocalAsignacion",
     "Watchlist", "WatchlistItem", "WatchlistPrecioHistorial", "WatchlistShare", "Notificacion",
     "CotizacionDolar", "AIUsageLog", "SkuDescripcion", "MeridianChannelSummary", "PasswordResetToken",
+    "ConvertidorHeaderAlias",
 ]

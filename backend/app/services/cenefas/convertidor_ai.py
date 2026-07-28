@@ -21,9 +21,9 @@ log = logging.getLogger(__name__)
 _STYLE_RULES = f"""\
 - La marca del producto va SIEMPRE en MAYÚSCULA COMPLETA, la palabra entera (no solo la primera letra).
 - Justo después de la marca (y de alguna palabra corta de variante/sabor que la siga inmediatamente, si la hay) va SIEMPRE un punto, separando la marca de lo que venga después (cantidad/tamaño u otra info) como si fuera el inicio de una nueva oración corta — incluso si la marca no está al final del todo del texto.
-  Ejemplos reales ya en el catálogo: "Aceite Alto Oleico CAÑUELAS. 900 ml", "Yogur Natural YOGURISIMO Original. 460g".
+  Ejemplos reales ya en el catálogo: "Aceite alto oleico CAÑUELAS. 900 ml", "Yogur natural YOGURISIMO original. 460g".
   Si la marca queda al final de la descripción y no hay nada más después, NO pongas un punto colgado ahí — el punto separa dos partes, no es un cierre de oración.
-- El resto del texto en Formato De Título: CADA palabra empieza con mayúscula, sin excepciones para preposiciones/artículos cortos (ej. "Sin Piel", "Con Azúcar", "De Cerdo" — no "sin piel" ni "con azúcar"). Excepciones: la marca (ya va en mayúscula completa) y las unidades de medida (ml, g, kg, L, un, etc.), que siempre van en minúscula.
+- El resto del texto va en minúscula, con reglas normales de oración en español: mayúscula SOLO en la primera letra de toda la descripción y en la primera letra de la palabra que sigue a cada punto (incluido el punto después de la marca) — ninguna otra palabra lleva mayúscula inicial (ej. "sin piel", "con azúcar", "de cerdo", nunca "Sin Piel" ni "Con Azúcar"). Dos excepciones que no cambian nunca, sea cual sea su posición en el texto: la marca (siempre mayúscula completa, ver arriba) y las unidades de medida (ml, g, kg, L, un, etc.), siempre en minúscula incluso si quedaran al principio de una oración.
 - Incluí cantidad/tamaño si se puede inferir de la fuente (ml, g, kg, L, unidades, etc.).
 - Es para un cartel de precio: tiene que ser CORTA. Apuntá a menos de {DESCRIPTION_WARN_CHARS} caracteres, nunca más de {DESCRIPTION_MAX_CHARS}.
 - No inventes datos (sabor, variedad, tamaño) que no estén sugeridos por el nombre o la descripción de origen.
@@ -123,3 +123,90 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
             failed_row_ids.extend(it["row_id"] for it in chunk)
 
     return {"suggestions": suggestions, "failed_row_ids": failed_row_ids}
+
+
+# ---------------------------------------------------------------------------
+# Detección de columnas de fecha_inicio/fecha_fin sin alias reconocido
+# ---------------------------------------------------------------------------
+#
+# Ninguna de las dos es obligatoria en el Excel de gestión, y el nombre real
+# de la columna varía entre exports (ver _INPUT_ALIASES en convertidor.py).
+# Cuando el matching por nombre de columna no alcanza, esto le pasa a Tinín
+# el encabezado + un par de valores de muestra YA confirmados como fechas
+# reales (ver convertidor.py: solo llega acá una columna si sus valores
+# parsean como fecha) para que decida cuál es inicio y cuál es fin de la
+# vigencia — nunca al revés (nunca se le manda una columna a ciegas para que
+# decida SI es una fecha, eso ya se filtró antes de llegar acá).
+
+_VALID_DATE_FIELDS = {"fecha_inicio", "fecha_fin"}
+
+_HEADER_SYSTEM_PROMPT = f"""{TININ_BASE}
+
+Hoy también te toca: te paso encabezados de columna de un Excel de gestión que el sistema no \
+reconoció automáticamente por nombre, junto con valores de ejemplo de esa misma columna (ya \
+confirmados como fechas válidas). Tu tarea es decidir, para cada uno, si es la columna de FECHA \
+DE INICIO o FECHA DE FIN de la vigencia de un precio/oferta (el período en que ese precio es \
+válido) — o si no tiene nada que ver con eso (por ejemplo fecha de alta, de modificación, de \
+nacimiento, etc.).
+
+Sé conservador: ante la duda, respondé null. Es mejor dejar una columna sin reconocer que \
+etiquetarla mal — alguien va a completarla a mano si hace falta."""
+
+
+def _build_header_prompt(candidates: list[dict]) -> str:
+    lineas = []
+    for n, c in enumerate(candidates, start=1):
+        muestras = ", ".join(f'"{m}"' for m in c["muestras"])
+        lineas.append(f'{n}. Encabezado: "{c["header_display"]}" — valores de ejemplo: {muestras}')
+    listado = "\n".join(lineas)
+    return (
+        f"Clasificá estos {len(candidates)} encabezados de columna:\n\n{listado}\n\n"
+        'Devolvé SOLO un JSON con esta forma exacta: '
+        '{"clasificaciones": {"1": "fecha_inicio"|"fecha_fin"|null, ...}} '
+        "— una entrada por cada número de la lista, en el mismo orden. Sin comentarios ni texto fuera del JSON."
+    )
+
+
+async def resolve_date_columns_with_ai(candidates: list[dict], db, user_id: int) -> dict[str, str | None]:
+    """candidates: [{"header_norm", "header_display", "muestras": [str, ...]}, ...] —
+    encabezados sin match en _INPUT_ALIASES ni en el cache aprendido
+    (ConvertidorHeaderAlias), ya filtrados para que "muestras" tenga al menos
+    un par de valores que parsean como fecha real (ver convertidor.py).
+
+    Devuelve {header_norm: "fecha_inicio"|"fecha_fin"|None} con UNA entrada
+    por cada candidato pasado -- None significa que Claude confirmó que esa
+    columna no es de vigencia (ej. fecha de alta/modificación), y el caller
+    lo cachea igual que un match positivo para no volver a preguntar por ese
+    mismo header en el futuro (ver convertidor.py). Si la llamada entera
+    falla (red, JSON con forma inesperada, etc.) devuelve {} -- ningún
+    candidato se cachea, así que se reintenta en el próximo import en vez de
+    quedar mal clasificado a partir de una respuesta que no se pudo leer.
+
+    Nunca levanta: todo el trabajo con la respuesta de Claude (incluido el
+    JSON parseado) vive dentro del try -- una forma inesperada en
+    "clasificaciones" (None, una lista, lo que sea distinto de un dict) se
+    trata igual que cualquier otro fallo, no como un crash aparte."""
+    if not candidates:
+        return {}
+    try:
+        prompt = _build_header_prompt(candidates)
+        content, in_tok, out_tok = await _ask_claude(_HEADER_SYSTEM_PROMPT, prompt, max_tokens=400)
+        await log_ai_usage(db, user_id, "convertidor_columnas_fecha", *_ASK_CLAUDE_META, in_tok, out_tok)
+        parsed = json.loads(_strip_json_fence(content))
+        clasificaciones = parsed.get("clasificaciones", {})
+        if not isinstance(clasificaciones, dict):
+            # Forma inesperada (None, una lista, ...) -- no es lo mismo que
+            # "Claude no marcó ninguna columna": es una respuesta que no se
+            # pudo leer. Se trata como fallo total (except de abajo, sin
+            # cachear nada) en vez de asumir "todas None" y cachear eso como
+            # si fuera un negativo confirmado.
+            raise ValueError(f"'clasificaciones' no es un dict: {clasificaciones!r}")
+
+        result: dict[str, str | None] = {}
+        for n, c in enumerate(candidates, start=1):
+            field = clasificaciones.get(str(n))
+            result[c["header_norm"]] = field if field in _VALID_DATE_FIELDS else None
+        return result
+    except Exception as exc:
+        log.warning("convertidor_ai.resolve_date_columns_with_ai: fallo — %s", exc)
+        return {}

@@ -12,6 +12,7 @@ import difflib
 import io
 import re
 import unicodedata
+from datetime import date, datetime
 
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -20,7 +21,9 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.convertidor_header_alias import ConvertidorHeaderAlias
 from app.models.sku_descripcion import SkuDescripcion
+from app.services.cenefas.convertidor_ai import resolve_date_columns_with_ai
 from app.services.cenefas.formatters import parse_price_raw
 from app.services.cenefas.validation_engine import DESCRIPTION_MAX_CHARS, DESCRIPTION_WARN_CHARS
 
@@ -56,9 +59,26 @@ _INPUT_ALIASES: dict[str, str] = {
     "comprador":      "comprador",
     "descuentoprov":     "descuento",
     "descuentoprovdet":  "descuento_det",
+    # Fecha inicio/fin de vigencia -- ninguna de las dos es obligatoria en
+    # gestión (muchos exports no las traen); si falta una o las dos, vigencia
+    # simplemente queda como antes (ver _format_vigencia). Varios alias por
+    # lado porque el nombre exacto de la columna varía según el export.
+    "fechainicio":        "fecha_inicio",
+    "fechadeinicio":      "fecha_inicio",
+    "fechainicial":       "fecha_inicio",
+    "fechadesde":         "fecha_inicio",
+    "vigenciadesde":      "fecha_inicio",
+    "iniciovigencia":     "fecha_inicio",
+    "fechafin":           "fecha_fin",
+    "fechadefin":         "fecha_fin",
+    "fechafinal":         "fecha_fin",
+    "fechahasta":         "fecha_fin",
+    "vigenciahasta":      "fecha_fin",
+    "finvigencia":        "fecha_fin",
 }
 
 _HEADER_SCAN_ROWS = 10
+_DATE_SAMPLE_ROWS = 8  # filas de datos a mirar para juntar valores de muestra para la IA
 
 
 def normalize_sku(raw) -> str:
@@ -121,6 +141,62 @@ def _clean_str(raw) -> str:
     return str(raw).strip() if raw is not None else ""
 
 
+_DATE_FORMATS = ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y")
+
+
+def _parse_date_or_none(raw) -> date | None:
+    """xlsx con la celda formateada como fecha llega ya como date/datetime
+    (openpyxl con data_only=True); CSV y celdas de texto llegan como string
+    en alguno de los formatos regionales más comunes. Cualquier otra cosa
+    (vacío, texto que no matchea ningún formato) es None -- fecha_inicio/fin
+    son opcionales, así que un valor no reconocible se ignora en vez de
+    romper el import entero."""
+    if isinstance(raw, datetime):
+        return raw.date()
+    if isinstance(raw, date):
+        return raw
+    s = str(raw).strip() if raw is not None else ""
+    if not s:
+        return None
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+_MESES = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+]
+
+
+def _format_vigencia(fecha_inicio: date | None, fecha_fin: date | None) -> str:
+    """"Desde el 10 al 16 de julio" (mismo mes/año -- el caso común de una
+    promo semanal), con fallback a mencionar el mes de cada punta si difieren.
+    Ninguna de las dos fechas es obligatoria: con una sola, frase abierta
+    ("Desde"/"Hasta" nomás); con ninguna, "" (igual que antes de esta regla,
+    completable a mano en la grilla)."""
+    if fecha_inicio and fecha_fin:
+        mes_inicio = _MESES[fecha_inicio.month - 1]
+        if fecha_inicio.year != fecha_fin.year:
+            mes_fin = _MESES[fecha_fin.month - 1]
+            return (
+                f"Desde el {fecha_inicio.day} de {mes_inicio} de {fecha_inicio.year} "
+                f"hasta el {fecha_fin.day} de {mes_fin} de {fecha_fin.year}"
+            )
+        if fecha_inicio.month != fecha_fin.month:
+            mes_fin = _MESES[fecha_fin.month - 1]
+            return f"Desde el {fecha_inicio.day} de {mes_inicio} hasta el {fecha_fin.day} de {mes_fin}"
+        return f"Desde el {fecha_inicio.day} al {fecha_fin.day} de {mes_inicio}"
+    if fecha_inicio:
+        return f"Desde el {fecha_inicio.day} de {_MESES[fecha_inicio.month - 1]}"
+    if fecha_fin:
+        return f"Hasta el {fecha_fin.day} de {_MESES[fecha_fin.month - 1]}"
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Validación por tipo esperado de columna
 # ---------------------------------------------------------------------------
@@ -180,18 +256,40 @@ def _read_csv_rows(csv_bytes: bytes) -> list[tuple]:
     return [tuple(row) for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
 
 
-def parse_input_excel(file_bytes: bytes, filename: str = "") -> list[dict]:
+async def parse_input_excel(
+    file_bytes: bytes,
+    filename: str = "",
+    *,
+    db: AsyncSession,
+    current_user_id: int,
+    allow_ai: bool = False,
+) -> tuple[list[dict], int]:
     """Detecta la fila de headers real (puede no ser la fila 1 — el export
     real de gestión trae una fila de título + una fila en blanco antes),
     mapea columnas por nombre normalizado, y extrae por fila: codigo,
     nombre_articulo, descripcion_excel (si el Excel ya trae una columna
     "Descripción" propia -- ver match_rows() para cómo se prioriza contra
     el catálogo), moneda, precio_anterior, precio, oferta, oferta_det,
-    descripcion_web, comprador, descuento, descuento_det. Columnas no
-    reconocidas se ignoran.
+    descripcion_web, comprador, descuento, descuento_det, fecha_inicio,
+    fecha_fin (estas últimas dos opcionales -- ver _format_vigencia).
+
+    Columnas no reconocidas por _INPUT_ALIASES se resuelven en dos pasos más
+    antes de darse por ignoradas, solo para fecha_inicio/fecha_fin: primero
+    contra ConvertidorHeaderAlias (headers que Tinín ya clasificó en un import
+    anterior — nunca vuelve a gastar una llamada a IA en el mismo nombre de
+    columna dos veces), y si sigue sin match y allow_ai=True (el caller decide
+    esto según el permiso ai.tinin del usuario), se le pide a Tinín que
+    clasifique las columnas no reconocidas cuyos valores de muestra ya
+    parsean como fecha real (ver resolve_date_columns_with_ai en
+    convertidor_ai.py) — nunca se le pregunta por columnas que no tienen
+    pinta de fecha en los datos.
 
     Acepta tanto .xlsx/.xlsm como .csv (ver _read_csv_rows) — decidido por
-    la extensión del archivo subido, no por su contenido."""
+    la extensión del archivo subido, no por su contenido.
+
+    Devuelve (filas, learned_aliases_count) -- este último es cuántos headers
+    nuevos aprendió Tinín en esta llamada, para que el caller sepa si hace
+    falta commitear (mismo patrón que learned_count en match_rows())."""
     if filename.lower().endswith(".csv"):
         rows = _read_csv_rows(file_bytes)
     else:
@@ -223,6 +321,87 @@ def parse_input_excel(file_bytes: bytes, filename: str = "") -> list[dict]:
             "No encontré una columna 'CODIGO' reconocible en las primeras "
             f"{_HEADER_SCAN_ROWS} filas del Excel — verificá que sea el export crudo de gestión."
         )
+
+    learned_aliases_count = 0
+    header_row = rows[header_row_idx]
+    mapped_cols = set(col_map.keys())
+    # col_idx de cada celda con texto en la fila de headers que _INPUT_ALIASES
+    # no supo mapear -- candidatas a resolverse por el cache aprendido o por IA.
+    unresolved_by_norm: dict[str, int] = {}
+    unresolved_display: dict[str, str] = {}
+    for col_idx, cell_val in enumerate(header_row):
+        if cell_val is None or col_idx in mapped_cols:
+            continue
+        norm = _norm(cell_val)
+        if not norm:
+            continue
+        unresolved_by_norm[norm] = col_idx
+        unresolved_display[norm] = str(cell_val).strip()
+
+    if unresolved_by_norm:
+        result = await db.execute(
+            select(ConvertidorHeaderAlias.header_norm, ConvertidorHeaderAlias.field_name)
+            .where(ConvertidorHeaderAlias.header_norm.in_(unresolved_by_norm.keys()))
+        )
+        for header_norm, field_name in result.all():
+            # Se saca de unresolved pase lo que pase -- un cache negativo
+            # (field_name None, "confirmado que no es de vigencia") también
+            # evita volver a preguntarle a la IA por este mismo header.
+            col_idx = unresolved_by_norm.pop(header_norm, None)
+            if col_idx is not None and field_name is not None:
+                col_map[col_idx] = field_name
+
+    if unresolved_by_norm and allow_ai:
+        sample_rows = rows[header_row_idx + 1: header_row_idx + 1 + _DATE_SAMPLE_ROWS]
+        candidates = []
+        for header_norm, col_idx in unresolved_by_norm.items():
+            muestras = [
+                str(r[col_idx]).strip()
+                for r in sample_rows
+                if col_idx < len(r) and r[col_idx] is not None and _parse_date_or_none(r[col_idx])
+            ]
+            # Al menos dos valores de muestra parseando como fecha real -- uno
+            # solo puede ser casualidad (un texto que por azar matchea un
+            # formato de fecha), dos ya es señal sólida de que la columna
+            # entera es de fechas y vale la pena preguntarle a Tinín cuál es.
+            if len(muestras) >= 2:
+                candidates.append({
+                    "header_norm": header_norm,
+                    "header_display": unresolved_display[header_norm],
+                    "muestras": muestras[:3],
+                })
+
+        if candidates:
+            # {} significa que la llamada entera falló (red, JSON con forma
+            # rara, etc.) -- no cachear nada en ese caso, se reintenta en el
+            # próximo import. Un dict no vacío trae una entrada por candidato
+            # (positiva o None), ver resolve_date_columns_with_ai.
+            clasificaciones = await resolve_date_columns_with_ai(candidates, db, current_user_id)
+            if clasificaciones:
+                nuevas_aliases: list[tuple[str, str | None]] = []
+                seen_fields: set[str] = set()
+                for header_norm, field_name in clasificaciones.items():
+                    if field_name is not None:
+                        if field_name in seen_fields:
+                            # Dos columnas distintas no pueden ser el mismo
+                            # campo -- ante la duda no asignamos ninguna de
+                            # las dos (mejor perder la detección que pisar
+                            # una con la otra), y se cachea como "no es de
+                            # vigencia" para no reabrir la duda en el
+                            # próximo import con el mismo layout.
+                            field_name = None
+                        else:
+                            seen_fields.add(field_name)
+                            col_idx = unresolved_by_norm.get(header_norm)
+                            if col_idx is not None:
+                                col_map[col_idx] = field_name
+                    nuevas_aliases.append((header_norm, field_name))
+
+                stmt = pg_insert(ConvertidorHeaderAlias).values([
+                    {"header_norm": h, "field_name": f} for h, f in nuevas_aliases
+                ]).on_conflict_do_nothing(index_elements=["header_norm"])
+                await db.execute(stmt)
+                learned_aliases_count = len(nuevas_aliases)
 
     # col_map es col_idx -> var_name; invertido una sola vez, no por fila.
     col_by_var = {var: c for c, var in col_map.items()}
@@ -260,8 +439,10 @@ def parse_input_excel(file_bytes: bytes, filename: str = "") -> list[dict]:
             "comprador":         _clean_str(cell(row, "comprador")),
             "descuento":         _clean_str(cell(row, "descuento")),
             "descuento_det":     _clean_str(cell(row, "descuento_det")),
+            "fecha_inicio":      _parse_date_or_none(cell(row, "fecha_inicio")),
+            "fecha_fin":         _parse_date_or_none(cell(row, "fecha_fin")),
         })
-    return parsed
+    return parsed, learned_aliases_count
 
 
 # ---------------------------------------------------------------------------
@@ -529,10 +710,11 @@ async def match_rows(
             "comprador":           row["comprador"],
             "descuento":           row["descuento"],
             "descuento_det":       row["descuento_det"],
-            # Sin columna candidata en gestión para ninguna de estas cuatro
-            # (ver convertidor.py docstring) — quedan vacías, editables a
-            # mano en la grilla solo para destino="rompe_precios".
-            "vigencia":            "",
+            # vigencia se arma sola si el Excel trajo fecha_inicio/fecha_fin
+            # (ver _format_vigencia) — ninguna columna candidata en gestión
+            # para aclaracion1-3 (ver convertidor.py docstring), quedan
+            # vacías, editables a mano en la grilla.
+            "vigencia":            _format_vigencia(row.get("fecha_inicio"), row.get("fecha_fin")),
             "aclaracion1":         "",
             "aclaracion2":         "",
             "aclaracion3":         "",
@@ -563,12 +745,12 @@ async def match_rows(
 _OUTPUT_HEADERS = [
     "Código", "Nombre Artículo", "Comprador", "Descripción", "Moneda",
     "Precio Anterior", "Precio", "Oferta", "Oferta Det",
-    "Descuento Prov", "Descuento Prov Det", "Descripción Web",
+    "Descuento Prov", "Descuento Prov Det", "Descripción Web", "Vigencia",
 ]
 _OUTPUT_FIELDS = [
     "codigo", "nombre_articulo", "comprador", "descripcion", "moneda",
     "precio_anterior", "precio", "oferta", "oferta_det",
-    "descuento", "descuento_det", "descripcion_web",
+    "descuento", "descuento_det", "descripcion_web", "vigencia",
 ]
 # warning code -> índice de columna 1-based que se resalta
 _WARN_COL = {
@@ -635,7 +817,7 @@ def build_output_workbook(rows: list[dict], destino: str = "redexpres") -> bytes
         col_widths = [16, 36, 20, 36, 14, 12, 16, 16, 26, 30, 30, 30]
     else:
         headers, fields, warn_col = _OUTPUT_HEADERS, _OUTPUT_FIELDS, _WARN_COL
-        col_widths = [16, 36, 20, 36, 10, 14, 12, 14, 14, 16, 16, 40]
+        col_widths = [16, 36, 20, 36, 10, 14, 12, 14, 14, 16, 16, 40, 26]
 
     wb = openpyxl.Workbook()
     ws = wb.active

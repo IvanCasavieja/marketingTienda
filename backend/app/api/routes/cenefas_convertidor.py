@@ -34,15 +34,28 @@ router = APIRouter(prefix="/tools/cenefas/convertidor", tags=["cenefas-convertid
 
 
 @router.post("/preview")
+@limiter.limit("20/minute")
 async def preview(
+    request: Request,
     excel: UploadFile = File(...),
     destino: str = Form(default="redexpres"),
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     excel_bytes = await read_limited(excel, "Excel")
+    # Tinín solo entra a clasificar columnas de fecha sin alias reconocido si
+    # el usuario tiene el permiso de ese agente específico (misma separación
+    # ai.don_tino/ai.dona_tina/ai.tinin/ai.triada que el resto de la IA acá) —
+    # sin el permiso, esas columnas simplemente quedan sin reconocer, como si
+    # no hubiera IA disponible en este ambiente.
+    allow_ai = bool(settings.ANTHROPIC_API_KEY) and (
+        current_user.is_superuser or "ai.tinin" in (current_user.permissions or [])
+    )
     try:
-        parsed = parse_input_excel(excel_bytes, excel.filename or "")
+        parsed, learned_aliases_count = await parse_input_excel(
+            excel_bytes, excel.filename or "",
+            db=db, current_user_id=current_user.id, allow_ai=allow_ai,
+        )
     except ConvertidorParseError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -50,7 +63,7 @@ async def preview(
         raise HTTPException(status_code=400, detail=f"Error al parsear el archivo: {e}")
 
     rows, learned_count, ma_pairs = await match_rows(parsed, db, current_user.id, destino)
-    if learned_count:
+    if learned_count or learned_aliases_count:
         await db.commit()
     matched = sum(1 for r in rows if r["matched"])
     return {

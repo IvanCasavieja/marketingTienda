@@ -49,6 +49,7 @@ const COLUMNS_REDEXPRES: { key: ColumnKey; i18nKey: string; editable?: EditableK
   { key: "descuento",       i18nKey: "descuentoProv" },
   { key: "descuento_det",   i18nKey: "descuentoProvDet" },
   { key: "descripcion_web", i18nKey: "descripcionWeb",  warningCodes: ["missing_descripcion_web", "descripcion_web_invalida"] },
+  { key: "vigencia",        i18nKey: "vigencia",        editable: "simple" },
 ];
 
 // Rompe Precios no tiene mecánica de oferta/moneda/descripcion_web — en
