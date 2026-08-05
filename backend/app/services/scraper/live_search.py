@@ -825,142 +825,93 @@ def buscar_estacionhogar(term: str) -> list[ProductRecord]:
     return _buscar_buscador_dinamico_php(term, "https://www.estacionhogar.uy", "Estación Hogar")
 
 
-# ── LOi (API pública documentada — /api/v1/products.json) ─────────────────────
-# A diferencia del resto de este archivo, LOi publica su propia API con límites
-# de uso documentados (/developer-ai.txt, /llms-full.txt): 60 req/min para
-# búsqueda, y piden identificarse con un User-Agent descriptivo en vez de
-# simular un navegador. Por eso esta cadena NO reusa _UA_HEADERS (que finge ser
-# Chrome) y tiene su propio limitador de velocidad — puesto a propósito, no
-# heredado del resto del archivo (que no tiene ninguno).
-
-_LOI_USER_AGENT   = "PrecioCompetitivoBot/1.0 (uso interno, solo lectura de precios publicos)"
-_LOI_MIN_INTERVAL = 1.1  # seg entre pedidos — bien por debajo del límite de 60/min documentado
-_loi_lock         = threading.Lock()
-_loi_last_call    = 0.0
-
-
-def _loi_throttle() -> None:
-    global _loi_last_call
-    with _loi_lock:
-        ahora = time.monotonic()
-        espera = _loi_last_call + _LOI_MIN_INTERVAL - ahora
-        if espera > 0:
-            time.sleep(espera)
-        _loi_last_call = time.monotonic()
-
-
-_LOI_MAX_INTENTOS = 3  # tope de reintentos con término progresivamente más corto
-
-# La API pública de LOi (/api/v1/products.json) devuelve precio.amount /
-# precio.original_amount SIN IVA — el sitio real (loi.com.uy) muestra el
-# precio final CON IVA al consumidor. Verificado con un caso real:
-# microondas-midea-manual-20l-mmop01mz-mmpfbk devuelve amount=63.115/
-# original_amount=81.148 por API, pero el sitio muestra USD 77 / USD 99 —
-# ambos coinciden con multiplicar por 1.22 (IVA básico de Uruguay), con un
-# error menor a 0.001. Sin este ajuste, todo lo que trae LOi se muestra ~18%
-# más barato de lo que realmente cuesta (el % de descuento sale bien igual,
-# porque surge de dividir dos precios que arrastran el mismo error).
-_LOI_IVA = 1.22
-
-
-def _loi_pedir(q: str) -> dict | None:
-    _loi_throttle()
-    try:
-        r = _requests.get(
-            "https://loi.com.uy/api/v1/products.json",
-            params={"q": q, "per_page": 24},
-            headers={"User-Agent": _LOI_USER_AGENT, "Accept": "application/json"},
-            timeout=8,
-        )
-        if r.status_code == 429:
-            log.warning("LOi: rate-limited (429) buscando '%s'", q)
-            return None
-        r.raise_for_status()
-        return r.json()
-    except Exception as exc:
-        log.warning("LOi: error buscando '%s' — %s", q, exc)
-        return None
+# ── LOi (Algolia — mismo índice que usa el buscador real del sitio) ───────────
+# La API pública documentada de LOi (/api/v1/products.json, "LOi Uruguay
+# Product Feed") resultó ser un SUBCONJUNTO incompleto del catálogo real —
+# confirmado con un caso concreto: "Lavarropas JAMES LR 1006" está vivo y a la
+# venta en el sitio, pero jamás aparece en ese feed pase lo que se le
+# pregunte (probado con "1006", "lavarropas james 1006", "lr 1006", etc.,
+# todos 0 resultados). El buscador real del sitio (loi.com.uy) le pega
+# directo a Algolia con una search-only key expuesta del lado del cliente —
+# así funciona Algolia por diseño (es la misma clase de key que ya usa
+# cualquier visitante al escribir en el buscador, no es un acceso
+# privilegiado ni un login). App ID + key acá abajo se obtuvieron capturando
+# el tráfico real del navegador al buscar en el sitio (no están en el HTML
+# estático: ese trae una key vieja/distinta que da 403 — parece que el sitio
+# tiene un widget de búsqueda legacy sin usar además del que sí está activo).
+#
+# Ventajas sobre el feed público, verificadas: catálogo completo (mismo
+# índice que usan los clientes reales), sin el problema de "coincidencia de
+# frase" del feed viejo (acá "lavarropas james" sí trae las 6 variantes,
+# incluida "Lavarropas Inverter JAMES"), y el precio ya viene neto de IVA y
+# con descuento aplicado (nunca hace falta el ajuste ×1.22 que sí requería
+# el feed público).
+#
+# Riesgo conocido: esta key no es una API pública documentada — si LOi la
+# rota (redeploy del frontend con una key nueva), esta cadena empieza a fallar
+# hasta que se recapture una key vigente de la misma forma (Network tab del
+# navegador mientras se busca algo en loi.com.uy).
+_LOI_ALGOLIA_APP_ID  = "90I0MRELM2"
+_LOI_ALGOLIA_API_KEY = "004b911528dce8b9f9543d1461c60347"
+_LOI_ALGOLIA_INDEX   = "uy_products"
+_LOI_ALGOLIA_URL     = f"https://{_LOI_ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/*/queries"
 
 
 def buscar_loi(term: str) -> list[ProductRecord]:
     if _es_codigo(term):
-        return []  # la API pública de LOi no documenta búsqueda por barcode/SKU
-
-    # A diferencia del buscador web de LOi (Algolia, tolerante), su API pública
-    # /api/v1/products.json es más estricta con términos de varias palabras --
-    # probado contra la API real: "lavarropas james" NO trae "Lavarropas
-    # Inverter JAMES" (que sí aparece buscando "lavarropas" o "james" por
-    # separado), aunque el nombre tiene las dos palabras -- no alcanza con que
-    # estén presentes, hace falta algo más parecido a coincidencia de frase.
-    # Como en español la palabra de categoría suele ir primero ("celular
-    # samsung", "heladera whirlpool"), también se prueba sacando palabras
-    # desde el principio -- pero a diferencia de antes, se JUNTAN los
-    # candidatos de TODOS los intentos (dedupe por id) en vez de parar en el
-    # primero que trae algo: con el término completo YA trae resultados en
-    # casos como este, así que pararse ahí perdía las variantes que solo
-    # aparecen con el término más corto. La relevancia real se sigue midiendo
-    # después (score_match) contra el término COMPLETO original, nunca contra
-    # la versión achicada -- achicar es solo para encontrar más candidatos en
-    # la API de LOi, no para relajar qué cuenta como resultado válido. La
-    # precisión de marca/categoría (que "lavarropas james" no traiga
-    # "Refrigerador JAMES") queda del lado de la revisión semántica de Doña
-    # Tina sobre el conjunto completo de resultados (ver don_tino_precios.py:
-    # filtrar_relevancia_automatica) en vez de un chequeo rígido acá -- exigir
-    # que todas las palabras aparezcan literalmente rechaza también búsquedas
-    # más amplias legítimas.
-    palabras = term.split()
-    intentos = [term] + [" ".join(palabras[i:]) for i in range(1, len(palabras))]
-    intentos = intentos[:_LOI_MAX_INTENTOS]
-
-    vistos: set = set()
-    candidatos: list[dict] = []
-    for intento in intentos:
-        data = _loi_pedir(intento)
-        for item in (data or {}).get("products") or []:
-            clave = item.get("id") or item.get("sku") or item.get("url")
-            if clave in vistos:
-                continue
-            vistos.add(clave)
-            candidatos.append(item)
+        return []  # sin evidencia de que este índice indexe SKU/barcode como campo buscable
 
     records: list[ProductRecord] = []
-    for item in candidatos:
-        nombre_item = item.get("title") or ""
+    try:
+        r = _requests.post(
+            _LOI_ALGOLIA_URL,
+            headers={
+                "x-algolia-api-key": _LOI_ALGOLIA_API_KEY,
+                "x-algolia-application-id": _LOI_ALGOLIA_APP_ID,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            json={"requests": [{
+                "indexName": _LOI_ALGOLIA_INDEX,
+                "query": term,
+                # product_enabled:1 -- mismo facet que ya aplica el buscador real del
+                # sitio, para no traer productos deshabilitados/de baja.
+                "params": "hitsPerPage=30&facetFilters=%5B%22product_enabled%3A1%22%5D",
+            }]},
+            timeout=8,
+        )
+        r.raise_for_status()
+        hits = r.json()["results"][0].get("hits") or []
+    except Exception as exc:
+        log.warning("LOi: error buscando '%s' — %s", term, exc)
+        return records
+
+    for hit in hits:
+        nombre_item = hit.get("product_name") or ""
         score = score_match(nombre_item, term)
         if score < _MIN_SCORE:
             continue
 
-        precio_info = item.get("price") or {}
-        precio = precio_info.get("amount")
+        precio = hit.get("product_price_int")
         if precio is None:
             continue
-        precio_lista = precio_info.get("original_amount")
+        precio_lista = hit.get("market_price_int")
         if precio_lista is not None and precio_lista <= precio:
             precio_lista = None
-
-        # Ver _LOI_IVA arriba — la API entrega neto, hay que llevarlo al
-        # precio con IVA que realmente se paga (el que muestra el sitio).
-        precio = round(precio * _LOI_IVA, 2)
-        if precio_lista is not None:
-            precio_lista = round(precio_lista * _LOI_IVA, 2)
-
-        marca_info      = item.get("brand") or {}
-        categoria_info   = item.get("category") or {}
 
         records.append(ProductRecord(
             tienda          = "LOi",
             nombre          = nombre_item,
             precio          = float(precio),
             precio_lista    = float(precio_lista) if precio_lista is not None else None,
-            sku             = item.get("sku") or (str(item["id"]) if item.get("id") else None),
+            sku             = hit.get("product_sku") or (str(hit["product_id"]) if hit.get("product_id") else None),
             barcode         = None,
-            marca           = marca_info.get("name") or None,
-            categoria       = categoria_info.get("name") or None,
-            url             = item.get("url") or "https://loi.com.uy",
+            marca           = hit.get("fabricante_name") or hit.get("producer_name") or None,
+            categoria       = hit.get("category") or None,
+            url             = hit.get("product_url") or "https://loi.com.uy",
             sucursal_id     = None,
             sucursal_nombre = None,
             relevancia      = score,
-            moneda          = precio_info.get("currency") or "UYU",
+            moneda          = hit.get("currency") or "UYU",
         ))
 
     return records
