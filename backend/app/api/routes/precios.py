@@ -103,14 +103,30 @@ async def buscar_vivo_stream(
         None,
         description="Cadenas a consultar, separadas por coma. Si se omite, se usan las cadenas por defecto (LOi queda afuera salvo que se la seleccione a propósito).",
     ),
-    _: User = Depends(require_permission("precios.search")),
+    current_user: User = Depends(require_permission("precios.search")),
+    db: AsyncSession = Depends(get_db),
 ):
     """Búsqueda EN VIVO con SSE — devuelve resultados cadena por cadena en cuanto
     cada una termina. Evita el timeout de 30s de Render free tier porque los headers
     HTTP (incluyendo CORS) se envían con el primer byte, antes de que cualquier
-    cadena termine."""
+    cadena termine.
+
+    Al margen de esa transmisión progresiva por cadena, el resultado FINAL que se
+    marca como relevante para el frontend pasa por dos pasadas de Doña Tina una vez
+    que terminaron TODAS las cadenas con el término original:
+      1) generar_sinonimos_busqueda + un reintento SOLO en las cadenas que no
+         encontraron nada -- score_match no puede arreglar que "perfume" no
+         encuentre perfumes reales si sus nombres dicen "EDT"/"EDP"/"PARFUM" (ver
+         docstring de esa función); es un problema de vocabulario de búsqueda, no
+         de relevancia de resultados ya traídos.
+      2) filtrar_relevancia_automatica sobre el conjunto ya ensanchado -- acá sí es
+         relevancia real: que "Refrigerador JAMES" no pase para una búsqueda de
+         lavarropas, aunque la marca coincida.
+    Ambas fail-open: si Claude falla en cualquiera de las dos, se sigue con lo que
+    ya se tenía en vez de romper la búsqueda entera."""
     import asyncio, json, threading
-    from app.services.scraper.live_search import buscar_todas_streaming_cached, _DATA_DIR, _CADENAS_TODAS
+    from app.services.scraper.live_search import buscar_todas_streaming_cached, _DATA_DIR, _CADENAS_DEFAULT, _CADENAS_TODAS
+    from app.services.don_tino_precios import filtrar_relevancia_automatica, generar_sinonimos_busqueda
 
     # Filtramos contra la lista real de cadenas soportadas — así un valor
     # desconocido o vacío nunca rompe la búsqueda, simplemente se ignora.
@@ -138,6 +154,33 @@ async def buscar_vivo_stream(
                 yield f"data: {payload}\n\n"
             return StreamingResponse(_not_found(), media_type="text/event-stream")
 
+    # "GDU" es una fuente paraguas (Disco/Devoto/Géant) -- cada producto vuelve
+    # etiquetado con su tienda real, "GDU" como string nunca aparece en un item
+    # (mismo caso especial que ya maneja el frontend en cadenasSinResultado).
+    _GDU_MIEMBROS = {"Disco", "Devoto", "Geant"}
+
+    def _cadena_sin_resultados(cadena: str, items_totales: list[dict]) -> bool:
+        if cadena == "GDU":
+            return not any(it["tienda"] in _GDU_MIEMBROS for it in items_totales)
+        return not any(it["tienda"] == cadena for it in items_totales)
+
+    def _record_a_dict(r) -> dict:
+        return {
+            "tienda":          r.tienda,
+            "nombre":          r.nombre,
+            "precio":          r.precio,
+            "precio_lista":    r.precio_lista,
+            "sku":             r.sku,
+            "barcode":         r.barcode,
+            "marca":           r.marca,
+            "url":             r.url,
+            "sucursal_id":     r.sucursal_id,
+            "sucursal_nombre": r.sucursal_nombre,
+            "relevancia":      r.relevancia,
+            "moneda":          r.moneda,
+            "tienda_real":     r.tienda_real,
+        }
+
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue = asyncio.Queue()
 
@@ -145,33 +188,18 @@ async def buscar_vivo_stream(
         try:
             for cadena, records, error in buscar_todas_streaming_cached(search_term, _DATA_DIR, cadenas_seleccionadas):
                 try:
-                    items = [
-                        {
-                            "tienda":          r.tienda,
-                            "nombre":          r.nombre,
-                            "precio":          r.precio,
-                            "precio_lista":    r.precio_lista,
-                            "sku":             r.sku,
-                            "barcode":         r.barcode,
-                            "marca":           r.marca,
-                            "url":             r.url,
-                            "sucursal_id":     r.sucursal_id,
-                            "sucursal_nombre": r.sucursal_nombre,
-                            "relevancia":      r.relevancia,
-                            "moneda":          r.moneda,
-                            "tienda_real":     r.tienda_real,
-                        }
-                        for r in records
-                        if r.nombre and r.precio
-                    ]
+                    items = [_record_a_dict(r) for r in records if r.nombre and r.precio]
                     payload: dict = {"cadena": cadena, "items": items}
                     if error:
                         payload["error"] = error
-                    loop.call_soon_threadsafe(queue.put_nowait, json.dumps(payload))
+                    # Se manda el dict crudo (no pre-serializado) -- generate() necesita
+                    # los items en Python para acumularlos y correr el filtro final de
+                    # Doña Tina antes de mandar el evento "done".
+                    loop.call_soon_threadsafe(queue.put_nowait, payload)
                     logger.info("buscar_vivo_stream: %s OK — %d items para '%s'", cadena, len(items), q)
                 except Exception as chain_exc:
                     logger.error("buscar_vivo_stream: error serializando %s — %s", cadena, chain_exc, exc_info=True)
-                    fallback = json.dumps({"cadena": cadena, "items": [], "error": f"Error interno: {chain_exc}"})
+                    fallback = {"cadena": cadena, "items": [], "error": f"Error interno: {chain_exc}"}
                     loop.call_soon_threadsafe(queue.put_nowait, fallback)
         except Exception as exc:
             logger.error("buscar_vivo_stream: error iterando cadenas para '%s' — %s", q, exc, exc_info=True)
@@ -184,6 +212,7 @@ async def buscar_vivo_stream(
         # Heartbeat every 5s — prevents Render/proxy from closing the connection
         # during the 20-30s gap while El Dorado / Ta-Ta are resolving timeouts.
         deadline = loop.time() + 120.0
+        items_totales: list[dict] = []
         while True:
             remaining = deadline - loop.time()
             if remaining <= 0:
@@ -196,9 +225,70 @@ async def buscar_vivo_stream(
                 yield ": keep-alive\n\n"  # SSE comment — browsers ignore, proxies see data
                 continue
             if msg is None:
-                yield 'data: {"done":true}\n\n'
+                # Todas las cadenas terminaron con el término original -- antes de
+                # revisar relevancia, se detectan las cadenas que no encontraron NADA
+                # y se les da una segunda chance con sinónimos (ver
+                # generar_sinonimos_busqueda: "perfume" no encuentra perfumes reales
+                # si el catálogo los nombra "EDT"/"EDP"). Solo se ensanchan esas
+                # cadenas puntuales, nunca las 15 de nuevo -- no tiene sentido
+                # repetir una búsqueda que ya encontró algo con el término tal cual.
+                cadenas_pedidas = cadenas_seleccionadas or _CADENAS_DEFAULT
+                cadenas_pobres = [c for c in cadenas_pedidas if _cadena_sin_resultados(c, items_totales)]
+                if cadenas_pobres:
+                    try:
+                        sinonimos = await generar_sinonimos_busqueda(search_term, db, current_user.id)
+                    except Exception as exc:
+                        logger.warning("buscar_vivo_stream: fallo generando sinónimos para '%s' — %s", q, exc)
+                        sinonimos = []
+                    if sinonimos:
+                        logger.info(
+                            "buscar_vivo_stream: ensanchando %s con sinónimos %s para '%s'",
+                            cadenas_pobres, sinonimos, q,
+                        )
+
+                        async def _buscar_sinonimo(termino_alt: str) -> list[dict]:
+                            try:
+                                resultado = await asyncio.to_thread(
+                                    lambda: list(buscar_todas_streaming_cached(termino_alt, _DATA_DIR, cadenas_pobres))
+                                )
+                            except Exception as exc:
+                                logger.warning("buscar_vivo_stream: fallo ensanchando con '%s' — %s", termino_alt, exc)
+                                return []
+                            return [
+                                _record_a_dict(r)
+                                for _, records, _ in resultado
+                                for r in records
+                                if r.nombre and r.precio
+                            ]
+
+                        # En paralelo -- ensanchar con 3 sinónimos no debería tardar
+                        # 3 veces más que ensanchar con uno solo.
+                        for extra in await asyncio.gather(*(_buscar_sinonimo(s) for s in sinonimos)):
+                            items_totales.extend(extra)
+
+                # Con el conjunto ya ensanchado, Doña Tina revisa la relevancia real
+                # (no cadena por cadena: la decisión de si "Refrigerador JAMES"
+                # corresponde a una búsqueda de lavarropas es la misma sin importar
+                # de qué sitio vino). Fail-open: si la IA falla, se manda todo sin
+                # filtrar antes que romper la búsqueda entera.
+                try:
+                    filtro = await filtrar_relevancia_automatica(search_term, items_totales, db, current_user.id)
+                    await db.commit()  # persiste el ai_usage_log acumulado
+                    indices = set(filtro["indices_mantener"])
+                    items_filtrados = [it for i, it in enumerate(items_totales) if i in indices]
+                    conteo_por_marca = filtro["conteo_por_marca"]
+                except Exception as exc:
+                    logger.error("buscar_vivo_stream: fallo el filtro de Doña Tina para '%s' — %s", q, exc, exc_info=True)
+                    items_filtrados = items_totales
+                    conteo_por_marca = {}
+                yield "data: " + json.dumps({
+                    "done": True,
+                    "items_filtrados": items_filtrados,
+                    "conteo_por_marca": conteo_por_marca,
+                }) + "\n\n"
                 break
-            yield f"data: {msg}\n\n"
+            items_totales.extend(msg.get("items") or [])
+            yield f"data: {json.dumps(msg)}\n\n"
 
     return StreamingResponse(
         generate(),

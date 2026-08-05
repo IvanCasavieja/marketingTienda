@@ -789,7 +789,14 @@
     "searching": "Buscando…",
     "search": "Buscar",
     "searchError": "Erro ao buscar",
-    "chainsCoverage": "13 redes · 134+ lojas consultadas em tempo real",
+    "chainsCoverage": "15 redes · 134+ lojas consultadas em tempo real",
+    "donaTina": {
+      "trabajando": "Doña Tina está trabalhando para você — está revisando os resultados um por um.",
+      "modalTitle": "Busca pronta",
+      "modalSubtitle": "Encontramos {{total}} produto(s) relevantes, agrupados por marca:",
+      "sinMarcas": "Não conseguimos identificar marcas para agrupar — veja a lista completa.",
+      "continuar": "Continuar"
+    },
     "all": "Todas",
     "sources": "Fontes",
     "sourcesTitle": "Quais redes consultar",

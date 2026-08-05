@@ -22,6 +22,7 @@ from app.services.scraper.live_search import (
     buscar_farmashop, buscar_botiga, buscar_pigalle,
     buscar_blackdog, buscar_electrohogar, buscar_covercompany,
     buscar_dimm, buscar_stienda, buscar_fama,
+    buscar_zonatecno, buscar_amv, buscar_estacionhogar,
 )
 from app.services.scraper.adapters import ProductRecord
 
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Mismo dispatch por cadena que ya arma buscar_todas en live_search.py — acá se
 # usa para re-invocar SOLO el adapter de la cadena de un item puntual, en vez
-# de correr las 13 cadenas por cada producto seguido.
+# de correr todas las cadenas por cada producto seguido.
 _BUSCAR_POR_CADENA = {
     "Ta-Ta": buscar_tata,
     "ElDorado": buscar_eldorado,
@@ -43,6 +44,9 @@ _BUSCAR_POR_CADENA = {
     "DIMM": buscar_dimm,
     "Stienda": buscar_stienda,
     "Fama": buscar_fama,
+    "Zona Tecno": buscar_zonatecno,
+    "AMV": buscar_amv,
+    "Estación Hogar": buscar_estacionhogar,
 }
 
 _REDIS_LAST_RUN = "watchlist_check:last_run"
@@ -57,9 +61,10 @@ def _interval_hours() -> int:
 async def chequear_item(item: WatchlistItem) -> ProductRecord | None:
     """Re-busca el producto de un item guardado invocando el adapter de su
     propia cadena con el término de búsqueda original. Match por sku si el
-    item lo tiene; si no (DIMM/Stienda, únicas 2 de 13 cadenas sin sku en el
-    scraper), por nombre exacto (case-insensitive). None si ya no aparece
-    (descontinuado o renombrado).
+    item lo tiene; si no (DIMM, Stienda, Zona Tecno y AMV comparten el mismo
+    backend sin sku propio — ver _buscar_dimm_stienda en live_search.py), por
+    nombre exacto (case-insensitive). None si ya no aparece (descontinuado o
+    renombrado).
 
     Ta-Ta/ElDorado/GDU devuelven una fila por (producto × sucursal) — el mismo
     sku puede aparecer ~15-17 veces con precios distintos. Si el item tiene

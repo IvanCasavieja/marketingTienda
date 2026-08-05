@@ -789,7 +789,14 @@
     "searching": "Searching…",
     "search": "Search",
     "searchError": "Search error",
-    "chainsCoverage": "13 chains · 134+ branches queried in real time",
+    "chainsCoverage": "15 chains · 134+ branches queried in real time",
+    "donaTina": {
+      "trabajando": "Doña Tina is working for you — she's reviewing the results one by one.",
+      "modalTitle": "Search ready",
+      "modalSubtitle": "We found {{total}} relevant product(s), grouped by brand:",
+      "sinMarcas": "We couldn't identify brands to group by — see the full list.",
+      "continuar": "Continue"
+    },
     "all": "All",
     "sources": "Sources",
     "sourcesTitle": "Which chains to query",

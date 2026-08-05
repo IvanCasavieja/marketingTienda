@@ -135,6 +135,168 @@ async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[i
     return [idx for key in claves if key in claves_mantener for idx in grupos[key]]
 
 
+_SINONIMOS_MAX_TOKENS = 300
+
+
+async def generar_sinonimos_busqueda(termino: str, db=None, user_id=None) -> list[str]:
+    """Que una cadena no encuentre nada con el término buscado puede ser un problema
+    de VOCABULARIO, no de que el producto no exista ahí -- ejemplo real: buscar
+    "perfume" no encuentra ningún perfume real en Pigalle porque esos productos se
+    nombran "EDT"/"EDP"/"PARFUM" (nunca dicen literalmente "perfume" -- esa palabra
+    solo aparece en productos "SIN PERFUME" de otras categorías, que sí le ganan por
+    coincidencia de texto). O buscar "heladera" no encuentra nada en un catálogo que
+    solo usa "Refrigerador".
+
+    Le pide a Doña Tina hasta 3 términos alternativos para la MISMA categoría de
+    producto, con vocabulario distinto (técnico, de marca, o un sinónimo regional)
+    al que el término original -- se usan SOLO para ensanchar la búsqueda en las
+    cadenas que ya se sabe que no encontraron nada, nunca reemplazan al término
+    original ni se le muestran al usuario.
+
+    Devuelve [] si el término ya es específico (no hace falta ensanchar) o si la
+    llamada a Claude falla -- fail-open: sin sinónimos, la búsqueda sigue nomás con
+    el término original, nunca se rompe por esto."""
+    prompt = (
+        f'Alguien buscó "{termino}" en un comparador de precios de comercios uruguayos, y '
+        'ESTA búsqueda no encontró nada en algunas cadenas.\n\n'
+        'Si el término ya es específico (marca + tipo de producto reconocible, ej. '
+        '"lavarropas james", "celular samsung"), respondé con una lista vacía -- lo más '
+        'probable es que esa cadena simplemente no tenga ese producto, no hace falta '
+        'ensanchar nada.\n\n'
+        'Si en cambio es un término GENÉRICO de categoría donde el catálogo real podría '
+        'nombrar el producto con otra palabra o terminología técnica (ejemplos reales: '
+        '"perfume" -> los perfumes se nombran "EDT", "EDP", "PARFUM" o "colonia", casi '
+        'nunca dicen literalmente "perfume"; "heladera" -> algunos catálogos dicen '
+        '"refrigerador"), dame hasta 3 términos de búsqueda alternativos que un catálogo '
+        'real podría usar para EL MISMO tipo de producto.\n\n'
+        'Devolvé SOLO un JSON: {"sinonimos": ["termino1", "termino2"]} -- lista vacía si '
+        'no hace falta ensanchar.'
+    )
+    try:
+        content, in_tok, out_tok = await _ask_claude(DONA_TINA_BASE, prompt, max_tokens=_SINONIMOS_MAX_TOKENS)
+        await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
+        parsed = json.loads(_strip_json_fence(content))
+        sinonimos = parsed.get("sinonimos")
+        if not isinstance(sinonimos, list):
+            return []
+        return [s.strip() for s in sinonimos if isinstance(s, str) and s.strip()][:3]
+    except Exception as exc:
+        log.warning("don_tino_precios.generar_sinonimos_busqueda: fallo — %s", exc)
+        return []
+
+
+_AUTO_FILTRO_MAX_POR_TANDA = 60  # mismo criterio que _REFINAR_MAX -- por encima de esto
+                                  # Claude no revisa producto por producto de forma confiable.
+                                  # A diferencia de _afinar_seleccion (que si se pasa del tope
+                                  # se resigna a no afinar), acá se trocea en tandas: este
+                                  # filtro reemplaza por completo al filtro rígido de palabras
+                                  # (ver live_search.py score_match) como único chequeo de
+                                  # marca/categoría real, no es una segunda pasada opcional
+                                  # sobre una lista ya angostada por palabras clave.
+
+
+def _en_tandas(items: list, tam: int):
+    for i in range(0, len(items), tam):
+        yield items[i:i + tam]
+
+
+async def filtrar_relevancia_automatica(termino: str, items: list[dict], db=None, user_id=None) -> dict:
+    """Reemplazo AUTOMÁTICO (corre siempre, sin que el usuario le pida nada a Doña Tina) del
+    filtro rígido por palabras: trata el término buscado como el pedido implícito ("mostrame
+    solo lo que de verdad es esto"), con el mismo criterio real de _afinar_seleccion — no si el
+    texto matchea, sino si el tipo de producto y la marca corresponden. Ejemplo real que motivó
+    esto: buscar "lavarropas james" no debería traer "Refrigerador JAMES" (misma marca, otro
+    producto) ni "Lavarropas MIDEA" (mismo producto, otra marca) — score_match no puede
+    distinguir esto de forma confiable (ver su propio docstring), y exigir que todas las
+    palabras del término aparezcan literalmente (lo que se probó primero) rechaza también
+    búsquedas más amplias legítimas.
+
+    items: [{"tienda", "nombre", "marca": str|None, ...}, ...] — la lista COMPLETA de
+    resultados de la búsqueda en vivo, en el mismo orden en que se les va a aplicar el resto de
+    los campos (precio, url, etc.) al armar la respuesta final.
+
+    Se agrupa por (tienda, nombre) igual que _afinar_seleccion — mismo producto en varias
+    sucursales es UNA sola decisión, no una por fila. Además de mantener/descartar, Claude
+    devuelve la marca que infiere de cada nombre (con la marca ya conocida, si el adapter la
+    expone, como pista) — así se puede armar un total por marca aunque la mayoría de los
+    adapters no traigan un campo de marca propio.
+
+    Devuelve {"indices_mantener": [...], "conteo_por_marca": {"James": 8, ...}, "fallo_parcial":
+    bool}. Los índices son 0-based sobre `items`. Si una tanda falla (red, JSON raro), esa tanda
+    se deja SIN FILTRAR (fail-open, "fallo_parcial"=True) — más vale mostrar de más por un fallo
+    transitorio de la IA que romper la búsqueda entera."""
+    if not items:
+        return {"indices_mantener": [], "conteo_por_marca": {}, "fallo_parcial": False}
+
+    grupos: dict[tuple[str, str], list[int]] = {}
+    marca_conocida: dict[tuple[str, str], str | None] = {}
+    for idx, it in enumerate(items):
+        key = (it["tienda"], it["nombre"])
+        grupos.setdefault(key, []).append(idx)
+        marca_conocida.setdefault(key, it.get("marca"))
+
+    claves = list(grupos.keys())
+    mantener: set[tuple[str, str]] = set()
+    conteo_por_marca: dict[str, int] = {}
+    fallo_parcial = False
+
+    for tanda in _en_tandas(claves, _AUTO_FILTRO_MAX_POR_TANDA):
+        lineas = []
+        for n, (tienda, nombre) in enumerate(tanda, start=1):
+            pista = marca_conocida.get((tienda, nombre))
+            lineas.append(f"{n}. [{tienda}] {nombre}" + (f" (marca conocida: {pista})" if pista else ""))
+        listado = "\n".join(lineas)
+        prompt = (
+            f'El usuario buscó "{termino}" en el comparador de precios de la competencia. '
+            f'Estos son los productos únicos que trajeron los distintos sitios (si el mismo '
+            f'producto aparece en varias sucursales de una cadena, acá aparece una sola vez '
+            f'representándolas a todas):\n{listado}\n\n'
+            'Para cada uno, decidí con criterio real (qué tipo de producto es y de qué marca, '
+            'no solo si el texto se parece a la búsqueda) si corresponde de verdad a lo que se '
+            'buscó. Por ejemplo, si se buscó "lavarropas james": un "Refrigerador JAMES" NO '
+            'corresponde (misma marca, otro tipo de producto) y un "Lavarropas MIDEA" tampoco '
+            '(mismo tipo de producto, otra marca), aunque los dos compartan texto con la '
+            'búsqueda. Si el término NO menciona una marca específica (ej. solo "notebook"), no '
+            'rechaces por marca — dejá pasar todas las marcas que sean genuinamente el producto '
+            'buscado.\n\n'
+            'Devolvé SOLO un JSON con esta forma exacta: {"items": {"1": {"mantener": true, '
+            '"marca": "James"}, "2": {"mantener": false, "marca": null}, ...}} — una entrada '
+            'por cada número de la lista, en el mismo orden. "marca" es el fabricante tal como '
+            'aparece en el nombre (null si "mantener" es false, o si de verdad no se puede '
+            'inferir ninguna marca del nombre).'
+        )
+        try:
+            content, in_tok, out_tok = await _ask_claude(DONA_TINA_BASE, prompt, max_tokens=3000)
+            await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
+            parsed = json.loads(_strip_json_fence(content))
+            resultado_items = parsed.get("items")
+            if not isinstance(resultado_items, dict):
+                raise ValueError(f"'items' no es un dict: {resultado_items!r}")
+        except Exception as exc:
+            log.warning("don_tino_precios.filtrar_relevancia_automatica: fallo en una tanda — %s", exc)
+            fallo_parcial = True
+            for key in tanda:
+                mantener.add(key)
+            continue
+
+        for n, key in enumerate(tanda, start=1):
+            entrada = resultado_items.get(str(n))
+            if not isinstance(entrada, dict) or entrada.get("mantener") is not True:
+                continue
+            mantener.add(key)
+            marca = entrada.get("marca")
+            marca = marca.strip() if isinstance(marca, str) and marca.strip() else marca_conocida.get(key)
+            if marca:
+                conteo_por_marca[marca] = conteo_por_marca.get(marca, 0) + len(grupos[key])
+
+    indices_mantener = sorted(idx for key in mantener for idx in grupos[key])
+    return {
+        "indices_mantener": indices_mantener,
+        "conteo_por_marca": conteo_por_marca,
+        "fallo_parcial": fallo_parcial,
+    }
+
+
 async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=None, user_id=None) -> dict:
     """Un único punto de entrada para todo lo que el usuario le escribe a Doña
     Tina sobre estos resultados: puede ser una instrucción de filtro ("quiero

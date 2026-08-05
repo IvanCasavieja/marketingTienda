@@ -6,8 +6,10 @@ import { fMoneyByCurrency } from "@/lib/format";
 import { Search, ExternalLink, Loader2, TrendingDown, Store, AlertTriangle, BarChart3, ArrowRight, ChevronDown, ChevronUp, SlidersHorizontal, Check, Download, X, Filter } from "lucide-react";
 import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
+import TotalesPorMarcaModal from "@/components/precios/TotalesPorMarcaModal";
 import { CADENA_CONFIG, CADENA_CATEGORIA, CadenaBadge } from "@/components/precios/cadenaConfig";
 import DonTinoFloating from "@/components/DonTinoFloating";
+import { DonaTinaTrabajando } from "@/components/DonaTinaTrabajando";
 import SeguirButton from "@/components/precios/SeguirButton";
 import { WatchlistsProvider } from "@/components/precios/WatchlistsContext";
 import { useTranslation } from "react-i18next";
@@ -22,7 +24,7 @@ const CATEGORIA_KEYS: Record<string, string> = {
 // Cadenas consultadas por defecto — debe reflejar _CADENAS_DEFAULT en
 // backend/app/services/scraper/live_search.py. LOi queda fuera de esta lista
 // a propósito (ver comentario junto a sourceCadenas en el componente).
-const CADENAS_DEFAULT = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Pigalle", "Fama", "Stienda", "BlackDog", "CoverCompany", "DIMM", "Electrohogar"];
+const CADENAS_DEFAULT = ["Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Pigalle", "Fama", "Stienda", "BlackDog", "CoverCompany", "DIMM", "Electrohogar", "Zona Tecno", "AMV", "Estación Hogar"];
 const CADENAS_TODAS    = [...CADENAS_DEFAULT, "LOi"];
 
 // Una fila de la lista de resultados — puede representar varias sucursales
@@ -77,6 +79,12 @@ export default function PreciosPage() {
   const [cadenaErrors,   setCadenaErrors]   = useState<Record<string, string>>({});
   const [showChart,      setShowChart]      = useState(false);
   const [showDiagnostico, setShowDiagnostico] = useState(false);
+  // Doña Tina revisa el conjunto completo de resultados una vez que todas las
+  // cadenas terminaron (ver filtrar_relevancia_automatica en el backend) --
+  // filtroListo solo pasa a true cuando el usuario confirma el modal de
+  // totales, recién ahí se revela el listado real (ver render más abajo).
+  const [filtroListo,    setFiltroListo]    = useState(false);
+  const [conteoPorMarca, setConteoPorMarca] = useState<Record<string, number> | null>(null);
 
   // Fuentes a consultar EN LA PRÓXIMA búsqueda (se elige antes de buscar, a
   // diferencia de filterCadenas que filtra resultados ya traídos). LOi queda
@@ -111,6 +119,8 @@ export default function PreciosPage() {
     setSortMode("relevancia");
     setCadenasDone([]);
     setCadenaErrors({});
+    setFiltroListo(false);
+    setConteoPorMarca(null);
 
     const activas = Array.from(sourceCadenas);
     setQueriedCadenas(activas);
@@ -140,6 +150,19 @@ export default function PreciosPage() {
             if (data.done) {
               setLoading(false);
               setStreaming(false);
+              // Doña Tina ya revisó el conjunto completo del lado del backend
+              // (ver filtrar_relevancia_automatica) -- se reemplazan los
+              // resultados acumulados por la lista ya filtrada y se muestra el
+              // modal de totales antes de revelar el listado. Si por algún
+              // motivo no vino la lista filtrada (ej. timeout), se pasa
+              // directo sin modal en vez de dejar la pantalla de "trabajando"
+              // colgada para siempre.
+              if (data.items_filtrados) {
+                setResults(data.items_filtrados as ProductoVivo[]);
+                setConteoPorMarca(data.conteo_por_marca ?? {});
+              } else {
+                setFiltroListo(true);
+              }
             } else if (data.cadena !== undefined) {
               setStreaming(true);
               setLoading(false);
@@ -156,6 +179,7 @@ export default function PreciosPage() {
       if ((e as Error).name === "AbortError") return;
       toast.error(t("precios.searchError"));
       setResults((prev) => prev ?? []);
+      setFiltroListo(true);
     } finally {
       setLoading(false);
       setStreaming(false);
@@ -530,7 +554,23 @@ export default function PreciosPage() {
       )}
 
       {/* ── Panel de resultados (ocupa el resto del viewport) ─────────────── */}
-      {isActive && (
+      {isActive && !filtroListo && !conteoPorMarca && (
+        <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-4 py-10">
+          <DonaTinaTrabajando size={110} />
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-300 text-center">
+            {t("precios.donaTina.trabajando")}
+          </p>
+        </div>
+      )}
+
+      {conteoPorMarca && !filtroListo && (
+        <TotalesPorMarcaModal
+          conteoPorMarca={conteoPorMarca}
+          onContinuar={() => { setFiltroListo(true); setConteoPorMarca(null); }}
+        />
+      )}
+
+      {isActive && filtroListo && (
         <div className="flex-1 min-h-0 flex flex-col gap-2">
 
           {/* Barra de control — chips en su propia fila (necesitan todo el

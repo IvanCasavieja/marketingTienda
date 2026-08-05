@@ -745,13 +745,23 @@ def buscar_stienda(term: str) -> list[ProductRecord]:
     return _buscar_dimm_stienda(term, "https://stienda.uy", "Stienda")
 
 
-# ── Fama (buscador dinámico) ────────────────────────────────────────────────────
-# Endpoint encontrado en un <script> inline que arma la URL para el plugin
-# EasyAutocomplete — tampoco aparece en HTML plano ni en sitemap.
-# Catálogo con precios mixtos: algunos productos en USD, otros en pesos ($).
+def buscar_zonatecno(term: str) -> list[ProductRecord]:
+    return _buscar_dimm_stienda(term, "https://www.zonatecno.com.uy", "Zona Tecno")
 
-def buscar_fama(term: str) -> list[ProductRecord]:
-    base_url = "https://www.fama.com.uy"
+
+def buscar_amv(term: str) -> list[ProductRecord]:
+    return _buscar_dimm_stienda(term, "https://amvstore.com.uy", "AMV")
+
+
+# ── Fama / Estación Hogar (buscador dinámico PHP) ───────────────────────────────
+# Mismo endpoint y formato de respuesta para las dos tiendas — encontrado en un
+# <script> inline que arma la URL para el plugin EasyAutocomplete, tampoco
+# aparece en HTML plano ni en sitemap. Catálogo con precios mixtos: algunos
+# productos en USD, otros en pesos ($). "stock" en la respuesta no es
+# confiable como filtro de disponibilidad (se vieron productos con stock=0
+# pero mostrar_boton_comprar=1) — igual que Fama, no se usa acá.
+
+def _buscar_buscador_dinamico_php(term: str, base_url: str, tienda_nombre: str) -> list[ProductRecord]:
     records: list[ProductRecord] = []
     try:
         r = _requests.get(
@@ -763,7 +773,7 @@ def buscar_fama(term: str) -> list[ProductRecord]:
         r.raise_for_status()
         items = r.json()
     except Exception as exc:
-        log.warning("Fama: error buscando '%s' — %s", term, exc)
+        log.warning("%s: error buscando '%s' — %s", tienda_nombre, term, exc)
         return records
 
     for item in items or []:
@@ -789,7 +799,7 @@ def buscar_fama(term: str) -> list[ProductRecord]:
             url = f"{base_url}{url}"
 
         records.append(ProductRecord(
-            tienda          = "Fama",
+            tienda          = tienda_nombre,
             nombre          = nombre_item,
             precio          = precio,
             precio_lista    = None,
@@ -805,6 +815,14 @@ def buscar_fama(term: str) -> list[ProductRecord]:
         ))
 
     return records
+
+
+def buscar_fama(term: str) -> list[ProductRecord]:
+    return _buscar_buscador_dinamico_php(term, "https://www.fama.com.uy", "Fama")
+
+
+def buscar_estacionhogar(term: str) -> list[ProductRecord]:
+    return _buscar_buscador_dinamico_php(term, "https://www.estacionhogar.uy", "Estación Hogar")
 
 
 # ── LOi (API pública documentada — /api/v1/products.json) ─────────────────────
@@ -869,34 +887,45 @@ def buscar_loi(term: str) -> list[ProductRecord]:
         return []  # la API pública de LOi no documenta búsqueda por barcode/SKU
 
     # A diferencia del buscador web de LOi (Algolia, tolerante), su API pública
-    # /api/v1/products.json exige que TODAS las palabras del término existan
-    # literalmente en el nombre del producto — "celular samsung galaxy" da 0
-    # resultados ahí porque ningún producto dice "celular" en el título, aunque
-    # "samsung galaxy" solo (sacando la palabra de categoría) sí encuentra los
-    # mismos productos que se ven en su web. Como en español la palabra de
-    # categoría suele ir primero ("celular samsung", "heladera whirlpool"), se
-    # reintenta sacando palabras desde el principio hasta encontrar algo o
-    # agotar el tope — sin esto, cualquier término de categoría+marca+modelo
-    # devolvía "0 resultados" de forma incorrecta pese a existir en su catálogo.
+    # /api/v1/products.json es más estricta con términos de varias palabras --
+    # probado contra la API real: "lavarropas james" NO trae "Lavarropas
+    # Inverter JAMES" (que sí aparece buscando "lavarropas" o "james" por
+    # separado), aunque el nombre tiene las dos palabras -- no alcanza con que
+    # estén presentes, hace falta algo más parecido a coincidencia de frase.
+    # Como en español la palabra de categoría suele ir primero ("celular
+    # samsung", "heladera whirlpool"), también se prueba sacando palabras
+    # desde el principio -- pero a diferencia de antes, se JUNTAN los
+    # candidatos de TODOS los intentos (dedupe por id) en vez de parar en el
+    # primero que trae algo: con el término completo YA trae resultados en
+    # casos como este, así que pararse ahí perdía las variantes que solo
+    # aparecen con el término más corto. La relevancia real se sigue midiendo
+    # después (score_match) contra el término COMPLETO original, nunca contra
+    # la versión achicada -- achicar es solo para encontrar más candidatos en
+    # la API de LOi, no para relajar qué cuenta como resultado válido. La
+    # precisión de marca/categoría (que "lavarropas james" no traiga
+    # "Refrigerador JAMES") queda del lado de la revisión semántica de Doña
+    # Tina sobre el conjunto completo de resultados (ver don_tino_precios.py:
+    # filtrar_relevancia_automatica) en vez de un chequeo rígido acá -- exigir
+    # que todas las palabras aparezcan literalmente rechaza también búsquedas
+    # más amplias legítimas.
     palabras = term.split()
     intentos = [term] + [" ".join(palabras[i:]) for i in range(1, len(palabras))]
     intentos = intentos[:_LOI_MAX_INTENTOS]
 
-    data = None
+    vistos: set = set()
+    candidatos: list[dict] = []
     for intento in intentos:
         data = _loi_pedir(intento)
-        if data and data.get("products"):
-            break
+        for item in (data or {}).get("products") or []:
+            clave = item.get("id") or item.get("sku") or item.get("url")
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            candidatos.append(item)
 
     records: list[ProductRecord] = []
-    if not data:
-        return records
-
-    for item in data.get("products") or []:
+    for item in candidatos:
         nombre_item = item.get("title") or ""
-        # La relevancia se mide SIEMPRE contra el término original completo —
-        # el achique de arriba es solo para encontrar candidatos en la API de
-        # LOi, no para relajar qué se considera un resultado válido.
         score = score_match(nombre_item, term)
         if score < _MIN_SCORE:
             continue
@@ -949,6 +978,7 @@ def buscar_loi(term: str) -> list[ProductRecord]:
 _CADENAS_DEFAULT = [
     "Ta-Ta", "ElDorado", "GDU", "FarmaShop", "Botiga", "Pigalle", "BlackDog",
     "Electrohogar", "CoverCompany", "DIMM", "Stienda", "Fama",
+    "Zona Tecno", "AMV", "Estación Hogar",
 ]
 _CADENAS_OPT_IN = ["LOi"]
 _CADENAS_TODAS  = _CADENAS_DEFAULT + _CADENAS_OPT_IN
@@ -968,6 +998,9 @@ def _tareas_disponibles(term: str, cache_dir: Path) -> dict[str, tuple]:
         "DIMM":          (buscar_dimm,         (term,)),
         "Stienda":       (buscar_stienda,      (term,)),
         "Fama":          (buscar_fama,         (term,)),
+        "Zona Tecno":    (buscar_zonatecno,    (term,)),
+        "AMV":           (buscar_amv,          (term,)),
+        "Estación Hogar": (buscar_estacionhogar, (term,)),
         "LOi":           (buscar_loi,          (term,)),
     }
 

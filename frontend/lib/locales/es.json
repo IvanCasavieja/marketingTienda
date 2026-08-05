@@ -789,7 +789,14 @@
     "searching": "Buscando…",
     "search": "Buscar",
     "searchError": "Error al buscar",
-    "chainsCoverage": "13 cadenas · 134+ sucursales consultadas en tiempo real",
+    "chainsCoverage": "15 cadenas · 134+ sucursales consultadas en tiempo real",
+    "donaTina": {
+      "trabajando": "Doña Tina está trabajando para usted — está revisando los resultados uno por uno.",
+      "modalTitle": "Búsqueda lista",
+      "modalSubtitle": "Encontramos {{total}} producto(s) relevantes, agrupados por marca:",
+      "sinMarcas": "No pudimos identificar marcas para agrupar — ver el listado completo.",
+      "continuar": "Continuar"
+    },
     "all": "Todas",
     "sources": "Fuentes",
     "sourcesTitle": "Qué cadenas consultar",

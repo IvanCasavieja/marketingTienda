@@ -19,6 +19,9 @@ export const CADENA_CONFIG: Record<string, { bg: string; dot: string; label: str
   "DIMM":         { bg: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",       dot: "bg-cyan-500",    label: "DIMM",         border: "border-l-cyan-500",    hex: "#06b6d4" },
   "Electrohogar": { bg: "bg-lime-500/10 text-lime-600 dark:text-lime-400",       dot: "bg-lime-500",    label: "Electrohogar", border: "border-l-lime-500",    hex: "#84cc16" },
   "LOi":          { bg: "bg-pink-500/10 text-pink-600 dark:text-pink-400",       dot: "bg-pink-500",    label: "LOi",          border: "border-l-pink-500",    hex: "#ec4899" },
+  "Zona Tecno":     { bg: "bg-red-500/10 text-red-600 dark:text-red-400",         dot: "bg-red-500",     label: "Zona Tecno",     border: "border-l-red-500",     hex: "#ef4444" },
+  "AMV":            { bg: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400", dot: "bg-yellow-500",  label: "AMV",            border: "border-l-yellow-500",  hex: "#eab308" },
+  "Estación Hogar": { bg: "bg-green-500/10 text-green-600 dark:text-green-400",   dot: "bg-green-500",   label: "Estación Hogar", border: "border-l-green-500",   hex: "#22c55e" },
 };
 
 // Agrupación usada para ordenar los chips de filtro en /precios — con 14
@@ -30,6 +33,7 @@ export const CADENA_CATEGORIA: Record<string, string> = {
   "Fama": "Electrónica", "Stienda": "Electrónica", "BlackDog": "Electrónica",
   "CoverCompany": "Electrónica", "DIMM": "Electrónica", "Electrohogar": "Electrónica",
   "LOi": "Electrónica",
+  "Zona Tecno": "Electrónica", "AMV": "Electrónica", "Estación Hogar": "Electrónica",
 };
 
 export function CadenaBadge({ tienda }: { tienda: string }) {
