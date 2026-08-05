@@ -669,7 +669,14 @@ async def match_rows(
             select(SkuDescripcion.sku, SkuDescripcion.descripcion).where(SkuDescripcion.sku.contains("-"))
         )
         for compuesto, desc in result.all():
+            # .strip() por parte -- el merge M/A junta sin espacios ("SKU1-SKU2"),
+            # pero "Unificar categorías" junta con " - " (espacio-guion-espacio,
+            # ver ConvertidorGrid.tsx: commitUnificacion) para que se lea mejor con
+            # varios SKUs en una celda. Sin el strip, la mitad de cada parte de esos
+            # compuestos quedaría con un espacio colgado y nunca matchearía contra
+            # faltantes (que son SKUs ya normalizados, sin espacios).
             for parte in compuesto.split("-"):
+                parte = parte.strip()
                 if parte in faltantes:
                     catalogo.setdefault(parte, desc)
 

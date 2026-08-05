@@ -350,6 +350,27 @@ export interface SkuDescripcionItem {
   updated_at: string | null;
 }
 
+// Grupo de variantes de la misma línea de producto ("Unificar categorías") que
+// Tinín propuso a partir del nombre crudo de TODAS las filas cargadas -- distinto
+// de MaPair (que son pares exactos "mismo SKU, sufijo M/A" detectados sin IA sin
+// necesitar ver todas las filas a la vez). Al aprobar un grupo, el frontend lo
+// combina en una sola fila (mismo criterio que un MaPair, ver commitUnificacion
+// en ConvertidorGrid.tsx) -- no hay endpoint de confirmación aparte.
+export interface UnificarGrupoItem {
+  row_ids: number[];
+  skus: string[];
+  grupo: string;
+  descripcion: string;
+}
+
+export interface UnificarCategoriasIAResponse {
+  grupos: UnificarGrupoItem[];
+  truncated: boolean;
+  // true si el análisis en sí falló (red, JSON cortado, etc.) -- distinto de
+  // "Claude ya revisó todo y no encontró grupos" (grupos: [], error: false).
+  error: boolean;
+}
+
 export const convertidorApi = {
   preview: (formData: FormData) =>
     api.post<ConvertidorPreviewResponse>("/tools/cenefas/convertidor/preview", formData, {
@@ -370,6 +391,10 @@ export const convertidorApi = {
     rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion_web: string; es_fiambre_kg: boolean }[]
   ) =>
     api.post<GenerarDescripcionesIAResponse>("/tools/cenefas/convertidor/descripciones/generar-ia", { rows }),
+  unificarCategoriasIA: (
+    rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion: string }[]
+  ) =>
+    api.post<UnificarCategoriasIAResponse>("/tools/cenefas/convertidor/categorias/unificar-ia", { rows }),
 };
 
 export type TininContexto = "convertidor" | "rompe_precios" | "redexpres";

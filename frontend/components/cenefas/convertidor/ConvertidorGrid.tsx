@@ -1,13 +1,14 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Download, Loader2, Merge, Sparkles, Target } from "lucide-react";
+import { ArrowLeft, Download, Layers, Loader2, Merge, Sparkles, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { convertidorApi, type ConvertidorRow, type ConvertidorSummary, type MaPair } from "@/lib/api";
+import { convertidorApi, type ConvertidorRow, type ConvertidorSummary, type MaPair, type UnificarGrupoItem } from "@/lib/api";
 import type { CenefaDestino } from "@/components/cenefas/DestinoModal";
 import ConvertidorAiModal from "./ConvertidorAiModal";
 import ConvertidorMergeModal from "./ConvertidorMergeModal";
+import ConvertidorUnifyModal from "./ConvertidorUnifyModal";
 
 // Virtualización manual (sin librería nueva): solo se renderizan las filas
 // visibles ± un buffer, con dos <tr> espaciadores para mantener el alto de
@@ -87,6 +88,12 @@ const HAS_LETTER_RE = /\p{L}/u;
 const DESCRIPTION_WARN_CHARS = 60;
 const DESCRIPTION_MAX_CHARS = 100;
 const DESCRIPCION_WARNING_CODES = ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"];
+// Mismo límite que SkuDescripcion.sku (String(64)) en
+// backend/app/models/sku_descripcion.py -- un grupo con muchos SKUs largos
+// unidos por " - " podría superarlo, y Postgres rechaza el insert entero en
+// vez de truncarlo solo. Se corta acá ANTES de mandar el PATCH para que el
+// usuario vea un error claro en el modal en vez de un 500 genérico.
+const SKU_COMBINADO_MAX_CHARS = 64;
 
 function computeDescripcionWarnings(currentWarnings: string[], value: string): string[] {
   const warnings = currentWarnings.filter((w) => !DESCRIPCION_WARNING_CODES.includes(w));
@@ -140,6 +147,10 @@ export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onRes
   // recibiera esa lista directamente cada fila aprobada desaparecería del
   // modal en vez de quedar mostrando el check verde.
   const [aiModalRows, setAiModalRows] = useState<ConvertidorRow[] | null>(null);
+  // Snapshot fijo tomado al abrir el modal, mismo criterio que aiModalRows --
+  // "Unificar categorías" analiza TODAS las filas del Excel cargado (no solo
+  // las que faltan descripción, a diferencia del modal de IA de arriba).
+  const [unifyModalRows, setUnifyModalRows] = useState<ConvertidorRow[] | null>(null);
   const pendingSaves = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const dlRef = useRef<HTMLAnchorElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -208,6 +219,39 @@ export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onRes
     setPendingPairs((prev) => prev.filter((p) => !(p.sku1 === pair.sku1 && p.sku2 === pair.sku2)));
     setMergePair(null);
     toast.success(t("convertidor.merge.merged", { sku: skuCombinado }));
+  }
+
+  // Combina las N filas del grupo en una sola -- mismo criterio que commitMerge
+  // (el PATCH existente ya alcanza, no hace falta un endpoint de confirmación
+  // aparte), generalizado a N SKUs en vez de 2: el código combinado une todos
+  // los SKUs con " - " (a diferencia del merge M/A, que no lleva espacios,
+  // porque ahí siempre son 2; acá pueden ser varios y se lee peor pegado). La
+  // primera fila del grupo sobrevive con el código y la descripción combinados;
+  // el resto se saca de la grilla.
+  async function commitUnificacion(grupo: UnificarGrupoItem) {
+    const codigoCombinado = grupo.skus.join(" - ");
+    if (codigoCombinado.length > SKU_COMBINADO_MAX_CHARS) {
+      toast.error(t("convertidor.unificar.codigoTooLong"));
+      throw new Error("Código combinado demasiado largo");
+    }
+    await convertidorApi.updateDescripcion(codigoCombinado, grupo.descripcion);
+    const [rowIdSuperviviente, ...rowIdsAEliminar] = grupo.row_ids;
+    const idsAEliminar = new Set(rowIdsAEliminar);
+    setRows((prev) =>
+      (prev ?? [])
+        .filter((r) => !idsAEliminar.has(r.row_id))
+        .map((r) =>
+          r.row_id === rowIdSuperviviente
+            ? {
+                ...r,
+                codigo: codigoCombinado,
+                descripcion: grupo.descripcion,
+                warnings: computeDescripcionWarnings(r.warnings, grupo.descripcion),
+              }
+            : r
+        )
+    );
+    toast.success(t("convertidor.unificar.saved", { grupo: grupo.grupo, count: grupo.skus.length }));
   }
 
   function scrollToRow(rowId: number) {
@@ -381,9 +425,18 @@ export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onRes
       <a ref={dlRef} className="hidden" />
 
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <button onClick={onReset} className="btn-ghost flex items-center gap-1.5 text-sm">
-          <ArrowLeft size={14} /> {t("convertidor.changeFile")}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={onReset} className="btn-ghost flex items-center gap-1.5 text-sm">
+            <ArrowLeft size={14} /> {t("convertidor.changeFile")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setUnifyModalRows(rows)}
+            className="btn-secondary flex items-center gap-1.5 text-xs"
+          >
+            <Layers size={13} /> {t("convertidor.unificar.button")}
+          </button>
+        </div>
         {summary && (
           <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-300">
             <span className="flex items-center gap-1.5">
@@ -589,6 +642,14 @@ export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onRes
           rows={aiModalRows}
           onApprove={commitDescripcion}
           onClose={() => setAiModalRows(null)}
+        />
+      )}
+
+      {unifyModalRows && (
+        <ConvertidorUnifyModal
+          rows={unifyModalRows}
+          onApprove={commitUnificacion}
+          onClose={() => setUnifyModalRows(null)}
         />
       )}
 

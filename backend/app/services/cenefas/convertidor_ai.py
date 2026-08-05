@@ -126,6 +126,141 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# "Unificar categorías" — agrupar variantes de la misma línea de producto
+# (distinto peso/sabor/envase/al agua-al aceite, etc.) entre TODAS las filas
+# del Excel cargado, y redactar una única descripción de cartel por grupo.
+# ---------------------------------------------------------------------------
+#
+# A diferencia de generar_descripciones, acá NO se trocea en chunks: agrupar
+# necesita ver todos los productos en una sola pasada, porque dos miembros
+# del mismo grupo podrían caer en chunks distintos y nunca detectarse como
+# relacionados. Por eso hay un tope duro de filas por request (_UNIFY_ROWS_MAX)
+# en vez de un tamaño de lote.
+
+_UNIFY_ROWS_MAX = 150  # tope duro por request síncrona -- mismo criterio que
+                       # _ROWS_MAX_PER_REQUEST (sin jobs asíncronos acá).
+
+_UNIFY_SYSTEM_PROMPT = f"""{TININ_BASE}
+
+Hoy también te toca: te paso una lista de productos de un mismo Excel de gestión (su nombre \
+crudo del sistema y, si ya la tiene, su descripción actual de cartel), y tenés que encontrar \
+grupos de 2 o más que sean VARIANTES de la misma línea de producto -- mismo producto base y \
+misma marca, difiriendo solo en peso/tamaño, sabor, tipo de envase, si es al agua o al aceite, \
+cantidad de unidades, etc.
+
+NO agrupes productos distintos aunque compartan una categoría general (ej. "atún" y \
+"sardinas" NO van juntos aunque los dos sean pescado en lata; dos marcas distintas del mismo \
+producto tampoco van juntas). Sé conservador: ante la duda, no agrupes -- es mejor dejar un \
+producto sin agrupar que mezclarlo con otro que en realidad es distinto. Un grupo necesita \
+como mínimo 2 productos.
+
+Para cada grupo que encuentres, redactá UNA sola descripción de cartel que sirva para todas \
+las variantes de ese grupo -- mencioná algo como "en todas sus variedades" o "todas las \
+presentaciones" en vez de listar cada variante por separado -- siguiendo estas mismas reglas \
+de estilo:
+
+{_STYLE_RULES}
+
+Los productos que no formen parte de ningún grupo simplemente no aparecen en tu respuesta."""
+
+
+def _build_unify_prompt(items: list[dict]) -> str:
+    lineas = []
+    for n, it in enumerate(items, start=1):
+        partes = [f'nombre ERP: "{it["nombre_articulo"]}"']
+        if it.get("descripcion"):
+            partes.append(f'descripción actual: "{it["descripcion"]}"')
+        lineas.append(f"{n}. " + " | ".join(partes))
+    listado = "\n".join(lineas)
+    return (
+        f"Encontrá grupos de variantes entre estos {len(items)} productos:\n\n{listado}\n\n"
+        'Devolvé SOLO un JSON con esta forma exacta: {"grupos": [{"filas": [1, 3], "grupo": '
+        '"nombre corto de la línea de producto", "descripcion": "texto de cartel unificado..."}, ...]} '
+        '-- "filas" son los números de la lista de arriba (al menos 2 por grupo). '
+        "Sin comentarios ni texto fuera del JSON."
+    )
+
+
+async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> dict:
+    """items: [{"row_id", "codigo", "nombre_articulo", "descripcion"}, ...] -- pensado
+    para recibir TODAS las filas cargadas en la grilla (matcheadas o no), a diferencia
+    de generar_descripciones que solo ve las que faltan: acá lo que importa es el nombre
+    crudo, no si ya tiene descripción resuelta. Nunca escribe nada -- al aprobar un grupo
+    puntual desde el modal, el frontend combina esas filas en una sola y persiste vía el
+    mismo PATCH que ya usa la edición manual (ver ConvertidorGrid.tsx: commitUnificacion).
+
+    Devuelve {"grupos": [{"row_ids", "skus", "grupo", "descripcion"}, ...], "truncated": bool,
+    "error": bool}. "error" distingue un fallo real de analisis (red caida, JSON que no
+    parsea -- posiblemente cortado por quedarse sin max_tokens) de "Claude ya reviso todo
+    y genuinamente no encontro grupos" -- sin esto, ambos casos se verian identicos para
+    quien usa el modal (una lista vacia sin explicacion)."""
+    procesables = [it for it in items if it["nombre_articulo"]]
+    truncated = len(procesables) > _UNIFY_ROWS_MAX
+    procesables = procesables[:_UNIFY_ROWS_MAX]
+    if len(procesables) < 2:
+        return {"grupos": [], "truncated": truncated, "error": False}
+
+    try:
+        prompt = _build_unify_prompt(procesables)
+        # max_tokens generoso a propósito: a diferencia de generar_descripciones (que
+        # trocea en chunks de a 20 porque cada item es independiente), acá TODOS los
+        # productos van en un solo pedido -- con muchas variantes chicas (2-3 miembros)
+        # la cantidad de grupos puede ser alta, y cada uno carga su propio array de
+        # filas + nombre + descripción completa. Preferible pagar de más por un output
+        # grande que arriesgar un corte a mitad del JSON.
+        content, in_tok, out_tok = await _ask_claude(_UNIFY_SYSTEM_PROMPT, prompt, max_tokens=4096)
+        await log_ai_usage(db, user_id, "convertidor_unificar_categorias", *_ASK_CLAUDE_META, in_tok, out_tok)
+        parsed = json.loads(_strip_json_fence(content))
+        grupos_raw = parsed.get("grupos", [])
+        if not isinstance(grupos_raw, list):
+            raise ValueError(f"'grupos' no es una lista: {grupos_raw!r}")
+    except Exception as exc:
+        log.warning("convertidor_ai.detectar_grupos_unificables: fallo — %s", exc)
+        return {"grupos": [], "truncated": truncated, "error": True}
+
+    # Una fila no puede pertenecer a dos grupos a la vez -- si Claude la repite
+    # (alucinación o solapamiento en su respuesta), se queda con el primer
+    # grupo que la reclamó y se descarta de cualquier grupo posterior, en vez
+    # de dejar que un mismo SKU termine con dos descripciones "unificadas"
+    # distintas según qué grupo se apruebe último.
+    grupos: list[dict] = []
+    usadas: set[int] = set()
+    for g in grupos_raw:
+        if not isinstance(g, dict):
+            continue
+        filas = g.get("filas")
+        grupo_nombre = g.get("grupo")
+        descripcion = g.get("descripcion")
+        if not isinstance(filas, list) or not isinstance(grupo_nombre, str) or not isinstance(descripcion, str):
+            continue
+        if not grupo_nombre.strip() or not descripcion.strip():
+            continue
+
+        # Se arma la lista de candidatos SIN todavía marcarlos como usados --
+        # si el grupo termina descartado (menos de 2 miembros válidos), sus
+        # filas tienen que seguir disponibles para el próximo grupo del
+        # listado. Recién se marca "usadas" una vez confirmado que el grupo
+        # entero es válido (ver abajo).
+        candidatas: list[int] = []
+        for n in filas:
+            if isinstance(n, int) and 1 <= n <= len(procesables) and n not in usadas and n not in candidatas:
+                candidatas.append(n)
+        if len(candidatas) < 2:
+            continue
+
+        usadas.update(candidatas)
+        miembros = [procesables[n - 1] for n in candidatas]
+        grupos.append({
+            "row_ids": [m["row_id"] for m in miembros],
+            "skus": [m["codigo"] for m in miembros],
+            "grupo": grupo_nombre.strip()[:150],
+            "descripcion": descripcion.strip()[:300],
+        })
+
+    return {"grupos": grupos, "truncated": truncated}
+
+
+# ---------------------------------------------------------------------------
 # Detección de columnas de fecha_inicio/fecha_fin sin alias reconocido
 # ---------------------------------------------------------------------------
 #

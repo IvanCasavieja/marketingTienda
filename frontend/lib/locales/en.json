@@ -751,6 +751,19 @@
       "confirm": "Confirm merge",
       "confirming": "Merging…",
       "merged": "Products merged (SKU {{sku}})"
+    },
+    "unificar": {
+      "button": "Unify categories",
+      "modalTitle": "Unify categories",
+      "loading": "Tinín is going through the Excel names to find variants of the same product…",
+      "truncated": "This file has a lot of products — Tinín only analyzed the first ones on the list.",
+      "noGroups": "We didn't find any groups of variants to unify in this Excel.",
+      "combinedSkuNotice": "On approve, these {{count}} rows are combined into a single one under the code \"{{codigo}}\" — the rest are removed from the grid.",
+      "codigoTooLong": "This group has too many SKUs to combine into a single code cell — couldn't save it.",
+      "descripcionUnificada": "Unified description",
+      "approve": "Approve",
+      "approved": "Saved",
+      "saved": "\"{{grupo}}\" saved to the unified dictionary ({{count}} products)"
     }
   },
   "diccionario": {

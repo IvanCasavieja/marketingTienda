@@ -25,7 +25,11 @@ from app.services.cenefas.convertidor import (
     parse_input_excel,
     upsert_sku_descripcion,
 )
-from app.services.cenefas.convertidor_ai import _ROWS_MAX_PER_REQUEST, generar_descripciones
+from app.services.cenefas.convertidor_ai import (
+    _ROWS_MAX_PER_REQUEST,
+    detectar_grupos_unificables,
+    generar_descripciones,
+)
 from app.services.cenefas import tinin_agent
 
 logger = logging.getLogger(__name__)
@@ -224,6 +228,49 @@ async def generar_descripciones_ia(
         "processed_count": len(items),
         "truncated": truncated,
     }
+
+
+class UnificarCategoriasItem(BaseModel):
+    row_id: int
+    codigo: str
+    nombre_articulo: str = ""
+    descripcion: str = ""
+
+
+class UnificarCategoriasRequest(BaseModel):
+    rows: list[UnificarCategoriasItem]
+
+
+@router.post("/categorias/unificar-ia")
+@limiter.limit("5/minute")
+async def unificar_categorias_ia(
+    request: Request,
+    payload: UnificarCategoriasRequest,
+    current_user: User = Depends(require_permission("ai.tinin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Le pide a Tinín que agrupe variantes de la misma línea de producto (distinto
+    peso, sabor, al agua/al aceite, etc.) entre TODAS las filas del Excel cargado, y
+    proponga una descripción de cartel unificada por grupo. Nunca escribe nada -- al
+    aprobar un grupo puntual desde el modal, el frontend combina esas filas en una sola
+    (código = todos los SKUs unidos con " - ") y guarda vía el mismo PATCH
+    /descripciones/{sku} que ya usa la edición manual y la fusión M/A (ver
+    ConvertidorGrid.tsx: commitUnificacion) -- no hace falta un endpoint de confirmación
+    aparte, mismo criterio que commitMerge."""
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="La generación con IA no está configurada en este ambiente")
+    if not payload.rows:
+        raise HTTPException(status_code=400, detail="No hay productos para analizar")
+
+    items = [r.model_dump() for r in payload.rows]
+    try:
+        result = await detectar_grupos_unificables(items, db, current_user.id)
+    except Exception as exc:
+        logger.error("unificar_categorias_ia: error — %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="No pude analizar los productos en este momento")
+
+    await db.commit()  # persiste el ai_usage_log acumulado en detectar_grupos_unificables
+    return result
 
 
 class TininHistorialItem(BaseModel):

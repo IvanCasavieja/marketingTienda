@@ -751,6 +751,19 @@
       "confirm": "Confirmar unificación",
       "confirming": "Unificando…",
       "merged": "Productos unificados (SKU {{sku}})"
+    },
+    "unificar": {
+      "button": "Unificar categorías",
+      "modalTitle": "Unificar categorías",
+      "loading": "Tinín está revisando los nombres del Excel para encontrar variantes del mismo producto…",
+      "truncated": "El archivo tiene muchos productos — Tinín solo analizó los primeros de la lista.",
+      "noGroups": "No encontramos grupos de variantes para unificar en este Excel.",
+      "combinedSkuNotice": "Al aprobar, estas {{count}} filas se combinan en una sola con el código \"{{codigo}}\" — el resto se elimina de la grilla.",
+      "codigoTooLong": "Este grupo tiene demasiados SKUs para combinarlos en una sola celda de código — no se pudo guardar.",
+      "descripcionUnificada": "Descripción unificada",
+      "approve": "Aprobar",
+      "approved": "Guardado",
+      "saved": "\"{{grupo}}\" guardado en el diccionario unificado ({{count}} productos)"
     }
   },
   "diccionario": {
