@@ -5,7 +5,6 @@ import { ArrowLeft, Download, Layers, Loader2, Merge, Sparkles, Target } from "l
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { convertidorApi, type ConvertidorRow, type ConvertidorSummary, type MaPair, type UnificarGrupoItem } from "@/lib/api";
-import type { CenefaDestino } from "@/components/cenefas/DestinoModal";
 import ConvertidorAiModal from "./ConvertidorAiModal";
 import ConvertidorMergeModal from "./ConvertidorMergeModal";
 import ConvertidorUnifyModal from "./ConvertidorUnifyModal";
@@ -37,7 +36,7 @@ type EditableKind = "descripcion" | "simple";
 // lista los códigos que el backend ya calculó por columna, en orden de
 // severidad: vacío ("missing_*") o tipo incorrecto ("*_invalido/a") —
 // nunca ambos a la vez para el mismo campo.
-const COLUMNS_REDEXPRES: { key: ColumnKey; i18nKey: string; editable?: EditableKind; warningCodes?: string[] }[] = [
+const COLUMNS: { key: ColumnKey; i18nKey: string; editable?: EditableKind; warningCodes?: string[] }[] = [
   { key: "codigo",          i18nKey: "codigo" },
   { key: "nombre_articulo", i18nKey: "nombreArticulo", warningCodes: ["nombre_articulo_invalido"] },
   { key: "comprador",       i18nKey: "comprador" },
@@ -50,21 +49,6 @@ const COLUMNS_REDEXPRES: { key: ColumnKey; i18nKey: string; editable?: EditableK
   { key: "descuento",       i18nKey: "descuentoProv" },
   { key: "descuento_det",   i18nKey: "descuentoProvDet" },
   { key: "descripcion_web", i18nKey: "descripcionWeb",  warningCodes: ["missing_descripcion_web", "descripcion_web_invalida"] },
-  { key: "vigencia",        i18nKey: "vigencia",        editable: "simple" },
-];
-
-// Rompe Precios no tiene mecánica de oferta/moneda/descripcion_web — en
-// cambio suma vigencia y aclaracion1/2/3, sin columna candidata en gestión
-// (ver convertidor.py), así que quedan como texto libre editable sin warnings.
-const COLUMNS_ROMPE_PRECIOS: { key: ColumnKey; i18nKey: string; editable?: EditableKind; warningCodes?: string[] }[] = [
-  { key: "codigo",          i18nKey: "codigo" },
-  { key: "nombre_articulo", i18nKey: "nombreArticulo", warningCodes: ["nombre_articulo_invalido"] },
-  { key: "comprador",       i18nKey: "comprador" },
-  { key: "descripcion",     i18nKey: "descripcion",     editable: "descripcion", warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
-  { key: "precio_anterior", i18nKey: "precioAnterior",  warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
-  { key: "precio",          i18nKey: "precio",          warningCodes: ["missing_price", "precio_invalido"] },
-  { key: "descuento",       i18nKey: "descuentoProv" },
-  { key: "descuento_det",   i18nKey: "descuentoProvDet" },
   { key: "vigencia",        i18nKey: "vigencia",        editable: "simple" },
   { key: "aclaracion1",     i18nKey: "aclaracion1",     editable: "simple" },
   { key: "aclaracion2",     i18nKey: "aclaracion2",     editable: "simple" },
@@ -111,16 +95,14 @@ interface Props {
   summary: ConvertidorSummary | null;
   maPairs: MaPair[];
   onReset: () => void;
-  destino: CenefaDestino;
 }
 
 function maPairKey(sku1: string, sku2: string): string {
   return `${sku1}|${sku2}`;
 }
 
-export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onReset, destino }: Props) {
+export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onReset }: Props) {
   const { t } = useTranslation();
-  const COLUMNS = destino === "rompe_precios" ? COLUMNS_ROMPE_PRECIOS : COLUMNS_REDEXPRES;
   const [scrollTop, setScrollTop] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [savingRowId, setSavingRowId] = useState<number | null>(null);
@@ -392,7 +374,7 @@ export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onRes
         if (row && row.descripcion.trim()) await flushSave(rowId, row.codigo, row.descripcion);
       }
 
-      const { data: blob } = await convertidorApi.export(rows, destino);
+      const { data: blob } = await convertidorApi.export(rows);
       const url = URL.createObjectURL(new Blob([blob]));
       if (dlRef.current) {
         dlRef.current.href = url;

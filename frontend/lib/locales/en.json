@@ -56,7 +56,9 @@
     "marcarTodasLeidas": "Mark all as read",
     "marcarLeida": "Mark as read",
     "notificacionesError": "Couldn't mark as read",
-    "miPedido": "My order"
+    "miPedido": "My order",
+    "facturacion": "BILLING",
+    "facturacionDashboard": "Dashboard"
   },
   "login": {
     "welcome": "Welcome",
@@ -513,6 +515,7 @@
       "cenefas": "Banners",
       "analytics": "Analytics",
       "connections": "Connections",
+      "facturacion": "Billing",
       "ai": "Artificial Intelligence"
     },
     "tabs": {
@@ -669,21 +672,17 @@
     "notConfigured": "The assistant is not configured in this environment.",
     "genericError": "I couldn't process your request — try again in a few minutes."
   },
+  "dogti": {
+    "title": "DogTi",
+    "subtitle": "Your budget assistant",
+    "placeholderInicial": "Ask me about the budget or the trade deals on file.",
+    "inputPlaceholder": "Type your question...",
+    "notConfigured": "The assistant is not configured in this environment.",
+    "genericError": "I couldn't process your request — try again in a few minutes."
+  },
   "convertidor": {
     "title": "Excel Converter",
     "subtitle": "Upload the management system Excel and get a clean one, with correct descriptions.",
-    "destino": {
-      "title": "Which Excel are you cleaning up?",
-      "subtitle": "Pick the destination — the output columns change depending on it.",
-      "rompe_precios": {
-        "label": "Rompe Precios del finde",
-        "description": "Description, price, previous price, validity dates and remarks — no offer mechanics."
-      },
-      "redexpres": {
-        "label": "Redexpres",
-        "description": "With currency, offer and offer detail — same columns as today."
-      }
-    },
     "intro": "Upload the file exactly as downloaded from the management system. We'll match it by code against the description catalog and highlight what's missing.",
     "excelLabel": "Management Excel",
     "process": "Process Excel",
@@ -764,6 +763,59 @@
       "approve": "Approve",
       "approved": "Saved",
       "saved": "\"{{grupo}}\" saved to the unified dictionary ({{count}} products)"
+    }
+  },
+  "facturacion": {
+    "title": "Billing",
+    "subtitle": "Budget and trade deals with brands and suppliers.",
+    "uploadButton": "Upload invoice",
+    "noData": "No data loaded yet — upload your first invoice.",
+    "charts": {
+      "general": { "title": "General", "subtitle": "Budget moved vs. trade deals" },
+      "presupuesto": { "title": "Budget", "subtitle": "Income vs. expenses" },
+      "canjes": { "title": "Trade deals", "subtitle": "By status" }
+    },
+    "entrada": "Income",
+    "salida": "Expense",
+    "saldo": "Balance",
+    "estados": {
+      "pendiente": "Pending",
+      "activo": "Active",
+      "cerrado": "Closed"
+    },
+    "ledger": {
+      "title": "Transactions",
+      "empty": "No transactions loaded yet.",
+      "loadMore": "Load more"
+    },
+    "upload": {
+      "title": "Upload invoice",
+      "analyze": "Analyze with DogTi",
+      "processing": "DogTi is reading the invoice…",
+      "extractError": "DogTi couldn't read this PDF — fill in the data by hand.",
+      "lowConfidence": "DogTi isn't sure about some fields — review them before confirming.",
+      "reviewTitle": "Review before confirming",
+      "typeMovimiento": "Transaction",
+      "typeCanje": "Trade deal",
+      "fieldTipoMovimiento": "Type",
+      "fieldMonto": "Amount",
+      "fieldMoneda": "Currency",
+      "fieldConcepto": "Concept",
+      "fieldProveedor": "Supplier / brand",
+      "fieldNumeroFactura": "Invoice #",
+      "fieldFecha": "Date",
+      "fieldEstado": "Status",
+      "fieldVigenciaDesde": "Valid from",
+      "fieldVigenciaHasta": "Valid until",
+      "confirm": "Confirm",
+      "confirming": "Saving…",
+      "discard": "Discard",
+      "discarding": "Discarding…",
+      "confirmSuccess": "Saved",
+      "discardSuccess": "Discarded",
+      "error": "Something went wrong — try again.",
+      "pdfPreview": "PDF preview",
+      "close": "Close"
     }
   },
   "diccionario": {

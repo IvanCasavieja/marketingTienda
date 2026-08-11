@@ -34,11 +34,16 @@ ALL_PERMISSIONS: dict[str, str] = {
     # Redexpres
     "redexpres.view":          "Ver y completar la planilla de pedidos Redexpres",
 
+    # Facturación
+    "facturacion.view":        "Ver el dashboard de Facturación (presupuesto y canjes)",
+    "facturacion.upload":      "Subir facturas PDF, revisar la extracción de DogTi y confirmar o descartar movimientos y canjes",
+
     # IA — un permiso por agente de la familia "Tino" + La Triada
     "ai.don_tino":             "Usar el chat de Don Tino, la guía general de la plataforma",
     "ai.dona_tina":            "Usar a Doña Tina — consultas y reportes de precios con IA",
     "ai.tinin":                "Usar a Tinín — generar descripciones con IA en el Convertidor de Excel",
     "ai.triada":               "Usar La Triada — debate y análisis automático de campañas",
+    "ai.dogti":                "Usar a DogTi — lectura de facturas PDF con IA y chat sobre el presupuesto",
 }
 
 # Sufijo que marca un permiso como "de solo lectura" — usado para restringir

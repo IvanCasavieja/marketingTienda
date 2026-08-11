@@ -82,6 +82,7 @@ function UserEditorModal({
     "cenefas":     t("admin.permGroups.cenefas"),
     "analytics":   t("admin.permGroups.analytics"),
     "connections": t("admin.permGroups.connections"),
+    "facturacion": t("admin.permGroups.facturacion"),
     "ai":          t("admin.permGroups.ai"),
   };
 
@@ -221,6 +222,7 @@ function RoleEditorModal({
     "cenefas":     t("admin.permGroups.cenefas"),
     "analytics":   t("admin.permGroups.analytics"),
     "connections": t("admin.permGroups.connections"),
+    "facturacion": t("admin.permGroups.facturacion"),
     "ai":          t("admin.permGroups.ai"),
   };
   const grouped = groupPermissions(allPerms);

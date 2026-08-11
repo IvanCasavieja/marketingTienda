@@ -56,7 +56,9 @@
     "marcarTodasLeidas": "Marcar todas como lidas",
     "marcarLeida": "Marcar como lida",
     "notificacionesError": "Não foi possível marcar como lidas",
-    "miPedido": "Meu pedido"
+    "miPedido": "Meu pedido",
+    "facturacion": "FATURAMENTO",
+    "facturacionDashboard": "Painel"
   },
   "login": {
     "welcome": "Bem-vindo",
@@ -513,6 +515,7 @@
       "cenefas": "Faixas",
       "analytics": "Analytics",
       "connections": "Conexões",
+      "facturacion": "Faturamento",
       "ai": "Inteligência Artificial"
     },
     "tabs": {
@@ -669,21 +672,17 @@
     "notConfigured": "O assistente não está configurado neste ambiente.",
     "genericError": "Não consegui processar seu pedido — tente novamente em alguns minutos."
   },
+  "dogti": {
+    "title": "DogTi",
+    "subtitle": "Seu assistente de orçamento",
+    "placeholderInicial": "Pergunte sobre o orçamento ou as permutas cadastradas.",
+    "inputPlaceholder": "Digite sua pergunta...",
+    "notConfigured": "O assistente não está configurado neste ambiente.",
+    "genericError": "Não consegui processar seu pedido — tente novamente em alguns minutos."
+  },
   "convertidor": {
     "title": "Conversor de Excel",
     "subtitle": "Envie o Excel da gestão e gere um limpo, com as descrições corretas.",
-    "destino": {
-      "title": "Qual Excel você vai limpar?",
-      "subtitle": "Escolha o destino — as colunas de saída mudam conforme qual seja.",
-      "rompe_precios": {
-        "label": "Rompe Precios del finde",
-        "description": "Descrição, preço, preço anterior, vigência e observações — sem mecânica de oferta."
-      },
-      "redexpres": {
-        "label": "Redexpres",
-        "description": "Com moeda, oferta e detalhe da oferta — mesmas colunas de hoje."
-      }
-    },
     "intro": "Envie o arquivo exatamente como baixado da gestão. Vamos cruzá-lo por código com o catálogo de descrições e destacar o que falta preencher.",
     "excelLabel": "Excel da gestão",
     "process": "Processar Excel",
@@ -764,6 +763,59 @@
       "approve": "Aprovar",
       "approved": "Salvo",
       "saved": "\"{{grupo}}\" salvo no dicionário unificado ({{count}} produtos)"
+    }
+  },
+  "facturacion": {
+    "title": "Faturamento",
+    "subtitle": "Orçamento e permutas com marcas e fornecedores.",
+    "uploadButton": "Enviar fatura",
+    "noData": "Ainda não há dados carregados — envie sua primeira fatura.",
+    "charts": {
+      "general": { "title": "Geral", "subtitle": "Orçamento movimentado vs. permutas" },
+      "presupuesto": { "title": "Orçamento", "subtitle": "Entradas vs. saídas" },
+      "canjes": { "title": "Permutas", "subtitle": "Por status" }
+    },
+    "entrada": "Entrada",
+    "salida": "Saída",
+    "saldo": "Saldo",
+    "estados": {
+      "pendiente": "Pendente",
+      "activo": "Ativo",
+      "cerrado": "Encerrado"
+    },
+    "ledger": {
+      "title": "Movimentações",
+      "empty": "Ainda não há movimentações cadastradas.",
+      "loadMore": "Carregar mais"
+    },
+    "upload": {
+      "title": "Enviar fatura",
+      "analyze": "Analisar com DogTi",
+      "processing": "DogTi está lendo a fatura…",
+      "extractError": "DogTi não conseguiu ler este PDF — preencha os dados manualmente.",
+      "lowConfidence": "DogTi não tem certeza de alguns dados — revise antes de confirmar.",
+      "reviewTitle": "Revisar antes de confirmar",
+      "typeMovimiento": "Movimentação",
+      "typeCanje": "Permuta",
+      "fieldTipoMovimiento": "Tipo",
+      "fieldMonto": "Valor",
+      "fieldMoneda": "Moeda",
+      "fieldConcepto": "Conceito",
+      "fieldProveedor": "Fornecedor / marca",
+      "fieldNumeroFactura": "N° da fatura",
+      "fieldFecha": "Data",
+      "fieldEstado": "Status",
+      "fieldVigenciaDesde": "Vigência desde",
+      "fieldVigenciaHasta": "Vigência até",
+      "confirm": "Confirmar",
+      "confirming": "Salvando…",
+      "discard": "Descartar",
+      "discarding": "Descartando…",
+      "confirmSuccess": "Salvo",
+      "discardSuccess": "Descartado",
+      "error": "Ocorreu um erro — tente novamente.",
+      "pdfPreview": "Pré-visualização do PDF",
+      "close": "Fechar"
     }
   },
   "diccionario": {

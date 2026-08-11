@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
   BarChart3, ChevronRight, Presentation, Globe, ShieldCheck, HelpCircle, X, Tag,
   Sun, Moon, ClipboardList, Bell, Star, Activity, TrendingUp, TrendingDown, AlertTriangle, Check,
-  FileSpreadsheet, BookOpen,
+  FileSpreadsheet, BookOpen, Receipt,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
@@ -101,6 +101,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/materiales/diccionario", label: t("sidebar.diccionario"), icon: BookOpen, section: t("sidebar.materiales"), perm: "cenefas.view" },
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,           section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,        section: t("sidebar.comercial"),     perm: "precios.search" },
+    { href: "/facturacion",             label: t("sidebar.facturacionDashboard"), icon: Receipt, section: t("sidebar.facturacion"),  perm: "facturacion.view" },
     { href: "/redexpres/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpres"), perm: "redexpres.view" },
     // Sin perm: el acceso no es por permiso sino por tener una sucursal
     // asignada (LocalAsignacion) — por eso se filtra acá, no vía hasPerm().

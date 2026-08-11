@@ -56,7 +56,9 @@
     "marcarTodasLeidas": "Marcar todas como leídas",
     "marcarLeida": "Marcar como leída",
     "notificacionesError": "No se pudieron marcar como leídas",
-    "miPedido": "Mi pedido"
+    "miPedido": "Mi pedido",
+    "facturacion": "FACTURACIÓN",
+    "facturacionDashboard": "Dashboard"
   },
   "login": {
     "welcome": "Bienvenido",
@@ -513,6 +515,7 @@
       "cenefas": "Cenefas",
       "analytics": "Analytics",
       "connections": "Conexiones",
+      "facturacion": "Facturación",
       "ai": "Inteligencia Artificial"
     },
     "tabs": {
@@ -669,21 +672,17 @@
     "notConfigured": "El asistente no está configurado en este ambiente.",
     "genericError": "No pude procesar tu consulta — probá de nuevo en unos minutos."
   },
+  "dogti": {
+    "title": "DogTi",
+    "subtitle": "Tu asistente de presupuesto",
+    "placeholderInicial": "Preguntame sobre el presupuesto o los canjes cargados.",
+    "inputPlaceholder": "Escribí tu pregunta...",
+    "notConfigured": "El asistente no está configurado en este ambiente.",
+    "genericError": "No pude procesar tu consulta — probá de nuevo en unos minutos."
+  },
   "convertidor": {
     "title": "Convertidor de Excel",
     "subtitle": "Subí el Excel de gestión y armá uno limpio, con las descripciones correctas.",
-    "destino": {
-      "title": "¿Qué Excel vas a limpiar?",
-      "subtitle": "Elegí para qué destino es, las columnas de salida cambian según cuál sea.",
-      "rompe_precios": {
-        "label": "Rompe Precios del finde",
-        "description": "Descripción, precio, precio anterior, vigencia y aclaraciones — sin mecánica de oferta."
-      },
-      "redexpres": {
-        "label": "Redexpres",
-        "description": "Con moneda, oferta y oferta det — mismas columnas que hoy."
-      }
-    },
     "intro": "Subí el Excel tal cual se descarga de gestión. Lo vamos a matchear por código contra el catálogo de descripciones y a resaltar lo que falta completar.",
     "excelLabel": "Excel de gestión",
     "process": "Procesar Excel",
@@ -764,6 +763,59 @@
       "approve": "Aprobar",
       "approved": "Guardado",
       "saved": "\"{{grupo}}\" guardado en el diccionario unificado ({{count}} productos)"
+    }
+  },
+  "facturacion": {
+    "title": "Facturación",
+    "subtitle": "Presupuesto y canjes con marcas y proveedores.",
+    "uploadButton": "Subir factura",
+    "noData": "Todavía no hay datos cargados — subí tu primera factura.",
+    "charts": {
+      "general": { "title": "General", "subtitle": "Presupuesto movido vs. canjes" },
+      "presupuesto": { "title": "Presupuesto", "subtitle": "Entradas vs. salidas" },
+      "canjes": { "title": "Canjes", "subtitle": "Por estado" }
+    },
+    "entrada": "Entrada",
+    "salida": "Salida",
+    "saldo": "Saldo",
+    "estados": {
+      "pendiente": "Pendiente",
+      "activo": "Activo",
+      "cerrado": "Cerrado"
+    },
+    "ledger": {
+      "title": "Movimientos",
+      "empty": "Todavía no hay movimientos cargados.",
+      "loadMore": "Cargar más"
+    },
+    "upload": {
+      "title": "Subir factura",
+      "analyze": "Analizar con DogTi",
+      "processing": "DogTi está leyendo la factura…",
+      "extractError": "DogTi no pudo leer este PDF — completá los datos a mano.",
+      "lowConfidence": "DogTi no está seguro de algunos datos — revisalos antes de confirmar.",
+      "reviewTitle": "Revisar antes de confirmar",
+      "typeMovimiento": "Movimiento",
+      "typeCanje": "Canje",
+      "fieldTipoMovimiento": "Tipo",
+      "fieldMonto": "Monto",
+      "fieldMoneda": "Moneda",
+      "fieldConcepto": "Concepto",
+      "fieldProveedor": "Proveedor / marca",
+      "fieldNumeroFactura": "N° de factura",
+      "fieldFecha": "Fecha",
+      "fieldEstado": "Estado",
+      "fieldVigenciaDesde": "Vigencia desde",
+      "fieldVigenciaHasta": "Vigencia hasta",
+      "confirm": "Confirmar",
+      "confirming": "Guardando…",
+      "discard": "Descartar",
+      "discarding": "Descartando…",
+      "confirmSuccess": "Guardado",
+      "discardSuccess": "Descartado",
+      "error": "Ocurrió un error — probá de nuevo.",
+      "pdfPreview": "Vista previa del PDF",
+      "close": "Cerrar"
     }
   },
   "diccionario": {

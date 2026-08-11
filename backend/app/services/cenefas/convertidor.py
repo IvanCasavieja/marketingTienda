@@ -476,16 +476,11 @@ def _es_fiambre_por_kg(comprador: str, nombre_articulo: str, descripcion: str, d
 # Matching contra el catálogo + warnings
 # ---------------------------------------------------------------------------
 
-def _compute_warnings(row: dict, destino: str = "redexpres") -> list[str]:
+def _compute_warnings(row: dict) -> list[str]:
     """Un warning por columna, cada uno con su propio motivo: vacío (falta
     el dato) o inválido (hay contenido, pero no del tipo que esa columna
     espera — la señal real de columnas corridas, localizada en la columna
-    exacta que no cierra).
-
-    destino="rompe_precios": esa mecánica no tiene oferta/oferta_det/moneda/
-    descripcion_web (no existen en su Excel de salida), y vigencia/aclaracion
-    son texto libre opcional sin validación — solo se chequean
-    descripcion/precio/precio_anterior, compartidos con Redexpres."""
+    exacta que no cierra)."""
     w = []
 
     descripcion = row["descripcion"].strip()
@@ -513,9 +508,6 @@ def _compute_warnings(row: dict, destino: str = "redexpres") -> list[str]:
         w.append("missing_precio_anterior")
     elif not _is_numeric_like(precio_anterior_raw):
         w.append("precio_anterior_invalido")
-
-    if destino == "rompe_precios":
-        return w
 
     # OFERTA sin validar de tipo a propósito: en los datos reales es texto
     # ("PVP OFERTA"), un precio repetido, o una mecánica ("2x599") — no hay
@@ -632,7 +624,7 @@ def detect_ma_pairs(rows: list[dict], catalogo: dict[str, str]) -> list[dict]:
 
 
 async def match_rows(
-    parsed: list[dict], db: AsyncSession, current_user_id: int, destino: str = "redexpres"
+    parsed: list[dict], db: AsyncSession, current_user_id: int
 ) -> tuple[list[dict], int, list[dict]]:
     """Bulk lookup por SKU (un SELECT por cada 1000 códigos distintos, no
     N queries) + cómputo de warnings por fila.
@@ -728,7 +720,7 @@ async def match_rows(
             "es_fiambre_kg":       _es_fiambre_por_kg(
                 row["comprador"], row["nombre_articulo"], row["descripcion"], row["descripcion_web"]
             ),
-            "warnings":            _compute_warnings(row, destino),
+            "warnings":            _compute_warnings(row),
         })
 
     ma_pairs = detect_ma_pairs(rows, catalogo)
@@ -753,12 +745,15 @@ _OUTPUT_HEADERS = [
     "Código", "Nombre Artículo", "Comprador", "Descripción", "Moneda",
     "Precio Anterior", "Precio", "Oferta", "Oferta Det",
     "Descuento Prov", "Descuento Prov Det", "Descripción Web", "Vigencia",
+    "Aclaración 1", "Aclaración 2", "Aclaración 3",
 ]
 _OUTPUT_FIELDS = [
     "codigo", "nombre_articulo", "comprador", "descripcion", "moneda",
     "precio_anterior", "precio", "oferta", "oferta_det",
     "descuento", "descuento_det", "descripcion_web", "vigencia",
+    "aclaracion1", "aclaracion2", "aclaracion3",
 ]
+_OUTPUT_COL_WIDTHS = [16, 36, 20, 36, 10, 14, 12, 14, 14, 16, 16, 40, 26, 30, 30, 30]
 # warning code -> índice de columna 1-based que se resalta
 _WARN_COL = {
     "nombre_articulo_invalido":  2,
@@ -789,43 +784,9 @@ _INVALID_TYPE_CODES = {
     "descripcion_web_invalida",
 }
 
-# ── Set de salida para destino="rompe_precios" ──────────────────────────────
-# Sin oferta/oferta_det/moneda/descripcion_web (no existen en esa mecánica).
-# codigo/nombre_articulo se mantienen por trazabilidad aunque el importador
-# de Cenefas no los use — mismo criterio que Redexpres. vigencia/aclaracion1-3
-# no tienen columna candidata en gestión (ver match_rows) y quedan vacías,
-# completables a mano acá o en la grilla antes de exportar.
-_OUTPUT_HEADERS_ROMPE_PRECIOS = [
-    "Código", "Nombre Artículo", "Comprador", "Descripción",
-    "Precio Anterior", "Precio", "Descuento Prov", "Descuento Prov Det",
-    "Vigencia", "Aclaración 1", "Aclaración 2", "Aclaración 3",
-]
-_OUTPUT_FIELDS_ROMPE_PRECIOS = [
-    "codigo", "nombre_articulo", "comprador", "descripcion",
-    "precio_anterior", "precio", "descuento", "descuento_det",
-    "vigencia", "aclaracion1", "aclaracion2", "aclaracion3",
-]
-_WARN_COL_ROMPE_PRECIOS = {
-    "nombre_articulo_invalido":  2,
-    "missing_description":       4,
-    "descripcion_invalida":      4,
-    "descripcion_larga":         4,
-    "descripcion_algo_larga":    4,
-    "missing_precio_anterior":   5,
-    "precio_anterior_invalido":  5,
-    "missing_price":             6,
-    "precio_invalido":           6,
-}
 
-
-def build_output_workbook(rows: list[dict], destino: str = "redexpres") -> bytes:
-    if destino == "rompe_precios":
-        headers, fields, warn_col = _OUTPUT_HEADERS_ROMPE_PRECIOS, _OUTPUT_FIELDS_ROMPE_PRECIOS, _WARN_COL_ROMPE_PRECIOS
-        col_widths = [16, 36, 20, 36, 14, 12, 16, 16, 26, 30, 30, 30]
-    else:
-        headers, fields, warn_col = _OUTPUT_HEADERS, _OUTPUT_FIELDS, _WARN_COL
-        col_widths = [16, 36, 20, 36, 10, 14, 12, 14, 14, 16, 16, 40, 26]
-
+def build_output_workbook(rows: list[dict]) -> bytes:
+    headers, fields, warn_col, col_widths = _OUTPUT_HEADERS, _OUTPUT_FIELDS, _WARN_COL, _OUTPUT_COL_WIDTHS
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Cenefas"
@@ -847,7 +808,7 @@ def build_output_workbook(rows: list[dict], destino: str = "redexpres") -> bytes
         # Recalculado server-side a partir de los mismos campos _raw que
         # ya viajaron en el preview — no confía en el array "warnings" que
         # mandó el cliente, única fuente de verdad para el coloreado.
-        warnings = _compute_warnings(r, destino)
+        warnings = _compute_warnings(r)
         zebra = even_fill if row_idx % 2 == 0 else None
         for col_idx, field in enumerate(fields, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=r.get(field))

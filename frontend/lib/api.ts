@@ -385,8 +385,8 @@ export const convertidorApi = {
     api.get<{ items: SkuDescripcionItem[]; total: number }>("/tools/cenefas/convertidor/descripciones", {
       params: { q: q || undefined, limit, offset },
     }),
-  export: (rows: ConvertidorRow[], destino: string = "redexpres") =>
-    api.post("/tools/cenefas/convertidor/export", { rows, destino }, { responseType: "blob" }),
+  export: (rows: ConvertidorRow[]) =>
+    api.post("/tools/cenefas/convertidor/export", { rows }, { responseType: "blob" }),
   generarDescripcionesIA: (
     rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion_web: string; es_fiambre_kg: boolean }[]
   ) =>
@@ -410,6 +410,116 @@ export const tininApi = {
     contexto?: TininContexto
   ) =>
     api.post<TininConsultarResponse>("/tools/cenefas/convertidor/tinin/consultar", {
+      mensaje,
+      historial,
+      contexto,
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Facturación — presupuesto y canjes, extraídos por DogTi de facturas PDF
+// ---------------------------------------------------------------------------
+
+// Tal cual la tool registrar_extraccion_factura de DogTi (ver
+// backend/app/services/facturacion/extraccion.py) -- lo que propone antes de
+// que el usuario lo revise y edite.
+export interface FacturacionExtraccion {
+  tipo_sugerido: "movimiento" | "canje";
+  proveedor_marca: string;
+  concepto: string;
+  monto: number;
+  moneda: string;
+  fecha: string;
+  numero_factura?: string | null;
+  vigencia_desde?: string | null;
+  vigencia_hasta?: string | null;
+  confianza: "alta" | "media" | "baja";
+  notas?: string | null;
+}
+
+export interface FacturacionDocumento {
+  id: number;
+  filename: string;
+  status: "pendiente_revision" | "confirmado" | "descartado";
+  extraccion: FacturacionExtraccion | null;
+  extraction_error: string | null;
+  created_at: string | null;
+}
+
+export interface FacturacionMovimiento {
+  id: number;
+  tipo: "entrada" | "salida";
+  monto: number;
+  moneda: string;
+  concepto: string;
+  proveedor_marca: string | null;
+  numero_factura: string | null;
+  fecha: string;
+  documento_id: number | null;
+  created_at: string | null;
+}
+
+export interface FacturacionDashboardResponse {
+  presupuesto: {
+    entradas_total: number;
+    salidas_total: number;
+    saldo: number;
+    movimientos: FacturacionMovimiento[];
+    movimientos_total: number;
+  };
+  canjes: {
+    total_valor: number;
+    por_estado: Record<string, number>;
+  };
+  general: {
+    presupuesto_volumen: number;
+    canjes_total: number;
+  };
+}
+
+export interface ConfirmarDocumentoPayload {
+  tipo: "movimiento" | "canje";
+  tipo_movimiento?: "entrada" | "salida";
+  monto: number;
+  moneda?: string;
+  concepto: string;
+  proveedor_marca?: string | null;
+  numero_factura?: string | null;
+  fecha: string;
+  estado?: string | null;
+  vigencia_desde?: string | null;
+  vigencia_hasta?: string | null;
+}
+
+export const facturacionApi = {
+  uploadDocumento: (formData: FormData) =>
+    api.post<FacturacionDocumento>("/facturacion/documentos/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+  getDocumento: (id: number) => api.get<FacturacionDocumento>(`/facturacion/documentos/${id}`),
+  // Blob (no un <iframe src> directo a la URL cruda) -- así el interceptor de
+  // axios adjunta el header Authorization, sin depender de que el navegador
+  // mande la cookie de sesión en una navegación cross-site (ver el comentario
+  // sobre Safari/ITP más arriba en este archivo).
+  getDocumentoPdfBlob: (id: number) =>
+    api.get(`/facturacion/documentos/${id}/pdf`, { responseType: "blob" }),
+  confirmarDocumento: (id: number, payload: ConfirmarDocumentoPayload) =>
+    api.post<{ tipo: string; id: number }>(`/facturacion/documentos/${id}/confirmar`, payload),
+  descartarDocumento: (id: number) =>
+    api.post<{ status: string }>(`/facturacion/documentos/${id}/descartar`),
+  dashboard: (params?: { limit?: number; offset?: number }) =>
+    api.get<FacturacionDashboardResponse>("/facturacion/dashboard", { params }),
+};
+
+export type DogtiContexto = "dashboard";
+
+export const dogtiApi = {
+  consultar: (
+    mensaje: string,
+    historial: { role: "user" | "assistant"; content: string }[],
+    contexto?: DogtiContexto
+  ) =>
+    api.post<TininConsultarResponse>("/facturacion/dogti/consultar", {
       mensaje,
       historial,
       contexto,
