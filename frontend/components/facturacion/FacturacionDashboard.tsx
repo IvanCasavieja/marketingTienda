@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { AlertTriangle } from "lucide-react";
 import { facturacionApi, type FacturacionDashboardResponse, type FacturacionMovimiento } from "@/lib/api";
 import { fMoney } from "@/lib/format";
 import DonutCard, { type DonutDatum } from "./DonutCard";
@@ -37,16 +38,30 @@ export default function FacturacionDashboard({ refreshToken }: FacturacionDashbo
   const [movimientos, setMovimientos] = useState<FacturacionMovimiento[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Separado de "data === null" a propósito -- antes un error de red/permiso
+  // se veía IGUAL que "todavía no hay datos", sin ninguna pista de qué
+  // falló realmente. Guarda el detalle tal cual lo manda el backend cuando
+  // lo tiene (403 "Permiso requerido: ...", etc.), o un mensaje genérico si
+  // ni siquiera hubo respuesta (backend caído/dormido, red).
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     facturacionApi
       .dashboard({ limit: PAGE_SIZE, offset: 0 })
       .then(({ data: res }) => {
         setData(res);
         setMovimientos(res.presupuesto.movimientos);
       })
-      .catch(() => setData(null))
+      .catch((err: any) => {
+        setData(null);
+        const status = err?.response?.status;
+        const detail = err?.response?.data?.detail;
+        setError(
+          detail ? `Error ${status ?? ""}: ${detail}` : `No se pudo cargar el dashboard (${err?.message ?? "error desconocido"})`
+        );
+      })
       .finally(() => setLoading(false));
   }, [refreshToken]);
 
@@ -87,6 +102,13 @@ export default function FacturacionDashboard({ refreshToken }: FacturacionDashbo
 
   return (
     <div className="space-y-4">
+      {error && (
+        <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10 rounded-lg px-4 py-3">
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Torta general -- el total (saldo de presupuesto + canjes) al centro,
           desglosado en salidas por proveedor alrededor. */}
       <DonutCard
