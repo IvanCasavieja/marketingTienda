@@ -162,13 +162,20 @@ async def obtener_dashboard(db, limit: int = 50, offset: int = 0) -> dict:
     salidas_total = float(salidas_total)
     saldo = entradas_total - salidas_total
 
+    # Agrupa por la columna cruda (no por el coalesce) -- agrupar por
+    # coalesce(proveedor_marca, 'Sin proveedor') repetía el mismo literal en
+    # SELECT y GROUP BY como dos bind params distintos, y Postgres los trata
+    # como expresiones diferentes a nivel de prepared statement: rechaza la
+    # query con GroupingError aunque el SQL se vea idéntico a simple vista.
+    # coalesce(proveedor_marca, 'x') sí es válido en el SELECT agrupando por
+    # la columna cruda -- depende únicamente de esa columna.
     salidas_por_proveedor_rows = (await db.execute(
         select(
             func.coalesce(FacturacionMovimiento.proveedor_marca, "Sin proveedor"),
             func.sum(FacturacionMovimiento.monto),
         )
         .where(FacturacionMovimiento.tipo == "salida")
-        .group_by(func.coalesce(FacturacionMovimiento.proveedor_marca, "Sin proveedor"))
+        .group_by(FacturacionMovimiento.proveedor_marca)
         .order_by(func.sum(FacturacionMovimiento.monto).desc())
     )).all()
 
