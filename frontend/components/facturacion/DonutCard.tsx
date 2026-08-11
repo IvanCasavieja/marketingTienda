@@ -22,12 +22,19 @@ interface DonutCardProps {
   loading?: boolean;
   emptyLabel?: string;
   valueFormatter?: (v: number) => string;
+  /** Texto centrado en el hueco de la dona -- lo usa la torta general para
+   * mostrar el total (saldo de presupuesto + canjes) sobre el desglose de
+   * salidas por proveedor. */
+  centerValue?: string;
+  centerSubLabel?: string;
   /** Contenido extra dentro de la misma card, debajo del gráfico -- lo usa
    * la torta de presupuesto para el ledger de entradas/salidas. */
   children?: React.ReactNode;
 }
 
-export default function DonutCard({ title, subtitle, data, loading, emptyLabel, valueFormatter = fMoney, children }: DonutCardProps) {
+export default function DonutCard({
+  title, subtitle, data, loading, emptyLabel, valueFormatter = fMoney, centerValue, centerSubLabel, children,
+}: DonutCardProps) {
   const total = data.reduce((acc, d) => acc + d.value, 0);
   const visible = data.filter((d) => d.value > 0);
 
@@ -40,12 +47,19 @@ export default function DonutCard({ title, subtitle, data, loading, emptyLabel, 
       {loading ? (
         <div className="h-52 skeleton rounded-xl" />
       ) : visible.length === 0 ? (
-        <div className="h-52 flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm text-center px-4">
-          {emptyLabel}
-        </div>
+        centerValue ? (
+          <div className="h-52 flex flex-col items-center justify-center">
+            <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">{centerValue}</span>
+            {centerSubLabel && <span className="text-xs text-slate-400 dark:text-slate-500 mt-1">{centerSubLabel}</span>}
+          </div>
+        ) : (
+          <div className="h-52 flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm text-center px-4">
+            {emptyLabel}
+          </div>
+        )
       ) : (
         <div className="flex flex-col sm:flex-row items-center gap-6">
-          <div className="w-full sm:w-44 h-[190px] shrink-0">
+          <div className="w-full sm:w-44 h-[190px] shrink-0 relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -69,6 +83,16 @@ export default function DonutCard({ title, subtitle, data, loading, emptyLabel, 
                 />
               </PieChart>
             </ResponsiveContainer>
+            {centerValue && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-3">
+                <span className="text-base font-bold text-slate-800 dark:text-slate-100 text-center leading-tight">
+                  {centerValue}
+                </span>
+                {centerSubLabel && (
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-0.5">{centerSubLabel}</span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 w-full space-y-2.5">

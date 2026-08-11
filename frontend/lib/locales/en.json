@@ -771,7 +771,7 @@
     "uploadButton": "Upload invoice",
     "noData": "No data loaded yet — upload your first invoice.",
     "charts": {
-      "general": { "title": "General", "subtitle": "Budget moved vs. trade deals" },
+      "general": { "title": "General", "subtitle": "Combined total — expense breakdown by supplier", "centerSubLabel": "Total (budget + trade deals)" },
       "presupuesto": { "title": "Budget", "subtitle": "Income vs. expenses" },
       "canjes": { "title": "Trade deals", "subtitle": "By status" }
     },

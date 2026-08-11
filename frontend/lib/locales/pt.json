@@ -771,7 +771,7 @@
     "uploadButton": "Enviar fatura",
     "noData": "Ainda não há dados carregados — envie sua primeira fatura.",
     "charts": {
-      "general": { "title": "Geral", "subtitle": "Orçamento movimentado vs. permutas" },
+      "general": { "title": "Geral", "subtitle": "Total combinado — detalhamento de saídas por fornecedor", "centerSubLabel": "Total (orçamento + permutas)" },
       "presupuesto": { "title": "Orçamento", "subtitle": "Entradas vs. saídas" },
       "canjes": { "title": "Permutas", "subtitle": "Por status" }
     },

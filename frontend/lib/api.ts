@@ -472,8 +472,9 @@ export interface FacturacionDashboardResponse {
     por_estado: Record<string, number>;
   };
   general: {
-    presupuesto_volumen: number;
-    canjes_total: number;
+    // Saldo del presupuesto (entradas - salidas) + valor de canjes.
+    total: number;
+    salidas_por_proveedor: { proveedor: string; monto: number }[];
   };
 }
 

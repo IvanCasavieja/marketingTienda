@@ -18,8 +18,12 @@ const COLOR_CANJE_ESTADO: Record<string, string> = {
   activo: "#10b981",
   cerrado: "#94a3b8",
 };
-const COLOR_GENERAL_PRESUPUESTO = "#6366f1";
-const COLOR_GENERAL_CANJES = "#8b5cf6";
+// Paleta categórica para el desglose de salidas por proveedor -- a
+// diferencia de entrada/salida y canjes por estado, acá los "proveedor"
+// son dinámicos (no hay un mapa fijo clave->color posible). "Otros" siempre
+// gris, mismo criterio de "recede" que "cerrado" en canjes por estado.
+const PROVEEDOR_COLORS = ["#6366f1", "#8b5cf6", "#0ea5e9", "#f43f5e", "#14b8a6"];
+const COLOR_OTROS = "#94a3b8";
 
 interface FacturacionDashboardProps {
   /** Incrementarlo fuerza un refetch -- lo sube page.tsx cuando se confirma
@@ -73,25 +77,18 @@ export default function FacturacionDashboard({ refreshToken }: FacturacionDashbo
     : [];
 
   const generalData: DonutDatum[] = data
-    ? [
-        {
-          key: "presupuesto",
-          label: t("facturacion.charts.presupuesto.title"),
-          value: data.general.presupuesto_volumen,
-          color: COLOR_GENERAL_PRESUPUESTO,
-        },
-        {
-          key: "canjes",
-          label: t("facturacion.charts.canjes.title"),
-          value: data.general.canjes_total,
-          color: COLOR_GENERAL_CANJES,
-        },
-      ]
+    ? data.general.salidas_por_proveedor.map((s, i) => ({
+        key: s.proveedor,
+        label: s.proveedor,
+        value: s.monto,
+        color: s.proveedor === "Otros" ? COLOR_OTROS : PROVEEDOR_COLORS[i % PROVEEDOR_COLORS.length],
+      }))
     : [];
 
   return (
     <div className="space-y-4">
-      {/* Torta general -- suma presupuesto (volumen bruto) y canjes */}
+      {/* Torta general -- el total (saldo de presupuesto + canjes) al centro,
+          desglosado en salidas por proveedor alrededor. */}
       <DonutCard
         title={t("facturacion.charts.general.title")}
         subtitle={t("facturacion.charts.general.subtitle")}
@@ -99,6 +96,8 @@ export default function FacturacionDashboard({ refreshToken }: FacturacionDashbo
         loading={loading}
         emptyLabel={t("facturacion.noData")}
         valueFormatter={fMoney}
+        centerValue={data ? fMoney(data.general.total) : undefined}
+        centerSubLabel={t("facturacion.charts.general.centerSubLabel")}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">

@@ -93,6 +93,20 @@ def documento_to_dict(documento: FacturacionDocumento) -> dict:
     }
 
 
+_TOP_PROVEEDORES = 5
+
+
+def _top_con_otros(rows: list[tuple[str, object]]) -> list[dict]:
+    """rows: [(proveedor, monto_sum)] ya ordenado desc -- top 5 sueltos +
+    el resto agrupado en "Otros", para no saturar la torta con un slice por
+    cada proveedor distinto que haya en la base."""
+    top = [{"proveedor": p, "monto": float(m)} for p, m in rows[:_TOP_PROVEEDORES]]
+    resto = rows[_TOP_PROVEEDORES:]
+    if resto:
+        top.append({"proveedor": "Otros", "monto": float(sum(m for _, m in resto))})
+    return top
+
+
 def _movimiento_to_dict(m: FacturacionMovimiento) -> dict:
     return {
         "id": m.id,
@@ -146,12 +160,23 @@ async def obtener_dashboard(db, limit: int = 50, offset: int = 0) -> dict:
 
     entradas_total = float(entradas_total)
     salidas_total = float(salidas_total)
+    saldo = entradas_total - salidas_total
+
+    salidas_por_proveedor_rows = (await db.execute(
+        select(
+            func.coalesce(FacturacionMovimiento.proveedor_marca, "Sin proveedor"),
+            func.sum(FacturacionMovimiento.monto),
+        )
+        .where(FacturacionMovimiento.tipo == "salida")
+        .group_by(func.coalesce(FacturacionMovimiento.proveedor_marca, "Sin proveedor"))
+        .order_by(func.sum(FacturacionMovimiento.monto).desc())
+    )).all()
 
     return {
         "presupuesto": {
             "entradas_total": entradas_total,
             "salidas_total": salidas_total,
-            "saldo": entradas_total - salidas_total,
+            "saldo": saldo,
             "movimientos": [_movimiento_to_dict(m) for m in movimientos_rows],
             "movimientos_total": movimientos_total,
         },
@@ -160,10 +185,9 @@ async def obtener_dashboard(db, limit: int = 50, offset: int = 0) -> dict:
             "por_estado": canjes_por_estado,
         },
         "general": {
-            # Volumen bruto (entradas + salidas), no el saldo neto -- un saldo
-            # cercano a cero no se vería como una porción representativa al
-            # lado del total de canjes (ver plan de implementación).
-            "presupuesto_volumen": entradas_total + salidas_total,
-            "canjes_total": canjes_total,
+            # Saldo del presupuesto (entradas - salidas) + valor de canjes --
+            # "el total sumado entre ambos", no una comparación de volúmenes.
+            "total": saldo + canjes_total,
+            "salidas_por_proveedor": _top_con_otros(salidas_por_proveedor_rows),
         },
     }

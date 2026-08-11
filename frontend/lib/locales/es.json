@@ -771,7 +771,7 @@
     "uploadButton": "Subir factura",
     "noData": "Todavía no hay datos cargados — subí tu primera factura.",
     "charts": {
-      "general": { "title": "General", "subtitle": "Presupuesto movido vs. canjes" },
+      "general": { "title": "General", "subtitle": "Total combinado — desglose de salidas por proveedor", "centerSubLabel": "Total (presupuesto + canjes)" },
       "presupuesto": { "title": "Presupuesto", "subtitle": "Entradas vs. salidas" },
       "canjes": { "title": "Canjes", "subtitle": "Por estado" }
     },
