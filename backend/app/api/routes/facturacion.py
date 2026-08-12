@@ -94,25 +94,38 @@ async def editar_cuenta(
     return cuentas_service.cuenta_to_dict(cuenta)
 
 
+_MAX_ARCHIVOS_POR_CARGA = 5  # tope conservador -- todo el lote corre dentro
+# de una sola request HTTP (sin cola de jobs, ver docstring del router), y
+# aunque las llamadas a Claude van en paralelo, un tope evita que alguien
+# mande 30 PDFs de una y la request se cuelgue esperando o pegue timeout.
+
+
 @router.post("/documentos/upload")
 @limiter.limit("5/minute")
-async def upload_documento(
+async def upload_documentos(
     request: Request,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     current_user: User = Depends(require_permission("facturacion.upload")),
     db: AsyncSession = Depends(get_db),
 ):
-    filename = file.filename or "factura.pdf"
-    if not filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
+    if not files:
+        raise HTTPException(status_code=400, detail="No se recibió ningún archivo")
+    if len(files) > _MAX_ARCHIVOS_POR_CARGA:
+        raise HTTPException(status_code=400, detail=f"Máximo {_MAX_ARCHIVOS_POR_CARGA} archivos por carga")
 
-    file_bytes = await read_limited(file, "PDF")
-    documento = await documentos_service.crear_documento_y_extraer(
-        db, filename, file.content_type or "application/pdf", file_bytes, current_user.id,
-    )
+    archivos: list[tuple[str, str, bytes]] = []
+    for file in files:
+        filename = file.filename or "factura.pdf"
+        if not filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail=f"'{filename}' no es un PDF")
+        file_bytes = await read_limited(file, "PDF")
+        archivos.append((filename, file.content_type or "application/pdf", file_bytes))
+
+    documentos = await documentos_service.crear_documentos_y_extraer(db, archivos, current_user.id)
     await db.commit()
-    await db.refresh(documento)
-    return documentos_service.documento_to_dict(documento)
+    for documento in documentos:
+        await db.refresh(documento)
+    return [documentos_service.documento_to_dict(d) for d in documentos]
 
 
 @router.get("/documentos/{documento_id}")

@@ -77,13 +77,13 @@ def _construir_tools(cuentas_activas: list[str]) -> list[dict]:
     }]
 
 
-async def extraer_factura(pdf_bytes: bytes, cuentas_activas: list[str], db, user_id: int) -> dict:
-    """cuentas_activas: nombres de las cuentas de Facturación activas hoy
-    (ver facturacion/cuentas.py) -- se le pasan a DogTi como opciones
-    válidas para cuenta_sugerida. Devuelve el dict de campos que armó DogTi
-    (tal cual el input de la tool). No commitea -- el caller
-    (facturacion/documentos.py) es dueño de la transacción, igual que el
-    resto de la familia Tino."""
+async def extraer_factura_raw(pdf_bytes: bytes, cuentas_activas: list[str]) -> tuple[dict, int, int]:
+    """La llamada a Claude en sí, sin tocar la base -- así el caller puede
+    correr varias extracciones en paralelo (asyncio.gather, ver
+    documentos.py::crear_documentos_y_extraer) sin compartir una AsyncSession
+    entre corutinas concurrentes, algo que SQLAlchemy no soporta. Devuelve
+    (campos_extraidos, input_tokens, output_tokens) -- el caller decide
+    cuándo/cómo loguear el uso (ver registrar_uso_extraccion)."""
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY no configurado")
 
@@ -104,12 +104,12 @@ async def extraer_factura(pdf_bytes: bytes, cuentas_activas: list[str], db, user
             ],
         }],
     )
-    await log_ai_usage(
-        db, user_id, "facturacion_extraccion", _META[0], _META[1],
-        response.usage.input_tokens, response.usage.output_tokens,
-    )
 
     tool_block = next((b for b in response.content if b.type == "tool_use"), None)
     if tool_block is None:
         raise RuntimeError("DogTi no pudo leer el PDF")
-    return tool_block.input
+    return tool_block.input, response.usage.input_tokens, response.usage.output_tokens
+
+
+async def registrar_uso_extraccion(db, user_id: int, input_tokens: int, output_tokens: int) -> None:
+    await log_ai_usage(db, user_id, "facturacion_extraccion", _META[0], _META[1], input_tokens, output_tokens)

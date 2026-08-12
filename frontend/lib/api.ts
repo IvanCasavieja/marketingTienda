@@ -522,10 +522,16 @@ export interface ConfirmarDocumentoPayload {
 }
 
 export const facturacionApi = {
-  uploadDocumento: (formData: FormData) =>
-    api.post<FacturacionDocumento>("/facturacion/documentos/upload", formData, {
+  // Un solo POST con varios "files" -- el backend corre las extracciones de
+  // Claude en paralelo y devuelve un documento por archivo, en el mismo
+  // orden en que se mandaron (ver crear_documentos_y_extraer en el backend).
+  uploadDocumentos: (files: File[]) => {
+    const formData = new FormData();
+    for (const file of files) formData.append("files", file);
+    return api.post<FacturacionDocumento[]>("/facturacion/documentos/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
-    }),
+    });
+  },
   getDocumento: (id: number) => api.get<FacturacionDocumento>(`/facturacion/documentos/${id}`),
   // Blob (no un <iframe src> directo a la URL cruda) -- así el interceptor de
   // axios adjunta el header Authorization, sin depender de que el navegador

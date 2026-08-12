@@ -1,6 +1,8 @@
 """Orquestación del flujo subir -> revisar -> confirmar/descartar. Separado
 de extraccion.py (que solo sabe hablar con Claude) para que la lógica de
 negocio de Facturación no dependa del detalle de cómo se arma el prompt."""
+import asyncio
+
 from sqlalchemy import func, select
 
 from app.models.facturacion_canje import FacturacionCanje
@@ -8,36 +10,53 @@ from app.models.facturacion_cuenta import FacturacionCuenta
 from app.models.facturacion_documento import FacturacionDocumento
 from app.models.facturacion_movimiento import FacturacionMovimiento
 from app.services.facturacion.cuentas import listar_cuentas
-from app.services.facturacion.extraccion import extraer_factura
+from app.services.facturacion.extraccion import extraer_factura_raw, registrar_uso_extraccion
 
 _ESTADO_PENDIENTE = "pendiente_revision"
 
 
-async def crear_documento_y_extraer(
-    db, filename: str, content_type: str, file_bytes: bytes, user_id: int
-) -> FacturacionDocumento:
-    """Crea la fila del documento y le pide a DogTi que lo lea. Un PDF que
-    DogTi no puede leer (borroso, no es una factura, error de red) NUNCA
-    tira la request abajo -- la fila se guarda igual con extraction_error
-    seteado, para que el usuario complete el resto a mano en la revisión."""
-    documento = FacturacionDocumento(
-        filename=filename,
-        content_type=content_type or "application/pdf",
-        file_size_bytes=len(file_bytes),
-        file_bytes=file_bytes,
-        status=_ESTADO_PENDIENTE,
-        uploaded_by_id=user_id,
+async def crear_documentos_y_extraer(
+    db, archivos: list[tuple[str, str, bytes]], user_id: int
+) -> list[FacturacionDocumento]:
+    """archivos: [(filename, content_type, file_bytes), ...] -- procesa un
+    lote de PDFs de una sola carga (uno o varios). Las llamadas a Claude
+    corren en paralelo (asyncio.gather) porque son independientes entre sí
+    y son la parte lenta; los inserts a la base y el logueo de uso de IA
+    quedan secuenciales después, sobre la misma sesión -- AsyncSession no
+    soporta uso concurrente desde varias corutinas a la vez, así que la
+    parte que sí toca la base nunca se paraleliza, solo la llamada a Claude.
+
+    Un PDF que DogTi no puede leer (borroso, no es una factura, error de
+    red) NUNCA tira el resto del lote abajo -- esa fila queda con
+    extraction_error seteado, para que el usuario la complete a mano en la
+    revisión, igual que si fuera la única factura de la carga."""
+    cuentas_activas = [c.nombre for c in await listar_cuentas(db)]
+
+    resultados = await asyncio.gather(
+        *[extraer_factura_raw(file_bytes, cuentas_activas) for _, _, file_bytes in archivos],
+        return_exceptions=True,
     )
-    db.add(documento)
-    await db.flush()
 
-    try:
-        cuentas_activas = [c.nombre for c in await listar_cuentas(db)]
-        documento.extraction_raw = await extraer_factura(file_bytes, cuentas_activas, db, user_id)
-    except Exception as exc:
-        documento.extraction_error = str(exc)[:500]
+    documentos: list[FacturacionDocumento] = []
+    for (filename, content_type, file_bytes), resultado in zip(archivos, resultados):
+        documento = FacturacionDocumento(
+            filename=filename,
+            content_type=content_type or "application/pdf",
+            file_size_bytes=len(file_bytes),
+            file_bytes=file_bytes,
+            status=_ESTADO_PENDIENTE,
+            uploaded_by_id=user_id,
+        )
+        db.add(documento)
+        if isinstance(resultado, Exception):
+            documento.extraction_error = str(resultado)[:500]
+        else:
+            data, input_tokens, output_tokens = resultado
+            documento.extraction_raw = data
+            await registrar_uso_extraccion(db, user_id, input_tokens, output_tokens)
+        documentos.append(documento)
 
-    return documento
+    return documentos
 
 
 def confirmar_documento(db, documento: FacturacionDocumento, tipo: str, payload: dict, user_id: int):
