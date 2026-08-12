@@ -20,6 +20,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_permission
 from app.core.rate_limit import limiter
 from app.models.user import User
+from app.services.ai_usage_service import resumir_usage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/precios", tags=["precios"])
@@ -336,7 +337,7 @@ async def ia_consultar(
     from app.services.don_tino_precios import responder_consulta
 
     try:
-        return await responder_consulta(
+        resultado = await responder_consulta(
             payload.termino,
             [it.model_dump() for it in payload.items],
             payload.mensaje,
@@ -345,6 +346,10 @@ async def ia_consultar(
     except Exception as exc:
         logger.error("ia_consultar: error para '%s' — %s", payload.termino, exc, exc_info=True)
         raise HTTPException(status_code=502, detail="No pude procesar el pedido en este momento")
+
+    usage_items = resultado.pop("usage_items", [])
+    resultado["usage"] = resumir_usage(usage_items)
+    return resultado
 
 
 @router.post("/ia/reporte")
@@ -361,13 +366,13 @@ async def ia_reporte(
     from app.services.don_tino_precios import generar_reporte
 
     try:
-        reporte = await generar_reporte(
+        reporte, usage_items = await generar_reporte(
             [it.model_dump() for it in payload.items],
             payload.nuestro_precio,
             payload.nuestra_moneda,
             db, current_user.id,
         )
-        return {"reporte": reporte}
+        return {"reporte": reporte, "usage": resumir_usage(usage_items)}
     except Exception as exc:
         logger.error("ia_reporte: error generando reporte — %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="No pude generar el reporte en este momento")

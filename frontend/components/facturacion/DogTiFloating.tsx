@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { dogtiApi, type DogtiContexto } from "@/lib/api";
+import { dogtiApi, type AiTaskUsage, type DogtiContexto } from "@/lib/api";
 import { DogTiMascot } from "@/components/DogTiMascot";
 import { X, Send } from "lucide-react";
 
@@ -11,7 +11,7 @@ import { X, Send } from "lucide-react";
 // modal de facturas) — acá solo guía y responde con los números del
 // dashboard como contexto (ver backend/app/services/facturacion/dogti_agent.py). ─
 
-type Msg = { role: "bot" | "user"; text: string };
+type Msg = { role: "bot" | "user"; text: string; usage?: AiTaskUsage };
 
 interface DogTiFloatingProps {
   contexto?: DogtiContexto;
@@ -46,7 +46,7 @@ export default function DogTiFloating({ contexto }: DogTiFloatingProps) {
     setLoading(true);
     try {
       const { data } = await dogtiApi.consultar(texto, historial, contexto);
-      setMessages((prev) => [...prev, { role: "bot", text: data.respuesta }]);
+      setMessages((prev) => [...prev, { role: "bot", text: data.respuesta, usage: data.usage }]);
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       const text = status === 503 ? t("dogti.notConfigured") : t("dogti.genericError");
@@ -88,7 +88,7 @@ export default function DogTiFloating({ contexto }: DogTiFloatingProps) {
             )}
 
             {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div key={i} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
                 <div
                   className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${
                     m.role === "user"
@@ -98,6 +98,11 @@ export default function DogTiFloating({ contexto }: DogTiFloatingProps) {
                 >
                   {m.text}
                 </div>
+                {m.usage && (
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 px-1">
+                    {m.usage.total_tokens.toLocaleString()} tokens
+                  </p>
+                )}
               </div>
             ))}
             {loading && (

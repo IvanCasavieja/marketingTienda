@@ -17,7 +17,7 @@ from app.core.llm_retry import llm_call_with_retry
 from app.models.ai_analysis import AIAnalysis
 from app.models.cenefa_job import CenefaJob
 from app.models.user import User
-from app.services.ai_usage_service import log_ai_usage
+from app.services.ai_usage_service import log_ai_usage, resumir_usage
 from app.services.tino_personas import DON_TINO_BASE
 
 logger = logging.getLogger(__name__)
@@ -353,6 +353,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+    usage: dict | None = None
 
 
 _MAX_MESSAGE_LEN = 2_000
@@ -528,6 +529,8 @@ async def chat_message(
             messages.append({"role": msg.role, "content": msg.content})
         messages.append({"role": "user", "content": body.message})
 
+        usage_items: list[dict] = []
+
         for _ in range(_MAX_TOOL_ITERS):
             completion = await llm_call_with_retry(
                 lambda: client.chat.completions.create(
@@ -545,15 +548,20 @@ async def chat_message(
 
             usage = completion.usage
             if usage:
+                input_tokens, output_tokens = usage.prompt_tokens or 0, usage.completion_tokens or 0
+                usage_items.append({
+                    "provider": "groq", "model": "llama-3.3-70b-versatile",
+                    "input_tokens": input_tokens, "output_tokens": output_tokens,
+                })
                 await log_ai_usage(
                     db, current_user.id, "don_tino_home", "groq", "llama-3.3-70b-versatile",
-                    usage.prompt_tokens or 0, usage.completion_tokens or 0,
+                    input_tokens, output_tokens,
                 )
 
             msg = completion.choices[0].message
             tool_calls = msg.tool_calls or []
             if not tool_calls:
-                return ChatResponse(reply=msg.content or "No pude generar una respuesta.")
+                return ChatResponse(reply=msg.content or "No pude generar una respuesta.", usage=resumir_usage(usage_items))
 
             messages.append({
                 "role": "assistant",
@@ -571,7 +579,10 @@ async def chat_message(
                 resultado = await _ejecutar_tool(tc.function.name, args, current_user, db)
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": resultado})
 
-        return ChatResponse(reply="No pude terminar de resolver tu consulta — probá reformularla o preguntá algo más puntual.")
+        return ChatResponse(
+            reply="No pude terminar de resolver tu consulta — probá reformularla o preguntá algo más puntual.",
+            usage=resumir_usage(usage_items),
+        )
 
     except HTTPException:
         raise

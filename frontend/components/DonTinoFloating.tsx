@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { preciosApi } from "@/lib/api";
+import { preciosApi, type AiTaskUsage } from "@/lib/api";
 import { RobotMascot } from "@/components/RobotMascot";
 import { X, Send, BarChart3, Sparkles } from "lucide-react";
 
@@ -10,7 +10,7 @@ import { X, Send, BarChart3, Sparkles } from "lucide-react";
 
 type Contexto = "precios" | "comparison" | "analytics";
 
-type Msg = { role: "bot" | "user"; text: string };
+type Msg = { role: "bot" | "user"; text: string; usage?: AiTaskUsage };
 
 interface ItemConPrecio {
   id?: string; // solo presente cuando hay checklist para aplicar selección (comparison)
@@ -89,7 +89,7 @@ export default function DonTinoFloating({
         const idsAplicados = data.mantener.map((n) => items[n - 1]?.id).filter((id): id is string => !!id);
         onApplySeleccion(idsAplicados);
       }
-      setMessages((prev) => [...prev, { role: "bot", text: data.respuesta }]);
+      setMessages((prev) => [...prev, { role: "bot", text: data.respuesta, usage: data.usage }]);
     } catch {
       setMessages((prev) => [...prev, { role: "bot", text: "No pude procesar el pedido — probá de nuevo." }]);
     } finally {
@@ -111,7 +111,7 @@ export default function DonTinoFloating({
     setLoading(true);
     try {
       const { data } = await preciosApi.generarReporteIA(reporteItems, ourPrice ?? null, ourCurrency ?? null);
-      setMessages((prev) => [...prev, { role: "bot", text: data.reporte }]);
+      setMessages((prev) => [...prev, { role: "bot", text: data.reporte, usage: data.usage }]);
     } catch {
       setMessages((prev) => [...prev, { role: "bot", text: "No pude generar el reporte en este momento — probá de nuevo." }]);
     } finally {
@@ -158,7 +158,7 @@ export default function DonTinoFloating({
             )}
 
             {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div key={i} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
                 <div
                   className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${
                     m.role === "user"
@@ -168,6 +168,11 @@ export default function DonTinoFloating({
                 >
                   {m.text}
                 </div>
+                {m.usage && (
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 px-1">
+                    {m.usage.total_tokens.toLocaleString()} tokens
+                  </p>
+                )}
               </div>
             ))}
             {loading && (

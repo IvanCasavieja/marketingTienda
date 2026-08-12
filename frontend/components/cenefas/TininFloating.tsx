@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { tininApi, type TininContexto } from "@/lib/api";
+import { tininApi, type AiTaskUsage, type TininContexto } from "@/lib/api";
 import { RobotMascot } from "@/components/RobotMascot";
 import { X, Send } from "lucide-react";
 
@@ -11,7 +11,7 @@ import { X, Send } from "lucide-react";
 // backend/app/services/cenefas/tinin_agent.py. No genera cenefas por chat:
 // eso requiere un Excel real subido, así que solo guía y explica. ─────────
 
-type Msg = { role: "bot" | "user"; text: string };
+type Msg = { role: "bot" | "user"; text: string; usage?: AiTaskUsage };
 
 interface TininFloatingProps {
   contexto?: TininContexto;
@@ -46,7 +46,7 @@ export default function TininFloating({ contexto }: TininFloatingProps) {
     setLoading(true);
     try {
       const { data } = await tininApi.consultar(texto, historial, contexto);
-      setMessages((prev) => [...prev, { role: "bot", text: data.respuesta }]);
+      setMessages((prev) => [...prev, { role: "bot", text: data.respuesta, usage: data.usage }]);
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       const text = status === 503 ? t("tinin.notConfigured") : t("tinin.genericError");
@@ -88,7 +88,7 @@ export default function TininFloating({ contexto }: TininFloatingProps) {
             )}
 
             {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div key={i} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
                 <div
                   className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${
                     m.role === "user"
@@ -98,6 +98,11 @@ export default function TininFloating({ contexto }: TininFloatingProps) {
                 >
                   {m.text}
                 </div>
+                {m.usage && (
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 px-1">
+                    {m.usage.total_tokens.toLocaleString()} tokens
+                  </p>
+                )}
               </div>
             ))}
             {loading && (

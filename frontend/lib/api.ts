@@ -214,9 +214,25 @@ export const toolsApi = {
     api.get<{ slug: string; name: string; format_name: string }[]>("/tools/cenefas/builtin-templates"),
 };
 
+// Total de tokens/costo que gastó UN agente en UNA tarea puntual (puede ser
+// más de una llamada si hubo vueltas de tool-use) -- ver resumir_usage() en
+// backend/app/services/ai_usage_service.py. Se muestra chico debajo de cada
+// respuesta del bot en las burbujas de chat de la familia Tino.
+export interface AiTaskUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+}
+
+export interface ChatMessageResponse {
+  reply: string;
+  usage?: AiTaskUsage;
+}
+
 export const chatApi = {
   sendMessage: (message: string, history: { role: string; content: string }[]) =>
-    api.post<{ reply: string }>("/chat/message", { message, history }),
+    api.post<ChatMessageResponse>("/chat/message", { message, history }),
 };
 
 // ---------------------------------------------------------------------------
@@ -412,6 +428,7 @@ export type TininContexto = "convertidor" | "rompe_precios" | "redexpres";
 
 export interface TininConsultarResponse {
   respuesta: string;
+  usage?: AiTaskUsage;
 }
 
 export const tininApi = {
@@ -605,10 +622,12 @@ export interface ConsultarIAResponse {
   tipo: "seleccion" | "respuesta";
   mantener: number[] | null;
   respuesta: string;
+  usage?: AiTaskUsage;
 }
 
 export interface ReporteIAResponse {
   reporte: string;
+  usage?: AiTaskUsage;
 }
 
 export const preciosApi = {

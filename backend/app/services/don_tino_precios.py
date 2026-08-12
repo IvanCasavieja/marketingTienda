@@ -11,15 +11,22 @@ debate_service.py que ya usa La Triada) pero el usuario nunca ve "Claude" ni
 CLAUDE_PERSONA/GPT_PERSONA de debate_service.py: esas están armadas para un
 debate adversarial de métricas de campañas, tono equivocado para esto.
 
-100% stateless — no persiste nada, no dispara scraping. Opera sobre los
-resultados que ya trajo la búsqueda en vivo de ese momento.
+100% stateless — no persiste nada. La única excepción es responder_consulta():
+su chat abierto SÍ puede disparar una búsqueda nueva (tool buscar_precios) si
+la pregunta del usuario lo requiere -- es la única función de este archivo con
+un loop de tool-use real, ver su docstring. El resto sigue siendo pipelines
+fijos que solo operan sobre los resultados que ya trajo la búsqueda en vivo.
 """
+import asyncio
 import json
 import logging
 import re
 import statistics
 import unicodedata
 
+import anthropic
+
+from app.core.config import settings
 from app.services.debate_service import _ask_claude, _ask_gpt, _ASK_CLAUDE_META, _ASK_GPT_META
 from app.services.ai_usage_service import log_ai_usage
 from app.services.tino_personas import DONA_TINA_BASE
@@ -85,7 +92,9 @@ def _matches(nombre: str, incluir: list[str], excluir: list[str]) -> bool:
     return ok_incluir and ok_excluir
 
 
-async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[int, dict]], db=None, user_id=None) -> list[int]:
+async def _afinar_seleccion(
+    termino: str, mensaje: str, candidatos: list[tuple[int, dict]], db=None, user_id=None
+) -> tuple[list[int], list[dict]]:
     """candidatos: [(índice_original, item), ...] ya prefiltrados por palabra
     clave. Antes de mandarlos a Claude se AGRUPAN por (tienda, nombre): la
     revisión semántica es una decisión por PRODUCTO, no por sucursal — el
@@ -96,8 +105,9 @@ async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[i
     vio en producción con "Celular Samsung Galaxy A06 Negro" repetido por
     sucursal, donde solo una quedaba tildada. Agrupando, Claude toma UNA
     decisión por producto único y acá se expande a todas las sucursales de
-    ese grupo. Devuelve los índices ORIGINALES a mantener.
-    """
+    ese grupo. Devuelve (índices ORIGINALES a mantener, usage_items) — el
+    segundo elemento para que el caller (responder_consulta) pueda sumarlo
+    al total de tokens de la tarea completa."""
     grupos: dict[tuple[str, str], list[int]] = {}
     item_de_grupo: dict[tuple[str, str], dict] = {}
     for idx, it in candidatos:
@@ -109,7 +119,7 @@ async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[i
     if len(claves) > _REFINAR_MAX:
         # Demasiados productos únicos para una revisión confiable uno por uno
         # — nos quedamos con el filtro de palabras clave tal cual.
-        return [idx for idxs in grupos.values() for idx in idxs]
+        return [idx for idxs in grupos.values() for idx in idxs], []
 
     listado = "\n".join(f"{n}. [{tienda}] {nombre}" for n, (tienda, nombre) in enumerate(claves, start=1))
     prompt = (
@@ -122,8 +132,10 @@ async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[i
         'Devolvé SOLO un JSON: {"mantener": [1, 3, 5]} — los números de los que SÍ corresponden '
         'de verdad a lo que pidió el usuario. Si todos corresponden, incluilos todos.'
     )
+    usage_items: list[dict] = []
     try:
         content, in_tok, out_tok = await _ask_claude(DONA_TINA_BASE, prompt, max_tokens=400)
+        usage_items.append({"provider": _ASK_CLAUDE_META[0], "model": _ASK_CLAUDE_META[1], "input_tokens": in_tok, "output_tokens": out_tok})
         await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
         parsed = json.loads(_strip_json_fence(content))
         mantener_local = [i for i in parsed.get("mantener", []) if isinstance(i, int) and 1 <= i <= len(claves)]
@@ -132,7 +144,7 @@ async def _afinar_seleccion(termino: str, mensaje: str, candidatos: list[tuple[i
         log.warning("don_tino_precios._afinar_seleccion: fallo, uso el filtro de palabras clave sin afinar — %s", exc)
         claves_mantener = set(claves)
 
-    return [idx for key in claves if key in claves_mantener for idx in grupos[key]]
+    return [idx for key in claves if key in claves_mantener for idx in grupos[key]], usage_items
 
 
 _SINONIMOS_MAX_TOKENS = 300
@@ -297,17 +309,73 @@ async def filtrar_relevancia_automatica(termino: str, items: list[dict], db=None
     }
 
 
+_MAX_TOOL_ITERATIONS = 3  # tope de vueltas de tool-use -- alcanza con "busca -> responde",
+# no hace falta el margen más generoso de Tinín/DogTi acá.
+
+_TOOLS_CONSULTA = [{
+    "name": "buscar_precios",
+    "description": (
+        "Busca precios en vivo de un producto en las cadenas uruguayas soportadas. Usala SOLO "
+        "cuando la pregunta necesita datos que NO están en la muestra de productos ya buscados "
+        "-- otro término, otra marca, u otra cadena que no aparece en los resultados actuales "
+        "(ej. \"¿y en Fama hay algo?\", \"buscá también auriculares\"). Sus resultados son "
+        "SOLO para responder con tipo=\"respuesta\" -- nunca los uses para decidir incluir/"
+        "excluir de una selección, esos filtros siempre se aplican sobre la búsqueda ORIGINAL "
+        "que ya está en pantalla, nunca sobre una búsqueda nueva."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "termino": {"type": "string", "description": "Qué buscar, ej. 'auriculares bluetooth'"},
+        },
+        "required": ["termino"],
+    },
+}]
+
+
+async def _tool_buscar_precios(termino: str) -> str:
+    from app.services.scraper.live_search import buscar_todas_cached
+
+    termino = (termino or "").strip()
+    if len(termino) < 2:
+        return json.dumps({"error": "El término de búsqueda es muy corto"})
+    try:
+        resultados = await asyncio.wait_for(asyncio.to_thread(buscar_todas_cached, termino), timeout=45.0)
+    except Exception as exc:
+        log.warning("don_tino_precios._tool_buscar_precios: error buscando '%s' — %s", termino, exc)
+        return json.dumps({"error": "Error al buscar precios en este momento"})
+
+    items = []
+    for records in resultados.values():
+        for r in records:
+            if r.nombre and r.precio is not None:
+                items.append({
+                    "tienda": r.tienda, "nombre": r.nombre, "precio": r.precio, "moneda": r.moneda,
+                    "marca": r.marca, "sucursal": r.sucursal_nombre, "relevancia": r.relevancia,
+                })
+    items.sort(key=lambda x: x["relevancia"], reverse=True)
+    top = items[:12]
+    if not top:
+        return json.dumps({"resultados": [], "mensaje": f"No se encontraron resultados para '{termino}'"})
+    return json.dumps({"resultados": top}, ensure_ascii=False)
+
+
 async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=None, user_id=None) -> dict:
     """Un único punto de entrada para todo lo que el usuario le escribe a Doña
     Tina sobre estos resultados: puede ser una instrucción de filtro ("quiero
     solo los que sean Galaxy A17") o una pregunta general ("¿cuál es el más
-    barato de DIMM?").
+    barato de DIMM?") -- y, a diferencia de antes, también puede disparar una
+    búsqueda nueva vía la tool buscar_precios si la pregunta lo requiere (ej.
+    "¿y en Fama hay algo?" cuando Fama no está en los resultados actuales).
+    Esta es la única función de este archivo con un loop de tool-use real
+    (patrón tinin_agent.py) -- el resto sigue siendo pipelines fijos.
 
     "seleccion" se resuelve en DOS pasos para poder ser rápido/barato con
     listas de cientos de productos Y semánticamente correcto:
       1) Claude propone palabras clave de inclusión/exclusión mirando solo una
          MUESTRA acotada de nombres reales (no la lista completa) — cuestión
-         de vocabulario, no de enumerar productos.
+         de vocabulario, no de enumerar productos. Esta parte ahora puede
+         incluir vueltas de tool-use antes de llegar a la respuesta final.
       2) Ese filtro de palabras clave se aplica en Python sobre la lista
          COMPLETA (determinístico, cualquier tamaño). Si los candidatos que
          matchean son pocos (<= _REFINAR_MAX), una segunda pasada de Claude
@@ -315,10 +383,10 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=N
          texto "matchee": una tablet Galaxy no se cuela en "solo celulares"
          aunque comparta la palabra "galaxy".
 
-    Devuelve {"tipo": "seleccion"|"respuesta", "mantener": [1,4,7] | None, "respuesta": "..."}.
-    Si el parseo del primer paso falla, se devuelve tipo="respuesta" con un
-    mensaje de error — nunca se aplica un filtro por un fallo de parseo.
-    """
+    Devuelve {"tipo": "seleccion"|"respuesta", "mantener": [1,4,7] | None,
+    "respuesta": "...", "usage_items": [...]}. Si el parseo del primer paso
+    falla, se devuelve tipo="respuesta" con un mensaje de error — nunca se
+    aplica un filtro por un fallo de parseo."""
     muestra = _muestra_nombres(items)
     prompt = (
         f'El usuario buscó "{termino}" en el comparador de precios de la competencia y ahora te escribió: '
@@ -330,7 +398,8 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=N
         'dejarme solo los Galaxy?", "che, quedate solo con...") — cualquier variante de "mostrame/'
         'dejame/filtrá esto" cuenta como "seleccion".\n'
         '- "respuesta" únicamente si es una pregunta general sobre los datos, sin pedir que cambies '
-        'lo que se ve (ej. "¿cuál es el más barato?").\n\n'
+        'lo que se ve (ej. "¿cuál es el más barato?"), o si necesitaste usar buscar_precios para '
+        'responder (una búsqueda nueva nunca produce una "seleccion" sobre la lista original).\n\n'
         'IMPORTANTE: el campo "tipo" tiene que ser EXACTAMENTE el string "seleccion" (así, sin tilde) o '
         '"respuesta" — nada más. Y el campo "respuesta" tiene que ser consistente con "tipo": si "tipo" '
         'es "respuesta", no digas frases como "filtré" o "dejé solo" porque no vas a aplicar ningún '
@@ -341,16 +410,57 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=N
         'clave correcta es "a17", no "17"). Podés dar palabras para incluir y, si aplica, para excluir '
         '(ej. "sacá los accesorios" -> excluir: ["funda", "soporte", "cargador", ...] según lo que veas '
         'en los ejemplos).\n\n'
-        'Devolvé SOLO un objeto JSON, sin texto antes ni después:\n'
+        'Cuando ya sepas qué responder (con o sin haber usado buscar_precios antes), devolvé SOLO un '
+        'objeto JSON, sin texto antes ni después:\n'
         '- Para "seleccion": {"tipo": "seleccion", "incluir": ["a17"], "excluir": [], "respuesta": '
         '"una frase corta explicando qué filtro aplicaste"}\n'
         '- Para "respuesta": {"tipo": "respuesta", "incluir": null, "excluir": null, "respuesta": '
         '"la respuesta a la pregunta — si necesitás precios exactos y la muestra no alcanza, decilo"}'
     )
+
+    usage_items: list[dict] = []
+
+    if not settings.ANTHROPIC_API_KEY:
+        return {"tipo": "respuesta", "mantener": None, "respuesta": "No pude interpretar bien tu pedido — probá reformulándolo.", "usage_items": usage_items}
+
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    messages: list[dict] = [{"role": "user", "content": prompt}]
+    contenido_final: str | None = None
+
+    for _ in range(_MAX_TOOL_ITERATIONS):
+        response = await client.messages.create(
+            model="claude-sonnet-4-6", max_tokens=500, system=DONA_TINA_BASE,
+            tools=_TOOLS_CONSULTA, messages=messages,
+        )
+        usage_items.append({
+            "provider": "anthropic", "model": "claude-sonnet-4-6",
+            "input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens,
+        })
+        await _log_uso(db, user_id, _ASK_CLAUDE_META, response.usage.input_tokens, response.usage.output_tokens)
+
+        messages.append({"role": "assistant", "content": response.content})
+
+        if response.stop_reason != "tool_use":
+            contenido_final = next((b.text for b in response.content if b.type == "text"), "")
+            break
+
+        tool_results = []
+        for block in response.content:
+            if block.type != "tool_use":
+                continue
+            resultado = await _tool_buscar_precios(block.input.get("termino", ""))
+            tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": resultado})
+        messages.append({"role": "user", "content": tool_results})
+
+    if contenido_final is None:
+        return {
+            "tipo": "respuesta", "mantener": None,
+            "respuesta": "No pude terminar de procesar tu pedido — probá reformulándolo.",
+            "usage_items": usage_items,
+        }
+
     try:
-        content, in_tok, out_tok = await _ask_claude(DONA_TINA_BASE, prompt, max_tokens=500)
-        await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
-        parsed = json.loads(_strip_json_fence(content))
+        parsed = json.loads(_strip_json_fence(contenido_final))
         tipo = "seleccion" if _normalizar(str(parsed.get("tipo") or "")) == "seleccion" else "respuesta"
         respuesta = str(parsed.get("respuesta") or "").strip()
     except Exception as exc:
@@ -359,17 +469,19 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=N
             "tipo": "respuesta",
             "mantener": None,
             "respuesta": "No pude interpretar bien tu pedido — probá reformulándolo.",
+            "usage_items": usage_items,
         }
 
     if tipo != "seleccion":
-        return {"tipo": "respuesta", "mantener": None, "respuesta": respuesta or "Listo."}
+        return {"tipo": "respuesta", "mantener": None, "respuesta": respuesta or "Listo.", "usage_items": usage_items}
 
     incluir = [str(k).lower() for k in (parsed.get("incluir") or []) if str(k).strip()]
     excluir = [str(k).lower() for k in (parsed.get("excluir") or []) if str(k).strip()]
     candidatos = [(i, it) for i, it in enumerate(items, start=1) if _matches(it["nombre"], incluir, excluir)]
 
     if candidatos and len(candidatos) <= _REFINAR_MAX:
-        mantener = await _afinar_seleccion(termino, mensaje, candidatos, db, user_id)
+        mantener, usage_afinar = await _afinar_seleccion(termino, mensaje, candidatos, db, user_id)
+        usage_items.extend(usage_afinar)
     else:
         mantener = [i for i, _ in candidatos]
 
@@ -382,9 +494,10 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=N
             "tipo": "seleccion",
             "mantener": [],
             "respuesta": "No encontré ningún producto que coincida con eso — dejé tu selección como estaba.",
+            "usage_items": usage_items,
         }
 
-    return {"tipo": "seleccion", "mantener": mantener, "respuesta": respuesta or "Listo."}
+    return {"tipo": "seleccion", "mantener": mantener, "respuesta": respuesta or "Listo.", "usage_items": usage_items}
 
 
 def _stats_por_moneda(items: list[dict]) -> dict[str, dict]:
@@ -454,7 +567,7 @@ async def generar_reporte(
     nuestra_moneda: str | None = None,
     db=None,
     user_id=None,
-) -> str:
+) -> tuple[str, list[dict]]:
     """items: [{"tienda": str, "nombre": str, "precio": float, "moneda": str}, ...]
 
     Los números clave (mínimo, máximo, mediana, promedio) se calculan en
@@ -470,7 +583,9 @@ async def generar_reporte(
     Patrón: Claude analiza en frío (lectura de los números) -> ChatGPT analiza
     en frío (lectura estratégica/posicionamiento) -> Claude sintetiza ambos en
     el texto final, en primera persona como Doña Tina. Los pasos 1 y 2 quedan
-    internos, solo se devuelve el texto final.
+    internos, solo se devuelve el texto final -- sigue siendo el mismo
+    pipeline fijo de siempre, ahora devuelve además (texto, usage_items) para
+    que el caller pueda mostrar cuánto costó la tarea completa.
     """
     stats = _stats_por_moneda(items)
     stats_txt = _formatear_stats(stats, nuestro_precio, nuestra_moneda)
@@ -489,11 +604,14 @@ async def generar_reporte(
         "(ya te digo si está por encima o debajo de la mediana — explicá qué implica eso). "
         "Sé concreto, citá los números tal cual te los di — máximo 3 párrafos cortos."
     )
+    usage_items: list[dict] = []
+
     analisis_cuantitativo, in_tok, out_tok = await _ask_claude(
         DONA_TINA_BASE + " Tu tarea ahora: interpretar estadísticas de precios de la competencia.",
         prompt_cuantitativo,
         max_tokens=600,
     )
+    usage_items.append({"provider": _ASK_CLAUDE_META[0], "model": _ASK_CLAUDE_META[1], "input_tokens": in_tok, "output_tokens": out_tok})
     await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
 
     prompt_estrategico = (
@@ -507,6 +625,7 @@ async def generar_reporte(
         prompt_estrategico,
         max_tokens=600,
     )
+    usage_items.append({"provider": _ASK_GPT_META[0], "model": _ASK_GPT_META[1], "input_tokens": in_tok, "output_tokens": out_tok})
     await _log_uso(db, user_id, _ASK_GPT_META, in_tok, out_tok)
 
     prompt_sintesis = (
@@ -525,8 +644,9 @@ async def generar_reporte(
         prompt_sintesis,
         max_tokens=700,
     )
+    usage_items.append({"provider": _ASK_CLAUDE_META[0], "model": _ASK_CLAUDE_META[1], "input_tokens": in_tok, "output_tokens": out_tok})
     await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
-    return reporte_final
+    return reporte_final, usage_items
 
 
 async def explicar_cambio_precio(

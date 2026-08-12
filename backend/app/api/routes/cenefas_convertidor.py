@@ -31,6 +31,7 @@ from app.services.cenefas.convertidor_ai import (
     generar_descripciones,
 )
 from app.services.cenefas import tinin_agent
+from app.services.ai_usage_service import resumir_usage
 
 logger = logging.getLogger(__name__)
 
@@ -311,4 +312,4 @@ async def tinin_consultar(
         raise HTTPException(status_code=502, detail="No pude procesar tu consulta en este momento")
 
     await db.commit()  # persiste el ai_usage_log acumulado + cualquier descripción guardada por la tool
-    return {"respuesta": result["respuesta"]}
+    return {"respuesta": result["respuesta"], "usage": resumir_usage(result["usage_items"])}

@@ -262,3 +262,88 @@ async def obtener_dashboard(
             "por_cuenta": por_cuenta,
         },
     }
+
+
+_QUERY_LIMIT = 20  # tope de filas devueltas a DogTi por consulta -- el chat responde
+# en prosa, no necesita (ni le conviene, por tokens) una lista larga; el total
+# agregado sí se calcula sobre TODAS las filas que matchean, no solo las que se listan.
+
+
+async def buscar_movimientos_filtrados(
+    db, proveedor: str | None = None, desde: str | None = None, hasta: str | None = None,
+    tipo: str | None = None, cuenta_id: int | None = None,
+) -> dict:
+    """Consulta de solo lectura para el chat de DogTi (ver dogti_agent.py) --
+    nunca escribe nada. proveedor: substring, sin distinguir mayúsculas.
+    desde/hasta: fechas YYYY-MM-DD, inclusive. tipo: "entrada" | "salida"."""
+    filtros = []
+    if proveedor:
+        filtros.append(FacturacionMovimiento.proveedor_marca.ilike(f"%{proveedor}%"))
+    if desde:
+        filtros.append(FacturacionMovimiento.fecha >= desde)
+    if hasta:
+        filtros.append(FacturacionMovimiento.fecha <= hasta)
+    if tipo in ("entrada", "salida"):
+        filtros.append(FacturacionMovimiento.tipo == tipo)
+    if cuenta_id is not None:
+        filtros.append(FacturacionMovimiento.cuenta_id == cuenta_id)
+
+    total_row = (await db.execute(
+        select(func.count(), func.coalesce(func.sum(FacturacionMovimiento.monto), 0)).where(*filtros)
+    )).one()
+    cantidad, total_monto = total_row
+
+    rows = (await db.execute(
+        select(FacturacionMovimiento).where(*filtros)
+        .order_by(FacturacionMovimiento.fecha.desc(), FacturacionMovimiento.id.desc())
+        .limit(_QUERY_LIMIT)
+    )).scalars().all()
+
+    return {
+        "cantidad_total": cantidad,
+        "monto_total": float(total_monto),
+        "movimientos": [_movimiento_to_dict(m) for m in rows],
+        "mostrando": f"los {len(rows)} más recientes de {cantidad}" if cantidad > len(rows) else "todos",
+    }
+
+
+def _canje_to_dict(c: FacturacionCanje) -> dict:
+    return {
+        "id": c.id,
+        "marca_proveedor": c.marca_proveedor,
+        "valor": float(c.valor),
+        "moneda": c.moneda,
+        "estado": c.estado,
+        "vigencia_desde": c.vigencia_desde.isoformat() if c.vigencia_desde else None,
+        "vigencia_hasta": c.vigencia_hasta.isoformat() if c.vigencia_hasta else None,
+        "descripcion": c.descripcion,
+        "cuenta_id": c.cuenta_id,
+    }
+
+
+async def buscar_canjes_filtrados(db, estado: str | None = None, cuenta_id: int | None = None) -> dict:
+    """Ídem buscar_movimientos_filtrados pero sobre FacturacionCanje -- solo
+    lectura, para el chat de DogTi."""
+    filtros = []
+    if estado in ("pendiente", "activo", "cerrado"):
+        filtros.append(FacturacionCanje.estado == estado)
+    if cuenta_id is not None:
+        filtros.append(FacturacionCanje.cuenta_id == cuenta_id)
+
+    total_row = (await db.execute(
+        select(func.count(), func.coalesce(func.sum(FacturacionCanje.valor), 0)).where(*filtros)
+    )).one()
+    cantidad, total_valor = total_row
+
+    rows = (await db.execute(
+        select(FacturacionCanje).where(*filtros)
+        .order_by(FacturacionCanje.created_at.desc())
+        .limit(_QUERY_LIMIT)
+    )).scalars().all()
+
+    return {
+        "cantidad_total": cantidad,
+        "valor_total": float(total_valor),
+        "canjes": [_canje_to_dict(c) for c in rows],
+        "mostrando": f"los {len(rows)} más recientes de {cantidad}" if cantidad > len(rows) else "todos",
+    }

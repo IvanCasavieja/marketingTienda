@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { chatApi } from "@/lib/api";
+import { chatApi, type AiTaskUsage } from "@/lib/api";
 import { Send, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { RobotMascot, RobotMini } from "@/components/RobotMascot";
@@ -9,7 +9,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type BotMessage = { role: "bot" | "user"; text: string; ts: Date };
+type BotMessage = { role: "bot" | "user"; text: string; ts: Date; usage?: AiTaskUsage };
 
 // ---------------------------------------------------------------------------
 // Main page
@@ -64,7 +64,7 @@ export default function HomePage() {
         .slice(-11, -1)
         .map((m) => ({ role: m.role === "bot" ? "assistant" : "user", content: m.text }));
       const { data } = await chatApi.sendMessage(q, history);
-      setMessages((prev) => [...prev, { role: "bot", text: data.reply, ts: new Date() }]);
+      setMessages((prev) => [...prev, { role: "bot", text: data.reply, ts: new Date(), usage: data.usage }]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -136,15 +136,22 @@ export default function HomePage() {
                         <RobotMini />
                       </div>
                     )}
-                    <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                      m.role === "user"
-                        ? "bg-brand-600 text-white rounded-tr-sm"
-                        : "bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-tl-sm shadow-sm"
-                    }`}>
-                      {m.text.split("**").map((part, j) =>
-                        j % 2 === 1
-                          ? <strong key={j} className={m.role === "user" ? "text-white" : "text-slate-900"}>{part}</strong>
-                          : <span key={j}>{part}</span>
+                    <div className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
+                      <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                        m.role === "user"
+                          ? "bg-brand-600 text-white rounded-tr-sm"
+                          : "bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-tl-sm shadow-sm"
+                      }`}>
+                        {m.text.split("**").map((part, j) =>
+                          j % 2 === 1
+                            ? <strong key={j} className={m.role === "user" ? "text-white" : "text-slate-900"}>{part}</strong>
+                            : <span key={j}>{part}</span>
+                        )}
+                      </div>
+                      {m.usage && (
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 px-1">
+                          {m.usage.total_tokens.toLocaleString()} tokens
+                        </p>
                       )}
                     </div>
                   </div>

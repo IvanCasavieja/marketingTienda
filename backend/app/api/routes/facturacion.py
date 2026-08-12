@@ -17,6 +17,7 @@ from app.core.uploads import read_limited
 from app.models.facturacion_cuenta import FacturacionCuenta
 from app.models.facturacion_documento import FacturacionDocumento
 from app.models.user import User
+from app.services.ai_usage_service import resumir_usage
 from app.services.facturacion import cuentas as cuentas_service
 from app.services.facturacion import documentos as documentos_service
 from app.services.facturacion import dogti_agent
@@ -261,4 +262,4 @@ async def dogti_consultar(
         raise HTTPException(status_code=502, detail="No pude procesar tu consulta en este momento")
 
     await db.commit()
-    return {"respuesta": result["respuesta"]}
+    return {"respuesta": result["respuesta"], "usage": resumir_usage(result["usage_items"])}
