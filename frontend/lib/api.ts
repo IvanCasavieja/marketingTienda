@@ -65,7 +65,18 @@ api.interceptors.response.use(
         );
         // Save new token from refresh response if present (mobile path)
         const newToken = refreshRes.data?.access_token;
-        if (newToken) saveAccessToken(newToken);
+        if (newToken) {
+          saveAccessToken(newToken);
+          // `original` ya trae el header Authorization con el token VIEJO,
+          // puesto por el request interceptor en el intento original — ese
+          // interceptor solo lo agrega si todavía no está seteado, así que
+          // sin esta línea el reintento reenvía el mismo token vencido,
+          // pega otro 401 (ahora sin reintentar de nuevo, por _retry) y el
+          // error termina en pantalla como si el refresh nunca hubiera
+          // pasado. Pisarlo acá a mano asegura que el reintento use el
+          // token nuevo.
+          original.headers["Authorization"] = `Bearer ${newToken}`;
+        }
         return api(original);
       } catch {
         clearAccessToken();
