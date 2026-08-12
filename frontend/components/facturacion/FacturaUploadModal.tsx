@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { AlertTriangle, FileText, Loader2, Trash2, Upload, X } from "lucide-react";
 import { facturacionApi, facturacionCuentasApi, type ConfirmarDocumentoPayload, type FacturacionCuenta, type FacturacionDocumento } from "@/lib/api";
 import { FileDropField } from "@/components/cenefas/redexpres/RedExpresPanel";
-import { DogTiMascot } from "@/components/DogTiMascot";
+import { DogTiMascot, DogTiMini } from "@/components/DogTiMascot";
+import { fMoneyExact } from "@/lib/format";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 // Flujo: subir PDF -> DogTi lo lee (extracting) -> formulario de revisión
@@ -33,6 +34,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </label>
   );
 }
+
+const CONFIANZA_BADGE: Record<string, string> = {
+  alta: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
+  media: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400",
+  baja: "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400",
+};
 
 export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUploadModalProps) {
   const { t } = useTranslation();
@@ -176,7 +183,6 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
 
   const canConfirm = monto.trim() !== "" && !isNaN(parseFloat(monto)) && concepto.trim() !== "" && fecha !== "" && cuentaId !== null;
   const ex = documento?.extraccion;
-  const showLowConfidence = ex && (ex.confianza !== "alta" || (ex.notas && ex.notas.trim() !== ""));
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={step === "extracting" ? undefined : handleClose}>
@@ -231,10 +237,38 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
                   <span>{t("facturacion.upload.extractError")}</span>
                 </div>
               )}
-              {!documento.extraction_error && showLowConfidence && (
-                <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 rounded-lg px-3 py-2">
-                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                  <span>{ex?.notas || t("facturacion.upload.lowConfidence")}</span>
+
+              {/* Panel de análisis -- siempre visible cuando DogTi pudo leer
+                  el PDF (no solo cuando la confianza es baja), para que la
+                  persona vea qué entendió antes de mirar el formulario. */}
+              {!documento.extraction_error && ex && (
+                <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3 py-3 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <DogTiMini />
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{t("facturacion.upload.analysisTitle")}</span>
+                    <span className={`ml-auto text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0 ${CONFIANZA_BADGE[ex.confianza]}`}>
+                      {t(`facturacion.upload.confianza.${ex.confianza}`)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    {t("facturacion.upload.analysisSummary", {
+                      proveedor: ex.proveedor_marca || "—",
+                      concepto: ex.concepto || "—",
+                      monto: `${ex.moneda || "UYU"} ${fMoneyExact(ex.monto)}`,
+                      tipo: ex.tipo_sugerido === "canje" ? t("facturacion.upload.typeCanje") : t("facturacion.upload.typeMovimiento"),
+                    })}
+                  </p>
+                  {ex.cuenta_sugerida && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {t("facturacion.upload.cuentaDetectada", { cuenta: ex.cuenta_sugerida })}
+                    </p>
+                  )}
+                  {ex.notas && ex.notas.trim() !== "" && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1.5 pt-0.5">
+                      <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                      <span>{ex.notas}</span>
+                    </p>
+                  )}
                 </div>
               )}
 

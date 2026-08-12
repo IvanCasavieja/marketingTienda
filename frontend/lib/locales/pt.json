@@ -816,8 +816,15 @@
       "analyze": "Analisar com DogTi",
       "processing": "DogTi está lendo a fatura…",
       "extractError": "DogTi não conseguiu ler este PDF — preencha os dados manualmente.",
-      "lowConfidence": "DogTi não tem certeza de alguns dados — revise antes de confirmar.",
       "reviewTitle": "Revisar antes de confirmar",
+      "analysisTitle": "Análise do DogTi",
+      "analysisSummary": "Fornecedor: {{proveedor}} · Conceito: {{concepto}} · Valor: {{monto}} · Sugerido como: {{tipo}}",
+      "cuentaDetectada": "Conta detectada: {{cuenta}}",
+      "confianza": {
+        "alta": "Confiança alta",
+        "media": "Confiança média",
+        "baja": "Confiança baixa"
+      },
       "typeMovimiento": "Movimentação",
       "typeCanje": "Permuta",
       "fieldTipoMovimiento": "Tipo",

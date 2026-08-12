@@ -816,8 +816,15 @@
       "analyze": "Analyze with DogTi",
       "processing": "DogTi is reading the invoice…",
       "extractError": "DogTi couldn't read this PDF — fill in the data by hand.",
-      "lowConfidence": "DogTi isn't sure about some fields — review them before confirming.",
       "reviewTitle": "Review before confirming",
+      "analysisTitle": "DogTi's analysis",
+      "analysisSummary": "Supplier: {{proveedor}} · Concept: {{concepto}} · Amount: {{monto}} · Suggested as: {{tipo}}",
+      "cuentaDetectada": "Detected account: {{cuenta}}",
+      "confianza": {
+        "alta": "High confidence",
+        "media": "Medium confidence",
+        "baja": "Low confidence"
+      },
       "typeMovimiento": "Transaction",
       "typeCanje": "Trade deal",
       "fieldTipoMovimiento": "Type",
