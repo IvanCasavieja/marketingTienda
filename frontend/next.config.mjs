@@ -19,6 +19,11 @@ const csp = [
   "img-src 'self' data:",
   "font-src 'self' data: https://fonts.gstatic.com",
   `connect-src 'self' ${apiOrigin}`,
+  // 'self' NO cubre blob: -- sin esto, el <iframe> de preview de PDF en
+  // FacturaUploadModal (blob URL armado en el cliente a partir de la
+  // respuesta del backend) queda bloqueado en silencio por el navegador,
+  // sin ningún error visible más que la consola.
+  "frame-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

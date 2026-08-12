@@ -21,7 +21,7 @@ type Resultado = "pendiente" | "confirmado" | "descartado";
 
 // Mismo tope que _MAX_ARCHIVOS_POR_CARGA en el backend (ver
 // routes/facturacion.py) -- todo el lote corre dentro de una sola request.
-const MAX_ARCHIVOS = 5;
+const MAX_ARCHIVOS = 10;
 
 interface DocForm {
   documento: FacturacionDocumento;
@@ -146,10 +146,12 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
     setUploadError(null);
     setFiles((prev) => {
       const merged = [...prev];
+      let dropped = false;
       for (const f of newFiles) {
-        if (merged.length >= MAX_ARCHIVOS) break;
+        if (merged.length >= MAX_ARCHIVOS) { dropped = true; break; }
         if (!merged.some((m) => m.name === f.name && m.size === f.size)) merged.push(f);
       }
+      if (dropped) toast.error(t("facturacion.upload.maxFilesReached", { max: MAX_ARCHIVOS }));
       return merged;
     });
   }

@@ -94,7 +94,7 @@ async def editar_cuenta(
     return cuentas_service.cuenta_to_dict(cuenta)
 
 
-_MAX_ARCHIVOS_POR_CARGA = 5  # tope conservador -- todo el lote corre dentro
+_MAX_ARCHIVOS_POR_CARGA = 10  # tope conservador -- todo el lote corre dentro
 # de una sola request HTTP (sin cola de jobs, ver docstring del router), y
 # aunque las llamadas a Claude van en paralelo, un tope evita que alguien
 # mande 30 PDFs de una y la request se cuelgue esperando o pegue timeout.

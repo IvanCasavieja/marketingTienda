@@ -819,7 +819,6 @@
       "removeFile": "Remove",
       "filesHint": ".pdf · up to {{max}} files",
       "maxFilesReached": "Maximum {{max}} files per upload",
-      "noFilesError": "Choose at least one PDF file",
       "pageOf": "Page {{page}} of {{total}}",
       "prevPage": "Previous invoice",
       "nextPage": "Next invoice",

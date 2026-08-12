@@ -819,7 +819,6 @@
       "removeFile": "Quitar",
       "filesHint": ".pdf · hasta {{max}} archivos",
       "maxFilesReached": "Máximo {{max}} archivos por carga",
-      "noFilesError": "Elegí al menos un archivo PDF",
       "pageOf": "Página {{page}} de {{total}}",
       "prevPage": "Factura anterior",
       "nextPage": "Factura siguiente",
