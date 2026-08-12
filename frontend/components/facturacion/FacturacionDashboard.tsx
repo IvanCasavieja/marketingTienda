@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle } from "lucide-react";
 import { facturacionApi, type FacturacionDashboardResponse, type FacturacionMovimiento } from "@/lib/api";
@@ -19,17 +20,43 @@ const COLOR_CANJE_ESTADO: Record<string, string> = {
   activo: "#10b981",
   cerrado: "#94a3b8",
 };
-// Paleta categórica para el desglose de salidas por proveedor -- a
-// diferencia de entrada/salida y canjes por estado, acá los "proveedor"
-// son dinámicos (no hay un mapa fijo clave->color posible). "Otros" siempre
-// gris, mismo criterio de "recede" que "cerrado" en canjes por estado.
-const PROVEEDOR_COLORS = ["#6366f1", "#8b5cf6", "#0ea5e9", "#f43f5e", "#14b8a6"];
-const COLOR_OTROS = "#94a3b8";
+// Paleta categórica para el desglose por cuenta en la torta general -- las
+// cuentas son dinámicas (no hay un mapa fijo clave->color posible).
+const CUENTA_COLORS = ["#6366f1", "#8b5cf6", "#0ea5e9", "#f43f5e", "#14b8a6", "#f59e0b"];
+const COLOR_SIN_CUENTA = "#94a3b8";
 
 interface FacturacionDashboardProps {
   /** Incrementarlo fuerza un refetch -- lo sube page.tsx cuando se confirma
    * una factura desde el modal de subida. */
   refreshToken: number;
+}
+
+function CuentaSelect({
+  cuentas, value, onChange,
+}: {
+  cuentas: { id: number; nombre: string }[];
+  value: number | null;
+  onChange: (id: number) => void;
+}) {
+  const { t } = useTranslation();
+  if (cuentas.length === 0) {
+    return (
+      <Link href="/facturacion/cuentas" className="text-xs text-brand-600 dark:text-brand-400 hover:underline shrink-0 whitespace-nowrap">
+        {t("facturacion.cuentas.crearPrimera")}
+      </Link>
+    );
+  }
+  return (
+    <select
+      value={value ?? ""}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="input text-xs py-1.5 px-2 w-auto max-w-[160px] shrink-0"
+    >
+      {cuentas.map((c) => (
+        <option key={c.id} value={c.id}>{c.nombre}</option>
+      ))}
+    </select>
+  );
 }
 
 export default function FacturacionDashboard({ refreshToken }: FacturacionDashboardProps) {
@@ -45,30 +72,45 @@ export default function FacturacionDashboard({ refreshToken }: FacturacionDashbo
   // ni siquiera hubo respuesta (backend caído/dormido, red).
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  async function refetch(overrides?: { presupuesto_cuenta_id?: number; canjes_cuenta_id?: number }) {
     setLoading(true);
     setError(null);
-    facturacionApi
-      .dashboard({ limit: PAGE_SIZE, offset: 0 })
-      .then(({ data: res }) => {
-        setData(res);
-        setMovimientos(res.presupuesto.movimientos);
-      })
-      .catch((err: any) => {
-        setData(null);
-        const status = err?.response?.status;
-        const detail = err?.response?.data?.detail;
-        setError(
-          detail ? `Error ${status ?? ""}: ${detail}` : `No se pudo cargar el dashboard (${err?.message ?? "error desconocido"})`
-        );
-      })
-      .finally(() => setLoading(false));
+    try {
+      const { data: res } = await facturacionApi.dashboard({
+        limit: PAGE_SIZE,
+        offset: 0,
+        presupuesto_cuenta_id: overrides?.presupuesto_cuenta_id ?? data?.presupuesto.cuenta_id ?? undefined,
+        canjes_cuenta_id: overrides?.canjes_cuenta_id ?? data?.canjes.cuenta_id ?? undefined,
+      });
+      setData(res);
+      setMovimientos(res.presupuesto.movimientos);
+    } catch (err: any) {
+      setData(null);
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      setError(
+        detail ? `Error ${status ?? ""}: ${detail}` : `No se pudo cargar el dashboard (${err?.message ?? "error desconocido"})`
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshToken]);
 
   async function loadMore() {
+    if (!data) return;
     setLoadingMore(true);
     try {
-      const { data: res } = await facturacionApi.dashboard({ limit: PAGE_SIZE, offset: movimientos.length });
+      const { data: res } = await facturacionApi.dashboard({
+        limit: PAGE_SIZE,
+        offset: movimientos.length,
+        presupuesto_cuenta_id: data.presupuesto.cuenta_id ?? undefined,
+        canjes_cuenta_id: data.canjes.cuenta_id ?? undefined,
+      });
       setMovimientos((prev) => [...prev, ...res.presupuesto.movimientos]);
     } finally {
       setLoadingMore(false);
@@ -92,11 +134,11 @@ export default function FacturacionDashboard({ refreshToken }: FacturacionDashbo
     : [];
 
   const generalData: DonutDatum[] = data
-    ? data.general.salidas_por_proveedor.map((s, i) => ({
-        key: s.proveedor,
-        label: s.proveedor,
-        value: s.monto,
-        color: s.proveedor === "Otros" ? COLOR_OTROS : PROVEEDOR_COLORS[i % PROVEEDOR_COLORS.length],
+    ? data.general.por_cuenta.map((c, i) => ({
+        key: String(c.cuenta_id ?? "sin-cuenta"),
+        label: c.cuenta,
+        value: c.monto,
+        color: c.cuenta_id === null ? COLOR_SIN_CUENTA : CUENTA_COLORS[i % CUENTA_COLORS.length],
       }))
     : [];
 
@@ -109,8 +151,8 @@ export default function FacturacionDashboard({ refreshToken }: FacturacionDashbo
         </div>
       )}
 
-      {/* Torta general -- el total (saldo de presupuesto + canjes) al centro,
-          desglosado en salidas por proveedor alrededor. */}
+      {/* Torta general -- el total (saldo de presupuesto + canjes, todas las
+          cuentas juntas) al centro, desglosado por cuenta alrededor. */}
       <DonutCard
         title={t("facturacion.charts.general.title")}
         subtitle={t("facturacion.charts.general.subtitle")}
@@ -123,16 +165,25 @@ export default function FacturacionDashboard({ refreshToken }: FacturacionDashbo
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        {/* Presupuesto: entradas/salidas + ledger tipo cuenta de débito */}
+        {/* Presupuesto: entradas/salidas + ledger tipo cuenta de débito, de UNA cuenta a la vez */}
         <DonutCard
           title={t("facturacion.charts.presupuesto.title")}
           subtitle={t("facturacion.charts.presupuesto.subtitle")}
           data={presupuestoData}
           loading={loading}
-          emptyLabel={t("facturacion.noData")}
+          emptyLabel={data && data.cuentas.length === 0 ? t("facturacion.cuentas.sinCuentas") : t("facturacion.noData")}
           valueFormatter={fMoney}
+          headerAction={
+            data && (
+              <CuentaSelect
+                cuentas={data.cuentas}
+                value={data.presupuesto.cuenta_id}
+                onChange={(id) => refetch({ presupuesto_cuenta_id: id })}
+              />
+            )
+          }
         >
-          {data && (
+          {data && data.presupuesto.cuenta_id !== null && (
             <LedgerList
               movimientos={movimientos}
               total={data.presupuesto.movimientos_total}
@@ -142,14 +193,23 @@ export default function FacturacionDashboard({ refreshToken }: FacturacionDashbo
           )}
         </DonutCard>
 
-        {/* Canjes por estado */}
+        {/* Canjes por estado, de UNA cuenta a la vez */}
         <DonutCard
           title={t("facturacion.charts.canjes.title")}
           subtitle={t("facturacion.charts.canjes.subtitle")}
           data={canjesData}
           loading={loading}
-          emptyLabel={t("facturacion.noData")}
+          emptyLabel={data && data.cuentas.length === 0 ? t("facturacion.cuentas.sinCuentas") : t("facturacion.noData")}
           valueFormatter={fMoney}
+          headerAction={
+            data && (
+              <CuentaSelect
+                cuentas={data.cuentas}
+                value={data.canjes.cuenta_id}
+                onChange={(id) => refetch({ canjes_cuenta_id: id })}
+              />
+            )
+          }
         />
       </div>
     </div>

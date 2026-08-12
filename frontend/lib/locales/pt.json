@@ -58,7 +58,8 @@
     "notificacionesError": "Não foi possível marcar como lidas",
     "miPedido": "Meu pedido",
     "facturacion": "FATURAMENTO",
-    "facturacionDashboard": "Painel"
+    "facturacionDashboard": "Painel",
+    "facturacionCuentas": "Contas"
   },
   "login": {
     "welcome": "Bem-vindo",
@@ -771,7 +772,7 @@
     "uploadButton": "Enviar fatura",
     "noData": "Ainda não há dados carregados — envie sua primeira fatura.",
     "charts": {
-      "general": { "title": "Geral", "subtitle": "Total combinado — detalhamento de saídas por fornecedor", "centerSubLabel": "Total (orçamento + permutas)" },
+      "general": { "title": "Geral", "subtitle": "Total combinado — detalhamento por conta", "centerSubLabel": "Total (orçamento + permutas)" },
       "presupuesto": { "title": "Orçamento", "subtitle": "Entradas vs. saídas" },
       "canjes": { "title": "Permutas", "subtitle": "Por status" }
     },
@@ -787,6 +788,28 @@
       "title": "Movimentações",
       "empty": "Ainda não há movimentações cadastradas.",
       "loadMore": "Carregar mais"
+    },
+    "cuentas": {
+      "title": "Contas",
+      "subtitle": "Administre as contas às quais movimentações e permutas pertencem.",
+      "sinCuentas": "Ainda não há contas criadas.",
+      "crearPrimera": "Criar a primeira conta",
+      "nueva": "Nova conta",
+      "nombrePlaceholder": "Nome da conta",
+      "crear": "Criar",
+      "creando": "Criando…",
+      "creada": "Conta criada",
+      "guardar": "Salvar",
+      "guardando": "Salvando…",
+      "actualizada": "Conta atualizada",
+      "desactivar": "Desativar",
+      "reactivar": "Reativar",
+      "confirmarDesactivar": "Desativar esta conta? O histórico de movimentações e permutas é mantido, mas ela deixará de estar disponível para novos lançamentos.",
+      "activa": "Ativa",
+      "inactiva": "Inativa",
+      "verInactivas": "Ver inativas",
+      "ocultarInactivas": "Ocultar inativas",
+      "editar": "Editar"
     },
     "upload": {
       "title": "Enviar fatura",
@@ -804,6 +827,7 @@
       "fieldProveedor": "Fornecedor / marca",
       "fieldNumeroFactura": "N° da fatura",
       "fieldFecha": "Data",
+      "fieldCuenta": "Conta",
       "fieldEstado": "Status",
       "fieldVigenciaDesde": "Vigência desde",
       "fieldVigenciaHasta": "Vigência até",

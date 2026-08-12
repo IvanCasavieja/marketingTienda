@@ -37,6 +37,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     # Facturación
     "facturacion.view":        "Ver el dashboard de Facturación (presupuesto y canjes)",
     "facturacion.upload":      "Subir facturas PDF, revisar la extracción de DogTi y confirmar o descartar movimientos y canjes",
+    "facturacion.manage":      "Administrar las cuentas de Facturación (crear, renombrar, desactivar)",
 
     # IA — un permiso por agente de la familia "Tino" + La Triada
     "ai.don_tino":             "Usar el chat de Don Tino, la guía general de la plataforma",

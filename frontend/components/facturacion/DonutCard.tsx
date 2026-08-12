@@ -23,26 +23,32 @@ interface DonutCardProps {
   emptyLabel?: string;
   valueFormatter?: (v: number) => string;
   /** Texto centrado en el hueco de la dona -- lo usa la torta general para
-   * mostrar el total (saldo de presupuesto + canjes) sobre el desglose de
-   * salidas por proveedor. */
+   * mostrar el total (saldo de presupuesto + canjes, todas las cuentas)
+   * sobre el desglose por cuenta. */
   centerValue?: string;
   centerSubLabel?: string;
+  /** Elemento a la derecha del título -- lo usan Presupuesto y Canjes para
+   * el select de cuenta. */
+  headerAction?: React.ReactNode;
   /** Contenido extra dentro de la misma card, debajo del gráfico -- lo usa
    * la torta de presupuesto para el ledger de entradas/salidas. */
   children?: React.ReactNode;
 }
 
 export default function DonutCard({
-  title, subtitle, data, loading, emptyLabel, valueFormatter = fMoney, centerValue, centerSubLabel, children,
+  title, subtitle, data, loading, emptyLabel, valueFormatter = fMoney, centerValue, centerSubLabel, headerAction, children,
 }: DonutCardProps) {
   const total = data.reduce((acc, d) => acc + d.value, 0);
   const visible = data.filter((d) => d.value > 0);
 
   return (
     <div className="card p-6 h-full">
-      <div className="mb-4">
-        <p className="section-title">{title}</p>
-        <p className="section-sub mt-0.5">{subtitle}</p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <p className="section-title">{title}</p>
+          <p className="section-sub mt-0.5">{subtitle}</p>
+        </div>
+        {headerAction}
       </div>
       {loading ? (
         <div className="h-52 skeleton rounded-xl" />

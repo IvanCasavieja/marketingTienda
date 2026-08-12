@@ -7,14 +7,17 @@ from datetime import date
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.core.rate_limit import limiter
 from app.core.uploads import read_limited
+from app.models.facturacion_cuenta import FacturacionCuenta
 from app.models.facturacion_documento import FacturacionDocumento
 from app.models.user import User
+from app.services.facturacion import cuentas as cuentas_service
 from app.services.facturacion import documentos as documentos_service
 from app.services.facturacion import dogti_agent
 
@@ -28,6 +31,67 @@ async def _get_documento_or_404(db: AsyncSession, documento_id: int) -> Facturac
     if documento is None:
         raise HTTPException(status_code=404, detail="No se encontró ese documento")
     return documento
+
+
+async def _get_cuenta_or_404(db: AsyncSession, cuenta_id: int) -> FacturacionCuenta:
+    cuenta = await db.get(FacturacionCuenta, cuenta_id)
+    if cuenta is None:
+        raise HTTPException(status_code=404, detail="No se encontró esa cuenta")
+    return cuenta
+
+
+@router.get("/cuentas")
+async def listar_cuentas(
+    incluir_inactivas: bool = Query(False),
+    _: User = Depends(require_permission("facturacion.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    cuentas = await cuentas_service.listar_cuentas(db, incluir_inactivas)
+    return [cuentas_service.cuenta_to_dict(c) for c in cuentas]
+
+
+class CrearCuentaRequest(BaseModel):
+    nombre: str = Field(min_length=1, max_length=100)
+
+
+@router.post("/cuentas")
+async def crear_cuenta(
+    payload: CrearCuentaRequest,
+    _: User = Depends(require_permission("facturacion.manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        cuenta = await cuentas_service.crear_cuenta(db, payload.nombre)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Ya existe una cuenta con ese nombre")
+    return cuentas_service.cuenta_to_dict(cuenta)
+
+
+class EditarCuentaRequest(BaseModel):
+    nombre: str | None = Field(default=None, min_length=1, max_length=100)
+    # false = "eliminar" (soft-delete, ver FacturacionCuenta) -- nunca se
+    # borra la fila, los movimientos/canjes ya cargados conservan su cuenta.
+    activa: bool | None = None
+
+
+@router.patch("/cuentas/{cuenta_id}")
+async def editar_cuenta(
+    cuenta_id: int,
+    payload: EditarCuentaRequest,
+    _: User = Depends(require_permission("facturacion.manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    cuenta = await _get_cuenta_or_404(db, cuenta_id)
+    try:
+        cuentas_service.editar_cuenta(cuenta, payload.nombre, payload.activa)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Ya existe una cuenta con ese nombre")
+    await db.refresh(cuenta)
+    return cuentas_service.cuenta_to_dict(cuenta)
 
 
 @router.post("/documentos/upload")
@@ -80,6 +144,7 @@ class ConfirmarDocumentoRequest(BaseModel):
     proveedor_marca: str | None = None
     numero_factura: str | None = None
     fecha: date
+    cuenta_id: int
     estado: str | None = Field(default=None, description="pendiente | activo | cerrado — solo canje")
     vigencia_desde: date | None = None
     vigencia_hasta: date | None = None
@@ -107,6 +172,7 @@ async def confirmar_documento(
     db: AsyncSession = Depends(get_db),
 ):
     documento = await _get_documento_or_404(db, documento_id)
+    await _get_cuenta_or_404(db, payload.cuenta_id)  # 404 claro en vez de un IntegrityError de la FK
     try:
         registro = documentos_service.confirmar_documento(
             db, documento, payload.tipo, payload.model_dump(), current_user.id,
@@ -136,10 +202,14 @@ async def descartar_documento(
 async def dashboard(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    presupuesto_cuenta_id: int | None = Query(None),
+    canjes_cuenta_id: int | None = Query(None),
     _: User = Depends(require_permission("facturacion.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    return await documentos_service.obtener_dashboard(db, limit, offset)
+    return await documentos_service.obtener_dashboard(
+        db, limit, offset, presupuesto_cuenta_id, canjes_cuenta_id,
+    )
 
 
 class DogtiHistorialItem(BaseModel):

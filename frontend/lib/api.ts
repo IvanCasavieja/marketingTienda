@@ -431,6 +431,7 @@ export interface FacturacionExtraccion {
   moneda: string;
   fecha: string;
   numero_factura?: string | null;
+  cuenta_sugerida?: string | null;
   vigencia_desde?: string | null;
   vigencia_hasta?: string | null;
   confianza: "alta" | "media" | "baja";
@@ -455,12 +456,26 @@ export interface FacturacionMovimiento {
   proveedor_marca: string | null;
   numero_factura: string | null;
   fecha: string;
+  cuenta_id: number | null;
   documento_id: number | null;
   created_at: string | null;
 }
 
+// "Eliminar" una cuenta desde el panel de administración solo la desactiva
+// (activa=false) -- nunca se borra, así que movimientos/canjes viejos
+// conservan su cuenta y su historial para siempre. Ver FacturacionCuenta
+// en el backend.
+export interface FacturacionCuenta {
+  id: number;
+  nombre: string;
+  activa: boolean;
+}
+
 export interface FacturacionDashboardResponse {
+  // Cuentas activas -- para poblar los selects de Presupuesto/Canjes.
+  cuentas: { id: number; nombre: string }[];
   presupuesto: {
+    cuenta_id: number | null;
     entradas_total: number;
     salidas_total: number;
     saldo: number;
@@ -468,13 +483,15 @@ export interface FacturacionDashboardResponse {
     movimientos_total: number;
   };
   canjes: {
+    cuenta_id: number | null;
     total_valor: number;
     por_estado: Record<string, number>;
   };
   general: {
-    // Saldo del presupuesto (entradas - salidas) + valor de canjes.
+    // Saldo del presupuesto (entradas - salidas) + valor de canjes, de
+    // TODAS las cuentas juntas (nunca se filtra).
     total: number;
-    salidas_por_proveedor: { proveedor: string; monto: number }[];
+    por_cuenta: { cuenta_id: number | null; cuenta: string; monto: number }[];
   };
 }
 
@@ -487,6 +504,7 @@ export interface ConfirmarDocumentoPayload {
   proveedor_marca?: string | null;
   numero_factura?: string | null;
   fecha: string;
+  cuenta_id: number;
   estado?: string | null;
   vigencia_desde?: string | null;
   vigencia_hasta?: string | null;
@@ -508,8 +526,20 @@ export const facturacionApi = {
     api.post<{ tipo: string; id: number }>(`/facturacion/documentos/${id}/confirmar`, payload),
   descartarDocumento: (id: number) =>
     api.post<{ status: string }>(`/facturacion/documentos/${id}/descartar`),
-  dashboard: (params?: { limit?: number; offset?: number }) =>
+  dashboard: (params?: {
+    limit?: number; offset?: number;
+    presupuesto_cuenta_id?: number; canjes_cuenta_id?: number;
+  }) =>
     api.get<FacturacionDashboardResponse>("/facturacion/dashboard", { params }),
+};
+
+export const facturacionCuentasApi = {
+  listar: (incluirInactivas = false) =>
+    api.get<FacturacionCuenta[]>("/facturacion/cuentas", { params: { incluir_inactivas: incluirInactivas } }),
+  crear: (nombre: string) =>
+    api.post<FacturacionCuenta>("/facturacion/cuentas", { nombre }),
+  editar: (id: number, payload: { nombre?: string; activa?: boolean }) =>
+    api.patch<FacturacionCuenta>(`/facturacion/cuentas/${id}`, payload),
 };
 
 export type DogtiContexto = "dashboard";

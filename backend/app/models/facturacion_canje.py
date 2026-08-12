@@ -9,8 +9,10 @@ from app.core.database import Base
 
 class FacturacionCanje(Base):
     """Acuerdo de canje (trueque) con una marca/proveedor -- valor equivalente
-    en dinero, estado y vigencia. Igual que Movimiento, documento_id es
-    nullable para no cerrar la puerta a una carga manual futura."""
+    en dinero, estado, vigencia y cuenta a la que ingresa (mismo concepto de
+    cuenta que FacturacionMovimiento, ver ese modelo). Igual que Movimiento,
+    documento_id es nullable para no cerrar la puerta a una carga manual
+    futura."""
 
     __tablename__ = "facturacion_canjes"
     __table_args__ = (
@@ -26,6 +28,9 @@ class FacturacionCanje(Base):
     vigencia_desde: Mapped[date | None] = mapped_column(Date, nullable=True)
     vigencia_hasta: Mapped[date | None] = mapped_column(Date, nullable=True)
     descripcion: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cuenta_id: Mapped[int | None] = mapped_column(
+        ForeignKey("facturacion_cuentas.id", ondelete="RESTRICT"), nullable=True
+    )
     documento_id: Mapped[int | None] = mapped_column(
         ForeignKey("facturacion_documentos.id", ondelete="SET NULL"), nullable=True
     )

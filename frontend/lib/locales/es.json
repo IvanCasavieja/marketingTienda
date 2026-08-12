@@ -58,7 +58,8 @@
     "notificacionesError": "No se pudieron marcar como leídas",
     "miPedido": "Mi pedido",
     "facturacion": "FACTURACIÓN",
-    "facturacionDashboard": "Dashboard"
+    "facturacionDashboard": "Dashboard",
+    "facturacionCuentas": "Cuentas"
   },
   "login": {
     "welcome": "Bienvenido",
@@ -771,7 +772,7 @@
     "uploadButton": "Subir factura",
     "noData": "Todavía no hay datos cargados — subí tu primera factura.",
     "charts": {
-      "general": { "title": "General", "subtitle": "Total combinado — desglose de salidas por proveedor", "centerSubLabel": "Total (presupuesto + canjes)" },
+      "general": { "title": "General", "subtitle": "Total combinado — desglose por cuenta", "centerSubLabel": "Total (presupuesto + canjes)" },
       "presupuesto": { "title": "Presupuesto", "subtitle": "Entradas vs. salidas" },
       "canjes": { "title": "Canjes", "subtitle": "Por estado" }
     },
@@ -787,6 +788,28 @@
       "title": "Movimientos",
       "empty": "Todavía no hay movimientos cargados.",
       "loadMore": "Cargar más"
+    },
+    "cuentas": {
+      "title": "Cuentas",
+      "subtitle": "Administrá las cuentas a las que ingresan movimientos y canjes.",
+      "sinCuentas": "Todavía no hay cuentas creadas.",
+      "crearPrimera": "Crear la primera cuenta",
+      "nueva": "Nueva cuenta",
+      "nombrePlaceholder": "Nombre de la cuenta",
+      "crear": "Crear",
+      "creando": "Creando…",
+      "creada": "Cuenta creada",
+      "guardar": "Guardar",
+      "guardando": "Guardando…",
+      "actualizada": "Cuenta actualizada",
+      "desactivar": "Desactivar",
+      "reactivar": "Reactivar",
+      "confirmarDesactivar": "¿Desactivar esta cuenta? El historial de movimientos y canjes no se pierde, pero dejará de estar disponible para cargar nuevos.",
+      "activa": "Activa",
+      "inactiva": "Inactiva",
+      "verInactivas": "Ver inactivas",
+      "ocultarInactivas": "Ocultar inactivas",
+      "editar": "Editar"
     },
     "upload": {
       "title": "Subir factura",
@@ -804,6 +827,7 @@
       "fieldProveedor": "Proveedor / marca",
       "fieldNumeroFactura": "N° de factura",
       "fieldFecha": "Fecha",
+      "fieldCuenta": "Cuenta",
       "fieldEstado": "Estado",
       "fieldVigenciaDesde": "Vigencia desde",
       "fieldVigenciaHasta": "Vigencia hasta",

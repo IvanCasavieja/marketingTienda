@@ -4,8 +4,10 @@ negocio de Facturación no dependa del detalle de cómo se arma el prompt."""
 from sqlalchemy import func, select
 
 from app.models.facturacion_canje import FacturacionCanje
+from app.models.facturacion_cuenta import FacturacionCuenta
 from app.models.facturacion_documento import FacturacionDocumento
 from app.models.facturacion_movimiento import FacturacionMovimiento
+from app.services.facturacion.cuentas import listar_cuentas
 from app.services.facturacion.extraccion import extraer_factura
 
 _ESTADO_PENDIENTE = "pendiente_revision"
@@ -30,7 +32,8 @@ async def crear_documento_y_extraer(
     await db.flush()
 
     try:
-        documento.extraction_raw = await extraer_factura(file_bytes, db, user_id)
+        cuentas_activas = [c.nombre for c in await listar_cuentas(db)]
+        documento.extraction_raw = await extraer_factura(file_bytes, cuentas_activas, db, user_id)
     except Exception as exc:
         documento.extraction_error = str(exc)[:500]
 
@@ -39,8 +42,9 @@ async def crear_documento_y_extraer(
 
 def confirmar_documento(db, documento: FacturacionDocumento, tipo: str, payload: dict, user_id: int):
     """tipo: "movimiento" | "canje". payload trae los campos ya editados por
-    el usuario en la revisión (ver ConfirmarDocumentoRequest en la ruta).
-    No commitea -- el caller es dueño de la transacción."""
+    el usuario en la revisión (ver ConfirmarDocumentoRequest en la ruta),
+    cuenta_id incluido -- siempre requerido para un registro nuevo. No
+    commitea -- el caller es dueño de la transacción."""
     if documento.status != _ESTADO_PENDIENTE:
         raise ValueError("Este documento ya fue procesado")
 
@@ -53,6 +57,7 @@ def confirmar_documento(db, documento: FacturacionDocumento, tipo: str, payload:
             proveedor_marca=payload.get("proveedor_marca"),
             numero_factura=payload.get("numero_factura"),
             fecha=payload["fecha"],
+            cuenta_id=payload["cuenta_id"],
             documento_id=documento.id,
             created_by_id=user_id,
         )
@@ -65,6 +70,7 @@ def confirmar_documento(db, documento: FacturacionDocumento, tipo: str, payload:
             vigencia_desde=payload.get("vigencia_desde"),
             vigencia_hasta=payload.get("vigencia_hasta"),
             descripcion=payload.get("concepto"),
+            cuenta_id=payload["cuenta_id"],
             documento_id=documento.id,
             created_by_id=user_id,
         )
@@ -93,20 +99,6 @@ def documento_to_dict(documento: FacturacionDocumento) -> dict:
     }
 
 
-_TOP_PROVEEDORES = 5
-
-
-def _top_con_otros(rows: list[tuple[str, object]]) -> list[dict]:
-    """rows: [(proveedor, monto_sum)] ya ordenado desc -- top 5 sueltos +
-    el resto agrupado en "Otros", para no saturar la torta con un slice por
-    cada proveedor distinto que haya en la base."""
-    top = [{"proveedor": p, "monto": float(m)} for p, m in rows[:_TOP_PROVEEDORES]]
-    resto = rows[_TOP_PROVEEDORES:]
-    if resto:
-        top.append({"proveedor": "Otros", "monto": float(sum(m for _, m in resto))})
-    return top
-
-
 def _movimiento_to_dict(m: FacturacionMovimiento) -> dict:
     return {
         "id": m.id,
@@ -117,15 +109,27 @@ def _movimiento_to_dict(m: FacturacionMovimiento) -> dict:
         "proveedor_marca": m.proveedor_marca,
         "numero_factura": m.numero_factura,
         "fecha": m.fecha.isoformat(),
+        "cuenta_id": m.cuenta_id,
         "documento_id": m.documento_id,
         "created_at": m.created_at.isoformat() if m.created_at else None,
     }
 
 
-async def obtener_dashboard(db, limit: int = 50, offset: int = 0) -> dict:
-    """Totales del presupuesto (entradas/salidas) y de canjes (por estado) +
-    un ledger paginado de los movimientos más recientes. Cuenta única de la
-    empresa -- sin filtro de cliente/campaña todavía (ver plan).
+_SIN_CUENTA_LABEL = "Sin cuenta"
+
+
+async def obtener_dashboard(
+    db, limit: int = 50, offset: int = 0,
+    presupuesto_cuenta_id: int | None = None,
+    canjes_cuenta_id: int | None = None,
+) -> dict:
+    """Presupuesto y canjes se filtran cada uno por SU propia cuenta (dos
+    selectores independientes en el dashboard -- ver plan) y default a la
+    primera cuenta activa si no se pasa ninguna. La torta general nunca
+    filtra: siempre muestra el total de TODAS las cuentas, desglosado una
+    por una (incluye cuentas ya desactivadas si tienen historial, para no
+    hacer desaparecer plata vieja del total solo porque la cuenta se
+    desactivó -- ver FacturacionCuenta).
 
     Simplificación conocida: los totales suman `monto`/`valor` de todas las
     filas sin distinguir moneda (UYU/USD mezclados como si fueran el mismo
@@ -133,68 +137,109 @@ async def obtener_dashboard(db, limit: int = 50, offset: int = 0) -> dict:
     agregado para las tortas asume que la inmensa mayoría es UYU (default de
     la extracción). Separar por moneda o convertir a un tipo de cambio queda
     para cuando haga falta de verdad, no antes."""
-    entradas_total = (await db.execute(
-        select(func.coalesce(func.sum(FacturacionMovimiento.monto), 0))
-        .where(FacturacionMovimiento.tipo == "entrada")
-    )).scalar_one()
-    salidas_total = (await db.execute(
-        select(func.coalesce(func.sum(FacturacionMovimiento.monto), 0))
-        .where(FacturacionMovimiento.tipo == "salida")
-    )).scalar_one()
+    cuentas_activas = await listar_cuentas(db, incluir_inactivas=False)
+    cuentas_dict = [{"id": c.id, "nombre": c.nombre} for c in cuentas_activas]
 
-    canjes_rows = (await db.execute(
-        select(FacturacionCanje.estado, func.coalesce(func.sum(FacturacionCanje.valor), 0))
-        .group_by(FacturacionCanje.estado)
-    )).all()
-    canjes_por_estado = {estado: float(total) for estado, total in canjes_rows}
-    canjes_total = sum(canjes_por_estado.values())
+    if presupuesto_cuenta_id is None and cuentas_activas:
+        presupuesto_cuenta_id = cuentas_activas[0].id
+    if canjes_cuenta_id is None and cuentas_activas:
+        canjes_cuenta_id = cuentas_activas[0].id
 
-    movimientos_total = (await db.execute(
-        select(func.count()).select_from(FacturacionMovimiento)
-    )).scalar_one()
-    movimientos_rows = (await db.execute(
-        select(FacturacionMovimiento)
-        .order_by(FacturacionMovimiento.fecha.desc(), FacturacionMovimiento.id.desc())
-        .limit(limit).offset(offset)
-    )).scalars().all()
+    # ── Presupuesto (una cuenta a la vez) ───────────────────────────────
+    if presupuesto_cuenta_id is not None:
+        entradas_total = (await db.execute(
+            select(func.coalesce(func.sum(FacturacionMovimiento.monto), 0))
+            .where(FacturacionMovimiento.tipo == "entrada", FacturacionMovimiento.cuenta_id == presupuesto_cuenta_id)
+        )).scalar_one()
+        salidas_total = (await db.execute(
+            select(func.coalesce(func.sum(FacturacionMovimiento.monto), 0))
+            .where(FacturacionMovimiento.tipo == "salida", FacturacionMovimiento.cuenta_id == presupuesto_cuenta_id)
+        )).scalar_one()
+        movimientos_total = (await db.execute(
+            select(func.count()).select_from(FacturacionMovimiento)
+            .where(FacturacionMovimiento.cuenta_id == presupuesto_cuenta_id)
+        )).scalar_one()
+        movimientos_rows = (await db.execute(
+            select(FacturacionMovimiento)
+            .where(FacturacionMovimiento.cuenta_id == presupuesto_cuenta_id)
+            .order_by(FacturacionMovimiento.fecha.desc(), FacturacionMovimiento.id.desc())
+            .limit(limit).offset(offset)
+        )).scalars().all()
+    else:
+        entradas_total = salidas_total = 0
+        movimientos_total = 0
+        movimientos_rows = []
 
     entradas_total = float(entradas_total)
     salidas_total = float(salidas_total)
-    saldo = entradas_total - salidas_total
 
-    # Agrupa por la columna cruda (no por el coalesce) -- agrupar por
-    # coalesce(proveedor_marca, 'Sin proveedor') repetía el mismo literal en
-    # SELECT y GROUP BY como dos bind params distintos, y Postgres los trata
-    # como expresiones diferentes a nivel de prepared statement: rechaza la
-    # query con GroupingError aunque el SQL se vea idéntico a simple vista.
-    # coalesce(proveedor_marca, 'x') sí es válido en el SELECT agrupando por
-    # la columna cruda -- depende únicamente de esa columna.
-    salidas_por_proveedor_rows = (await db.execute(
-        select(
-            func.coalesce(FacturacionMovimiento.proveedor_marca, "Sin proveedor"),
-            func.sum(FacturacionMovimiento.monto),
-        )
+    # ── Canjes (una cuenta a la vez, por estado) ────────────────────────
+    if canjes_cuenta_id is not None:
+        canjes_rows = (await db.execute(
+            select(FacturacionCanje.estado, func.coalesce(func.sum(FacturacionCanje.valor), 0))
+            .where(FacturacionCanje.cuenta_id == canjes_cuenta_id)
+            .group_by(FacturacionCanje.estado)
+        )).all()
+    else:
+        canjes_rows = []
+    canjes_por_estado = {estado: float(total) for estado, total in canjes_rows}
+
+    # ── General: todas las cuentas juntas, sin filtrar ──────────────────
+    todas_las_cuentas = await listar_cuentas(db, incluir_inactivas=True)
+    nombre_por_cuenta = {c.id: c.nombre for c in todas_las_cuentas}
+
+    entradas_por_cuenta_rows = (await db.execute(
+        select(FacturacionMovimiento.cuenta_id, func.sum(FacturacionMovimiento.monto))
+        .where(FacturacionMovimiento.tipo == "entrada")
+        .group_by(FacturacionMovimiento.cuenta_id)
+    )).all()
+    salidas_por_cuenta_rows = (await db.execute(
+        select(FacturacionMovimiento.cuenta_id, func.sum(FacturacionMovimiento.monto))
         .where(FacturacionMovimiento.tipo == "salida")
-        .group_by(FacturacionMovimiento.proveedor_marca)
-        .order_by(func.sum(FacturacionMovimiento.monto).desc())
+        .group_by(FacturacionMovimiento.cuenta_id)
+    )).all()
+    canjes_valor_por_cuenta_rows = (await db.execute(
+        select(FacturacionCanje.cuenta_id, func.sum(FacturacionCanje.valor))
+        .group_by(FacturacionCanje.cuenta_id)
     )).all()
 
+    entradas_por_cuenta = {cid: float(m) for cid, m in entradas_por_cuenta_rows}
+    salidas_por_cuenta = {cid: float(m) for cid, m in salidas_por_cuenta_rows}
+    canjes_valor_por_cuenta = {cid: float(m) for cid, m in canjes_valor_por_cuenta_rows}
+
+    ids_con_movimiento = set(entradas_por_cuenta) | set(salidas_por_cuenta) | set(canjes_valor_por_cuenta)
+    por_cuenta = []
+    total_general = 0.0
+    for cid in ids_con_movimiento:
+        monto = (
+            entradas_por_cuenta.get(cid, 0.0) - salidas_por_cuenta.get(cid, 0.0)
+            + canjes_valor_por_cuenta.get(cid, 0.0)
+        )
+        total_general += monto
+        por_cuenta.append({
+            "cuenta_id": cid,
+            "cuenta": nombre_por_cuenta.get(cid, _SIN_CUENTA_LABEL) if cid is not None else _SIN_CUENTA_LABEL,
+            "monto": monto,
+        })
+    por_cuenta.sort(key=lambda x: x["monto"], reverse=True)
+
     return {
+        "cuentas": cuentas_dict,
         "presupuesto": {
+            "cuenta_id": presupuesto_cuenta_id,
             "entradas_total": entradas_total,
             "salidas_total": salidas_total,
-            "saldo": saldo,
+            "saldo": entradas_total - salidas_total,
             "movimientos": [_movimiento_to_dict(m) for m in movimientos_rows],
             "movimientos_total": movimientos_total,
         },
         "canjes": {
-            "total_valor": canjes_total,
+            "cuenta_id": canjes_cuenta_id,
+            "total_valor": sum(canjes_por_estado.values()),
             "por_estado": canjes_por_estado,
         },
         "general": {
-            # Saldo del presupuesto (entradas - salidas) + valor de canjes --
-            # "el total sumado entre ambos", no una comparación de volúmenes.
-            "total": saldo + canjes_total,
-            "salidas_por_proveedor": _top_con_otros(salidas_por_proveedor_rows),
+            "total": total_general,
+            "por_cuenta": por_cuenta,
         },
     }

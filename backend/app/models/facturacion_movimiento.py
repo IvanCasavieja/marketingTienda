@@ -8,13 +8,23 @@ from app.core.database import Base
 
 
 class FacturacionMovimiento(Base):
-    """Ledger de la cuenta única de presupuesto de la empresa -- una fila por
-    entrada/salida confirmada desde el flujo de revisión de una factura.
+    """Ledger de presupuesto -- una fila por entrada/salida confirmada desde
+    el flujo de revisión de una factura, siempre asociada a una cuenta
+    (FacturacionCuenta).
 
     documento_id es nullable a propósito: hoy un movimiento siempre nace de
     un PDF, pero no cierra la puerta a una carga manual sin factura más
     adelante. Numeric (no Float) para el monto -- es dinero real, no debe
-    acumular error de redondeo."""
+    acumular error de redondeo.
+
+    cuenta_id es nullable a nivel de columna (para no romper filas viejas
+    de antes de que existiera el concepto de cuenta), pero el flujo de
+    confirmación exige elegir una cuenta para cualquier movimiento nuevo --
+    ver ConfirmarDocumentoRequest en la ruta. ondelete=RESTRICT porque
+    "eliminar" una cuenta desde el panel de administración nunca hace un
+    DELETE de verdad (solo la marca inactiva, ver FacturacionCuenta) -- este
+    RESTRICT es una red de seguridad extra para que ni por error se pueda
+    borrar una cuenta con movimientos asociados."""
 
     __tablename__ = "facturacion_movimientos"
     __table_args__ = (
@@ -29,6 +39,9 @@ class FacturacionMovimiento(Base):
     proveedor_marca: Mapped[str | None] = mapped_column(String(200), nullable=True)
     numero_factura: Mapped[str | None] = mapped_column(String(100), nullable=True)  # informativo, no numeración fiscal
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
+    cuenta_id: Mapped[int | None] = mapped_column(
+        ForeignKey("facturacion_cuentas.id", ondelete="RESTRICT"), nullable=True
+    )
     documento_id: Mapped[int | None] = mapped_column(
         ForeignKey("facturacion_documentos.id", ondelete="SET NULL"), nullable=True
     )

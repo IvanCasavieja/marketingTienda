@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { AlertTriangle, FileText, Loader2, Trash2, Upload, X } from "lucide-react";
-import { facturacionApi, type ConfirmarDocumentoPayload, type FacturacionDocumento } from "@/lib/api";
+import { facturacionApi, facturacionCuentasApi, type ConfirmarDocumentoPayload, type FacturacionCuenta, type FacturacionDocumento } from "@/lib/api";
 import { FileDropField } from "@/components/cenefas/redexpres/RedExpresPanel";
 import { DogTiMascot } from "@/components/DogTiMascot";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -53,9 +54,15 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
   const [proveedorMarca, setProveedorMarca] = useState("");
   const [numeroFactura, setNumeroFactura] = useState("");
   const [fecha, setFecha] = useState(todayISO());
+  const [cuentaId, setCuentaId] = useState<number | null>(null);
   const [estado, setEstado] = useState("pendiente");
   const [vigenciaDesde, setVigenciaDesde] = useState("");
   const [vigenciaHasta, setVigenciaHasta] = useState("");
+
+  const [cuentas, setCuentas] = useState<FacturacionCuenta[]>([]);
+  useEffect(() => {
+    facturacionCuentasApi.listar().then(({ data }) => setCuentas(data)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     pdfUrlRef.current = pdfUrl;
@@ -88,6 +95,14 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
     setProveedorMarca(ex?.proveedor_marca || "");
     setNumeroFactura(ex?.numero_factura || "");
     setFecha(ex?.fecha || todayISO());
+    // DogTi matchea por nombre contra las cuentas activas que ya le pasamos
+    // como opciones -- si no encontró señal clara en el documento, o el
+    // nombre sugerido no matchea ninguna (cuenta desactivada entre medio,
+    // etc.), no se precompleta y la persona elige a mano.
+    const sugerida = ex?.cuenta_sugerida
+      ? cuentas.find((c) => c.nombre.toLowerCase() === ex.cuenta_sugerida!.toLowerCase())
+      : undefined;
+    setCuentaId(sugerida?.id ?? null);
     setEstado("pendiente");
     setVigenciaDesde(ex?.vigencia_desde || "");
     setVigenciaHasta(ex?.vigencia_hasta || "");
@@ -115,7 +130,7 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
   }
 
   async function handleConfirm() {
-    if (!documento) return;
+    if (!documento || cuentaId === null) return;
     setConfirming(true);
     setError(null);
     try {
@@ -128,6 +143,7 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
         proveedor_marca: proveedorMarca || undefined,
         numero_factura: numeroFactura || undefined,
         fecha,
+        cuenta_id: cuentaId,
         estado: tipo === "canje" ? estado : undefined,
         vigencia_desde: tipo === "canje" ? vigenciaDesde || undefined : undefined,
         vigencia_hasta: tipo === "canje" ? vigenciaHasta || undefined : undefined,
@@ -158,7 +174,7 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
     }
   }
 
-  const canConfirm = monto.trim() !== "" && !isNaN(parseFloat(monto)) && concepto.trim() !== "" && fecha !== "";
+  const canConfirm = monto.trim() !== "" && !isNaN(parseFloat(monto)) && concepto.trim() !== "" && fecha !== "" && cuentaId !== null;
   const ex = documento?.extraccion;
   const showLowConfidence = ex && (ex.confianza !== "alta" || (ex.notas && ex.notas.trim() !== ""));
 
@@ -222,6 +238,18 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
                 </div>
               )}
 
+              {cuentas.length === 0 && (
+                <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 rounded-lg px-3 py-2">
+                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                  <span>
+                    {t("facturacion.cuentas.sinCuentas")}{" "}
+                    <Link href="/facturacion/cuentas" className="underline font-medium">
+                      {t("facturacion.cuentas.crearPrimera")}
+                    </Link>
+                  </span>
+                </div>
+              )}
+
               {pdfUrl && (
                 <div>
                   <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">{t("facturacion.upload.pdfPreview")}</p>
@@ -265,6 +293,19 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
                     </select>
                   </Field>
                 )}
+                <Field label={t("facturacion.upload.fieldCuenta")}>
+                  <select
+                    value={cuentaId ?? ""}
+                    onChange={(e) => setCuentaId(e.target.value ? Number(e.target.value) : null)}
+                    disabled={cuentas.length === 0}
+                    className="input text-sm disabled:opacity-50"
+                  >
+                    <option value="" disabled>—</option>
+                    {cuentas.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label={t("facturacion.upload.fieldFecha")}>
                   <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="input text-sm" />
                 </Field>

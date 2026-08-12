@@ -58,7 +58,8 @@
     "notificacionesError": "Couldn't mark as read",
     "miPedido": "My order",
     "facturacion": "BILLING",
-    "facturacionDashboard": "Dashboard"
+    "facturacionDashboard": "Dashboard",
+    "facturacionCuentas": "Accounts"
   },
   "login": {
     "welcome": "Welcome",
@@ -771,7 +772,7 @@
     "uploadButton": "Upload invoice",
     "noData": "No data loaded yet — upload your first invoice.",
     "charts": {
-      "general": { "title": "General", "subtitle": "Combined total — expense breakdown by supplier", "centerSubLabel": "Total (budget + trade deals)" },
+      "general": { "title": "General", "subtitle": "Combined total — breakdown by account", "centerSubLabel": "Total (budget + trade deals)" },
       "presupuesto": { "title": "Budget", "subtitle": "Income vs. expenses" },
       "canjes": { "title": "Trade deals", "subtitle": "By status" }
     },
@@ -787,6 +788,28 @@
       "title": "Transactions",
       "empty": "No transactions loaded yet.",
       "loadMore": "Load more"
+    },
+    "cuentas": {
+      "title": "Accounts",
+      "subtitle": "Manage the accounts that transactions and trade deals belong to.",
+      "sinCuentas": "No accounts created yet.",
+      "crearPrimera": "Create the first account",
+      "nueva": "New account",
+      "nombrePlaceholder": "Account name",
+      "crear": "Create",
+      "creando": "Creating…",
+      "creada": "Account created",
+      "guardar": "Save",
+      "guardando": "Saving…",
+      "actualizada": "Account updated",
+      "desactivar": "Deactivate",
+      "reactivar": "Reactivate",
+      "confirmarDesactivar": "Deactivate this account? Its transaction and trade-deal history is kept, but it will no longer be available for new entries.",
+      "activa": "Active",
+      "inactiva": "Inactive",
+      "verInactivas": "Show inactive",
+      "ocultarInactivas": "Hide inactive",
+      "editar": "Edit"
     },
     "upload": {
       "title": "Upload invoice",
@@ -804,6 +827,7 @@
       "fieldProveedor": "Supplier / brand",
       "fieldNumeroFactura": "Invoice #",
       "fieldFecha": "Date",
+      "fieldCuenta": "Account",
       "fieldEstado": "Status",
       "fieldVigenciaDesde": "Valid from",
       "fieldVigenciaHasta": "Valid until",
