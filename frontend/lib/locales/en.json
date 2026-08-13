@@ -398,6 +398,10 @@
         "label": "Weekend Price Crash",
         "description": "Current price, crossed-out previous price, and validity dates — no combo mechanics."
       },
+      "parrilla_y_vinos": {
+        "label": "Grill & Wines",
+        "description": "Current price, crossed-out previous price, and validity dates — same format as Weekend Price Crash, for grill and wine products."
+      },
       "redexpres": {
         "label": "Redexpres",
         "description": "Order sheets and combo/multi-buy mechanics for Redexpres stores."
@@ -1054,7 +1058,7 @@
     "cenefas": {
       "intro": "Turn an Excel of products into a print-ready PowerPoint deck. The system automatically generates the slides with formatted prices, descriptions and promotions.",
       "steps": {
-        "destino":    { "title": "Choose a destination",   "desc": "When you enter you choose where to go: Redexpres (order sheets and combo/multi-buy mechanics) or Weekend Price Crash (current price, crossed-out previous price and validity dates)." },
+        "destino":    { "title": "Choose a destination",   "desc": "When you enter you choose where to go: Redexpres (order sheets and combo/multi-buy mechanics), Weekend Price Crash or Grill & Wines (both with current price, crossed-out previous price and validity dates)." },
         "excel":      { "title": "Upload the Excel",       "desc": "Load the file with the products. Automatically detected columns include DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc." },
         "preview":    { "title": "Check the preview",      "desc": "Before downloading you can see a reference preview with the real data loaded." },
         "confirmar":  { "title": "Confirm and download",   "desc": "The PPTX is generated in seconds. You can download the result from the same screen." }

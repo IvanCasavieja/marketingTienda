@@ -1,12 +1,12 @@
 "use client";
-import { Store, PartyPopper } from "lucide-react";
+import { Store, PartyPopper, Wine } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-// Primer paso al entrar a Cenefas: elegir a qué destino se va. Hoy son 2,
-// pero el array está pensado para sumar un tercero con solo agregar una
-// entrada — no hay ninguna otra parte del código que dependa del conteo.
+// Primer paso al entrar a Cenefas: elegir a qué destino se va. El array está
+// pensado para sumar destinos con solo agregar una entrada — no hay ninguna
+// otra parte del código que dependa del conteo.
 
-export type CenefaDestino = "redexpres" | "rompe_precios";
+export type CenefaDestino = "redexpres" | "rompe_precios" | "parrilla_y_vinos";
 
 interface DestinoModalProps {
   onSelect: (destino: CenefaDestino) => void;
@@ -16,19 +16,20 @@ export default function DestinoModal({ onSelect }: DestinoModalProps) {
   const { t } = useTranslation();
 
   const DESTINOS: { id: CenefaDestino; icon: React.ElementType; color: string }[] = [
-    { id: "rompe_precios", icon: PartyPopper, color: "text-rose-500 bg-rose-500/10" },
-    { id: "redexpres",    icon: Store,       color: "text-emerald-500 bg-emerald-500/10" },
+    { id: "rompe_precios",    icon: PartyPopper, color: "text-rose-500 bg-rose-500/10" },
+    { id: "parrilla_y_vinos", icon: Wine,        color: "text-purple-600 bg-purple-600/10" },
+    { id: "redexpres",        icon: Store,       color: "text-emerald-500 bg-emerald-500/10" },
   ];
 
   return (
     <div className="flex items-start justify-center pt-12">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-lg p-6 space-y-5">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-xl p-6 space-y-5">
         <div>
           <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">{t("cenefas.destino.title")}</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("cenefas.destino.subtitle")}</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           {DESTINOS.map(({ id, icon: Icon, color }) => (
             <button
               key={id}

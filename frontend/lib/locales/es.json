@@ -398,6 +398,10 @@
         "label": "Rompe Precios del finde",
         "description": "Precio actual, precio anterior tachado y vigencia — sin mecánica de combos."
       },
+      "parrilla_y_vinos": {
+        "label": "Parrilla y Vinos",
+        "description": "Precio actual, precio anterior tachado y vigencia — mismo formato que Rompe Precios, para parrilla y vinos."
+      },
       "redexpres": {
         "label": "Redexpres",
         "description": "Planillas y mecánicas de combo/M x N para las sucursales Redexpres."
@@ -1054,7 +1058,7 @@
     "cenefas": {
       "intro": "Convertí un Excel con productos en una presentación PowerPoint lista para imprimir. El sistema genera automáticamente las láminas con precios, descripciones y promociones formateadas.",
       "steps": {
-        "destino":    { "title": "Elegir destino",        "desc": "Al entrar elegís a dónde vas: Redexpres (planillas y mecánicas de combo/M x N) o Rompe Precios del finde (precio actual, anterior tachado y vigencia)." },
+        "destino":    { "title": "Elegir destino",        "desc": "Al entrar elegís a dónde vas: Redexpres (planillas y mecánicas de combo/M x N), Rompe Precios del finde o Parrilla y Vinos (ambos con precio actual, anterior tachado y vigencia)." },
         "excel":      { "title": "Subir el Excel",        "desc": "Cargás el archivo con los productos. Las columnas detectadas automáticamente incluyen DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc." },
         "preview":    { "title": "Ver el preview",        "desc": "Antes de descargar podés ver una vista previa de referencia con los datos reales cargados." },
         "confirmar":  { "title": "Confirmar y descargar", "desc": "Se genera el PPTX en segundos. Podés descargar el resultado desde la misma pantalla." }

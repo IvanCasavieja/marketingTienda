@@ -29,8 +29,18 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export default function RompePreciosPanel() {
+interface RompePreciosPanelProps {
+  // Destino/categoría de este panel -- separa las plantillas y el Excel de
+  // este flujo de las de cualquier otro destino que reuse el mismo panel
+  // (ver DestinoModal.tsx). El label mostrado se deriva de
+  // cenefas.destino.{category}.label, así que un destino nuevo no necesita
+  // tocar este archivo, solo agregar su entrada al i18n.
+  category: "rompe_precios" | "parrilla_y_vinos";
+}
+
+export default function RompePreciosPanel({ category }: RompePreciosPanelProps) {
   const { t } = useTranslation();
+  const categoryLabel = t(`cenefas.destino.${category}.label`);
 
   const [templatesBySize, setTemplatesBySize] = useState<Record<string, CenefaTemplateRecord>>({});
   const [loadingTemplates, setLoadingTemplates] = useState(true);
@@ -45,7 +55,7 @@ export default function RompePreciosPanel() {
 
   function loadTemplates() {
     setLoadingTemplates(true);
-    cenefasV2Api.listTemplates({ category: "rompe_precios" })
+    cenefasV2Api.listTemplates({ category })
       .then(({ data }) => {
         const bySize: Record<string, CenefaTemplateRecord> = {};
         for (const tmpl of data) {
@@ -58,17 +68,17 @@ export default function RompePreciosPanel() {
       .finally(() => setLoadingTemplates(false));
   }
 
-  useEffect(loadTemplates, [t]);
+  useEffect(loadTemplates, [t, category]);
 
   async function handleDownloadTemplate() {
     try {
-      const { data } = await toolsApi.downloadExcelTemplate("rompe_precios");
+      const { data } = await toolsApi.downloadExcelTemplate(category);
       const url = URL.createObjectURL(new Blob([data], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = "plantilla_rompe_precios.xlsx";
+      a.download = `plantilla_${category}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -251,6 +261,8 @@ export default function RompePreciosPanel() {
 
       {uploadModalSize && (
         <SizeTemplateUploadModal
+          category={category}
+          categoryLabel={categoryLabel}
           sizeId={uploadModalSize}
           sizeLabel={SIZES.find((s) => s.id === uploadModalSize)?.label ?? uploadModalSize}
           onClose={() => setUploadModalSize(null)}

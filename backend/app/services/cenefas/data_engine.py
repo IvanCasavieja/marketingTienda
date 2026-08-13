@@ -392,13 +392,26 @@ def load_products_from_bytes(
 # Dos plantillas, una por destino de Cenefas — comparten estilo pero tienen
 # columnas distintas porque cada destino soporta variables distintas
 # (Rompe Precios explícitamente no tiene mecánica de combo/M x N).
+#
+# Parrilla y Vinos reusa exactamente las mismas columnas que Rompe Precios
+# (mismo pedido explícito: debe comportarse igual) -- un vino o un corte de
+# carne se describen igual de bien con descripcion/precio/precioAnterior/
+# vigencia/aclaraciones, no hace falta un esquema propio. Solo cambian las
+# filas de ejemplo del Excel descargable, por prolijidad.
 
 def generate_template_bytes(destino: str = "redexpres") -> bytes:
-    if destino == "rompe_precios":
+    if destino in ("rompe_precios", "parrilla_y_vinos"):
+        ejemplos_parrilla_vinos = [
+            ("ASADO DE TIRA KG",              399, 459, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.",                                                ""),
+            ("VINO TANNAT RESERVA 750ML",     349, 399, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "",                                                                "Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
+            ("CHORIZO PARRILLERO KG",         289, 329, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.",                                                ""),
+            ("CARBÓN VEGETAL 3KG",             99, 119, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "",                                                                ""),
+            ("ESPUMANTE BRUT 750ML",          259, 299, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.", "Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
+        ]
         return _build_template_workbook(
             headers=["descripcion", "precio", "precioAnterior", "vigencia", "aclaracion1", "aclaracion2", "aclaracion3"],
             col_widths=[36, 12, 14, 30, 30, 30, 30],
-            examples=[
+            examples=ejemplos_parrilla_vinos if destino == "parrilla_y_vinos" else [
                 ("ACEITE GIRASOL FAMILIA 1.5L",  139, 169, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.",                                                ""),
                 ("ARROZ BLUE PATNA 1KG",          55,  69, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "",                                                                ""),
                 ("CERVEZA PILSEN LATA 473ML",     59,  75, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.", "Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
@@ -409,11 +422,11 @@ def generate_template_bytes(destino: str = "redexpres") -> bytes:
                 ("descripcion",    "Nombre del producto",                       "Texto",  "Corresponde a <<Descripcion>> en la plantilla PPTX. Palabras en MAYÚSCULAS se ven en negrita."),
                 ("precio",         "Precio actual (el que se muestra grande)",  "Precio", "Corresponde a <<Precio>>. Número (139) o texto ($139) — con número se auto-formatea con $."),
                 ("precioAnterior", "Precio anterior — se muestra tachado",      "Precio", "Corresponde a <<precioAnterior>>. Dejar vacío si el producto no tenía un precio previo."),
-                ("vigencia",       "Texto de vigencia de la oferta",            "Texto",  "Corresponde a <<Vigencia>>. Si se deja vacío acá, usa la vigencia general de la pantalla de Rompe Precios."),
+                ("vigencia",       "Texto de vigencia de la oferta",            "Texto",  "Corresponde a <<Vigencia>>. Si se deja vacío acá, usa la vigencia general de la pantalla de este destino."),
                 ("aclaracion1",    "Primera aclaración / legal",                "Texto",  "Corresponde a <<Aclaracion1>>."),
                 ("aclaracion2",    "Segunda aclaración",                        "Texto",  "Corresponde a <<Aclaracion2>>. Dejar vacío si no aplica."),
                 ("aclaracion3",    "Tercera aclaración (ej. alcohol)",          "Texto",  "Corresponde a <<Aclaracion3>>. Dejar vacío si no aplica."),
-                ("imagen (cocarda)", "Sello/badge de la promo",                 "Imagen — NO es columna", "Se sube UNA sola vez desde la pantalla de Rompe Precios (no por producto) — no hace falta agregarla acá."),
+                ("imagen (cocarda)", "Sello/badge de la promo",                 "Imagen — NO es columna", "Se sube UNA sola vez desde la pantalla de este destino (no por producto) — no hace falta agregarla acá."),
             ],
         )
 

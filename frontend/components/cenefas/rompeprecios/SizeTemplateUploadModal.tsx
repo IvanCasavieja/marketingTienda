@@ -6,11 +6,14 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 
-// Subir o reemplazar la plantilla de UN tamaño de Rompe Precios. Sin edición
-// Konva acá — el reposicionamiento pasa en PreviewStep, esto solo importa
-// el pptx y lo guarda como CenefaTemplateV2 con category="rompe_precios".
+// Subir o reemplazar la plantilla de UN tamaño de un destino tipo Rompe
+// Precios (Rompe Precios, Parrilla y Vinos, ...). Sin edición Konva acá — el
+// reposicionamiento pasa en PreviewStep, esto solo importa el pptx y lo
+// guarda como CenefaTemplateV2 con la category del destino que lo llama.
 
 interface SizeTemplateUploadModalProps {
+  category: "rompe_precios" | "parrilla_y_vinos";
+  categoryLabel: string;
   sizeId: string;
   sizeLabel: string;
   onClose: () => void;
@@ -26,7 +29,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export default function SizeTemplateUploadModal({ sizeId, sizeLabel, onClose, onSaved }: SizeTemplateUploadModalProps) {
+export default function SizeTemplateUploadModal({ category, categoryLabel, sizeId, sizeLabel, onClose, onSaved }: SizeTemplateUploadModalProps) {
   const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
@@ -40,8 +43,8 @@ export default function SizeTemplateUploadModal({ sizeId, sizeLabel, onClose, on
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("name", `Rompe Precios del Finde — ${sizeLabel}`);
-      fd.append("category", "rompe_precios");
+      fd.append("name", `${categoryLabel} — ${sizeLabel}`);
+      fd.append("category", category);
       const [{ data: definition }, source_pptx_b64] = await Promise.all([
         cenefasV2Api.importPptx(fd),
         fileToBase64(file),
@@ -50,7 +53,7 @@ export default function SizeTemplateUploadModal({ sizeId, sizeLabel, onClose, on
       await cenefasV2Api.createTemplate({
         ...definition,
         formats: [sizeId],
-        category: "rompe_precios",
+        category,
         source_pptx_b64,
       });
 

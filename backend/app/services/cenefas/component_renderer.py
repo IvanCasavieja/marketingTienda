@@ -616,7 +616,10 @@ def render_template_to_pptx(
     master_format = template_def.get("master_format", "a4")
     components    = template_def.get("components", [])
     rules         = template_def.get("rules", [])
-    dedupe_currency_prefix = category == "rompe_precios"
+    # Parrilla y Vinos comparte el mismo patrón de plantilla PPTX que Rompe
+    # Precios (símbolo "$" como run estático separado, junto al placeholder
+    # <<Precio>>) -- mismo pedido explícito de que se comporte igual.
+    dedupe_currency_prefix = category in ("rompe_precios", "parrilla_y_vinos")
 
     if image_overrides:
         components = patch_image_overrides(components, image_overrides)

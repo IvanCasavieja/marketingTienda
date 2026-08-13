@@ -9,8 +9,10 @@ import RompePreciosPanel from "@/components/cenefas/rompeprecios/RompePreciosPan
 import TininFloating from "@/components/cenefas/TininFloating";
 
 // Host: primero pregunta a qué destino se va (modal), después renderiza el
-// panel correspondiente. Redexpres y Rompe Precios son flujos completamente
-// distintos (plantillas, variables, UI) que solo comparten PreviewStep.
+// panel correspondiente. Redexpres es un flujo completamente distinto
+// (plantillas, variables, UI); Rompe Precios y Parrilla y Vinos comparten el
+// mismo panel (RompePreciosPanel, parametrizado por category) porque son el
+// mismo flujo con plantillas/Excel separados. Todos comparten PreviewStep.
 
 function CenefasHost() {
   const { t } = useTranslation();
@@ -20,7 +22,7 @@ function CenefasHost() {
 
   useEffect(() => {
     const param = searchParams.get("destino");
-    if (param === "redexpres" || param === "rompe_precios") setDestino(param);
+    if (param === "redexpres" || param === "rompe_precios" || param === "parrilla_y_vinos") setDestino(param);
   }, [searchParams]);
 
   function selectDestino(d: CenefaDestino) {
@@ -43,10 +45,10 @@ function CenefasHost() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {destino === "rompe_precios" ? t("cenefas.destino.rompe_precios.label") : t("cenefas.title")}
+              {destino ? t(`cenefas.destino.${destino}.label`) : t("cenefas.title")}
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              {destino === "rompe_precios" ? t("cenefas.destino.rompe_precios.description") : t("cenefas.subtitle")}
+              {destino ? t(`cenefas.destino.${destino}.description`) : t("cenefas.subtitle")}
             </p>
           </div>
         </div>
@@ -61,7 +63,8 @@ function CenefasHost() {
       </div>
 
       {destino === "redexpres" && <RedExpresPanel />}
-      {destino === "rompe_precios" && <RompePreciosPanel />}
+      {destino === "rompe_precios" && <RompePreciosPanel category="rompe_precios" />}
+      {destino === "parrilla_y_vinos" && <RompePreciosPanel category="parrilla_y_vinos" />}
 
       {destino === null && <DestinoModal onSelect={selectDestino} />}
 

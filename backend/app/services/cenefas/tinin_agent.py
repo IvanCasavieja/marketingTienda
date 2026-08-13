@@ -30,11 +30,12 @@ _MAX_TOOL_ITERATIONS = 4  # tope duro contra un loop de tool-use que no converge
 _CONOCIMIENTO = f"""
 CÓMO SE ARMAN LOS TEMPLATES:
 - Plantilla clásica (v1): un PPTX fijo se sube tal cual, sin editor — los placeholders del PPTX se rellenan directo con los datos del Excel. Es el motor que usa Redexpres hoy.
-- Editor visual (v2), en /materiales/cenefas/v2: se arma un template desde cero o importando un PPTX existente, con componentes (texto/imagen/forma) y variables asociadas al Excel. Es el motor que usa Rompe Precios.
+- Editor visual (v2), en /materiales/cenefas/v2: se arma un template desde cero o importando un PPTX existente, con componentes (texto/imagen/forma) y variables asociadas al Excel. Es el motor que usan Rompe Precios y Parrilla y Vinos.
 
-LOS 2 DESTINOS Y SUS COLUMNAS EXACTAS (nombres tal cual, no aproximados):
+LOS 3 DESTINOS Y SUS COLUMNAS EXACTAS (nombres tal cual, no aproximados):
 - Redexpres: DESCRIPCION, precioActual, OFERTADET, OFERTA, ACLARACION, OTRA ACLARACION, VIGENCIA, CODIGO. OFERTADET dispara la mecánica (ej. "Combo" -> combo, "M x N" -> M x N).
 - Rompe Precios: descripcion, precio, precioAnterior, vigencia, aclaracion1, aclaracion2, aclaracion3. Sin mecánica de combos ni M x N — no lo soporta.
+- Parrilla y Vinos: mismas columnas que Rompe Precios (descripcion, precio, precioAnterior, vigencia, aclaracion1, aclaracion2, aclaracion3) y mismo comportamiento — es el mismo flujo, con sus propias plantillas PPTX y su propio Excel separados de Rompe Precios.
 
 CÓMO SE GENERA UNA CENEFA (siempre así, nunca instantáneo):
 1. Se sube el Excel + se elige el template (clásico o v2) en /materiales/cenefas.
@@ -79,6 +80,7 @@ _CONTEXTOS = {
     "convertidor": "El usuario está en el Convertidor de Excel.",
     "rompe_precios": "El usuario está generando cenefas de Rompe Precios.",
     "redexpres": "El usuario está generando cenefas de Redexpres.",
+    "parrilla_y_vinos": "El usuario está generando cenefas de Parrilla y Vinos.",
 }
 
 

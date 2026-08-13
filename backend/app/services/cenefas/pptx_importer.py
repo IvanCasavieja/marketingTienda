@@ -760,9 +760,10 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
     category: destino declarado por el caller (ej. "rompe_precios") — hoy
     solo se usa para habilitar la detección de segmentos con un único
     placeholder + texto estático (ver _parse_shape), restringida a Rompe
-    Precios a pedido explícito para no cambiar el import de ninguna otra
-    plantilla existente."""
-    allow_single_placeholder_segments = category == "rompe_precios"
+    Precios y Parrilla y Vinos (mismo patrón de plantilla, mismo pedido
+    explícito de comportarse igual) a pedido explícito para no cambiar el
+    import de ninguna otra plantilla existente."""
+    allow_single_placeholder_segments = category in ("rompe_precios", "parrilla_y_vinos")
     prs = Presentation(BytesIO(pptx_bytes))
     if not prs.slides:
         raise ValueError("El archivo PPTX no tiene slides")

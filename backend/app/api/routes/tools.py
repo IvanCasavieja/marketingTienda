@@ -42,11 +42,11 @@ def _safe_filename(name: str) -> str:
 
 @router.get("/cenefas/template")
 async def download_cenefa_template(
-    destino: str = Query("redexpres", description="redexpres | rompe_precios"),
+    destino: str = Query("redexpres", description="redexpres | rompe_precios | parrilla_y_vinos"),
     current_user: User = Depends(require_permission("cenefas.view")),
 ):
     xlsx_bytes = generate_template_bytes(destino)
-    filename = "plantilla_rompe_precios.xlsx" if destino == "rompe_precios" else "plantilla_redexpres.xlsx"
+    filename = f"plantilla_{destino}.xlsx"
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

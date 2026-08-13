@@ -208,7 +208,7 @@ export const toolsApi = {
   deleteCenefaTemplate: (id: number) => api.delete(`/tools/cenefas/templates/${id}`),
   downloadCenefaTemplate: (id: number) =>
     api.get(`/tools/cenefas/templates/${id}/download`, { responseType: "blob" }),
-  downloadExcelTemplate: (destino: "redexpres" | "rompe_precios" = "redexpres") =>
+  downloadExcelTemplate: (destino: "redexpres" | "rompe_precios" | "parrilla_y_vinos" = "redexpres") =>
     api.get("/tools/cenefas/template", { params: { destino }, responseType: "blob" }),
   getBuiltinTemplates: () =>
     api.get<{ slug: string; name: string; format_name: string }[]>("/tools/cenefas/builtin-templates"),
@@ -424,7 +424,7 @@ export const convertidorApi = {
     api.post<UnificarCategoriasIAResponse>("/tools/cenefas/convertidor/categorias/unificar-ia", { rows }),
 };
 
-export type TininContexto = "convertidor" | "rompe_precios" | "redexpres";
+export type TininContexto = "convertidor" | "rompe_precios" | "redexpres" | "parrilla_y_vinos";
 
 export interface TininConsultarResponse {
   respuesta: string;

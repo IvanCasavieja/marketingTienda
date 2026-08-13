@@ -398,6 +398,10 @@
         "label": "Rompe Precios do fim de semana",
         "description": "Preço atual, preço anterior riscado e vigência — sem mecânica de combos."
       },
+      "parrilla_y_vinos": {
+        "label": "Churrasco e Vinhos",
+        "description": "Preço atual, preço anterior riscado e vigência — mesmo formato do Rompe Precios, para churrasco e vinhos."
+      },
       "redexpres": {
         "label": "Redexpres",
         "description": "Planilhas e mecânicas de combo/M x N para as lojas Redexpres."
@@ -1054,7 +1058,7 @@
     "cenefas": {
       "intro": "Transforme uma planilha Excel com produtos em uma apresentação PowerPoint pronta para impressão. O sistema gera automaticamente as lâminas com preços, descrições e promoções formatadas.",
       "steps": {
-        "destino":    { "title": "Escolher destino",        "desc": "Ao entrar você escolhe para onde ir: Redexpres (planilhas e mecânicas de combo/M x N) ou Rompe Precios do fim de semana (preço atual, preço anterior riscado e vigência)." },
+        "destino":    { "title": "Escolher destino",        "desc": "Ao entrar você escolhe para onde ir: Redexpres (planilhas e mecânicas de combo/M x N), Rompe Precios do fim de semana ou Churrasco e Vinhos (ambos com preço atual, preço anterior riscado e vigência)." },
         "excel":      { "title": "Enviar o Excel",          "desc": "Você carrega o arquivo com os produtos. As colunas detectadas automaticamente incluem DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc." },
         "preview":    { "title": "Ver o preview",           "desc": "Antes de baixar você pode ver uma prévia de referência com os dados reais carregados." },
         "confirmar":  { "title": "Confirmar e baixar",      "desc": "O PPTX é gerado em segundos. Você pode baixar o resultado na mesma tela." }
