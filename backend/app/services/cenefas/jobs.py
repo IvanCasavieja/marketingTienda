@@ -135,12 +135,12 @@ async def run_generation_job(
         await db.commit()
 
         try:
-            products = await asyncio.to_thread(
-                load_products_from_bytes, excel_bytes, vigencia, aclaracion, otra_alcohol, banco
-            )
-            validation = validate_products(products)
-            summary    = build_summary(validation)
-
+            # Resolver la plantilla PRIMERO -- category tiene que estar
+            # disponible antes de parsear el Excel, porque el matching de
+            # columnas de Parrilla y Vinos depende del destino (ver
+            # data_engine.py::load_products_from_bytes). Ninguno de los dos
+            # bloques depende del resultado del otro, así que reordenar acá
+            # no cambia ningún otro comportamiento.
             use_legacy_engine = template_v2_id is None
             if template_upload_bytes is not None:
                 template_def = await asyncio.to_thread(
@@ -152,6 +152,13 @@ async def run_generation_job(
                 template_def, source_pptx_bytes, category = await _resolve_template_def(
                     db, builtin_slug, template_v1_id, template_v2_id
                 )
+
+            products = await asyncio.to_thread(
+                load_products_from_bytes, excel_bytes, vigencia, aclaracion, otra_alcohol, banco, category
+            )
+            validation = validate_products(products)
+            summary    = build_summary(validation)
+
             if image_overrides:
                 template_def = {
                     **template_def,

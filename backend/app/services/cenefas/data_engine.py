@@ -42,6 +42,9 @@ CANONICAL_VARS: frozenset[str] = frozenset({
     "categoria",          # categoría del producto
     "subCategoria",       # subcategoría del producto
     "descuento",          # TRUE/FALSE para reglas de visibilidad
+    "precio4x3",          # Parrilla y Vinos: nivel de precio por cantidad 4x3 -- entero/decimal
+    "precio5x3",          # se separan en dos placeholders del PPTX vía transform
+    "precio6x3",          # price_integer/price_decimal (ver pptx_importer.py), no acá.
 })
 
 # Variables que contienen precios — los números se auto-formatean con prefix de moneda
@@ -66,6 +69,7 @@ _ALIASES: dict[str, str] = {
     "preciobanco":        "precioBanco",
     "banco":              "banco",
     "descripcion":        "descripcion",
+    "nombredearticulo":   "descripcion",  # excel real de Parrilla y Vinos — sin colisión con otro destino
     "titulo":             "mecanica",    # backward compat: columna "titulo" → var "mecanica"
     "mecanica":           "mecanica",
     "aclaracion":         "aclaracion",
@@ -104,6 +108,20 @@ _ALIASES: dict[str, str] = {
     "oferta":             "_oferta",
     "subcategoria":       "_subcategoria_legacy",  # needed for DELI logic
     "comprador":          "_comprador",
+}
+
+# Override de alias solo para Parrilla y Vinos (ver load_products_from_bytes,
+# parámetro `destino`) -- "regular" y "oferta" ya significan otra cosa en el
+# excel de Rompe Precios/Redexpres (arriba), así que no se puede resolver
+# con un solo diccionario global. Acá "regular" es el precio PRINCIPAL (no
+# el anterior) y "oferta" es el nivel de precio 4x3 (nombre real de la
+# columna en el excel de Parrilla y Vinos, aunque confunda con el trigger
+# de combos de arriba -- nada que ver, es solo coincidencia de nombre).
+_ALIASES_PARRILLA_VINOS_OVERRIDE: dict[str, str] = {
+    "regular": "precioActual",
+    "oferta":  "precio4x3",
+    "5x3":     "precio5x3",
+    "6x3":     "precio6x3",
 }
 
 # Columnas que, si están presentes, sirven para detectar la fila de headers
@@ -333,7 +351,13 @@ def load_products_from_bytes(
     aclaracion:   str = "",
     otra_alcohol: str = "",
     banco:        str = "",
+    destino:      str | None = None,
 ) -> list[dict]:
+    # destino solo importa para Parrilla y Vinos hoy -- ver
+    # _ALIASES_PARRILLA_VINOS_OVERRIDE arriba. Cualquier otro valor (o None)
+    # usa el diccionario global de siempre, sin cambios de comportamiento.
+    aliases = {**_ALIASES, **_ALIASES_PARRILLA_VINOS_OVERRIDE} if destino == "parrilla_y_vinos" else _ALIASES
+
     wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), data_only=True)
     ws = wb["Cenefas"] if "Cenefas" in wb.sheetnames else wb.active
 
@@ -353,7 +377,7 @@ def load_products_from_bytes(
     for idx, raw in enumerate(raw_headers):
         if not raw:
             continue
-        canonical = _ALIASES.get(_norm(str(raw)))
+        canonical = aliases.get(_norm(str(raw)))
         key = canonical if canonical else str(raw)  # pass through unknown columns as-is
         h[key] = idx
 
@@ -389,29 +413,24 @@ def load_products_from_bytes(
 # Generación de plantilla Excel de descarga
 # ---------------------------------------------------------------------------
 #
-# Dos plantillas, una por destino de Cenefas — comparten estilo pero tienen
+# Tres plantillas, una por destino de Cenefas — comparten estilo pero tienen
 # columnas distintas porque cada destino soporta variables distintas
 # (Rompe Precios explícitamente no tiene mecánica de combo/M x N).
 #
-# Parrilla y Vinos reusa exactamente las mismas columnas que Rompe Precios
-# (mismo pedido explícito: debe comportarse igual) -- un vino o un corte de
-# carne se describen igual de bien con descripcion/precio/precioAnterior/
-# vigencia/aclaraciones, no hace falta un esquema propio. Solo cambian las
-# filas de ejemplo del Excel descargable, por prolijidad.
+# Parrilla y Vinos tiene su PROPIO esquema, calcado del Excel real que ya
+# usa el equipo (no el de Rompe Precios): "regular" es el precio principal,
+# "oferta"/"5x3"/"6x3" son tres niveles de precio por cantidad que en el
+# PPTX aparecen partidos en entero+decimal (ver _ALIASES_PARRILLA_VINOS_OVERRIDE
+# y pptx_importer.py). vigencia/aclaraciones quedan como columnas opcionales
+# al final por si una plantilla futura (ej. la versión A4) las necesita —
+# process_row ya trata todo como opcional, no molestan si quedan vacías.
 
 def generate_template_bytes(destino: str = "redexpres") -> bytes:
-    if destino in ("rompe_precios", "parrilla_y_vinos"):
-        ejemplos_parrilla_vinos = [
-            ("ASADO DE TIRA KG",              399, 459, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.",                                                ""),
-            ("VINO TANNAT RESERVA 750ML",     349, 399, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "",                                                                "Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
-            ("CHORIZO PARRILLERO KG",         289, 329, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.",                                                ""),
-            ("CARBÓN VEGETAL 3KG",             99, 119, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "",                                                                ""),
-            ("ESPUMANTE BRUT 750ML",          259, 299, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.", "Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
-        ]
+    if destino == "rompe_precios":
         return _build_template_workbook(
             headers=["descripcion", "precio", "precioAnterior", "vigencia", "aclaracion1", "aclaracion2", "aclaracion3"],
             col_widths=[36, 12, 14, 30, 30, 30, 30],
-            examples=ejemplos_parrilla_vinos if destino == "parrilla_y_vinos" else [
+            examples=[
                 ("ACEITE GIRASOL FAMILIA 1.5L",  139, 169, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.",                                                ""),
                 ("ARROZ BLUE PATNA 1KG",          55,  69, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "",                                                                ""),
                 ("CERVEZA PILSEN LATA 473ML",     59,  75, "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.", "Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
@@ -427,6 +446,31 @@ def generate_template_bytes(destino: str = "redexpres") -> bytes:
                 ("aclaracion2",    "Segunda aclaración",                        "Texto",  "Corresponde a <<Aclaracion2>>. Dejar vacío si no aplica."),
                 ("aclaracion3",    "Tercera aclaración (ej. alcohol)",          "Texto",  "Corresponde a <<Aclaracion3>>. Dejar vacío si no aplica."),
                 ("imagen (cocarda)", "Sello/badge de la promo",                 "Imagen — NO es columna", "Se sube UNA sola vez desde la pantalla de este destino (no por producto) — no hace falta agregarla acá."),
+            ],
+        )
+
+    if destino == "parrilla_y_vinos":
+        return _build_template_workbook(
+            headers=["codigo", "nombre de articulo", "regular", "oferta", "5x3", "6x3", "vigencia", "aclaracion1", "aclaracion2", "aclaracion3"],
+            col_widths=[14, 36, 12, 12, 12, 12, 30, 30, 30, 30],
+            examples=[
+                ("84512", "ASADO DE TIRA KG",          399, "379,50", "365,50", "349,50", "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.", ""),
+                ("63321", "VINO TANNAT RESERVA 750ML", 349, "329,50", "319,50", "299,50", "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "", "Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
+                ("41207", "CHORIZO PARRILLERO KG",     289, "269,50", "259,50", "249,50", "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.", ""),
+                ("55890", "CARBÓN VEGETAL 3KG",         99,       "",       "",       "", "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "", ""),
+                ("67788", "ESPUMANTE BRUT 750ML",      259, "239,50", "229,50", "219,50", "Válido viernes 17 a domingo 19 de julio", "Precio válido en todos los locales.", "Stock limitado.", "Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
+            ],
+            var_docs=[
+                ("codigo",              "Código de artículo",                          "Texto",  "Corresponde a <<codigo>> en la plantilla PPTX."),
+                ("nombre de articulo",  "Nombre del producto",                         "Texto",  "Corresponde a <<descripcion>>."),
+                ("regular",             "Precio principal (el que se muestra grande)", "Precio", "Corresponde a <<precioP>>. El signo $ ya está fijo en la plantilla, no hace falta incluirlo acá."),
+                ("oferta",              "Precio del nivel 4x3",                        "Precio", "Corresponde a <<4x3P>> (entero) y <<decimal4x3>> (decimal, con la coma) — se parte automáticamente. Dejar vacío si el producto no tiene este nivel."),
+                ("5x3",                 "Precio del nivel 5x3",                        "Precio", "Corresponde a <<5x3P>>/<<decimal5x3>>, igual que la columna oferta. Dejar vacío si no aplica."),
+                ("6x3",                 "Precio del nivel 6x3",                        "Precio", "Corresponde a <<6x3P>>/<<decimal6x3>>, igual que la columna oferta. Dejar vacío si no aplica."),
+                ("vigencia",            "Texto de vigencia de la oferta",              "Texto",  "Corresponde a <<Vigencia>>, si la plantilla la usa. Opcional."),
+                ("aclaracion1",         "Primera aclaración / legal",                  "Texto",  "Corresponde a <<Aclaracion1>>, si la plantilla la usa. Opcional."),
+                ("aclaracion2",         "Segunda aclaración",                          "Texto",  "Opcional."),
+                ("aclaracion3",         "Tercera aclaración (ej. alcohol)",            "Texto",  "Opcional."),
             ],
         )
 

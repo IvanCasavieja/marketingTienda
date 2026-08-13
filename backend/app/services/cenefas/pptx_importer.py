@@ -58,6 +58,19 @@ _PLACEHOLDER_MAP: dict[str, tuple[str, str, str]] = {
     "unidad":          ("unidadPrecio",      "text",  "none"),
     "unidadmedida":    ("unidadPrecio",      "text",  "none"),
     "descripci":       ("descripcion",       "text",  "smart_bold"),
+
+    # ── Parrilla y Vinos: precio principal + 3 niveles por cantidad ───────
+    # (4x3/5x3/6x3), cada nivel partido en placeholder de entero + placeholder
+    # de decimal -- ver _ALIASES_PARRILLA_VINOS_OVERRIDE en data_engine.py
+    # para el lado del Excel. "preciop" ya resolvería por el fallback de
+    # "precio"/"p" más abajo, pero se deja explícito para no depender de eso.
+    "preciop":         ("precioActual",      "price", "price_full"),
+    "4x3p":            ("precio4x3",         "price", "price_integer"),
+    "decimal4x3":      ("precio4x3",         "price", "price_decimal"),
+    "5x3p":            ("precio5x3",         "price", "price_integer"),
+    "decimal5x3":      ("precio5x3",         "price", "price_decimal"),
+    "6x3p":            ("precio6x3",         "price", "price_integer"),
+    "decimal6x3":      ("precio6x3",         "price", "price_decimal"),
 }
 
 # Mapa: variable_name → columna Excel canónica (para el panel de Variables)
