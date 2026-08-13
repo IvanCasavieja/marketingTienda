@@ -62,9 +62,10 @@ _PLACEHOLDER_MAP: dict[str, tuple[str, str, str]] = {
     # ── Parrilla y Vinos: precio principal + 3 niveles por cantidad ───────
     # (4x3/5x3/6x3), cada nivel partido en placeholder de entero + placeholder
     # de decimal -- ver _ALIASES_PARRILLA_VINOS_OVERRIDE en data_engine.py
-    # para el lado del Excel. "preciop" ya resolvería por el fallback de
-    # "precio"/"p" más abajo, pero se deja explícito para no depender de eso.
-    "preciop":         ("precioActual",      "price", "price_full"),
+    # para el lado del Excel. precioP (no precioActual) a propósito: el "$"
+    # de esta plantilla ya es texto fijo en el PPTX, precioActual vendría
+    # con su propio "$" auto-formateado y quedaría duplicado ("$$399").
+    "preciop":         ("precioP",           "price", "price_full"),
     "4x3p":            ("precio4x3",         "price", "price_integer"),
     "decimal4x3":      ("precio4x3",         "price", "price_decimal"),
     "5x3p":            ("precio5x3",         "price", "price_integer"),

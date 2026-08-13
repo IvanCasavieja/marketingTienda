@@ -42,6 +42,9 @@ CANONICAL_VARS: frozenset[str] = frozenset({
     "categoria",          # categoría del producto
     "subCategoria",       # subcategoría del producto
     "descuento",          # TRUE/FALSE para reglas de visibilidad
+    "precioP",            # Parrilla y Vinos: precio principal -- crudo, SIN auto-formato de
+                          # "$" (el "$" ya está fijo como texto estático en el PPTX; si
+                          # este también llevara "$" quedaría duplicado -- "$$399").
     "precio4x3",          # Parrilla y Vinos: nivel de precio por cantidad 4x3 -- entero/decimal
     "precio5x3",          # se separan en dos placeholders del PPTX vía transform
     "precio6x3",          # price_integer/price_decimal (ver pptx_importer.py), no acá.
@@ -117,8 +120,12 @@ _ALIASES: dict[str, str] = {
 # el anterior) y "oferta" es el nivel de precio 4x3 (nombre real de la
 # columna en el excel de Parrilla y Vinos, aunque confunda con el trigger
 # de combos de arriba -- nada que ver, es solo coincidencia de nombre).
+# "regular" mapea a precioP (NO precioActual) a propósito: precioActual se
+# auto-formatea con "$" en el passthrough de abajo, y el "$" de esta
+# plantilla ya es texto fijo en el PPTX -- si el valor también trajera "$"
+# quedaría duplicado ("$$399"), verificado renderizando la plantilla real.
 _ALIASES_PARRILLA_VINOS_OVERRIDE: dict[str, str] = {
-    "regular": "precioActual",
+    "regular": "precioP",
     "oferta":  "precio4x3",
     "5x3":     "precio5x3",
     "6x3":     "precio6x3",
