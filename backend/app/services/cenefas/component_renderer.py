@@ -523,19 +523,31 @@ def _render_slide(
 def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     """Detect how many product slots are encoded in one slide of a template.
 
-    Counts how many times the most-repeated variable appears — that's the
-    number of slots per slide (works for 1, 3, 6, or any other count).
+    n_slots = GCD de cuántas veces aparece cada variable -- NO el máximo.
+    Un variable puede aparecer más de una vez POR banda (ej. un precio
+    partido en placeholder de entero + placeholder de decimal, ambos
+    apuntando a la misma variable canónica, ver precio4x3/5x3/6x3 en
+    Parrilla y Vinos) sin que eso signifique que hay más bandas. Con max(),
+    un template de 3 bandas donde cada precio tiene 2 placeholders (entero+
+    decimal) se detectaba como 6 bandas -- de ahí se armaban grupos de Y mal
+    alineados con las bandas reales, mezclando datos de dos productos
+    distintos dentro de una misma banda visual (bug real, visto con
+    <<4x3P>>/<<decimal4x3>> mostrando el precio de OTRO producto). El GCD es
+    correcto mientras al menos una variable aparezca una sola vez por banda
+    (ej. codigo/descripcion) -- caso normal en cualquier plantilla real.
     Splits non-background components by Y order into that many groups.
     Returns None when n_slots == 1 (single-slot → standard per-product render).
     """
+    import math
     from collections import Counter
+    from functools import reduce
 
     non_bg = [c for c in components if not c.get("locked")]
     var_counts = Counter(c["variable"] for c in non_bg if c.get("variable"))
     if not var_counts:
         return None
 
-    n_slots = max(var_counts.values())
+    n_slots = reduce(math.gcd, var_counts.values())
     if n_slots <= 1:
         return None  # single-slot template
 
