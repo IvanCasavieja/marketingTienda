@@ -186,8 +186,22 @@ def process_row(
             pv = parse_price_raw(val)
             result[var_name] = (prefix + fmt_price(pv)) if pv > 0 else str(val).strip()
         elif var_name in _PRICE_VARS_SIN_PREFIJO:
-            pv = parse_price_raw(val)
-            result[var_name] = fmt_price(pv) if pv > 0 else str(val).strip()
+            # parse_price_raw() solo matchea el run de dígitos inicial e
+            # ignora en silencio lo que venga después (ej. "4x350" -> 4.0) --
+            # inofensivo en los demás usos de parse_price_raw (siempre reciben
+            # la parte ya separada de un combo tipo "Nx$precio"), pero acá el
+            # valor crudo de la celda todavía puede traer esa notación:
+            # "oferta" es históricamente la columna de combos de Redexpres
+            # (ver _ALIASES/"_oferta" arriba), así que una fila cargada con el
+            # hábito viejo ("4x350" en vez de un precio limpio "350") se
+            # truncaba a "$4" sin ningún indicio de que estaba mal. Si el
+            # valor crudo no es un precio limpio de punta a punta, se deja tal
+            # cual (mismo fallback que ya existía para pv<=0) para que el
+            # error quede visible en vez de mostrar un precio falso.
+            val_str = str(val).strip()
+            looks_like_price = isinstance(val, (int, float)) or bool(re.fullmatch(r"\d[\d.,]*", val_str))
+            pv = parse_price_raw(val) if looks_like_price else 0.0
+            result[var_name] = fmt_price(pv) if pv > 0 else val_str
         else:
             result[var_name] = str(val).strip()
 
