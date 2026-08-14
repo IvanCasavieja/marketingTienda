@@ -104,10 +104,11 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
       // Límite de intentos: sin esto, un job trabado en "running" (ver
       // _RENDER_TIMEOUT_SECONDS en jobs.py, que debería evitar esto del lado
       // del backend) dejaba este loop esperando en silencio para siempre —
-      // "no para de estar cargando" sin ningún error visible. 150 × 1200ms =
-      // 180s, alineado con el timeout del backend más el margen del propio
-      // polling.
-      const MAX_CONFIRM_ATTEMPTS = 150;
+      // "no para de estar cargando" sin ningún error visible. 550 × 1200ms =
+      // 660s, con margen sobre los 600s del backend (confirmado en vivo:
+      // 1291 productos reales tardan más de 180s en la instancia de Render,
+      // que corre con 1 sola CPU -- ver _RENDER_TIMEOUT_SECONDS en jobs.py).
+      const MAX_CONFIRM_ATTEMPTS = 550;
       await new Promise<void>((resolve, reject) => {
         let attempts = 0;
         const iv = setInterval(async () => {

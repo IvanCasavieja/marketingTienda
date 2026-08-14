@@ -23,7 +23,13 @@ logger = logging.getLogger(__name__)
 # Techo de tiempo para el render final (confirm_generation_job) -- sin esto,
 # un render trabado deja el job en status="running" para siempre, y el
 # polling del frontend (PreviewStep.tsx) espera en silencio sin límite.
-_RENDER_TIMEOUT_SECONDS = 180
+#
+# 180s alcanzaba de sobra en local (1291 productos ~20s), pero la instancia
+# real de Render corre con 1 sola CPU (WEB_CONCURRENCY=1, ver logs) y ahí
+# el mismo render de 1291 productos supera los 180s -- confirmado en vivo
+# con el archivo real del usuario (disparó este mismo timeout). Subido con
+# margen generoso para ese volumen real en hardware más lento.
+_RENDER_TIMEOUT_SECONDS = 600
 
 _STATIC_DIR = pathlib.Path(__file__).parent.parent.parent / "static" / "cenefa_templates"
 
