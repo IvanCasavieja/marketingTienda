@@ -138,11 +138,25 @@ _ALIASES: dict[str, str] = {
 # auto-formatea con "$" en el passthrough de abajo, y el "$" de esta
 # plantilla ya es texto fijo en el PPTX -- si el valor también trajera "$"
 # quedaría duplicado ("$$399"), verificado renderizando la plantilla real.
+#
+# "ofertadet"/"comprador"/"subcategoria" también se desactivan acá: el Excel
+# real de Parrilla y Vinos no es una planilla armada a medida para cenefas,
+# es una exportación más amplia de gestión de categorías (tiene columnas
+# como COMPRADOR/PROVEEDOR/VENTA $/FORECASTUNI/OBJETIVO ajenas a esto) que
+# arrastra columnas con estos mismos nombres pero un significado total y
+# confirmadamente distinto (ver caso real: "OFERTADET"="M x N" en una fila
+# que no tiene NADA que ver con la mecánica de combos de Redexpres). Sin
+# este bloqueo, esas columnas disparaban la lógica legacy de
+# combos/fiambrería pensada para Redexpres, pisando precios de Parrilla y
+# Vinos que ya se resuelven solos con precioP/precio4x3/5x3/6x3.
 _ALIASES_PARRILLA_VINOS_OVERRIDE: dict[str, str] = {
-    "regular": "precioP",
-    "oferta":  "precio4x3",
-    "5x3":     "precio5x3",
-    "6x3":     "precio6x3",
+    "regular":      "precioP",
+    "oferta":       "precio4x3",
+    "5x3":          "precio5x3",
+    "6x3":          "precio6x3",
+    "ofertadet":    "_ignoradoParrillaOfertadet",
+    "comprador":    "_ignoradoParrillaComprador",
+    "subcategoria": "_ignoradoParrillaSubcategoria",
 }
 
 # Columnas que, si están presentes, sirven para detectar la fila de headers
@@ -417,6 +431,12 @@ def load_products_from_bytes(
             continue
         canonical = aliases.get(_norm(str(raw)))
         key = canonical if canonical else str(raw)  # pass through unknown columns as-is
+        if key in h:
+            continue  # primera columna con este nombre gana -- ver caso real:
+            # el excel de Parrilla y Vinos trae "OFERTA" DOS veces (precio
+            # real en una posición, un código de mecánica interno sin
+            # relación en otra) -- sin esto, la última pisaba a la primera
+            # en silencio y el precio se perdía.
         h[key] = idx
 
     # ── Detectar columna de descripción para skip de filas vacías ─────────
