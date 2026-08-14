@@ -147,6 +147,15 @@ async def peek_job_products(job_id: uuid.UUID) -> StagedJob | None:
         return _staged_job_from_row(job)
 
 
+async def peek_job(job_id: uuid.UUID) -> CenefaJob | None:
+    """Lectura suelta de un job (conexión propia) -- usada por
+    confirm_generation_job para recuperar validation_report justo antes de
+    escribir el resultado final, sin depender de la conexión abierta al
+    principio de esa función (ver _finish_job)."""
+    async with AsyncSessionLocal() as db:
+        return await _get_job(db, job_id)
+
+
 async def pop_job_products(job_id: uuid.UUID) -> StagedJob | None:
     # Destructivo a propósito, a diferencia de result_bytes: el PPTX/Excel
     # crudo de acá puede pesar varios MB y solo hace falta una vez, para
@@ -268,101 +277,126 @@ async def run_generation_job(
             await db.commit()
 
 
+async def _finish_job(
+    job_id: uuid.UUID,
+    *,
+    status: str,
+    validation_report: dict | None = None,
+    result_path: str | None = None,
+) -> None:
+    """Escribe el estado final de un job en una conexión NUEVA -- separado a
+    propósito del resto de confirm_generation_job (ver ahí el porqué): así
+    el commit que reporta "done"/"error" nunca depende de una conexión que
+    estuvo abierta e inactiva durante todo el render."""
+    async with AsyncSessionLocal() as db:
+        job = await _get_job(db, job_id)
+        if job is None:
+            logger.error("_finish_job: job %s not found", job_id)
+            return
+        job.status = status
+        if validation_report is not None:
+            job.validation_report = validation_report
+        if result_path is not None:
+            job.result_path = result_path
+        job.completed_at = datetime.now(timezone.utc)
+        await db.commit()
+
+
 async def confirm_generation_job(
     job_id: uuid.UUID,
     position_overrides: list[dict] | None = None,
 ) -> None:
     """Etapa B: toma lo que quedó guardado por run_generation_job(), aplica
     los deltas de posición que el usuario movió en el preview (por id de
-    componente) y genera el PPTX final."""
-    async with AsyncSessionLocal() as db:
-        job = await _get_job(db, job_id)
-        if job is None:
-            logger.error("confirm_generation_job: job %s not found", job_id)
-            return
+    componente) y genera el PPTX final.
 
-        staged = await pop_job_products(job_id)
-        if staged is None:
-            job.status            = "error"
-            job.validation_report = {"error": "No hay preview pendiente para este job (¿ya se confirmó o expiró?)"}
-            job.completed_at      = datetime.now(timezone.utc)
-            await db.commit()
-            return
+    A propósito NO mantiene una única conexión a la base abierta durante
+    todo esto -- el render puede tardar hasta _RENDER_TIMEOUT_SECONDS, y
+    dejar una conexión abierta e inactiva ese tiempo corre el riesgo de que
+    el pool (Supabase/PgBouncer) la cierre por inactividad; si el commit
+    final ("done"/"error") se hiciera sobre ESA misma conexión ya cortada,
+    fallaría en silencio -- el job se queda en "running" para siempre sin
+    ningún error visible en ningún lado (síntoma real reportado: "carga y
+    carga y nunca termina", sin 409/410/timeout). peek_job_products/
+    pop_job_products/store_job_result ya abren su propia conexión nueva
+    cada vez (ver arriba) -- acá se hace lo mismo para leer el job inicial
+    y para escribir el resultado final, en vez de reusar una sola conexión
+    de punta a punta."""
+    staged = await pop_job_products(job_id)
+    if staged is None:
+        await _finish_job(
+            job_id, status="error",
+            validation_report={"error": "No hay preview pendiente para este job (¿ya se confirmó o expiró?)"},
+        )
+        return
 
-        try:
-            if staged.use_legacy_engine:
-                # Redexpres: el render final pasa por el motor viejo tal
-                # cual, sin tocar nada — es el que ya tiene calibrado el
-                # achicado/centrado de precio y demás ajustes de layout A4
-                # que component_renderer no replica. Los position_overrides
-                # del preview NO se aplican acá a propósito: ese motor no
-                # tiene un modelo de "mover este shape", y aplicar ediciones
-                # parciales de posición sobre su lógica de centrado
-                # automático podría romper justo lo que queremos preservar.
-                if position_overrides:
-                    logger.info(
-                        "job %s: se ignoran %d overrides de posición (motor legado, Redexpres)",
-                        job_id, len(position_overrides),
-                    )
-                try:
-                    pptx_bytes = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            generate_pptx_bytes,
-                            staged.excel_bytes, staged.source_pptx_bytes,
-                            staged.vigencia, staged.aclaracion, staged.otra_alcohol, staged.banco,
-                        ),
-                        timeout=_RENDER_TIMEOUT_SECONDS,
-                    )
-                except asyncio.TimeoutError:
-                    raise RuntimeError(
-                        f"La generación del archivo superó el límite de {_RENDER_TIMEOUT_SECONDS}s. "
-                        "Probá con menos productos o revisá la plantilla."
-                    )
-                missing_vars: list[str] = []
-            else:
-                template_def = staged.template_def
-                if position_overrides:
-                    bounds_by_id = {o["id"]: o["base_bounds"] for o in position_overrides if o.get("id")}
-                    template_def = {
-                        **template_def,
-                        "components": [
-                            {**c, "base_bounds": bounds_by_id.get(c["id"], c["base_bounds"])}
-                            for c in template_def.get("components", [])
-                        ],
-                    }
-                try:
-                    pptx_bytes, missing_vars = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            render_template_to_pptx, template_def, staged.products, staged.target_format,
-                            None, staged.source_pptx_bytes,  # image_overrides ya horneado, source_pptx_bytes
-                            staged.category,
-                        ),
-                        timeout=_RENDER_TIMEOUT_SECONDS,
-                    )
-                except asyncio.TimeoutError:
-                    raise RuntimeError(
-                        f"La generación del archivo superó el límite de {_RENDER_TIMEOUT_SECONDS}s. "
-                        "Probá con menos productos o revisá la plantilla."
-                    )
-            await store_job_result(job_id, pptx_bytes)
+    try:
+        if staged.use_legacy_engine:
+            # Redexpres: el render final pasa por el motor viejo tal
+            # cual, sin tocar nada — es el que ya tiene calibrado el
+            # achicado/centrado de precio y demás ajustes de layout A4
+            # que component_renderer no replica. Los position_overrides
+            # del preview NO se aplican acá a propósito: ese motor no
+            # tiene un modelo de "mover este shape", y aplicar ediciones
+            # parciales de posición sobre su lógica de centrado
+            # automático podría romper justo lo que queremos preservar.
+            if position_overrides:
+                logger.info(
+                    "job %s: se ignoran %d overrides de posición (motor legado, Redexpres)",
+                    job_id, len(position_overrides),
+                )
+            try:
+                pptx_bytes = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        generate_pptx_bytes,
+                        staged.excel_bytes, staged.source_pptx_bytes,
+                        staged.vigencia, staged.aclaracion, staged.otra_alcohol, staged.banco,
+                    ),
+                    timeout=_RENDER_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                raise RuntimeError(
+                    f"La generación del archivo superó el límite de {_RENDER_TIMEOUT_SECONDS}s. "
+                    "Probá con menos productos o revisá la plantilla."
+                )
+            missing_vars: list[str] = []
+        else:
+            template_def = staged.template_def
+            if position_overrides:
+                bounds_by_id = {o["id"]: o["base_bounds"] for o in position_overrides if o.get("id")}
+                template_def = {
+                    **template_def,
+                    "components": [
+                        {**c, "base_bounds": bounds_by_id.get(c["id"], c["base_bounds"])}
+                        for c in template_def.get("components", [])
+                    ],
+                }
+            try:
+                pptx_bytes, missing_vars = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        render_template_to_pptx, template_def, staged.products, staged.target_format,
+                        None, staged.source_pptx_bytes,  # image_overrides ya horneado, source_pptx_bytes
+                        staged.category,
+                    ),
+                    timeout=_RENDER_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                raise RuntimeError(
+                    f"La generación del archivo superó el límite de {_RENDER_TIMEOUT_SECONDS}s. "
+                    "Probá con menos productos o revisá la plantilla."
+                )
+        await store_job_result(job_id, pptx_bytes)
 
-            report = dict(job.validation_report or {})
-            report["missing_vars"] = missing_vars
+        job = await peek_job(job_id)
+        report = dict((job.validation_report if job else None) or {})
+        report["missing_vars"] = missing_vars
 
-            job.status            = "done"
-            job.result_path       = str(job_id)
-            job.validation_report = report
-            job.completed_at      = datetime.now(timezone.utc)
-            await db.commit()
+        await _finish_job(job_id, status="done", validation_report=report, result_path=str(job_id))
+        logger.info("job %s confirmado y renderizado", job_id)
 
-            logger.info("job %s confirmado y renderizado", job_id)
-
-        except Exception as exc:
-            logger.error("job %s confirm failed: %s", job_id, exc, exc_info=True)
-            job.status            = "error"
-            job.validation_report = {"error": str(exc)}
-            job.completed_at      = datetime.now(timezone.utc)
-            await db.commit()
+    except Exception as exc:
+        logger.error("job %s confirm failed: %s", job_id, exc, exc_info=True)
+        await _finish_job(job_id, status="error", validation_report={"error": str(exc)})
 
 
 # ---------------------------------------------------------------------------
