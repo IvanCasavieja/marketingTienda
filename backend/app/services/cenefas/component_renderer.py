@@ -92,6 +92,78 @@ def _fit_price_font_size(text: str, base_font_size: float | None) -> float | Non
     return max(base_font_size * scale, base_font_size * 0.55)
 
 
+def _estimate_wrapped_lines(text: str, box_width_cm: float | None, font_size: float | None) -> int:
+    """Estima a cuántas líneas se parte un texto con word-wrap en una caja
+    de cierto ancho -- simulando el mismo criterio "voraz" (agregar
+    palabras hasta que no entran más) que usa PowerPoint. No es exacto (no
+    tenemos las métricas reales de la fuente en el servidor), pero
+    calibrado contra 3 descripciones reales de Parrilla y Vinos que se
+    superponían con el precio: predice 2/2/3 líneas para esos 3 casos
+    reales, que es justo lo que se ve en el archivo generado."""
+    if not text or not box_width_cm or not font_size:
+        return 1
+    box_width_pt = box_width_cm / 2.54 * 72
+    # Ancho promedio de caracter ~0.38em -- calibrado contra los 3 casos
+    # reales de arriba, no un valor de fuente "de catálogo".
+    chars_per_line = max(1, int(box_width_pt / (font_size * 0.38)))
+    lines = 1
+    current_len = 0
+    for word in text.split():
+        add_len = len(word) if current_len == 0 else current_len + 1 + len(word)
+        if add_len > chars_per_line and current_len > 0:
+            lines += 1
+            current_len = len(word)
+        else:
+            current_len = add_len
+    return lines
+
+
+def _comp_uses_variable(c: dict, var_name: str) -> bool:
+    """True si el componente usa esa variable, ya sea directo (c["variable"])
+    o dentro de un segmento (ej. "PRECIO REGULAR: $<<precioP>>" -- con
+    allow_single_placeholder_segments el texto estático + el placeholder
+    quedan como 2 segmentos de UN componente, no como variable de nivel
+    superior, ver pptx_importer.py)."""
+    if c.get("variable") == var_name:
+        return True
+    return any(seg.get("type") == "variable" and seg.get("value") == var_name for seg in (c.get("segments") or []))
+
+
+def _shift_price_below_wrapped_description(comps: list[dict], product: dict) -> list[dict]:
+    """Empuja hacia abajo la caja de precioP cuando la descripción del
+    producto ocupa más líneas de las que la caja de descripcion fue
+    diseñada a contener -- ver _estimate_wrapped_lines. Específico de
+    Parrilla y Vinos: ahí descripcion y precioP son dos cajas de texto
+    independientes apiladas verticalmente (no un único cuadro con
+    auto-layout), así que si la descripción se extiende a 2-3 líneas por un
+    nombre de producto largo, invade el espacio de "PRECIO REGULAR" que
+    viene calibrado para una descripción de una sola línea."""
+    desc_comp  = next((c for c in comps if _comp_uses_variable(c, "descripcion")), None)
+    price_comp = next((c for c in comps if _comp_uses_variable(c, "precioP")), None)
+    if not desc_comp or not price_comp:
+        return comps
+
+    style = desc_comp.get("style", {})
+    lines = _estimate_wrapped_lines(
+        str(product.get("descripcion", "") or ""),
+        desc_comp.get("base_bounds", {}).get("width"),
+        style.get("font_size"),
+    )
+    extra_lines = lines - 1
+    if extra_lines <= 0:
+        return comps
+
+    font_size = style.get("font_size") or 20
+    line_height_cm = font_size / 72 * 2.54 * 1.2  # 1.2 = interlineado típico
+    shift_cm = extra_lines * line_height_cm
+
+    return [
+        {**c, "computed_bounds": {**c["computed_bounds"], "y": c["computed_bounds"]["y"] + shift_cm}}
+        if c is price_comp else c
+        for c in comps
+    ]
+
+
 def hex_to_rgb(hex_color: str | None) -> RGBColor:
     if not hex_color:
         return RGBColor(0x1E, 0x29, 0x3B)
@@ -747,6 +819,8 @@ def render_template_to_pptx(
                     product       = pg[band_idx]
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
+                    if category == "parrilla_y_vinos":
+                        visible_comps = _shift_price_below_wrapped_description(visible_comps, product)
                     _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
                 elif preserve_source:
                     # Página parcial (menos productos que celdas) y estamos
