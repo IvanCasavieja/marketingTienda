@@ -20,8 +20,8 @@ from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.component_renderer import _detect_slot_bands
 from app.services.cenefas.jobs import (
     confirm_generation_job,
+    get_job_result,
     peek_job_products,
-    pop_job_result,
     run_generation_job,
 )
 from app.services.cenefas.layout_engine import FORMATS
@@ -557,11 +557,15 @@ async def download_job_result(
     if not job.result_path:
         raise HTTPException(status_code=404, detail="Resultado no disponible")
 
-    result_bytes = await pop_job_result(job.id)
+    result_bytes = await get_job_result(job.id)
     if not result_bytes:
+        # No debería pasar en un job nuevo (result_bytes queda persistido en
+        # Postgres, no se borra al descargar -- "Descargar de nuevo" pega acá
+        # mismo). Solo puede darse en un job "done" de ANTES de este cambio,
+        # cuyo resultado vivía en memoria y se perdió en algún redeploy.
         raise HTTPException(
             status_code=410,
-            detail="El resultado ya fue descargado o el servidor se reinició — generá de nuevo",
+            detail="El resultado ya no está disponible — confirmá la generación de nuevo",
         )
 
     media_type = (

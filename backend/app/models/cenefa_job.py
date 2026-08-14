@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,3 +39,13 @@ class CenefaJob(Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # Estado entre preview y confirmación + resultado final -- persistido en
+    # vez de vivir en un dict en memoria del proceso (ver jobs.py), para que
+    # un job no se pierda si el request de preview y el de confirmar/
+    # descargar caen en procesos distintos (redeploy de Render a mitad de
+    # camino, o más de una instancia sirviendo tráfico).
+    staged_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    staged_source_pptx: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    staged_excel_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    result_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)

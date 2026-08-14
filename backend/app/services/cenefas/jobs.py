@@ -33,28 +33,21 @@ _BUILTIN_FILES = {
     "black":   "Bases cenefas BLACK 1.pptx",
 }
 
-# Cache en memoria del proceso, NO Redis — a propósito.
+# Estado entre preview/confirmación + resultado final: persistido en
+# Postgres (columnas staged_data/staged_source_pptx/staged_excel_bytes/
+# result_bytes de CenefaJob, ver migración 0038), NO en un dict del proceso.
 #
-# El 15/07 se cambió esto a Redis para que un job sobreviva a un
-# restart/redeploy de Render a mitad de generación (antes quedaba atascado
-# para siempre). Pero Render no tiene ningún Redis provisionado en
-# producción — REDIS_URL cae al default "localhost:6379", que no existe en
-# ese entorno, y todo /materiales/cenefas empezó a tirar
-# "Error 111 connecting to localhost:6379. Connection refused." al toque.
-#
-# Se revirtió a memoria el 16/07 para desbloquear la herramienta ya, sin
-# gastar en un plan Starter de Redis en Render (el free tier de Redis ahí
-# expira solo a los 90 días, lo cual reintroduce este mismo problema más
-# adelante sin avisar). Cuando haya presupuesto para el Starter ($10/mes,
-# sin vencimiento), volver a la versión con Redis: ver commit 7b4b01d
-# ("fix(cenefas): jobs v2 durables en Redis...") — esa misma versión trae
-# además el chequeo de dueño/admin en _get_job, que si sigue vigente en
-# cenefas_v2.py no hay que volver a tocarlo, solo estas 5 funciones.
-#
-# Contrapartida de estar en memoria: un restart de Render a mitad de un job
-# lo deja inaccesible (hay que regenerar desde cero) y el proceso puede ir
-# acumulando bytes de jobs que nadie descargó, hasta el próximo restart.
-_job_results: dict[str, bytes] = {}
+# Historia: el 15/07 se probó Redis para esto mismo, pero Render no tenía
+# ningún Redis provisionado en producción (REDIS_URL caía al default
+# "localhost:6379", inexistente ahí) y rompió /materiales/cenefas al toque.
+# El 16/07 se revirtió a un dict en memoria para desbloquear la herramienta
+# sin gastar en un plan Starter de Redis. Contrapartida ya conocida de ese
+# dict: un job confirmado justo cuando el backend redespliega (o si hay más
+# de una instancia sirviendo tráfico) quedaba inaccesible -- "el resultado
+# ya fue descargado o el servidor se reinició" (410) sin haberse descargado
+# nunca. Postgres ya está provisionado (sin costo extra) y no tiene ese
+# problema de disponibilidad, así que reemplaza al dict directamente sin
+# reintroducir la dependencia de Redis que ya se probó frágil acá.
 
 
 @dataclass
@@ -84,31 +77,93 @@ class StagedJob:
     banco:              str = ""
 
 
-_job_products: dict[str, StagedJob] = {}
-
-
-# async sin await adentro, a propósito: cenefas_v2.py llama a estas 5
-# funciones con `await` (quedó así de cuando usaban Redis). Mantenerlas
-# async evita tener que tocar ese archivo — que en el mismo commit del
-# 15/07 sumó el chequeo de dueño/admin, y ese sí queda vigente.
 async def store_job_result(job_id: uuid.UUID, pptx_bytes: bytes) -> None:
-    _job_results[str(job_id)] = pptx_bytes
+    async with AsyncSessionLocal() as db:
+        job = await _get_job(db, job_id)
+        if job is None:
+            return
+        job.result_bytes = pptx_bytes
+        await db.commit()
 
 
-async def pop_job_result(job_id: uuid.UUID) -> bytes | None:
-    return _job_results.pop(str(job_id), None)
+async def get_job_result(job_id: uuid.UUID) -> bytes | None:
+    # No destructivo a propósito (a diferencia del dict en memoria de
+    # antes): "Descargar de nuevo" en PreviewStep.tsx vuelve a pegarle a
+    # este mismo endpoint, y con el dict eso ya daba 410 en el segundo
+    # click -- guardado en Postgres no hay presión de memoria que obligue a
+    # limpiarlo apenas se sirve una vez.
+    async with AsyncSessionLocal() as db:
+        job = await _get_job(db, job_id)
+        if job is None:
+            return None
+        return job.result_bytes
 
 
 async def store_job_products(job_id: uuid.UUID, staged: StagedJob) -> None:
-    _job_products[str(job_id)] = staged
+    async with AsyncSessionLocal() as db:
+        job = await _get_job(db, job_id)
+        if job is None:
+            return
+        job.staged_data = {
+            "template_def":      staged.template_def,
+            "products":          staged.products,
+            "target_format":     staged.target_format,
+            "use_legacy_engine": staged.use_legacy_engine,
+            "category":          staged.category,
+            "vigencia":          staged.vigencia,
+            "aclaracion":        staged.aclaracion,
+            "otra_alcohol":      staged.otra_alcohol,
+            "banco":             staged.banco,
+        }
+        job.staged_source_pptx = staged.source_pptx_bytes
+        job.staged_excel_bytes = staged.excel_bytes
+        await db.commit()
+
+
+def _staged_job_from_row(job: CenefaJob) -> StagedJob | None:
+    d = job.staged_data
+    if d is None:
+        return None
+    return StagedJob(
+        template_def=d["template_def"],
+        products=d["products"],
+        target_format=d["target_format"],
+        source_pptx_bytes=job.staged_source_pptx,
+        use_legacy_engine=d["use_legacy_engine"],
+        category=d.get("category"),
+        excel_bytes=job.staged_excel_bytes,
+        vigencia=d.get("vigencia", ""),
+        aclaracion=d.get("aclaracion", ""),
+        otra_alcohol=d.get("otra_alcohol", ""),
+        banco=d.get("banco", ""),
+    )
 
 
 async def peek_job_products(job_id: uuid.UUID) -> StagedJob | None:
-    return _job_products.get(str(job_id))
+    async with AsyncSessionLocal() as db:
+        job = await _get_job(db, job_id)
+        if job is None:
+            return None
+        return _staged_job_from_row(job)
 
 
 async def pop_job_products(job_id: uuid.UUID) -> StagedJob | None:
-    return _job_products.pop(str(job_id), None)
+    # Destructivo a propósito, a diferencia de result_bytes: el PPTX/Excel
+    # crudo de acá puede pesar varios MB y solo hace falta una vez, para
+    # alimentar el render final -- no tiene sentido dejarlo ocupando la fila
+    # para siempre después de confirmado.
+    async with AsyncSessionLocal() as db:
+        job = await _get_job(db, job_id)
+        if job is None:
+            return None
+        staged = _staged_job_from_row(job)
+        if staged is None:
+            return None
+        job.staged_data = None
+        job.staged_source_pptx = None
+        job.staged_excel_bytes = None
+        await db.commit()
+        return staged
 
 
 async def run_generation_job(
