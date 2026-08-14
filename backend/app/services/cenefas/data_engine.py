@@ -53,6 +53,16 @@ CANONICAL_VARS: frozenset[str] = frozenset({
 # Variables que contienen precios — los números se auto-formatean con prefix de moneda
 _PRICE_VARS: frozenset[str] = frozenset({"precioActual", "precioAnterior", "precioBanco"})
 
+# Igual que _PRICE_VARS (se normalizan con parse_price_raw/fmt_price al
+# formato uruguayo "1.234,56"), pero SIN el prefijo "$"/"U$S " -- Parrilla y
+# Vinos ya tiene el "$" fijo como texto estático en el PPTX. Sin este paso,
+# una celda de Excel cargada como NÚMERO (no texto) le llega a Python como
+# float y el "," se convierte en "." (101.5 en vez de 101,50) -- el split
+# entero/decimal de component_renderer.py::apply_transform busca una coma,
+# así que sin normalizar acá el precio no se partía nunca (confirmado
+# renderizando la plantilla real con datos de prueba).
+_PRICE_VARS_SIN_PREFIJO: frozenset[str] = frozenset({"precioP", "precio4x3", "precio5x3", "precio6x3"})
+
 # ---------------------------------------------------------------------------
 # Normalización de headers Excel
 # ---------------------------------------------------------------------------
@@ -73,6 +83,10 @@ _ALIASES: dict[str, str] = {
     "banco":              "banco",
     "descripcion":        "descripcion",
     "nombredearticulo":   "descripcion",  # excel real de Parrilla y Vinos — sin colisión con otro destino
+    "nombredelarticulo":  "descripcion",  # variantes probables de la misma columna real -- no hay forma
+    "nombrearticulo":     "descripcion",  # de confirmar el texto exacto del excel sin verlo, así que se
+    "nombredeproducto":   "descripcion",  # cubren las más probables en vez de una sola apuesta.
+    "nombreproducto":     "descripcion",
     "titulo":             "mecanica",    # backward compat: columna "titulo" → var "mecanica"
     "mecanica":           "mecanica",
     "aclaracion":         "aclaracion",
@@ -171,6 +185,9 @@ def process_row(
         elif var_name in _PRICE_VARS:
             pv = parse_price_raw(val)
             result[var_name] = (prefix + fmt_price(pv)) if pv > 0 else str(val).strip()
+        elif var_name in _PRICE_VARS_SIN_PREFIJO:
+            pv = parse_price_raw(val)
+            result[var_name] = fmt_price(pv) if pv > 0 else str(val).strip()
         else:
             result[var_name] = str(val).strip()
 

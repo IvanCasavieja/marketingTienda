@@ -371,8 +371,13 @@ def _extract_font_color(run, theme_colors: dict[str, str] | None = None) -> str 
                 if hexval:
                     return f"#{hexval}"
             return None
-        rgb = color.rgb
-        return f"#{rgb.red:02X}{rgb.green:02X}{rgb.blue:02X}"
+        # RGBColor es una subclase de tuple con __str__ propio que ya da el
+        # hex de 6 dígitos ("2E323E") -- NO tiene atributos .red/.green/.blue
+        # (esos no existen en python-pptx, ver pptx.dml.color.RGBColor).
+        # El acceso a esos atributos tiraba AttributeError silenciosamente
+        # tragado por el except de abajo -- por eso NINGÚN color explícito
+        # se extraía nunca, en ningún destino, desde que existe esta función.
+        return f"#{color.rgb}"
     except Exception:
         return None
 
