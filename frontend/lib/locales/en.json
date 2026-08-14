@@ -422,7 +422,7 @@
     },
     "previewStep": {
       "title": "Preview before download",
-      "subtitle": "Drag or resize any element to adjust it. {{count}} product(s) total — the first one is shown as a reference.",
+      "subtitle": "Drag or resize any element to adjust it. {{count}} product(s) total — showing a reference with the first ones.",
       "back": "Back",
       "confirmAndDownload": "Confirm and download",
       "downloadAgain": "Download again",
@@ -430,7 +430,8 @@
       "previewError": "Error generating the preview",
       "generateError": "Error generating the file",
       "downloaded": "Banner generated and downloaded",
-      "confirmError": "Error confirming"
+      "confirmError": "Error confirming",
+      "confirmTimeout": "Generation is taking too long. Try again or with fewer products."
     }
   },
   "admin": {

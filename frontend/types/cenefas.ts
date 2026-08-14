@@ -157,6 +157,12 @@ export interface CenefaJob {
   // Solo presentes cuando status === "preview" (ver PreviewStep)
   template_def?: CenefaTemplate;
   preview_product?: Record<string, string>;
+  // Solo presentes cuando el template es multi-banda (ej. 3xA4) — ver
+  // _detect_slot_bands en component_renderer.py y su uso en _job_to_dict.
+  // slot_bands[i] = ids de componentes que le corresponden al producto
+  // preview_products[i].
+  slot_bands?: string[][];
+  preview_products?: Record<string, string>[];
 }
 
 export interface ValidationReport {

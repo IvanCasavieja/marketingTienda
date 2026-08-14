@@ -100,8 +100,18 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
       // preview_product (solo van con status="preview"), así que
       // sobreescribir job vaciaba el Canvas (previewData quedaba en {})
       // justo al confirmar, antes incluso de terminar de renderizar.
+      //
+      // Límite de intentos: sin esto, un job trabado en "running" (ver
+      // _RENDER_TIMEOUT_SECONDS en jobs.py, que debería evitar esto del lado
+      // del backend) dejaba este loop esperando en silencio para siempre —
+      // "no para de estar cargando" sin ningún error visible. 150 × 1200ms =
+      // 180s, alineado con el timeout del backend más el margen del propio
+      // polling.
+      const MAX_CONFIRM_ATTEMPTS = 150;
       await new Promise<void>((resolve, reject) => {
+        let attempts = 0;
         const iv = setInterval(async () => {
+          attempts++;
           try {
             const { data } = await cenefasV2Api.getJob(jobId);
             if (data.status === "done") {
@@ -110,9 +120,16 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
             } else if (data.status === "error") {
               clearInterval(iv);
               reject(new Error(data.validation_report?.error ?? t("cenefas.previewStep.generateError")));
+            } else if (attempts >= MAX_CONFIRM_ATTEMPTS) {
+              clearInterval(iv);
+              reject(new Error(t("cenefas.previewStep.confirmTimeout")));
             }
           } catch {
-            /* reintenta */
+            if (attempts >= MAX_CONFIRM_ATTEMPTS) {
+              clearInterval(iv);
+              reject(new Error(t("cenefas.previewStep.confirmTimeout")));
+            }
+            /* si no, reintenta */
           }
         }, 1200);
       });
@@ -179,6 +196,8 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
         onSelectComponent={setSelectedComponentId}
         onUpdateComponent={handleUpdateComponent}
         previewData={job.preview_product ?? {}}
+        slotBands={job.slot_bands}
+        previewProducts={job.preview_products}
       />
 
       <a ref={dlRef} className="hidden" />

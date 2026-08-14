@@ -422,7 +422,7 @@
     },
     "previewStep": {
       "title": "Preview antes de descargar",
-      "subtitle": "Arrastrá o redimensioná cualquier elemento para ajustarlo. {{count}} producto(s) en total — se muestra el primero como referencia.",
+      "subtitle": "Arrastrá o redimensioná cualquier elemento para ajustarlo. {{count}} producto(s) en total — se muestra una referencia con los primeros.",
       "back": "Volver",
       "confirmAndDownload": "Confirmar y descargar",
       "downloadAgain": "Descargar de nuevo",
@@ -430,7 +430,8 @@
       "previewError": "Error al generar el preview",
       "generateError": "Error al generar el archivo",
       "downloaded": "Cenefa generada y descargada",
-      "confirmError": "Error al confirmar"
+      "confirmError": "Error al confirmar",
+      "confirmTimeout": "La generación está tardando demasiado. Probá de nuevo o con menos productos."
     }
   },
   "admin": {

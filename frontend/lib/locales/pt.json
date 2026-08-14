@@ -422,7 +422,7 @@
     },
     "previewStep": {
       "title": "Pré-visualização antes de baixar",
-      "subtitle": "Arraste ou redimensione qualquer elemento para ajustá-lo. {{count}} produto(s) no total — o primeiro é mostrado como referência.",
+      "subtitle": "Arraste ou redimensione qualquer elemento para ajustá-lo. {{count}} produto(s) no total — mostrando uma referência com os primeiros.",
       "back": "Voltar",
       "confirmAndDownload": "Confirmar e baixar",
       "downloadAgain": "Baixar de novo",
@@ -430,7 +430,8 @@
       "previewError": "Erro ao gerar a pré-visualização",
       "generateError": "Erro ao gerar o arquivo",
       "downloaded": "Faixa gerada e baixada",
-      "confirmError": "Erro ao confirmar"
+      "confirmError": "Erro ao confirmar",
+      "confirmTimeout": "A geração está demorando demais. Tente de novo ou com menos produtos."
     }
   },
   "admin": {

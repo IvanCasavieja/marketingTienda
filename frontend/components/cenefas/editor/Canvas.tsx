@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Konva from "konva";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent, CenefaTemplate } from "@/types/cenefas";
@@ -113,16 +113,46 @@ function useImageCache(components: CenefaComponent[]) {
 
 const CENEFA_COMP_NAME = "cenefa-comp";
 
-// Resuelve el texto a mostrar cuando hay datos reales (previewData) — una
-// aproximación simple, sin replicar el motor de transforms del backend
-// (price_integer, combo_price, etc): alcanza para ver dónde cae cada cosa.
+// Puerto directo de apply_transform (component_renderer.py) -- mismos casos,
+// mismo orden, para que el preview corte "399,50" en entero/decimal igual
+// que el render final. smart_bold/combo_price/none devuelven el valor sin
+// cambios, igual que el backend (smart_bold solo afecta negrita por letra,
+// no el texto).
+function applyTransform(value: string, transform?: string): string {
+  if (!value || !transform || transform === "none" || transform === "smart_bold") return value || "";
+
+  if (transform === "price_full" || transform === "price_integer" || transform === "price_decimal") {
+    const num = value.replace(/[^\d.,]/g, "");
+    if (transform === "price_full") return value;
+    const lastComma = num.lastIndexOf(",");
+    if (transform === "price_integer") return lastComma >= 0 ? num.slice(0, lastComma) : num;
+    if (transform === "price_decimal") return lastComma >= 0 ? "," + num.slice(lastComma + 1) : "";
+  }
+
+  if (transform === "combo_quantity") {
+    const m = value.toUpperCase().match(/^(\d+X)/);
+    return m ? m[1] : value;
+  }
+
+  if (transform === "combo_price") return value;
+  if (transform === "uppercase") return value.toUpperCase();
+
+  return value;
+}
+
+// Resuelve el texto a mostrar cuando hay datos reales (previewData),
+// aplicando el mismo transform por segmento/componente que usa el render
+// final (_populate_text_frame en component_renderer.py).
 function resolveComponentText(comp: CenefaComponent, previewData: Record<string, string>): string {
   if (comp.segments?.length) {
     return comp.segments
-      .map((seg) => (seg.type === "static" ? seg.value : previewData[seg.value] ?? ""))
+      .map((seg) => {
+        if (seg.type === "static") return seg.value;
+        return applyTransform(previewData[seg.value] ?? "", seg.transform);
+      })
       .join("");
   }
-  if (comp.variable) return previewData[comp.variable] ?? comp.static_value ?? "";
+  if (comp.variable) return applyTransform(previewData[comp.variable] ?? comp.static_value ?? "", comp.transform);
   return comp.static_value ?? "";
 }
 
@@ -222,6 +252,12 @@ interface CanvasProps {
   // vs master_format (en el preview solo existe el formato que se va a
   // generar, no tiene sentido el modo "solo lectura" del editor standalone).
   previewData?: Record<string, string>;
+  // Plantillas multi-banda (ej. 3xA4, ver _detect_slot_bands en
+  // component_renderer.py): slotBands[i] = ids de componentes que le
+  // corresponden a previewProducts[i]. Sin esto, todos los componentes usan
+  // previewData por igual y las 3 bandas muestran el mismo producto.
+  slotBands?: string[][];
+  previewProducts?: Record<string, string>[];
 }
 
 export default function Canvas({
@@ -232,6 +268,8 @@ export default function Canvas({
   onSelectComponent,
   onUpdateComponent,
   previewData,
+  slotBands,
+  previewProducts,
 }: CanvasProps) {
   const store = useEditorStore();
   const template             = propTemplate ?? store.template;
@@ -240,6 +278,17 @@ export default function Canvas({
   const selectComponent      = onSelectComponent ?? store.selectComponent;
   const updateComponent      = onUpdateComponent ?? store.updateComponent;
   const interactive          = previewData !== undefined; // true en PreviewStep
+
+  // Mapa id de componente -> índice de banda, para elegir qué producto de
+  // previewProducts le toca a cada uno (ver slotBands en CanvasProps).
+  const bandIndexByCompId = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!slotBands) return map;
+    slotBands.forEach((ids, bandIdx) => {
+      for (const id of ids) map.set(id, bandIdx);
+    });
+    return map;
+  }, [slotBands]);
 
   const containerRef    = useRef<HTMLDivElement>(null);
   const stageRef        = useRef<Konva.Stage | null>(null);
@@ -362,11 +411,14 @@ export default function Canvas({
 
     for (const comp of displayComps) {
       const isSelected = comp.id === selectedComponentId && isEditMode;
+      const bandIdx = bandIndexByCompId.get(comp.id);
+      const compPreviewData =
+        bandIdx !== undefined && previewProducts ? previewProducts[bandIdx] ?? previewData : previewData;
       const group = buildComponentGroup({
         comp, pageLeft, pageTop, isSelected,
         draggable: isEditMode && !comp.locked,
         image: getImage(comp),
-        previewData,
+        previewData: compPreviewData,
         onSelect: () => { if (isEditMode) selectComponent(comp.id); },
         onDragEnd: (x, y) => {
           const newX = +Math.max(0, Math.min((x - pageLeft) / PX_PER_CM, dims.w - comp.base_bounds.width)).toFixed(2);
@@ -384,7 +436,7 @@ export default function Canvas({
     selectedNodeRef.current = selectedNode;
     transformer.nodes(selectedNode ? [selectedNode] : []);
     layer.batchDraw();
-  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, selectComponent, updateComponent]);
+  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, bandIndexByCompId, selectComponent, updateComponent]);
 
   // "Última versión conocida" de template/selectedComponentId — evita closures
   // viejas dentro de handleTransformEnd sin depender de useEditorStore.getState(),

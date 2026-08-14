@@ -20,6 +20,11 @@ from app.services.cenefas.validation_engine import build_summary, validate_produ
 
 logger = logging.getLogger(__name__)
 
+# Techo de tiempo para el render final (confirm_generation_job) -- sin esto,
+# un render trabado deja el job en status="running" para siempre, y el
+# polling del frontend (PreviewStep.tsx) espera en silencio sin límite.
+_RENDER_TIMEOUT_SECONDS = 180
+
 _STATIC_DIR = pathlib.Path(__file__).parent.parent.parent / "static" / "cenefa_templates"
 
 _BUILTIN_FILES = {
@@ -244,11 +249,20 @@ async def confirm_generation_job(
                         "job %s: se ignoran %d overrides de posición (motor legado, Redexpres)",
                         job_id, len(position_overrides),
                     )
-                pptx_bytes = await asyncio.to_thread(
-                    generate_pptx_bytes,
-                    staged.excel_bytes, staged.source_pptx_bytes,
-                    staged.vigencia, staged.aclaracion, staged.otra_alcohol, staged.banco,
-                )
+                try:
+                    pptx_bytes = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            generate_pptx_bytes,
+                            staged.excel_bytes, staged.source_pptx_bytes,
+                            staged.vigencia, staged.aclaracion, staged.otra_alcohol, staged.banco,
+                        ),
+                        timeout=_RENDER_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    raise RuntimeError(
+                        f"La generación del archivo superó el límite de {_RENDER_TIMEOUT_SECONDS}s. "
+                        "Probá con menos productos o revisá la plantilla."
+                    )
                 missing_vars: list[str] = []
             else:
                 template_def = staged.template_def
@@ -261,11 +275,20 @@ async def confirm_generation_job(
                             for c in template_def.get("components", [])
                         ],
                     }
-                pptx_bytes, missing_vars = await asyncio.to_thread(
-                    render_template_to_pptx, template_def, staged.products, staged.target_format,
-                    None, staged.source_pptx_bytes,  # image_overrides ya horneado, source_pptx_bytes
-                    staged.category,
-                )
+                try:
+                    pptx_bytes, missing_vars = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            render_template_to_pptx, template_def, staged.products, staged.target_format,
+                            None, staged.source_pptx_bytes,  # image_overrides ya horneado, source_pptx_bytes
+                            staged.category,
+                        ),
+                        timeout=_RENDER_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    raise RuntimeError(
+                        f"La generación del archivo superó el límite de {_RENDER_TIMEOUT_SECONDS}s. "
+                        "Probá con menos productos o revisá la plantilla."
+                    )
             await store_job_result(job_id, pptx_bytes)
 
             report = dict(job.validation_report or {})
