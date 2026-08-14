@@ -67,6 +67,31 @@ def apply_transform(value: str, transform: str | None) -> str:
     return value
 
 
+# Transforms de precio cuya LONGITUD varía con el valor (a diferencia de
+# price_decimal, que siempre son 2 dígitos, ej. ",50") -- son los únicos que
+# necesitan achicarse cuando el número crece. Ver _fit_price_font_size.
+_PRICE_FONT_FIT_TRANSFORMS = frozenset({"price_full", "price_integer"})
+
+
+def _fit_price_font_size(text: str, base_font_size: float | None) -> float | None:
+    """Achica la fuente cuando un precio pasa a tener separador de miles.
+
+    Las cajas de precio de las plantillas reales vienen calibradas a mano
+    para valores de 3 dígitos (ej. "399", "546" entran bien en el ancho
+    original) -- a partir de 4 dígitos (ej. "1.174") el texto ya no entra y
+    queda superpuesto con lo que esté al lado (confirmado visualmente en
+    Parrilla y Vinos: 3 dígitos ok, 4 se ven encimados). Escala proporcional
+    a cuántos dígitos de más tiene contra esa referencia de 3, con un piso
+    para no volverlo ilegible en precios de 5+ dígitos."""
+    if not base_font_size:
+        return base_font_size
+    n_digits = len(re.sub(r"[^\d]", "", text))
+    if n_digits <= 3:
+        return base_font_size
+    scale = 3 / n_digits
+    return max(base_font_size * scale, base_font_size * 0.55)
+
+
 def hex_to_rgb(hex_color: str | None) -> RGBColor:
     if not hex_color:
         return RGBColor(0x1E, 0x29, 0x3B)
@@ -143,6 +168,8 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
             else:
                 if seg_transform not in (None, "none"):
                     seg_val = apply_transform(seg_val, seg_transform)
+                if seg_transform in _PRICE_FONT_FIT_TRANSFORMS:
+                    seg_style["font_size"] = _fit_price_font_size(seg_val, seg_style.get("font_size"))
                 run = p.add_run()
                 run.text = seg_val
                 _apply_run_style(run, seg_style)
@@ -154,9 +181,12 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
             run.text = segment
             _apply_run_style(run, style, bold_override=is_bold)
     else:
+        run_style = style
+        if transform in _PRICE_FONT_FIT_TRANSFORMS:
+            run_style = {**style, "font_size": _fit_price_font_size(value, style.get("font_size"))}
         run = p.add_run()
         run.text = value
-        _apply_run_style(run, style)
+        _apply_run_style(run, run_style)
 
     # Replicate empty spacer run used in original PPTX to set a larger line height.
     # Without this, anchor=b positions text much lower than the original.
