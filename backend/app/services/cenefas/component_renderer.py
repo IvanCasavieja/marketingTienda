@@ -131,6 +131,11 @@ def _comp_uses_variable(c: dict, var_name: str) -> bool:
 
 _DESC_FONT_FIT_MIN_SCALE = 0.6  # mismo piso conceptual que _fit_price_font_size --
                                  # no dejar la descripción ilegible en nombres extremos.
+_DESC_OVERFLOW_MARGIN_CM = 0.15  # aire visual entre la última línea de la
+                                  # descripción y "PRECIO REGULAR" cuando ni
+                                  # achicar al piso alcanza -- sin esto, un
+                                  # nombre extremo puede dejar de invadir el
+                                  # precio pero quedar pegado, sin separación.
 
 
 def _fit_description_font_size(
@@ -171,26 +176,47 @@ def _fit_description_to_box(comps: list[dict], product: dict) -> list[dict]:
     de Parrilla y Vinos: ahí descripcion y precioP son dos cajas de texto
     independientes apiladas verticalmente (no un único cuadro con
     auto-layout compartido), así que una desborda sobre la otra si no se
-    achica."""
-    desc_comp = next((c for c in comps if _comp_uses_variable(c, "descripcion")), None)
+    achica.
+
+    Red de seguridad para nombres EXTREMOS (ej. "Vino NICASIA VINEYARDS
+    Cabernet Franc o Blanc de Blancs 750 ml", confirmado real): ni achicando
+    al piso de _fit_description_font_size entran siempre -- ahí, además de
+    achicar, se empuja precioP hacia abajo, pero SOLO lo que realmente sobra
+    (re-estimado al tamaño YA achicado, no al original) más un margen chico
+    -- nunca el shift completo que tenía el enfoque viejo. En el caso común
+    (achicar alcanza) el precio no se mueve ni un milímetro."""
+    desc_comp  = next((c for c in comps if _comp_uses_variable(c, "descripcion")), None)
+    price_comp = next((c for c in comps if _comp_uses_variable(c, "precioP")), None)
     if not desc_comp:
         return comps
 
     style = desc_comp.get("style", {})
     base_font_size = style.get("font_size")
     bounds = desc_comp.get("base_bounds", {})
-    fitted = _fit_description_font_size(
-        str(product.get("descripcion", "") or ""),
-        bounds.get("width"), bounds.get("height"), base_font_size,
-    )
-    if fitted == base_font_size:
+    box_width, box_height = bounds.get("width"), bounds.get("height")
+    text = str(product.get("descripcion", "") or "")
+
+    fitted = _fit_description_font_size(text, box_width, box_height, base_font_size)
+
+    shift_cm = 0.0
+    if price_comp and fitted and box_width and box_height:
+        lines_fitted    = _estimate_wrapped_lines(text, box_width, fitted)
+        line_height_cm  = fitted / 72 * 2.54 * 1.2
+        overflow_cm     = lines_fitted * line_height_cm - box_height
+        if overflow_cm > 0:
+            shift_cm = overflow_cm + _DESC_OVERFLOW_MARGIN_CM
+
+    if fitted == base_font_size and shift_cm <= 0:
         return comps
 
-    return [
-        {**c, "style": {**c["style"], "font_size": fitted}}
-        if c is desc_comp else c
-        for c in comps
-    ]
+    result = []
+    for c in comps:
+        if c is desc_comp and fitted != base_font_size:
+            c = {**c, "style": {**c["style"], "font_size": fitted}}
+        if c is price_comp and shift_cm > 0:
+            c = {**c, "computed_bounds": {**c["computed_bounds"], "y": c["computed_bounds"]["y"] + shift_cm}}
+        result.append(c)
+    return result
 
 
 def hex_to_rgb(hex_color: str | None) -> RGBColor:
