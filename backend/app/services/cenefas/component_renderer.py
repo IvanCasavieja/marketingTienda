@@ -129,48 +129,66 @@ def _comp_uses_variable(c: dict, var_name: str) -> bool:
     return any(seg.get("type") == "variable" and seg.get("value") == var_name for seg in (c.get("segments") or []))
 
 
-def _shift_price_below_wrapped_description(comps: list[dict], product: dict) -> list[dict]:
-    """Empuja hacia abajo la caja de precioP cuando la descripción del
-    producto ocupa más líneas de las que la caja de descripcion fue
-    diseñada a contener -- ver _estimate_wrapped_lines. Específico de
-    Parrilla y Vinos: ahí descripcion y precioP son dos cajas de texto
+_DESC_FONT_FIT_MIN_SCALE = 0.6  # mismo piso conceptual que _fit_price_font_size --
+                                 # no dejar la descripción ilegible en nombres extremos.
+
+
+def _fit_description_font_size(
+    text: str, box_width_cm: float | None, box_height_cm: float | None, base_font_size: float | None,
+) -> float | None:
+    """Mismo criterio que _fit_price_font_size (achicar la fuente que se
+    pasa, nunca mover cajas vecinas) pero para la descripción: si el nombre
+    del producto no entra en una sola línea al tamaño de fuente del
+    template, achicamos proporcionalmente hasta que las líneas estimadas
+    (ver _estimate_wrapped_lines) entren en la altura real de la caja, con
+    un piso para no volverla ilegible en nombres muy largos.
+
+    No reestima cuántas líneas hacen falta AL tamaño ya achicado (un
+    caracter más angosto entra más por línea, podría necesitar achicar
+    menos) -- una sola pasada, mismo nivel de precisión que el resto de las
+    heurísticas de este archivo (no hay métricas reales de fuente acá), y
+    conservador para el lado seguro: prefiere achicar un poco de más antes
+    que arriesgar que la descripción siga invadiendo el precio de al lado."""
+    if not text or not box_width_cm or not box_height_cm or not base_font_size:
+        return base_font_size
+    lines = _estimate_wrapped_lines(text, box_width_cm, base_font_size)
+    if lines <= 1:
+        return base_font_size
+    line_height_cm = base_font_size / 72 * 2.54 * 1.2  # 1.2 = interlineado típico
+    needed_height_cm = lines * line_height_cm
+    if needed_height_cm <= box_height_cm:
+        return base_font_size
+    scale = box_height_cm / needed_height_cm
+    return max(base_font_size * scale, base_font_size * _DESC_FONT_FIT_MIN_SCALE)
+
+
+def _fit_description_to_box(comps: list[dict], product: dict) -> list[dict]:
+    """Achica la fuente de la descripción cuando el nombre del producto no
+    entra en una sola línea dentro de la caja diseñada -- reemplaza al
+    enfoque anterior (empujar precioP hacia abajo), que dejaba un hueco
+    entre código/descripción y el precio y encima requería re-implementar a
+    mano lo que "achicar texto si no entra" ya debería resolver. Específico
+    de Parrilla y Vinos: ahí descripcion y precioP son dos cajas de texto
     independientes apiladas verticalmente (no un único cuadro con
-    auto-layout), así que si la descripción se extiende a 2-3 líneas por un
-    nombre de producto largo, invade el espacio de "PRECIO REGULAR" que
-    viene calibrado para una descripción de una sola línea."""
-    desc_comp  = next((c for c in comps if _comp_uses_variable(c, "descripcion")), None)
-    price_comp = next((c for c in comps if _comp_uses_variable(c, "precioP")), None)
-    if not desc_comp or not price_comp:
+    auto-layout compartido), así que una desborda sobre la otra si no se
+    achica."""
+    desc_comp = next((c for c in comps if _comp_uses_variable(c, "descripcion")), None)
+    if not desc_comp:
         return comps
 
     style = desc_comp.get("style", {})
-    if style.get("auto_fit"):
-        # Con "achicar texto si no entra" (normAutofit) prendido en la caja de
-        # descripción, PowerPoint reduce la fuente para que el texto entre sin
-        # desbordar -- nunca gana más líneas de las que la caja fue diseñada a
-        # contener. _estimate_wrapped_lines no sabe cuánto se va a achicar (usa
-        # el font_size FIJO del template), así que sobreestima el wrap acá y
-        # empuja el precio sin necesidad -- confirmado con un caso real ("Vino
-        # D.V. CATENA Tinto Malbec 750 ml", estimado en 2 líneas, renderiza en
-        # 1 sola por el achicado automático) que dejaba un hueco de más entre
-        # el código y el resto del bloque.
-        return comps
-    lines = _estimate_wrapped_lines(
+    base_font_size = style.get("font_size")
+    bounds = desc_comp.get("base_bounds", {})
+    fitted = _fit_description_font_size(
         str(product.get("descripcion", "") or ""),
-        desc_comp.get("base_bounds", {}).get("width"),
-        style.get("font_size"),
+        bounds.get("width"), bounds.get("height"), base_font_size,
     )
-    extra_lines = lines - 1
-    if extra_lines <= 0:
+    if fitted == base_font_size:
         return comps
-
-    font_size = style.get("font_size") or 20
-    line_height_cm = font_size / 72 * 2.54 * 1.2  # 1.2 = interlineado típico
-    shift_cm = extra_lines * line_height_cm
 
     return [
-        {**c, "computed_bounds": {**c["computed_bounds"], "y": c["computed_bounds"]["y"] + shift_cm}}
-        if c is price_comp else c
+        {**c, "style": {**c["style"], "font_size": fitted}}
+        if c is desc_comp else c
         for c in comps
     ]
 
@@ -831,7 +849,7 @@ def render_template_to_pptx(
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
                     if category == "parrilla_y_vinos":
-                        visible_comps = _shift_price_below_wrapped_description(visible_comps, product)
+                        visible_comps = _fit_description_to_box(visible_comps, product)
                     _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
                 elif preserve_source:
                     # Página parcial (menos productos que celdas) y estamos
