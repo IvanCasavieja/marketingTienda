@@ -144,6 +144,17 @@ def _shift_price_below_wrapped_description(comps: list[dict], product: dict) -> 
         return comps
 
     style = desc_comp.get("style", {})
+    if style.get("auto_fit"):
+        # Con "achicar texto si no entra" (normAutofit) prendido en la caja de
+        # descripción, PowerPoint reduce la fuente para que el texto entre sin
+        # desbordar -- nunca gana más líneas de las que la caja fue diseñada a
+        # contener. _estimate_wrapped_lines no sabe cuánto se va a achicar (usa
+        # el font_size FIJO del template), así que sobreestima el wrap acá y
+        # empuja el precio sin necesidad -- confirmado con un caso real ("Vino
+        # D.V. CATENA Tinto Malbec 750 ml", estimado en 2 líneas, renderiza en
+        # 1 sola por el achicado automático) que dejaba un hueco de más entre
+        # el código y el resto del bloque.
+        return comps
     lines = _estimate_wrapped_lines(
         str(product.get("descripcion", "") or ""),
         desc_comp.get("base_bounds", {}).get("width"),
