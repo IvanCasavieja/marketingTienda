@@ -92,20 +92,32 @@ def _fit_price_font_size(text: str, base_font_size: float | None) -> float | Non
     return max(base_font_size * scale, base_font_size * 0.55)
 
 
-def _estimate_wrapped_lines(text: str, box_width_cm: float | None, font_size: float | None) -> int:
+def _estimate_wrapped_lines(
+    text: str, box_width_cm: float | None, font_size: float | None, bold: bool = False,
+) -> int:
     """Estima a cuántas líneas se parte un texto con word-wrap en una caja
     de cierto ancho -- simulando el mismo criterio "voraz" (agregar
     palabras hasta que no entran más) que usa PowerPoint. No es exacto (no
     tenemos las métricas reales de la fuente en el servidor), pero
-    calibrado contra 3 descripciones reales de Parrilla y Vinos que se
-    superponían con el precio: predice 2/2/3 líneas para esos 3 casos
-    reales, que es justo lo que se ve en el archivo generado."""
+    calibrado contra descripciones reales de Parrilla y Vinos que se
+    superponían con el precio.
+
+    bold=True ensancha el ancho de caracter asumido -- la fuente real de
+    descripción en Parrilla y Vinos es "Franklin Gothic Heavy" (bold), y el
+    0.38em original estaba calibrado sin darse cuenta de eso: subestimaba
+    sistemáticamente cuántas líneas hacían falta en varios casos reales
+    ("Vino Tinto Malbec LATITUD 33 750ml", "Vino H. STAGNARI Tinto Tannat
+    Viejo 750 ml") que seguían superponiéndose con el precio incluso después
+    de achicar al piso -- el texto en negrita ocupa más ancho por caracter
+    que el texto normal contra el que se había calibrado el 0.38em."""
     if not text or not box_width_cm or not font_size:
         return 1
     box_width_pt = box_width_cm / 2.54 * 72
-    # Ancho promedio de caracter ~0.38em -- calibrado contra los 3 casos
-    # reales de arriba, no un valor de fuente "de catálogo".
-    chars_per_line = max(1, int(box_width_pt / (font_size * 0.38)))
+    # Ancho promedio de caracter -- 0.38em para texto normal, 0.46em si es
+    # bold (ver docstring arriba). Calibrado contra casos reales, no un
+    # valor de fuente "de catálogo".
+    char_width_em = 0.46 if bold else 0.38
+    chars_per_line = max(1, int(box_width_pt / (font_size * char_width_em)))
     lines = 1
     current_len = 0
     for word in text.split():
@@ -140,6 +152,7 @@ _DESC_OVERFLOW_MARGIN_CM = 0.15  # aire visual entre la última línea de la
 
 def _fit_description_font_size(
     text: str, box_width_cm: float | None, box_height_cm: float | None, base_font_size: float | None,
+    bold: bool = False,
 ) -> float | None:
     """Mismo criterio que _fit_price_font_size (achicar la fuente que se
     pasa, nunca mover cajas vecinas) pero para la descripción: si el nombre
@@ -156,7 +169,7 @@ def _fit_description_font_size(
     que arriesgar que la descripción siga invadiendo el precio de al lado."""
     if not text or not box_width_cm or not box_height_cm or not base_font_size:
         return base_font_size
-    lines = _estimate_wrapped_lines(text, box_width_cm, base_font_size)
+    lines = _estimate_wrapped_lines(text, box_width_cm, base_font_size, bold)
     if lines <= 1:
         return base_font_size
     line_height_cm = base_font_size / 72 * 2.54 * 1.2  # 1.2 = interlineado típico
@@ -192,15 +205,16 @@ def _fit_description_to_box(comps: list[dict], product: dict) -> list[dict]:
 
     style = desc_comp.get("style", {})
     base_font_size = style.get("font_size")
+    bold = bool(style.get("font_bold"))
     bounds = desc_comp.get("base_bounds", {})
     box_width, box_height = bounds.get("width"), bounds.get("height")
     text = str(product.get("descripcion", "") or "")
 
-    fitted = _fit_description_font_size(text, box_width, box_height, base_font_size)
+    fitted = _fit_description_font_size(text, box_width, box_height, base_font_size, bold)
 
     shift_cm = 0.0
     if price_comp and fitted and box_width and box_height:
-        lines_fitted    = _estimate_wrapped_lines(text, box_width, fitted)
+        lines_fitted    = _estimate_wrapped_lines(text, box_width, fitted, bold)
         line_height_cm  = fitted / 72 * 2.54 * 1.2
         overflow_cm     = lines_fitted * line_height_cm - box_height
         if overflow_cm > 0:
