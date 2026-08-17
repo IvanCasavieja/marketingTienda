@@ -103,20 +103,25 @@ def _estimate_wrapped_lines(
     superponían con el precio.
 
     bold=True ensancha el ancho de caracter asumido -- la fuente real de
-    descripción en Parrilla y Vinos es "Franklin Gothic Heavy" (bold), y el
-    0.38em original estaba calibrado sin darse cuenta de eso: subestimaba
-    sistemáticamente cuántas líneas hacían falta en varios casos reales
-    ("Vino Tinto Malbec LATITUD 33 750ml", "Vino H. STAGNARI Tinto Tannat
-    Viejo 750 ml") que seguían superponiéndose con el precio incluso después
-    de achicar al piso -- el texto en negrita ocupa más ancho por caracter
-    que el texto normal contra el que se había calibrado el 0.38em."""
+    descripción en Parrilla y Vinos es "Franklin Gothic Heavy" (bold), más
+    ancha por caracter que el texto normal. También se descuenta un margen
+    interno fijo del ancho de la caja (PowerPoint reserva un inset
+    izquierdo/derecho por defecto, ~0.25cm de cada lado, que nunca estábamos
+    restando). Recalibrado dos veces contra casos reales que seguían
+    superponiéndose con el precio pese a los ajustes anteriores (ej. "Vino
+    Tinto Malbec LATITUD 33 750ml" seguía prediciendo 2 líneas cuando en
+    realidad son 3+) -- ver ejemplos en el historial de este archivo antes
+    de tocar estas constantes de nuevo."""
     if not text or not box_width_cm or not font_size:
         return 1
-    box_width_pt = box_width_cm / 2.54 * 72
-    # Ancho promedio de caracter -- 0.38em para texto normal, 0.46em si es
+    # Inset interno de PowerPoint (izq + der) que nunca se restaba del ancho
+    # disponible -- sin esto se sobreestima cuánto entra por línea.
+    usable_width_cm = max(0.1, box_width_cm - 0.4)
+    box_width_pt = usable_width_cm / 2.54 * 72
+    # Ancho promedio de caracter -- 0.38em para texto normal, 0.52em si es
     # bold (ver docstring arriba). Calibrado contra casos reales, no un
     # valor de fuente "de catálogo".
-    char_width_em = 0.46 if bold else 0.38
+    char_width_em = 0.52 if bold else 0.38
     chars_per_line = max(1, int(box_width_pt / (font_size * char_width_em)))
     lines = 1
     current_len = 0
