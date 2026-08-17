@@ -157,6 +157,13 @@ _ALIASES_PARRILLA_VINOS_OVERRIDE: dict[str, str] = {
     "ofertadet":    "_ignoradoParrillaOfertadet",
     "comprador":    "_ignoradoParrillaComprador",
     "subcategoria": "_ignoradoParrillaSubcategoria",
+    # La columna de código de SKU en el export real de gestión varía entre
+    # descargas -- a veces "Codigo" (ya cubierto por el alias global de
+    # abajo), a veces "Articulo" a secas (sin "Nombre" adelante, que ya
+    # significa otra cosa -- ver "nombrearticulo"→descripcion). Confirmado
+    # con el usuario: cualquiera de las dos puede aparecer, tienen que
+    # resolver las dos al mismo código.
+    "articulo":     "codigoSKU",
 }
 
 # Columnas que, si están presentes, sirven para detectar la fila de headers
