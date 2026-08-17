@@ -162,6 +162,15 @@ _ALIASES_PARRILLA_VINOS_OVERRIDE: dict[str, str] = {
 # Columnas que, si están presentes, sirven para detectar la fila de headers
 _DETECTION_NORMS = {"ofertadet", "descripcion", "precios", "precio", "precioactual", "codigo", "moneda", "dia"}
 
+# El export real de gestión para Parrilla y Vinos no siempre trae "regular"
+# como nombre de columna del precio principal -- a veces sale directo de
+# gestión sin renombrar, con el nombre de pantalla de ese sistema, "PVP
+# GESTION" seguido de la fecha de la semana (ej. "PVP GESTION 14/08"), que
+# cambia en cada descarga. Un alias exacto en el diccionario no alcanza acá
+# porque la fecha nunca es la misma -- se matchea por prefijo, y solo para
+# este destino (ver load_products_from_bytes).
+_RE_PVP_GESTION = re.compile(r"^pvpgestion")
+
 
 # ---------------------------------------------------------------------------
 # Procesamiento de fila
@@ -429,7 +438,10 @@ def load_products_from_bytes(
     for idx, raw in enumerate(raw_headers):
         if not raw:
             continue
-        canonical = aliases.get(_norm(str(raw)))
+        norm = _norm(str(raw))
+        canonical = aliases.get(norm)
+        if canonical is None and destino == "parrilla_y_vinos" and _RE_PVP_GESTION.match(norm):
+            canonical = "precioP"
         key = canonical if canonical else str(raw)  # pass through unknown columns as-is
         if key in h:
             continue  # primera columna con este nombre gana -- ver caso real:
