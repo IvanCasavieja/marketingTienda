@@ -152,6 +152,7 @@ _ALIASES: dict[str, str] = {
 _ALIASES_PARRILLA_VINOS_OVERRIDE: dict[str, str] = {
     "regular":      "precioP",
     "oferta":       "precio4x3",
+    "4x3":          "precio4x3",  # alias adicional -- misma columna, el export a veces la nombra "4x3" en vez de "oferta"
     "5x3":          "precio5x3",
     "6x3":          "precio6x3",
     "ofertadet":    "_ignoradoParrillaOfertadet",
