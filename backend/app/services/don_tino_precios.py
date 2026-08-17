@@ -206,10 +206,25 @@ _AUTO_FILTRO_MAX_POR_TANDA = 60  # mismo criterio que _REFINAR_MAX -- por encima
                                   # marca/categoría real, no es una segunda pasada opcional
                                   # sobre una lista ya angostada por palabras clave.
 
+_TANDA_CONCURRENCY = 8  # tope de tandas en simultáneo -- una búsqueda ancha
+                        # (ej. "coca cola", miles de candidatos) arma decenas
+                        # de tandas; corriéndolas todas en paralelo con este
+                        # techo bajan de minutos a segundos sin bombardear la
+                        # API de Claude con decenas de llamadas a la vez.
+
 
 def _en_tandas(items: list, tam: int):
     for i in range(0, len(items), tam):
         yield items[i:i + tam]
+
+
+def _norm_marca(marca: str) -> str:
+    """minúsculas + sin tildes + separadores (espacio/guión) colapsados a uno
+    solo -- sin esto, la misma marca real termina partida en varios buckets
+    del "agrupado por marca" solo porque Claude la escribió distinto en tandas
+    distintas (ej. "Coca-Cola" / "COCA COLA" / "Coca Cola" quedaban como 3
+    marcas separadas en vez de una sola)."""
+    return re.sub(r"[\s\-_]+", " ", _normalizar(marca)).strip()
 
 
 async def filtrar_relevancia_automatica(termino: str, items: list[dict], db=None, user_id=None) -> dict:
@@ -248,48 +263,29 @@ async def filtrar_relevancia_automatica(termino: str, items: list[dict], db=None
         marca_conocida.setdefault(key, it.get("marca"))
 
     claves = list(grupos.keys())
+    tandas = list(_en_tandas(claves, _AUTO_FILTRO_MAX_POR_TANDA))
+    sem = asyncio.Semaphore(_TANDA_CONCURRENCY)
+    resultados_tandas = await asyncio.gather(
+        *[_procesar_tanda_relevancia(termino, tanda, marca_conocida, sem) for tanda in tandas]
+    )
+
     mantener: set[tuple[str, str]] = set()
-    conteo_por_marca: dict[str, int] = {}
+    conteo_por_marca_norm: dict[str, int] = {}
+    marca_display: dict[str, str] = {}
     fallo_parcial = False
 
-    for tanda in _en_tandas(claves, _AUTO_FILTRO_MAX_POR_TANDA):
-        lineas = []
-        for n, (tienda, nombre) in enumerate(tanda, start=1):
-            pista = marca_conocida.get((tienda, nombre))
-            lineas.append(f"{n}. [{tienda}] {nombre}" + (f" (marca conocida: {pista})" if pista else ""))
-        listado = "\n".join(lineas)
-        prompt = (
-            f'El usuario buscó "{termino}" en el comparador de precios de la competencia. '
-            f'Estos son los productos únicos que trajeron los distintos sitios (si el mismo '
-            f'producto aparece en varias sucursales de una cadena, acá aparece una sola vez '
-            f'representándolas a todas):\n{listado}\n\n'
-            'Para cada uno, decidí con criterio real (qué tipo de producto es y de qué marca, '
-            'no solo si el texto se parece a la búsqueda) si corresponde de verdad a lo que se '
-            'buscó. Por ejemplo, si se buscó "lavarropas james": un "Refrigerador JAMES" NO '
-            'corresponde (misma marca, otro tipo de producto) y un "Lavarropas MIDEA" tampoco '
-            '(mismo tipo de producto, otra marca), aunque los dos compartan texto con la '
-            'búsqueda. Si el término NO menciona una marca específica (ej. solo "notebook"), no '
-            'rechaces por marca — dejá pasar todas las marcas que sean genuinamente el producto '
-            'buscado.\n\n'
-            'Devolvé SOLO un JSON con esta forma exacta: {"items": {"1": {"mantener": true, '
-            '"marca": "James"}, "2": {"mantener": false, "marca": null}, ...}} — una entrada '
-            'por cada número de la lista, en el mismo orden. "marca" es el fabricante tal como '
-            'aparece en el nombre (null si "mantener" es false, o si de verdad no se puede '
-            'inferir ninguna marca del nombre).'
-        )
-        try:
-            content, in_tok, out_tok = await _ask_claude(DONA_TINA_BASE, prompt, max_tokens=3000)
-            await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
-            parsed = json.loads(_strip_json_fence(content))
-            resultado_items = parsed.get("items")
-            if not isinstance(resultado_items, dict):
-                raise ValueError(f"'items' no es un dict: {resultado_items!r}")
-        except Exception as exc:
-            log.warning("don_tino_precios.filtrar_relevancia_automatica: fallo en una tanda — %s", exc)
+    # El merge de resultados y el logueo de uso quedan secuenciales acá --
+    # AsyncSession no soporta uso concurrente desde varias corutinas a la vez
+    # (mismo criterio que documentos.py::crear_documentos_y_extraer), así que
+    # solo la llamada a Claude en sí se paraleliza arriba.
+    for tanda, (resultado_items, in_tok, out_tok) in zip(tandas, resultados_tandas):
+        if resultado_items is None:
             fallo_parcial = True
             for key in tanda:
                 mantener.add(key)
             continue
+
+        await _log_uso(db, user_id, _ASK_CLAUDE_META, in_tok, out_tok)
 
         for n, key in enumerate(tanda, start=1):
             entrada = resultado_items.get(str(n))
@@ -299,14 +295,65 @@ async def filtrar_relevancia_automatica(termino: str, items: list[dict], db=None
             marca = entrada.get("marca")
             marca = marca.strip() if isinstance(marca, str) and marca.strip() else marca_conocida.get(key)
             if marca:
-                conteo_por_marca[marca] = conteo_por_marca.get(marca, 0) + len(grupos[key])
+                marca_key = _norm_marca(marca)
+                marca_display.setdefault(marca_key, marca)
+                conteo_por_marca_norm[marca_key] = conteo_por_marca_norm.get(marca_key, 0) + len(grupos[key])
 
+    conteo_por_marca = {marca_display[k]: v for k, v in conteo_por_marca_norm.items()}
     indices_mantener = sorted(idx for key in mantener for idx in grupos[key])
     return {
         "indices_mantener": indices_mantener,
         "conteo_por_marca": conteo_por_marca,
         "fallo_parcial": fallo_parcial,
     }
+
+
+async def _procesar_tanda_relevancia(
+    termino: str,
+    tanda: list[tuple[str, str]],
+    marca_conocida: dict[tuple[str, str], str | None],
+    sem: asyncio.Semaphore,
+) -> tuple[dict | None, int, int]:
+    """Solo la llamada a Claude para una tanda, sin tocar `db` -- así
+    filtrar_relevancia_automatica puede correr todas las tandas en paralelo
+    (ver ahí el motivo de por qué el logueo de uso queda afuera, secuencial).
+    Devuelve (resultado_items o None si la tanda falló, input_tokens,
+    output_tokens) -- tokens en 0 si falló, no se gastó nada que loguear."""
+    lineas = []
+    for n, (tienda, nombre) in enumerate(tanda, start=1):
+        pista = marca_conocida.get((tienda, nombre))
+        lineas.append(f"{n}. [{tienda}] {nombre}" + (f" (marca conocida: {pista})" if pista else ""))
+    listado = "\n".join(lineas)
+    prompt = (
+        f'El usuario buscó "{termino}" en el comparador de precios de la competencia. '
+        f'Estos son los productos únicos que trajeron los distintos sitios (si el mismo '
+        f'producto aparece en varias sucursales de una cadena, acá aparece una sola vez '
+        f'representándolas a todas):\n{listado}\n\n'
+        'Para cada uno, decidí con criterio real (qué tipo de producto es y de qué marca, '
+        'no solo si el texto se parece a la búsqueda) si corresponde de verdad a lo que se '
+        'buscó. Por ejemplo, si se buscó "lavarropas james": un "Refrigerador JAMES" NO '
+        'corresponde (misma marca, otro tipo de producto) y un "Lavarropas MIDEA" tampoco '
+        '(mismo tipo de producto, otra marca), aunque los dos compartan texto con la '
+        'búsqueda. Si el término NO menciona una marca específica (ej. solo "notebook"), no '
+        'rechaces por marca — dejá pasar todas las marcas que sean genuinamente el producto '
+        'buscado.\n\n'
+        'Devolvé SOLO un JSON con esta forma exacta: {"items": {"1": {"mantener": true, '
+        '"marca": "James"}, "2": {"mantener": false, "marca": null}, ...}} — una entrada '
+        'por cada número de la lista, en el mismo orden. "marca" es el fabricante tal como '
+        'aparece en el nombre (null si "mantener" es false, o si de verdad no se puede '
+        'inferir ninguna marca del nombre).'
+    )
+    try:
+        async with sem:
+            content, in_tok, out_tok = await _ask_claude(DONA_TINA_BASE, prompt, max_tokens=3000)
+        parsed = json.loads(_strip_json_fence(content))
+        resultado_items = parsed.get("items")
+        if not isinstance(resultado_items, dict):
+            raise ValueError(f"'items' no es un dict: {resultado_items!r}")
+        return resultado_items, in_tok, out_tok
+    except Exception as exc:
+        log.warning("don_tino_precios.filtrar_relevancia_automatica: fallo en una tanda — %s", exc)
+        return None, 0, 0
 
 
 _MAX_TOOL_ITERATIONS = 3  # tope de vueltas de tool-use -- alcanza con "busca -> responde",
