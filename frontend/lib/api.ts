@@ -50,12 +50,21 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Endpoints donde un 401 significa "credenciales inválidas", no "sesión
+// vencida" -- nunca hubo una sesión que intentar refrescar. Sin esta
+// exclusión, un login con contraseña incorrecta disparaba además un
+// /auth/refresh (que también falla, no hay nada que refrescar) y terminaba
+// en window.location.href = "/login" -- una recarga completa de la página
+// que tira el toast de error antes de que el usuario llegue a verlo.
+const _NO_REFRESH_RETRY = ["/auth/login", "/auth/register", "/auth/forgot-password", "/auth/reset-password"];
+
 // Response interceptor: auto-refresh on 401
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
+    const isAuthEndpoint = _NO_REFRESH_RETRY.some((p) => original?.url?.includes(p));
+    if (error.response?.status === 401 && !original._retry && !isAuthEndpoint) {
       original._retry = true;
       try {
         const refreshRes = await axios.post(
