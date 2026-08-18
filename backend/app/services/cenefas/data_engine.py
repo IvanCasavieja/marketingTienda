@@ -473,8 +473,13 @@ def load_products_from_bytes(
 
         data = process_row(row, h, vigencia, aclaracion, otra_alcohol, banco)
 
-        # Deduplicación por clave natural
+        # Deduplicación por clave natural -- codigoSKU primero: sin esto, dos
+        # productos con SKU y precio distintos pero la MISMA descripción (caso
+        # real de Parrilla y Vinos, que nunca popula mecanica/precioActual/dia
+        # -- ahí la clave quedaba reducida a solo la descripción) se colapsaban
+        # en uno solo, silenciosamente perdiendo filas reales del Excel.
         key = (
+            data.get("codigoSKU", ""),
             data.get("mecanica", ""),
             data.get("precioActual", ""),
             (data.get("descripcion") or "").lower().strip(),
