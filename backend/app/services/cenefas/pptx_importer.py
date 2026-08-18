@@ -72,6 +72,11 @@ _PLACEHOLDER_MAP: dict[str, tuple[str, str, str]] = {
     "decimal5x3":      ("precio5x3",         "price", "price_decimal"),
     "6x3p":            ("precio6x3",         "price", "price_integer"),
     "decimal6x3":      ("precio6x3",         "price", "price_decimal"),
+    # Otra plantilla de Parrilla y Vinos muestra el nivel 4x3 en un solo
+    # cuadro (sin partir entero/decimal) -- mismo dato que "4x3p"/"decimal4x3"
+    # (misma variable canónica precio4x3, misma columna Excel "oferta"/"4x3"),
+    # solo que acá el placeholder en el PPTX se llama <<oferta>>.
+    "oferta":          ("precio4x3",         "price", "price_full"),
 }
 
 # Mapa: variable_name → columna Excel canónica (para el panel de Variables)
