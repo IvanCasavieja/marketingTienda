@@ -464,7 +464,7 @@ def load_products_from_bytes(
     titulo_col = h.get("_ofertadet")
 
     products: list[dict] = []
-    seen: set[tuple] = set()
+    seen: set[str | tuple] = set()
 
     for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
         # Saltar filas sin descripción
@@ -473,13 +473,17 @@ def load_products_from_bytes(
 
         data = process_row(row, h, vigencia, aclaracion, otra_alcohol, banco)
 
-        # Deduplicación por clave natural -- codigoSKU primero: sin esto, dos
-        # productos con SKU y precio distintos pero la MISMA descripción (caso
-        # real de Parrilla y Vinos, que nunca popula mecanica/precioActual/dia
-        # -- ahí la clave quedaba reducida a solo la descripción) se colapsaban
-        # en uno solo, silenciosamente perdiendo filas reales del Excel.
-        key = (
-            data.get("codigoSKU", ""),
+        # Deduplicación: codigoSKU es la clave PRINCIPAL y suficiente por sí
+        # sola cuando está presente -- es el identificador real de un
+        # producto, no hace falta que descripción/mecanica/precioActual/dia
+        # también coincidan (esos campos ni siquiera se popultan en Parrilla
+        # y Vinos). Comparar por combinación de campos era demasiado
+        # estricto: bastaba con que la descripción viniera escrita distinto
+        # entre filas del mismo código para NO deduplicar filas repetidas.
+        # Sin codigoSKU (destinos/excels que no lo traen) cae al criterio
+        # viejo por combinación de campos, único identificador disponible.
+        sku = (data.get("codigoSKU") or "").strip()
+        key = sku or (
             data.get("mecanica", ""),
             data.get("precioActual", ""),
             (data.get("descripcion") or "").lower().strip(),
