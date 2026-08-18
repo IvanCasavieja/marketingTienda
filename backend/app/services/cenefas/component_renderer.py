@@ -711,6 +711,19 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     <<4x3P>>/<<decimal4x3>> mostrando el precio de OTRO producto). El GCD es
     correcto mientras al menos una variable aparezca una sola vez por banda
     (ej. codigo/descripcion) -- caso normal en cualquier plantilla real.
+
+    El conteo tiene que mirar tanto c["variable"] (componente de un solo
+    placeholder) como c["segments"] (componente multi-segmento, ej. "$" +
+    <<precioP>> como dos runs del mismo cuadro -- variable=None en ese caso,
+    ver allow_single_placeholder_segments en pptx_importer.py). Un bug real
+    visto con una plantilla real de Parrilla y Vinos: TODOS sus componentes
+    -- incluso <<descripcion>> y <<codigoSKU>> solos, sin texto estático al
+    lado -- quedaron como multi-segmento (PowerPoint partió el placeholder
+    en más de un run internamente al editar el archivo). Contando solo
+    c["variable"] el Counter quedaba vacío, esta función devolvía None
+    siempre, y el render trataba la página entera (3 franjas reales) como
+    un solo producto -- de ahí que las 3 franjas terminaran mostrando
+    siempre el mismo.
     Splits non-background components by Y order into that many groups.
     Returns None when n_slots == 1 (single-slot → standard per-product render).
     """
@@ -718,8 +731,15 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     from collections import Counter
     from functools import reduce
 
+    def _comp_variable_names(c: dict) -> list[str]:
+        if c.get("variable"):
+            return [c["variable"]]
+        return [seg["value"] for seg in (c.get("segments") or []) if seg.get("type") == "variable"]
+
     non_bg = [c for c in components if not c.get("locked")]
-    var_counts = Counter(c["variable"] for c in non_bg if c.get("variable"))
+    var_counts: Counter = Counter()
+    for c in non_bg:
+        var_counts.update(_comp_variable_names(c))
     if not var_counts:
         return None
 
