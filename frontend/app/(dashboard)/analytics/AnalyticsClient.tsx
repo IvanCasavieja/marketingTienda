@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import DonTinoFloating from "@/components/DonTinoFloating";
+import DonaTinaFloating from "@/components/DonaTinaFloating";
 
 const ALL_PLATFORMS = ["meta", "google_ads", "google_analytics", "tiktok", "dv360"];
 
@@ -799,7 +799,7 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      <DonTinoFloating context="analytics" />
+      <DonaTinaFloating context="analytics" />
     </div>
   );
 }

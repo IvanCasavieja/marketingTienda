@@ -23,7 +23,7 @@ from app.services.tino_personas import TININ_BASE
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "claude-sonnet-4-6"  # misma familia Tino, mismo modelo que debate_service.py/don_tino_precios.py
+_MODEL = "claude-sonnet-4-6"  # misma familia Tino, mismo modelo que debate_service.py/dona_tina_precios.py
 _META = ("anthropic", _MODEL)
 _MAX_TOOL_ITERATIONS = 4  # tope duro contra un loop de tool-use que no converge
 

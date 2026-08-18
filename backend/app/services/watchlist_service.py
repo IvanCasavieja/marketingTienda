@@ -139,7 +139,7 @@ async def _procesar_item(db, item: WatchlistItem) -> None:
         return
 
     try:
-        from app.services.don_tino_precios import explicar_cambio_precio
+        from app.services.dona_tina_precios import explicar_cambio_precio
         mensaje = await explicar_cambio_precio(
             item.tienda, item.nombre, precio_anterior, encontrado.precio, encontrado.moneda,
             db=db, user_id=wl.user_id,

@@ -127,7 +127,7 @@ async def buscar_vivo_stream(
     ya se tenía en vez de romper la búsqueda entera."""
     import asyncio, json, threading
     from app.services.scraper.live_search import buscar_todas_streaming_cached, _DATA_DIR, _CADENAS_DEFAULT, _CADENAS_TODAS
-    from app.services.don_tino_precios import filtrar_relevancia_automatica, generar_sinonimos_busqueda
+    from app.services.dona_tina_precios import filtrar_relevancia_automatica, generar_sinonimos_busqueda
 
     # Filtramos contra la lista real de cadenas soportadas — así un valor
     # desconocido o vacío nunca rompe la búsqueda, simplemente se ignora.
@@ -334,7 +334,7 @@ async def ia_consultar(
     if not payload.items:
         return {"tipo": "respuesta", "mantener": None, "respuesta": "No hay productos para analizar todavía."}
 
-    from app.services.don_tino_precios import responder_consulta
+    from app.services.dona_tina_precios import responder_consulta
 
     try:
         resultado = await responder_consulta(
@@ -363,7 +363,7 @@ async def ia_reporte(
     if not payload.items:
         raise HTTPException(status_code=400, detail="No hay productos seleccionados para el reporte")
 
-    from app.services.don_tino_precios import generar_reporte
+    from app.services.dona_tina_precios import generar_reporte
 
     try:
         reporte, usage_items = await generar_reporte(

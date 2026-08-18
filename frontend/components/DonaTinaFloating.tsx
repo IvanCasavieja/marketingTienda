@@ -5,7 +5,7 @@ import { RobotMascot } from "@/components/RobotMascot";
 import { X, Send, BarChart3, Sparkles } from "lucide-react";
 
 // ── Doña Tina flotante — misma cara en todos lados, pero lo que contesta viene
-// de Claude/ChatGPT por detrás (ver backend/app/services/don_tino_precios.py).
+// de Claude/ChatGPT por detrás (ver backend/app/services/dona_tina_precios.py).
 // El usuario nunca ve esos nombres, solo a Doña Tina respondiendo. ─────────────
 
 type Contexto = "precios" | "comparison" | "analytics";
@@ -20,7 +20,7 @@ interface ItemConPrecio {
   moneda: string;
 }
 
-interface DonTinoFloatingProps {
+interface DonaTinaFloatingProps {
   context: Contexto;
   termino?: string;
   items?: ItemConPrecio[];
@@ -43,9 +43,9 @@ function TypingDots() {
   );
 }
 
-export default function DonTinoFloating({
+export default function DonaTinaFloating({
   context, termino, items, chartItems, ourPrice, ourCurrency, onApplySeleccion, onOpenChart,
-}: DonTinoFloatingProps) {
+}: DonaTinaFloatingProps) {
   const [open, setOpen] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);

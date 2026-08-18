@@ -42,7 +42,7 @@ _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULT
 _CHUNK_SIZE = 20               # productos por llamada a Claude — lotes chicos porque cada
                                 # item devuelve texto libre completo, no solo un índice, así
                                 # que hay más superficie de error por chunk que en un batch
-                                # de "elegí cuáles mantener" (ver don_tino_precios.py).
+                                # de "elegí cuáles mantener" (ver dona_tina_precios.py).
 _ROWS_MAX_PER_REQUEST = 80      # tope duro por request síncrona — por encima, se trunca y se
                                 # avisa "truncated" en la respuesta en vez de encadenar
                                 # decenas de chunks y arriesgar timeout del navegador/proxy.
@@ -89,7 +89,7 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
     Devuelve {"suggestions": [...], "failed_row_ids": [...]}. Nunca levanta por un chunk
     que falla — ese chunk se reporta en failed_row_ids y el resto de la respuesta sigue
     siendo utilizable (fail-soft, mismo criterio que _afinar_seleccion en
-    don_tino_precios.py): un fallo transitorio de red en un chunk no debería tirar abajo
+    dona_tina_precios.py): un fallo transitorio de red en un chunk no debería tirar abajo
     las sugerencias que ya se generaron en los demás."""
     # Sin nombre_articulo NI descripcion_web no hay nada que pedirle a Claude —
     # se descarta antes de gastar un slot del batch.

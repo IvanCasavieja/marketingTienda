@@ -8,7 +8,7 @@ import { X, BarChart3, Store } from "lucide-react";
 import { preciosApi, type ProductoVivo, type CotizacionDolar } from "@/lib/api";
 import { fMoneyByCurrency } from "@/lib/format";
 import { CADENA_CONFIG, CadenaBadge } from "@/components/precios/cadenaConfig";
-import DonTinoFloating from "@/components/DonTinoFloating";
+import DonaTinaFloating from "@/components/DonaTinaFloating";
 import SeguirButton from "@/components/precios/SeguirButton";
 import SearchableChecklist from "@/components/ui/SearchableChecklist";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -503,7 +503,7 @@ export default function ComparisonModal({
         </div>
       )}
 
-      <DonTinoFloating
+      <DonaTinaFloating
         context="comparison"
         termino={termino ?? ""}
         items={itemsParaDonTino}

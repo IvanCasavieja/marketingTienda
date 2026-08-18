@@ -1,9 +1,11 @@
 """
-don_tino_precios.py — IA aplicada a los resultados del buscador de precios en vivo,
-presentada bajo la persona de Doña Tina (el nombre del archivo quedó de una
-primera versión donde este dominio era de Don Tino — ver tino_personas.py
-para el reparto vigente: Don Tino es la guía general de la plataforma, Doña
-Tina es la experta en precios).
+dona_tina_precios.py — IA aplicada a los resultados del buscador de precios en
+vivo, presentada bajo la persona de Doña Tina (ver tino_personas.py para el
+reparto vigente: Don Tino es la guía general de la plataforma, Doña Tina es
+la experta en precios). El archivo se llamó don_tino_precios.py hasta que
+este dominio pasó de Don Tino a Doña Tina; el feature string persistido en
+ai_usage_log ("don_tino_precios", ver _log_uso) quedó igual a propósito para
+no partir el histórico de esa tabla.
 
 Por detrás usa Claude y ChatGPT (mismos helpers _ask_claude/_ask_gpt de
 debate_service.py que ya usa La Triada) pero el usuario nunca ve "Claude" ni
@@ -141,7 +143,7 @@ async def _afinar_seleccion(
         mantener_local = [i for i in parsed.get("mantener", []) if isinstance(i, int) and 1 <= i <= len(claves)]
         claves_mantener = {claves[i - 1] for i in mantener_local}
     except Exception as exc:
-        log.warning("don_tino_precios._afinar_seleccion: fallo, uso el filtro de palabras clave sin afinar — %s", exc)
+        log.warning("dona_tina_precios._afinar_seleccion: fallo, uso el filtro de palabras clave sin afinar — %s", exc)
         claves_mantener = set(claves)
 
     return [idx for key in claves if key in claves_mantener for idx in grupos[key]], usage_items
@@ -193,7 +195,7 @@ async def generar_sinonimos_busqueda(termino: str, db=None, user_id=None) -> lis
             return []
         return [s.strip() for s in sinonimos if isinstance(s, str) and s.strip()][:3]
     except Exception as exc:
-        log.warning("don_tino_precios.generar_sinonimos_busqueda: fallo — %s", exc)
+        log.warning("dona_tina_precios.generar_sinonimos_busqueda: fallo — %s", exc)
         return []
 
 
@@ -352,7 +354,7 @@ async def _procesar_tanda_relevancia(
             raise ValueError(f"'items' no es un dict: {resultado_items!r}")
         return resultado_items, in_tok, out_tok
     except Exception as exc:
-        log.warning("don_tino_precios.filtrar_relevancia_automatica: fallo en una tanda — %s", exc)
+        log.warning("dona_tina_precios.filtrar_relevancia_automatica: fallo en una tanda — %s", exc)
         return None, 0, 0
 
 
@@ -389,7 +391,7 @@ async def _tool_buscar_precios(termino: str) -> str:
     try:
         resultados = await asyncio.wait_for(asyncio.to_thread(buscar_todas_cached, termino), timeout=45.0)
     except Exception as exc:
-        log.warning("don_tino_precios._tool_buscar_precios: error buscando '%s' — %s", termino, exc)
+        log.warning("dona_tina_precios._tool_buscar_precios: error buscando '%s' — %s", termino, exc)
         return json.dumps({"error": "Error al buscar precios en este momento"})
 
     items = []
@@ -511,7 +513,7 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=N
         tipo = "seleccion" if _normalizar(str(parsed.get("tipo") or "")) == "seleccion" else "respuesta"
         respuesta = str(parsed.get("respuesta") or "").strip()
     except Exception as exc:
-        log.warning("don_tino_precios.responder_consulta: fallo parseando respuesta — %s", exc)
+        log.warning("dona_tina_precios.responder_consulta: fallo parseando respuesta — %s", exc)
         return {
             "tipo": "respuesta",
             "mantener": None,

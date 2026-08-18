@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import ComparisonModal from "@/components/precios/ComparisonModal";
 import TotalesPorMarcaModal from "@/components/precios/TotalesPorMarcaModal";
 import { CADENA_CONFIG, CADENA_CATEGORIA, CadenaBadge } from "@/components/precios/cadenaConfig";
-import DonTinoFloating from "@/components/DonTinoFloating";
+import DonaTinaFloating from "@/components/DonaTinaFloating";
 import { DonaTinaTrabajando } from "@/components/DonaTinaTrabajando";
 import SeguirButton from "@/components/precios/SeguirButton";
 import { WatchlistsProvider } from "@/components/precios/WatchlistsContext";
@@ -1100,7 +1100,7 @@ export default function PreciosPage() {
           superpuestas y el usuario terminaría hablándole a la que NO puede
           tocar la selección (esta, la de /precios, no tiene esa conexión). */}
       {!showChart && (
-        <DonTinoFloating
+        <DonaTinaFloating
           context="precios"
           termino={lastQuery}
           items={visible
