@@ -109,12 +109,18 @@ _CSV_COLUMN_MAP: dict[str, str] = {
 _REQUIRED_VARS = {"descripcion", "precioActual"}
 
 _FORMATS_DIM = {
-    "a4":      (21.0,  29.7,  1),
-    "a3":      (29.7,  42.0,  1),
-    "3xa4":    (21.0,  9.9,   3),   # slide de una franja; 3 en A4 portrait
-    "pinchos": (7.0,   14.85, 6),   # slide de un pincho; grilla 3×2 en A4
-    "a5":      (14.85, 21.0,  1),
-    "6xa4":    (7.0,   14.85, 6),   # slide de una celda; grilla 3×2 en A4 (arte propio)
+    # (width_cm, height_cm, slots, slot_cols)
+    # slot_cols = en cuantas columnas se tilean los `slots` -- 3xa4 tilea 3
+    # franjas VERTICALMENTE (1 sola columna, cada franja usa el ancho
+    # completo), a diferencia de pinchos/6xa4 que tilean en grilla horizontal
+    # (3 columnas). Ver uso en import_pptx: el filtro de "solo primera
+    # columna" solo tiene sentido cuando slot_cols > 1.
+    "a4":      (21.0,  29.7,  1, 1),
+    "a3":      (29.7,  42.0,  1, 1),
+    "3xa4":    (21.0,  9.9,   3, 1),   # slide de una franja; 3 en A4 portrait
+    "pinchos": (7.0,   14.85, 6, 3),   # slide de un pincho; grilla 3×2 en A4
+    "a5":      (14.85, 21.0,  1, 1),
+    "6xa4":    (7.0,   14.85, 6, 3),   # slide de una celda; grilla 3×2 en A4 (arte propio)
 }
 
 
@@ -126,16 +132,16 @@ def _emu_to_cm(emu: int) -> float:
     return round(emu / _EMU_PER_CM, 3)
 
 
-def _detect_format(width_cm: float, height_cm: float) -> tuple[str, int]:
+def _detect_format(width_cm: float, height_cm: float) -> tuple[str, int, int]:
     best = "a4"
     best_dist = float("inf")
-    for fmt_id, (w, h, _slots) in _FORMATS_DIM.items():
+    for fmt_id, (w, h, _slots, _slot_cols) in _FORMATS_DIM.items():
         dist = abs(width_cm - w) + abs(height_cm - h)
         if dist < best_dist:
             best_dist = dist
             best = fmt_id
-    _, _, slots = _FORMATS_DIM[best]
-    return best, slots
+    _, _, slots, slot_cols = _FORMATS_DIM[best]
+    return best, slots, slot_cols
 
 
 _MAX_IMAGE_BYTES = 300_000  # ~300 KB antes de comprimir
@@ -585,7 +591,12 @@ def _extract_style(shape, theme_colors: dict[str, str] | None = None) -> dict:
     # Max font across all runs (spacer runs set line height)
     if max_font_size > style.get("font_size", 0):
         style["line_height_pt"] = round(max_font_size, 1)
-    style.setdefault("align", "center")
+    # Default real de OOXML/PowerPoint cuando el parrafo no trae algn explicito
+    # es izquierda, no centro -- la mayoria de los cuadros de texto de un PPTX
+    # dependen de este default implicito (nadie clickea "alinear a la
+    # izquierda" a proposito, ya es lo normal), asi que forzar "center" acá
+    # centraba de mas cualquier cuadro que no tuviera el atributo seteado.
+    style.setdefault("align", "left")
 
     # Vertical anchor + autofit + insets from bodyPr
     try:
@@ -795,8 +806,8 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
     slide = prs.slides[0]
     width_cm  = _emu_to_cm(prs.slide_width)
     height_cm = _emu_to_cm(prs.slide_height)
-    format_id, slots = _detect_format(width_cm, height_cm)
-    slot_width = width_cm / slots
+    format_id, slots, slot_cols = _detect_format(width_cm, height_cm)
+    slot_width = width_cm / slot_cols if slot_cols > 1 else width_cm
 
     components: list[dict]          = []
     variables_seen: dict[str, dict] = {}
@@ -846,8 +857,11 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
         if comp is None:
             continue
 
-        # Formatos multi-slot horizontales (pinchos): solo primera columna
-        if slots > 1 and comp["base_bounds"]["x"] >= slot_width:
+        # Formatos multi-slot horizontales (pinchos/6xa4): solo primera
+        # columna -- 3xa4 tilea vertical (slot_cols=1) y NO tiene que
+        # filtrar por X, si no cualquier componente del lado derecho del
+        # diseño (tipicamente el precio) se descartaba en el import.
+        if slot_cols > 1 and comp["base_bounds"]["x"] >= slot_width:
             continue
 
         components.append(comp)
