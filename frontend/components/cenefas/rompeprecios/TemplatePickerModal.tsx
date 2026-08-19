@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Search, Plus, X, Loader2, Trash2, RefreshCw, ExternalLink, FileType2, ChevronLeft } from "lucide-react";
+import { Search, Plus, X, Loader2, Trash2, RefreshCw, ExternalLink, FileType2, ChevronLeft, CheckSquare, Square, ListChecks } from "lucide-react";
 import { cenefasV2Api } from "@/lib/api";
 import type { CenefaTemplateRecord } from "@/types/cenefas";
 import { toast } from "sonner";
@@ -66,6 +66,16 @@ export default function TemplatePickerModal({ category, categoryLabel, onClose, 
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Selección múltiple -- los templates duplicados de flujos viejos
+  // (mismo nombre auto-generado, distinto id) se acumulan de a decenas;
+  // borrar uno a la vez con el modal de confirmación individual es
+  // impracticable para limpiarlos. Reusa el mismo endpoint de borrado
+  // (uno por id, en paralelo) en vez de agregar un endpoint bulk nuevo.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkConfirming, setBulkConfirming] = useState(false);
 
   const [replacingId, setReplacingId] = useState<string | null>(null);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
@@ -158,6 +168,41 @@ export default function TemplatePickerModal({ category, categoryLabel, onClose, 
     }
   }
 
+  function toggleSelectMode() {
+    setSelectMode((v) => !v);
+    setSelectedIds(new Set());
+    setBulkConfirming(false);
+    setDeletingId(null);
+    setReplacingId(null);
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkDelete() {
+    setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(ids.map((id) => cenefasV2Api.deleteTemplate(id)));
+    const okIds = ids.filter((_, i) => results[i].status === "fulfilled");
+    const failCount = ids.length - okIds.length;
+    setTemplates((prev) => prev.filter((tm) => !okIds.includes(tm.id)));
+    setSelectedIds(new Set());
+    setBulkConfirming(false);
+    setBulkDeleting(false);
+    if (failCount === 0) {
+      toast.success(t("cenefas.rompePrecios.picker.bulkDeleteOk", { count: okIds.length }));
+    } else if (okIds.length === 0) {
+      toast.error(t("cenefas.rompePrecios.picker.bulkDeleteAllFailed"));
+    } else {
+      toast.error(t("cenefas.rompePrecios.picker.bulkDeletePartial", { ok: okIds.length, fail: failCount }));
+    }
+  }
+
   async function handleReplace(tm: CenefaTemplateRecord) {
     if (!replaceFile) return;
     setReplaceSaving(true);
@@ -224,23 +269,75 @@ export default function TemplatePickerModal({ category, categoryLabel, onClose, 
         {view === "list" ? (
           <>
             <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0 space-y-2.5">
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t("cenefas.rompePrecios.picker.searchPlaceholder")}
-                  className="input text-sm pl-8 w-full"
-                />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={t("cenefas.rompePrecios.picker.searchPlaceholder")}
+                    className="input text-sm pl-8 w-full"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleSelectMode}
+                  disabled={templates.length === 0}
+                  title={t("cenefas.rompePrecios.picker.selectMultiple")}
+                  className={`shrink-0 p-2 rounded-lg border-2 transition-colors disabled:opacity-30 ${
+                    selectMode
+                      ? "border-brand-400 bg-brand-50 dark:bg-brand-950/30 text-brand-600 dark:text-brand-400"
+                      : "border-slate-200 dark:border-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  }`}
+                >
+                  <ListChecks size={16} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setView("create")}
-                className="flex items-center justify-center gap-1.5 w-full text-sm font-semibold text-brand-600 dark:text-brand-400 border-2 border-dashed border-brand-300 dark:border-brand-800 rounded-xl py-2 hover:bg-brand-50 dark:hover:bg-brand-950/20 transition-colors"
-              >
-                <Plus size={14} /> {t("cenefas.rompePrecios.picker.addNew")}
-              </button>
+              {selectMode ? (
+                bulkConfirming ? (
+                  <div className="rounded-xl bg-rose-50/50 dark:bg-rose-950/10 px-3 py-2.5 space-y-2">
+                    <p className="text-xs text-rose-600 dark:text-rose-400">
+                      {t("cenefas.rompePrecios.picker.deleteSelectedConfirm", { count: selectedIds.size })}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={bulkDeleting}
+                        onClick={handleBulkDelete}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 px-2.5 py-1 rounded-lg bg-rose-100 dark:bg-rose-950/40 hover:bg-rose-200 dark:hover:bg-rose-950/70 disabled:opacity-50"
+                      >
+                        {bulkDeleting && <Loader2 size={12} className="animate-spin" />}
+                        {t("cenefas.rompePrecios.picker.deleteYes")}
+                      </button>
+                      <button onClick={() => setBulkConfirming(false)} className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-2.5 py-1">
+                        {t("cenefas.rompePrecios.picker.deleteCancel")}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {t("cenefas.rompePrecios.picker.selectedCount", { count: selectedIds.size })}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={selectedIds.size === 0}
+                      onClick={() => setBulkConfirming(true)}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 px-2.5 py-1 rounded-lg bg-rose-100 dark:bg-rose-950/40 hover:bg-rose-200 dark:hover:bg-rose-950/70 disabled:opacity-30"
+                    >
+                      <Trash2 size={12} /> {t("cenefas.rompePrecios.picker.deleteSelected")}
+                    </button>
+                  </div>
+                )
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setView("create")}
+                  className="flex items-center justify-center gap-1.5 w-full text-sm font-semibold text-brand-600 dark:text-brand-400 border-2 border-dashed border-brand-300 dark:border-brand-800 rounded-xl py-2 hover:bg-brand-50 dark:hover:bg-brand-950/20 transition-colors"
+                >
+                  <Plus size={14} /> {t("cenefas.rompePrecios.picker.addNew")}
+                </button>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto">
@@ -303,6 +400,21 @@ export default function TemplatePickerModal({ category, categoryLabel, onClose, 
                             </button>
                           </div>
                         </div>
+                      ) : selectMode ? (
+                        <button
+                          onClick={() => toggleSelected(tm.id)}
+                          className="flex items-center gap-3 w-full text-left px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                        >
+                          {selectedIds.has(tm.id)
+                            ? <CheckSquare size={16} className="text-brand-500 shrink-0" />
+                            : <Square size={16} className="text-slate-300 dark:text-slate-600 shrink-0" />}
+                          <span className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{tm.name}</p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                              {tm.formats?.length ? tm.formats.map((f) => typeLabel(f)).join(", ") : "—"}
+                            </p>
+                          </span>
+                        </button>
                       ) : (
                         <div className="flex items-center pr-2">
                           <button
