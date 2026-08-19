@@ -93,6 +93,12 @@ _PLACEHOLDER_MAP: dict[str, tuple[str, str, str]] = {
     "decimaloferta1":      ("decimalOferta1",      "price", "price_full"),
     "decimaloferta2":      ("decimalOferta2",      "price", "price_full"),
     "decimaloferta3":      ("decimalOferta3",      "price", "price_full"),
+
+    # Mismo criterio, para las variables clásicas de Rompe Precios -- ver
+    # comentario en CANONICAL_VARS de data_engine.py.
+    "decimalprecioactual":   ("decimalPrecioActual",   "price", "price_full"),
+    "decimalprecioanterior": ("decimalPrecioAnterior", "price", "price_full"),
+    "decimalpreciobanco":    ("decimalPrecioBanco",    "price", "price_full"),
 }
 
 # Mapa: variable_name → columna Excel canónica (para el panel de Variables)
@@ -120,6 +126,25 @@ _CSV_COLUMN_MAP: dict[str, str] = {
     "mecanica":          "mecanica",
     "unidadPrecio":      "unidadPrecio",
     "unidadPBanco":      "unidadPBanco",
+    "precioP":           "precioP",
+    "precio4x3":         "precio4x3",
+    "precio5x3":         "precio5x3",
+    "precio6x3":         "precio6x3",
+    # sistema unificado -- el fallback de abajo (var_name.upper()) rompería
+    # la promesa de "mismo nombre en todos lados" mostrando p.ej. "PRECIOOFERTA"
+    # en vez de "precioOferta" como pista de columna en el panel de Variables.
+    "precioOferta":          "precioOferta",
+    "oferta1":               "oferta1",
+    "oferta2":               "oferta2",
+    "oferta3":               "oferta3",
+    "decimalPrecioP":        "decimalPrecioP",
+    "decimalPrecioOferta":   "decimalPrecioOferta",
+    "decimalOferta1":        "decimalOferta1",
+    "decimalOferta2":        "decimalOferta2",
+    "decimalOferta3":        "decimalOferta3",
+    "decimalPrecioActual":   "decimalPrecioActual",
+    "decimalPrecioAnterior": "decimalPrecioAnterior",
+    "decimalPrecioBanco":    "decimalPrecioBanco",
 }
 
 _REQUIRED_VARS = {"descripcion", "precioActual"}

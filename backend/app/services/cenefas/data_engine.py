@@ -66,6 +66,15 @@ CANONICAL_VARS: frozenset[str] = frozenset({
     "decimalOferta1",      # a diferencia de <<decimal4x3>> con precio4x3 arriba) -- para
     "decimalOferta2",      # diseños que ya traen el entero y el decimal en columnas
     "decimalOferta3",      # separadas.
+
+    # Mismo criterio pero para las variables "clásicas" de Rompe Precios
+    # (precioActual/precioAnterior/precioBanco) -- hasta acá eran las únicas
+    # sin forma de mostrar el decimal en un cuadro aparte (ni transform tipo
+    # <<decimal4x3>>, ni columna propia). A pedido explícito: "todo cuadro o
+    # todo texto que precise diseño aparte va en cuadro con variable aparte".
+    "decimalPrecioActual",
+    "decimalPrecioAnterior",
+    "decimalPrecioBanco",
 })
 
 # Variables que contienen precios — los números se auto-formatean con prefix de moneda
@@ -83,6 +92,7 @@ _PRICE_VARS_SIN_PREFIJO: frozenset[str] = frozenset({
     "precioP", "precio4x3", "precio5x3", "precio6x3",
     "precioOferta", "oferta1", "oferta2", "oferta3",
     "decimalPrecioP", "decimalPrecioOferta", "decimalOferta1", "decimalOferta2", "decimalOferta3",
+    "decimalPrecioActual", "decimalPrecioAnterior", "decimalPrecioBanco",
 })
 
 # ---------------------------------------------------------------------------
@@ -138,6 +148,9 @@ _ALIASES: dict[str, str] = {
     "decimaloferta1":      "decimalOferta1",
     "decimaloferta2":      "decimalOferta2",
     "decimaloferta3":      "decimalOferta3",
+    "decimalprecioactual":   "decimalPrecioActual",
+    "decimalprecioanterior": "decimalPrecioAnterior",
+    "decimalpreciobanco":    "decimalPrecioBanco",
 
     # ── Legacy Excel → canónico ───────────────────────────────────────────
     "precio":             "precioActual",
