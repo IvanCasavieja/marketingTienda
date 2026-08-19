@@ -1,20 +1,13 @@
 "use client";
-import { useEffect, useState } from "react";
-import { CheckCircle2, FileSpreadsheet, Image as ImageIcon, Loader2, Plus, Send, X } from "lucide-react";
+import { useState } from "react";
+import { FileSpreadsheet, FolderOpen, Image as ImageIcon, Loader2, Send, X } from "lucide-react";
 import { cenefasV2Api, toolsApi } from "@/lib/api";
 import type { CenefaTemplateRecord } from "@/types/cenefas";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import PreviewStep from "@/components/cenefas/PreviewStep";
-import SizeTemplateUploadModal from "@/components/cenefas/rompeprecios/SizeTemplateUploadModal";
+import TemplatePickerModal, { typeLabel } from "@/components/cenefas/rompeprecios/TemplatePickerModal";
 import { FileDropField } from "@/components/cenefas/redexpres/RedExpresPanel";
-
-const SIZES: { id: string; label: string }[] = [
-  { id: "a4",   label: "A4" },
-  { id: "3xa4", label: "3xA4" },
-  { id: "a5",   label: "A5" },
-  { id: "6xa4", label: "6xA4" },
-];
 
 // Variable convencional para la imagen de cocarda — la plantilla pptx debe
 // tener un componente de imagen con esta variable para que se reemplace.
@@ -42,33 +35,14 @@ export default function RompePreciosPanel({ category }: RompePreciosPanelProps) 
   const { t } = useTranslation();
   const categoryLabel = t(`cenefas.destino.${category}.label`);
 
-  const [templatesBySize, setTemplatesBySize] = useState<Record<string, CenefaTemplateRecord>>({});
-  const [loadingTemplates, setLoadingTemplates] = useState(true);
-  const [uploadModalSize, setUploadModalSize] = useState<string | null>(null);
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<CenefaTemplateRecord | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const [excel, setExcel] = useState<File | null>(null);
   const [vigencia, setVigencia] = useState("");
   const [cocarda, setCocarda] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
-
-  function loadTemplates() {
-    setLoadingTemplates(true);
-    cenefasV2Api.listTemplates({ category })
-      .then(({ data }) => {
-        const bySize: Record<string, CenefaTemplateRecord> = {};
-        for (const tmpl of data) {
-          const size = tmpl.formats?.[0];
-          if (size && !bySize[size]) bySize[size] = tmpl;
-        }
-        setTemplatesBySize(bySize);
-      })
-      .catch(() => toast.error(t("cenefas.unknownError")))
-      .finally(() => setLoadingTemplates(false));
-  }
-
-  useEffect(loadTemplates, [t, category]);
 
   async function handleDownloadTemplate() {
     try {
@@ -86,18 +60,16 @@ export default function RompePreciosPanel({ category }: RompePreciosPanelProps) 
     }
   }
 
-  const canSubmit = !!excel && !!selectedSize && !submitting;
+  const canSubmit = !!excel && !!selectedTemplate && !submitting;
 
   async function handleSubmit() {
-    if (!canSubmit) return;
-    const tmpl = templatesBySize[selectedSize!];
-    if (!tmpl) return;
+    if (!canSubmit || !selectedTemplate) return;
 
     setSubmitting(true);
     try {
       const fd = new FormData();
       fd.append("excel", excel!);
-      fd.append("template_v2_id", tmpl.id);
+      fd.append("template_v2_id", selectedTemplate.id);
       fd.append("vigencia", vigencia.trim());
 
       if (cocarda) {
@@ -121,57 +93,36 @@ export default function RompePreciosPanel({ category }: RompePreciosPanelProps) 
 
   return (
     <div className="grid grid-cols-2 gap-6 items-start">
-      {/* Columna izquierda: plantillas por tamaño + Excel */}
+      {/* Columna izquierda: plantilla + Excel */}
       <div className="flex flex-col gap-5">
-        <div className="card p-6 space-y-4">
+        <div className="card p-6 space-y-3">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
-            {t("cenefas.rompePrecios.sizesTitle")}
+            {t("cenefas.rompePrecios.templateLabel")}
           </p>
-          {loadingTemplates ? (
-            <div className="grid grid-cols-2 gap-2">
-              {SIZES.map((s) => <div key={s.id} className="skeleton h-20 rounded-xl" />)}
+          {selectedTemplate ? (
+            <div className="flex items-center justify-between gap-3 p-3 rounded-xl border-2 border-brand-400 bg-brand-50 dark:bg-brand-950/20">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-brand-700 dark:text-brand-300 truncate">{selectedTemplate.name}</p>
+                <p className="text-[10px] text-brand-500/80 dark:text-brand-400/80">
+                  {selectedTemplate.formats?.length ? selectedTemplate.formats.map((f) => typeLabel(f)).join(", ") : "—"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className="shrink-0 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-800 underline"
+              >
+                {t("cenefas.rompePrecios.changeTemplate")}
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {SIZES.map((size) => {
-                const tmpl = templatesBySize[size.id];
-                const isSelected = selectedSize === size.id;
-                return (
-                  <div
-                    key={size.id}
-                    onClick={() => tmpl ? setSelectedSize(size.id) : setUploadModalSize(size.id)}
-                    className={`relative flex flex-col gap-1.5 p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                      isSelected
-                        ? "border-brand-400 bg-brand-50 dark:bg-brand-950/20"
-                        : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className={`text-sm font-bold ${isSelected ? "text-brand-700 dark:text-brand-300" : "text-slate-700 dark:text-slate-300"}`}>
-                        {size.label}
-                      </span>
-                      {isSelected && <CheckCircle2 size={14} className="text-brand-500" />}
-                    </div>
-                    {tmpl ? (
-                      <>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{tmpl.name}</p>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setUploadModalSize(size.id); }}
-                          className="self-start text-[10px] text-slate-400 hover:text-brand-500 underline"
-                        >
-                          {t("cenefas.rompePrecios.replace")}
-                        </button>
-                      </>
-                    ) : (
-                      <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                        <Plus size={11} /> {t("cenefas.rompePrecios.uploadTemplate")}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="flex items-center justify-center gap-2 w-full p-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-all"
+            >
+              <FolderOpen size={16} /> {t("cenefas.rompePrecios.chooseTemplate")}
+            </button>
           )}
         </div>
 
@@ -259,14 +210,12 @@ export default function RompePreciosPanel({ category }: RompePreciosPanelProps) 
         </button>
       </div>
 
-      {uploadModalSize && (
-        <SizeTemplateUploadModal
+      {pickerOpen && (
+        <TemplatePickerModal
           category={category}
           categoryLabel={categoryLabel}
-          sizeId={uploadModalSize}
-          sizeLabel={SIZES.find((s) => s.id === uploadModalSize)?.label ?? uploadModalSize}
-          onClose={() => setUploadModalSize(null)}
-          onSaved={() => { setUploadModalSize(null); loadTemplates(); }}
+          onClose={() => setPickerOpen(false)}
+          onSelect={(tmpl) => { setSelectedTemplate(tmpl); setPickerOpen(false); }}
         />
       )}
     </div>

@@ -270,7 +270,7 @@ export const cenefasV2Api = {
       "/tools/cenefas/v2/templates",
       payload
     ),
-  updateTemplate: (id: string, payload: CenefaTemplate) =>
+  updateTemplate: (id: string, payload: CenefaTemplate & { category?: string; source_pptx_b64?: string }) =>
     api.put<{ id: string; name: string }>(`/tools/cenefas/v2/templates/${id}`, payload),
   renameTemplate: (id: string, name: string) =>
     api.patch<{ id: string; name: string }>(`/tools/cenefas/v2/templates/${id}/rename`, { name }),

@@ -234,6 +234,18 @@ async def update_template(
 
     _validate_template_payload(payload)
 
+    # source_pptx_b64 opcional: mismo criterio que create_template (ver línea
+    # ~183) — se popea del payload ANTES de guardarlo como definition, para
+    # no duplicar el base64 del pptx dentro del JSONB. Permite "Reemplazar"
+    # el diseño de una plantilla ya guardada sin perder su identidad
+    # (id/name/formats/category quedan a criterio del caller).
+    source_pptx_b64 = payload.pop("source_pptx_b64", None)
+    if source_pptx_b64:
+        try:
+            tmpl.source_pptx = _b64.b64decode(source_pptx_b64)
+        except Exception:
+            pass
+
     tmpl.name       = payload["name"].strip()
     tmpl.definition = payload
     tmpl.formats    = payload.get("formats", tmpl.formats)

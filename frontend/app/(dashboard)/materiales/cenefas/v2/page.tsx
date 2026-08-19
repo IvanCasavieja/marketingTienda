@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   Save, Loader2, AlertCircle, CheckCircle2,
@@ -8,7 +9,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
-import { useSuperuserGuard } from "@/hooks/useSuperuserGuard";
+import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaFormat, CenefaTemplateRecord } from "@/types/cenefas";
 import ComponentPanel  from "@/components/cenefas/editor/ComponentPanel";
@@ -58,7 +59,12 @@ export type LeftPanel = "components" | "rules" | "variables";
 // ---------------------------------------------------------------------------
 
 export default function EditorPage() {
-  const allowed = useSuperuserGuard();
+  // Herramienta de debug (solo superadmins) salvo cuando se llega acá con un
+  // ?template_id= puntual desde el picker de Rompe Precios/Parrilla y Vinos
+  // ("Editar" en TemplatePickerModal) — ahí alcanza con cenefas.edit, el
+  // mismo permiso que ya hace falta para crear/reemplazar plantillas.
+  const { allowed, user } = usePermissionGuard({ permission: "cenefas.edit", redirectTo: "/materiales/cenefas" });
+  const searchParams = useSearchParams();
   const {
     template, templateId, isDirty,
     leftPanel, setLeftPanel,
@@ -83,7 +89,12 @@ export default function EditorPage() {
   useEffect(() => {
     cenefasV2Api.getFormats().then(({ data }) => setFormats(data)).catch(() => toast.error("No se pudieron cargar los formatos"));
     cenefasV2Api.listTemplates().then(({ data }) => setSavedTmpls(data)).catch(() => toast.error("No se pudieron cargar los templates guardados"));
-    initNew();
+    const initialTemplateId = searchParams.get("template_id");
+    if (initialTemplateId) {
+      handleLoadTemplate(initialTemplateId);
+    } else {
+      initNew();
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cerrar menú de templates al hacer clic fuera
@@ -361,8 +372,10 @@ export default function EditorPage() {
           )}
         </div>
 
-        {/* Generar */}
-        {template.components.length > 0 && (
+        {/* Generar -- navega a /v2/generar, que sigue gateado solo-superadmin;
+            para cualquier otro usuario sería un callejón sin salida, así que
+            el botón queda oculto y solo "Guardar" persiste los cambios. */}
+        {user?.is_superuser && template.components.length > 0 && (
           <button
             onClick={handleGenerate}
             disabled={generating}
