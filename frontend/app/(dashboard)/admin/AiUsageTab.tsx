@@ -70,9 +70,13 @@ interface AiUsageTabProps {
   // by_user da como mucho una fila filtrado así, por eso se oculta esa
   // sección más abajo (sería un "top users" de un usuario solo).
   userId?: number;
+  // Si viene, cada fila de "Top usuarios por costo" es clickeable y abre el
+  // detalle de ese usuario (UserActivityModal) -- solo tiene sentido cuando
+  // NO se pasó userId (esa sección ya está oculta en ese caso).
+  onSelectUser?: (u: { user_id: number; user_email: string | null }) => void;
 }
 
-export default function AiUsageTab({ userId }: AiUsageTabProps = {}) {
+export default function AiUsageTab({ userId, onSelectUser }: AiUsageTabProps = {}) {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<AiUsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -226,12 +230,28 @@ export default function AiUsageTab({ userId }: AiUsageTabProps = {}) {
             <p className="text-sm text-slate-400 px-6 py-6">{t("admin.aiUsage.noData")}</p>
           ) : (
             <div className="divide-y divide-slate-50 dark:divide-slate-800">
-              {data.by_user.map((u, i) => (
-                <div key={u.user_id ?? i} className="flex items-center justify-between px-5 py-2.5">
-                  <span className="text-sm text-slate-700 dark:text-slate-300">{u.user_email ?? t("admin.aiUsage.deletedUser")}</span>
-                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{fUsd(u.cost_usd)}</span>
-                </div>
-              ))}
+              {data.by_user.map((u, i) => {
+                const rowContent = (
+                  <>
+                    <span className="text-sm text-slate-700 dark:text-slate-300">{u.user_email ?? t("admin.aiUsage.deletedUser")}</span>
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{fUsd(u.cost_usd)}</span>
+                  </>
+                );
+                return onSelectUser && u.user_id != null ? (
+                  <button
+                    key={u.user_id}
+                    type="button"
+                    onClick={() => onSelectUser(u)}
+                    className="flex items-center justify-between px-5 py-2.5 w-full text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                  >
+                    {rowContent}
+                  </button>
+                ) : (
+                  <div key={u.user_id ?? i} className="flex items-center justify-between px-5 py-2.5">
+                    {rowContent}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

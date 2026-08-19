@@ -524,7 +524,19 @@ export default function AdminPage() {
       </div>
 
       {activeTab === "auditoria" && <AuditLogTab />}
-      {activeTab === "ia" && <AiUsageTab />}
+      {activeTab === "ia" && (
+        <AiUsageTab
+          onSelectUser={(u) => {
+            if (u.user_id == null) return;
+            const known = users.find((x) => x.id === u.user_id);
+            setActivityUser(known ?? {
+              id: u.user_id, full_name: u.user_email ?? "?", email: u.user_email ?? "",
+              role_id: null, role_name: null, permissions: [], is_active: true, is_superuser: false,
+              created_at: null, login_count: 0, last_login_at: null,
+            });
+          }}
+        />
+      )}
 
       {activeTab === "usuarios" && (
       <>
