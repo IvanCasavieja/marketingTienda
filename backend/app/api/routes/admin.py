@@ -9,23 +9,18 @@ from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, client_ip as _client_ip
 from app.core.security import hash_password
 from app.core.rate_limit import limiter
 from app.models.ai_usage_log import AIUsageLog
 from app.models.audit_log import AuditLog
+from app.models.cenefa_job import CenefaJob
 from app.models.local_asignacion import LocalAsignacion
 from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
 from app.models.user import User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-
-def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 def _require_admin_panel(current_user: User = Depends(get_current_user)) -> User:
@@ -290,6 +285,18 @@ async def list_users(
         for r in roles_result.scalars().all():
             roles_map[r.id] = r
 
+    # Una sola query agregada para todos los usuarios (no N+1) -- ix_audit_logs_user_id_action
+    # (migración 0039) la cubre.
+    login_stats_result = await db.execute(
+        select(AuditLog.user_id, func.count(AuditLog.id), func.max(AuditLog.created_at))
+        .where(AuditLog.action == "user.login")
+        .group_by(AuditLog.user_id)
+    )
+    login_stats = {
+        user_id: {"login_count": count, "last_login_at": last_login}
+        for user_id, count, last_login in login_stats_result.all()
+    }
+
     return [
         {
             "id":           u.id,
@@ -301,6 +308,11 @@ async def list_users(
             "is_active":    u.is_active,
             "is_superuser": u.is_superuser,
             "created_at":   u.created_at.isoformat() if u.created_at else None,
+            "login_count":  login_stats.get(u.id, {}).get("login_count", 0),
+            "last_login_at": (
+                login_stats[u.id]["last_login_at"].isoformat()
+                if u.id in login_stats and login_stats[u.id]["last_login_at"] else None
+            ),
         }
         for u in users
     ]
@@ -524,6 +536,51 @@ async def toggle_active(
     return {"is_active": user.is_active}
 
 
+@router.get("/users/{user_id}/stats")
+async def user_stats(
+    user_id: int,
+    _: User = Depends(_require_admin_panel),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resumen compacto de actividad de un usuario -- alimenta el header del
+    modal de actividad en el frontend. El historial completo (línea por
+    línea) se pide aparte a /audit-log y /ai-usage/summary, ambos ya
+    filtrables por user_id."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    login_count, last_login_at = (await db.execute(
+        select(func.count(AuditLog.id), func.max(AuditLog.created_at))
+        .where(AuditLog.user_id == user_id, AuditLog.action == "user.login")
+    )).one()
+
+    last_login_ip = (await db.execute(
+        select(AuditLog.ip_address)
+        .where(AuditLog.user_id == user_id, AuditLog.action == "user.login")
+        .order_by(desc(AuditLog.created_at)).limit(1)
+    )).scalar_one_or_none()
+
+    cenefas_generated_count = (await db.execute(
+        select(func.count(CenefaJob.id)).where(CenefaJob.created_by == user_id)
+    )).scalar_one()
+
+    thirty_days_ago = date.today() - timedelta(days=30)
+    ai_cost_last_30d = (await db.execute(
+        select(func.coalesce(func.sum(AIUsageLog.estimated_cost_usd), 0))
+        .where(AIUsageLog.user_id == user_id, func.date(AIUsageLog.created_at) >= thirty_days_ago)
+    )).scalar_one()
+
+    return {
+        "login_count": login_count,
+        "last_login_at": last_login_at.isoformat() if last_login_at else None,
+        "last_login_ip": last_login_ip,
+        "cenefas_generated_count": cenefas_generated_count,
+        "ai_cost_last_30d_usd": float(ai_cost_last_30d),
+        "account_created_at": user.created_at.isoformat() if user.created_at else None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Auditoría
 # ---------------------------------------------------------------------------
@@ -532,13 +589,15 @@ async def toggle_active(
 async def list_audit_log(
     limit: int = 50,
     offset: int = 0,
+    user_id: int | None = None,
     _: User = Depends(_require_admin_panel),
     db: AsyncSession = Depends(get_db),
 ):
     limit = max(1, min(limit, 200))
-    result = await db.execute(
-        select(AuditLog).order_by(desc(AuditLog.created_at)).offset(offset).limit(limit)
-    )
+    query = select(AuditLog).order_by(desc(AuditLog.created_at)).offset(offset).limit(limit)
+    if user_id is not None:
+        query = query.where(AuditLog.user_id == user_id)
+    result = await db.execute(query)
     entries = result.scalars().all()
 
     user_ids = {e.user_id for e in entries if e.user_id}
@@ -572,6 +631,7 @@ async def list_audit_log(
 async def ai_usage_summary(
     date_from: date | None = None,
     date_to: date | None = None,
+    user_id: int | None = None,
     _: User = Depends(_require_admin_panel),
     db: AsyncSession = Depends(get_db),
 ):
@@ -579,6 +639,12 @@ async def ai_usage_summary(
     date_from = date_from or (date_to - timedelta(days=30))
     day_col = func.date(AIUsageLog.created_at)
     filters = (day_col >= date_from, day_col <= date_to)
+    if user_id is not None:
+        # by_user de por sí da como mucho una fila (la de este usuario) cuando
+        # se filtra acá -- no hace falta ninguna rama especial, el resto de
+        # las subqueries (totales, by_provider, by_feature, daily) ya comparten
+        # este mismo tuple `filters`.
+        filters = (*filters, AIUsageLog.user_id == user_id)
 
     total_cost, total_input, total_output = (await db.execute(
         select(

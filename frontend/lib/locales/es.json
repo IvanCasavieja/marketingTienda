@@ -482,6 +482,9 @@
     "usersTitle": "Usuarios ({{count}})",
     "inactive": "INACTIVO",
     "noRole": "Sin rol",
+    "lastLoginWithCount": "Último ingreso: {{date}} · {{count}} ingresos",
+    "neverLoggedIn": "Nunca ingresó",
+    "viewActivity": "Ver actividad",
     "editUser": "Editar usuario",
     "resetPasswordTitle": "Resetear contraseña",
     "deactivateUser": "Desactivar usuario",
@@ -597,6 +600,14 @@
       "noData": "Sin datos.",
       "topUsers": "Top usuarios por costo",
       "deletedUser": "Usuario eliminado"
+    },
+    "userActivity": {
+      "title": "Actividad de {{name}}",
+      "loadError": "No se pudo cargar la actividad del usuario.",
+      "logins": "Ingresos",
+      "lastLogin": "Último ingreso",
+      "cenefasGenerated": "Cenefas generadas",
+      "aiCost30d": "Costo de IA (30 días)"
     }
   },
   "redexpres": {

@@ -5,14 +5,15 @@ import logging
 import pathlib
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import require_permission
+from app.core.deps import require_permission, client_ip as _client_ip
 from app.core.uploads import read_limited
+from app.models.audit_log import AuditLog
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
@@ -405,6 +406,7 @@ def _validate_template_payload(payload: dict) -> None:
 @router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
 async def create_job(
     background_tasks: BackgroundTasks,
+    request: Request,
     excel: UploadFile = File(..., description="Archivo Excel con hoja 'Cenefas'"),
     format_id: str | None = Form(
         default=None,
@@ -466,12 +468,16 @@ async def create_job(
     await db.flush()
     await db.refresh(job)
     job_id = job.id
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.job.create", resource="cenefa_job", resource_id=str(job_id),
+        details={"format": format_id, "export_type": export_type}, ip_address=_client_ip(request),
+    ))
     # Commit explícito acá: BackgroundTasks corre en un momento del ciclo de
     # request/response que no está garantizado a ser posterior al commit
     # automático de la dependencia get_db — sin esto, run_generation_job
     # puede abrir su propia sesión y no encontrar todavía esta fila, y el
     # job queda colgado en "pending" para siempre (get_job hace return sin
-    # tocar el status).
+    # tocar el status). El AuditLog viaja en el mismo commit.
     await db.commit()
 
     background_tasks.add_task(
@@ -560,6 +566,7 @@ async def get_job(
 @router.get("/jobs/{job_id}/download")
 async def download_job_result(
     job_id: uuid.UUID,
+    request: Request,
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -584,6 +591,14 @@ async def download_job_result(
             status_code=410,
             detail="El resultado ya no está disponible — confirmá la generación de nuevo",
         )
+
+    # Se loguea solo la descarga que efectivamente se sirve, no los intentos
+    # que cortan arriba en 409/404/410 -- get_db() commitea esto solo, no hay
+    # commit explícito en esta ruta (a diferencia de create_job).
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.job.download", resource="cenefa_job", resource_id=str(job_id),
+        ip_address=_client_ip(request),
+    ))
 
     media_type = (
         "application/pdf"

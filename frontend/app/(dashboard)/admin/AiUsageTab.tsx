@@ -65,20 +65,27 @@ function BreakdownBar({ label, color, value, max }: { label: string; color: stri
   );
 }
 
-export default function AiUsageTab() {
+interface AiUsageTabProps {
+  // Filtra el resumen a un solo usuario -- usado por UserActivityModal.
+  // by_user da como mucho una fila filtrado así, por eso se oculta esa
+  // sección más abajo (sería un "top users" de un usuario solo).
+  userId?: number;
+}
+
+export default function AiUsageTab({ userId }: AiUsageTabProps = {}) {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<AiUsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(30);
 
-  useEffect(() => { load(period); }, [period]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(period); }, [period, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load(days: number) {
     setLoading(true);
     const today = format(new Date(), "yyyy-MM-dd");
     const from  = format(subDays(new Date(), days), "yyyy-MM-dd");
     try {
-      const { data } = await adminApi.aiUsageSummary(from, today);
+      const { data } = await adminApi.aiUsageSummary(from, today, userId);
       setData(data);
     } catch {
       toast.error(t("admin.aiUsage.loadError"));
@@ -209,24 +216,26 @@ export default function AiUsageTab() {
         </div>
       </div>
 
-      <div className="card overflow-hidden">
-        <div className="px-4 sm:px-6 py-4 border-b border-slate-50 dark:border-slate-800 flex items-center gap-2">
-          <Cpu size={15} className="text-slate-400" />
-          <p className="section-title">{t("admin.aiUsage.topUsers")}</p>
-        </div>
-        {data.by_user.length === 0 ? (
-          <p className="text-sm text-slate-400 px-6 py-6">{t("admin.aiUsage.noData")}</p>
-        ) : (
-          <div className="divide-y divide-slate-50 dark:divide-slate-800">
-            {data.by_user.map((u, i) => (
-              <div key={u.user_id ?? i} className="flex items-center justify-between px-5 py-2.5">
-                <span className="text-sm text-slate-700 dark:text-slate-300">{u.user_email ?? t("admin.aiUsage.deletedUser")}</span>
-                <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{fUsd(u.cost_usd)}</span>
-              </div>
-            ))}
+      {!userId && (
+        <div className="card overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-50 dark:border-slate-800 flex items-center gap-2">
+            <Cpu size={15} className="text-slate-400" />
+            <p className="section-title">{t("admin.aiUsage.topUsers")}</p>
           </div>
-        )}
-      </div>
+          {data.by_user.length === 0 ? (
+            <p className="text-sm text-slate-400 px-6 py-6">{t("admin.aiUsage.noData")}</p>
+          ) : (
+            <div className="divide-y divide-slate-50 dark:divide-slate-800">
+              {data.by_user.map((u, i) => (
+                <div key={u.user_id ?? i} className="flex items-center justify-between px-5 py-2.5">
+                  <span className="text-sm text-slate-700 dark:text-slate-300">{u.user_email ?? t("admin.aiUsage.deletedUser")}</span>
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{fUsd(u.cost_usd)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

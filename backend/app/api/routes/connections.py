@@ -4,7 +4,7 @@ from sqlalchemy import select, and_
 from pydantic import BaseModel
 from typing import List
 from app.core.database import get_db
-from app.core.deps import require_permission
+from app.core.deps import require_permission, client_ip as _client_ip
 from app.core.security import encrypt_token, verify_password
 from app.core.rate_limit import limiter
 from app.models.user import User
@@ -12,10 +12,6 @@ from app.models.audit_log import AuditLog
 from app.models.platform_connection import PlatformConnection, Platform
 
 router = APIRouter(prefix="/connections", tags=["connections"])
-
-
-def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
 
 
 # Crear/borrar una conexión maneja un access_token real de una cuenta

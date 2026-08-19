@@ -17,8 +17,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import get_current_user, require_permission, client_ip as _client_ip
 from app.core.rate_limit import limiter
+from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.services.ai_usage_service import resumir_usage
 
@@ -31,10 +32,15 @@ router = APIRouter(prefix="/precios", tags=["precios"])
 async def buscar_vivo(
     request: Request,
     q: str = Query(..., min_length=2, description="Término de búsqueda"),
-    _: User = Depends(require_permission("precios.search")),
+    current_user: User = Depends(require_permission("precios.search")),
+    db: AsyncSession = Depends(get_db),
 ):
     """Búsqueda EN VIVO de un producto — no usa la base de datos, golpea las
     APIs de Ta-Ta, El Dorado, GDU, FarmaShop y Botiga en paralelo."""
+    db.add(AuditLog(
+        user_id=current_user.id, action="precios.search",
+        details={"query": q}, ip_address=_client_ip(request),
+    ))
     import asyncio
     loop = asyncio.get_running_loop()
     try:
@@ -125,6 +131,14 @@ async def buscar_vivo_stream(
          lavarropas, aunque la marca coincida.
     Ambas fail-open: si Claude falla en cualquiera de las dos, se sigue con lo que
     ya se tenía en vez de romper la búsqueda entera."""
+    # Se loguea la intención de búsqueda ACA, antes de cualquier ramificación
+    # (barcode/stream normal/corte de conexión) -- viaja en el commit
+    # implícito de get_db() o en el explícito que ya tiene esta función más
+    # abajo, lo que ocurra primero, así que no hace falta un commit propio.
+    db.add(AuditLog(
+        user_id=current_user.id, action="precios.search",
+        details={"query": q, "cadenas": cadenas}, ip_address=_client_ip(request),
+    ))
     import asyncio, json, threading
     from app.services.scraper.live_search import buscar_todas_streaming_cached, _DATA_DIR, _CADENAS_DEFAULT, _CADENAS_TODAS
     from app.services.dona_tina_precios import filtrar_relevancia_automatica, generar_sinonimos_busqueda

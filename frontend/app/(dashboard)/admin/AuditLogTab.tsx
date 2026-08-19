@@ -14,19 +14,25 @@ function formatDetails(details: Record<string, unknown> | null, empty: string): 
     .join(" · ");
 }
 
-export default function AuditLogTab() {
+interface AuditLogTabProps {
+  // Filtra el historial a un solo usuario -- usado por UserActivityModal
+  // para reusar esta misma tabla/paginación en vez de duplicarla.
+  userId?: number;
+}
+
+export default function AuditLogTab({ userId }: AuditLogTabProps = {}) {
   const { t, i18n } = useTranslation();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  useEffect(() => { load(0, true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(0, true); }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load(offset: number, replace: boolean) {
     replace ? setLoading(true) : setLoadingMore(true);
     try {
-      const { data } = await adminApi.auditLog(PAGE_SIZE, offset);
+      const { data } = await adminApi.auditLog(PAGE_SIZE, offset, userId);
       setEntries((prev) => replace ? data : [...prev, ...data]);
       setHasMore(data.length === PAGE_SIZE);
     } catch {

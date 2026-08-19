@@ -12,6 +12,16 @@ from app.models.local_asignacion import LocalAsignacion
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
+def client_ip(request: Request) -> str:
+    """IP real del cliente para AuditLog -- detrás del proxy de Render,
+    request.client.host es la IP del proxy, no la del usuario. X-Forwarded-For
+    trae la real primero en la cadena."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 _UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 _PASSWORD_MAX_AGE_DAYS = 20

@@ -11,7 +11,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
-from app.core.deps import get_current_user, _needs_password_change
+from app.core.deps import get_current_user, _needs_password_change, client_ip as _client_ip
 from app.models.user import User
 from app.models.audit_log import AuditLog
 from app.models.local_asignacion import LocalAsignacion
@@ -48,13 +48,6 @@ def _clear_auth_cookies(response: Response) -> None:
     is_prod = settings.APP_ENV == "production"
     response.delete_cookie("access_token",  path="/", secure=is_prod, samesite="none" if is_prod else "lax")
     response.delete_cookie("refresh_token", path="/", secure=is_prod, samesite="none" if is_prod else "lax")
-
-
-def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 def _user_response(

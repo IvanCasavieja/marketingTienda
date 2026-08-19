@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import AuditLogTab from "./AuditLogTab";
 import AiUsageTab from "./AiUsageTab";
+import UserActivityModal from "./UserActivityModal";
 
 type AdminTab = "usuarios" | "auditoria" | "ia";
 
@@ -28,6 +29,8 @@ interface AdminUser {
   is_active: boolean;
   is_superuser: boolean;
   created_at: string | null;
+  login_count: number;
+  last_login_at: string | null;
 }
 
 interface RoleItem {
@@ -347,7 +350,7 @@ function RoleEditorModal({
 }
 
 export default function AdminPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { allowed, checked } = usePermissionGuard({ requireSuperuser: true });
   const [users,       setUsers]       = useState<AdminUser[]>([]);
   const [roles,       setRoles]       = useState<RoleItem[]>([]);
@@ -358,6 +361,7 @@ export default function AdminPage() {
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [tempPwd,     setTempPwd]     = useState<{ userId: number; pwd: string } | null>(null);
   const [activeTab,   setActiveTab]   = useState<AdminTab>("usuarios");
+  const [activityUser, setActivityUser] = useState<AdminUser | null>(null);
 
   const [form, setForm] = useState({
     email: "", full_name: "", password: "",
@@ -654,7 +658,22 @@ export default function AdminPage() {
                     )}
                   </div>
                   <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{u.email}</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                    {u.last_login_at
+                      ? t("admin.lastLoginWithCount", {
+                          date: new Date(u.last_login_at).toLocaleString(i18n.language, {
+                            day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+                          }),
+                          count: u.login_count,
+                        })
+                      : t("admin.neverLoggedIn")}
+                  </p>
                 </div>
+
+                <button onClick={() => setActivityUser(u)} title={t("admin.viewActivity")}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-all shrink-0">
+                  <History size={15} />
+                </button>
 
                 {/* Role selector — el Super Admin no se reasigna desde acá */}
                 {u.is_superuser ? (
@@ -716,6 +735,14 @@ export default function AdminPage() {
           allPerms={allPerms}
           onClose={() => setEditingUser(null)}
           onSaved={load}
+        />
+      )}
+
+      {/* User activity modal */}
+      {activityUser && (
+        <UserActivityModal
+          user={activityUser}
+          onClose={() => setActivityUser(null)}
         />
       )}
     </div>

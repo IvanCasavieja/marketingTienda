@@ -482,6 +482,9 @@
     "usersTitle": "Users ({{count}})",
     "inactive": "INACTIVE",
     "noRole": "No role",
+    "lastLoginWithCount": "Last login: {{date}} · {{count}} logins",
+    "neverLoggedIn": "Never logged in",
+    "viewActivity": "View activity",
     "editUser": "Edit user",
     "resetPasswordTitle": "Reset password",
     "deactivateUser": "Deactivate user",
@@ -597,6 +600,14 @@
       "noData": "No data.",
       "topUsers": "Top users by cost",
       "deletedUser": "Deleted user"
+    },
+    "userActivity": {
+      "title": "{{name}}'s activity",
+      "loadError": "Couldn't load this user's activity.",
+      "logins": "Logins",
+      "lastLogin": "Last login",
+      "cenefasGenerated": "Cenefas generated",
+      "aiCost30d": "AI cost (30 days)"
     }
   },
   "redexpres": {

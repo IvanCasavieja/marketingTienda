@@ -820,11 +820,22 @@ export interface AiUsageSummary {
   daily: ({ date: string } & AiUsageByKey)[];
 }
 
+export interface UserStats {
+  login_count: number;
+  last_login_at: string | null;
+  last_login_ip: string | null;
+  cenefas_generated_count: number;
+  ai_cost_last_30d_usd: number;
+  account_created_at: string | null;
+}
+
 export const adminApi = {
-  auditLog: (limit = 50, offset = 0) =>
-    api.get<AuditLogEntry[]>("/admin/audit-log", { params: { limit, offset } }),
-  aiUsageSummary: (dateFrom?: string, dateTo?: string) =>
-    api.get<AiUsageSummary>("/admin/ai-usage/summary", { params: { date_from: dateFrom, date_to: dateTo } }),
+  auditLog: (limit = 50, offset = 0, userId?: number) =>
+    api.get<AuditLogEntry[]>("/admin/audit-log", { params: { limit, offset, user_id: userId } }),
+  aiUsageSummary: (dateFrom?: string, dateTo?: string, userId?: number) =>
+    api.get<AiUsageSummary>("/admin/ai-usage/summary", { params: { date_from: dateFrom, date_to: dateTo, user_id: userId } }),
+  userStats: (userId: number) =>
+    api.get<UserStats>(`/admin/users/${userId}/stats`),
 };
 
 // ---------------------------------------------------------------------------
