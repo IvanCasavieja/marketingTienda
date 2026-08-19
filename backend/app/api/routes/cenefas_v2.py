@@ -280,7 +280,12 @@ async def delete_template(
     tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
     if tmpl.is_builtin:
         raise HTTPException(status_code=403, detail="No se pueden eliminar templates del sistema")
-    db.delete(tmpl)
+    # AsyncSession.delete() es una corrutina (a diferencia de Session.delete()
+    # en la API sync) -- sin el await acá, la llamada crea un objeto
+    # corrutina que nunca corre: el delete nunca se registra en la unit-of-
+    # work, el commit del get_db() de abajo no tiene nada pendiente que
+    # confirmar, y el endpoint devuelve 204 sin haber borrado la fila.
+    await db.delete(tmpl)
 
 
 # ---------------------------------------------------------------------------

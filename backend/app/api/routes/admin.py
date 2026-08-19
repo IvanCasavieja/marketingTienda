@@ -238,7 +238,7 @@ async def delete_role(
         user_id=current_user.id, action="admin.role.delete", resource="role", resource_id=str(role.id),
         details={"name": role.name}, ip_address=_client_ip(request),
     ))
-    db.delete(role)
+    await db.delete(role)
     return None
 
 
