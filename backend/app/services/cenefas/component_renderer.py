@@ -954,6 +954,8 @@ def render_template_to_pptx(
 
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
+            if category == "parrilla_y_vinos":
+                visible_comps = _fit_description_to_box(visible_comps, product)
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
 
