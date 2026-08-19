@@ -232,6 +232,20 @@ def _fit_description_to_box(comps: list[dict], product: dict) -> list[dict]:
     for c in comps:
         if c is desc_comp and fitted != base_font_size:
             c = {**c, "style": {**c["style"], "font_size": fitted}}
+            # Componente multi-segmento (ej. "$" + <<descripcion>>, o mismo
+            # placeholder partido en runs distintos por PowerPoint): cada
+            # segmento con su PROPIO font_size en seg["style"] pisa el del
+            # componente en _populate_text_frame (seg_style.update(seg["style"])
+            # corre DESPUES de heredar el style del componente) -- sin esto,
+            # el achique de arriba quedaba descartado en silencio para
+            # cualquier componente importado como multi-segmento.
+            segs = c.get("segments")
+            if segs:
+                c["segments"] = [
+                    {**seg, "style": {**seg["style"], "font_size": fitted}}
+                    if seg.get("style", {}).get("font_size") else seg
+                    for seg in segs
+                ]
         if c is price_comp and shift_cm > 0:
             c = {**c, "computed_bounds": {**c["computed_bounds"], "y": c["computed_bounds"]["y"] + shift_cm}}
         result.append(c)
