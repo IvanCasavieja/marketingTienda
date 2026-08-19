@@ -48,6 +48,24 @@ CANONICAL_VARS: frozenset[str] = frozenset({
     "precio4x3",          # Parrilla y Vinos: nivel de precio por cantidad 4x3 -- entero/decimal
     "precio5x3",          # se separan en dos placeholders del PPTX vía transform
     "precio6x3",          # price_integer/price_decimal (ver pptx_importer.py), no acá.
+
+    # ── Sistema unificado (Rompe Precios + Parrilla y Vinos, desde 08/2026) ──
+    # A pedido explícito: de acá en más el nombre de columna en el Excel, el
+    # placeholder en el PPTX y la variable canónica son SIEMPRE el mismo
+    # string -- sin alias ni traducción de un nombre a otro (a diferencia del
+    # resto de este archivo). No reemplazan nada de lo que Parrilla y Vinos
+    # ya tenía (precioP/precio4x3/5x3/6x3 arriba siguen andando igual) --son
+    # variables ADICIONALES, opcionales, pensadas para diseños nuevos.
+    "precioOferta",        # precio de oferta, sin "$" (mismo criterio que precioP -- el
+                          # "$" va fijo como texto estático en el diseño)
+    "oferta1",             # niveles de oferta genéricos (reemplazan conceptualmente a
+    "oferta2",             # precio4x3/5x3/6x3 para diseños que no atan la oferta a una
+    "oferta3",             # cantidad fija tipo "4x3")
+    "decimalPrecioP",      # parte decimal de precioP/precioOferta/ofertaN como columna
+    "decimalPrecioOferta", # PROPIA del Excel (no un transform sobre la misma columna,
+    "decimalOferta1",      # a diferencia de <<decimal4x3>> con precio4x3 arriba) -- para
+    "decimalOferta2",      # diseños que ya traen el entero y el decimal en columnas
+    "decimalOferta3",      # separadas.
 })
 
 # Variables que contienen precios — los números se auto-formatean con prefix de moneda
@@ -61,7 +79,11 @@ _PRICE_VARS: frozenset[str] = frozenset({"precioActual", "precioAnterior", "prec
 # entero/decimal de component_renderer.py::apply_transform busca una coma,
 # así que sin normalizar acá el precio no se partía nunca (confirmado
 # renderizando la plantilla real con datos de prueba).
-_PRICE_VARS_SIN_PREFIJO: frozenset[str] = frozenset({"precioP", "precio4x3", "precio5x3", "precio6x3"})
+_PRICE_VARS_SIN_PREFIJO: frozenset[str] = frozenset({
+    "precioP", "precio4x3", "precio5x3", "precio6x3",
+    "precioOferta", "oferta1", "oferta2", "oferta3",
+    "decimalPrecioP", "decimalPrecioOferta", "decimalOferta1", "decimalOferta2", "decimalOferta3",
+})
 
 # ---------------------------------------------------------------------------
 # Normalización de headers Excel
@@ -103,6 +125,19 @@ _ALIASES: dict[str, str] = {
     "categoria":          "categoria",
     "subcategoria":       "subCategoria",
     "descuento":          "descuento",
+
+    # ── Sistema unificado (Rompe Precios + Parrilla y Vinos) -- mapeo directo,
+    # el nombre de columna del Excel es siempre igual a la variable canónica.
+    "preciop":             "precioP",
+    "preciooferta":        "precioOferta",
+    "oferta1":             "oferta1",
+    "oferta2":             "oferta2",
+    "oferta3":             "oferta3",
+    "decimalpreciop":      "decimalPrecioP",
+    "decimalpreciooferta": "decimalPrecioOferta",
+    "decimaloferta1":      "decimalOferta1",
+    "decimaloferta2":      "decimalOferta2",
+    "decimaloferta3":      "decimalOferta3",
 
     # ── Legacy Excel → canónico ───────────────────────────────────────────
     "precio":             "precioActual",

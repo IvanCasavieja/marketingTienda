@@ -204,7 +204,13 @@ def _fit_description_to_box(comps: list[dict], product: dict) -> list[dict]:
     -- nunca el shift completo que tenía el enfoque viejo. En el caso común
     (achicar alcanza) el precio no se mueve ni un milímetro."""
     desc_comp  = next((c for c in comps if _comp_uses_variable(c, "descripcion")), None)
-    price_comp = next((c for c in comps if _comp_uses_variable(c, "precioP")), None)
+    # precioP (Parrilla y Vinos) o precioOferta (sistema unificado nuevo,
+    # Rompe Precios incluido) -- el que esté presente es el precio "grande"
+    # al que tiene sentido correrle el hueco de sobra como red de seguridad.
+    price_comp = next(
+        (c for c in comps if _comp_uses_variable(c, "precioP") or _comp_uses_variable(c, "precioOferta")),
+        None,
+    )
     if not desc_comp:
         return comps
 
@@ -927,7 +933,7 @@ def render_template_to_pptx(
                     product       = pg[band_idx]
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
-                    if category == "parrilla_y_vinos":
+                    if category in ("rompe_precios", "parrilla_y_vinos"):
                         visible_comps = _fit_description_to_box(visible_comps, product)
                     _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
                 elif preserve_source:
@@ -968,7 +974,7 @@ def render_template_to_pptx(
 
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
-            if category == "parrilla_y_vinos":
+            if category in ("rompe_precios", "parrilla_y_vinos"):
                 visible_comps = _fit_description_to_box(visible_comps, product)
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)

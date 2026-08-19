@@ -77,6 +77,22 @@ _PLACEHOLDER_MAP: dict[str, tuple[str, str, str]] = {
     # (misma variable canónica precio4x3, misma columna Excel "oferta"/"4x3"),
     # solo que acá el placeholder en el PPTX se llama <<oferta>>.
     "oferta":          ("precio4x3",         "price", "price_full"),
+
+    # ── Sistema unificado (Rompe Precios + Parrilla y Vinos, desde 08/2026) ──
+    # A pedido explícito: acá el placeholder, la columna del Excel y la
+    # variable canónica son siempre el mismo nombre -- sin traducir de uno a
+    # otro como el resto de este mapa. price_full porque data_engine.py ya
+    # las deja formateadas (estilo uruguayo "1.234,56", sin "$") vía
+    # _PRICE_VARS_SIN_PREFIJO -- acá solo hace falta pasar el valor tal cual.
+    "preciooferta":        ("precioOferta",        "price", "price_full"),
+    "oferta1":             ("oferta1",             "price", "price_full"),
+    "oferta2":             ("oferta2",             "price", "price_full"),
+    "oferta3":             ("oferta3",             "price", "price_full"),
+    "decimalpreciop":      ("decimalPrecioP",      "price", "price_full"),
+    "decimalpreciooferta": ("decimalPrecioOferta", "price", "price_full"),
+    "decimaloferta1":      ("decimalOferta1",      "price", "price_full"),
+    "decimaloferta2":      ("decimalOferta2",      "price", "price_full"),
+    "decimaloferta3":      ("decimalOferta3",      "price", "price_full"),
 }
 
 # Mapa: variable_name → columna Excel canónica (para el panel de Variables)
