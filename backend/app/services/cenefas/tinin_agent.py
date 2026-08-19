@@ -29,16 +29,14 @@ _MAX_TOOL_ITERATIONS = 4  # tope duro contra un loop de tool-use que no converge
 
 _CONOCIMIENTO = f"""
 CÓMO SE ARMAN LOS TEMPLATES:
-- Plantilla clásica (v1): un PPTX fijo se sube tal cual, sin editor — los placeholders del PPTX se rellenan directo con los datos del Excel. Es el motor que usa Redexpres hoy.
-- Editor visual (v2), en /materiales/cenefas/v2: se arma un template desde cero o importando un PPTX existente, con componentes (texto/imagen/forma) y variables asociadas al Excel. Es el motor que usan Rompe Precios y Parrilla y Vinos.
+Editor visual (v2), en /materiales/cenefas/v2: se arma un template desde cero o importando un PPTX existente, con componentes (texto/imagen/forma) y variables asociadas al Excel. Es el motor que usan los 3 destinos (Rompe Precios, Parrilla y Vinos, Redexpres) desde el reset de variables de 08/2026 — antes Redexpres tenía un motor clásico aparte, ya retirado.
 
-LOS 3 DESTINOS Y SUS COLUMNAS EXACTAS (nombres tal cual, no aproximados):
-- Redexpres: DESCRIPCION, precioActual, OFERTADET, OFERTA, ACLARACION, OTRA ACLARACION, VIGENCIA, CODIGO. OFERTADET dispara la mecánica (ej. "Combo" -> combo, "M x N" -> M x N).
-- Rompe Precios: descripcion, precio, precioAnterior, vigencia, aclaracion1, aclaracion2, aclaracion3. Sin mecánica de combos ni M x N — no lo soporta.
-- Parrilla y Vinos: mismas columnas que Rompe Precios (descripcion, precio, precioAnterior, vigencia, aclaracion1, aclaracion2, aclaracion3) y mismo comportamiento — es el mismo flujo, con sus propias plantillas PPTX y su propio Excel separados de Rompe Precios.
+LOS 3 DESTINOS COMPARTEN EL MISMO LISTADO DE VARIABLES (sistema unificado desde 08/2026) — nombre de columna en el Excel, placeholder <<...>> en el PPTX y variable interna son SIEMPRE el mismo string, sin traducir uno a otro:
+descripcion, codigo, vigencia, precioAnterior, precioOferta, oferta1, oferta2, oferta3, decimalPrecioP, decimalPrecioOferta, decimalOferta1, decimalOferta2, decimalOferta3.
+Todas opcionales salvo descripcion y precioAnterior. precioAnterior es el precio principal (grande) — el signo $ va fijo como texto en el diseño, nunca en la celda del Excel. Los decimalXxx son para diseños que separan el precio en un cuadro de enteros + un cuadro de centavos aparte; si el diseño no los necesita, no hace falta usarlos. No hay más mecánica de combos/M x N automática ni aviso de alcohol automático — eso era del motor clásico ya retirado.
 
 CÓMO SE GENERA UNA CENEFA (siempre así, nunca instantáneo):
-1. Se sube el Excel + se elige el template (clásico o v2) en /materiales/cenefas.
+1. Se sube el Excel + se elige el template en /materiales/cenefas.
 2. Preview: el sistema valida y muestra cuántos productos matcheó y qué variables faltan.
 3. Confirmar: recién ahí se renderiza el PPTX final para descargar.
 Esto SIEMPRE requiere un Excel real subido por el usuario — vos (Tinín) no podés generar una cenefa desde el chat, ni inventar un Excel. Si te piden "generame una cenefa", explicá el paso a paso de arriba y decí que tienen que subir el Excel ellos — nunca digas que la vas a generar vos ni que ya la generaste.

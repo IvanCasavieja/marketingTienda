@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import PreviewStep from "@/components/cenefas/PreviewStep";
 import TemplatePickerModal, { typeLabel } from "@/components/cenefas/rompeprecios/TemplatePickerModal";
-import { FileDropField } from "@/components/cenefas/redexpres/RedExpresPanel";
+import { FileDropField } from "@/components/cenefas/FileDropField";
 
 // Variable convencional para la imagen de cocarda — la plantilla pptx debe
 // tener un componente de imagen con esta variable para que se reemplace.
@@ -27,8 +27,10 @@ interface RompePreciosPanelProps {
   // este flujo de las de cualquier otro destino que reuse el mismo panel
   // (ver DestinoModal.tsx). El label mostrado se deriva de
   // cenefas.destino.{category}.label, así que un destino nuevo no necesita
-  // tocar este archivo, solo agregar su entrada al i18n.
-  category: "rompe_precios" | "parrilla_y_vinos";
+  // tocar este archivo, solo agregar su entrada al i18n. Redexpres se sumó acá
+  // (dejó de tener panel propio) al pasar al sistema de variables unificado --
+  // ya no hay ningún destino con un flujo distinto.
+  category: "rompe_precios" | "parrilla_y_vinos" | "redexpres";
 }
 
 export default function RompePreciosPanel({ category }: RompePreciosPanelProps) {

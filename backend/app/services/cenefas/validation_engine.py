@@ -32,8 +32,6 @@ def validate_products(products: list[dict]) -> dict:
 
         _check_price(p, row, name, errors)
         _check_description(p, row, name, errors, warnings)
-        _check_combo(p, row, name, errors)
-        _check_bank(p, row, name, warnings)
 
     return {
         "total":    len(products),
@@ -48,7 +46,7 @@ def validate_products(products: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def _check_price(p: dict, row: int, name: str, errors: list) -> None:
-    price_str = p.get("precioActual", "")
+    price_str = p.get("precioAnterior", "")
     # Extraer parte numérica: quitar símbolo de moneda y separadores de miles
     num_str = re.sub(r"[^\d,.]", "", price_str).replace(".", "").replace(",", ".")
     try:
@@ -94,27 +92,6 @@ def _check_description(p: dict, row: int, name: str, errors: list, warnings: lis
             "product": name,
             "type":    "description_long",
             "detail":  f"Descripción de {desc_len} caracteres (recomendado < {DESCRIPTION_WARN_CHARS})",
-        })
-
-
-def _check_combo(p: dict, row: int, name: str, errors: list) -> None:
-    mecanica = p.get("mecanica", "")
-    if re.match(r"^\d+[Xx]$", mecanica) and not p.get("precioActual", ""):
-        errors.append({
-            "row":     row,
-            "product": name,
-            "type":    "combo_missing_price",
-            "detail":  f"Producto combo ({mecanica}) sin precio activo",
-        })
-
-
-def _check_bank(p: dict, row: int, name: str, warnings: list) -> None:
-    if p.get("precioBanco") and not p.get("banco"):
-        warnings.append({
-            "row":     row,
-            "product": name,
-            "type":    "pbanco_without_banco",
-            "detail":  "Precio bancario presente sin nombre de banco",
         })
 
 
