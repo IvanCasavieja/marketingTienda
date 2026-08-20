@@ -776,8 +776,6 @@
       "aclaracion2": "Remark 2",
       "aclaracion3": "Remark 3"
     },
-    "learnedToast": "We added {{count}} new descriptions to your dictionary from this Excel.",
-    "learnedBadge": "+{{count}} new to catalog",
     "ai": {
       "button": "Generate descriptions and confirm prices with AI",
       "modalTitle": "AI-generated description suggestions",

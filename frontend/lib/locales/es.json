@@ -776,8 +776,6 @@
       "aclaracion2": "Aclaración 2",
       "aclaracion3": "Aclaración 3"
     },
-    "learnedToast": "Agregamos {{count}} descripciones nuevas a tu diccionario a partir de este Excel.",
-    "learnedBadge": "+{{count}} nuevas al catálogo",
     "ai": {
       "button": "Generar descripciones y confirmar precios con IA",
       "modalTitle": "Sugerencias de descripción generadas con IA",

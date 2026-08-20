@@ -346,7 +346,6 @@ export interface ConvertidorSummary {
   total: number;
   matched_count: number;
   unmatched_count: number;
-  learned_count: number;
 }
 
 // Par "mismo producto, dos SKUs" (sufijo suelto M/A en el nombre) detectado

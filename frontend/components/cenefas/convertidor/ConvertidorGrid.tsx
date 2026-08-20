@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { ArrowLeft, Download, Layers, Loader2, Merge, Sparkles, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { convertidorApi, type ConvertidorRow, type ConvertidorSummary, type MaPair, type UnificarGrupoItem } from "@/lib/api";
+import { convertidorApi, type ConvertidorRow, type MaPair, type UnificarGrupoItem } from "@/lib/api";
 import ConvertidorAiModal from "./ConvertidorAiModal";
 import ConvertidorMergeModal from "./ConvertidorMergeModal";
 import ConvertidorUnifyModal from "./ConvertidorUnifyModal";
@@ -92,7 +92,6 @@ function computeDescripcionWarnings(currentWarnings: string[], value: string): s
 interface Props {
   rows: ConvertidorRow[];
   setRows: Dispatch<SetStateAction<ConvertidorRow[] | null>>;
-  summary: ConvertidorSummary | null;
   maPairs: MaPair[];
   onReset: () => void;
 }
@@ -101,7 +100,7 @@ function maPairKey(sku1: string, sku2: string): string {
   return `${sku1}|${sku2}`;
 }
 
-export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onReset }: Props) {
+export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Props) {
   const { t } = useTranslation();
   const [scrollTop, setScrollTop] = useState(0);
   const [exporting, setExporting] = useState(false);
@@ -152,6 +151,11 @@ export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onRes
     () => rows.filter((r) => r.warnings.includes("missing_description")),
     [rows]
   );
+
+  // Vivo, no una foto fija del preview inicial -- así el contador refleja
+  // las filas aprobadas en esta misma sesión (vía "Generar con IA" o edición
+  // manual) sin necesitar recargar la página.
+  const matchedCount = rows.length - rowsNeedingDescripcion.length;
 
   // Fiambres cuyo nombre/descripción todavía dice "kg" — necesitan pasar a
   // 100g (descripción + precio÷10) aunque ya tengan descripción matcheada
@@ -344,6 +348,12 @@ export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onRes
               ...r,
               descripcion: value,
               warnings: computeDescripcionWarnings(r.warnings, value),
+              // Ya se aprobó desde acá (el único lugar que resuelve description
+              // + precio÷10 juntos) -- sin este reset, una fila fiambre_kg ya
+              // aprobada seguía volviendo a aparecer en "Generar con IA" cada
+              // vez que se reabría el modal en la misma sesión, porque este
+              // flag nunca se limpiaba y rowsFiambresKg se arma a partir de él.
+              es_fiambre_kg: false,
               // El precio ajustado (÷10 para fiambres que pasan a 100g) solo
               // se actualiza acá, en el estado local — nunca se manda al
               // backend. sku_descripciones no tiene columnas de precio y así
@@ -419,30 +429,23 @@ export default function ConvertidorGrid({ rows, setRows, summary, maPairs, onRes
             <Layers size={13} /> {t("convertidor.unificar.button")}
           </button>
         </div>
-        {summary && (
-          <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-300">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-              {t("convertidor.legendMissing")}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-violet-400" />
-              {t("convertidor.legendInvalidType")}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-              {t("convertidor.legendWarning")}
-            </span>
-            <span className="badge badge-blue">
-              {t("convertidor.matchedSummary", { matched: summary.matched_count, total: summary.total })}
-            </span>
-            {summary.learned_count > 0 && (
-              <span className="badge badge-green">
-                {t("convertidor.learnedBadge", { count: summary.learned_count })}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-300">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
+            {t("convertidor.legendMissing")}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-violet-400" />
+            {t("convertidor.legendInvalidType")}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+            {t("convertidor.legendWarning")}
+          </span>
+          <span className="badge badge-blue">
+            {t("convertidor.matchedSummary", { matched: matchedCount, total: rows.length })}
+          </span>
+        </div>
       </div>
 
       {visiblePairs.length > 0 && (

@@ -46,10 +46,11 @@ def _norm(name) -> str:
 _INPUT_ALIASES: dict[str, str] = {
     "codigo":         "codigo",
     "nombrearticulo": "nombre_articulo",
-    # "descripcion_excel", no "descripcion" -- ese nombre ya lo usa el campo
-    # de salida que llena match_rows() desde el catálogo; si coincidieran,
-    # el merge en match_rows pisaría uno con el otro sin querer.
-    "descripcion":    "descripcion_excel",
+    # La columna "Descripción" cruda de gestión NO se mapea a propósito: no
+    # pasó nunca por las reglas de estilo de la IA, así que no es una fuente
+    # confiable para resolver ni para aprender en el catálogo compartido
+    # (ver match_rows() -- un SKU sin match en el catálogo queda sin
+    # descripción, para resolverse por "Generar con IA" o a mano).
     "moneda":         "moneda",
     "precioant":      "precio_anterior",
     "precio":         "precio",
@@ -267,9 +268,7 @@ async def parse_input_excel(
     """Detecta la fila de headers real (puede no ser la fila 1 — el export
     real de gestión trae una fila de título + una fila en blanco antes),
     mapea columnas por nombre normalizado, y extrae por fila: codigo,
-    nombre_articulo, descripcion_excel (si el Excel ya trae una columna
-    "Descripción" propia -- ver match_rows() para cómo se prioriza contra
-    el catálogo), moneda, precio_anterior, precio, oferta, oferta_det,
+    nombre_articulo, moneda, precio_anterior, precio, oferta, oferta_det,
     descripcion_web, comprador, descuento, descuento_det, fecha_inicio,
     fecha_fin (estas últimas dos opcionales -- ver _format_vigencia).
 
@@ -289,7 +288,7 @@ async def parse_input_excel(
 
     Devuelve (filas, learned_aliases_count) -- este último es cuántos headers
     nuevos aprendió Tinín en esta llamada, para que el caller sepa si hace
-    falta commitear (mismo patrón que learned_count en match_rows())."""
+    falta commitear."""
     if filename.lower().endswith(".csv"):
         rows = _read_csv_rows(file_bytes)
     else:
@@ -427,7 +426,6 @@ async def parse_input_excel(
         parsed.append({
             "codigo":            codigo,
             "nombre_articulo":   _clean_str(cell(row, "nombre_articulo")),
-            "descripcion_excel": _clean_str(cell(row, "descripcion_excel")),
             "moneda":            _clean_str(cell(row, "moneda")) or "$",
             "precio_anterior":   _parse_price_or_none(precio_anterior_raw),
             "precio_anterior_raw": precio_anterior_raw,
@@ -457,17 +455,31 @@ async def parse_input_excel(
 # Acá se combinan: a diferencia de ambos precedentes, esto NO calcula el
 # precio nuevo ni lo persiste en ningún lado — solo marca la fila para que
 # el frontend decida qué mostrar/sugerir.
+#
+# Excepción confirmada con el equipo: chorizo, frankfurters y panchos NUNCA
+# pasan a 100g aunque el texto diga "Kg" -- el chorizo se vende por kilo por
+# decisión comercial, y frankfurters/panchos mantienen el peso original del
+# envase. Ninguno de los dos casos es "menos fiambre" que jamón cocido o
+# salame (que sí convierten) -- es una excepción por línea de producto, no
+# por categoría.
 
 _RE_FIAMBRE = re.compile(r"fiambr", re.IGNORECASE)
 _RE_UNIDAD_KG = re.compile(r"(?:^|[\s.])kg\.?(?:$|[\s.,)])", re.IGNORECASE)
+_RE_SIN_CONVERSION_100G = re.compile(r"\bchorizos?\b|\bfrankfurters?\b|\bpanchos?\b", re.IGNORECASE)
 
 
 def _tiene_unidad_kg(*textos: str) -> bool:
     return any(_RE_UNIDAD_KG.search(t) for t in textos if t)
 
 
+def _tiene_producto_sin_conversion(*textos: str) -> bool:
+    return any(_RE_SIN_CONVERSION_100G.search(t) for t in textos if t)
+
+
 def _es_fiambre_por_kg(comprador: str, nombre_articulo: str, descripcion: str, descripcion_web: str) -> bool:
     if not comprador or not _RE_FIAMBRE.search(comprador):
+        return False
+    if _tiene_producto_sin_conversion(nombre_articulo, descripcion, descripcion_web):
         return False
     return _tiene_unidad_kg(nombre_articulo, descripcion, descripcion_web)
 
@@ -541,9 +553,6 @@ def _compute_warnings(row: dict) -> list[str]:
 def _chunks(items: list, size: int):
     for i in range(0, len(items), size):
         yield items[i:i + size]
-
-
-_MAX_DESCRIPCION_LEN = 300  # mismo límite que SkuDescripcion.descripcion (String(300))
 
 
 # ---------------------------------------------------------------------------
@@ -624,23 +633,23 @@ def detect_ma_pairs(rows: list[dict], catalogo: dict[str, str]) -> list[dict]:
 
 
 async def match_rows(
-    parsed: list[dict], db: AsyncSession, current_user_id: int
-) -> tuple[list[dict], int, list[dict]]:
+    parsed: list[dict], db: AsyncSession
+) -> tuple[list[dict], list[dict]]:
     """Bulk lookup por SKU (un SELECT por cada 1000 códigos distintos, no
     N queries) + cómputo de warnings por fila.
 
-    Precedencia de la descripción, por fila: el catálogo (sku_descripciones)
-    siempre gana si ya tiene ese SKU -- se asume más confiable/ya curado que
-    lo que traiga el Excel. Si el catálogo no tiene el SKU pero el Excel sí
-    trae su propia columna "Descripción" con contenido, esa es información
-    NUEVA: se usa para resolver la fila y además se aprende (INSERT) en el
-    catálogo compartido, para que el próximo import de cualquier usuario ya
-    la traiga resuelta.
+    La descripción de una fila sale ÚNICA Y EXCLUSIVAMENTE del catálogo
+    (sku_descripciones) -- nunca de la columna "Descripción" cruda que trae
+    el Excel de gestión, aunque tenga contenido: esa columna no pasó nunca
+    por las reglas de estilo de la IA (ver _STYLE_RULES en convertidor_ai.py)
+    ni por revisión humana, así que no es una fuente confiable para el
+    catálogo compartido. Un SKU sin match queda con descripción vacía
+    (warning "missing_description", fila roja) para resolverse por
+    "Generar con IA" (usa nombre_articulo + descripcion_web, sí curadas) o a
+    mano -- nunca se aprende nada acá de forma automática/silenciosa.
 
-    Devuelve (rows, learned_count, ma_pairs) -- learned_count es cuántas
-    filas realmente se insertaron en sku_descripciones en esta llamada;
-    ma_pairs son los pares "mismo producto, dos SKUs" detectados (ver
-    detect_ma_pairs) todavía sin unificar."""
+    Devuelve (rows, ma_pairs) -- ma_pairs son los pares "mismo producto, dos
+    SKUs" detectados (ver detect_ma_pairs) todavía sin unificar."""
     skus = sorted({r["codigo"] for r in parsed if r["codigo"]})
     catalogo: dict[str, str] = {}
     for chunk in _chunks(skus, 1000):
@@ -672,25 +681,9 @@ async def match_rows(
                 if parte in faltantes:
                     catalogo.setdefault(parte, desc)
 
-    # Primera pasada: para cada SKU nuevo (sin match en catálogo) que el
-    # Excel resuelve, decidir el valor único que se va a aprender —
-    # primera ocurrencia gana si el SKU está repetido, y ya truncado a
-    # _MAX_DESCRIPCION_LEN. Esto se calcula ANTES de armar las filas para
-    # que, si el mismo SKU nuevo aparece dos veces con descripciones
-    # distintas (o una de ellas viene larga), TODAS sus filas terminen
-    # mostrando exactamente el mismo texto que se guarda en el catálogo —
-    # nunca una versión distinta o sin truncar solo por ser la 2ª ocurrencia.
-    nuevas: dict[str, str] = {}
-    for r in parsed:
-        if r["codigo"] in catalogo or r["codigo"] in nuevas:
-            continue
-        descripcion_excel = r["descripcion_excel"]
-        if descripcion_excel:
-            nuevas[r["codigo"]] = descripcion_excel[:_MAX_DESCRIPCION_LEN]
-
     rows = []
     for i, r in enumerate(parsed):
-        descripcion = catalogo.get(r["codigo"]) or nuevas.get(r["codigo"], "")
+        descripcion = catalogo.get(r["codigo"], "")
         row = {**r, "descripcion": descripcion}
         rows.append({
             "row_id":              i,
@@ -725,16 +718,7 @@ async def match_rows(
 
     ma_pairs = detect_ma_pairs(rows, catalogo)
 
-    learned_count = 0
-    if nuevas:
-        stmt = pg_insert(SkuDescripcion).values([
-            {"sku": sku, "descripcion": desc, "updated_by_id": current_user_id}
-            for sku, desc in nuevas.items()
-        ]).on_conflict_do_nothing(index_elements=["sku"])
-        result = await db.execute(stmt)
-        learned_count = result.rowcount or 0
-
-    return rows, learned_count, ma_pairs
+    return rows, ma_pairs
 
 
 # ---------------------------------------------------------------------------
