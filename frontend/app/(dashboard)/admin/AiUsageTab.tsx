@@ -237,11 +237,12 @@ export default function AiUsageTab({ userId, onSelectUser }: AiUsageTabProps = {
                     <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{fUsd(u.cost_usd)}</span>
                   </>
                 );
-                return onSelectUser && u.user_id != null ? (
+                const rowUserId = u.user_id;
+                return onSelectUser && rowUserId != null ? (
                   <button
-                    key={u.user_id}
+                    key={rowUserId}
                     type="button"
-                    onClick={() => onSelectUser(u)}
+                    onClick={() => onSelectUser({ ...u, user_id: rowUserId })}
                     className="flex items-center justify-between px-5 py-2.5 w-full text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
                   >
                     {rowContent}
