@@ -491,6 +491,25 @@ def load_products_from_bytes(
     # ── Mapear columnas ───────────────────────────────────────────────────
     raw_headers = [cell.value for cell in ws[header_row]]
     h: dict[str, int] = {}
+
+    # Paso 1: una columna cuyo nombre coincide EXACTO con la variable
+    # canónica (ej. una columna literalmente llamada "descripcion") siempre
+    # gana, sin importar el orden -- antes, con un excel que trae tanto
+    # "descripcion" como "Nombre del Articulo" (alias legacy de la misma
+    # variable), ganaba la que apareciera primero de izquierda a derecha en
+    # la planilla, así que "Nombre del Articulo" podía pisar en silencio a
+    # una columna "descripcion" real solo por estar más a la izquierda (bug
+    # real, visto con un excel real que traía las dos).
+    for idx, raw in enumerate(raw_headers):
+        if not raw:
+            continue
+        norm = _norm(str(raw))
+        canonical = aliases.get(norm)
+        if canonical and norm == _norm(canonical):
+            h[canonical] = idx
+
+    # Paso 2: el resto -- alias no exactos (ej. "Nombre del Articulo") y
+    # columnas desconocidas, pasadas tal cual.
     for idx, raw in enumerate(raw_headers):
         if not raw:
             continue
