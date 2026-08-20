@@ -188,27 +188,27 @@ def _fit_description_font_size(
 def _fit_description_to_box(comps: list[dict], product: dict) -> list[dict]:
     """Achica la fuente de la descripción cuando el nombre del producto no
     entra en una sola línea dentro de la caja diseñada -- reemplaza al
-    enfoque anterior (empujar el precio hacia abajo), que dejaba un hueco
+    enfoque anterior (empujar precioP hacia abajo), que dejaba un hueco
     entre código/descripción y el precio y encima requería re-implementar a
-    mano lo que "achicar texto si no entra" ya debería resolver. Aplica a
-    cualquier diseño donde descripcion y precioAnterior/precioOferta son dos
-    cajas de texto independientes apiladas verticalmente (no un único
-    cuadro con auto-layout compartido), así que una desborda sobre la otra
-    si no se achica.
+    mano lo que "achicar texto si no entra" ya debería resolver. Específico
+    de Parrilla y Vinos: ahí descripcion y precioP son dos cajas de texto
+    independientes apiladas verticalmente (no un único cuadro con
+    auto-layout compartido), así que una desborda sobre la otra si no se
+    achica.
 
     Red de seguridad para nombres EXTREMOS (ej. "Vino NICASIA VINEYARDS
     Cabernet Franc o Blanc de Blancs 750 ml", confirmado real): ni achicando
     al piso de _fit_description_font_size entran siempre -- ahí, además de
-    achicar, se empuja el precio hacia abajo, pero SOLO lo que realmente
-    sobra (re-estimado al tamaño YA achicado, no al original) más un margen
-    chico -- nunca el shift completo que tenía el enfoque viejo. En el caso
-    común (achicar alcanza) el precio no se mueve ni un milímetro."""
+    achicar, se empuja precioP hacia abajo, pero SOLO lo que realmente sobra
+    (re-estimado al tamaño YA achicado, no al original) más un margen chico
+    -- nunca el shift completo que tenía el enfoque viejo. En el caso común
+    (achicar alcanza) el precio no se mueve ni un milímetro."""
     desc_comp  = next((c for c in comps if _comp_uses_variable(c, "descripcion")), None)
-    # precioAnterior o precioOferta -- el que esté presente es el precio
-    # "grande" al que tiene sentido correrle el hueco de sobra como red de
-    # seguridad.
+    # precioP (Parrilla y Vinos) o precioOferta (sistema unificado nuevo,
+    # Rompe Precios incluido) -- el que esté presente es el precio "grande"
+    # al que tiene sentido correrle el hueco de sobra como red de seguridad.
     price_comp = next(
-        (c for c in comps if _comp_uses_variable(c, "precioAnterior") or _comp_uses_variable(c, "precioOferta")),
+        (c for c in comps if _comp_uses_variable(c, "precioP") or _comp_uses_variable(c, "precioOferta")),
         None,
     )
     if not desc_comp:
@@ -744,19 +744,7 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     siempre, y el render trataba la página entera (3 franjas reales) como
     un solo producto -- de ahí que las 3 franjas terminaran mostrando
     siempre el mismo.
-
-    Agrupa por cercanía espacial a un componente "ancla" por banda (ver
-    abajo), NO por un simple sort-por-Y-y-cortar-en-N-partes-consecutivas
-    como hacía antes. Ese método viejo solo funcionaba por casualidad en
-    diseños de una sola columna (ej. 3xA4, bandas apiladas verticalmente,
-    donde el orden por Y ya alcanza para separarlas) -- en una GRILLA real
-    (ej. Redexpres "Pinchos x9", 3 columnas × 3 filas) varias celdas
-    comparten Y similar, así que cortar en N tandas consecutivas después de
-    ordenar solo por Y mezclaba componentes de celdas vecinas dentro de una
-    misma "banda", repitiendo y salteando productos (bug real, visto al
-    migrar Redexpres al motor v2: con 9 celdas, ordenar por Y y cortar en 9
-    de a 2 pegaba <<descripcion>> de una celda con el <<Precio>> de la celda
-    de al lado en la misma fila).
+    Splits non-background components by Y order into that many groups.
     Returns None when n_slots == 1 (single-slot → standard per-product render).
     """
     import math
@@ -768,17 +756,10 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
             return [c["variable"]]
         return [seg["value"] for seg in (c.get("segments") or []) if seg.get("type") == "variable"]
 
-    def _center(c: dict) -> tuple[float, float]:
-        b = c.get("base_bounds", {})
-        return (b.get("x", 0) + b.get("width", 0) / 2, b.get("y", 0) + b.get("height", 0) / 2)
-
     non_bg = [c for c in components if not c.get("locked")]
     var_counts: Counter = Counter()
-    comp_vars: list[list[str]] = []
     for c in non_bg:
-        names = _comp_variable_names(c)
-        comp_vars.append(names)
-        var_counts.update(names)
+        var_counts.update(_comp_variable_names(c))
     if not var_counts:
         return None
 
@@ -786,44 +767,18 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     if n_slots <= 1:
         return None  # single-slot template
 
-    # Ancla: variable que aparece EXACTAMENTE una vez por banda (count ==
-    # n_slots) -- su posición (una por banda) sirve de centro de cada celda
-    # para asignar el resto de los componentes por distancia, sin asumir
-    # ninguna disposición particular (columna, grilla, lo que sea).
-    # "descripcion" preferida por ser la variable más universal de cualquier
-    # plantilla real; si no calza (caso raro), se usa cualquier otra que sí.
-    anchor_var = "descripcion" if var_counts.get("descripcion") == n_slots else next(
-        (v for v, cnt in var_counts.items() if cnt == n_slots), None
-    )
+    # Sort by Y, then split into n_slots consecutive groups
+    sorted_comps = sorted(non_bg, key=lambda c: c.get("base_bounds", {}).get("y", 0))
+    total      = len(sorted_comps)
+    group_size = total // n_slots
+    remainder  = total % n_slots
 
-    if anchor_var is None:
-        # Ninguna variable aparece una sola vez por banda -- fallback al
-        # criterio viejo (sort por Y, cortar en N), mismo comportamiento que
-        # antes para este caso límite.
-        sorted_comps = sorted(non_bg, key=lambda c: c.get("base_bounds", {}).get("y", 0))
-        total, group_size, remainder = len(sorted_comps), len(sorted_comps) // n_slots, len(sorted_comps) % n_slots
-        bands, idx = [], 0
-        for i in range(n_slots):
-            size = group_size + (1 if i < remainder else 0)
-            bands.append(sorted_comps[idx : idx + size])
-            idx += size
-        return bands
-
-    anchor_indices = [i for i, names in enumerate(comp_vars) if anchor_var in names]
-    # Orden de lectura natural (arriba-a-abajo, izquierda-a-derecha) -- define
-    # el índice de banda, que el caller usa para repartir products[i:i+n] en
-    # ese mismo orden.
-    anchor_indices.sort(key=lambda i: (_center(non_bg[i])[1], _center(non_bg[i])[0]))
-    anchor_centers = [_center(non_bg[i]) for i in anchor_indices]
-
-    bands: list[list[dict]] = [[] for _ in range(n_slots)]
-    for c in non_bg:
-        cx, cy = _center(c)
-        band_idx = min(
-            range(n_slots),
-            key=lambda k: (cx - anchor_centers[k][0]) ** 2 + (cy - anchor_centers[k][1]) ** 2,
-        )
-        bands[band_idx].append(c)
+    bands: list[list[dict]] = []
+    idx = 0
+    for i in range(n_slots):
+        size = group_size + (1 if i < remainder else 0)
+        bands.append(sorted_comps[idx : idx + size])
+        idx += size
 
     return bands
 
@@ -879,10 +834,9 @@ def render_template_to_pptx(
     el resultado solo tiene los shapes que SÍ se lograron extraer, y
     cualquier diseño que viva en el layout/master del archivo se pierde.
 
-    category: destino del template (ej. "rompe_precios") -- ya no cambia el
-    comportamiento del render (sistema unificado, mismo patrón de plantilla
-    para todos los destinos); se mantiene en la firma por compatibilidad con
-    los call sites existentes (jobs.py la pasa posicionalmente).
+    category: destino del template (ej. "rompe_precios") — habilita el
+    dedupe de símbolo de moneda duplicado en segmentos (ver _render_slide),
+    restringido a propósito a Rompe Precios.
 
     Returns (pptx_bytes, missing_vars) donde missing_vars es la lista de
     variables que el template usa pero que no fueron encontradas en el Excel.
@@ -890,9 +844,10 @@ def render_template_to_pptx(
     master_format = template_def.get("master_format", "a4")
     components    = template_def.get("components", [])
     rules         = template_def.get("rules", [])
-    # Todo destino comparte el mismo patrón de plantilla PPTX (símbolo "$"
-    # como run estático separado, junto al placeholder de precio).
-    dedupe_currency_prefix = True
+    # Parrilla y Vinos comparte el mismo patrón de plantilla PPTX que Rompe
+    # Precios (símbolo "$" como run estático separado, junto al placeholder
+    # <<Precio>>) -- mismo pedido explícito de que se comporte igual.
+    dedupe_currency_prefix = category in ("rompe_precios", "parrilla_y_vinos")
 
     if image_overrides:
         components = patch_image_overrides(components, image_overrides)
@@ -978,7 +933,8 @@ def render_template_to_pptx(
                     product       = pg[band_idx]
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
-                    visible_comps = _fit_description_to_box(visible_comps, product)
+                    if category in ("rompe_precios", "parrilla_y_vinos"):
+                        visible_comps = _fit_description_to_box(visible_comps, product)
                     _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
                 elif preserve_source:
                     # Página parcial (menos productos que celdas) y estamos
@@ -1018,7 +974,8 @@ def render_template_to_pptx(
 
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
-            visible_comps = _fit_description_to_box(visible_comps, product)
+            if category in ("rompe_precios", "parrilla_y_vinos"):
+                visible_comps = _fit_description_to_box(visible_comps, product)
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
 

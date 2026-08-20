@@ -4,14 +4,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeftRight, Presentation } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import DestinoModal, { type CenefaDestino } from "@/components/cenefas/DestinoModal";
+import RedExpresPanel from "@/components/cenefas/redexpres/RedExpresPanel";
 import RompePreciosPanel from "@/components/cenefas/rompeprecios/RompePreciosPanel";
 import TininFloating from "@/components/cenefas/TininFloating";
 
 // Host: primero pregunta a qué destino se va (modal), después renderiza el
-// panel correspondiente. Los tres destinos comparten el mismo panel
-// (RompePreciosPanel, parametrizado por category) desde que Redexpres pasó
-// al sistema de variables unificado -- mismo flujo, plantillas/Excel
-// separados por destino. Todos comparten PreviewStep.
+// panel correspondiente. Redexpres es un flujo completamente distinto
+// (plantillas, variables, UI); Rompe Precios y Parrilla y Vinos comparten el
+// mismo panel (RompePreciosPanel, parametrizado por category) porque son el
+// mismo flujo con plantillas/Excel separados. Todos comparten PreviewStep.
 
 function CenefasHost() {
   const { t } = useTranslation();
@@ -61,7 +62,7 @@ function CenefasHost() {
         )}
       </div>
 
-      {destino === "redexpres" && <RompePreciosPanel category="redexpres" />}
+      {destino === "redexpres" && <RedExpresPanel />}
       {destino === "rompe_precios" && <RompePreciosPanel category="rompe_precios" />}
       {destino === "parrilla_y_vinos" && <RompePreciosPanel category="parrilla_y_vinos" />}
 

@@ -4,7 +4,7 @@ import { FileSpreadsheet, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { convertidorApi, type ConvertidorRow, type ConvertidorSummary, type MaPair } from "@/lib/api";
-import { FileDropField } from "@/components/cenefas/FileDropField";
+import { FileDropField } from "@/components/cenefas/redexpres/RedExpresPanel";
 import ConvertidorGrid from "./ConvertidorGrid";
 
 export default function ConvertidorPanel() {

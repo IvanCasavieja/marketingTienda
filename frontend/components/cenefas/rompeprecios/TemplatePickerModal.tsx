@@ -49,7 +49,7 @@ const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - 1 + i);
 
 interface TemplatePickerModalProps {
-  category: "rompe_precios" | "parrilla_y_vinos" | "redexpres";
+  category: "rompe_precios" | "parrilla_y_vinos";
   categoryLabel: string;
   onClose: () => void;
   onSelect: (tmpl: CenefaTemplateRecord) => void;

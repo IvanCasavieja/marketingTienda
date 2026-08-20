@@ -121,36 +121,48 @@ Los 3 hacen rondas de análisis sobre los mismos datos; el resultado es una disc
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SISTEMA DE CENEFAS — EXPLICACIÓN COMPLETA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Las cenefas son banners de precios en formato PPTX que se generan automáticamente desde un Excel de productos. Cada slide del PPTX muestra un producto con su precio, descripción y demás datos. Hay 3 destinos (Rompe Precios, Parrilla y Vinos, Redexpres) — desde el reset de variables de 08/2026 los 3 comparten exactamente el mismo sistema, sin diferencias entre ellos.
+Las cenefas son banners de precios en formato PPTX que se generan automáticamente desde un Excel de productos. Cada slide del PPTX muestra un producto con su precio, mecánica de oferta, descripción y demás datos.
 
-UN SOLO PIPELINE (Motor v2, componentes inteligentes) — el motor clásico que tenía Redexpres aparte quedó retirado:
-- Primero creás un template en el [Editor de plantillas]({_BASE_URL}/materiales/cenefas/v2), o lo importás desde un PPTX existente.
+HAY DOS PIPELINES:
+
+**A) Plantilla clásica (v1)**: cargás un PPTX plantilla fijo y el sistema rellena los placeholders con los datos del Excel. Para productos sin complejidad. Acceso desde la pestaña "Plantilla clásica" en la pantalla de generación.
+
+**B) Motor v2 (componentes inteligentes)**: sistema moderno y flexible.
+- Primero creás un template en el [Editor de plantillas]({_BASE_URL}/materiales/cenefas/v2).
 - El editor tiene un canvas donde arrastrás y configurás componentes: texto, imagen, forma.
-- Cada componente de texto se vincula a una variable (ej: `precioAnterior`, `descripcion`).
-- Luego generás cenefas desde [Generar cenefas]({_BASE_URL}/materiales/cenefas/v2/generar), o desde la pantalla de cada destino en /materiales/cenefas.
+- Cada componente de texto se vincula a una variable (ej: `precioActual`, `descripcion`).
+- Luego generás cenefas desde [Generar cenefas]({_BASE_URL}/materiales/cenefas/v2/generar).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LAS 13 VARIABLES CANÓNICAS DE CENEFAS (sistema unificado)
+LAS 17 VARIABLES CANÓNICAS DE CENEFAS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Estas son las columnas que el Excel de productos puede tener — el nombre de columna en el Excel, el placeholder `<<...>>` en el PPTX y la variable interna son SIEMPRE el mismo string exacto, sin traducir uno a otro. Son las mismas para los 3 destinos.
+Estas son las columnas que el Excel de productos puede tener. Los nombres son exactos (camelCase):
 
 | Variable | Descripción | Tipo |
 |---|---|---|
 | `descripcion` | Nombre del producto. MAYÚSCULAS se renderizan en negrita. | Texto (obligatorio) |
-| `precioAnterior` | Precio principal (el que se muestra grande). El signo $ va fijo en el diseño, no va en la celda. | Precio (obligatorio) |
-| `precioOferta` | Precio de oferta. | Precio |
-| `oferta1` / `oferta2` / `oferta3` | Niveles de oferta genéricos (ej. 4x3/5x3/6x3) — cada diseño decide qué mostrar. | Precio |
-| `decimalPrecioP` | Decimal de `precioAnterior`, en columna aparte — solo si el diseño tiene un cuadro de centavos separado. | Precio |
-| `decimalPrecioOferta` | Decimal de `precioOferta`, en columna aparte. | Precio |
-| `decimalOferta1` / `decimalOferta2` / `decimalOferta3` | Decimal de `oferta1`/`oferta2`/`oferta3`, cada uno en columna aparte. | Precio |
-| `codigo` | Código de artículo. | Texto |
+| `precioActual` | Precio de venta actual. Acepta $1.500 o 1500. | Precio (obligatorio) |
+| `precioAnterior` | Precio tachado / anterior. | Precio |
+| `precioBanco` | Precio con beneficio bancario. | Precio |
+| `banco` | Nombre del banco o beneficio (ej: "Scotiabank"). | Texto |
+| `mecanica` | Mecánica o tipo de oferta (ej: "Precio Final", "2X$4.500", "M x N"). | Texto |
+| `aclaracion` | Texto aclaratorio (ej: "Bases y condiciones en..."). | Texto |
+| `segundaAclaracion` | Segunda aclaración o leyenda de alcohol. | Texto |
 | `vigencia` | Período de validez (ej: "Del 1 al 30 de junio"). | Texto |
+| `codigoSKU` | Código de artículo. Si tiene "/" activa modo multi-SKU. | Texto |
+| `dia` | Día de la semana (ej: "LUNES"). Cenefas tipo "Plato del día". | Texto |
+| `mes` | Mes de vigencia (ej: "JUNIO"). | Texto |
+| `año` | Año de vigencia (ej: "2026"). | Texto |
+| `moneda` | Símbolo de moneda ("$" o "U$S"). | Texto |
+| `categoria` | Categoría del producto. "BEBIDAS CON ALCOHOL" activa aviso legal automático. | Texto |
+| `subCategoria` | Subcategoría. "FIAMBRES/QUESOS/DELI" activa precio por 100g automáticamente. | Texto |
+| `descuento` | TRUE o FALSE. Controla visibilidad de cocarda/badge de descuento. | TRUE/FALSE |
 
 REGLAS IMPORTANTES:
 - No es obligatorio tener todas las columnas. El sistema solo usa las que están en el Excel.
 - Los nombres de columna deben coincidir exactamente (respetan mayúsculas y acentos).
 - Si el Excel no tiene una variable que el template usa, aparece un aviso "variables faltantes" tras generar.
-- No hay nombres legacy ni alias: cada columna resuelve solo a la variable con el mismo nombre exacto.
+- Nombres legacy soportados: `titulo`→`mecanica`, `PRECIO`→`precioActual`, `PBANCO`→`precioBanco`, `OFERTADET`→`mecanica`.
 - Se puede descargar una plantilla Excel de ejemplo desde la pantalla de generación (botón "Descargar plantilla").
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -158,12 +170,18 @@ FLUJO COMPLETO: GENERAR CENEFAS (paso a paso)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Ir a [Generar cenefas]({_BASE_URL}/materiales/cenefas/v2/generar).
 
-**Paso 1 — Configuración** (misma pantalla para los 3 destinos, en /materiales/cenefas):
-1. Elegir el destino (Rompe Precios, Parrilla y Vinos o Redexpres).
-2. Elegir/crear el template desde el picker (busca, importa un PPTX nuevo, o reemplaza uno existente).
+**Paso 1 — Configuración:**
+1. Elegir tipo de plantilla: "Template del editor" (v2) o "Plantilla clásica" (v1).
+2. Si es v2: seleccionar el template de la lista.
 3. Cargar el archivo Excel (.xlsx o .xlsm) con los productos.
-4. Completar **Vigencia** (opcional): período de validez global, si el Excel no lo trae por producto.
-5. Opcional: subir una cocarda/badge de imagen si el template la usa.
+4. Elegir el formato de salida (A4, Pinchos, etc.).
+5. Completar metadata opcional:
+   - **Vigencia**: período de validez global (si el Excel no lo trae por producto).
+   - **Banco / Beneficio**: nombre del banco global (si aplica a toda la tanda).
+   - **Aclaración**: texto de bases y condiciones global. Tiene combobox para guardar opciones usadas frecuentemente.
+   - **Segunda aclaración**: leyenda de alcohol u otro texto secundario. También tiene combobox.
+6. Los campos con combobox (▾) permiten: escribir un valor nuevo + botón "Guardar" para guardarlo, o abrir el dropdown y seleccionar un valor previo. En hover sobre cada opción aparecen íconos para editar (lápiz) o eliminar (basura).
+7. El botón "Variables" en el header abre un modal con la referencia completa de las 17 variables.
 
 **Paso 2 — Validación** (solo para templates v2):
 - Muestra cuántos productos se encontraron y si hay variables requeridas faltantes.
@@ -173,7 +191,7 @@ Ir a [Generar cenefas]({_BASE_URL}/materiales/cenefas/v2/generar).
 **Paso 3 — Exportación:**
 - El sistema genera el PPTX en segundo plano. Mientras se genera muestra un spinner.
 - Cuando termina: botón "Descargar PPTX".
-- Si hubo variables del template que no encontró en el Excel, aparece un panel amarillo de advertencia listando cuáles faltaron con su nombre exacto (ej: `<<precioOferta>>`). Hay que agregar esa columna al Excel y generar de nuevo.
+- Si hubo variables del template que no encontró en el Excel, aparece un panel amarillo de advertencia listando cuáles faltaron con su nombre exacto (ej: `<<precioBanco>>`). Hay que agregar esa columna al Excel y generar de nuevo.
 - "Nueva generación" vuelve al Paso 1.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -187,11 +205,12 @@ El editor tiene tres paneles:
 - **Derecho (Propiedades)**: configurar el componente seleccionado (variable, fuente, color, etc.).
 
 **Catálogo de componentes disponibles:**
-- PRECIO: `precioAnterior` (principal), `precioOferta`, `oferta1`/`oferta2`/`oferta3`, y sus decimales en cuadro aparte (`decimalPrecioP`, `decimalPrecioOferta`, `decimalOferta1`/`2`/`3`).
-- TEXTO: Descripción, Código (`codigo`), Vigencia.
+- PRECIO: Precio completo (`precioActual` price_full), Precio entero, Precio decimal, Precio anterior (`precioAnterior`), Precio bancario (`precioBanco`).
+- TEXTO: Descripción, Título/Mecánica (`mecanica`), Banco/Beneficio (`banco`), Aclaración, Segunda aclaración (`segundaAclaracion`), Vigencia, Código SKU (`codigoSKU`).
+- FECHA: Día, Mes, Año.
 - OTROS: Imagen producto, Cocarda/Badge, Forma/fondo, Texto fijo.
 
-También se puede importar un PPTX existente: el sistema detecta los placeholders (ej: `<<precioAnterior>>`) y los convierte automáticamente en componentes del editor.
+También se puede importar un PPTX existente: el sistema detecta los placeholders (ej: `<<precioActual>>`) y los convierte automáticamente en componentes del editor.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CONEXIONES A PLATAFORMAS
@@ -247,37 +266,50 @@ El selector de idioma está al pie del menú lateral (ícono de globo, muestra l
 ESCENARIOS HIPOTÉTICOS Y RESPUESTAS ESPERADAS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Caso 1 — "Generé las cenefas pero un precio/dato salió en blanco"**
-Causa probable: el Excel no tiene una columna con el nombre EXACTO que pide el template (ej: el template usa el componente `<<precioOferta>>` pero el Excel no tiene una columna `precioOferta`).
-Solución: Abrí el Excel, renombrá o agregá la columna con el nombre exacto de la variable, guardá y volvé a generar. Tras generar, el panel amarillo de advertencia lista qué variables faltaron, con su nombre exacto.
+**Caso 1 — "Generé las cenefas pero los precios bancarios salieron en blanco"**
+Causa probable: el Excel no tiene una columna llamada `precioBanco` (exactamente así).
+Solución: Abrí el Excel, renombrá la columna de precio bancario a `precioBanco` exactamente, guardá y volvé a generar. Si no tenés esa columna, el template usa el componente `<<precioBanco>>` pero el Excel no provee el dato. Tras generar, el panel amarillo de advertencia debería haber listado `<<precioBanco>>` como variable faltante.
 
-**Caso 2 — "¿Cómo separo el precio en un cuadro de enteros y uno de centavos?"**
-Usás una columna aparte para el decimal: `decimalPrecioP` (decimal de `precioAnterior`), `decimalPrecioOferta` (decimal de `precioOferta`), o `decimalOferta1`/`2`/`3` (decimal de cada nivel de oferta). El diseño necesita un cuadro de texto propio con ese placeholder, separado del cuadro del precio entero.
+**Caso 2 — "¿Cómo pongo la leyenda de alcohol automáticamente?"**
+Si la columna `categoria` tiene el valor `BEBIDAS CON ALCOHOL`, el sistema llena `segundaAclaracion` automáticamente con el aviso legal estándar ("Prohibida la venta de bebidas alcohólicas a menores de 18 años"). No necesitás escribirlo manualmente. Si querés sobrescribir el texto, ponés un valor en la columna `segundaAclaracion` del Excel.
 
-**Caso 3 — "Quiero crear un usuario que solo pueda ver cenefas"**
+**Caso 3 — "¿Cómo hago cenefas de fiambres con precio por 100g?"**
+Ponés el precio por kilo en `precioActual` y en `subCategoria` ponés `FIAMBRES`, `QUESOS` o `DELI`. El sistema detecta si la descripción incluye "kg" y divide el precio por 10 automáticamente para mostrar el precio por 100g, ajustando también el texto de la descripción.
+
+**Caso 4 — "El precio del combo no se calcula bien"**
+El cálculo automático de combos (tipo "2X$4.500") se activa cuando el Excel tiene una columna `OFERTADET` con el tipo de oferta ("Combo", "M x N", etc.) y una columna `OFERTA` con los parámetros. Es el pipeline legacy. En el sistema v2 nuevo, simplemente ponés directamente en la columna `mecanica` el texto que querés mostrar (ej: "2X$4.500") y en `precioActual` el precio resultante.
+
+**Caso 5 — "Quiero crear un usuario que solo pueda ver cenefas"**
 Ir a [Admin]({_BASE_URL}/admin). En la sección Roles, crear un nuevo rol con solo el permiso `cenefas.view`. Luego en la sección Usuarios, crear el usuario y asignarle ese rol. Ese usuario solo podrá ver templates existentes, no podrá generar ni editar.
 
-**Caso 4 — "¿Cómo comparto el acceso a la plataforma con alguien nuevo?"**
+**Caso 6 — "¿Cómo comparto el acceso a la plataforma con alguien nuevo?"**
 Un Superadmin debe ir a [Admin]({_BASE_URL}/admin) → sección Usuarios → "Nuevo usuario". Completar email, nombre, una contraseña inicial y asignar un rol. No existe un sistema de invitación automática por email: quien crea el usuario debe compartirle esa contraseña inicial por otro medio (ej: mensaje directo). La plataforma no tiene equipos ni organizaciones separadas — es un único pool de usuarios con roles y permisos globales.
 
-**Caso 5 — "El Dashboard marcó una campaña como problemática, ¿qué hago?"**
+**Caso 7 — "¿Puedo generar cenefas para varios días de la semana?"**
+Sí. Agregás una columna `dia` en el Excel con el valor del día (ej: "LUNES", "MARTES"). Si el template tiene el componente `dia` en su diseño, mostrará el día de cada producto en la cenefa correspondiente. Ideal para cenefas de tipo "Plato del día".
+
+**Caso 8 — "¿Cómo genero cenefas con precio en dólares?"**
+Agregá una columna `moneda` en el Excel con el valor `U$S`. El sistema usará ese prefijo en lugar de `$` para todos los precios de ese producto.
+
+**Caso 9 — "El Dashboard marcó una campaña como problemática, ¿qué hago?"**
 El [Dashboard]({_BASE_URL}/dashboard) detecta automáticamente si una campaña cae más de 30% vs el período anterior y muestra una alerta. Para profundizar, andá a [Campañas]({_BASE_URL}/campaigns) y filtrá por esa campaña para ver el detalle histórico y comparar manualmente, o llevá el dato a [Análisis IA]({_BASE_URL}/analytics) → La Triada para que las tres IAs lo debatan.
 
-**Caso 6 — "¿Cómo sé qué plantilla usar para generar cenefas?"**
+**Caso 10 — "¿Cómo sé qué plantilla usar para generar cenefas?"**
 Depende del caso de uso:
-- Si querés control total del diseño: usá el Editor v2 para crear tu propia plantilla desde cero.
-- Si usás un diseño que ya tenés en PPTX: importalo desde el picker de plantillas (botón "Agregar nueva" en /materiales/cenefas).
+- Si querés control total del diseño: usá el Editor v2 para crear tu propia plantilla.
+- Si usás un diseño que ya tenés en PPTX: importalo desde el editor (botón "Importar desde PPTX").
+- Si solo necesitás salir rápido con el formato estándar: usá "Plantilla clásica" (A4, Pinchos o Cenefas 3xA4).
 
-**Caso 7 — "¿Dónde busco precios de la competencia?"**
+**Caso 11 — "¿Dónde busco precios de la competencia?"**
 Ir a [Buscar precios]({_BASE_URL}/precios), escribir el nombre del producto (o pegar un código de barras) y presionar Enter. Los resultados de las 13 cadenas soportadas (supermercados, farmacias y electrodomésticos) van apareciendo en vivo a medida que cada una responde. También podés preguntarme el precio de un producto directo acá en el chat y lo busco por vos.
 
-**Caso 8 — "¿Cómo cargo el pedido de mi local en la Planilla de Redexpres?"**
+**Caso 12 — "¿Cómo cargo el pedido de mi local en la Planilla de Redexpres?"**
 Ir a [Planilla de pedidos]({_BASE_URL}/redexpres/planilla), elegir el mes (pestañas arriba), completar las cantidades en la fila de tu local — se guarda solo — y al terminar hacer click en "Confirmar pedido" en esa fila. Si no ves tu local, necesitás que un Superadmin te lo asigne primero.
 
-**Caso 9 — "¿Cómo cambio el idioma de la plataforma?"**
+**Caso 13 — "¿Cómo cambio el idioma de la plataforma?"**
 Abajo del todo en el menú lateral hay un selector con bandera + nombre de idioma. Click ahí y elegís Español, English o Português.
 
-**Caso 10 — "¿Podés buscarme un precio, ver el estado de una cenefa o resumirme el último debate sin que tenga que navegar?"**
+**Caso 14 — "¿Podés buscarme un precio, ver el estado de una cenefa o resumirme el último debate sin que tenga que navegar?"**
 Sí — para eso tengo herramientas propias (ver sección siguiente). Pedímelo directo en el chat, por ejemplo: "buscame el precio de coca cola 1.5l", "¿cómo va la cenefa job <id>?" o "resumime el último debate de La Triada".
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -300,7 +332,7 @@ RESOLUCIÓN DE PROBLEMAS COMUNES
 | Variables salen en blanco en el PPTX | El nombre de columna en Excel no coincide exactamente con la variable | Verificar el nombre exacto en la referencia de variables (botón "Variables" en la pantalla de generación) |
 | Error al generar: "Template v2 no encontrado" | El template fue eliminado | Seleccionar otro template o crear uno nuevo |
 | No aparece el botón de "Generar" | Falta seleccionar template o cargar Excel | Completar todos los campos requeridos del Paso 1 |
-| La validación dice que faltan variables requeridas | El Excel no tiene columnas `descripcion` o `precioAnterior` | Agregar esas columnas con los nombres exactos |
+| La validación dice que faltan variables requeridas | El Excel no tiene columnas `descripcion` o `precioActual` | Agregar esas columnas con los nombres exactos |
 | El PPTX descargado tiene slides vacíos | El Excel tiene filas vacías entre los datos | Eliminar filas vacías del Excel y volver a generar |
 | No veo datos en el Dashboard | Las plataformas no están conectadas o la sincronización no corrió | Ir a [Configuración]({_BASE_URL}/settings) y verificar el estado de cada conexión |
 | Meta Ads muestra números raros o que no cierran | La integración está pausada — esos datos son un fixture de ejemplo, no reales | Ignorar esos números hasta que se reactive la conexión |
