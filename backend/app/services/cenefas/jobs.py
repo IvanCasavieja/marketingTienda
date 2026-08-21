@@ -229,7 +229,7 @@ async def run_generation_job(
                 )
 
             products = await asyncio.to_thread(
-                load_products_from_bytes, excel_bytes, vigencia, aclaracion, otra_alcohol, banco, category
+                load_products_from_bytes, excel_bytes
             )
             validation = validate_products(products)
             summary    = build_summary(validation)

@@ -995,7 +995,5 @@ def generate_from_template_v2(
     image_overrides: dict[str, tuple[bytes, str]] | None = None,
 ) -> tuple[bytes, list[str]]:
     """Parsea Excel y genera PPTX desde template v2. Returns (bytes, missing_vars)."""
-    products = load_products_from_bytes(
-        excel_bytes, vigencia, aclaracion, otra_alcohol, banco
-    )
+    products = load_products_from_bytes(excel_bytes)
     return render_template_to_pptx(template_def, products, target_format, image_overrides)

@@ -316,7 +316,7 @@ async def validate_csv(
 
     excel_bytes = await read_limited(excel, "Excel")
     try:
-        products = load_products_from_bytes(excel_bytes, vigencia, aclaracion, otra_alcohol, banco, tmpl.category)
+        products = load_products_from_bytes(excel_bytes)
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Columna requerida faltante en el Excel: {e}")
     except Exception as e:

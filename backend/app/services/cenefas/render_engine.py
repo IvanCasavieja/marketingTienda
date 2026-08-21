@@ -626,7 +626,7 @@ def generate_pptx_bytes(
     banco: str = "",
     margin_cm: float = 0.0,
 ) -> bytes:
-    products = load_products_from_bytes(excel_bytes, vigencia, aclaracion, otra_alcohol, banco)
+    products = load_products_from_bytes(excel_bytes)
 
     prs = Presentation(io.BytesIO(template_bytes))
     if not prs.slides:
