@@ -130,40 +130,36 @@ HAY DOS PIPELINES:
 **B) Motor v2 (componentes inteligentes)**: sistema moderno y flexible.
 - Primero creás un template en el [Editor de plantillas]({_BASE_URL}/materiales/cenefas/v2).
 - El editor tiene un canvas donde arrastrás y configurás componentes: texto, imagen, forma.
-- Cada componente de texto se vincula a una variable (ej: `precioActual`, `descripcion`).
+- Cada componente de texto se vincula a una variable (ej: `precioRegular`, `descripcion`).
 - Luego generás cenefas desde [Generar cenefas]({_BASE_URL}/materiales/cenefas/v2/generar).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LAS 17 VARIABLES CANÓNICAS DE CENEFAS
+LAS 21 VARIABLES ESTÁNDARES DE CENEFAS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Estas son las columnas que el Excel de productos puede tener. Los nombres son exactos (camelCase):
 
 | Variable | Descripción | Tipo |
 |---|---|---|
-| `descripcion` | Nombre del producto. MAYÚSCULAS se renderizan en negrita. | Texto (obligatorio) |
-| `precioActual` | Precio de venta actual. Acepta $1.500 o 1500. | Precio (obligatorio) |
-| `precioAnterior` | Precio tachado / anterior. | Precio |
-| `precioBanco` | Precio con beneficio bancario. | Precio |
-| `banco` | Nombre del banco o beneficio (ej: "Scotiabank"). | Texto |
-| `mecanica` | Mecánica o tipo de oferta (ej: "Precio Final", "2X$4.500", "M x N"). | Texto |
-| `aclaracion` | Texto aclaratorio (ej: "Bases y condiciones en..."). | Texto |
-| `segundaAclaracion` | Segunda aclaración o leyenda de alcohol. | Texto |
+| `descripcion` | Nombre del producto. MAYÚSCULAS se renderizan en negrita. | Texto |
+| `codigo` | Código SKU / código de producto. | Texto |
+| `precioRegular` | Precio base (sin decimales). | Precio |
+| `precioOferta` / `precioOferta2` / `precioOferta3` / `precioOferta4` | Precios de oferta, hasta 4 niveles. | Precio |
+| `decimalRegular` | Decimal del precio regular (cuadro aparte). | Texto |
+| `decimalOferta` / `decimalOferta2` / `decimalOferta3` / `decimalOferta4` | Decimal de cada nivel de oferta. | Texto |
+| `precioBanco` | Precio con descuento bancario. | Precio |
+| `decimalBanco` | Decimal del precio bancario. | Texto |
+| `banco` | Nombre del banco o medio de pago (ej: "Scotiabank"). | Texto |
+| `mecanica` | Mecánica o tipo de oferta (ej: "Comprando 3, $150 la unidad", "3x2"). | Texto |
 | `vigencia` | Período de validez (ej: "Del 1 al 30 de junio"). | Texto |
-| `codigoSKU` | Código de artículo. Si tiene "/" activa modo multi-SKU. | Texto |
-| `dia` | Día de la semana (ej: "LUNES"). Cenefas tipo "Plato del día". | Texto |
-| `mes` | Mes de vigencia (ej: "JUNIO"). | Texto |
-| `año` | Año de vigencia (ej: "2026"). | Texto |
-| `moneda` | Símbolo de moneda ("$" o "U$S"). | Texto |
-| `categoria` | Categoría del producto. "BEBIDAS CON ALCOHOL" activa aviso legal automático. | Texto |
-| `subCategoria` | Subcategoría. "FIAMBRES/QUESOS/DELI" activa precio por 100g automáticamente. | Texto |
-| `descuento` | TRUE o FALSE. Controla visibilidad de cocarda/badge de descuento. | TRUE/FALSE |
+| `aclaracion1` / `aclaracion2` / `aclaracion3` | Aclaraciones / avisos legales, hasta 3. | Texto |
+| `legales` | Legales / disclaimer general. | Texto |
 
 REGLAS IMPORTANTES:
 - No es obligatorio tener todas las columnas. El sistema solo usa las que están en el Excel.
-- Los nombres de columna deben coincidir exactamente (respetan mayúsculas y acentos).
+- Los nombres de columna deben coincidir exactamente (respetan mayúsculas), salvo alias reconocidos: `codigoSKU`→`codigo`; `nombre`/`nombreDelProducto`/`producto`→`descripcion`.
 - Si el Excel no tiene una variable que el template usa, aparece un aviso "variables faltantes" tras generar.
-- Nombres legacy soportados: `titulo`→`mecanica`, `PRECIO`→`precioActual`, `PBANCO`→`precioBanco`, `OFERTADET`→`mecanica`.
-- Se puede descargar una plantilla Excel de ejemplo desde la pantalla de generación (botón "Descargar plantilla").
+- Redexpres tiene su propio esquema de columnas (`DESCRIPCION`, `precioActual`, `OFERTADET`, `OFERTA`, `ACLARACION`, `VIGENCIA`, `CODIGO`) que el sistema traduce internamente a estas 21 variables — `OFERTADET`="Combo" o "M x N" dispara la mecánica automáticamente.
+- Se puede descargar una plantilla Excel de ejemplo desde la pantalla de cada destino (botón "Descargar plantilla").
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FLUJO COMPLETO: GENERAR CENEFAS (paso a paso)
@@ -181,7 +177,7 @@ Ir a [Generar cenefas]({_BASE_URL}/materiales/cenefas/v2/generar).
    - **Aclaración**: texto de bases y condiciones global. Tiene combobox para guardar opciones usadas frecuentemente.
    - **Segunda aclaración**: leyenda de alcohol u otro texto secundario. También tiene combobox.
 6. Los campos con combobox (▾) permiten: escribir un valor nuevo + botón "Guardar" para guardarlo, o abrir el dropdown y seleccionar un valor previo. En hover sobre cada opción aparecen íconos para editar (lápiz) o eliminar (basura).
-7. El botón "Variables" en el header abre un modal con la referencia completa de las 17 variables.
+7. El botón "Variables" en el header abre un modal con la referencia completa de las 21 variables.
 
 **Paso 2 — Validación** (solo para templates v2):
 - Muestra cuántos productos se encontraron y si hay variables requeridas faltantes.
@@ -205,12 +201,11 @@ El editor tiene tres paneles:
 - **Derecho (Propiedades)**: configurar el componente seleccionado (variable, fuente, color, etc.).
 
 **Catálogo de componentes disponibles:**
-- PRECIO: Precio completo (`precioActual` price_full), Precio entero, Precio decimal, Precio anterior (`precioAnterior`), Precio bancario (`precioBanco`).
-- TEXTO: Descripción, Título/Mecánica (`mecanica`), Banco/Beneficio (`banco`), Aclaración, Segunda aclaración (`segundaAclaracion`), Vigencia, Código SKU (`codigoSKU`).
-- FECHA: Día, Mes, Año.
+- PRECIO: Precio regular completo/entero/decimal (`precioRegular`/`decimalRegular`), Precio oferta (`precioOferta`), Precio bancario (`precioBanco`).
+- TEXTO: Descripción (`descripcion`), Mecánica/Oferta (`mecanica`), Banco/Beneficio (`banco`), Aclaración (`aclaracion1`), Segunda aclaración (`aclaracion2`), Vigencia (`vigencia`), Código SKU (`codigo`).
 - OTROS: Imagen producto, Cocarda/Badge, Forma/fondo, Texto fijo.
 
-También se puede importar un PPTX existente: el sistema detecta los placeholders (ej: `<<precioActual>>`) y los convierte automáticamente en componentes del editor.
+También se puede importar un PPTX existente: el sistema detecta los placeholders (ej: `<<precioRegular>>`) y los convierte automáticamente en componentes del editor.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CONEXIONES A PLATAFORMAS
@@ -271,13 +266,10 @@ Causa probable: el Excel no tiene una columna llamada `precioBanco` (exactamente
 Solución: Abrí el Excel, renombrá la columna de precio bancario a `precioBanco` exactamente, guardá y volvé a generar. Si no tenés esa columna, el template usa el componente `<<precioBanco>>` pero el Excel no provee el dato. Tras generar, el panel amarillo de advertencia debería haber listado `<<precioBanco>>` como variable faltante.
 
 **Caso 2 — "¿Cómo pongo la leyenda de alcohol automáticamente?"**
-Si la columna `categoria` tiene el valor `BEBIDAS CON ALCOHOL`, el sistema llena `segundaAclaracion` automáticamente con el aviso legal estándar ("Prohibida la venta de bebidas alcohólicas a menores de 18 años"). No necesitás escribirlo manualmente. Si querés sobrescribir el texto, ponés un valor en la columna `segundaAclaracion` del Excel.
-
-**Caso 3 — "¿Cómo hago cenefas de fiambres con precio por 100g?"**
-Ponés el precio por kilo en `precioActual` y en `subCategoria` ponés `FIAMBRES`, `QUESOS` o `DELI`. El sistema detecta si la descripción incluye "kg" y divide el precio por 10 automáticamente para mostrar el precio por 100g, ajustando también el texto de la descripción.
+No hay una automatización para esto hoy — se hace a mano: escribí el aviso legal directo en la columna `aclaracion2` (o `legales`) del Excel para los productos que corresponda. Si el usuario necesita que se dispare solo según otra columna (ej. `categoria`), es algo que se arma con el panel de Reglas del editor v2, condición por condición — no es automático de fábrica.
 
 **Caso 4 — "El precio del combo no se calcula bien"**
-El cálculo automático de combos (tipo "2X$4.500") se activa cuando el Excel tiene una columna `OFERTADET` con el tipo de oferta ("Combo", "M x N", etc.) y una columna `OFERTA` con los parámetros. Es el pipeline legacy. En el sistema v2 nuevo, simplemente ponés directamente en la columna `mecanica` el texto que querés mostrar (ej: "2X$4.500") y en `precioActual` el precio resultante.
+Depende del destino. En Redexpres, el cálculo automático de combos (tipo "3x150" → "Comprando 3, $50 la unidad") se activa con las columnas `OFERTADET` ("Combo" o "M x N") y `OFERTA` del Excel de Redexpres — es una traducción interna, no hace falta tocar nada más. En Rompe Precios / Parrilla y Vinos (sistema v2 puro, sin esa lógica), escribís directamente en la columna `mecanica` el texto que querés mostrar (ej: "2X$4.500").
 
 **Caso 5 — "Quiero crear un usuario que solo pueda ver cenefas"**
 Ir a [Admin]({_BASE_URL}/admin). En la sección Roles, crear un nuevo rol con solo el permiso `cenefas.view`. Luego en la sección Usuarios, crear el usuario y asignarle ese rol. Ese usuario solo podrá ver templates existentes, no podrá generar ni editar.
@@ -285,11 +277,8 @@ Ir a [Admin]({_BASE_URL}/admin). En la sección Roles, crear un nuevo rol con so
 **Caso 6 — "¿Cómo comparto el acceso a la plataforma con alguien nuevo?"**
 Un Superadmin debe ir a [Admin]({_BASE_URL}/admin) → sección Usuarios → "Nuevo usuario". Completar email, nombre, una contraseña inicial y asignar un rol. No existe un sistema de invitación automática por email: quien crea el usuario debe compartirle esa contraseña inicial por otro medio (ej: mensaje directo). La plataforma no tiene equipos ni organizaciones separadas — es un único pool de usuarios con roles y permisos globales.
 
-**Caso 7 — "¿Puedo generar cenefas para varios días de la semana?"**
-Sí. Agregás una columna `dia` en el Excel con el valor del día (ej: "LUNES", "MARTES"). Si el template tiene el componente `dia` en su diseño, mostrará el día de cada producto en la cenefa correspondiente. Ideal para cenefas de tipo "Plato del día".
-
-**Caso 8 — "¿Cómo genero cenefas con precio en dólares?"**
-Agregá una columna `moneda` en el Excel con el valor `U$S`. El sistema usará ese prefijo en lugar de `$` para todos los precios de ese producto.
+**Caso 7 — "¿Puedo generar cenefas para varios días de la semana?" / "¿Cómo pongo el precio en dólares?"**
+Hoy no hay soporte para esto en las 21 variables estándares ni en el catálogo de componentes del editor v2 — no inventes una columna `dia`/`mes`/`año`/`moneda`, no van a hacer nada. Si un usuario lo necesita de verdad, avisale que es una limitación actual, no algo que esté mal configurado de su lado.
 
 **Caso 9 — "El Dashboard marcó una campaña como problemática, ¿qué hago?"**
 El [Dashboard]({_BASE_URL}/dashboard) detecta automáticamente si una campaña cae más de 30% vs el período anterior y muestra una alerta. Para profundizar, andá a [Campañas]({_BASE_URL}/campaigns) y filtrá por esa campaña para ver el detalle histórico y comparar manualmente, o llevá el dato a [Análisis IA]({_BASE_URL}/analytics) → La Triada para que las tres IAs lo debatan.
@@ -332,7 +321,7 @@ RESOLUCIÓN DE PROBLEMAS COMUNES
 | Variables salen en blanco en el PPTX | El nombre de columna en Excel no coincide exactamente con la variable | Verificar el nombre exacto en la referencia de variables (botón "Variables" en la pantalla de generación) |
 | Error al generar: "Template v2 no encontrado" | El template fue eliminado | Seleccionar otro template o crear uno nuevo |
 | No aparece el botón de "Generar" | Falta seleccionar template o cargar Excel | Completar todos los campos requeridos del Paso 1 |
-| La validación dice que faltan variables requeridas | El Excel no tiene columnas `descripcion` o `precioActual` | Agregar esas columnas con los nombres exactos |
+| La validación dice que faltan variables requeridas | El Excel no tiene columnas `descripcion` o `precioRegular` (o el equivalente de Redexpres, `precioActual`) | Agregar esas columnas con los nombres exactos |
 | El PPTX descargado tiene slides vacíos | El Excel tiene filas vacías entre los datos | Eliminar filas vacías del Excel y volver a generar |
 | No veo datos en el Dashboard | Las plataformas no están conectadas o la sincronización no corrió | Ir a [Configuración]({_BASE_URL}/settings) y verificar el estado de cada conexión |
 | Meta Ads muestra números raros o que no cierran | La integración está pausada — esos datos son un fixture de ejemplo, no reales | Ignorar esos números hasta que se reactive la conexión |
@@ -498,6 +487,14 @@ async def _tool_resumen_debate(current_user: User, db: AsyncSession) -> str:
 
 async def _ejecutar_tool(name: str, args: dict, current_user: User, db: AsyncSession) -> str:
     if name == "buscar_precio":
+        # La pantalla dedicada (/precios) exige precios.search vía
+        # require_permission en su propia ruta -- esta tool corre dentro del
+        # loop de tool-use del chat, sin pasar por esa dependencia, así que
+        # sin este chequeo un admin podía sacarle precios.search a un
+        # usuario y ese usuario igual conseguía la misma búsqueda pidiéndosela
+        # a Don Tino por chat en vez de por la pantalla.
+        if not (current_user.is_superuser or "precios.search" in (current_user.permissions or [])):
+            return json.dumps({"error": "No tenés permiso para buscar precios"})
         return await _tool_buscar_precio(args.get("termino", ""))
     if name == "consultar_estado_cenefa":
         return await _tool_estado_cenefa(args.get("job_id", ""), current_user, db)
