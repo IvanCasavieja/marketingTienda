@@ -26,18 +26,23 @@ const apiOrigin = new URL(apiUrl).origin;
 // por su cuenta — no hay ningún dangerouslySetInnerHTML en toda la app.
 // connect-src necesita el origen de la API (Render en prod, localhost en
 // dev) para que fetch/axios no se bloqueen.
+//
+// Vercel inyecta su propio widget de feedback (vercel.live) SOLO en deploys
+// de Preview -- lo dejamos pasar únicamente ahí (script/connect/frame) para
+// no abrirle ese hueco a producción, que no lo necesita ni lo carga.
+const vercelLive = isPreview ? " https://vercel.live" : "";
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${vercelLive}`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // Tailwind/Radix usan style="" inline en JSX
   "img-src 'self' data:",
   "font-src 'self' data: https://fonts.gstatic.com",
-  `connect-src 'self' ${apiOrigin}`,
+  `connect-src 'self' ${apiOrigin}${vercelLive}`,
   // 'self' NO cubre blob: -- sin esto, el <iframe> de preview de PDF en
   // FacturaUploadModal (blob URL armado en el cliente a partir de la
   // respuesta del backend) queda bloqueado en silencio por el navegador,
   // sin ningún error visible más que la consola.
-  "frame-src 'self' blob:",
+  `frame-src 'self' blob:${vercelLive}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
