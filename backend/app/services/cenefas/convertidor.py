@@ -229,11 +229,25 @@ def _has_letters(raw: str) -> bool:
 # Parseo del Excel de entrada
 # ---------------------------------------------------------------------------
 
+def _parse_csv_text(text: str) -> list[tuple]:
+    """Parsea texto ya decodificado, tolerando las dos variantes regionales
+    más comunes de separador: coma o punto y coma (frecuente acá, porque la
+    coma ya se usa como separador decimal)."""
+    sample = text[:4096]
+    try:
+        delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t").delimiter
+    except csv.Error:
+        # El sniffer necesita al menos un par de filas consistentes para
+        # decidir — con muy pocas filas o un formato ambiguo, cae acá:
+        # cuenta cuál separador aparece más seguido en la muestra.
+        delimiter = ";" if sample.count(";") >= sample.count(",") else ","
+
+    return [tuple(row) for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
+
+
 def _read_csv_rows(csv_bytes: bytes) -> list[tuple]:
     """Lee un CSV (algunos exports de gestión, sobre todo Rompe Precios,
-    vienen así en vez de xlsx) tolerando las dos variantes regionales más
-    comunes: separador coma o punto y coma (frecuente acá, porque la coma
-    ya se usa como separador decimal), y encoding UTF-8 o Windows-1252
+    vienen así en vez de xlsx) tolerando encoding UTF-8 o Windows-1252
     (típico de sistemas de gestión viejos que no exportan UTF-8 nativo)."""
     text = None
     for encoding in ("utf-8-sig", "cp1252"):
@@ -245,16 +259,38 @@ def _read_csv_rows(csv_bytes: bytes) -> list[tuple]:
     if text is None:
         text = csv_bytes.decode("utf-8", errors="replace")
 
-    sample = text[:4096]
-    try:
-        delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t").delimiter
-    except csv.Error:
-        # El sniffer necesita al menos un par de filas consistentes para
-        # decidir — con muy pocas filas o un formato ambiguo, cae acá:
-        # cuenta cuál separador aparece más seguido en la muestra.
-        delimiter = ";" if sample.count(";") >= sample.count(",") else ","
+    return _parse_csv_text(text)
 
-    return [tuple(row) for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
+
+def _unpack_csv_in_single_column(rows: list[tuple]) -> list[tuple]:
+    """Recupera filas reales cuando un .xlsx "de mentira" trae el CSV entero
+    pegado como texto en la columna A de cada fila (visto en vivo con un
+    export real de gestión: A1:A66, cada celda un string tipo
+    "CODIGO,SECCION,...") en vez de datos separados en columnas de Excel de
+    verdad -- probablemente el paso que debía convertir el CSV a xlsx nunca
+    corrió y alguien subió/renombró el CSV crudo con extensión .xlsx.
+
+    Sin esto, el escaneo de headers de abajo nunca encuentra una columna
+    "CODIGO" real (existe como substring de un texto gigante, no como una
+    celda que normalice a "codigo") y el usuario se queda sin poder usar el
+    Convertidor con un archivo que en el fondo tiene todos los datos
+    correctos -- ver conversación real donde esto pasó."""
+    non_empty = [r for r in rows if any(c is not None for c in r)]
+    if not non_empty:
+        return rows
+    # Todas las filas con contenido tienen que ser de una sola columna
+    # poblada, y esa columna tiene que tener pinta de fila CSV (con
+    # separador) -- si hay una sola fila description/título sin comas se
+    # cuenta como "no separador" y se aborta, no se fuerza la reinterpretación.
+    if not all(
+        sum(1 for c in r if c is not None) <= 1 and (r[0] is None or isinstance(r[0], str))
+        for r in non_empty
+    ):
+        return rows
+    texts = [r[0] for r in non_empty if r[0] is not None]
+    if not any(("," in t or ";" in t) for t in texts):
+        return rows
+    return _parse_csv_text("\n".join(texts))
 
 
 async def parse_input_excel(
@@ -295,6 +331,7 @@ async def parse_input_excel(
         wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
         ws = wb[wb.sheetnames[0]]
         rows = list(ws.iter_rows(min_row=1, max_row=None, values_only=True))
+        rows = _unpack_csv_in_single_column(rows)
 
     header_row_idx: int | None = None
     col_map: dict[int, str] = {}
