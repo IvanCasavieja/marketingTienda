@@ -770,29 +770,36 @@ async def match_rows(
 # ---------------------------------------------------------------------------
 
 _OUTPUT_HEADERS = [
-    # camelCase en las 20, no solo en las que el generador de Cenefas
+    # camelCase en todas, no solo en las que el generador de Cenefas
     # reconoce -- decisión explícita del usuario para que el header se vea
-    # uniforme, aunque comprador/moneda/precioAnterior/oferta/ofertaDet/
-    # descuentoProv/descuentoProvDet/descripcionWeb/nombreArticulo sean
-    # solo referencia interna y el generador no las lea.
+    # uniforme, aunque comprador/moneda/oferta/ofertaDet/descuentoProv/
+    # descuentoProvDet/descripcionWeb/nombreArticulo sean solo referencia
+    # interna y el generador no las lea.
+    #
+    # Sin precioAnterior a propósito: pedido explícito del usuario --
+    # precioAnterior y precioRegular terminaban siendo el mismo dato en la
+    # práctica, no tenía sentido exportar las dos. El campo interno
+    # "precio_anterior" (grilla de preview, warnings de columnas corridas)
+    # sigue existiendo, solo se sacó de la exportación final.
     "codigo", "nombreArticulo", "comprador", "descripcion", "moneda",
-    "precioAnterior", "precioRegular", "oferta", "ofertaDet",
+    "precioRegular", "oferta", "ofertaDet",
     "precioOferta", "precioOferta2", "precioOferta3", "precioOferta4",
     "descuentoProv", "descuentoProvDet", "descripcionWeb", "vigencia",
     "aclaracion1", "aclaracion2", "aclaracion3",
 ]
 _OUTPUT_FIELDS = [
     "codigo", "nombre_articulo", "comprador", "descripcion", "moneda",
-    "precio_anterior", "precio", "oferta", "oferta_det",
+    "precio", "oferta", "oferta_det",
     "precio_oferta", "precio_oferta2", "precio_oferta3", "precio_oferta4",
     "descuento", "descuento_det", "descripcion_web", "vigencia",
     "aclaracion1", "aclaracion2", "aclaracion3",
 ]
-_OUTPUT_COL_WIDTHS = [16, 36, 20, 36, 10, 14, 14, 14, 14, 14, 14, 14, 14, 16, 16, 40, 26, 30, 30, 30]
-# warning code -> índice de columna 1-based que se resalta -- "precioRegular"
-# (antes "Precio") no cambió de posición, así que missing_price/precio_invalido
-# siguen apuntando a la columna 7 tal cual. Solo se corrieron +4 los índices
-# que quedaron después de insertar las 4 columnas nuevas de precioOferta.
+_OUTPUT_COL_WIDTHS = [16, 36, 20, 36, 10, 14, 14, 14, 14, 14, 14, 14, 16, 16, 40, 26, 30, 30, 30]
+# warning code -> índice de columna 1-based que se resalta. missing_precio_anterior/
+# precio_anterior_invalido no entran acá a propósito: esa columna ya no se
+# exporta (ver _OUTPUT_HEADERS), no hay nada que resaltar en el archivo de
+# salida -- la grilla de preview (frontend) sigue mostrando ese warning con
+# su propia config, independiente de este mapa.
 _WARN_COL = {
     "nombre_articulo_invalido":  2,
     "missing_description":       4,
@@ -800,15 +807,13 @@ _WARN_COL = {
     "descripcion_larga":         4,
     "descripcion_algo_larga":    4,
     "moneda_invalida":           5,
-    "missing_precio_anterior":   6,
-    "precio_anterior_invalido":  6,
-    "missing_price":             7,
-    "precio_invalido":           7,
-    "missing_oferta":            8,
-    "missing_oferta_det":        9,
-    "oferta_det_invalido":       9,
-    "missing_descripcion_web":   16,
-    "descripcion_web_invalida":  16,
+    "missing_price":             6,
+    "precio_invalido":           6,
+    "missing_oferta":            7,
+    "missing_oferta_det":        8,
+    "oferta_det_invalido":       8,
+    "missing_descripcion_web":   15,
+    "descripcion_web_invalida":  15,
 }
 # Warnings de "tipo incorrecto" (hay contenido, pero no del tipo esperado
 # para esa columna) — más severos que un simple "falta el dato", porque
