@@ -87,6 +87,7 @@ def _norm(name: str) -> str:
 _ALIASES: dict[str, str] = {
     # Precios
     "precioregular":      "precioRegular",
+    "precioactual":       "precioRegular",   # nombre estándar de la columna en el esquema de Redexpres
     "preciooferta":       "precioOferta",
     "preciooferta2":      "precioOferta2",
     "preciooferta3":      "precioOferta3",
