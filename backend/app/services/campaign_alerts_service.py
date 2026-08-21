@@ -175,11 +175,27 @@ async def run_campaign_alerts_loop() -> None:
 
 
 async def _wait_initial() -> None:
+    """Cuánto esperar antes del primer chequeo del proceso. Se apoya en
+    Notificacion.created_at (Postgres) en vez de Redis -- mismo bug y mismo
+    fix que watchlist_service.py/auto_sync.py (ver el primero para el porqué
+    completo: Redis no está provisionado en Render, el GET fallaba siempre y
+    esta espera caía siempre a "sin historial, 5 minutos" en cada reinicio
+    del free tier, ignorando cuánto hacía del último chequeo real).
+
+    Aproximación, a diferencia de los otros dos: no hay una fila que se
+    actualice en CADA corrida del chequeo, solo cuando efectivamente
+    encuentra una alerta (origen_tipo="campaign_alert") -- un período largo
+    sin anomalías reales subestima cuán reciente fue el último chequeo. Igual
+    sigue siendo estrictamente mejor que depender de Redis, que no sobrevive
+    ningún reinicio."""
     try:
-        redis = get_redis()
-        raw = await redis.get(_REDIS_LAST_RUN)
-        if raw:
-            last_dt = datetime.fromisoformat(raw.decode())
+        async with AsyncSessionLocal() as db:
+            last_dt = (await db.execute(
+                select(func.max(Notificacion.created_at)).where(Notificacion.origen_tipo == "campaign_alert")
+            )).scalar_one_or_none()
+        if last_dt:
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
             elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
             wait = max(60, _interval_hours() * 3_600 - elapsed)
             logger.info(

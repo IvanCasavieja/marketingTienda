@@ -3,10 +3,11 @@ import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.core.database import AsyncSessionLocal
 from app.core.redis_client import get_redis
+from app.models.campaign_metric import CampaignMetric
 from app.models.platform_connection import PlatformConnection
 from app.services.metrics_service import sync_platform
 
@@ -41,14 +42,25 @@ async def run_auto_sync_loop() -> None:
 
 
 async def _wait_initial() -> None:
-    """Calcula cuánto esperar antes del primer sync según el último registro en Redis."""
+    """Cuánto esperar antes del primer sync del proceso. Se apoya en
+    CampaignMetric.synced_at (Postgres) en vez de Redis -- mismo bug y mismo
+    fix que watchlist_service.py (ver su _wait_initial): Redis no está
+    provisionado en Render, así que el GET fallaba siempre y esta espera
+    caía siempre a la rama de "sin historial, 2 minutos", ignorando cuánto
+    hacía del último sync real. En el free tier el proceso se reinicia
+    seguido (duerme por inactividad, arranca de nuevo con el próximo
+    request) -- sin este chequeo contra un lugar que sobrevive al reinicio,
+    SYNC_INTERVAL_HOURS nunca se respetaba de verdad, y un reinicio seguido
+    podía disparar syncs de más contra las APIs reales de Meta/Google
+    Ads/TikTok/DV360, gastando cuota sin necesidad."""
     try:
-        redis = get_redis()
-        raw = await redis.get(_REDIS_LAST_RUN)
-        if raw:
-            last_dt  = datetime.fromisoformat(raw.decode())
-            elapsed  = (datetime.now(timezone.utc) - last_dt).total_seconds()
-            wait     = max(60, _interval_hours() * 3_600 - elapsed)
+        async with AsyncSessionLocal() as db:
+            last_dt = (await db.execute(select(func.max(CampaignMetric.synced_at)))).scalar_one_or_none()
+        if last_dt:
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
+            wait = max(60, _interval_hours() * 3_600 - elapsed)
             logger.info(
                 "auto_sync: último sync hace %.0f min — próximo en %.0f min",
                 elapsed / 60, wait / 60,
