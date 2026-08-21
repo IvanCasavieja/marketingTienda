@@ -29,8 +29,8 @@ _MAX_TOOL_ITERATIONS = 4  # tope duro contra un loop de tool-use que no converge
 
 _CONOCIMIENTO = f"""
 CÓMO SE ARMAN LOS TEMPLATES:
-- Plantilla clásica (v1): un PPTX fijo se sube tal cual, sin editor — los placeholders del PPTX se rellenan directo con los datos del Excel. Es el motor que usa Redexpres hoy.
-- Editor visual (v2), en /materiales/cenefas/v2: se arma un template desde cero o importando un PPTX existente, con componentes (texto/imagen/forma) y variables asociadas al Excel. Es el motor que usan Rompe Precios y Parrilla y Vinos.
+- Editor visual (v2), en /materiales/cenefas/v2: se arma un template desde cero o importando un PPTX existente, con componentes (texto/imagen/forma) y variables asociadas al Excel. Es el motor que usan los 3 destinos hoy (Redexpres, Rompe Precios y Parrilla y Vinos) — Redexpres se unificó a este motor, ya no tiene un flujo aparte.
+- Plantilla clásica (v1): un PPTX fijo se sube tal cual, sin editor — los placeholders del PPTX se rellenan directo con los datos del Excel. Ningún destino la usa en producción; sobrevive solo como modo debug para superadmins en /materiales/cenefas/v2/generar.
 
 LOS 3 DESTINOS Y SUS COLUMNAS EXACTAS (nombres tal cual, no aproximados):
 - Redexpres: DESCRIPCION, precioActual, OFERTADET, OFERTA, ACLARACION, OTRA ACLARACION, VIGENCIA, CODIGO. OFERTADET dispara la mecánica (ej. "Combo" -> combo, "M x N" -> M x N).
