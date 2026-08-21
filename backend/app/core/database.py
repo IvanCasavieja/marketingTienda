@@ -1,13 +1,16 @@
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
-_db_url = settings.DATABASE_URL
-if settings.APP_ENV == "staging" and "?schema=" not in _db_url:
-    _db_url += "?schema=staging"
+# Nombre del schema de Postgres que aísla los datos de staging de los de
+# producción -- misma DATABASE_URL/Supabase para las dos, separadas por
+# schema (no hay una base de datos física distinta). Ver migrations/env.py
+# para el CREATE SCHEMA + las migraciones apuntadas acá mismo.
+STAGING_SCHEMA = "staging"
 
 engine = create_async_engine(
-    _db_url,
+    settings.DATABASE_URL,
     pool_pre_ping=True,
     pool_size=15,
     max_overflow=20,
@@ -22,6 +25,22 @@ engine = create_async_engine(
     # esto solo apaga el cacheo del lado del cliente (costo minimo).
     connect_args={"statement_cache_size": 0},
 )
+
+if settings.APP_ENV == "staging":
+    # Fija el schema activo en CADA checkout de conexión del pool, no solo
+    # al conectar -- intento previo (?schema=staging en la URL) además de no
+    # ser un parámetro válido de asyncpg, tenía el mismo problema de fondo:
+    # en el pooler de Supabase en modo "transaction" (ver connect_args de
+    # arriba) la conexión física de Postgres detrás de una misma conexión
+    # asyncpg puede reciclarse entre transacciones, así que un search_path
+    # fijado una sola vez al conectar se podía perder a mitad de camino.
+    # Re-fijarlo en "checkout" (se dispara en cada préstamo de conexión del
+    # pool, no una sola vez por conexión física) sobrevive a ese reciclado.
+    @event.listens_for(engine.sync_engine, "checkout")
+    def _set_staging_search_path(dbapi_connection, connection_record, connection_proxy):
+        cursor = dbapi_connection.cursor()
+        cursor.execute(f"SET search_path TO {STAGING_SCHEMA}")
+        cursor.close()
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
