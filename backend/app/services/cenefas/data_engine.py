@@ -182,9 +182,15 @@ def process_row(
             cantidad = m.group(1)
             precio_combo = parse_price_raw(m.group(2))
             result["precioOferta"] = "$" + fmt_price(precio_combo)
-            # Si existe variable "oferta" en el template, llenarla con cantidad + "x"
-            if "oferta" in h:
-                result["oferta"] = f"{cantidad}x"
+            # "oferta" = badge corto ("3x"), separado de mecanica (la frase
+            # completa) -- antes esto estaba gateado por `if "oferta" in h`,
+            # una condición que nunca podía ser verdadera (la columna OFERTA
+            # de Redexpres resuelve al trigger interno "_oferta" en _ALIASES,
+            # nunca a la key literal "oferta"), así que esta variable nunca
+            # se llenaba para ningún template. Sacado el gate: no hay costo
+            # en setearla siempre, un template sin componente para "oferta"
+            # simplemente no la usa.
+            result["oferta"] = f"{cantidad}x"
             precio_unitario = result.get("precioRegular", "")
             result["mecanica"] = f"Comprando {cantidad}, {precio_unitario} la unidad"
 
@@ -194,6 +200,7 @@ def process_row(
         cantidad = m.group(1) if m else "2"
         precio_unitario = result.get("precioRegular", "")
         result["precioOferta"] = oferta_raw  # "3x2" ocupa lugar del precio
+        result["oferta"] = f"{cantidad}x"
         result["mecanica"] = f"Comprando {cantidad}, {precio_unitario} la unidad"
 
     # Si OFERTADET está vacío o es "Precio fijo": sin cambios, valores por defecto
