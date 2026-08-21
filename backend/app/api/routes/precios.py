@@ -72,6 +72,7 @@ async def buscar_vivo(
                 "relevancia":      r.relevancia,
                 "moneda":          r.moneda,
                 "tienda_real":     r.tienda_real,
+                "categoria":       r.categoria,
             })
 
     return {"query": q, "total": len(items), "items": items}
@@ -194,6 +195,7 @@ async def buscar_vivo_stream(
             "relevancia":      r.relevancia,
             "moneda":          r.moneda,
             "tienda_real":     r.tienda_real,
+            "categoria":       r.categoria,
         }
 
     loop = asyncio.get_event_loop()

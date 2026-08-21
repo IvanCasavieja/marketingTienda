@@ -38,7 +38,9 @@ def _safe_filename(name: str) -> str:
 # tanto Redexpres como Rompe Precios generan ahora vía el pipeline de jobs
 # async (POST /tools/cenefas/v2/jobs), que además deja el paso de preview +
 # reposicionar antes del render final. El motor viejo (generate_pptx_bytes /
-# render_engine.py) queda sin referencias pero no se borra.
+# render_engine.py) SIGUE en uso -- es lo que corre en la rama
+# use_legacy_engine=True de jobs.py::confirm_generation_job, que hoy es
+# Redexpres (ver ahí el porqué) -- no es código muerto, no borrar.
 
 @router.get("/cenefas/template")
 async def download_cenefa_template(
