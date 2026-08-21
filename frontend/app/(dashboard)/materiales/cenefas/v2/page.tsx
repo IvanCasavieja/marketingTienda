@@ -32,33 +32,24 @@ function CanvasPlaceholder() {
   );
 }
 
-// 21 VARIABLES ESTÁNDARES (2026)
 const VARIABLES_REFERENCE = [
-  // Precios
-  { name: "precioRegular",     desc: "Precio base (sin decimales — usar decimalRegular aparte si se necesita)" },
-  { name: "precioOferta",      desc: "Precio de oferta nivel 1" },
-  { name: "precioOferta2",     desc: "Precio de oferta nivel 2" },
-  { name: "precioOferta3",     desc: "Precio de oferta nivel 3" },
-  { name: "precioOferta4",     desc: "Precio de oferta nivel 4" },
-  // Decimales
-  { name: "decimalRegular",    desc: "Decimal del precio regular (usar en cuadro aparte)" },
-  { name: "decimalOferta",     desc: "Decimal de precioOferta" },
-  { name: "decimalOferta2",    desc: "Decimal de precioOferta2" },
-  { name: "decimalOferta3",    desc: "Decimal de precioOferta3" },
-  { name: "decimalOferta4",    desc: "Decimal de precioOferta4" },
-  // Identificación y texto
-  { name: "codigo",            desc: "Código SKU / código de producto" },
   { name: "descripcion",       desc: "Nombre del producto" },
+  { name: "precioActual",      desc: "Precio de venta actual" },
+  { name: "precioAnterior",    desc: "Precio anterior o tachado" },
+  { name: "precioBanco",       desc: "Precio con beneficio bancario" },
+  { name: "banco",             desc: "Nombre del banco o beneficio" },
+  { name: "mecanica",          desc: "Mecánica o tipo de oferta (ej: 2x1, Combo, Precio Final)" },
+  { name: "aclaracion",        desc: "Texto aclaratorio (ej: bases y condiciones)" },
+  { name: "segundaAclaracion", desc: "Segunda aclaración o leyenda de alcohol" },
   { name: "vigencia",          desc: "Período de validez de la oferta" },
-  { name: "mecanica",          desc: "Mecánica o tipo de oferta (ej: 2x1, Comprando 3...)" },
-  { name: "aclaracion1",       desc: "Primera aclaración / aviso legal" },
-  { name: "aclaracion2",       desc: "Segunda aclaración / aviso legal" },
-  { name: "aclaracion3",       desc: "Tercera aclaración / aviso legal" },
-  { name: "legales",           desc: "Legales / disclaimer general" },
-  // Banco
-  { name: "precioBanco",       desc: "Precio con descuento bancario" },
-  { name: "decimalBanco",      desc: "Decimal del precio bancario" },
-  { name: "banco",             desc: "Nombre del banco / medio de pago" },
+  { name: "codigoSKU",         desc: "Código de producto o SKU" },
+  { name: "dia",               desc: "Día de la semana o número" },
+  { name: "mes",               desc: "Mes de vigencia" },
+  { name: "año",               desc: "Año de vigencia" },
+  { name: "moneda",            desc: "Símbolo de moneda (ej: $, €)" },
+  { name: "categoria",         desc: "Categoría del producto" },
+  { name: "subCategoria",      desc: "Subcategoría del producto" },
+  { name: "descuento",         desc: "¿Aplica descuento? Columna TRUE/FALSE en Excel" },
 ] as const;
 
 export type LeftPanel = "components" | "rules" | "variables";

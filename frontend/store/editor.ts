@@ -7,41 +7,16 @@ import type {
   CenefaVariable,
 } from "@/types/cenefas";
 
-// 21 variables estándares para cenefas (2026)
-const STANDARD_VARIABLES: CenefaVariable[] = [
-  // Precios
-  { name: "precioRegular",     type: "price",  required: false, csv_column: "precioRegular"     },
-  { name: "precioOferta",      type: "price",  required: false, csv_column: "precioOferta"      },
-  { name: "precioOferta2",     type: "price",  required: false, csv_column: "precioOferta2"     },
-  { name: "precioOferta3",     type: "price",  required: false, csv_column: "precioOferta3"     },
-  { name: "precioOferta4",     type: "price",  required: false, csv_column: "precioOferta4"     },
-  // Decimales
-  { name: "decimalRegular",    type: "text",   required: false, csv_column: "decimalRegular"    },
-  { name: "decimalOferta",     type: "text",   required: false, csv_column: "decimalOferta"     },
-  { name: "decimalOferta2",    type: "text",   required: false, csv_column: "decimalOferta2"    },
-  { name: "decimalOferta3",    type: "text",   required: false, csv_column: "decimalOferta3"    },
-  { name: "decimalOferta4",    type: "text",   required: false, csv_column: "decimalOferta4"    },
-  // Identificación y texto
-  { name: "codigo",            type: "text",   required: false, csv_column: "codigo"            },
-  { name: "descripcion",       type: "text",   required: false, csv_column: "descripcion"       },
-  { name: "vigencia",          type: "text",   required: false, csv_column: "vigencia"          },
-  { name: "mecanica",          type: "text",   required: false, csv_column: "mecanica"          },
-  { name: "aclaracion1",       type: "text",   required: false, csv_column: "aclaracion1"       },
-  { name: "aclaracion2",       type: "text",   required: false, csv_column: "aclaracion2"       },
-  { name: "aclaracion3",       type: "text",   required: false, csv_column: "aclaracion3"       },
-  { name: "legales",           type: "text",   required: false, csv_column: "legales"           },
-  // Banco
-  { name: "precioBanco",       type: "price",  required: false, csv_column: "precioBanco"       },
-  { name: "decimalBanco",      type: "text",   required: false, csv_column: "decimalBanco"      },
-  { name: "banco",             type: "text",   required: false, csv_column: "banco"             },
-];
-
 const EMPTY_TEMPLATE: CenefaTemplate = {
   version: "2.0",
   name: "Nuevo template",
   master_format: "a4",
   formats: ["a4"],
-  variables: STANDARD_VARIABLES,
+  variables: [
+    { name: "descripcion",  type: "text",  required: true,  csv_column: "descripcion"  },
+    { name: "precioActual", type: "price", required: true,  csv_column: "precioActual" },
+    { name: "mecanica",     type: "text",  required: false, csv_column: "mecanica"     },
+  ],
   components: [],
   rules: [],
 };
