@@ -1,5 +1,19 @@
 /** @type {import('next').NextConfig} */
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+// NEXT_PUBLIC_API_URL está configurada en Vercel para "Production and
+// Preview" con un solo valor (el backend de producción) -- no hay forma de
+// darle un valor distinto solo a Preview desde el dashboard sin duplicar la
+// variable. VERCEL_ENV la inyecta Vercel automáticamente en cada build
+// ("production" | "preview" | "development"), sin que nadie la configure a
+// mano, así que un build de Preview (cualquier rama que no sea la de
+// producción, incluida staging) usa el backend de staging aunque
+// NEXT_PUBLIC_API_URL diga otra cosa. Sin esto, cualquier deploy de Preview
+// le pegaba en silencio al backend de producción (bug real: login fallaba
+// con CORS porque el backend de prod no tiene el origen de staging en su
+// allowlist).
+const isPreview = process.env.VERCEL_ENV === "preview";
+const apiUrl = isPreview
+  ? "https://marketingtienda-staging.onrender.com/api/v1"
+  : process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 const apiOrigin = new URL(apiUrl).origin;
 
 // Next.js inyecta scripts inline propios en cada página (el payload de

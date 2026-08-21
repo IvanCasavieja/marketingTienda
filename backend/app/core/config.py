@@ -111,5 +111,20 @@ class Settings(BaseSettings):
             origins.append(self.FRONTEND_URL)
         return origins
 
+    @property
+    def allowed_origin_regex(self) -> str | None:
+        """Solo para staging: confía en CUALQUIER deploy de Vercel de este
+        proyecto/team (previews con hash random en cada push, más el alias
+        fijo -git-staging-), no en una URL puntual agregada a mano en
+        APP_ALLOWED_ORIGINS -- esa lista exige coincidencia exacta, y Vercel
+        genera una URL de preview nueva por cada deploy. Sin esto, cada push
+        rompería CORS de nuevo hasta actualizar esa variable a mano.
+        None fuera de staging: producción sigue dependiendo solo de la
+        allowlist explícita (FRONTEND_URL / APP_ALLOWED_ORIGINS), sin abrir
+        el origen a cualquier deploy de Vercel del team."""
+        if self.APP_ENV != "staging":
+            return None
+        return r"^https://marketing-tienda-[a-zA-Z0-9-]+-ivans-projects-c3025ebd\.vercel\.app$"
+
 
 settings = Settings()
