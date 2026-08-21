@@ -1,13 +1,13 @@
-from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
-# Nombre del schema de Postgres que aísla los datos de staging de los de
-# producción -- misma DATABASE_URL/Supabase para las dos, separadas por
-# schema (no hay una base de datos física distinta). Ver migrations/env.py
-# para el CREATE SCHEMA + las migraciones apuntadas acá mismo.
-STAGING_SCHEMA = "staging"
+# Staging tiene su propio proyecto de Supabase (DATABASE_URL propia en
+# Render), separado del de producción -- no comparten base física. Antes de
+# esto, staging y producción compartían la misma base y se intentó aislar
+# por schema de Postgres (ver historial de este archivo); quedó descartado
+# a favor de la separación real, más simple y sin el riesgo de que un bug en
+# el switching de schema volviera a exponer datos de producción.
 
 engine = create_async_engine(
     settings.DATABASE_URL,
@@ -25,22 +25,6 @@ engine = create_async_engine(
     # esto solo apaga el cacheo del lado del cliente (costo minimo).
     connect_args={"statement_cache_size": 0},
 )
-
-if settings.APP_ENV == "staging":
-    # Fija el schema activo en CADA checkout de conexión del pool, no solo
-    # al conectar -- intento previo (?schema=staging en la URL) además de no
-    # ser un parámetro válido de asyncpg, tenía el mismo problema de fondo:
-    # en el pooler de Supabase en modo "transaction" (ver connect_args de
-    # arriba) la conexión física de Postgres detrás de una misma conexión
-    # asyncpg puede reciclarse entre transacciones, así que un search_path
-    # fijado una sola vez al conectar se podía perder a mitad de camino.
-    # Re-fijarlo en "checkout" (se dispara en cada préstamo de conexión del
-    # pool, no una sola vez por conexión física) sobrevive a ese reciclado.
-    @event.listens_for(engine.sync_engine, "checkout")
-    def _set_staging_search_path(dbapi_connection, connection_record, connection_proxy):
-        cursor = dbapi_connection.cursor()
-        cursor.execute(f"SET search_path TO {STAGING_SCHEMA}")
-        cursor.close()
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
