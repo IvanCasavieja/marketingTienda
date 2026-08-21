@@ -20,14 +20,17 @@ const SAVE_DEBOUNCE_MS = 800;
 
 type ColumnKey =
   | "codigo" | "nombre_articulo" | "comprador" | "descripcion" | "moneda" | "precio_anterior" | "precio"
-  | "oferta" | "oferta_det" | "descuento" | "descuento_det" | "descripcion_web"
+  | "oferta" | "oferta_det" | "precio_oferta" | "precio_oferta2" | "precio_oferta3" | "precio_oferta4"
+  | "descuento" | "descuento_det" | "descripcion_web"
   | "vigencia" | "aclaracion1" | "aclaracion2" | "aclaracion3";
 
 // "descripcion" es editable con lógica propia (guardado al catálogo
 // compartido + sugerencias IA, ver handleDescripcionChange más abajo).
 // "simple" es edición local nomás (no persiste a ningún lado hasta
-// exportar) — vigencia y aclaracion1/2/3 no tienen catálogo ni columna en
-// gestión, son texto libre que se completa acá mismo o se deja vacío.
+// exportar) — vigencia, aclaracion1/2/3 y precio_oferta/2/3/4 no tienen
+// catálogo ni columna en gestión (la mecánica de oferta no se interpreta
+// acá, ver docstring de parse_input_excel en convertidor.py), son texto
+// libre que se completa acá mismo o se deja vacío.
 type EditableKind = "descripcion" | "simple";
 
 // Cada columna tiene un tipo de dato esperado — precio es numérico,
@@ -46,6 +49,10 @@ const COLUMNS: { key: ColumnKey; i18nKey: string; editable?: EditableKind; warni
   { key: "precio",          i18nKey: "precio",          warningCodes: ["missing_price", "precio_invalido"] },
   { key: "oferta",          i18nKey: "oferta",          warningCodes: ["missing_oferta"] },
   { key: "oferta_det",      i18nKey: "ofertaDet",       warningCodes: ["missing_oferta_det", "oferta_det_invalido"] },
+  { key: "precio_oferta",   i18nKey: "precioOferta",    editable: "simple" },
+  { key: "precio_oferta2",  i18nKey: "precioOferta2",   editable: "simple" },
+  { key: "precio_oferta3",  i18nKey: "precioOferta3",   editable: "simple" },
+  { key: "precio_oferta4",  i18nKey: "precioOferta4",   editable: "simple" },
   { key: "descuento",       i18nKey: "descuentoProv" },
   { key: "descuento_det",   i18nKey: "descuentoProvDet" },
   { key: "descripcion_web", i18nKey: "descripcionWeb",  warningCodes: ["missing_descripcion_web", "descripcion_web_invalida"] },

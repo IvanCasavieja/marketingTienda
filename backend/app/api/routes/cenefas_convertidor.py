@@ -157,6 +157,10 @@ class ConvertidorRowIn(BaseModel):
     aclaracion1:            str = ""
     aclaracion2:            str = ""
     aclaracion3:            str = ""
+    precio_oferta:          str = ""
+    precio_oferta2:         str = ""
+    precio_oferta3:         str = ""
+    precio_oferta4:         str = ""
     es_fiambre_kg:          bool = False
 
 

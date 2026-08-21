@@ -337,6 +337,10 @@ export interface ConvertidorRow {
   aclaracion1: string;
   aclaracion2: string;
   aclaracion3: string;
+  precio_oferta: string;
+  precio_oferta2: string;
+  precio_oferta3: string;
+  precio_oferta4: string;
   es_fiambre_kg: boolean;
   matched: boolean;
   warnings: string[];

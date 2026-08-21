@@ -741,12 +741,19 @@ async def match_rows(
             "descuento_det":       row["descuento_det"],
             # vigencia se arma sola si el Excel trajo fecha_inicio/fecha_fin
             # (ver _format_vigencia) — ninguna columna candidata en gestión
-            # para aclaracion1-3 (ver convertidor.py docstring), quedan
+            # para aclaracion1-3 ni para los niveles de precioOferta (ver
+            # convertidor.py docstring: la mecánica de oferta/oferta_det no
+            # se interpreta acá, es trabajo exclusivo del generador de
+            # Cenefas cuando este Excel se vuelva a subir ahí), quedan
             # vacías, editables a mano en la grilla.
             "vigencia":            _format_vigencia(row.get("fecha_inicio"), row.get("fecha_fin")),
             "aclaracion1":         "",
             "aclaracion2":         "",
             "aclaracion3":         "",
+            "precio_oferta":       "",
+            "precio_oferta2":      "",
+            "precio_oferta3":      "",
+            "precio_oferta4":      "",
             "es_fiambre_kg":       _es_fiambre_por_kg(
                 row["comprador"], row["nombre_articulo"], row["descripcion"], row["descripcion_web"]
             ),
@@ -764,18 +771,23 @@ async def match_rows(
 
 _OUTPUT_HEADERS = [
     "Código", "Nombre Artículo", "Comprador", "Descripción", "Moneda",
-    "Precio Anterior", "Precio", "Oferta", "Oferta Det",
+    "Precio Anterior", "precioRegular", "Oferta", "Oferta Det",
+    "precioOferta", "precioOferta2", "precioOferta3", "precioOferta4",
     "Descuento Prov", "Descuento Prov Det", "Descripción Web", "Vigencia",
     "Aclaración 1", "Aclaración 2", "Aclaración 3",
 ]
 _OUTPUT_FIELDS = [
     "codigo", "nombre_articulo", "comprador", "descripcion", "moneda",
     "precio_anterior", "precio", "oferta", "oferta_det",
+    "precio_oferta", "precio_oferta2", "precio_oferta3", "precio_oferta4",
     "descuento", "descuento_det", "descripcion_web", "vigencia",
     "aclaracion1", "aclaracion2", "aclaracion3",
 ]
-_OUTPUT_COL_WIDTHS = [16, 36, 20, 36, 10, 14, 12, 14, 14, 16, 16, 40, 26, 30, 30, 30]
-# warning code -> índice de columna 1-based que se resalta
+_OUTPUT_COL_WIDTHS = [16, 36, 20, 36, 10, 14, 14, 14, 14, 14, 14, 14, 14, 16, 16, 40, 26, 30, 30, 30]
+# warning code -> índice de columna 1-based que se resalta -- "precioRegular"
+# (antes "Precio") no cambió de posición, así que missing_price/precio_invalido
+# siguen apuntando a la columna 7 tal cual. Solo se corrieron +4 los índices
+# que quedaron después de insertar las 4 columnas nuevas de precioOferta.
 _WARN_COL = {
     "nombre_articulo_invalido":  2,
     "missing_description":       4,
@@ -790,8 +802,8 @@ _WARN_COL = {
     "missing_oferta":            8,
     "missing_oferta_det":        9,
     "oferta_det_invalido":       9,
-    "missing_descripcion_web":   12,
-    "descripcion_web_invalida":  12,
+    "missing_descripcion_web":   16,
+    "descripcion_web_invalida":  16,
 }
 # Warnings de "tipo incorrecto" (hay contenido, pero no del tipo esperado
 # para esa columna) — más severos que un simple "falta el dato", porque
