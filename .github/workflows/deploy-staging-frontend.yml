@@ -25,6 +25,11 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: prj_tat3Uqu88Y1hZavnTUF1gsMBFUAc
           VERCEL_ORG_ID: team_8uAEIZXdJTpI0GgO1eJWU2SB
+        # Sin --prod a propósito: este proyecto de Vercel es el mismo que
+        # sirve producción (marketing-tienda.vercel.app) desde `main` — con
+        # --prod, un push a staging pisaba ese dominio con código de
+        # pruebas. Sin el flag, `vercel deploy` crea un deployment Preview,
+        # igual que ya hace la integración nativa de Vercel con GitHub.
         run: |
           npm install -g vercel
-          vercel deploy --prod --token $VERCEL_TOKEN
+          vercel deploy --token $VERCEL_TOKEN
