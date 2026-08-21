@@ -2,8 +2,12 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
+_db_url = settings.DATABASE_URL
+if settings.APP_ENV == "staging" and "?schema=" not in _db_url:
+    _db_url += "?schema=staging"
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    _db_url,
     pool_pre_ping=True,
     pool_size=15,
     max_overflow=20,
