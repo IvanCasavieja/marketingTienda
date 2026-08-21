@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import PreviewStep from "@/components/cenefas/PreviewStep";
 import TemplatePickerModal, { typeLabel } from "@/components/cenefas/rompeprecios/TemplatePickerModal";
-import { FileDropField } from "@/components/cenefas/redexpres/RedExpresPanel";
+import { FileDropField } from "@/components/cenefas/FileDropField";
 
 // Variable convencional para la imagen de cocarda — la plantilla pptx debe
 // tener un componente de imagen con esta variable para que se reemplace.

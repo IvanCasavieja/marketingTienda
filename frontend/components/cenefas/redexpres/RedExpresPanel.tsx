@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { CenefaTemplateRecord } from "@/types/cenefas";
 import PreviewStep from "@/components/cenefas/PreviewStep";
-import { FileDropField } from "@/components/cenefas/rompeprecios/RompePreciosPanel";
+import { FileDropField } from "@/components/cenefas/FileDropField";
 
 // Redexpress v2: unificado con Rompe Precios y Parrilla y Vinos.
 // Flujo: seleccionar plantilla v2 (category="redexpres") → cargar Excel → preview → download
