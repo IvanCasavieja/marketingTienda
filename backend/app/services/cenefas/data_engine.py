@@ -83,7 +83,7 @@ def _norm(name: str) -> str:
 
 
 # Mapa: header normalizado (sin acentos, espacios, minúsculas) → variable canónica
-# SOLO 21 variables estándares. Sin aliasing legacy.
+# SOLO 21 variables estándares + triggers internos para lógica Redexpress
 _ALIASES: dict[str, str] = {
     # Precios
     "precioregular":      "precioRegular",
@@ -117,6 +117,10 @@ _ALIASES: dict[str, str] = {
     "preciobanco":        "precioBanco",
     "decimalbanco":       "decimalBanco",
     "banco":              "banco",
+
+    # Triggers internos para lógica Redexpress (Combo/M×N)
+    "ofertadet":          "_ofertadet",
+    "oferta":             "_oferta",
 }
 
 # Columnas mínimas para detectar si la primera fila es header (normalización estándar)
@@ -134,29 +138,64 @@ def process_row(
     """Convierte una fila de Excel en un dict de variables para el renderer.
 
     Entrada: fila de Excel + mapeo (var_name → col_idx).
-    Salida: dict con todas las variables canónicas que correspondan.
+    Salida: dict con variables canónicas (21 estándares).
 
-    La lógica es simple: passthrough + normalización de precios.
+    Lógica Redexpress:
+    - Precio Fijo: sin cambios
+    - Combo: precio normal, oferta = "3x", mecanica = "Comprando 3, $PRECIO la unidad"
+    - M×N: precio = "3x2", mecanica = "Comprando 3, $PRECIO la unidad"
     """
     result: dict[str, str] = {}
 
+    # Passthrough inicial
     for var_name, col_idx in h.items():
+        if var_name.startswith("_"):
+            continue  # Triggers internos, se procesan abajo
         if col_idx >= len(row):
             continue
         val = row[col_idx]
         if val is None or (isinstance(val, str) and not val.strip()):
             result[var_name] = ""
         elif var_name in _PRICE_VARS:
-            # Precio: normalizar a formato uruguayo con $
             pv = parse_price_raw(val)
             result[var_name] = ("$" + fmt_price(pv)) if pv > 0 else str(val).strip()
         elif var_name in _DECIMAL_VARS:
-            # Decimal: normalizar a formato uruguayo SIN $
             pv = parse_price_raw(val)
             result[var_name] = fmt_price(pv) if pv > 0 else str(val).strip()
         else:
-            # Texto: passthrough
             result[var_name] = str(val).strip()
+
+    # Lógica Redexpress: detectar tipo de oferta por OFERTADET
+    ofertadet_raw = ""
+    if "_ofertadet" in h and h["_ofertadet"] < len(row):
+        ofertadet_raw = str(row[h["_ofertadet"]] or "").strip().lower()
+
+    oferta_raw = ""
+    if "_oferta" in h and h["_oferta"] < len(row):
+        oferta_raw = str(row[h["_oferta"]] or "").strip()
+
+    if ofertadet_raw == "combo":
+        # Combo: "3x150" en OFERTA → precio en precioOferta, mecanica = "Comprando X, $PRECIO la unidad"
+        m = re.match(r"^(\d+)\s*[xX]\s*\$?\s*([\d.,]+)\s*$", oferta_raw)
+        if m:
+            cantidad = m.group(1)
+            precio_combo = parse_price_raw(m.group(2))
+            result["precioOferta"] = "$" + fmt_price(precio_combo)
+            # Si existe variable "oferta" en el template, llenarla con cantidad + "x"
+            if "oferta" in h:
+                result["oferta"] = f"{cantidad}x"
+            precio_unitario = result.get("precioRegular", "")
+            result["mecanica"] = f"Comprando {cantidad}, {precio_unitario} la unidad"
+
+    elif "m x n" in ofertadet_raw or "mxn" in ofertadet_raw:
+        # M×N: "3x2" en OFERTA → precio = "3x2", mecanica = "Comprando X, $PRECIO la unidad"
+        m = re.match(r"^(\d+)", oferta_raw)
+        cantidad = m.group(1) if m else "2"
+        precio_unitario = result.get("precioRegular", "")
+        result["precioOferta"] = oferta_raw  # "3x2" ocupa lugar del precio
+        result["mecanica"] = f"Comprando {cantidad}, {precio_unitario} la unidad"
+
+    # Si OFERTADET está vacío o es "Precio fijo": sin cambios, valores por defecto
 
     return result
 
