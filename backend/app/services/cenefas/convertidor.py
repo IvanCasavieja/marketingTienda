@@ -770,11 +770,16 @@ async def match_rows(
 # ---------------------------------------------------------------------------
 
 _OUTPUT_HEADERS = [
-    "Código", "Nombre Artículo", "Comprador", "Descripción", "Moneda",
-    "Precio Anterior", "precioRegular", "Oferta", "Oferta Det",
+    # camelCase en las 20, no solo en las que el generador de Cenefas
+    # reconoce -- decisión explícita del usuario para que el header se vea
+    # uniforme, aunque comprador/moneda/precioAnterior/oferta/ofertaDet/
+    # descuentoProv/descuentoProvDet/descripcionWeb/nombreArticulo sean
+    # solo referencia interna y el generador no las lea.
+    "codigo", "nombreArticulo", "comprador", "descripcion", "moneda",
+    "precioAnterior", "precioRegular", "oferta", "ofertaDet",
     "precioOferta", "precioOferta2", "precioOferta3", "precioOferta4",
-    "Descuento Prov", "Descuento Prov Det", "Descripción Web", "Vigencia",
-    "Aclaración 1", "Aclaración 2", "Aclaración 3",
+    "descuentoProv", "descuentoProvDet", "descripcionWeb", "vigencia",
+    "aclaracion1", "aclaracion2", "aclaracion3",
 ]
 _OUTPUT_FIELDS = [
     "codigo", "nombre_articulo", "comprador", "descripcion", "moneda",
