@@ -1,14 +1,14 @@
 """permisos por usuario — agrega users.permissions y roles.view_only
 
 Revision ID: 0013
-Revises: 0012
+Revises: 0012_1
 Create Date: 2026-07-08
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision      = "0013"
-down_revision = "0012"
+down_revision = "0012_1"
 branch_labels = None
 depends_on    = None
 
