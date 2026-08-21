@@ -85,14 +85,14 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
       },
       {
         label: "Aclaración",
-        type: "text", variable: "aclaracion", transform: "none",
+        type: "text", variable: "aclaracion1", transform: "none",
         icon: <Type size={14} />, color: "text-slate-400 dark:text-slate-500",
         defaults: { style: { font_size: 9 },
                     base_bounds: { x: 0.5, y: 27.5, width: 10, height: 1.5 } },
       },
       {
         label: "Segunda aclaración",
-        type: "text", variable: "segundaAclaracion", transform: "none",
+        type: "text", variable: "aclaracion2", transform: "none",
         icon: <Type size={14} />, color: "text-slate-400 dark:text-slate-500",
         defaults: { style: { font_size: 9 },
                     base_bounds: { x: 0.5, y: 29.5, width: 10, height: 1.5 } },
@@ -106,7 +106,7 @@ const CATALOG: { category: string; items: ComponentBlueprint[] }[] = [
       },
       {
         label: "Código SKU",
-        type: "text", variable: "codigoSKU", transform: "none",
+        type: "text", variable: "codigo", transform: "none",
         icon: <Type size={14} />, color: "text-slate-400 dark:text-slate-500",
         defaults: { style: { font_size: 10 },
                     base_bounds: { x: 0.5, y: 0.5, width: 4, height: 0.8 } },
