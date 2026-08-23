@@ -67,13 +67,152 @@ def apply_transform(value: str, transform: str | None) -> str:
     return value
 
 
-# NOTA (08/2026): acá vivían el achique automático de la fuente del precio
-# (_fit_price_font_size) y el de la descripcion (_fit_description_to_box),
-# mas el corrimiento vertical del cuadro de precio cuando la descripcion se
-# desbordaba. Se eliminaron por pedido explicito: el motor tiene que
-# respetar el PPT tal cual se sube -- no agranda, no achica y no mueve nada
-# por su cuenta. Si un texto no entra en su cuadro, se corrige el dato o el
-# diseno, no el renderer.
+# NOTA (08/2026): acá vivía también el achique automático de la fuente del
+# PRECIO (_fit_price_font_size) y el corrimiento vertical del cuadro de precio
+# cuando la descripción se desbordaba. Esos dos siguen eliminados: el motor no
+# agranda, no achica precios y no mueve ninguna caja de donde la puso el
+# diseño. El achique de la DESCRIPCIÓN sí volvió, a pedido explícito -- ver
+# abajo.
+
+# ---------------------------------------------------------------------------
+# Achique automático de la descripción
+# ---------------------------------------------------------------------------
+#
+# Única excepción a la regla de "el motor respeta el PPTX tal cual": cuando el
+# nombre del producto no entra en su cuadro, se achica la fuente. Se restauró
+# a pedido explícito (08/2026) después de haberla sacado, porque los nombres
+# reales de gestión pasan seguido de los 60 caracteres y desbordan sobre el
+# precio de al lado.
+#
+# Lo que NO volvió: el corrimiento del cuadro de precio hacia abajo. Acá solo
+# se achica texto; ninguna caja se mueve de donde la puso el diseño.
+
+
+def _estimate_wrapped_lines(
+    text: str, box_width_cm: float | None, font_size: float | None, bold: bool = False,
+) -> int:
+    """Estima a cuántas líneas se parte un texto con word-wrap en una caja de
+    cierto ancho, simulando el mismo criterio "voraz" (agregar palabras hasta
+    que no entran más) que usa PowerPoint.
+
+    No es exacto -- no hay métricas reales de la fuente en el servidor -- pero
+    está calibrado contra descripciones reales que se superponían con el
+    precio. Antes de tocar las constantes, mirar el historial de este archivo:
+    ya se recalibraron dos veces contra casos concretos.
+
+    bold=True ensancha el ancho de caracter asumido: las fuentes de titular de
+    estas plantillas son bold y ocupan bastante más por caracter.
+    """
+    if not text or not box_width_cm or not font_size:
+        return 1
+    # Inset interno de PowerPoint (izquierdo + derecho) que hay que descontar
+    # del ancho disponible; sin esto se sobreestima cuánto entra por línea.
+    usable_width_cm = max(0.1, box_width_cm - 0.4)
+    box_width_pt = usable_width_cm / 2.54 * 72
+    # Ancho promedio de caracter, calibrado contra casos reales -- no es un
+    # valor "de catálogo" de ninguna fuente.
+    char_width_em = 0.52 if bold else 0.38
+    chars_per_line = max(1, int(box_width_pt / (font_size * char_width_em)))
+    lines = 1
+    current_len = 0
+    for word in text.split():
+        add_len = len(word) if current_len == 0 else current_len + 1 + len(word)
+        if add_len > chars_per_line and current_len > 0:
+            lines += 1
+            current_len = len(word)
+        else:
+            current_len = add_len
+    return lines
+
+
+def _comp_uses_variable(c: dict, var_name: str) -> bool:
+    """True si el componente usa esa variable, sea directo o en un segmento.
+
+    El caso de segmento importa: "COD: <<codigo>>" o
+    "PRECIO REGULAR: $ <<precioRegular>>" se importan como un componente con
+    varios segmentos, no como una variable de nivel superior.
+    """
+    if c.get("variable") == var_name:
+        return True
+    return any(
+        seg.get("type") == "variable" and seg.get("value") == var_name
+        for seg in (c.get("segments") or [])
+    )
+
+
+# Piso de achique: por debajo de esto la descripción deja de ser legible en un
+# cartel de góndola, y es preferible que se note el desborde a imprimir algo
+# que nadie puede leer.
+_DESC_FONT_FIT_MIN_SCALE = 0.6
+
+
+def _fit_description_font_size(
+    text: str, box_width_cm: float | None, box_height_cm: float | None,
+    base_font_size: float | None, bold: bool = False,
+) -> float | None:
+    """Tamaño de fuente al que la descripción entra en su cuadro.
+
+    Una sola pasada: no reestima cuántas líneas hacen falta AL tamaño ya
+    achicado (un caracter más angosto entra más por línea, así que podría
+    alcanzar con achicar menos). Es a propósito -- mismo nivel de precisión
+    que el resto de las heurísticas de este archivo, y conservador para el
+    lado seguro: prefiere achicar un poco de más antes que arriesgar que la
+    descripción siga invadiendo lo que tiene al lado.
+    """
+    if not text or not box_width_cm or not box_height_cm or not base_font_size:
+        return base_font_size
+    lines = _estimate_wrapped_lines(text, box_width_cm, base_font_size, bold)
+    if lines <= 1:
+        return base_font_size
+    line_height_cm = base_font_size / 72 * 2.54 * 1.2   # 1.2 = interlineado típico
+    needed_height_cm = lines * line_height_cm
+    if needed_height_cm <= box_height_cm:
+        return base_font_size
+    scale = box_height_cm / needed_height_cm
+    return max(base_font_size * scale, base_font_size * _DESC_FONT_FIT_MIN_SCALE)
+
+
+def _fit_description_to_box(comps: list[dict], product: dict) -> list[dict]:
+    """Achica la fuente de la descripción cuando el nombre no entra en su caja.
+
+    Aplica a todos los mundos: descripcion y precio suelen ser dos cuadros de
+    texto independientes apilados, sin auto-layout compartido, así que uno
+    desborda sobre el otro si no se achica.
+    """
+    desc_comp = next((c for c in comps if _comp_uses_variable(c, "descripcion")), None)
+    if not desc_comp:
+        return comps
+
+    style = desc_comp.get("style", {})
+    base_font_size = style.get("font_size")
+    bold = bool(style.get("font_bold"))
+    # computed_bounds ya tiene el tamaño con el que se va a dibujar; base_bounds
+    # es el del diseño. Se prefiere el primero y se cae al segundo.
+    bounds = desc_comp.get("computed_bounds") or desc_comp.get("base_bounds") or {}
+    box_width, box_height = bounds.get("width"), bounds.get("height")
+    text = str(product.get("descripcion", "") or "")
+
+    fitted = _fit_description_font_size(text, box_width, box_height, base_font_size, bold)
+    if fitted == base_font_size:
+        return comps
+
+    result = []
+    for c in comps:
+        if c is desc_comp:
+            c = {**c, "style": {**c["style"], "font_size": fitted}}
+            # En un componente multi-segmento cada segmento lleva su propio
+            # font_size, que pisa al del componente en _populate_text_frame.
+            # Sin esto el achique se descartaba en silencio para cualquier
+            # cuadro importado como multi-segmento (que ahora son casi todos).
+            segs = c.get("segments")
+            if segs:
+                c["segments"] = [
+                    {**seg, "style": {**seg["style"], "font_size": fitted}}
+                    if seg.get("style", {}).get("font_size") else seg
+                    for seg in segs
+                ]
+        result.append(c)
+    return result
 
 
 
@@ -734,6 +873,7 @@ def render_template_to_pptx(
                     product       = pg[band_idx]
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
+                    visible_comps = _fit_description_to_box(visible_comps, product)
                     _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map)
                 elif preserve_source:
                     # Página parcial (menos productos que celdas) y estamos
@@ -773,6 +913,7 @@ def render_template_to_pptx(
 
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
+            visible_comps = _fit_description_to_box(visible_comps, product)
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map)
 
