@@ -12,9 +12,11 @@ const EMPTY_TEMPLATE: CenefaTemplate = {
   name: "Nuevo template",
   master_format: "a4",
   formats: ["a4"],
+  // Ninguna variable es obligatoria (08/2026). El nombre de la columna es
+  // siempre igual al de la variable — ver lib/cenefaVariables.ts.
   variables: [
-    { name: "descripcion",  type: "text",  required: true,  csv_column: "descripcion"  },
-    { name: "precioActual", type: "price", required: true,  csv_column: "precioActual" },
+    { name: "descripcion",  type: "text",  required: false, csv_column: "descripcion"  },
+    { name: "precioOferta", type: "price", required: false, csv_column: "precioOferta" },
     { name: "mecanica",     type: "text",  required: false, csv_column: "mecanica"     },
   ],
   components: [],

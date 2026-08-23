@@ -10,12 +10,10 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.cenefa_job import CenefaJob
-from app.models.cenefa_template import CenefaTemplate
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.services.cenefas.component_renderer import patch_image_overrides, render_template_to_pptx
 from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.pptx_importer import import_pptx
-from app.services.cenefas.render_engine import generate_pptx_bytes
 from app.services.cenefas.validation_engine import build_summary, validate_products
 
 logger = logging.getLogger(__name__)
@@ -60,27 +58,18 @@ _BUILTIN_FILES = {
 class StagedJob:
     """Lo que queda guardado entre el preview y la confirmación.
 
-    use_legacy_engine=True (Redexpres: builtin/v1/subida al vuelo) → el
-    render final usa render_engine.generate_pptx_bytes con excel_bytes +
-    template_bytes crudos — el motor viejo, probado, con todo el ajuste
-    fino de tamaño/centrado de precio que component_renderer no replica.
-    El preview (Canvas) igual usa template_def/products para mostrar algo
-    navegable, pero es aproximado — el archivo final NO sale de ahí.
+    Desde 08/2026 hay UN solo motor de render para todos los destinos
+    (component_renderer). Antes, Redexpres pasaba por render_engine.py --un
+    motor aparte que reemplazaba texto directo sobre el PPTX y traía su
+    propio ajuste automático de tamaño y centrado-- y por eso los
+    position_overrides del preview se descartaban en ese camino. Ese motor
+    se eliminó: ahora lo que se ve en el preview es lo que sale."""
 
-    use_legacy_engine=False (Rompe Precios: template_v2_id) → el render
-    final sí usa component_renderer.render_template_to_pptx, que soporta
-    aplicar los position_overrides del preview."""
     template_def:      dict
-    products:           list
-    target_format:      str
-    source_pptx_bytes:  bytes | None
-    use_legacy_engine:  bool
-    category:           str | None = None
-    excel_bytes:        bytes | None = None
-    vigencia:           str = ""
-    aclaracion:         str = ""
-    otra_alcohol:       str = ""
-    banco:              str = ""
+    products:          list
+    target_format:     str
+    source_pptx_bytes: bytes | None
+    vigencia:          str = ""
 
 
 async def store_job_result(job_id: uuid.UUID, pptx_bytes: bytes) -> None:
@@ -114,15 +103,9 @@ async def store_job_products(job_id: uuid.UUID, staged: StagedJob) -> None:
             "template_def":      staged.template_def,
             "products":          staged.products,
             "target_format":     staged.target_format,
-            "use_legacy_engine": staged.use_legacy_engine,
-            "category":          staged.category,
             "vigencia":          staged.vigencia,
-            "aclaracion":        staged.aclaracion,
-            "otra_alcohol":      staged.otra_alcohol,
-            "banco":             staged.banco,
         }
         job.staged_source_pptx = staged.source_pptx_bytes
-        job.staged_excel_bytes = staged.excel_bytes
         await db.commit()
 
 
@@ -135,13 +118,7 @@ def _staged_job_from_row(job: CenefaJob) -> StagedJob | None:
         products=d["products"],
         target_format=d["target_format"],
         source_pptx_bytes=job.staged_source_pptx,
-        use_legacy_engine=d["use_legacy_engine"],
-        category=d.get("category"),
-        excel_bytes=job.staged_excel_bytes,
         vigencia=d.get("vigencia", ""),
-        aclaracion=d.get("aclaracion", ""),
-        otra_alcohol=d.get("otra_alcohol", ""),
-        banco=d.get("banco", ""),
     )
 
 
@@ -185,18 +162,16 @@ async def run_generation_job(
     job_id:          uuid.UUID,
     excel_bytes:     bytes,
     builtin_slug:    str | None,
-    template_v1_id:  int | None,
     template_v2_id:  uuid.UUID | None,
     target_format:   str | None,
     vigencia:        str,
-    aclaracion:      str,
-    otra_alcohol:    str,
-    banco:           str,
+    legales:         str,
+    usar_legales:    bool,
     image_overrides:       dict | None = None,
     template_upload_bytes: bytes | None = None,
 ) -> None:
     """Etapa A: parsea Excel, valida, resuelve la definición de componentes
-    (importando el PPTX crudo si es builtin/v1) y hornea las imágenes
+    (importando el PPTX crudo si vino como archivo) y hornea las imágenes
     subidas (ej. cocarda). Deja el job en status="preview" con los datos
     reales listos para que el frontend los muestre en el Canvas y el
     usuario pueda reposicionar antes de generar el PPTX final — ver
@@ -210,26 +185,21 @@ async def run_generation_job(
         await db.commit()
 
         try:
-            # Resolver la plantilla PRIMERO -- category tiene que estar
-            # disponible antes de parsear el Excel, porque el matching de
-            # columnas de Parrilla y Vinos depende del destino (ver
-            # data_engine.py::load_products_from_bytes). Ninguno de los dos
-            # bloques depende del resultado del otro, así que reordenar acá
-            # no cambia ningún otro comportamiento.
-            use_legacy_engine = template_v2_id is None
             if template_upload_bytes is not None:
                 template_def = await asyncio.to_thread(
                     import_pptx, template_upload_bytes, "Plantilla subida"
                 )
                 source_pptx_bytes = template_upload_bytes
-                category = None
             else:
-                template_def, source_pptx_bytes, category = await _resolve_template_def(
-                    db, builtin_slug, template_v1_id, template_v2_id
+                template_def, source_pptx_bytes = await _resolve_template_def(
+                    db, builtin_slug, template_v2_id
                 )
 
+            # El destino ya no cambia cómo se lee el Excel: las columnas se
+            # llaman igual en todos lados. Antes se resolvía la plantilla
+            # primero solo para conocer la categoría y ajustar el matching.
             products = await asyncio.to_thread(
-                load_products_from_bytes, excel_bytes, vigencia, aclaracion, otra_alcohol, banco, category
+                load_products_from_bytes, excel_bytes, vigencia, legales, usar_legales
             )
             validation = validate_products(products)
             summary    = build_summary(validation)
@@ -250,13 +220,7 @@ async def run_generation_job(
                 products=products,
                 target_format=resolved_format,
                 source_pptx_bytes=source_pptx_bytes,
-                use_legacy_engine=use_legacy_engine,
-                category=category,
-                excel_bytes=excel_bytes,
                 vigencia=vigencia,
-                aclaracion=aclaracion,
-                otra_alcohol=otra_alcohol,
-                banco=banco,
             ))
 
             job.status            = "preview"
@@ -337,60 +301,29 @@ async def confirm_generation_job(
         return
 
     try:
-        if staged.use_legacy_engine:
-            # Redexpres: el render final pasa por el motor viejo tal
-            # cual, sin tocar nada — es el que ya tiene calibrado el
-            # achicado/centrado de precio y demás ajustes de layout A4
-            # que component_renderer no replica. Los position_overrides
-            # del preview NO se aplican acá a propósito: ese motor no
-            # tiene un modelo de "mover este shape", y aplicar ediciones
-            # parciales de posición sobre su lógica de centrado
-            # automático podría romper justo lo que queremos preservar.
-            if position_overrides:
-                logger.info(
-                    "job %s: se ignoran %d overrides de posición (motor legado, Redexpres)",
-                    job_id, len(position_overrides),
-                )
-            try:
-                pptx_bytes = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        generate_pptx_bytes,
-                        staged.excel_bytes, staged.source_pptx_bytes,
-                        staged.vigencia, staged.aclaracion, staged.otra_alcohol, staged.banco,
-                    ),
-                    timeout=_RENDER_TIMEOUT_SECONDS,
-                )
-            except asyncio.TimeoutError:
-                raise RuntimeError(
-                    f"La generación del archivo superó el límite de {_RENDER_TIMEOUT_SECONDS}s. "
-                    "Probá con menos productos o revisá la plantilla."
-                )
-            missing_vars: list[str] = []
-        else:
-            template_def = staged.template_def
-            if position_overrides:
-                bounds_by_id = {o["id"]: o["base_bounds"] for o in position_overrides if o.get("id")}
-                template_def = {
-                    **template_def,
-                    "components": [
-                        {**c, "base_bounds": bounds_by_id.get(c["id"], c["base_bounds"])}
-                        for c in template_def.get("components", [])
-                    ],
-                }
-            try:
-                pptx_bytes, missing_vars = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        render_template_to_pptx, template_def, staged.products, staged.target_format,
-                        None, staged.source_pptx_bytes,  # image_overrides ya horneado, source_pptx_bytes
-                        staged.category,
-                    ),
-                    timeout=_RENDER_TIMEOUT_SECONDS,
-                )
-            except asyncio.TimeoutError:
-                raise RuntimeError(
-                    f"La generación del archivo superó el límite de {_RENDER_TIMEOUT_SECONDS}s. "
-                    "Probá con menos productos o revisá la plantilla."
-                )
+        template_def = staged.template_def
+        if position_overrides:
+            bounds_by_id = {o["id"]: o["base_bounds"] for o in position_overrides if o.get("id")}
+            template_def = {
+                **template_def,
+                "components": [
+                    {**c, "base_bounds": bounds_by_id.get(c["id"], c["base_bounds"])}
+                    for c in template_def.get("components", [])
+                ],
+            }
+        try:
+            pptx_bytes, missing_vars = await asyncio.wait_for(
+                asyncio.to_thread(
+                    render_template_to_pptx, template_def, staged.products, staged.target_format,
+                    None, staged.source_pptx_bytes,  # image_overrides ya horneado
+                ),
+                timeout=_RENDER_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            raise RuntimeError(
+                f"La generación del archivo superó el límite de {_RENDER_TIMEOUT_SECONDS}s. "
+                "Probá con menos productos o revisá la plantilla."
+            )
         await store_job_result(job_id, pptx_bytes)
 
         job = await peek_job(job_id)
@@ -414,64 +347,44 @@ async def _get_job(db, job_id: uuid.UUID) -> CenefaJob | None:
     return result.scalar_one_or_none()
 
 
-async def _resolve_template_v2(db, template_id: uuid.UUID) -> tuple[dict, bytes | None, str | None]:
+async def _resolve_template_v2(db, template_id: uuid.UUID) -> tuple[dict, bytes | None]:
     result = await db.execute(
         select(CenefaTemplateV2).where(CenefaTemplateV2.id == template_id)
     )
     tmpl = result.scalar_one_or_none()
     if tmpl is None:
-        raise ValueError(f"Template v2 {template_id} no encontrado")
-    return tmpl.definition, tmpl.source_pptx, tmpl.category
+        raise ValueError(f"Template {template_id} no encontrado")
+    return tmpl.definition, tmpl.source_pptx
 
 
 async def _resolve_template_def(
     db,
     builtin_slug:   str | None,
-    template_v1_id: int | None,
     template_v2_id: uuid.UUID | None,
-) -> tuple[dict, bytes | None, str | None]:
-    """Unifica los 3 orígenes posibles de plantilla en una definición de
-    componentes v2 — para builtin/v1 (pptx crudo, sin datos de posición)
-    corre el importer, así Redexpres también puede reposicionar en el
-    preview aunque su plantilla nunca haya pasado por el editor v2.
+) -> tuple[dict, bytes | None]:
+    """Resuelve la plantilla a una definición de componentes.
 
-    Devuelve también los bytes crudos del pptx origen cuando existen — el
-    render final los usa para preservar el diseño (ver component_renderer) —
-    y la categoría del template v2 (None para builtin/v1, que siempre son
-    Redexpres): render_template_to_pptx la usa para restringir a Rompe
-    Precios los ajustes de precio que no deben tocar otras plantillas."""
+    Dos orígenes posibles: una plantilla guardada del equipo, o uno de los
+    PPTX base que vienen con el repo (builtin), que se importa al vuelo. Los
+    dos terminan en el mismo formato y el mismo motor de render.
+
+    Devuelve también los bytes crudos del PPTX origen cuando existen: el
+    render final los usa como base para preservar el diseño completo
+    (fondo, master, layout y cualquier shape que el importer no haya
+    capturado como componente).
+    """
     if template_v2_id is not None:
         return await _resolve_template_v2(db, template_v2_id)
 
-    pptx_bytes = await _resolve_template_pptx(db, builtin_slug, template_v1_id)
+    if builtin_slug is None:
+        raise ValueError("Debés especificar una plantilla")
+
+    filename = _BUILTIN_FILES.get(builtin_slug)
+    if not filename:
+        raise ValueError(f"Plantilla predeterminada desconocida: {builtin_slug!r}")
+    path = _STATIC_DIR / filename
+    if not path.exists():
+        raise FileNotFoundError(f"Archivo no encontrado: {path}")
+    pptx_bytes = path.read_bytes()
     template_def = await asyncio.to_thread(import_pptx, pptx_bytes, "Plantilla importada")
-    return template_def, pptx_bytes, None
-
-
-async def _resolve_template_pptx(
-    db,
-    builtin_slug:   str | None,
-    template_v1_id: int | None,
-) -> bytes:
-    if builtin_slug is not None:
-        filename = _BUILTIN_FILES.get(builtin_slug)
-        if not filename:
-            raise ValueError(f"Plantilla predeterminada desconocida: {builtin_slug!r}")
-        path = _STATIC_DIR / filename
-        if not path.exists():
-            raise FileNotFoundError(f"Archivo no encontrado: {path}")
-        return path.read_bytes()
-
-    if template_v1_id is not None:
-        result = await db.execute(
-            select(CenefaTemplate).where(
-                CenefaTemplate.id == template_v1_id,
-                CenefaTemplate.is_active == True,
-            )
-        )
-        tmpl = result.scalar_one_or_none()
-        if tmpl is None:
-            raise ValueError(f"Template v1 #{template_v1_id} no encontrado")
-        return tmpl.file_bytes
-
-    raise ValueError("Debés especificar builtin_slug o template_v1_id")
+    return template_def, pptx_bytes

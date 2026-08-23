@@ -394,18 +394,16 @@
       "title": "¿A dónde vas?",
       "subtitle": "Elegí qué tipo de cenefa querés generar.",
       "change": "Cambiar destino",
-      "rompe_precios": {
-        "label": "Rompe Precios del finde",
-        "description": "Precio actual, precio anterior tachado y vigencia — sin mecánica de combos."
-      },
-      "parrilla_y_vinos": {
-        "label": "Parrilla y Vinos",
-        "description": "Precio actual, precio anterior tachado y vigencia — mismo formato que Rompe Precios, para parrilla y vinos."
-      },
-      "redexpres": {
-        "label": "Redexpres",
-        "description": "Planillas y mecánicas de combo/M x N para las sucursales Redexpres."
-      }
+      "nuevo": "Nuevo mundo",
+      "crear": "Crear mundo",
+      "creado": "Mundo creado",
+      "borrar": "Eliminar mundo",
+      "borrarConfirm": "¿Eliminar el mundo \"{{nombre}}\"?",
+      "borrado": "Mundo eliminado",
+      "vacio": "Todavía no hay ningún mundo creado.",
+      "errorCargar": "No se pudieron cargar los mundos",
+      "nombrePlaceholder": "Nombre del mundo (ej. Mega Rompe Precios)",
+      "descripcionPlaceholder": "Descripción corta (opcional)"
     },
     "rompePrecios": {
       "templateLabel": "Plantilla",
@@ -456,7 +454,20 @@
         "saved": "Plantilla guardada",
         "saveError": "Error al guardar la plantilla",
         "missingFields": "Completá tipo, nombre, mes/año y el archivo antes de guardar",
-        "months": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        "months": [
+          "Enero",
+          "Febrero",
+          "Marzo",
+          "Abril",
+          "Mayo",
+          "Junio",
+          "Julio",
+          "Agosto",
+          "Septiembre",
+          "Octubre",
+          "Noviembre",
+          "Diciembre"
+        ]
       }
     },
     "previewStep": {
@@ -471,7 +482,12 @@
       "downloaded": "Cenefa generada y descargada",
       "confirmError": "Error al confirmar",
       "confirmTimeout": "La generación está tardando demasiado. Probá de nuevo o con menos productos."
-    }
+    },
+    "usarLegales": "Usar legales",
+    "usarLegalesHint": "Dejalo apagado si la plantilla ya trae los legales impresos en el diseño.",
+    "legales": "Texto de legales",
+    "legalesAlcoholHint": "A los productos con categoría de alcohol se les suma la leyenda obligatoria automáticamente.",
+    "excelDesdeConvertidor": "Excel traído del Convertidor, listo para generar."
   },
   "admin": {
     "title": "Panel de Administrador",
@@ -825,9 +841,19 @@
     "uploadButton": "Subir factura",
     "noData": "Todavía no hay datos cargados — subí tu primera factura.",
     "charts": {
-      "general": { "title": "General", "subtitle": "Total combinado — desglose por cuenta", "centerSubLabel": "Total (presupuesto + canjes)" },
-      "presupuesto": { "title": "Presupuesto", "subtitle": "Entradas vs. salidas" },
-      "canjes": { "title": "Canjes", "subtitle": "Por estado" }
+      "general": {
+        "title": "General",
+        "subtitle": "Total combinado — desglose por cuenta",
+        "centerSubLabel": "Total (presupuesto + canjes)"
+      },
+      "presupuesto": {
+        "title": "Presupuesto",
+        "subtitle": "Entradas vs. salidas"
+      },
+      "canjes": {
+        "title": "Canjes",
+        "subtitle": "Por estado"
+      }
     },
     "entrada": "Entrada",
     "salida": "Salida",
@@ -1075,10 +1101,22 @@
     "campanas": {
       "intro": "Tabla detallada de todas las campañas de todas las plataformas. Podés ordenar, filtrar y exportar los datos.",
       "features": {
-        "sync":        { "label": "Sync manual",  "desc": "Actualizá métricas al instante" },
-        "export":      { "label": "Exportar CSV", "desc": "Descargá el reporte completo" },
-        "filtros":     { "label": "Filtros",      "desc": "Por plataforma, fecha, campaña" },
-        "comparacion": { "label": "Comparación",  "desc": "Período actual vs anterior" }
+        "sync": {
+          "label": "Sync manual",
+          "desc": "Actualizá métricas al instante"
+        },
+        "export": {
+          "label": "Exportar CSV",
+          "desc": "Descargá el reporte completo"
+        },
+        "filtros": {
+          "label": "Filtros",
+          "desc": "Por plataforma, fecha, campaña"
+        },
+        "comparacion": {
+          "label": "Comparación",
+          "desc": "Período actual vs anterior"
+        }
       }
     },
     "analisisIA": {
@@ -1107,34 +1145,73 @@
     "cenefas": {
       "intro": "Convertí un Excel con productos en una presentación PowerPoint lista para imprimir. El sistema genera automáticamente las láminas con precios, descripciones y promociones formateadas.",
       "steps": {
-        "destino":    { "title": "Elegir destino",        "desc": "Al entrar elegís a dónde vas: Redexpres (planillas y mecánicas de combo/M x N), Rompe Precios del finde o Parrilla y Vinos (ambos con precio actual, anterior tachado y vigencia)." },
-        "excel":      { "title": "Subir el Excel",        "desc": "Cargás el archivo con los productos. Las columnas detectadas automáticamente incluyen DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc." },
-        "preview":    { "title": "Ver el preview",        "desc": "Antes de descargar podés ver una vista previa de referencia con los datos reales cargados." },
-        "confirmar":  { "title": "Confirmar y descargar", "desc": "Se genera el PPTX en segundos. Podés descargar el resultado desde la misma pantalla." }
+        "destino": {
+          "title": "Elegir destino",
+          "desc": "Al entrar elegís a dónde vas: Redexpres (planillas y mecánicas de combo/M x N), Rompe Precios del finde o Parrilla y Vinos (ambos con precio actual, anterior tachado y vigencia)."
+        },
+        "excel": {
+          "title": "Subir el Excel",
+          "desc": "Cargás el archivo con los productos. Las columnas detectadas automáticamente incluyen DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc."
+        },
+        "preview": {
+          "title": "Ver el preview",
+          "desc": "Antes de descargar podés ver una vista previa de referencia con los datos reales cargados."
+        },
+        "confirmar": {
+          "title": "Confirmar y descargar",
+          "desc": "Se genera el PPTX en segundos. Podés descargar el resultado desde la misma pantalla."
+        }
       },
       "warningPre": "Los archivos generados se guardan por",
       "warningBold": "24 horas",
       "warningPost": ". Descargalos antes de que venzan.",
       "formats": {
-        "a4":      { "desc": "21 × 29.7 cm · 1 slot",   "sub": "1 producto por slide" },
-        "a3":      { "desc": "29.7 × 42 cm",            "sub": "Formato grande" },
-        "tresXa4": { "desc": "3 franjas verticales",    "sub": "3 productos por slide" },
-        "pinchos": { "desc": "7 × 14.85 cm · grid 3×2", "sub": "6 por slide" }
+        "a4": {
+          "desc": "21 × 29.7 cm · 1 slot",
+          "sub": "1 producto por slide"
+        },
+        "a3": {
+          "desc": "29.7 × 42 cm",
+          "sub": "Formato grande"
+        },
+        "tresXa4": {
+          "desc": "3 franjas verticales",
+          "sub": "3 productos por slide"
+        },
+        "pinchos": {
+          "desc": "7 × 14.85 cm · grid 3×2",
+          "sub": "6 por slide"
+        }
       }
     },
     "editorPlantillas": {
       "title": "Editor de Plantillas",
-      "canvas":    { "title": "Canvas visual",           "desc": "Editor WYSIWYG basado en Konva.js. Ves en tiempo real cómo se verá cada componente en el formato elegido." },
-      "reglas":    { "title": "Reglas de visibilidad",    "desc": "Definís cuándo aparece cada componente según los datos del producto. Condiciones AND/OR/NOT con múltiples operadores." },
-      "variables": { "title": "Variables",                "desc": "Mapeás cada campo del Excel a un componente del template: precio, descripción, mecánica, combo, etc." },
+      "canvas": {
+        "title": "Canvas visual",
+        "desc": "Editor WYSIWYG basado en Konva.js. Ves en tiempo real cómo se verá cada componente en el formato elegido."
+      },
+      "reglas": {
+        "title": "Reglas de visibilidad",
+        "desc": "Definís cuándo aparece cada componente según los datos del producto. Condiciones AND/OR/NOT con múltiples operadores."
+      },
+      "variables": {
+        "title": "Variables",
+        "desc": "Mapeás cada campo del Excel a un componente del template: precio, descripción, mecánica, combo, etc."
+      },
       "startTitle": "Formas de empezar un template",
-      "predeterminada": { "title": "Plantilla predeterminada", "desc": "Cenefa A4, Pinchos o 3xA4 ya configurados y listos para usar." },
+      "predeterminada": {
+        "title": "Plantilla predeterminada",
+        "desc": "Cenefa A4, Pinchos o 3xA4 ya configurados y listos para usar."
+      },
       "importar": {
         "title": "Importar PPTX",
         "descPre": "Subís tu propio .pptx y los placeholders",
         "descPost": "se detectan automáticamente."
       },
-      "desdeCero": { "title": "Desde cero", "desc": "Creás cada componente manualmente, definís bounds, estilos y transforms." }
+      "desdeCero": {
+        "title": "Desde cero",
+        "desc": "Creás cada componente manualmente, definís bounds, estilos y transforms."
+      }
     },
     "conexiones": {
       "title": "Conexiones de plataformas",
@@ -1157,9 +1234,18 @@
     "pedidos": {
       "title": "Planilla de pedidos",
       "intro": "Cada local de Redexpres pide mensualmente el material de punto de venta que necesita (cenefas, afiches, pinchos, stickers) completando su fila de la planilla del mes. Los cambios se guardan solos a los pocos segundos de dejar de tipear — no hay botón de \"Guardar\".",
-      "tuLocal":   { "title": "Tu local",         "desc": "Solo podés editar la fila del local que tenés asignado — el resto se ve pero no se puede tocar." },
-      "confirmar": { "title": "Confirmar pedido", "desc": "Una vez cargado, confirmás el pedido y la fila queda bloqueada para evitar cambios accidentales." },
-      "nuevoMes":  { "title": "Nuevo mes",        "desc": "Solo el Super Admin puede abrir un mes nuevo o desbloquear un pedido ya confirmado." }
+      "tuLocal": {
+        "title": "Tu local",
+        "desc": "Solo podés editar la fila del local que tenés asignado — el resto se ve pero no se puede tocar."
+      },
+      "confirmar": {
+        "title": "Confirmar pedido",
+        "desc": "Una vez cargado, confirmás el pedido y la fila queda bloqueada para evitar cambios accidentales."
+      },
+      "nuevoMes": {
+        "title": "Nuevo mes",
+        "desc": "Solo el Super Admin puede abrir un mes nuevo o desbloquear un pedido ya confirmado."
+      }
     },
     "asistente": {
       "title": "Asistente virtual",
@@ -1175,10 +1261,22 @@
       "introPre": "No hay equipos ni organizaciones separadas: todos los usuarios comparten la misma plataforma. Los permisos viven",
       "introBold": "por usuario",
       "introMid": "no por rol — el rol solo define el punto de partida al asignarlo; después cada permiso se prende o apaga individualmente desde el perfil de esa persona en el",
-      "superAdmin": { "title": "Super Admin", "desc": "Acceso total sin restricciones. Reservado para la cuenta principal — no se asigna desde el panel." },
-      "admin":      { "title": "Admin", "desc": "Arranca con todos los permisos tildados; se pueden destildar puntualmente por usuario. No puede modificar a otro Admin ni al Super Admin." },
-      "usuario":    { "title": "Usuario", "desc": "Arranca con un set operativo estándar (cenefas, analytics, precios e IA completos, sin gestión de usuarios ni de conexiones) — se puede ajustar por persona." },
-      "viewer":     { "title": "Viewer", "desc": "Arranca sin permisos y solo puede tener tildados permisos de \"ver\" — nunca uno de generar, editar, eliminar o gestionar." }
+      "superAdmin": {
+        "title": "Super Admin",
+        "desc": "Acceso total sin restricciones. Reservado para la cuenta principal — no se asigna desde el panel."
+      },
+      "admin": {
+        "title": "Admin",
+        "desc": "Arranca con todos los permisos tildados; se pueden destildar puntualmente por usuario. No puede modificar a otro Admin ni al Super Admin."
+      },
+      "usuario": {
+        "title": "Usuario",
+        "desc": "Arranca con un set operativo estándar (cenefas, analytics, precios e IA completos, sin gestión de usuarios ni de conexiones) — se puede ajustar por persona."
+      },
+      "viewer": {
+        "title": "Viewer",
+        "desc": "Arranca sin permisos y solo puede tener tildados permisos de \"ver\" — nunca uno de generar, editar, eliminar o gestionar."
+      }
     }
   }
 }

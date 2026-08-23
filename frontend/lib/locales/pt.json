@@ -394,18 +394,16 @@
       "title": "Para onde vamos?",
       "subtitle": "Escolha que tipo de faixa você quer gerar.",
       "change": "Trocar destino",
-      "rompe_precios": {
-        "label": "Rompe Precios do fim de semana",
-        "description": "Preço atual, preço anterior riscado e vigência — sem mecânica de combos."
-      },
-      "parrilla_y_vinos": {
-        "label": "Churrasco e Vinhos",
-        "description": "Preço atual, preço anterior riscado e vigência — mesmo formato do Rompe Precios, para churrasco e vinhos."
-      },
-      "redexpres": {
-        "label": "Redexpres",
-        "description": "Planilhas e mecânicas de combo/M x N para as lojas Redexpres."
-      }
+      "nuevo": "Novo mundo",
+      "crear": "Criar mundo",
+      "creado": "Mundo criado",
+      "borrar": "Excluir mundo",
+      "borrarConfirm": "Excluir o mundo \"{{nombre}}\"?",
+      "borrado": "Mundo excluído",
+      "vacio": "Ainda não há nenhum mundo criado.",
+      "errorCargar": "Não foi possível carregar os mundos",
+      "nombrePlaceholder": "Nome do mundo (ex. Mega Rompe Precios)",
+      "descripcionPlaceholder": "Descrição curta (opcional)"
     },
     "rompePrecios": {
       "templateLabel": "Modelo",
@@ -456,7 +454,20 @@
         "saved": "Modelo salvo",
         "saveError": "Erro ao salvar o modelo",
         "missingFields": "Preencha tipo, nome, mês/ano e o arquivo antes de salvar",
-        "months": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+        "months": [
+          "Janeiro",
+          "Fevereiro",
+          "Março",
+          "Abril",
+          "Maio",
+          "Junho",
+          "Julho",
+          "Agosto",
+          "Setembro",
+          "Outubro",
+          "Novembro",
+          "Dezembro"
+        ]
       }
     },
     "previewStep": {
@@ -471,7 +482,12 @@
       "downloaded": "Faixa gerada e baixada",
       "confirmError": "Erro ao confirmar",
       "confirmTimeout": "A geração está demorando demais. Tente de novo ou com menos produtos."
-    }
+    },
+    "usarLegales": "Usar textos legais",
+    "usarLegalesHint": "Deixe desligado se o modelo já traz os textos legais no design.",
+    "legales": "Texto legal",
+    "legalesAlcoholHint": "Produtos com categoria de álcool recebem o aviso obrigatório automaticamente.",
+    "excelDesdeConvertidor": "Excel trazido do Conversor, pronto para gerar."
   },
   "admin": {
     "title": "Painel de Administração",
@@ -825,9 +841,19 @@
     "uploadButton": "Enviar fatura",
     "noData": "Ainda não há dados carregados — envie sua primeira fatura.",
     "charts": {
-      "general": { "title": "Geral", "subtitle": "Total combinado — detalhamento por conta", "centerSubLabel": "Total (orçamento + permutas)" },
-      "presupuesto": { "title": "Orçamento", "subtitle": "Entradas vs. saídas" },
-      "canjes": { "title": "Permutas", "subtitle": "Por status" }
+      "general": {
+        "title": "Geral",
+        "subtitle": "Total combinado — detalhamento por conta",
+        "centerSubLabel": "Total (orçamento + permutas)"
+      },
+      "presupuesto": {
+        "title": "Orçamento",
+        "subtitle": "Entradas vs. saídas"
+      },
+      "canjes": {
+        "title": "Permutas",
+        "subtitle": "Por status"
+      }
     },
     "entrada": "Entrada",
     "salida": "Saída",
@@ -1075,10 +1101,22 @@
     "campanas": {
       "intro": "Tabela detalhada de todas as campanhas de todas as plataformas. Você pode ordenar, filtrar e exportar os dados.",
       "features": {
-        "sync":        { "label": "Sincronização manual", "desc": "Atualize as métricas na hora" },
-        "export":      { "label": "Exportar CSV",          "desc": "Baixe o relatório completo" },
-        "filtros":     { "label": "Filtros",               "desc": "Por plataforma, data, campanha" },
-        "comparacion": { "label": "Comparação",             "desc": "Período atual vs anterior" }
+        "sync": {
+          "label": "Sincronização manual",
+          "desc": "Atualize as métricas na hora"
+        },
+        "export": {
+          "label": "Exportar CSV",
+          "desc": "Baixe o relatório completo"
+        },
+        "filtros": {
+          "label": "Filtros",
+          "desc": "Por plataforma, data, campanha"
+        },
+        "comparacion": {
+          "label": "Comparação",
+          "desc": "Período atual vs anterior"
+        }
       }
     },
     "analisisIA": {
@@ -1107,34 +1145,73 @@
     "cenefas": {
       "intro": "Transforme uma planilha Excel com produtos em uma apresentação PowerPoint pronta para impressão. O sistema gera automaticamente as lâminas com preços, descrições e promoções formatadas.",
       "steps": {
-        "destino":    { "title": "Escolher destino",        "desc": "Ao entrar você escolhe para onde ir: Redexpres (planilhas e mecânicas de combo/M x N), Rompe Precios do fim de semana ou Churrasco e Vinhos (ambos com preço atual, preço anterior riscado e vigência)." },
-        "excel":      { "title": "Enviar o Excel",          "desc": "Você carrega o arquivo com os produtos. As colunas detectadas automaticamente incluem DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc." },
-        "preview":    { "title": "Ver o preview",           "desc": "Antes de baixar você pode ver uma prévia de referência com os dados reais carregados." },
-        "confirmar":  { "title": "Confirmar e baixar",      "desc": "O PPTX é gerado em segundos. Você pode baixar o resultado na mesma tela." }
+        "destino": {
+          "title": "Escolher destino",
+          "desc": "Ao entrar você escolhe para onde ir: Redexpres (planilhas e mecânicas de combo/M x N), Rompe Precios do fim de semana ou Churrasco e Vinhos (ambos com preço atual, preço anterior riscado e vigência)."
+        },
+        "excel": {
+          "title": "Enviar o Excel",
+          "desc": "Você carrega o arquivo com os produtos. As colunas detectadas automaticamente incluem DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc."
+        },
+        "preview": {
+          "title": "Ver o preview",
+          "desc": "Antes de baixar você pode ver uma prévia de referência com os dados reais carregados."
+        },
+        "confirmar": {
+          "title": "Confirmar e baixar",
+          "desc": "O PPTX é gerado em segundos. Você pode baixar o resultado na mesma tela."
+        }
       },
       "warningPre": "Os arquivos gerados ficam guardados por",
       "warningBold": "24 horas",
       "warningPost": ". Baixe-os antes que vençam.",
       "formats": {
-        "a4":      { "desc": "21 × 29,7 cm · 1 slot",   "sub": "1 produto por slide" },
-        "a3":      { "desc": "29,7 × 42 cm",            "sub": "Formato grande" },
-        "tresXa4": { "desc": "3 faixas verticais",      "sub": "3 produtos por slide" },
-        "pinchos": { "desc": "7 × 14,85 cm · grade 3×2", "sub": "6 por slide" }
+        "a4": {
+          "desc": "21 × 29,7 cm · 1 slot",
+          "sub": "1 produto por slide"
+        },
+        "a3": {
+          "desc": "29,7 × 42 cm",
+          "sub": "Formato grande"
+        },
+        "tresXa4": {
+          "desc": "3 faixas verticais",
+          "sub": "3 produtos por slide"
+        },
+        "pinchos": {
+          "desc": "7 × 14,85 cm · grade 3×2",
+          "sub": "6 por slide"
+        }
       }
     },
     "editorPlantillas": {
       "title": "Editor de Modelos",
-      "canvas":    { "title": "Tela visual",          "desc": "Editor WYSIWYG baseado em Konva.js. Veja em tempo real como cada componente vai ficar no formato escolhido." },
-      "reglas":    { "title": "Regras de visibilidade", "desc": "Defina quando cada componente aparece de acordo com os dados do produto. Condições AND/OR/NOT com múltiplos operadores." },
-      "variables": { "title": "Variáveis",              "desc": "Associe cada campo do Excel a um componente do modelo: preço, descrição, mecânica, combo, etc." },
+      "canvas": {
+        "title": "Tela visual",
+        "desc": "Editor WYSIWYG baseado em Konva.js. Veja em tempo real como cada componente vai ficar no formato escolhido."
+      },
+      "reglas": {
+        "title": "Regras de visibilidade",
+        "desc": "Defina quando cada componente aparece de acordo com os dados do produto. Condições AND/OR/NOT com múltiplos operadores."
+      },
+      "variables": {
+        "title": "Variáveis",
+        "desc": "Associe cada campo do Excel a um componente do modelo: preço, descrição, mecânica, combo, etc."
+      },
       "startTitle": "Formas de começar um modelo",
-      "predeterminada": { "title": "Modelo padrão", "desc": "Faixa A4, Pinchos ou 3xA4 já configurada e pronta para usar." },
+      "predeterminada": {
+        "title": "Modelo padrão",
+        "desc": "Faixa A4, Pinchos ou 3xA4 já configurada e pronta para usar."
+      },
       "importar": {
         "title": "Importar PPTX",
         "descPre": "Envie seu próprio .pptx e os placeholders",
         "descPost": "são detectados automaticamente."
       },
-      "desdeCero": { "title": "Do zero", "desc": "Crie cada componente manualmente, defina limites, estilos e transformações." }
+      "desdeCero": {
+        "title": "Do zero",
+        "desc": "Crie cada componente manualmente, defina limites, estilos e transformações."
+      }
     },
     "conexiones": {
       "title": "Conexões de plataformas",
@@ -1157,9 +1234,18 @@
     "pedidos": {
       "title": "Planilha de pedidos",
       "intro": "Cada loja Redexpres faz mensalmente seu pedido de material de ponto de venda (faixas, cartazes, espetos, adesivos) preenchendo sua linha na planilha do mês. As alterações são salvas automaticamente poucos segundos depois de parar de digitar — não existe botão \"Salvar\".",
-      "tuLocal":   { "title": "Sua loja",           "desc": "Você só pode editar a linha da loja atribuída a você — o restante é visível, mas não pode ser alterado." },
-      "confirmar": { "title": "Confirmar pedido",   "desc": "Depois de preenchido, você confirma o pedido e a linha fica bloqueada para evitar alterações acidentais." },
-      "nuevoMes":  { "title": "Novo mês",           "desc": "Somente o Super Admin pode abrir um novo mês ou desbloquear um pedido já confirmado." }
+      "tuLocal": {
+        "title": "Sua loja",
+        "desc": "Você só pode editar a linha da loja atribuída a você — o restante é visível, mas não pode ser alterado."
+      },
+      "confirmar": {
+        "title": "Confirmar pedido",
+        "desc": "Depois de preenchido, você confirma o pedido e a linha fica bloqueada para evitar alterações acidentais."
+      },
+      "nuevoMes": {
+        "title": "Novo mês",
+        "desc": "Somente o Super Admin pode abrir um novo mês ou desbloquear um pedido já confirmado."
+      }
     },
     "asistente": {
       "title": "Assistente virtual",
@@ -1175,10 +1261,22 @@
       "introPre": "Não há times nem organizações separadas: todos os usuários compartilham a mesma plataforma. As permissões vivem",
       "introBold": "por usuário",
       "introMid": "não por papel — o papel só define o ponto de partida ao ser atribuído; depois cada permissão é ativada ou desativada individualmente a partir do perfil dessa pessoa no",
-      "superAdmin": { "title": "Super Admin", "desc": "Acesso total sem restrições. Reservado para a conta principal — não é atribuído pelo painel." },
-      "admin":      { "title": "Admin", "desc": "Começa com todas as permissões marcadas; podem ser desmarcadas pontualmente por usuário. Não pode modificar outro Admin nem o Super Admin." },
-      "usuario":    { "title": "Usuário", "desc": "Começa com um conjunto operacional padrão (faixas, analytics, preços e IA completos, sem gestão de usuários nem de conexões) — ajustável por pessoa." },
-      "viewer":     { "title": "Viewer", "desc": "Começa sem permissões e só pode ter marcadas permissões de \"visualizar\" — nunca de gerar, editar, excluir ou gerenciar." }
+      "superAdmin": {
+        "title": "Super Admin",
+        "desc": "Acesso total sem restrições. Reservado para a conta principal — não é atribuído pelo painel."
+      },
+      "admin": {
+        "title": "Admin",
+        "desc": "Começa com todas as permissões marcadas; podem ser desmarcadas pontualmente por usuário. Não pode modificar outro Admin nem o Super Admin."
+      },
+      "usuario": {
+        "title": "Usuário",
+        "desc": "Começa com um conjunto operacional padrão (faixas, analytics, preços e IA completos, sem gestão de usuários nem de conexões) — ajustável por pessoa."
+      },
+      "viewer": {
+        "title": "Viewer",
+        "desc": "Começa sem permissões e só pode ter marcadas permissões de \"visualizar\" — nunca de gerar, editar, excluir ou gerenciar."
+      }
     }
   }
 }

@@ -76,12 +76,21 @@ _TOOLS = [
     },
 ]
 
+# Los mundos de cenefas se crean desde la UI (ver cenefa_destinos), así que
+# no se pueden enumerar acá. Solo el Convertidor tiene una línea propia; para
+# cualquier destino se arma con su slug (ver _contexto_line).
 _CONTEXTOS = {
     "convertidor": "El usuario está en el Convertidor de Excel.",
-    "rompe_precios": "El usuario está generando cenefas de Rompe Precios.",
-    "redexpres": "El usuario está generando cenefas de Redexpres.",
-    "parrilla_y_vinos": "El usuario está generando cenefas de Parrilla y Vinos.",
 }
+
+
+def _contexto_line(contexto: str | None) -> str:
+    if not contexto:
+        return ""
+    if contexto in _CONTEXTOS:
+        return _CONTEXTOS[contexto]
+    legible = contexto.replace("_", " ")
+    return f"El usuario está generando cenefas del mundo {legible}."
 
 
 async def _ejecutar_tool(db, user_id: int, name: str, tool_input: dict) -> tuple[str, bool]:
@@ -116,7 +125,7 @@ async def consultar(mensaje: str, historial: list[dict], contexto: str | None, d
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     messages: list[dict] = [{"role": m["role"], "content": m["content"]} for m in historial]
-    contexto_line = _CONTEXTOS.get(contexto or "", "")
+    contexto_line = _contexto_line(contexto)
     user_content = f"{contexto_line}\n\n{mensaje}" if contexto_line else mensaje
     messages.append({"role": "user", "content": user_content})
 

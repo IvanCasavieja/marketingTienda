@@ -18,6 +18,7 @@ import RulesPanel      from "@/components/cenefas/editor/RulesPanel";
 import VariablesPanel  from "@/components/cenefas/editor/VariablesPanel";
 import FormatSelector  from "@/components/cenefas/editor/FormatSelector";
 import ImportPanel     from "@/components/cenefas/editor/ImportPanel";
+import { CENEFA_VARIABLES } from "@/lib/cenefaVariables";
 
 const Canvas = dynamic(
   () => import("@/components/cenefas/editor/Canvas"),
@@ -32,25 +33,7 @@ function CanvasPlaceholder() {
   );
 }
 
-const VARIABLES_REFERENCE = [
-  { name: "descripcion",       desc: "Nombre del producto" },
-  { name: "precioActual",      desc: "Precio de venta actual" },
-  { name: "precioAnterior",    desc: "Precio anterior o tachado" },
-  { name: "precioBanco",       desc: "Precio con beneficio bancario" },
-  { name: "banco",             desc: "Nombre del banco o beneficio" },
-  { name: "mecanica",          desc: "Mecánica o tipo de oferta (ej: 2x1, Combo, Precio Final)" },
-  { name: "aclaracion",        desc: "Texto aclaratorio (ej: bases y condiciones)" },
-  { name: "segundaAclaracion", desc: "Segunda aclaración o leyenda de alcohol" },
-  { name: "vigencia",          desc: "Período de validez de la oferta" },
-  { name: "codigoSKU",         desc: "Código de producto o SKU" },
-  { name: "dia",               desc: "Día de la semana o número" },
-  { name: "mes",               desc: "Mes de vigencia" },
-  { name: "año",               desc: "Año de vigencia" },
-  { name: "moneda",            desc: "Símbolo de moneda (ej: $, €)" },
-  { name: "categoria",         desc: "Categoría del producto" },
-  { name: "subCategoria",      desc: "Subcategoría del producto" },
-  { name: "descuento",         desc: "¿Aplica descuento? Columna TRUE/FALSE en Excel" },
-] as const;
+const VARIABLES_REFERENCE = CENEFA_VARIABLES;
 
 export type LeftPanel = "components" | "rules" | "variables";
 

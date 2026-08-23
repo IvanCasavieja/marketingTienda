@@ -7,147 +7,100 @@ from io import BytesIO
 from pptx import Presentation
 from pptx.enum.text import PP_ALIGN
 
+from app.services.cenefas.variables import INTERNAL_SET, is_decimal, is_price, norm, resolve
+
 _EMU_PER_CM = 360_000
 
 _RE_PLACEHOLDER = re.compile(r"<<(\w+?)(\d*)>>", re.IGNORECASE)
 
 # ---------------------------------------------------------------------------
-# Mapa de placeholders → (variable_name, tipo, transform)
-#
-# variable_name: nombre canónico camelCase almacenado en el JSON del template
-# tipo:          "text" | "price" | "image"
-# transform:     "smart_bold" | "upper" | "price_full" | "none"
-#
-# Los placeholders en el PPTX deben ser <<variableName>> (mismos nombres que
-# las columnas del Excel). Se soportan nombres legacy por backward compat.
+# Placeholders del PPTX -> variable canónica
 # ---------------------------------------------------------------------------
-_PLACEHOLDER_MAP: dict[str, tuple[str, str, str]] = {
-    # ── Nombres canónicos nuevos ──────────────────────────────────────────
-    "precioactual":       ("precioActual",      "price", "price_full"),
-    "precioanterior":     ("precioAnterior",    "price", "price_full"),
-    "preciobanco":        ("precioBanco",       "price", "price_full"),
-    "banco":              ("banco",             "text",  "none"),
-    "descripcion":        ("descripcion",       "text",  "smart_bold"),
-    "titulo":             ("mecanica",           "text",  "upper"),
-    "aclaracion":         ("aclaracion",        "text",  "none"),
-    "aclaracion1":        ("aclaracion",        "text",  "none"),  # alias — misma variable que "aclaracion"
-    "aclaracion2":        ("aclaracion2",       "text",  "none"),
-    "aclaracion3":        ("aclaracion3",       "text",  "none"),
-    "segundaaclaracion":  ("segundaAclaracion", "text",  "none"),
-    "vigencia":           ("vigencia",          "text",  "none"),
-    "codigosku":          ("codigoSKU",         "text",  "none"),
-    "dia":                ("dia",               "text",  "upper"),
-    "mes":                ("mes",               "text",  "none"),
-    "ano":                ("año",               "text",  "none"),
-    "año":                ("año",               "text",  "none"),
-    "moneda":             ("moneda",            "text",  "none"),
-    "categoria":          ("categoria",         "text",  "none"),
-    "subcategoria":       ("subCategoria",      "text",  "none"),
-    "descuento":          ("descuento",         "text",  "none"),
+#
+# La regla del sistema es que el placeholder se llama igual que la variable:
+# <<precioOferta>> es la variable `precioOferta` y la columna `precioOferta`.
+# Eso lo resuelve `variables.resolve()` solo, sin ninguna tabla.
+#
+# La tabla de abajo existe únicamente para PPT viejas, que traen nombres de
+# otra época horneados adentro del archivo (<<Precio>>, <<Mecanica1>>,
+# <<OFERTA>>, <<OtraAclaracion1>>...). Renombrarlos exigiría reeditar a mano
+# cada PPT en PowerPoint, así que el puente se cruza acá, una sola vez, en la
+# importación: el template queda guardado ya con los nombres nuevos y a
+# partir de ese momento no hay rastro del nombre viejo en ningún lado.
+#
+# NO es un sistema de alias: solo aplica al importar un archivo, nunca al
+# matchear columnas de Excel (eso es trabajo de la pantalla de mapeo del
+# Convertidor). Un placeholder ya escrito con el nombre canónico jamás pasa
+# por acá.
+#
+# Valor None = el placeholder existía pero la variable se dio de baja; el
+# cuadro se importa como texto vacío en vez de arrastrar una variable
+# fantasma (caso de <<UnidadMedida1>>/<<UnidadPrecio>>, cuyo "unidad" ahora
+# viaja adentro de `mecanica`).
+_LEGACY_PLACEHOLDERS: dict[str, str | None] = {
+    # -- Precio principal de la cenefa -> precioOferta --------------------
+    # En las plantillas de Redexpres el cuadro grande muestra el precio
+    # vigente, que en el vocabulario nuevo es precioOferta (precioRegular es
+    # el anterior/tachado, ver decisión del 08/2026).
+    "precio":                "precioOferta",
+    "precioactual":          "precioOferta",
+    "p":                     "precioOferta",
+    # Parrilla y Vinos es al revés: el cuadro grande es el precio regular y
+    # los niveles 4x3/5x3/6x3 son las ofertas.
+    "preciop":               "precioRegular",
+    "precioanterior":        "precioRegular",
+    "regular":               "precioRegular",
 
-    # ── Legacy backward compat (plantillas importadas antes de la unificación) ──
-    "p":               ("precioActual",      "price", "price_full"),
-    "precio":          ("precioActual",      "price", "price_full"),
-    "pbanco":          ("precioBanco",       "price", "price_full"),
-    "p1":              ("mecanica",           "text",  "upper"),
-    "mecanica":        ("mecanica",          "text",  "upper"),
-    "code":            ("codigoSKU",         "text",  "none"),
-    "otraaclaracion":  ("segundaAclaracion", "text",  "none"),
-    "unidadprecio":    ("unidadPrecio",      "text",  "none"),
-    "unidadpbanco":    ("unidadPBanco",      "text",  "none"),
-    "unidad":          ("unidadPrecio",      "text",  "none"),
-    "unidadmedida":    ("unidadPrecio",      "text",  "none"),
-    "descripci":       ("descripcion",       "text",  "smart_bold"),
+    # -- Niveles de oferta ------------------------------------------------
+    "oferta":                "ofertaUno",
+    "oferta1":               "ofertaUno",
+    "oferta2":               "ofertaDos",
+    "oferta3":               "ofertaTres",
+    "4x3p":                  "ofertaUno",
+    "5x3p":                  "ofertaDos",
+    "6x3p":                  "ofertaTres",
+    "decimal4x3":            "decimalPrecioUno",
+    "decimal5x3":            "decimalPrecioDos",
+    "decimal6x3":            "decimalPrecioTres",
+    "decimaloferta1":        "decimalPrecioUno",
+    "decimaloferta2":        "decimalPrecioDos",
+    "decimaloferta3":        "decimalPrecioTres",
+    "decimalpreciop":        "decimalPrecioRegular",
+    "decimalprecioactual":   "decimalPrecioOferta",
+    "decimalprecioanterior": "decimalPrecioRegular",
+    "decimalpreciooferta":   "decimalPrecioOferta",
 
-    # ── Parrilla y Vinos: precio principal + 3 niveles por cantidad ───────
-    # (4x3/5x3/6x3), cada nivel partido en placeholder de entero + placeholder
-    # de decimal -- ver _ALIASES_PARRILLA_VINOS_OVERRIDE en data_engine.py
-    # para el lado del Excel. precioP (no precioActual) a propósito: el "$"
-    # de esta plantilla ya es texto fijo en el PPTX, precioActual vendría
-    # con su propio "$" auto-formateado y quedaría duplicado ("$$399").
-    "preciop":         ("precioP",           "price", "price_full"),
-    "4x3p":            ("precio4x3",         "price", "price_integer"),
-    "decimal4x3":      ("precio4x3",         "price", "price_decimal"),
-    "5x3p":            ("precio5x3",         "price", "price_integer"),
-    "decimal5x3":      ("precio5x3",         "price", "price_decimal"),
-    "6x3p":            ("precio6x3",         "price", "price_integer"),
-    "decimal6x3":      ("precio6x3",         "price", "price_decimal"),
-    # Otra plantilla de Parrilla y Vinos muestra el nivel 4x3 en un solo
-    # cuadro (sin partir entero/decimal) -- mismo dato que "4x3p"/"decimal4x3"
-    # (misma variable canónica precio4x3, misma columna Excel "oferta"/"4x3"),
-    # solo que acá el placeholder en el PPTX se llama <<oferta>>.
-    "oferta":          ("precio4x3",         "price", "price_full"),
+    # -- Textos ------------------------------------------------------------
+    "descripci":             "descripcion",   # <<Descripción>> pierde el acento al normalizar
+    "titulo":                "mecanica",
+    "p1":                    "mecanica",
+    "aclaracion":            "aclaracionUno",
+    "aclaracion1":           "aclaracionUno",
+    "aclaracion2":           "aclaracionDos",
+    "aclaracion3":           "aclaracionTres",
+    # La "otra aclaración" era el renglón de la leyenda de alcohol; ese rol
+    # pasó a `legales`, que es donde ahora se suma la leyenda automática.
+    "otraaclaracion":        "legales",
+    "segundaaclaracion":     "legales",
+    "codigosku":             "codigo",
+    "code":                  "codigo",
+    "pbanco":                "precioBanco",
+    "decimalpreciobanco":    "decimalPrecioBanco",
 
-    # ── Sistema unificado (Rompe Precios + Parrilla y Vinos, desde 08/2026) ──
-    # A pedido explícito: acá el placeholder, la columna del Excel y la
-    # variable canónica son siempre el mismo nombre -- sin traducir de uno a
-    # otro como el resto de este mapa. price_full porque data_engine.py ya
-    # las deja formateadas (estilo uruguayo "1.234,56", sin "$") vía
-    # _PRICE_VARS_SIN_PREFIJO -- acá solo hace falta pasar el valor tal cual.
-    "preciooferta":        ("precioOferta",        "price", "price_full"),
-    "oferta1":             ("oferta1",             "price", "price_full"),
-    "oferta2":             ("oferta2",             "price", "price_full"),
-    "oferta3":             ("oferta3",             "price", "price_full"),
-    "decimalpreciop":      ("decimalPrecioP",      "price", "price_full"),
-    "decimalpreciooferta": ("decimalPrecioOferta", "price", "price_full"),
-    "decimaloferta1":      ("decimalOferta1",      "price", "price_full"),
-    "decimaloferta2":      ("decimalOferta2",      "price", "price_full"),
-    "decimaloferta3":      ("decimalOferta3",      "price", "price_full"),
-
-    # Mismo criterio, para las variables clásicas de Rompe Precios -- ver
-    # comentario en CANONICAL_VARS de data_engine.py.
-    "decimalprecioactual":   ("decimalPrecioActual",   "price", "price_full"),
-    "decimalprecioanterior": ("decimalPrecioAnterior", "price", "price_full"),
-    "decimalpreciobanco":    ("decimalPrecioBanco",    "price", "price_full"),
+    # -- Variables dadas de baja -> cuadro vacío ---------------------------
+    "unidadmedida":          None,
+    "unidadprecio":          None,
+    "unidadpbanco":          None,
+    "unidad":                None,
+    "moneda":                None,   # el símbolo pasó a ser texto fijo del diseño
+    "categoria":             None,   # campo interno, nunca se dibujó
+    "subcategoria":          None,
+    "descuento":             None,
 }
 
-# Mapa: variable_name → columna Excel canónica (para el panel de Variables)
-_CSV_COLUMN_MAP: dict[str, str] = {
-    "precioActual":      "precioActual",
-    "precioAnterior":    "precioAnterior",
-    "precioBanco":       "precioBanco",
-    "banco":             "banco",
-    "descripcion":       "descripcion",
-    "mecanica":          "mecanica",
-    "aclaracion":        "aclaracion",
-    "aclaracion2":       "aclaracion2",
-    "aclaracion3":       "aclaracion3",
-    "segundaAclaracion": "segundaAclaracion",
-    "vigencia":          "vigencia",
-    "codigoSKU":         "codigoSKU",
-    "dia":               "dia",
-    "mes":               "mes",
-    "año":               "año",
-    "moneda":            "moneda",
-    "categoria":         "categoria",
-    "subCategoria":      "subCategoria",
-    "descuento":         "descuento",
-    # legacy
-    "mecanica":          "mecanica",
-    "unidadPrecio":      "unidadPrecio",
-    "unidadPBanco":      "unidadPBanco",
-    "precioP":           "precioP",
-    "precio4x3":         "precio4x3",
-    "precio5x3":         "precio5x3",
-    "precio6x3":         "precio6x3",
-    # sistema unificado -- el fallback de abajo (var_name.upper()) rompería
-    # la promesa de "mismo nombre en todos lados" mostrando p.ej. "PRECIOOFERTA"
-    # en vez de "precioOferta" como pista de columna en el panel de Variables.
-    "precioOferta":          "precioOferta",
-    "oferta1":               "oferta1",
-    "oferta2":               "oferta2",
-    "oferta3":               "oferta3",
-    "decimalPrecioP":        "decimalPrecioP",
-    "decimalPrecioOferta":   "decimalPrecioOferta",
-    "decimalOferta1":        "decimalOferta1",
-    "decimalOferta2":        "decimalOferta2",
-    "decimalOferta3":        "decimalOferta3",
-    "decimalPrecioActual":   "decimalPrecioActual",
-    "decimalPrecioAnterior": "decimalPrecioAnterior",
-    "decimalPrecioBanco":    "decimalPrecioBanco",
-}
-
-_REQUIRED_VARS = {"descripcion", "precioActual"}
+# Ninguna variable es obligatoria: si la PPT no tiene el cuadro, no se
+# sustituye nada; si el Excel no trae la columna, la variable queda vacía.
+_REQUIRED_VARS: set[str] = set()
 
 _FORMATS_DIM = {
     # (width_cm, height_cm, slots, slot_cols)
@@ -440,19 +393,53 @@ def _get_shape_text(shape) -> str:
     return "".join(r.text for p in shape.text_frame.paragraphs for r in p.runs)
 
 
+def _spec(var_name: str) -> tuple[str, str, str]:
+    """(variable, tipo, transform) para una variable canónica.
+
+    Los transforms quedaron reducidos al mínimo a propósito: el motor ahora
+    solo sustituye, no reformatea. `price_full` deja el valor tal cual (el
+    Convertidor ya lo dejó formateado y con el decimal separado) y sirve
+    únicamente para marcar el tipo del componente en el editor.
+    """
+    if is_price(var_name) or is_decimal(var_name):
+        return (var_name, "price", "price_full")
+    if var_name == "descripcion":
+        # Único transform de texto que sobrevive: las palabras en MAYÚSCULAS
+        # (marcas) se ven en negrita. Es de siempre y ninguna plantilla lo
+        # escribe a mano run por run.
+        return (var_name, "text", "smart_bold")
+    return (var_name, "text", "none")
+
+
 def _resolve_placeholder(root: str, suffix: str) -> tuple[str, str, str]:
-    """Resuelve un match de _RE_PLACEHOLDER (root en minúscula + sufijo
-    numérico opcional) a (variable_name, tipo, transform) — compartido entre
-    el caso de un solo placeholder por shape y el de varios (_build_segments)."""
-    # Reconstruct full name including numeric suffix (e.g. "aclaracion" + "2" → "aclaracion2")
+    """Resuelve un match de _RE_PLACEHOLDER (root + sufijo numérico opcional)
+    a (variable_name, tipo, transform).
+
+    El sufijo numérico identifica el slot dentro de una plantilla
+    multi-producto (<<Precio1>>, <<Precio2>>), no forma parte del nombre de
+    la variable, así que se prueba con y sin él.
+
+    Variable vacía ("") = el placeholder corresponde a una variable dada de
+    baja; el cuadro se conserva con su estilo pero sin contenido.
+    """
     full = root + suffix
-    if full in _PLACEHOLDER_MAP:
-        return _PLACEHOLDER_MAP[full]
-    if root in _PLACEHOLDER_MAP:
-        return _PLACEHOLDER_MAP[root]
-    for key, value in _PLACEHOLDER_MAP.items():
-        if full.startswith(key) or key.startswith(full):
-            return value
+
+    # 1. Nombre canónico -- el caso normal del sistema nuevo. Los campos
+    #    internos (categoria, subCategoria...) no son dibujables, así que no
+    #    cuentan como match acá: caen al puente de abajo, que los da de baja.
+    for candidato in (full, root):
+        canonica = resolve(candidato)
+        if canonica is not None and canonica not in INTERNAL_SET:
+            return _spec(canonica)
+
+    # 2. Puente de nombres viejos -- solo al importar un archivo.
+    for candidato in (norm(full), norm(root)):
+        if candidato in _LEGACY_PLACEHOLDERS:
+            destino = _LEGACY_PLACEHOLDERS[candidato]
+            return ("", "text", "none") if destino is None else _spec(destino)
+
+    # 3. Desconocido: se importa como variable propia, que quedará vacía
+    #    salvo que el Excel traiga una columna con ese mismo nombre.
     return (full, "text", "none")
 
 
@@ -793,6 +780,14 @@ def _parse_shape(
                     "style": style, "_seg_vars": seg_vars}
 
         ph = _detect_placeholder(text)
+        if ph and not ph[0]:
+            # Placeholder de una variable dada de baja (<<UnidadMedida1>>,
+            # <<Moneda>>...): el cuadro se conserva con su estilo y posición
+            # pero queda vacío. Sin esto, el "<<...>>" crudo terminaría
+            # impreso en el cartel.
+            return {**common, "type": "text", "name": "(sin uso)",
+                    "variable": None, "static_value": "",
+                    "transform": "none", "style": style, "_var_type": "text"}
         if ph:
             var_name, var_type, transform = ph
             # TODO(cocarda/imagen): un <<imagen>> escrito como texto (no una
@@ -912,7 +907,7 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
         if var_name and var_name not in variables_seen:
             variables_seen[var_name] = {
                 "type":       comp.pop("_var_type", "text"),
-                "csv_column": _CSV_COLUMN_MAP.get(var_name, var_name.upper()),
+                "csv_column": var_name,
             }
         else:
             comp.pop("_var_type", None)
@@ -923,7 +918,7 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
             if seg_var not in variables_seen:
                 variables_seen[seg_var] = {
                     "type":       seg_type,
-                    "csv_column": _CSV_COLUMN_MAP.get(seg_var, seg_var.upper()),
+                    "csv_column": seg_var,
                 }
 
     variables = [

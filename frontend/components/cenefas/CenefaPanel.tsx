@@ -7,10 +7,17 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import PreviewStep from "@/components/cenefas/PreviewStep";
 import TemplatePickerModal, { typeLabel } from "@/components/cenefas/rompeprecios/TemplatePickerModal";
-import { FileDropField } from "@/components/cenefas/redexpres/RedExpresPanel";
+import { ComboField, FileDropField } from "@/components/cenefas/fields";
+
+// Panel único de generación, para TODOS los destinos.
+//
+// Hasta 08/2026 había dos: RedExpresPanel (plantillas v1 en PPTX crudo, motor
+// de render propio) y RompePreciosPanel (plantillas v2 del editor). Eran dos
+// sistemas paralelos con dos vocabularios de variables. Ahora hay uno solo:
+// el destino es apenas una etiqueta que separa las plantillas de cada mundo.
 
 // Variable convencional para la imagen de cocarda — la plantilla pptx debe
-// tener un componente de imagen con esta variable para que se reemplace.
+// tener un componente de IMAGEN con esta variable para que se reemplace.
 const COCARDA_VAR = "imagen";
 
 function fileToBase64(file: File): Promise<string> {
@@ -22,24 +29,28 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-interface RompePreciosPanelProps {
-  // Destino/categoría de este panel -- separa las plantillas y el Excel de
-  // este flujo de las de cualquier otro destino que reuse el mismo panel
-  // (ver DestinoModal.tsx). El label mostrado se deriva de
-  // cenefas.destino.{category}.label, así que un destino nuevo no necesita
-  // tocar este archivo, solo agregar su entrada al i18n.
-  category: "rompe_precios" | "parrilla_y_vinos";
+interface CenefaPanelProps {
+  /** Slug del destino/mundo. Separa las plantillas de cada uno. */
+  category: string;
+  /** Nombre visible del destino. */
+  categoryLabel: string;
+  /**
+   * Excel ya convertido que llega desde el Convertidor ("Convertir a cenefa"),
+   * en vez de que la persona lo suba a mano.
+   */
+  excelInicial?: File | null;
 }
 
-export default function RompePreciosPanel({ category }: RompePreciosPanelProps) {
+export default function CenefaPanel({ category, categoryLabel, excelInicial }: CenefaPanelProps) {
   const { t } = useTranslation();
-  const categoryLabel = t(`cenefas.destino.${category}.label`);
 
   const [selectedTemplate, setSelectedTemplate] = useState<CenefaTemplateRecord | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const [excel, setExcel] = useState<File | null>(null);
+  const [excel, setExcel] = useState<File | null>(excelInicial ?? null);
   const [vigencia, setVigencia] = useState("");
+  const [usarLegales, setUsarLegales] = useState(false);
+  const [legales, setLegales] = useState("");
   const [cocarda, setCocarda] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -69,8 +80,10 @@ export default function RompePreciosPanel({ category }: RompePreciosPanelProps) 
     try {
       const fd = new FormData();
       fd.append("excel", excel!);
-      fd.append("template_v2_id", selectedTemplate.id);
+      fd.append("template_id", selectedTemplate.id);
       fd.append("vigencia", vigencia.trim());
+      fd.append("usar_legales", String(usarLegales));
+      fd.append("legales", usarLegales ? legales.trim() : "");
 
       if (cocarda) {
         const ext = cocarda.name.split(".").pop()?.toLowerCase() ?? "png";
@@ -150,24 +163,56 @@ export default function RompePreciosPanel({ category }: RompePreciosPanelProps) 
             readyLabel={t("cenefas.ready")}
             searchLabel={t("cenefas.search")}
           />
+          {excelInicial && excel === excelInicial && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400">
+              {t("cenefas.excelDesdeConvertidor")}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Columna derecha: vigencia + cocarda + generar */}
+      {/* Columna derecha: configuración + generar */}
       <div className="flex flex-col gap-5">
         <div className="card p-6 space-y-4">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("cenefas.configSection")}</p>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t("cenefas.vigencia")}</span>
-            <input
-              type="text"
-              value={vigencia}
-              onChange={(e) => setVigencia(e.target.value)}
-              placeholder={t("cenefas.vigenciaPlaceholder")}
-              className="input text-sm"
-            />
-          </label>
+          <ComboField
+            label={t("cenefas.vigencia")}
+            value={vigencia}
+            onChange={setVigencia}
+            storageKey={`cenefas.vigencia.${category}`}
+          />
+
+          {/* Legales: apagados por defecto a propósito. Muchas plantillas ya
+              traen el texto legal impreso en el diseño, y sustituir encima
+              duplica la leyenda. */}
+          <div className="flex flex-col gap-1.5 pt-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={usarLegales}
+                onChange={(e) => setUsarLegales(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                {t("cenefas.usarLegales")}
+              </span>
+            </label>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{t("cenefas.usarLegalesHint")}</span>
+            {usarLegales && (
+              <div className="pt-1.5">
+                <ComboField
+                  label={t("cenefas.legales")}
+                  value={legales}
+                  onChange={setLegales}
+                  storageKey={`cenefas.legales.${category}`}
+                />
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
+                  {t("cenefas.legalesAlcoholHint")}
+                </p>
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t("cenefas.rompePrecios.cocarda")}</span>

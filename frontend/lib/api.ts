@@ -209,15 +209,9 @@ export const connectionsApi = {
 };
 
 export const toolsApi = {
-  getCenefaTemplates: () => api.get("/tools/cenefas/templates"),
-  createCenefaTemplate: (formData: FormData) =>
-    api.post("/tools/cenefas/templates", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    }),
-  deleteCenefaTemplate: (id: number) => api.delete(`/tools/cenefas/templates/${id}`),
-  downloadCenefaTemplate: (id: number) =>
-    api.get(`/tools/cenefas/templates/${id}/download`, { responseType: "blob" }),
-  downloadExcelTemplate: (destino: "redexpres" | "rompe_precios" | "parrilla_y_vinos" = "redexpres") =>
+  // El CRUD de plantillas v1 (PPTX crudo) se eliminó en 08/2026 -- hay un
+  // solo sistema de plantillas, ver cenefasV2Api.
+  downloadExcelTemplate: (destino: string = "cenefas") =>
     api.get("/tools/cenefas/template", { params: { destino }, responseType: "blob" }),
   getBuiltinTemplates: () =>
     api.get<{ slug: string; name: string; format_name: string }[]>("/tools/cenefas/builtin-templates"),
@@ -254,6 +248,7 @@ import type {
   CenefaTemplate,
   CenefaTemplateRecord,
   ComponentBounds,
+  CenefaDestino,
 } from "@/types/cenefas";
 
 export const cenefasV2Api = {
@@ -276,6 +271,14 @@ export const cenefasV2Api = {
     api.patch<{ id: string; name: string }>(`/tools/cenefas/v2/templates/${id}/rename`, { name }),
   deleteTemplate: (id: string) =>
     api.delete(`/tools/cenefas/v2/templates/${id}`),
+
+  // Destinos ("mundos")
+  listDestinos: () =>
+    api.get<CenefaDestino[]>("/tools/cenefas/v2/destinos"),
+  createDestino: (payload: { nombre: string; descripcion?: string; icono?: string; color?: string }) =>
+    api.post<CenefaDestino>("/tools/cenefas/v2/destinos", payload),
+  deleteDestino: (slug: string) =>
+    api.delete(`/tools/cenefas/v2/destinos/${slug}`),
 
   // Jobs
   listJobs: () => api.get<CenefaJob[]>("/tools/cenefas/v2/jobs"),
@@ -432,7 +435,9 @@ export const convertidorApi = {
     api.post<UnificarCategoriasIAResponse>("/tools/cenefas/convertidor/categorias/unificar-ia", { rows }),
 };
 
-export type TininContexto = "convertidor" | "rompe_precios" | "redexpres" | "parrilla_y_vinos";
+// "convertidor" o el slug de un mundo de cenefas. No es una unión cerrada
+// porque los mundos se crean desde la UI (ver cenefa_destinos).
+export type TininContexto = "convertidor" | (string & {});
 
 export interface TininConsultarResponse {
   respuesta: string;

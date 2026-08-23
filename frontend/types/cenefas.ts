@@ -105,6 +105,15 @@ export interface CenefaTemplate {
   rules: CenefaRule[];
 }
 
+/** Un "mundo" de cenefas. Son datos, no código: se crean desde la UI. */
+export interface CenefaDestino {
+  slug: string;
+  nombre: string;
+  descripcion: string;
+  icono: string;
+  color: string;
+}
+
 export interface CenefaTemplateRecord {
   id: string;
   name: string;
