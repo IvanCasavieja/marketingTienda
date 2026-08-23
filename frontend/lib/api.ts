@@ -322,27 +322,71 @@ export const cenefasV2Api = {
 
 export interface ConvertidorRow {
   row_id: number;
-  codigo: string;
+  matched: boolean;
+
+  // Contexto del export de gestión: no se exporta, sirve para entender de
+  // dónde salió cada valor calculado y poder corregirlo.
   nombre_articulo: string;
-  descripcion: string;
+  comprador: string;
   moneda: string;
-  precio_anterior: number | null;
-  precio_anterior_raw: string;
-  precio: number | null;
-  precio_raw: string;
-  oferta: string;
+  oferta_origen: string;
   oferta_det: string;
   descripcion_web: string;
-  comprador: string;
-  descuento: string;
-  descuento_det: string;
-  vigencia: string;
-  aclaracion1: string;
-  aclaracion2: string;
-  aclaracion3: string;
+  precio_raw: string;
+  precio_anterior_raw: string;
   es_fiambre_kg: boolean;
-  matched: boolean;
+  warnings_mecanica: string[];
+
+  // Las 26 variables — es lo que se exporta y lo que consume la cenefa.
+  codigo: string;
+  descripcion: string;
+  mecanica: string;
+  precioRegular: string;
+  decimalPrecioRegular: string;
+  precioOferta: string;
+  decimalPrecioOferta: string;
+  ofertaUno: string;
+  decimalPrecioUno: string;
+  ofertaDos: string;
+  decimalPrecioDos: string;
+  ofertaTres: string;
+  decimalPrecioTres: string;
+  ofertaCuatro: string;
+  decimalPrecioCuatro: string;
+  precioBanco: string;
+  decimalPrecioBanco: string;
+  banco: string;
+  vigencia: string;
+  aclaracionUno: string;
+  aclaracionDos: string;
+  aclaracionTres: string;
+  legales: string;
+  dia: string;
+  mes: string;
+  "año": string;
+
   warnings: string[];
+}
+
+/** Una columna del Excel subido, con muestras para poder reconocerla. */
+export interface ConvertidorColumna {
+  nombre: string;
+  muestras: string[];
+}
+
+export interface ConvertidorColumnasResponse {
+  columnas: ConvertidorColumna[];
+  variables_mapeables: string[];
+  total_filas: number;
+}
+
+/** Plantilla de mapeo reutilizable: {variable: nombre_de_columna}. */
+export interface ConvertidorMapeo {
+  id: string;
+  nombre: string;
+  destino: string | null;
+  mapeo: Record<string, string>;
+  updated_at?: string | null;
 }
 
 export interface ConvertidorSummary {
@@ -410,10 +454,22 @@ export interface UnificarCategoriasIAResponse {
 }
 
 export const convertidorApi = {
+  columnas: (formData: FormData) =>
+    api.post<ConvertidorColumnasResponse>("/tools/cenefas/convertidor/columnas", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
   preview: (formData: FormData) =>
     api.post<ConvertidorPreviewResponse>("/tools/cenefas/convertidor/preview", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
+  listarMapeos: (destino?: string) =>
+    api.get<ConvertidorMapeo[]>("/tools/cenefas/convertidor/mapeos", {
+      params: { destino: destino || undefined },
+    }),
+  guardarMapeo: (payload: { nombre: string; destino?: string | null; mapeo: Record<string, string> }) =>
+    api.post<ConvertidorMapeo>("/tools/cenefas/convertidor/mapeos", payload),
+  borrarMapeo: (id: string) =>
+    api.delete(`/tools/cenefas/convertidor/mapeos/${id}`),
   updateDescripcion: (sku: string, descripcion: string) =>
     api.patch<{ sku: string; descripcion: string }>(
       `/tools/cenefas/convertidor/descripciones/${encodeURIComponent(sku)}`,

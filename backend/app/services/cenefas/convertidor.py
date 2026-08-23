@@ -24,6 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.convertidor_header_alias import ConvertidorHeaderAlias
 from app.models.sku_descripcion import SkuDescripcion
 from app.services.cenefas.convertidor_ai import resolve_date_columns_with_ai
+from app.services.cenefas.convertidor_variables import construir_variables
+from app.services.cenefas.variables import ORDEN_EXPORT
 from app.services.cenefas.formatters import parse_price_raw
 from app.services.cenefas.validation_engine import DESCRIPTION_MAX_CHARS, DESCRIPTION_WARN_CHARS
 
@@ -257,6 +259,66 @@ def _read_csv_rows(csv_bytes: bytes) -> list[tuple]:
     return [tuple(row) for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
 
 
+def _parece_csv_en_una_columna(rows: list[tuple]) -> bool:
+    """True si el .xlsx en realidad es un CSV metido en una sola columna.
+
+    El export real de gestión sale así: una única columna por fila, con todo
+    el contenido separado por comas adentro de la celda. openpyxl lo lee tal
+    cual, así que el header queda como "CODIGO,SECCION,NRO_OFERTA,..." y no
+    matchea con ninguna columna esperada -- el archivo se rechazaba con "no
+    encontré una columna CODIGO" sin ninguna pista de por qué.
+    """
+    if not rows:
+        return False
+    con_datos = [r for r in rows[:5] if r and r[0] is not None]
+    if not con_datos:
+        return False
+    if any(len(r) > 1 and any(c is not None for c in r[1:]) for r in con_datos):
+        return False
+    return all(str(r[0]).count(",") >= 3 or str(r[0]).count(";") >= 3 for r in con_datos)
+
+
+def _mapear_columnas(row) -> tuple[dict[int, str], bool]:
+    candidate: dict[int, str] = {}
+    found_codigo = False
+    for col_idx, cell in enumerate(row):
+        if cell is None:
+            continue
+        var_name = _INPUT_ALIASES.get(_norm(cell))
+        if var_name:
+            candidate[col_idx] = var_name
+            if var_name == "codigo":
+                found_codigo = True
+    return candidate, found_codigo
+
+
+def detectar_fila_headers(rows: list[tuple]) -> int | None:
+    """Indice (0-based) de la fila de encabezados, o None si no la hay.
+
+    No se asume la fila 1: el export real trae una fila de titulo y una en
+    blanco antes. La senal es una columna CODIGO reconocible."""
+    for i, row in enumerate(rows[:_HEADER_SCAN_ROWS]):
+        _, found_codigo = _mapear_columnas(row)
+        if found_codigo:
+            return i
+    return None
+
+
+def leer_filas(file_bytes: bytes, filename: str = "") -> list[tuple]:
+    """Lee el archivo subido a filas, sea .csv, .xlsx o .xlsx-que-es-un-CSV."""
+    if filename.lower().endswith(".csv"):
+        return _read_csv_rows(file_bytes)
+
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    rows = list(ws.iter_rows(min_row=1, max_row=None, values_only=True))
+
+    if _parece_csv_en_una_columna(rows):
+        crudo = chr(10).join(str(r[0]) for r in rows if r and r[0] is not None)
+        return _read_csv_rows(crudo.encode("utf-8"))
+    return rows
+
+
 async def parse_input_excel(
     file_bytes: bytes,
     filename: str = "",
@@ -264,7 +326,8 @@ async def parse_input_excel(
     db: AsyncSession,
     current_user_id: int,
     allow_ai: bool = False,
-) -> tuple[list[dict], int]:
+    mapeo: dict[str, str] | None = None,
+) -> tuple[list[dict], int, list[str]]:
     """Detecta la fila de headers real (puede no ser la fila 1 — el export
     real de gestión trae una fila de título + una fila en blanco antes),
     mapea columnas por nombre normalizado, y extrae por fila: codigo,
@@ -283,37 +346,26 @@ async def parse_input_excel(
     convertidor_ai.py) — nunca se le pregunta por columnas que no tienen
     pinta de fecha en los datos.
 
-    Acepta tanto .xlsx/.xlsm como .csv (ver _read_csv_rows) — decidido por
-    la extensión del archivo subido, no por su contenido.
+    Acepta .xlsx/.xlsm, .csv, y también el .xlsx que en realidad es un CSV
+    metido en una sola columna, que es como sale el export real de gestión
+    (ver leer_filas).
 
-    Devuelve (filas, learned_aliases_count) -- este último es cuántos headers
-    nuevos aprendió Tinín en esta llamada, para que el caller sepa si hace
-    falta commitear."""
-    if filename.lower().endswith(".csv"):
-        rows = _read_csv_rows(file_bytes)
-    else:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-        ws = wb[wb.sheetnames[0]]
-        rows = list(ws.iter_rows(min_row=1, max_row=None, values_only=True))
+    mapeo es {variable_canónica: nombre_de_columna} y viene de la pantalla
+    de mapeo: las variables cuyo nombre de columna cambia entre exports
+    (ofertaUno..Cuatro, vigencia, aclaracionUno..Tres, legales) no se pueden
+    resolver por código, las elige la persona. Los valores leídos de esas
+    columnas viajan en cada fila bajo la clave "_mapeado".
 
-    header_row_idx: int | None = None
+    Devuelve (filas, learned_aliases_count, headers) -- learned_aliases_count
+    es cuántos headers nuevos aprendió Tinín en esta llamada, para que el
+    caller sepa si hace falta commitear; headers son los nombres crudos de la
+    fila de encabezados, para poder re-abrir la pantalla de mapeo."""
+    rows = leer_filas(file_bytes, filename)
+
+    header_row_idx = detectar_fila_headers(rows)
     col_map: dict[int, str] = {}
-    for i, row in enumerate(rows[:_HEADER_SCAN_ROWS]):
-        candidate: dict[int, str] = {}
-        found_codigo = False
-        for col_idx, cell in enumerate(row):
-            if cell is None:
-                continue
-            norm = _norm(cell)
-            var_name = _INPUT_ALIASES.get(norm)
-            if var_name:
-                candidate[col_idx] = var_name
-                if var_name == "codigo":
-                    found_codigo = True
-        if found_codigo:
-            header_row_idx = i
-            col_map = candidate
-            break
+    if header_row_idx is not None:
+        col_map, _ = _mapear_columnas(rows[header_row_idx])
 
     if header_row_idx is None:
         raise ConvertidorParseError(
@@ -410,6 +462,17 @@ async def parse_input_excel(
         c = col_by_var.get(var)
         return row[c] if c is not None and c < len(row) else None
 
+    # {variable: col_idx} para lo que eligió la persona en la pantalla de
+    # mapeo. Se resuelve por nombre normalizado para que un espacio o una
+    # mayúscula de más no rompa el match contra el header real.
+    headers_crudos = [str(c).strip() if c is not None else "" for c in header_row]
+    por_norm = {_norm(h): i for i, h in enumerate(headers_crudos) if h}
+    mapeo_cols: dict[str, int] = {}
+    for var, col_nombre in (mapeo or {}).items():
+        idx = por_norm.get(_norm(col_nombre or ""))
+        if idx is not None:
+            mapeo_cols[var] = idx
+
     parsed: list[dict] = []
     for row in rows[header_row_idx + 1:]:
         # "not row[...]" en vez de "is None": una celda vacía de CSV llega
@@ -439,8 +502,12 @@ async def parse_input_excel(
             "descuento_det":     _clean_str(cell(row, "descuento_det")),
             "fecha_inicio":      _parse_date_or_none(cell(row, "fecha_inicio")),
             "fecha_fin":         _parse_date_or_none(cell(row, "fecha_fin")),
+            "_mapeado": {
+                var: _clean_str(row[i]) if i < len(row) else ""
+                for var, i in mapeo_cols.items()
+            },
         })
-    return parsed, learned_aliases_count
+    return parsed, learned_aliases_count, headers_crudos
 
 
 # ---------------------------------------------------------------------------
@@ -489,61 +556,67 @@ def _es_fiambre_por_kg(comprador: str, nombre_articulo: str, descripcion: str, d
 # ---------------------------------------------------------------------------
 
 def _compute_warnings(row: dict) -> list[str]:
-    """Un warning por columna, cada uno con su propio motivo: vacío (falta
-    el dato) o inválido (hay contenido, pero no del tipo que esa columna
-    espera — la señal real de columnas corridas, localizada en la columna
-    exacta que no cierra)."""
-    w = []
+    """Un warning por columna, cada uno con su propio motivo.
 
-    descripcion = row["descripcion"].strip()
+    Dos familias: "falta el dato" (missing_*) y "hay contenido pero no del
+    tipo que esa columna espera" (*_invalido), que es la señal real de un
+    Excel con las columnas corridas, localizada en la columna exacta que no
+    cierra. Se suman los warnings de mecánica que ya calculó
+    convertidor_variables (oferta_inesperada, combo_no_parseable...), que
+    viajan en la fila bajo "warnings_mecanica".
+    """
+    w = list(row.get("warnings_mecanica") or [])
+
+    descripcion = str(row.get("descripcion") or "").strip()
     if not descripcion:
         w.append("missing_description")
     elif not _has_letters(descripcion):
-        w.append("descripcion_invalida")  # descripción esperaba texto, vino solo números/símbolos
+        w.append("descripcion_invalida")
     elif len(descripcion) > DESCRIPTION_MAX_CHARS:
         # Es para un cartel de precio, no un párrafo -- mismos umbrales que
-        # ya usa validation_engine.py para el generador de Cenefas, así no
-        # hay que inventar un límite nuevo acá. Por encima de MAX_CHARS es
-        # overflow muy probable (mismo peso que un tipo de dato incorrecto).
+        # validation_engine.py, así no hay que inventar un límite nuevo acá.
+        # Ahora pesa más que antes: el motor ya no achica la descripción sola
+        # para que entre (ver la nota en component_renderer.py).
         w.append("descripcion_larga")
     elif len(descripcion) > DESCRIPTION_WARN_CHARS:
-        w.append("descripcion_algo_larga")  # posible truncado, solo informativo
+        w.append("descripcion_algo_larga")
 
-    precio_raw = row.get("precio_raw", "").strip()
+    precio_raw = str(row.get("precio_raw") or "").strip()
     if not precio_raw:
         w.append("missing_price")
     elif not _is_numeric_like(precio_raw):
-        w.append("precio_invalido")  # precio esperaba número, vino texto
+        w.append("precio_invalido")
 
-    precio_anterior_raw = row.get("precio_anterior_raw", "").strip()
+    precio_anterior_raw = str(row.get("precio_anterior_raw") or "").strip()
     if not precio_anterior_raw:
         w.append("missing_precio_anterior")
     elif not _is_numeric_like(precio_anterior_raw):
         w.append("precio_anterior_invalido")
 
-    # OFERTA sin validar de tipo a propósito: en los datos reales es texto
-    # ("PVP OFERTA"), un precio repetido, o una mecánica ("2x599") — no hay
-    # un único tipo esperado que reclamarle, solo si está vacía o no.
-    if not row["oferta"]:
-        w.append("missing_oferta")
-
-    oferta_det = row["oferta_det"].strip()
+    oferta_det = str(row.get("oferta_det") or "").strip()
     if not oferta_det:
         w.append("missing_oferta_det")
     elif _is_numeric_like(oferta_det):
-        w.append("oferta_det_invalido")  # oferta det es una categoría, nunca un número puro
+        w.append("oferta_det_invalido")  # es una categoría, nunca un número puro
 
-    descripcion_web = row["descripcion_web"].strip()
+    descripcion_web = str(row.get("descripcion_web") or "").strip()
     if not descripcion_web:
         w.append("missing_descripcion_web")
     elif not _has_letters(descripcion_web):
         w.append("descripcion_web_invalida")
 
-    moneda = row["moneda"].strip().lower()
-    if moneda and moneda not in _VALID_MONEDAS:
-        w.append("moneda_invalida")  # moneda espera un símbolo de un set chico conocido
+    moneda = str(row.get("moneda") or "").strip()
+    moneda_norm = moneda.lower()
+    if moneda_norm and moneda_norm not in _VALID_MONEDAS:
+        w.append("moneda_invalida")
+    elif moneda_norm and moneda_norm not in ("$", "uyu"):
+        # Desde 08/2026 el símbolo de moneda es texto FIJO del diseño de la
+        # PPT (dejó de ser una variable), así que una fila en dólares se
+        # imprimiría con el "$" de la plantilla y un precio que no es en
+        # pesos. No se puede arreglar solo: lo tiene que ver una persona.
+        w.append("moneda_no_pesos")
 
-    nombre_articulo = row["nombre_articulo"].strip()
+    nombre_articulo = str(row.get("nombre_articulo") or "").strip()
     if nombre_articulo and not _has_letters(nombre_articulo):
         w.append("nombre_articulo_invalido")
 
@@ -684,37 +757,42 @@ async def match_rows(
     rows = []
     for i, r in enumerate(parsed):
         descripcion = catalogo.get(r["codigo"], "")
-        row = {**r, "descripcion": descripcion}
-        rows.append({
-            "row_id":              i,
-            "matched":             bool(descripcion),
-            "codigo":              row["codigo"],
-            "nombre_articulo":     row["nombre_articulo"],
-            "descripcion":         row["descripcion"],
-            "moneda":              row["moneda"],
-            "precio_anterior":     row["precio_anterior"],
-            "precio_anterior_raw": row["precio_anterior_raw"],
-            "precio":              row["precio"],
-            "precio_raw":          row["precio_raw"],
-            "oferta":              row["oferta"],
-            "oferta_det":          row["oferta_det"],
-            "descripcion_web":     row["descripcion_web"],
-            "comprador":           row["comprador"],
-            "descuento":           row["descuento"],
-            "descuento_det":       row["descuento_det"],
-            # vigencia se arma sola si el Excel trajo fecha_inicio/fecha_fin
-            # (ver _format_vigencia) — ninguna columna candidata en gestión
-            # para aclaracion1-3 (ver convertidor.py docstring), quedan
-            # vacías, editables a mano en la grilla.
-            "vigencia":            _format_vigencia(row.get("fecha_inicio"), row.get("fecha_fin")),
-            "aclaracion1":         "",
-            "aclaracion2":         "",
-            "aclaracion3":         "",
-            "es_fiambre_kg":       _es_fiambre_por_kg(
-                row["comprador"], row["nombre_articulo"], row["descripcion"], row["descripcion_web"]
+
+        # Las 26 variables ya resueltas: mecánica redactada, precios partidos
+        # en entero + decimal, y lo que la persona mapeó pisando lo calculado.
+        variables, warn_mecanica = construir_variables(
+            r,
+            descripcion,
+            r.get("_mapeado") or {},
+            vigencia_fallback=_format_vigencia(r.get("fecha_inicio"), r.get("fecha_fin")),
+        )
+
+        # Contexto del export de gestión: no son variables y no se exportan,
+        # pero se muestran en la grilla para que una persona pueda entender
+        # de dónde salió cada valor calculado y corregirlo si algo no cierra.
+        contexto = {
+            "nombre_articulo":     r["nombre_articulo"],
+            "comprador":           r["comprador"],
+            "moneda":              r["moneda"],
+            "oferta_origen":       r["oferta"],
+            "oferta_det":          r["oferta_det"],
+            "descripcion_web":     r["descripcion_web"],
+            "precio_raw":          r["precio_raw"],
+            "precio_anterior_raw": r["precio_anterior_raw"],
+        }
+
+        fila = {
+            "row_id":  i,
+            "matched": bool(descripcion),
+            **contexto,
+            **variables,
+            "es_fiambre_kg": _es_fiambre_por_kg(
+                r["comprador"], r["nombre_articulo"], descripcion, r["descripcion_web"]
             ),
-            "warnings":            _compute_warnings(row),
-        })
+            "warnings_mecanica": warn_mecanica,
+        }
+        fila["warnings"] = _compute_warnings(fila)
+        rows.append(fila)
 
     ma_pairs = detect_ma_pairs(rows, catalogo)
 
@@ -725,47 +803,56 @@ async def match_rows(
 # Generación del Excel de salida
 # ---------------------------------------------------------------------------
 
-_OUTPUT_HEADERS = [
-    "Código", "Nombre Artículo", "Comprador", "Descripción", "Moneda",
-    "Precio Anterior", "Precio", "Oferta", "Oferta Det",
-    "Descuento Prov", "Descuento Prov Det", "Descripción Web", "Vigencia",
-    "Aclaración 1", "Aclaración 2", "Aclaración 3",
-]
-_OUTPUT_FIELDS = [
-    "codigo", "nombre_articulo", "comprador", "descripcion", "moneda",
-    "precio_anterior", "precio", "oferta", "oferta_det",
-    "descuento", "descuento_det", "descripcion_web", "vigencia",
-    "aclaracion1", "aclaracion2", "aclaracion3",
-]
-_OUTPUT_COL_WIDTHS = [16, 36, 20, 36, 10, 14, 12, 14, 14, 16, 16, 40, 26, 30, 30, 30]
-# warning code -> índice de columna 1-based que se resalta
+# El Excel de salida tiene UNA COLUMNA POR VARIABLE, con el nombre exacto de
+# la variable como encabezado. No hay traducción ni nombres "bonitos": ese
+# archivo se vuelve a subir al generador de cenefas, que matchea las columnas
+# por nombre canónico y nada más. Antes la salida repetía las columnas de
+# gestión (Oferta, Oferta Det, Descripción Web...) y el generador tenía que
+# volver a interpretarlas; ahora los valores ya vienen resueltos.
+_OUTPUT_FIELDS = list(ORDEN_EXPORT)
+_OUTPUT_HEADERS = list(ORDEN_EXPORT)
+
+_ANCHAS = {"descripcion", "mecanica", "vigencia", "legales",
+           "aclaracionUno", "aclaracionDos", "aclaracionTres"}
+_OUTPUT_COL_WIDTHS = [34 if v in _ANCHAS else 18 for v in ORDEN_EXPORT]
+
+
+def _col(var: str) -> int:
+    """Índice 1-based de una variable en el Excel de salida."""
+    return ORDEN_EXPORT.index(var) + 1
+
+
+# Warning -> columna que se resalta. Los de mecánica apuntan a la columna
+# mecanica, que es donde se ve el resultado de la interpretación que hay que
+# revisar.
 _WARN_COL = {
-    "nombre_articulo_invalido":  2,
-    "missing_description":       4,
-    "descripcion_invalida":      4,
-    "descripcion_larga":         4,
-    "descripcion_algo_larga":    4,
-    "moneda_invalida":           5,
-    "missing_precio_anterior":   6,
-    "precio_anterior_invalido":  6,
-    "missing_price":             7,
-    "precio_invalido":           7,
-    "missing_oferta":            8,
-    "missing_oferta_det":        9,
-    "oferta_det_invalido":       9,
-    "missing_descripcion_web":   12,
-    "descripcion_web_invalida":  12,
+    "missing_description":      _col("descripcion"),
+    "descripcion_invalida":     _col("descripcion"),
+    "descripcion_larga":        _col("descripcion"),
+    "descripcion_algo_larga":   _col("descripcion"),
+    "missing_price":            _col("precioOferta"),
+    "precio_invalido":          _col("precioOferta"),
+    "missing_precio_anterior":  _col("precioRegular"),
+    "precio_anterior_invalido": _col("precioRegular"),
+    "oferta_inesperada":        _col("mecanica"),
+    "combo_no_parseable":       _col("mecanica"),
+    "mxn_no_parseable":         _col("mecanica"),
+    "mxn_sin_precio":           _col("mecanica"),
+    "oferta_det_invalido":      _col("mecanica"),
+    "missing_oferta_det":       _col("mecanica"),
+    "moneda_invalida":          _col("precioOferta"),
+    "moneda_no_pesos":          _col("precioOferta"),
 }
-# Warnings de "tipo incorrecto" (hay contenido, pero no del tipo esperado
-# para esa columna) — más severos que un simple "falta el dato", porque
-# apuntan a la columna exacta donde el Excel de origen viene corrido.
-# descripcion_algo_larga NO entra acá a propósito: es solo informativo
-# (posible truncado), no evidencia de columnas corridas — mismo criterio
-# que WARN_CHARS vs. MAX_CHARS en validation_engine.py.
+
+# Warnings que NO son "falta el dato" sino "hay contenido que no cierra":
+# apuntan a un Excel con las columnas corridas o a un valor que una persona
+# tiene que decidir. Se pintan distinto porque no se arreglan completando.
 _INVALID_TYPE_CODES = {
-    "nombre_articulo_invalido", "descripcion_invalida", "descripcion_larga", "moneda_invalida",
+    "nombre_articulo_invalido", "descripcion_invalida", "descripcion_larga",
+    "moneda_invalida", "moneda_no_pesos",
     "precio_anterior_invalido", "precio_invalido", "oferta_det_invalido",
     "descripcion_web_invalida",
+    "oferta_inesperada", "combo_no_parseable", "mxn_no_parseable", "mxn_sin_precio",
 }
 
 

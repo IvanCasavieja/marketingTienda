@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from "react";
+import { useRouter } from "next/navigation";
 import clsx from "clsx";
-import { ArrowLeft, Download, Layers, Loader2, Merge, Sparkles, Target } from "lucide-react";
+import { ArrowLeft, Download, Layers, Loader2, Merge, Presentation, Sparkles, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { convertidorApi, type ConvertidorRow, type MaPair, type UnificarGrupoItem } from "@/lib/api";
+import { guardarExcelParaCenefa } from "@/lib/cenefaHandoff";
 import ConvertidorAiModal from "./ConvertidorAiModal";
 import ConvertidorMergeModal from "./ConvertidorMergeModal";
 import ConvertidorUnifyModal from "./ConvertidorUnifyModal";
@@ -19,49 +21,91 @@ const BUFFER_ROWS = 8;
 const SAVE_DEBOUNCE_MS = 800;
 
 type ColumnKey =
-  | "codigo" | "nombre_articulo" | "comprador" | "descripcion" | "moneda" | "precio_anterior" | "precio"
-  | "oferta" | "oferta_det" | "descuento" | "descuento_det" | "descripcion_web"
-  | "vigencia" | "aclaracion1" | "aclaracion2" | "aclaracion3";
+  // contexto del export de gestión (solo lectura, no se exporta)
+  | "nombre_articulo" | "comprador" | "moneda" | "oferta_origen" | "oferta_det" | "descripcion_web"
+  // las 26 variables
+  | "codigo" | "descripcion" | "mecanica"
+  | "precioRegular" | "decimalPrecioRegular"
+  | "precioOferta" | "decimalPrecioOferta"
+  | "ofertaUno" | "decimalPrecioUno"
+  | "ofertaDos" | "decimalPrecioDos"
+  | "ofertaTres" | "decimalPrecioTres"
+  | "ofertaCuatro" | "decimalPrecioCuatro"
+  | "precioBanco" | "decimalPrecioBanco" | "banco"
+  | "vigencia" | "aclaracionUno" | "aclaracionDos" | "aclaracionTres" | "legales"
+  | "dia" | "mes" | "año";
 
 // "descripcion" es editable con lógica propia (guardado al catálogo
-// compartido + sugerencias IA, ver handleDescripcionChange más abajo).
-// "simple" es edición local nomás (no persiste a ningún lado hasta
-// exportar) — vigencia y aclaracion1/2/3 no tienen catálogo ni columna en
-// gestión, son texto libre que se completa acá mismo o se deja vacío.
+// compartido + sugerencias IA, ver handleDescripcionChange). "simple" es
+// edición local: no persiste a ningún lado hasta exportar.
 type EditableKind = "descripcion" | "simple";
 
-// Cada columna tiene un tipo de dato esperado — precio es numérico,
-// descripción/nombre son texto, moneda es un símbolo de un set chico
-// conocido, oferta det es una categoría (nunca un número). "warningCodes"
-// lista los códigos que el backend ya calculó por columna, en orden de
-// severidad: vacío ("missing_*") o tipo incorrecto ("*_invalido/a") —
-// nunca ambos a la vez para el mismo campo.
-const COLUMNS: { key: ColumnKey; i18nKey: string; editable?: EditableKind; warningCodes?: string[] }[] = [
-  { key: "codigo",          i18nKey: "codigo" },
-  { key: "nombre_articulo", i18nKey: "nombreArticulo", warningCodes: ["nombre_articulo_invalido"] },
-  { key: "comprador",       i18nKey: "comprador" },
-  { key: "descripcion",     i18nKey: "descripcion",     editable: "descripcion", warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
-  { key: "moneda",          i18nKey: "moneda",          warningCodes: ["moneda_invalida"] },
-  { key: "precio_anterior", i18nKey: "precioAnterior",  warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
-  { key: "precio",          i18nKey: "precio",          warningCodes: ["missing_price", "precio_invalido"] },
-  { key: "oferta",          i18nKey: "oferta",          warningCodes: ["missing_oferta"] },
-  { key: "oferta_det",      i18nKey: "ofertaDet",       warningCodes: ["missing_oferta_det", "oferta_det_invalido"] },
-  { key: "descuento",       i18nKey: "descuentoProv" },
-  { key: "descuento_det",   i18nKey: "descuentoProvDet" },
-  { key: "descripcion_web", i18nKey: "descripcionWeb",  warningCodes: ["missing_descripcion_web", "descripcion_web_invalida"] },
-  { key: "vigencia",        i18nKey: "vigencia",        editable: "simple" },
-  { key: "aclaracion1",     i18nKey: "aclaracion1",     editable: "simple" },
-  { key: "aclaracion2",     i18nKey: "aclaracion2",     editable: "simple" },
-  { key: "aclaracion3",     i18nKey: "aclaracion3",     editable: "simple" },
+interface ColumnDef {
+  key: ColumnKey;
+  label: string;
+  editable?: EditableKind;
+  warningCodes?: string[];
+  /** Columna del export de gestión: contexto para revisar, no se exporta. */
+  contexto?: boolean;
+  /** Se muestra siempre, aunque venga vacía en todas las filas. */
+  siempre?: boolean;
+}
+
+const COLUMNS: ColumnDef[] = [
+  // ── Lo que define la cenefa ─────────────────────────────────────────────
+  { key: "codigo",        label: "codigo",      siempre: true },
+  { key: "descripcion",   label: "descripcion", editable: "descripcion", siempre: true,
+    warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
+  { key: "mecanica",      label: "mecanica",    editable: "simple", siempre: true,
+    warningCodes: ["oferta_inesperada", "combo_no_parseable", "mxn_no_parseable", "mxn_sin_precio",
+                   "missing_oferta_det", "oferta_det_invalido"] },
+  { key: "precioRegular", label: "precioRegular", editable: "simple", siempre: true,
+    warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
+  { key: "decimalPrecioRegular", label: "decimal", editable: "simple", siempre: true },
+  { key: "precioOferta",  label: "precioOferta",  editable: "simple", siempre: true,
+    warningCodes: ["missing_price", "precio_invalido", "moneda_invalida", "moneda_no_pesos"] },
+  { key: "decimalPrecioOferta", label: "decimal", editable: "simple", siempre: true },
+  { key: "ofertaUno",     label: "ofertaUno",     editable: "simple", siempre: true },
+  { key: "decimalPrecioUno",    label: "decimal", editable: "simple" },
+  { key: "ofertaDos",     label: "ofertaDos",     editable: "simple" },
+  { key: "decimalPrecioDos",    label: "decimal", editable: "simple" },
+  { key: "ofertaTres",    label: "ofertaTres",    editable: "simple" },
+  { key: "decimalPrecioTres",   label: "decimal", editable: "simple" },
+  { key: "ofertaCuatro",  label: "ofertaCuatro",  editable: "simple" },
+  { key: "decimalPrecioCuatro", label: "decimal", editable: "simple" },
+  { key: "precioBanco",   label: "precioBanco",   editable: "simple" },
+  { key: "decimalPrecioBanco",  label: "decimal", editable: "simple" },
+  { key: "banco",         label: "banco",         editable: "simple" },
+  { key: "vigencia",      label: "vigencia",      editable: "simple", siempre: true },
+  { key: "aclaracionUno", label: "aclaracionUno", editable: "simple", siempre: true },
+  { key: "aclaracionDos", label: "aclaracionDos", editable: "simple" },
+  { key: "aclaracionTres",label: "aclaracionTres",editable: "simple" },
+  { key: "legales",       label: "legales",       editable: "simple" },
+  { key: "dia",           label: "dia",           editable: "simple" },
+  { key: "mes",           label: "mes",           editable: "simple" },
+  { key: "año",           label: "año",           editable: "simple" },
+
+  // ── Contexto de gestión: de dónde salió lo de arriba ────────────────────
+  { key: "nombre_articulo", label: "· Nombre gestión", contexto: true, siempre: true,
+    warningCodes: ["nombre_articulo_invalido"] },
+  { key: "oferta_det",      label: "· Oferta Det",     contexto: true, siempre: true },
+  { key: "oferta_origen",   label: "· Oferta",         contexto: true, siempre: true },
+  { key: "moneda",          label: "· Moneda",         contexto: true, siempre: true,
+    warningCodes: ["moneda_invalida", "moneda_no_pesos"] },
+  { key: "comprador",       label: "· Comprador",      contexto: true },
+  { key: "descripcion_web", label: "· Descripción web", contexto: true,
+    warningCodes: ["missing_descripcion_web", "descripcion_web_invalida"] },
 ];
 
-// Warnings de "tipo incorrecto" (hay contenido, pero no del tipo esperado
-// para esa columna) — más severos que un simple "falta el dato": apuntan a
-// la columna exacta donde el Excel de origen viene corrido.
+// Warnings de "hay contenido que no cierra" — no se arreglan completando el
+// dato, los tiene que mirar una persona. Espejo de _INVALID_TYPE_CODES en
+// backend/app/services/cenefas/convertidor.py.
 const INVALID_TYPE_CODES = new Set([
-  "nombre_articulo_invalido", "descripcion_invalida", "descripcion_larga", "moneda_invalida",
+  "nombre_articulo_invalido", "descripcion_invalida", "descripcion_larga",
+  "moneda_invalida", "moneda_no_pesos",
   "precio_anterior_invalido", "precio_invalido", "oferta_det_invalido",
   "descripcion_web_invalida",
+  "oferta_inesperada", "combo_no_parseable", "mxn_no_parseable", "mxn_sin_precio",
 ]);
 
 const HAS_LETTER_RE = /\p{L}/u;
@@ -89,6 +133,23 @@ function computeDescripcionWarnings(currentWarnings: string[], value: string): s
   return warnings;
 }
 
+// El precio ajustado del modal de IA (÷10 para fiambres que pasan a 100g)
+// llega como número, pero en la grilla los precios viven partidos en entero +
+// decimal, con formato uruguayo. Espejo de split_price() en
+// backend/app/services/cenefas/data_engine.py.
+function partirPrecio(
+  claveEntero: string, claveDecimal: string, valor?: number,
+): Record<string, string> {
+  if (valor === undefined || !Number.isFinite(valor) || valor <= 0) return {};
+  const entero = Math.trunc(valor);
+  const centavos = Math.round((valor - entero) * 100);
+  return {
+    [claveEntero]: entero.toLocaleString("es-UY").replace(/,/g, "."),
+    // Un precio redondo no imprime ",00": el diseño de la cenefa no lo contempla.
+    [claveDecimal]: centavos > 0 ? "," + String(centavos).padStart(2, "0") : "",
+  };
+}
+
 interface Props {
   rows: ConvertidorRow[];
   setRows: Dispatch<SetStateAction<ConvertidorRow[] | null>>;
@@ -104,6 +165,8 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
   const { t } = useTranslation();
   const [scrollTop, setScrollTop] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [enviandoACenefa, setEnviandoACenefa] = useState(false);
+  const router = useRouter();
   const [savingRowId, setSavingRowId] = useState<number | null>(null);
   const [pendingFocusRowId, setPendingFocusRowId] = useState<number | null>(null);
   // Snapshot local: arranca desde la prop (calculada una vez por el backend
@@ -118,6 +181,12 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
   const [hoveredCell, setHoveredCell] = useState<{ rowId: number; key: ColumnKey } | null>(null);
   const [focusedCell, setFocusedCell] = useState<{ rowId: number; key: ColumnKey } | null>(null);
   const activeCell = hoveredCell ?? focusedCell;
+  const columnasVisibles = useMemo(
+    () => COLUMNS.filter(
+      (c) => c.siempre || rows.some((r) => String(r[c.key] ?? "").trim() !== ""),
+    ),
+    [rows],
+  );
   const activeCellColumn = activeCell ? COLUMNS.find((c) => c.key === activeCell.key) : undefined;
   const activeCellRow = activeCell ? rows.find((r) => r.row_id === activeCell.rowId) : undefined;
   const activeCellValue =
@@ -359,10 +428,8 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
               // backend. sku_descripciones no tiene columnas de precio y así
               // se mantiene: el PATCH de abajo (flushSave) sigue mandando
               // únicamente la descripción, igual que siempre.
-              ...(precioOverride?.precio !== undefined ? { precio: precioOverride.precio } : {}),
-              ...(precioOverride?.precio_anterior !== undefined
-                ? { precio_anterior: precioOverride.precio_anterior }
-                : {}),
+              ...partirPrecio("precioOferta", "decimalPrecioOferta", precioOverride?.precio),
+              ...partirPrecio("precioRegular", "decimalPrecioRegular", precioOverride?.precio_anterior),
             }
           : r
       )
@@ -371,19 +438,20 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
     if (!ok) throw new Error("No se pudo guardar la descripción");
   }
 
+  /** Vacía el debounce de guardado para que nada tipeado recién se pierda. */
+  async function flushPendientes() {
+    for (const rowId of Object.keys(pendingSaves.current).map(Number)) {
+      clearTimeout(pendingSaves.current[rowId]);
+      delete pendingSaves.current[rowId];
+      const row = rows.find((r) => r.row_id === rowId);
+      if (row && row.descripcion.trim()) await flushSave(rowId, row.codigo, row.descripcion);
+    }
+  }
+
   async function handleExport() {
     setExporting(true);
     try {
-      // Fuerza el flush de cualquier guardado pendiente antes de descargar —
-      // así ninguna corrección reciente se pierde del catálogo compartido
-      // si el usuario descarga enseguida de tipear.
-      for (const rowId of Object.keys(pendingSaves.current).map(Number)) {
-        clearTimeout(pendingSaves.current[rowId]);
-        delete pendingSaves.current[rowId];
-        const row = rows.find((r) => r.row_id === rowId);
-        if (row && row.descripcion.trim()) await flushSave(rowId, row.codigo, row.descripcion);
-      }
-
+      await flushPendientes();
       const { data: blob } = await convertidorApi.export(rows);
       const url = URL.createObjectURL(new Blob([blob]));
       if (dlRef.current) {
@@ -397,6 +465,23 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
       toast.error(err?.response?.data?.detail ?? t("convertidor.unknownError"));
     } finally {
       setExporting(false);
+    }
+  }
+
+  // "Convertir a cenefa": el mismo Excel que se descargaría, pero entregado
+  // directo al generador en vez de bajarlo y volver a subirlo. Viaja por
+  // sessionStorage (un File no entra en un query param) y lo levanta
+  // materiales/cenefas/page.tsx, que lo borra apenas lo lee.
+  async function handleConvertirACenefa() {
+    setEnviandoACenefa(true);
+    try {
+      await flushPendientes();
+      const { data: blob } = await convertidorApi.export(rows);
+      await guardarExcelParaCenefa(blob as Blob);
+      router.push("/materiales/cenefas");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? t("convertidor.unknownError"));
+      setEnviandoACenefa(false);
     }
   }
 
@@ -521,7 +606,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
         {activeCellColumn ? (
           <>
             <span className="font-semibold text-slate-500 dark:text-slate-400 shrink-0">
-              {t(`convertidor.columns.${activeCellColumn.i18nKey}`)}:
+              {activeCellColumn.label}:
             </span>
             <span className="truncate text-slate-800 dark:text-slate-100">{activeCellValue || "—"}</span>
           </>
@@ -540,12 +625,12 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
           <table className="w-full border-collapse text-xs table-fixed">
             <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800">
               <tr>
-                {COLUMNS.map((c) => (
+                {columnasVisibles.map((c) => (
                   <th
                     key={c.key}
                     className="text-left px-2 py-2 font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide text-[10px] border-b border-slate-200 dark:border-slate-700"
                   >
-                    {t(`convertidor.columns.${c.i18nKey}`)}
+                    {c.label}
                   </th>
                 ))}
               </tr>
@@ -553,12 +638,12 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
             <tbody>
               {topSpacer > 0 && (
                 <tr style={{ height: topSpacer }}>
-                  <td colSpan={COLUMNS.length} />
+                  <td colSpan={columnasVisibles.length} />
                 </tr>
               )}
               {visibleRows.map((row) => (
                 <tr key={row.row_id} style={{ height: ROW_HEIGHT }} className="border-b border-slate-100 dark:border-slate-800">
-                  {COLUMNS.map((c) => (
+                  {columnasVisibles.map((c) => (
                     <td
                       key={c.key}
                       className={clsx("px-2 py-1 align-middle", warningClass(row, c.warningCodes))}
@@ -609,7 +694,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
               ))}
               {bottomSpacer > 0 && (
                 <tr style={{ height: bottomSpacer }}>
-                  <td colSpan={COLUMNS.length} />
+                  <td colSpan={columnasVisibles.length} />
                 </tr>
               )}
             </tbody>
@@ -617,10 +702,24 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
         </div>
       </div>
 
-      <button onClick={handleExport} disabled={exporting} className="btn-primary flex items-center gap-2 disabled:opacity-50">
-        {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-        {exporting ? t("convertidor.exporting") : t("convertidor.download")}
-      </button>
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={handleConvertirACenefa}
+          disabled={enviandoACenefa || exporting}
+          className="btn-primary flex items-center gap-2 disabled:opacity-50"
+        >
+          {enviandoACenefa ? <Loader2 size={16} className="animate-spin" /> : <Presentation size={16} />}
+          {t("convertidor.convertirACenefa")}
+        </button>
+        <button
+          onClick={handleExport}
+          disabled={exporting || enviandoACenefa}
+          className="btn-secondary flex items-center gap-2 disabled:opacity-50"
+        >
+          {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+          {exporting ? t("convertidor.exporting") : t("convertidor.download")}
+        </button>
+      </div>
 
       {aiModalRows && (
         <ConvertidorAiModal

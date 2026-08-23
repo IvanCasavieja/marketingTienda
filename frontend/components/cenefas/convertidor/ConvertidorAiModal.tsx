@@ -30,9 +30,15 @@ type RowState = {
   status: "pending" | "approving" | "approved" | "error";
 };
 
-function precioDividido(precio: number | null): string {
-  if (precio === null || precio === undefined) return "";
-  return String(Math.round((precio / 10) * 100) / 100);
+// Los precios ahora viajan como texto ya formateado y con el decimal en su
+// propia columna (ej. "1.234" + ",50"), así que hay que rearmar el número
+// antes de dividirlo. Un valor que no sea numérico (el literal de un M x N,
+// tipo "2x1") no se toca: no hay precio que dividir ahí.
+function precioDividido(entero: string, decimal: string): string {
+  const crudo = (entero || "").replace(/\./g, "") + (decimal || "").replace(",", ".");
+  const n = parseFloat(crudo);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return String(Math.round((n / 10) * 100) / 100);
 }
 
 // Mismo umbral que DESCRIPTION_WARN_CHARS en
@@ -91,8 +97,8 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
         const row = chunkRows.find((r) => r.row_id === s.row_id);
         next.set(s.row_id, {
           value: s.descripcion,
-          precio: row?.es_fiambre_kg ? precioDividido(row.precio) : "",
-          precioAnterior: row?.es_fiambre_kg ? precioDividido(row.precio_anterior) : "",
+          precio: row?.es_fiambre_kg ? precioDividido(row.precioOferta, row.decimalPrecioOferta) : "",
+          precioAnterior: row?.es_fiambre_kg ? precioDividido(row.precioRegular, row.decimalPrecioRegular) : "",
           status: "pending",
         });
       });

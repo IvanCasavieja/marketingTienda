@@ -68,6 +68,30 @@ CANONICAL_VARS: tuple[str, ...] = TEXT_VARS + PRICE_VARS + DECIMAL_VARS
 
 CANONICAL_SET: frozenset[str] = frozenset(CANONICAL_VARS)
 
+# Orden de las columnas en todo Excel que produce o entrega la plataforma
+# (la plantilla descargable y la salida del Convertidor). Agrupa cada precio
+# con su decimal al lado, que es como se leen: una persona revisando la
+# planilla necesita ver "719" y ",20" juntos, no en puntas opuestas.
+ORDEN_EXPORT: tuple[str, ...] = (
+    "codigo",
+    "descripcion",
+    "mecanica",
+    "precioRegular", "decimalPrecioRegular",
+    "precioOferta",  "decimalPrecioOferta",
+    "ofertaUno",     "decimalPrecioUno",
+    "ofertaDos",     "decimalPrecioDos",
+    "ofertaTres",    "decimalPrecioTres",
+    "ofertaCuatro",  "decimalPrecioCuatro",
+    "precioBanco",   "decimalPrecioBanco",
+    "banco",
+    "vigencia",
+    "aclaracionUno", "aclaracionDos", "aclaracionTres",
+    "legales",
+    "dia", "mes", "año",
+)
+
+assert set(ORDEN_EXPORT) == CANONICAL_SET, "ORDEN_EXPORT quedó desincronizado de las variables"
+
 # ---------------------------------------------------------------------------
 # Campos internos
 # ---------------------------------------------------------------------------

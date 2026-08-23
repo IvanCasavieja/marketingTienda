@@ -10,6 +10,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
 import DestinoModal from "@/components/cenefas/DestinoModal";
 import CenefaPanel from "@/components/cenefas/CenefaPanel";
+import { tomarExcelConvertido } from "@/lib/cenefaHandoff";
 import TininFloating from "@/components/cenefas/TininFloating";
 
 // Host: primero pregunta a qué mundo se va, después renderiza el panel.
@@ -17,26 +18,6 @@ import TininFloating from "@/components/cenefas/TininFloating";
 // Antes había un panel por destino (RedExpresPanel / RompePreciosPanel), con
 // dos sistemas de plantillas y dos motores de render. Desde 08/2026 hay uno
 // solo (CenefaPanel) y los mundos son datos: se crean desde el selector.
-
-// El Excel convertido llega desde el Convertidor por sessionStorage y no por
-// la URL: es un archivo, no cabe en un query param, y persistirlo server-side
-// obligaría a una tabla temporal para algo que vive treinta segundos.
-export const CONVERTIDOR_HANDOFF_KEY = "cenefas.excelConvertido";
-
-function leerExcelConvertido(): File | null {
-  try {
-    const raw = sessionStorage.getItem(CONVERTIDOR_HANDOFF_KEY);
-    if (!raw) return null;
-    sessionStorage.removeItem(CONVERTIDOR_HANDOFF_KEY);
-    const { nombre, b64 } = JSON.parse(raw) as { nombre: string; b64: string };
-    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-    return new File([bytes], nombre, {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-  } catch {
-    return null;
-  }
-}
 
 function CenefasHost() {
   const { t } = useTranslation();
@@ -59,7 +40,7 @@ function CenefasHost() {
   }, [t]);
 
   useEffect(() => {
-    setExcelConvertido(leerExcelConvertido());
+    setExcelConvertido(tomarExcelConvertido());
   }, []);
 
   useEffect(() => {

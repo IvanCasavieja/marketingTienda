@@ -20,6 +20,7 @@ from app.models.sku_descripcion import SkuDescripcion
 from app.models.meridian_channel_summary import MeridianChannelSummary
 from app.models.password_reset_token import PasswordResetToken
 from app.models.convertidor_header_alias import ConvertidorHeaderAlias
+from app.models.convertidor_mapeo import ConvertidorMapeo
 from app.models.facturacion_documento import FacturacionDocumento
 from app.models.facturacion_cuenta import FacturacionCuenta
 from app.models.facturacion_movimiento import FacturacionMovimiento
@@ -32,6 +33,6 @@ __all__ = [
     "PlanillaPedido", "LocalAsignacion",
     "Watchlist", "WatchlistItem", "WatchlistPrecioHistorial", "WatchlistShare", "Notificacion",
     "CotizacionDolar", "AIUsageLog", "SkuDescripcion", "MeridianChannelSummary", "PasswordResetToken",
-    "ConvertidorHeaderAlias",
+    "ConvertidorHeaderAlias", "ConvertidorMapeo",
     "FacturacionDocumento", "FacturacionCuenta", "FacturacionMovimiento", "FacturacionCanje",
 ]

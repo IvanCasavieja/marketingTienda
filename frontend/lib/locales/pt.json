@@ -833,6 +833,30 @@
       "approve": "Aprovar",
       "approved": "Salvo",
       "saved": "\"{{grupo}}\" salvo no dicionário unificado ({{count}} produtos)"
+    },
+    "continuar": "Continuar",
+    "convertirACenefa": "Converter em cenefa",
+    "mapeo": {
+      "titulo": "Mapeamento de colunas",
+      "subtitulo": "Seu arquivo tem {{filas}} linhas e {{columnas}} colunas. Diga a qual coluna corresponde cada variável.",
+      "plantillas": "Modelo de mapeamento",
+      "sinPlantilla": "Sem modelo — preencher à mão",
+      "paraTodos": "todos os mundos",
+      "nombrePlantillaPlaceholder": "Nome para salvar este mapeamento (ex. Mundo Casa)",
+      "guardarPlantilla": "Salvar",
+      "plantillaGuardada": "Modelo de mapeamento salvo",
+      "plantillaBorrada": "Modelo de mapeamento excluído",
+      "borrar": "Excluir modelo",
+      "borrarConfirm": "Excluir o modelo de mapeamento \"{{nombre}}\"?",
+      "errorPlantillas": "Não foi possível carregar os modelos de mapeamento",
+      "columnasFaltantes": "Este arquivo não tem estas colunas do modelo: {{columnas}}",
+      "variables": "Variáveis a mapear",
+      "asignadas": "{{n}} de {{total}} atribuídas",
+      "sinAsignar": "— sem atribuir —",
+      "columnaRepetida": "Esta coluna já está atribuída a outra variável",
+      "opcional": "Nenhuma é obrigatória: o que ficar sem atribuir fica vazio. As demais (codigo, descripcion, precioRegular, precioOferta, mecanica e os decimais) o conversor resolve sozinho.",
+      "volver": "Voltar",
+      "convertir": "Converter"
     }
   },
   "facturacion": {

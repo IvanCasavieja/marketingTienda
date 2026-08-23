@@ -833,6 +833,30 @@
       "approve": "Aprobar",
       "approved": "Guardado",
       "saved": "\"{{grupo}}\" guardado en el diccionario unificado ({{count}} productos)"
+    },
+    "continuar": "Continuar",
+    "convertirACenefa": "Convertir a cenefa",
+    "mapeo": {
+      "titulo": "Mapeo de columnas",
+      "subtitulo": "Tu archivo tiene {{filas}} filas y {{columnas}} columnas. Decinos a qué columna corresponde cada variable.",
+      "plantillas": "Plantilla de mapeo",
+      "sinPlantilla": "Sin plantilla — completar a mano",
+      "paraTodos": "todos los mundos",
+      "nombrePlantillaPlaceholder": "Nombre para guardar este mapeo (ej. Mundo Hogar)",
+      "guardarPlantilla": "Guardar",
+      "plantillaGuardada": "Plantilla de mapeo guardada",
+      "plantillaBorrada": "Plantilla de mapeo eliminada",
+      "borrar": "Eliminar plantilla",
+      "borrarConfirm": "¿Eliminar la plantilla de mapeo \"{{nombre}}\"?",
+      "errorPlantillas": "No se pudieron cargar las plantillas de mapeo",
+      "columnasFaltantes": "Este archivo no tiene estas columnas de la plantilla: {{columnas}}",
+      "variables": "Variables a mapear",
+      "asignadas": "{{n}} de {{total}} asignadas",
+      "sinAsignar": "— sin asignar —",
+      "columnaRepetida": "Esta columna ya está asignada a otra variable",
+      "opcional": "Ninguna es obligatoria: lo que dejes sin asignar queda vacío en la cenefa. El resto de las variables (codigo, descripcion, precioRegular, precioOferta, mecanica y los decimales) las resuelve el convertidor solo.",
+      "volver": "Volver",
+      "convertir": "Convertir"
     }
   },
   "facturacion": {
