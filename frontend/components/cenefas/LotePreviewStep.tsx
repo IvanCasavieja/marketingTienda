@@ -280,11 +280,56 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
             </p>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center h-[560px] gap-3">
-            <Loader2 size={22} className="animate-spin text-slate-400" />
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {t("cenefas.lote.enCola", { n: posicion + 1, total })}
-            </p>
+          // Mientras esta cenefa no tenga preview, el cuadro grande no puede
+          // mostrar nada. Antes decia "En cola — cenefa 1 de 16", que era
+          // repetir la barra de progreso de arriba en un espacio enorme. Se
+          // usa para lo que no esta en ningun otro lado: el estado de las 16,
+          // y para saltar a cualquiera sin apretar "Siguiente" quince veces.
+          <div className="h-[560px] overflow-y-auto -m-1 p-1">
+            <div className="grid gap-1.5">
+              {lote.cenefas.map((c, i) => {
+                const esActual = i === posicion;
+                const estado = c.status ?? "pending";
+                const color = {
+                  done:    "text-emerald-500 bg-emerald-500/10",
+                  preview: "text-brand-500 bg-brand-500/10",
+                  error:   "text-rose-500 bg-rose-500/10",
+                }[estado] ?? "text-slate-400 bg-slate-400/10";
+                return (
+                  <button
+                    key={c.id ?? i}
+                    onClick={() => setIndice(i)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-colors ${
+                      esActual
+                        ? "border-brand-400 bg-brand-50/50 dark:bg-brand-950/20"
+                        : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                    }`}
+                  >
+                    <span className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold ${color}`}>
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
+                        {c.template}
+                      </span>
+                      <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                        {c.excel}
+                      </span>
+                    </span>
+                    <span className="shrink-0 flex items-center gap-1.5">
+                      {estado === "done" && <CheckCircle2 size={14} className="text-emerald-500" />}
+                      {estado === "error" && <AlertCircle size={14} className="text-rose-500" />}
+                      {(estado === "pending" || estado === "running") && (
+                        <Loader2 size={13} className="animate-spin text-slate-400" />
+                      )}
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                        {t(`cenefas.lote.estado.${estado}`)}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

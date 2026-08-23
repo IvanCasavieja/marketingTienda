@@ -214,9 +214,16 @@ async def health():
     except Exception:
         db_ok = False
 
+    # El commit desplegado. Render lo expone en RENDER_GIT_COMMIT; sin esa
+    # variable (local) queda en "dev". Sirve para saber si un arreglo YA esta
+    # arriba en vez de deducirlo probando la app: mas de una vez se reporto
+    # como bug algo que ya estaba corregido pero todavia no desplegado.
+    import os
+    commit = (os.environ.get("RENDER_GIT_COMMIT") or "dev")[:7]
+
     if not db_ok:
         return JSONResponse(
             status_code=503,
-            content={"status": "degraded", "db": "error"},
+            content={"status": "degraded", "db": "error", "commit": commit},
         )
-    return {"status": "ok", "db": "ok"}
+    return {"status": "ok", "db": "ok", "commit": commit}

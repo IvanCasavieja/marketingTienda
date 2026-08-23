@@ -514,7 +514,13 @@
       "faltanProcesar": "processando {{n}}...",
       "yaGenerada": "Pronta",
       "descargarUna": "Baixar esta",
-      "enCola": "Na fila — {{n}} de {{total}}"
+      "estado": {
+        "pending": "na fila",
+        "running": "processando",
+        "preview": "pronta para revisar",
+        "done": "gerada",
+        "error": "erro"
+      }
     }
   },
   "admin": {

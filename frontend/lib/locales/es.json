@@ -514,7 +514,13 @@
       "faltanProcesar": "procesando {{n}}...",
       "yaGenerada": "Cenefa lista",
       "descargarUna": "Descargar esta",
-      "enCola": "En cola — cenefa {{n}} de {{total}}"
+      "estado": {
+        "pending": "en cola",
+        "running": "procesando",
+        "preview": "lista para revisar",
+        "done": "generada",
+        "error": "error"
+      }
     }
   },
   "admin": {
