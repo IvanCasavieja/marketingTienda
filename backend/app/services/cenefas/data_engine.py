@@ -37,6 +37,17 @@ _DETECTION_VARS = {"codigo", "descripcion", "precioRegular", "precioOferta"}
 
 _RE_PRECIO_LIMPIO = re.compile(r"[\$\s]*\d[\d.,]*\s*")
 
+# "1.299" / "1.234.567": puntos seguidos SIEMPRE de exactamente tres dígitos y
+# sin coma decimal. Es separador de miles, no un punto decimal -- ningún
+# precio tiene tres decimales.
+#
+# Hace falta porque el Convertidor escribe los precios ya formateados al
+# estilo uruguayo ("1.299"), y ese mismo Excel se vuelve a leer acá al generar
+# la cenefa. Sin esta regla, parse_price_raw() interpreta "1.299" como 1,299 y
+# el cartel sale con "$1" en vez de "$1.299" (bug real de ida y vuelta, sin
+# ningún síntoma hasta que un precio pasa los cuatro dígitos).
+_RE_MILES_CON_PUNTO = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
+
 
 # ---------------------------------------------------------------------------
 # Precio -> entero + decimal
@@ -75,7 +86,10 @@ def split_price(raw) -> tuple[str, str]:
         # un M x N en un precio falso.
         if not _RE_PRECIO_LIMPIO.fullmatch(texto):
             return texto, ""
-        valor = parse_price_raw(texto.replace("$", "").strip())
+        limpio = texto.replace("$", "").strip()
+        if _RE_MILES_CON_PUNTO.fullmatch(limpio):
+            limpio = limpio.replace(".", "")
+        valor = parse_price_raw(limpio)
 
     if valor <= 0:
         return ("" if isinstance(raw, (int, float)) else str(raw).strip()), ""
