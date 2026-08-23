@@ -487,7 +487,30 @@
     "usarLegalesHint": "Deixe desligado se o modelo já traz os textos legais no design.",
     "legales": "Texto legal",
     "legalesAlcoholHint": "Produtos com categoria de álcool recebem o aviso obrigatório automaticamente.",
-    "excelDesdeConvertidor": "Excel trazido do Conversor, pronto para gerar."
+    "excelDesdeConvertidor": "Excel trazido do Conversor, pronto para gerar.",
+    "lote": {
+      "agregarExcel": "Adicionar Excel",
+      "sinExcel": "Nenhum Excel carregado ainda.",
+      "excelRepetido": "Esse Excel já estava carregado",
+      "quitarExcel": "Remover este Excel",
+      "elegirPlantillas": "Escolher modelos",
+      "otraPlantilla": "Outro modelo",
+      "maxPlantillas": "Máximo {{n}} modelos por Excel",
+      "faltaEmparejar": "Carregue ao menos um Excel e escolha seus modelos.",
+      "seVanAGenerar": "Serão geradas {{n}} cenefas a partir de {{excels}} Excel.",
+      "preparando": "Preparando...",
+      "procesando": "Processando...",
+      "volver": "Voltar ao carregamento",
+      "resumen": "{{listas}} de {{total}} prontas",
+      "posicion": "{{n}} de {{total}}",
+      "productos": "{{n}} produtos",
+      "anterior": "Anterior",
+      "siguiente": "Próxima",
+      "generarTodas": "Gerar as {{n}}",
+      "descargarZip": "Baixar ZIP ({{n}})",
+      "generando": "Gerando {{n}} cenefas...",
+      "conError": "{{n}} falharam"
+    }
   },
   "admin": {
     "title": "Painel de Administração",

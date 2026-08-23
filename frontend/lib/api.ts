@@ -249,6 +249,8 @@ import type {
   CenefaTemplateRecord,
   ComponentBounds,
   CenefaDestino,
+  CenefaLote,
+  CenefaLoteItem,
 } from "@/types/cenefas";
 
 export const cenefasV2Api = {
@@ -279,6 +281,18 @@ export const cenefasV2Api = {
     api.post<CenefaDestino>("/tools/cenefas/v2/destinos", payload),
   deleteDestino: (slug: string) =>
     api.delete(`/tools/cenefas/v2/destinos/${slug}`),
+
+  // Lotes: varios Excel, cada uno contra varias plantillas
+  createLote: (formData: FormData) =>
+    api.post<{ lote_id: string; cenefas: CenefaLoteItem[] }>("/tools/cenefas/v2/lotes", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+  getLote: (loteId: string) =>
+    api.get<CenefaLote>(`/tools/cenefas/v2/lotes/${loteId}`),
+  confirmLote: (loteId: string) =>
+    api.post<{ lote_id: string; confirmadas: number }>(`/tools/cenefas/v2/lotes/${loteId}/confirm`),
+  downloadLote: (loteId: string) =>
+    api.get(`/tools/cenefas/v2/lotes/${loteId}/download`, { responseType: "blob" }),
 
   // Jobs
   listJobs: () => api.get<CenefaJob[]>("/tools/cenefas/v2/jobs"),

@@ -487,7 +487,30 @@
     "usarLegalesHint": "Leave off if the template already has the legal text in the design.",
     "legales": "Legal text",
     "legalesAlcoholHint": "Alcohol products automatically get the mandatory warning appended.",
-    "excelDesdeConvertidor": "Excel brought from the Converter, ready to generate."
+    "excelDesdeConvertidor": "Excel brought from the Converter, ready to generate.",
+    "lote": {
+      "agregarExcel": "Add Excel",
+      "sinExcel": "No Excel files loaded yet.",
+      "excelRepetido": "That Excel was already loaded",
+      "quitarExcel": "Remove this Excel",
+      "elegirPlantillas": "Choose templates",
+      "otraPlantilla": "Another template",
+      "maxPlantillas": "Up to {{n}} templates per Excel",
+      "faltaEmparejar": "Load at least one Excel and pick its templates.",
+      "seVanAGenerar": "{{n}} shelf tags will be generated from {{excels}} Excel file(s).",
+      "preparando": "Preparing...",
+      "procesando": "Processing...",
+      "volver": "Back to upload",
+      "resumen": "{{listas}} of {{total}} ready",
+      "posicion": "{{n}} of {{total}}",
+      "productos": "{{n}} products",
+      "anterior": "Previous",
+      "siguiente": "Next",
+      "generarTodas": "Generate all {{n}}",
+      "descargarZip": "Download ZIP ({{n}})",
+      "generando": "Generating {{n}} shelf tags...",
+      "conError": "{{n}} failed"
+    }
   },
   "admin": {
     "title": "Admin Panel",

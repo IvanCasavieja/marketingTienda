@@ -105,6 +105,32 @@ export interface CenefaTemplate {
   rules: CenefaRule[];
 }
 
+/** Una cenefa dentro de un lote: un Excel contra una plantilla. */
+export interface CenefaLoteItem {
+  job_id?: string;
+  id?: string;
+  excel: string;
+  template: string;
+  template_id?: string;
+  status?: string;
+  format?: string;
+  row_count?: number | null;
+  template_def?: CenefaTemplate;
+  preview_product?: Record<string, string>;
+  preview_products?: Record<string, string>[];
+  slot_bands?: string[][];
+  validation_report?: { error?: string } | null;
+}
+
+/** Un lote: todas las cenefas que se pidieron juntas. */
+export interface CenefaLote {
+  lote_id: string;
+  /** running | preview | done | parcial | error */
+  status: string;
+  total: number;
+  cenefas: CenefaLoteItem[];
+}
+
 /** Un "mundo" de cenefas. Son datos, no código: se crean desde la UI. */
 export interface CenefaDestino {
   slug: string;

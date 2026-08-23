@@ -45,6 +45,16 @@ class CenefaJob(Base):
     # un job no se pierda si el request de preview y el de confirmar/
     # descargar caen en procesos distintos (redeploy de Render a mitad de
     # camino, o más de una instancia sirviendo tráfico).
+    # Lote al que pertenece. Un lote agrupa las cenefas que se pidieron juntas:
+    # varios Excel, cada uno emparejado con varias plantillas. NULL = una
+    # cenefa suelta, el flujo de siempre.
+    lote_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    # Nombres con los que se arma el archivo de salida. Se guardan en vez de
+    # deducirse: el Excel no se persiste una vez usado, y la plantilla puede
+    # borrarse antes de que alguien descargue el resultado.
+    excel_nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    template_nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     staged_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     staged_source_pptx: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     staged_excel_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)

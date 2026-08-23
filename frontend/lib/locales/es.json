@@ -487,7 +487,30 @@
     "usarLegalesHint": "Dejalo apagado si la plantilla ya trae los legales impresos en el diseño.",
     "legales": "Texto de legales",
     "legalesAlcoholHint": "A los productos con categoría de alcohol se les suma la leyenda obligatoria automáticamente.",
-    "excelDesdeConvertidor": "Excel traído del Convertidor, listo para generar."
+    "excelDesdeConvertidor": "Excel traído del Convertidor, listo para generar.",
+    "lote": {
+      "agregarExcel": "Agregar Excel",
+      "sinExcel": "Todavía no cargaste ningún Excel.",
+      "excelRepetido": "Ese Excel ya estaba cargado",
+      "quitarExcel": "Quitar este Excel",
+      "elegirPlantillas": "Elegir plantillas",
+      "otraPlantilla": "Otra plantilla",
+      "maxPlantillas": "Máximo {{n}} plantillas por Excel",
+      "faltaEmparejar": "Cargá al menos un Excel y elegile sus plantillas.",
+      "seVanAGenerar": "Se van a generar {{n}} cenefas a partir de {{excels}} Excel.",
+      "preparando": "Preparando las cenefas...",
+      "procesando": "Procesando...",
+      "volver": "Volver a la carga",
+      "resumen": "{{listas}} de {{total}} listas",
+      "posicion": "{{n}} de {{total}}",
+      "productos": "{{n}} productos",
+      "anterior": "Anterior",
+      "siguiente": "Siguiente",
+      "generarTodas": "Generar las {{n}}",
+      "descargarZip": "Descargar ZIP ({{n}})",
+      "generando": "Generando {{n}} cenefas...",
+      "conError": "{{n}} cenefas fallaron"
+    }
   },
   "admin": {
     "title": "Panel de Administrador",

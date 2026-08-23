@@ -1,11 +1,13 @@
 """Rutas /tools/cenefas/v2/ — API del nuevo motor de componentes."""
 import base64 as _b64
+import io
 import json
 import logging
 import pathlib
 import re
 import unicodedata
 import uuid
+import zipfile
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
@@ -405,6 +407,24 @@ def _validate_template_payload(payload: dict) -> None:
 # Jobs de generación
 # ---------------------------------------------------------------------------
 
+def _parse_image_overrides(image_overrides_json: str) -> dict | None:
+    """{variable: "ext:base64"} -> {variable: (bytes, ext)}.
+
+    Un JSON roto no rompe la generación: se ignora y la cenefa sale sin la
+    imagen, que es preferible a perder el trabajo entero por una cocarda.
+    """
+    try:
+        crudo = json.loads(image_overrides_json or "{}")
+        parsed: dict[str, tuple[bytes, str]] = {}
+        for var_name, encoded in crudo.items():
+            if ":" in encoded:
+                ext, b64_data = encoded.split(":", 1)
+                parsed[var_name] = (_b64.b64decode(b64_data), ext.lower())
+        return parsed or None
+    except Exception:
+        return None
+
+
 @router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
 async def create_job(
     background_tasks: BackgroundTasks,
@@ -446,19 +466,7 @@ async def create_job(
     excel_bytes = await read_limited(excel, "Excel")
     template_upload_bytes = await read_limited(template_upload, "PPTX") if template_upload else None
 
-    # Parse image overrides: {var_name: "ext:base64"} → {var_name: (bytes, ext)}
-    image_overrides: dict | None = None
-    try:
-        raw = json.loads(image_overrides_json or "{}")
-        parsed: dict[str, tuple[bytes, str]] = {}
-        for var_name, encoded in raw.items():
-            if ":" in encoded:
-                ext, b64_data = encoded.split(":", 1)
-                parsed[var_name] = (_b64.b64decode(b64_data), ext.lower())
-        if parsed:
-            image_overrides = parsed
-    except Exception:
-        pass
+    image_overrides = _parse_image_overrides(image_overrides_json)
 
     job = CenefaJob(
         created_by=current_user.id,
@@ -839,3 +847,263 @@ async def delete_destino(
         resource_id=slug, details={"nombre": destino.nombre}, ip_address=_client_ip(request),
     ))
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Lotes: varios Excel, cada uno contra varias plantillas
+# ---------------------------------------------------------------------------
+#
+# Un lote NO es un motor nuevo: cada combinación (Excel × plantilla) se resuelve
+# con el mismo job de siempre, con su preview y su confirmación. El lote es la
+# etiqueta que los agrupa para poder mirarlos juntos y bajarlos en un ZIP.
+
+# Tope por Excel, a pedido explícito. Evita además que un descuido
+# (seleccionar todas las plantillas del mundo) dispare decenas de renders.
+MAX_PLANTILLAS_POR_EXCEL = 5
+MAX_EXCELS_POR_LOTE = 20
+
+
+def _nombre_archivo(texto: str) -> str:
+    """Deja un texto usable como nombre de archivo o carpeta dentro del ZIP.
+
+    Saca separadores de ruta y caracteres de control: un nombre de plantilla es
+    texto libre cargado por el usuario y termina siendo una entrada del ZIP, así
+    que una barra ahí crearía carpetas fantasma al descomprimir.
+    """
+    limpio = re.sub(r'[\x00-\x1f\x7f/\\:*?"<>|]', "", texto or "").strip()
+    limpio = re.sub(r"\s+", " ", limpio)
+    return limpio[:120] or "sin nombre"
+
+
+@router.post("/lotes", status_code=status.HTTP_202_ACCEPTED)
+async def create_lote(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    excels: list[UploadFile] = File(..., description="Uno o varios Excel"),
+    pares_json: str = Form(
+        ...,
+        description='JSON [{"excel": "nombre.xlsx", "templates": ["uuid", ...]}] — '
+                    "a qué plantillas va cada Excel",
+    ),
+    vigencia: str = Form(default=""),
+    legales: str = Form(default=""),
+    usar_legales: bool = Form(default=False),
+    image_overrides_json: str = Form(default="{}"),
+    current_user: User = Depends(require_permission("cenefas.generate")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Crea un lote: una cenefa por cada par (Excel, plantilla) declarado."""
+    try:
+        pares = json.loads(pares_json or "[]")
+        if not isinstance(pares, list):
+            raise ValueError
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="pares_json no es un JSON válido")
+
+    if not pares:
+        raise HTTPException(status_code=400, detail="No hay ningún Excel emparejado con una plantilla")
+    if len(excels) > MAX_EXCELS_POR_LOTE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Máximo {MAX_EXCELS_POR_LOTE} Excel por lote (llegaron {len(excels)})",
+        )
+
+    # Los archivos se leen UNA vez y se reusan para cada plantilla de ese Excel:
+    # un UploadFile no se puede releer, y además evita subir el mismo contenido
+    # a memoria tantas veces como plantillas tenga.
+    contenidos: dict[str, bytes] = {}
+    for archivo in excels:
+        if not archivo.filename or not archivo.filename.lower().endswith((".xlsx", ".xlsm")):
+            raise HTTPException(status_code=400, detail=f"{archivo.filename!r} no es un .xlsx/.xlsm")
+        contenidos[archivo.filename] = await read_limited(archivo, "Excel")
+
+    image_overrides = _parse_image_overrides(image_overrides_json)
+
+    lote_id = uuid.uuid4()
+    creados: list[dict] = []
+
+    for par in pares:
+        nombre_excel = str(par.get("excel", ""))
+        ids = par.get("templates") or []
+        if nombre_excel not in contenidos:
+            raise HTTPException(status_code=400, detail=f"No subiste el Excel {nombre_excel!r}")
+        if not ids:
+            continue
+        if len(ids) > MAX_PLANTILLAS_POR_EXCEL:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{nombre_excel!r}: máximo {MAX_PLANTILLAS_POR_EXCEL} plantillas por Excel",
+            )
+
+        for template_id in ids:
+            try:
+                tid = uuid.UUID(str(template_id))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Plantilla inválida: {template_id!r}")
+
+            tmpl = (await db.execute(
+                select(CenefaTemplateV2).where(CenefaTemplateV2.id == tid)
+            )).scalar_one_or_none()
+            if tmpl is None:
+                raise HTTPException(status_code=404, detail=f"Plantilla {tid} no encontrada")
+
+            job = CenefaJob(
+                created_by=current_user.id,
+                status="pending",
+                format="",
+                export_type="pptx",
+                lote_id=lote_id,
+                excel_nombre=nombre_excel,
+                template_nombre=tmpl.name,
+                template_id=tid,
+            )
+            db.add(job)
+            await db.flush()
+            creados.append({
+                "job_id": str(job.id),
+                "excel": nombre_excel,
+                "template_id": str(tid),
+                "template": tmpl.name,
+                "_bytes": contenidos[nombre_excel],
+            })
+
+    if not creados:
+        raise HTTPException(status_code=400, detail="Ningún Excel quedó emparejado con una plantilla")
+
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.lote.create", resource="cenefa_lote",
+        resource_id=str(lote_id),
+        details={"cenefas": len(creados), "excels": len(contenidos)},
+        ip_address=_client_ip(request),
+    ))
+    # Mismo motivo que en create_job: BackgroundTasks puede arrancar antes del
+    # commit automático de get_db y no encontrar las filas.
+    await db.commit()
+
+    for c in creados:
+        background_tasks.add_task(
+            run_generation_job,
+            job_id=uuid.UUID(c["job_id"]),
+            excel_bytes=c.pop("_bytes"),
+            builtin_slug=None,
+            template_v2_id=uuid.UUID(c["template_id"]),
+            template_upload_bytes=None,
+            target_format=None,
+            vigencia=vigencia,
+            legales=legales,
+            usar_legales=usar_legales,
+            image_overrides=image_overrides,
+        )
+
+    return {"lote_id": str(lote_id), "cenefas": creados}
+
+
+@router.get("/lotes/{lote_id}")
+async def get_lote(
+    lote_id: uuid.UUID,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Estado y preview de cada cenefa del lote, en el orden en que se pidieron."""
+    result = await db.execute(
+        select(CenefaJob)
+        .where(CenefaJob.lote_id == lote_id, CenefaJob.created_by == current_user.id)
+        .order_by(CenefaJob.created_at, CenefaJob.excel_nombre, CenefaJob.template_nombre)
+    )
+    jobs = result.scalars().all()
+    if not jobs:
+        raise HTTPException(status_code=404, detail="Lote no encontrado")
+
+    cenefas = []
+    for job in jobs:
+        d = await _job_to_dict(job, include_report=True)
+        d["excel"] = job.excel_nombre
+        d["template"] = job.template_nombre
+        cenefas.append(d)
+
+    estados = {c["status"] for c in cenefas}
+    if "error" in estados:
+        estado = "error" if estados == {"error"} else "parcial"
+    elif estados <= {"done"}:
+        estado = "done"
+    elif estados <= {"preview", "done"}:
+        estado = "preview"
+    else:
+        estado = "running"
+
+    return {"lote_id": str(lote_id), "status": estado, "total": len(cenefas), "cenefas": cenefas}
+
+
+@router.post("/lotes/{lote_id}/confirm", status_code=status.HTTP_202_ACCEPTED)
+async def confirm_lote(
+    lote_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_permission("cenefas.generate")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Confirma de una todas las cenefas del lote que estén en preview."""
+    result = await db.execute(
+        select(CenefaJob).where(
+            CenefaJob.lote_id == lote_id,
+            CenefaJob.created_by == current_user.id,
+            CenefaJob.status == "preview",
+        )
+    )
+    jobs = result.scalars().all()
+    if not jobs:
+        raise HTTPException(status_code=409, detail="No hay cenefas en preview en este lote")
+
+    ids = [j.id for j in jobs]
+    for job in jobs:
+        job.status = "running"
+    await db.commit()
+
+    for job_id in ids:
+        background_tasks.add_task(confirm_generation_job, job_id=job_id, position_overrides=None)
+
+    return {"lote_id": str(lote_id), "confirmadas": len(ids)}
+
+
+@router.get("/lotes/{lote_id}/download")
+async def download_lote(
+    lote_id: uuid.UUID,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """ZIP del lote, con una subcarpeta por Excel."""
+    result = await db.execute(
+        select(CenefaJob)
+        .where(CenefaJob.lote_id == lote_id, CenefaJob.created_by == current_user.id)
+        .order_by(CenefaJob.excel_nombre, CenefaJob.template_nombre)
+    )
+    jobs = [j for j in result.scalars().all() if j.status == "done"]
+    if not jobs:
+        raise HTTPException(status_code=404, detail="El lote todavía no tiene ninguna cenefa lista")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        usados: set[str] = set()
+        for job in jobs:
+            contenido = await get_job_result(job.id)
+            if contenido is None:
+                continue
+            excel = _nombre_archivo(pathlib.PurePath(job.excel_nombre or "excel").stem)
+            plantilla = _nombre_archivo(job.template_nombre or "plantilla")
+            ruta = f"{excel}/{plantilla} - {excel}.pptx"
+            # Dos plantillas del mismo nombre en el mismo Excel se pisarian
+            # dentro del ZIP sin que nadie se entere.
+            n = 2
+            while ruta in usados:
+                ruta = f"{excel}/{plantilla} ({n}) - {excel}.pptx"
+                n += 1
+            usados.add(ruta)
+            zf.writestr(ruta, contenido)
+
+    if not buffer.tell():
+        raise HTTPException(status_code=404, detail="No se pudo recuperar ninguna cenefa del lote")
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="cenefas_{lote_id.hex[:8]}.zip"'},
+    )
