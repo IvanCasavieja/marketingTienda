@@ -29,6 +29,11 @@ function scalePx(cm: number) {
   return Math.round(cm * PX_PER_CM);
 }
 
+// Proporcion del cuerpo que ocupa el ascendente en las tipografias de titular
+// que usan estas plantillas (Impact y condensadas). Aproximado a proposito:
+// esto es el preview, no el render final.
+const ASCENDENTE_EM = 0.9;
+
 // Los cuerpos de fuente viajan en puntos (1 pt = 1/72 pulgada) y el canvas
 // trabaja en px a razon de PX_PER_CM.
 function ptToPx(pt: number) {
@@ -250,8 +255,18 @@ function buildComponentGroup({
     // El cuerpo viaja en puntos; el canvas trabaja en px a PX_PER_CM.
     const pt = comp.style?.font_size ?? 12;
     const fontSizePx = ptToPx(pt);
+    // PowerPoint apoya la primera linea en el ASCENDENTE del run mas grande
+    // del parrafo. Cuando el diseno mete un "run espaciador" --un espacio en
+    // un cuerpo mucho mayor-- para levantar el alto de linea, el texto chico
+    // queda apoyado en esa linea alta, no pegado al techo de la caja. Es como
+    // el diseñador alinea el "$" con el precio gigante de al lado.
+    //
+    // Sin esto el "$" de 80pt junto a un espaciador de 180pt se dibujaba 3,2 cm
+    // mas arriba de donde sale en el PPTX.
+    const lineHeightPt = comp.style?.line_height_pt ?? pt;
+    const offsetY = lineHeightPt > pt ? ptToPx(lineHeightPt - pt) * ASCENDENTE_EM : 0;
     group.add(new Konva.Text({
-      x: 0, y: 0, width: w,
+      x: 0, y: offsetY, width: w,
       text,
       fontSize: fontSizePx,
       fontFamily: fontStack(comp.style?.font_family),
