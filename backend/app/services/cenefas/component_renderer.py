@@ -1,6 +1,7 @@
 """Renderer de componentes v2 — genera PPTX desde definición JSON de componentes."""
 import copy
 import io
+import math
 import re
 
 from lxml import etree
@@ -16,7 +17,7 @@ from app.services.cenefas.font_metrics import ancho_texto_cm
 from app.services.cenefas.formatters import split_caps
 from app.services.cenefas.layout_engine import compute_layout, get_format
 from app.services.cenefas.rules_engine import apply_visibility, evaluate_rules
-from app.services.cenefas.variables import PRICE_VARS
+from app.services.cenefas.variables import DECIMAL_OF, PRICE_VARS
 
 # ---------------------------------------------------------------------------
 # Dimensiones de slide por formato
@@ -87,6 +88,61 @@ def apply_transform(value: str, transform: str | None) -> str:
 # donde la puso el diseño.
 
 
+# Inset interno por defecto de PowerPoint: 0,1" a cada lado (lIns/rIns =
+# 91440 EMU). Antes se descontaba 0,4 cm y el word-wrap simulado cortaba una
+# palabra más tarde que el real.
+_INSET_CM = 0.508
+
+# Interlineado tipico de una caja sin espaciado explicito.
+_INTERLINEADO = 1.2
+
+# Letras que bajan de la línea de base.
+_DESCENDENTES = frozenset("gjpqy")
+
+
+def _alto_ultima_linea(texto: str) -> float:
+    """Alto de la última línea, en múltiplos del tamaño de fuente.
+
+    El interlineado separa una línea de la siguiente, pero debajo de la última
+    no hay nada que separar: lo que puede chocar con el cuadro de abajo es la
+    TINTA, y hasta dónde llega depende de qué diga el texto.
+
+    Contando 1,2 em también para la última línea, un precio de una sola línea a
+    140 pt "necesitaba" 5,93 cm donde el diseño le da 5,51 -- y el motor
+    terminaba achicando los 145 precios de la A5 uno por uno sin que ninguno
+    estuviera pisando nada. Un precio son dígitos: no bajan de la base, su tinta
+    no pasa de la altura de mayúscula.
+    """
+    if _DESCENDENTES & set(texto):
+        return 1.15
+    if any(c.islower() for c in texto):
+        return 1.05
+    return 0.95
+
+
+def _alto_texto_cm(lineas: int, font_size: float, texto: str) -> float:
+    """Alto que ocupa la tinta de un texto de N líneas a ese tamaño."""
+    factor = (lineas - 1) * _INTERLINEADO + _alto_ultima_linea(texto)
+    return factor * font_size / 72 * 2.54
+
+
+def _ancho_medido_cm(
+    texto: str, font_size: float, font_family: str | None, bold: bool
+) -> float:
+    """Ancho del texto tal como se va a dibujar, en centímetros.
+
+    Se mide parte por parte porque el renderer pone en negrita las palabras en
+    mayúsculas --la marca: "SER", "LA SERENÍSIMA"-- vía split_caps. Medir todo
+    el texto con un único flag de negrita sobra o falta ancho según el caso, y
+    en cajas ajustadas eso alcanza para errar por una línea entera, que es
+    justo la diferencia entre "entra" y "se monta sobre el precio".
+    """
+    return sum(
+        ancho_texto_cm(parte, font_size, font_family, bold or es_mayus)
+        for parte, es_mayus in split_caps(texto)
+    )
+
+
 def _estimate_wrapped_lines(
     text: str, box_width_cm: float | None, font_size: float | None,
     bold: bool = False, font_family: str | None = None,
@@ -101,37 +157,18 @@ def _estimate_wrapped_lines(
     """
     if not text or not box_width_cm or not font_size:
         return 1
-    # Inset interno de PowerPoint (izquierdo + derecho).
-    usable_cm = max(0.1, box_width_cm - 0.4)
-
-    def ancho(t: str) -> float:
-        return ancho_texto_cm(t, font_size, font_family, bold)
+    usable_cm = max(0.1, box_width_cm - _INSET_CM)
 
     lineas = 1
     actual = ""
     for palabra in text.split():
         tentativa = palabra if not actual else actual + " " + palabra
-        if ancho(tentativa) > usable_cm and actual:
+        if _ancho_medido_cm(tentativa, font_size, font_family, bold) > usable_cm and actual:
             lineas += 1
             actual = palabra
         else:
             actual = tentativa
     return lineas
-
-
-def _comp_uses_variable(c: dict, var_name: str) -> bool:
-    """True si el componente usa esa variable, sea directo o en un segmento.
-
-    El caso de segmento importa: "COD: <<codigo>>" o
-    "PRECIO REGULAR: $ <<precioRegular>>" se importan como un componente con
-    varios segmentos, no como una variable de nivel superior.
-    """
-    if c.get("variable") == var_name:
-        return True
-    return any(
-        seg.get("type") == "variable" and seg.get("value") == var_name
-        for seg in (c.get("segments") or [])
-    )
 
 
 def _texto_resuelto(comp: dict, product: dict) -> str:
@@ -156,19 +193,37 @@ def _texto_resuelto(comp: dict, product: dict) -> str:
 # puede leer de lejos.
 _FIT_MIN_SCALE = 0.55
 
-# Variables cuyo cuadro se achica si el valor no entra: la descripción y los
-# precios. Los decimales quedan afuera a propósito -- son siempre dos dígitos,
-# nunca desbordan, y achicarlos desalinearía la coma respecto del entero.
-_FIT_VARS: frozenset = frozenset(PRICE_VARS) | {"descripcion"}
+# Se achica cualquier cuadro que traiga DATO del Excel y no entre. Un cuadro de
+# texto fijo del diseño ("OFERTA", "PRECIO REGULAR") no se toca nunca: su
+# contenido no cambia entre productos, así que si el diseñador lo dejó justo,
+# está justo a propósito.
+#
+# Los decimales quedan afuera: son siempre dos dígitos, nunca desbordan, y
+# achicarlos desalinearía la coma respecto del entero de al lado.
+#
+# Antes la lista era sólo {descripción + precios} y por eso un código de varios
+# SKU ("594879/80/81/82/83 -593838/39/40 - 621032 - ...", 86 caracteres) se
+# partía en tres líneas y se montaba sobre la descripción.
+_FIT_EXCLUIDAS: frozenset = frozenset(DECIMAL_OF.values())
 
 
-def _fit_font_size(
-    texto: str, box_width_cm: float | None, box_height_cm: float | None,
-    base_font_size: float | None, bold: bool = False, font_family: str | None = None,
-) -> float | None:
-    """Tamaño de fuente al que el texto entra en su cuadro.
+def _variables_del_componente(c: dict) -> set[str]:
+    """Las variables que ese componente imprime, sea directo o por segmentos."""
+    if c.get("variable"):
+        return {c["variable"]}
+    return {
+        seg["value"] for seg in (c.get("segments") or [])
+        if seg.get("type") == "variable" and seg.get("value")
+    }
 
-    Mide dos cosas y se queda con la más exigente:
+
+def _entra_en_caja(
+    texto: str, box_width_cm: float, box_height_cm: float | None,
+    font_size: float, bold: bool, font_family: str | None,
+) -> bool:
+    """True si el texto entra en el cuadro a ese tamaño de fuente.
+
+    Dos condiciones, las dos obligatorias:
 
     1. **Ancho**: la palabra más larga tiene que entrar en una línea. Es el
        chequeo que salva a los precios: "1.919" no tiene espacios, así que no
@@ -178,28 +233,57 @@ def _fit_font_size(
     2. **Alto**: las líneas que resultan del word-wrap tienen que entrar en el
        alto disponible. Es el chequeo que salva a las descripciones largas.
     """
+    usable_cm = max(0.1, box_width_cm - _INSET_CM)
+
+    palabra_larga = max(texto.split() or [texto], key=len)
+    if _ancho_medido_cm(palabra_larga, font_size, font_family, bold) > usable_cm:
+        return False
+
+    if box_height_cm:
+        lineas = _estimate_wrapped_lines(texto, box_width_cm, font_size, bold, font_family)
+        if _alto_texto_cm(lineas, font_size, texto) > box_height_cm:
+            return False
+
+    return True
+
+
+def _fit_font_size(
+    texto: str, box_width_cm: float | None, box_height_cm: float | None,
+    base_font_size: float | None, bold: bool = False, font_family: str | None = None,
+) -> float | None:
+    """El tamaño de fuente MÁS GRANDE al que el texto entra en su cuadro.
+
+    Se busca por bisección en vez de calcular una escala de una sola pasada.
+    La escala directa (alto_disponible / alto_necesario) achica de más: al
+    bajar el tamaño el texto pasa a ocupar menos líneas, así que el alto que
+    hacía falta era mucho menor que el que se usó para calcularla. En un caso
+    real la descripción del 3xA4 terminaba en 18,8 pt cuando en 22,5 pt ya
+    entraba. Achicar lo menos posible es respetar el diseño.
+
+    "Entra" es monótono respecto del tamaño --si entra a N pt, entra a
+    cualquier tamaño menor-- que es lo que hace válida la bisección.
+    """
     if not texto or not box_width_cm or not base_font_size:
         return base_font_size
 
-    usable_cm = max(0.1, box_width_cm - 0.4)
-
-    escala_ancho = 1.0
-    palabra_larga = max(texto.split() or [texto], key=len)
-    ancho = ancho_texto_cm(palabra_larga, base_font_size, font_family, bold)
-    if ancho > usable_cm:
-        escala_ancho = usable_cm / ancho
-
-    escala_alto = 1.0
-    if box_height_cm:
-        lineas = _estimate_wrapped_lines(texto, box_width_cm, base_font_size, bold, font_family)
-        alto_necesario = lineas * base_font_size / 72 * 2.54 * 1.2   # 1.2 = interlineado típico
-        if alto_necesario > box_height_cm:
-            escala_alto = box_height_cm / alto_necesario
-
-    escala = min(escala_ancho, escala_alto)
-    if escala >= 1.0:
+    if _entra_en_caja(texto, box_width_cm, box_height_cm, base_font_size, bold, font_family):
         return base_font_size
-    return max(base_font_size * escala, base_font_size * _FIT_MIN_SCALE)
+
+    # Piso de legibilidad: por debajo de esto es preferible que se note el
+    # desborde antes que imprimir algo ilegible a dos metros de distancia.
+    minimo = base_font_size * _FIT_MIN_SCALE
+    mejor = minimo
+    lo, hi = minimo, base_font_size
+    for _ in range(12):
+        medio = (lo + hi) / 2.0
+        if _entra_en_caja(texto, box_width_cm, box_height_cm, medio, bold, font_family):
+            mejor = medio
+            lo = medio
+        else:
+            hi = medio
+
+    # Se redondea hacia ABAJO a medio punto: hacia arriba podría dejar de entrar.
+    return max(minimo, math.floor(mejor * 2.0) / 2.0)
 
 
 def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
@@ -261,7 +345,8 @@ def _fit_text_to_box(comps: list[dict], product: dict) -> list[dict]:
     """
     result = []
     for c in comps:
-        if c.get("type") != "text" or not any(_comp_uses_variable(c, v) for v in _FIT_VARS):
+        usadas = _variables_del_componente(c)
+        if c.get("type") != "text" or not usadas or usadas <= _FIT_EXCLUIDAS:
             result.append(c)
             continue
 
@@ -783,6 +868,98 @@ def _indice_por_limites(valor: float, limites: list[float]) -> int:
     return len(limites)
 
 
+# Tolerancia al ubicar un cuadro en su celda, como fracción del paso. Los
+# diseños están hechos a mano: la fila 2 de la 6xA4 arranca en 7,01 cm cuando
+# el paso exacto da 6,985, y sin margen ese cuadro cae en la fila de arriba.
+_MARGEN_CELDA = 0.02
+
+
+def _indice_por_paso(valor: float, origen: float, paso: float, n: int) -> int:
+    """En qué celda de una grilla de paso fijo cae `valor`."""
+    if n <= 1 or paso <= 0:
+        return 0
+    return max(0, min(n - 1, int((valor - origen) / paso + _MARGEN_CELDA)))
+
+
+def _paso_de_grilla(valores: list[float], n_grupos: int) -> float | None:
+    """Distancia entre celdas, deducida de dónde están las anclas.
+
+    Las anclas se agrupan por los huecos grandes (una posición por celda) y el
+    paso sale de la distancia entre la primera y la última. Devuelve None si
+    las anclas no se separan en exactamente n_grupos posiciones.
+    """
+    if n_grupos <= 1:
+        return 0.0
+    limites = _cortar_por_huecos(valores, n_grupos)
+    if len(limites) != n_grupos - 1:
+        return None
+    grupos: dict[int, list[float]] = {}
+    for v in valores:
+        grupos.setdefault(_indice_por_limites(v, limites), []).append(v)
+    if len(grupos) != n_grupos:
+        return None
+    centros = [sum(grupos[i]) / len(grupos[i]) for i in range(n_grupos)]
+    paso = (centros[-1] - centros[0]) / (n_grupos - 1)
+    return paso if paso > 0 else None
+
+
+def _asignar_grilla(
+    non_bg: list[dict], anclas: list[dict], n_filas: int, n_cols: int
+) -> list[list[dict]] | None:
+    """Reparte los componentes en una grilla de n_filas x n_cols, o None si no cierra.
+
+    El reparto es por PASO FIJO, no por el punto medio entre anclas. Las celdas
+    de una cenefa son rectángulos iguales y repetidos: el ancla marca dónde
+    ARRANCA cada celda, y el contenido de esa celda se extiende hacia la
+    derecha y hacia abajo hasta donde arranca la siguiente.
+
+    Cortar por el punto medio entre anclas asumía que el contenido está
+    centrado en su ancla, y no lo está. En la A5 las anclas caen en x=0,00 y
+    x=15,07, así que el corte quedaba en 7,54 -- y el cuadro del decimal del
+    precio de la cenefa IZQUIERDA, que vive en x=10,92, se iba a la celda de la
+    derecha. Resultado visible: la cenefa de la izquierda imprimía el decimal
+    del producto de la derecha ("175" del producto 1 con el ",80" del producto
+    2) y encima quedaba mal plantado.
+    """
+    paso_x = _paso_de_grilla([_esquina(c)[0] for c in anclas], n_cols)
+    if paso_x is None:
+        return None
+    origen_x = min(_esquina(c)[0] for c in non_bg)
+
+    columnas: dict[int, list[dict]] = {}
+    for c in non_bg:
+        columnas.setdefault(_indice_por_paso(_esquina(c)[0], origen_x, paso_x, n_cols), []).append(c)
+    if len(columnas) != n_cols:
+        return None
+
+    ids_ancla = {id(c) for c in anclas}
+    celdas: dict[tuple[int, int], list[dict]] = {}
+    for col, comps_col in columnas.items():
+        ys_ancla = [_esquina(c)[1] for c in comps_col if id(c) in ids_ancla]
+        if len(ys_ancla) != n_filas:
+            return None
+        # Las filas se resuelven DENTRO de cada columna: cada columna puede
+        # tener su propio corrimiento vertical (en la 6xA4 la columna derecha
+        # arranca 2 mm más abajo que la izquierda).
+        paso_y = _paso_de_grilla(ys_ancla, n_filas)
+        if paso_y is None:
+            return None
+        origen_y = min(_esquina(c)[1] for c in comps_col)
+        for c in comps_col:
+            fila = _indice_por_paso(_esquina(c)[1], origen_y, paso_y, n_filas)
+            celdas.setdefault((fila, col), []).append(c)
+
+    # Orden de lectura: izquierda a derecha, después hacia abajo.
+    ordenadas = [celdas.get((f, col), []) for f in range(n_filas) for col in range(n_cols)]
+    if not all(ordenadas):
+        return None
+    # Cada celda tiene que quedarse con exactamente un ancla. Si alguna quedó
+    # con dos, la grilla propuesta no es la que tiene el diseño.
+    if any(sum(1 for c in g if id(c) in ids_ancla) != 1 for g in ordenadas):
+        return None
+    return ordenadas
+
+
 def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     """Agrupa los componentes de una plantilla multi-producto, un grupo por slot.
 
@@ -840,53 +1017,15 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
         anclas = [c for c in non_bg if ancla in _comp_variable_names(c)]
         xs_ancla = sorted({round(_esquina(c)[0], 1) for c in anclas})
 
-        # Cuántas columnas hay: se prueba de más a menos y gana la primera
-        # grilla que CIERRA, es decir en la que cada celda queda con
-        # exactamente un ancla. Esa validación es la que descarta las
-        # divisiones falsas: sin ella, tres cuadros de descripción con la X
-        # apenas distinta (5,18 / 5,26 / 5,81 por el centrado del diseño)
-        # se leían como tres columnas.
+        # Cuántas columnas hay: se prueba de más a menos, y se acepta la
+        # primera grilla que reparta a todos los cuadros dejando un ancla por
+        # celda.
         for n_cols in range(min(len(xs_ancla), n_slots), 0, -1):
             if n_slots % n_cols:
                 continue
-            n_filas = n_slots // n_cols
-            limites_x = _cortar_por_huecos([_esquina(c)[0] for c in anclas], n_cols)
-            if len(limites_x) != n_cols - 1:
-                continue
-
-            anclas_por_col: dict[int, list[dict]] = {}
-            for a in anclas:
-                anclas_por_col.setdefault(_indice_por_limites(_esquina(a)[0], limites_x), []).append(a)
-            if len(anclas_por_col) != n_cols or any(len(v) != n_filas for v in anclas_por_col.values()):
-                continue
-
-            # Las filas se cortan DENTRO de cada columna: el aire entre cenefas
-            # está ahí, no en la mezcla de las dos columnas.
-            columnas: dict[int, list[dict]] = {}
-            for c in non_bg:
-                columnas.setdefault(_indice_por_limites(_esquina(c)[0], limites_x), []).append(c)
-            if len(columnas) != n_cols:
-                continue
-
-            celdas: dict[tuple[int, int], list[dict]] = {}
-            anclas_por_celda: Counter = Counter()
-            ok = True
-            for col, comps_col in columnas.items():
-                limites_y = _cortar_por_huecos([_esquina(c)[1] for c in comps_col], n_filas)
-                if len(limites_y) != n_filas - 1:
-                    ok = False
-                    break
-                for c in comps_col:
-                    fila = _indice_por_limites(_esquina(c)[1], limites_y)
-                    celdas.setdefault((fila, col), []).append(c)
-                    if c in anclas:
-                        anclas_por_celda[(fila, col)] += 1
-
-            # Orden de lectura: izquierda a derecha, después hacia abajo.
-            ordenadas = [celdas.get((f, col), []) for f in range(n_filas) for col in range(n_cols)]
-            if ok and all(ordenadas) and all(anclas_por_celda.get((f, col), 0) == 1
-                                             for f in range(n_filas) for col in range(n_cols)):
-                return ordenadas
+            grilla = _asignar_grilla(non_bg, anclas, n_slots // n_cols, n_cols)
+            if grilla is not None:
+                return grilla
 
     # Sin anclas utilizables o con una grilla que no cierra, se cae al criterio
     # viejo: ordenar por Y y cortar en grupos iguales.
