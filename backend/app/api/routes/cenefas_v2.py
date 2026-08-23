@@ -646,7 +646,18 @@ async def _get_job(
     return job
 
 
-async def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
+async def _job_to_dict(
+    job: CenefaJob, include_report: bool = False, include_preview: bool = True
+) -> dict:
+    """Serializa un job.
+
+    include_preview=False saltea el preview (definición de componentes +
+    productos). Es lo que usa el listado de un lote: cargarlo por cada job
+    significa leer de Postgres el PPTX de origen de cada uno --varios MB en
+    total-- en CADA polling, compitiendo con los mismos workers que están
+    generando las cenefas. El preview se pide aparte, solo para la que se
+    está mirando.
+    """
     d = {
         "id":          str(job.id),
         "status":      job.status,
@@ -674,7 +685,7 @@ async def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
         # Expose error message so the frontend can display it instead of "Error desconocido"
         if job.status == "error":
             d["validation_report"] = {"error": job.validation_report.get("error", "Error interno")}
-    if job.status == "preview":
+    if include_preview and job.status == "preview":
         staged = await peek_job_products(job.id)
         if staged:
             componentes = staged.template_def.get("components", [])
@@ -1016,7 +1027,7 @@ async def get_lote(
 
     cenefas = []
     for job in jobs:
-        d = await _job_to_dict(job, include_report=True)
+        d = await _job_to_dict(job, include_report=True, include_preview=False)
         d["excel"] = job.excel_nombre
         d["template"] = job.template_nombre
         cenefas.append(d)
@@ -1051,7 +1062,17 @@ async def confirm_lote(
     )
     jobs = result.scalars().all()
     if not jobs:
-        raise HTTPException(status_code=409, detail="No hay cenefas en preview en este lote")
+        # No es un error: pasa si se toca el boton dos veces, o si el lote ya
+        # se confirmo desde otra pestana. Se responde que no habia nada nuevo
+        # que disparar en vez de un 409 que el frontend tendria que
+        # distinguir de un problema real.
+        existe = (await db.execute(
+            select(func.count()).select_from(CenefaJob).where(
+                CenefaJob.lote_id == lote_id, CenefaJob.created_by == current_user.id)
+        )).scalar_one()
+        if not existe:
+            raise HTTPException(status_code=404, detail="Lote no encontrado")
+        return {"lote_id": str(lote_id), "confirmadas": 0}
 
     ids = [j.id for j in jobs]
     for job in jobs:

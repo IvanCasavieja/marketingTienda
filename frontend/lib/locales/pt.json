@@ -510,7 +510,9 @@
       "generarTodas": "Gerar as {{n}}",
       "descargarZip": "Baixar ZIP ({{n}})",
       "generando": "Gerando {{n}} cenefas...",
-      "conError": "{{n}} falharam"
+      "conError": "{{n}} falharam",
+      "faltanProcesar": "processando {{n}}...",
+      "yaGenerada": "Já foi gerada. Baixe no ZIP."
     }
   },
   "admin": {

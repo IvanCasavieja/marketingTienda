@@ -510,7 +510,9 @@
       "generarTodas": "Generate all {{n}}",
       "descargarZip": "Download ZIP ({{n}})",
       "generando": "Generating {{n}} shelf tags...",
-      "conError": "{{n}} failed"
+      "conError": "{{n}} failed",
+      "faltanProcesar": "{{n}} still processing...",
+      "yaGenerada": "Already generated. Get it from the ZIP."
     }
   },
   "admin": {
