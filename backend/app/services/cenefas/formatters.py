@@ -7,6 +7,7 @@ de render viejo y la lógica de combos del generador; los dos se eliminaron en
 Convertidor (ver convertidor_variables.py).
 """
 import re
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -14,16 +15,30 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 def fmt_price(value: Any) -> str:
+    """Precio en formato uruguayo: "899", "1.234", "1.234,50".
+
+    Se redondea a centavos ANTES de partir entero y decimales. Antes la parte
+    entera se tomaba por truncamiento --int(value)-- y los decimales por
+    redondeo --f"{value:.2f}"--, así que cuando el redondeo se llevaba uno, el
+    entero no se enteraba: un precio de Excel salido de una fórmula
+    (729 x 0,7 = 510.9999999999999) se imprimía **$510** en un cartel que
+    tenía que decir **$511**. Se ve poco porque hace falta que el valor caiga
+    justo debajo de un entero, pero cuando pasa es plata mal impresa.
+
+    Se usa Decimal sobre la representación decimal del número, no float: en
+    binario 0,1 + 0,2 no da 0,3 y el redondeo a mitad queda al azar.
+    """
     if value is None:
         return "0"
-    value = float(value)
-    if value == int(value):
-        val = int(value)
-        return f"{val:,}".replace(",", ".") if val >= 1000 else str(val)
-    int_part = int(value)
-    dec_str = f"{value:.2f}".split(".")[1]
-    int_str = f"{int_part:,}".replace(",", ".") if int_part >= 1000 else str(int_part)
-    return int_str + "," + dec_str
+    d = Decimal(str(float(value))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    signo = "-" if d < 0 else ""
+    d = abs(d)
+    entero = int(d)
+    centavos = int((d - entero) * 100)
+    ent_str = f"{entero:,}".replace(",", ".") if entero >= 1000 else str(entero)
+    if centavos == 0:
+        return signo + ent_str
+    return f"{signo}{ent_str},{centavos:02d}"
 
 
 def parse_price_raw(value: Any) -> float:
