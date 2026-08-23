@@ -123,47 +123,52 @@ SISTEMA DE CENEFAS — EXPLICACIÓN COMPLETA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Las cenefas son banners de precios en formato PPTX que se generan automáticamente desde un Excel de productos. Cada slide del PPTX muestra un producto con su precio, mecánica de oferta, descripción y demás datos.
 
-HAY DOS PIPELINES:
+UN SOLO SISTEMA (desde 08/2026):
 
-**A) Plantilla clásica (v1)**: cargás un PPTX plantilla fijo y el sistema rellena los placeholders con los datos del Excel. Para productos sin complejidad. Acceso desde la pestaña "Plantilla clásica" en la pantalla de generación.
+Antes había dos pipelines paralelos (plantillas clásicas para Redexpres y motor de componentes para el resto). Se unificaron: hoy TODOS los mundos usan el mismo editor, el mismo motor y el mismo lenguaje de variables.
 
-**B) Motor v2 (componentes inteligentes)**: sistema moderno y flexible.
-- Primero creás un template en el [Editor de plantillas]({_BASE_URL}/materiales/cenefas/v2).
-- El editor tiene un canvas donde arrastrás y configurás componentes: texto, imagen, forma.
-- Cada componente de texto se vincula a una variable (ej: `precioActual`, `descripcion`).
-- Luego generás cenefas desde [Generar cenefas]({_BASE_URL}/materiales/cenefas/v2/generar).
+- Primero se crea la plantilla en el [Editor de plantillas]({_BASE_URL}/materiales/cenefas/v2), o se importa un PPTX existente y el sistema lo convierte en componentes.
+- El editor tiene un canvas donde se arrastran y configuran componentes: texto, imagen, forma.
+- Cada componente de texto se vincula a una variable (ej: `precioOferta`, `descripcion`).
+- Después se generan las cenefas desde [Cenefas]({_BASE_URL}/materiales/cenefas), eligiendo el mundo y la plantilla.
+
+**Mundos**: Redexpres, Rompe Precios, Parrilla y Vinos... Un mundo solo agrupa las plantillas de una campaña; no cambia el Excel ni el motor. Se pueden crear nuevos desde el propio selector, con el botón "Nuevo mundo" (hace falta el permiso `cenefas.edit`).
+
+**El motor respeta el PPTX tal cual se sube**: no agranda, no achica y no mueve nada por su cuenta. Si un texto no entra en su cuadro, hay que corregir el dato o el diseño.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LAS 17 VARIABLES CANÓNICAS DE CENEFAS
+LAS 26 VARIABLES DE CENEFAS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Estas son las columnas que el Excel de productos puede tener. Los nombres son exactos (camelCase):
+El nombre de la columna del Excel, el placeholder del PPTX (`<<nombre>>`) y la variable son SIEMPRE el mismo texto. No hay alias ni nombres alternativos.
 
 | Variable | Descripción | Tipo |
 |---|---|---|
-| `descripcion` | Nombre del producto. MAYÚSCULAS se renderizan en negrita. | Texto (obligatorio) |
-| `precioActual` | Precio de venta actual. Acepta $1.500 o 1500. | Precio (obligatorio) |
-| `precioAnterior` | Precio tachado / anterior. | Precio |
-| `precioBanco` | Precio con beneficio bancario. | Precio |
+| `codigo` | Código de artículo / SKU. | Texto |
+| `descripcion` | Nombre del producto. MAYÚSCULAS se renderizan en negrita. | Texto |
+| `mecanica` | Mecánica ya redactada (ej: "Comprando 3, $33 la unidad.", "Precio Final"). | Texto |
+| `precioRegular` | Precio regular / anterior — parte entera. | Precio |
+| `decimalPrecioRegular` | Decimales de `precioRegular`, con la coma (",50"). | Decimal |
+| `precioOferta` | Precio de oferta, el que se muestra grande — parte entera. | Precio |
+| `decimalPrecioOferta` | Decimales de `precioOferta`. | Decimal |
+| `ofertaUno` | Nivel de oferta 1 (ej: "3x"). Acepta número o texto. | Precio |
+| `decimalPrecioUno` | Decimales de `ofertaUno`. | Decimal |
+| `ofertaDos` / `ofertaTres` / `ofertaCuatro` | Niveles de oferta 2, 3 y 4. | Precio |
+| `decimalPrecioDos` / `decimalPrecioTres` / `decimalPrecioCuatro` | Sus decimales. | Decimal |
+| `precioBanco` | Precio con beneficio bancario — parte entera. | Precio |
+| `decimalPrecioBanco` | Decimales de `precioBanco`. | Decimal |
 | `banco` | Nombre del banco o beneficio (ej: "Scotiabank"). | Texto |
-| `mecanica` | Mecánica o tipo de oferta (ej: "Precio Final", "2X$4.500", "M x N"). | Texto |
-| `aclaracion` | Texto aclaratorio (ej: "Bases y condiciones en..."). | Texto |
-| `segundaAclaracion` | Segunda aclaración o leyenda de alcohol. | Texto |
 | `vigencia` | Período de validez (ej: "Del 1 al 30 de junio"). | Texto |
-| `codigoSKU` | Código de artículo. Si tiene "/" activa modo multi-SKU. | Texto |
-| `dia` | Día de la semana (ej: "LUNES"). Cenefas tipo "Plato del día". | Texto |
-| `mes` | Mes de vigencia (ej: "JUNIO"). | Texto |
-| `año` | Año de vigencia (ej: "2026"). | Texto |
-| `moneda` | Símbolo de moneda ("$" o "U$S"). | Texto |
-| `categoria` | Categoría del producto. "BEBIDAS CON ALCOHOL" activa aviso legal automático. | Texto |
-| `subCategoria` | Subcategoría. "FIAMBRES/QUESOS/DELI" activa precio por 100g automáticamente. | Texto |
-| `descuento` | TRUE o FALSE. Controla visibilidad de cocarda/badge de descuento. | TRUE/FALSE |
+| `aclaracionUno` / `aclaracionDos` / `aclaracionTres` | Aclaraciones. | Texto |
+| `legales` | Legales. Solo se sustituyen si se tilda "Usar legales" al generar. | Texto |
+| `dia` / `mes` / `año` | Fecha, para cenefas tipo "Plato del día". | Texto |
 
 REGLAS IMPORTANTES:
-- No es obligatorio tener todas las columnas. El sistema solo usa las que están en el Excel.
-- Los nombres de columna deben coincidir exactamente (respetan mayúsculas y acentos).
-- Si el Excel no tiene una variable que el template usa, aparece un aviso "variables faltantes" tras generar.
-- Nombres legacy soportados: `titulo`→`mecanica`, `PRECIO`→`precioActual`, `PBANCO`→`precioBanco`, `OFERTADET`→`mecanica`.
-- Se puede descargar una plantilla Excel de ejemplo desde la pantalla de generación (botón "Descargar plantilla").
+- **Ninguna variable es obligatoria.** Si la plantilla no tiene el cuadro, no se sustituye nada; si el Excel no trae la columna, la variable queda vacía.
+- Los nombres de columna deben coincidir exactamente. No hay nombres legacy: si una columna se llama distinto, se la renombra en la pantalla de mapeo del Convertidor.
+- **Cada precio va partido en entero + decimal**, en dos variables. El decimal siempre lleva la coma adelante (",50") y queda vacío si el precio es redondo.
+- **El símbolo de moneda ya no es una variable**: va como texto fijo en el diseño de la PPT. Por eso los precios viajan sin "$".
+- `legales` está apagado por defecto: muchas plantillas ya traen el texto legal impreso en el diseño y sustituir encima lo duplicaría.
+- Se puede descargar una plantilla Excel de ejemplo con las 26 columnas desde la pantalla de generación ("Descargar plantilla").
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FLUJO COMPLETO: GENERAR CENEFAS (paso a paso)
@@ -205,12 +210,12 @@ El editor tiene tres paneles:
 - **Derecho (Propiedades)**: configurar el componente seleccionado (variable, fuente, color, etc.).
 
 **Catálogo de componentes disponibles:**
-- PRECIO: Precio completo (`precioActual` price_full), Precio entero, Precio decimal, Precio anterior (`precioAnterior`), Precio bancario (`precioBanco`).
-- TEXTO: Descripción, Título/Mecánica (`mecanica`), Banco/Beneficio (`banco`), Aclaración, Segunda aclaración (`segundaAclaracion`), Vigencia, Código SKU (`codigoSKU`).
+- PRECIO: Precio oferta (`precioOferta`), su entero y su decimal (`decimalPrecioOferta`), Precio regular (`precioRegular`), Precio bancario (`precioBanco`).
+- TEXTO: Descripción, Mecánica (`mecanica`), Banco/Beneficio (`banco`), Aclaración 1 (`aclaracionUno`), Legales (`legales`), Vigencia, Código (`codigo`).
 - FECHA: Día, Mes, Año.
 - OTROS: Imagen producto, Cocarda/Badge, Forma/fondo, Texto fijo.
 
-También se puede importar un PPTX existente: el sistema detecta los placeholders (ej: `<<precioActual>>`) y los convierte automáticamente en componentes del editor.
+También se puede importar un PPTX existente: el sistema detecta los placeholders (ej: `<<precioOferta>>`) y los convierte automáticamente en componentes del editor. Los placeholders de plantillas viejas (`<<Precio>>`, `<<Mecanica1>>`, `<<OtraAclaracion1>>`) se traducen solos al nombre nuevo al importar, una única vez.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CONEXIONES A PLATAFORMAS
@@ -271,13 +276,17 @@ Causa probable: el Excel no tiene una columna llamada `precioBanco` (exactamente
 Solución: Abrí el Excel, renombrá la columna de precio bancario a `precioBanco` exactamente, guardá y volvé a generar. Si no tenés esa columna, el template usa el componente `<<precioBanco>>` pero el Excel no provee el dato. Tras generar, el panel amarillo de advertencia debería haber listado `<<precioBanco>>` como variable faltante.
 
 **Caso 2 — "¿Cómo pongo la leyenda de alcohol automáticamente?"**
-Si la columna `categoria` tiene el valor `BEBIDAS CON ALCOHOL`, el sistema llena `segundaAclaracion` automáticamente con el aviso legal estándar ("Prohibida la venta de bebidas alcohólicas a menores de 18 años"). No necesitás escribirlo manualmente. Si querés sobrescribir el texto, ponés un valor en la columna `segundaAclaracion` del Excel.
+Hacen falta dos cosas: que la columna `categoria` del Excel diga que es una bebida con alcohol, y que al generar esté tildado "Usar legales". Con eso, la leyenda obligatoria ("Prohibida la venta de bebidas alcohólicas a menores de 18 años") se SUMA a lo que hayas escrito en `legales` — no lo pisa. Si el checkbox está apagado, la variable `legales` no se sustituye (pensado para las plantillas que ya traen el texto legal impreso en el diseño).
 
 **Caso 3 — "¿Cómo hago cenefas de fiambres con precio por 100g?"**
-Ponés el precio por kilo en `precioActual` y en `subCategoria` ponés `FIAMBRES`, `QUESOS` o `DELI`. El sistema detecta si la descripción incluye "kg" y divide el precio por 10 automáticamente para mostrar el precio por 100g, ajustando también el texto de la descripción.
+Eso se resuelve en el Convertidor, no al generar: ahí las filas de fiambrería por kilo quedan marcadas y "Generar con IA" propone la descripción con el precio ya dividido por 10, para aprobarla o corregirla a mano. El generador de cenefas solo sustituye variables — no divide precios por su cuenta.
 
 **Caso 4 — "El precio del combo no se calcula bien"**
-El cálculo automático de combos (tipo "2X$4.500") se activa cuando el Excel tiene una columna `OFERTADET` con el tipo de oferta ("Combo", "M x N", etc.) y una columna `OFERTA` con los parámetros. Es el pipeline legacy. En el sistema v2 nuevo, simplemente ponés directamente en la columna `mecanica` el texto que querés mostrar (ej: "2X$4.500") y en `precioActual` el precio resultante.
+Los combos los resuelve el Convertidor a partir de las columnas `OFERTADET` y `OFERTA` del export de gestión:
+- **Combo** (`OFERTA` = "3x99"): `ofertaUno` queda en "3x", `precioOferta` en 99 (el total del combo) y `mecanica` en "Comprando 3, $33 la unidad." — el unitario sale de dividir 99 entre 3.
+- **M x N** (`OFERTA` = "2x1"): `ofertaUno` queda vacía, `precioOferta` toma el literal "2x1" (ocupa el cuadro grande del precio) y `mecanica` arma el unitario con la columna PRECIO.
+- **Precio fijo / % descuento**: `mecanica` queda en "Precio Final".
+Si algo no cierra, se corrige en la grilla del Convertidor antes de exportar: el generador de cenefas ya no interpreta nada, solo sustituye lo que dice el Excel.
 
 **Caso 5 — "Quiero crear un usuario que solo pueda ver cenefas"**
 Ir a [Admin]({_BASE_URL}/admin). En la sección Roles, crear un nuevo rol con solo el permiso `cenefas.view`. Luego en la sección Usuarios, crear el usuario y asignarle ese rol. Ese usuario solo podrá ver templates existentes, no podrá generar ni editar.
@@ -289,7 +298,7 @@ Un Superadmin debe ir a [Admin]({_BASE_URL}/admin) → sección Usuarios → "Nu
 Sí. Agregás una columna `dia` en el Excel con el valor del día (ej: "LUNES", "MARTES"). Si el template tiene el componente `dia` en su diseño, mostrará el día de cada producto en la cenefa correspondiente. Ideal para cenefas de tipo "Plato del día".
 
 **Caso 8 — "¿Cómo genero cenefas con precio en dólares?"**
-Agregá una columna `moneda` en el Excel con el valor `U$S`. El sistema usará ese prefijo en lugar de `$` para todos los precios de ese producto.
+El símbolo de moneda dejó de ser una variable: va como texto fijo en el diseño de la plantilla. Para dólares hace falta una plantilla cuyo diseño tenga "U$S" escrito. El Convertidor marca en la grilla las filas cuya moneda no es pesos, justamente para que no se impriman con el "$" de una plantilla en moneda local.
 
 **Caso 9 — "El Dashboard marcó una campaña como problemática, ¿qué hago?"**
 El [Dashboard]({_BASE_URL}/dashboard) detecta automáticamente si una campaña cae más de 30% vs el período anterior y muestra una alerta. Para profundizar, andá a [Campañas]({_BASE_URL}/campaigns) y filtrá por esa campaña para ver el detalle histórico y comparar manualmente, o llevá el dato a [Análisis IA]({_BASE_URL}/analytics) → La Triada para que las tres IAs lo debatan.
@@ -332,7 +341,7 @@ RESOLUCIÓN DE PROBLEMAS COMUNES
 | Variables salen en blanco en el PPTX | El nombre de columna en Excel no coincide exactamente con la variable | Verificar el nombre exacto en la referencia de variables (botón "Variables" en la pantalla de generación) |
 | Error al generar: "Template v2 no encontrado" | El template fue eliminado | Seleccionar otro template o crear uno nuevo |
 | No aparece el botón de "Generar" | Falta seleccionar template o cargar Excel | Completar todos los campos requeridos del Paso 1 |
-| La validación dice que faltan variables requeridas | El Excel no tiene columnas `descripcion` o `precioActual` | Agregar esas columnas con los nombres exactos |
+| Un cuadro sale vacío en el PPTX | Ninguna variable es obligatoria: si el Excel no trae esa columna, queda vacía | Agregar la columna con el nombre exacto de la variable, o mapearla en el Convertidor |
 | El PPTX descargado tiene slides vacíos | El Excel tiene filas vacías entre los datos | Eliminar filas vacías del Excel y volver a generar |
 | No veo datos en el Dashboard | Las plataformas no están conectadas o la sincronización no corrió | Ir a [Configuración]({_BASE_URL}/settings) y verificar el estado de cada conexión |
 | Meta Ads muestra números raros o que no cierran | La integración está pausada — esos datos son un fixture de ejemplo, no reales | Ignorar esos números hasta que se reactive la conexión |

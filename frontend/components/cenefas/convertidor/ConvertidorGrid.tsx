@@ -350,7 +350,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
     }
   }
 
-  // Edición "simple" (vigencia, aclaracion1/2/3): sin catálogo compartido ni
+  // Edición "simple" (todas las variables salvo descripcion): sin catálogo ni
   // debounce a un backend — solo actualiza el estado local, va al export tal
   // cual quede tipeado.
   function handleSimpleFieldChange(rowId: number, key: ColumnKey, value: string) {

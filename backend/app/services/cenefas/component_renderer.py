@@ -532,7 +532,7 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     n_slots = GCD de cuántas veces aparece cada variable -- NO el máximo.
     Un variable puede aparecer más de una vez POR banda (ej. un precio
     partido en placeholder de entero + placeholder de decimal, ambos
-    apuntando a la misma variable canónica, ver precio4x3/5x3/6x3 en
+    apuntando a la misma variable canónica, ver ofertaUno/Dos/Tres en
     Parrilla y Vinos) sin que eso signifique que hay más bandas. Con max(),
     un template de 3 bandas donde cada precio tiene 2 placeholders (entero+
     decimal) se detectaba como 6 bandas -- de ahí se armaban grupos de Y mal
@@ -547,7 +547,7 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     <<precioP>> como dos runs del mismo cuadro -- variable=None en ese caso,
     ver allow_single_placeholder_segments en pptx_importer.py). Un bug real
     visto con una plantilla real de Parrilla y Vinos: TODOS sus componentes
-    -- incluso <<descripcion>> y <<codigoSKU>> solos, sin texto estático al
+    -- incluso <<descripcion>> y <<codigo>> solos, sin texto estático al
     lado -- quedaron como multi-segmento (PowerPoint partió el placeholder
     en más de un run internamente al editar el archivo). Contando solo
     c["variable"] el Counter quedaba vacío, esta función devolvía None
