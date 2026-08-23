@@ -3,6 +3,7 @@ from app.models.platform_connection import PlatformConnection, Platform
 from app.models.campaign_metric import CampaignMetric
 from app.models.audit_log import AuditLog
 from app.models.ai_analysis import AIAnalysis
+from app.models.cenefa_destino import CenefaDestino
 from app.models.cenefa_template import CenefaTemplate
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.cenefa_job import CenefaJob
@@ -19,6 +20,7 @@ from app.models.sku_descripcion import SkuDescripcion
 from app.models.meridian_channel_summary import MeridianChannelSummary
 from app.models.password_reset_token import PasswordResetToken
 from app.models.convertidor_header_alias import ConvertidorHeaderAlias
+from app.models.convertidor_mapeo import ConvertidorMapeo
 from app.models.facturacion_documento import FacturacionDocumento
 from app.models.facturacion_cuenta import FacturacionCuenta
 from app.models.facturacion_movimiento import FacturacionMovimiento
@@ -27,10 +29,10 @@ from app.models.facturacion_canje import FacturacionCanje
 __all__ = [
     "User", "PlatformConnection", "Platform",
     "CampaignMetric", "AuditLog", "AIAnalysis",
-    "CenefaTemplate", "CenefaTemplateV2", "CenefaJob",
+    "CenefaTemplate", "CenefaTemplateV2", "CenefaJob", "CenefaDestino",
     "PlanillaPedido", "LocalAsignacion",
     "Watchlist", "WatchlistItem", "WatchlistPrecioHistorial", "WatchlistShare", "Notificacion",
     "CotizacionDolar", "AIUsageLog", "SkuDescripcion", "MeridianChannelSummary", "PasswordResetToken",
-    "ConvertidorHeaderAlias",
+    "ConvertidorHeaderAlias", "ConvertidorMapeo",
     "FacturacionDocumento", "FacturacionCuenta", "FacturacionMovimiento", "FacturacionCanje",
 ]

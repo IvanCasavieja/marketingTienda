@@ -29,21 +29,34 @@ _MAX_TOOL_ITERATIONS = 4  # tope duro contra un loop de tool-use que no converge
 
 _CONOCIMIENTO = f"""
 CÓMO SE ARMAN LOS TEMPLATES:
-- Plantilla clásica (v1): un PPTX fijo se sube tal cual, sin editor — los placeholders del PPTX se rellenan directo con los datos del Excel. Es el motor que usa Redexpres hoy.
-- Editor visual (v2), en /materiales/cenefas/v2: se arma un template desde cero o importando un PPTX existente, con componentes (texto/imagen/forma) y variables asociadas al Excel. Es el motor que usan Rompe Precios y Parrilla y Vinos.
+- Hay UN SOLO sistema desde 08/2026: el editor visual en /materiales/cenefas/v2. Se arma un template desde cero o importando un PPTX existente, con componentes (texto/imagen/forma) atados a variables. Todos los mundos usan el mismo editor y el mismo motor; antes Redexpres tenía uno aparte y ya no existe.
+- El motor respeta el PPTX tal cual se sube: no agranda, no achica y no mueve nada solo. Si un texto no entra, se corrige el dato o el diseño.
 
-LOS 3 DESTINOS Y SUS COLUMNAS EXACTAS (nombres tal cual, no aproximados):
-- Redexpres: DESCRIPCION, precioActual, OFERTADET, OFERTA, ACLARACION, OTRA ACLARACION, VIGENCIA, CODIGO. OFERTADET dispara la mecánica (ej. "Combo" -> combo, "M x N" -> M x N).
-- Rompe Precios: descripcion, precio, precioAnterior, vigencia, aclaracion1, aclaracion2, aclaracion3. Sin mecánica de combos ni M x N — no lo soporta.
-- Parrilla y Vinos: mismas columnas que Rompe Precios (descripcion, precio, precioAnterior, vigencia, aclaracion1, aclaracion2, aclaracion3) y mismo comportamiento — es el mismo flujo, con sus propias plantillas PPTX y su propio Excel separados de Rompe Precios.
+LAS VARIABLES (26, mismo nombre en el Excel, en el PPTX y en el editor):
+codigo, descripcion, mecanica, precioRegular, precioOferta, ofertaUno, ofertaDos, ofertaTres, ofertaCuatro, precioBanco, banco, vigencia, aclaracionUno, aclaracionDos, aclaracionTres, legales, dia, mes, año, y el decimal de cada precio (decimalPrecioRegular, decimalPrecioOferta, decimalPrecioUno, decimalPrecioDos, decimalPrecioTres, decimalPrecioCuatro, decimalPrecioBanco).
+- Ninguna es obligatoria: lo que no esté queda vacío.
+- Cada precio va partido en entero + decimal, en dos variables. El decimal lleva la coma adelante (",50") y queda vacío si el precio es redondo.
+- El símbolo de moneda NO es una variable: va como texto fijo en el diseño.
+- precioRegular es el precio anterior/tachado; precioOferta es el vigente, el que se muestra grande.
+- legales solo se sustituye si al generar se tilda "Usar legales" (muchas plantillas ya lo traen impreso). La leyenda de alcohol se SUMA a ese texto cuando la categoría lo pide.
+
+LOS MUNDOS:
+Redexpres, Rompe Precios, Parrilla y Vinos y los que el equipo cree desde el selector ("Nuevo mundo"). Un mundo solo agrupa las plantillas de una campaña: NO cambia las columnas del Excel ni el comportamiento. Todos usan las mismas 26 variables.
+
+EL CONVERTIDOR (/materiales/convertidor) — ahí se resuelve la mecánica:
+1. Se sube el export crudo de gestión.
+2. Pantalla de mapeo: se elige a qué columna del archivo corresponde cada variable cuyo nombre cambia entre exports (ofertaUno..Cuatro, vigencia, aclaracionUno..Tres, legales). El mapeo se puede guardar como plantilla reutilizable.
+3. Grilla: se revisan y corrigen las filas; lo que quedó marcado pide revisión humana.
+4. Se descarga el Excel con las 26 columnas, o se aprieta "Convertir a cenefa" para ir directo al generador sin bajar el archivo.
+El Convertidor arma la mecánica a partir de OFERTADET/OFERTA: Combo "3x99" -> ofertaUno "3x", precioOferta 99, mecanica "Comprando 3, $33 la unidad."; M x N "2x1" -> precioOferta toma el literal "2x1" y mecanica arma el unitario con la columna PRECIO; Precio fijo o % descuento -> mecanica "Precio Final".
 
 CÓMO SE GENERA UNA CENEFA (siempre así, nunca instantáneo):
-1. Se sube el Excel + se elige el template (clásico o v2) en /materiales/cenefas.
+1. En /materiales/cenefas se elige el mundo, la plantilla y se sube el Excel.
 2. Preview: el sistema valida y muestra cuántos productos matcheó y qué variables faltan.
 3. Confirmar: recién ahí se renderiza el PPTX final para descargar.
 Esto SIEMPRE requiere un Excel real subido por el usuario — vos (Tinín) no podés generar una cenefa desde el chat, ni inventar un Excel. Si te piden "generame una cenefa", explicá el paso a paso de arriba y decí que tienen que subir el Excel ellos — nunca digas que la vas a generar vos ni que ya la generaste.
 
-Si la descripción de un producto viene mal escrita del sistema de gestión, recomendá primero el Convertidor de Excel (/materiales/convertidor) antes de generar la cenefa — matchea por SKU contra el catálogo compartido y deja lo que falta en rojo para completar a mano o con IA.
+Si la descripción de un producto viene mal escrita del sistema de gestión, recomendá primero el Convertidor — matchea por SKU contra el catálogo compartido y deja lo que falta en rojo para completar a mano o con IA.
 """
 
 _SYSTEM_PROMPT = f"{TININ_BASE}\n\n{_CONOCIMIENTO}"
@@ -76,12 +89,21 @@ _TOOLS = [
     },
 ]
 
+# Los mundos de cenefas se crean desde la UI (ver cenefa_destinos), así que
+# no se pueden enumerar acá. Solo el Convertidor tiene una línea propia; para
+# cualquier destino se arma con su slug (ver _contexto_line).
 _CONTEXTOS = {
     "convertidor": "El usuario está en el Convertidor de Excel.",
-    "rompe_precios": "El usuario está generando cenefas de Rompe Precios.",
-    "redexpres": "El usuario está generando cenefas de Redexpres.",
-    "parrilla_y_vinos": "El usuario está generando cenefas de Parrilla y Vinos.",
 }
+
+
+def _contexto_line(contexto: str | None) -> str:
+    if not contexto:
+        return ""
+    if contexto in _CONTEXTOS:
+        return _CONTEXTOS[contexto]
+    legible = contexto.replace("_", " ")
+    return f"El usuario está generando cenefas del mundo {legible}."
 
 
 async def _ejecutar_tool(db, user_id: int, name: str, tool_input: dict) -> tuple[str, bool]:
@@ -116,7 +138,7 @@ async def consultar(mensaje: str, historial: list[dict], contexto: str | None, d
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     messages: list[dict] = [{"role": m["role"], "content": m["content"]} for m in historial]
-    contexto_line = _CONTEXTOS.get(contexto or "", "")
+    contexto_line = _contexto_line(contexto)
     user_content = f"{contexto_line}\n\n{mensaje}" if contexto_line else mensaje
     messages.append({"role": "user", "content": user_content})
 

@@ -394,18 +394,16 @@
       "title": "Where to?",
       "subtitle": "Choose which kind of banner you want to generate.",
       "change": "Change destination",
-      "rompe_precios": {
-        "label": "Weekend Price Crash",
-        "description": "Current price, crossed-out previous price, and validity dates — no combo mechanics."
-      },
-      "parrilla_y_vinos": {
-        "label": "Grill & Wines",
-        "description": "Current price, crossed-out previous price, and validity dates — same format as Weekend Price Crash, for grill and wine products."
-      },
-      "redexpres": {
-        "label": "Redexpres",
-        "description": "Order sheets and combo/multi-buy mechanics for Redexpres stores."
-      }
+      "nuevo": "New world",
+      "crear": "Create world",
+      "creado": "World created",
+      "borrar": "Delete world",
+      "borrarConfirm": "Delete the world \"{{nombre}}\"?",
+      "borrado": "World deleted",
+      "vacio": "No worlds created yet.",
+      "errorCargar": "Could not load worlds",
+      "nombrePlaceholder": "World name (e.g. Mega Rompe Precios)",
+      "descripcionPlaceholder": "Short description (optional)"
     },
     "rompePrecios": {
       "templateLabel": "Template",
@@ -456,7 +454,20 @@
         "saved": "Template saved",
         "saveError": "Error saving the template",
         "missingFields": "Fill in type, name, month/year and the file before saving",
-        "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        "months": [
+          "January",
+          "February",
+          "March",
+          "April",
+          "May",
+          "June",
+          "July",
+          "August",
+          "September",
+          "October",
+          "November",
+          "December"
+        ]
       }
     },
     "previewStep": {
@@ -471,7 +482,12 @@
       "downloaded": "Banner generated and downloaded",
       "confirmError": "Error confirming",
       "confirmTimeout": "Generation is taking too long. Try again or with fewer products."
-    }
+    },
+    "usarLegales": "Use legal text",
+    "usarLegalesHint": "Leave off if the template already has the legal text in the design.",
+    "legales": "Legal text",
+    "legalesAlcoholHint": "Alcohol products automatically get the mandatory warning appended.",
+    "excelDesdeConvertidor": "Excel brought from the Converter, ready to generate."
   },
   "admin": {
     "title": "Admin Panel",
@@ -817,6 +833,30 @@
       "approve": "Approve",
       "approved": "Saved",
       "saved": "\"{{grupo}}\" saved to the unified dictionary ({{count}} products)"
+    },
+    "continuar": "Continue",
+    "convertirACenefa": "Convert to shelf tag",
+    "mapeo": {
+      "titulo": "Column mapping",
+      "subtitulo": "Your file has {{filas}} rows and {{columnas}} columns. Tell us which column each variable comes from.",
+      "plantillas": "Mapping preset",
+      "sinPlantilla": "No preset — fill in manually",
+      "paraTodos": "all worlds",
+      "nombrePlantillaPlaceholder": "Name to save this mapping (e.g. Home World)",
+      "guardarPlantilla": "Save",
+      "plantillaGuardada": "Mapping preset saved",
+      "plantillaBorrada": "Mapping preset deleted",
+      "borrar": "Delete preset",
+      "borrarConfirm": "Delete the mapping preset \"{{nombre}}\"?",
+      "errorPlantillas": "Could not load mapping presets",
+      "columnasFaltantes": "This file is missing these preset columns: {{columnas}}",
+      "variables": "Variables to map",
+      "asignadas": "{{n}} of {{total}} assigned",
+      "sinAsignar": "— unassigned —",
+      "columnaRepetida": "This column is already assigned to another variable",
+      "opcional": "None are required: anything left unassigned stays empty. The rest (codigo, descripcion, precioRegular, precioOferta, mecanica and the decimals) the converter resolves on its own.",
+      "volver": "Back",
+      "convertir": "Convert"
     }
   },
   "facturacion": {
@@ -825,9 +865,19 @@
     "uploadButton": "Upload invoice",
     "noData": "No data loaded yet — upload your first invoice.",
     "charts": {
-      "general": { "title": "General", "subtitle": "Combined total — breakdown by account", "centerSubLabel": "Total (budget + trade deals)" },
-      "presupuesto": { "title": "Budget", "subtitle": "Income vs. expenses" },
-      "canjes": { "title": "Trade deals", "subtitle": "By status" }
+      "general": {
+        "title": "General",
+        "subtitle": "Combined total — breakdown by account",
+        "centerSubLabel": "Total (budget + trade deals)"
+      },
+      "presupuesto": {
+        "title": "Budget",
+        "subtitle": "Income vs. expenses"
+      },
+      "canjes": {
+        "title": "Trade deals",
+        "subtitle": "By status"
+      }
     },
     "entrada": "Income",
     "salida": "Expense",
@@ -1075,10 +1125,22 @@
     "campanas": {
       "intro": "Detailed table of all campaigns across all platforms. You can sort, filter and export the data.",
       "features": {
-        "sync":        { "label": "Manual sync",   "desc": "Refresh metrics instantly" },
-        "export":      { "label": "Export CSV",    "desc": "Download the full report" },
-        "filtros":     { "label": "Filters",       "desc": "By platform, date, campaign" },
-        "comparacion": { "label": "Comparison",    "desc": "Current period vs previous" }
+        "sync": {
+          "label": "Manual sync",
+          "desc": "Refresh metrics instantly"
+        },
+        "export": {
+          "label": "Export CSV",
+          "desc": "Download the full report"
+        },
+        "filtros": {
+          "label": "Filters",
+          "desc": "By platform, date, campaign"
+        },
+        "comparacion": {
+          "label": "Comparison",
+          "desc": "Current period vs previous"
+        }
       }
     },
     "analisisIA": {
@@ -1107,34 +1169,73 @@
     "cenefas": {
       "intro": "Turn an Excel of products into a print-ready PowerPoint deck. The system automatically generates the slides with formatted prices, descriptions and promotions.",
       "steps": {
-        "destino":    { "title": "Choose a destination",   "desc": "When you enter you choose where to go: Redexpres (order sheets and combo/multi-buy mechanics), Weekend Price Crash or Grill & Wines (both with current price, crossed-out previous price and validity dates)." },
-        "excel":      { "title": "Upload the Excel",       "desc": "Load the file with the products. Automatically detected columns include DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc." },
-        "preview":    { "title": "Check the preview",      "desc": "Before downloading you can see a reference preview with the real data loaded." },
-        "confirmar":  { "title": "Confirm and download",   "desc": "The PPTX is generated in seconds. You can download the result from the same screen." }
+        "destino": {
+          "title": "Choose a destination",
+          "desc": "When you enter you choose where to go: Redexpres (order sheets and combo/multi-buy mechanics), Weekend Price Crash or Grill & Wines (both with current price, crossed-out previous price and validity dates)."
+        },
+        "excel": {
+          "title": "Upload the Excel",
+          "desc": "Load the file with the products. Automatically detected columns include DESCRIPCION, PRECIO, OFERTA, CATEGORIA, etc."
+        },
+        "preview": {
+          "title": "Check the preview",
+          "desc": "Before downloading you can see a reference preview with the real data loaded."
+        },
+        "confirmar": {
+          "title": "Confirm and download",
+          "desc": "The PPTX is generated in seconds. You can download the result from the same screen."
+        }
       },
       "warningPre": "Generated files are kept for",
       "warningBold": "24 hours",
       "warningPost": ". Download them before they expire.",
       "formats": {
-        "a4":      { "desc": "21 × 29.7 cm · 1 slot",   "sub": "1 product per slide" },
-        "a3":      { "desc": "29.7 × 42 cm",            "sub": "Large format" },
-        "tresXa4": { "desc": "3 vertical strips",       "sub": "3 products per slide" },
-        "pinchos": { "desc": "7 × 14.85 cm · 3×2 grid", "sub": "6 per slide" }
+        "a4": {
+          "desc": "21 × 29.7 cm · 1 slot",
+          "sub": "1 product per slide"
+        },
+        "a3": {
+          "desc": "29.7 × 42 cm",
+          "sub": "Large format"
+        },
+        "tresXa4": {
+          "desc": "3 vertical strips",
+          "sub": "3 products per slide"
+        },
+        "pinchos": {
+          "desc": "7 × 14.85 cm · 3×2 grid",
+          "sub": "6 per slide"
+        }
       }
     },
     "editorPlantillas": {
       "title": "Template Editor",
-      "canvas":    { "title": "Visual canvas",       "desc": "Konva.js-based WYSIWYG editor. See in real time how each component will look in the chosen format." },
-      "reglas":    { "title": "Visibility rules",    "desc": "Define when each component appears based on the product's data. AND/OR/NOT conditions with multiple operators." },
-      "variables": { "title": "Variables",            "desc": "Map each Excel field to a template component: price, description, mechanic, combo, etc." },
+      "canvas": {
+        "title": "Visual canvas",
+        "desc": "Konva.js-based WYSIWYG editor. See in real time how each component will look in the chosen format."
+      },
+      "reglas": {
+        "title": "Visibility rules",
+        "desc": "Define when each component appears based on the product's data. AND/OR/NOT conditions with multiple operators."
+      },
+      "variables": {
+        "title": "Variables",
+        "desc": "Map each Excel field to a template component: price, description, mechanic, combo, etc."
+      },
       "startTitle": "Ways to start a template",
-      "predeterminada": { "title": "Default template", "desc": "A4, Pinchos or 3xA4 banner, already configured and ready to use." },
+      "predeterminada": {
+        "title": "Default template",
+        "desc": "A4, Pinchos or 3xA4 banner, already configured and ready to use."
+      },
       "importar": {
         "title": "Import PPTX",
         "descPre": "Upload your own .pptx and the placeholders",
         "descPost": "are detected automatically."
       },
-      "desdeCero": { "title": "From scratch", "desc": "Create each component by hand, define bounds, styles and transforms." }
+      "desdeCero": {
+        "title": "From scratch",
+        "desc": "Create each component by hand, define bounds, styles and transforms."
+      }
     },
     "conexiones": {
       "title": "Platform connections",
@@ -1157,9 +1258,18 @@
     "pedidos": {
       "title": "Order sheet",
       "intro": "Each RedExpres store places its monthly order for point-of-sale material (banners, posters, skewers, stickers) by filling in its row of the month's sheet. Changes save on their own a few seconds after you stop typing — there's no \"Save\" button.",
-      "tuLocal":   { "title": "Your store",       "desc": "You can only edit the row of the store assigned to you — the rest is visible but can't be touched." },
-      "confirmar": { "title": "Confirm order",    "desc": "Once loaded, you confirm the order and the row gets locked to avoid accidental changes." },
-      "nuevoMes":  { "title": "New month",        "desc": "Only the Super Admin can open a new month or unlock an already-confirmed order." }
+      "tuLocal": {
+        "title": "Your store",
+        "desc": "You can only edit the row of the store assigned to you — the rest is visible but can't be touched."
+      },
+      "confirmar": {
+        "title": "Confirm order",
+        "desc": "Once loaded, you confirm the order and the row gets locked to avoid accidental changes."
+      },
+      "nuevoMes": {
+        "title": "New month",
+        "desc": "Only the Super Admin can open a new month or unlock an already-confirmed order."
+      }
     },
     "asistente": {
       "title": "Virtual assistant",
@@ -1175,10 +1285,22 @@
       "introPre": "There are no separate teams or organizations: all users share the same platform. Permissions live",
       "introBold": "per user",
       "introMid": "not per role — the role only sets the starting point when assigned; after that, each permission is toggled individually from that person's profile in the",
-      "superAdmin": { "title": "Super Admin", "desc": "Full unrestricted access. Reserved for the main account — not assignable from the panel." },
-      "admin":      { "title": "Admin", "desc": "Starts with every permission checked; individual ones can be unchecked per user. Can't modify another Admin or the Super Admin." },
-      "usuario":    { "title": "User", "desc": "Starts with a standard operational set (full banners, analytics, prices and AI, no user or connection management) — adjustable per person." },
-      "viewer":     { "title": "Viewer", "desc": "Starts with no permissions and can only have \"view\" permissions checked — never generate, edit, delete or manage." }
+      "superAdmin": {
+        "title": "Super Admin",
+        "desc": "Full unrestricted access. Reserved for the main account — not assignable from the panel."
+      },
+      "admin": {
+        "title": "Admin",
+        "desc": "Starts with every permission checked; individual ones can be unchecked per user. Can't modify another Admin or the Super Admin."
+      },
+      "usuario": {
+        "title": "User",
+        "desc": "Starts with a standard operational set (full banners, analytics, prices and AI, no user or connection management) — adjustable per person."
+      },
+      "viewer": {
+        "title": "Viewer",
+        "desc": "Starts with no permissions and can only have \"view\" permissions checked — never generate, edit, delete or manage."
+      }
     }
   }
 }

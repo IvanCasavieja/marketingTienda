@@ -3,24 +3,30 @@
 Sin jobs asíncronos ni Redis: parsear un Excel y hacer lookups de SKU es
 rápido, a diferencia de renderizar PPTX — no hay razón para repetir acá el
 patrón de jobs del generador de Cenefas."""
+import json
 import logging
+import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import require_permission
+from app.core.deps import client_ip as _client_ip, require_permission
 from app.core.rate_limit import limiter
 from app.core.uploads import read_limited
+from app.models.audit_log import AuditLog
+from app.models.convertidor_mapeo import ConvertidorMapeo
 from app.models.sku_descripcion import SkuDescripcion
 from app.models.user import User
 from app.services.cenefas.convertidor import (
     ConvertidorParseError,
     build_output_workbook,
+    detectar_fila_headers,
+    leer_filas,
     match_rows,
     parse_input_excel,
     upsert_sku_descripcion,
@@ -31,6 +37,7 @@ from app.services.cenefas.convertidor_ai import (
     generar_descripciones,
 )
 from app.services.cenefas import tinin_agent
+from app.services.cenefas.convertidor_variables import VARIABLES_MAPEABLES
 from app.services.ai_usage_service import resumir_usage
 
 logger = logging.getLogger(__name__)
@@ -43,10 +50,19 @@ router = APIRouter(prefix="/tools/cenefas/convertidor", tags=["cenefas-convertid
 async def preview(
     request: Request,
     excel: UploadFile = File(...),
+    mapeo_json: str = Form(default="{}", description='JSON {variable: nombre_de_columna} de la pantalla de mapeo'),
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     excel_bytes = await read_limited(excel, "Excel")
+    try:
+        mapeo = {str(k): str(v) for k, v in (json.loads(mapeo_json or "{}") or {}).items()}
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="El mapeo de columnas no es un JSON válido")
+    # Una variable fuera de la lista mapeable no tendría efecto (ver
+    # construir_variables) -- se descarta acá para que el resultado no
+    # dependa de qué mandó el cliente.
+    mapeo = {k: v for k, v in mapeo.items() if k in VARIABLES_MAPEABLES}
     # Tinín solo entra a clasificar columnas de fecha sin alias reconocido si
     # el usuario tiene el permiso de ese agente específico (misma separación
     # ai.don_tino/ai.dona_tina/ai.tinin/ai.triada que el resto de la IA acá) —
@@ -56,9 +72,9 @@ async def preview(
         current_user.is_superuser or "ai.tinin" in (current_user.permissions or [])
     )
     try:
-        parsed, learned_aliases_count = await parse_input_excel(
+        parsed, learned_aliases_count, _headers = await parse_input_excel(
             excel_bytes, excel.filename or "",
-            db=db, current_user_id=current_user.id, allow_ai=allow_ai,
+            db=db, current_user_id=current_user.id, allow_ai=allow_ai, mapeo=mapeo,
         )
     except ConvertidorParseError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -138,26 +154,65 @@ async def update_descripcion(
 
 
 class ConvertidorRowIn(BaseModel):
-    row_id:                int
-    codigo:                str
-    nombre_articulo:       str = ""
-    descripcion:           str = ""
-    moneda:                str = "$"
-    precio_anterior:       float | None = None
-    precio_anterior_raw:   str = ""
-    precio:                float | None = None
-    precio_raw:            str = ""
-    oferta:                str = ""
-    oferta_det:            str = ""
-    descripcion_web:       str = ""
-    comprador:             str = ""
-    descuento:             str = ""
-    descuento_det:         str = ""
-    vigencia:              str = ""
-    aclaracion1:            str = ""
-    aclaracion2:            str = ""
-    aclaracion3:            str = ""
-    es_fiambre_kg:          bool = False
+    """Una fila tal como vuelve del grid.
+
+    Lleva las 26 variables (lo que se exporta) más el contexto del export de
+    gestión, que no se exporta pero sí se usa para recalcular los warnings
+    server-side: el coloreado del Excel final no confía en el array que
+    mandó el browser.
+    """
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    row_id: int
+    matched: bool = False
+
+    # -- contexto de gestión (no se exporta) ------------------------------
+    nombre_articulo:     str = ""
+    comprador:           str = ""
+    moneda:              str = "$"
+    oferta_origen:       str = ""
+    oferta_det:          str = ""
+    descripcion_web:     str = ""
+    precio_raw:          str = ""
+    precio_anterior_raw: str = ""
+    es_fiambre_kg:       bool = False
+    warnings_mecanica:   list[str] = Field(default_factory=list)
+
+    # -- las 26 variables --------------------------------------------------
+    codigo:               str = ""
+    descripcion:          str = ""
+    mecanica:             str = ""
+    precioRegular:        str = ""
+    decimalPrecioRegular: str = ""
+    precioOferta:         str = ""
+    decimalPrecioOferta:  str = ""
+    ofertaUno:            str = ""
+    decimalPrecioUno:     str = ""
+    ofertaDos:            str = ""
+    decimalPrecioDos:     str = ""
+    ofertaTres:           str = ""
+    decimalPrecioTres:    str = ""
+    ofertaCuatro:         str = ""
+    decimalPrecioCuatro:  str = ""
+    precioBanco:          str = ""
+    decimalPrecioBanco:   str = ""
+    banco:                str = ""
+    vigencia:             str = ""
+    aclaracionUno:        str = ""
+    aclaracionDos:        str = ""
+    aclaracionTres:       str = ""
+    legales:              str = ""
+    dia:                  str = ""
+    mes:                  str = ""
+    # La única variable con un carácter no ASCII. Pydantic no acepta "año"
+    # como nombre de campo con tilde sin alias, así que el campo se llama
+    # anio y el alias es el nombre real que viaja por la red.
+    anio:                 str = Field(default="", alias="año")
+
+    def to_export(self) -> dict:
+        d = self.model_dump()
+        d["año"] = d.pop("anio", "")
+        return d
 
 
 class ExportRequest(BaseModel):
@@ -173,7 +228,7 @@ async def export(
     browser (no vuelve a leer la base) — lo que se ve en el grid es
     exactamente lo que se descarga, sin depender de si el debounce del
     último PATCH ya disparó o no."""
-    xlsx_bytes = build_output_workbook([r.model_dump() for r in payload.rows])
+    xlsx_bytes = build_output_workbook([r.to_export() for r in payload.rows])
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -312,3 +367,160 @@ async def tinin_consultar(
 
     await db.commit()  # persiste el ai_usage_log acumulado + cualquier descripción guardada por la tool
     return {"respuesta": result["respuesta"], "usage": resumir_usage(result["usage_items"])}
+
+
+# ---------------------------------------------------------------------------
+# Pantalla de mapeo
+# ---------------------------------------------------------------------------
+
+@router.post("/columnas")
+@limiter.limit("20/minute")
+async def columnas(
+    request: Request,
+    excel: UploadFile = File(...),
+    _: User = Depends(require_permission("cenefas.view")),
+):
+    """Columnas del archivo subido, para armar la pantalla de mapeo.
+
+    Se llama ANTES de convertir: la persona necesita ver qué columnas trae su
+    archivo para decir a cuál corresponde cada variable. Devuelve también un
+    par de valores de muestra por columna, que es lo que en la práctica
+    permite reconocerla cuando el nombre no dice nada ("COMENTARIOS2").
+    """
+    excel_bytes = await read_limited(excel, "Excel")
+    try:
+        filas = leer_filas(excel_bytes, excel.filename or "")
+    except Exception as e:
+        logger.error("convertidor columnas: %s", e, exc_info=True)
+        raise HTTPException(status_code=400, detail=f"No pude leer el archivo: {e}")
+
+    header_idx = detectar_fila_headers(filas)
+    if header_idx is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No encontré una columna 'CODIGO' reconocible en las primeras filas "
+                   "— verificá que sea el export crudo de gestión.",
+        )
+
+    header = filas[header_idx]
+    muestras = filas[header_idx + 1: header_idx + 6]
+    columnas_out = []
+    for i, celda in enumerate(header):
+        nombre = str(celda).strip() if celda is not None else ""
+        if not nombre:
+            continue
+        valores = [
+            str(f[i]).strip() for f in muestras
+            if i < len(f) and f[i] is not None and str(f[i]).strip()
+        ]
+        columnas_out.append({"nombre": nombre, "muestras": valores[:3]})
+
+    return {
+        "columnas": columnas_out,
+        "variables_mapeables": list(VARIABLES_MAPEABLES),
+        "total_filas": max(len(filas) - header_idx - 1, 0),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Plantillas de mapeo
+# ---------------------------------------------------------------------------
+
+class MapeoUpsert(BaseModel):
+    nombre: str = Field(min_length=1, max_length=120)
+    destino: str | None = Field(default=None, max_length=50)
+    mapeo: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("mapeo")
+    @classmethod
+    def _solo_mapeables(cls, v: dict[str, str]) -> dict[str, str]:
+        # Una variable fuera de la lista no tendría efecto (construir_variables
+        # solo aplica las mapeables), así que se rechaza en vez de guardarla y
+        # dejar a alguien esperando que funcione.
+        desconocidas = set(v) - set(VARIABLES_MAPEABLES)
+        if desconocidas:
+            raise ValueError(f"Variables no mapeables: {sorted(desconocidas)}")
+        return {k: val for k, val in v.items() if val and val.strip()}
+
+
+@router.get("/mapeos")
+async def listar_mapeos(
+    destino: str | None = Query(None, description="Filtra por mundo; los sin destino salen siempre"),
+    _: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(ConvertidorMapeo).order_by(ConvertidorMapeo.nombre)
+    if destino:
+        # Los mapeos sin destino sirven para cualquier mundo, así que
+        # aparecen siempre -- filtrarlos obligaría a duplicar el mismo mapeo
+        # una vez por mundo.
+        stmt = stmt.where(
+            or_(ConvertidorMapeo.destino == destino, ConvertidorMapeo.destino.is_(None))
+        )
+    result = await db.execute(stmt)
+    return [
+        {
+            "id": str(m.id), "nombre": m.nombre, "destino": m.destino, "mapeo": m.mapeo,
+            "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+        }
+        for m in result.scalars().all()
+    ]
+
+
+@router.post("/mapeos", status_code=201)
+async def crear_mapeo(
+    payload: MapeoUpsert,
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    nombre = payload.nombre.strip()
+    # Mismo nombre + mismo destino se pisa en vez de duplicar: el gesto real
+    # es "guardá esto como 'Mundo Hogar'", y a la segunda vez se espera
+    # actualizar, no terminar con dos entradas iguales en el menú.
+    existente = (await db.execute(
+        select(ConvertidorMapeo).where(
+            ConvertidorMapeo.nombre == nombre,
+            ConvertidorMapeo.destino.is_(None) if payload.destino is None
+            else ConvertidorMapeo.destino == payload.destino,
+        )
+    )).scalar_one_or_none()
+
+    if existente is not None:
+        existente.mapeo = payload.mapeo
+        accion = "cenefas.mapeo.update"
+        m = existente
+    else:
+        m = ConvertidorMapeo(
+            nombre=nombre, destino=payload.destino, mapeo=payload.mapeo,
+            created_by=current_user.id,
+        )
+        db.add(m)
+        accion = "cenefas.mapeo.create"
+
+    await db.flush()
+    db.add(AuditLog(
+        user_id=current_user.id, action=accion, resource="convertidor_mapeo",
+        resource_id=str(m.id), details={"nombre": nombre, "destino": payload.destino},
+        ip_address=_client_ip(request),
+    ))
+    await db.commit()
+    return {"id": str(m.id), "nombre": m.nombre, "destino": m.destino, "mapeo": m.mapeo}
+
+
+@router.delete("/mapeos/{mapeo_id}", status_code=204)
+async def borrar_mapeo(
+    mapeo_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    m = await db.get(ConvertidorMapeo, mapeo_id)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Plantilla de mapeo no encontrada")
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.mapeo.delete", resource="convertidor_mapeo",
+        resource_id=str(mapeo_id), details={"nombre": m.nombre}, ip_address=_client_ip(request),
+    ))
+    await db.delete(m)
+    await db.commit()

@@ -49,7 +49,8 @@ const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - 1 + i);
 
 interface TemplatePickerModalProps {
-  category: "rompe_precios" | "parrilla_y_vinos";
+  /** Slug del destino/mundo. Dinámico: los mundos se crean desde la UI. */
+  category: string;
   categoryLabel: string;
   onClose: () => void;
   onSelect: (tmpl: CenefaTemplateRecord) => void;

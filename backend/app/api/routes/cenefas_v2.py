@@ -3,17 +3,20 @@ import base64 as _b64
 import json
 import logging
 import pathlib
+import re
+import unicodedata
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import require_permission, client_ip as _client_ip
 from app.core.uploads import read_limited
 from app.models.audit_log import AuditLog
+from app.models.cenefa_destino import CenefaDestino
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
@@ -298,9 +301,8 @@ async def validate_csv(
     excel: UploadFile = File(..., description="Archivo Excel o CSV"),
     template_id: uuid.UUID = Form(...),
     vigencia: str = Form(default=""),
-    aclaracion: str = Form(default=""),
-    otra_alcohol: str = Form(default="Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
-    banco: str = Form(default=""),
+    legales: str = Form(default=""),
+    usar_legales: bool = Form(default=False),
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -316,7 +318,7 @@ async def validate_csv(
 
     excel_bytes = await read_limited(excel, "Excel")
     try:
-        products = load_products_from_bytes(excel_bytes, vigencia, aclaracion, otra_alcohol, banco, tmpl.category)
+        products = load_products_from_bytes(excel_bytes, vigencia, legales, usar_legales)
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Columna requerida faltante en el Excel: {e}")
     except Exception as e:
@@ -414,14 +416,12 @@ async def create_job(
                     "Si se omite, se usa el master_format detectado de la plantilla.",
     ),
     export_type: str = Form(default="pptx", description="Tipo de salida: pptx"),
-    builtin_slug: str | None = Form(None, description="Slug de plantilla predeterminada (v1)"),
-    template_v1_id: int | None = Form(None, description="ID de template v1 del equipo"),
-    template_v2_id: uuid.UUID | None = Form(None, description="UUID de template v2 del equipo"),
+    builtin_slug: str | None = Form(None, description="Slug de una plantilla base del repo"),
+    template_id: uuid.UUID | None = Form(None, description="UUID de la plantilla del equipo"),
     template_upload: UploadFile | None = File(None, description="PPTX subido al vuelo, sin guardar como plantilla"),
     vigencia: str = Form(default=""),
-    aclaracion: str = Form(default=""),
-    otra_alcohol: str = Form(default="Prohibida la venta de bebidas alcohólicas a menores de 18 años"),
-    banco: str = Form(default=""),
+    legales: str = Form(default="", description="Texto de legales -- solo se usa si usar_legales=true"),
+    usar_legales: bool = Form(default=False, description="Habilita sustituir la variable legales"),
     image_overrides_json: str = Form(
         default="{}",
         description='JSON {variable_name: "ext:base64"} con imágenes a inyectar en componentes de imagen',
@@ -429,14 +429,16 @@ async def create_job(
     current_user: User = Depends(require_permission("cenefas.generate")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Inicia un job de generación async. Acepta templates v1 (PPTX), v2 (componentes JSON)
-    y un PPTX subido al vuelo (sin guardarlo como plantilla del equipo)."""
+    """Inicia un job de generación async.
+
+    Acepta una plantilla del equipo, una plantilla base del repo o un PPTX
+    subido al vuelo. Los tres caminos terminan en el mismo motor."""
     if format_id is not None and format_id not in FORMATS:
         raise HTTPException(status_code=400, detail=f"Formato inválido. Disponibles: {list(FORMATS)}")
-    if not builtin_slug and not template_v1_id and not template_v2_id and not template_upload:
+    if not builtin_slug and not template_id and not template_upload:
         raise HTTPException(
             status_code=400,
-            detail="Debés especificar builtin_slug, template_v1_id, template_v2_id o template_upload",
+            detail="Debés especificar una plantilla (template_id, builtin_slug o template_upload)",
         )
     if not excel.filename or not excel.filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="El Excel debe ser .xlsx o .xlsm")
@@ -485,14 +487,12 @@ async def create_job(
         job_id=job_id,
         excel_bytes=excel_bytes,
         builtin_slug=builtin_slug,
-        template_v1_id=template_v1_id,
-        template_v2_id=template_v2_id,
+        template_v2_id=template_id,
         template_upload_bytes=template_upload_bytes,
         target_format=format_id,
         vigencia=vigencia,
-        aclaracion=aclaracion,
-        otra_alcohol=otra_alcohol,
-        banco=banco,
+        legales=legales,
+        usar_legales=usar_legales,
         image_overrides=image_overrides,
     )
 
@@ -681,3 +681,145 @@ async def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
                 d["slot_bands"]       = [[c["id"] for c in band] for band in slot_bands]
                 d["preview_products"] = staged.products[: len(slot_bands)]
     return d
+
+
+# ---------------------------------------------------------------------------
+# Destinos ("mundos")
+# ---------------------------------------------------------------------------
+#
+# Un destino agrupa las plantillas de una campaña. No cambia cómo se procesa
+# nada: las variables, el Excel y el motor de render son idénticos para
+# todos. Son datos y no código para que sumar un mundo nuevo ("Mega Rompe
+# Precios") no requiera tocar el repo ni desplegar.
+
+# Íconos y colores que el frontend sabe dibujar. Se validan acá para que un
+# valor inventado no llegue nunca a la UI: el frontend cae a un default, pero
+# es mejor rechazarlo en el borde que mostrar un mundo sin identidad visual.
+_ICONOS_VALIDOS = {
+    "Store", "PartyPopper", "Wine", "ShoppingCart", "Tag", "Percent",
+    "Sparkles", "Flame", "Gift", "Beef", "Apple", "Snowflake",
+}
+_COLORES_VALIDOS = {
+    "emerald", "rose", "purple", "amber", "sky", "indigo", "orange", "teal",
+}
+
+_RE_SLUG = re.compile(r"^[a-z][a-z0-9_]{1,48}$")
+
+
+def _slugify(nombre: str) -> str:
+    """Nombre visible -> slug estable.
+
+    "Mega Rompe Precios" -> "mega_rompe_precios". Se normaliza sin acentos
+    porque el slug termina en una URL y en una columna de texto que ya
+    contiene los slugs viejos, todos ASCII.
+    """
+    base = unicodedata.normalize("NFD", nombre).encode("ascii", "ignore").decode()
+    base = re.sub(r"[^a-zA-Z0-9]+", "_", base).strip("_").lower()
+    return base[:49]
+
+
+@router.get("/destinos")
+async def list_destinos(
+    _: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(CenefaDestino).order_by(CenefaDestino.orden, CenefaDestino.nombre)
+    )
+    return [
+        {
+            "slug":        d.slug,
+            "nombre":      d.nombre,
+            "descripcion": d.descripcion,
+            "icono":       d.icono,
+            "color":       d.color,
+        }
+        for d in result.scalars().all()
+    ]
+
+
+@router.post("/destinos", status_code=status.HTTP_201_CREATED)
+async def create_destino(
+    payload: dict,
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    nombre = str(payload.get("nombre", "")).strip()
+    if not nombre:
+        raise HTTPException(status_code=422, detail="El nombre del mundo no puede estar vacío")
+    if len(nombre) > 120:
+        raise HTTPException(status_code=422, detail="El nombre no puede superar los 120 caracteres")
+
+    slug = _slugify(nombre)
+    if not _RE_SLUG.match(slug):
+        raise HTTPException(
+            status_code=422,
+            detail="El nombre tiene que tener al menos dos caracteres alfanuméricos",
+        )
+
+    existente = await db.get(CenefaDestino, slug)
+    if existente is not None:
+        raise HTTPException(status_code=409, detail=f"Ya existe un mundo llamado {existente.nombre!r}")
+
+    icono = str(payload.get("icono") or "Store")
+    color = str(payload.get("color") or "emerald")
+    if icono not in _ICONOS_VALIDOS:
+        icono = "Store"
+    if color not in _COLORES_VALIDOS:
+        color = "emerald"
+
+    # El nuevo va al final: los mundos existentes ya tienen un orden con el
+    # que el equipo está acostumbrado a verlos.
+    max_orden = (await db.execute(select(func.max(CenefaDestino.orden)))).scalar() or 0
+
+    destino = CenefaDestino(
+        slug=slug,
+        nombre=nombre,
+        descripcion=str(payload.get("descripcion", "")).strip()[:300],
+        icono=icono,
+        color=color,
+        orden=max_orden + 10,
+        created_by=current_user.id,
+    )
+    db.add(destino)
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.destino.create", resource="cenefa_destino",
+        resource_id=slug, details={"nombre": nombre}, ip_address=_client_ip(request),
+    ))
+    await db.commit()
+    return {
+        "slug": slug, "nombre": nombre, "descripcion": destino.descripcion,
+        "icono": icono, "color": color,
+    }
+
+
+@router.delete("/destinos/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_destino(
+    slug: str,
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    destino = await db.get(CenefaDestino, slug)
+    if destino is None:
+        raise HTTPException(status_code=404, detail="Mundo no encontrado")
+
+    # Un mundo con plantillas no se borra: las plantillas quedarían
+    # inalcanzables (el picker filtra por category) sin ningún aviso, y
+    # recuperarlas exigiría entrar a la base. Que las borren primero.
+    en_uso = (await db.execute(
+        select(func.count()).select_from(CenefaTemplateV2).where(CenefaTemplateV2.category == slug)
+    )).scalar_one()
+    if en_uso:
+        raise HTTPException(
+            status_code=409,
+            detail=f"El mundo tiene {en_uso} plantilla(s). Borralas antes de eliminarlo.",
+        )
+
+    await db.delete(destino)
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.destino.delete", resource="cenefa_destino",
+        resource_id=slug, details={"nombre": destino.nombre}, ip_address=_client_ip(request),
+    ))
+    await db.commit()

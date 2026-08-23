@@ -67,195 +67,14 @@ def apply_transform(value: str, transform: str | None) -> str:
     return value
 
 
-# Transforms de precio cuya LONGITUD varía con el valor (a diferencia de
-# price_decimal, que siempre son 2 dígitos, ej. ",50") -- son los únicos que
-# necesitan achicarse cuando el número crece. Ver _fit_price_font_size.
-_PRICE_FONT_FIT_TRANSFORMS = frozenset({"price_full", "price_integer"})
+# NOTA (08/2026): acá vivían el achique automático de la fuente del precio
+# (_fit_price_font_size) y el de la descripcion (_fit_description_to_box),
+# mas el corrimiento vertical del cuadro de precio cuando la descripcion se
+# desbordaba. Se eliminaron por pedido explicito: el motor tiene que
+# respetar el PPT tal cual se sube -- no agranda, no achica y no mueve nada
+# por su cuenta. Si un texto no entra en su cuadro, se corrige el dato o el
+# diseno, no el renderer.
 
-
-def _fit_price_font_size(text: str, base_font_size: float | None) -> float | None:
-    """Achica la fuente cuando un precio pasa a tener separador de miles.
-
-    Las cajas de precio de las plantillas reales vienen calibradas a mano
-    para valores de 3 dígitos (ej. "399", "546" entran bien en el ancho
-    original) -- a partir de 4 dígitos (ej. "1.174") el texto ya no entra y
-    queda superpuesto con lo que esté al lado (confirmado visualmente en
-    Parrilla y Vinos: 3 dígitos ok, 4 se ven encimados). Escala proporcional
-    a cuántos dígitos de más tiene contra esa referencia de 3, con un piso
-    para no volverlo ilegible en precios de 5+ dígitos."""
-    if not base_font_size:
-        return base_font_size
-    n_digits = len(re.sub(r"[^\d]", "", text))
-    if n_digits <= 3:
-        return base_font_size
-    scale = 3 / n_digits
-    return max(base_font_size * scale, base_font_size * 0.55)
-
-
-def _estimate_wrapped_lines(
-    text: str, box_width_cm: float | None, font_size: float | None, bold: bool = False,
-) -> int:
-    """Estima a cuántas líneas se parte un texto con word-wrap en una caja
-    de cierto ancho -- simulando el mismo criterio "voraz" (agregar
-    palabras hasta que no entran más) que usa PowerPoint. No es exacto (no
-    tenemos las métricas reales de la fuente en el servidor), pero
-    calibrado contra descripciones reales de Parrilla y Vinos que se
-    superponían con el precio.
-
-    bold=True ensancha el ancho de caracter asumido -- la fuente real de
-    descripción en Parrilla y Vinos es "Franklin Gothic Heavy" (bold), más
-    ancha por caracter que el texto normal. También se descuenta un margen
-    interno fijo del ancho de la caja (PowerPoint reserva un inset
-    izquierdo/derecho por defecto, ~0.25cm de cada lado, que nunca estábamos
-    restando). Recalibrado dos veces contra casos reales que seguían
-    superponiéndose con el precio pese a los ajustes anteriores (ej. "Vino
-    Tinto Malbec LATITUD 33 750ml" seguía prediciendo 2 líneas cuando en
-    realidad son 3+) -- ver ejemplos en el historial de este archivo antes
-    de tocar estas constantes de nuevo."""
-    if not text or not box_width_cm or not font_size:
-        return 1
-    # Inset interno de PowerPoint (izq + der) que nunca se restaba del ancho
-    # disponible -- sin esto se sobreestima cuánto entra por línea.
-    usable_width_cm = max(0.1, box_width_cm - 0.4)
-    box_width_pt = usable_width_cm / 2.54 * 72
-    # Ancho promedio de caracter -- 0.38em para texto normal, 0.52em si es
-    # bold (ver docstring arriba). Calibrado contra casos reales, no un
-    # valor de fuente "de catálogo".
-    char_width_em = 0.52 if bold else 0.38
-    chars_per_line = max(1, int(box_width_pt / (font_size * char_width_em)))
-    lines = 1
-    current_len = 0
-    for word in text.split():
-        add_len = len(word) if current_len == 0 else current_len + 1 + len(word)
-        if add_len > chars_per_line and current_len > 0:
-            lines += 1
-            current_len = len(word)
-        else:
-            current_len = add_len
-    return lines
-
-
-def _comp_uses_variable(c: dict, var_name: str) -> bool:
-    """True si el componente usa esa variable, ya sea directo (c["variable"])
-    o dentro de un segmento (ej. "PRECIO REGULAR: $<<precioP>>" -- con
-    allow_single_placeholder_segments el texto estático + el placeholder
-    quedan como 2 segmentos de UN componente, no como variable de nivel
-    superior, ver pptx_importer.py)."""
-    if c.get("variable") == var_name:
-        return True
-    return any(seg.get("type") == "variable" and seg.get("value") == var_name for seg in (c.get("segments") or []))
-
-
-_DESC_FONT_FIT_MIN_SCALE = 0.6  # mismo piso conceptual que _fit_price_font_size --
-                                 # no dejar la descripción ilegible en nombres extremos.
-_DESC_OVERFLOW_MARGIN_CM = 0.15  # aire visual entre la última línea de la
-                                  # descripción y "PRECIO REGULAR" cuando ni
-                                  # achicar al piso alcanza -- sin esto, un
-                                  # nombre extremo puede dejar de invadir el
-                                  # precio pero quedar pegado, sin separación.
-
-
-def _fit_description_font_size(
-    text: str, box_width_cm: float | None, box_height_cm: float | None, base_font_size: float | None,
-    bold: bool = False,
-) -> float | None:
-    """Mismo criterio que _fit_price_font_size (achicar la fuente que se
-    pasa, nunca mover cajas vecinas) pero para la descripción: si el nombre
-    del producto no entra en una sola línea al tamaño de fuente del
-    template, achicamos proporcionalmente hasta que las líneas estimadas
-    (ver _estimate_wrapped_lines) entren en la altura real de la caja, con
-    un piso para no volverla ilegible en nombres muy largos.
-
-    No reestima cuántas líneas hacen falta AL tamaño ya achicado (un
-    caracter más angosto entra más por línea, podría necesitar achicar
-    menos) -- una sola pasada, mismo nivel de precisión que el resto de las
-    heurísticas de este archivo (no hay métricas reales de fuente acá), y
-    conservador para el lado seguro: prefiere achicar un poco de más antes
-    que arriesgar que la descripción siga invadiendo el precio de al lado."""
-    if not text or not box_width_cm or not box_height_cm or not base_font_size:
-        return base_font_size
-    lines = _estimate_wrapped_lines(text, box_width_cm, base_font_size, bold)
-    if lines <= 1:
-        return base_font_size
-    line_height_cm = base_font_size / 72 * 2.54 * 1.2  # 1.2 = interlineado típico
-    needed_height_cm = lines * line_height_cm
-    if needed_height_cm <= box_height_cm:
-        return base_font_size
-    scale = box_height_cm / needed_height_cm
-    return max(base_font_size * scale, base_font_size * _DESC_FONT_FIT_MIN_SCALE)
-
-
-def _fit_description_to_box(comps: list[dict], product: dict) -> list[dict]:
-    """Achica la fuente de la descripción cuando el nombre del producto no
-    entra en una sola línea dentro de la caja diseñada -- reemplaza al
-    enfoque anterior (empujar precioP hacia abajo), que dejaba un hueco
-    entre código/descripción y el precio y encima requería re-implementar a
-    mano lo que "achicar texto si no entra" ya debería resolver. Específico
-    de Parrilla y Vinos: ahí descripcion y precioP son dos cajas de texto
-    independientes apiladas verticalmente (no un único cuadro con
-    auto-layout compartido), así que una desborda sobre la otra si no se
-    achica.
-
-    Red de seguridad para nombres EXTREMOS (ej. "Vino NICASIA VINEYARDS
-    Cabernet Franc o Blanc de Blancs 750 ml", confirmado real): ni achicando
-    al piso de _fit_description_font_size entran siempre -- ahí, además de
-    achicar, se empuja precioP hacia abajo, pero SOLO lo que realmente sobra
-    (re-estimado al tamaño YA achicado, no al original) más un margen chico
-    -- nunca el shift completo que tenía el enfoque viejo. En el caso común
-    (achicar alcanza) el precio no se mueve ni un milímetro."""
-    desc_comp  = next((c for c in comps if _comp_uses_variable(c, "descripcion")), None)
-    # precioP (Parrilla y Vinos) o precioOferta (sistema unificado nuevo,
-    # Rompe Precios incluido) -- el que esté presente es el precio "grande"
-    # al que tiene sentido correrle el hueco de sobra como red de seguridad.
-    price_comp = next(
-        (c for c in comps if _comp_uses_variable(c, "precioP") or _comp_uses_variable(c, "precioOferta")),
-        None,
-    )
-    if not desc_comp:
-        return comps
-
-    style = desc_comp.get("style", {})
-    base_font_size = style.get("font_size")
-    bold = bool(style.get("font_bold"))
-    bounds = desc_comp.get("base_bounds", {})
-    box_width, box_height = bounds.get("width"), bounds.get("height")
-    text = str(product.get("descripcion", "") or "")
-
-    fitted = _fit_description_font_size(text, box_width, box_height, base_font_size, bold)
-
-    shift_cm = 0.0
-    if price_comp and fitted and box_width and box_height:
-        lines_fitted    = _estimate_wrapped_lines(text, box_width, fitted, bold)
-        line_height_cm  = fitted / 72 * 2.54 * 1.2
-        overflow_cm     = lines_fitted * line_height_cm - box_height
-        if overflow_cm > 0:
-            shift_cm = overflow_cm + _DESC_OVERFLOW_MARGIN_CM
-
-    if fitted == base_font_size and shift_cm <= 0:
-        return comps
-
-    result = []
-    for c in comps:
-        if c is desc_comp and fitted != base_font_size:
-            c = {**c, "style": {**c["style"], "font_size": fitted}}
-            # Componente multi-segmento (ej. "$" + <<descripcion>>, o mismo
-            # placeholder partido en runs distintos por PowerPoint): cada
-            # segmento con su PROPIO font_size en seg["style"] pisa el del
-            # componente en _populate_text_frame (seg_style.update(seg["style"])
-            # corre DESPUES de heredar el style del componente) -- sin esto,
-            # el achique de arriba quedaba descartado en silencio para
-            # cualquier componente importado como multi-segmento.
-            segs = c.get("segments")
-            if segs:
-                c["segments"] = [
-                    {**seg, "style": {**seg["style"], "font_size": fitted}}
-                    if seg.get("style", {}).get("font_size") else seg
-                    for seg in segs
-                ]
-        if c is price_comp and shift_cm > 0:
-            c = {**c, "computed_bounds": {**c["computed_bounds"], "y": c["computed_bounds"]["y"] + shift_cm}}
-        result.append(c)
-    return result
 
 
 def hex_to_rgb(hex_color: str | None) -> RGBColor:
@@ -334,8 +153,6 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
             else:
                 if seg_transform not in (None, "none"):
                     seg_val = apply_transform(seg_val, seg_transform)
-                if seg_transform in _PRICE_FONT_FIT_TRANSFORMS:
-                    seg_style["font_size"] = _fit_price_font_size(seg_val, seg_style.get("font_size"))
                 run = p.add_run()
                 run.text = seg_val
                 _apply_run_style(run, seg_style)
@@ -348,8 +165,6 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
             _apply_run_style(run, style, bold_override=is_bold)
     else:
         run_style = style
-        if transform in _PRICE_FONT_FIT_TRANSFORMS:
-            run_style = {**style, "font_size": _fit_price_font_size(value, style.get("font_size"))}
         run = p.add_run()
         run.text = value
         _apply_run_style(run, run_style)
@@ -642,7 +457,6 @@ def _render_slide(
     slot_offset_y: float = 0.0,
     missing_vars: set | None = None,
     shape_map: dict[int, object] | None = None,
-    dedupe_currency_prefix: bool = False,
 ) -> None:
     shape_map = shape_map or {}
     for comp in comp_layout:
@@ -669,18 +483,14 @@ def _render_slide(
                     seg_val = str(product.get(seg_var, "") or "") if seg_var else ""
                     if seg_var and seg_var not in product and missing_vars is not None:
                         missing_vars.add(seg_var)
-                    # data_engine.py ya le antepone "$"/"U$S " a los valores de
-                    # precio formateados (necesario para plantillas con el
-                    # precio en un solo run, ej. RedExpress). Si el segmento
-                    # estático justo anterior YA es ese mismo símbolo (el
-                    # diseño lo separó como run propio, con su propio tamaño
-                    # — ver "$" 96pt + "<<Precio>>" 200pt en Rompe Precios), no
-                    # duplicarlo: sin este chequeo queda "$" + "$139" = "$$139".
-                    # Restringido a destinos que lo pidieron explícitamente
-                    # (dedupe_currency_prefix, hoy solo Rompe Precios) — para
-                    # cualquier otra plantilla con 2+ placeholders (ej.
-                    # aclaracion1/2/3) esto no aplica y no cambia nada.
-                    if dedupe_currency_prefix and i > 0 and segments[i - 1].get("type") == "static":
+                    # Guarda contra el símbolo de moneda duplicado. Desde
+                    # 08/2026 los precios viajan SIN "$" (el símbolo es texto
+                    # fijo del diseño), así que esto normalmente no se
+                    # dispara; sigue acá para el caso de un Excel cargado a
+                    # mano con "$899" en una plantilla que además tiene el
+                    # "$" como run propio -- sin el chequeo queda "$$899".
+                    # Solo saca un símbolo repetido, nunca reformatea nada.
+                    if i > 0 and segments[i - 1].get("type") == "static":
                         prev = segments[i - 1].get("value", "").strip()
                         if prev in ("U$S", "$") and seg_val.strip().startswith(prev):
                             seg_val = seg_val.strip()[len(prev):].lstrip()
@@ -722,7 +532,7 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     n_slots = GCD de cuántas veces aparece cada variable -- NO el máximo.
     Un variable puede aparecer más de una vez POR banda (ej. un precio
     partido en placeholder de entero + placeholder de decimal, ambos
-    apuntando a la misma variable canónica, ver precio4x3/5x3/6x3 en
+    apuntando a la misma variable canónica, ver ofertaUno/Dos/Tres en
     Parrilla y Vinos) sin que eso signifique que hay más bandas. Con max(),
     un template de 3 bandas donde cada precio tiene 2 placeholders (entero+
     decimal) se detectaba como 6 bandas -- de ahí se armaban grupos de Y mal
@@ -737,7 +547,7 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     <<precioP>> como dos runs del mismo cuadro -- variable=None en ese caso,
     ver allow_single_placeholder_segments en pptx_importer.py). Un bug real
     visto con una plantilla real de Parrilla y Vinos: TODOS sus componentes
-    -- incluso <<descripcion>> y <<codigoSKU>> solos, sin texto estático al
+    -- incluso <<descripcion>> y <<codigo>> solos, sin texto estático al
     lado -- quedaron como multi-segmento (PowerPoint partió el placeholder
     en más de un run internamente al editar el archivo). Contando solo
     c["variable"] el Counter quedaba vacío, esta función devolvía None
@@ -817,7 +627,6 @@ def render_template_to_pptx(
     target_format: str = "a4",
     image_overrides: dict[str, tuple[bytes, str]] | None = None,
     source_pptx_bytes: bytes | None = None,
-    category: str | None = None,
 ) -> tuple[bytes, list[str]]:
     """Genera PPTX desde una definición v2 y una lista de productos.
 
@@ -834,20 +643,12 @@ def render_template_to_pptx(
     el resultado solo tiene los shapes que SÍ se lograron extraer, y
     cualquier diseño que viva en el layout/master del archivo se pierde.
 
-    category: destino del template (ej. "rompe_precios") — habilita el
-    dedupe de símbolo de moneda duplicado en segmentos (ver _render_slide),
-    restringido a propósito a Rompe Precios.
-
     Returns (pptx_bytes, missing_vars) donde missing_vars es la lista de
     variables que el template usa pero que no fueron encontradas en el Excel.
     """
     master_format = template_def.get("master_format", "a4")
     components    = template_def.get("components", [])
     rules         = template_def.get("rules", [])
-    # Parrilla y Vinos comparte el mismo patrón de plantilla PPTX que Rompe
-    # Precios (símbolo "$" como run estático separado, junto al placeholder
-    # <<Precio>>) -- mismo pedido explícito de que se comporte igual.
-    dedupe_currency_prefix = category in ("rompe_precios", "parrilla_y_vinos")
 
     if image_overrides:
         components = patch_image_overrides(components, image_overrides)
@@ -926,22 +727,20 @@ def render_template_to_pptx(
                 # tal cual quedaron en master_format. Ver bug histórico: esto
                 # antes escalaba por target_format y comprimía la grilla.
                 laid_bg = compute_layout(bg_comps, master_format, master_format)
-                _render_slide(slide, laid_bg, {}, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
+                _render_slide(slide, laid_bg, {}, missing_vars=missing_vars, shape_map=shape_map)
             for band_idx, band_comps in enumerate(slot_bands):
                 laid_band = compute_layout(band_comps, master_format, master_format)
                 if band_idx < len(pg):
                     product       = pg[band_idx]
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
-                    if category in ("rompe_precios", "parrilla_y_vinos"):
-                        visible_comps = _fit_description_to_box(visible_comps, product)
-                    _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
+                    _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map)
                 elif preserve_source:
                     # Página parcial (menos productos que celdas) y estamos
                     # preservando el diseño original: si no se limpia, la
                     # celda sin producto queda con lo que tuviera el archivo
                     # fuente (ej. datos de ejemplo del diseñador).
-                    _render_slide(slide, laid_band, {}, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
+                    _render_slide(slide, laid_band, {}, shape_map=shape_map)
                 # Sin preserve_source: no hay nada que limpiar, la celda
                 # simplemente nunca tuvo shapes creados (comportamiento
                 # de siempre para el canvas en blanco).
@@ -974,10 +773,8 @@ def render_template_to_pptx(
 
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
-            if category in ("rompe_precios", "parrilla_y_vinos"):
-                visible_comps = _fit_description_to_box(visible_comps, product)
 
-            _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map, dedupe_currency_prefix=dedupe_currency_prefix)
+            _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map)
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -989,13 +786,14 @@ def generate_from_template_v2(
     excel_bytes: bytes,
     target_format: str = "a4",
     vigencia: str = "",
-    aclaracion: str = "",
-    otra_alcohol: str = "Prohibida la venta de bebidas alcohólicas a menores de 18 años",
-    banco: str = "",
+    legales: str = "",
+    usar_legales: bool = False,
     image_overrides: dict[str, tuple[bytes, str]] | None = None,
 ) -> tuple[bytes, list[str]]:
-    """Parsea Excel y genera PPTX desde template v2. Returns (bytes, missing_vars)."""
-    products = load_products_from_bytes(
-        excel_bytes, vigencia, aclaracion, otra_alcohol, banco
-    )
+    """Parsea Excel y genera PPTX desde una definición de template.
+
+    Camino directo sin jobs -- lo usa la generación sincrónica. El flujo
+    normal de la plataforma pasa por jobs.py (preview + confirmación).
+    """
+    products = load_products_from_bytes(excel_bytes, vigencia, legales, usar_legales)
     return render_template_to_pptx(template_def, products, target_format, image_overrides)

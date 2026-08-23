@@ -12,26 +12,9 @@ import type { CenefaFormat, CenefaJob, CenefaTemplate, CenefaTemplateRecord } fr
 
 type Step     = 1 | 2 | 3;
 type TmplMode = "v2" | "builtin";
+import { CENEFA_VARIABLES } from "@/lib/cenefaVariables";
 
-const VARIABLES_REFERENCE = [
-  { name: "descripcion",       desc: "Nombre del producto" },
-  { name: "precioActual",      desc: "Precio de venta actual" },
-  { name: "precioAnterior",    desc: "Precio anterior o tachado" },
-  { name: "precioBanco",       desc: "Precio con beneficio bancario" },
-  { name: "banco",             desc: "Nombre del banco o beneficio" },
-  { name: "mecanica",          desc: "Mecánica o tipo de oferta (ej: 2x1, Combo, Precio Final)" },
-  { name: "aclaracion",        desc: "Texto aclaratorio (ej: bases y condiciones)" },
-  { name: "segundaAclaracion", desc: "Segunda aclaración o leyenda de alcohol" },
-  { name: "vigencia",          desc: "Período de validez de la oferta" },
-  { name: "codigoSKU",         desc: "Código de producto o SKU" },
-  { name: "dia",               desc: "Día de la semana o número" },
-  { name: "mes",               desc: "Mes de vigencia" },
-  { name: "año",               desc: "Año de vigencia" },
-  { name: "moneda",            desc: "Símbolo de moneda (ej: $, €)" },
-  { name: "categoria",         desc: "Categoría del producto" },
-  { name: "subCategoria",      desc: "Subcategoría del producto" },
-  { name: "descuento",         desc: "¿Aplica descuento? Columna TRUE/FALSE en Excel" },
-] as const;
+const VARIABLES_REFERENCE = CENEFA_VARIABLES;
 
 const BUILTINS = [
   { slug: "a4",        label: "Cenefa A4",      formats: ["a4"] },
@@ -56,11 +39,10 @@ export default function GenerarPage() {
   const [excel,       setExcel]       = useState<File | null>(null);
   const [formatId,    setFormatId]    = useState("a4");
   const [vigencia,    setVigencia]    = useState("");
-  const [aclaracion,  setAclaracion]  = useState("Bases y condiciones en redexpres.uy");
-  const [otraAlcohol, setOtraAlcohol] = useState(
-    "Prohibida la venta de bebidas alcohólicas a menores de 18 años"
-  );
-  const [banco, setBanco] = useState("");
+  // Legales apagados por defecto: muchas plantillas ya los traen impresos en
+  // el diseño y sustituir encima duplicaría la leyenda.
+  const [usarLegales, setUsarLegales] = useState(false);
+  const [legales,     setLegales]     = useState("Bases y condiciones en redexpres.uy");
 
   // Definición del template seleccionado (para detectar variables de imagen)
   const [templateDef,   setTemplateDef]   = useState<CenefaTemplate | null>(null);
@@ -162,10 +144,9 @@ export default function GenerarPage() {
       const fd = new FormData();
       fd.append("excel",       excel);
       fd.append("template_id", templateId);
-      fd.append("vigencia",    vigencia);
-      fd.append("aclaracion",  aclaracion);
-      fd.append("otra_alcohol", otraAlcohol);
-      fd.append("banco",       banco);
+      fd.append("vigencia",     vigencia);
+      fd.append("usar_legales", String(usarLegales));
+      fd.append("legales",      usarLegales ? legales : "");
       const { data } = await cenefasV2Api.validateCsv(fd);
       setValidation(data);
       setStep(2);
@@ -183,13 +164,12 @@ export default function GenerarPage() {
       const fd = new FormData();
       fd.append("excel",       excel);
       fd.append("format_id",   formatId);
-      fd.append("vigencia",    vigencia);
-      fd.append("aclaracion",  aclaracion);
-      fd.append("otra_alcohol", otraAlcohol);
-      fd.append("banco",       banco);
+      fd.append("vigencia",     vigencia);
+      fd.append("usar_legales", String(usarLegales));
+      fd.append("legales",      usarLegales ? legales : "");
 
       if (tmplMode === "v2") {
-        fd.append("template_v2_id", templateId);
+        fd.append("template_id", templateId);
 
         // Codificar imágenes subidas a base64 e incluir como JSON
         const overrides: Record<string, string> = {};
@@ -470,13 +450,23 @@ export default function GenerarPage() {
             <SectionLabel>Metadata (opcional)</SectionLabel>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
               <Field label="Vigencia" value={vigencia} onChange={setVigencia} />
-              <ComboField label="Banco / Beneficio" value={banco} onChange={setBanco} storageKey="cenefa_opts_banco" />
-              <div className="sm:col-span-2">
-                <ComboField label="Aclaración" value={aclaracion} onChange={setAclaracion} storageKey="cenefa_opts_aclaracion" />
-              </div>
-              <div className="sm:col-span-2">
-                <ComboField label="Segunda aclaración" value={otraAlcohol} onChange={setOtraAlcohol} storageKey="cenefa_opts_segunda_aclaracion" />
-              </div>
+              <label className="flex items-center gap-2 cursor-pointer self-end pb-2">
+                <input
+                  type="checkbox"
+                  checked={usarLegales}
+                  onChange={(e) => setUsarLegales(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-sm text-slate-700 dark:text-slate-300">Usar legales</span>
+              </label>
+              {usarLegales && (
+                <div className="sm:col-span-2">
+                  <ComboField label="Legales" value={legales} onChange={setLegales} storageKey="cenefa_opts_legales" />
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                    A los productos con categoría de alcohol se les suma la leyenda obligatoria automáticamente.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

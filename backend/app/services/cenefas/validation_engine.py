@@ -30,9 +30,8 @@ def validate_products(products: list[dict]) -> dict:
         row  = i + 1
         name = p.get("descripcion") or f"Fila {row}"
 
-        _check_price(p, row, name, errors)
-        _check_description(p, row, name, errors, warnings)
-        _check_combo(p, row, name, errors)
+        _check_price(p, row, name, warnings)
+        _check_description(p, row, name, warnings)
         _check_bank(p, row, name, warnings)
 
     return {
@@ -47,64 +46,52 @@ def validate_products(products: list[dict]) -> dict:
 # Checks individuales
 # ---------------------------------------------------------------------------
 
-def _check_price(p: dict, row: int, name: str, errors: list) -> None:
-    price_str = p.get("precioActual", "")
-    # Extraer parte numérica: quitar símbolo de moneda y separadores de miles
-    num_str = re.sub(r"[^\d,.]", "", price_str).replace(".", "").replace(",", ".")
-    try:
-        if not num_str or float(num_str) == 0:
-            errors.append({
-                "row":     row,
-                "product": name,
-                "type":    "missing_price",
-                "detail":  f"Precio vacío o cero: {price_str!r}",
-            })
-    except ValueError:
-        errors.append({
+def _check_price(p: dict, row: int, name: str, warnings: list) -> None:
+    """Aviso si la fila no muestra ningún precio.
+
+    Es un WARNING, no un error: ninguna variable es obligatoria desde
+    08/2026, y hay diseños legítimos sin precio (un cartel de mecánica pura,
+    una cenefa institucional). Solo se avisa para que nadie imprima 200
+    carteles con el cuadro de precio en blanco sin haberlo decidido.
+    """
+    tiene_precio = any(
+        str(p.get(v, "") or "").strip()
+        for v in ("precioOferta", "precioRegular", "ofertaUno", "precioBanco")
+    )
+    if not tiene_precio:
+        warnings.append({
             "row":     row,
             "product": name,
-            "type":    "invalid_price",
-            "detail":  f"Precio no parseable: {price_str!r}",
+            "type":    "sin_precio",
+            "detail":  "La fila no tiene ningún precio cargado",
         })
 
 
-def _check_description(p: dict, row: int, name: str, errors: list, warnings: list) -> None:
-    desc     = p.get("descripcion", "").strip()
-    desc_len = len(desc)
-
+def _check_description(p: dict, row: int, name: str, warnings: list) -> None:
+    desc = str(p.get("descripcion", "") or "").strip()
     if not desc:
-        errors.append({
+        warnings.append({
             "row":     row,
             "product": f"Fila {row}",
-            "type":    "empty_description",
+            "type":    "sin_descripcion",
             "detail":  "Descripción vacía",
         })
         return
 
-    if desc_len > DESCRIPTION_MAX_CHARS:
-        errors.append({
-            "row":     row,
-            "product": name,
-            "type":    "description_too_long",
-            "detail":  f"Descripción de {desc_len} caracteres (máx recomendado: {DESCRIPTION_MAX_CHARS})",
-        })
-    elif desc_len > DESCRIPTION_WARN_CHARS:
+    if len(desc) > DESCRIPTION_MAX_CHARS:
         warnings.append({
             "row":     row,
             "product": name,
-            "type":    "description_long",
-            "detail":  f"Descripción de {desc_len} caracteres (recomendado < {DESCRIPTION_WARN_CHARS})",
+            "type":    "descripcion_muy_larga",
+            "detail":  f"Descripción de {len(desc)} caracteres (máx recomendado: {DESCRIPTION_MAX_CHARS}). "
+                        "El motor ya no la achica solo: revisá que entre en el cuadro.",
         })
-
-
-def _check_combo(p: dict, row: int, name: str, errors: list) -> None:
-    mecanica = p.get("mecanica", "")
-    if re.match(r"^\d+[Xx]$", mecanica) and not p.get("precioActual", ""):
-        errors.append({
+    elif len(desc) > DESCRIPTION_WARN_CHARS:
+        warnings.append({
             "row":     row,
             "product": name,
-            "type":    "combo_missing_price",
-            "detail":  f"Producto combo ({mecanica}) sin precio activo",
+            "type":    "descripcion_larga",
+            "detail":  f"Descripción de {len(desc)} caracteres (recomendado < {DESCRIPTION_WARN_CHARS})",
         })
 
 
