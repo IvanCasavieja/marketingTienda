@@ -715,7 +715,6 @@ def _make_common(shape, z_index: int) -> dict | None:
 
 def _parse_shape(
     shape, z_index: int, theme_colors: dict[str, str] | None = None,
-    allow_single_placeholder_segments: bool = False,
 ) -> dict | None:
     common = _make_common(shape, z_index)
     if common is None:
@@ -764,15 +763,17 @@ def _parse_shape(
 
         placeholder_matches = list(_RE_PLACEHOLDER.finditer(text))
         non_empty_runs = [r for p in shape.text_frame.paragraphs for r in p.runs if r.text.strip()]
-        # 2+ placeholders en un cuadro (aclaracion1/2/3 compartiendo caja,
-        # comportamiento preexistente, válido en cualquier plantilla) O un
-        # solo placeholder pero con texto estático de otro run al lado (ej.
-        # "$" + "<<Precio>>" con tamaños distintos) — esto último es nuevo y
-        # se restringe a destinos que lo pidieron explícitamente
-        # (allow_single_placeholder_segments, hoy solo Rompe Precios) para no
-        # cambiar el resultado de ninguna plantilla existente sin que se
-        # vuelva a importar a propósito.
-        multi_run_trigger = allow_single_placeholder_segments and len(non_empty_runs) > 1
+        # Se arma por segmentos cuando el cuadro tiene 2+ placeholders, o uno
+        # solo pero acompañado de texto estático en otro run: "COD: " +
+        # "<<codigo>>", o "PRECIO REGULAR: $ " + "<<precioRegular>>". Sin
+        # esto el cuadro entero se reemplaza por el valor de la variable y el
+        # rótulo del diseño desaparece del cartel.
+        #
+        # Hasta 08/2026 esto estaba restringido a dos destinos puntuales, para
+        # no cambiar plantillas ya importadas. Con un solo motor y un solo
+        # vocabulario ya no hay razón para que el import se comporte distinto
+        # según el mundo.
+        multi_run_trigger = len(non_empty_runs) > 1
         if placeholder_matches and (len(placeholder_matches) > 1 or multi_run_trigger):
             segments, seg_vars = _build_segments(shape, text, placeholder_matches, theme_colors)
             return {**common, "type": "text", "name": (text[:30] or "texto"),
@@ -828,13 +829,8 @@ def _parse_shape(
 def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: str | None = None) -> dict:
     """Parsea el primer slide de un PPTX y devuelve una definición v2.
 
-    category: destino declarado por el caller (ej. "rompe_precios") — hoy
-    solo se usa para habilitar la detección de segmentos con un único
-    placeholder + texto estático (ver _parse_shape), restringida a Rompe
-    Precios y Parrilla y Vinos (mismo patrón de plantilla, mismo pedido
-    explícito de comportarse igual) a pedido explícito para no cambiar el
-    import de ninguna otra plantilla existente."""
-    allow_single_placeholder_segments = category in ("rompe_precios", "parrilla_y_vinos")
+    category se acepta por compatibilidad con los callers y ya no cambia
+    nada: el import se comporta igual para todos los mundos."""
     prs = Presentation(BytesIO(pptx_bytes))
     if not prs.slides:
         raise ValueError("El archivo PPTX no tiene slides")
@@ -889,7 +885,7 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
 
     # ── 2. Shapes del slide (datos variables + imágenes embebidas) ────────
     for shape in _flatten_shapes(slide.shapes):
-        comp = _parse_shape(shape, z_index, theme_colors, allow_single_placeholder_segments)
+        comp = _parse_shape(shape, z_index, theme_colors)
         if comp is None:
             continue
 
