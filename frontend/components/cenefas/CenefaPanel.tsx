@@ -86,6 +86,16 @@ export default function CenefaPanel({ category, categoryLabel, excelInicial }: C
     }));
   }
 
+  function agregarPlantillas(i: number, tmpls: CenefaTemplateRecord[]) {
+    setEntradas((prev) => prev.map((e, idx) => {
+      if (idx !== i) return e;
+      const nuevas = tmpls.filter((tm) => !e.plantillas.some((p) => p.id === tm.id));
+      const hueco = MAX_PLANTILLAS - e.plantillas.length;
+      if (nuevas.length > hueco) toast.warning(t("cenefas.lote.maxPlantillas", { n: MAX_PLANTILLAS }));
+      return { ...e, plantillas: [...e.plantillas, ...nuevas.slice(0, hueco)] };
+    }));
+  }
+
   function quitarPlantilla(i: number, id: string) {
     setEntradas((prev) => prev.map((e, idx) =>
       idx === i ? { ...e, plantillas: e.plantillas.filter((p) => p.id !== id) } : e,
@@ -338,8 +348,10 @@ export default function CenefaPanel({ category, categoryLabel, excelInicial }: C
         <TemplatePickerModal
           category={category}
           categoryLabel={categoryLabel}
+          maxSeleccion={MAX_PLANTILLAS - (entradas[pickerPara]?.plantillas.length ?? 0)}
           onClose={() => setPickerPara(null)}
           onSelect={(tmpl) => { agregarPlantilla(pickerPara, tmpl); setPickerPara(null); }}
+          onSelectMany={(tmpls) => { agregarPlantillas(pickerPara, tmpls); setPickerPara(null); }}
         />
       )}
     </div>

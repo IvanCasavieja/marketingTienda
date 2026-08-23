@@ -467,7 +467,8 @@
           "Outubro",
           "Novembro",
           "Dezembro"
-        ]
+        ],
+        "agregarSeleccionadas": "Adicionar {{count}}"
       }
     },
     "previewStep": {

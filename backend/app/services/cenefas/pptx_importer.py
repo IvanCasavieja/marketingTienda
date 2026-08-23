@@ -450,6 +450,52 @@ def _detect_placeholder(text: str) -> tuple[str, str, str] | None:
     return _resolve_placeholder(m.group(1).lower(), m.group(2))
 
 
+# Tamaño por defecto de PowerPoint cuando no hay ninguno declarado en ningún
+# lado. Último recurso: sin un número acá, el achique de texto no puede correr
+# (no sabe de qué partir) y el cuadro se desborda sin que nadie lo frene.
+_FONT_SIZE_DEFAULT_PT = 18.0
+
+
+def _font_size_pt(run, para, tf) -> float:
+    """Cuerpo efectivo de un run, en puntos.
+
+    No alcanza con `run.font.size`: los PPTX exportados desde Google Slides
+    --que son varios de los que usa el equipo-- no ponen el tamaño en el run
+    sino en el `endParaRPr` del párrafo o en el `lstStyle` del cuadro. Sin
+    recorrer esos lugares el estilo quedaba sin `font_size` y el achique
+    automático se salteaba el cuadro entero (caso real: las 6 descripciones
+    de la plantilla 6xA4 se desbordaban sobre el precio).
+    """
+    from pptx.oxml.ns import qn as _qn
+
+    try:
+        if run is not None and run.font.size:
+            return round(run.font.size.pt, 1)
+    except Exception:
+        pass
+    try:
+        if para is not None and para.font.size:
+            return round(para.font.size.pt, 1)
+    except Exception:
+        pass
+
+    # Google Slides deja el tamaño en el endParaRPr del párrafo o en el
+    # lstStyle del cuadro; se toma el primero que aparezca.
+    for raiz in (getattr(para, "_p", None), getattr(tf, "_txBody", None)):
+        if raiz is None:
+            continue
+        try:
+            for tag in ("a:endParaRPr", "a:defRPr"):
+                for el in raiz.iter(_qn(tag)):
+                    sz = el.get("sz")
+                    if sz:
+                        return round(int(sz) / 100, 1)
+        except Exception:
+            continue
+
+    return _FONT_SIZE_DEFAULT_PT
+
+
 def _run_style(run, theme_colors: dict[str, str] | None = None) -> dict:
     """Estilo (tamaño, negrita, tachado, familia, color) de UN run puntual —
     usado por _build_segments para que cada segmento de un cuadro con texto
@@ -457,11 +503,7 @@ def _run_style(run, theme_colors: dict[str, str] | None = None) -> dict:
     estilo "de shape" que arma _extract_style a partir del primer run."""
     style: dict = {}
     font = run.font
-    try:
-        if font.size:
-            style["font_size"] = round(font.size.pt, 1)
-    except Exception:
-        pass
+    style["font_size"] = _font_size_pt(run, getattr(run, "_parent", None), None)
     try:
         b = font.bold
         if b is None:
@@ -569,11 +611,8 @@ def _extract_style(shape, theme_colors: dict[str, str] | None = None) -> dict:
                 first_run = run
     if first_run:
         font = first_run.font
-        try:
-            if font.size:
-                style["font_size"] = round(font.size.pt, 1)
-        except Exception:
-            pass
+        _para_de = next((pa for pa in tf.paragraphs if first_run in pa.runs), None)
+        style["font_size"] = _font_size_pt(first_run, _para_de, tf)
         try:
             b = font.bold
             if b is None:

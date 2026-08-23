@@ -236,9 +236,12 @@ def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
 
     if techo is None:
         return h
-    # Nunca menos que la caja declarada: si el diseño ya tiene dos cuadros
-    # encimados, no es este el lugar donde resolverlo.
-    return max(h, techo - y)
+    # El hueco manda, aunque sea MENOR que el alto dibujado de la caja. Los
+    # diseños reales tienen la caja de la descripción solapada con la de
+    # abajo (en la A5: caja de 3,68 cm pero solo 2,80 cm hasta "PRECIO
+    # REGULAR"), así que quedarse con el mayor de los dos --como se hacía
+    # antes-- era justamente ignorar la colisión que hay que evitar.
+    return techo - y
 
 
 def _fit_text_to_box(comps: list[dict], product: dict) -> list[dict]:

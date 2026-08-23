@@ -54,9 +54,17 @@ interface TemplatePickerModalProps {
   categoryLabel: string;
   onClose: () => void;
   onSelect: (tmpl: CenefaTemplateRecord) => void;
+  /**
+   * Cuando viene, el picker arranca en modo seleccion multiple: se tildan
+   * varias plantillas y se agregan todas juntas. Sin esto habia que elegir
+   * una, cerrar, volver a abrir y repetir.
+   */
+  onSelectMany?: (tmpls: CenefaTemplateRecord[]) => void;
+  /** Cuantas se pueden tildar como maximo (las de mas quedan deshabilitadas). */
+  maxSeleccion?: number;
 }
 
-export default function TemplatePickerModal({ category, categoryLabel, onClose, onSelect }: TemplatePickerModalProps) {
+export default function TemplatePickerModal({ category, categoryLabel, onClose, onSelect, onSelectMany, maxSeleccion }: TemplatePickerModalProps) {
   const { t } = useTranslation();
   useEscapeKey(onClose);
 
@@ -73,8 +81,11 @@ export default function TemplatePickerModal({ category, categoryLabel, onClose, 
   // borrar uno a la vez con el modal de confirmación individual es
   // impracticable para limpiarlos. Reusa el mismo endpoint de borrado
   // (uno por id, en paralelo) en vez de agregar un endpoint bulk nuevo.
-  const [selectMode, setSelectMode] = useState(false);
+  const [selectMode, setSelectMode] = useState(!!onSelectMany);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Con onSelectMany el modo tildar es el modo por defecto: es a lo que se
+  // vino. El boton de la barra sigue existiendo para volver al modo de a una.
+  const modoAgregar = !!onSelectMany;
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkConfirming, setBulkConfirming] = useState(false);
 
@@ -319,15 +330,30 @@ export default function TemplatePickerModal({ category, categoryLabel, onClose, 
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {t("cenefas.rompePrecios.picker.selectedCount", { count: selectedIds.size })}
+                      {maxSeleccion ? ` / ${maxSeleccion}` : ""}
                     </p>
-                    <button
-                      type="button"
-                      disabled={selectedIds.size === 0}
-                      onClick={() => setBulkConfirming(true)}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 px-2.5 py-1 rounded-lg bg-rose-100 dark:bg-rose-950/40 hover:bg-rose-200 dark:hover:bg-rose-950/70 disabled:opacity-30"
-                    >
-                      <Trash2 size={12} /> {t("cenefas.rompePrecios.picker.deleteSelected")}
-                    </button>
+                    {modoAgregar ? (
+                      <button
+                        type="button"
+                        disabled={selectedIds.size === 0}
+                        onClick={() => {
+                          onSelectMany!(templates.filter((x) => selectedIds.has(x.id)));
+                          onClose();
+                        }}
+                        className="btn-primary text-xs px-3 py-1.5 disabled:opacity-30"
+                      >
+                        {t("cenefas.rompePrecios.picker.agregarSeleccionadas", { count: selectedIds.size })}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={selectedIds.size === 0}
+                        onClick={() => setBulkConfirming(true)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 px-2.5 py-1 rounded-lg bg-rose-100 dark:bg-rose-950/40 hover:bg-rose-200 dark:hover:bg-rose-950/70 disabled:opacity-30"
+                      >
+                        <Trash2 size={12} /> {t("cenefas.rompePrecios.picker.deleteSelected")}
+                      </button>
+                    )}
                   </div>
                 )
               ) : (
@@ -404,7 +430,10 @@ export default function TemplatePickerModal({ category, categoryLabel, onClose, 
                       ) : selectMode ? (
                         <button
                           onClick={() => toggleSelected(tm.id)}
-                          className="flex items-center gap-3 w-full text-left px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                          disabled={
+                            !!maxSeleccion && !selectedIds.has(tm.id) && selectedIds.size >= maxSeleccion
+                          }
+                          className="flex items-center gap-3 w-full text-left px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           {selectedIds.has(tm.id)
                             ? <CheckSquare size={16} className="text-brand-500 shrink-0" />
