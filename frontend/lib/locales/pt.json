@@ -512,7 +512,9 @@
       "generando": "Gerando {{n}} cenefas...",
       "conError": "{{n}} falharam",
       "faltanProcesar": "processando {{n}}...",
-      "yaGenerada": "Já foi gerada. Baixe no ZIP."
+      "yaGenerada": "Pronta",
+      "descargarUna": "Baixar esta",
+      "enCola": "Na fila — {{n}} de {{total}}"
     }
   },
   "admin": {

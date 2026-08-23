@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  AlertCircle, ArrowLeft, ChevronLeft, ChevronRight, Download, Loader2, Send,
+  AlertCircle, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -37,6 +37,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   const [confirmando, setConfirmando] = useState(false);
   const [yaConfirmado, setYaConfirmado] = useState(false);
   const [descargando, setDescargando] = useState(false);
+  const [bajandoUna, setBajandoUna] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dlRef = useRef<HTMLAnchorElement>(null);
 
@@ -92,6 +93,27 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
       toast.error(err?.response?.data?.detail ?? t("cenefas.unknownError"));
     } finally {
       setConfirmando(false);
+    }
+  }
+
+  async function descargarUna(jobId: string) {
+    setBajandoUna(jobId);
+    try {
+      const { data, headers } = await cenefasV2Api.downloadJob(jobId);
+      const url = URL.createObjectURL(new Blob([data]));
+      // El backend ya manda el nombre real (plantilla + Excel) en la cabecera.
+      const cd = String(headers?.["content-disposition"] ?? "");
+      const m = cd.match(/filename="?([^";]+)"?/);
+      if (dlRef.current) {
+        dlRef.current.href = url;
+        dlRef.current.download = m?.[1] ?? "cenefa.pptx";
+        dlRef.current.click();
+      }
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? t("cenefas.unknownError"));
+    } finally {
+      setBajandoUna(null);
     }
   }
 
@@ -216,15 +238,52 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
             slotBands={detalle.slot_bands}
             className="h-[560px]"
           />
+        ) : actualStatus === "done" ? (
+          // Al generar la cenefa se libera su preview (ver pop_job_products en
+          // jobs.py), asi que no hay nada que dibujar y nunca lo va a haber.
+          // Antes esto era un spinner eterno: parecia colgado y no informaba
+          // nada. Ahora se dice que esta lista y se ofrece bajarla sola.
+          <div className="flex flex-col items-center justify-center h-[560px] gap-4">
+            <span className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
+              <CheckCircle2 size={26} className="text-emerald-500" />
+            </span>
+            <div className="text-center">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                {t("cenefas.lote.yaGenerada")}
+              </p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                {actual?.row_count
+                  ? t("cenefas.lote.productos", { n: actual.row_count })
+                  : ""}
+              </p>
+            </div>
+            {actualId && (
+              <button
+                onClick={() => descargarUna(actualId)}
+                disabled={bajandoUna === actualId}
+                className="btn-secondary flex items-center gap-2 disabled:opacity-50"
+              >
+                {bajandoUna === actualId
+                  ? <Loader2 size={15} className="animate-spin" />
+                  : <Download size={15} />}
+                {t("cenefas.lote.descargarUna")}
+              </button>
+            )}
+          </div>
+        ) : actualStatus === "error" ? (
+          <div className="flex flex-col items-center justify-center h-[560px] gap-3 px-8">
+            <span className="w-14 h-14 rounded-full bg-rose-500/10 flex items-center justify-center">
+              <AlertCircle size={26} className="text-rose-500" />
+            </span>
+            <p className="text-sm text-rose-600 dark:text-rose-400 text-center">
+              {actual?.validation_report?.error ?? t("cenefas.unknownError")}
+            </p>
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-[560px] gap-3">
             <Loader2 size={22} className="animate-spin text-slate-400" />
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {actualStatus === "done"
-                ? t("cenefas.lote.yaGenerada")
-                : actualStatus === "error"
-                  ? (actual?.validation_report?.error ?? t("cenefas.unknownError"))
-                  : t("cenefas.lote.procesando")}
+              {t("cenefas.lote.enCola", { n: posicion + 1, total })}
             </p>
           </div>
         )}

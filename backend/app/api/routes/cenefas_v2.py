@@ -614,10 +614,19 @@ async def download_job_result(
         else "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     )
     ext = job.export_type or "pptx"
+    # Cuando el job viene de un lote se conocen los nombres reales: conviene
+    # bajar "Mega Rompe Precios-3xA4 - Carniceria.pptx" y no un UUID que no le
+    # dice nada a nadie. Mismo criterio que los archivos dentro del ZIP.
+    if job.template_nombre or job.excel_nombre:
+        excel = _nombre_archivo(pathlib.PurePath(job.excel_nombre or "").stem)
+        plantilla = _nombre_archivo(job.template_nombre or "cenefa")
+        nombre = f"{plantilla} - {excel}.{ext}" if excel else f"{plantilla}.{ext}"
+    else:
+        nombre = f"cenefas_{job_id}.{ext}"
     return Response(
         content=result_bytes,
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="cenefas_{job_id}.{ext}"'},
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
     )
 
 
@@ -644,6 +653,18 @@ async def _get_job(
     if job.created_by != current_user.id and not current_user.is_superuser:
         raise HTTPException(status_code=403, detail="No tenés permiso para acceder a este job")
     return job
+
+
+def _nombre_archivo(texto: str) -> str:
+    """Deja un texto usable como nombre de archivo o carpeta dentro del ZIP.
+
+    Saca separadores de ruta y caracteres de control: un nombre de plantilla es
+    texto libre cargado por el usuario y termina siendo una entrada del ZIP, así
+    que una barra ahí crearía carpetas fantasma al descomprimir.
+    """
+    limpio = re.sub(r'[\x00-\x1f\x7f/\\:*?"<>|]', "", texto or "").strip()
+    limpio = re.sub(r"\s+", " ", limpio)
+    return limpio[:120] or "sin nombre"
 
 
 async def _job_to_dict(
@@ -872,18 +893,6 @@ async def delete_destino(
 # (seleccionar todas las plantillas del mundo) dispare decenas de renders.
 MAX_PLANTILLAS_POR_EXCEL = 5
 MAX_EXCELS_POR_LOTE = 20
-
-
-def _nombre_archivo(texto: str) -> str:
-    """Deja un texto usable como nombre de archivo o carpeta dentro del ZIP.
-
-    Saca separadores de ruta y caracteres de control: un nombre de plantilla es
-    texto libre cargado por el usuario y termina siendo una entrada del ZIP, así
-    que una barra ahí crearía carpetas fantasma al descomprimir.
-    """
-    limpio = re.sub(r'[\x00-\x1f\x7f/\\:*?"<>|]', "", texto or "").strip()
-    limpio = re.sub(r"\s+", " ", limpio)
-    return limpio[:120] or "sin nombre"
 
 
 @router.post("/lotes", status_code=status.HTTP_202_ACCEPTED)

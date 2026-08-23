@@ -512,7 +512,9 @@
       "generando": "Generando {{n}} cenefas...",
       "conError": "{{n}} cenefas fallaron",
       "faltanProcesar": "procesando {{n}}...",
-      "yaGenerada": "Esta cenefa ya se genero. Descargala en el ZIP."
+      "yaGenerada": "Cenefa lista",
+      "descargarUna": "Descargar esta",
+      "enCola": "En cola — cenefa {{n}} de {{total}}"
     }
   },
   "admin": {

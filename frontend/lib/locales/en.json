@@ -512,7 +512,9 @@
       "generando": "Generating {{n}} shelf tags...",
       "conError": "{{n}} failed",
       "faltanProcesar": "{{n}} still processing...",
-      "yaGenerada": "Already generated. Get it from the ZIP."
+      "yaGenerada": "Ready",
+      "descargarUna": "Download this one",
+      "enCola": "Queued — {{n}} of {{total}}"
     }
   },
   "admin": {
