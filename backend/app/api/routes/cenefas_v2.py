@@ -422,6 +422,10 @@ async def create_job(
     vigencia: str = Form(default=""),
     legales: str = Form(default="", description="Texto de legales -- solo se usa si usar_legales=true"),
     usar_legales: bool = Form(default=False, description="Habilita sustituir la variable legales"),
+    desc_max_ancho_cm: float | None = Form(
+        default=None, description="Ancho máximo en cm del cuadro de descripción; vacío = deducirlo del diseño"),
+    desc_max_alto_cm: float | None = Form(
+        default=None, description="Alto máximo en cm del cuadro de descripción; vacío = deducirlo del diseño"),
     image_overrides_json: str = Form(
         default="{}",
         description='JSON {variable_name: "ext:base64"} con imágenes a inyectar en componentes de imagen',
@@ -493,6 +497,8 @@ async def create_job(
         vigencia=vigencia,
         legales=legales,
         usar_legales=usar_legales,
+        desc_max_ancho_cm=desc_max_ancho_cm,
+        desc_max_alto_cm=desc_max_alto_cm,
         image_overrides=image_overrides,
     )
 

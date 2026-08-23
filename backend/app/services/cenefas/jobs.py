@@ -70,6 +70,10 @@ class StagedJob:
     target_format:     str
     source_pptx_bytes: bytes | None
     vigencia:          str = ""
+    # Limite declarado para el cuadro de la descripcion (ver
+    # component_renderer._fit_text_to_box). None = deducirlo del diseno.
+    desc_max_ancho_cm: float | None = None
+    desc_max_alto_cm:  float | None = None
 
 
 async def store_job_result(job_id: uuid.UUID, pptx_bytes: bytes) -> None:
@@ -104,6 +108,8 @@ async def store_job_products(job_id: uuid.UUID, staged: StagedJob) -> None:
             "products":          staged.products,
             "target_format":     staged.target_format,
             "vigencia":          staged.vigencia,
+            "desc_max_ancho_cm": staged.desc_max_ancho_cm,
+            "desc_max_alto_cm":  staged.desc_max_alto_cm,
         }
         job.staged_source_pptx = staged.source_pptx_bytes
         await db.commit()
@@ -119,6 +125,8 @@ def _staged_job_from_row(job: CenefaJob) -> StagedJob | None:
         target_format=d["target_format"],
         source_pptx_bytes=job.staged_source_pptx,
         vigencia=d.get("vigencia", ""),
+        desc_max_ancho_cm=d.get("desc_max_ancho_cm"),
+        desc_max_alto_cm=d.get("desc_max_alto_cm"),
     )
 
 
@@ -167,6 +175,8 @@ async def run_generation_job(
     vigencia:        str,
     legales:         str,
     usar_legales:    bool,
+    desc_max_ancho_cm: float | None = None,
+    desc_max_alto_cm:  float | None = None,
     image_overrides:       dict | None = None,
     template_upload_bytes: bytes | None = None,
 ) -> None:
@@ -221,6 +231,8 @@ async def run_generation_job(
                 target_format=resolved_format,
                 source_pptx_bytes=source_pptx_bytes,
                 vigencia=vigencia,
+                desc_max_ancho_cm=desc_max_ancho_cm,
+                desc_max_alto_cm=desc_max_alto_cm,
             ))
 
             job.status            = "preview"
@@ -316,6 +328,7 @@ async def confirm_generation_job(
                 asyncio.to_thread(
                     render_template_to_pptx, template_def, staged.products, staged.target_format,
                     None, staged.source_pptx_bytes,  # image_overrides ya horneado
+                    staged.desc_max_ancho_cm, staged.desc_max_alto_cm,
                 ),
                 timeout=_RENDER_TIMEOUT_SECONDS,
             )

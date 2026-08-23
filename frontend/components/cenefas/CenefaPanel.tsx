@@ -51,6 +51,11 @@ export default function CenefaPanel({ category, categoryLabel, excelInicial }: C
   const [vigencia, setVigencia] = useState("");
   const [usarLegales, setUsarLegales] = useState(false);
   const [legales, setLegales] = useState("");
+  // Limite del cuadro de descripcion. Vacio = el motor lo deduce de la
+  // geometria del PPTX (espacio hasta el cuadro de abajo). Se declara aca
+  // cuando ese calculo no es el que el diseno espera.
+  const [descAncho, setDescAncho] = useState("");
+  const [descAlto, setDescAlto] = useState("");
   const [cocarda, setCocarda] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -84,6 +89,8 @@ export default function CenefaPanel({ category, categoryLabel, excelInicial }: C
       fd.append("vigencia", vigencia.trim());
       fd.append("usar_legales", String(usarLegales));
       fd.append("legales", usarLegales ? legales.trim() : "");
+      if (descAncho.trim()) fd.append("desc_max_ancho_cm", descAncho.trim());
+      if (descAlto.trim()) fd.append("desc_max_alto_cm", descAlto.trim());
 
       if (cocarda) {
         const ext = cocarda.name.split(".").pop()?.toLowerCase() ?? "png";
@@ -214,6 +221,33 @@ export default function CenefaPanel({ category, categoryLabel, excelInicial }: C
             )}
           </div>
 
+
+          <div className="flex flex-col gap-1.5 pt-1">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              {t("cenefas.descLimite")}
+            </span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{t("cenefas.descLimiteHint")}</span>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min="1"
+                step="0.1"
+                value={descAncho}
+                onChange={(e) => setDescAncho(e.target.value)}
+                placeholder={t("cenefas.descAncho")}
+                className="input text-sm flex-1"
+              />
+              <input
+                type="number"
+                min="0.5"
+                step="0.1"
+                value={descAlto}
+                onChange={(e) => setDescAlto(e.target.value)}
+                placeholder={t("cenefas.descAlto")}
+                className="input text-sm flex-1"
+              />
+            </div>
+          </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t("cenefas.rompePrecios.cocarda")}</span>
             <span className="text-xs text-slate-400 dark:text-slate-500">{t("cenefas.rompePrecios.cocardaHint")}</span>

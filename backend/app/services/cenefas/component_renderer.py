@@ -217,12 +217,64 @@ def _fit_font_size(
     return max(base_font_size * escala, base_font_size * _FIT_MIN_SCALE)
 
 
-def _fit_text_to_box(comps: list[dict], product: dict) -> list[dict]:
+def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
+    """Cuánto puede crecer hacia abajo un cuadro antes de chocar con otro.
+
+    El alto declarado de la caja NO sirve como límite: los diseñadores la
+    dibujan del alto de UNA línea aunque abajo haya lugar de sobra. Usarlo
+    hacía que cualquier descripción de dos líneas se achicara de golpe (25pt
+    -> 15pt) cuando en el cartel entraba perfecta.
+
+    El límite real es el cuadro de abajo. Solo cuentan los que están
+    realmente debajo y no al costado: se exige que se solapen
+    horizontalmente en más de la mitad del ancho. Sin ese filtro, el cuadro
+    del decimal --que va pegado al precio, apenas más abajo-- se tomaría
+    como techo del precio y lo achicaría a la nada.
+    """
+    b = comp.get("computed_bounds") or comp.get("base_bounds") or {}
+    y, h, x, w = b.get("y"), b.get("height"), b.get("x"), b.get("width")
+    if y is None or h is None or x is None or w is None:
+        return h
+
+    techo = None
+    for otro in comps:
+        if otro is comp:
+            continue
+        ob = otro.get("computed_bounds") or otro.get("base_bounds") or {}
+        oy, ox, ow = ob.get("y"), ob.get("x"), ob.get("width")
+        if oy is None or ox is None or ow is None or oy <= y:
+            continue
+        solape = min(x + w, ox + ow) - max(x, ox)
+        if solape < w * 0.5:
+            continue
+        techo = oy if techo is None else min(techo, oy)
+
+    if techo is None:
+        return h
+    # Nunca menos que la caja declarada: si el diseño ya tiene dos cuadros
+    # encimados, no es este el lugar donde resolverlo.
+    return max(h, techo - y)
+
+
+def _fit_text_to_box(
+    comps: list[dict], product: dict,
+    desc_max_ancho_cm: float | None = None,
+    desc_max_alto_cm: float | None = None,
+) -> list[dict]:
     """Achica la fuente de los cuadros cuyo valor no entra.
 
-    Aplica a la descripción y a los precios, en todos los mundos: son cuadros
-    de texto independientes apilados, sin auto-layout compartido, así que uno
-    desborda sobre otro (o se parte al medio) si no se achica.
+    Aplica a la descripción y a los precios: son cuadros de texto
+    independientes apilados, sin auto-layout compartido, así que uno desborda
+    sobre otro (o se parte al medio) si no se achica.
+
+    La idea es RESPETAR el tamaño del diseño y tocarlo solo cuando de verdad
+    no entra. Por eso el límite vertical no es el alto dibujado de la caja
+    sino el espacio hasta el cuadro de abajo (ver _alto_disponible_cm).
+
+    `desc_max_ancho_cm` / `desc_max_alto_cm` son el límite explícito para la
+    descripción, declarado al generar. Cuando vienen, mandan sobre lo que se
+    deduzca del diseño: es la forma de decirle al sistema "hasta acá puede
+    llegar", sin que tenga que adivinarlo de la geometría del PPTX.
 
     Solo cambia tamaños de fuente. Ninguna caja se mueve de donde la puso el
     diseño.
@@ -239,9 +291,15 @@ def _fit_text_to_box(comps: list[dict], product: dict) -> list[dict]:
         bounds = c.get("computed_bounds") or c.get("base_bounds") or {}
         texto = _texto_resuelto(c, product)
 
-        fitted = _fit_font_size(
-            texto, bounds.get("width"), bounds.get("height"), base_font_size, bold
-        )
+        ancho = bounds.get("width")
+        alto = _alto_disponible_cm(c, comps)
+        if _comp_uses_variable(c, "descripcion"):
+            if desc_max_ancho_cm:
+                ancho = desc_max_ancho_cm
+            if desc_max_alto_cm:
+                alto = desc_max_alto_cm
+
+        fitted = _fit_font_size(texto, ancho, alto, base_font_size, bold)
         if fitted == base_font_size:
             result.append(c)
             continue
@@ -813,6 +871,8 @@ def render_template_to_pptx(
     target_format: str = "a4",
     image_overrides: dict[str, tuple[bytes, str]] | None = None,
     source_pptx_bytes: bytes | None = None,
+    desc_max_ancho_cm: float | None = None,
+    desc_max_alto_cm: float | None = None,
 ) -> tuple[bytes, list[str]]:
     """Genera PPTX desde una definición v2 y una lista de productos.
 
@@ -828,6 +888,10 @@ def render_template_to_pptx(
     importer no haya capturado como componente) tal cual estaba. Sin esto,
     el resultado solo tiene los shapes que SÍ se lograron extraer, y
     cualquier diseño que viva en el layout/master del archivo se pierde.
+
+    desc_max_ancho_cm / desc_max_alto_cm: límite explícito para el cuadro de
+    la descripción, declarado al generar. Cuando vienen, mandan sobre lo que
+    se deduzca de la geometría del PPTX (ver _fit_text_to_box).
 
     Returns (pptx_bytes, missing_vars) donde missing_vars es la lista de
     variables que el template usa pero que no fueron encontradas en el Excel.
@@ -920,7 +984,7 @@ def render_template_to_pptx(
                     product       = pg[band_idx]
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
-                    visible_comps = _fit_text_to_box(visible_comps, product)
+                    visible_comps = _fit_text_to_box(visible_comps, product, desc_max_ancho_cm, desc_max_alto_cm)
                     _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map)
                 elif preserve_source:
                     # Página parcial (menos productos que celdas) y estamos
@@ -960,7 +1024,7 @@ def render_template_to_pptx(
 
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
-            visible_comps = _fit_text_to_box(visible_comps, product)
+            visible_comps = _fit_text_to_box(visible_comps, product, desc_max_ancho_cm, desc_max_alto_cm)
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map)
 

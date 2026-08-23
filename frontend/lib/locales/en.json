@@ -487,7 +487,11 @@
     "usarLegalesHint": "Leave off if the template already has the legal text in the design.",
     "legales": "Legal text",
     "legalesAlcoholHint": "Alcohol products automatically get the mandatory warning appended.",
-    "excelDesdeConvertidor": "Excel brought from the Converter, ready to generate."
+    "excelDesdeConvertidor": "Excel brought from the Converter, ready to generate.",
+    "descLimite": "Description box limit (cm)",
+    "descLimiteHint": "Optional. Empty = the engine derives it from the design (space down to the box below). It only shrinks the font if the name does not fit that limit.",
+    "descAncho": "Max width",
+    "descAlto": "Max height"
   },
   "admin": {
     "title": "Admin Panel",
