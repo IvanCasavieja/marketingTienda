@@ -746,36 +746,72 @@ def _render_slide(
 # Multi-slot A4 detection
 # ---------------------------------------------------------------------------
 
+def _esquina(c: dict) -> tuple[float, float]:
+    """Punto de referencia de un cuadro: su esquina superior izquierda.
+
+    NO el centro. Los diseños reales traen cajas absurdamente altas --el
+    cuadro de <<precioOferta>> de la 6xA4 mide 10,5 cm de alto para un texto
+    de una línea-- y su centro cae en la fila de ABAJO. Con el centro, la
+    cenefa de arriba perdía el precio y la de abajo terminaba con dos.
+    El borde superior izquierdo es donde el texto realmente empieza.
+    """
+    b = c.get("base_bounds", {}) or {}
+    return (b.get("x", 0.0), b.get("y", 0.0))
+
+
+def _cortar_por_huecos(valores: list[float], n_grupos: int) -> list[float]:
+    """Límites que parten `valores` en n_grupos, cortando por los huecos mayores.
+
+    Entre dos filas de cenefas hay aire; dentro de una fila los cuadros están
+    pegados. Buscar los n-1 huecos más grandes encuentra esas separaciones sin
+    depender de dónde esté el ancla ni de cuán alta sea cada caja.
+    """
+    if n_grupos <= 1 or len(valores) < n_grupos:
+        return []
+    ordenados = sorted(valores)
+    huecos = sorted(
+        ((ordenados[i + 1] - ordenados[i], i) for i in range(len(ordenados) - 1)),
+        reverse=True,
+    )[: n_grupos - 1]
+    return sorted((ordenados[i] + ordenados[i + 1]) / 2.0 for _, i in huecos)
+
+
+def _indice_por_limites(valor: float, limites: list[float]) -> int:
+    for i, lim in enumerate(limites):
+        if valor < lim:
+            return i
+    return len(limites)
+
+
 def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
-    """Detect how many product slots are encoded in one slide of a template.
+    """Agrupa los componentes de una plantilla multi-producto, un grupo por slot.
 
-    n_slots = GCD de cuántas veces aparece cada variable -- NO el máximo.
-    Un variable puede aparecer más de una vez POR banda (ej. un precio
-    partido en placeholder de entero + placeholder de decimal, ambos
-    apuntando a la misma variable canónica, ver ofertaUno/Dos/Tres en
-    Parrilla y Vinos) sin que eso signifique que hay más bandas. Con max(),
-    un template de 3 bandas donde cada precio tiene 2 placeholders (entero+
-    decimal) se detectaba como 6 bandas -- de ahí se armaban grupos de Y mal
-    alineados con las bandas reales, mezclando datos de dos productos
-    distintos dentro de una misma banda visual (bug real, visto con
-    <<4x3P>>/<<decimal4x3>> mostrando el precio de OTRO producto). El GCD es
-    correcto mientras al menos una variable aparezca una sola vez por banda
-    (ej. codigo/descripcion) -- caso normal en cualquier plantilla real.
+    n_slots = GCD de cuántas veces aparece cada variable -- NO el máximo. Una
+    variable puede aparecer más de una vez POR slot (un precio partido en
+    placeholder de entero + placeholder de decimal, ambos apuntando a la misma
+    variable canónica) sin que eso signifique que hay más slots. Con max(), una
+    plantilla de 3 slots donde cada precio tiene 2 placeholders se detectaba
+    como 6, y de ahí salían grupos mezclando datos de dos productos distintos.
 
-    El conteo tiene que mirar tanto c["variable"] (componente de un solo
-    placeholder) como c["segments"] (componente multi-segmento, ej. "$" +
-    <<precioP>> como dos runs del mismo cuadro -- variable=None en ese caso,
-    ver allow_single_placeholder_segments en pptx_importer.py). Un bug real
-    visto con una plantilla real de Parrilla y Vinos: TODOS sus componentes
-    -- incluso <<descripcion>> y <<codigo>> solos, sin texto estático al
-    lado -- quedaron como multi-segmento (PowerPoint partió el placeholder
-    en más de un run internamente al editar el archivo). Contando solo
-    c["variable"] el Counter quedaba vacío, esta función devolvía None
-    siempre, y el render trataba la página entera (3 franjas reales) como
-    un solo producto -- de ahí que las 3 franjas terminaran mostrando
-    siempre el mismo.
-    Splits non-background components by Y order into that many groups.
-    Returns None when n_slots == 1 (single-slot → standard per-product render).
+    El conteo mira tanto c["variable"] como c["segments"]: PowerPoint parte los
+    placeholders en varios runs al editarlos, y una plantilla real puede tener
+    TODOS sus componentes como multi-segmento. Contando solo c["variable"] el
+    Counter quedaba vacío y la página entera se trataba como un solo producto.
+
+    La distribución se resuelve como GRILLA (filas x columnas). Los tres
+    diseños en uso son distintos:
+
+        3xA4  ->  3 filas x 1 columna   (una debajo de otra)
+        A5    ->  1 fila  x 2 columnas  (una al lado de la otra)
+        6xA4  ->  3 filas x 2 columnas  (abajo y al costado)
+
+    Ordenando solo por Y --como se hacía antes-- los dos cuadros de una misma
+    fila quedan pegados en el orden y el corte los mandaba al mismo grupo: las
+    cenefas de la derecha repetían el producto de la izquierda. Se veía en
+    6xA4 y en A5; el 3xA4 zafaba por tener una sola columna.
+
+    Devuelve None cuando hay un solo slot (render normal, un producto por
+    página).
     """
     import math
     from collections import Counter
@@ -795,21 +831,76 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
 
     n_slots = reduce(math.gcd, var_counts.values())
     if n_slots <= 1:
-        return None  # single-slot template
+        return None
 
-    # Sort by Y, then split into n_slots consecutive groups
-    sorted_comps = sorted(non_bg, key=lambda c: c.get("base_bounds", {}).get("y", 0))
-    total      = len(sorted_comps)
+    # Las ANCLAS son los cuadros de una variable que aparece exactamente una
+    # vez por slot (descripcion, codigo...): marcan dónde está cada cenefa.
+    ancla = next((v for v, n in var_counts.items() if n == n_slots), None)
+    if ancla is not None:
+        anclas = [c for c in non_bg if ancla in _comp_variable_names(c)]
+        xs_ancla = sorted({round(_esquina(c)[0], 1) for c in anclas})
+
+        # Cuántas columnas hay: se prueba de más a menos y gana la primera
+        # grilla que CIERRA, es decir en la que cada celda queda con
+        # exactamente un ancla. Esa validación es la que descarta las
+        # divisiones falsas: sin ella, tres cuadros de descripción con la X
+        # apenas distinta (5,18 / 5,26 / 5,81 por el centrado del diseño)
+        # se leían como tres columnas.
+        for n_cols in range(min(len(xs_ancla), n_slots), 0, -1):
+            if n_slots % n_cols:
+                continue
+            n_filas = n_slots // n_cols
+            limites_x = _cortar_por_huecos([_esquina(c)[0] for c in anclas], n_cols)
+            if len(limites_x) != n_cols - 1:
+                continue
+
+            anclas_por_col: dict[int, list[dict]] = {}
+            for a in anclas:
+                anclas_por_col.setdefault(_indice_por_limites(_esquina(a)[0], limites_x), []).append(a)
+            if len(anclas_por_col) != n_cols or any(len(v) != n_filas for v in anclas_por_col.values()):
+                continue
+
+            # Las filas se cortan DENTRO de cada columna: el aire entre cenefas
+            # está ahí, no en la mezcla de las dos columnas.
+            columnas: dict[int, list[dict]] = {}
+            for c in non_bg:
+                columnas.setdefault(_indice_por_limites(_esquina(c)[0], limites_x), []).append(c)
+            if len(columnas) != n_cols:
+                continue
+
+            celdas: dict[tuple[int, int], list[dict]] = {}
+            anclas_por_celda: Counter = Counter()
+            ok = True
+            for col, comps_col in columnas.items():
+                limites_y = _cortar_por_huecos([_esquina(c)[1] for c in comps_col], n_filas)
+                if len(limites_y) != n_filas - 1:
+                    ok = False
+                    break
+                for c in comps_col:
+                    fila = _indice_por_limites(_esquina(c)[1], limites_y)
+                    celdas.setdefault((fila, col), []).append(c)
+                    if c in anclas:
+                        anclas_por_celda[(fila, col)] += 1
+
+            # Orden de lectura: izquierda a derecha, después hacia abajo.
+            ordenadas = [celdas.get((f, col), []) for f in range(n_filas) for col in range(n_cols)]
+            if ok and all(ordenadas) and all(anclas_por_celda.get((f, col), 0) == 1
+                                             for f in range(n_filas) for col in range(n_cols)):
+                return ordenadas
+
+    # Sin anclas utilizables o con una grilla que no cierra, se cae al criterio
+    # viejo: ordenar por Y y cortar en grupos iguales.
+    sorted_comps = sorted(non_bg, key=lambda c: _esquina(c)[1])
+    total = len(sorted_comps)
     group_size = total // n_slots
-    remainder  = total % n_slots
+    remainder = total % n_slots
 
     bands: list[list[dict]] = []
     idx = 0
     for i in range(n_slots):
         size = group_size + (1 if i < remainder else 0)
-        bands.append(sorted_comps[idx : idx + size])
+        bands.append(sorted_comps[idx: idx + size])
         idx += size
-
     return bands
 
 
