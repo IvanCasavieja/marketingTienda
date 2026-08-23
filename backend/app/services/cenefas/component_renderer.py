@@ -15,6 +15,7 @@ from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.formatters import split_caps
 from app.services.cenefas.layout_engine import compute_layout, get_format
 from app.services.cenefas.rules_engine import apply_visibility, evaluate_rules
+from app.services.cenefas.variables import PRICE_VARS
 
 # ---------------------------------------------------------------------------
 # Dimensiones de slide por formato
@@ -67,25 +68,22 @@ def apply_transform(value: str, transform: str | None) -> str:
     return value
 
 
-# NOTA (08/2026): acá vivía también el achique automático de la fuente del
-# PRECIO (_fit_price_font_size) y el corrimiento vertical del cuadro de precio
-# cuando la descripción se desbordaba. Esos dos siguen eliminados: el motor no
-# agranda, no achica precios y no mueve ninguna caja de donde la puso el
-# diseño. El achique de la DESCRIPCIÓN sí volvió, a pedido explícito -- ver
-# abajo.
-
 # ---------------------------------------------------------------------------
-# Achique automático de la descripción
+# Achique automático de texto que no entra
 # ---------------------------------------------------------------------------
 #
-# Única excepción a la regla de "el motor respeta el PPTX tal cual": cuando el
-# nombre del producto no entra en su cuadro, se achica la fuente. Se restauró
-# a pedido explícito (08/2026) después de haberla sacado, porque los nombres
-# reales de gestión pasan seguido de los 60 caracteres y desbordan sobre el
-# precio de al lado.
+# Única excepción a la regla de "el motor respeta el PPTX tal cual". Aplica a
+# la descripción y a los precios: los nombres reales de gestión pasan seguido
+# de los 60 caracteres y desbordan sobre el precio de al lado, y un precio de
+# cuatro dígitos ("1.919") no entra en un cuadro calibrado para tres --
+# PowerPoint lo parte al medio ("1.91" + "9", visto en un cartel real).
 #
-# Lo que NO volvió: el corrimiento del cuadro de precio hacia abajo. Acá solo
-# se achica texto; ninguna caja se mueve de donde la puso el diseño.
+# Se sacó en 08/2026 junto con el resto de los ajustes automáticos y volvió a
+# pedido explícito, primero para la descripción y después para el precio.
+#
+# Lo que NO volvió: el corrimiento vertical del cuadro de precio cuando la
+# descripción desborda. Acá solo se achica texto; ninguna caja se mueve de
+# donde la puso el diseño.
 
 
 def _estimate_wrapped_lines(
@@ -140,80 +138,129 @@ def _comp_uses_variable(c: dict, var_name: str) -> bool:
     )
 
 
-# Piso de achique: por debajo de esto la descripción deja de ser legible en un
-# cartel de góndola, y es preferible que se note el desborde a imprimir algo
-# que nadie puede leer.
-_DESC_FONT_FIT_MIN_SCALE = 0.6
+def _texto_resuelto(comp: dict, product: dict) -> str:
+    """El texto que ese componente va a imprimir, ya con los valores puestos."""
+    segs = comp.get("segments")
+    if segs:
+        partes = []
+        for seg in segs:
+            if seg.get("type") == "variable":
+                partes.append(str(product.get(seg.get("value"), "") or ""))
+            else:
+                partes.append(str(seg.get("value", "") or ""))
+        return "".join(partes)
+    variable = comp.get("variable")
+    if variable:
+        return str(product.get(variable, "") or "")
+    return str(comp.get("static_value", "") or "")
 
 
-def _fit_description_font_size(
-    text: str, box_width_cm: float | None, box_height_cm: float | None,
+def _ancho_estimado_cm(texto: str, font_size: float, bold: bool) -> float:
+    """Ancho aproximado de un texto en una sola línea."""
+    char_width_em = 0.52 if bold else 0.38
+    return len(texto) * font_size * char_width_em / 72 * 2.54
+
+
+# Piso de achique: por debajo de esto el texto deja de ser legible en un cartel
+# de góndola, y es preferible que se note el desborde a imprimir algo que nadie
+# puede leer de lejos.
+_FIT_MIN_SCALE = 0.55
+
+# Variables cuyo cuadro se achica si el valor no entra: la descripción y los
+# precios. Los decimales quedan afuera a propósito -- son siempre dos dígitos,
+# nunca desbordan, y achicarlos desalinearía la coma respecto del entero.
+_FIT_VARS: frozenset = frozenset(PRICE_VARS) | {"descripcion"}
+
+
+def _fit_font_size(
+    texto: str, box_width_cm: float | None, box_height_cm: float | None,
     base_font_size: float | None, bold: bool = False,
 ) -> float | None:
-    """Tamaño de fuente al que la descripción entra en su cuadro.
+    """Tamaño de fuente al que el texto entra en su cuadro.
 
-    Una sola pasada: no reestima cuántas líneas hacen falta AL tamaño ya
-    achicado (un caracter más angosto entra más por línea, así que podría
-    alcanzar con achicar menos). Es a propósito -- mismo nivel de precisión
-    que el resto de las heurísticas de este archivo, y conservador para el
-    lado seguro: prefiere achicar un poco de más antes que arriesgar que la
-    descripción siga invadiendo lo que tiene al lado.
+    Mide dos cosas y se queda con la más exigente:
+
+    1. **Ancho**: la palabra más larga tiene que entrar en una línea. Es el
+       chequeo que salva a los precios: "1.919" no tiene espacios, así que no
+       hay dónde cortarlo por palabra -- PowerPoint lo parte al medio
+       ("1.91" + "9", visto en un cartel real) y el chequeo de alto de abajo
+       ni se entera, porque para él sigue siendo una sola línea.
+    2. **Alto**: las líneas que resultan del word-wrap tienen que entrar en la
+       altura de la caja. Es el chequeo que salva a las descripciones largas.
+
+    Una sola pasada, sin reestimar al tamaño ya achicado: mismo nivel de
+    precisión que el resto de las heurísticas de este archivo (no hay métricas
+    reales de fuente en el servidor) y conservador para el lado seguro.
     """
-    if not text or not box_width_cm or not box_height_cm or not base_font_size:
+    if not texto or not box_width_cm or not base_font_size:
         return base_font_size
-    lines = _estimate_wrapped_lines(text, box_width_cm, base_font_size, bold)
-    if lines <= 1:
+
+    # Inset interno de PowerPoint (izquierdo + derecho).
+    usable_width_cm = max(0.1, box_width_cm - 0.4)
+
+    escala_ancho = 1.0
+    palabra_larga = max(texto.split() or [texto], key=len)
+    ancho = _ancho_estimado_cm(palabra_larga, base_font_size, bold)
+    if ancho > usable_width_cm:
+        escala_ancho = usable_width_cm / ancho
+
+    escala_alto = 1.0
+    if box_height_cm:
+        lineas = _estimate_wrapped_lines(texto, box_width_cm, base_font_size, bold)
+        alto_necesario = lineas * base_font_size / 72 * 2.54 * 1.2   # 1.2 = interlineado típico
+        if alto_necesario > box_height_cm:
+            escala_alto = box_height_cm / alto_necesario
+
+    escala = min(escala_ancho, escala_alto)
+    if escala >= 1.0:
         return base_font_size
-    line_height_cm = base_font_size / 72 * 2.54 * 1.2   # 1.2 = interlineado típico
-    needed_height_cm = lines * line_height_cm
-    if needed_height_cm <= box_height_cm:
-        return base_font_size
-    scale = box_height_cm / needed_height_cm
-    return max(base_font_size * scale, base_font_size * _DESC_FONT_FIT_MIN_SCALE)
+    return max(base_font_size * escala, base_font_size * _FIT_MIN_SCALE)
 
 
-def _fit_description_to_box(comps: list[dict], product: dict) -> list[dict]:
-    """Achica la fuente de la descripción cuando el nombre no entra en su caja.
+def _fit_text_to_box(comps: list[dict], product: dict) -> list[dict]:
+    """Achica la fuente de los cuadros cuyo valor no entra.
 
-    Aplica a todos los mundos: descripcion y precio suelen ser dos cuadros de
-    texto independientes apilados, sin auto-layout compartido, así que uno
-    desborda sobre el otro si no se achica.
+    Aplica a la descripción y a los precios, en todos los mundos: son cuadros
+    de texto independientes apilados, sin auto-layout compartido, así que uno
+    desborda sobre otro (o se parte al medio) si no se achica.
+
+    Solo cambia tamaños de fuente. Ninguna caja se mueve de donde la puso el
+    diseño.
     """
-    desc_comp = next((c for c in comps if _comp_uses_variable(c, "descripcion")), None)
-    if not desc_comp:
-        return comps
-
-    style = desc_comp.get("style", {})
-    base_font_size = style.get("font_size")
-    bold = bool(style.get("font_bold"))
-    # computed_bounds ya tiene el tamaño con el que se va a dibujar; base_bounds
-    # es el del diseño. Se prefiere el primero y se cae al segundo.
-    bounds = desc_comp.get("computed_bounds") or desc_comp.get("base_bounds") or {}
-    box_width, box_height = bounds.get("width"), bounds.get("height")
-    text = str(product.get("descripcion", "") or "")
-
-    fitted = _fit_description_font_size(text, box_width, box_height, base_font_size, bold)
-    if fitted == base_font_size:
-        return comps
-
     result = []
     for c in comps:
-        if c is desc_comp:
-            c = {**c, "style": {**c["style"], "font_size": fitted}}
-            # En un componente multi-segmento cada segmento lleva su propio
-            # font_size, que pisa al del componente en _populate_text_frame.
-            # Sin esto el achique se descartaba en silencio para cualquier
-            # cuadro importado como multi-segmento (que ahora son casi todos).
-            segs = c.get("segments")
-            if segs:
-                c["segments"] = [
-                    {**seg, "style": {**seg["style"], "font_size": fitted}}
-                    if seg.get("style", {}).get("font_size") else seg
-                    for seg in segs
-                ]
+        if c.get("type") != "text" or not any(_comp_uses_variable(c, v) for v in _FIT_VARS):
+            result.append(c)
+            continue
+
+        style = c.get("style", {})
+        base_font_size = style.get("font_size")
+        bold = bool(style.get("font_bold"))
+        bounds = c.get("computed_bounds") or c.get("base_bounds") or {}
+        texto = _texto_resuelto(c, product)
+
+        fitted = _fit_font_size(
+            texto, bounds.get("width"), bounds.get("height"), base_font_size, bold
+        )
+        if fitted == base_font_size:
+            result.append(c)
+            continue
+
+        c = {**c, "style": {**style, "font_size": fitted}}
+        # En un componente multi-segmento cada segmento lleva su propio
+        # font_size, que pisa al del componente en _populate_text_frame. Sin
+        # esto el achique se descartaba en silencio para cualquier cuadro
+        # importado como multi-segmento (que ahora son casi todos).
+        segs = c.get("segments")
+        if segs:
+            escala = fitted / base_font_size
+            c["segments"] = [
+                {**seg, "style": {**seg["style"], "font_size": seg["style"]["font_size"] * escala}}
+                if seg.get("style", {}).get("font_size") else seg
+                for seg in segs
+            ]
         result.append(c)
     return result
-
 
 
 def hex_to_rgb(hex_color: str | None) -> RGBColor:
@@ -873,7 +920,7 @@ def render_template_to_pptx(
                     product       = pg[band_idx]
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
-                    visible_comps = _fit_description_to_box(visible_comps, product)
+                    visible_comps = _fit_text_to_box(visible_comps, product)
                     _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map)
                 elif preserve_source:
                     # Página parcial (menos productos que celdas) y estamos
@@ -913,7 +960,7 @@ def render_template_to_pptx(
 
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
-            visible_comps = _fit_description_to_box(visible_comps, product)
+            visible_comps = _fit_text_to_box(visible_comps, product)
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map)
 
