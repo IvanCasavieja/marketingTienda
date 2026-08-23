@@ -21,7 +21,7 @@ from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
 from app.services.cenefas.data_engine import load_products_from_bytes
-from app.services.cenefas.component_renderer import _detect_slot_bands
+from app.services.cenefas.component_renderer import _detect_slot_bands, _fit_text_to_box
 from app.services.cenefas.jobs import (
     confirm_generation_job,
     get_job_result,
@@ -669,14 +669,30 @@ async def _job_to_dict(job: CenefaJob, include_report: bool = False) -> dict:
     if job.status == "preview":
         staged = await peek_job_products(job.id)
         if staged:
-            d["template_def"]     = staged.template_def
-            d["preview_product"]  = staged.products[0] if staged.products else {}
+            componentes = staged.template_def.get("components", [])
             # Plantillas multi-banda (ej. 3xA4): exponer a qué componentes les
             # toca cada producto, para que el preview muestre 3 productos
             # distintos en vez de repetir el mismo en las 3 bandas (ver
             # Canvas.tsx). Mismo algoritmo que usa el render final -- no se
             # duplica la lógica de conteo/orden-por-Y en el frontend.
-            slot_bands = _detect_slot_bands(staged.template_def.get("components", []))
+            slot_bands = _detect_slot_bands(componentes)
+
+            # El achique de texto se aplica ACÁ TAMBIÉN, con los mismos datos
+            # que va a usar el render: si no, el preview muestra el cuerpo
+            # original del diseño y el archivo final sale con otro. Se aprobaba
+            # en pantalla algo distinto de lo que se imprimía.
+            if staged.products:
+                if slot_bands:
+                    ajustados = {}
+                    for banda, producto in zip(slot_bands, staged.products):
+                        for c in _fit_text_to_box(banda, producto):
+                            ajustados[c["id"]] = c
+                    componentes = [ajustados.get(c["id"], c) for c in componentes]
+                else:
+                    componentes = _fit_text_to_box(componentes, staged.products[0])
+
+            d["template_def"]     = {**staged.template_def, "components": componentes}
+            d["preview_product"]  = staged.products[0] if staged.products else {}
             if slot_bands:
                 d["slot_bands"]       = [[c["id"] for c in band] for band in slot_bands]
                 d["preview_products"] = staged.products[: len(slot_bands)]

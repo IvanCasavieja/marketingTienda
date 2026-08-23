@@ -29,6 +29,21 @@ function scalePx(cm: number) {
   return Math.round(cm * PX_PER_CM);
 }
 
+// Los cuerpos de fuente viajan en puntos (1 pt = 1/72 pulgada) y el canvas
+// trabaja en px a razon de PX_PER_CM.
+function ptToPx(pt: number) {
+  return (pt / 72) * 2.54 * PX_PER_CM;
+}
+
+// La tipografia del diseno con alternativas: si la maquina no la tiene
+// instalada, el navegador cae a algo parecido en vez de a la fuente por
+// defecto. Impact y las condensadas son las que usan estas plantillas.
+function fontStack(familia?: string | null) {
+  const base = (familia ?? "").trim();
+  const alternativas = "Impact, 'Haettenschweiler', 'Arial Narrow Bold', 'Franklin Gothic Medium', Arial, sans-serif";
+  return base ? `${base}, ${alternativas}` : alternativas;
+}
+
 // ---------------------------------------------------------------------------
 // Aplicar layout del formato destino sobre los componentes
 // Replica la lógica de layout_engine.py en el cliente para la vista previa
@@ -197,13 +212,25 @@ function buildComponentGroup({
     return group;
   }
 
+  // Con datos reales el cuadro se dibuja FIEL: misma tipografía, mismo cuerpo
+  // y mismo color que va a salir en el PPTX. Antes se dibujaba esquemático
+  // (Inter, cuerpo derivado del alto de la caja) y el preview cortaba las
+  // líneas distinto al archivo final -- se aprobaba en pantalla algo que en
+  // PowerPoint se montaba sobre el precio.
+  //
+  // Sin datos reales (modo edición del template) sigue siendo esquemático: ahí
+  // lo que importa es ver qué variable tiene cada cuadro, no cómo queda.
+  const fiel = !!previewData && !imgInvalid;
+
   group.add(new Konva.Rect({
     width: w, height: h,
-    fill: comp.type === "shape" && comp.style?.background_color ? comp.style.background_color : `${color}22`,
-    stroke: isSelected ? color : `${color}88`,
+    fill: comp.type === "shape" && comp.style?.background_color
+      ? comp.style.background_color
+      : (fiel ? "transparent" : `${color}22`),
+    stroke: isSelected ? color : (fiel ? `${color}44` : `${color}88`),
     strokeWidth: isSelected ? 2 : 1,
     cornerRadius: 3,
-    dash: comp.locked ? [4, 3] : undefined,
+    dash: comp.locked ? [4, 3] : (fiel ? [3, 3] : undefined),
   }));
 
   const text =
@@ -219,16 +246,37 @@ function buildComponentGroup({
               ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
               : comp.name;
 
-  group.add(new Konva.Text({
-    x: 4, y: 4, width: w - 8, height: h - 8,
-    text,
-    fontSize: Math.min(11, Math.max(7, h / 2.5)),
-    fill: imgInvalid ? "#F59E0B" : (comp.type === "shape" && comp.style?.background_color ? "#00000055" : color),
-    fontFamily: "Inter, system-ui, sans-serif",
-    textDecoration: comp.style?.strikethrough ? "line-through" : undefined,
-    ellipsis: true,
-    wrap: "word",
-  }));
+  if (fiel) {
+    // El cuerpo viaja en puntos; el canvas trabaja en px a PX_PER_CM.
+    const pt = comp.style?.font_size ?? 12;
+    const fontSizePx = ptToPx(pt);
+    group.add(new Konva.Text({
+      x: 0, y: 0, width: w,
+      text,
+      fontSize: fontSizePx,
+      fontFamily: fontStack(comp.style?.font_family),
+      fontStyle: comp.style?.font_bold ? "bold" : "normal",
+      fill: comp.style?.color ?? "#1e293b",
+      align: comp.style?.align ?? "center",
+      lineHeight: 1.2,
+      textDecoration: comp.style?.strikethrough ? "line-through" : undefined,
+      wrap: "word",
+      // Sin ellipsis y sin alto fijo A PROPÓSITO: si el texto no entra tiene
+      // que VERSE desbordando, que es justamente lo que hay que detectar.
+      listening: false,
+    }));
+  } else {
+    group.add(new Konva.Text({
+      x: 4, y: 4, width: w - 8, height: h - 8,
+      text,
+      fontSize: Math.min(11, Math.max(7, h / 2.5)),
+      fill: imgInvalid ? "#F59E0B" : (comp.type === "shape" && comp.style?.background_color ? "#00000055" : color),
+      fontFamily: "Inter, system-ui, sans-serif",
+      textDecoration: comp.style?.strikethrough ? "line-through" : undefined,
+      ellipsis: true,
+      wrap: "word",
+    }));
+  }
 
   return group;
 }
