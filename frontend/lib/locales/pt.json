@@ -487,11 +487,7 @@
     "usarLegalesHint": "Deixe desligado se o modelo já traz os textos legais no design.",
     "legales": "Texto legal",
     "legalesAlcoholHint": "Produtos com categoria de álcool recebem o aviso obrigatório automaticamente.",
-    "excelDesdeConvertidor": "Excel trazido do Conversor, pronto para gerar.",
-    "descLimite": "Limite do quadro de descrição (cm)",
-    "descLimiteHint": "Opcional. Vazio = o motor deduz do design (espaço até o quadro de baixo). Só reduz a fonte se o nome não couber nesse limite.",
-    "descAncho": "Largura máx.",
-    "descAlto": "Altura máx."
+    "excelDesdeConvertidor": "Excel trazido do Conversor, pronto para gerar."
   },
   "admin": {
     "title": "Painel de Administração",

@@ -12,6 +12,7 @@ from pptx.oxml.ns import qn
 from pptx.util import Cm, Pt
 
 from app.services.cenefas.data_engine import load_products_from_bytes
+from app.services.cenefas.font_metrics import ancho_texto_cm
 from app.services.cenefas.formatters import split_caps
 from app.services.cenefas.layout_engine import compute_layout, get_format
 from app.services.cenefas.rules_engine import apply_visibility, evaluate_rules
@@ -87,40 +88,35 @@ def apply_transform(value: str, transform: str | None) -> str:
 
 
 def _estimate_wrapped_lines(
-    text: str, box_width_cm: float | None, font_size: float | None, bold: bool = False,
+    text: str, box_width_cm: float | None, font_size: float | None,
+    bold: bool = False, font_family: str | None = None,
 ) -> int:
-    """Estima a cuántas líneas se parte un texto con word-wrap en una caja de
-    cierto ancho, simulando el mismo criterio "voraz" (agregar palabras hasta
-    que no entran más) que usa PowerPoint.
+    """A cuántas líneas se parte el texto con word-wrap en una caja de ese ancho.
 
-    No es exacto -- no hay métricas reales de la fuente en el servidor -- pero
-    está calibrado contra descripciones reales que se superponían con el
-    precio. Antes de tocar las constantes, mirar el historial de este archivo:
-    ya se recalibraron dos veces contra casos concretos.
-
-    bold=True ensancha el ancho de caracter asumido: las fuentes de titular de
-    estas plantillas son bold y ocupan bastante más por caracter.
+    Simula el criterio "voraz" de PowerPoint (agregar palabras hasta que no
+    entran más) midiendo cada palabra con las métricas REALES de la tipografía
+    (ver font_metrics.py). Antes se usaba un ancho de caracter promedio
+    inventado y erraba de a una línea entera, que es justo la diferencia entre
+    "entra" y "se le monta encima al precio".
     """
     if not text or not box_width_cm or not font_size:
         return 1
-    # Inset interno de PowerPoint (izquierdo + derecho) que hay que descontar
-    # del ancho disponible; sin esto se sobreestima cuánto entra por línea.
-    usable_width_cm = max(0.1, box_width_cm - 0.4)
-    box_width_pt = usable_width_cm / 2.54 * 72
-    # Ancho promedio de caracter, calibrado contra casos reales -- no es un
-    # valor "de catálogo" de ninguna fuente.
-    char_width_em = 0.52 if bold else 0.38
-    chars_per_line = max(1, int(box_width_pt / (font_size * char_width_em)))
-    lines = 1
-    current_len = 0
-    for word in text.split():
-        add_len = len(word) if current_len == 0 else current_len + 1 + len(word)
-        if add_len > chars_per_line and current_len > 0:
-            lines += 1
-            current_len = len(word)
+    # Inset interno de PowerPoint (izquierdo + derecho).
+    usable_cm = max(0.1, box_width_cm - 0.4)
+
+    def ancho(t: str) -> float:
+        return ancho_texto_cm(t, font_size, font_family, bold)
+
+    lineas = 1
+    actual = ""
+    for palabra in text.split():
+        tentativa = palabra if not actual else actual + " " + palabra
+        if ancho(tentativa) > usable_cm and actual:
+            lineas += 1
+            actual = palabra
         else:
-            current_len = add_len
-    return lines
+            actual = tentativa
+    return lineas
 
 
 def _comp_uses_variable(c: dict, var_name: str) -> bool:
@@ -155,12 +151,6 @@ def _texto_resuelto(comp: dict, product: dict) -> str:
     return str(comp.get("static_value", "") or "")
 
 
-def _ancho_estimado_cm(texto: str, font_size: float, bold: bool) -> float:
-    """Ancho aproximado de un texto en una sola línea."""
-    char_width_em = 0.52 if bold else 0.38
-    return len(texto) * font_size * char_width_em / 72 * 2.54
-
-
 # Piso de achique: por debajo de esto el texto deja de ser legible en un cartel
 # de góndola, y es preferible que se note el desborde a imprimir algo que nadie
 # puede leer de lejos.
@@ -174,7 +164,7 @@ _FIT_VARS: frozenset = frozenset(PRICE_VARS) | {"descripcion"}
 
 def _fit_font_size(
     texto: str, box_width_cm: float | None, box_height_cm: float | None,
-    base_font_size: float | None, bold: bool = False,
+    base_font_size: float | None, bold: bool = False, font_family: str | None = None,
 ) -> float | None:
     """Tamaño de fuente al que el texto entra en su cuadro.
 
@@ -183,30 +173,25 @@ def _fit_font_size(
     1. **Ancho**: la palabra más larga tiene que entrar en una línea. Es el
        chequeo que salva a los precios: "1.919" no tiene espacios, así que no
        hay dónde cortarlo por palabra -- PowerPoint lo parte al medio
-       ("1.91" + "9", visto en un cartel real) y el chequeo de alto de abajo
-       ni se entera, porque para él sigue siendo una sola línea.
-    2. **Alto**: las líneas que resultan del word-wrap tienen que entrar en la
-       altura de la caja. Es el chequeo que salva a las descripciones largas.
-
-    Una sola pasada, sin reestimar al tamaño ya achicado: mismo nivel de
-    precisión que el resto de las heurísticas de este archivo (no hay métricas
-    reales de fuente en el servidor) y conservador para el lado seguro.
+       ("1.91" + "9", visto en un cartel real) y el chequeo de alto ni se
+       entera, porque para él sigue siendo una sola línea.
+    2. **Alto**: las líneas que resultan del word-wrap tienen que entrar en el
+       alto disponible. Es el chequeo que salva a las descripciones largas.
     """
     if not texto or not box_width_cm or not base_font_size:
         return base_font_size
 
-    # Inset interno de PowerPoint (izquierdo + derecho).
-    usable_width_cm = max(0.1, box_width_cm - 0.4)
+    usable_cm = max(0.1, box_width_cm - 0.4)
 
     escala_ancho = 1.0
     palabra_larga = max(texto.split() or [texto], key=len)
-    ancho = _ancho_estimado_cm(palabra_larga, base_font_size, bold)
-    if ancho > usable_width_cm:
-        escala_ancho = usable_width_cm / ancho
+    ancho = ancho_texto_cm(palabra_larga, base_font_size, font_family, bold)
+    if ancho > usable_cm:
+        escala_ancho = usable_cm / ancho
 
     escala_alto = 1.0
     if box_height_cm:
-        lineas = _estimate_wrapped_lines(texto, box_width_cm, base_font_size, bold)
+        lineas = _estimate_wrapped_lines(texto, box_width_cm, base_font_size, bold, font_family)
         alto_necesario = lineas * base_font_size / 72 * 2.54 * 1.2   # 1.2 = interlineado típico
         if alto_necesario > box_height_cm:
             escala_alto = box_height_cm / alto_necesario
@@ -218,18 +203,18 @@ def _fit_font_size(
 
 
 def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
-    """Cuánto puede crecer hacia abajo un cuadro antes de chocar con otro.
+    """Cuánto puede crecer hacia abajo un cuadro antes de pisar a otro.
 
     El alto declarado de la caja NO sirve como límite: los diseñadores la
-    dibujan del alto de UNA línea aunque abajo haya lugar de sobra. Usarlo
-    hacía que cualquier descripción de dos líneas se achicara de golpe (25pt
-    -> 15pt) cuando en el cartel entraba perfecta.
+    dibujan del alto de UNA línea aunque abajo haya lugar de sobra, y el texto
+    simplemente se desborda por fuera. Usarlo hacía que cualquier descripción
+    de dos líneas se achicara de golpe cuando en el cartel entraba perfecta.
 
-    El límite real es el cuadro de abajo. Solo cuentan los que están
-    realmente debajo y no al costado: se exige que se solapen
-    horizontalmente en más de la mitad del ancho. Sin ese filtro, el cuadro
-    del decimal --que va pegado al precio, apenas más abajo-- se tomaría
-    como techo del precio y lo achicaría a la nada.
+    El límite real es el cuadro de abajo. Solo cuentan los que están realmente
+    debajo y no al costado: se exige que se solapen horizontalmente en más de
+    la mitad del ancho. Sin ese filtro, el cuadro del decimal --que va pegado
+    al precio, apenas más abajo-- se tomaría como techo del precio y lo
+    achicaría a la nada.
     """
     b = comp.get("computed_bounds") or comp.get("base_bounds") or {}
     y, h, x, w = b.get("y"), b.get("height"), b.get("x"), b.get("width")
@@ -256,25 +241,17 @@ def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
     return max(h, techo - y)
 
 
-def _fit_text_to_box(
-    comps: list[dict], product: dict,
-    desc_max_ancho_cm: float | None = None,
-    desc_max_alto_cm: float | None = None,
-) -> list[dict]:
+def _fit_text_to_box(comps: list[dict], product: dict) -> list[dict]:
     """Achica la fuente de los cuadros cuyo valor no entra.
 
     Aplica a la descripción y a los precios: son cuadros de texto
-    independientes apilados, sin auto-layout compartido, así que uno desborda
-    sobre otro (o se parte al medio) si no se achica.
+    independientes apilados, sin auto-layout compartido, así que el texto de
+    uno se desborda sobre otro (o se parte al medio) si no se achica.
 
     La idea es RESPETAR el tamaño del diseño y tocarlo solo cuando de verdad
     no entra. Por eso el límite vertical no es el alto dibujado de la caja
-    sino el espacio hasta el cuadro de abajo (ver _alto_disponible_cm).
-
-    `desc_max_ancho_cm` / `desc_max_alto_cm` son el límite explícito para la
-    descripción, declarado al generar. Cuando vienen, mandan sobre lo que se
-    deduzca del diseño: es la forma de decirle al sistema "hasta acá puede
-    llegar", sin que tenga que adivinarlo de la geometría del PPTX.
+    sino el espacio hasta el cuadro de abajo, y el ancho del texto se mide con
+    la tipografía real y no con un promedio.
 
     Solo cambia tamaños de fuente. Ninguna caja se mueve de donde la puso el
     diseño.
@@ -288,18 +265,14 @@ def _fit_text_to_box(
         style = c.get("style", {})
         base_font_size = style.get("font_size")
         bold = bool(style.get("font_bold"))
+        familia = style.get("font_family")
         bounds = c.get("computed_bounds") or c.get("base_bounds") or {}
         texto = _texto_resuelto(c, product)
 
-        ancho = bounds.get("width")
-        alto = _alto_disponible_cm(c, comps)
-        if _comp_uses_variable(c, "descripcion"):
-            if desc_max_ancho_cm:
-                ancho = desc_max_ancho_cm
-            if desc_max_alto_cm:
-                alto = desc_max_alto_cm
-
-        fitted = _fit_font_size(texto, ancho, alto, base_font_size, bold)
+        fitted = _fit_font_size(
+            texto, bounds.get("width"), _alto_disponible_cm(c, comps),
+            base_font_size, bold, familia,
+        )
         if fitted == base_font_size:
             result.append(c)
             continue
@@ -871,8 +844,6 @@ def render_template_to_pptx(
     target_format: str = "a4",
     image_overrides: dict[str, tuple[bytes, str]] | None = None,
     source_pptx_bytes: bytes | None = None,
-    desc_max_ancho_cm: float | None = None,
-    desc_max_alto_cm: float | None = None,
 ) -> tuple[bytes, list[str]]:
     """Genera PPTX desde una definición v2 y una lista de productos.
 
@@ -888,10 +859,6 @@ def render_template_to_pptx(
     importer no haya capturado como componente) tal cual estaba. Sin esto,
     el resultado solo tiene los shapes que SÍ se lograron extraer, y
     cualquier diseño que viva en el layout/master del archivo se pierde.
-
-    desc_max_ancho_cm / desc_max_alto_cm: límite explícito para el cuadro de
-    la descripción, declarado al generar. Cuando vienen, mandan sobre lo que
-    se deduzca de la geometría del PPTX (ver _fit_text_to_box).
 
     Returns (pptx_bytes, missing_vars) donde missing_vars es la lista de
     variables que el template usa pero que no fueron encontradas en el Excel.
@@ -984,7 +951,7 @@ def render_template_to_pptx(
                     product       = pg[band_idx]
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
-                    visible_comps = _fit_text_to_box(visible_comps, product, desc_max_ancho_cm, desc_max_alto_cm)
+                    visible_comps = _fit_text_to_box(visible_comps, product)
                     _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map)
                 elif preserve_source:
                     # Página parcial (menos productos que celdas) y estamos
@@ -1024,7 +991,7 @@ def render_template_to_pptx(
 
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
-            visible_comps = _fit_text_to_box(visible_comps, product, desc_max_ancho_cm, desc_max_alto_cm)
+            visible_comps = _fit_text_to_box(visible_comps, product)
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map)
 
