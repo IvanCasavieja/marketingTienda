@@ -185,9 +185,22 @@ async def consultar(
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     messages: list[dict] = [{"role": m["role"], "content": m["content"]} for m in historial]
-    contexto_line = _contexto_line(contexto)
-    user_content = f"{contexto_line}\n\n{mensaje}" if contexto_line else mensaje
+    partes = [x for x in (_contexto_line(contexto), _bloque_filas(filas)) if x]
+    user_content = "\n\n".join([*partes, mensaje]) if partes else mensaje
     messages.append({"role": "user", "content": user_content})
+
+    # Lo que el equipo ya aprendió y una persona aprobó. Va en el system para
+    # que valga en todos los turnos, no solo en el primero. Sin nada aprobado
+    # queda vacío y el agente funciona igual que antes; si falla, se ignora:
+    # el conocimiento suma contexto, nunca puede voltear el chat.
+    sistema = _SYSTEM_PROMPT
+    try:
+        from app.services.cenefas.conocimiento import contexto_para_el_agente
+        aprendido = await contexto_para_el_agente(db)
+        if aprendido:
+            sistema = f"{_SYSTEM_PROMPT}\n\n{aprendido}"
+    except Exception:
+        logger.warning("no se pudo cargar el conocimiento aprobado", exc_info=True)
 
     usage_items: list[dict] = []
 
