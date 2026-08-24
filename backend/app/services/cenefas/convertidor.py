@@ -25,7 +25,7 @@ from app.models.convertidor_header_alias import ConvertidorHeaderAlias
 from app.models.sku_descripcion import SkuDescripcion
 from app.services.cenefas.convertidor_ai import resolve_date_columns_with_ai
 from app.services.cenefas.convertidor_variables import construir_variables
-from app.services.cenefas.variables import ORDEN_EXPORT
+from app.services.cenefas.variables import DECIMAL_OF, ORDEN_EXPORT, PRICE_VARS
 from app.services.cenefas.formatters import parse_price_raw
 from app.services.cenefas.validation_engine import DESCRIPTION_MAX_CHARS, DESCRIPTION_WARN_CHARS
 
@@ -852,12 +852,21 @@ def _columnas_de_salida(rows: list[dict]) -> list[str]:
 
     No se pierde nada: el generador de cenefas no exige ninguna variable, y
     una que no está en el Excel simplemente no se sustituye en el diseño.
+
+    Un precio y su decimal van SIEMPRE juntos, aunque el decimal quede vacío:
+    son un par (precioOferta/decimalPrecioOferta, ofertaUno/decimalPrecioUno,
+    y así) y el diseño de la cenefa tiene un cuadro separado para cada uno.
+    Sacar el decimal porque en este listado todos los precios dieron redondos
+    dejaría media pareja, y al listado siguiente --con un solo precio con
+    centavos-- la columna aparecería de la nada.
     """
     con_dato = {
         var for var in ORDEN_EXPORT
         if any(str(r.get(var, "") or "").strip() for r in rows)
     }
-    return [v for v in ORDEN_EXPORT if v in con_dato or v in _COLUMNAS_FIJAS]
+    incluidas = con_dato | set(_COLUMNAS_FIJAS)
+    incluidas |= {DECIMAL_OF[p] for p in PRICE_VARS if p in incluidas}
+    return [v for v in ORDEN_EXPORT if v in incluidas]
 
 
 # Warning -> variable cuya columna se resalta. Se guarda el NOMBRE y no el
