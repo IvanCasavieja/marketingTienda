@@ -49,6 +49,23 @@ _RE_PRECIO_LIMPIO = re.compile(r"[\$\s]*\d[\d.,]*\s*")
 # ningún síntoma hasta que un precio pasa los cuatro dígitos).
 _RE_MILES_CON_PUNTO = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
 
+# "39 unidad", "31,2 unidad", "74,5 la unidad", "1.919,20 c/u": el precio con
+# la unidad de venta escrita al lado. Gestión lo manda así en varios listados
+# y hasta ahora sobrevivía al render: el cartel salía con "$39 unidad" en el
+# cuadro del precio gigante y, peor, "31,2 unidad" ni siquiera se partía, así
+# que el cuadro de decimales quedaba vacío en vez de mostrar ",20".
+#
+# Solo se limpia cuando el valor ARRANCA con el número y lo que sigue son
+# letras: así "2x1", "3x99" y "SOLO X 25" siguen pasando tal cual, que es a
+# propósito -- en una mecánica M x N el literal ocupa el cuadro del precio.
+#
+# El Convertidor ya limpiaba esto (_parse_price_or_none); esto lo lleva a la
+# subida directa del Excel, que es por donde entran los listados de gestión
+# que no pasan por el Convertidor.
+_RE_PRECIO_CON_UNIDAD = re.compile(
+    r"^\s*\$?\s*(\d[\d.,]*)\s+[a-zA-ZáéíóúñÁÉÍÓÚÑ/][a-zA-ZáéíóúñÁÉÍÓÚÑ/.\s]*$"
+)
+
 
 # ---------------------------------------------------------------------------
 # Precio -> entero + decimal
@@ -81,6 +98,11 @@ def split_price(raw) -> tuple[str, str]:
         valor = float(raw)
     else:
         texto = str(raw).strip()
+        # "39 unidad" -> "39": se saca la unidad de venta y sigue el camino
+        # normal, así el decimal también se separa ("31,2 unidad" -> 31 + ",20").
+        con_unidad = _RE_PRECIO_CON_UNIDAD.match(texto)
+        if con_unidad:
+            texto = con_unidad.group(1)
         # Solo se parsea como precio si el valor es un número de punta a
         # punta. `parse_price_raw` matchea el run de dígitos inicial e
         # ignora el resto en silencio ("4x350" -> 4.0), que acá convertiría
