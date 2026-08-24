@@ -89,9 +89,9 @@ const COLUMNS: ColumnDef[] = [
   { key: "codigo",        label: "codigo",      siempre: true },
   { key: "descripcion",   label: "descripcion", editable: "descripcion", siempre: true,
     warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
-  { key: "mecanica",      label: "mecanica",    editable: "simple", siempre: true,
-    warningCodes: ["oferta_inesperada", "combo_no_parseable", "mxn_no_parseable", "mxn_sin_precio",
-                   "missing_oferta_det", "oferta_det_invalido"] },
+  // Sin warningCodes a propósito: los avisos de mecánica nacen de OFERTA y
+  // OFERTADET, y se pintan allá. Ver la nota en esas dos columnas.
+  { key: "mecanica",      label: "mecanica",    editable: "simple", siempre: true },
   { key: "tipoOferta",    label: "tipoOferta",    editable: "simple" },
   { key: "precioRegular", label: "precioRegular", editable: "simple", siempre: true,
     warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
@@ -122,8 +122,16 @@ const COLUMNS: ColumnDef[] = [
   // ── Contexto de gestión: de dónde salió lo de arriba ────────────────────
   { key: "nombre_articulo", label: "· Nombre gestión", contexto: true, siempre: true,
     warningCodes: ["nombre_articulo_invalido"] },
-  { key: "oferta_det",      label: "· Oferta Det",     contexto: true, siempre: true },
-  { key: "oferta_origen",   label: "· Oferta",         contexto: true, siempre: true },
+  // Estas dos son de donde sale la mecánica, así que también es donde se
+  // marca cuando no cierra. Antes se pintaba la columna "mecanica", que es
+  // donde se corrige pero no donde está el problema: se veían dos celdas que
+  // decían "Precio Final" igual, una morada y otra no, sin forma de entender
+  // por qué mirando esa columna.
+  { key: "oferta_det",      label: "· Oferta Det",     contexto: true, siempre: true,
+    warningCodes: ["missing_oferta_det", "oferta_det_invalido"] },
+  { key: "oferta_origen",   label: "· Oferta",         contexto: true, siempre: true,
+    warningCodes: ["oferta_inesperada", "combo_no_parseable", "mxn_no_parseable",
+                   "mxn_sin_precio"] },
   { key: "moneda",          label: "· Moneda",         contexto: true, siempre: true,
     warningCodes: ["moneda_invalida", "moneda_no_pesos"] },
   { key: "comprador",       label: "· Comprador",      contexto: true },
@@ -530,6 +538,40 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
     }
   }
 
+  // Por qué está marcada esta celda, en castellano. Sin esto hay que deducirlo
+  // mirando otras columnas, y con dos filas que dicen lo mismo es imposible.
+  function warningMotivo(row: ConvertidorRow, c: ColumnDef): string | undefined {
+    const code = c.warningCodes?.find((x) => row.warnings.includes(x));
+    if (!code) return undefined;
+    const valor = String(row[c.key] ?? "").trim();
+    const textos: Record<string, string> = {
+      oferta_inesperada:
+        `No entiendo «${valor}» acá. Esperaba una etiqueta conocida (PVP, ANTE/DESPUES, ` +
+        `FULL PRICE) o una copia del precio. La mecánica se armó ignorando este valor, ` +
+        `así que si tenía que salir en el cartel, no sale.`,
+      combo_no_parseable:  `Es un combo pero no pude leerlo de «${valor}». Esperaba algo tipo "3x99".`,
+      mxn_no_parseable:    `Es un M x N pero no pude leerlo de «${valor}». Esperaba algo tipo "2x1".`,
+      mxn_sin_precio:      "Es un M x N y falta el precio unitario, así que no puedo redactar la mecánica.",
+      missing_oferta_det:  "Falta el tipo de mecánica, así que la armé como precio fijo.",
+      oferta_det_invalido: `Acá esperaba el tipo de mecánica y vino un número («${valor}»). ` +
+                           `Puede ser que el Excel tenga las columnas corridas.`,
+      missing_description: "Este SKU no tiene descripción: hay que escribirla o generarla.",
+      descripcion_invalida: "Esto no parece una descripción.",
+      descripcion_larga:   `${valor.length} caracteres: no entra en el cartel.`,
+      descripcion_algo_larga: `${valor.length} caracteres: puede no entrar, conviene acortarla.`,
+      missing_price:       "Falta el precio.",
+      precio_invalido:     `«${valor}» no es un precio.`,
+      missing_precio_anterior: "Falta el precio anterior.",
+      precio_anterior_invalido: `«${valor}» no es un precio.`,
+      moneda_invalida:     `No reconozco la moneda «${valor}».`,
+      moneda_no_pesos:     `Está en «${valor}», no en pesos: revisá que el precio sea el correcto.`,
+      nombre_articulo_invalido: "Esto no parece el nombre del artículo.",
+      missing_descripcion_web: "Sin descripción web: si hay que generar la descripción con IA, sale peor.",
+      descripcion_web_invalida: "La descripción web no parece válida.",
+    };
+    return textos[code] ?? code;
+  }
+
   function warningClass(row: ConvertidorRow, codes?: string[]): string {
     const code = codes?.find((c) => row.warnings.includes(c));
     if (!code) return "";
@@ -698,6 +740,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
                     <td
                       key={c.key}
                       className={clsx("px-2 py-1 align-middle", warningClass(row, c.warningCodes))}
+                      title={warningMotivo(row, c)}
                       onMouseEnter={() => setHoveredCell({ rowId: row.row_id, key: c.key })}
                       onMouseLeave={() => setHoveredCell(null)}
                     >

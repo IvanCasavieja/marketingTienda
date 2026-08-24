@@ -899,6 +899,12 @@ _WARN_VAR = {
     "precio_invalido":          "precioOferta",
     "missing_precio_anterior":  "precioRegular",
     "precio_anterior_invalido": "precioRegular",
+    # Estos nacen de las columnas OFERTA/OFERTADET del listado de gestion. Se
+    # marcaban sobre "mecanica" --donde se corrige-- y eso hacia imposible
+    # entenderlos: dos filas con "Precio Final" identico, una marcada y la
+    # otra no, y la diferencia tres columnas mas alla. Ahora se marca donde
+    # esta el dato que no cierra. En el Excel de salida no hay columna OFERTA
+    # (es contexto, no variable), asi que ahi caen sobre mecanica igual.
     "oferta_inesperada":        "mecanica",
     "combo_no_parseable":       "mecanica",
     "mxn_no_parseable":         "mecanica",
