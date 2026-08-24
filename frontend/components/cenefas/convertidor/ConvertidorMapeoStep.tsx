@@ -10,14 +10,29 @@ import {
 } from "@/lib/api";
 import { varDef } from "@/lib/cenefaVariables";
 
-// Paso previo a convertir: decir a qué columna del Excel corresponde cada
-// variable cuyo nombre cambia según el archivo de gestión que se suba.
+// Paso previo a convertir: resolver las variables EXTRA, las que el
+// Convertidor no puede deducir solo. Ninguna es obligatoria.
+//
+// Cada una se resuelve de una de dos formas, a elección:
+//
+//   Columna  -> se lee de una columna del Excel, fila por fila.
+//   Escribir -> el mismo texto para todas las filas.
+//
+// La segunda hace falta porque el export de gestión no trae nunca vigencia
+// ni legales: esos textos los escribe una persona, no salen de ninguna
+// columna. Por eso esas dos arrancan en modo "Escribir".
 //
 // Las demás variables (codigo, descripcion, precioRegular, precioOferta,
 // mecanica y los decimales) no aparecen acá porque el Convertidor las
 // resuelve solo: salen de columnas fijas del export o las calcula.
 
 const SIN_MAPEAR = "";
+
+type Modo = "columna" | "texto";
+
+// Variables que nunca vienen en el export de gestión: arrancan listas para
+// escribir en vez de obligar a buscar una columna que no existe.
+const ARRANCAN_EN_TEXTO = new Set(["vigencia", "legales"]);
 
 interface Props {
   columnas: ConvertidorColumna[];
@@ -26,7 +41,7 @@ interface Props {
   /** Mundo al que se apunta, para filtrar y etiquetar las plantillas. */
   destino?: string | null;
   onBack: () => void;
-  onConfirm: (mapeo: Record<string, string>) => void;
+  onConfirm: (mapeo: Record<string, string>, valores: Record<string, string>) => void;
   converting: boolean;
 }
 
@@ -35,6 +50,12 @@ export default function ConvertidorMapeoStep({
 }: Props) {
   const { t } = useTranslation();
   const [mapeo, setMapeo] = useState<Record<string, string>>({});
+  const [valores, setValores] = useState<Record<string, string>>({});
+  const [modos, setModos] = useState<Record<string, Modo>>(() =>
+    Object.fromEntries(
+      variablesMapeables.map((v) => [v, ARRANCAN_EN_TEXTO.has(v) ? "texto" : "columna"]),
+    ),
+  );
   const [plantillas, setPlantillas] = useState<ConvertidorMapeo[]>([]);
   const [plantillaId, setPlantillaId] = useState("");
   const [nombreNuevo, setNombreNuevo] = useState("");
@@ -52,6 +73,7 @@ export default function ConvertidorMapeoStep({
     setPlantillaId(id);
     if (!id) {
       setMapeo({});
+      setValores({});
       return;
     }
     const p = plantillas.find((x) => x.id === id);
@@ -63,7 +85,20 @@ export default function ConvertidorMapeoStep({
       if (disponibles.has(col)) aplicado[variable] = col;
       else faltantes.push(col);
     }
+    const fijos = p.valores ?? {};
     setMapeo(aplicado);
+    setValores(fijos);
+    // El modo de cada variable sale de la plantilla: si trae texto fijo va a
+    // "Escribir", si trae columna va a "Columna", y si no trae nada queda
+    // como estaba.
+    setModos((prev) => {
+      const next = { ...prev };
+      for (const v of variablesMapeables) {
+        if (fijos[v]) next[v] = "texto";
+        else if (aplicado[v]) next[v] = "columna";
+      }
+      return next;
+    });
     setNombreNuevo(p.nombre);
     if (faltantes.length) {
       toast.warning(t("convertidor.mapeo.columnasFaltantes", { columnas: faltantes.join(", ") }));
@@ -75,7 +110,7 @@ export default function ConvertidorMapeoStep({
     if (!nombre) return;
     setGuardando(true);
     try {
-      const { data } = await convertidorApi.guardarMapeo({ nombre, destino: destino ?? null, mapeo });
+      const { data } = await convertidorApi.guardarMapeo({ nombre, destino: destino ?? null, mapeo, valores });
       setPlantillas((prev) => {
         const resto = prev.filter((p) => p.id !== data.id);
         return [...resto, data].sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -109,7 +144,30 @@ export default function ConvertidorMapeoStep({
     return new Set([...cuenta.entries()].filter(([, n]) => n > 1).map(([c]) => c));
   }, [mapeo]);
 
-  const asignadas = Object.values(mapeo).filter(Boolean).length;
+  // Solo viaja lo del modo activo de cada variable: si alguien mapeó una
+  // columna y después pasó a "Escribir", esa columna ya no cuenta.
+  const mapeoEfectivo = useMemo(
+    () => Object.fromEntries(
+      variablesMapeables
+        .filter((v) => (modos[v] ?? "columna") === "columna" && mapeo[v])
+        .map((v) => [v, mapeo[v]]),
+    ),
+    [variablesMapeables, modos, mapeo],
+  );
+  const valoresEfectivos = useMemo(
+    () => Object.fromEntries(
+      variablesMapeables
+        .filter((v) => modos[v] === "texto" && valores[v]?.trim())
+        .map((v) => [v, valores[v].trim()]),
+    ),
+    [variablesMapeables, modos, valores],
+  );
+
+  // Cuenta las resueltas de las dos formas: una variable con texto escrito
+  // está tan resuelta como una con columna asignada.
+  const asignadas = variablesMapeables.filter(
+    (v) => (modos[v] === "texto" ? valores[v] : mapeo[v])?.trim(),
+  ).length;
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
@@ -185,11 +243,13 @@ export default function ConvertidorMapeoStep({
         <div className="space-y-2">
           {variablesMapeables.map((variable) => {
             const def = varDef(variable);
+            const modo = modos[variable] ?? "columna";
             const valor = mapeo[variable] ?? SIN_MAPEAR;
+            const texto = valores[variable] ?? "";
             const col = columnas.find((c) => c.nombre === valor);
             return (
-              <div key={variable} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-3 items-center">
-                <div className="min-w-0">
+              <div key={variable} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-3 items-start">
+                <div className="min-w-0 pt-1.5">
                   <p className="text-sm font-medium text-slate-700 dark:text-slate-300 font-mono truncate">
                     {variable}
                   </p>
@@ -197,33 +257,69 @@ export default function ConvertidorMapeoStep({
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{def.desc}</p>
                   )}
                 </div>
-                <div className="min-w-0">
-                  <select
-                    className={`input text-sm w-full ${duplicadas.has(valor) ? "border-amber-400" : ""}`}
-                    value={valor}
-                    onChange={(e) =>
-                      setMapeo((prev) => {
-                        const next = { ...prev };
-                        if (e.target.value) next[variable] = e.target.value;
-                        else delete next[variable];
-                        return next;
-                      })
-                    }
-                  >
-                    <option value="">{t("convertidor.mapeo.sinAsignar")}</option>
-                    {columnas.map((c) => (
-                      <option key={c.nombre} value={c.nombre}>{c.nombre}</option>
+                <div className="min-w-0 space-y-1.5">
+                  {/* Columna del Excel, o un texto igual para todas las filas */}
+                  <div className="flex gap-1 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800/60 w-fit">
+                    {(["columna", "texto"] as Modo[]).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setModos((prev) => ({ ...prev, [variable]: m }))}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                          modo === m
+                            ? "bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-100 shadow-sm"
+                            : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                        }`}
+                      >
+                        {t(m === "columna" ? "convertidor.mapeo.modoColumna" : "convertidor.mapeo.modoTexto")}
+                      </button>
                     ))}
-                  </select>
-                  {col && col.muestras.length > 0 && (
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 truncate">
-                      {col.muestras.join(" · ")}
-                    </p>
-                  )}
-                  {duplicadas.has(valor) && (
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                      {t("convertidor.mapeo.columnaRepetida")}
-                    </p>
+                  </div>
+
+                  {modo === "columna" ? (
+                    <>
+                      <select
+                        className={`input text-sm w-full ${duplicadas.has(valor) ? "border-amber-400" : ""}`}
+                        value={valor}
+                        onChange={(e) =>
+                          setMapeo((prev) => {
+                            const next = { ...prev };
+                            if (e.target.value) next[variable] = e.target.value;
+                            else delete next[variable];
+                            return next;
+                          })
+                        }
+                      >
+                        <option value="">{t("convertidor.mapeo.sinAsignar")}</option>
+                        {columnas.map((c) => (
+                          <option key={c.nombre} value={c.nombre}>{c.nombre}</option>
+                        ))}
+                      </select>
+                      {col && col.muestras.length > 0 && (
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                          {col.muestras.join(" · ")}
+                        </p>
+                      )}
+                      {duplicadas.has(valor) && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                          {t("convertidor.mapeo.columnaRepetida")}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <input
+                      className="input text-sm w-full"
+                      value={texto}
+                      placeholder={t("convertidor.mapeo.textoPlaceholder", { n: totalFilas })}
+                      onChange={(e) =>
+                        setValores((prev) => {
+                          const next = { ...prev };
+                          if (e.target.value) next[variable] = e.target.value;
+                          else delete next[variable];
+                          return next;
+                        })
+                      }
+                    />
                   )}
                 </div>
               </div>
@@ -241,7 +337,7 @@ export default function ConvertidorMapeoStep({
           <ArrowLeft size={15} /> {t("convertidor.mapeo.volver")}
         </button>
         <button
-          onClick={() => onConfirm(mapeo)}
+          onClick={() => onConfirm(mapeoEfectivo, valoresEfectivos)}
           disabled={converting}
           className="btn-primary flex items-center gap-2 disabled:opacity-50"
         >

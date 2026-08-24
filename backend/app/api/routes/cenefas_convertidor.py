@@ -51,18 +51,24 @@ async def preview(
     request: Request,
     excel: UploadFile = File(...),
     mapeo_json: str = Form(default="{}", description='JSON {variable: nombre_de_columna} de la pantalla de mapeo'),
+    valores_json: str = Form(default="{}", description='JSON {variable: texto_fijo} escrito a mano en la pantalla de mapeo'),
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
     excel_bytes = await read_limited(excel, "Excel")
     try:
         mapeo = {str(k): str(v) for k, v in (json.loads(mapeo_json or "{}") or {}).items()}
+        valores = {str(k): str(v) for k, v in (json.loads(valores_json or "{}") or {}).items()}
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="El mapeo de columnas no es un JSON válido")
     # Una variable fuera de la lista mapeable no tendría efecto (ver
     # construir_variables) -- se descarta acá para que el resultado no
     # dependa de qué mandó el cliente.
     mapeo = {k: v for k, v in mapeo.items() if k in VARIABLES_MAPEABLES}
+    valores = {k: v for k, v in valores.items() if k in VARIABLES_MAPEABLES}
+    # Las dos formas son excluyentes por variable: si llegaran las dos, gana
+    # el valor escrito a mano, que es lo explícito para esta corrida.
+    mapeo = {k: v for k, v in mapeo.items() if not str(valores.get(k, "")).strip()}
     # Tinín solo entra a clasificar columnas de fecha sin alias reconocido si
     # el usuario tiene el permiso de ese agente específico (misma separación
     # ai.don_tino/ai.dona_tina/ai.tinin/ai.triada que el resto de la IA acá) —
@@ -74,7 +80,8 @@ async def preview(
     try:
         parsed, learned_aliases_count, _headers = await parse_input_excel(
             excel_bytes, excel.filename or "",
-            db=db, current_user_id=current_user.id, allow_ai=allow_ai, mapeo=mapeo,
+            db=db, current_user_id=current_user.id, allow_ai=allow_ai,
+            mapeo=mapeo, valores=valores,
         )
     except ConvertidorParseError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -430,8 +437,9 @@ class MapeoUpsert(BaseModel):
     nombre: str = Field(min_length=1, max_length=120)
     destino: str | None = Field(default=None, max_length=50)
     mapeo: dict[str, str] = Field(default_factory=dict)
+    valores: dict[str, str] = Field(default_factory=dict)
 
-    @field_validator("mapeo")
+    @field_validator("mapeo", "valores")
     @classmethod
     def _solo_mapeables(cls, v: dict[str, str]) -> dict[str, str]:
         # Una variable fuera de la lista no tendría efecto (construir_variables
@@ -460,7 +468,8 @@ async def listar_mapeos(
     result = await db.execute(stmt)
     return [
         {
-            "id": str(m.id), "nombre": m.nombre, "destino": m.destino, "mapeo": m.mapeo,
+            "id": str(m.id), "nombre": m.nombre, "destino": m.destino,
+            "mapeo": m.mapeo, "valores": m.valores or {},
             "updated_at": m.updated_at.isoformat() if m.updated_at else None,
         }
         for m in result.scalars().all()
@@ -488,12 +497,13 @@ async def crear_mapeo(
 
     if existente is not None:
         existente.mapeo = payload.mapeo
+        existente.valores = payload.valores
         accion = "cenefas.mapeo.update"
         m = existente
     else:
         m = ConvertidorMapeo(
             nombre=nombre, destino=payload.destino, mapeo=payload.mapeo,
-            created_by=current_user.id,
+            valores=payload.valores, created_by=current_user.id,
         )
         db.add(m)
         accion = "cenefas.mapeo.create"
@@ -505,7 +515,8 @@ async def crear_mapeo(
         ip_address=_client_ip(request),
     ))
     await db.commit()
-    return {"id": str(m.id), "nombre": m.nombre, "destino": m.destino, "mapeo": m.mapeo}
+    return {"id": str(m.id), "nombre": m.nombre, "destino": m.destino,
+            "mapeo": m.mapeo, "valores": m.valores or {}}
 
 
 @router.delete("/mapeos/{mapeo_id}", status_code=204)

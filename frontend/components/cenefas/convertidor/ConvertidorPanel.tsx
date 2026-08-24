@@ -61,13 +61,17 @@ export default function ConvertidorPanel() {
     }
   }
 
-  async function handleConvertir(mapeo: Record<string, string>) {
+  async function handleConvertir(
+    mapeo: Record<string, string>,
+    valores: Record<string, string>,
+  ) {
     if (!excel) return;
     setLoading(true);
     try {
       const fd = new FormData();
       fd.append("excel", excel);
       fd.append("mapeo_json", JSON.stringify(mapeo));
+      fd.append("valores_json", JSON.stringify(valores));
       const { data } = await convertidorApi.preview(fd);
       setRows(data.rows);
       setMaPairs(data.ma_pairs);

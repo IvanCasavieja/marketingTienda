@@ -11,10 +11,16 @@ from app.core.database import Base
 class ConvertidorMapeo(Base):
     """Plantilla de mapeo reutilizable del Convertidor.
 
-    Guarda a qué columna del Excel de gestión corresponde cada una de las
-    variables cuyo nombre de columna cambia entre exports (ofertaUno..Cuatro,
-    vigencia, aclaracionUno..Tres, legales). Las demás variables se resuelven
-    por código y no viven acá.
+    Guarda cómo se resuelve cada una de las variables que el Convertidor no
+    puede deducir solo (ofertaUno..Cuatro, vigencia, aclaracionUno..Tres,
+    legales). Las demás se resuelven por código y no viven acá.
+
+    Cada variable se resuelve de una de dos formas, excluyentes:
+
+    - `mapeo`   {variable: nombre_de_columna} -- sale de una columna del Excel.
+    - `valores` {variable: texto_fijo}        -- se escribe a mano y se aplica
+      a todas las filas. Hace falta porque el export de gestión no trae nunca
+      vigencia ni legales: esos textos los escribe una persona.
 
     Es compartida por todo el equipo, no por usuario: el archivo de gestión
     de una campaña es el mismo para todos, y hacer que cada persona lo
@@ -34,6 +40,10 @@ class ConvertidorMapeo(Base):
     destino: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # {variable_canonica: nombre_de_columna_del_excel}
     mapeo: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # {variable_canonica: texto_fijo_para_todas_las_filas}
+    valores: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
 
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

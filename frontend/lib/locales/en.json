@@ -872,7 +872,7 @@
     "convertirACenefa": "Convert to shelf tag",
     "mapeo": {
       "titulo": "Column mapping",
-      "subtitulo": "Your file has {{filas}} rows and {{columnas}} columns. Tell us which column each variable comes from.",
+      "subtitulo": "Your file has {{filas}} rows and {{columnas}} columns. Below are the extra variables, the ones the converter cannot work out on its own.",
       "plantillas": "Mapping preset",
       "sinPlantilla": "No preset — fill in manually",
       "paraTodos": "all worlds",
@@ -884,13 +884,16 @@
       "borrarConfirm": "Delete the mapping preset \"{{nombre}}\"?",
       "errorPlantillas": "Could not load mapping presets",
       "columnasFaltantes": "This file is missing these preset columns: {{columnas}}",
-      "variables": "Variables to map",
-      "asignadas": "{{n}} of {{total}} assigned",
+      "variables": "Extra variables — none are required",
+      "asignadas": "{{n}} of {{total}} filled in",
       "sinAsignar": "— unassigned —",
       "columnaRepetida": "This column is already assigned to another variable",
-      "opcional": "None are required: anything left unassigned stays empty. The rest (codigo, descripcion, precioRegular, precioOferta, mecanica and the decimals) the converter resolves on its own.",
+      "opcional": "None are required: whatever you leave empty is not created as a column in the Excel. The rest (codigo, descripcion, precioRegular, precioOferta, mecanica and the decimals) the converter resolves on its own and they are always there.",
       "volver": "Back",
-      "convertir": "Convert"
+      "convertir": "Convert",
+      "modoColumna": "Column",
+      "modoTexto": "Type it",
+      "textoPlaceholder": "The same text for all {{n}} rows"
     }
   },
   "facturacion": {

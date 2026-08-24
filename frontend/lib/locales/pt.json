@@ -872,7 +872,7 @@
     "convertirACenefa": "Converter em cenefa",
     "mapeo": {
       "titulo": "Mapeamento de colunas",
-      "subtitulo": "Seu arquivo tem {{filas}} linhas e {{columnas}} colunas. Diga a qual coluna corresponde cada variável.",
+      "subtitulo": "Seu arquivo tem {{filas}} linhas e {{columnas}} colunas. Abaixo estão as variáveis extras, as que o conversor não consegue deduzir sozinho.",
       "plantillas": "Modelo de mapeamento",
       "sinPlantilla": "Sem modelo — preencher à mão",
       "paraTodos": "todos os mundos",
@@ -884,13 +884,16 @@
       "borrarConfirm": "Excluir o modelo de mapeamento \"{{nombre}}\"?",
       "errorPlantillas": "Não foi possível carregar os modelos de mapeamento",
       "columnasFaltantes": "Este arquivo não tem estas colunas do modelo: {{columnas}}",
-      "variables": "Variáveis a mapear",
-      "asignadas": "{{n}} de {{total}} atribuídas",
+      "variables": "Variáveis extras — nenhuma é obrigatória",
+      "asignadas": "{{n}} de {{total}} preenchidas",
       "sinAsignar": "— sem atribuir —",
       "columnaRepetida": "Esta coluna já está atribuída a outra variável",
-      "opcional": "Nenhuma é obrigatória: o que ficar sem atribuir fica vazio. As demais (codigo, descripcion, precioRegular, precioOferta, mecanica e os decimais) o conversor resolve sozinho.",
+      "opcional": "Nenhuma é obrigatória: a que você deixar vazia não é criada como coluna no Excel. As demais (codigo, descripcion, precioRegular, precioOferta, mecanica e os decimais) o conversor resolve sozinho e saem sempre.",
       "volver": "Voltar",
-      "convertir": "Converter"
+      "convertir": "Converter",
+      "modoColumna": "Coluna",
+      "modoTexto": "Escrever",
+      "textoPlaceholder": "O mesmo texto para as {{n}} linhas"
     }
   },
   "facturacion": {

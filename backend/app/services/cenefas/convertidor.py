@@ -327,6 +327,7 @@ async def parse_input_excel(
     current_user_id: int,
     allow_ai: bool = False,
     mapeo: dict[str, str] | None = None,
+    valores: dict[str, str] | None = None,
 ) -> tuple[list[dict], int, list[str]]:
     """Detecta la fila de headers real (puede no ser la fila 1 — el export
     real de gestión trae una fila de título + una fila en blanco antes),
@@ -350,11 +351,20 @@ async def parse_input_excel(
     metido en una sola columna, que es como sale el export real de gestión
     (ver leer_filas).
 
-    mapeo es {variable_canónica: nombre_de_columna} y viene de la pantalla
-    de mapeo: las variables cuyo nombre de columna cambia entre exports
-    (ofertaUno..Cuatro, vigencia, aclaracionUno..Tres, legales) no se pueden
-    resolver por código, las elige la persona. Los valores leídos de esas
-    columnas viajan en cada fila bajo la clave "_mapeado".
+    Las variables que el Convertidor no puede deducir solo (ofertaUno..Cuatro,
+    vigencia, aclaracionUno..Tres, legales) las resuelve la persona en la
+    pantalla de mapeo, de una de dos formas:
+
+    - `mapeo`   {variable: nombre_de_columna} -- se lee de esa columna, fila
+      por fila.
+    - `valores` {variable: texto_fijo} -- el mismo texto para todas las filas.
+      Hace falta porque el export de gestión no trae nunca vigencia ni
+      legales: esos textos los escribe una persona, no salen de ninguna
+      columna.
+
+    Las dos son excluyentes por variable; si igual llegaran las dos, gana el
+    valor fijo (es lo que se escribió explícitamente para esta corrida).
+    Ambas viajan resueltas en cada fila bajo la clave "_mapeado".
 
     Devuelve (filas, learned_aliases_count, headers) -- learned_aliases_count
     es cuántos headers nuevos aprendió Tinín en esta llamada, para que el
@@ -473,6 +483,14 @@ async def parse_input_excel(
         if idx is not None:
             mapeo_cols[var] = idx
 
+    # Valores escritos a mano: el mismo texto en todas las filas. Se limpian
+    # acá una sola vez en vez de por fila.
+    fijos = {
+        var: str(val).strip()
+        for var, val in (valores or {}).items()
+        if val is not None and str(val).strip()
+    }
+
     parsed: list[dict] = []
     for row in rows[header_row_idx + 1:]:
         # "not row[...]" en vez de "is None": una celda vacía de CSV llega
@@ -503,8 +521,9 @@ async def parse_input_excel(
             "fecha_inicio":      _parse_date_or_none(cell(row, "fecha_inicio")),
             "fecha_fin":         _parse_date_or_none(cell(row, "fecha_fin")),
             "_mapeado": {
-                var: _clean_str(row[i]) if i < len(row) else ""
-                for var, i in mapeo_cols.items()
+                **{var: _clean_str(row[i]) if i < len(row) else ""
+                   for var, i in mapeo_cols.items()},
+                **fijos,
             },
         })
     return parsed, learned_aliases_count, headers_crudos
@@ -809,39 +828,61 @@ async def match_rows(
 # por nombre canónico y nada más. Antes la salida repetía las columnas de
 # gestión (Oferta, Oferta Det, Descripción Web...) y el generador tenía que
 # volver a interpretarlas; ahora los valores ya vienen resueltos.
-_OUTPUT_FIELDS = list(ORDEN_EXPORT)
-_OUTPUT_HEADERS = list(ORDEN_EXPORT)
-
 _ANCHAS = {"descripcion", "mecanica", "vigencia", "legales",
            "aclaracionUno", "aclaracionDos", "aclaracionTres"}
-_OUTPUT_COL_WIDTHS = [34 if v in _ANCHAS else 18 for v in ORDEN_EXPORT]
+
+# Columnas que salen SIEMPRE, tengan dato o no: son las que arman una cenefa
+# mínima. Verlas vacías es justamente la señal de que falta completarlas, y
+# los dos decimales acompañan a su precio porque el diseño de la cenefa tiene
+# un cuadro aparte para ellos.
+_COLUMNAS_FIJAS: frozenset[str] = frozenset((
+    "codigo", "descripcion", "mecanica",
+    "precioRegular", "decimalPrecioRegular",
+    "precioOferta",  "decimalPrecioOferta",
+))
 
 
-def _col(var: str) -> int:
-    """Índice 1-based de una variable en el Excel de salida."""
-    return ORDEN_EXPORT.index(var) + 1
+def _columnas_de_salida(rows: list[dict]) -> list[str]:
+    """Qué columnas lleva el Excel: las fijas más las que traen algún dato.
+
+    Una columna que queda vacía en TODAS las filas no se crea. Antes salían
+    las 26 siempre y un listado normal de gestión --que no trae vigencia, ni
+    aclaraciones, ni niveles de oferta, ni banco-- se bajaba con 19 columnas
+    vacías al lado de las que importan.
+
+    No se pierde nada: el generador de cenefas no exige ninguna variable, y
+    una que no está en el Excel simplemente no se sustituye en el diseño.
+    """
+    con_dato = {
+        var for var in ORDEN_EXPORT
+        if any(str(r.get(var, "") or "").strip() for r in rows)
+    }
+    return [v for v in ORDEN_EXPORT if v in con_dato or v in _COLUMNAS_FIJAS]
 
 
-# Warning -> columna que se resalta. Los de mecánica apuntan a la columna
-# mecanica, que es donde se ve el resultado de la interpretación que hay que
-# revisar.
-_WARN_COL = {
-    "missing_description":      _col("descripcion"),
-    "descripcion_invalida":     _col("descripcion"),
-    "descripcion_larga":        _col("descripcion"),
-    "descripcion_algo_larga":   _col("descripcion"),
-    "missing_price":            _col("precioOferta"),
-    "precio_invalido":          _col("precioOferta"),
-    "missing_precio_anterior":  _col("precioRegular"),
-    "precio_anterior_invalido": _col("precioRegular"),
-    "oferta_inesperada":        _col("mecanica"),
-    "combo_no_parseable":       _col("mecanica"),
-    "mxn_no_parseable":         _col("mecanica"),
-    "mxn_sin_precio":           _col("mecanica"),
-    "oferta_det_invalido":      _col("mecanica"),
-    "missing_oferta_det":       _col("mecanica"),
-    "moneda_invalida":          _col("precioOferta"),
-    "moneda_no_pesos":          _col("precioOferta"),
+# Warning -> variable cuya columna se resalta. Se guarda el NOMBRE y no el
+# indice porque el Excel de salida ya no lleva siempre las mismas columnas
+# (ver _columnas_de_salida): el indice se resuelve recien al armarlo.
+#
+# Los de mecanica apuntan a la columna mecanica, que es donde se ve el
+# resultado de la interpretacion que hay que revisar.
+_WARN_VAR = {
+    "missing_description":      "descripcion",
+    "descripcion_invalida":     "descripcion",
+    "descripcion_larga":        "descripcion",
+    "descripcion_algo_larga":   "descripcion",
+    "missing_price":            "precioOferta",
+    "precio_invalido":          "precioOferta",
+    "missing_precio_anterior":  "precioRegular",
+    "precio_anterior_invalido": "precioRegular",
+    "oferta_inesperada":        "mecanica",
+    "combo_no_parseable":       "mecanica",
+    "mxn_no_parseable":         "mecanica",
+    "mxn_sin_precio":           "mecanica",
+    "oferta_det_invalido":      "mecanica",
+    "missing_oferta_det":       "mecanica",
+    "moneda_invalida":          "precioOferta",
+    "moneda_no_pesos":          "precioOferta",
 }
 
 # Warnings que NO son "falta el dato" sino "hay contenido que no cierra":
@@ -857,7 +898,15 @@ _INVALID_TYPE_CODES = {
 
 
 def build_output_workbook(rows: list[dict]) -> bytes:
-    headers, fields, warn_col, col_widths = _OUTPUT_HEADERS, _OUTPUT_FIELDS, _WARN_COL, _OUTPUT_COL_WIDTHS
+    fields = _columnas_de_salida(rows)
+    headers = fields
+    col_widths = [34 if v in _ANCHAS else 18 for v in fields]
+    # {codigo_de_warning: indice_de_columna} solo para las columnas que
+    # realmente salieron.
+    warn_col = {
+        code: fields.index(var) + 1
+        for code, var in _WARN_VAR.items() if var in fields
+    }
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Cenefas"

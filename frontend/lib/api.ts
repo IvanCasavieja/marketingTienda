@@ -399,7 +399,10 @@ export interface ConvertidorMapeo {
   id: string;
   nombre: string;
   destino: string | null;
+  /** {variable: nombre_de_columna} — la variable se lee de esa columna. */
   mapeo: Record<string, string>;
+  /** {variable: texto_fijo} — el mismo texto para todas las filas. */
+  valores?: Record<string, string>;
   updated_at?: string | null;
 }
 
@@ -480,7 +483,12 @@ export const convertidorApi = {
     api.get<ConvertidorMapeo[]>("/tools/cenefas/convertidor/mapeos", {
       params: { destino: destino || undefined },
     }),
-  guardarMapeo: (payload: { nombre: string; destino?: string | null; mapeo: Record<string, string> }) =>
+  guardarMapeo: (payload: {
+    nombre: string;
+    destino?: string | null;
+    mapeo: Record<string, string>;
+    valores: Record<string, string>;
+  }) =>
     api.post<ConvertidorMapeo>("/tools/cenefas/convertidor/mapeos", payload),
   borrarMapeo: (id: string) =>
     api.delete(`/tools/cenefas/convertidor/mapeos/${id}`),
