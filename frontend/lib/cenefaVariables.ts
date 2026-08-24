@@ -33,6 +33,10 @@ export const CENEFA_VARIABLES: CenefaVarDef[] = [
   { name: "año",            desc: "Año",                                            group: "texto" },
   { name: "banco",          desc: "Nombre del banco o beneficio",                   group: "texto" },
 
+  // Titular grande de Redexpres, arriba del precio. Es TEXTO aunque traiga
+  // numeros y simbolos: no se le separa el decimal ni se le da formato.
+  { name: "tipoOferta",    desc: "Tipo de oferta (ej. \"2x1\", \"25% OFF\") — se imprime tal cual", group: "texto" },
+
   // ── Precios (parte entera) ────────────────────────────────────────────
   { name: "precioRegular", desc: "Precio regular / anterior",  group: "precio", decimal: "decimalPrecioRegular" },
   { name: "precioOferta",  desc: "Precio de oferta — el que se muestra grande", group: "precio", decimal: "decimalPrecioOferta" },

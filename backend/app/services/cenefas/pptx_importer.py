@@ -52,7 +52,11 @@ _LEGACY_PLACEHOLDERS: dict[str, str | None] = {
     "regular":               "precioRegular",
 
     # -- Niveles de oferta ------------------------------------------------
-    "oferta":                "ofertaUno",
+    # "oferta" SIN numero es el titular grande de Redexpres ("2x1",
+    # "SOLO X 25", "25% OFF"): texto, no precio. Los numerados si son precios
+    # -- son los niveles 4x3/5x3/6x3 de Parrilla y Vinos.
+    "oferta":                "tipoOferta",
+    "tipooferta":            "tipoOferta",
     "oferta1":               "ofertaUno",
     "oferta2":               "ofertaDos",
     "oferta3":               "ofertaTres",

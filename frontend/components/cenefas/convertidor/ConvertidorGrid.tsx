@@ -25,6 +25,7 @@ type ColumnKey =
   | "nombre_articulo" | "comprador" | "moneda" | "oferta_origen" | "oferta_det" | "descripcion_web"
   // las 26 variables
   | "codigo" | "descripcion" | "mecanica"
+  | "tipoOferta"
   | "precioRegular" | "decimalPrecioRegular"
   | "precioOferta" | "decimalPrecioOferta"
   | "ofertaUno" | "decimalPrecioUno"
@@ -91,6 +92,7 @@ const COLUMNS: ColumnDef[] = [
   { key: "mecanica",      label: "mecanica",    editable: "simple", siempre: true,
     warningCodes: ["oferta_inesperada", "combo_no_parseable", "mxn_no_parseable", "mxn_sin_precio",
                    "missing_oferta_det", "oferta_det_invalido"] },
+  { key: "tipoOferta",    label: "tipoOferta",    editable: "simple" },
   { key: "precioRegular", label: "precioRegular", editable: "simple", siempre: true,
     warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
   { key: "decimalPrecioRegular", label: "decimalPrecioRegular", editable: "simple", siempre: true },

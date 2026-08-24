@@ -368,10 +368,12 @@ export interface ConvertidorRow {
   es_fiambre_kg: boolean;
   warnings_mecanica: string[];
 
-  // Las 26 variables — es lo que se exporta y lo que consume la cenefa.
+  // Las 27 variables — es lo que se exporta y lo que consume la cenefa.
   codigo: string;
   descripcion: string;
   mecanica: string;
+  /** Titular grande ("2x1", "25% OFF"). Texto: se imprime tal cual venga. */
+  tipoOferta: string;
   precioRegular: string;
   decimalPrecioRegular: string;
   precioOferta: string;

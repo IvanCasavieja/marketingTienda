@@ -1,4 +1,4 @@
-"""Vocabulario único de variables de cenefas — 26 nombres, un solo lenguaje.
+"""Vocabulario único de variables de cenefas — 27 nombres, un solo lenguaje.
 
 Desde 08/2026 el nombre de la columna del Excel, el placeholder del PPTX
 (``<<nombre>>``) y la clave del JSON del template son SIEMPRE el mismo
@@ -17,14 +17,22 @@ import re
 import unicodedata
 
 # ---------------------------------------------------------------------------
-# Las 26 variables
+# Las 27 variables
 # ---------------------------------------------------------------------------
 
 # Identificación y textos.
+#
+# `tipoOferta` se agregó el 2026-08-24 para el titular grande de las cenefas de
+# Redexpres, el que va arriba del precio ("2x1", "SOLO X 25", "25% OFF").
+# Es de TEXTO aunque casi siempre traiga números y símbolos: no es un precio,
+# no se le separa el decimal y no se le da formato -- se imprime tal cual venga.
+# No confundir con ofertaUno..Cuatro, que sí son precios (los niveles 4x3/5x3
+# de Parrilla y Vinos) y arrastran su columna de decimales.
 TEXT_VARS: tuple[str, ...] = (
     "codigo",
     "descripcion",
     "mecanica",
+    "tipoOferta",
     "vigencia",
     "aclaracionUno",
     "aclaracionDos",
@@ -76,6 +84,7 @@ ORDEN_EXPORT: tuple[str, ...] = (
     "codigo",
     "descripcion",
     "mecanica",
+    "tipoOferta",
     "precioRegular", "decimalPrecioRegular",
     "precioOferta",  "decimalPrecioOferta",
     "ofertaUno",     "decimalPrecioUno",

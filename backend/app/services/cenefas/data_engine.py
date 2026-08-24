@@ -24,6 +24,7 @@ from app.services.cenefas.variables import (
     DECIMAL_OF,
     INTERNAL_FIELDS,
     LEGAL_ALCOHOL,
+    ORDEN_EXPORT,
     PRICE_VARS,
     categoria_es_alcohol,
     resolve,
@@ -287,6 +288,7 @@ _DOC = [
     ("codigo",               "Código de artículo / SKU",                       "Texto"),
     ("descripcion",          "Nombre del producto",                            "Texto"),
     ("mecanica",             "Mecánica de la oferta ya redactada",             "Texto"),
+    ("tipoOferta",           "Titular de la oferta (ej. 2x1, 25% OFF)",        "Texto"),
     ("precioRegular",        "Precio regular / anterior — parte entera",       "Precio"),
     ("decimalPrecioRegular", "Decimales de precioRegular, con coma",           "Decimal"),
     ("precioOferta",         "Precio de oferta — parte entera",                "Precio"),
@@ -312,16 +314,32 @@ _DOC = [
     ("año",                  "Año",                                            "Texto"),
 ]
 
+assert tuple(n for n, _, _ in _DOC) == ORDEN_EXPORT, (
+    "_DOC quedó desincronizado de ORDEN_EXPORT: "
+    f"faltan {set(ORDEN_EXPORT) - {n for n, _, _ in _DOC}}, "
+    f"sobran {{n for n, _, _ in _DOC}} - set(ORDEN_EXPORT)"
+)
+
 _VIG = "Válido del 24.8 al 27.9"
 _ACL = "Precio válido en todos los locales."
 
 # Una fila por mecánica real, para que la plantilla se explique sola.
 _EJEMPLOS = [
-    ("610389", "ALFOMBRAS X4 GOMA AUTO",     "Precio Final",                "960", "", "899", "",    "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
-    ("599059", "COPA DE VIDRIO 500 ML",      "$74,50 la unidad.",           "149", "", "2x1", "",    "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
-    ("506232", "ATADO DE LEÑA 3KG",          "Comprando 3, $33 la unidad.", "129", "", "99",  "",    "3x", "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
-    ("608093", "SET DE COLCHA Q 218X218 CM", "Precio Final",                "899", "", "719", ",20", "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
+    #        codigo    descripcion                   mecanica                       tipoOferta  regular  dec  oferta  dec    ofertaUno  ...resto vacio...        vigencia  aclaracionUno
+    ("610389", "ALFOMBRAS X4 GOMA AUTO",     "Precio Final",                "",       "960", "", "899", "",    "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
+    ("599059", "COPA DE VIDRIO 500 ML",      "$74,50 la unidad.",           "2x1",    "149", "", "2x1", "",    "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
+    ("506232", "ATADO DE LEÑA 3KG",          "Comprando 3, $33 la unidad.", "",       "129", "", "99",  "",    "3x", "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
+    ("608093", "SET DE COLCHA Q 218X218 CM", "Precio Final",                "25% OFF","899", "", "719", ",20", "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
 ]
+
+# Cada ejemplo tiene que tener un valor por columna: si sobra o falta uno, la
+# plantilla sale con los datos corridos de lugar y nadie lo nota hasta que la
+# cenefa imprime el precio en el cuadro de la descripcion.
+for _fila in _EJEMPLOS:
+    assert len(_fila) == len(_DOC), (
+        f"la fila de ejemplo {_fila[0]} tiene {len(_fila)} valores y hacen falta {len(_DOC)}"
+    )
+
 
 
 def generate_template_bytes(destino: str | None = None) -> bytes:

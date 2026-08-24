@@ -33,6 +33,7 @@ from app.services.cenefas.variables import CANONICAL_VARS, DECIMAL_OF, PRICE_VAR
 # podía traerlas nunca. Se notaba en que decimalPrecioBanco existía pero no
 # podía tener valor jamás, porque su precio no se podía cargar.
 VARIABLES_MAPEABLES: tuple[str, ...] = (
+    "tipoOferta",
     "ofertaUno",
     "ofertaDos",
     "ofertaTres",
@@ -229,8 +230,8 @@ def construir_variables(
         out[DECIMAL_OF[var]] = decimal
 
     # Textos mapeados.
-    for var in ("vigencia", "aclaracionUno", "aclaracionDos", "aclaracionTres", "legales",
-                "banco", "dia", "mes", "año"):
+    for var in ("tipoOferta", "vigencia", "aclaracionUno", "aclaracionDos", "aclaracionTres",
+                "legales", "banco", "dia", "mes", "año"):
         valor = valores.get(var, mapeo.get(var, ""))
         if valor is not None and str(valor).strip():
             out[var] = str(valor).strip()
