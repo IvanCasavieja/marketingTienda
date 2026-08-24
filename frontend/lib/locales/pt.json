@@ -521,6 +521,9 @@
         "done": "gerada",
         "error": "erro"
       }
+    },
+    "informe": {
+      "link": "Relatório"
     }
   },
   "admin": {

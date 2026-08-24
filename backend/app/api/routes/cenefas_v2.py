@@ -7,6 +7,7 @@ import pathlib
 import re
 import unicodedata
 import uuid
+from datetime import date
 import zipfile
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
@@ -30,6 +31,7 @@ from app.services.cenefas.jobs import (
     peek_job_products,
     run_generation_job,
 )
+from app.services.cenefas import informe as informe_service
 from app.services.cenefas.layout_engine import FORMATS
 from app.services.cenefas.rules_engine import evaluate_rules
 from app.services.cenefas.validation_engine import build_summary, validate_products
@@ -543,6 +545,55 @@ async def confirm_job(
     )
 
     return {"job_id": str(job_id), "status": "running"}
+
+
+# ---------------------------------------------------------------------------
+# Informe de produccion
+# ---------------------------------------------------------------------------
+
+@router.get("/informe")
+async def informe(
+    desde: date | None = Query(None, description="Incluye desde esta fecha (YYYY-MM-DD)"),
+    hasta: date | None = Query(None, description="Incluye hasta esta fecha, inclusive"),
+    template: str | None = Query(None, description="Filtra por nombre de plantilla"),
+    costo: float = Query(informe_service.COSTO_POR_CENEFA, ge=0,
+                         description="Costo por cenefa disenada, en pesos"),
+    detalle: bool = Query(True, description="Incluye la lista corrida por corrida"),
+    _: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cuantas cenefas se hicieron, cuantas salieron correctas y cuanto vale.
+
+    Solo cuenta las corridas confirmadas (status "done"): una en "preview" es
+    una previsualizacion que nadie confirmo, y una en "error" no produjo nada.
+    Cada corrida cuenta por separado aunque sea el mismo listado reprocesado
+    -- es trabajo pedido a la herramienta y se paga igual.
+    """
+    data = await informe_service.resumen(db, desde, hasta, template, costo)
+    data["plantillas"] = await informe_service.plantillas_del_historial(db)
+    if detalle:
+        data["detalle"] = await informe_service.detalle(db, desde, hasta, template, costo)
+    return data
+
+
+@router.get("/informe/export")
+async def informe_export(
+    desde: date | None = Query(None),
+    hasta: date | None = Query(None),
+    template: str | None = Query(None),
+    costo: float = Query(informe_service.COSTO_POR_CENEFA, ge=0),
+    _: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """El mismo informe en Excel: una hoja de resumen y otra con el detalle."""
+    resumen = await informe_service.resumen(db, desde, hasta, template, costo)
+    filas = await informe_service.detalle(db, desde, hasta, template, costo, limite=100000)
+    xlsx = informe_service.a_excel(resumen, filas)
+    return Response(
+        content=xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="informe_cenefas.xlsx"'},
+    )
 
 
 @router.get("/jobs")

@@ -521,6 +521,9 @@
         "done": "generada",
         "error": "error"
       }
+    },
+    "informe": {
+      "link": "Informe"
     }
   },
   "admin": {

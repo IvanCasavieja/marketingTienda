@@ -255,6 +255,17 @@ import type {
 
 export const cenefasV2Api = {
   // Formatos del sistema
+  // Informe de produccion: cuantas cenefas se hicieron, cuantas correctas y
+  // cuanto vale. `costo` es el precio por cenefa disenada -- viaja en la
+  // consulta para poder cambiarlo sin un deploy.
+  getInforme: (params?: {
+    desde?: string; hasta?: string; template?: string; costo?: number;
+  }) => api.get<CenefaInforme>("/tools/cenefas/v2/informe", { params }),
+
+  downloadInforme: (params?: {
+    desde?: string; hasta?: string; template?: string; costo?: number;
+  }) => api.get("/tools/cenefas/v2/informe/export", { params, responseType: "blob" }),
+
   getFormats: () => api.get<CenefaFormat[]>("/tools/cenefas/v2/formats"),
 
   // Templates
@@ -395,6 +406,37 @@ export interface ConvertidorColumnasResponse {
 }
 
 /** Plantilla de mapeo reutilizable: {variable: nombre_de_columna}. */
+/** Un bloque de cifras del informe de cenefas. */
+export interface CenefaInformeBloque {
+  corridas: number;
+  cenefas: number;
+  correctas: number;
+  avisos: number;
+  criticos: number;
+  costo: number;
+  costo_correctas: number;
+}
+
+export interface CenefaInforme {
+  costo_unitario: number;
+  total: CenefaInformeBloque & { desde: string | null; hasta: string | null };
+  por_mes: (CenefaInformeBloque & { mes: string })[];
+  por_plantilla: (CenefaInformeBloque & { plantilla: string })[];
+  plantillas: string[];
+  detalle?: {
+    id: string;
+    fecha: string | null;
+    formato: string;
+    plantilla: string;
+    excel: string;
+    cenefas: number;
+    correctas: number;
+    avisos: number;
+    criticos: number;
+    costo: number;
+  }[];
+}
+
 export interface ConvertidorMapeo {
   id: string;
   nombre: string;

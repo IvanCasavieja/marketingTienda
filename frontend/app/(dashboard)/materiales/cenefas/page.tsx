@@ -1,7 +1,8 @@
 "use client";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeftRight, Presentation } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeftRight, BarChart3, Presentation } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
@@ -83,14 +84,23 @@ function CenefasHost() {
             </p>
           </div>
         </div>
-        {destinoValido && (
-          <button
-            onClick={changeDestino}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shrink-0"
+        <div className="flex items-center gap-4 shrink-0">
+          {/* Cuantas cenefas se hicieron y cuanto vale ese trabajo. */}
+          <Link
+            href="/materiales/cenefas/v2/informe"
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
           >
-            <ArrowLeftRight size={13} /> {t("cenefas.destino.change")}
-          </button>
-        )}
+            <BarChart3 size={13} /> {t("cenefas.informe.link")}
+          </Link>
+          {destinoValido && (
+            <button
+              onClick={changeDestino}
+              className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+            >
+              <ArrowLeftRight size={13} /> {t("cenefas.destino.change")}
+            </button>
+          )}
+        </div>
       </div>
 
       {destinoValido && destinoActual ? (
