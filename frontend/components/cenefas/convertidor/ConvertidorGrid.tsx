@@ -51,6 +51,28 @@ interface ColumnDef {
   siempre?: boolean;
 }
 
+// Ancho de cada columna, en px. La tabla es table-fixed: sin un ancho propio
+// reparte el espacio en partes iguales y los encabezados largos se desbordan
+// sobre el de al lado ("DECIMALPRECIOOFERTA" pegado a "OFERTAUNO"). Con anchos
+// explicitos la tabla se hace mas ancha que el contenedor y scrollea, que es
+// lo que ya hace el contenedor (overflow-auto).
+const ANCHO_TEXTO_LARGO = 240;   // descripcion, mecanica, legales, aclaraciones
+const ANCHO_DECIMAL     = 170;   // decimalPrecioRegular y compania: nombres largos
+const ANCHO_CONTEXTO    = 170;   // las columnas de gestion, con su punto adelante
+const ANCHO_NORMAL      = 140;
+
+const CLAVES_TEXTO_LARGO = new Set([
+  "descripcion", "mecanica", "legales",
+  "aclaracionUno", "aclaracionDos", "aclaracionTres",
+]);
+
+function anchoDeColumna(c: ColumnDef): number {
+  if (CLAVES_TEXTO_LARGO.has(c.key)) return ANCHO_TEXTO_LARGO;
+  if (c.key.startsWith("decimal")) return ANCHO_DECIMAL;
+  if (c.contexto) return ANCHO_CONTEXTO;
+  return ANCHO_NORMAL;
+}
+
 const COLUMNS: ColumnDef[] = [
   // ── Lo que define la cenefa ─────────────────────────────────────────────
   { key: "codigo",        label: "codigo",      siempre: true },
@@ -622,13 +644,19 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
           style={{ height: CONTAINER_HEIGHT }}
           onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
         >
-          <table className="w-full border-collapse text-xs table-fixed">
+          <table className="min-w-full border-collapse text-xs table-fixed">
+            <colgroup>
+              {columnasVisibles.map((c) => (
+                <col key={c.key} style={{ width: anchoDeColumna(c) }} />
+              ))}
+            </colgroup>
             <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800">
               <tr>
                 {columnasVisibles.map((c) => (
                   <th
                     key={c.key}
-                    className="text-left px-2 py-2 font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide text-[10px] border-b border-slate-200 dark:border-slate-700"
+                    title={c.label}
+                    className="text-left px-2 py-2 font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide text-[10px] border-b border-slate-200 dark:border-slate-700 truncate"
                   >
                     {c.label}
                   </th>
