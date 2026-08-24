@@ -225,3 +225,141 @@ async def aprender_de_plantilla(
         origen="job",
         detalle={**(detalle or {}), "plantilla": nombre},
     )
+
+
+# ---------------------------------------------------------------------------
+# Curaduria: el pase que limpia y resume
+# ---------------------------------------------------------------------------
+#
+# Una base de conocimiento que solo crece se vuelve inservible: junta la misma
+# cosa escrita de cinco formas, deja activo lo que ya no aplica, y termina
+# metiendole al agente un contexto largo donde no se distingue lo importante.
+#
+# Que hace y que NO hace:
+#
+#   - Funde duplicados EXACTOS entre propuestas. Es tarea de orden, no de
+#     aprendizaje: mismo tipo, misma columna, misma variable. Se conserva la
+#     de mas evidencia, se le suman las vistas de la otra y la otra se archiva
+#     apuntando a la que quedo. No se pierde nada.
+#   - Propone resumir cuando hay muchas del mismo tipo.
+#   - Propone archivar lo activo que hace mucho no se ve.
+#
+# Lo que NUNCA hace: tocar algo `activo` o `descartado` por su cuenta. Eso ya
+# lo decidio una persona, y deshacerlo de noche sin avisar es exactamente como
+# se pierde la confianza en un sistema asi.
+
+# Cuantos dias sin verse antes de proponer archivar algo activo. Una campaña
+# grande puede tardar semanas en repetirse: menos de esto daria falsos avisos.
+DIAS_PARA_PROPONER_ARCHIVO = 90
+
+# A partir de cuantas del mismo tipo conviene proponer un resumen.
+MINIMO_PARA_RESUMIR = 8
+
+
+def _significado(item: "CenefaConocimiento") -> str | None:
+    """Qué dice este registro, sin la prosa. None si no se puede reducir.
+
+    Dos registros con el mismo significado son la misma cosa escrita distinto,
+    aunque el texto no coincida ni un poco.
+    """
+    d = item.detalle or {}
+    if item.tipo == "alias_columna" and d.get("columna") and d.get("variable"):
+        return f'alias:{normalizar(str(d["columna"]))}:{d["variable"]}'
+    return None
+
+
+async def curar(db: AsyncSession) -> dict[str, Any]:
+    """El pase de limpieza. Devuelve qué hizo y qué propone.
+
+    No commitea: lo hace el caller.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    todos = list((await db.execute(select(CenefaConocimiento))).scalars().all())
+    fundidos: list[str] = []
+    propuestas: list[str] = []
+
+    # ── 1. Duplicados exactos entre propuestas ───────────────────────────
+    por_significado: dict[str, list[CenefaConocimiento]] = {}
+    for i in todos:
+        if i.estado != "propuesto":
+            continue
+        sig = _significado(i)
+        if sig:
+            por_significado.setdefault(sig, []).append(i)
+
+    for sig, grupo in por_significado.items():
+        if len(grupo) < 2:
+            continue
+        # Gana la de más evidencia; a igualdad, la más vieja (ya se venía viendo).
+        grupo.sort(key=lambda x: (-x.veces_visto, x.created_at or datetime.min))
+        queda, resto = grupo[0], grupo[1:]
+        for otro in resto:
+            queda.veces_visto += otro.veces_visto
+            otro.estado = "archivado"
+            otro.detalle = {**(otro.detalle or {}), "fundido_en": str(queda.id)}
+            fundidos.append(f'«{otro.contenido}» se fundió en «{queda.contenido}»')
+
+    # ── 2. Lo activo que hace mucho no se ve ─────────────────────────────
+    corte = datetime.now(timezone.utc) - timedelta(days=DIAS_PARA_PROPONER_ARCHIVO)
+    viejos = [i for i in todos
+              if i.estado == "activo" and i.visto_at and i.visto_at < corte]
+    for i in viejos:
+        dias = (datetime.now(timezone.utc) - i.visto_at).days
+        await registrar(
+            db,
+            tipo="preferencia",
+            clave=f"archivar:{i.id}",
+            contenido=f'Hace {dias} días que no aparece: «{i.contenido}». ¿Sigue valiendo?',
+            origen="manual",
+            detalle={"archivar_id": str(i.id), "dias": dias},
+        )
+        propuestas.append(f'archivar «{i.contenido}» ({dias} días sin verse)')
+
+    # ── 3. Demasiadas del mismo tipo: conviene resumir ───────────────────
+    activos_por_tipo: dict[str, int] = {}
+    for i in todos:
+        if i.estado == "activo":
+            activos_por_tipo[i.tipo] = activos_por_tipo.get(i.tipo, 0) + 1
+    for tipo, n in activos_por_tipo.items():
+        if n < MINIMO_PARA_RESUMIR:
+            continue
+        await registrar(
+            db,
+            tipo="preferencia",
+            clave=f"resumir:{tipo}",
+            contenido=f'Hay {n} cosas aprendidas de tipo «{tipo}». '
+                      f'Conviene resumirlas en unas pocas frases para que el contexto '
+                      f'del agente no se llene de ruido.',
+            origen="manual",
+            detalle={"tipo_a_resumir": tipo, "cantidad": n},
+        )
+        propuestas.append(f"resumir {n} de tipo {tipo}")
+
+    return {
+        "revisados": len(todos),
+        "fundidos": fundidos,
+        "propuestas": propuestas,
+    }
+
+
+async def run_curaduria_loop() -> None:
+    """Corre la curaduría una vez por día. Arranca con la app, en background."""
+    import asyncio
+    import logging
+
+    from app.core.database import AsyncSessionLocal
+
+    log = logging.getLogger(__name__)
+    while True:
+        # La primera pasada se hace un rato después de arrancar, no al toque:
+        # un deploy no debería gastar su arranque en esto.
+        await asyncio.sleep(60 * 60 * 24)
+        try:
+            async with AsyncSessionLocal() as db:
+                r = await curar(db)
+                await db.commit()
+            log.info("curaduria de conocimiento: %d revisados, %d fundidos, %d propuestas",
+                     r["revisados"], len(r["fundidos"]), len(r["propuestas"]))
+        except Exception as exc:
+            log.error("curaduria de conocimiento: %s", exc, exc_info=True)

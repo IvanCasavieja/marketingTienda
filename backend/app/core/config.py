@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # Actualización diaria (8am hora Montevideo) de la cotización del dólar BROU
     COTIZACION_AUTO_UPDATE: bool = True
 
+    # Curaduría diaria del conocimiento de cenefas: funde duplicados y
+    # propone resumir o archivar. Nunca cambia lo que ya se decidió.
+    CENEFAS_CURADURIA: bool = True
+
     # Demo mode — cuando True, sync_metrics retorna inmediatamente sin llamar APIs externas
     DEMO_MODE: bool = False
 

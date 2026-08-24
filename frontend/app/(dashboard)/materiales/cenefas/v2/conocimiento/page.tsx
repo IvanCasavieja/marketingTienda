@@ -17,6 +17,10 @@ const PESTANAS = [
   { estado: "propuesto",  label: "Esperando" },
   { estado: "activo",     label: "Aprobado" },
   { estado: "descartado", label: "Descartado" },
+  // Lo que la curaduria diaria fundio por duplicado. Se muestra para que una
+  // fusion equivocada se pueda deshacer: si no se ve, no hay forma de volver
+  // atras y el conocimiento queda perdido en silencio.
+  { estado: "archivado",  label: "Archivado" },
 ] as const;
 
 const ORIGEN_TEXTO: Record<string, string> = {
@@ -48,15 +52,16 @@ export default function ConocimientoPage() {
   const cargar = useCallback(async () => {
     setCargando(true);
     try {
-      const [prop, act, desc] = await Promise.all(
+      const listas = await Promise.all(
         PESTANAS.map((p) => cenefasV2Api.listarConocimiento({ estado: p.estado })),
       );
-      setConteos({
-        propuesto: prop.data.length,
-        activo: act.data.length,
-        descartado: desc.data.length,
-      });
-      setItems({ propuesto: prop.data, activo: act.data, descartado: desc.data }[pestana] ?? []);
+      const porEstado = Object.fromEntries(
+        PESTANAS.map((p, i) => [p.estado, listas[i].data]),
+      );
+      setConteos(Object.fromEntries(
+        PESTANAS.map((p, i) => [p.estado, listas[i].data.length]),
+      ));
+      setItems(porEstado[pestana] ?? []);
     } catch {
       toast.error("No se pudo cargar lo que aprendió");
     } finally {
@@ -143,6 +148,8 @@ export default function ConocimientoPage() {
               ? "Nada esperando. Cuando el módulo note algo, aparece acá."
               : pestana === "activo"
               ? "Todavía no aprobaste nada."
+              : pestana === "archivado"
+              ? "Nada archivado. Acá caen los duplicados que la limpieza diaria fundió."
               : "Nada descartado."}
           </p>
           {pestana === "propuesto" && (
@@ -241,14 +248,21 @@ export default function ConocimientoPage() {
               Sacar de lo que sabe Tinín
             </button>
           )}
-          {item.estado === "descartado" && (
-            <button
-              onClick={() => decidir(item, "propuesto")}
-              disabled={trabajando === item.id}
-              className="text-xs text-slate-400 hover:text-brand-600 transition-colors"
-            >
-              Volver a considerarlo
-            </button>
+          {(item.estado === "descartado" || item.estado === "archivado") && (
+            <div className="space-y-1">
+              {item.estado === "archivado" && item.detalle?.fundido_en != null && (
+                <p className="text-[11px] text-slate-400">
+                  La limpieza diaria lo fundió con otro que decía lo mismo.
+                </p>
+              )}
+              <button
+                onClick={() => decidir(item, "propuesto")}
+                disabled={trabajando === item.id}
+                className="text-xs text-slate-400 hover:text-brand-600 transition-colors"
+              >
+                Volver a considerarlo
+              </button>
+            </div>
           )}
         </div>
       ))}

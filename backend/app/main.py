@@ -85,6 +85,14 @@ async def lifespan(app: FastAPI):
         cotizacion_task = asyncio.create_task(run_cotizacion_check_loop())
         logger.info("cotizacion_service: loop iniciado (diario 8am Montevideo)")
 
+    # Curaduría diaria del conocimiento de cenefas: funde duplicados y propone
+    # resumir o archivar. Nunca toca lo que una persona ya decidió.
+    curaduria_task = None
+    if settings.CENEFAS_CURADURIA:
+        from app.services.cenefas.conocimiento import run_curaduria_loop
+        curaduria_task = asyncio.create_task(run_curaduria_loop())
+        logger.info("cenefas_curaduria: loop iniciado (diario)")
+
     yield
 
     if sync_task:
@@ -112,6 +120,13 @@ async def lifespan(app: FastAPI):
         cotizacion_task.cancel()
         try:
             await cotizacion_task
+        except asyncio.CancelledError:
+            pass
+
+    if curaduria_task:
+        curaduria_task.cancel()
+        try:
+            await curaduria_task
         except asyncio.CancelledError:
             pass
 
