@@ -627,11 +627,15 @@ export const tininApi = {
   consultar: (
     mensaje: string,
     historial: { role: "user" | "assistant"; content: string }[],
-    contexto?: TininContexto
+    contexto?: TininContexto,
+    // Las filas que la persona tiene en pantalla. Sin esto Tinin no puede
+    // contestar "por que esta fila esta marcada" y solo tira hipotesis.
+    filas?: object[],
   ) =>
     api.post<TininConsultarResponse>("/tools/cenefas/convertidor/tinin/consultar", {
       mensaje,
       historial,
+      filas: filas ?? [],
       contexto,
     }),
 };

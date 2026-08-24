@@ -15,6 +15,8 @@ type Msg = { role: "bot" | "user"; text: string; usage?: AiTaskUsage };
 
 interface TininFloatingProps {
   contexto?: TininContexto;
+  /** Las filas de la grilla que se estan viendo, para que pueda mirarlas. */
+  filas?: object[];
 }
 
 function TypingDots() {
@@ -27,7 +29,7 @@ function TypingDots() {
   );
 }
 
-export default function TininFloating({ contexto }: TininFloatingProps) {
+export default function TininFloating({ contexto, filas }: TininFloatingProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [mensaje, setMensaje] = useState("");
@@ -45,7 +47,7 @@ export default function TininFloating({ contexto }: TininFloatingProps) {
     setMessages((prev) => [...prev, { role: "user", text: texto }]);
     setLoading(true);
     try {
-      const { data } = await tininApi.consultar(texto, historial, contexto);
+      const { data } = await tininApi.consultar(texto, historial, contexto, filas);
       setMessages((prev) => [...prev, { role: "bot", text: data.respuesta, usage: data.usage }]);
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;

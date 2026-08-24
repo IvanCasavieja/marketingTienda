@@ -1,5 +1,5 @@
 "use client";
-import { useState, ChangeEvent, FormEvent } from "react";
+import { ChangeEvent, FormEvent, useCallback, useState } from "react";
 import { FileSpreadsheet, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -22,14 +22,34 @@ import ConvertidorMapeoStep from "./ConvertidorMapeoStep";
 // alimenta cada variable.
 type Paso = "subir" | "mapear" | "grilla";
 
-export default function ConvertidorPanel() {
+interface Props {
+  /** Se avisa cada vez que cambian las filas, para que Tinin pueda mirarlas. */
+  onRowsChange?: (rows: ConvertidorRow[] | null) => void;
+}
+
+export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
   const { t } = useTranslation();
   const [paso, setPaso] = useState<Paso>("subir");
   const [excel, setExcel] = useState<File | null>(null);
   const [columnas, setColumnas] = useState<ConvertidorColumna[]>([]);
   const [variablesMapeables, setVariablesMapeables] = useState<string[]>([]);
   const [totalFilas, setTotalFilas] = useState(0);
-  const [rows, setRows] = useState<ConvertidorRow[] | null>(null);
+  const [rows, setRowsInterno] = useState<ConvertidorRow[] | null>(null);
+
+  // Cada cambio de filas se replica hacia afuera: es lo que le da a Tinin la
+  // grilla que la persona esta mirando. Sin esto solo puede tirar hipotesis.
+  const setRows = useCallback(
+    (valor: React.SetStateAction<ConvertidorRow[] | null>) => {
+      setRowsInterno((prev) => {
+        const siguiente = typeof valor === "function"
+          ? (valor as (p: ConvertidorRow[] | null) => ConvertidorRow[] | null)(prev)
+          : valor;
+        onRowsChange?.(siguiente);
+        return siguiente;
+      });
+    },
+    [onRowsChange],
+  );
   const [maPairs, setMaPairs] = useState<MaPair[]>([]);
   const [loading, setLoading] = useState(false);
 

@@ -1,11 +1,15 @@
 "use client";
+import { useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import ConvertidorPanel from "@/components/cenefas/convertidor/ConvertidorPanel";
 import TininFloating from "@/components/cenefas/TininFloating";
+import type { ConvertidorRow } from "@/lib/api";
 
 export default function ConvertidorPage() {
   const { t } = useTranslation();
+  // Las filas que se estan viendo, para que Tinin pueda mirarlas al contestar.
+  const [filas, setFilas] = useState<ConvertidorRow[] | null>(null);
 
   return (
     <div className="animate-fade-in w-full space-y-6">
@@ -19,9 +23,9 @@ export default function ConvertidorPage() {
         </div>
       </div>
 
-      <ConvertidorPanel />
+      <ConvertidorPanel onRowsChange={setFilas} />
 
-      <TininFloating contexto="convertidor" />
+      <TininFloating contexto="convertidor" filas={filas ?? undefined} />
     </div>
   );
 }

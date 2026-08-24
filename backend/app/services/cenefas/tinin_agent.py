@@ -106,6 +106,50 @@ def _contexto_line(contexto: str | None) -> str:
     return f"El usuario está generando cenefas del mundo {legible}."
 
 
+# Cuantas filas de la grilla se le pasan. Es un tope de costo y de ruido: con
+# mas de esto el modelo se pierde y la consulta se encarece sin mejorar la
+# respuesta. Se mandan primero las que tienen algo marcado, que son de las que
+# se pregunta.
+_MAX_FILAS_CONTEXTO = 40
+
+# Solo estas columnas. El resto no ayuda a explicar por que una fila esta
+# marcada y solo agrega tokens.
+_CAMPOS_FILA = (
+    "codigo", "descripcion", "mecanica", "tipoOferta",
+    "precioRegular", "precioOferta",
+    "oferta_origen", "oferta_det", "moneda", "nombre_articulo",
+)
+
+
+def _bloque_filas(filas: list[dict] | None) -> str:
+    """Las filas de la grilla que la persona tiene delante, como texto.
+
+    Sin esto Tinin contesta a ciegas: ante "por que el SKU 608094 esta en
+    morado" solo puede tirar hipotesis, porque no ve ni la fila ni sus avisos.
+    Con las filas puede hacer lo unico que resuelve esa pregunta: comparar la
+    marcada contra una que no lo esta.
+    """
+    if not filas:
+        return ""
+    # Primero las marcadas: son de las que se pregunta.
+    ordenadas = sorted(filas, key=lambda f: 0 if (f.get("warnings") or []) else 1)
+    recorte = ordenadas[:_MAX_FILAS_CONTEXTO]
+
+    lineas = [
+        "Estas son las filas que el usuario tiene en pantalla ahora mismo. "
+        "Cuando pregunte por una, mirala aca y compara contra otra que no este "
+        "marcada, en vez de suponer:",
+    ]
+    for f in recorte:
+        partes = [f'{c}={str(f.get(c) or "")!r}' for c in _CAMPOS_FILA if str(f.get(c) or "").strip()]
+        avisos = f.get("warnings") or []
+        marca = f'  MARCADA: {", ".join(avisos)}' if avisos else "  (sin marcar)"
+        lineas.append("  - " + " ".join(partes) + marca)
+    if len(filas) > len(recorte):
+        lineas.append(f"  ... y {len(filas) - len(recorte)} filas mas que no se incluyeron.")
+    return "\n".join(lineas)
+
+
 async def _ejecutar_tool(db, user_id: int, name: str, tool_input: dict) -> tuple[str, bool]:
     """Devuelve (texto_resultado, is_error) — nunca levanta, el error se le
     devuelve a Claude como tool_result para que pueda reaccionar (pedir el
@@ -122,7 +166,10 @@ async def _ejecutar_tool(db, user_id: int, name: str, tool_input: dict) -> tuple
         return str(e), True
 
 
-async def consultar(mensaje: str, historial: list[dict], contexto: str | None, db, user_id: int) -> dict:
+async def consultar(
+    mensaje: str, historial: list[dict], contexto: str | None, db, user_id: int,
+    filas: list[dict] | None = None,
+) -> dict:
     """historial: turnos previos como [{"role": "user"|"assistant", "content": str}]
     — solo texto plano, sin bloques de tool-use de turnos anteriores (el
     frontend solo guarda la respuesta final de cada turno, no el intercambio
@@ -148,7 +195,7 @@ async def consultar(mensaje: str, historial: list[dict], contexto: str | None, d
         response = await client.messages.create(
             model=_MODEL,
             max_tokens=1000,
-            system=_SYSTEM_PROMPT,
+            system=sistema,
             tools=_TOOLS,
             messages=messages,
         )

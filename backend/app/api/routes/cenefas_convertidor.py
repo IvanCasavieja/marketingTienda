@@ -343,6 +343,10 @@ class TininConsultarRequest(BaseModel):
     mensaje: str = Field(min_length=1, max_length=2000)
     contexto: str | None = None
     historial: list[TininHistorialItem] = []
+    # Las filas que la persona tiene en pantalla. Sin esto Tinín contesta a
+    # ciegas: ante "por qué esta fila está marcada" solo puede tirar hipótesis.
+    # Se acotan acá y se recortan de nuevo en el agente (ver _bloque_filas).
+    filas: list[dict] = Field(default_factory=list, max_length=200)
 
 
 @router.post("/tinin/consultar")
@@ -366,6 +370,7 @@ async def tinin_consultar(
             payload.contexto,
             db,
             current_user.id,
+            filas=payload.filas,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
