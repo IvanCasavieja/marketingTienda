@@ -448,6 +448,25 @@ export interface CenefaInforme {
     verificado_at: string | null;
     costo: number;
   }[];
+  /** Las corridas agrupadas por listado, para ver cuantos intentos llevo cada uno. */
+  intentos?: {
+    excel: string;
+    plantilla: string;
+    /** true cuando el grupo se armo por formato + cantidad, sin nombres. */
+    sin_registrar: boolean;
+    intentos: number;
+    primera: string | null;
+    ultima: string | null;
+    cenefas: number;
+    correctas: number;
+    criticos: number;
+    verificado: boolean;
+    costo: number;
+    detalle: {
+      id: string; fecha: string | null; cenefas: number;
+      correctas: number; criticos: number; verificado: boolean;
+    }[];
+  }[];
 }
 
 export interface ConvertidorMapeo {

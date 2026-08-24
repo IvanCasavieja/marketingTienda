@@ -1,7 +1,7 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, Download, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Download, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { cenefasV2Api, type CenefaInforme } from "@/lib/api";
 import { useSuperuserGuard } from "@/hooks/useSuperuserGuard";
@@ -35,6 +35,7 @@ export default function InformePage() {
   const [cargando, setCargando] = useState(true);
   const [bajando, setBajando] = useState(false);
   const [marcando, setMarcando] = useState<string | null>(null);
+  const [abierto, setAbierto] = useState<string | null>(null);
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const [plantilla, setPlantilla] = useState("");
@@ -227,6 +228,103 @@ export default function InformePage() {
 
           <Tabla titulo="Por plantilla" primeraColumna="Plantilla"
                  filas={data.por_plantilla.map((p) => ({ clave: p.plantilla, etiqueta: p.plantilla, ...p }))} />
+
+          {/* Historial de intentos: el mismo listado se reprocesa varias veces
+              hasta que sale bien; agrupado se ve cuantas llevo cada uno. */}
+          {data.intentos && data.intentos.length > 0 && (
+            <div className="card p-0 overflow-hidden">
+              <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                  Historial de intentos
+                </p>
+                <span className="text-[11px] text-slate-400">
+                  {numero(data.detalle?.length ? data.total.corridas : 0)} corridas
+                  {" → "}{numero(data.intentos.length)} listados distintos
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead className="bg-slate-100 dark:bg-slate-800">
+                    <tr>
+                      {["", "Listado", "Plantilla", "Intentos", "Carteles", "Último"].map((h, i) => (
+                        <th key={h || i}
+                            className={`px-3 py-2 font-semibold text-slate-500 dark:text-slate-300 uppercase tracking-wide text-[10px] ${i > 2 ? "text-right" : "text-left"}`}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.intentos.map((g) => {
+                      const clave = `${g.excel}|${g.plantilla}`;
+                      const desplegado = abierto === clave;
+                      return (
+                        <Fragment key={clave}>
+                          <tr
+                              onClick={() => setAbierto(desplegado ? null : clave)}
+                              className="border-b border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                            <td className="px-3 py-2 text-slate-400 w-8">
+                              {desplegado ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                            </td>
+                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300 max-w-[260px] truncate"
+                                title={g.sin_registrar ? "Sin nombre guardado: agrupado por formato y cantidad, puede juntar listados distintos" : g.excel}>
+                              {g.excel}
+                              {g.sin_registrar && (
+                                <span className="ml-1.5 text-[10px] text-amber-600 dark:text-amber-400">sin nombre</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-slate-500 max-w-[220px] truncate" title={g.plantilla}>
+                              {g.plantilla}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {g.intentos > 1 ? (
+                                <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+                                  <RefreshCw size={10} /> {g.intentos}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">1</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">{numero(g.cenefas)}</td>
+                            <td className="px-3 py-2 text-right text-slate-500 whitespace-nowrap">
+                              {(g.ultima ?? "").slice(0, 10)}
+                            </td>
+                          </tr>
+                          {desplegado && g.detalle.map((d, i) => (
+                            <tr key={d.id} className="bg-slate-50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800">
+                              <td />
+                              <td colSpan={2} className="px-3 py-1 text-slate-500">
+                                intento {i + 1} · {(d.fecha ?? "").slice(0, 16).replace("T", " ")}
+                                {i === g.detalle.length - 1 && (
+                                  <span className="ml-2 text-emerald-600 dark:text-emerald-400">el que quedó</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-1 text-right text-slate-400">
+                                {d.criticos > 0 ? (
+                                  <span className="text-rose-600 dark:text-rose-400">
+                                    {numero(d.criticos)} sin armar
+                                  </span>
+                                ) : "limpio"}
+                              </td>
+                              <td className="px-3 py-1 text-right tabular-nums text-slate-500">{numero(d.cenefas)}</td>
+                              <td />
+                            </tr>
+                          ))}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="px-4 py-3 text-[11px] text-slate-400 dark:text-slate-500">
+                Un listado se reprocesa hasta que sale bien: acá cada grupo es un listado y adentro
+                están sus intentos, del primero al último. Los marcados «sin nombre» son anteriores
+                al 23/08/2026, cuando todavía no se guardaba qué Excel ni qué plantilla se usó — se
+                agrupan por formato y cantidad de carteles, así que pueden estar juntando listados
+                distintos que casualmente tenían el mismo tamaño.
+              </p>
+            </div>
+          )}
 
           {data.detalle && data.detalle.length > 0 && (
             <div className="card p-0 overflow-hidden">

@@ -573,7 +573,11 @@ async def informe(
     data = await informe_service.resumen(db, desde, hasta, template, costo)
     data["plantillas"] = await informe_service.plantillas_del_historial(db)
     if detalle:
-        data["detalle"] = await informe_service.detalle(db, desde, hasta, template, costo)
+        filas = await informe_service.detalle(db, desde, hasta, template, costo, limite=100000)
+        # La lista plana se recorta; el agrupado por listado sale de todas,
+        # que es justamente lo que hace util ver los intentos.
+        data["detalle"] = filas[:500]
+        data["intentos"] = informe_service.agrupar_intentos(filas)
     return data
 
 

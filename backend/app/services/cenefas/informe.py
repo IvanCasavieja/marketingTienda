@@ -318,3 +318,58 @@ def a_excel(resumen_: dict[str, Any], filas: list[dict[str, Any]]) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Historial de intentos
+# ---------------------------------------------------------------------------
+
+def agrupar_intentos(filas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Agrupa las corridas por listado, para ver cuantos intentos llevo cada uno.
+
+    Un mismo listado se reprocesa varias veces: se genera, se ve algo mal, se
+    arregla y se vuelve a generar. En la lista plana eso son N corridas sueltas
+    y no se entiende nada; agrupadas se lee de una que "este listado llevo 9
+    intentos y el ultimo salio limpio".
+
+    La clave es el Excel + la plantilla. Las corridas anteriores al 23/08/2026
+    no guardaron esos nombres, asi que para esas se agrupa por formato y
+    cantidad de carteles, que es lo unico que las distingue.
+
+    Dentro de cada grupo los intentos van del mas viejo al mas nuevo, que es
+    como se leen: el ultimo es el que quedo.
+    """
+    grupos: dict[tuple[str, str], dict[str, Any]] = {}
+    for f in filas:
+        excel = f["excel"] if f["excel"] != "(sin registrar)" else f'{f["cenefas"]} carteles'
+        plantilla = f["plantilla"] if f["plantilla"] != "(sin registrar)" else (f["formato"] or "?")
+        g = grupos.setdefault((excel, plantilla), {
+            "excel": excel, "plantilla": plantilla,
+            "sin_registrar": f["excel"] == "(sin registrar)",
+            "intentos": [],
+        })
+        g["intentos"].append(f)
+
+    salida = []
+    for g in grupos.values():
+        # Del mas viejo al mas nuevo: el ultimo es el que quedo.
+        g["intentos"].sort(key=lambda x: x["fecha"] or "")
+        ultimo = g["intentos"][-1]
+        salida.append({
+            "excel": g["excel"],
+            "plantilla": g["plantilla"],
+            "sin_registrar": g["sin_registrar"],
+            "intentos": len(g["intentos"]),
+            "primera": g["intentos"][0]["fecha"],
+            "ultima": ultimo["fecha"],
+            # Lo que vale es el ultimo intento: los anteriores se descartaron.
+            "cenefas": ultimo["cenefas"],
+            "correctas": ultimo["correctas"],
+            "criticos": ultimo["criticos"],
+            "verificado": ultimo["verificado"],
+            "costo": ultimo["costo"],
+            "detalle": g["intentos"],
+        })
+    # Primero los que mas intentos llevaron: son los que hay que mirar.
+    salida.sort(key=lambda x: (-x["intentos"], x["ultima"] or ""), reverse=False)
+    return salida
