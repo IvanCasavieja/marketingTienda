@@ -32,6 +32,7 @@ from app.services.cenefas.jobs import (
     peek_job_products,
     run_generation_job,
 )
+from app.services.cenefas import conocimiento as saber
 from app.services.cenefas import informe as informe_service
 from app.services.cenefas.layout_engine import FORMATS
 from app.services.cenefas.rules_engine import evaluate_rules
@@ -546,6 +547,77 @@ async def confirm_job(
     )
 
     return {"job_id": str(job_id), "status": "running"}
+
+
+# ---------------------------------------------------------------------------
+# Conocimiento del agente
+# ---------------------------------------------------------------------------
+
+class DecidirConocimiento(BaseModel):
+    # activo = aprobado y entra al contexto del agente
+    # descartado = rechazado, y no vuelve a proponerse
+    # archivado = fue cierto pero ya no aplica
+    estado: str
+    # Permite corregir el texto al aprobarlo, en vez de rechazar y reescribir.
+    contenido: str | None = None
+
+
+@router.get("/conocimiento")
+async def listar_conocimiento(
+    estado: str | None = Query(None, description="propuesto | activo | descartado | archivado"),
+    tipo: str | None = Query(None),
+    _: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lo que el modulo aprendio de como se lo usa.
+
+    Nada de esto esta activo hasta que una persona lo aprueba: lo `propuesto`
+    es lo que el sistema noto y todavia no miro nadie.
+    """
+    items = await saber.listar(db, estado=estado, tipo=tipo)
+    return [
+        {
+            "id":          str(i.id),
+            "tipo":        i.tipo,
+            "contenido":   i.contenido,
+            "detalle":     i.detalle or {},
+            "origen":      i.origen,
+            "estado":      i.estado,
+            "veces_visto": i.veces_visto,
+            "visto_at":    i.visto_at.isoformat() if i.visto_at else None,
+            "decidido_at": i.decidido_at.isoformat() if i.decidido_at else None,
+        }
+        for i in items
+    ]
+
+
+@router.patch("/conocimiento/{item_id}")
+async def decidir_conocimiento(
+    item_id: uuid.UUID,
+    payload: DecidirConocimiento,
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aprueba, descarta o archiva algo que el modulo aprendio.
+
+    Aprobar hace que entre al contexto del agente. Descartar es definitivo en
+    el sentido de que no vuelve a proponerse solo, aunque se siga contando
+    cuantas veces reaparece.
+    """
+    try:
+        item = await saber.decidir(db, item_id, payload.estado, current_user.id, payload.contenido)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if item is None:
+        raise HTTPException(status_code=404, detail="No encontre eso")
+    db.add(AuditLog(
+        user_id=current_user.id, action=f"cenefas.conocimiento.{payload.estado}",
+        resource="cenefa_conocimiento", resource_id=str(item_id),
+        details={"contenido": item.contenido[:200]}, ip_address=_client_ip(request),
+    ))
+    await db.commit()
+    return {"id": str(item.id), "estado": item.estado, "contenido": item.contenido}
 
 
 # ---------------------------------------------------------------------------

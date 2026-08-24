@@ -14,7 +14,7 @@ from app.core.database import engine, Base
 from app.core.logging_config import configure_logging
 from app.core.rate_limit import limiter
 from app.core.tenant_migration import migrate_roles
-from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, PlanillaPedido, LocalAsignacion, Watchlist, WatchlistItem, WatchlistPrecioHistorial, Notificacion, CotizacionDolar, AIUsageLog  # noqa: F401
+from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, CenefaConocimiento, PlanillaPedido, LocalAsignacion, Watchlist, WatchlistItem, WatchlistPrecioHistorial, Notificacion, CotizacionDolar, AIUsageLog  # noqa: F401
 from app.models.role import Role  # noqa: F401 — registers with Base.metadata
 from app.api import router
 

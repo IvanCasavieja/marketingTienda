@@ -14,6 +14,7 @@ from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.services.cenefas.component_renderer import patch_image_overrides, render_template_to_pptx
 from app.services.cenefas.data_engine import load_products_con_headers
 from app.services.cenefas.pptx_importer import import_pptx
+from app.services.cenefas import conocimiento as saber
 from app.services.cenefas.revision_previa import revisar
 from app.services.cenefas.validation_engine import build_summary, validate_products
 
@@ -217,6 +218,15 @@ async def run_generation_job(
                     if seg.get("type") == "variable" and seg.get("value"):
                         vars_plantilla.add(seg["value"])
             revision = await asyncio.to_thread(revisar, headers, products, vars_plantilla)
+
+            # De los avisos que traen una sospecha concreta ("esta columna
+            # parece ser precioRegular") sale una propuesta de conocimiento.
+            # Es una deducción, no una decisión: nace propuesta y espera que
+            # alguien la apruebe. Nunca puede voltear la generación.
+            try:
+                await saber.aprender_de_revision(db, revision, getattr(job, "excel_nombre", None))
+            except Exception as e:
+                logger.warning("no se pudo aprender de la revisión: %s", e)
 
             if image_overrides:
                 template_def = {

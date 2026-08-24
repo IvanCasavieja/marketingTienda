@@ -139,6 +139,8 @@ def revisar(
             "sugerencia": (f'Si es esa, renombrala a «{parecida}».' if parecida
                            else "Si tiene que salir en el cartel, renombrala con el "
                                 "nombre exacto de la variable."),
+            # Los mismos datos, sin prosa: es de acá que aprende el agente.
+            "detalle_datos": {"columna": crudo, "variable": parecida},
         })
 
     # ── 2. Variables clave vacias en TODAS las filas ─────────────────────
@@ -161,6 +163,7 @@ def revisar(
                            + (f' La columna «{culpable}» parece ser esa.' if culpable else "")),
             "sugerencia": (f'Renombrá la columna «{culpable}» a «{var}».' if culpable
                            else f'Agregá una columna llamada «{var}».'),
+            "detalle_datos": {"columna": culpable, "variable": var},
         })
 
     # ── 3. Datos que la plantilla no tiene donde imprimir ────────────────

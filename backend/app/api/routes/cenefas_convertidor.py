@@ -37,6 +37,7 @@ from app.services.cenefas.convertidor_ai import (
     generar_descripciones,
 )
 from app.services.cenefas import tinin_agent
+from app.services.cenefas import conocimiento as saber
 from app.services.cenefas.convertidor_variables import VARIABLES_MAPEABLES
 from app.services.ai_usage_service import resumir_usage
 
@@ -509,6 +510,13 @@ async def crear_mapeo(
         accion = "cenefas.mapeo.create"
 
     await db.flush()
+    # Guardar un mapeo es una persona diciendo "esta columna es esta variable".
+    # Es la fuente más confiable que tiene el agente, así que se anota. Queda
+    # como propuesta hasta que alguien la apruebe.
+    try:
+        await saber.aprender_de_mapeo(db, payload.mapeo, payload.destino)
+    except Exception as e:                       # aprender nunca rompe guardar
+        logger.warning("no se pudo aprender del mapeo: %s", e)
     db.add(AuditLog(
         user_id=current_user.id, action=accion, resource="convertidor_mapeo",
         resource_id=str(m.id), details={"nombre": nombre, "destino": payload.destino},
