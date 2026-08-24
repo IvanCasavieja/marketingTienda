@@ -128,6 +128,17 @@ export interface CenefaLoteItem {
   preview_products?: Record<string, string>[];
   slot_bands?: string[][];
   validation_report?: { error?: string } | null;
+  /** Revisión del Excel contra esta plantilla, antes de confirmar. Nunca bloquea. */
+  revision?: CenefaRevisionItem[];
+}
+
+/** Un hallazgo de la revisión previa: qué va a salir mal y cómo arreglarlo. */
+export interface CenefaRevisionItem {
+  nivel: "alto" | "medio" | "info";
+  tipo: string;
+  titulo: string;
+  detalle: string;
+  sugerencia: string;
 }
 
 /** Un lote: todas las cenefas que se pidieron juntas. */

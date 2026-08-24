@@ -1,8 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AlertCircle, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Send,
-} from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { cenefasV2Api } from "@/lib/api";
@@ -149,6 +147,18 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   const pendientes = lote.cenefas.filter((c) => c.status === "pending" || c.status === "running").length;
   const conError = lote.cenefas.filter((c) => c.status === "error");
 
+  // La revisión de la cenefa que se está mirando. Se de-duplica por título
+  // porque el mismo Excel emparejado con varias plantillas repite el hallazgo.
+  const revision = (() => {
+    const vistos = new Set<string>();
+    return (actual?.revision ?? []).filter((r) => {
+      if (vistos.has(r.titulo)) return false;
+      vistos.add(r.titulo);
+      return true;
+    });
+  })();
+  const graves = revision.filter((r) => r.nivel === "alto").length;
+
   return (
     <div className="space-y-4">
       <a ref={dlRef} className="hidden" />
@@ -190,6 +200,41 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
               {c.excel} × {c.template}: {c.validation_report?.error ?? "—"}
             </p>
           ))}
+        </div>
+      )}
+
+      {/* Revisión del archivo: qué va a salir mal, antes de confirmar. Nunca
+          bloquea -- a veces el que sabe es el que está mirando. */}
+      {revision.length > 0 && (
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+              <AlertTriangle size={15} className={graves > 0 ? "text-rose-500" : "text-amber-500"} />
+              Revisión del archivo
+            </p>
+            <span className="text-[11px] text-slate-400">
+              {graves > 0
+                ? `${graves} para corregir antes de confirmar`
+                : `${revision.length} para revisar`}
+            </span>
+          </div>
+          {revision.map((r, i) => (
+            <div key={i}
+                 className={`rounded-lg p-3 border-l-[3px] ${
+                   r.nivel === "alto"
+                     ? "border-rose-400 bg-rose-50/60 dark:bg-rose-950/20"
+                     : "border-amber-400 bg-amber-50/60 dark:bg-amber-950/20"
+                 }`}>
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{r.titulo}</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{r.detalle}</p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1">
+                <span className="font-semibold">Qué hacer: </span>{r.sugerencia}
+              </p>
+            </div>
+          ))}
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            Podés confirmar igual: esto es un aviso, no un bloqueo.
+          </p>
         </div>
       )}
 

@@ -806,6 +806,8 @@ async def _job_to_dict(
         if warnings:
             d["warnings"] = warnings
         # Expose error message so the frontend can display it instead of "Error desconocido"
+        # La revisión previa del archivo: qué va a salir mal antes de confirmar.
+        d["revision"] = (job.validation_report or {}).get("revision", [])
         if job.status == "error":
             d["validation_report"] = {"error": job.validation_report.get("error", "Error interno")}
     if include_preview and job.status == "preview":

@@ -12,8 +12,9 @@ from app.core.database import AsyncSessionLocal
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.services.cenefas.component_renderer import patch_image_overrides, render_template_to_pptx
-from app.services.cenefas.data_engine import load_products_from_bytes
+from app.services.cenefas.data_engine import load_products_con_headers
 from app.services.cenefas.pptx_importer import import_pptx
+from app.services.cenefas.revision_previa import revisar
 from app.services.cenefas.validation_engine import build_summary, validate_products
 
 logger = logging.getLogger(__name__)
@@ -198,11 +199,24 @@ async def run_generation_job(
             # El destino ya no cambia cómo se lee el Excel: las columnas se
             # llaman igual en todos lados. Antes se resolvía la plantilla
             # primero solo para conocer la categoría y ajustar el matching.
-            products = await asyncio.to_thread(
-                load_products_from_bytes, excel_bytes, vigencia, legales, usar_legales
+            products, headers = await asyncio.to_thread(
+                load_products_con_headers, excel_bytes, vigencia, legales, usar_legales
             )
             validation = validate_products(products)
             summary    = build_summary(validation)
+
+            # Revisión del archivo ENTERO contra esta plantilla, además de la
+            # validación fila por fila. Es la que ve los errores que arruinan
+            # una corrida completa -- una columna mal nombrada deja las N
+            # cenefas sin precio y fila por fila no se nota. Nunca bloquea.
+            vars_plantilla: set[str] = set()
+            for c in template_def.get("components", []):
+                if c.get("variable"):
+                    vars_plantilla.add(c["variable"])
+                for seg in (c.get("segments") or []):
+                    if seg.get("type") == "variable" and seg.get("value"):
+                        vars_plantilla.add(seg["value"])
+            revision = await asyncio.to_thread(revisar, headers, products, vars_plantilla)
 
             if image_overrides:
                 template_def = {
@@ -232,6 +246,7 @@ async def run_generation_job(
                 "errors":       validation["errors"],
                 "warnings":     validation["warnings"],
                 "missing_vars": [],
+                "revision":     revision,
             }
             await db.commit()
 

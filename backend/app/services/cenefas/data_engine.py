@@ -238,6 +238,28 @@ def load_products_from_bytes(
     hay alias. Una columna que no corresponda a ninguna variable se ignora
     en silencio (los exports traen decenas de columnas ajenas).
     """
+    return _leer(excel_bytes, vigencia, legales, usar_legales)[0]
+
+
+def load_products_con_headers(
+    excel_bytes: bytes,
+    vigencia: str = "",
+    legales: str = "",
+    usar_legales: bool = False,
+) -> tuple[list[dict], list[str]]:
+    """Igual que load_products_from_bytes, pero además devuelve los encabezados
+    crudos del Excel.
+
+    Los necesita la revisión previa: para avisar "la columna «Precio Anterior»
+    no se reconoce" hay que saber qué columnas venían, no solo cuáles se
+    entendieron.
+    """
+    return _leer(excel_bytes, vigencia, legales, usar_legales)
+
+
+def _leer(
+    excel_bytes: bytes, vigencia: str, legales: str, usar_legales: bool,
+) -> tuple[list[dict], list[str]]:
     wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), data_only=True)
     ws = wb["Cenefas"] if "Cenefas" in wb.sheetnames else wb.active
 
@@ -294,7 +316,9 @@ def load_products_from_bytes(
         seen.add(key)
         products.append(data)
 
-    return products
+    headers = [str(c.value).strip() if c.value is not None else ""
+               for c in ws[header_row]]
+    return products, headers
 
 
 # ---------------------------------------------------------------------------
