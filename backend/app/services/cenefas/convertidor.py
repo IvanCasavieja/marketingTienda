@@ -48,13 +48,16 @@ def _norm(name) -> str:
 _INPUT_ALIASES: dict[str, str] = {
     "codigo":         "codigo",
     "nombrearticulo": "nombre_articulo",
-    # La columna "Descripción" cruda de gestión NO se mapea a propósito: no
-    # pasó nunca por las reglas de estilo de la IA, así que no es una fuente
-    # confiable para resolver ni para aprender en el catálogo compartido
-    # (ver match_rows() -- un SKU sin match en el catálogo queda sin
-    # descripción, para resolverse por "Generar con IA" o a mano).
+    # La columna "Descripción" del Excel SÍ se lee, y gana sobre el catálogo:
+    # si alguien se tomó el trabajo de escribirla, es la que quiere ver en el
+    # cartel (decisión de 2026-08-24). Lo que NO cambia es que no se aprende
+    # sola en el catálogo compartido -- ver match_rows().
+    "descripcion":    "descripcion_excel",
     "moneda":         "moneda",
     "precioant":      "precio_anterior",
+    "precioanterior": "precio_anterior",
+    "pvpregular":     "precio_anterior",
+    "pvpoferta":      "precio",
     "precio":         "precio",
     "oferta":         "oferta",
     "ofertadet":      "oferta_det",
@@ -515,6 +518,7 @@ async def parse_input_excel(
             "oferta":            _clean_str(cell(row, "oferta")),
             "oferta_det":        _clean_str(cell(row, "oferta_det")),
             "descripcion_web":   _clean_str(cell(row, "descripcion_web")),
+            "descripcion_excel": _clean_str(cell(row, "descripcion_excel")),
             "comprador":         _clean_str(cell(row, "comprador")),
             "descuento":         _clean_str(cell(row, "descuento")),
             "descuento_det":     _clean_str(cell(row, "descuento_det")),
@@ -730,15 +734,21 @@ async def match_rows(
     """Bulk lookup por SKU (un SELECT por cada 1000 códigos distintos, no
     N queries) + cómputo de warnings por fila.
 
-    La descripción de una fila sale ÚNICA Y EXCLUSIVAMENTE del catálogo
-    (sku_descripciones) -- nunca de la columna "Descripción" cruda que trae
-    el Excel de gestión, aunque tenga contenido: esa columna no pasó nunca
-    por las reglas de estilo de la IA (ver _STYLE_RULES en convertidor_ai.py)
-    ni por revisión humana, así que no es una fuente confiable para el
-    catálogo compartido. Un SKU sin match queda con descripción vacía
-    (warning "missing_description", fila roja) para resolverse por
-    "Generar con IA" (usa nombre_articulo + descripcion_web, sí curadas) o a
-    mano -- nunca se aprende nada acá de forma automática/silenciosa.
+    De dónde sale la descripción, en orden:
+
+    1. **La columna "Descripción" del Excel**, si viene con algo. Si alguien
+       la escribió, por algo la escribió: es la que quiere ver en el cartel y
+       no se toca (decisión de 2026-08-24; antes se ignoraba siempre y el
+       catálogo pisaba lo escrito -- en un listado real de 10 filas sobrevivía
+       UNA, seis salían cambiadas y tres vacías).
+    2. **El catálogo** (sku_descripciones), buscando por SKU.
+    3. **Vacía**, con warning "missing_description" y fila roja, para
+       resolverse por "Generar con IA" (usa nombre_articulo + descripcion_web)
+       o a mano.
+
+    Lo que NO cambia: nunca se aprende nada en el catálogo compartido de forma
+    automática. Una descripción escrita en el Excel vale para esa corrida; al
+    catálogo se sube solo cuando alguien lo decide explícitamente.
 
     Devuelve (rows, ma_pairs) -- ma_pairs son los pares "mismo producto, dos
     SKUs" detectados (ver detect_ma_pairs) todavía sin unificar."""
@@ -775,7 +785,9 @@ async def match_rows(
 
     rows = []
     for i, r in enumerate(parsed):
-        descripcion = catalogo.get(r["codigo"], "")
+        del_excel = (r.get("descripcion_excel") or "").strip()
+        descripcion = del_excel or catalogo.get(r["codigo"], "")
+        origen = "excel" if del_excel else ("catalogo" if descripcion else "")
 
         # Las 26 variables ya resueltas: mecánica redactada, precios partidos
         # en entero + decimal, y lo que la persona mapeó pisando lo calculado.
@@ -791,6 +803,9 @@ async def match_rows(
         # de dónde salió cada valor calculado y corregirlo si algo no cierra.
         contexto = {
             "nombre_articulo":     r["nombre_articulo"],
+            # De dónde salió la descripción: "excel" (la escribió una persona
+            # en el listado), "catalogo" (la puso la plataforma) o "" (falta).
+            "descripcion_origen":  origen,
             "comprador":           r["comprador"],
             "moneda":              r["moneda"],
             "oferta_origen":       r["oferta"],
