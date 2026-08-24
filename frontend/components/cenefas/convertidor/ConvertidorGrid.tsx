@@ -56,6 +56,16 @@ interface ColumnDef {
 // sobre el de al lado ("DECIMALPRECIOOFERTA" pegado a "OFERTAUNO"). Con anchos
 // explicitos la tabla se hace mas ancha que el contenedor y scrollea, que es
 // lo que ya hace el contenedor (overflow-auto).
+// Cada precio con su columna de decimales. Si el precio se muestra, el decimal
+// va con el aunque este vacio.
+const DECIMAL_DE: [ColumnKey, ColumnKey][] = [
+  ["ofertaUno",    "decimalPrecioUno"],
+  ["ofertaDos",    "decimalPrecioDos"],
+  ["ofertaTres",   "decimalPrecioTres"],
+  ["ofertaCuatro", "decimalPrecioCuatro"],
+  ["precioBanco",  "decimalPrecioBanco"],
+];
+
 const ANCHO_TEXTO_LARGO = 240;   // descripcion, mecanica, legales, aclaraciones
 const ANCHO_DECIMAL     = 170;   // decimalPrecioRegular y compania: nombres largos
 const ANCHO_CONTEXTO    = 170;   // las columnas de gestion, con su punto adelante
@@ -87,7 +97,7 @@ const COLUMNS: ColumnDef[] = [
   { key: "precioOferta",  label: "precioOferta",  editable: "simple", siempre: true,
     warningCodes: ["missing_price", "precio_invalido", "moneda_invalida", "moneda_no_pesos"] },
   { key: "decimalPrecioOferta", label: "decimalPrecioOferta", editable: "simple", siempre: true },
-  { key: "ofertaUno",     label: "ofertaUno",     editable: "simple", siempre: true },
+  { key: "ofertaUno",     label: "ofertaUno",     editable: "simple" },
   { key: "decimalPrecioUno",    label: "decimalPrecioUno", editable: "simple" },
   { key: "ofertaDos",     label: "ofertaDos",     editable: "simple" },
   { key: "decimalPrecioDos",    label: "decimalPrecioDos", editable: "simple" },
@@ -98,8 +108,8 @@ const COLUMNS: ColumnDef[] = [
   { key: "precioBanco",   label: "precioBanco",   editable: "simple" },
   { key: "decimalPrecioBanco",  label: "decimalPrecioBanco", editable: "simple" },
   { key: "banco",         label: "banco",         editable: "simple" },
-  { key: "vigencia",      label: "vigencia",      editable: "simple", siempre: true },
-  { key: "aclaracionUno", label: "aclaracionUno", editable: "simple", siempre: true },
+  { key: "vigencia",      label: "vigencia",      editable: "simple" },
+  { key: "aclaracionUno", label: "aclaracionUno", editable: "simple" },
   { key: "aclaracionDos", label: "aclaracionDos", editable: "simple" },
   { key: "aclaracionTres",label: "aclaracionTres",editable: "simple" },
   { key: "legales",       label: "legales",       editable: "simple" },
@@ -203,12 +213,23 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
   const [hoveredCell, setHoveredCell] = useState<{ rowId: number; key: ColumnKey } | null>(null);
   const [focusedCell, setFocusedCell] = useState<{ rowId: number; key: ColumnKey } | null>(null);
   const activeCell = hoveredCell ?? focusedCell;
-  const columnasVisibles = useMemo(
-    () => COLUMNS.filter(
-      (c) => c.siempre || rows.some((r) => String(r[c.key] ?? "").trim() !== ""),
-    ),
-    [rows],
-  );
+  // Que columnas se ven: las marcadas "siempre" mas las que traen algun dato.
+  // Es el mismo criterio con el que el backend arma el Excel de salida
+  // (_columnas_de_salida), asi que la grilla muestra exactamente lo que va a
+  // bajar: ni una columna vacia de mas.
+  //
+  // Un precio arrastra su decimal aunque el decimal quede vacio: son un par y
+  // el diseno de la cenefa tiene un cuadro aparte para cada uno.
+  const columnasVisibles = useMemo(() => {
+    const conDato = new Set(
+      COLUMNS.filter((c) => rows.some((r) => String(r[c.key] ?? "").trim() !== ""))
+             .map((c) => c.key),
+    );
+    for (const [precio, decimal] of DECIMAL_DE) {
+      if (conDato.has(precio)) conDato.add(decimal);
+    }
+    return COLUMNS.filter((c) => c.siempre || conDato.has(c.key));
+  }, [rows]);
   const activeCellColumn = activeCell ? COLUMNS.find((c) => c.key === activeCell.key) : undefined;
   const activeCellRow = activeCell ? rows.find((r) => r.row_id === activeCell.rowId) : undefined;
   const activeCellValue =
