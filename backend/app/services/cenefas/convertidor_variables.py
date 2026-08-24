@@ -14,23 +14,43 @@ from app.services.cenefas.formatters import fmt_price, parse_price_raw
 from app.services.cenefas.variables import CANONICAL_VARS, DECIMAL_OF, PRICE_VARS
 
 # ---------------------------------------------------------------------------
-# Variables que el usuario mapea a mano
+# Variables que resuelve la persona
 # ---------------------------------------------------------------------------
 #
-# Su nombre de columna cambia según el archivo de gestión que se suba, así
-# que no hay forma de resolverlas por código. El resto (codigo, descripcion,
-# precioRegular, precioOferta, mecanica y todos los decimales) sale de
-# columnas fijas del export o se calcula acá.
+# El Convertidor no puede deducirlas: o su nombre de columna cambia según el
+# archivo de gestión que se suba, o directamente no vienen en ningún export.
+# Se resuelven en la pantalla de mapeo, de una de dos formas: mapeando una
+# columna, o escribiendo un texto que va en todas las filas.
+#
+# El resto (codigo, descripcion, precioRegular, precioOferta, mecanica y
+# todos los decimales) sale de columnas fijas del export o se calcula acá.
+#
+# El orden es el mismo de ORDEN_EXPORT, así la pantalla se lee en el mismo
+# orden en que después salen las columnas del Excel.
+#
+# banco, precioBanco, dia, mes y año se sumaron el 2026-08-23: antes no
+# estaban en ningún lado del Convertidor, así que el Excel que bajaba no
+# podía traerlas nunca. Se notaba en que decimalPrecioBanco existía pero no
+# podía tener valor jamás, porque su precio no se podía cargar.
 VARIABLES_MAPEABLES: tuple[str, ...] = (
     "ofertaUno",
     "ofertaDos",
     "ofertaTres",
     "ofertaCuatro",
+    "precioBanco",
+    "banco",
     "vigencia",
     "aclaracionUno",
     "aclaracionDos",
     "aclaracionTres",
     "legales",
+    "dia",
+    "mes",
+    "año",
+)
+
+assert set(VARIABLES_MAPEABLES) <= set(CANONICAL_VARS), (
+    "hay una variable mapeable que no es canónica"
 )
 
 MECANICA_PRECIO_FIJO = "Precio Final"

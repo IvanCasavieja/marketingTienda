@@ -30,9 +30,15 @@ const SIN_MAPEAR = "";
 
 type Modo = "columna" | "texto";
 
-// Variables que nunca vienen en el export de gestión: arrancan listas para
-// escribir en vez de obligar a buscar una columna que no existe.
-const ARRANCAN_EN_TEXTO = new Set(["vigencia", "legales"]);
+// Variables que no vienen nunca en el export de gestión: arrancan listas para
+// escribir, en vez de obligar a buscar una columna que no existe.
+//
+// precioBanco queda afuera a propósito: es un precio y lo normal es que salga
+// de una columna, no que alguien escriba el mismo importe para todas las
+// filas.
+const ARRANCAN_EN_TEXTO = new Set([
+  "vigencia", "legales", "banco", "dia", "mes", "año",
+]);
 
 interface Props {
   columnas: ConvertidorColumna[];
