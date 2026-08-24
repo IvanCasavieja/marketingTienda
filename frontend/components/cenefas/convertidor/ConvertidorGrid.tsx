@@ -92,7 +92,8 @@ const COLUMNS: ColumnDef[] = [
   // Sin warningCodes a propósito: los avisos de mecánica nacen de OFERTA y
   // OFERTADET, y se pintan allá. Ver la nota en esas dos columnas.
   { key: "mecanica",      label: "mecanica",    editable: "simple", siempre: true },
-  { key: "tipoOferta",    label: "tipoOferta",    editable: "simple" },
+  { key: "tipoOferta",    label: "tipoOferta",    editable: "simple",
+    warningCodes: ["oferta_inesperada"] },
   { key: "precioRegular", label: "precioRegular", editable: "simple", siempre: true,
     warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
   { key: "decimalPrecioRegular", label: "decimalPrecioRegular", editable: "simple", siempre: true },
@@ -129,9 +130,10 @@ const COLUMNS: ColumnDef[] = [
   // por qué mirando esa columna.
   { key: "oferta_det",      label: "· Oferta Det",     contexto: true, siempre: true,
     warningCodes: ["missing_oferta_det", "oferta_det_invalido"] },
+  // El dato crudo de gestion, de solo lectura. Lo que no se entendio se marca
+  // sobre tipoOferta, que es donde queda el valor y donde se puede editar.
   { key: "oferta_origen",   label: "· Oferta",         contexto: true, siempre: true,
-    warningCodes: ["oferta_inesperada", "combo_no_parseable", "mxn_no_parseable",
-                   "mxn_sin_precio"] },
+    warningCodes: ["combo_no_parseable", "mxn_no_parseable", "mxn_sin_precio"] },
   { key: "moneda",          label: "· Moneda",         contexto: true, siempre: true,
     warningCodes: ["moneda_invalida", "moneda_no_pesos"] },
   { key: "comprador",       label: "· Comprador",      contexto: true },

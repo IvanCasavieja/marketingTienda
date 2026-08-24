@@ -127,14 +127,15 @@ def resolver_mecanica(
         m = _RE_COMBO.match(oferta)
         if not m:
             warnings.append("combo_no_parseable")
-            return {"ofertaUno": "", "precioOferta": "", "mecanica": ""}, warnings
+            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": ""}, warnings
         cantidad = int(m.group(1))
         total = parse_price_raw(m.group(2))
         if cantidad <= 0 or total <= 0:
             warnings.append("combo_no_parseable")
-            return {"ofertaUno": "", "precioOferta": "", "mecanica": ""}, warnings
+            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": ""}, warnings
         unitario = round(total / cantidad, 2)
         return {
+            "tipoOferta":   oferta,        # "3x99": el literal es el titular
             "ofertaUno":    f"{cantidad}x",
             "precioOferta": total,
             "mecanica":     f"Comprando {cantidad}, {prefijo}{fmt_price(unitario)} la unidad.",
@@ -144,22 +145,32 @@ def resolver_mecanica(
     if _RE_ES_MXN_DET.search(oferta_det):
         if not _RE_MXN.match(oferta):
             warnings.append("mxn_no_parseable")
-            return {"ofertaUno": "", "precioOferta": "", "mecanica": ""}, warnings
+            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": ""}, warnings
         if not precio:
             # Sin precio unitario no hay mecánica que redactar; el literal
             # igual va al cuadro grande, para no perder la oferta.
             warnings.append("mxn_sin_precio")
-            return {"ofertaUno": "", "precioOferta": oferta, "mecanica": ""}, warnings
+            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": oferta, "mecanica": ""}, warnings
         return {
+            "tipoOferta":   oferta,        # "2x1": el literal es el titular
             "ofertaUno":    "",
             "precioOferta": oferta,   # "2x1" ocupa el lugar del precio
             "mecanica":     f"{prefijo}{fmt_price(precio)} la unidad.",
         }, warnings
 
     # ── Precio fijo / % descuento / sin mecánica ──────────────────────────
-    # OFERTA no se ignora en silencio: se clasifica. Si trae algo que no sea
-    # una etiqueta conocida de gestión ni una copia del precio, es un dato
-    # que nadie sabe interpretar y se marca para revisión humana.
+    # La columna OFERTA de gestión ES nuestra variable tipoOferta: el titular
+    # grande que va arriba del precio ("20% OFF SET DE COLCHAS", "2x1").
+    #
+    # Con una excepción: gestión usa esa misma columna para etiquetas internas
+    # del tipo de precio ("PVP", "ANTE/DESPUES", "FULL PRICE") y para repetir
+    # el precio. Eso no es un titular, es jerga de sistema, y no puede salir
+    # impreso en un cartel de góndola. Esas quedan fuera.
+    #
+    # Lo que no es ninguna de las dos cosas es un titular escrito por una
+    # persona: va a tipoOferta y además se marca para que alguien lo confirme,
+    # porque es texto libre y nadie lo valido.
+    tipo_oferta = ""
     if oferta:
         norm = _norm_etiqueta(oferta)
         if norm in _ETIQUETAS_SIN_OFERTA:
@@ -167,10 +178,12 @@ def resolver_mecanica(
         elif _es_numero(oferta) and precio is not None and abs(parse_price_raw(oferta) - precio) < 0.01:
             pass                                    # copia redundante del precio
         else:
+            tipo_oferta = oferta
             warnings.append("oferta_inesperada")
 
     return {
         "ofertaUno":    "",
+        "tipoOferta":   tipo_oferta,
         "precioOferta": precio if precio is not None else "",
         "mecanica":     MECANICA_PRECIO_FIJO,
     }, warnings
@@ -214,6 +227,9 @@ def construir_variables(
         "ofertaUno":     mecanica["ofertaUno"],
     }
     out["mecanica"] = mecanica["mecanica"]
+    # El titular sale de la columna OFERTA del listado, ya filtrado de las
+    # etiquetas internas de gestión (ver resolver_mecanica).
+    out["tipoOferta"] = str(mecanica.get("tipoOferta", "") or "")
 
     # Lo mapeado pisa lo calculado.
     for var, valor in mapeo.items():
