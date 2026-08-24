@@ -39,6 +39,7 @@ from app.services.cenefas.convertidor_ai import (
 from app.services.cenefas import tinin_agent
 from app.services.cenefas import conocimiento as saber
 from app.services.cenefas.convertidor_variables import VARIABLES_MAPEABLES
+from app.services.cenefas.variables import ORDEN_EXPORT
 from app.services.ai_usage_service import resumir_usage
 
 logger = logging.getLogger(__name__)
@@ -164,10 +165,16 @@ async def update_descripcion(
 class ConvertidorRowIn(BaseModel):
     """Una fila tal como vuelve del grid.
 
-    Lleva las 26 variables (lo que se exporta) más el contexto del export de
+    Lleva las 27 variables (lo que se exporta) más el contexto del export de
     gestión, que no se exporta pero sí se usa para recalcular los warnings
     server-side: el coloreado del Excel final no confía en el array que
     mandó el browser.
+
+    OJO: `extra="ignore"`. Una variable que falte acá se descarta en silencio
+    al exportar, aunque el grid la muestre llena. Ya pasó con tipoOferta: 13
+    filas la tenían y el Excel salía sin esa columna. Por eso al final del
+    módulo hay un chequeo que compara estos campos contra ORDEN_EXPORT y
+    revienta al importar si se desincronizan.
     """
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
@@ -186,10 +193,11 @@ class ConvertidorRowIn(BaseModel):
     es_fiambre_kg:       bool = False
     warnings_mecanica:   list[str] = Field(default_factory=list)
 
-    # -- las 26 variables --------------------------------------------------
+    # -- las 27 variables --------------------------------------------------
     codigo:               str = ""
     descripcion:          str = ""
     mecanica:             str = ""
+    tipoOferta:           str = ""
     precioRegular:        str = ""
     decimalPrecioRegular: str = ""
     precioOferta:         str = ""
@@ -548,3 +556,15 @@ async def borrar_mapeo(
     ))
     await db.delete(m)
     await db.commit()
+
+
+# Guarda contra el desfasaje silencioso: ConvertidorRowIn enumera las variables
+# a mano y `extra="ignore"` hace que una que falte se descarte sin ruido al
+# exportar. Ya pasó con tipoOferta. Si vuelve a desincronizarse, esto falla al
+# importar el módulo en vez de bajar un Excel al que le falta una columna.
+_campos_modelo = set(ConvertidorRowIn.model_fields) | {"año"}
+_faltan_en_modelo = set(ORDEN_EXPORT) - _campos_modelo
+assert not _faltan_en_modelo, (
+    f"ConvertidorRowIn quedó desincronizado de ORDEN_EXPORT: faltan {sorted(_faltan_en_modelo)}. "
+    "Sin esos campos, el Excel del Convertidor sale sin esas columnas y nadie se entera."
+)
