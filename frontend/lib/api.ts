@@ -266,6 +266,12 @@ export const cenefasV2Api = {
     desde?: string; hasta?: string; template?: string; costo?: number;
   }) => api.get("/tools/cenefas/v2/informe/export", { params, responseType: "blob" }),
 
+  // Marca una corrida como revisada y correcta por una persona. La validacion
+  // automatica dice si la cenefa se pudo armar, no si quedo bien.
+  verificarCorrida: (jobId: string, verificado: boolean) =>
+    api.patch<{ id: string; verificado: boolean; verificado_at: string | null }>(
+      `/tools/cenefas/v2/informe/${jobId}/verificar`, { verificado }),
+
   getFormats: () => api.get<CenefaFormat[]>("/tools/cenefas/v2/formats"),
 
   // Templates
@@ -413,8 +419,13 @@ export interface CenefaInformeBloque {
   correctas: number;
   avisos: number;
   criticos: number;
+  /** Corridas que una persona reviso y marco como correctas. */
+  verificadas_corridas: number;
+  /** Cenefas de esas corridas verificadas. */
+  verificadas: number;
   costo: number;
   costo_correctas: number;
+  costo_verificadas: number;
 }
 
 export interface CenefaInforme {
@@ -433,6 +444,8 @@ export interface CenefaInforme {
     correctas: number;
     avisos: number;
     criticos: number;
+    verificado: boolean;
+    verificado_at: string | null;
     costo: number;
   }[];
 }

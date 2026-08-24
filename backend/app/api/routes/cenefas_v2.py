@@ -12,6 +12,7 @@ import zipfile
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -574,6 +575,52 @@ async def informe(
     if detalle:
         data["detalle"] = await informe_service.detalle(db, desde, hasta, template, costo)
     return data
+
+
+class VerificarRequest(BaseModel):
+    verificado: bool
+
+
+@router.patch("/informe/{job_id}/verificar")
+async def verificar_corrida(
+    job_id: uuid.UUID,
+    payload: VerificarRequest,
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Marca (o desmarca) una corrida como revisada y correcta por una persona.
+
+    La validacion automatica dice si la cenefa se pudo armar, no si quedo
+    bien: eso solo lo sabe alguien que abrio el PPTX. Queda registrado quien
+    y cuando, para que el informe pueda separar "el motor no encontro
+    problemas" de "una persona lo miro y esta bien".
+    """
+    job = await db.get(CenefaJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Esa corrida no existe")
+    if job.status != "done":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Solo se puede verificar una corrida terminada (estado: {job.status})",
+        )
+
+    job.verificado = payload.verificado
+    job.verificado_por = current_user.id if payload.verificado else None
+    job.verificado_at = func.now() if payload.verificado else None
+    db.add(AuditLog(
+        user_id=current_user.id,
+        action="cenefas.corrida.verificar" if payload.verificado else "cenefas.corrida.desverificar",
+        resource="cenefa_job", resource_id=str(job_id),
+        details={"cenefas": job.row_count}, ip_address=_client_ip(request),
+    ))
+    await db.commit()
+    await db.refresh(job)
+    return {
+        "id": str(job.id),
+        "verificado": job.verificado,
+        "verificado_at": job.verificado_at.isoformat() if job.verificado_at else None,
+    }
 
 
 @router.get("/informe/export")

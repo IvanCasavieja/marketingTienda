@@ -86,6 +86,12 @@ async def resumen(
     total, correctas, avisos, criticos = _metricas()
     cond = _filtros(desde, hasta, template)
 
+    # Lo verificado a mano se suma aparte: es la cifra que se puede defender
+    # sin depender de que la validacion automatica no haya visto un problema.
+    verif_corridas = func.count().filter(CenefaJob.verificado.is_(True))
+    verif_cenefas = func.coalesce(
+        func.sum(total).filter(CenefaJob.verificado.is_(True)), 0)
+
     fila = (await db.execute(
         select(
             func.count().label("corridas"),
@@ -93,6 +99,8 @@ async def resumen(
             func.coalesce(func.sum(correctas), 0).label("correctas"),
             func.coalesce(func.sum(avisos), 0).label("avisos"),
             func.coalesce(func.sum(criticos), 0).label("criticos"),
+            verif_corridas.label("verif_corridas"),
+            verif_cenefas.label("verif_cenefas"),
             func.min(CenefaJob.created_at).label("desde"),
             func.max(CenefaJob.created_at).label("hasta"),
         ).where(*cond)
@@ -107,6 +115,8 @@ async def resumen(
             func.coalesce(func.sum(correctas), 0).label("correctas"),
             func.coalesce(func.sum(avisos), 0).label("avisos"),
             func.coalesce(func.sum(criticos), 0).label("criticos"),
+            verif_corridas.label("verif_corridas"),
+            verif_cenefas.label("verif_cenefas"),
         ).where(*cond).group_by(mes).order_by(mes)
     )).all()
 
@@ -116,6 +126,8 @@ async def resumen(
             func.count().label("corridas"),
             func.coalesce(func.sum(total), 0).label("cenefas"),
             func.coalesce(func.sum(correctas), 0).label("correctas"),
+            verif_corridas.label("verif_corridas"),
+            verif_cenefas.label("verif_cenefas"),
         )
         .where(*cond)
         .group_by(CenefaJob.template_nombre)
@@ -129,8 +141,11 @@ async def resumen(
             "correctas": r.correctas,
             "avisos":    getattr(r, "avisos", 0),
             "criticos":  getattr(r, "criticos", 0),
+            "verificadas_corridas": getattr(r, "verif_corridas", 0) or 0,
+            "verificadas": getattr(r, "verif_cenefas", 0) or 0,
             "costo":     round(r.cenefas * costo, 2),
             "costo_correctas": round(r.correctas * costo, 2),
+            "costo_verificadas": round((getattr(r, "verif_cenefas", 0) or 0) * costo, 2),
         }
 
     return {
@@ -166,6 +181,7 @@ async def detalle(
             CenefaJob.id, CenefaJob.created_at, CenefaJob.completed_at,
             CenefaJob.format, CenefaJob.template_nombre, CenefaJob.excel_nombre,
             CenefaJob.created_by,
+            CenefaJob.verificado, CenefaJob.verificado_at,
             total.label("cenefas"), correctas.label("correctas"),
             avisos.label("avisos"), criticos.label("criticos"),
         )
@@ -186,6 +202,8 @@ async def detalle(
             "correctas": r.correctas or 0,
             "avisos":    r.avisos or 0,
             "criticos":  r.criticos or 0,
+            "verificado": bool(r.verificado),
+            "verificado_at": r.verificado_at.isoformat() if r.verificado_at else None,
             "costo":     round((r.cenefas or 0) * costo, 2),
         }
         for r in filas
@@ -246,13 +264,17 @@ def a_excel(resumen_: dict[str, Any], filas: list[dict[str, Any]]) -> bytes:
     ws["A4"] = "Total"
     ws["A4"].font = Font(bold=True)
     encabezar(ws, 5, ["Corridas", "Cenefas", "Correctas", "Con avisos",
-                      "No se pudieron armar", "Valor total"])
+                      "No se pudieron armar", "Valor total",
+                      "Corridas verificadas", "Cenefas verificadas", "Valor verificado"])
     ws.cell(row=6, column=1, value=t["corridas"])
     ws.cell(row=6, column=2, value=t["cenefas"])
     ws.cell(row=6, column=3, value=t["correctas"])
     ws.cell(row=6, column=4, value=t["avisos"])
     ws.cell(row=6, column=5, value=t["criticos"])
     ws.cell(row=6, column=6, value=t["costo"]).number_format = dinero
+    ws.cell(row=6, column=7, value=t["verificadas_corridas"])
+    ws.cell(row=6, column=8, value=t["verificadas"])
+    ws.cell(row=6, column=9, value=t["costo_verificadas"]).number_format = dinero
 
     fila = 8
     for titulo, clave, etiqueta in (("Por mes", "por_mes", "mes"),
@@ -270,13 +292,13 @@ def a_excel(resumen_: dict[str, Any], filas: list[dict[str, Any]]) -> bytes:
             fila += 1
         fila += 2
 
-    for col, ancho in zip("ABCDEF", (34, 12, 12, 12, 20, 16)):
+    for col, ancho in zip("ABCDEFGHI", (34, 12, 12, 12, 20, 16, 20, 20, 18)):
         ws.column_dimensions[col].width = ancho
 
     # ── Detalle ────────────────────────────────────────────────────────────
     ws2 = wb.create_sheet("Detalle")
     cols = ["Fecha", "Plantilla", "Excel", "Formato", "Cenefas", "Correctas",
-            "Con avisos", "No se pudieron armar", "Valor"]
+            "Con avisos", "No se pudieron armar", "Valor", "Verificada"]
     encabezar(ws2, 1, cols)
     for i, r in enumerate(filas, 2):
         ws2.cell(row=i, column=1, value=(r["fecha"] or "")[:16].replace("T", " "))
@@ -288,7 +310,8 @@ def a_excel(resumen_: dict[str, Any], filas: list[dict[str, Any]]) -> bytes:
         ws2.cell(row=i, column=7, value=r["avisos"])
         ws2.cell(row=i, column=8, value=r["criticos"])
         ws2.cell(row=i, column=9, value=r["costo"]).number_format = dinero
-    for c, ancho in enumerate((17, 34, 34, 10, 10, 10, 12, 21, 14), 1):
+        ws2.cell(row=i, column=10, value="si" if r["verificado"] else "")
+    for c, ancho in enumerate((17, 34, 34, 10, 10, 10, 12, 21, 14, 12), 1):
         ws2.column_dimensions[get_column_letter(c)].width = ancho
     ws2.freeze_panes = "A2"
 

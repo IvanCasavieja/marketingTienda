@@ -34,6 +34,7 @@ export default function InformePage() {
   const [data, setData] = useState<CenefaInforme | null>(null);
   const [cargando, setCargando] = useState(true);
   const [bajando, setBajando] = useState(false);
+  const [marcando, setMarcando] = useState<string | null>(null);
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const [plantilla, setPlantilla] = useState("");
@@ -60,6 +61,33 @@ export default function InformePage() {
       .finally(() => { if (vivo) setCargando(false); });
     return () => { vivo = false; };
   }, [params]);
+
+  // Marca una corrida como revisada. Se actualiza en el acto tanto la fila
+  // como los totales, para no volver a pedir el informe entero por un click.
+  async function alternarVerificado(id: string, verificado: boolean, cenefas: number) {
+    setMarcando(id);
+    try {
+      await cenefasV2Api.verificarCorrida(id, verificado);
+      setData((prev) => {
+        if (!prev) return prev;
+        const signo = verificado ? 1 : -1;
+        return {
+          ...prev,
+          total: {
+            ...prev.total,
+            verificadas_corridas: prev.total.verificadas_corridas + signo,
+            verificadas: prev.total.verificadas + signo * cenefas,
+            costo_verificadas: prev.total.costo_verificadas + signo * cenefas * prev.costo_unitario,
+          },
+          detalle: prev.detalle?.map((d) => (d.id === id ? { ...d, verificado } : d)),
+        };
+      });
+    } catch {
+      toast.error("No se pudo guardar la verificación");
+    } finally {
+      setMarcando(null);
+    }
+  }
 
   async function bajarExcel() {
     setBajando(true);
@@ -167,8 +195,9 @@ export default function InformePage() {
                 acento: "text-emerald-600 dark:text-emerald-400" },
               { etiqueta: "Valor total", valor: pesos(t.costo),
                 pie: `a ${pesos(data.costo_unitario)} por cenefa` },
-              { etiqueta: "Valor de las correctas", valor: pesos(t.costo_correctas),
-                pie: "sin contar las que no se pudieron armar" },
+              { etiqueta: "Verificadas a mano", valor: numero(t.verificadas),
+                pie: `${numero(t.verificadas_corridas)} de ${numero(t.corridas)} corridas · ${pesos(t.costo_verificadas)}`,
+                acento: "text-brand-600 dark:text-brand-400" },
             ].map((c) => (
               <div key={c.etiqueta} className="card p-4">
                 <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
@@ -219,6 +248,9 @@ export default function InformePage() {
                           {h}
                         </th>
                       ))}
+                      <th className="px-3 py-2 font-semibold text-slate-500 dark:text-slate-300 uppercase tracking-wide text-[10px] text-center whitespace-nowrap">
+                        Salió bien
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -236,6 +268,21 @@ export default function InformePage() {
                           {numero(d.correctas)}
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums font-medium">{pesos(d.costo)}</td>
+                        <td className="px-3 py-1.5 text-center">
+                          <label className="inline-flex items-center justify-center cursor-pointer"
+                                 title="Marcar esta corrida como revisada y correcta">
+                            {marcando === d.id ? (
+                              <Loader2 size={14} className="animate-spin text-slate-400" />
+                            ) : (
+                              <input
+                                type="checkbox"
+                                checked={d.verificado}
+                                onChange={(e) => alternarVerificado(d.id, e.target.checked, d.cenefas)}
+                                className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                              />
+                            )}
+                          </label>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -245,9 +292,12 @@ export default function InformePage() {
           )}
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Solo se cuentan las corridas confirmadas. Cada corrida cuenta por separado, aunque sea
-            el mismo listado reprocesado. Hasta el 23/08/2026 no se guardaba qué plantilla ni qué
-            Excel se había usado, así que esas corridas aparecen como «sin registrar».
+            «Correctas» es lo que no encontró problemas la validación automática al generar.
+            «Salió bien» es lo que confirmó una persona abriendo el archivo — queda registrado
+            quién y cuándo. Solo se cuentan las corridas confirmadas, y cada una cuenta por
+            separado aunque sea el mismo listado reprocesado. Hasta el 23/08/2026 no se guardaba
+            qué plantilla ni qué Excel se había usado, así que esas corridas aparecen como
+            «sin registrar».
           </p>
         </>
       )}

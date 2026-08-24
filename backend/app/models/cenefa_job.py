@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,6 +37,21 @@ class CenefaJob(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Revisión humana. La validación automática dice si la cenefa se pudo
+    # armar, no si quedó bien: para eso alguien tiene que abrir el PPTX y
+    # confirmarlo. El informe de producción cuenta esto aparte, así se puede
+    # separar "el motor no encontró problemas" de "una persona lo miró".
+    #
+    # Se marca la corrida entera y no cada cenefa: una corrida es un archivo
+    # que se abre y se revisa de una sola vez.
+    verificado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    verificado_por: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    verificado_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
