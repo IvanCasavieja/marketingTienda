@@ -2,7 +2,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeftRight, BarChart3, Presentation } from "lucide-react";
+import { ArrowLeftRight, BarChart3, Brain, Presentation } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
@@ -91,6 +91,13 @@ function CenefasHost() {
             className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
           >
             <BarChart3 size={13} /> {t("cenefas.informe.link")}
+          </Link>
+          {/* Lo que el modulo fue aprendiendo, esperando aprobacion. */}
+          <Link
+            href="/materiales/cenefas/v2/conocimiento"
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+          >
+            <Brain size={13} /> {t("cenefas.conocimiento.link")}
           </Link>
           {destinoValido && (
             <button

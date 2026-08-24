@@ -524,6 +524,9 @@
     },
     "informe": {
       "link": "Relatório"
+    },
+    "conocimiento": {
+      "link": "O que aprendeu"
     }
   },
   "admin": {

@@ -272,6 +272,15 @@ export const cenefasV2Api = {
     api.patch<{ id: string; verificado: boolean; verificado_at: string | null }>(
       `/tools/cenefas/v2/informe/${jobId}/verificar`, { verificado }),
 
+  // Lo que el modulo aprendio de como se lo usa. Nada esta activo hasta que
+  // una persona lo aprueba: ver conocimiento.py.
+  listarConocimiento: (params?: { estado?: string; tipo?: string }) =>
+    api.get<CenefaConocimiento[]>("/tools/cenefas/v2/conocimiento", { params }),
+
+  decidirConocimiento: (id: string, estado: string, contenido?: string) =>
+    api.patch<{ id: string; estado: string; contenido: string }>(
+      `/tools/cenefas/v2/conocimiento/${id}`, { estado, contenido }),
+
   getFormats: () => api.get<CenefaFormat[]>("/tools/cenefas/v2/formats"),
 
   // Templates
@@ -415,6 +424,22 @@ export interface ConvertidorColumnasResponse {
 
 /** Plantilla de mapeo reutilizable: {variable: nombre_de_columna}. */
 /** Un bloque de cifras del informe de cenefas. */
+/** Algo que el modulo de cenefas aprendio de como se lo usa. */
+export interface CenefaConocimiento {
+  id: string;
+  /** alias_columna | plantilla | aviso | correccion | preferencia */
+  tipo: string;
+  contenido: string;
+  detalle: Record<string, unknown> & { confianza?: string };
+  /** revision_previa | mapeo | grilla | job | manual */
+  origen: string;
+  /** propuesto | activo | descartado | archivado */
+  estado: string;
+  veces_visto: number;
+  visto_at: string | null;
+  decidido_at: string | null;
+}
+
 export interface CenefaInformeBloque {
   corridas: number;
   cenefas: number;
