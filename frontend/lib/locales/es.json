@@ -900,6 +900,22 @@
       "modoColumna": "Columna",
       "modoTexto": "Escribir",
       "textoPlaceholder": "El mismo texto para las {{n}} filas"
+    },
+    "tinin": {
+      "barra": "Tinín encontró {{count}} cosas para revisar",
+      "paso": "{{actual}} de {{total}}",
+      "anterior": "Anterior",
+      "siguiente": "Siguiente",
+      "cerrar": "Listo",
+      "sinTemas": "Tinín no encontró nada para revisar en esta grilla.",
+      "sinDescripcionTitulo": "{{count}} filas sin descripción",
+      "sinDescripcionDetalle": "Sin descripción la cenefa sale con el cuadro vacío. Se pueden generar todas juntas y revisarlas antes de aceptar.",
+      "paresTitulo": "{{count}} pares que parecen el mismo producto",
+      "paresDetalle": "Mismo nombre base con distinta variante. Si son el mismo cartel conviene unirlos en una fila; si no, descartalos y no vuelven a aparecer.",
+      "ofertadetTitulo": "{{count}} filas con un tipo de oferta que no conozco",
+      "ofertadetDetalle": "El OFERTADET de esas filas no es ninguna mecánica conocida, así que su oferta no se anuncia en el cartel. Puede ser una mecánica nueva que haya que agregar.",
+      "unificarTitulo": "Buscar variantes del mismo producto",
+      "unificarDetalle": "Revisa todos los nombres del Excel y agrupa los que sean variantes de la misma línea (distinto peso, sabor o envase) para que compartan un solo cartel."
     }
   },
   "facturacion": {

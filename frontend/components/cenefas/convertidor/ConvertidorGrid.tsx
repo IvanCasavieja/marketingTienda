@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
-import { ArrowLeft, Download, Layers, Loader2, Merge, Presentation, Sparkles, Target } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Merge, Presentation, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { convertidorApi, type ConvertidorRow, type MaPair, type UnificarGrupoItem } from "@/lib/api";
@@ -10,6 +10,7 @@ import { guardarExcelParaCenefa } from "@/lib/cenefaHandoff";
 import ConvertidorAiModal from "./ConvertidorAiModal";
 import ConvertidorMergeModal from "./ConvertidorMergeModal";
 import ConvertidorUnifyModal from "./ConvertidorUnifyModal";
+import TininRevision, { type TemaTinin } from "./TininRevision";
 
 // Virtualización manual (sin librería nueva): solo se renderizan las filas
 // visibles ± un buffer, con dos <tr> espaciadores para mantener el alto de
@@ -586,6 +587,74 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
     return "bg-amber-50 dark:bg-amber-500/10 ring-1 ring-inset ring-amber-300 dark:ring-amber-500/40";
   }
 
+  // Todo lo que Tinín tiene para decir, en un solo lugar y en orden de
+  // impacto: primero lo que impide generar (falta el dato), después lo que
+  // conviene revisar (dos filas que parecen el mismo cartel), al final lo
+  // opcional. Cada tema desaparece solo cuando se resuelve.
+  const temasTinin = useMemo<TemaTinin[]>(() => {
+    const out: TemaTinin[] = [];
+
+    if (rowsParaIA.length > 0) {
+      out.push({
+        id: "sin-descripcion",
+        titulo: t("convertidor.tinin.sinDescripcionTitulo", { count: rowsParaIA.length }),
+        detalle: t("convertidor.tinin.sinDescripcionDetalle"),
+        accion: {
+          etiqueta: t("convertidor.ai.button"),
+          onClick: () => setAiModalRows(rowsParaIA),
+        },
+        items: rowsParaIA.slice(0, 40).map((row) => ({
+          clave: String(row.row_id),
+          texto: `${row.codigo} · ${row.nombre_articulo || "—"}`,
+          onIr: () => scrollToRow(row.row_id),
+        })),
+      });
+    }
+
+    if (visiblePairs.length > 0) {
+      out.push({
+        id: "pares",
+        titulo: t("convertidor.tinin.paresTitulo", { count: visiblePairs.length }),
+        detalle: t("convertidor.tinin.paresDetalle"),
+        items: visiblePairs.map((pair) => ({
+          clave: maPairKey(pair.sku1, pair.sku2),
+          texto: `${pair.sku1} · ${pair.nombre1} / ${pair.sku2} · ${pair.nombre2}`,
+          onRevisar: () => setMergePair(pair),
+          onDescartar: () => dismissPair(pair),
+        })),
+      });
+    }
+
+    // OFERTADET que el motor no conoce: la mecánica se descarta en silencio,
+    // así que hay que verlo. Ver resolver_mecanica en convertidor_variables.py.
+    const detDesconocido = rows.filter((r) =>
+      (r.warnings_mecanica ?? []).includes("ofertadet_desconocido"));
+    if (detDesconocido.length > 0) {
+      out.push({
+        id: "ofertadet",
+        titulo: t("convertidor.tinin.ofertadetTitulo", { count: detDesconocido.length }),
+        detalle: t("convertidor.tinin.ofertadetDetalle"),
+        items: detDesconocido.slice(0, 40).map((row) => ({
+          clave: String(row.row_id),
+          texto: `${row.codigo} · ${row.oferta_det || "—"}`,
+          onIr: () => scrollToRow(row.row_id),
+        })),
+      });
+    }
+
+    out.push({
+      id: "unificar",
+      titulo: t("convertidor.tinin.unificarTitulo"),
+      detalle: t("convertidor.tinin.unificarDetalle"),
+      accion: {
+        etiqueta: t("convertidor.unificar.button"),
+        onClick: () => setUnifyModalRows(rows),
+      },
+    });
+
+    return out;
+  }, [rows, rowsParaIA, visiblePairs, t]);
+
   return (
     <div className="space-y-4">
       <a ref={dlRef} className="hidden" />
@@ -594,13 +663,6 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
         <div className="flex items-center gap-2">
           <button onClick={onReset} className="btn-ghost flex items-center gap-1.5 text-sm">
             <ArrowLeft size={14} /> {t("convertidor.changeFile")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setUnifyModalRows(rows)}
-            className="btn-secondary flex items-center gap-1.5 text-xs"
-          >
-            <Layers size={13} /> {t("convertidor.unificar.button")}
           </button>
         </div>
         <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-300">
@@ -622,74 +684,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
         </div>
       </div>
 
-      {visiblePairs.length > 0 && (
-        <div className="card p-3 space-y-2 border-l-4 border-l-brand-400">
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            {t("convertidor.merge.bannerTitle", { count: visiblePairs.length })}
-          </p>
-          <div className="space-y-1.5">
-            {visiblePairs.map((pair) => (
-              <div
-                key={maPairKey(pair.sku1, pair.sku2)}
-                className="flex items-center justify-between gap-3 flex-wrap text-xs bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2"
-              >
-                <span className="text-slate-600 dark:text-slate-300 truncate">
-                  {pair.sku1} · {pair.nombre1} <span className="text-slate-400">/</span> {pair.sku2} · {pair.nombre2}
-                </span>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setMergePair(pair)}
-                    className="btn-secondary text-[11px] flex items-center gap-1 py-1"
-                  >
-                    <Merge size={11} /> {t("convertidor.merge.review")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => dismissPair(pair)}
-                    className="btn-ghost text-[11px] py-1"
-                  >
-                    {t("convertidor.merge.notSameProduct")}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {rowsParaIA.length > 0 && (
-        <div className="card p-3 space-y-2">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              {t("convertidor.unmatchedNavTitle", { count: rowsParaIA.length })}
-            </p>
-            <button
-              type="button"
-              onClick={() => setAiModalRows(rowsParaIA)}
-              className="btn-secondary text-xs flex items-center gap-1.5"
-            >
-              <Sparkles size={13} /> {t("convertidor.ai.button")}
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {rowsParaIA.map((row) => (
-              <button
-                key={row.row_id}
-                type="button"
-                onClick={() => scrollToRow(row.row_id)}
-                className={`badge ${row.es_fiambre_kg ? "badge-yellow" : "badge-red"} flex items-center gap-1 hover:brightness-110 transition-[filter] cursor-pointer max-w-[220px]`}
-                title={t("convertidor.unmatchedNavGo")}
-              >
-                <Target size={11} className="shrink-0" />
-                <span className="truncate">
-                  {row.codigo} · {row.nombre_articulo || "—"}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <TininRevision temas={temasTinin} />
 
       <div className="h-9 flex items-center gap-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs">
         {activeCellColumn ? (
