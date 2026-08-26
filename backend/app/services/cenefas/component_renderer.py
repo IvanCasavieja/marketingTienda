@@ -379,7 +379,28 @@ def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
     return techo - y
 
 
-def _fit_text_to_box(comps: list[dict], product: dict) -> list[dict]:
+def _ancho_util_cm(bounds: dict, ancho_pagina_cm: float | None) -> float | None:
+    """Cuanto ancho tiene REALMENTE el cuadro, sin pasarse del borde del papel.
+
+    Un cuadro puede estar declarado mas ancho que lo que queda de hoja: el
+    autoajuste de PowerPoint estira la caja del precio hasta 12,36 cm arrancando
+    en x=11,28, o sea 2,64 cm afuera de una A4. Midiendo contra la caja el motor
+    cree que "$1.100" entra, no achica nada, y el precio se imprime cortado por
+    el borde. El limite verdadero es el que llegue primero: el ancho de la caja
+    o lo que queda de papel.
+    """
+    ancho = bounds.get("width")
+    if not ancho or not ancho_pagina_cm:
+        return ancho
+    x = bounds.get("x")
+    if x is None:
+        return ancho
+    return max(0.5, min(ancho, ancho_pagina_cm - x))
+
+
+def _fit_text_to_box(
+    comps: list[dict], product: dict, ancho_pagina_cm: float | None = None,
+) -> list[dict]:
     """Achica la fuente de los cuadros cuyo valor no entra.
 
     Aplica a la descripción y a los precios: son cuadros de texto
@@ -413,7 +434,7 @@ def _fit_text_to_box(comps: list[dict], product: dict) -> list[dict]:
             # Cuadro con tamaños mezclados (el precio): se busca la escala más
             # grande a la que la suma de los pedazos entra, y se aplica a todos
             # por igual para no desalinear la coma con el entero.
-            ancho_caja = bounds.get("width") or 0
+            ancho_caja = _ancho_util_cm(bounds, ancho_pagina_cm) or 0
             alto_caja = _alto_disponible_cm(c, comps)
             escala = 1.0
             if ancho_caja and not _entra_por_segmentos(piezas, ancho_caja, alto_caja, bold, familia):
@@ -429,14 +450,22 @@ def _fit_text_to_box(comps: list[dict], product: dict) -> list[dict]:
             fitted = round(base_font_size * escala, 1) if base_font_size else base_font_size
         else:
             fitted = _fit_font_size(
-                texto, bounds.get("width"), _alto_disponible_cm(c, comps),
+                texto, _ancho_util_cm(bounds, ancho_pagina_cm), _alto_disponible_cm(c, comps),
                 base_font_size, bold, familia,
             )
         if fitted == base_font_size:
             result.append(c)
             continue
 
-        c = {**c, "style": {**style, "font_size": fitted}}
+        nuevo_style = {**style, "font_size": fitted}
+        # El alto de línea acompaña al achique. Es el run vacío que
+        # _populate_text_frame agrega para fijar el interlineado: si queda en el
+        # tamaño original mientras el número baja, el renglón conserva el alto
+        # de antes y el texto se planta más abajo de donde lo puso el diseño.
+        if style.get("line_height_pt") and base_font_size:
+            nuevo_style["line_height_pt"] = round(
+                style["line_height_pt"] * (fitted / base_font_size), 1)
+        c = {**c, "style": nuevo_style}
         # En un componente multi-segmento cada segmento lleva su propio
         # font_size, que pisa al del componente en _populate_text_frame. Sin
         # esto el achique se descartaba en silencio para cualquier cuadro
@@ -1276,7 +1305,8 @@ def render_template_to_pptx(
                     product       = pg[band_idx]
                     visibility    = evaluate_rules(rules, product)
                     visible_comps = apply_visibility(laid_band, visibility)
-                    visible_comps = _fit_text_to_box(visible_comps, product)
+                    visible_comps = _fit_text_to_box(
+                        visible_comps, product, get_format(master_format)["width_cm"])
                     _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map)
                 elif preserve_source:
                     # Página parcial (menos productos que celdas) y estamos
@@ -1316,7 +1346,10 @@ def render_template_to_pptx(
 
             visibility    = evaluate_rules(rules, product)
             visible_comps = apply_visibility(laid_out, visibility)
-            visible_comps = _fit_text_to_box(visible_comps, product)
+            # El offset del slot corre el cuadro dentro de la hoja, asi que el
+            # ancho de papel disponible se mide desde donde va a caer de verdad.
+            visible_comps = _fit_text_to_box(
+                visible_comps, product, max(0.5, fmt_info["width_cm"] * slot_cols - slot_offset_x))
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map)
 
