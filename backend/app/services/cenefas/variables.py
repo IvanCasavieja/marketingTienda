@@ -179,9 +179,61 @@ INTERNAL_SET: frozenset[str] = frozenset(INTERNAL_FIELDS)
 # Texto que se agrega a `legales` cuando la categoría es de bebidas con
 # alcohol y el usuario habilitó los legales (ver checkbox del panel de
 # generación). No pisa lo que la persona escribió: se suma.
-LEGAL_ALCOHOL = "Prohibida la venta de bebidas alcohólicas a menores de 18 años"
+# Las DOS frases. "Beber con moderación" faltaba: la constante solo tenía la
+# de la prohibición de venta, y el diseño de referencia de Rompe del Finde
+# imprime las dos ("Descuento aplicado en cajas. Beber con moderación.
+# Prohibida la venta a menores de 18 años.").
+LEGAL_ALCOHOL = (
+    "Beber con moderación. "
+    "Prohibida la venta de bebidas alcohólicas a menores de 18 años"
+)
 
 _RE_CATEGORIA_ALCOHOL = re.compile(r"alcohol", re.IGNORECASE)
+
+# Tipos de bebida con alcohol, para reconocerlos por el NOMBRE del producto
+# cuando el export no trae una categoría que lo diga.
+#
+# Por qué hace falta: `categoria_es_alcohol` busca la palabra "alcohol" en la
+# columna CATEGORIA, y esa columna NO existe en varios exports -- el Convertidor
+# ni la lee. Con COMPRADOR="BEBIDAS" no alcanza: ahí conviven la Coca-Cola y el
+# fernet. Resultado real: una cenefa de Stella Artois salía sin la leyenda.
+#
+# Va por TIPO de bebida y no por marca a propósito. Una lista de marcas hay que
+# mantenerla para siempre y falla justo con la marca nueva; "cerveza", "whisky" o
+# "fernet" aparecen en el nombre de gestión de todas las marcas de su tipo.
+# Igual queda corto para lo que no se nombra por tipo, y para eso está Tinín --
+# ver `detectar_alcohol` (pendiente) en convertidor_ai.py.
+#
+# "sin alcohol" NO se excluye: la Stella sin alcohol se vende al lado de la
+# original y la leyenda de más no hace daño. Omitirla sí.
+_TIPOS_ALCOHOL = (
+    "cerveza", "vino", "whisky", "whiskey", "fernet", "vodka", "gin ", "ginebra",
+    "ron ", "licor", "champagne", "champaña", "espumante", "sidra", "aperitivo",
+    "grappa", "grapa", "caña", "tequila", "aperol", "vermouth", "vermut",
+    "sangria", "sangría", "coñac", "cognac", "brandy", "pisco", "amargo serrano",
+)
+
+_RE_TIPO_ALCOHOL = re.compile(
+    r"(?:^|[^a-záéíóúñ])(?:" + "|".join(t.strip() for t in _TIPOS_ALCOHOL) + r")",
+    re.IGNORECASE,
+)
+
+
+def es_alcohol(*textos: str) -> bool:
+    """True si alguno de esos textos habla de una bebida con alcohol.
+
+    Se le pasa la categoría, la descripción y el nombre de gestión: basta que
+    UNO lo diga. Errar por exceso agrega una leyenda que sobra; errar por
+    defecto imprime un cartel de bebida alcohólica sin la leyenda obligatoria,
+    que es una infracción.
+    """
+    for t in textos:
+        t = str(t or "")
+        if not t:
+            continue
+        if _RE_CATEGORIA_ALCOHOL.search(t) or _RE_TIPO_ALCOHOL.search(t):
+            return True
+    return False
 
 
 def categoria_es_alcohol(categoria: str) -> bool:
@@ -191,6 +243,9 @@ def categoria_es_alcohol(categoria: str) -> bool:
     exports ("BEBIDAS CON ALCOHOL", "Bebidas c/alcohol", "ALCOHOL"), y
     equivocarse acá significa imprimir un cartel de bebida alcohólica sin
     la leyenda obligatoria.
+
+    Se mantiene para lo que ya la usaba; lo nuevo va por `es_alcohol`, que
+    además mira el nombre del producto.
     """
     return bool(_RE_CATEGORIA_ALCOHOL.search(categoria or ""))
 

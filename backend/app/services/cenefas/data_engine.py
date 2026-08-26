@@ -26,7 +26,7 @@ from app.services.cenefas.variables import (
     LEGAL_ALCOHOL,
     ORDEN_EXPORT,
     PRICE_VARS,
-    categoria_es_alcohol,
+    es_alcohol,
     resolve,
 )
 
@@ -211,7 +211,12 @@ def process_row(
     # renderer no toca ese cuadro.
     if usar_legales:
         texto_legal = result["legales"] or legales
-        if categoria_es_alcohol(internos["categoria"]):
+        # Mira la categoría Y el texto del producto: la columna CATEGORIA no
+        # existe en varios exports, así que sola dejaba la leyenda sin disparar.
+        # Mira la categoría Y la descripción del producto: la columna CATEGORIA
+        # no existe en varios exports, así que sola dejaba la leyenda sin
+        # disparar -- una cenefa de Stella Artois salía sin ella.
+        if es_alcohol(internos["categoria"], result.get("descripcion", "")):
             # Se SUMA, no pisa: la leyenda de alcohol es obligatoria y
             # convive con lo que haya escrito la persona.
             texto_legal = f"{texto_legal} {LEGAL_ALCOHOL}".strip() if texto_legal else LEGAL_ALCOHOL
