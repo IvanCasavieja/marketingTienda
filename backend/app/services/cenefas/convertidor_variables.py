@@ -69,7 +69,10 @@ MECANICA_PRECIO_FIJO = "Precio Final"
 # "Coca Cola Zero 2.25 L 2x$299" en otros. Anclado con ^...$ el segundo no
 # matcheaba y la fila perdía TODO -- precio, tipoOferta y mecánica quedaban
 # vacíos y la cenefa salía sin precio (visto en el boceto del 27/08).
-_RE_COMBO = re.compile(r"(\d+)\s*[xX×]\s*\$\s*([\d.,]+)")
+# El "$" es OPCIONAL: gestion escribe "3x99" y "2x$299". No hay ambiguedad
+# con un M x N ("6x4") porque este regex solo se usa cuando OFERTADET ya
+# dijo que es un combo -- el tipo lo decide OFERTADET, nunca el texto.
+_RE_COMBO = re.compile(r"(\d+)\s*[xX×]\s*\$?\s*([\d.,]+)")
 
 # "2x1" / "4X2" -- la mecánica M x N no trae precio, trae cuántas se llevan
 # y cuántas se pagan. Sin "$" en el medio: eso lo distingue de un combo.
@@ -144,8 +147,16 @@ def resolver_mecanica(
             # "Coca Cola Zero 2.25 L 2x$299" y en la cocarda va "2x$299".
             "tipoOferta":   re.sub(r"\s+", "", m.group(0)),
             "ofertaUno":    f"{cantidad}x",
-            "precioOferta": total,
-            "promoOferta":  "",
+            # El unitario, no el total: precioOferta ES UN PRECIO y es el que
+            # se imprime grande. El literal del combo ("2x$299") va a
+            # promoOferta, igual que el "6x4" de un M x N -- el diseno lo
+            # dibuja tapando al precio cuando corresponde.
+            #
+            # El unitario sale de DIVIDIR el total (299/2), no de la columna
+            # PRECIO: esa trae el precio de una unidad suelta, que puede ser
+            # otro numero. Ver el bloque del principio de variables.py.
+            "precioOferta": unitario,
+            "promoOferta":  re.sub(r"\s+", "", m.group(0)),
             "mecanica":     f"Comprando {cantidad}, {prefijo}{fmt_price(unitario)} la unidad.",
             # Los dos pedazos sueltos, para el diseno que los dibuja separados
             # arriba y abajo del precio en vez de en un renglon (Rompe del
