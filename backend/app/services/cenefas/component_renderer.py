@@ -920,16 +920,29 @@ def _render_slide(
     shape_map: dict[int, object] | None = None,
 ) -> None:
     shape_map = shape_map or {}
+    # Que variables "que tapan" existen como cuadro en ESTE diseno. Se calcula
+    # una vez por slide, no por componente.
+    dibujadas = set()
+    for c in comp_layout:
+        dibujadas |= _variables_del_componente(c)
+    dominantes_presentes = [m for m in _EXCLUYENTES if m in dibujadas]
+
     for comp in comp_layout:
         comp_type = comp.get("type", "text")
         source_id = comp.get("_source_shape_id")
 
         oculto = not comp.get("visible", True)
         # Excluyentes: si la que manda del par trae valor, esta no se dibuja.
-        if not oculto:
+        # Solo aplica si el diseno TIENE de verdad el cuadro que tapa. Sin ese
+        # chequeo, una plantilla que usa precioOferta y no tiene cuadro de
+        # promoOferta escondia el precio y no dibujaba nada en su lugar: la
+        # cenefa de un M x N salia con el hueco del precio en blanco (visto en
+        # la A4 de Rompe del Finde, que muestra el literal en la cocarda de
+        # tipoOferta y no necesita promoOferta).
+        if not oculto and dominantes_presentes:
             usadas = _variables_del_componente(comp)
-            for manda, tapadas in _EXCLUYENTES.items():
-                if usadas & set(tapadas) and str(product.get(manda, "") or "").strip():
+            for manda in dominantes_presentes:
+                if usadas & set(_EXCLUYENTES[manda]) and str(product.get(manda, "") or "").strip():
                     oculto = True
                     break
         # Un cuadro cuyo contenido sale SOLO de variables y todas quedaron
@@ -1400,8 +1413,15 @@ def render_template_to_pptx(
     cell_h    = fmt_info["height_cm"]
     groups    = [products[i:i + slots] for i in range(0, len(products), slots)]
 
-    for gi, group in enumerate(groups):
-        slide     = _next_slide(gi == 0)
+    # Igual que en el camino de varias franjas: TODAS las hojas se crean antes
+    # de dibujar. _duplicate_slide copia el slide base tal como esta en ese
+    # momento, y desde que un cuadro vacio se saca del slide, clonar despues de
+    # renderizar la hoja anterior arrastra sus faltantes. Sintoma real: 43
+    # cenefas A4 salieron TODAS sin cocarda porque el primer producto no tenia
+    # mecanica -- el resto se clono de esa base ya mutilada.
+    hojas = [_next_slide(gi == 0) for gi in range(len(groups))]
+
+    for group, slide in zip(groups, hojas):
         shape_map = _shape_id_map(slide.shapes) if preserve_source else {}
 
         for slot_idx, product in enumerate(group):
