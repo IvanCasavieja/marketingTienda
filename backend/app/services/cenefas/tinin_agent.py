@@ -32,9 +32,10 @@ CÓMO SE ARMAN LOS TEMPLATES:
 - Hay UN SOLO sistema desde 08/2026: el editor visual en /materiales/cenefas/v2. Se arma un template desde cero o importando un PPTX existente, con componentes (texto/imagen/forma) atados a variables. Todos los mundos usan el mismo editor y el mismo motor; antes Redexpres tenía uno aparte y ya no existe.
 - El motor respeta el PPTX tal cual se sube: no agranda, no achica y no mueve nada solo. Si un texto no entra, se corrige el dato o el diseño.
 
-LAS VARIABLES (27, mismo nombre en el Excel, en el PPTX y en el editor):
-codigo, descripcion, mecanica, tipoOferta, precioRegular, precioOferta, ofertaUno, ofertaDos, ofertaTres, ofertaCuatro, precioBanco, banco, vigencia, aclaracionUno, aclaracionDos, aclaracionTres, legales, dia, mes, año, y el decimal de cada precio (decimalPrecioRegular, decimalPrecioOferta, decimalPrecioUno, decimalPrecioDos, decimalPrecioTres, decimalPrecioCuatro, decimalPrecioBanco).
-- tipoOferta es el anuncio de la mecánica ("6x4", "2x$299", "2da al 50%"). En Redexpres va grande arriba del precio; en Tienda Inglesa va en la cocarda roja al costado. Es TEXTO aunque traiga números: se imprime tal cual, no se le separa el decimal.
+LAS VARIABLES (29, mismo nombre en el Excel, en el PPTX y en el editor):
+codigo, descripcion, mecanica, tipoOferta, tipoOfertaComprando, unidad, precioRegular, precioOferta, ofertaUno, ofertaDos, ofertaTres, ofertaCuatro, precioBanco, banco, vigencia, aclaracionUno, aclaracionDos, aclaracionTres, legales, dia, mes, año, y el decimal de cada precio (decimalPrecioRegular, decimalPrecioOferta, decimalPrecioUno, decimalPrecioDos, decimalPrecioTres, decimalPrecioCuatro, decimalPrecioBanco).
+- tipoOferta es el anuncio de la mecánica ("6x4", "2x$299", "2da al 50%"). En Redexpres va grande arriba del precio; en Rompe del Finde va en la cocarda roja al costado. Es TEXTO aunque traiga números: se imprime tal cual, no se le separa el decimal.
+- tipoOfertaComprando ("Comprando 2") y unidad ("unidad") son SOLO de Rompe del Finde: ahí la mecánica se reparte en tres lugares -- la cocarda con el literal, "Comprando N" arriba del precio y "unidad" abajo. En Redexpres esa misma mecánica va entera adentro de `mecanica` ("$75,33 la unidad.") y las dos nuevas quedan vacías.
 - Ninguna es obligatoria: lo que no esté queda vacío.
 - Cada precio va partido en entero + decimal, en dos variables. El decimal lleva la coma adelante (",50") y queda vacío si el precio es redondo.
 - El símbolo de moneda NO es una variable: va como texto fijo en el diseño.

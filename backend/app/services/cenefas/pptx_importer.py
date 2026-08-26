@@ -95,7 +95,12 @@ _LEGACY_PLACEHOLDERS: dict[str, str | None] = {
     "unidadmedida":          None,
     "unidadprecio":          None,
     "unidadpbanco":          None,
-    "unidad":                None,
+    # OJO: `unidad` NO va más acá. Se dio de baja en 08/2026 (la unidad pasó a
+    # viajar dentro de `mecanica`) y volvió el 2026-08-26 como variable propia
+    # para el renglón que va abajo del precio en Rompe del Finde. Mientras
+    # estuvo en esta tabla, un <<unidad>> se importaba y quedaba vacío para
+    # siempre, sin avisar. Ahora `resolve()` la reconoce como canónica y el
+    # paso 1 de _resolve_placeholder la resuelve antes de llegar a este puente.
     "moneda":                None,   # el símbolo pasó a ser texto fijo del diseño
     "categoria":             None,   # campo interno, nunca se dibujó
     "subcategoria":          None,

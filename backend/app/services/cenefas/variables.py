@@ -1,4 +1,4 @@
-"""Vocabulario único de variables de cenefas — 27 nombres, un solo lenguaje.
+"""Vocabulario único de variables de cenefas — 29 nombres, un solo lenguaje.
 
 Desde 08/2026 el nombre de la columna del Excel, el placeholder del PPTX
 (``<<nombre>>``) y la clave del JSON del template son SIEMPRE el mismo
@@ -17,7 +17,7 @@ import re
 import unicodedata
 
 # ---------------------------------------------------------------------------
-# Las 27 variables
+# Las 29 variables
 # ---------------------------------------------------------------------------
 
 # Identificación y textos.
@@ -28,11 +28,24 @@ import unicodedata
 # no se le separa el decimal y no se le da formato -- se imprime tal cual venga.
 # No confundir con ofertaUno..Cuatro, que sí son precios (los niveles 4x3/5x3
 # de Parrilla y Vinos) y arrastran su columna de decimales.
+# `tipoOfertaComprando` y `unidad` se agregaron el 2026-08-26 para las cenefas
+# de Rompe del Finde (Tienda Inglesa), donde la mecánica se dibuja repartida en
+# tres lugares en vez de en un renglón:
+#
+#     cocarda al costado   tipoOferta            "2x$299" / "6x4"
+#     arriba del precio    tipoOfertaComprando   "Comprando 2"
+#     abajo del precio     unidad                "unidad"
+#
+# En Redexpres esa misma mecánica va entera adentro de `mecanica`
+# ("$75,33 la unidad."), así que las dos nuevas quedan vacías ahí. Son de TEXTO:
+# se imprimen tal cual, sin separar decimal ni dar formato.
 TEXT_VARS: tuple[str, ...] = (
     "codigo",
     "descripcion",
     "mecanica",
     "tipoOferta",
+    "tipoOfertaComprando",
+    "unidad",
     "vigencia",
     "aclaracionUno",
     "aclaracionDos",
@@ -85,6 +98,8 @@ ORDEN_EXPORT: tuple[str, ...] = (
     "descripcion",
     "mecanica",
     "tipoOferta",
+    "tipoOfertaComprando",
+    "unidad",
     "precioRegular", "decimalPrecioRegular",
     "precioOferta",  "decimalPrecioOferta",
     "ofertaUno",     "decimalPrecioUno",

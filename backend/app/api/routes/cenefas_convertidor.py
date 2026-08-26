@@ -167,7 +167,7 @@ async def update_descripcion(
 class ConvertidorRowIn(BaseModel):
     """Una fila tal como vuelve del grid.
 
-    Lleva las 27 variables (lo que se exporta) más el contexto del export de
+    Lleva las 29 variables (lo que se exporta) más el contexto del export de
     gestión, que no se exporta pero sí se usa para recalcular los warnings
     server-side: el coloreado del Excel final no confía en el array que
     mandó el browser.
@@ -195,11 +195,13 @@ class ConvertidorRowIn(BaseModel):
     es_fiambre_kg:       bool = False
     warnings_mecanica:   list[str] = Field(default_factory=list)
 
-    # -- las 27 variables --------------------------------------------------
+    # -- las 29 variables --------------------------------------------------
     codigo:               str = ""
     descripcion:          str = ""
     mecanica:             str = ""
     tipoOferta:           str = ""
+    tipoOfertaComprando:  str = ""
+    unidad:               str = ""
     precioRegular:        str = ""
     decimalPrecioRegular: str = ""
     precioOferta:         str = ""
