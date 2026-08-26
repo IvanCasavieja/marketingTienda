@@ -22,7 +22,10 @@ from app.models.audit_log import AuditLog
 from app.models.convertidor_mapeo import ConvertidorMapeo
 from app.models.sku_descripcion import SkuDescripcion
 from app.models.user import User
+from app.models.convertidor_header_alias import ConvertidorHeaderAlias
 from app.services.cenefas.convertidor import (
+    _INPUT_ALIASES,
+    _norm,
     ConvertidorParseError,
     build_output_workbook,
     detectar_fila_headers,
@@ -33,8 +36,10 @@ from app.services.cenefas.convertidor import (
     upsert_sku_descripcion,
 )
 from app.services.cenefas.convertidor_ai import (
+    _CAMPOS_SUGERIBLES,
     _ROWS_MAX_PER_REQUEST,
     detectar_grupos_unificables,
+    sugerir_campos_de_columnas,
     generar_descripciones,
 )
 from app.services.cenefas import tinin_agent
@@ -502,6 +507,131 @@ async def columnas(
         "variables_mapeables": list(VARIABLES_MAPEABLES),
         "total_filas": sugerida["total_filas"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Columnas sin reconocer: Tinín propone, la persona confirma
+# ---------------------------------------------------------------------------
+#
+# Agregar un alias a mano cada vez que gestión inventa un nombre nuevo es una
+# carrera que se pierde ("NOMBRE DE ARTICULO" con "de", "DESCRIPCIONES WEB" en
+# plural, "precioOferta" como nombre de entrada...). Y una columna que no
+# matchea se ignora EN SILENCIO, así que el problema aparece mucho después y
+# disfrazado de otra cosa.
+#
+# Estas dos rutas cierran el circuito: la primera pregunta, la segunda aprende.
+
+
+@router.post("/columnas/sugerir-ia")
+@limiter.limit("5/minute")
+async def sugerir_columnas_ia(
+    request: Request,
+    excel: UploadFile = File(...),
+    current_user: User = Depends(require_permission("ai.tinin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Las columnas que el sistema no reconoció, con la propuesta de Tinín.
+
+    No aplica nada: devuelve sugerencias para confirmar. Lo que ya está
+    aprendido en ConvertidorHeaderAlias no se vuelve a preguntar."""
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="La sugerencia con IA no está configurada en este ambiente")
+
+    excel_bytes = await read_limited(excel, "Excel")
+    try:
+        filas = leer_filas(excel_bytes, excel.filename or "")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No pude leer el archivo: {e}")
+
+    idx = detectar_fila_headers(filas)
+    if idx is None:
+        raise HTTPException(status_code=400, detail="No encontré una fila de encabezados reconocible")
+
+    header = filas[idx]
+    muestras_filas = filas[idx + 1: idx + 1 + _MUESTRAS_PARA_IA]
+
+    # Solo las que NO resuelve el codigo. Las que ya matchean por nombre no
+    # tienen nada que preguntar.
+    candidatos: list[dict] = []
+    for i, celda in enumerate(header):
+        nombre = str(celda).strip() if celda is not None else ""
+        if not nombre:
+            continue
+        norm = _norm(nombre)
+        if norm in _INPUT_ALIASES:
+            continue
+        vals = [str(f[i]).strip() for f in muestras_filas
+                if i < len(f) and f[i] is not None and str(f[i]).strip()]
+        candidatos.append({"header_norm": norm, "header_display": nombre, "muestras": vals[:6]})
+
+    if not candidatos:
+        return {"sugerencias": [], "ya_aprendidas": [], "errores": [], "campos": _CAMPOS_SUGERIBLES}
+
+    # Lo ya aprendido se informa aparte: sirve para que se vea POR QUE una
+    # columna con nombre raro igual funciono, sin gastar una llamada a IA.
+    aprendidas = {
+        r.header_norm: r.field_name
+        for r in (await db.execute(
+            select(ConvertidorHeaderAlias)
+            .where(ConvertidorHeaderAlias.header_norm.in_([c["header_norm"] for c in candidatos]))
+        )).scalars().all()
+    }
+    pendientes = [c for c in candidatos if c["header_norm"] not in aprendidas]
+
+    resultado = await sugerir_campos_de_columnas(pendientes, db, current_user.id)
+    await db.commit()   # persiste el ai_usage_log
+    return {
+        "sugerencias":   resultado["sugerencias"],
+        "ya_aprendidas": [
+            {"header_norm": k, "header_display": next(
+                (c["header_display"] for c in candidatos if c["header_norm"] == k), k),
+             "campo": v}
+            for k, v in aprendidas.items()
+        ],
+        "errores": resultado["errores"],
+        "campos":  _CAMPOS_SUGERIBLES,
+    }
+
+
+class AliasConfirmado(BaseModel):
+    header_norm: str = Field(min_length=1, max_length=120)
+    # None = "esta columna no es ninguno de los campos". Se guarda igual: es una
+    # respuesta valida y evita volver a preguntar por ese header.
+    campo: str | None = None
+
+    @field_validator("campo")
+    @classmethod
+    def _campo_conocido(cls, v: str | None) -> str | None:
+        if v is not None and v not in _CAMPOS_SUGERIBLES:
+            raise ValueError(f"Campo desconocido: {v!r}")
+        return v
+
+
+class ConfirmarAliasRequest(BaseModel):
+    aliases: list[AliasConfirmado]
+
+
+@router.post("/columnas/confirmar-alias")
+async def confirmar_alias_columnas(
+    payload: ConfirmarAliasRequest,
+    current_user: User = Depends(require_permission("cenefas.edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Guarda las confirmaciones. Desde acá en adelante esos encabezados los
+    resuelve el código, igual que cualquier entrada de _INPUT_ALIASES, solo que
+    aprendida en vez de hardcodeada — y no vuelven a pasar por IA nunca."""
+    if not payload.aliases:
+        raise HTTPException(status_code=400, detail="No hay nada que confirmar")
+
+    stmt = pg_insert(ConvertidorHeaderAlias).values(
+        [{"header_norm": a.header_norm, "field_name": a.campo} for a in payload.aliases]
+    )
+    await db.execute(stmt.on_conflict_do_update(
+        index_elements=["header_norm"],
+        set_={"field_name": stmt.excluded.field_name},
+    ))
+    await db.commit()
+    return {"guardados": len(payload.aliases)}
 
 
 # ---------------------------------------------------------------------------

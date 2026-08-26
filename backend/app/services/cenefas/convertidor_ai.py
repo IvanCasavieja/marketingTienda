@@ -380,3 +380,120 @@ async def resolve_date_columns_with_ai(candidates: list[dict], db, user_id: int)
     except Exception as exc:
         log.warning("convertidor_ai.resolve_date_columns_with_ai: fallo — %s", exc)
         return {}
+
+# ---------------------------------------------------------------------------
+# Columnas que el sistema no reconocio: que campo QUISO poner quien las escribio
+# ---------------------------------------------------------------------------
+#
+# Agregar un alias a mano cada vez que gestion inventa un nombre nuevo es una
+# carrera que se pierde: ya pasaron "NOMBRE DE ARTICULO" (con "de"),
+# "DESCRIPCIONES WEB" (plural), "precioRegular"/"precioOferta" (los nombres
+# canonicos usados como entrada). Cada listado nuevo trae otra variante y la
+# columna se ignora EN SILENCIO -- el sintoma tipico es la generacion con IA
+# devolviendo "no pudimos generar" para todas las filas porque llegaron sin
+# nombre de articulo.
+#
+# Esto lo da vuelta: en vez de que el sistema adivine solo, Tinin mira las
+# columnas que quedaron sin reconocer --el nombre Y los valores-- y PROPONE a
+# que campo corresponden. La persona confirma, y la confirmacion se guarda en
+# ConvertidorHeaderAlias: ese header nunca vuelve a pasar por IA.
+#
+# Se le pasan los VALORES a proposito, no solo el nombre. Es la mitad de la
+# senal: una columna llamada "oferta" cuyos valores son todos numeros con coma
+# no es el titular de una oferta, es un precio; una llamada "regular" con
+# numeros mas altos que la de al lado es el precio anterior.
+#
+# NUNCA aplica nada por su cuenta -- devuelve sugerencias para confirmar. Misma
+# regla que la base de conocimiento: nada se activa solo.
+
+# Que campos se le pueden proponer, con la explicacion que ve Tinin. Es el
+# vocabulario de ENTRADA (ver _INPUT_ALIASES en convertidor.py), no las
+# variables de la cenefa: lo que se mapea es la columna del Excel de gestion.
+_CAMPOS_SUGERIBLES: dict[str, str] = {
+    "codigo":            "el codigo de articulo / SKU",
+    "nombre_articulo":   "el nombre del producto tal como lo escribe el sistema de gestion",
+    "descripcion_excel": "una descripcion de cartel ya redactada a mano",
+    "descripcion_web":   "la descripcion larga del producto para la web",
+    "moneda":            "el simbolo de moneda ($ o U$S)",
+    "precio_anterior":   "el precio regular / anterior, el que se tacha",
+    "precio":            "el precio de la oferta, el vigente",
+    "oferta":            "el literal de la mecanica ('6x4', '2x$299', '20%OFF')",
+    "oferta_det":        "el TIPO de mecanica ('M x N', 'Combo', 'Precio fijo', '% descuento')",
+    "comprador":         "el rubro o sector del producto (CARNICERIA, BEBIDAS...)",
+    "fecha_inicio":      "la fecha en que arranca la vigencia",
+    "fecha_fin":         "la fecha en que termina la vigencia",
+}
+
+_SUGERIR_SYSTEM_PROMPT = f"""{TININ_BASE}
+
+Hoy también te toca: te paso encabezados de columna de un Excel de gestión que el sistema NO \
+reconoció por nombre, cada uno con valores de ejemplo de esa misma columna. Para cada uno tenés \
+que decidir a qué campo del sistema corresponde, o null si no corresponde a ninguno.
+
+Los campos posibles son exactamente estos:
+{chr(10).join(f'- {k}: {v}' for k, v in _CAMPOS_SUGERIBLES.items())}
+
+Mirá el nombre Y los valores, las dos cosas. Los valores son la mitad de la señal: una columna \
+llamada "oferta" cuyos valores son todos números con coma no es el literal de una mecánica, es \
+un precio; una llamada "regular" con números más altos que otra es el precio anterior.
+
+Sé conservador: ante la duda, null. Es mejor dejar una columna sin reconocer que mapearla mal — \
+un precio en el campo equivocado sale impreso en un cartel de góndola. La persona va a confirmar \
+cada propuesta antes de que se aplique, así que tu trabajo es proponer con criterio y explicar por \
+qué, no acertar a toda costa."""
+
+
+def _build_sugerir_prompt(candidatos: list[dict]) -> str:
+    lineas = []
+    for n, c in enumerate(candidatos, start=1):
+        muestras = ", ".join(f'"{m}"' for m in c["muestras"][:6]) or "(sin valores)"
+        lineas.append(f'{n}. Encabezado: "{c["header_display"]}" — valores: {muestras}')
+    return (
+        f"Clasificá estos {len(candidatos)} encabezados:\n\n" + "\n".join(lineas) + "\n\n"
+        'Devolvé SOLO un JSON con esta forma exacta: {"columnas": {"1": {"campo": "<uno de la '
+        'lista>|null", "motivo": "una frase corta explicando por qué"}, ...}} — una entrada por '
+        "cada número, en el mismo orden. Sin comentarios ni texto fuera del JSON."
+    )
+
+
+async def sugerir_campos_de_columnas(candidatos: list[dict], db, user_id: int) -> dict:
+    """candidatos: [{"header_norm", "header_display", "muestras": [str, ...]}, ...]
+
+    Devuelve {"sugerencias": [{header_norm, header_display, campo, motivo}, ...],
+              "errores": [str, ...]}.
+
+    `campo` es None cuando Tinin decidio que la columna no corresponde a ningun
+    campo conocido -- se devuelve igual, porque confirmar un "no es ninguno"
+    tambien sirve: se cachea y no se vuelve a preguntar.
+
+    No escribe en ConvertidorHeaderAlias: eso pasa cuando la persona confirma
+    (ver la ruta /columnas/confirmar-alias). Nada se aplica solo.
+    """
+    if not candidatos:
+        return {"sugerencias": [], "errores": []}
+
+    recorte = candidatos[:_ROWS_MAX_PER_REQUEST]
+    errores: list[str] = []
+    try:
+        content, in_tok, out_tok = await _ask_claude(
+            _SUGERIR_SYSTEM_PROMPT, _build_sugerir_prompt(recorte), max_tokens=2000)
+        await log_ai_usage(db, user_id, "convertidor_columnas", *_ASK_CLAUDE_META, in_tok, out_tok)
+        parsed = json.loads(_strip_json_fence(content)).get("columnas", {})
+    except Exception as exc:
+        log.warning("sugerir_campos_de_columnas: %s", exc, exc_info=True)
+        return {"sugerencias": [], "errores": [f"{type(exc).__name__}: {exc}"]}
+
+    sugerencias = []
+    for n, c in enumerate(recorte, start=1):
+        item = parsed.get(str(n)) or {}
+        campo = item.get("campo")
+        if campo is not None and campo not in _CAMPOS_SUGERIBLES:
+            errores.append(f'Tinin propuso un campo que no existe para "{c["header_display"]}": {campo!r}')
+            continue
+        sugerencias.append({
+            "header_norm":    c["header_norm"],
+            "header_display": c["header_display"],
+            "campo":          campo,
+            "motivo":         str(item.get("motivo") or "")[:300],
+        })
+    return {"sugerencias": sugerencias, "errores": errores}
