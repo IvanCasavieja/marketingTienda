@@ -5,7 +5,13 @@ import clsx from "clsx";
 import { ArrowLeft, Download, Loader2, Merge, Presentation, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { convertidorApi, type ConvertidorRow, type MaPair, type UnificarGrupoItem } from "@/lib/api";
+import {
+  convertidorApi,
+  type ConvertidorRow,
+  type GrupoUnificado,
+  type MaPair,
+  type UnificarGrupoItem,
+} from "@/lib/api";
 import { guardarExcelParaCenefa } from "@/lib/cenefaHandoff";
 import ConvertidorAiModal from "./ConvertidorAiModal";
 import ConvertidorMergeModal from "./ConvertidorMergeModal";
@@ -309,6 +315,47 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
   // del catálogo, por eso es un filtro aparte y no solo un warning más.
   const rowsFiambresKg = useMemo(() => rows.filter((r) => r.es_fiambre_kg), [rows]);
 
+  // Grupos unificados que ya se armaron antes y tocan los SKU de este listado.
+  //
+  // Se busca UNA vez, con los códigos tal como vinieron del Excel -- no con
+  // cada cambio de la grilla: unificar cambia los códigos (pasan a ser el
+  // combinado) y volver a preguntar con eso no encontraría nada y además haría
+  // parpadear el aviso justo después de resolverlo.
+  const [grupos, setGrupos] = useState<GrupoUnificado[]>([]);
+  const [gruposDescartados, setGruposDescartados] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const skus = rows.map((r) => r.codigo).filter(Boolean);
+    if (skus.length === 0) return;
+    let vivo = true;
+    convertidorApi
+      .buscarGruposUnificados(skus)
+      .then(({ data }) => { if (vivo) setGrupos(data.grupos); })
+      // Silencioso a propósito: esto es una ayuda, no un paso del flujo. Si el
+      // pedido falla la grilla funciona igual y no hay nada que la persona
+      // pueda hacer con el error.
+      .catch(() => {});
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Aplica un grupo COMPLETO: las filas de esos SKU pasan a ser una sola, con
+  // la descripción que ya se escribió la vez pasada.
+  async function aplicarGrupo(g: GrupoUnificado) {
+    const filas = rows.filter((r) => g.presentes.includes(r.codigo));
+    if (filas.length < 2) {
+      toast.error(t("convertidor.grupos.noEstanLasFilas"));
+      return;
+    }
+    await commitUnificacion({
+      row_ids:     filas.map((r) => r.row_id),
+      skus:        filas.map((r) => r.codigo),
+      grupo:       g.nombre,
+      descripcion: g.descripcion,
+    });
+    setGruposDescartados((prev) => new Set(prev).add(g.id));
+  }
+
   // Se vende por 100 g pero el precio vino del kilo -- el caso inverso al de
   // arriba: acá la descripción ya está bien y el que quedó mal es el precio.
   // Pasó de verdad y se imprimió (Rompe del Finde 27 al 30/8: jamón crudo a
@@ -378,6 +425,12 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
             : r
         )
     );
+    // Un par M/A también es un grupo unificado, de dos. Se recuerda igual.
+    try {
+      await convertidorApi.guardarGrupoUnificado(descripcion, descripcion, [pair.sku1, pair.sku2]);
+    } catch {
+      toast.warning(t("convertidor.grupos.noSeGuardo"));
+    }
     setPendingPairs((prev) => prev.filter((p) => !(p.sku1 === pair.sku1 && p.sku2 === pair.sku2)));
     setMergePair(null);
     toast.success(t("convertidor.merge.merged", { sku: skuCombinado }));
@@ -413,6 +466,19 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
             : r
         )
     );
+    // Y se recuerda el grupo por su CONJUNTO de SKU. Guardar la descripción
+    // bajo el código combinado ("63009 - 211797") alcanza para que el MISMO
+    // Excel vuelva a resolver igual y falla para todo lo demás: si mañana la
+    // promo trae dos de esos tres, esa clave no matchea. Con la lista se
+    // detecta el subconjunto y se puede avisar.
+    //
+    // No es fatal: si falla, la unificación ya está hecha igual y lo único que
+    // se pierde es el recuerdo para la próxima.
+    try {
+      await convertidorApi.guardarGrupoUnificado(grupo.grupo, grupo.descripcion, grupo.skus);
+    } catch {
+      toast.warning(t("convertidor.grupos.noSeGuardo"));
+    }
     toast.success(t("convertidor.unificar.saved", { grupo: grupo.grupo, count: grupo.skus.length }));
   }
 
@@ -768,6 +834,50 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
       },
     });
 
+    // Un grupo que vino INCOMPLETO. Es el aviso que más importa de los dos: la
+    // descripción guardada menciona un producto que hoy NO está en oferta, y un
+    // cartel de góndola no puede anunciar algo que no se vende a ese precio.
+    // Por eso no hay botón de "aplicar": hay que reescribirla.
+    const parciales = grupos.filter((g) => !g.completo && !gruposDescartados.has(g.id));
+    if (parciales.length > 0) {
+      out.push({
+        id: "grupos-parciales",
+        titulo: t("convertidor.grupos.parcialesTitulo", { count: parciales.length }),
+        detalle: t("convertidor.grupos.parcialesDetalle"),
+        items: parciales.map((g) => ({
+          clave: g.id,
+          texto: `${g.nombre} — ${t("convertidor.grupos.faltan", {
+            faltan: g.faltantes.join(", "),
+            hay: g.presentes.join(", "),
+          })}`,
+          onIr: () => {
+            const fila = rows.find((r) => g.presentes.includes(r.codigo));
+            if (fila) scrollToRow(fila.row_id);
+          },
+          onDescartar: () => setGruposDescartados((prev) => new Set(prev).add(g.id)),
+        })),
+      });
+    }
+
+    // Un grupo que vino ENTERO: ya se escribió una vez, se puede reusar tal cual.
+    const completos = grupos.filter(
+      (g) => g.completo && !gruposDescartados.has(g.id)
+             && g.presentes.every((sku) => rows.some((r) => r.codigo === sku)));
+    if (completos.length > 0) {
+      out.push({
+        id: "grupos-completos",
+        titulo: t("convertidor.grupos.completosTitulo", { count: completos.length }),
+        detalle: t("convertidor.grupos.completosDetalle"),
+        items: completos.map((g) => ({
+          clave: g.id,
+          texto: `${g.presentes.join(" · ")} — ${g.descripcion}`,
+          onRevisar: () => { void aplicarGrupo(g); },
+          revisarEtiqueta: t("convertidor.grupos.aplicar"),
+          onDescartar: () => setGruposDescartados((prev) => new Set(prev).add(g.id)),
+        })),
+      });
+    }
+
     out.push({
       id: "unificar",
       titulo: t("convertidor.tinin.unificarTitulo"),
@@ -779,7 +889,8 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
     });
 
     return out;
-  }, [rows, rowsParaIA, visiblePairs, rowsPrecioDeKilo, buscandoAlcohol, onRevalidar, t]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, rowsParaIA, visiblePairs, rowsPrecioDeKilo, grupos, gruposDescartados,
+      buscandoAlcohol, onRevalidar, t]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-4">

@@ -417,6 +417,32 @@ export interface ConvertidorRow {
 }
 
 /** Una columna del Excel subido, con muestras para poder reconocerla. */
+/**
+ * Un grupo unificado guardado que toca los SKU de la grilla actual.
+ *
+ * `completo: false` es el caso que importa: la promo de hoy trae parte del
+ * grupo, así que la descripción guardada menciona un producto que NO está en
+ * oferta -- y un cartel de góndola no puede anunciar algo que no se vende a
+ * ese precio. Hay que reescribirla con los que sí vinieron.
+ */
+export interface GrupoUnificado {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  /** Todos los SKU del grupo, como se guardó. */
+  skus: string[];
+  /** Los que sí están en este listado. */
+  presentes: string[];
+  /** Los que faltan. Vacío = el grupo vino entero. */
+  faltantes: string[];
+  completo: boolean;
+}
+
+export interface BuscarGruposResponse {
+  grupos: GrupoUnificado[];
+  parciales: GrupoUnificado[];
+}
+
 /** Un OFERTADET que el motor no reconoce, con la familia que propone Tinín. */
 export interface SugerenciaMecanica {
   ofertadet_norm: string;
@@ -745,6 +771,18 @@ export const convertidorApi = {
    * reconoce. Se agrupa por tipo, no por fila: cuarenta filas con el mismo
    * OFERTADET nuevo son UNA pregunta.
    */
+  /**
+   * Recuerda un grupo por su CONJUNTO de SKU. Las descripciones individuales de
+   * cada SKU no se tocan: son las que permiten rearmar el texto cuando mañana
+   * venga solo una parte del grupo.
+   */
+  guardarGrupoUnificado: (nombre: string, descripcion: string, skus: string[]) =>
+    api.post<{ id: string; nombre: string; skus: string[] }>(
+      "/tools/cenefas/convertidor/grupos-unificados", { nombre, descripcion, skus }),
+  /** Grupos guardados que tocan los SKU de este listado. */
+  buscarGruposUnificados: (skus: string[]) =>
+    api.post<BuscarGruposResponse>(
+      "/tools/cenefas/convertidor/grupos-unificados/buscar", { skus }),
   sugerirMecanicaIA: (rows: { oferta_det: string; oferta: string }[]) =>
     api.post<SugerirMecanicaIAResponse>(
       "/tools/cenefas/convertidor/mecanica/sugerir-ia", { rows }),

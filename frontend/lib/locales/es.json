@@ -947,6 +947,16 @@
       "guardado": "{{count}} mecánica(s) aprendidas. No se vuelven a preguntar.",
       "yaAprendidas": "Ya aprendidas de antes ({{count}}):",
       "nadaQueProponer": "No tengo nada para proponer acá."
+    },
+    "grupos": {
+      "parcialesTitulo": "{{count}} grupo(s) que armaste antes vinieron incompletos",
+      "parcialesDetalle": "La descripción que guardaste menciona productos que en este listado no están en oferta. Hay que reescribirla con los que sí vinieron: un cartel no puede anunciar algo que no se vende a ese precio.",
+      "faltan": "faltan {{faltan}} · están {{hay}}",
+      "completosTitulo": "{{count}} grupo(s) que ya armaste vinieron enteros",
+      "completosDetalle": "Estos SKU los uniste antes en un solo cartel y hoy están todos. Se puede reusar la descripción tal cual.",
+      "aplicar": "Unificar de nuevo",
+      "noSeGuardo": "Unifiqué las filas, pero no pude recordar el grupo para la próxima.",
+      "noEstanLasFilas": "No encuentro las filas de ese grupo en la grilla."
     }
   },
   "facturacion": {

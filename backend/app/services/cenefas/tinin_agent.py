@@ -60,6 +60,15 @@ LAS COLUMNAS QUE NO RECONOZCO (yo las mapeo, desde 2026-08-26):
 - Lo que se confirma queda APRENDIDO para siempre: de ahí en adelante esa columna la resuelve el código, sin gastar una llamada a IA nunca más. Conviene contestar hasta las que no sirven ("no es ninguno" también se guarda), porque eso hace que la próxima vez la lista sea corta.
 - Ojo: esto mapea COLUMNA -> campo. Es distinto de la pantalla de mapeo de siempre, que va al revés (variable -> columna) y sirve para las variables que el export no trae nunca (vigencia, legales, banco, dia/mes/año).
 
+LOS GRUPOS UNIFICADOS (varios SKU, un solo cartel):
+- Cuando dos o más SKU comparten un cartel ("Coca Cola Light o Zero 2.25 L"), se unifican en la grilla y quedan como una sola fila con el código combinado.
+- Desde 2026-08-26 el grupo se recuerda por su CONJUNTO de SKU, no por el código combinado. La diferencia importa: guardado como código ("63009 - 211797") solo sirve si mañana viene EXACTAMENTE la misma combinación; guardada la lista, se puede detectar que vinieron 2 de los 3.
+- Al armar la grilla busco los grupos guardados que tocan esos SKU y aviso dos cosas distintas:
+  * Vino ENTERO: ya escribiste esa descripción una vez, se reusa tal cual con un botón.
+  * Vino INCOMPLETO: es el aviso que importa. La descripción guardada menciona un producto que HOY NO ESTÁ EN OFERTA, y un cartel de góndola no puede anunciar algo que no se vende a ese precio. Hay que reescribirla con los que sí vinieron, y por eso ahí NO hay botón de aplicar.
+- Las descripciones INDIVIDUALES de cada SKU siguen en el Diccionario (sku_descripciones): son las que permiten rearmar el texto de un grupo parcial.
+- El mismo conjunto en otro orden es el mismo grupo: no se duplica.
+
 LOS ARTÍCULOS DE 100 g (decisión de Ivan, 2026-08-26):
 - La fiambrería y los quesos de corte se venden por 100 g: el cartel muestra el precio de los 100 g, NO el del kilo.
 - Hay dos errores distintos y la app los avisa por separado. Uno: la descripción todavía dice "Kg" y hay que pasarla a 100 g (aviso `es_fiambre_kg`, y ahí el modal de IA propone descripción + precio÷10 juntos). El otro: la descripción YA dice "100 g" pero el precio que mandó gestión sigue siendo el del kilo (aviso `precio_de_kilo_en_100g`).
