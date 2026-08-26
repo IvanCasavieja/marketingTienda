@@ -337,6 +337,12 @@ def _fit_font_size(
     return max(minimo, math.floor(mejor * 2.0) / 2.0)
 
 
+# Cuanto tiene que bajar otro cuadro para contar como "el de abajo" y no como
+# un vecino puesto a la misma altura. Medio centimetro: menos que eso, en un
+# diseno hecho a mano, es desprolijidad de posicionamiento, no una fila nueva.
+_SEPARACION_MIN_CM = 0.5
+
+
 def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
     """Cuánto puede crecer hacia abajo un cuadro antes de pisar a otro.
 
@@ -362,7 +368,15 @@ def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
             continue
         ob = otro.get("computed_bounds") or otro.get("base_bounds") or {}
         oy, ox, ow = ob.get("y"), ob.get("x"), ob.get("width")
-        if oy is None or ox is None or ow is None or oy <= y:
+        if oy is None or ox is None or ow is None:
+            continue
+        # Un cuadro que arranca a la MISMA altura que este no esta abajo: esta
+        # al lado. Sin este margen, el cuadro de "Comprando 6" que en una franja
+        # quedo 0,9 mm por debajo del techo del precio se tomaba como el piso
+        # del precio: alto disponible 0,09 cm, y el precio se achicaba al minimo
+        # -- visible como una franja con el precio la mitad de grande que las
+        # otras dos, con el mismo diseno.
+        if oy <= y + _SEPARACION_MIN_CM:
             continue
         solape = min(x + w, ox + ow) - max(x, ox)
         if solape < w * 0.5:
