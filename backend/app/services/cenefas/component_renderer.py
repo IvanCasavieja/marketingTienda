@@ -438,8 +438,17 @@ def _ancho_util_cm(bounds: dict, ancho_pagina_cm: float | None) -> float | None:
     autoajuste de PowerPoint estira la caja del precio hasta 12,36 cm arrancando
     en x=11,28, o sea 2,64 cm afuera de una A4. Midiendo contra la caja el motor
     cree que "$1.100" entra, no achica nada, y el precio se imprime cortado por
-    el borde. El limite verdadero es el que llegue primero: el ancho de la caja
-    o lo que queda de papel.
+    el borde.
+
+    Y puede arrancar ANTES del papel, con x negativa: la caja del precio de la
+    A4 HELVETICO de Redexpres arranca en -11,74 y mide 44,47 cm de ancho, o sea
+    el doble de una A4, simetrica respecto al centro de la pagina. Restar una x
+    negativa AGRANDA el limite (21 - (-11,74) = 32,74), asi que el motor creia
+    tener 32 cm de ancho en una hoja de 21 y dejaba "2x$299" a 239 pt: se
+    imprimia saliendose por los dos lados.
+
+    El ancho util es la INTERSECCION de la caja con el papel, no la caja
+    recortada por un solo borde.
     """
     ancho = bounds.get("width")
     if not ancho or not ancho_pagina_cm:
@@ -447,7 +456,9 @@ def _ancho_util_cm(bounds: dict, ancho_pagina_cm: float | None) -> float | None:
     x = bounds.get("x")
     if x is None:
         return ancho
-    return max(0.5, min(ancho, ancho_pagina_cm - x))
+    izq = max(x, 0.0)
+    der = min(x + ancho, ancho_pagina_cm)
+    return max(0.5, der - izq)
 
 
 def _fit_text_to_box(
@@ -885,10 +896,29 @@ def _place_component(slide, comp: dict, value: str, shape_map: dict[int, object]
             return
         if comp_type == "image":
             if comp.get("image_data"):
-                # Más simple/confiable reemplazar el shape entero que mutar
-                # el blob de una <p:pic> ya existente.
-                shape._element.getparent().remove(shape._element)
-                add_image_from_data(slide, comp)
+                # Más simple/confiable reemplazar el shape entero que mutar el
+                # blob de una <p:pic> ya existente -- pero hay que DEVOLVERLO A
+                # SU LUGAR en el árbol.
+                #
+                # El orden del árbol es el orden de dibujado, y tanto
+                # add_picture como el embebido vectorial agregan al FINAL. Una
+                # imagen de fondo que termina última se dibuja ENCIMA de todo el
+                # texto y la cenefa sale en blanco.
+                #
+                # Pasó de verdad en las dos plantillas HELVETICO de Redexpres,
+                # que traen el arte como imagen DE LA HOJA. Las de Rompe del
+                # Finde no se veían afectadas porque ahí el arte está en el
+                # master, que se dibuja antes que cualquier shape del slide.
+                padre = shape._element.getparent()
+                if padre is not None:
+                    indice = list(padre).index(shape._element)
+                    antes = len(padre)
+                    padre.remove(shape._element)
+                    add_image_from_data(slide, comp)
+                    if len(padre) >= antes:          # se agregó algo
+                        nuevo = list(padre)[-1]
+                        padre.remove(nuevo)
+                        padre.insert(indice, nuevo)
             return
         return
 
