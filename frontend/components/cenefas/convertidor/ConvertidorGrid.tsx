@@ -587,6 +587,42 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
     return "bg-amber-50 dark:bg-amber-500/10 ring-1 ring-inset ring-amber-300 dark:ring-amber-500/40";
   }
 
+  // Bebidas con alcohol que el chequeo por tipo no ve. La leyenda es
+  // OBLIGATORIA, así que se pregunta a pedido y se aplica solo con confirmación:
+  // se escribe en la celda `legales` de esas filas, que es el dato que después
+  // viaja al Excel y a la cenefa. El generador no la duplica -- chequea que no
+  // esté ya presente (ver data_engine.py).
+  const [buscandoAlcohol, setBuscandoAlcohol] = useState(false);
+
+  async function buscarAlcoholConIA() {
+    setBuscandoAlcohol(true);
+    try {
+      const { data } = await convertidorApi.detectarAlcoholIA(
+        rows.map((r) => ({
+          row_id: r.row_id, codigo: r.codigo,
+          descripcion: r.descripcion, nombre_articulo: r.nombre_articulo,
+        }))
+      );
+      if (data.errores.length) toast.error(data.errores[0]);
+      if (data.alcohol.length === 0) {
+        toast.success(t("convertidor.tinin.alcoholNinguna", { count: data.revisadas }));
+        return;
+      }
+      const marcadas = new Set(data.alcohol.map((a) => a.row_id));
+      setRows((prev) =>
+        (prev ?? []).map((r) => {
+          if (!marcadas.has(r.row_id) || r.legales.includes(data.leyenda)) return r;
+          return { ...r, legales: `${r.legales} ${data.leyenda}`.trim() };
+        })
+      );
+      toast.success(t("convertidor.tinin.alcoholAplicada", { count: data.alcohol.length }));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? t("convertidor.unknownError"));
+    } finally {
+      setBuscandoAlcohol(false);
+    }
+  }
+
   // Todo lo que Tinín tiene para decir, en un solo lugar y en orden de
   // impacto: primero lo que impide generar (falta el dato), después lo que
   // conviene revisar (dos filas que parecen el mismo cartel), al final lo
@@ -643,6 +679,18 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
     }
 
     out.push({
+      id: "alcohol",
+      titulo: t("convertidor.tinin.alcoholTitulo"),
+      detalle: t("convertidor.tinin.alcoholDetalle"),
+      accion: {
+        etiqueta: buscandoAlcohol
+          ? t("convertidor.tinin.alcoholBuscando")
+          : t("convertidor.tinin.alcoholBoton"),
+        onClick: buscarAlcoholConIA,
+      },
+    });
+
+    out.push({
       id: "unificar",
       titulo: t("convertidor.tinin.unificarTitulo"),
       detalle: t("convertidor.tinin.unificarDetalle"),
@@ -653,7 +701,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
     });
 
     return out;
-  }, [rows, rowsParaIA, visiblePairs, t]);
+  }, [rows, rowsParaIA, visiblePairs, buscandoAlcohol, t]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-4">

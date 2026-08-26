@@ -431,6 +431,18 @@ export interface ConvertidorHoja {
   error: string | null;
 }
 
+/** Lo que Tinin marco como bebida con alcohol, para confirmar. */
+export interface DetectarAlcoholIAResponse {
+  alcohol: { row_id: number; codigo: string; texto: string; motivo: string }[];
+  errores: string[];
+  /** Cuantas filas se le pasaron a Tinin (las que el chequeo por tipo no vio). */
+  revisadas: number;
+  /** Cuantas ya estaban reconocidas por codigo, sin gastar IA. */
+  ya_reconocidas: number;
+  /** El texto exacto de la leyenda, para no duplicarlo en el front. */
+  leyenda: string;
+}
+
 export interface ConvertidorColumnasResponse {
   hojas: ConvertidorHoja[];
   /** La primera hoja con filas: con la que conviene arrancar. */
@@ -662,6 +674,17 @@ export const convertidorApi = {
     rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion_web: string; es_fiambre_kg: boolean }[]
   ) =>
     api.post<GenerarDescripcionesIAResponse>("/tools/cenefas/convertidor/descripciones/generar-ia", { rows }),
+  /**
+   * Bebidas con alcohol entre las filas que el chequeo por TIPO no reconocio
+   * ("cerveza", "whisky", "fernet"...). Se le pregunta a Tinin solo por las que
+   * quedan: una cerveza ya esta resuelta por codigo y no vale gastar una
+   * llamada. El filtro lo aplica el backend, que usa la MISMA funcion que
+   * despues decide la leyenda al generar -- asi no hay dos criterios.
+   */
+  detectarAlcoholIA: (
+    rows: { row_id: number; codigo: string; descripcion: string; nombre_articulo: string }[]
+  ) =>
+    api.post<DetectarAlcoholIAResponse>("/tools/cenefas/convertidor/alcohol/detectar-ia", { rows }),
   unificarCategoriasIA: (
     rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion: string }[]
   ) =>

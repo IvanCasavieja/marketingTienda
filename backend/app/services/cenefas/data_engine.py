@@ -216,7 +216,12 @@ def process_row(
         # Mira la categoría Y la descripción del producto: la columna CATEGORIA
         # no existe en varios exports, así que sola dejaba la leyenda sin
         # disparar -- una cenefa de Stella Artois salía sin ella.
-        if es_alcohol(internos["categoria"], result.get("descripcion", "")):
+        # `not in` y no un simple append: la leyenda puede venir YA escrita en la
+        # celda de legales de la fila -- pasa cuando Tinin la detecto por nombre
+        # de fantasia y la persona confirmo la sugerencia (ver detectar_alcohol
+        # en convertidor_ai.py). Sin este chequeo la cenefa la imprime dos veces.
+        ya_esta = LEGAL_ALCOHOL in texto_legal
+        if not ya_esta and es_alcohol(internos["categoria"], result.get("descripcion", "")):
             # Se SUMA, no pisa: la leyenda de alcohol es obligatoria y
             # convive con lo que haya escrito la persona.
             texto_legal = f"{texto_legal} {LEGAL_ALCOHOL}".strip() if texto_legal else LEGAL_ALCOHOL

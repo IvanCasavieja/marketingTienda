@@ -497,3 +497,90 @@ async def sugerir_campos_de_columnas(candidatos: list[dict], db, user_id: int) -
             "motivo":         str(item.get("motivo") or "")[:300],
         })
     return {"sugerencias": sugerencias, "errores": errores}
+
+# ---------------------------------------------------------------------------
+# Bebidas con alcohol que no se nombran por tipo
+# ---------------------------------------------------------------------------
+#
+# `es_alcohol()` (variables.py) reconoce el TIPO en el texto: "cerveza",
+# "whisky", "fernet". Eso cubre la enorme mayoria, porque el nombre de gestion
+# casi siempre lo dice. Pero no cubre lo que se vende por nombre de fantasia
+# --un "Cerro Paisa" suelto, un "Aperol Spritz"-- y la leyenda es OBLIGATORIA:
+# un cartel de gondola sin ella es una infraccion.
+#
+# Aca entra Tinin, y solo para lo que el detector por tipo NO reconocio. No se
+# le vuelve a preguntar por una cerveza: eso ya esta resuelto por codigo, gratis
+# y sin margen de error.
+#
+# Devuelve SUGERENCIAS. La leyenda no se agrega sola: se propone y una persona
+# confirma, igual que las descripciones. La diferencia con el resto es hacia
+# donde conviene errar -- aca de mas: una leyenda que sobra no hace dano, una
+# que falta es la infraccion. El prompt lo dice explicito.
+
+_ALCOHOL_SYSTEM_PROMPT = f"""{TININ_BASE}
+
+Hoy también te toca: te paso productos de un listado de supermercado y tenés que decir, para \
+cada uno, si es una BEBIDA CON ALCOHOL.
+
+Importa porque una cenefa de bebida alcohólica lleva por ley la leyenda "Beber con moderación. \
+Prohibida la venta de bebidas alcohólicas a menores de 18 años", y si falta es una infracción.
+
+Estos productos YA fueron descartados por un chequeo que busca el tipo de bebida en el nombre \
+("cerveza", "vino", "whisky", "fernet", "vodka", "gin", "ron", "licor", "champagne", "sidra", \
+"grappa", "tequila"...). O sea que lo que buscás es lo que ese chequeo no puede ver: bebidas que \
+se venden por NOMBRE DE FANTASÍA sin decir de qué son. Por ejemplo un vino o una caña que se \
+llama solo por su marca.
+
+Ante la duda, decí que SÍ es alcohol. Una leyenda que sobra no le hace daño a nadie; una que \
+falta es una infracción. Pero no la pongas en cosas que claramente no son bebidas: un jabón, un \
+kilo de carne o un papel higiénico no llevan leyenda por más raro que sea el nombre."""
+
+
+def _build_alcohol_prompt(items: list[dict]) -> str:
+    lineas = []
+    for n, it in enumerate(items, start=1):
+        partes = [p for p in (it.get("descripcion"), it.get("nombre_articulo")) if p]
+        lineas.append(f'{n}. {" | ".join(partes) or "(sin nombre)"}')
+    return (
+        f"¿Cuáles de estos {len(items)} productos son bebidas con alcohol?\n\n"
+        + "\n".join(lineas) + "\n\n"
+        'Devolvé SOLO un JSON con esta forma exacta: {"alcohol": {"1": {"es": true|false, '
+        '"motivo": "una frase corta"}, ...}} — una entrada por cada número, en el mismo orden. '
+        "Sin comentarios ni texto fuera del JSON."
+    )
+
+
+async def detectar_alcohol(items: list[dict], db, user_id: int) -> dict:
+    """items: [{"row_id", "codigo", "descripcion", "nombre_articulo"}, ...] — ya
+    filtrados por el caller para dejar solo los que `es_alcohol()` NO reconocio.
+
+    Devuelve {"alcohol": [{row_id, codigo, texto, motivo}, ...], "errores": [...]}
+    con SOLO los que Tinin marco como bebida alcoholica. No agrega la leyenda:
+    eso lo hace la persona al confirmar.
+    """
+    procesables = [it for it in items if (it.get("descripcion") or it.get("nombre_articulo"))]
+    if not procesables:
+        return {"alcohol": [], "errores": []}
+
+    encontrados: list[dict] = []
+    errores: list[str] = []
+    for chunk in _chunks(procesables, _CHUNK_SIZE):
+        try:
+            content, in_tok, out_tok = await _ask_claude(
+                _ALCOHOL_SYSTEM_PROMPT, _build_alcohol_prompt(chunk), max_tokens=2000)
+            await log_ai_usage(db, user_id, "convertidor_alcohol", *_ASK_CLAUDE_META, in_tok, out_tok)
+            parsed = json.loads(_strip_json_fence(content)).get("alcohol", {})
+        except Exception as exc:
+            log.warning("detectar_alcohol: chunk de %d fallo -- %s", len(chunk), exc, exc_info=True)
+            _sumar_error(errores, f"{type(exc).__name__}: {exc}")
+            continue
+        for n, it in enumerate(chunk, start=1):
+            item = parsed.get(str(n)) or {}
+            if item.get("es") is True:
+                encontrados.append({
+                    "row_id": it["row_id"],
+                    "codigo": it.get("codigo", ""),
+                    "texto":  it.get("descripcion") or it.get("nombre_articulo") or "",
+                    "motivo": str(item.get("motivo") or "")[:300],
+                })
+    return {"alcohol": encontrados, "errores": errores}

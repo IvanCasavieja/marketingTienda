@@ -23,6 +23,7 @@ from app.models.convertidor_mapeo import ConvertidorMapeo
 from app.models.sku_descripcion import SkuDescripcion
 from app.models.user import User
 from app.models.convertidor_header_alias import ConvertidorHeaderAlias
+from app.services.cenefas.variables import LEGAL_ALCOHOL, es_alcohol
 from app.services.cenefas.convertidor import (
     _INPUT_ALIASES,
     _norm,
@@ -39,6 +40,7 @@ from app.services.cenefas.convertidor import (
 )
 from app.services.cenefas.convertidor_ai import (
     _CAMPOS_SUGERIBLES,
+    detectar_alcohol,
     _ROWS_MAX_PER_REQUEST,
     detectar_grupos_unificables,
     sugerir_campos_de_columnas,
@@ -508,6 +510,62 @@ async def columnas(
         "columnas": sugerida["columnas"],
         "variables_mapeables": list(VARIABLES_MAPEABLES),
         "total_filas": sugerida["total_filas"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Bebidas con alcohol que no se nombran por tipo
+# ---------------------------------------------------------------------------
+
+
+class AlcoholItem(BaseModel):
+    row_id: int
+    codigo: str = ""
+    descripcion: str = ""
+    nombre_articulo: str = ""
+
+
+class DetectarAlcoholRequest(BaseModel):
+    rows: list[AlcoholItem]
+
+
+@router.post("/alcohol/detectar-ia")
+@limiter.limit("5/minute")
+async def detectar_alcohol_ia(
+    request: Request,
+    payload: DetectarAlcoholRequest,
+    current_user: User = Depends(require_permission("ai.tinin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bebidas con alcohol entre las filas que el chequeo por TIPO no reconoció.
+
+    Solo se le pregunta por lo que `es_alcohol()` dejó pasar: una cerveza ya está
+    resuelta por código, gratis y sin margen de error, y no tiene sentido gastar
+    una llamada en confirmarla.
+
+    Devuelve sugerencias. La leyenda no se agrega sola."""
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="La detección con IA no está configurada en este ambiente")
+    if not payload.rows:
+        raise HTTPException(status_code=400, detail="No hay filas para revisar")
+
+    # El filtro por tipo se aplica ACA y no en el cliente: es la misma funcion
+    # que despues decide la leyenda al generar, asi que no puede haber dos
+    # criterios distintos.
+    pendientes = [
+        r.model_dump() for r in payload.rows[:_ROWS_MAX_PER_REQUEST]
+        if not es_alcohol(r.descripcion, r.nombre_articulo)
+    ]
+    ya_reconocidas = len(payload.rows) - len(pendientes)
+
+    resultado = await detectar_alcohol(pendientes, db, current_user.id)
+    await db.commit()
+    return {
+        "alcohol":         resultado["alcohol"],
+        "errores":         resultado["errores"],
+        "revisadas":       len(pendientes),
+        "ya_reconocidas":  ya_reconocidas,
+        "leyenda":         LEGAL_ALCOHOL,
     }
 
 
