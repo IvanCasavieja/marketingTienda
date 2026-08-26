@@ -193,6 +193,15 @@ def _texto_resuelto(comp: dict, product: dict) -> str:
 # puede leer de lejos.
 _FIT_MIN_SCALE = 0.55
 
+# PowerPoint no dibuja el texto pegado al borde del cuadro: deja un margen
+# interno, 0,25 cm de cada lado por defecto. Medir contra el ancho DIBUJADO de
+# la caja le hace creer al motor que tiene medio centimetro mas del que va a
+# tener, y ese medio centimetro es justo lo que separa "entra en una linea" de
+# "PowerPoint lo parte al medio": la cocarda de 2,60 cm del Rompe del Finde
+# tiene 2,09 utiles, y "2x$299" mide 1,97 -- entraba por 0,12 cm segun el motor
+# y salia impresa como "2x$29 / 9".
+_MARGEN_INTERNO_CM = 0.5
+
 # Se achica cualquier cuadro que traiga DATO del Excel y no entre. Un cuadro de
 # texto fijo del diseño ("OFERTA", "PRECIO REGULAR") no se toca nunca: su
 # contenido no cambia entre productos, así que si el diseñador lo dejó justo,
@@ -448,7 +457,8 @@ def _ancho_util_cm(bounds: dict, ancho_pagina_cm: float | None) -> float | None:
     imprimia saliendose por los dos lados.
 
     El ancho util es la INTERSECCION de la caja con el papel, no la caja
-    recortada por un solo borde.
+    recortada por un solo borde. Y de eso todavia hay que descontar los
+    margenes internos del cuadro (ver _MARGEN_INTERNO_CM).
     """
     ancho = bounds.get("width")
     if not ancho or not ancho_pagina_cm:
@@ -458,7 +468,51 @@ def _ancho_util_cm(bounds: dict, ancho_pagina_cm: float | None) -> float | None:
         return ancho
     izq = max(x, 0.0)
     der = min(x + ancho, ancho_pagina_cm)
-    return max(0.5, der - izq)
+    return max(0.5, der - izq - _MARGEN_INTERNO_CM)
+
+
+def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
+                         ancho_pagina_cm: float | None) -> float | None:
+    """Cuanto puede crecer hacia la DERECHA un cuadro antes de pisar a otro.
+
+    Espejo horizontal de _alto_disponible_cm, y hace falta por la misma razon:
+    el ancho declarado de la caja no es el limite real cuando hay otro cuadro
+    al lado.
+
+    El caso concreto es el precio del 3xA4 de Rompe del Finde. Su caja arranca
+    en 11,28 y mide 12,36, pero el cuadro de los centavos esta fijo en 18,14.
+    Con dos cifras el precio termina en 17,61 y queda bien; con TRES termina en
+    20,08 y se mete 1,94 cm adentro de los centavos -- "$149" y ",50"
+    impresos encima. El motor no lo veia porque solo miraba su propia caja.
+
+    Solo limita el vecino que de verdad va a tener contenido para ESTA fila: si
+    el precio es redondo, los centavos quedan vacios y el precio puede usar
+    todo el ancho. Por eso hace falta el producto, no alcanza con la geometria.
+    """
+    base = _ancho_util_cm(comp.get("computed_bounds") or comp.get("base_bounds") or {},
+                          ancho_pagina_cm)
+    b = comp.get("computed_bounds") or comp.get("base_bounds") or {}
+    x, y, h = b.get("x"), b.get("y"), b.get("height")
+    if base is None or x is None or y is None or h is None:
+        return base
+
+    for otro in comps:
+        if otro is comp:
+            continue
+        ob = otro.get("computed_bounds") or otro.get("base_bounds") or {}
+        ox, oy, oh = ob.get("x"), ob.get("y"), ob.get("height")
+        if ox is None or oy is None or oh is None or ox <= x + _SEPARACION_MIN_CM:
+            continue
+        # Tiene que estar en el mismo renglon, no arriba ni abajo: se pide que
+        # se solapen verticalmente en mas de la mitad de mi alto.
+        solape = min(y + h, oy + oh) - max(y, oy)
+        if solape <= h / 2:
+            continue
+        # Un vecino que va a quedar vacio no limita nada.
+        if not _texto_resuelto(otro, product).strip():
+            continue
+        base = min(base, max(0.5, ox - x - _MARGEN_INTERNO_CM))
+    return base
 
 
 def _fit_text_to_box(
@@ -497,7 +551,7 @@ def _fit_text_to_box(
             # Cuadro con tamaños mezclados (el precio): se busca la escala más
             # grande a la que la suma de los pedazos entra, y se aplica a todos
             # por igual para no desalinear la coma con el entero.
-            ancho_caja = _ancho_util_cm(bounds, ancho_pagina_cm) or 0
+            ancho_caja = _ancho_disponible_cm(c, comps, product, ancho_pagina_cm) or 0
             alto_caja = _alto_disponible_cm(c, comps)
             escala = 1.0
             if ancho_caja and not _entra_por_segmentos(piezas, ancho_caja, alto_caja, bold, familia):
@@ -513,7 +567,8 @@ def _fit_text_to_box(
             fitted = round(base_font_size * escala, 1) if base_font_size else base_font_size
         else:
             fitted = _fit_font_size(
-                texto, _ancho_util_cm(bounds, ancho_pagina_cm), _alto_disponible_cm(c, comps),
+                texto, _ancho_disponible_cm(c, comps, product, ancho_pagina_cm),
+                _alto_disponible_cm(c, comps),
                 base_font_size, bold, familia,
             )
         if fitted == base_font_size:
