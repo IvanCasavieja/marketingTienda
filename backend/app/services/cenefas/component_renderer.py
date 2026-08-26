@@ -926,7 +926,14 @@ def _render_slide(
         if oculto:
             shape = shape_map.get(source_id) if source_id is not None else None
             if shape is not None:
-                shape._element.getparent().remove(shape._element)
+                # El padre puede ser None si este shape ya se saco: pasa cuando
+                # el PPTX trae dos shapes con el MISMO id (PowerPoint lo evita,
+                # pero copiar shapes entre archivos con python-pptx no) y dos
+                # componentes distintos apuntan al mismo. Antes reventaba con un
+                # AttributeError a mitad del render y no se generaba nada.
+                padre = shape._element.getparent()
+                if padre is not None:
+                    padre.remove(shape._element)
             continue
 
         segments = comp.get("segments") if comp_type == "text" else None
