@@ -918,6 +918,7 @@ def _render_slide(
     slot_offset_y: float = 0.0,
     missing_vars: set | None = None,
     shape_map: dict[int, object] | None = None,
+    slot_vacio: bool = False,
 ) -> None:
     shape_map = shape_map or {}
     # Que variables "que tapan" existen como cuadro en ESTE diseno. Se calcula
@@ -931,7 +932,12 @@ def _render_slide(
         comp_type = comp.get("type", "text")
         source_id = comp.get("_source_shape_id")
 
-        oculto = not comp.get("visible", True)
+        # Un slot SIN producto no imprime nada. No alcanza con sacar los
+        # cuadros que quedaron vacios: uno que mezcla texto fijo con variable
+        # --el "$" del diseno mas {precioOferta}-- sigue teniendo el simbolo, y
+        # en la celda sobrante de una hoja parcial quedaba un "$" solo impreso
+        # (3xA4 con 8 productos: 3 hojas x 3 celdas, la novena celda vacia).
+        oculto = slot_vacio or not comp.get("visible", True)
         # Excluyentes: si la que manda del par trae valor, esta no se dibuja.
         # Solo aplica si el diseno TIENE de verdad el cuadro que tapa. Sin ese
         # chequeo, una plantilla que usa precioOferta y no tiene cuadro de
@@ -1392,7 +1398,7 @@ def render_template_to_pptx(
                     # preservando el diseño original: si no se limpia, la
                     # celda sin producto queda con lo que tuviera el archivo
                     # fuente (ej. datos de ejemplo del diseñador).
-                    _render_slide(slide, laid_band, {}, shape_map=shape_map)
+                    _render_slide(slide, laid_band, {}, shape_map=shape_map, slot_vacio=True)
                 # Sin preserve_source: no hay nada que limpiar, la celda
                 # simplemente nunca tuvo shapes creados (comportamiento
                 # de siempre para el canvas en blanco).
