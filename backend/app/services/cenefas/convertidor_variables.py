@@ -80,8 +80,15 @@ _RE_MXN = re.compile(r"(?<![\d.,])(\d+)\s*[xX×]\s*(\d+)(?![\d.,])")
 
 # "2da unidad al 50%" -- se lleva la segunda a mitad de precio. No es combo
 # (no hay un total) ni M x N (no se paga por unidades enteras).
+# Los ordinales abreviados del castellano. Solo se usa si el listado vino SIN
+# sufijo; si lo trajo, gana el del listado.
+_SUFIJO_ORDINAL = {
+    "1": "ra", "2": "da", "3": "ra", "4": "ta", "5": "ta", "6": "ta",
+    "7": "ma", "8": "va", "9": "na", "10": "ma",
+}
+
 _RE_SEGUNDA = re.compile(
-    r"(\d+)\s*(?:da|ra|ta|va|ma|era|º|°)?\s*unidad(?:es)?\s*al\s*(\d+)\s*%",
+    r"(\d+)\s*(da|ra|ta|va|ma|era|º|°)?\s*unidad(?:es)?\s*al\s*(\d+)\s*%",
     re.IGNORECASE,
 )
 
@@ -236,8 +243,17 @@ def resolver_mecanica(
             warnings.append("segunda_unidad_no_parseable")
             return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "promoOferta": "", "mecanica": "",
                     "tipoOfertaComprando": "", "unidad": ""}, warnings
-        n, pct = m.group(1), m.group(2)
-        sufijo = {"1": "ra", "3": "ra"}.get(n, "da")
+        n, sufijo_original, pct = m.group(1), m.group(2), m.group(3)
+        # El sufijo del ordinal. Se prefiere el que vino ESCRITO en el listado:
+        # si gestion puso "5ta", eso es lo que hay que imprimir. La tabla es el
+        # respaldo para cuando viene sin sufijo ("5 unidad al 30%").
+        #
+        # Antes era {"1": "ra", "3": "ra"} con "da" por defecto, asi que una
+        # cuarta o quinta unidad salia impresa como "4da" y "5da", que no
+        # existen en castellano -- y salia asi en la cocarda Y en la mecanica.
+        sufijo = (sufijo_original or "").lower()
+        if sufijo in ("", "º", "°"):
+            sufijo = _SUFIJO_ORDINAL.get(n, "ta")
         return {
             "tipoOferta":   f"{n}{sufijo} al {pct}%",
             "ofertaUno":    "",
