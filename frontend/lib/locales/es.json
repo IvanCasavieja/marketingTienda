@@ -926,6 +926,19 @@
       "cienGramosDetalle": "Se venden por 100 g, pero el precio que vino del listado parece el del kilo. Revisá el valor propuesto antes de aplicarlo: si está mal, el cartel sale diez veces más barato.",
       "cienGramosBoton": "Pasar los precios a 100 g",
       "cienGramosAplicado": "Precios de 100 g aplicados en {{count}} fila(s)."
+    },
+    "mapeoIA": {
+      "titulo": "Columnas que no reconocí",
+      "detalle": "Tinín mira las columnas de tu archivo que el Convertidor no sabe leer y te dice qué cree que es cada una. Lo que confirmes queda aprendido: esa columna no se vuelve a preguntar nunca más.",
+      "boton": "Que las mire Tinín",
+      "mirando": "Mirando…",
+      "ninguno": "No es ninguno",
+      "despues": "Dejarla para después",
+      "confirmar": "Confirmar {{count}}",
+      "guardado": "{{count}} columna(s) aprendidas. No se vuelven a preguntar.",
+      "yaAprendidas": "Ya aprendidas de antes ({{count}}):",
+      "nadaQuePreguntar": "Reconozco todas las columnas de este archivo. {{count}} de ellas las aprendí de vos antes.",
+      "nadaPendiente": "No queda nada por confirmar."
     }
   },
   "facturacion": {

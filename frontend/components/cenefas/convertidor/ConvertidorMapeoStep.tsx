@@ -9,6 +9,7 @@ import {
   type ConvertidorMapeo,
 } from "@/lib/api";
 import { varDef } from "@/lib/cenefaVariables";
+import TininMapeo from "./TininMapeo";
 
 // Paso previo a convertir: resolver las variables EXTRA, las que el
 // Convertidor no puede deducir solo. Ninguna es obligatoria.
@@ -44,6 +45,14 @@ interface Props {
   columnas: ConvertidorColumna[];
   variablesMapeables: string[];
   totalFilas: number;
+  /**
+   * El archivo subido y la hoja que se está mapeando. Van juntos porque el
+   * panel de Tinín vuelve a leer el Excel para mirar las columnas que el
+   * Convertidor NO reconoció -- que son justo las que no aparecen en esta
+   * pantalla, porque acá se mapea al revés (variable -> columna).
+   */
+  excel?: File | null;
+  hoja?: string;
   /** Mundo al que se apunta, para filtrar y etiquetar las plantillas. */
   destino?: string | null;
   onBack: () => void;
@@ -52,7 +61,7 @@ interface Props {
 }
 
 export default function ConvertidorMapeoStep({
-  columnas, variablesMapeables, totalFilas, destino, onBack, onConfirm, converting,
+  columnas, variablesMapeables, totalFilas, destino, excel, hoja, onBack, onConfirm, converting,
 }: Props) {
   const { t } = useTranslation();
   const [mapeo, setMapeo] = useState<Record<string, string>>({});
@@ -185,6 +194,13 @@ export default function ConvertidorMapeoStep({
           {t("convertidor.mapeo.subtitulo", { filas: totalFilas, columnas: columnas.length })}
         </p>
       </div>
+
+      {/* Las columnas que el Convertidor NO reconoce no aparecen en esta
+          pantalla -- acá se mapea variable -> columna, y esas quedan afuera de
+          las dos puntas. Antes se ignoraban en silencio; ahora Tinín las
+          levanta acá, que es el único momento del flujo en que alguien está
+          mirando las columnas del archivo. */}
+      {excel && <TininMapeo excel={excel} hoja={hoja} />}
 
       {/* Plantillas guardadas */}
       <div className="card p-5 space-y-3">

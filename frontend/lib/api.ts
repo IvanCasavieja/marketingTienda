@@ -417,6 +417,31 @@ export interface ConvertidorRow {
 }
 
 /** Una columna del Excel subido, con muestras para poder reconocerla. */
+/** Una columna del archivo que el Convertidor no reconoció, con la propuesta de Tinín. */
+export interface SugerenciaColumna {
+  header_norm: string;
+  header_display: string;
+  muestras: string[];
+  /** El campo que Tinín propone. null = "esto no es ninguno de los campos". */
+  campo: string | null;
+  motivo: string;
+}
+
+/** Una columna de nombre raro que ya se confirmó antes y por eso ya funciona. */
+export interface AliasAprendido {
+  header_norm: string;
+  header_display: string;
+  campo: string;
+}
+
+export interface SugerirColumnasIAResponse {
+  sugerencias: SugerenciaColumna[];
+  ya_aprendidas: AliasAprendido[];
+  errores: string[];
+  /** Los campos a los que se puede atar una columna, para el desplegable. */
+  campos: string[];
+}
+
 export interface ConvertidorColumna {
   nombre: string;
   muestras: string[];
@@ -687,6 +712,27 @@ export const convertidorApi = {
    * llamada. El filtro lo aplica el backend, que usa la MISMA funcion que
    * despues decide la leyenda al generar -- asi no hay dos criterios.
    */
+  /**
+   * Le pide a Tinín que diga qué es cada columna que el Convertidor no
+   * reconoció. NO aplica nada: devuelve propuestas para confirmar. Lo que ya
+   * está aprendido no se vuelve a preguntar (ni se gasta una llamada en él).
+   */
+  sugerirColumnasIA: (excel: File, hoja?: string) => {
+    const fd = new FormData();
+    fd.append("excel", excel);
+    if (hoja) fd.append("hoja", hoja);
+    return api.post<SugerirColumnasIAResponse>(
+      "/tools/cenefas/convertidor/columnas/sugerir-ia", fd,
+      { headers: { "Content-Type": "multipart/form-data" } });
+  },
+  /**
+   * Guarda las confirmaciones. De acá en adelante esos encabezados los resuelve
+   * el código, sin pasar nunca más por IA. `campo: null` también se guarda: es
+   * una respuesta válida ("esta columna no es ninguno") y evita repreguntar.
+   */
+  confirmarAliasColumnas: (aliases: { header_norm: string; campo: string | null }[]) =>
+    api.post<{ guardados: number }>(
+      "/tools/cenefas/convertidor/columnas/confirmar-alias", { aliases }),
   detectarAlcoholIA: (
     rows: { row_id: number; codigo: string; descripcion: string; nombre_articulo: string }[]
   ) =>

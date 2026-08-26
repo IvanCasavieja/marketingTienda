@@ -191,6 +191,8 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
           columnas={hoja.columnas}
           variablesMapeables={variablesMapeables}
           totalFilas={hoja.total_filas}
+          excel={excel}
+          hoja={hoja.nombre}
           onBack={() => setPaso("subir")}
           onConfirm={handleConvertir}
           converting={loading}

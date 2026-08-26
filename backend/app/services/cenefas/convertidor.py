@@ -392,7 +392,8 @@ async def parse_input_excel(
     fecha_fin (estas últimas dos opcionales -- ver _format_vigencia).
 
     Columnas no reconocidas por _INPUT_ALIASES se resuelven en dos pasos más
-    antes de darse por ignoradas, solo para fecha_inicio/fecha_fin: primero
+    antes de darse por ignoradas -- para CUALQUIERA de los campos, no solo
+    fecha_inicio/fecha_fin como fue al principio: primero
     contra ConvertidorHeaderAlias (headers que Tinín ya clasificó en un import
     anterior — nunca vuelve a gastar una llamada a IA en el mismo nombre de
     columna dos veces), y si sigue sin match y allow_ai=True (el caller decide

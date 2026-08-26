@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -637,19 +638,24 @@ async def buscar_grupos_unificados(
 async def sugerir_columnas_ia(
     request: Request,
     excel: UploadFile = File(...),
+    hoja: str | None = Form(default=None),
     current_user: User = Depends(require_permission("ai.tinin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Las columnas que el sistema no reconoció, con la propuesta de Tinín.
 
     No aplica nada: devuelve sugerencias para confirmar. Lo que ya está
-    aprendido en ConvertidorHeaderAlias no se vuelve a preguntar."""
+    aprendido en ConvertidorHeaderAlias no se vuelve a preguntar.
+
+    `hoja` es la que se está mapeando. Sin esto miraba siempre la primera, y en
+    un boceto de varias hojas eso significa proponerle a la persona las
+    columnas de un listado distinto al que tiene delante."""
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="La sugerencia con IA no está configurada en este ambiente")
 
     excel_bytes = await read_limited(excel, "Excel")
     try:
-        filas = leer_filas(excel_bytes, excel.filename or "")
+        filas = leer_filas(excel_bytes, excel.filename or "", hoja)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No pude leer el archivo: {e}")
 
