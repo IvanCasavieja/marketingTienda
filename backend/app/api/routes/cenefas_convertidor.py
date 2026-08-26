@@ -295,6 +295,9 @@ async def generar_descripciones_ia(
     return {
         "suggestions": result["suggestions"],
         "failed_row_ids": result["failed_row_ids"],
+        # El motivo de cada fallo, para que la pantalla pueda decir QUÉ pasó en
+        # vez de "completalos a mano" a secas.
+        "errores": result.get("errores", []),
         "requested_count": len(payload.rows),
         "processed_count": len(items),
         "truncated": truncated,

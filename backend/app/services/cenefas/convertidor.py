@@ -48,6 +48,12 @@ def _norm(name) -> str:
 _INPUT_ALIASES: dict[str, str] = {
     "codigo":         "codigo",
     "nombrearticulo": "nombre_articulo",
+    # Gestion exporta esta columna con y sin el "de" segun el listado
+    # ("NOMBREARTICULO" en el mailing, "NOMBRE DE ARTICULO" en los de MRP).
+    # Sin este alias la columna se ignora en silencio y las filas llegan sin
+    # nombre: la generacion con IA las descarta antes de llamar a la API
+    # --no tiene de donde redactar-- y salen todas como "completalas a mano".
+    "nombredearticulo": "nombre_articulo",
     # La columna "Descripción" del Excel SÍ se lee, y gana sobre el catálogo:
     # si alguien se tomó el trabajo de escribirla, es la que quiere ver en el
     # cartel (decisión de 2026-08-24). Lo que NO cambia es que no se aprende
@@ -70,6 +76,7 @@ _INPUT_ALIASES: dict[str, str] = {
     "oferta":         "oferta",
     "ofertadet":      "oferta_det",
     "descripcionweb": "descripcion_web",
+    "descripcionesweb": "descripcion_web",   # en plural en los listados de MRP
     "comprador":      "comprador",
     "descuentoprov":     "descuento",
     "descuentoprovdet":  "descuento_det",

@@ -39,6 +39,13 @@ reglas de estilo:
 
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 
+# Techo de salida por llamada. Cada producto ocupa su clave, su texto de hasta
+# 100 caracteres y la puntuación del JSON: unos 45 tokens. Con 20 productos eso
+# es ~900 sólo de contenido, y el techo estaba en 1200 — sin margen. Si la
+# respuesta se corta a la mitad el JSON queda inválido, json.loads levanta, y se
+# pierde el CHUNK ENTERO de 20, no el producto que sobró.
+_MAX_TOKENS_POR_CHUNK = 4000
+
 _CHUNK_SIZE = 20               # productos por llamada a Claude — lotes chicos porque cada
                                 # item devuelve texto libre completo, no solo un índice, así
                                 # que hay más superficie de error por chunk que en un batch
@@ -86,23 +93,40 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
     opcional, solo cambia la redacción de la unidad (ver _STYLE_RULES) — el
     precio÷10 correspondiente lo calcula el frontend, no esta función.
 
-    Devuelve {"suggestions": [...], "failed_row_ids": [...]}. Nunca levanta por un chunk
-    que falla — ese chunk se reporta en failed_row_ids y el resto de la respuesta sigue
-    siendo utilizable (fail-soft, mismo criterio que _afinar_seleccion en
-    dona_tina_precios.py): un fallo transitorio de red en un chunk no debería tirar abajo
-    las sugerencias que ya se generaron en los demás."""
+    Devuelve {"suggestions": [...], "failed_row_ids": [...], "errores": [...]}. Nunca
+    levanta por un chunk que falla — ese chunk se reporta en failed_row_ids y el resto de
+    la respuesta sigue siendo utilizable (fail-soft, mismo criterio que _afinar_seleccion
+    en dona_tina_precios.py): un fallo transitorio de red en un chunk no debería tirar
+    abajo las sugerencias que ya se generaron en los demás.
+
+    `errores` lleva el MOTIVO de cada fallo, sin repetir. Antes la excepción moría en un
+    log del servidor y a la persona le llegaba "completalos a mano" sin causa: no había
+    forma de distinguir una key vencida de un JSON cortado ni de un producto que no tenía
+    con qué generar. Ahora el motivo llega a la pantalla."""
     # Sin nombre_articulo NI descripcion_web no hay nada que pedirle a Claude —
     # se descarta antes de gastar un slot del batch.
     procesables = [it for it in items if it["nombre_articulo"] or it["descripcion_web"]]
     procesables_ids = {it["row_id"] for it in procesables}
     failed_row_ids: list[int] = [it["row_id"] for it in items if it["row_id"] not in procesables_ids]
 
+    errores: list[str] = []
+    if failed_row_ids:
+        # Estas ni siquiera llegan a la API: no hay con qué redactar. Pasa cuando
+        # el Excel no trae la columna de nombre de gestión (NOMBREARTICULO) ni
+        # DESCRIPCIONWEB -- por ejemplo si se renombró la de nombre.
+        errores.append(
+            f"{len(failed_row_ids)} fila(s) no tienen ni nombre de gestión ni descripción web: "
+            "no hay de dónde sacar la descripción. Revisá que el Excel traiga la columna "
+            "NOMBREARTICULO o DESCRIPCIONWEB."
+        )
+
     suggestions: list[dict] = []
 
     for chunk in _chunks(procesables, _CHUNK_SIZE):
         prompt = _build_prompt(chunk)
         try:
-            content, in_tok, out_tok = await _ask_claude(_SYSTEM_PROMPT, prompt, max_tokens=1200)
+            content, in_tok, out_tok = await _ask_claude(
+                _SYSTEM_PROMPT, prompt, max_tokens=_MAX_TOKENS_POR_CHUNK)
             await log_ai_usage(db, user_id, "convertidor_descripciones", *_ASK_CLAUDE_META, in_tok, out_tok)
             parsed = json.loads(_strip_json_fence(content))
             descripciones = parsed.get("descripciones", {})
@@ -118,11 +142,22 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
                     })
                 else:
                     failed_row_ids.append(it["row_id"])
+                    _sumar_error(errores, "Claude no devolvió texto para algún producto del lote.")
         except Exception as exc:
-            log.warning("convertidor_ai.generar_descripciones: chunk de %d falló — %s", len(chunk), exc)
+            log.warning("convertidor_ai.generar_descripciones: chunk de %d falló — %s",
+                        len(chunk), exc, exc_info=True)
             failed_row_ids.extend(it["row_id"] for it in chunk)
+            _sumar_error(errores, f"{type(exc).__name__}: {exc}")
 
-    return {"suggestions": suggestions, "failed_row_ids": failed_row_ids}
+    return {"suggestions": suggestions, "failed_row_ids": failed_row_ids, "errores": errores}
+
+
+def _sumar_error(errores: list[str], texto: str) -> None:
+    """Un motivo por vez. Si los 3 chunks fallan por lo mismo no tiene sentido
+    repetirlo tres veces en pantalla."""
+    texto = texto[:300]
+    if texto not in errores:
+        errores.append(texto)
 
 
 # ---------------------------------------------------------------------------
