@@ -22,6 +22,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.convertidor_header_alias import ConvertidorHeaderAlias
+from app.models.cenefa_grupo_unificado import CenefaGrupoUnificado
 from app.models.sku_descripcion import SkuDescripcion
 from app.services.cenefas.convertidor_ai import resolve_date_columns_with_ai
 from app.services.cenefas.convertidor_variables import construir_variables
@@ -1032,3 +1033,84 @@ def build_output_workbook(rows: list[dict]) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+# ---------------------------------------------------------------------------
+# Grupos unificados: varios SKU, un solo cartel
+# ---------------------------------------------------------------------------
+
+async def guardar_grupo_unificado(
+    db: AsyncSession, *, nombre: str, descripcion: str, skus: list[str], user_id: int | None,
+) -> CenefaGrupoUnificado:
+    """Guarda (o actualiza) un grupo por su CONJUNTO de SKU.
+
+    La identidad del grupo es el conjunto, no el nombre ni el orden: el mismo
+    listado subido dos veces con los codigos en otro orden es el mismo grupo, y
+    no tiene que crear un duplicado.
+
+    NO toca `sku_descripciones`. La descripcion individual de cada SKU es lo que
+    permite rearmar el texto cuando manana venga solo una parte del grupo, asi
+    que pisarla con el texto del grupo seria destruir justo el dato que hace
+    falta.
+    """
+    normalizados = sorted({normalize_sku(s) for s in skus if normalize_sku(s)})
+    if len(normalizados) < 2:
+        raise ValueError("Un grupo unificado necesita al menos dos SKU distintos")
+
+    existente = None
+    for g in (await db.execute(
+        select(CenefaGrupoUnificado)
+        .where(CenefaGrupoUnificado.skus.overlap(normalizados))
+    )).scalars().all():
+        if sorted(g.skus) == normalizados:
+            existente = g
+            break
+
+    if existente is not None:
+        existente.nombre = nombre.strip()[:150]
+        existente.descripcion = descripcion.strip()[:300]
+        return existente
+
+    grupo = CenefaGrupoUnificado(
+        nombre=nombre.strip()[:150],
+        descripcion=descripcion.strip()[:300],
+        skus=normalizados,
+        created_by=user_id,
+    )
+    db.add(grupo)
+    return grupo
+
+
+async def grupos_para_skus(db: AsyncSession, skus: list[str]) -> list[dict]:
+    """Grupos guardados que tocan alguno de estos SKU, separando completos de
+    parciales.
+
+    Un grupo PARCIAL es el caso que importa: la promo de hoy trae 2 de los 3 SKU
+    que el grupo conoce. La descripcion guardada NO se puede reusar tal cual --
+    menciona un producto que hoy no esta en oferta, y un cartel de gondola no
+    puede anunciar algo que no se vende a ese precio. Hay que reescribirla con
+    los que si vinieron, a partir de sus descripciones individuales.
+    """
+    presentes = {normalize_sku(s) for s in skus if normalize_sku(s)}
+    if not presentes:
+        return []
+
+    salida = []
+    for g in (await db.execute(
+        select(CenefaGrupoUnificado)
+        .where(CenefaGrupoUnificado.skus.overlap(sorted(presentes)))
+        .order_by(CenefaGrupoUnificado.nombre)
+    )).scalars().all():
+        del_grupo = set(g.skus)
+        hay = sorted(del_grupo & presentes)
+        faltan = sorted(del_grupo - presentes)
+        salida.append({
+            "id":          str(g.id),
+            "nombre":      g.nombre,
+            "descripcion": g.descripcion,
+            "skus":        sorted(del_grupo),
+            "presentes":   hay,
+            "faltantes":   faltan,
+            "completo":    not faltan,
+        })
+    return salida
+

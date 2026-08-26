@@ -28,6 +28,8 @@ from app.services.cenefas.convertidor import (
     _norm,
     ConvertidorParseError,
     build_output_workbook,
+    grupos_para_skus,
+    guardar_grupo_unificado,
     detectar_fila_headers,
     leer_filas,
     listar_hojas,
@@ -506,6 +508,56 @@ async def columnas(
         "columnas": sugerida["columnas"],
         "variables_mapeables": list(VARIABLES_MAPEABLES),
         "total_filas": sugerida["total_filas"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Grupos unificados: varios SKU, un solo cartel
+# ---------------------------------------------------------------------------
+
+
+class GrupoUnificadoIn(BaseModel):
+    nombre: str = Field(min_length=1, max_length=150)
+    descripcion: str = Field(min_length=1, max_length=300)
+    skus: list[str] = Field(min_length=2)
+
+
+@router.post("/grupos-unificados", status_code=201)
+async def crear_grupo_unificado(
+    payload: GrupoUnificadoIn,
+    current_user: User = Depends(require_permission("cenefas.edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Guarda el grupo por su CONJUNTO de SKU, sin tocar las descripciones
+    individuales de cada uno: esas son las que permiten rearmar el texto cuando
+    mañana venga solo una parte del grupo."""
+    try:
+        grupo = await guardar_grupo_unificado(
+            db, nombre=payload.nombre, descripcion=payload.descripcion,
+            skus=payload.skus, user_id=current_user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    await db.commit()
+    return {"id": str(grupo.id), "nombre": grupo.nombre, "skus": grupo.skus}
+
+
+@router.post("/grupos-unificados/buscar")
+async def buscar_grupos_unificados(
+    payload: dict,
+    _: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Grupos guardados que tocan los SKU de la grilla actual.
+
+    Los `completo: false` son el caso que importa: la promo trae parte del
+    grupo, así que su descripción guardada menciona productos que hoy no están
+    en oferta y NO se puede reusar tal cual."""
+    skus = [str(x) for x in (payload.get("skus") or [])][:500]
+    grupos = await grupos_para_skus(db, skus)
+    return {
+        "grupos":    grupos,
+        "parciales": [g for g in grupos if not g["completo"]],
     }
 
 
