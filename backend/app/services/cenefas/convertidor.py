@@ -627,6 +627,63 @@ def _es_fiambre_por_kg(comprador: str, nombre_articulo: str, descripcion: str, d
 
 
 # ---------------------------------------------------------------------------
+# LEER ESTO ANTES DE TOCAR el chequeo de 100 g  (decisión de Ivan, 2026-08-26)
+# ---------------------------------------------------------------------------
+#
+# La fiambrería de corte se vende por 100 g: el cartel muestra el precio de
+# 100 g, no el del kilo. `_es_fiambre_por_kg` (arriba) cubre el caso en que la
+# DESCRIPCIÓN todavía viene en kilo y hay que pasarla a 100 g.
+#
+# Esto cubre el caso INVERSO, que es el que se escapaba: la descripción ya dice
+# "100 g" y el que quedó en kilo es el PRECIO. Pasó de verdad en el Rompe del
+# Finde del 27 al 30/8 y se imprimió así:
+#
+#     Jamón Crudo TIENDA INGLESA 100 g          1.100  ->  110
+#     Queso Colonia EL GAUCHO de Corte 100 g      590  ->   59
+#     Jamón Cocido Extra TIENDA INGLESA 100 g     840  ->   84
+#
+# `_es_fiambre_por_kg` no lo veía porque exige que el texto diga "Kg", y estas
+# filas ya decían "100 g". Tampoco se pide que el comprador sea FIAMBRERIA: el
+# queso de corte puede venir por LACTEOS y tiene el mismo problema.
+#
+# La app NO divide sola. Marca la fila y propone el valor; una persona confirma
+# (decisión de Ivan, explícita). Un falso positivo acá imprime un precio diez
+# veces más barato en la góndola, así que no puede ser automático.
+
+_RE_CIEN_GRAMOS = re.compile(r"(?:^|[^\d.,])100\s*(?:g|gr|grs|gramos)\b", re.IGNORECASE)
+
+# Arriba de esto, un precio de "100 g" no existe en góndola: es el del kilo. No
+# es una regla exacta, es un olor -- de ahí que dispare un aviso y no una
+# división. Lo más caro de la fiambrería ronda los $135 los 100 g (jamón crudo
+# a $1.350 el kilo), así que $400 deja casi 3x de margen antes de molestar.
+_PRECIO_MAX_POR_100G = 400
+
+
+def _es_por_100g(*textos: str) -> bool:
+    return any(_RE_CIEN_GRAMOS.search(t) for t in textos if t)
+
+
+# Un "1.100" escrito como TEXTO en el Excel: _parse_price_or_none lo lee como
+# 1,1 porque toma el punto como decimal, y este chequeo se perdería justo el
+# caso que más importa. Se normaliza el separador de miles solo acá y solo en un
+# patrón inequívoco (grupos de exactamente tres dígitos), sin tocar el parser
+# que usa todo el resto del archivo.
+_RE_SEPARADOR_MILES = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
+
+
+def _precio_es_de_kilo_en_100g(precio_raw, *textos: str) -> bool:
+    """La fila se vende por 100 g pero el precio que vino parece el del kilo."""
+    if not _es_por_100g(*textos):
+        return False
+    crudo = str(precio_raw or "").strip().lstrip("$U S").strip()
+    if _RE_SEPARADOR_MILES.match(crudo):
+        precio = float(crudo.replace(".", ""))
+    else:
+        precio = _parse_price_or_none(precio_raw)
+    return precio is not None and precio >= _PRECIO_MAX_POR_100G
+
+
+# ---------------------------------------------------------------------------
 # Matching contra el catálogo + warnings
 # ---------------------------------------------------------------------------
 
@@ -667,6 +724,12 @@ def _compute_warnings(row: dict) -> list[str]:
         w.append("missing_precio_anterior")
     elif not _is_numeric_like(precio_anterior_raw):
         w.append("precio_anterior_invalido")
+
+    # Se vende por 100 g pero el precio vino del kilo. La fila ya trae el
+    # chequeo hecho (ver el bloque de arriba); acá solo se convierte en aviso,
+    # que es lo que la grilla sabe mostrar.
+    if row.get("precio_de_kilo_en_100g"):
+        w.append("precio_de_kilo_en_100g")
 
     oferta_det = str(row.get("oferta_det") or "").strip()
     if not oferta_det:
@@ -874,6 +937,9 @@ async def match_rows(
             **variables,
             "es_fiambre_kg": _es_fiambre_por_kg(
                 r["comprador"], r["nombre_articulo"], descripcion, r["descripcion_web"]
+            ),
+            "precio_de_kilo_en_100g": _precio_es_de_kilo_en_100g(
+                r["precio_raw"], r["nombre_articulo"], descripcion, r["descripcion_web"]
             ),
             "warnings_mecanica": warn_mecanica,
         }

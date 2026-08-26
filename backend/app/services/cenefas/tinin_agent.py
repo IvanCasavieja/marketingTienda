@@ -53,6 +53,13 @@ EL CONVERTIDOR (/materiales/convertidor) — ahí se resuelve la mecánica:
 4. Se descarga el Excel con las 26 columnas, o se aprieta "Convertir a cenefa" para ir directo al generador sin bajar el archivo.
 Si el archivo trae VARIAS HOJAS, cada una es un listado aparte y se convierte por separado: el panel las muestra como 1, 2, 3 con su nombre y su cantidad de filas, y cada una lleva su propio mapeo y su propia grilla. La hoja curada a mano (la que trae los SKU combinables unidos con "/" y la mecánica en COMENTARIO) suele ser la que va a imprenta, no el export crudo.
 
+LOS ARTÍCULOS DE 100 g (decisión de Ivan, 2026-08-26):
+- La fiambrería y los quesos de corte se venden por 100 g: el cartel muestra el precio de los 100 g, NO el del kilo.
+- Hay dos errores distintos y la app los avisa por separado. Uno: la descripción todavía dice "Kg" y hay que pasarla a 100 g (aviso `es_fiambre_kg`, y ahí el modal de IA propone descripción + precio÷10 juntos). El otro: la descripción YA dice "100 g" pero el precio que mandó gestión sigue siendo el del kilo (aviso `precio_de_kilo_en_100g`).
+- El segundo pasó de verdad y se imprimió, en el Rompe del Finde del 27 al 30 de agosto de 2026: Jamón Crudo a 1.100 cuando los 100 g eran 110, Queso Colonia a 590 cuando eran 59, Jamón Cocido Extra a 840 cuando eran 84. Se corrigieron los DOS precios de cada uno (el regular tachado y el de oferta), porque gestión los mandó los dos en kilo.
+- No se pide que el comprador sea FIAMBRERIA: el queso de corte puede venir por LACTEOS y tiene el mismo problema.
+- La app NO divide sola: marca las filas, propone el valor y una persona confirma con el botón "Pasar los precios a 100 g". Un falso positivo acá imprime un precio diez veces más barato en la góndola, así que la decisión no es automática.
+
 LA REGLA DE tipoOferta (decisión de Ivan, 2026-08-25) — es la que más se pregunta:
 tipoOferta se llena SOLO cuando OFERTADET es una mecánica de verdad. Sale de OFERTADET y NUNCA de OFERTA:
 - Combo ("2x$299") -> tipoOferta "2x$299", ofertaUno "2x", precioOferta el total, mecanica "Comprando 2, $149,50 la unidad." El unitario sale de DIVIDIR el total, no de la columna PRECIO.

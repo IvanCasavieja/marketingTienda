@@ -195,6 +195,21 @@ function partirPrecio(
   };
 }
 
+// El precio de la grilla vive partido en entero + decimal con formato
+// uruguayo ("1.100" + ",50"). Esto lo vuelve a armar como numero para poder
+// operarlo. Inverso de partirPrecio.
+function aNumero(entero: string, decimal: string): number {
+  return parseFloat((entero || "").replace(/\./g, "") + (decimal || "").replace(",", "."));
+}
+
+// El precio de 100 g que se le propone al usuario, ya formateado.
+function precioA100g(entero: string, decimal: string): string {
+  const n = aNumero(entero, decimal);
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  const p = partirPrecio("entero", "decimal", n / 10);
+  return `${p.entero ?? ""}${p.decimal ?? ""}`;
+}
+
 interface Props {
   rows: ConvertidorRow[];
   setRows: Dispatch<SetStateAction<ConvertidorRow[] | null>>;
@@ -286,6 +301,35 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
   // 100g (descripción + precio÷10) aunque ya tengan descripción matcheada
   // del catálogo, por eso es un filtro aparte y no solo un warning más.
   const rowsFiambresKg = useMemo(() => rows.filter((r) => r.es_fiambre_kg), [rows]);
+
+  // Se vende por 100 g pero el precio vino del kilo -- el caso inverso al de
+  // arriba: acá la descripción ya está bien y el que quedó mal es el precio.
+  // Pasó de verdad y se imprimió (Rompe del Finde 27 al 30/8: jamón crudo a
+  // $1.100 cuando los 100 g eran $110). La app NO divide sola: lo propone y
+  // alguien confirma, porque un falso positivo imprime un precio diez veces
+  // más barato en la góndola.
+  const rowsPrecioDeKilo = useMemo(
+    () => rows.filter((r) => r.precio_de_kilo_en_100g), [rows]);
+
+  function pasarPreciosA100g(ids: Set<number>) {
+    setRows((prev) => (prev ?? []).map((r) => {
+      if (!ids.has(r.row_id)) return r;
+      const oferta   = aNumero(r.precioOferta, r.decimalPrecioOferta);
+      const regular  = aNumero(r.precioRegular, r.decimalPrecioRegular);
+      return {
+        ...r,
+        ...partirPrecio("precioOferta", "decimalPrecioOferta",
+                        Number.isFinite(oferta) ? oferta / 10 : undefined),
+        ...partirPrecio("precioRegular", "decimalPrecioRegular",
+                        Number.isFinite(regular) ? regular / 10 : undefined),
+        // Sin limpiar la bandera y el warning la fila vuelve a aparecer en el
+        // aviso en el próximo render, ya con el precio corregido.
+        precio_de_kilo_en_100g: false,
+        warnings: (r.warnings ?? []).filter((w) => w !== "precio_de_kilo_en_100g"),
+      };
+    }));
+    toast.success(t("convertidor.tinin.cienGramosAplicado", { count: ids.size }));
+  }
 
   // Combinado para el modal de IA: fiambres por kg primero, sin duplicar
   // las que también les falta descripción.
@@ -678,6 +722,25 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
       });
     }
 
+    if (rowsPrecioDeKilo.length > 0) {
+      out.push({
+        id: "cien-gramos",
+        titulo: t("convertidor.tinin.cienGramosTitulo", { count: rowsPrecioDeKilo.length }),
+        detalle: t("convertidor.tinin.cienGramosDetalle"),
+        accion: {
+          etiqueta: t("convertidor.tinin.cienGramosBoton"),
+          onClick: () => pasarPreciosA100g(new Set(rowsPrecioDeKilo.map((r) => r.row_id))),
+        },
+        items: rowsPrecioDeKilo.slice(0, 40).map((row) => ({
+          clave: String(row.row_id),
+          texto: `${row.codigo} · ${row.descripcion || row.nombre_articulo || "—"} · `
+               + `$${row.precioOferta}${row.decimalPrecioOferta} → `
+               + `$${precioA100g(row.precioOferta, row.decimalPrecioOferta)}`,
+          onIr: () => scrollToRow(row.row_id),
+        })),
+      });
+    }
+
     out.push({
       id: "alcohol",
       titulo: t("convertidor.tinin.alcoholTitulo"),
@@ -701,7 +764,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
     });
 
     return out;
-  }, [rows, rowsParaIA, visiblePairs, buscandoAlcohol, t]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, rowsParaIA, visiblePairs, rowsPrecioDeKilo, buscandoAlcohol, t]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-4">

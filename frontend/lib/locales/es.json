@@ -921,7 +921,11 @@
       "alcoholBoton": "Buscar con IA",
       "alcoholBuscando": "Tinín está revisando…",
       "alcoholNinguna": "Revisé {{count}} productos y ninguno es una bebida con alcohol que se me haya pasado.",
-      "alcoholAplicada": "Leyenda de alcohol agregada a {{count}} fila(s)."
+      "alcoholAplicada": "Leyenda de alcohol agregada a {{count}} fila(s).",
+      "cienGramosTitulo": "{{count}} artículo(s) de 100 g con precio de kilo",
+      "cienGramosDetalle": "Se venden por 100 g, pero el precio que vino del listado parece el del kilo. Revisá el valor propuesto antes de aplicarlo: si está mal, el cartel sale diez veces más barato.",
+      "cienGramosBoton": "Pasar los precios a 100 g",
+      "cienGramosAplicado": "Precios de 100 g aplicados en {{count}} fila(s)."
     }
   },
   "facturacion": {

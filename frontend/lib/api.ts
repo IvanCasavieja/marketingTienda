@@ -375,6 +375,12 @@ export interface ConvertidorRow {
   precio_raw: string;
   precio_anterior_raw: string;
   es_fiambre_kg: boolean;
+  /**
+   * Se vende por 100 g pero el precio que vino parece el del kilo. La app no
+   * divide sola: lo propone y una persona confirma. Ver el bloque de
+   * comentarios en backend/app/services/cenefas/convertidor.py.
+   */
+  precio_de_kilo_en_100g: boolean;
   warnings_mecanica: string[];
 
   // Las 27 variables — es lo que se exporta y lo que consume la cenefa.
