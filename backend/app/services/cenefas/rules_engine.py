@@ -93,8 +93,22 @@ def evaluate_rules(rules: list[dict], values: dict[str, Any]) -> dict[str, bool]
 
 
 def apply_visibility(components: list[dict], visibility: dict[str, bool]) -> list[dict]:
-    """Filtra la lista de componentes según el dict de visibilidad.
+    """Marca los componentes ocultos, sin sacarlos de la lista.
 
     Componentes sin entrada en `visibility` quedan visibles por defecto.
+
+    Sacarlos de la lista parece equivalente y no lo es. Con `preserve_source`
+    --que es como se genera todo desde 08/2026-- el shape YA EXISTE en el
+    slide, puesto ahí por el archivo del diseñador. Un componente ausente de
+    la lista significa "no lo toques", no "no lo dibujes": el shape sobrevive
+    con lo que trajera el diseño. Asi, una regla de ocultar no ocultaba nada,
+    dejaba impreso el contenido original.
+
+    No se habia notado porque hasta ahora ninguna plantilla tenia reglas.
+
+    Marcandolo, _render_slide lo saca del slide. En el camino sin
+    preserve_source el resultado es el mismo que antes: un componente oculto
+    no tiene shape que mutar y no se dibuja nada.
     """
-    return [c for c in components if visibility.get(c["id"], True)]
+    return [c if visibility.get(c["id"], True) else {**c, "visible": False}
+            for c in components]

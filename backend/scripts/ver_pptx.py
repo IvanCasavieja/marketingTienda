@@ -82,6 +82,16 @@ def dibujar(ruta_pptx, hoja=0, salida=None, ppcm=38):
                 ((s.left or 0)+(s.width or 0))/CM*ppcm, ((s.top or 0)+(s.height or 0))/CM*ppcm]
         d.rounded_rectangle(caja, radius=ppcm*0.25, fill="#%02X%02X%02X" % tuple(rgb))
 
+    # Las lineas (el tachado del precio anterior). Sin esto no se ve si la regla
+    # de "con mecanica no se tacha" hizo algo o no.
+    for s in prs.slides[hoja].shapes:
+        if "LINE" not in str(s.shape_type):
+            continue
+        x0, y0 = (s.left or 0)/CM*ppcm, (s.top or 0)/CM*ppcm
+        x1, y1 = x0 + (s.width or 0)/CM*ppcm, y0 + (s.height or 0)/CM*ppcm
+        # Las de PowerPoint van de abajo-izquierda a arriba-derecha.
+        d.line([(x0, y1), (x1, y0)], fill="#111111", width=max(2, int(ppcm*0.06)))
+
     for s in sorted(prs.slides[hoja].shapes, key=lambda s: (s.top or 0)):
         if not (s.has_text_frame and s.text_frame.text.strip()):
             continue
