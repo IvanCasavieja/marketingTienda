@@ -12,6 +12,7 @@ from app.services.ai_usage_service import log_ai_usage
 from app.services.cenefas.validation_engine import DESCRIPTION_MAX_CHARS, DESCRIPTION_WARN_CHARS
 from app.services.debate_service import _ASK_CLAUDE_META, _ask_claude
 from app.services.tino_personas import TININ_BASE
+from app.services.cenefas.convertidor_variables import FAMILIAS_MECANICA
 
 log = logging.getLogger(__name__)
 
@@ -584,3 +585,99 @@ async def detectar_alcohol(items: list[dict], db, user_id: int) -> dict:
                     "motivo": str(item.get("motivo") or "")[:300],
                 })
     return {"alcohol": encontrados, "errores": errores}
+
+# ---------------------------------------------------------------------------
+# Mecánicas que el motor no reconoce
+# ---------------------------------------------------------------------------
+#
+# El Convertidor deduce la familia de mecánica del texto de OFERTADET. Cuando
+# gestión inventa un tipo nuevo, `familia_de_ofertadet` devuelve None: la fila
+# pierde la mecánica ENTERA --sin cocarda, sin "Comprando N", sin unidad-- y lo
+# único que queda es el aviso `ofertadet_desconocido` en la grilla.
+#
+# Y vuelve todas las semanas, porque es el mismo listado de gestión: hoy alguien
+# lo arregla a mano y el lunes siguiente está igual.
+#
+# Acá Tinín mira ese OFERTADET junto con lo que trae la columna OFERTA en las
+# filas que lo usan --que es lo que de verdad lo explica: "3x2" se lee distinto
+# de "Precio Oferta"-- y dice a qué familia corresponde.
+#
+# Devuelve SUGERENCIAS. No escribe en cenefa_ofertadet_aliases: eso pasa cuando
+# la persona confirma (ver /mecanica/confirmar-alias). Nada se aplica solo,
+# porque elegir mal la familia no deja la cenefa vacía: la deja MINTIENDO. Un
+# "2x1" resuelto como Combo imprime un precio unitario que no existe.
+
+_FAMILIAS_EXPLICADAS: dict[str, str] = {
+    "combo":        'se lleva N unidades por un precio TOTAL ("3x$99" = tres por 99 los tres). '
+                    "El precio del cartel es el unitario, que sale de dividir",
+    "mxn":          'se lleva M y paga N ("2x1", "6x4"). El literal va en la cocarda y el precio '
+                    "del cartel es el unitario que ya viene calculado en la columna PRECIO",
+    "segunda":      'la segunda (o tercera) unidad tiene un descuento ("2da unidad al 50%")',
+    "sin_mecanica": "no anuncia nada: es un precio y punto (precio fijo, % de descuento, "
+                    "una etiqueta interna de gestión). NO lleva cocarda",
+}
+
+_MECANICA_SYSTEM_PROMPT = f"""{TININ_BASE}
+
+Hoy también te toca: te paso un tipo de oferta (la columna OFERTADET del listado de gestión) que el sistema NO reconoce, junto con ejemplos de lo que trae la columna OFERTA en las filas que lo usan. Tenés que decir a qué FAMILIA de mecánica corresponde.
+
+Las familias son cuatro y solo cuatro:
+
+{chr(10).join(f'- {k}: {v}' for k, v in _FAMILIAS_EXPLICADAS.items())}
+
+Fijate sobre todo en los ejemplos de OFERTA, que es lo que de verdad lo explica: un "3x2" es otra cosa que un "Precio Oferta". El nombre del tipo ayuda pero a veces es jerga interna que no dice nada.
+
+Si no te queda claro, decí "sin_mecanica": es la opción que no inventa nada. Elegir mal una de las otras tres no deja el cartel vacío, lo deja MINTIENDO -- un "2x1" resuelto como combo imprime un precio unitario que no existe, y eso sale impreso a la góndola."""
+
+
+def _build_mecanica_prompt(items: list[dict]) -> str:
+    lineas = []
+    for n, it in enumerate(items, start=1):
+        ejemplos = " | ".join(it.get("ejemplos_oferta") or []) or "(la columna OFERTA viene vacía)"
+        lineas.append(f'{n}. OFERTADET: "{it["ofertadet_display"]}"  ->  OFERTA dice: {ejemplos}')
+    return (
+        f"¿Qué familia de mecánica es cada uno de estos {len(items)} tipos?\n\n"
+        + "\n".join(lineas) + "\n\n"
+        'Devolvé SOLO un JSON con esta forma exacta: {"mecanicas": {"1": {"familia": "combo|mxn|'
+        'segunda|sin_mecanica", "motivo": "una frase corta"}, ...}} — una entrada por cada número. '
+        "Sin comentarios ni texto fuera del JSON."
+    )
+
+
+async def sugerir_familia_mecanica(candidatos: list[dict], db, user_id: int) -> dict:
+    """candidatos: [{"ofertadet_norm", "ofertadet_display", "ejemplos_oferta"}, ...]
+
+    Devuelve {"sugerencias": [{ofertadet_norm, ofertadet_display, familia,
+    motivo}, ...], "errores": [...]}. Una familia que no existe se descarta con
+    un error a la vista en vez de viajar a la pantalla: es la única respuesta
+    que no se puede confirmar.
+    """
+    if not candidatos:
+        return {"sugerencias": [], "errores": []}
+
+    recorte = candidatos[:_ROWS_MAX_PER_REQUEST]
+    errores: list[str] = []
+    try:
+        content, in_tok, out_tok = await _ask_claude(
+            _MECANICA_SYSTEM_PROMPT, _build_mecanica_prompt(recorte), max_tokens=2000)
+        await log_ai_usage(db, user_id, "convertidor_mecanica", *_ASK_CLAUDE_META, in_tok, out_tok)
+        parsed = json.loads(_strip_json_fence(content)).get("mecanicas", {})
+    except Exception as exc:
+        log.warning("sugerir_familia_mecanica: %s", exc, exc_info=True)
+        return {"sugerencias": [], "errores": [f"{type(exc).__name__}: {exc}"]}
+
+    sugerencias = []
+    for n, c in enumerate(recorte, start=1):
+        item = parsed.get(str(n)) or {}
+        familia = item.get("familia")
+        if familia not in FAMILIAS_MECANICA:
+            errores.append(
+                f'Tinin propuso una familia que no existe para "{c["ofertadet_display"]}": {familia!r}')
+            continue
+        sugerencias.append({
+            "ofertadet_norm":    c["ofertadet_norm"],
+            "ofertadet_display": c["ofertadet_display"],
+            "familia":           familia,
+            "motivo":            str(item.get("motivo") or "")[:300],
+        })
+    return {"sugerencias": sugerencias, "errores": errores}

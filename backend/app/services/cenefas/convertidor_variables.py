@@ -94,6 +94,31 @@ _RE_ES_SEGUNDA_DET = re.compile(r"unidad\s*al", re.IGNORECASE)
 # tipoOferta en resolver_mecanica.
 _RE_SIN_MECANICA_DET = re.compile(r"precio\s*fijo|%\s*descuento|descuentos?", re.IGNORECASE)
 
+# Las familias de mecánica que el motor sabe resolver. Es la respuesta a "¿qué
+# ES esto?", separada de "¿cómo se resuelve?" -- porque desde 08/2026 la
+# respuesta puede venir de dos lados: del texto de OFERTADET (acá abajo) o
+# aprendida de una confirmación anterior (cenefa_ofertadet_aliases).
+FAMILIAS_MECANICA = ("combo", "mxn", "segunda", "sin_mecanica")
+
+
+def familia_de_ofertadet(oferta_det: str) -> str | None:
+    """Qué familia de mecánica es este OFERTADET, o None si no la reconozco.
+
+    None es el caso que importa: gestión inventó un tipo nuevo. Sin esto la
+    fila perdía la mecánica en silencio y solo quedaba un aviso."""
+    oferta_det = (oferta_det or "").strip()
+    if not oferta_det:
+        return None
+    if _RE_ES_COMBO_DET.search(oferta_det):
+        return "combo"
+    if _RE_ES_MXN_DET.search(oferta_det):
+        return "mxn"
+    if _RE_ES_SEGUNDA_DET.search(oferta_det):
+        return "segunda"
+    if _RE_SIN_MECANICA_DET.search(oferta_det):
+        return "sin_mecanica"
+    return None
+
 # La lista negra de etiquetas de OFERTA ("pvp", "fullprice", "noaplica",
 # "ante/despues"...) junto con _norm_etiqueta() y _es_numero() se eliminaron el
 # 2026-08-25: existían para adivinar desde OFERTA si había mecánica, y OFERTADET
@@ -105,6 +130,7 @@ def resolver_mecanica(
     oferta: str,
     precio: float | None,
     moneda: str = "$",
+    familia: str | None = None,
 ) -> tuple[dict, list[str]]:
     """Resuelve la mecánica de una fila.
 
@@ -126,10 +152,14 @@ def resolver_mecanica(
     oferta = (oferta or "").strip()
     oferta_det = (oferta_det or "").strip()
     warnings: list[str] = []
+    # `familia` la pasa el caller cuando alguien ya confirmó qué es este
+    # OFERTADET (ver cenefa_ofertadet_aliases). Gana sobre el texto: es una
+    # persona diciendo lo que las expresiones regulares no supieron leer.
+    familia = familia if familia in FAMILIAS_MECANICA else familia_de_ofertadet(oferta_det)
     prefijo = "U$S " if moneda.strip().upper() in ("U$S", "US$", "USD") else "$"
 
     # ── Combo ─────────────────────────────────────────────────────────────
-    if _RE_ES_COMBO_DET.search(oferta_det):
+    if familia == "combo":
         m = _RE_COMBO.search(oferta)
         if not m:
             warnings.append("combo_no_parseable")
@@ -168,7 +198,7 @@ def resolver_mecanica(
         }, warnings
 
     # ── M x N ─────────────────────────────────────────────────────────────
-    if _RE_ES_MXN_DET.search(oferta_det):
+    if familia == "mxn":
         m = _RE_MXN.search(oferta)
         if not m:
             warnings.append("mxn_no_parseable")
@@ -200,7 +230,7 @@ def resolver_mecanica(
     # "Sprite sin azucar 2.25L 2da unidad al 50%". No es combo (no hay total)
     # ni M x N (no se paga por unidades enteras): el precio grande es el de la
     # columna PRECIO y la cocarda anuncia la condicion.
-    if _RE_ES_SEGUNDA_DET.search(oferta_det):
+    if familia == "segunda":
         m = _RE_SEGUNDA.search(oferta)
         if not m:
             warnings.append("segunda_unidad_no_parseable")
@@ -236,7 +266,7 @@ def resolver_mecanica(
     #
     # El único aviso que queda es para un OFERTADET DESCONOCIDO: con esta regla
     # una mecánica nueva se descartaría en silencio, y eso sí hay que verlo.
-    if oferta_det and not _RE_SIN_MECANICA_DET.search(oferta_det):
+    if oferta_det and familia is None:
         warnings.append("ofertadet_desconocido")
 
     return {
@@ -259,6 +289,7 @@ def construir_variables(
     descripcion: str,
     mapeo: dict[str, str],
     vigencia_fallback: str = "",
+    familia_ofertadet: str | None = None,
 ) -> tuple[dict, list[str]]:
     """Arma las 26 variables de una fila.
 
@@ -279,6 +310,7 @@ def construir_variables(
         parsed.get("oferta", ""),
         parsed.get("precio"),
         parsed.get("moneda", "$"),
+        familia_ofertadet,
     )
     warnings.extend(w)
 

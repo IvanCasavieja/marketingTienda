@@ -48,6 +48,14 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
   // ya se corrigió a mano en la otra.
   const [resultados, setResultados] = useState<Record<number, EstadoHoja>>({});
   const [loading, setLoading] = useState(false);
+  // El último mapeo con el que se convirtió cada hoja. Se guarda para poder
+  // REHACER la conversión sin volver a pasar por la pantalla de mapeo: hace
+  // falta cuando Tinín aprende algo que cambia cómo se resuelven las filas
+  // (una mecánica nueva), porque eso lo resuelve el backend y la grilla que
+  // está en pantalla ya no lo refleja.
+  const [ultimoMapeo, setUltimoMapeo] = useState<
+    Record<number, { mapeo: Record<string, string>; valores: Record<string, string> }>
+  >({});
 
   const hoja = hojas.find((h) => h.indice === hojaActual) ?? null;
   const actual = resultados[hojaActual] ?? null;
@@ -109,6 +117,7 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
     valores: Record<string, string>,
   ) {
     if (!excel) return;
+    setUltimoMapeo((prev) => ({ ...prev, [hojaActual]: { mapeo, valores } }));
     setLoading(true);
     try {
       const fd = new FormData();
@@ -128,6 +137,19 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Rehace la conversión de la hoja actual con el mismo mapeo. Se usa cuando
+  // Tinín aprende algo que cambia cómo el backend resuelve las filas.
+  //
+  // OJO: reconstruye la grilla, así que se pierden las correcciones hechas a
+  // mano en ella. Es aceptable porque el aviso que dispara esto (una mecánica
+  // que el motor no reconoce) aparece apenas se convierte, antes de que haya
+  // trabajo manual encima -- y el texto del botón lo dice.
+  function revalidar() {
+    const guardado = ultimoMapeo[hojaActual];
+    if (!guardado) return;
+    handleConvertir(guardado.mapeo, guardado.valores);
   }
 
   // Barra de hojas: solo aparece si el archivo trae más de una. Numeradas 1, 2,
@@ -177,6 +199,7 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
           setRows={setRows}
           maPairs={actual.maPairs}
           onReset={reset}
+          onRevalidar={revalidar}
         />
       </div>
     );

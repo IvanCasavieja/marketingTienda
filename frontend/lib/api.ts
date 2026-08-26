@@ -417,6 +417,29 @@ export interface ConvertidorRow {
 }
 
 /** Una columna del Excel subido, con muestras para poder reconocerla. */
+/** Un OFERTADET que el motor no reconoce, con la familia que propone Tinín. */
+export interface SugerenciaMecanica {
+  ofertadet_norm: string;
+  ofertadet_display: string;
+  /** combo | mxn | segunda | sin_mecanica */
+  familia: string;
+  motivo: string;
+}
+
+export interface MecanicaAprendida {
+  ofertadet_norm: string;
+  ofertadet_display: string;
+  familia: string;
+}
+
+export interface SugerirMecanicaIAResponse {
+  sugerencias: SugerenciaMecanica[];
+  ya_aprendidas: MecanicaAprendida[];
+  errores: string[];
+  /** {familia: qué significa} — para explicar cada opción del desplegable. */
+  familias: Record<string, string>;
+}
+
 /** Una columna del archivo que el Convertidor no reconoció, con la propuesta de Tinín. */
 export interface SugerenciaColumna {
   header_norm: string;
@@ -717,6 +740,20 @@ export const convertidorApi = {
    * reconoció. NO aplica nada: devuelve propuestas para confirmar. Lo que ya
    * está aprendido no se vuelve a preguntar (ni se gasta una llamada en él).
    */
+  /**
+   * Le pide a Tinín la familia de mecánica de los OFERTADET que el motor no
+   * reconoce. Se agrupa por tipo, no por fila: cuarenta filas con el mismo
+   * OFERTADET nuevo son UNA pregunta.
+   */
+  sugerirMecanicaIA: (rows: { oferta_det: string; oferta: string }[]) =>
+    api.post<SugerirMecanicaIAResponse>(
+      "/tools/cenefas/convertidor/mecanica/sugerir-ia", { rows }),
+  /** Guarda las confirmaciones. Ese OFERTADET no vuelve a pasar por IA nunca. */
+  confirmarAliasMecanica: (
+    mecanicas: { ofertadet_norm: string; ofertadet_display: string; familia: string }[]
+  ) =>
+    api.post<{ guardados: number }>(
+      "/tools/cenefas/convertidor/mecanica/confirmar-alias", { mecanicas }),
   sugerirColumnasIA: (excel: File, hoja?: string) => {
     const fd = new FormData();
     fd.append("excel", excel);

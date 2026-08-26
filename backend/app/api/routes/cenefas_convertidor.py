@@ -23,7 +23,12 @@ from app.models.audit_log import AuditLog
 from app.models.convertidor_mapeo import ConvertidorMapeo
 from app.models.sku_descripcion import SkuDescripcion
 from app.models.user import User
+from app.models.cenefa_ofertadet_alias import CenefaOfertadetAlias
 from app.models.convertidor_header_alias import ConvertidorHeaderAlias
+from app.services.cenefas.convertidor_variables import (
+    FAMILIAS_MECANICA,
+    familia_de_ofertadet,
+)
 from app.services.cenefas.variables import LEGAL_ALCOHOL, es_alcohol
 from app.services.cenefas.convertidor import (
     _INPUT_ALIASES,
@@ -41,6 +46,8 @@ from app.services.cenefas.convertidor import (
 )
 from app.services.cenefas.convertidor_ai import (
     _CAMPOS_SUGERIBLES,
+    _FAMILIAS_EXPLICADAS,
+    sugerir_familia_mecanica,
     detectar_alcohol,
     _ROWS_MAX_PER_REQUEST,
     detectar_grupos_unificables,
@@ -512,6 +519,133 @@ async def columnas(
         "variables_mapeables": list(VARIABLES_MAPEABLES),
         "total_filas": sugerida["total_filas"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Mecánicas que el motor no reconoce
+# ---------------------------------------------------------------------------
+
+
+class MecanicaItem(BaseModel):
+    oferta_det: str = ""
+    oferta: str = ""
+
+
+class SugerirMecanicaRequest(BaseModel):
+    rows: list[MecanicaItem]
+
+
+@router.post("/mecanica/sugerir-ia")
+@limiter.limit("5/minute")
+async def sugerir_mecanica_ia(
+    request: Request,
+    payload: SugerirMecanicaRequest,
+    current_user: User = Depends(require_permission("ai.tinin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Los OFERTADET que el motor no reconoce, con la propuesta de Tinín.
+
+    Se agrupa por tipo, no por fila: un listado puede traer cuarenta filas con
+    el mismo OFERTADET nuevo y es UNA sola pregunta. A Tinín se le pasan los
+    ejemplos de la columna OFERTA de esas filas, que es lo que de verdad
+    explica la mecánica.
+
+    No aplica nada: devuelve sugerencias para confirmar."""
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="La sugerencia con IA no está configurada en este ambiente")
+    if not payload.rows:
+        raise HTTPException(status_code=400, detail="No hay filas para revisar")
+
+    # Solo lo que el codigo NO resuelve. Un OFERTADET que familia_de_ofertadet
+    # ya sabe leer no tiene nada que preguntar.
+    porTipo: dict[str, dict] = {}
+    for r in payload.rows[:_ROWS_MAX_PER_REQUEST]:
+        det = (r.oferta_det or "").strip()
+        if not det or familia_de_ofertadet(det) is not None:
+            continue
+        norm = _norm(det)
+        entrada = porTipo.setdefault(norm, {
+            "ofertadet_norm": norm, "ofertadet_display": det, "ejemplos_oferta": [],
+        })
+        ofe = (r.oferta or "").strip()
+        if ofe and ofe not in entrada["ejemplos_oferta"] and len(entrada["ejemplos_oferta"]) < 6:
+            entrada["ejemplos_oferta"].append(ofe)
+
+    if not porTipo:
+        return {"sugerencias": [], "ya_aprendidas": [], "errores": [], "familias": _FAMILIAS_EXPLICADAS}
+
+    # Lo ya confirmado se informa aparte, sin gastar una llamada: sirve para
+    # entender POR QUE un OFERTADET raro igual funciono.
+    aprendidas = {
+        a.ofertadet_norm: a
+        for a in (await db.execute(
+            select(CenefaOfertadetAlias)
+            .where(CenefaOfertadetAlias.ofertadet_norm.in_(porTipo.keys()))
+        )).scalars().all()
+    }
+    pendientes = [v for k, v in porTipo.items() if k not in aprendidas]
+
+    resultado = await sugerir_familia_mecanica(pendientes, db, current_user.id)
+    await db.commit()   # persiste el ai_usage_log
+    return {
+        "sugerencias":   resultado["sugerencias"],
+        "ya_aprendidas": [
+            {"ofertadet_norm": a.ofertadet_norm,
+             "ofertadet_display": a.ofertadet_display or a.ofertadet_norm,
+             "familia": a.familia}
+            for a in aprendidas.values()
+        ],
+        "errores":  resultado["errores"],
+        "familias": _FAMILIAS_EXPLICADAS,
+    }
+
+
+class MecanicaConfirmada(BaseModel):
+    ofertadet_norm: str = Field(min_length=1, max_length=120)
+    ofertadet_display: str = Field(default="", max_length=255)
+    familia: str
+
+    @field_validator("familia")
+    @classmethod
+    def _familia_conocida(cls, v: str) -> str:
+        if v not in FAMILIAS_MECANICA:
+            raise ValueError(f"Familia desconocida: {v!r}")
+        return v
+
+
+class ConfirmarMecanicaRequest(BaseModel):
+    mecanicas: list[MecanicaConfirmada]
+
+
+@router.post("/mecanica/confirmar-alias")
+async def confirmar_alias_mecanica(
+    payload: ConfirmarMecanicaRequest,
+    current_user: User = Depends(require_permission("cenefas.edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Guarda las confirmaciones. Desde acá ese OFERTADET lo resuelve el
+    código, igual que los que están hardcodeados, solo que aprendido — y no
+    vuelve a pasar por IA nunca.
+
+    A diferencia de los alias de columna, acá no hay respuesta nula:
+    "sin_mecanica" ES la respuesta para lo que no anuncia nada."""
+    if not payload.mecanicas:
+        raise HTTPException(status_code=400, detail="No hay nada que confirmar")
+
+    stmt = pg_insert(CenefaOfertadetAlias).values([
+        {"ofertadet_norm": m.ofertadet_norm, "familia": m.familia,
+         "ofertadet_display": m.ofertadet_display or m.ofertadet_norm,
+         "confirmado_por": current_user.id}
+        for m in payload.mecanicas
+    ])
+    await db.execute(stmt.on_conflict_do_update(
+        index_elements=["ofertadet_norm"],
+        set_={"familia": stmt.excluded.familia,
+              "ofertadet_display": stmt.excluded.ofertadet_display,
+              "confirmado_por": stmt.excluded.confirmado_por},
+    ))
+    await db.commit()
+    return {"guardados": len(payload.mecanicas)}
 
 
 # ---------------------------------------------------------------------------

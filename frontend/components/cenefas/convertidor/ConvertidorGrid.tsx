@@ -10,6 +10,7 @@ import { guardarExcelParaCenefa } from "@/lib/cenefaHandoff";
 import ConvertidorAiModal from "./ConvertidorAiModal";
 import ConvertidorMergeModal from "./ConvertidorMergeModal";
 import ConvertidorUnifyModal from "./ConvertidorUnifyModal";
+import TininMecanica from "./TininMecanica";
 import TininRevision, { type TemaTinin } from "./TininRevision";
 
 // Virtualización manual (sin librería nueva): solo se renderizan las filas
@@ -215,13 +216,19 @@ interface Props {
   setRows: Dispatch<SetStateAction<ConvertidorRow[] | null>>;
   maPairs: MaPair[];
   onReset: () => void;
+  /**
+   * Rehace la conversión con el mismo mapeo. Hace falta cuando Tinín aprende
+   * una mecánica nueva: eso lo resuelve el backend, así que la grilla que está
+   * en pantalla no lo refleja hasta volver a pedirla.
+   */
+  onRevalidar?: () => void;
 }
 
 function maPairKey(sku1: string, sku2: string): string {
   return `${sku1}|${sku2}`;
 }
 
-export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Props) {
+export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRevalidar }: Props) {
   const { t } = useTranslation();
   const [scrollTop, setScrollTop] = useState(0);
   const [exporting, setExporting] = useState(false);
@@ -714,6 +721,14 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
         id: "ofertadet",
         titulo: t("convertidor.tinin.ofertadetTitulo", { count: detDesconocido.length }),
         detalle: t("convertidor.tinin.ofertadetDetalle"),
+        panel: (
+          <TininMecanica
+            rows={detDesconocido.map((r) => ({
+              oferta_det: r.oferta_det, oferta_origen: r.oferta_origen,
+            }))}
+            onAprendido={() => onRevalidar?.()}
+          />
+        ),
         items: detDesconocido.slice(0, 40).map((row) => ({
           clave: String(row.row_id),
           texto: `${row.codigo} · ${row.oferta_det || "—"}`,
@@ -764,7 +779,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset }: Pro
     });
 
     return out;
-  }, [rows, rowsParaIA, visiblePairs, rowsPrecioDeKilo, buscandoAlcohol, t]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, rowsParaIA, visiblePairs, rowsPrecioDeKilo, buscandoAlcohol, onRevalidar, t]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-4">

@@ -939,6 +939,14 @@
       "yaAprendidas": "Ya aprendidas de antes ({{count}}):",
       "nadaQuePreguntar": "Reconozco todas las columnas de este archivo. {{count}} de ellas las aprendí de vos antes.",
       "nadaPendiente": "No queda nada por confirmar."
+    },
+    "mecanicaIA": {
+      "boton": "Que la mire Tinín",
+      "mirando": "Mirando…",
+      "confirmar": "Confirmar {{count}} y rehacer la grilla",
+      "guardado": "{{count}} mecánica(s) aprendidas. No se vuelven a preguntar.",
+      "yaAprendidas": "Ya aprendidas de antes ({{count}}):",
+      "nadaQueProponer": "No tengo nada para proponer acá."
     }
   },
   "facturacion": {

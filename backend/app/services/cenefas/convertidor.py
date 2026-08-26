@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.cenefa_ofertadet_alias import CenefaOfertadetAlias
 from app.models.convertidor_header_alias import ConvertidorHeaderAlias
 from app.models.cenefa_grupo_unificado import CenefaGrupoUnificado
 from app.models.sku_descripcion import SkuDescripcion
@@ -899,6 +900,21 @@ async def match_rows(
                 if parte in faltantes:
                     catalogo.setdefault(parte, desc)
 
+    # Las familias de mecánica que alguien ya confirmó para un OFERTADET que el
+    # motor no reconoce. Una sola consulta para todo el listado: son un puñado
+    # de textos distintos aunque vengan mil filas.
+    familias: dict[str, str] = {}
+    dets = {_norm(r.get("oferta_det") or "") for r in parsed}
+    dets.discard("")
+    if dets:
+        familias = {
+            a.ofertadet_norm: a.familia
+            for a in (await db.execute(
+                select(CenefaOfertadetAlias)
+                .where(CenefaOfertadetAlias.ofertadet_norm.in_(dets))
+            )).scalars().all()
+        }
+
     rows = []
     for i, r in enumerate(parsed):
         del_excel = (r.get("descripcion_excel") or "").strip()
@@ -912,6 +928,7 @@ async def match_rows(
             descripcion,
             r.get("_mapeado") or {},
             vigencia_fallback=_format_vigencia(r.get("fecha_inicio"), r.get("fecha_fin")),
+            familia_ofertadet=familias.get(_norm(r.get("oferta_det") or "")),
         )
 
         # Contexto del export de gestión: no son variables y no se exportan,

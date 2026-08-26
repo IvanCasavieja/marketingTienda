@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, X, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -35,6 +35,12 @@ export interface TemaTinin {
   /** Acción que resuelve el tema entero (ej. generar todas las descripciones). */
   accion?: { etiqueta: string; onClick: () => void };
   items?: ItemTema[];
+  /**
+   * Un tema que no se resuelve con un botón sino contestando algo (elegir la
+   * familia de una mecánica nueva) trae su propia pieza. Va acá adentro y no en
+   * un modal aparte: la gracia de esta barra es que haya UNA sola puerta.
+   */
+  panel?: ReactNode;
 }
 
 interface Props {
@@ -110,6 +116,8 @@ export default function TininRevision({ temas }: Props) {
               <Sparkles size={13} /> {actual.accion.etiqueta}
             </button>
           )}
+
+          {actual.panel && <div className="mt-2">{actual.panel}</div>}
 
           {actual.items && actual.items.length > 0 && (
             <div className="space-y-1.5 max-h-56 overflow-y-auto">
