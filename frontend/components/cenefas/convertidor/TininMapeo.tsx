@@ -127,7 +127,7 @@ export default function TininMapeo({ excel, hoja }: Props) {
                   <span className="font-semibold text-slate-800 dark:text-slate-100">
                     {s.header_display}
                   </span>
-                  {s.muestras.length > 0 && (
+                  {(s.muestras?.length ?? 0) > 0 && (
                     <span className="ml-2 text-slate-400 dark:text-slate-500 truncate">
                       {s.muestras.slice(0, 3).join(" · ")}
                     </span>

@@ -213,8 +213,20 @@ _TIPOS_ALCOHOL = (
     "sangria", "sangría", "coñac", "cognac", "brandy", "pisco", "amargo serrano",
 )
 
+# El borde de PALABRA va de los dos lados, y ahí está la gracia.
+#
+# Por delante, para no pescar un tipo en el medio de otra palabra. Por
+# detrás, porque sin eso "gin" matcheaba dentro de "Ginger ale" --que no
+# tiene alcohol y se vende igual-- y "ron" dentro de "Ronda de quesos". Los
+# espacios finales de "gin " y "ron " en la lista de arriba estaban puestos
+# justo para eso y el .strip() se los comía.
+#
+# El plural opcional (`e?s`) es lo que evita que el borde de atrás rompa lo
+# que sí hay que agarrar: "Vinos", "Cervezas", "Licores".
 _RE_TIPO_ALCOHOL = re.compile(
-    r"(?:^|[^a-záéíóúñ])(?:" + "|".join(t.strip() for t in _TIPOS_ALCOHOL) + r")",
+    r"(?:^|[^a-záéíóúñ])(?:"
+    + "|".join(t.strip() for t in _TIPOS_ALCOHOL)
+    + r")(?:e?s)?(?![a-záéíóúñ])",
     re.IGNORECASE,
 )
 

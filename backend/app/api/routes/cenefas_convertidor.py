@@ -62,6 +62,14 @@ from app.services.ai_usage_service import resumir_usage
 
 logger = logging.getLogger(__name__)
 
+# Cuántas filas se leen para juntar valores de muestra de cada columna cuando
+# se le pregunta a Tinín qué es cada una. Son más que las 5 que muestra
+# /columnas porque acá se quieren hasta 6 valores NO VACÍOS por columna, y en un
+# export de gestión real las celdas vienen salteadas: con 5 filas una columna
+# medio vacía llegaría sin un solo ejemplo, que es justo el dato que permite
+# reconocerla cuando el nombre no dice nada.
+_MUESTRAS_PARA_IA = 12
+
 router = APIRouter(prefix="/tools/cenefas/convertidor", tags=["cenefas-convertidor"])
 
 
@@ -803,6 +811,17 @@ async def sugerir_columnas_ia(
     # Solo las que NO resuelve el codigo. Las que ya matchean por nombre no
     # tienen nada que preguntar.
     candidatos: list[dict] = []
+    # Los campos que OTRAS columnas de este mismo archivo ya resuelven. Se le
+    # dicen a Tinín para que no proponga uno tomado: en una prueba real mapeó
+    # "SUBCATEGORIA" -> comprador en un archivo que YA traía la columna
+    # COMPRADOR, y confirmar eso aprende un alias que pisa una columna de
+    # verdad, para siempre.
+    ya_resueltos: set[str] = set()
+    for celda in header:
+        norm = _norm(celda) if celda is not None else ""
+        if norm in _INPUT_ALIASES:
+            ya_resueltos.add(_INPUT_ALIASES[norm])
+
     for i, celda in enumerate(header):
         nombre = str(celda).strip() if celda is not None else ""
         if not nombre:
@@ -828,7 +847,11 @@ async def sugerir_columnas_ia(
     }
     pendientes = [c for c in candidatos if c["header_norm"] not in aprendidas]
 
-    resultado = await sugerir_campos_de_columnas(pendientes, db, current_user.id)
+    # Lo ya aprendido también cuenta como tomado: si una columna rara de este
+    # archivo ya está confirmada como `precio`, otra no puede serlo.
+    ya_resueltos |= set(aprendidas.values())
+    resultado = await sugerir_campos_de_columnas(
+        pendientes, db, current_user.id, sorted(ya_resueltos))
     await db.commit()   # persiste el ai_usage_log
     return {
         "sugerencias":   resultado["sugerencias"],

@@ -444,21 +444,56 @@ cada propuesta antes de que se aplique, así que tu trabajo es proponer con crit
 qué, no acertar a toda costa."""
 
 
-def _build_sugerir_prompt(candidatos: list[dict]) -> str:
+def _build_sugerir_prompt(candidatos: list[dict], ya_resueltos: list[str] | None = None) -> str:
     lineas = []
     for n, c in enumerate(candidatos, start=1):
         muestras = ", ".join(f'"{m}"' for m in c["muestras"][:6]) or "(sin valores)"
         lineas.append(f'{n}. Encabezado: "{c["header_display"]}" — valores: {muestras}')
+    # Los campos que OTRA columna del mismo archivo ya resuelve. Sin decirle
+    # esto, Tinin propone campos ya tomados: en una prueba real mapeo
+    # "SUBCATEGORIA" -> comprador en un archivo que YA traia la columna
+    # COMPRADOR. Confirmar eso aprende un alias que pisa una columna de verdad,
+    # y queda aprendido para siempre.
+    tomados = ""
+    if ya_resueltos:
+        tomados = (
+            "\n\nOJO: en este mismo archivo hay otras columnas que YA resuelven estos campos: "
+            + ", ".join(sorted(ya_resueltos))
+            + ". No propongas ninguno de esos -- si una columna se le parece pero el campo ya "
+              "está tomado, la respuesta correcta es null."
+        )
     return (
-        f"Clasificá estos {len(candidatos)} encabezados:\n\n" + "\n".join(lineas) + "\n\n"
+        f"Clasificá estos {len(candidatos)} encabezados:\n\n" + "\n".join(lineas) + tomados + "\n\n"
         'Devolvé SOLO un JSON con esta forma exacta: {"columnas": {"1": {"campo": "<uno de la '
         'lista>|null", "motivo": "una frase corta explicando por qué"}, ...}} — una entrada por '
         "cada número, en el mismo orden. Sin comentarios ni texto fuera del JSON."
     )
 
 
-async def sugerir_campos_de_columnas(candidatos: list[dict], db, user_id: int) -> dict:
+def _campo_o_ninguno(valor) -> str | None:
+    """"No es ninguno" puede llegar de varias formas y todas significan lo mismo.
+
+    El prompt pide `null` y a veces vuelve el STRING "null" (o "none", o vacio).
+    Sin esto la ruta lo tomaba como un nombre de campo, no lo encontraba en
+    _CAMPOS_SUGERIBLES y descartaba la sugerencia con un error -- justo en el
+    caso que MAS conviene confirmar, porque un "no es ninguno" guardado es lo
+    que hace que esa columna no se vuelva a preguntar nunca.
+    """
+    if valor is None:
+        return None
+    texto = str(valor).strip()
+    if texto.lower() in ("", "null", "none", "ninguno", "ninguna", "n/a", "-"):
+        return None
+    return texto
+
+
+async def sugerir_campos_de_columnas(
+    candidatos: list[dict], db, user_id: int, ya_resueltos: list[str] | None = None,
+) -> dict:
     """candidatos: [{"header_norm", "header_display", "muestras": [str, ...]}, ...]
+
+    `ya_resueltos` son los campos que otras columnas del MISMO archivo ya
+    resuelven. Se le dicen a Tinin para que no proponga uno tomado.
 
     Devuelve {"sugerencias": [{header_norm, header_display, campo, motivo}, ...],
               "errores": [str, ...]}.
@@ -477,7 +512,7 @@ async def sugerir_campos_de_columnas(candidatos: list[dict], db, user_id: int) -
     errores: list[str] = []
     try:
         content, in_tok, out_tok = await _ask_claude(
-            _SUGERIR_SYSTEM_PROMPT, _build_sugerir_prompt(recorte), max_tokens=2000)
+            _SUGERIR_SYSTEM_PROMPT, _build_sugerir_prompt(recorte, ya_resueltos), max_tokens=2000)
         await log_ai_usage(db, user_id, "convertidor_columnas", *_ASK_CLAUDE_META, in_tok, out_tok)
         parsed = json.loads(_strip_json_fence(content)).get("columnas", {})
     except Exception as exc:
@@ -487,13 +522,24 @@ async def sugerir_campos_de_columnas(candidatos: list[dict], db, user_id: int) -
     sugerencias = []
     for n, c in enumerate(recorte, start=1):
         item = parsed.get(str(n)) or {}
-        campo = item.get("campo")
+        campo = _campo_o_ninguno(item.get("campo"))
+        # Cinturon ademas del tirante: si igual propuso un campo que otra
+        # columna ya resuelve, se baja a "no es ninguno" en vez de dejar que
+        # alguien lo confirme sin darse cuenta.
+        if campo is not None and campo in (ya_resueltos or []):
+            errores.append(
+                f'"{c["header_display"]}": {campo} ya lo resuelve otra columna de este archivo')
+            campo = None
         if campo is not None and campo not in _CAMPOS_SUGERIBLES:
             errores.append(f'Tinin propuso un campo que no existe para "{c["header_display"]}": {campo!r}')
             continue
         sugerencias.append({
             "header_norm":    c["header_norm"],
             "header_display": c["header_display"],
+            # Los valores de ejemplo viajan de vuelta: en la pantalla son lo que
+            # permite decidir si la propuesta esta bien cuando el nombre de la
+            # columna no dice nada ("COMENTARIOS2").
+            "muestras":       c.get("muestras") or [],
             "campo":          campo,
             "motivo":         str(item.get("motivo") or "")[:300],
         })
