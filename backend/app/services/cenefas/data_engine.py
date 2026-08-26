@@ -341,6 +341,8 @@ _DOC = [
     ("decimalPrecioRegular", "Decimales de precioRegular, con coma",           "Decimal"),
     ("precioOferta",         "Precio de oferta — parte entera",                "Precio"),
     ("decimalPrecioOferta",  "Decimales de precioOferta, con coma",            "Decimal"),
+    ("promoOferta",          "Literal de la mecánica que tapa al precio (6x4)", "Precio"),
+    ("decimalPromoOferta",   "Decimales de promoOferta, con coma",             "Decimal"),
     ("ofertaUno",            "Nivel de oferta 1 (ej. 3x) — número o texto",    "Precio"),
     ("decimalPrecioUno",     "Decimales de ofertaUno, con coma",               "Decimal"),
     ("ofertaDos",            "Nivel de oferta 2",                              "Precio"),
@@ -374,14 +376,14 @@ _ACL = "Precio válido en todos los locales."
 # Una fila por mecánica real, para que la plantilla se explique sola.
 _EJEMPLOS = [
     #        codigo    descripcion                   mecanica                       tipoOferta  comprando      unidad    regular  dec  oferta  dec    ofertaUno  ...resto vacio...        vigencia  aclaracionUno
-    ("610389", "ALFOMBRAS X4 GOMA AUTO",     "Precio Final",                "",       "",            "",       "960", "", "899", "",    "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
-    ("599059", "COPA DE VIDRIO 500 ML",      "$74,50 la unidad.",           "2x1",    "",            "",       "149", "", "2x1", "",    "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
-    ("506232", "ATADO DE LEÑA 3KG",          "Comprando 3, $33 la unidad.", "",       "",            "",       "129", "", "99",  "",    "3x", "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
-    ("608093", "SET DE COLCHA Q 218X218 CM", "Precio Final",                "25% OFF","",            "",       "899", "", "719", ",20", "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
+    ("610389", "ALFOMBRAS X4 GOMA AUTO",     "Precio Final",                "",       "",            "",       "960", "", "899", "", "", "",    "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
+    ("599059", "COPA DE VIDRIO 500 ML",      "$74,50 la unidad.",           "2x1",    "",            "",       "149", "", "74", ",50", "2x1", "",    "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
+    ("506232", "ATADO DE LEÑA 3KG",          "Comprando 3, $33 la unidad.", "",       "",            "",       "129", "", "99",  "", "", "",    "3x", "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
+    ("608093", "SET DE COLCHA Q 218X218 CM", "Precio Final",                "25% OFF","",            "",       "899", "", "719", ",20", "", "", "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
     # Rompe del Finde: la misma mecanica repartida en tres cuadros en vez de un
     # renglon. La cocarda lleva el literal, "Comprando N" va arriba del precio y
     # "unidad" abajo. Ahi `mecanica` queda vacia.
-    ("172029", "CERVEZA STELLA ARTOIS 330ML","",                            "6x4",    "Comprando 6", "unidad", "113", "", "75",  ",33", "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
+    ("172029", "CERVEZA STELLA ARTOIS 330ML","",                            "6x4",    "Comprando 6", "unidad", "113", "", "75",  ",33", "6x4", "", "",   "", "", "", "", "", "", "", "", "", "", _VIG, _ACL, "", "", "", "", "", ""),
 ]
 
 # Cada ejemplo tiene que tener un valor por columna: si sobra o falta uno, la

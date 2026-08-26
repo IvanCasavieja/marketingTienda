@@ -1,4 +1,4 @@
-"""Vocabulario único de variables de cenefas — 29 nombres, un solo lenguaje.
+"""Vocabulario único de variables de cenefas — 31 nombres, un solo lenguaje.
 
 Desde 08/2026 el nombre de la columna del Excel, el placeholder del PPTX
 (``<<nombre>>``) y la clave del JSON del template son SIEMPRE el mismo
@@ -17,7 +17,7 @@ import re
 import unicodedata
 
 # ---------------------------------------------------------------------------
-# Las 29 variables
+# Las 31 variables
 # ---------------------------------------------------------------------------
 
 # Identificación y textos.
@@ -39,6 +39,42 @@ import unicodedata
 # En Redexpres esa misma mecánica va entera adentro de `mecanica`
 # ("$75,33 la unidad."), así que las dos nuevas quedan vacías ahí. Son de TEXTO:
 # se imprimen tal cual, sin separar decimal ni dar formato.
+# ===========================================================================
+# LEER ESTO ANTES DE TOCAR precioOferta  (decision de Ivan, 2026-08-26)
+# ===========================================================================
+#
+#   `precioOferta` es SIEMPRE UN PRECIO. Literalmente. En todos los mundos.
+#
+# Nunca vuelve a llevar un literal de mecanica ("6x4", "2x1") adentro. Si en
+# una cenefa hay que mostrar el literal en el lugar del precio, eso NO se
+# resuelve metiendolo en `precioOferta`: se resuelve con `promoOferta`, que es
+# una variable aparte que el diseno dibuja SUPERPUESTA encima del cuadro del
+# precio. Cuando hay mecanica, `promoOferta` trae el literal y tapa al precio;
+# cuando no hay, queda vacia y se ve el precio.
+#
+# Por que se decidio asi, y por que NO se hizo al reves (una variable nueva
+# para el precio y dejar el literal en precioOferta):
+#
+#   Todo Excel de gestion que se suba de ahora en adelante va a traer mecanica,
+#   oferta y ofertadet, y va a pasar por el mismo camino. Si el literal viviera
+#   en `precioOferta`, CADA plantilla nueva y CADA Excel futuro tendria que
+#   acomodarse a que la variable del precio a veces no trae un precio. Se
+#   arregla una vez, del lado del dato: el precio es el precio, y lo que tape
+#   al precio es otra cosa con su propio nombre.
+#
+# Estado al 2026-08-26:
+#   - M x N ("6x4")  -> precioOferta = el unitario de la columna PRECIO
+#                       promoOferta  = "6x4"
+#   - Las 7 plantillas de Redexpres TODAVIA no tienen el cuadro de promoOferta
+#     superpuesto: hay que agregarselo. Hasta que eso pase, una cenefa M x N de
+#     Redexpres muestra el precio unitario en el cuadro grande en vez del
+#     literal. Ivan lo sabe y lo dejo para despues ("lo de Redexpres despues lo
+#     vemos").
+#   - Combo ("2x$299") -> sigue con el TOTAL en precioOferta. Sin decidir si
+#     pasa al unitario; el diseno de referencia de Rompe del Finde muestra el
+#     unitario (149,50) con "Comprando 2" arriba, asi que probablemente cambie.
+# ===========================================================================
+
 TEXT_VARS: tuple[str, ...] = (
     "codigo",
     "descripcion",
@@ -64,6 +100,11 @@ TEXT_VARS: tuple[str, ...] = (
 PRICE_VARS: tuple[str, ...] = (
     "precioRegular",
     "precioOferta",
+    # El literal de la mecanica cuando el diseno lo dibuja TAPANDO al precio
+    # (Redexpres). Es de tipo precio solo para que arrastre su decimal como el
+    # resto y no haya que tratarla aparte; el valor que lleva es texto ("6x4").
+    # Ver el bloque grande del principio del archivo.
+    "promoOferta",
     "ofertaUno",
     "ofertaDos",
     "ofertaTres",
@@ -76,6 +117,7 @@ PRICE_VARS: tuple[str, ...] = (
 DECIMAL_OF: dict[str, str] = {
     "precioRegular": "decimalPrecioRegular",
     "precioOferta":  "decimalPrecioOferta",
+    "promoOferta":   "decimalPromoOferta",
     "ofertaUno":     "decimalPrecioUno",
     "ofertaDos":     "decimalPrecioDos",
     "ofertaTres":    "decimalPrecioTres",
@@ -102,6 +144,7 @@ ORDEN_EXPORT: tuple[str, ...] = (
     "unidad",
     "precioRegular", "decimalPrecioRegular",
     "precioOferta",  "decimalPrecioOferta",
+    "promoOferta",   "decimalPromoOferta",
     "ofertaUno",     "decimalPrecioUno",
     "ofertaDos",     "decimalPrecioDos",
     "ofertaTres",    "decimalPrecioTres",

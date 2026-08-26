@@ -130,13 +130,13 @@ def resolver_mecanica(
         m = _RE_COMBO.search(oferta)
         if not m:
             warnings.append("combo_no_parseable")
-            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": "",
+            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "promoOferta": "", "mecanica": "",
                     "tipoOfertaComprando": "", "unidad": ""}, warnings
         cantidad = int(m.group(1))
         total = parse_price_raw(m.group(2))
         if cantidad <= 0 or total <= 0:
             warnings.append("combo_no_parseable")
-            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": "",
+            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "promoOferta": "", "mecanica": "",
                     "tipoOfertaComprando": "", "unidad": ""}, warnings
         unitario = round(total / cantidad, 2)
         return {
@@ -145,6 +145,7 @@ def resolver_mecanica(
             "tipoOferta":   re.sub(r"\s+", "", m.group(0)),
             "ofertaUno":    f"{cantidad}x",
             "precioOferta": total,
+            "promoOferta":  "",
             "mecanica":     f"Comprando {cantidad}, {prefijo}{fmt_price(unitario)} la unidad.",
             # Los dos pedazos sueltos, para el diseno que los dibuja separados
             # arriba y abajo del precio en vez de en un renglon (Rompe del
@@ -160,20 +161,25 @@ def resolver_mecanica(
         m = _RE_MXN.search(oferta)
         if not m:
             warnings.append("mxn_no_parseable")
-            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": "",
+            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "promoOferta": "", "mecanica": "",
                     "tipoOfertaComprando": "", "unidad": ""}, warnings
         literal = re.sub(r"\s+", "", m.group(0))
         if not precio:
             # Sin precio unitario no hay mecánica que redactar; el literal
             # igual va al cuadro grande, para no perder la oferta.
             warnings.append("mxn_sin_precio")
-            return {"ofertaUno": "", "tipoOferta": literal, "precioOferta": literal, "mecanica": "",
+            return {"ofertaUno": "", "tipoOferta": literal, "precioOferta": "", "promoOferta": literal, "mecanica": "",
                     "tipoOfertaComprando": "", "unidad": ""}, warnings
         cantidad = m.group(1)
         return {
-            "tipoOferta":   literal,       # "2x1" / "6x4"
+            "tipoOferta":   literal,       # "2x1" / "6x4" -- la cocarda
             "ofertaUno":    "",
-            "precioOferta": literal,  # el literal ocupa el lugar del precio
+            # precioOferta ES UN PRECIO, SIEMPRE. El literal ya no va aca: va a
+            # promoOferta, que el diseno de Redexpres dibuja TAPANDO el cuadro
+            # del precio. Ver el bloque del principio de variables.py antes de
+            # cambiar esto.
+            "precioOferta": precio,
+            "promoOferta":  literal,
             "mecanica":     f"{prefijo}{fmt_price(precio)} la unidad.",
             "tipoOfertaComprando": f"Comprando {cantidad}",
             "unidad":              "unidad",
@@ -187,7 +193,7 @@ def resolver_mecanica(
         m = _RE_SEGUNDA.search(oferta)
         if not m:
             warnings.append("segunda_unidad_no_parseable")
-            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": "",
+            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "promoOferta": "", "mecanica": "",
                     "tipoOfertaComprando": "", "unidad": ""}, warnings
         n, pct = m.group(1), m.group(2)
         sufijo = {"1": "ra", "3": "ra"}.get(n, "da")
@@ -195,6 +201,7 @@ def resolver_mecanica(
             "tipoOferta":   f"{n}{sufijo} al {pct}%",
             "ofertaUno":    "",
             "precioOferta": precio if precio is not None else "",
+            "promoOferta":  "",
             "mecanica":     f"{n}{sufijo} unidad al {pct}%.",
             # Sin "Comprando N": no se lleva una cantidad fija, se lleva una
             # segunda unidad. La cocarda ya lo dice entero.
@@ -225,6 +232,7 @@ def resolver_mecanica(
         "ofertaUno":    "",
         "tipoOferta":   "",
         "precioOferta": precio if precio is not None else "",
+        "promoOferta":  "",
         "mecanica":     MECANICA_PRECIO_FIJO,
         "tipoOfertaComprando": "",
         "unidad":              "",
@@ -266,6 +274,7 @@ def construir_variables(
     valores: dict[str, object] = {
         "precioRegular": parsed.get("precio_anterior"),
         "precioOferta":  mecanica["precioOferta"],
+        "promoOferta":   mecanica.get("promoOferta", ""),
         "ofertaUno":     mecanica["ofertaUno"],
     }
     out["mecanica"] = mecanica["mecanica"]
