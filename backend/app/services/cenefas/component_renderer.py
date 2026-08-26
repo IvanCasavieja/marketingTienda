@@ -394,8 +394,30 @@ def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
         # otras dos, con el mismo diseno.
         if oy <= y + _SEPARACION_MIN_CM:
             continue
+        # Hay que distinguir "abajo" de "al costado", y el ancho del solape solo
+        # no alcanza. Dos casos reales que se parecen y necesitan lo contrario:
+        #
+        #   descripcion 4,16 ancho 15,46  /  precio tachado 4,16 ancho 7,00
+        #       -> solape 7,00. Es el renglon de ABAJO: la descripcion no puede
+        #          crecer sobre el. Con el filtro de "la mitad de mi ancho"
+        #          (7,73) no contaba, y una descripcion de cuatro renglones se
+        #          imprimia encima del tachado.
+        #
+        #   precio 11,29 ancho 12,35  /  cuadro del decimal 18,14 ancho 2,54
+        #       -> solape 2,54. NO es el renglon de abajo: son los centavos, AL
+        #          COSTADO del numero. Tomarlo como techo achica el precio a la
+        #          nada.
+        #
+        # Lo que los separa no es cuanto se solapan sino DONDE arranca el otro:
+        # un cuadro alineado con nuestro borde izquierdo es la linea siguiente;
+        # uno que arranca pasada la mitad de nuestro ancho es una anotacion al
+        # costado.
         solape = min(x + w, ox + ow) - max(x, ox)
-        if solape < w * 0.5:
+        if solape <= 0:
+            continue
+        tapa_lo_ancho = solape >= w * 0.5
+        arranca_donde_yo = abs(ox - x) <= w * 0.15
+        if not (tapa_lo_ancho or arranca_donde_yo):
             continue
         techo = oy if techo is None else min(techo, oy)
 
