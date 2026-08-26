@@ -337,6 +337,22 @@ def _fit_font_size(
     return max(minimo, math.floor(mejor * 2.0) / 2.0)
 
 
+# Pares de variables que NUNCA se dibujan juntas: si la primera trae valor, la
+# segunda no se dibuja aunque el diseno tenga su cuadro.
+#
+# `promoOferta` (el literal de la mecanica, "6x4") y `precioOferta` (el precio)
+# ocupan EL MISMO lugar del cartel en las plantillas de Redexpres: el diseno
+# pone el cuadro de promoOferta encima del del precio. Superponer dos cuadros de
+# texto no tapa nada --se leen los dos encimados-- asi que la exclusion se
+# resuelve acá: cuando hay mecanica se dibuja el literal, cuando no, el precio.
+#
+# Los decimales siguen a su entero: sin esto, un M x N de "6x4" imprimia el
+# literal y al lado le quedaba colgado el ",33" del precio que ya no se ve.
+_EXCLUYENTES: dict[str, tuple[str, ...]] = {
+    "promoOferta": ("precioOferta", "decimalPrecioOferta"),
+}
+
+
 # Cuanto tiene que bajar otro cuadro para contar como "el de abajo" y no como
 # un vecino puesto a la misma altura. Medio centimetro: menos que eso, en un
 # diseno hecho a mano, es desprolijidad de posicionamiento, no una fila nueva.
@@ -887,6 +903,13 @@ def _render_slide(
         source_id = comp.get("_source_shape_id")
 
         oculto = not comp.get("visible", True)
+        # Excluyentes: si la que manda del par trae valor, esta no se dibuja.
+        if not oculto:
+            usadas = _variables_del_componente(comp)
+            for manda, tapadas in _EXCLUYENTES.items():
+                if usadas & set(tapadas) and str(product.get(manda, "") or "").strip():
+                    oculto = True
+                    break
         # Un cuadro cuyo contenido sale SOLO de variables y todas quedaron
         # vacías no tiene nada que imprimir. Borrarle el texto no alcanza: si
         # el shape tiene relleno propio --la cocarda roja de tipoOferta-- queda
