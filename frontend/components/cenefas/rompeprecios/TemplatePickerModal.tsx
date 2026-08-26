@@ -81,10 +81,20 @@ export default function TemplatePickerModal({ category, categoryLabel, onClose, 
   // borrar uno a la vez con el modal de confirmación individual es
   // impracticable para limpiarlos. Reusa el mismo endpoint de borrado
   // (uno por id, en paralelo) en vez de agregar un endpoint bulk nuevo.
-  const [selectMode, setSelectMode] = useState(!!onSelectMany);
+  //
+  // El modo tildar NUNCA arranca prendido, ni siquiera con onSelectMany. El
+  // estado normal del picker es explorar: ver las plantillas, subir una nueva,
+  // y clickear una para agregarla. Tildar varias es una accion que se prende a
+  // proposito con el boton de la barra, como en una galeria de fotos.
+  //
+  // Antes arrancaba en `!!onSelectMany` y eso dejaba el modal trabado con la
+  // lista vacia: el boton de "nueva plantilla" vive en el modo normal, y el
+  // unico boton que apaga el modo tildar esta deshabilitado cuando no hay
+  // plantillas -- o sea que no habia forma de subir la primera.
+  const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  // Con onSelectMany el modo tildar es el modo por defecto: es a lo que se
-  // vino. El boton de la barra sigue existiendo para volver al modo de a una.
+  // Que hace el boton de accion del modo tildar: agregar las seleccionadas al
+  // Excel (cuando el modal se abrio para eso) o borrarlas en lote.
   const modoAgregar = !!onSelectMany;
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkConfirming, setBulkConfirming] = useState(false);
