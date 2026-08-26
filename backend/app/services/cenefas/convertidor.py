@@ -59,6 +59,14 @@ _INPUT_ALIASES: dict[str, str] = {
     "pvpregular":     "precio_anterior",
     "pvpoferta":      "precio",
     "precio":         "precio",
+    # Los nombres CANONICOS tambien entran. Desde 08/2026 la variable del
+    # precio anterior se llama precioRegular y la del vigente precioOferta, y
+    # es como salen del propio Convertidor -- si alguien renombra las columnas
+    # de su Excel a los nombres del sistema (lo mas razonable) tienen que
+    # matchear. Sin esto el archivo se leia sin precios y las cenefas salian
+    # con el simbolo de moneda solo.
+    "precioregular":  "precio_anterior",
+    "preciooferta":   "precio",
     "oferta":         "oferta",
     "ofertadet":      "oferta_det",
     "descripcionweb": "descripcion_web",
@@ -307,13 +315,48 @@ def detectar_fila_headers(rows: list[tuple]) -> int | None:
     return None
 
 
-def leer_filas(file_bytes: bytes, filename: str = "") -> list[tuple]:
-    """Lee el archivo subido a filas, sea .csv, .xlsx o .xlsx-que-es-un-CSV."""
+def listar_hojas(file_bytes: bytes, filename: str = "") -> list[str]:
+    """Nombres de las hojas del archivo, en orden. Un CSV tiene una sola.
+
+    Los bocetos reales traen varias hojas con datos distintos: el export crudo
+    de gestion, el "Frente" ya curado a mano (con los SKU combinables unidos y
+    la mecanica en COMENTARIO) y el "Dorso". Cada una es un listado aparte y se
+    convierte por separado.
+    """
+    if filename.lower().endswith(".csv"):
+        return ["CSV"]
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    return list(wb.sheetnames)
+
+
+def leer_filas(file_bytes: bytes, filename: str = "", hoja: str | int | None = None) -> list[tuple]:
+    """Lee el archivo subido a filas, sea .csv, .xlsx o .xlsx-que-es-un-CSV.
+
+    `hoja` es el nombre o el indice de la hoja a leer. None = la primera, que
+    es el comportamiento historico. Hasta 08/2026 la primera era la unica que
+    se leia, hardcodeada: en un boceto de tres hojas eso significaba convertir
+    el export crudo de gestion y no el "Frente" curado, sin avisar a nadie.
+    """
     if filename.lower().endswith(".csv"):
         return _read_csv_rows(file_bytes)
 
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-    ws = wb[wb.sheetnames[0]]
+    if hoja is None:
+        nombre = wb.sheetnames[0]
+    elif isinstance(hoja, int):
+        if not 0 <= hoja < len(wb.sheetnames):
+            raise ConvertidorParseError(
+                f"El archivo no tiene una hoja numero {hoja + 1} (tiene {len(wb.sheetnames)})"
+            )
+        nombre = wb.sheetnames[hoja]
+    else:
+        if hoja not in wb.sheetnames:
+            raise ConvertidorParseError(
+                f"El archivo no tiene una hoja llamada {hoja!r}. "
+                f"Tiene: {', '.join(wb.sheetnames)}"
+            )
+        nombre = hoja
+    ws = wb[nombre]
     rows = list(ws.iter_rows(min_row=1, max_row=None, values_only=True))
 
     if _parece_csv_en_una_columna(rows):
@@ -331,6 +374,7 @@ async def parse_input_excel(
     allow_ai: bool = False,
     mapeo: dict[str, str] | None = None,
     valores: dict[str, str] | None = None,
+    hoja: str | int | None = None,
 ) -> tuple[list[dict], int, list[str]]:
     """Detecta la fila de headers real (puede no ser la fila 1 — el export
     real de gestión trae una fila de título + una fila en blanco antes),
@@ -373,7 +417,7 @@ async def parse_input_excel(
     es cuántos headers nuevos aprendió Tinín en esta llamada, para que el
     caller sepa si hace falta commitear; headers son los nombres crudos de la
     fila de encabezados, para poder re-abrir la pantalla de mapeo."""
-    rows = leer_filas(file_bytes, filename)
+    rows = leer_filas(file_bytes, filename, hoja)
 
     header_row_idx = detectar_fila_headers(rows)
     col_map: dict[int, str] = {}

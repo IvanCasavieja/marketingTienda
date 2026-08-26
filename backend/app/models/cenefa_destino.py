@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -34,6 +34,18 @@ class CenefaDestino(Base):
     # (ej. "emerald", "rose"). Mismo criterio que el ícono.
     color: Mapped[str] = mapped_column(String(30), nullable=False, default="emerald")
     orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Si el trabajo de este mundo se valoriza en el informe de produccion.
+    # Redexpres no tiene costo, y un mundo de pruebas tampoco. Es del mundo y
+    # no de cada corrida: no se decide de a una.
+    cobrable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Cenefas hechas ANTES de que el sistema registrara el mundo en el job.
+    # Parrilla y Vinos se hizo entera en esa epoca: su cifra no se puede medir,
+    # solo declarar. Se suma al informe en un renglon aparte, etiquetado como
+    # declarado, para no mezclarlo con lo que si esta respaldado corrida por
+    # corrida.
+    cenefas_previas: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cenefas_previas_nota: Mapped[str] = mapped_column(String(300), nullable=False, default="")
 
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

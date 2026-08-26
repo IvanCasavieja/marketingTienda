@@ -27,6 +27,7 @@ from app.services.cenefas.convertidor import (
     build_output_workbook,
     detectar_fila_headers,
     leer_filas,
+    listar_hojas,
     match_rows,
     parse_input_excel,
     upsert_sku_descripcion,
@@ -54,6 +55,7 @@ async def preview(
     excel: UploadFile = File(...),
     mapeo_json: str = Form(default="{}", description='JSON {variable: nombre_de_columna} de la pantalla de mapeo'),
     valores_json: str = Form(default="{}", description='JSON {variable: texto_fijo} escrito a mano en la pantalla de mapeo'),
+    hoja: int | None = Form(default=None, description="Índice de la hoja a convertir (0-based). Sin esto, la primera."),
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -83,7 +85,7 @@ async def preview(
         parsed, learned_aliases_count, _headers = await parse_input_excel(
             excel_bytes, excel.filename or "",
             db=db, current_user_id=current_user.id, allow_ai=allow_ai,
-            mapeo=mapeo, valores=valores,
+            mapeo=mapeo, valores=valores, hoja=hoja,
         )
     except ConvertidorParseError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -407,39 +409,91 @@ async def columnas(
     archivo para decir a cuál corresponde cada variable. Devuelve también un
     par de valores de muestra por columna, que es lo que en la práctica
     permite reconocerla cuando el nombre no dice nada ("COMENTARIOS2").
+
+    Devuelve TODAS las hojas, cada una con sus columnas. Un boceto real trae
+    varias y son listados distintos: el export crudo de gestión, el "Frente"
+    curado a mano y el "Dorso". Hasta 08/2026 se leía la primera y punto, así
+    que un archivo de tres hojas se convertía por la que no era y nadie se
+    enteraba hasta mirar el resultado.
+
+    Una hoja que no se puede leer no rompe el pedido: viaja con su `error` y
+    las demás se devuelven igual. Solo se falla si NINGUNA sirve.
     """
     excel_bytes = await read_limited(excel, "Excel")
     try:
-        filas = leer_filas(excel_bytes, excel.filename or "")
+        nombres = listar_hojas(excel_bytes, excel.filename or "")
     except Exception as e:
         logger.error("convertidor columnas: %s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=f"No pude leer el archivo: {e}")
 
-    header_idx = detectar_fila_headers(filas)
-    if header_idx is None:
+    def _columnas_de(filas: list, header_idx: int) -> list[dict]:
+        header = filas[header_idx]
+        muestras = filas[header_idx + 1: header_idx + 6]
+        salida = []
+        for i, celda in enumerate(header):
+            nombre = str(celda).strip() if celda is not None else ""
+            if not nombre:
+                continue
+            valores = [
+                str(f[i]).strip() for f in muestras
+                if i < len(f) and f[i] is not None and str(f[i]).strip()
+            ]
+            salida.append({"nombre": nombre, "muestras": valores[:3]})
+        return salida
+
+    hojas_out: list[dict] = []
+    for indice, nombre_hoja in enumerate(nombres):
+        try:
+            filas = leer_filas(excel_bytes, excel.filename or "", indice)
+        except Exception as e:
+            hojas_out.append({
+                "indice": indice, "nombre": nombre_hoja, "columnas": [],
+                "total_filas": 0, "error": f"No pude leer la hoja: {e}",
+            })
+            continue
+
+        header_idx = detectar_fila_headers(filas)
+        if header_idx is None:
+            hojas_out.append({
+                "indice": indice, "nombre": nombre_hoja, "columnas": [],
+                "total_filas": 0,
+                "error": "No encontré una columna 'CODIGO' reconocible en las primeras filas",
+            })
+            continue
+
+        # Filas con algo escrito, no la distancia hasta el final de la hoja:
+        # openpyxl reporta como usadas las filas que solo tienen formato, y una
+        # hoja vacía con estilos aparecía con cientos de filas fantasma.
+        con_datos = sum(
+            1 for f in filas[header_idx + 1:]
+            if any(v is not None and str(v).strip() for v in f)
+        )
+        hojas_out.append({
+            "indice": indice, "nombre": nombre_hoja,
+            "columnas": _columnas_de(filas, header_idx),
+            "total_filas": con_datos, "error": None,
+        })
+
+    utiles = [h for h in hojas_out if h["error"] is None]
+    if not utiles:
         raise HTTPException(
             status_code=400,
-            detail="No encontré una columna 'CODIGO' reconocible en las primeras filas "
+            detail="No encontré una columna 'CODIGO' reconocible en ninguna hoja "
                    "— verificá que sea el export crudo de gestión.",
         )
 
-    header = filas[header_idx]
-    muestras = filas[header_idx + 1: header_idx + 6]
-    columnas_out = []
-    for i, celda in enumerate(header):
-        nombre = str(celda).strip() if celda is not None else ""
-        if not nombre:
-            continue
-        valores = [
-            str(f[i]).strip() for f in muestras
-            if i < len(f) and f[i] is not None and str(f[i]).strip()
-        ]
-        columnas_out.append({"nombre": nombre, "muestras": valores[:3]})
+    # La sugerida es la primera que TRAE FILAS: en los bocetos reales la última
+    # hoja suele estar vacía (solo encabezados) y no sirve para arrancar.
+    con_filas = [h for h in utiles if h["total_filas"] > 0]
+    sugerida = (con_filas or utiles)[0]
 
     return {
-        "columnas": columnas_out,
+        "hojas": hojas_out,
+        "hoja_sugerida": sugerida["indice"],
+        # Compat: lo que el front leía cuando solo existía una hoja.
+        "columnas": sugerida["columnas"],
         "variables_mapeables": list(VARIABLES_MAPEABLES),
-        "total_filas": max(len(filas) - header_idx - 1, 0),
+        "total_filas": sugerida["total_filas"],
     }
 
 

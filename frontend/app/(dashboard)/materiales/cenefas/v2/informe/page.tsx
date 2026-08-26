@@ -194,8 +194,11 @@ export default function InformePage() {
               { etiqueta: "Salieron correctas", valor: numero(t.correctas),
                 pie: t.cenefas ? `${((t.correctas * 100) / t.cenefas).toFixed(1)}% del total` : "—",
                 acento: "text-emerald-600 dark:text-emerald-400" },
-              { etiqueta: "Valor total", valor: pesos(t.costo),
-                pie: `a ${pesos(data.costo_unitario)} por cenefa` },
+              // El valor que se muestra arriba es el cobrable, no el bruto:
+              // el bruto incluye Redexpres, las pruebas y las corridas que no
+              // se pueden atribuir a nadie. El desglose esta abajo.
+              { etiqueta: "Valor cobrable", valor: pesos(data.cobrable.costo_total),
+                pie: `${numero(data.cobrable.cenefas_totales)} cenefas · a ${pesos(data.costo_unitario)} c/u` },
               { etiqueta: "Verificadas a mano", valor: numero(t.verificadas),
                 pie: `${numero(t.verificadas_corridas)} de ${numero(t.corridas)} corridas · ${pesos(t.costo_verificadas)}`,
                 acento: "text-brand-600 dark:text-brand-400" },
@@ -222,6 +225,66 @@ export default function InformePage() {
               </span>
             </div>
           )}
+
+          {/* De donde sale el valor cobrable. Lo que no se factura no se
+              esconde: se muestra con su volumen y valorizado en cero, para
+              que se vea la diferencia con el bruto de arriba. */}
+          <div className="card p-0 overflow-hidden">
+            <p className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+              Qué se factura
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <tbody>
+                  {[
+                    { clave: "medido", etiqueta: "Cobrable (medido)",
+                      detalle: "Respaldado corrida por corrida",
+                      cenefas: data.cobrable.cenefas, costo: data.cobrable.costo },
+                    ...data.declaradas.map((d) => ({
+                      clave: `dec-${d.mundo}`, etiqueta: `Declarado · ${d.nombre}`,
+                      detalle: d.nota, cenefas: d.cenefas, costo: d.costo,
+                    })),
+                    { clave: "total", etiqueta: "Cobrable total", destacar: true,
+                      detalle: "Medido + declarado",
+                      cenefas: data.cobrable.cenefas_totales, costo: data.cobrable.costo_total },
+                    { clave: "sincosto", etiqueta: "Sin costo", apagado: true,
+                      detalle: "Mundos marcados sin costo (Redexpres, pruebas)",
+                      cenefas: data.sin_costo.cenefas, costo: 0 },
+                    { clave: "sinclas", etiqueta: "Sin clasificar", apagado: true,
+                      detalle: "Corridas anteriores a que se registrara el mundo",
+                      cenefas: data.sin_clasificar.cenefas, costo: 0 },
+                  ].filter((f) => f.cenefas > 0 || f.clave === "total").map((f) => (
+                    <tr key={f.clave}
+                        className={`border-b border-slate-100 dark:border-slate-800 ${
+                          f.destacar ? "bg-slate-50 dark:bg-slate-800/40" : ""}`}>
+                      <td className={`px-3 py-2 ${
+                        f.destacar ? "font-semibold text-slate-800 dark:text-slate-100"
+                                   : f.apagado ? "text-slate-400" : "text-slate-700 dark:text-slate-300"}`}>
+                        {f.etiqueta}
+                        <span className="block text-[10px] text-slate-400 font-normal">{f.detalle}</span>
+                      </td>
+                      <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${
+                        f.destacar ? "font-semibold" : f.apagado ? "text-slate-400" : ""}`}>
+                        {numero(f.cenefas)}
+                      </td>
+                      <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${
+                        f.destacar ? "font-bold text-slate-800 dark:text-slate-100"
+                                   : f.apagado ? "text-slate-400" : "font-medium"}`}>
+                        {pesos(f.costo)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <Tabla titulo="Por mundo" primeraColumna="Mundo"
+                 filas={data.por_mundo.map((m) => ({
+                   clave: m.mundo || "(sin clasificar)",
+                   etiqueta: m.cobrable ? m.nombre : `${m.nombre} · sin costo`,
+                   ...m,
+                 }))} />
 
           <Tabla titulo="Por mes" primeraColumna="Mes"
                  filas={data.por_mes.map((m) => ({ clave: m.mes, etiqueta: nombreDeMes(m.mes), ...m }))} />

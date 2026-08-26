@@ -157,6 +157,14 @@ export interface CenefaDestino {
   descripcion: string;
   icono: string;
   color: string;
+  /**
+   * Si el trabajo de este mundo se valoriza en el informe de produccion.
+   * Redexpres y el mundo de pruebas van en false: pasan por el motor pero no
+   * son trabajo facturable.
+   */
+  cobrable?: boolean;
+  /** Cenefas hechas antes de que el job registrara el mundo (declaradas). */
+  cenefas_previas?: number;
 }
 
 export interface CenefaTemplateRecord {

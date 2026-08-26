@@ -528,6 +528,18 @@ def _run_style(run, theme_colors: dict[str, str] | None = None) -> dict:
             strike = rPr.get("strike")
             if strike is not None and strike != "noStrike":
                 style["strikethrough"] = True
+            # Voladita (superíndice/subíndice), en centésimas de porcentaje:
+            # 30000 = 30% arriba de la línea de base. Es como se dibuja el "$"
+            # y los centavos de un precio (",50" chiquito y arriba). Sin
+            # guardarlo acá, _populate_text_frame reescribe el run sin baseline
+            # y los centavos caen a la línea del número grande.
+            baseline = rPr.get("baseline")
+            if baseline:
+                try:
+                    if int(baseline) != 0:
+                        style["baseline"] = int(baseline)
+                except ValueError:
+                    pass
     except Exception:
         pass
     try:

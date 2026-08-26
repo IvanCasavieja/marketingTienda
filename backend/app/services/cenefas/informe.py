@@ -24,16 +24,36 @@ que hay que poder demostrar.
 
 Los jobs viejos que no tienen summary caen a row_count / error_count, que son
 columnas propias de la tabla y existen desde el principio.
+
+Que se valoriza y que no
+------------------------
+No todo lo que paso por el motor es trabajo facturable, asi que el informe
+separa en tres y solo el primero lleva plata:
+
+    cobrable        mundos marcados `cobrable` (Rompe Precios, Parrilla y
+                    Vinos, Mega Rompe Precios).
+    sin costo       mundos con `cobrable=false`: Redexpres y el mundo de
+                    pruebas. Se muestran con su volumen, valorizados en 0.
+    sin clasificar  corridas sin `categoria` -- las de junio al 23/08, de antes
+                    de que el job guardara el mundo. NO se valorizan: no se
+                    sabe cuales fueron trabajo real y cuales pruebas o
+                    reproceso, y valorizarlas es lo que inflaba el total.
+
+Aparte va la produccion DECLARADA (`cenefa_destinos.cenefas_previas`): lo que
+se hizo antes de que hubiera registro y solo se puede afirmar, no demostrar.
+Suma al total cobrable pero viaja en su propio renglon y etiquetada, para que
+se vea de un lado lo respaldado corrida por corrida y del otro lo declarado.
 """
 from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Integer, func, select
+from sqlalchemy import Integer, func, select, true
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.cenefa_destino import CenefaDestino
 from app.models.cenefa_job import CenefaJob
 
 # Costo por cenefa disenada, en pesos. Es solo el valor por defecto: la
@@ -134,22 +154,88 @@ async def resumen(
         .order_by(func.coalesce(func.sum(total), 0).desc())
     )).all()
 
-    def bloque(r) -> dict[str, Any]:
+    # Apertura por mundo. El mundo se lee de la columna del job y NO de la
+    # plantilla: la plantilla puede haberse borrado (FK ON DELETE SET NULL) y
+    # ahi se perdia la atribucion. Un mundo borrado deja corridas con categoria
+    # pero sin fila en cenefa_destinos: se asume cobrable, que es el default, y
+    # se muestra con su slug como nombre.
+    por_mundo = (await db.execute(
+        select(
+            func.coalesce(CenefaJob.categoria, "").label("mundo"),
+            func.coalesce(CenefaDestino.nombre, "").label("nombre"),
+            func.coalesce(CenefaDestino.cobrable, true()).label("cobrable"),
+            func.count().label("corridas"),
+            func.coalesce(func.sum(total), 0).label("cenefas"),
+            func.coalesce(func.sum(correctas), 0).label("correctas"),
+            func.coalesce(func.sum(avisos), 0).label("avisos"),
+            func.coalesce(func.sum(criticos), 0).label("criticos"),
+            verif_corridas.label("verif_corridas"),
+            verif_cenefas.label("verif_cenefas"),
+        )
+        .select_from(CenefaJob)
+        .outerjoin(CenefaDestino, CenefaDestino.slug == CenefaJob.categoria)
+        .where(*cond)
+        .group_by(CenefaJob.categoria, CenefaDestino.nombre, CenefaDestino.cobrable)
+        .order_by(func.coalesce(func.sum(total), 0).desc())
+    )).all()
+
+    # Produccion declarada: una cifra fija por mundo, sin corridas detras. Solo
+    # se incluye en la vista sin filtros -- acotada a un mes o a una plantilla
+    # no significa nada, porque no tiene fecha ni plantilla que filtrar.
+    sin_filtros = desde is None and hasta is None and not template
+    declaradas = (await db.execute(
+        select(
+            CenefaDestino.slug, CenefaDestino.nombre, CenefaDestino.cobrable,
+            CenefaDestino.cenefas_previas, CenefaDestino.cenefas_previas_nota,
+        )
+        .where(CenefaDestino.cenefas_previas > 0)
+        .order_by(CenefaDestino.orden, CenefaDestino.slug)
+    )).all() if sin_filtros else []
+
+    _CAMPOS = ("corridas", "cenefas", "correctas", "avisos", "criticos",
+               "verif_corridas", "verif_cenefas")
+
+    def cifras(r) -> dict[str, int]:
+        """Los numeros de una fila, con 0 para lo que esa consulta no trajo."""
+        if isinstance(r, dict):
+            return r
+        return {k: (getattr(r, k, 0) or 0) for k in _CAMPOS}
+
+    def bloque(r, valorizar: bool = True) -> dict[str, Any]:
+        """Un bloque de cifras. `valorizar=False` lo deja en cero pesos sin
+        esconder el volumen: es lo que se hace con los mundos sin costo y con
+        lo que no se puede atribuir."""
+        c = cifras(r)
         return {
-            "corridas":  r.corridas,
-            "cenefas":   r.cenefas,
-            "correctas": r.correctas,
-            "avisos":    getattr(r, "avisos", 0),
-            "criticos":  getattr(r, "criticos", 0),
-            "verificadas_corridas": getattr(r, "verif_corridas", 0) or 0,
-            "verificadas": getattr(r, "verif_cenefas", 0) or 0,
-            "costo":     round(r.cenefas * costo, 2),
-            "costo_correctas": round(r.correctas * costo, 2),
-            "costo_verificadas": round((getattr(r, "verif_cenefas", 0) or 0) * costo, 2),
+            "corridas":  c["corridas"],
+            "cenefas":   c["cenefas"],
+            "correctas": c["correctas"],
+            "avisos":    c["avisos"],
+            "criticos":  c["criticos"],
+            "verificadas_corridas": c["verif_corridas"],
+            "verificadas":          c["verif_cenefas"],
+            "costo":             round(c["cenefas"] * costo, 2) if valorizar else 0.0,
+            "costo_correctas":   round(c["correctas"] * costo, 2) if valorizar else 0.0,
+            "costo_verificadas": round(c["verif_cenefas"] * costo, 2) if valorizar else 0.0,
         }
+
+    def sumar(filas) -> dict[str, int]:
+        return {k: sum(cifras(r)[k] for r in filas) for k in _CAMPOS}
+
+    # Tres grupos excluyentes. "Sin clasificar" es categoria NULL: las corridas
+    # anteriores a que el job guardara el mundo.
+    g_cobrable  = [r for r in por_mundo if r.mundo and r.cobrable]
+    g_sin_costo = [r for r in por_mundo if r.mundo and not r.cobrable]
+    g_sin_clas  = [r for r in por_mundo if not r.mundo]
+
+    medido_cobrable    = sumar(g_cobrable)
+    declarado_cobrable = sum(r.cenefas_previas for r in declaradas if r.cobrable)
+    cenefas_cobrables  = medido_cobrable["cenefas"] + declarado_cobrable
 
     return {
         "costo_unitario": costo,
+        # `total` sigue siendo TODO lo medido, valorizado como siempre: es la
+        # cifra bruta, la que responde "cuanto paso por el motor".
         "total": {
             **bloque(fila),
             "desde": fila.desde.isoformat() if fila.desde else None,
@@ -163,6 +249,35 @@ async def resumen(
             {"plantilla": r.plantilla or "(sin registrar)", **bloque(r)}
             for r in por_plantilla
         ],
+        "por_mundo": [
+            {
+                "mundo":    r.mundo or "",
+                "nombre":   r.nombre or r.mundo or "(sin clasificar)",
+                "cobrable": bool(r.mundo) and bool(r.cobrable),
+                **bloque(r, valorizar=bool(r.mundo) and bool(r.cobrable)),
+            }
+            for r in por_mundo
+        ],
+        "declaradas": [
+            {
+                "mundo":    r.slug,
+                "nombre":   r.nombre,
+                "cobrable": bool(r.cobrable),
+                "cenefas":  r.cenefas_previas,
+                "nota":     r.cenefas_previas_nota,
+                "costo":    round(r.cenefas_previas * costo, 2) if r.cobrable else 0.0,
+            }
+            for r in declaradas
+        ],
+        # Lo que de verdad se factura: mundos cobrables, medido + declarado.
+        "cobrable": {
+            **bloque(medido_cobrable),
+            "declaradas":      declarado_cobrable,
+            "cenefas_totales": cenefas_cobrables,
+            "costo_total":     round(cenefas_cobrables * costo, 2),
+        },
+        "sin_costo":      bloque(sumar(g_sin_costo), valorizar=False),
+        "sin_clasificar": bloque(sumar(g_sin_clas),  valorizar=False),
     }
 
 
@@ -276,11 +391,52 @@ def a_excel(resumen_: dict[str, Any], filas: list[dict[str, Any]]) -> bytes:
     ws.cell(row=6, column=8, value=t["verificadas"])
     ws.cell(row=6, column=9, value=t["costo_verificadas"]).number_format = dinero
 
-    fila = 8
-    for titulo, clave, etiqueta in (("Por mes", "por_mes", "mes"),
+    # ── Que se factura y que no ────────────────────────────────────────────
+    # El "Total" de arriba es la cifra bruta: todo lo que paso por el motor.
+    # Este bloque es el que se puede presentar, porque separa el trabajo
+    # cobrable de los mundos sin costo y de lo que no se puede atribuir.
+    cob = resumen_.get("cobrable") or {}
+    sinc = resumen_.get("sin_costo") or {}
+    sincl = resumen_.get("sin_clasificar") or {}
+    declaradas = resumen_.get("declaradas") or []
+
+    ws["A8"] = "Que se factura"
+    ws["A8"].font = Font(bold=True)
+    encabezar(ws, 9, ["Concepto", "Corridas", "Cenefas", "Valor", "Detalle"])
+    fila = 10
+    presentacion = [
+        ("Cobrable (medido)", cob.get("corridas", 0), cob.get("cenefas", 0),
+         cob.get("costo", 0), "Mundos cobrables, respaldado corrida por corrida"),
+    ]
+    for d in declaradas:
+        presentacion.append((
+            f'Declarado - {d["nombre"]}', 0, d["cenefas"], d["costo"], d["nota"],
+        ))
+    presentacion += [
+        ("COBRABLE TOTAL", cob.get("corridas", 0), cob.get("cenefas_totales", 0),
+         cob.get("costo_total", 0), "Medido + declarado"),
+        ("Sin costo", sinc.get("corridas", 0), sinc.get("cenefas", 0), 0,
+         "Mundos marcados sin costo (Redexpres, pruebas)"),
+        ("Sin clasificar", sincl.get("corridas", 0), sincl.get("cenefas", 0), 0,
+         "Corridas anteriores a que el job guardara el mundo; no se valorizan"),
+    ]
+    for concepto, corridas_, cenefas_, valor_, detalle_ in presentacion:
+        ws.cell(row=fila, column=1, value=concepto)
+        if concepto == "COBRABLE TOTAL":
+            ws.cell(row=fila, column=1).font = Font(bold=True)
+        ws.cell(row=fila, column=2, value=corridas_ or None)
+        ws.cell(row=fila, column=3, value=cenefas_)
+        ws.cell(row=fila, column=4, value=valor_).number_format = dinero
+        ws.cell(row=fila, column=5, value=detalle_)
+        fila += 1
+
+    fila += 2
+    for titulo, clave, etiqueta in (("Por mundo", "por_mundo", "nombre"),
+                                    ("Por mes", "por_mes", "mes"),
                                     ("Por plantilla", "por_plantilla", "plantilla")):
         ws.cell(row=fila, column=1, value=titulo).font = Font(bold=True)
-        encabezar(ws, fila + 1, [etiqueta.capitalize(), "Corridas", "Cenefas",
+        rotulo = "Mundo" if clave == "por_mundo" else etiqueta.capitalize()
+        encabezar(ws, fila + 1, [rotulo, "Corridas", "Cenefas",
                                  "Correctas", "Valor"])
         fila += 2
         for r in resumen_[clave]:

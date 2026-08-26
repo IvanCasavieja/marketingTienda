@@ -69,6 +69,12 @@ class CenefaJob(Base):
     # borrarse antes de que alguien descargue el resultado.
     excel_nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
     template_nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Mundo en el que se genero (slug de cenefa_destinos). Se copia acá al
+    # crear el job en vez de leerse de la plantilla: el FK a la plantilla es
+    # ON DELETE SET NULL, asi que borrar una plantilla borraba la unica pista
+    # de a que mundo pertenecia la corrida. NULL = corridas viejas, anteriores
+    # a que esto se guardara; el informe las muestra como "sin clasificar".
+    categoria: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
 
     staged_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     staged_source_pptx: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)

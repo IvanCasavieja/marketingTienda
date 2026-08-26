@@ -63,35 +63,38 @@ MECANICA_PRECIO_FIJO = "Precio Final"
 # "3x99" / "3 X $99" -> cantidad 3, total 99. El "$" es opcional a propósito:
 # el valor real viene escrito de las dos formas y un símbolo de moneda no
 # puede cortar el cálculo (ya rompió una vez, dejando el precio en $0).
-_RE_COMBO = re.compile(r"^\s*(\d+)\s*[xX×]\s*\$?\s*([\d.,]+)\s*$")
+#
+# Se BUSCA dentro del texto, no se matchea la cadena entera. Gestión escribe
+# la columna OFERTA de las dos formas: "2x$299" pelado en algunos listados y
+# "Coca Cola Zero 2.25 L 2x$299" en otros. Anclado con ^...$ el segundo no
+# matcheaba y la fila perdía TODO -- precio, tipoOferta y mecánica quedaban
+# vacíos y la cenefa salía sin precio (visto en el boceto del 27/08).
+_RE_COMBO = re.compile(r"(\d+)\s*[xX×]\s*\$\s*([\d.,]+)")
 
 # "2x1" / "4X2" -- la mecánica M x N no trae precio, trae cuántas se llevan
-# y cuántas se pagan.
-_RE_MXN = re.compile(r"^\s*\d+\s*[xX×]\s*\d+\s*$")
+# y cuántas se pagan. Sin "$" en el medio: eso lo distingue de un combo.
+_RE_MXN = re.compile(r"(?<![\d.,])(\d+)\s*[xX×]\s*(\d+)(?![\d.,])")
+
+# "2da unidad al 50%" -- se lleva la segunda a mitad de precio. No es combo
+# (no hay un total) ni M x N (no se paga por unidades enteras).
+_RE_SEGUNDA = re.compile(
+    r"(\d+)\s*(?:da|ra|ta|va|ma|era|º|°)?\s*unidad(?:es)?\s*al\s*(\d+)\s*%",
+    re.IGNORECASE,
+)
 
 _RE_ES_MXN_DET = re.compile(r"m\s*[xX×]\s*n", re.IGNORECASE)
 _RE_ES_COMBO_DET = re.compile(r"combo", re.IGNORECASE)
+_RE_ES_SEGUNDA_DET = re.compile(r"unidad\s*al", re.IGNORECASE)
 
-# Etiquetas que gestión escribe en la columna OFERTA cuando NO hay ninguna
-# mecánica: son el nombre interno del tipo de precio, no una oferta.
-# Confirmadas contra el export real (33 de 55 filas de precio fijo).
-_ETIQUETAS_SIN_OFERTA = {
-    "pvp", "pvpoferta", "fullprice", "preciofijo", "precionormal",
-    "regular", "noaplica", "-",
-    # El mismo rótulo aparece escrito de las dos formas en el export real
-    # ("ANTE/DESPUES" y "Antes/Después"), así que van las dos.
-    "antedespues", "antesdespues",
-}
+# OFERTADET que significan "no hay mecánica". No es una lista negra de valores
+# de OFERTA: es la lista de TIPOS que no anuncian nada. Ver la regla de
+# tipoOferta en resolver_mecanica.
+_RE_SIN_MECANICA_DET = re.compile(r"precio\s*fijo|%\s*descuento|descuentos?", re.IGNORECASE)
 
-
-def _norm_etiqueta(texto: str) -> str:
-    import unicodedata
-    s = unicodedata.normalize("NFD", texto).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "", s.lower())
-
-
-def _es_numero(texto: str) -> bool:
-    return bool(re.fullmatch(r"[\$\s]*\d[\d.,]*\s*", texto or ""))
+# La lista negra de etiquetas de OFERTA ("pvp", "fullprice", "noaplica",
+# "ante/despues"...) junto con _norm_etiqueta() y _es_numero() se eliminaron el
+# 2026-08-25: existían para adivinar desde OFERTA si había mecánica, y OFERTADET
+# ya lo dice. Ver la regla de tipoOferta en resolver_mecanica.
 
 
 def resolver_mecanica(
@@ -124,7 +127,7 @@ def resolver_mecanica(
 
     # ── Combo ─────────────────────────────────────────────────────────────
     if _RE_ES_COMBO_DET.search(oferta_det):
-        m = _RE_COMBO.match(oferta)
+        m = _RE_COMBO.search(oferta)
         if not m:
             warnings.append("combo_no_parseable")
             return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": ""}, warnings
@@ -135,7 +138,9 @@ def resolver_mecanica(
             return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": ""}, warnings
         unitario = round(total / cantidad, 2)
         return {
-            "tipoOferta":   oferta,        # "3x99": el literal es el titular
+            # El literal LIMPIO que matcheo, no la frase entera: gestion escribe
+            # "Coca Cola Zero 2.25 L 2x$299" y en la cocarda va "2x$299".
+            "tipoOferta":   re.sub(r"\s+", "", m.group(0)),
             "ofertaUno":    f"{cantidad}x",
             "precioOferta": total,
             "mecanica":     f"Comprando {cantidad}, {prefijo}{fmt_price(unitario)} la unidad.",
@@ -143,47 +148,63 @@ def resolver_mecanica(
 
     # ── M x N ─────────────────────────────────────────────────────────────
     if _RE_ES_MXN_DET.search(oferta_det):
-        if not _RE_MXN.match(oferta):
+        m = _RE_MXN.search(oferta)
+        if not m:
             warnings.append("mxn_no_parseable")
             return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": ""}, warnings
+        literal = re.sub(r"\s+", "", m.group(0))
         if not precio:
             # Sin precio unitario no hay mecánica que redactar; el literal
             # igual va al cuadro grande, para no perder la oferta.
             warnings.append("mxn_sin_precio")
-            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": oferta, "mecanica": ""}, warnings
+            return {"ofertaUno": "", "tipoOferta": literal, "precioOferta": literal, "mecanica": ""}, warnings
         return {
-            "tipoOferta":   oferta,        # "2x1": el literal es el titular
+            "tipoOferta":   literal,       # "2x1" / "6x4"
             "ofertaUno":    "",
-            "precioOferta": oferta,   # "2x1" ocupa el lugar del precio
+            "precioOferta": literal,  # el literal ocupa el lugar del precio
             "mecanica":     f"{prefijo}{fmt_price(precio)} la unidad.",
         }, warnings
 
-    # ── Precio fijo / % descuento / sin mecánica ──────────────────────────
-    # La columna OFERTA de gestión ES nuestra variable tipoOferta: el titular
-    # grande que va arriba del precio ("20% OFF SET DE COLCHAS", "2x1").
+    # ── 2da unidad al XX% ─────────────────────────────────────────────────
+    # "Sprite sin azucar 2.25L 2da unidad al 50%". No es combo (no hay total)
+    # ni M x N (no se paga por unidades enteras): el precio grande es el de la
+    # columna PRECIO y la cocarda anuncia la condicion.
+    if _RE_ES_SEGUNDA_DET.search(oferta_det):
+        m = _RE_SEGUNDA.search(oferta)
+        if not m:
+            warnings.append("segunda_unidad_no_parseable")
+            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "mecanica": ""}, warnings
+        n, pct = m.group(1), m.group(2)
+        sufijo = {"1": "ra", "3": "ra"}.get(n, "da")
+        return {
+            "tipoOferta":   f"{n}{sufijo} al {pct}%",
+            "ofertaUno":    "",
+            "precioOferta": precio if precio is not None else "",
+            "mecanica":     f"{n}{sufijo} unidad al {pct}%.",
+        }, warnings
+
+    # ── Precio fijo / % descuento / cualquier otra cosa ───────────────────
+    # `tipoOferta` queda VACÍA. La regla (decisión de Ivan, 2026-08-25):
     #
-    # Con una excepción: gestión usa esa misma columna para etiquetas internas
-    # del tipo de precio ("PVP", "ANTE/DESPUES", "FULL PRICE") y para repetir
-    # el precio. Eso no es un titular, es jerga de sistema, y no puede salir
-    # impreso en un cartel de góndola. Esas quedan fuera.
+    #   tipoOferta se llena SOLO cuando OFERTADET es una mecánica de verdad
+    #   -- Combo, M x N, o 2da unidad al XX%. Precio fijo, % descuento y lo
+    #   que gestión invente mañana no anuncian nada, así que no hay cocarda.
     #
-    # Lo que no es ninguna de las dos cosas es un titular escrito por una
-    # persona: va a tipoOferta y además se marca para que alguien lo confirme,
-    # porque es texto libre y nadie lo valido.
-    tipo_oferta = ""
-    if oferta:
-        norm = _norm_etiqueta(oferta)
-        if norm in _ETIQUETAS_SIN_OFERTA:
-            pass                                    # nombre interno del tipo de precio
-        elif _es_numero(oferta) and precio is not None and abs(parse_price_raw(oferta) - precio) < 0.01:
-            pass                                    # copia redundante del precio
-        else:
-            tipo_oferta = oferta
-            warnings.append("oferta_inesperada")
+    # Sale de OFERTADET y NUNCA de OFERTA. Antes se miraba OFERTA y se trataba
+    # de adivinar si era un titular o jerga interna, con una lista negra
+    # (pvp/fullprice/noaplica...), un chequeo de "¿es un número?" y un warning
+    # `oferta_inesperada`. Los tres existían para deducir lo que OFERTADET ya
+    # decía, y los tres fallaban: "Precio Oferta" y "sin detalle" se imprimían
+    # como cocarda, y un `% descuento` mandaba "-0.253164556962025" al cartel.
+    #
+    # El único aviso que queda es para un OFERTADET DESCONOCIDO: con esta regla
+    # una mecánica nueva se descartaría en silencio, y eso sí hay que verlo.
+    if oferta_det and not _RE_SIN_MECANICA_DET.search(oferta_det):
+        warnings.append("ofertadet_desconocido")
 
     return {
         "ofertaUno":    "",
-        "tipoOferta":   tipo_oferta,
+        "tipoOferta":   "",
         "precioOferta": precio if precio is not None else "",
         "mecanica":     MECANICA_PRECIO_FIJO,
     }, warnings

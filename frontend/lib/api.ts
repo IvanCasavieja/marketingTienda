@@ -303,7 +303,7 @@ export const cenefasV2Api = {
   // Destinos ("mundos")
   listDestinos: () =>
     api.get<CenefaDestino[]>("/tools/cenefas/v2/destinos"),
-  createDestino: (payload: { nombre: string; descripcion?: string; icono?: string; color?: string }) =>
+  createDestino: (payload: { nombre: string; descripcion?: string; icono?: string; color?: string; cobrable?: boolean }) =>
     api.post<CenefaDestino>("/tools/cenefas/v2/destinos", payload),
   deleteDestino: (slug: string) =>
     api.delete(`/tools/cenefas/v2/destinos/${slug}`),
@@ -416,7 +416,26 @@ export interface ConvertidorColumna {
   muestras: string[];
 }
 
+/**
+ * Una hoja del archivo subido. Un boceto real trae varias y son listados
+ * distintos (el export crudo de gestion, el "Frente" curado a mano, el
+ * "Dorso"), cada uno con sus propias columnas y su propio mapeo.
+ */
+export interface ConvertidorHoja {
+  /** Indice 0-based. Es lo que se le manda al backend para convertirla. */
+  indice: number;
+  nombre: string;
+  columnas: ConvertidorColumna[];
+  total_filas: number;
+  /** Por que no se puede convertir. null = se puede. */
+  error: string | null;
+}
+
 export interface ConvertidorColumnasResponse {
+  hojas: ConvertidorHoja[];
+  /** La primera hoja con filas: con la que conviene arrancar. */
+  hoja_sugerida: number;
+  /** Compat: las columnas de la hoja sugerida. */
   columnas: ConvertidorColumna[];
   variables_mapeables: string[];
   total_filas: number;
@@ -455,11 +474,46 @@ export interface CenefaInformeBloque {
   costo_verificadas: number;
 }
 
+/** Un mundo (destino) con su produccion. `cobrable=false` -> valorizado en 0. */
+export interface CenefaInformeMundo extends CenefaInformeBloque {
+  /** Slug del destino. Vacio = corridas sin mundo registrado. */
+  mundo: string;
+  nombre: string;
+  cobrable: boolean;
+}
+
+/**
+ * Produccion declarada: cenefas hechas antes de que el job guardara el mundo.
+ * No tiene corridas detras -- es una cifra afirmada, no medida, y por eso va
+ * en su propio renglon en vez de sumarse en silencio.
+ */
+export interface CenefaInformeDeclarada {
+  mundo: string;
+  nombre: string;
+  cobrable: boolean;
+  cenefas: number;
+  nota: string;
+  costo: number;
+}
+
 export interface CenefaInforme {
   costo_unitario: number;
+  /** TODO lo que paso por el motor, valorizado. Cifra bruta. */
   total: CenefaInformeBloque & { desde: string | null; hasta: string | null };
   por_mes: (CenefaInformeBloque & { mes: string })[];
   por_plantilla: (CenefaInformeBloque & { plantilla: string })[];
+  por_mundo: CenefaInformeMundo[];
+  declaradas: CenefaInformeDeclarada[];
+  /** Lo facturable: mundos cobrables, medido mas declarado. */
+  cobrable: CenefaInformeBloque & {
+    declaradas: number;
+    cenefas_totales: number;
+    costo_total: number;
+  };
+  /** Mundos marcados sin costo (Redexpres, pruebas). Volumen si, plata no. */
+  sin_costo: CenefaInformeBloque;
+  /** Corridas anteriores a que el job guardara el mundo. No se valorizan. */
+  sin_clasificar: CenefaInformeBloque;
   plantillas: string[];
   detalle?: {
     id: string;

@@ -55,11 +55,15 @@ export default function DestinoModal({
   const [descripcion, setDescripcion] = useState("");
   const [icono, setIcono] = useState("Store");
   const [color, setColor] = useState("emerald");
+  // Un mundo nace cobrable. Se destilda para los que pasan por el motor pero
+  // no son trabajo facturable: Redexpres y el mundo de pruebas.
+  const [cobrable, setCobrable] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [borrando, setBorrando] = useState<string | null>(null);
 
   function resetForm() {
     setNombre(""); setDescripcion(""); setIcono("Store"); setColor("emerald");
+    setCobrable(true);
     setCreando(false);
   }
 
@@ -68,7 +72,7 @@ export default function DestinoModal({
     setGuardando(true);
     try {
       const { data } = await cenefasV2Api.createDestino({
-        nombre: nombre.trim(), descripcion: descripcion.trim(), icono, color,
+        nombre: nombre.trim(), descripcion: descripcion.trim(), icono, color, cobrable,
       });
       onCreated(data);
       resetForm();
@@ -170,6 +174,22 @@ export default function DestinoModal({
                 </button>
               ))}
             </div>
+
+            <label className="flex items-start gap-2 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={!cobrable}
+                onChange={(e) => setCobrable(!e.target.checked)}
+                className="mt-0.5 shrink-0"
+              />
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                No suma al informe de producción
+                <span className="block text-[10px] text-slate-400">
+                  Para mundos que no son trabajo facturable (pruebas, Redexpres).
+                  Sus cenefas se cuentan igual, pero valorizadas en cero.
+                </span>
+              </span>
+            </label>
 
             <div className="flex gap-2 pt-1">
               <button

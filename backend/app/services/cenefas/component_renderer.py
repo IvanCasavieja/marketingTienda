@@ -217,6 +217,57 @@ def _variables_del_componente(c: dict) -> set[str]:
     }
 
 
+def _segmentos_medibles(comp: dict, product: dict, escala: float = 1.0) -> list[tuple[str, float]]:
+    """(texto, tamaño) de cada pedazo del cuadro, ya resuelto contra el producto.
+
+    Un cuadro de precio tiene tres pedazos con tamaños MUY distintos: el "$" a
+    100 pt, el número a 180 y los centavos a 90. Medirlo todo con un solo
+    tamaño --el del primer run, que es el "$"-- daba un ancho como la mitad del
+    real: el motor creía que "$147,20" entraba en 12,35 cm, no achicaba, y
+    PowerPoint terminaba partiendo los centavos en dos líneas que se caían
+    sobre la cenefa de abajo (visto en la 3xA4 del 27/08).
+
+    Devuelve [] cuando el cuadro no tiene tamaños por segmento; ahí la medición
+    de siempre, con un único tamaño, es correcta.
+    """
+    segs = comp.get("segments") or []
+    if not any((seg.get("style") or {}).get("font_size") for seg in segs):
+        return []
+    # 18 pt es el default real de PowerPoint cuando el cuadro no declara tamano.
+    base = (comp.get("style") or {}).get("font_size") or 18.0
+    salida: list[tuple[str, float]] = []
+    for seg in segs:
+        if seg.get("type") == "variable":
+            texto = str(product.get(seg.get("value"), "") or "")
+        else:
+            texto = str(seg.get("value", "") or "")
+        if not texto:
+            continue
+        salida.append((texto, ((seg.get("style") or {}).get("font_size") or base) * escala))
+    return salida
+
+
+def _entra_por_segmentos(
+    piezas: list[tuple[str, float]], box_width_cm: float, box_height_cm: float | None,
+    bold: bool, font_family: str | None,
+) -> bool:
+    """Igual que _entra_en_caja pero sumando el ancho pedazo por pedazo.
+
+    Un precio no tiene espacios, así que no hay dónde cortarlo por palabra: o
+    entra entero en una línea o PowerPoint lo parte al medio. Por eso se exige
+    que la suma de los anchos entre en el ancho útil, sin word-wrap posible.
+    """
+    usable_cm = max(0.1, box_width_cm - _INSET_CM)
+    ancho = sum(_ancho_medido_cm(t, sz, font_family, bold) for t, sz in piezas)
+    if ancho > usable_cm:
+        return False
+    if box_height_cm:
+        mayor = max(sz for _, sz in piezas)
+        if _alto_texto_cm(1, mayor, "".join(t for t, _ in piezas)) > box_height_cm:
+            return False
+    return True
+
+
 def _entra_en_caja(
     texto: str, box_width_cm: float, box_height_cm: float | None,
     font_size: float, bold: bool, font_family: str | None,
@@ -357,10 +408,30 @@ def _fit_text_to_box(comps: list[dict], product: dict) -> list[dict]:
         bounds = c.get("computed_bounds") or c.get("base_bounds") or {}
         texto = _texto_resuelto(c, product)
 
-        fitted = _fit_font_size(
-            texto, bounds.get("width"), _alto_disponible_cm(c, comps),
-            base_font_size, bold, familia,
-        )
+        piezas = _segmentos_medibles(c, product)
+        if piezas:
+            # Cuadro con tamaños mezclados (el precio): se busca la escala más
+            # grande a la que la suma de los pedazos entra, y se aplica a todos
+            # por igual para no desalinear la coma con el entero.
+            ancho_caja = bounds.get("width") or 0
+            alto_caja = _alto_disponible_cm(c, comps)
+            escala = 1.0
+            if ancho_caja and not _entra_por_segmentos(piezas, ancho_caja, alto_caja, bold, familia):
+                lo, hi = _FIT_MIN_SCALE, 1.0
+                escala = _FIT_MIN_SCALE
+                for _ in range(12):
+                    medio = (lo + hi) / 2.0
+                    if _entra_por_segmentos(_segmentos_medibles(c, product, medio),
+                                            ancho_caja, alto_caja, bold, familia):
+                        escala, lo = medio, medio
+                    else:
+                        hi = medio
+            fitted = round(base_font_size * escala, 1) if base_font_size else base_font_size
+        else:
+            fitted = _fit_font_size(
+                texto, bounds.get("width"), _alto_disponible_cm(c, comps),
+                base_font_size, bold, familia,
+            )
         if fitted == base_font_size:
             result.append(c)
             continue
@@ -505,6 +576,10 @@ def _apply_run_style(run, style: dict, bold_override: bool | None = None) -> Non
     # python-pptx no expone tachado en Font — hay que bajar al XML crudo.
     if style.get("strikethrough"):
         run._r.get_or_add_rPr().set("strike", "sngStrike")
+    # Tampoco expone la voladita. Es lo que mantiene el "$" y los centavos
+    # arriba de la línea de base del número grande.
+    if style.get("baseline"):
+        run._r.get_or_add_rPr().set("baseline", str(style["baseline"]))
 
 
 def add_shape_component(slide, comp: dict) -> None:
@@ -768,13 +843,24 @@ def _render_slide(
         comp_type = comp.get("type", "text")
         source_id = comp.get("_source_shape_id")
 
-        if not comp.get("visible", True):
-            # Componente oculto por una regla: si matchea un shape original
-            # preservado, limpiarle el texto (si no, quedaría el placeholder
-            # del archivo fuente, ej. "<<Descripción>>", visible por error).
+        oculto = not comp.get("visible", True)
+        # Un cuadro cuyo contenido sale SOLO de variables y todas quedaron
+        # vacías no tiene nada que imprimir. Borrarle el texto no alcanza: si
+        # el shape tiene relleno propio --la cocarda roja de tipoOferta-- queda
+        # un rectángulo de color impreso en el cartel de un producto que no
+        # tiene mecánica. Se saca el shape entero.
+        if not oculto and comp_type == "text" and _variables_del_componente(comp):
+            partes_fijas = any(
+                str(seg.get("value", "")).strip()
+                for seg in (comp.get("segments") or []) if seg.get("type") == "static"
+            )
+            if not partes_fijas and not _texto_resuelto(comp, product).strip():
+                oculto = True
+
+        if oculto:
             shape = shape_map.get(source_id) if source_id is not None else None
-            if shape is not None and comp_type == "text" and shape.has_text_frame:
-                shape.text_frame.clear()
+            if shape is not None:
+                shape._element.getparent().remove(shape._element)
             continue
 
         segments = comp.get("segments") if comp_type == "text" else None
@@ -1167,8 +1253,14 @@ def render_template_to_pptx(
         n_slots     = len(slot_bands)
         page_groups = [products[i:i + n_slots] for i in range(0, len(products), n_slots)]
 
-        for gi, pg in enumerate(page_groups):
-            slide     = _next_slide(gi == 0)
+        # Todas las hojas se crean ANTES de dibujar. _duplicate_slide copia el
+        # slide base tal como está en ese momento, así que clonar después de
+        # haber renderizado la página anterior arrastra sus mutaciones -- y
+        # ahora que un cuadro vacío se saca del slide, la página 2 nacería sin
+        # la cocarda solo porque el primer producto no tenía mecánica.
+        hojas = [_next_slide(gi == 0) for gi in range(len(page_groups))]
+
+        for pg, slide in zip(page_groups, hojas):
             shape_map = _shape_id_map(slide.shapes) if preserve_source else {}
             if bg_comps:
                 # Los componentes de un slot_bands ya vienen en coordenadas

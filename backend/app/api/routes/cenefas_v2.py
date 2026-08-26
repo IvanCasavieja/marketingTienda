@@ -472,11 +472,30 @@ async def create_job(
 
     image_overrides = _parse_image_overrides(image_overrides_json)
 
+    # Plantilla y mundo quedan grabados en el job. Este camino no los guardaba,
+    # y por eso las corridas de junio al 23/08 figuran como "(sin registrar)"
+    # en el informe de produccion: el dato existia en el request y se perdia.
+    # Con builtin_slug o template_upload no hay plantilla del equipo de donde
+    # sacar el mundo, asi que ahi quedan en NULL igual que antes.
+    tmpl_nombre: str | None = None
+    tmpl_categoria: str | None = None
+    if template_id is not None:
+        tmpl = (await db.execute(
+            select(CenefaTemplateV2).where(CenefaTemplateV2.id == template_id)
+        )).scalar_one_or_none()
+        if tmpl is None:
+            raise HTTPException(status_code=404, detail=f"Plantilla {template_id} no encontrada")
+        tmpl_nombre, tmpl_categoria = tmpl.name, tmpl.category
+
     job = CenefaJob(
         created_by=current_user.id,
         status="pending",
         format=format_id or "",  # se resuelve en run_generation_job si viene vacío
         export_type=export_type,
+        excel_nombre=excel.filename,
+        template_id=template_id,
+        template_nombre=tmpl_nombre,
+        categoria=tmpl_categoria,
     )
     db.add(job)
     await db.flush()
@@ -965,6 +984,10 @@ async def list_destinos(
             "descripcion": d.descripcion,
             "icono":       d.icono,
             "color":       d.color,
+            # Si el trabajo de este mundo se valoriza en el informe de
+            # produccion. Redexpres y el mundo de pruebas van en false.
+            "cobrable":    d.cobrable,
+            "cenefas_previas": d.cenefas_previas,
         }
         for d in result.scalars().all()
     ]
@@ -1012,6 +1035,10 @@ async def create_destino(
         icono=icono,
         color=color,
         orden=max_orden + 10,
+        # Un mundo nace cobrable salvo que se diga lo contrario: es lo normal.
+        # Se marca en false para Redexpres y para el mundo de pruebas, que
+        # pasan por el motor pero no son trabajo facturable.
+        cobrable=bool(payload.get("cobrable", True)),
         created_by=current_user.id,
     )
     db.add(destino)
@@ -1022,7 +1049,8 @@ async def create_destino(
     await db.commit()
     return {
         "slug": slug, "nombre": nombre, "descripcion": destino.descripcion,
-        "icono": icono, "color": color,
+        "icono": icono, "color": color, "cobrable": destino.cobrable,
+        "cenefas_previas": destino.cenefas_previas,
     }
 
 
@@ -1152,6 +1180,9 @@ async def create_lote(
                 excel_nombre=nombre_excel,
                 template_nombre=tmpl.name,
                 template_id=tid,
+                # Copiado, no referenciado: el FK a la plantilla es ON DELETE
+                # SET NULL y borrar una plantilla dejaba la corrida sin mundo.
+                categoria=tmpl.category,
             )
             db.add(job)
             await db.flush()

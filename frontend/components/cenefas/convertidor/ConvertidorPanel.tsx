@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   convertidorApi,
-  type ConvertidorColumna,
+  type ConvertidorHoja,
   type ConvertidorRow,
   type MaPair,
 } from "@/lib/api";
@@ -22,6 +22,16 @@ import ConvertidorMapeoStep from "./ConvertidorMapeoStep";
 // alimenta cada variable.
 type Paso = "subir" | "mapear" | "grilla";
 
+// Un archivo puede traer varias hojas y cada una es un listado aparte: el
+// export crudo de gestión, el "Frente" curado a mano, el "Dorso". Traen
+// columnas distintas (una tiene OFERTA/OFERTADET, otra tiene COMENTARIO), así
+// que cada una lleva su propio mapeo y su propia grilla, y se descarga por
+// separado. Antes se convertía siempre la primera hoja, sin avisar.
+interface EstadoHoja {
+  rows: ConvertidorRow[];
+  maPairs: MaPair[];
+}
+
 interface Props {
   /** Se avisa cada vez que cambian las filas, para que Tinin pueda mirarlas. */
   onRowsChange?: (rows: ConvertidorRow[] | null) => void;
@@ -31,35 +41,48 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
   const { t } = useTranslation();
   const [paso, setPaso] = useState<Paso>("subir");
   const [excel, setExcel] = useState<File | null>(null);
-  const [columnas, setColumnas] = useState<ConvertidorColumna[]>([]);
+  const [hojas, setHojas] = useState<ConvertidorHoja[]>([]);
+  const [hojaActual, setHojaActual] = useState(0);
   const [variablesMapeables, setVariablesMapeables] = useState<string[]>([]);
-  const [totalFilas, setTotalFilas] = useState(0);
-  const [rows, setRowsInterno] = useState<ConvertidorRow[] | null>(null);
+  // Lo convertido de cada hoja, por índice. Cambiar de hoja no pierde lo que
+  // ya se corrigió a mano en la otra.
+  const [resultados, setResultados] = useState<Record<number, EstadoHoja>>({});
+  const [loading, setLoading] = useState(false);
+
+  const hoja = hojas.find((h) => h.indice === hojaActual) ?? null;
+  const actual = resultados[hojaActual] ?? null;
 
   // Cada cambio de filas se replica hacia afuera: es lo que le da a Tinin la
   // grilla que la persona esta mirando. Sin esto solo puede tirar hipotesis.
   const setRows = useCallback(
     (valor: React.SetStateAction<ConvertidorRow[] | null>) => {
-      setRowsInterno((prev) => {
+      setResultados((prev) => {
+        const previo = prev[hojaActual];
+        if (!previo) return prev;
         const siguiente = typeof valor === "function"
-          ? (valor as (p: ConvertidorRow[] | null) => ConvertidorRow[] | null)(prev)
+          ? (valor as (p: ConvertidorRow[] | null) => ConvertidorRow[] | null)(previo.rows)
           : valor;
         onRowsChange?.(siguiente);
-        return siguiente;
+        return { ...prev, [hojaActual]: { ...previo, rows: siguiente ?? [] } };
       });
     },
-    [onRowsChange],
+    [onRowsChange, hojaActual],
   );
-  const [maPairs, setMaPairs] = useState<MaPair[]>([]);
-  const [loading, setLoading] = useState(false);
 
   function reset() {
     setPaso("subir");
-    setRows(null);
-    setMaPairs([]);
+    setResultados({});
+    onRowsChange?.(null);
     setExcel(null);
-    setColumnas([]);
-    setTotalFilas(0);
+    setHojas([]);
+    setHojaActual(0);
+  }
+
+  function irAHoja(indice: number) {
+    setHojaActual(indice);
+    const ya = resultados[indice];
+    onRowsChange?.(ya ? ya.rows : null);
+    setPaso(ya ? "grilla" : "mapear");
   }
 
   async function handleLeerColumnas(e: FormEvent) {
@@ -70,9 +93,9 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
       const fd = new FormData();
       fd.append("excel", excel);
       const { data } = await convertidorApi.columnas(fd);
-      setColumnas(data.columnas);
+      setHojas(data.hojas);
+      setHojaActual(data.hoja_sugerida);
       setVariablesMapeables(data.variables_mapeables);
-      setTotalFilas(data.total_filas);
       setPaso("mapear");
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("convertidor.unknownError"));
@@ -92,9 +115,13 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
       fd.append("excel", excel);
       fd.append("mapeo_json", JSON.stringify(mapeo));
       fd.append("valores_json", JSON.stringify(valores));
+      fd.append("hoja", String(hojaActual));
       const { data } = await convertidorApi.preview(fd);
-      setRows(data.rows);
-      setMaPairs(data.ma_pairs);
+      setResultados((prev) => ({
+        ...prev,
+        [hojaActual]: { rows: data.rows, maPairs: data.ma_pairs },
+      }));
+      onRowsChange?.(data.rows);
       setPaso("grilla");
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("convertidor.unknownError"));
@@ -103,27 +130,72 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
     }
   }
 
-  if (paso === "grilla" && rows) {
+  // Barra de hojas: solo aparece si el archivo trae más de una. Numeradas 1, 2,
+  // 3 porque es como se las nombra al hablar de ellas; el nombre real de la
+  // hoja va al lado, que es lo que las distingue de verdad.
+  const barraHojas = hojas.length > 1 ? (
+    <div className="card p-2 flex items-center gap-1.5 flex-wrap">
+      <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest px-2">
+        Hojas
+      </span>
+      {hojas.map((h, i) => {
+        const activa = h.indice === hojaActual;
+        const convertida = !!resultados[h.indice];
+        const vacia = !h.error && h.total_filas === 0;
+        return (
+          <button
+            key={h.indice}
+            type="button"
+            onClick={() => irAHoja(h.indice)}
+            disabled={!!h.error}
+            title={h.error ?? `${h.nombre} · ${h.total_filas} filas`}
+            className={`px-2.5 py-1.5 rounded-lg text-xs border-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              activa
+                ? "border-brand-400 bg-brand-50 dark:bg-brand-950/30 text-brand-700 dark:text-brand-300"
+                : "border-transparent bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            <span className="font-bold">{i + 1}</span>
+            <span className="ml-1.5 max-w-[160px] truncate inline-block align-bottom">{h.nombre}</span>
+            <span className={`ml-1.5 ${vacia ? "text-slate-400" : "text-slate-400"}`}>
+              {h.error ? "·  —" : `· ${h.total_filas}`}
+            </span>
+            {convertida && <span className="ml-1 text-emerald-500">✓</span>}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
+
+  if (paso === "grilla" && actual) {
     return (
-      <ConvertidorGrid
-        rows={rows}
-        setRows={setRows}
-        maPairs={maPairs}
-        onReset={reset}
-      />
+      <div className="space-y-3">
+        {barraHojas}
+        <ConvertidorGrid
+          key={hojaActual}
+          rows={actual.rows}
+          setRows={setRows}
+          maPairs={actual.maPairs}
+          onReset={reset}
+        />
+      </div>
     );
   }
 
-  if (paso === "mapear") {
+  if (paso === "mapear" && hoja) {
     return (
-      <ConvertidorMapeoStep
-        columnas={columnas}
-        variablesMapeables={variablesMapeables}
-        totalFilas={totalFilas}
-        onBack={() => setPaso("subir")}
-        onConfirm={handleConvertir}
-        converting={loading}
-      />
+      <div className="space-y-3">
+        {barraHojas}
+        <ConvertidorMapeoStep
+          key={hojaActual}
+          columnas={hoja.columnas}
+          variablesMapeables={variablesMapeables}
+          totalFilas={hoja.total_filas}
+          onBack={() => setPaso("subir")}
+          onConfirm={handleConvertir}
+          converting={loading}
+        />
+      </div>
     );
   }
 

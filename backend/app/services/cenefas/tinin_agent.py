@@ -32,8 +32,9 @@ CÓMO SE ARMAN LOS TEMPLATES:
 - Hay UN SOLO sistema desde 08/2026: el editor visual en /materiales/cenefas/v2. Se arma un template desde cero o importando un PPTX existente, con componentes (texto/imagen/forma) atados a variables. Todos los mundos usan el mismo editor y el mismo motor; antes Redexpres tenía uno aparte y ya no existe.
 - El motor respeta el PPTX tal cual se sube: no agranda, no achica y no mueve nada solo. Si un texto no entra, se corrige el dato o el diseño.
 
-LAS VARIABLES (26, mismo nombre en el Excel, en el PPTX y en el editor):
-codigo, descripcion, mecanica, precioRegular, precioOferta, ofertaUno, ofertaDos, ofertaTres, ofertaCuatro, precioBanco, banco, vigencia, aclaracionUno, aclaracionDos, aclaracionTres, legales, dia, mes, año, y el decimal de cada precio (decimalPrecioRegular, decimalPrecioOferta, decimalPrecioUno, decimalPrecioDos, decimalPrecioTres, decimalPrecioCuatro, decimalPrecioBanco).
+LAS VARIABLES (27, mismo nombre en el Excel, en el PPTX y en el editor):
+codigo, descripcion, mecanica, tipoOferta, precioRegular, precioOferta, ofertaUno, ofertaDos, ofertaTres, ofertaCuatro, precioBanco, banco, vigencia, aclaracionUno, aclaracionDos, aclaracionTres, legales, dia, mes, año, y el decimal de cada precio (decimalPrecioRegular, decimalPrecioOferta, decimalPrecioUno, decimalPrecioDos, decimalPrecioTres, decimalPrecioCuatro, decimalPrecioBanco).
+- tipoOferta es el anuncio de la mecánica ("6x4", "2x$299", "2da al 50%"). En Redexpres va grande arriba del precio; en Tienda Inglesa va en la cocarda roja al costado. Es TEXTO aunque traiga números: se imprime tal cual, no se le separa el decimal.
 - Ninguna es obligatoria: lo que no esté queda vacío.
 - Cada precio va partido en entero + decimal, en dos variables. El decimal lleva la coma adelante (",50") y queda vacío si el precio es redondo.
 - El símbolo de moneda NO es una variable: va como texto fijo en el diseño.
@@ -45,10 +46,19 @@ Redexpres, Rompe Precios, Parrilla y Vinos y los que el equipo cree desde el sel
 
 EL CONVERTIDOR (/materiales/convertidor) — ahí se resuelve la mecánica:
 1. Se sube el export crudo de gestión.
-2. Pantalla de mapeo: se elige a qué columna del archivo corresponde cada variable cuyo nombre cambia entre exports (ofertaUno..Cuatro, vigencia, aclaracionUno..Tres, legales). El mapeo se puede guardar como plantilla reutilizable.
+2. Pantalla de mapeo: se elige a qué columna del archivo corresponde cada variable cuyo nombre cambia entre exports (tipoOferta, ofertaUno..Cuatro, precioBanco, banco, vigencia, aclaracionUno..Tres, legales, dia, mes, año). El mapeo se puede guardar como plantilla reutilizable. Lo mapeado a mano SIEMPRE gana sobre lo calculado.
 3. Grilla: se revisan y corrigen las filas; lo que quedó marcado pide revisión humana.
 4. Se descarga el Excel con las 26 columnas, o se aprieta "Convertir a cenefa" para ir directo al generador sin bajar el archivo.
-El Convertidor arma la mecánica a partir de OFERTADET/OFERTA: Combo "3x99" -> ofertaUno "3x", precioOferta 99, mecanica "Comprando 3, $33 la unidad."; M x N "2x1" -> precioOferta toma el literal "2x1" y mecanica arma el unitario con la columna PRECIO; Precio fijo o % descuento -> mecanica "Precio Final".
+Si el archivo trae VARIAS HOJAS, cada una es un listado aparte y se convierte por separado: el panel las muestra como 1, 2, 3 con su nombre y su cantidad de filas, y cada una lleva su propio mapeo y su propia grilla. La hoja curada a mano (la que trae los SKU combinables unidos con "/" y la mecánica en COMENTARIO) suele ser la que va a imprenta, no el export crudo.
+
+LA REGLA DE tipoOferta (decisión de Ivan, 2026-08-25) — es la que más se pregunta:
+tipoOferta se llena SOLO cuando OFERTADET es una mecánica de verdad. Sale de OFERTADET y NUNCA de OFERTA:
+- Combo ("2x$299") -> tipoOferta "2x$299", ofertaUno "2x", precioOferta el total, mecanica "Comprando 2, $149,50 la unidad." El unitario sale de DIVIDIR el total, no de la columna PRECIO.
+- M x N ("6x4", "2x1") -> tipoOferta el literal, precioOferta también el literal (ocupa el cuadro del precio), mecanica arma el unitario con la columna PRECIO.
+- N unidad al XX% ("2da unidad al 50%") -> tipoOferta "2da al 50%", precioOferta el de la columna PRECIO.
+- Precio fijo, % descuento, % Descuentos y CUALQUIER OTRA COSA -> tipoOferta VACÍA y mecanica "Precio Final". No hay nada que anunciar, así que no hay cocarda: da igual lo que diga OFERTA ("Precio Oferta", "sin detalle", "20%OFF", "-0.26" son todos jerga interna o un ratio, no un anuncio).
+- Si OFERTADET es un tipo que el motor no conoce, la fila queda con el aviso `ofertadet_desconocido`: puede ser una mecánica nueva que hay que agregar.
+Gestión escribe OFERTA de dos formas ("2x$299" pelado, o "Coca Cola Zero 2.25 L 2x$299" con el nombre adelante). Las dos funcionan: el literal se busca dentro del texto y a la cocarda va limpio.
 
 CÓMO SE GENERA UNA CENEFA (siempre así, nunca instantáneo):
 1. En /materiales/cenefas se elige el mundo, la plantilla y se sube el Excel.
