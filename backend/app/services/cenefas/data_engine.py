@@ -205,29 +205,29 @@ def process_row(
         result["vigencia"] = vigencia
 
     # -- Legales ----------------------------------------------------------
-    # Solo se sustituyen si la persona los habilitó: muchas plantillas ya
-    # traen el texto legal impreso en el diseño, y escribir encima duplica
-    # la leyenda. Con el checkbox apagado la variable queda vacía y el
-    # renderer no toca ese cuadro.
-    if usar_legales:
-        texto_legal = result["legales"] or legales
-        # Mira la categoría Y el texto del producto: la columna CATEGORIA no
-        # existe en varios exports, así que sola dejaba la leyenda sin disparar.
-        # Mira la categoría Y la descripción del producto: la columna CATEGORIA
-        # no existe en varios exports, así que sola dejaba la leyenda sin
-        # disparar -- una cenefa de Stella Artois salía sin ella.
-        # `not in` y no un simple append: la leyenda puede venir YA escrita en la
-        # celda de legales de la fila -- pasa cuando Tinin la detecto por nombre
-        # de fantasia y la persona confirmo la sugerencia (ver detectar_alcohol
-        # en convertidor_ai.py). Sin este chequeo la cenefa la imprime dos veces.
-        ya_esta = LEGAL_ALCOHOL in texto_legal
-        if not ya_esta and es_alcohol(internos["categoria"], result.get("descripcion", "")):
-            # Se SUMA, no pisa: la leyenda de alcohol es obligatoria y
-            # convive con lo que haya escrito la persona.
-            texto_legal = f"{texto_legal} {LEGAL_ALCOHOL}".strip() if texto_legal else LEGAL_ALCOHOL
-        result["legales"] = texto_legal
-    else:
-        result["legales"] = ""
+    # El texto OPCIONAL solo se sustituye si la persona lo habilitó: muchas
+    # plantillas ya traen el legal impreso en el diseño y escribir encima
+    # duplica la leyenda.
+    texto_legal = (result["legales"] or legales) if usar_legales else ""
+
+    # La leyenda de alcohol NO depende del checkbox. Es obligatoria: un cartel de
+    # góndola de una bebida alcohólica sin ella es una infracción, y eso no puede
+    # quedar sujeto a que alguien se acuerde de tildar una casilla. Con el
+    # checkbox apagado la cenefa sale con la leyenda sola, que es lo correcto.
+    #
+    # Se detecta por la categoría Y por la descripción: la columna CATEGORIA no
+    # existe en varios exports de gestión, así que sola dejaba la leyenda sin
+    # disparar nunca -- una cenefa de Stella Artois salía sin ella.
+    #
+    # El `not in` y no un append directo: la leyenda puede venir YA escrita en la
+    # celda de legales de la fila, que es lo que pasa cuando Tinín la detectó por
+    # nombre de fantasía y la persona confirmó la sugerencia (ver
+    # detectar_alcohol en convertidor_ai.py). Sin el chequeo se imprime dos veces.
+    if (LEGAL_ALCOHOL not in texto_legal
+            and es_alcohol(internos["categoria"], result.get("descripcion", ""))):
+        texto_legal = f"{texto_legal} {LEGAL_ALCOHOL}".strip()
+
+    result["legales"] = texto_legal
 
     return result
 
