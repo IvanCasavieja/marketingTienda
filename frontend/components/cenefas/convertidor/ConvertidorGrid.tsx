@@ -168,12 +168,24 @@ const HAS_LETTER_RE = /\p{L}/u;
 const DESCRIPTION_WARN_CHARS = 60;
 const DESCRIPTION_MAX_CHARS = 100;
 const DESCRIPCION_WARNING_CODES = ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"];
-// Mismo límite que SkuDescripcion.sku (String(64)) en
-// backend/app/models/sku_descripcion.py -- un grupo con muchos SKUs largos
-// unidos por " - " podría superarlo, y Postgres rechaza el insert entero en
-// vez de truncarlo solo. Se corta acá ANTES de mandar el PATCH para que el
-// usuario vea un error claro en el modal en vez de un 500 genérico.
-const SKU_COMBINADO_MAX_CHARS = 64;
+// Mismo límite que SkuDescripcion.sku (String(600) desde la migración 0049) y
+// que SKU_MAX_CHARS en backend/app/services/cenefas/convertidor.py -- un grupo
+// con muchos SKUs largos unidos por " - " podría superarlo, y Postgres rechaza
+// el insert entero en vez de truncarlo solo. Se corta acá ANTES de mandar el
+// PATCH para que el usuario vea un error claro en el modal en vez de un 500.
+//
+// Era 64 y frenaba grupos reales: 11 acondicionadores ELVIVE dan ~130
+// caracteres y la unificación se cortaba justo cuando más sentido tenía. Con
+// 600 entran ~60 SKUs, muy por encima de cualquier grupo de góndola, así que en
+// la práctica este tope dejó de aparecer -- queda solo como red de seguridad.
+const SKU_COMBINADO_MAX_CHARS = 600;
+
+// ¿La descripción ya dice con qué cantidad/unidad se cobra? Espejo de
+// _RE_CANTIDAD_PROPIA en backend/app/services/cenefas/convertidor.py, duplicado
+// acá porque se recalcula en vivo mientras se edita la celda (no hay endpoint
+// que lo exponga, mismo criterio que los umbrales de largo de arriba).
+const CANTIDAD_EN_TEXTO_RE =
+  /\d\s*(?:kgs?|kilos?|kg|grs?|gramos?|g|mls?|cc|litros?|lts?|l|un|u)\b|\bx\s*\d+\b|(?:^|[\s.])kg\.?(?:$|[\s.,)])/i;
 
 function computeDescripcionWarnings(currentWarnings: string[], value: string): string[] {
   const warnings = currentWarnings.filter((w) => !DESCRIPCION_WARNING_CODES.includes(w));
@@ -315,6 +327,20 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
   // del catálogo, por eso es un filtro aparte y no solo un warning más.
   const rowsFiambresKg = useMemo(() => rows.filter((r) => r.es_fiambre_kg), [rows]);
 
+  // Se cobran por 100 g o por kilo y la descripción no lo dice. Mismo criterio
+  // de filtro aparte que rowsFiambresKg de arriba: una descripción que ya vino
+  // del catálogo escrita sin gramaje no tiene ningún warning, así que sin esto
+  // nunca volvía a pasar por Tinín y el cartel salía sin decir por cuánto se
+  // cobra. Las que NO tienen descripción ya entran por missing_description, y
+  // las que alguien escribió a mano en el Excel quedan afuera: esas no se
+  // reescriben (decisión de 2026-08-24, ver match_rows en convertidor.py).
+  const rowsSinUnidad = useMemo(
+    () => rows.filter((r) => r.unidad_venta && !r.es_fiambre_kg
+                             && r.descripcion_origen !== "excel"
+                             && r.descripcion.trim() && !CANTIDAD_EN_TEXTO_RE.test(r.descripcion)),
+    [rows]
+  );
+
   // Grupos unificados que ya se armaron antes y tocan los SKU de este listado.
   //
   // Se busca UNA vez, con los códigos tal como vinieron del Excel -- no con
@@ -385,12 +411,20 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
     toast.success(t("convertidor.tinin.cienGramosAplicado", { count: ids.size }));
   }
 
-  // Combinado para el modal de IA: fiambres por kg primero, sin duplicar
-  // las que también les falta descripción.
+  // Combinado para el modal de IA, en orden de urgencia y sin repetir una fila
+  // que caiga en más de una lista: fiambres por kg (descripción + precio),
+  // después las que no tienen descripción, y al final las que la tienen pero sin
+  // la unidad de cobro.
   const rowsParaIA = useMemo(() => {
-    const fiambresIds = new Set(rowsFiambresKg.map((r) => r.row_id));
-    return [...rowsFiambresKg, ...rowsNeedingDescripcion.filter((r) => !fiambresIds.has(r.row_id))];
-  }, [rowsFiambresKg, rowsNeedingDescripcion]);
+    const vistas = new Set<number>();
+    const combinadas: ConvertidorRow[] = [];
+    for (const r of [...rowsFiambresKg, ...rowsNeedingDescripcion, ...rowsSinUnidad]) {
+      if (vistas.has(r.row_id)) continue;
+      vistas.add(r.row_id);
+      combinadas.push(r);
+    }
+    return combinadas;
+  }, [rowsFiambresKg, rowsNeedingDescripcion, rowsSinUnidad]);
 
   // Pares "mismo producto, dos SKUs" todavía vigentes -- ni unificados ni
   // descartados en esta sesión.
@@ -446,7 +480,11 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
   async function commitUnificacion(grupo: UnificarGrupoItem) {
     const codigoCombinado = grupo.skus.join(" - ");
     if (codigoCombinado.length > SKU_COMBINADO_MAX_CHARS) {
-      toast.error(t("convertidor.unificar.codigoTooLong"));
+      toast.error(t("convertidor.unificar.codigoTooLong", {
+        count: grupo.skus.length,
+        chars: codigoCombinado.length,
+        max: SKU_COMBINADO_MAX_CHARS,
+      }));
       throw new Error("Código combinado demasiado largo");
     }
     await convertidorApi.updateDescripcion(codigoCombinado, grupo.descripcion);

@@ -838,6 +838,8 @@
       "loading": "Tinín se arremangó y está picando piedra para sacarte las descripciones…",
       "notConfigured": "La generación con IA no está configurada en este ambiente.",
       "genericError": "No pudimos generar las sugerencias. Probá de nuevo en unos minutos.",
+      "edit": "Editar",
+      "saveChanges": "Guardar cambios",
       "approve": "Aprobar",
       "retry": "Reintentar",
       "tooLong": "Un poco larga para el cartel",
@@ -846,7 +848,8 @@
       "approving": "Aprobando…",
       "failedCount": "No pudimos generar sugerencia para {{count}} producto(s) — completalos a mano.",
       "loadingMore": "Generando el resto en segundo plano… ({{done}}/{{total}})",
-      "fiambreKgBadge": "Fiambre por kg → 100g"
+      "fiambreKgBadge": "Fiambre por kg → 100g",
+      "unidadVentaBadge": "Se cobra por {{unidad}}"
     },
     "merge": {
       "bannerTitle": "{{count}} posible producto duplicado detectado — mismo producto con dos SKUs",
@@ -868,7 +871,8 @@
       "truncated": "El archivo tiene muchos productos — Tinín solo analizó los primeros de la lista.",
       "noGroups": "No encontramos grupos de variantes para unificar en este Excel.",
       "combinedSkuNotice": "Al aprobar, estas {{count}} filas se combinan en una sola con el código \"{{codigo}}\" — el resto se elimina de la grilla.",
-      "codigoTooLong": "Este grupo tiene demasiados SKUs para combinarlos en una sola celda de código — no se pudo guardar.",
+      "codigoTooLong": "Este grupo junta {{count}} SKUs y el código combinado da {{chars}} caracteres, más que el máximo de {{max}} — no se pudo guardar. Dividí el grupo en dos.",
+      "opcionEditada": "Editada a mano",
       "descripcionUnificada": "Descripción unificada",
       "approve": "Aprobar",
       "approved": "Guardado",
@@ -891,6 +895,7 @@
       "errorPlantillas": "No se pudieron cargar las plantillas de mapeo",
       "columnasFaltantes": "Este archivo no tiene estas columnas de la plantilla: {{columnas}}",
       "variables": "Variables extra — ninguna es obligatoria",
+      "yaResueltas": "El Convertidor ya resuelve {{variables}} solo, desde las columnas del archivo — no hace falta mapearla.",
       "asignadas": "{{n}} de {{total}} completadas",
       "sinAsignar": "— sin asignar —",
       "columnaRepetida": "Esta columna ya está asignada a otra variable",
@@ -901,6 +906,17 @@
       "modoTexto": "Escribir",
       "textoPlaceholder": "El mismo texto para las {{n}} filas"
     },
+    "ofertaPrecios": {
+      "titulo": "La columna “{{columna}}” trae precios, no mecánicas",
+      "detalle": "Esa columna tiene que traer el titular de la oferta (“2x$299”, “6x4”, “2da unidad al 50%”), pero vino con precios. Así como está, la mecánica no se va a poder armar y ese precio no lo va a usar nadie. ¿La leo como el precio de oferta?",
+      "pasarAPrecio": "Sí, es el precio de oferta",
+      "ignorar": "No es ninguno — ignorala",
+      "otroCampo": "Es otra cosa…",
+      "elegiCampo": "¿Qué campo es?",
+      "aplicado": "“{{columna}}” se va a leer como {{campo}} ({{que}}) solo en esta corrida.",
+      "aplicadoIgnorar": "“{{columna}}” se va a ignorar en esta corrida.",
+      "deshacer": "Deshacer"
+    },
     "tinin": {
       "barra": "Tinín encontró {{count}} cosas para revisar",
       "paso": "{{actual}} de {{total}}",
@@ -908,8 +924,8 @@
       "siguiente": "Siguiente",
       "cerrar": "Listo",
       "sinTemas": "Tinín no encontró nada para revisar en esta grilla.",
-      "sinDescripcionTitulo": "{{count}} filas sin descripción",
-      "sinDescripcionDetalle": "Sin descripción la cenefa sale con el cuadro vacío. Se pueden generar todas juntas y revisarlas antes de aceptar.",
+      "sinDescripcionTitulo": "{{count}} filas con la descripción para completar",
+      "sinDescripcionDetalle": "Sin descripción la cenefa sale con el cuadro vacío, y a las de fiambrería, quesos de corte y morcilla les falta decir si el precio es por kilo o por 100 g. Se pueden generar todas juntas y revisarlas antes de aceptar.",
       "paresTitulo": "{{count}} pares que parecen el mismo producto",
       "paresDetalle": "Mismo nombre base con distinta variante. Si son el mismo cartel conviene unirlos en una fila; si no, descartalos y no vuelven a aparecer.",
       "ofertadetTitulo": "{{count}} filas con un tipo de oferta que no conozco",

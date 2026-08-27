@@ -28,6 +28,12 @@ type RowState = {
   precio: string;
   precioAnterior: string;
   status: "pending" | "approving" | "approved" | "error";
+  // Se aprobó al menos una vez en esta sesión. Queda en true aunque "Editar"
+  // devuelva la fila a "pending": es lo que distingue "todavía no la guardé" de
+  // "ya está guardada y la estoy corrigiendo", y sirve para que el botón diga
+  // "Guardar cambios" en vez de "Aprobar". Sin esto, corregir una descripción
+  // recién aprobada obligaba a salir al Diccionario y volver a cargar el Excel.
+  yaAprobado: boolean;
 };
 
 // Los precios ahora viajan como texto ya formateado y con el decimal en su
@@ -87,6 +93,10 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
       nombre_articulo: r.nombre_articulo,
       descripcion_web: r.descripcion_web,
       es_fiambre_kg: r.es_fiambre_kg,
+      // Sin esto el nombre de gestión llega pelado ("MUZZA NATURALACT") y
+      // Tinín escribe la descripción sin gramaje, porque tiene prohibido
+      // inventar lo que no está en la fuente.
+      unidad_venta: r.unidad_venta ?? "",
     };
   }
 
@@ -100,6 +110,7 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
           precio: row?.es_fiambre_kg ? precioDividido(row.precioOferta, row.decimalPrecioOferta) : "",
           precioAnterior: row?.es_fiambre_kg ? precioDividido(row.precioRegular, row.decimalPrecioRegular) : "",
           status: "pending",
+          yaAprobado: false,
         });
       });
       return next;
@@ -206,10 +217,23 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
       : undefined;
     try {
       await onApprove(rowId, sku, row.value, precioOverride);
-      if (mountedRef.current) setState((prev) => new Map(prev).set(rowId, { ...row, status: "approved" }));
+      if (mountedRef.current) {
+        setState((prev) => new Map(prev).set(rowId, { ...row, status: "approved", yaAprobado: true }));
+      }
     } catch {
       if (mountedRef.current) setState((prev) => new Map(prev).set(rowId, { ...row, status: "error" }));
     }
+  }
+
+  // Vuelve una fila ya aprobada a editable, sin salir del Convertidor. Guardar
+  // de nuevo es un upsert por SKU (ver upsert_sku_descripcion), así que la
+  // segunda aprobación pisa la primera y no duplica nada.
+  function editarDeNuevo(rowId: number) {
+    setState((prev) => {
+      const row = prev.get(rowId);
+      if (!row) return prev;
+      return new Map(prev).set(rowId, { ...row, status: "pending" });
+    });
   }
 
   async function approveAll() {
@@ -294,6 +318,15 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                           {t("convertidor.ai.fiambreKgBadge")}
                         </span>
                       )}
+                      {/* Por qué la sugerencia trae un gramaje que el nombre de
+                          gestión no dice: lo puso la plataforma, no el modelo. */}
+                      {!row.es_fiambre_kg && row.unidad_venta && (
+                        <span className="badge badge-blue text-[9px] px-1.5 py-0 shrink-0">
+                          {t("convertidor.ai.unidadVentaBadge", {
+                            unidad: row.unidad_venta === "kg" ? "Kg" : "100g",
+                          })}
+                        </span>
+                      )}
                       {row.codigo} · {row.nombre_articulo}
                     </p>
                     <input
@@ -340,7 +373,18 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                     )}
                   </div>
                   {s.status === "approved" ? (
-                    <Check size={16} className="text-emerald-500 shrink-0" />
+                    // Ya guardada, pero editable en el mismo lugar: sin esto había
+                    // que salir al Diccionario, corregir, volver y recargar el Excel.
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Check size={16} className="text-emerald-500" />
+                      <button
+                        onClick={() => editarDeNuevo(row.row_id)}
+                        disabled={approvingAll}
+                        className="btn-secondary text-xs disabled:opacity-50"
+                      >
+                        {t("convertidor.ai.edit")}
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={() => approveOne(row.row_id, row.codigo)}
@@ -353,6 +397,8 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                         <Loader2 size={13} className="animate-spin" />
                       ) : s.status === "error" ? (
                         t("convertidor.ai.retry")
+                      ) : s.yaAprobado ? (
+                        t("convertidor.ai.saveChanges")
                       ) : (
                         t("convertidor.ai.approve")
                       )}

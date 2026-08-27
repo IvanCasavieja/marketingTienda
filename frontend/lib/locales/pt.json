@@ -838,6 +838,8 @@
       "loading": "Tinín arregaçou as mangas e está cavando os dados para tirar as descrições…",
       "notConfigured": "A geração com IA não está configurada neste ambiente.",
       "genericError": "Não conseguimos gerar as sugestões. Tente novamente em alguns minutos.",
+      "edit": "Editar",
+      "saveChanges": "Salvar alterações",
       "approve": "Aprovar",
       "retry": "Tentar de novo",
       "tooLong": "Um pouco longa para a faixa",
@@ -846,7 +848,8 @@
       "approving": "Aprovando…",
       "failedCount": "Não conseguimos gerar sugestão para {{count}} produto(s) — complete manualmente.",
       "loadingMore": "Gerando o restante em segundo plano… ({{done}}/{{total}})",
-      "fiambreKgBadge": "Frios por kg → 100g"
+      "fiambreKgBadge": "Frios por kg → 100g",
+      "unidadVentaBadge": "Cobrado por {{unidad}}"
     },
     "merge": {
       "bannerTitle": "{{count}} possível produto duplicado detectado — mesmo produto com dois SKUs",
@@ -869,6 +872,7 @@
       "noGroups": "Não encontramos grupos de variantes para unificar neste Excel.",
       "combinedSkuNotice": "Ao aprovar, essas {{count}} linhas são combinadas em uma só com o código \"{{codigo}}\" — o restante é removido da grade.",
       "codigoTooLong": "Este grupo tem SKUs demais para combinar em uma única célula de código — não foi possível salvar.",
+      "opcionEditada": "Editada à mão",
       "descripcionUnificada": "Descrição unificada",
       "approve": "Aprovar",
       "approved": "Salvo",
@@ -891,6 +895,7 @@
       "errorPlantillas": "Não foi possível carregar os modelos de mapeamento",
       "columnasFaltantes": "Este arquivo não tem estas colunas do modelo: {{columnas}}",
       "variables": "Variáveis extras — nenhuma é obrigatória",
+      "yaResueltas": "O conversor já resolve {{variables}} sozinho, a partir das colunas do arquivo — não precisa mapear.",
       "asignadas": "{{n}} de {{total}} preenchidas",
       "sinAsignar": "— sem atribuir —",
       "columnaRepetida": "Esta coluna já está atribuída a outra variável",
@@ -900,6 +905,17 @@
       "modoColumna": "Coluna",
       "modoTexto": "Escrever",
       "textoPlaceholder": "O mesmo texto para as {{n}} linhas"
+    },
+    "ofertaPrecios": {
+      "titulo": "A coluna “{{columna}}” traz preços, não mecânicas",
+      "detalle": "Essa coluna deveria trazer o título da oferta (“2x$299”, “6x4”, “2ª unidade a 50%”), mas veio com preços. Assim, a mecânica não vai poder ser montada e esse preço não vai ser usado por nada. Leio como o preço da oferta?",
+      "pasarAPrecio": "Sim, é o preço da oferta",
+      "ignorar": "Nenhum — ignore",
+      "otroCampo": "É outra coisa…",
+      "elegiCampo": "Qual campo é?",
+      "aplicado": "“{{columna}}” vai ser lida como {{campo}} ({{que}}) somente nesta rodada.",
+      "aplicadoIgnorar": "“{{columna}}” vai ser ignorada nesta rodada.",
+      "deshacer": "Desfazer"
     }
   },
   "facturacion": {

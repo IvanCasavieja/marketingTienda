@@ -376,6 +376,20 @@ export interface ConvertidorRow {
   precio_anterior_raw: string;
   es_fiambre_kg: boolean;
   /**
+   * De dónde salió la descripción: "excel" (la escribió una persona en el
+   * listado), "catalogo" (la puso la plataforma) o "" (falta). Una escrita en el
+   * Excel no se vuelve a proponer: si alguien la escribió, por algo la escribió
+   * (decisión de 2026-08-24, ver match_rows en convertidor.py).
+   */
+  descripcion_origen: string;
+  /**
+   * "100g" | "kg" | "" — con qué unidad se cobra el producto, cuando el nombre
+   * de gestión no lo dice (morcilla por kilo, queso de corte y panceta por
+   * 100 g). Es lo que le permite a Tinín escribir el gramaje sin inventarlo.
+   * Ver _unidad_de_venta en backend/app/services/cenefas/convertidor.py.
+   */
+  unidad_venta: string;
+  /**
    * Se vende por 100 g pero el precio que vino parece el del kilo. La app no
    * divide sola: lo propone y una persona confirma. Ver el bloque de
    * comentarios en backend/app/services/cenefas/convertidor.py.
@@ -497,6 +511,23 @@ export interface ConvertidorColumna {
 }
 
 /**
+ * La columna OFERTA trae precios en vez del titular de la mecanica ("2x$299",
+ * "6x4"). Pasa cuando alguien edita el Excel a mano: el Convertidor la sigue
+ * leyendo como titular, la mecanica queda sin parsear y el precio que estaba ahi
+ * no lo usa nadie. La app NO lo cambia sola -- lo propone y la persona decide.
+ */
+export interface OfertaConPrecios {
+  /** Nombre de la columna tal como viene en el archivo. */
+  columna: string;
+  /** El campo al que se esta leyendo hoy: "oferta". */
+  campo_actual: string;
+  /** El campo que se propone: "precio". */
+  campo_propuesto: string;
+  /** Valores que lo delatan, para mostrarlos. */
+  muestras: string[];
+}
+
+/**
  * Una hoja del archivo subido. Un boceto real trae varias y son listados
  * distintos (el export crudo de gestion, el "Frente" curado a mano, el
  * "Dorso"), cada uno con sus propias columnas y su propio mapeo.
@@ -506,6 +537,15 @@ export interface ConvertidorHoja {
   indice: number;
   nombre: string;
   columnas: ConvertidorColumna[];
+  /**
+   * Campos de entrada que el Convertidor ya reconoce solo en esta hoja
+   * (codigo, precio, oferta, oferta_det, comprador...). Sirve para no pedir a
+   * mano una variable que el archivo ya trae resuelta -- ver
+   * `resuelta_por_campo`.
+   */
+  campos_reconocidos: string[];
+  /** null = la columna OFERTA esta bien. */
+  oferta_con_precios: OfertaConPrecios | null;
   total_filas: number;
   /** Por que no se puede convertir. null = se puede. */
   error: string | null;
@@ -530,6 +570,20 @@ export interface ConvertidorColumnasResponse {
   /** Compat: las columnas de la hoja sugerida. */
   columnas: ConvertidorColumna[];
   variables_mapeables: string[];
+  /** Compat: los campos reconocidos de la hoja sugerida. */
+  campos_reconocidos: string[];
+  /**
+   * {variable_mapeable: campo_de_entrada} -- esa variable deja de pedirse a mano
+   * cuando ese campo ya vino reconocido, porque el Convertidor la calcula solo.
+   * Hoy es una sola: tipoOferta sale de la columna OFERTA leida junto con
+   * OFERTADET. Viene del backend para no duplicar aca de donde sale cada
+   * variable calculada.
+   */
+  resuelta_por_campo: Record<string, string>;
+  /** Compat: el aviso de la hoja sugerida. */
+  oferta_con_precios: OfertaConPrecios | null;
+  /** {campo: que es} -- a que campos se puede reasignar una columna. */
+  campos_asignables: Record<string, string>;
   total_filas: number;
 }
 
@@ -702,11 +756,26 @@ export interface SkuDescripcionItem {
 // necesitar ver todas las filas a la vez). Al aprobar un grupo, el frontend lo
 // combina en una sola fila (mismo criterio que un MaPair, ver commitUnificacion
 // en ConvertidorGrid.tsx) -- no hay endpoint de confirmación aparte.
+/** Una redacción alternativa para el cartel de un grupo unificado. */
+export interface OpcionDescripcion {
+  texto: string;
+  /** 2-5 palabras que dicen en qué se diferencia, para el desplegable. */
+  etiqueta: string;
+}
+
 export interface UnificarGrupoItem {
   row_ids: number[];
   skus: string[];
   grupo: string;
   descripcion: string;
+  /**
+   * 2 o 3 redacciones alternativas, ordenadas de la más segura a la más
+   * riesgosa: Tinín solo ve los productos EN OFERTA, no el surtido completo, así
+   * que "todas las variedades" puede ser mentira. La persona elige. Puede venir
+   * vacío si el análisis degradó a una sola opción (ver _parsear_opciones en
+   * backend/app/services/cenefas/convertidor_ai.py).
+   */
+  opciones?: OpcionDescripcion[];
 }
 
 export interface UnificarCategoriasIAResponse {
@@ -751,7 +820,14 @@ export const convertidorApi = {
   export: (rows: ConvertidorRow[]) =>
     api.post("/tools/cenefas/convertidor/export", { rows }, { responseType: "blob" }),
   generarDescripcionesIA: (
-    rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion_web: string; es_fiambre_kg: boolean }[]
+    rows: {
+      row_id: number;
+      codigo: string;
+      nombre_articulo: string;
+      descripcion_web: string;
+      es_fiambre_kg: boolean;
+      unidad_venta: string;
+    }[]
   ) =>
     api.post<GenerarDescripcionesIAResponse>("/tools/cenefas/convertidor/descripciones/generar-ia", { rows }),
   /**

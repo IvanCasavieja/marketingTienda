@@ -17,6 +17,11 @@ interface Props {
 
 type GrupoState = UnificarGrupoItem & {
   status: "pending" | "approving" | "approved" | "error";
+  // Se aprobó al menos una vez. Queda en true aunque "Editar" devuelva el grupo
+  // a "pending", y sirve para dos cosas: que el botón diga "Guardar cambios" en
+  // vez de "Aprobar", y que NO se vuelva a mostrar el aviso de "al aprobar estas
+  // N filas se combinan en una sola" -- ya están combinadas, repetirlo mentiría.
+  yaAprobado: boolean;
 };
 
 // Mismo umbral que ConvertidorAiModal.tsx / DESCRIPTION_WARN_CHARS en
@@ -62,7 +67,7 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
       )
       .then(({ data }) => {
         if (!mountedRef.current) return;
-        setGrupos(data.grupos.map((g) => ({ ...g, status: "pending" as const })));
+        setGrupos(data.grupos.map((g) => ({ ...g, status: "pending" as const, yaAprobado: false })));
         setTruncated(data.truncated);
         setAnalysisError(data.error);
       })
@@ -85,14 +90,31 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
     updateGrupo(idx, { status: "approving" });
     try {
       await onApprove(g);
-      if (mountedRef.current) updateGrupo(idx, { status: "approved" });
+      if (mountedRef.current) updateGrupo(idx, { status: "approved", yaAprobado: true });
     } catch {
       if (mountedRef.current) updateGrupo(idx, { status: "error" });
     }
   }
 
+  // Vuelve un grupo ya aprobado a editable, sin salir del Convertidor. Aprobar
+  // de nuevo es seguro: las filas ya combinadas no se vuelven a combinar (las
+  // sobrantes ya no están en la grilla), el PATCH de la descripción es un upsert
+  // por código combinado, y guardar_grupo_unificado ACTUALIZA el grupo cuando el
+  // conjunto de SKU es el mismo en vez de crear un duplicado.
+  function editarDeNuevo(idx: number) {
+    updateGrupo(idx, { status: "pending" });
+  }
+
   function nombreDeFila(rowId: number): string {
     return rows.find((r) => r.row_id === rowId)?.nombre_articulo || "—";
+  }
+
+  // Qué opción está seleccionada, o -1 si la persona editó el texto a mano. Se
+  // deriva del texto en vez de guardarse aparte: así editar el campo desengancha
+  // el desplegable solo, y volver a elegir una opción lo vuelve a enganchar, sin
+  // dos estados que puedan quedar diciendo cosas distintas.
+  function indiceElegido(g: GrupoState): number {
+    return g.opciones?.findIndex((op) => op.texto === g.descripcion) ?? -1;
   }
 
   return (
@@ -165,7 +187,10 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
                     </p>
                   ))}
                 </div>
-                {g.status !== "approved" && (
+                {/* `yaAprobado`, no `status`: si el grupo se aprobó y se volvió a
+                    editar, las filas YA están combinadas y avisar que "al aprobar
+                    se combinan" sería falso. */}
+                {!g.yaAprobado && (
                   <p className="text-[10px] text-amber-600 dark:text-amber-400">
                     {t("convertidor.unificar.combinedSkuNotice", { codigo: g.skus.join(" - "), count: g.skus.length })}
                   </p>
@@ -174,6 +199,32 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
                   <label className="text-[10px] text-slate-400 uppercase tracking-wide">
                     {t("convertidor.unificar.descripcionUnificada")}
                   </label>
+                  {/* El desplegable elige el ÁNGULO; el campo de abajo sigue
+                      editable para ajustarlo. Tinín no sabe si el surtido de la
+                      góndola está completo -- solo ve lo que está en oferta --
+                      así que "todas las variedades" es una opción, no la
+                      respuesta, y la elección es de la persona. */}
+                  {(g.opciones?.length ?? 0) > 1 && (
+                    <select
+                      value={indiceElegido(g)}
+                      disabled={g.status === "approved" || g.status === "approving"}
+                      onChange={(e) => {
+                        const i = Number(e.target.value);
+                        const op = g.opciones?.[i];
+                        if (op) updateGrupo(idx, { descripcion: op.texto });
+                      }}
+                      className="input text-xs w-full mt-1"
+                    >
+                      {g.opciones!.map((op, i) => (
+                        <option key={i} value={i}>
+                          {op.etiqueta} — {op.texto}
+                        </option>
+                      ))}
+                      {indiceElegido(g) === -1 && (
+                        <option value={-1}>{t("convertidor.unificar.opcionEditada")}</option>
+                      )}
+                    </select>
+                  )}
                   <input
                     value={g.descripcion}
                     disabled={g.status === "approved" || g.status === "approving"}
@@ -193,9 +244,14 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
                 </div>
                 <div className="flex justify-end">
                   {g.status === "approved" ? (
-                    <span className="flex items-center gap-1 text-xs text-emerald-500">
-                      <Check size={14} /> {t("convertidor.unificar.approved")}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 text-xs text-emerald-500">
+                        <Check size={14} /> {t("convertidor.unificar.approved")}
+                      </span>
+                      <button onClick={() => editarDeNuevo(idx)} className="btn-secondary text-xs">
+                        {t("convertidor.ai.edit")}
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={() => approveGrupo(idx)}
@@ -208,6 +264,8 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
                         <Loader2 size={13} className="animate-spin" />
                       ) : g.status === "error" ? (
                         t("convertidor.ai.retry")
+                      ) : g.yaAprobado ? (
+                        t("convertidor.ai.saveChanges")
                       ) : (
                         t("convertidor.unificar.approve")
                       )}

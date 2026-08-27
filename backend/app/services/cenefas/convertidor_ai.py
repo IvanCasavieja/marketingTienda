@@ -28,7 +28,9 @@ _STYLE_RULES = f"""\
 - Incluí cantidad/tamaño si se puede inferir de la fuente (ml, g, kg, L, unidades, etc.).
 - Es para un cartel de precio: tiene que ser CORTA. Apuntá a menos de {DESCRIPTION_WARN_CHARS} caracteres, nunca más de {DESCRIPTION_MAX_CHARS}.
 - No inventes datos (sabor, variedad, tamaño) que no estén sugeridos por el nombre o la descripción de origen.
-- Si un producto viene marcado "[FIAMBRE POR KG]", la unidad en la descripción tiene que decir "100g", nunca "kg" — el precio de ese producto ya se va a recalcular aparte para esa unidad, así que el texto tiene que ser consistente con eso."""
+- Si un producto viene marcado "[FIAMBRE POR KG]", la unidad en la descripción tiene que decir "100g", nunca "kg" — el precio de ese producto ya se va a recalcular aparte para esa unidad, así que el texto tiene que ser consistente con eso.
+- Si un producto viene marcado "[SE COBRA POR 100 G]" o "[SE COBRA POR KILO]", la descripción TIENE QUE terminar con esa unidad, escrita exactamente "100g" o "Kg", después del punto que cierra la marca: "Muzzarella NATURALACT. 100g", "Panceta ahumada VILLA MARGARITA. 100g", "Morcilla dulce DON JOAQUIN. Kg". Esa marca la pone la plataforma, que sabe con qué unidad se cobra ese producto en la góndola, así que NO cae en "no inventes datos": el nombre del sistema de gestión no la trae y sin ella el cartel no dice por cuánto se está cobrando. "Kg" es la única unidad que va con mayúscula, justamente porque ahí va sola después del punto y no pegada a un número.
+- Con una de esas dos marcas, la unidad de cobro es la ÚNICA que va: no le agregues además un peso de envase ("500g", "1 kg") ni lo cambies por otra unidad."""
 
 _SYSTEM_PROMPT = f"""{TININ_BASE}
 
@@ -73,6 +75,14 @@ def _build_prompt(items: list[dict]) -> str:
         partes = []
         if it.get("es_fiambre_kg"):
             partes.append("[FIAMBRE POR KG]")
+        elif it.get("unidad_venta") == "100g":
+            # El nombre de gestión no trae la unidad y el producto se cobra por
+            # 100 g (ver _unidad_de_venta en convertidor.py). Sin esta marca la
+            # descripción salía sin gramaje: no es que el modelo se olvidara, es
+            # que tiene prohibido inventar lo que no está en la fuente.
+            partes.append("[SE COBRA POR 100 G]")
+        elif it.get("unidad_venta") == "kg":
+            partes.append("[SE COBRA POR KILO]")
         if it["nombre_articulo"]:
             partes.append(f'nombre ERP: "{it["nombre_articulo"]}"')
         if it["descripcion_web"]:
@@ -89,10 +99,12 @@ def _build_prompt(items: list[dict]) -> str:
 
 async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
     """items: [{"row_id", "codigo", "nombre_articulo", "descripcion_web",
-    "es_fiambre_kg"}, ...] — ya filtrados por el caller (filas sin descripción,
-    o fiambres todavía en kg que necesitan pasar a 100g). "es_fiambre_kg" es
-    opcional, solo cambia la redacción de la unidad (ver _STYLE_RULES) — el
-    precio÷10 correspondiente lo calcula el frontend, no esta función.
+    "es_fiambre_kg", "unidad_venta"}, ...] — ya filtrados por el caller (filas
+    sin descripción, fiambres todavía en kg que necesitan pasar a 100g, o filas
+    cuya descripción no dice con qué unidad se cobra). "es_fiambre_kg" y
+    "unidad_venta" son opcionales y solo cambian la redacción de la unidad (ver
+    _STYLE_RULES) — el precio÷10 correspondiente lo calcula el frontend, no esta
+    función.
 
     Devuelve {"suggestions": [...], "failed_row_ids": [...], "errores": [...]}. Nunca
     levanta por un chunk que falla — ese chunk se reporta en failed_row_ids y el resto de
@@ -176,6 +188,11 @@ def _sumar_error(errores: list[str], texto: str) -> None:
 _UNIFY_ROWS_MAX = 150  # tope duro por request síncrona -- mismo criterio que
                        # _ROWS_MAX_PER_REQUEST (sin jobs asíncronos acá).
 
+# Cuántas redacciones alternativas se muestran por grupo. Tres es el techo por
+# una razón de pantalla, no de modelo: es un desplegable que se lee de un
+# vistazo, y con más la elección deja de ser rápida y se vuelve otra tarea.
+_UNIFY_MAX_OPCIONES = 3
+
 _UNIFY_SYSTEM_PROMPT = f"""{TININ_BASE}
 
 Hoy también te toca: te paso una lista de productos de un mismo Excel de gestión (su nombre \
@@ -190,10 +207,35 @@ producto tampoco van juntas). Sé conservador: ante la duda, no agrupes -- es me
 producto sin agrupar que mezclarlo con otro que en realidad es distinto. Un grupo necesita \
 como mínimo 2 productos.
 
-Para cada grupo que encuentres, redactá UNA sola descripción de cartel que sirva para todas \
-las variantes de ese grupo -- mencioná algo como "en todas sus variedades" o "todas las \
-presentaciones" en vez de listar cada variante por separado -- siguiendo estas mismas reglas \
-de estilo:
+Para cada grupo que encuentres, redactá DOS O TRES descripciones de cartel ALTERNATIVAS que \
+sirvan para todas las variantes de ese grupo, para que la persona elija cuál poner. No es \
+elegir la mejor: son ángulos distintos, y cuál sirve depende de algo que vos NO podés saber.
+
+Ese algo es: vos solo ves los productos que están EN OFERTA, no el surtido completo de la \
+góndola. Así que "todas las variedades" puede ser MENTIRA. Si de cuatro modelos de bicicleta \
+R20 hay dos en oferta y el cartel dice "todas las variedades", el cartel promete algo que no \
+se cumple, y eso es lo peor que puede pasar en góndola. Por eso las opciones van ORDENADAS de \
+la más segura a la más riesgosa, así:
+
+1. ENUMERANDO lo que realmente vino, cuando entra en el largo permitido: "Cappuccino SAINT \
+CAFÉ chocolate, tradicional y vainilla. 6 sobres". Nunca miente, porque nombra exactamente lo \
+que está en oferta. Es la primera opción SIEMPRE que los nombres de las variantes quepan.
+2. SIN prometer que están todas, mencionando la cantidad o dejándolo neutro: "Cappuccino SAINT \
+CAFÉ en 3 variedades. 6 sobres", "Acondicionador ELVIVE variedades surtidas. 370 ml". Es la \
+que sirve cuando son demasiadas para enumerar (7, 11, 20 productos) y el texto no entra.
+3. "Todas las variedades" / "todas las presentaciones", como en "Acondicionador ELVIVE. Todas \
+las variedades. 370 ml". Va SIEMPRE ÚLTIMA y solo como opción, porque es la única que afirma \
+que el surtido está completo.
+
+Si el grupo son 2 o 3 productos con nombres cortos, la opción 1 casi siempre entra y es la que \
+va primera. Si son muchos, arrancá por la 2. Devolvé 2 o 3 opciones, nunca una sola.
+
+Cada opción lleva además una `etiqueta` de 2 a 5 palabras que diga en qué se diferencia, para \
+mostrarla en el desplegable donde se elige: "Nombra los 3 sabores", "Sin decir cuántas", "Dice \
+que están todas".
+
+Las tres siguen estas mismas reglas de estilo, y en las tres va el gramaje o la cantidad de \
+unidades si se puede inferir (los "6 sobres", los "370 ml"):
 
 {_STYLE_RULES}
 
@@ -211,8 +253,10 @@ def _build_unify_prompt(items: list[dict]) -> str:
     return (
         f"Encontrá grupos de variantes entre estos {len(items)} productos:\n\n{listado}\n\n"
         'Devolvé SOLO un JSON con esta forma exacta: {"grupos": [{"filas": [1, 3], "grupo": '
-        '"nombre corto de la línea de producto", "descripcion": "texto de cartel unificado..."}, ...]} '
-        '-- "filas" son los números de la lista de arriba (al menos 2 por grupo). '
+        '"nombre corto de la línea de producto", "opciones": [{"texto": "descripción de cartel...", '
+        '"etiqueta": "en qué se diferencia"}, ...]}, ...]} '
+        '-- "filas" son los números de la lista de arriba (al menos 2 por grupo), y "opciones" '
+        "son 2 o 3 descripciones alternativas ordenadas de la más segura a la más riesgosa. "
         "Sin comentarios ni texto fuera del JSON."
     )
 
@@ -225,8 +269,14 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
     puntual desde el modal, el frontend combina esas filas en una sola y persiste vía el
     mismo PATCH que ya usa la edición manual (ver ConvertidorGrid.tsx: commitUnificacion).
 
-    Devuelve {"grupos": [{"row_ids", "skus", "grupo", "descripcion"}, ...], "truncated": bool,
-    "error": bool}. "error" distingue un fallo real de analisis (red caida, JSON que no
+    Devuelve {"grupos": [{"row_ids", "skus", "grupo", "descripcion", "opciones"}, ...],
+    "truncated": bool, "error": bool}. `opciones` son 2 o 3 redacciones alternativas
+    ({"texto", "etiqueta"}) ordenadas de la mas segura a la mas riesgosa, para que la
+    persona elija en el modal: Tinin solo ve los productos EN OFERTA, no el surtido
+    completo, asi que "todas las variedades" puede ser mentira (ver _UNIFY_SYSTEM_PROMPT).
+    `descripcion` es opciones[0]["texto"], la que el modal precarga.
+
+    "error" distingue un fallo real de analisis (red caida, JSON que no
     parsea -- posiblemente cortado por quedarse sin max_tokens) de "Claude ya reviso todo
     y genuinamente no encontro grupos" -- sin esto, ambos casos se verian identicos para
     quien usa el modal (una lista vacia sin explicacion)."""
@@ -244,7 +294,12 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
         # la cantidad de grupos puede ser alta, y cada uno carga su propio array de
         # filas + nombre + descripción completa. Preferible pagar de más por un output
         # grande que arriesgar un corte a mitad del JSON.
-        content, in_tok, out_tok = await _ask_claude(_UNIFY_SYSTEM_PROMPT, prompt, max_tokens=4096)
+        #
+        # 8192 y no 4096 desde 2026-08-27: cada grupo pasó de traer UNA descripción a
+        # traer dos o tres más su etiqueta, así que el output por grupo se triplicó. Un
+        # corte acá no pierde un grupo: rompe el JSON entero y la pantalla dice que no
+        # encontró nada para unificar.
+        content, in_tok, out_tok = await _ask_claude(_UNIFY_SYSTEM_PROMPT, prompt, max_tokens=8192)
         await log_ai_usage(db, user_id, "convertidor_unificar_categorias", *_ASK_CLAUDE_META, in_tok, out_tok)
         parsed = json.loads(_strip_json_fence(content))
         grupos_raw = parsed.get("grupos", [])
@@ -266,10 +321,10 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
             continue
         filas = g.get("filas")
         grupo_nombre = g.get("grupo")
-        descripcion = g.get("descripcion")
-        if not isinstance(filas, list) or not isinstance(grupo_nombre, str) or not isinstance(descripcion, str):
+        if not isinstance(filas, list) or not isinstance(grupo_nombre, str) or not grupo_nombre.strip():
             continue
-        if not grupo_nombre.strip() or not descripcion.strip():
+        opciones = _parsear_opciones(g)
+        if not opciones:
             continue
 
         # Se arma la lista de candidatos SIN todavía marcarlos como usados --
@@ -290,10 +345,56 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
             "row_ids": [m["row_id"] for m in miembros],
             "skus": [m["codigo"] for m in miembros],
             "grupo": grupo_nombre.strip()[:150],
-            "descripcion": descripcion.strip()[:300],
+            # La primera es la que Tinín puso primera, o sea la más segura (ver
+            # _UNIFY_SYSTEM_PROMPT). Se manda aparte y no solo dentro de
+            # `opciones` porque es la que el modal precarga y la que viaja al
+            # PATCH si nadie toca el desplegable.
+            "descripcion": opciones[0]["texto"],
+            "opciones": opciones,
         })
 
-    return {"grupos": grupos, "truncated": truncated}
+    return {"grupos": grupos, "truncated": truncated, "error": False}
+
+
+# Etiqueta de fallback cuando Claude manda una opción sin `etiqueta`: el
+# desplegable necesita algo para mostrar y "" dejaría una fila en blanco.
+_ETIQUETA_POR_DEFECTO = "Otra redacción"
+
+
+def _parsear_opciones(g: dict) -> list[dict]:
+    """Las descripciones alternativas de un grupo, en el orden que las mandó Claude.
+
+    Tolera la forma vieja (un solo campo `descripcion` de texto) además de la
+    nueva (`opciones`). No es paranoia: si el modelo ignora el esquema nuevo y
+    contesta como antes, sin esto se descartarían TODOS los grupos y la pantalla
+    diría "no encontré nada para unificar", que es la peor forma de fallar --
+    parece un resultado legítimo. Con esto degrada a una sola opción, que es
+    exactamente lo que había antes de este cambio."""
+    crudas = g.get("opciones")
+    if not isinstance(crudas, list):
+        vieja = g.get("descripcion")
+        crudas = [{"texto": vieja}] if isinstance(vieja, str) else []
+
+    opciones: list[dict] = []
+    vistos: set[str] = set()
+    for o in crudas:
+        if isinstance(o, str):
+            o = {"texto": o}          # una opción mandada como string pelado
+        if not isinstance(o, dict):
+            continue
+        texto = o.get("texto")
+        if not isinstance(texto, str) or not texto.strip():
+            continue
+        texto = texto.strip()[:300]
+        if texto.lower() in vistos:   # dos ángulos que quedaron iguales: una sola fila
+            continue
+        vistos.add(texto.lower())
+        etiqueta = o.get("etiqueta")
+        etiqueta = etiqueta.strip()[:60] if isinstance(etiqueta, str) and etiqueta.strip() else _ETIQUETA_POR_DEFECTO
+        opciones.append({"texto": texto, "etiqueta": etiqueta})
+        if len(opciones) == _UNIFY_MAX_OPCIONES:
+            break
+    return opciones
 
 
 # ---------------------------------------------------------------------------

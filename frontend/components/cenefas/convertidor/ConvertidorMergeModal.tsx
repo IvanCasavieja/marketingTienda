@@ -48,6 +48,9 @@ export default function ConvertidorMergeModal({ pair, rowA, rowB, onConfirm, onC
           nombre_articulo: pair.base,
           descripcion_web: rowA.descripcion_web || rowB.descripcion_web,
           es_fiambre_kg: rowA.es_fiambre_kg || rowB.es_fiambre_kg,
+          // Es el MISMO producto con dos SKUs, así que la unidad de cobro es la
+          // misma: alcanza con la que haya resuelto cualquiera de las dos filas.
+          unidad_venta: rowA.unidad_venta || rowB.unidad_venta || "",
         },
       ])
       .then(({ data }) => {

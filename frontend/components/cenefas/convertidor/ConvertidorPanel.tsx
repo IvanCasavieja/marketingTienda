@@ -44,6 +44,11 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
   const [hojas, setHojas] = useState<ConvertidorHoja[]>([]);
   const [hojaActual, setHojaActual] = useState(0);
   const [variablesMapeables, setVariablesMapeables] = useState<string[]>([]);
+  // {variable: campo_de_entrada} -- esa variable no se pide a mano si el campo
+  // ya vino reconocido en la hoja, porque el Convertidor la calcula solo.
+  const [resueltaPorCampo, setResueltaPorCampo] = useState<Record<string, string>>({});
+  // {campo: qué es} -- a qué campos se puede reasignar una columna.
+  const [camposAsignables, setCamposAsignables] = useState<Record<string, string>>({});
   // Lo convertido de cada hoja, por índice. Cambiar de hoja no pierde lo que
   // ya se corrigió a mano en la otra.
   const [resultados, setResultados] = useState<Record<number, EstadoHoja>>({});
@@ -54,7 +59,11 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
   // (una mecánica nueva), porque eso lo resuelve el backend y la grilla que
   // está en pantalla ya no lo refleja.
   const [ultimoMapeo, setUltimoMapeo] = useState<
-    Record<number, { mapeo: Record<string, string>; valores: Record<string, string> }>
+    Record<number, {
+      mapeo: Record<string, string>;
+      valores: Record<string, string>;
+      campos?: Record<string, string>;
+    }>
   >({});
 
   const hoja = hojas.find((h) => h.indice === hojaActual) ?? null;
@@ -104,6 +113,8 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
       setHojas(data.hojas);
       setHojaActual(data.hoja_sugerida);
       setVariablesMapeables(data.variables_mapeables);
+      setResueltaPorCampo(data.resuelta_por_campo ?? {});
+      setCamposAsignables(data.campos_asignables ?? {});
       setPaso("mapear");
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("convertidor.unknownError"));
@@ -115,15 +126,20 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
   async function handleConvertir(
     mapeo: Record<string, string>,
     valores: Record<string, string>,
+    // {nombre_de_columna: campo} -- pisa el campo de entrada de esa columna solo
+    // en esta corrida. Hoy lo llena una sola cosa: aceptar el aviso de "la
+    // columna OFERTA trae precios". No se aprende, a propósito.
+    campos: Record<string, string> = {},
   ) {
     if (!excel) return;
-    setUltimoMapeo((prev) => ({ ...prev, [hojaActual]: { mapeo, valores } }));
+    setUltimoMapeo((prev) => ({ ...prev, [hojaActual]: { mapeo, valores, campos } }));
     setLoading(true);
     try {
       const fd = new FormData();
       fd.append("excel", excel);
       fd.append("mapeo_json", JSON.stringify(mapeo));
       fd.append("valores_json", JSON.stringify(valores));
+      fd.append("campos_json", JSON.stringify(campos));
       fd.append("hoja", String(hojaActual));
       const { data } = await convertidorApi.preview(fd);
       setResultados((prev) => ({
@@ -149,7 +165,7 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
   function revalidar() {
     const guardado = ultimoMapeo[hojaActual];
     if (!guardado) return;
-    handleConvertir(guardado.mapeo, guardado.valores);
+    handleConvertir(guardado.mapeo, guardado.valores, guardado.campos ?? {});
   }
 
   // Barra de hojas: solo aparece si el archivo trae más de una. Numeradas 1, 2,
@@ -213,6 +229,10 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
           key={hojaActual}
           columnas={hoja.columnas}
           variablesMapeables={variablesMapeables}
+          camposReconocidos={hoja.campos_reconocidos ?? []}
+          resueltaPorCampo={resueltaPorCampo}
+          ofertaConPrecios={hoja.oferta_con_precios ?? null}
+          camposAsignables={camposAsignables}
           totalFilas={hoja.total_filas}
           excel={excel}
           hoja={hoja.nombre}

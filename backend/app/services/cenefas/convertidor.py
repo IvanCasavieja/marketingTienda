@@ -104,6 +104,13 @@ _HEADER_SCAN_ROWS = 10
 _DATE_SAMPLE_ROWS = 8  # filas de datos a mirar para juntar valores de muestra para la IA
 
 
+# Espejo de SkuDescripcion.sku (String(600), migración 0049) y de
+# SKU_COMBINADO_MAX_CHARS en ConvertidorGrid.tsx. Los tres tienen que moverse
+# juntos: el frontend avisa antes de mandar, esto corta con un 400 con motivo y
+# la columna es el límite real.
+SKU_MAX_CHARS = 600
+
+
 def normalize_sku(raw) -> str:
     """int/float/str crudo de la celda CODIGO -> string canónico ('17780.0' -> '17780')."""
     if raw is None:
@@ -126,6 +133,15 @@ async def upsert_sku_descripcion(db: AsyncSession, sku: str, descripcion: str, u
     sku_norm = normalize_sku(sku)
     if not sku_norm:
         raise ValueError("SKU inválido")
+    # Mismo largo que SkuDescripcion.sku (migración 0049). Se cierra acá para que
+    # un grupo absurdamente grande devuelva un 400 con motivo en vez de un 500
+    # de Postgres -- la clave entra además en un índice único y en el path de la
+    # URL, así que no puede ser ilimitada.
+    if len(sku_norm) > SKU_MAX_CHARS:
+        raise ValueError(
+            f"El código tiene {len(sku_norm)} caracteres y el máximo es {SKU_MAX_CHARS}. "
+            "Si es un grupo unificado, son demasiados SKU para una sola clave."
+        )
     descripcion = descripcion.strip()
     if not descripcion:
         raise ValueError("La descripción no puede quedar vacía")
@@ -312,6 +328,123 @@ def _mapear_columnas(row) -> tuple[dict[int, str], bool]:
     return candidate, found_codigo
 
 
+async def campos_reconocidos(header_row, db: AsyncSession | None = None) -> set[str]:
+    """Qué campos de entrada resuelve el Convertidor SOLO en esta fila de headers.
+
+    Existe para que la pantalla de mapeo no pida a mano algo que el archivo ya
+    trae reconocido. El caso concreto es `tipoOferta`: el export de gestión trae
+    una columna OFERTA y el motor ya saca el literal de ahí (leído junto con
+    OFERTADET, ver construir_variables), así que pedir que alguien la mapee es
+    trabajo al pedo -- y peor: lo mapeado a mano GANA sobre lo calculado, así que
+    un mapeo hecho sin necesidad puede empeorar el resultado.
+
+    Mira los dos pasos que no cuestan una llamada a IA: los alias fijos de
+    _INPUT_ALIASES y el cache de alias aprendidos (mismo criterio que
+    parse_input_excel, sin el tercer paso). Sin `db` se queda solo con los fijos.
+    """
+    col_map, _ = _mapear_columnas(header_row)
+    campos = set(col_map.values())
+    if db is None:
+        return campos
+
+    mapeadas = set(col_map.keys())
+    sin_resolver = {
+        _norm(cell): idx
+        for idx, cell in enumerate(header_row)
+        if cell is not None and idx not in mapeadas and _norm(cell)
+    }
+    if not sin_resolver:
+        return campos
+
+    result = await db.execute(
+        select(ConvertidorHeaderAlias.header_norm, ConvertidorHeaderAlias.field_name)
+        .where(ConvertidorHeaderAlias.header_norm.in_(sin_resolver.keys()))
+    )
+    for _header_norm, field_name in result.all():
+        if field_name is not None:
+            campos.add(field_name)
+    return campos
+
+
+# ---------------------------------------------------------------------------
+# OFERTA con precios en vez de mecánicas (pedido de Ivan, 2026-08-27)
+# ---------------------------------------------------------------------------
+#
+# La columna OFERTA del export de gestión trae el TITULAR de la mecánica: el
+# literal "2x$299", "6x4", "2da unidad al 50%", solo o adentro de un texto más
+# largo ("Coca Cola Zero 2.25 L 2x$299"). De ahí sale tipoOferta.
+#
+# Pero cuando alguien edita el Excel a mano, a veces escribe en esa columna los
+# PRECIOS de oferta. El Convertidor la sigue leyendo como si fuera el titular:
+# si OFERTADET dice "Combo", el regex del combo no encuentra el "NxM" y la fila
+# queda con `combo_no_parseable`; y el precio real, que estaba ahí al lado, no lo
+# usa nadie. El aviso decía que la mecánica no se pudo parsear, nunca que la
+# columna entera venía con otra cosa.
+#
+# Esto NO se arregla solo, y a propósito: cuál es el precio de oferta cuando hay
+# una columna PRECIO y además una OFERTA con números es una pregunta de negocio,
+# no de código. Se detecta, se avisa en la pantalla de mapeo -- el único momento
+# del flujo en que alguien está mirando las columnas -- y la persona decide.
+
+# Un literal de mecánica adentro del texto: "2x$299", "6x4", "3 x 2",
+# "2da unidad al 50%", "50% off". Si aparece cualquiera, el valor NO es un
+# precio pelado, es un titular (o un titular con el nombre del producto adelante).
+_RE_LITERAL_MECANICA = re.compile(
+    r"\d\s*x\s*\$?\s*\d"          # 2x1, 6x4, 2x$299, 3 x 2
+    r"|\d\s*(?:ra|da|ro|do|ta|va|ma)\b"   # 2da, 3ra, 4ta unidad...
+    r"|\d\s*%"                     # 20%, 50% off
+    r"|\bal\s+\d",                 # "al 50"
+    re.IGNORECASE,
+)
+
+# Un precio de góndola de verdad. El piso de 10 es para no confundir un precio
+# con un RATIO de descuento: gestión escribe "-0.253164556962025" en esa misma
+# columna cuando el tipo es "% Descuentos", y eso no es un precio ni hay que
+# proponer nada con él (ese caso ya está documentado arriba de resolver_mecanica
+# en convertidor_variables.py).
+_PRECIO_PELADO_MIN = 10
+
+
+def _es_precio_pelado(valor: str) -> bool:
+    """El valor es un precio y nada más -- ni literal de mecánica ni jerga."""
+    v = (valor or "").strip()
+    if not v or _RE_LITERAL_MECANICA.search(v):
+        return False
+    # Se le saca el símbolo de moneda de adelante, como hace _parse_price_or_none.
+    limpio = re.sub(r"^\s*(?:\$u?|u\$s?|usd|\$)\s*", "", v, flags=re.IGNORECASE).strip()
+    if not re.fullmatch(r"\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?", limpio):
+        return False
+    # "1.100" es mil cien, no 1,1: _parse_price_or_none toma el punto como
+    # decimal, así que el separador de miles se resuelve aparte (mismo criterio
+    # y mismo regex que _precio_es_de_kilo_en_100g más abajo).
+    if _RE_SEPARADOR_MILES.match(limpio):
+        numero = float(limpio.replace(".", ""))
+    else:
+        numero = _parse_price_or_none(limpio)
+    return numero is not None and numero >= _PRECIO_PELADO_MIN
+
+
+# Qué proporción de los valores no vacíos tiene que ser un precio pelado para
+# decir que la columna entera viene con precios. No es 1.0 porque un listado real
+# mezcla: unas pocas filas pueden traer el titular bien puesto. Tampoco 0.5,
+# porque una columna mitad y mitad no es un caso claro y avisar de más en esta
+# pantalla entrena a la gente a ignorar el aviso.
+_PROPORCION_PRECIOS_PELADOS = 0.8
+
+
+def oferta_trae_precios(valores: list[str]) -> bool:
+    """La columna OFERTA parece traer precios en vez de titulares de mecánica.
+
+    `valores` son los de muestra de esa columna (los mismos que la pantalla de
+    mapeo ya muestra). Se piden al menos 3 no vacíos: con uno o dos, un número
+    suelto es tan probablemente una casualidad como un patrón."""
+    no_vacios = [v for v in (valores or []) if (v or "").strip()]
+    if len(no_vacios) < 3:
+        return False
+    pelados = sum(1 for v in no_vacios if _es_precio_pelado(v))
+    return pelados / len(no_vacios) >= _PROPORCION_PRECIOS_PELADOS
+
+
 def detectar_fila_headers(rows: list[tuple]) -> int | None:
     """Indice (0-based) de la fila de encabezados, o None si no la hay.
 
@@ -383,6 +516,7 @@ async def parse_input_excel(
     allow_ai: bool = False,
     mapeo: dict[str, str] | None = None,
     valores: dict[str, str] | None = None,
+    campos: dict[str, str] | None = None,
     hoja: str | int | None = None,
 ) -> tuple[list[dict], int, list[str]]:
     """Detecta la fila de headers real (puede no ser la fila 1 — el export
@@ -431,8 +565,45 @@ async def parse_input_excel(
 
     header_row_idx = detectar_fila_headers(rows)
     col_map: dict[int, str] = {}
+    # Columnas cuyo campo lo decidió una persona en esta corrida. Se excluyen de
+    # los pasos de resolución automática de más abajo: sin esto, desasignar una
+    # columna (campo "") la dejaba como "no reconocida" y el cache de alias o la
+    # IA se la volvían a asignar, deshaciendo justo lo que se pidió.
+    forzadas: set[int] = set()
     if header_row_idx is not None:
         col_map, _ = _mapear_columnas(rows[header_row_idx])
+        # Override de esta corrida: {nombre_de_columna: campo}. Pisa lo que dice
+        # _INPUT_ALIASES para esa columna, y solo para este archivo -- NO se
+        # aprende. Es deliberado: el caso que lo motiva es un Excel editado a
+        # mano donde la columna OFERTA trae precios en vez del titular de la
+        # mecánica (ver oferta_trae_precios), y eso es un accidente de ESE
+        # archivo, no una convención de nombres que valga para siempre. Lo que sí
+        # se aprende son los nombres de columna nuevos, y eso vive en
+        # ConvertidorHeaderAlias.
+        #
+        # Un campo vacío ("") desasigna la columna: es como decirle "ignorá esta",
+        # y hace falta para poder sacar OFERTA de `oferta` sin mandarla a otro
+        # lado.
+        if campos:
+            por_norm = {_norm(c): campo for c, campo in campos.items() if _norm(c)}
+            for idx, cell in enumerate(rows[header_row_idx]):
+                campo = por_norm.get(_norm(cell)) if cell is not None else None
+                if campo is None:
+                    continue
+                forzadas.add(idx)
+                if campo:
+                    # Se le saca ese campo a cualquier OTRA columna que lo
+                    # tuviera. Pasa siempre en el caso que motiva esto: el
+                    # archivo trae PRECIO y además OFERTA con precios, y al
+                    # mandar OFERTA a `precio` quedaban dos columnas peleando
+                    # por el mismo campo. Ganaba una por el orden en que
+                    # `col_by_var` invierte el dict, que no es una regla que
+                    # nadie eligió. Elegida a mano, gana la elegida.
+                    for otro_idx in [i for i, c in col_map.items() if c == campo and i != idx]:
+                        col_map.pop(otro_idx, None)
+                    col_map[idx] = campo
+                else:
+                    col_map.pop(idx, None)
 
     if header_row_idx is None:
         raise ConvertidorParseError(
@@ -448,7 +619,7 @@ async def parse_input_excel(
     unresolved_by_norm: dict[str, int] = {}
     unresolved_display: dict[str, str] = {}
     for col_idx, cell_val in enumerate(header_row):
-        if cell_val is None or col_idx in mapped_cols:
+        if cell_val is None or col_idx in mapped_cols or col_idx in forzadas:
             continue
         norm = _norm(cell_val)
         if not norm:
@@ -600,16 +771,17 @@ async def parse_input_excel(
 # precio nuevo ni lo persiste en ningún lado — solo marca la fila para que
 # el frontend decida qué mostrar/sugerir.
 #
-# Excepción confirmada con el equipo: chorizo, frankfurters y panchos NUNCA
-# pasan a 100g aunque el texto diga "Kg" -- el chorizo se vende por kilo por
-# decisión comercial, y frankfurters/panchos mantienen el peso original del
-# envase. Ninguno de los dos casos es "menos fiambre" que jamón cocido o
-# salame (que sí convierten) -- es una excepción por línea de producto, no
-# por categoría.
+# Excepción confirmada con el equipo: chorizo, morcilla, frankfurters y panchos
+# NUNCA pasan a 100g aunque el texto diga "Kg" -- chorizo y morcilla se venden
+# por kilo por decisión comercial, y frankfurters/panchos mantienen el peso
+# original del envase. Ninguno de los cuatro casos es "menos fiambre" que jamón
+# cocido o salame (que sí convierten) -- es una excepción por línea de producto,
+# no por categoría. (Morcilla se sumó el 2026-08-27, pedido de Ivan.)
 
 _RE_FIAMBRE = re.compile(r"fiambr", re.IGNORECASE)
 _RE_UNIDAD_KG = re.compile(r"(?:^|[\s.])kg\.?(?:$|[\s.,)])", re.IGNORECASE)
-_RE_SIN_CONVERSION_100G = re.compile(r"\bchorizos?\b|\bfrankfurters?\b|\bpanchos?\b", re.IGNORECASE)
+_RE_SIN_CONVERSION_100G = re.compile(
+    r"\bchorizos?\b|\bmorcillas?\b|\bfrankfurters?\b|\bpanchos?\b", re.IGNORECASE)
 
 
 def _tiene_unidad_kg(*textos: str) -> bool:
@@ -626,6 +798,81 @@ def _es_fiambre_por_kg(comprador: str, nombre_articulo: str, descripcion: str, d
     if _tiene_producto_sin_conversion(nombre_articulo, descripcion, descripcion_web):
         return False
     return _tiene_unidad_kg(nombre_articulo, descripcion, descripcion_web)
+
+
+# ---------------------------------------------------------------------------
+# La unidad de cobro que el nombre de gestión NO dice (pedido de Ivan, 2026-08-27)
+# ---------------------------------------------------------------------------
+#
+# "MORCILLA DULCE DON JOAQUIN", "MUZZA NATURALACT", "PANCETA AHUMADA VILLA
+# MARGARITA": ninguno de los tres trae la unidad en el nombre. Tinín tiene
+# PROHIBIDO inventar datos que no estén en la fuente (ver _STYLE_RULES en
+# convertidor_ai.py), así que hacía lo correcto -- escribir la descripción sin
+# gramaje -- y el cartel salía sin decir por cuánto se cobra. No era un problema
+# del modelo: el dato no estaba en el prompt.
+#
+# Con qué unidad se cobra es conocimiento de góndola, no algo deducible del
+# texto: la fiambrería y los quesos DE CORTE se cobran por 100 g, y morcilla y
+# chorizo por kilo, aunque los cuatro estén en la misma vitrina. Por eso va como
+# tabla explícita por línea de producto, igual que la excepción de arriba.
+#
+# Esto es SOLO para la unidad que FALTA. Si el texto ya dice "Kg" y el producto
+# es de los que van por 100 g, no falta la unidad: está equivocada, y ese caso es
+# el de _es_fiambre_por_kg (arriba), que además propone el precio÷10. Separarlos
+# deja una sola vía para cada arreglo.
+
+# Se cobran por kilo. Frankfurters y panchos NO están acá a propósito: van por
+# envase, y el peso del envase no se puede adivinar -- para esos no hay unidad
+# que sugerir, así que quedan como estaban (sin marca).
+_RE_LINEA_KG = re.compile(r"\bchorizos?\b|\bmorcillas?\b", re.IGNORECASE)
+
+# Se cobran por 100 g venga el comprador que venga. La fiambrería entra sola por
+# COMPRADOR (más abajo), pero el queso de corte puede venir clasificado por
+# LACTEOS y tiene la misma unidad -- ese agujero ya está documentado en el bloque
+# de _precio_es_de_kilo_en_100g. Las variantes de escritura de muzzarella son las
+# que aparecen en los exports reales ("MUZZA", "MUZZARELLA", "MOZARELLA").
+_RE_LINEA_100G = re.compile(
+    r"\bquesos?\b|\bmuzza\b|\bmu[sz]{1,2}arel+as?\b|\bmo[sz]{1,2}arel+as?\b"
+    r"|\bpancetas?\b|\bjam[oó]n(?:es)?\b|\bsalames?\b|\bsalamin(?:es)?\b",
+    re.IGNORECASE,
+)
+
+# El texto ya declara su propia cantidad ("500 g", "2 L", "x 12") o la unidad
+# "Kg" suelta. Cuando eso pasa la tabla de arriba NO opina: "Muzzarella
+# CONAPROLE 500 g" es un paquete que se vende por unidad, no queso de corte, y
+# ponerle "100g" sería mentir en el cartel y encima disparar un precio÷10.
+_RE_CANTIDAD_PROPIA = re.compile(
+    r"\d\s*(?:kgs?|kilos?|kg|grs?|gramos?|g|mls?|cc|litros?|lts?|l|un|u)\b|\bx\s*\d+\b",
+    re.IGNORECASE,
+)
+
+
+def _tiene_cantidad_propia(*textos: str) -> bool:
+    return (any(_RE_CANTIDAD_PROPIA.search(t) for t in textos if t)
+            or _tiene_unidad_kg(*textos))
+
+
+def _unidad_de_venta(comprador: str, nombre_articulo: str, descripcion: str,
+                     descripcion_web: str) -> str:
+    """Con qué unidad se cobra el producto, cuando el texto de origen no lo dice.
+
+    Devuelve "100g", "kg" o "" (no se sabe, o el texto ya trae su cantidad). Es
+    lo único que le faltaba a Tinín para escribir el gramaje sin inventar nada.
+    No calcula ni toca precios: solo marca la fila."""
+    textos = (nombre_articulo, descripcion, descripcion_web)
+    if _tiene_cantidad_propia(*textos):
+        return ""
+    if any(_RE_LINEA_KG.search(t) for t in textos if t):
+        return "kg"
+    # Antes de la lista de 100 g: un frankfurter de la fiambrería va por envase,
+    # y sin este corte caería en la regla de comprador de más abajo.
+    if _tiene_producto_sin_conversion(*textos):
+        return ""
+    if any(_RE_LINEA_100G.search(t) for t in textos if t):
+        return "100g"
+    if comprador and _RE_FIAMBRE.search(comprador):
+        return "100g"
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -673,9 +920,16 @@ def _es_por_100g(*textos: str) -> bool:
 _RE_SEPARADOR_MILES = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
 
 
-def _precio_es_de_kilo_en_100g(precio_raw, *textos: str) -> bool:
-    """La fila se vende por 100 g pero el precio que vino parece el del kilo."""
-    if not _es_por_100g(*textos):
+def _precio_es_de_kilo_en_100g(precio_raw, *textos: str, unidad_venta: str = "") -> bool:
+    """La fila se vende por 100 g pero el precio que vino parece el del kilo.
+
+    `unidad_venta` ("100g" cuando lo sabemos por línea de producto, ver
+    _unidad_de_venta) cuenta igual que si el texto lo dijera. Sin eso, la MUZZA
+    y la PANCETA cuya descripción Tinín recién ahora escribe con "100g" pasarían
+    de largo por este chequeo y saldrían con el precio del kilo -- exactamente el
+    error que se imprimió en el Rompe del Finde y que el bloque de arriba cuenta.
+    """
+    if unidad_venta != "100g" and not _es_por_100g(*textos):
         return False
     crudo = str(precio_raw or "").strip().lstrip("$U S").strip()
     if _RE_SEPARADOR_MILES.match(crudo):
@@ -948,6 +1202,15 @@ async def match_rows(
             "precio_anterior_raw": r["precio_anterior_raw"],
         }
 
+        # Con qué unidad se cobra el producto, cuando el texto de origen no lo
+        # dice. Se calcula una vez porque la usan dos cosas distintas: la marca
+        # que va al prompt de Tinín (para que escriba el gramaje) y el chequeo de
+        # precio de acá abajo (para que ese gramaje no quede con el precio del
+        # kilo).
+        unidad_venta = _unidad_de_venta(
+            r["comprador"], r["nombre_articulo"], descripcion, r["descripcion_web"]
+        )
+
         fila = {
             "row_id":  i,
             "matched": bool(descripcion),
@@ -956,8 +1219,10 @@ async def match_rows(
             "es_fiambre_kg": _es_fiambre_por_kg(
                 r["comprador"], r["nombre_articulo"], descripcion, r["descripcion_web"]
             ),
+            "unidad_venta": unidad_venta,
             "precio_de_kilo_en_100g": _precio_es_de_kilo_en_100g(
-                r["precio_raw"], r["nombre_articulo"], descripcion, r["descripcion_web"]
+                r["precio_raw"], r["nombre_articulo"], descripcion, r["descripcion_web"],
+                unidad_venta=unidad_venta,
             ),
             "warnings_mecanica": warn_mecanica,
         }

@@ -7,6 +7,7 @@ import {
   convertidorApi,
   type ConvertidorColumna,
   type ConvertidorMapeo,
+  type OfertaConPrecios,
 } from "@/lib/api";
 import { varDef } from "@/lib/cenefaVariables";
 import TininMapeo from "./TininMapeo";
@@ -44,6 +45,24 @@ const ARRANCAN_EN_TEXTO = new Set([
 interface Props {
   columnas: ConvertidorColumna[];
   variablesMapeables: string[];
+  /**
+   * Campos de entrada que el Convertidor ya reconoció en esta hoja (codigo,
+   * precio, oferta, oferta_det...).
+   */
+  camposReconocidos: string[];
+  /**
+   * {variable: campo_de_entrada} -- si ese campo está en camposReconocidos, la
+   * variable NO se pide a mano: el Convertidor ya la calcula. Hoy es una sola,
+   * tipoOferta ← la columna OFERTA (leída junto con OFERTADET).
+   */
+  resueltaPorCampo: Record<string, string>;
+  /**
+   * La columna OFERTA trae precios en vez del titular de la mecánica. null = está
+   * bien. La app no lo cambia sola: lo propone y la persona decide.
+   */
+  ofertaConPrecios: OfertaConPrecios | null;
+  /** {campo: qué es} -- a qué campos se puede reasignar una columna. */
+  camposAsignables: Record<string, string>;
   totalFilas: number;
   /**
    * El archivo subido y la hoja que se está mapeando. Van juntos porque el
@@ -56,12 +75,18 @@ interface Props {
   /** Mundo al que se apunta, para filtrar y etiquetar las plantillas. */
   destino?: string | null;
   onBack: () => void;
-  onConfirm: (mapeo: Record<string, string>, valores: Record<string, string>) => void;
+  onConfirm: (
+    mapeo: Record<string, string>,
+    valores: Record<string, string>,
+    campos: Record<string, string>,
+  ) => void;
   converting: boolean;
 }
 
 export default function ConvertidorMapeoStep({
-  columnas, variablesMapeables, totalFilas, destino, excel, hoja, onBack, onConfirm, converting,
+  columnas, variablesMapeables, camposReconocidos, resueltaPorCampo,
+  ofertaConPrecios, camposAsignables, totalFilas,
+  destino, excel, hoja, onBack, onConfirm, converting,
 }: Props) {
   const { t } = useTranslation();
   const [mapeo, setMapeo] = useState<Record<string, string>>({});
@@ -75,6 +100,9 @@ export default function ConvertidorMapeoStep({
   const [plantillaId, setPlantillaId] = useState("");
   const [nombreNuevo, setNombreNuevo] = useState("");
   const [guardando, setGuardando] = useState(false);
+  // {nombre_de_columna: campo} -- el override de esta corrida. Arranca vacío: si
+  // nadie acepta el aviso, el archivo se lee exactamente como se leía antes.
+  const [camposForzados, setCamposForzados] = useState<Record<string, string>>({});
 
   useEffect(() => {
     convertidorApi.listarMapeos(destino ?? undefined)
@@ -159,28 +187,56 @@ export default function ConvertidorMapeoStep({
     return new Set([...cuenta.entries()].filter(([, n]) => n > 1).map(([c]) => c));
   }, [mapeo]);
 
+  // Variables que el Convertidor ya resuelve solo en esta hoja, así que no hay
+  // nada que preguntar. El caso real: el export de gestión trae una columna
+  // OFERTA y de ahí sale tipoOferta (leída junto con OFERTADET), pero tipoOferta
+  // igual aparecía en esta lista pidiendo que alguien la mapeara. Y lo mapeado a
+  // mano GANA sobre lo calculado, así que mapearla "por prolijidad" empeoraba el
+  // resultado: a la cocarda iba el texto crudo de OFERTA ("Coca Cola Zero 2.25 L
+  // 2x$299") en vez del literal limpio que extrae el motor.
+  const yaResueltas = useMemo(() => {
+    const campos = new Set(camposReconocidos);
+    return new Set(
+      Object.entries(resueltaPorCampo)
+        .filter(([variable, campo]) => variablesMapeables.includes(variable) && campos.has(campo))
+        .map(([variable]) => variable),
+    );
+  }, [camposReconocidos, resueltaPorCampo, variablesMapeables]);
+
+  // Una ya resuelta que TIENE algo puesto sigue mostrándose: pasa cuando una
+  // plantilla guardada de antes trae ese mapeo. Se ve y se puede sacar, en vez
+  // de desaparecer con un valor activo escondido atrás.
+  const variablesVisibles = useMemo(
+    () => variablesMapeables.filter(
+      (v) => !yaResueltas.has(v) || mapeo[v] || valores[v]?.trim(),
+    ),
+    [variablesMapeables, yaResueltas, mapeo, valores],
+  );
+
   // Solo viaja lo del modo activo de cada variable: si alguien mapeó una
-  // columna y después pasó a "Escribir", esa columna ya no cuenta.
+  // columna y después pasó a "Escribir", esa columna ya no cuenta. Y solo de las
+  // visibles: una variable que el Convertidor ya resuelve no manda mapeo, ni
+  // aunque una plantilla vieja la traiga.
   const mapeoEfectivo = useMemo(
     () => Object.fromEntries(
-      variablesMapeables
+      variablesVisibles
         .filter((v) => (modos[v] ?? "columna") === "columna" && mapeo[v])
         .map((v) => [v, mapeo[v]]),
     ),
-    [variablesMapeables, modos, mapeo],
+    [variablesVisibles, modos, mapeo],
   );
   const valoresEfectivos = useMemo(
     () => Object.fromEntries(
-      variablesMapeables
+      variablesVisibles
         .filter((v) => modos[v] === "texto" && valores[v]?.trim())
         .map((v) => [v, valores[v].trim()]),
     ),
-    [variablesMapeables, modos, valores],
+    [variablesVisibles, modos, valores],
   );
 
   // Cuenta las resueltas de las dos formas: una variable con texto escrito
   // está tan resuelta como una con columna asignada.
-  const asignadas = variablesMapeables.filter(
+  const asignadas = variablesVisibles.filter(
     (v) => (modos[v] === "texto" ? valores[v] : mapeo[v])?.trim(),
   ).length;
 
@@ -200,6 +256,22 @@ export default function ConvertidorMapeoStep({
           las dos puntas. Antes se ignoraban en silencio; ahora Tinín las
           levanta acá, que es el único momento del flujo en que alguien está
           mirando las columnas del archivo. */}
+      {ofertaConPrecios && (
+        <AvisoOfertaConPrecios
+          aviso={ofertaConPrecios}
+          campos={camposAsignables}
+          elegido={camposForzados[ofertaConPrecios.columna]}
+          onElegir={(campo) =>
+            setCamposForzados((prev) => {
+              const next = { ...prev };
+              if (campo === undefined) delete next[ofertaConPrecios.columna];
+              else next[ofertaConPrecios.columna] = campo;
+              return next;
+            })
+          }
+        />
+      )}
+
       {excel && <TininMapeo excel={excel} hoja={hoja} />}
 
       {/* Plantillas guardadas */}
@@ -258,12 +330,20 @@ export default function ConvertidorMapeoStep({
             {t("convertidor.mapeo.variables")}
           </p>
           <span className="text-xs text-slate-400">
-            {t("convertidor.mapeo.asignadas", { n: asignadas, total: variablesMapeables.length })}
+            {t("convertidor.mapeo.asignadas", { n: asignadas, total: variablesVisibles.length })}
           </span>
         </div>
 
+        {[...yaResueltas].filter((v) => !variablesVisibles.includes(v)).length > 0 && (
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+            {t("convertidor.mapeo.yaResueltas", {
+              variables: [...yaResueltas].filter((v) => !variablesVisibles.includes(v)).join(", "),
+            })}
+          </p>
+        )}
+
         <div className="space-y-2">
-          {variablesMapeables.map((variable) => {
+          {variablesVisibles.map((variable) => {
             const def = varDef(variable);
             const modo = modos[variable] ?? "columna";
             const valor = mapeo[variable] ?? SIN_MAPEAR;
@@ -359,7 +439,7 @@ export default function ConvertidorMapeoStep({
           <ArrowLeft size={15} /> {t("convertidor.mapeo.volver")}
         </button>
         <button
-          onClick={() => onConfirm(mapeoEfectivo, valoresEfectivos)}
+          onClick={() => onConfirm(mapeoEfectivo, valoresEfectivos, camposForzados)}
           disabled={converting}
           className="btn-primary flex items-center gap-2 disabled:opacity-50"
         >
@@ -367,6 +447,97 @@ export default function ConvertidorMapeoStep({
           {converting ? t("convertidor.processing") : t("convertidor.mapeo.convertir")}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// "La columna OFERTA trae precios, no mecánicas"
+// ---------------------------------------------------------------------------
+//
+// OFERTA tiene que traer el TITULAR de la mecánica ("2x$299", "6x4", "2da
+// unidad al 50%"). Cuando alguien edita el Excel a mano a veces escribe ahí los
+// precios, y el Convertidor la seguía leyendo como titular: la mecánica quedaba
+// sin parsear y el precio que estaba ahí al lado no lo usaba nadie.
+//
+// Este aviso NO arregla nada solo, y es a propósito: cuál es el precio de oferta
+// cuando hay una columna PRECIO y además una OFERTA con números es una pregunta
+// de negocio. Se muestran los valores que lo delatan y la persona decide -- y
+// puede decir "dejala como está", que es una respuesta tan válida como las otras.
+function AvisoOfertaConPrecios({
+  aviso, campos, elegido, onElegir,
+}: {
+  aviso: OfertaConPrecios;
+  campos: Record<string, string>;
+  /** undefined = todavía no decidió; "" = ignorar la columna. */
+  elegido: string | undefined;
+  onElegir: (campo: string | undefined) => void;
+}) {
+  const { t } = useTranslation();
+  const [abierto, setAbierto] = useState(false);
+
+  return (
+    <div className="card p-4 space-y-2 border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20">
+      <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+        {t("convertidor.ofertaPrecios.titulo", { columna: aviso.columna })}
+      </p>
+      <p className="text-xs text-amber-700 dark:text-amber-400">
+        {t("convertidor.ofertaPrecios.detalle")}
+      </p>
+      <p className="text-[11px] font-mono text-amber-700/80 dark:text-amber-400/80 break-words">
+        {aviso.muestras.join("   ·   ")}
+      </p>
+
+      {elegido === undefined ? (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => onElegir(aviso.campo_propuesto)}
+            className="btn-primary text-xs"
+          >
+            {t("convertidor.ofertaPrecios.pasarAPrecio")}
+          </button>
+          <button type="button" onClick={() => onElegir("")} className="btn-secondary text-xs">
+            {t("convertidor.ofertaPrecios.ignorar")}
+          </button>
+          {/* "Dejala como está" no escribe nada en camposForzados, así que hay
+              que poder marcar la decisión sin cambiar el comportamiento: se
+              esconde el aviso y el archivo se lee igual que siempre. */}
+          <button type="button" onClick={() => setAbierto(true)} className="btn-secondary text-xs">
+            {t("convertidor.ofertaPrecios.otroCampo")}
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <p className="text-xs text-emerald-700 dark:text-emerald-400">
+            {elegido === ""
+              ? t("convertidor.ofertaPrecios.aplicadoIgnorar", { columna: aviso.columna })
+              : t("convertidor.ofertaPrecios.aplicado", {
+                  columna: aviso.columna,
+                  campo: elegido,
+                  que: campos[elegido] ?? "",
+                })}
+          </p>
+          <button type="button" onClick={() => onElegir(undefined)} className="btn-secondary text-xs">
+            {t("convertidor.ofertaPrecios.deshacer")}
+          </button>
+        </div>
+      )}
+
+      {abierto && elegido === undefined && (
+        <select
+          className="input text-xs w-full mt-1"
+          value=""
+          onChange={(e) => e.target.value && onElegir(e.target.value)}
+        >
+          <option value="">{t("convertidor.ofertaPrecios.elegiCampo")}</option>
+          {Object.entries(campos).map(([campo, que]) => (
+            <option key={campo} value={campo}>
+              {campo} — {que}
+            </option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }

@@ -35,7 +35,9 @@ from app.services.cenefas.convertidor import (
     _norm,
     ConvertidorParseError,
     build_output_workbook,
+    campos_reconocidos,
     grupos_para_skus,
+    oferta_trae_precios,
     guardar_grupo_unificado,
     detectar_fila_headers,
     leer_filas,
@@ -80,6 +82,7 @@ async def preview(
     excel: UploadFile = File(...),
     mapeo_json: str = Form(default="{}", description='JSON {variable: nombre_de_columna} de la pantalla de mapeo'),
     valores_json: str = Form(default="{}", description='JSON {variable: texto_fijo} escrito a mano en la pantalla de mapeo'),
+    campos_json: str = Form(default="{}", description='JSON {nombre_de_columna: campo} que pisa el campo de entrada de esa columna SOLO en esta corrida ("" para ignorarla)'),
     hoja: int | None = Form(default=None, description="Índice de la hoja a convertir (0-based). Sin esto, la primera."),
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
@@ -88,8 +91,13 @@ async def preview(
     try:
         mapeo = {str(k): str(v) for k, v in (json.loads(mapeo_json or "{}") or {}).items()}
         valores = {str(k): str(v) for k, v in (json.loads(valores_json or "{}") or {}).items()}
+        campos = {str(k): str(v) for k, v in (json.loads(campos_json or "{}") or {}).items()}
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="El mapeo de columnas no es un JSON válido")
+    # Un campo que no existe no tendría efecto y podría pisar una columna buena
+    # con basura -- se descarta acá para que el resultado no dependa de qué mandó
+    # el cliente. "" es válido a propósito: quiere decir "ignorá esta columna".
+    campos = {k: v for k, v in campos.items() if v == "" or v in _CAMPOS_SUGERIBLES}
     # Una variable fuera de la lista mapeable no tendría efecto (ver
     # construir_variables) -- se descarta acá para que el resultado no
     # dependa de qué mandó el cliente.
@@ -110,7 +118,7 @@ async def preview(
         parsed, learned_aliases_count, _headers = await parse_input_excel(
             excel_bytes, excel.filename or "",
             db=db, current_user_id=current_user.id, allow_ai=allow_ai,
-            mapeo=mapeo, valores=valores, hoja=hoja,
+            mapeo=mapeo, valores=valores, campos=campos, hoja=hoja,
         )
     except ConvertidorParseError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -289,6 +297,10 @@ class GenerarDescripcionItem(BaseModel):
     nombre_articulo: str = ""
     descripcion_web: str = ""
     es_fiambre_kg: bool = False
+    # "100g" | "kg" | "" — con qué unidad se cobra el producto cuando el nombre
+    # de gestión no lo dice (ver _unidad_de_venta en convertidor.py). Es lo que
+    # le permite a Tinín escribir el gramaje sin inventarlo.
+    unidad_venta: str = ""
 
 
 class GenerarDescripcionesRequest(BaseModel):
@@ -434,6 +446,7 @@ async def columnas(
     request: Request,
     excel: UploadFile = File(...),
     _: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
 ):
     """Columnas del archivo subido, para armar la pantalla de mapeo.
 
@@ -500,9 +513,50 @@ async def columnas(
             1 for f in filas[header_idx + 1:]
             if any(v is not None and str(v).strip() for v in f)
         )
+        cols = _columnas_de(filas, header_idx)
+        reconocidos = await campos_reconocidos(filas[header_idx], db)
+
+        # La columna OFERTA trae precios en vez del titular de la mecánica. Pasa
+        # cuando alguien edita el Excel a mano, y el Convertidor la seguía
+        # leyendo como titular: la mecánica quedaba sin parsear y el precio que
+        # estaba ahí no lo usaba nadie. Se avisa acá, que es el único momento del
+        # flujo en que alguien está mirando las columnas, con los valores que lo
+        # delatan -- y la persona decide, porque cuál es el precio de oferta
+        # cuando hay una columna PRECIO y además una OFERTA con números es una
+        # pregunta de negocio, no de código.
+        #
+        # Se usan más filas de muestra que las 3 que se muestran en pantalla: con
+        # tres valores, dos vacíos dejan la señal en uno solo.
+        aviso = None
+        if "oferta" in reconocidos:
+            idx_oferta = next(
+                (i for i, celda in enumerate(filas[header_idx])
+                 if celda is not None and _INPUT_ALIASES.get(_norm(celda)) == "oferta"),
+                None,
+            )
+            if idx_oferta is not None:
+                muestras = [
+                    str(f[idx_oferta]).strip()
+                    for f in filas[header_idx + 1: header_idx + 1 + _MUESTRAS_PARA_IA]
+                    if idx_oferta < len(f) and f[idx_oferta] is not None and str(f[idx_oferta]).strip()
+                ]
+                if oferta_trae_precios(muestras):
+                    aviso = {
+                        "columna": str(filas[header_idx][idx_oferta]).strip(),
+                        "campo_actual": "oferta",
+                        "campo_propuesto": "precio",
+                        "muestras": muestras[:5],
+                    }
+
         hojas_out.append({
             "indice": indice, "nombre": nombre_hoja,
-            "columnas": _columnas_de(filas, header_idx),
+            "columnas": cols,
+            # Qué campos de entrada ya resuelve el Convertidor solo en ESTA hoja.
+            # Es por hoja y no del archivo: un boceto real trae el export crudo y
+            # una hoja curada a mano, y no traen las mismas columnas.
+            "campos_reconocidos": sorted(reconocidos),
+            # null si la columna OFERTA está bien. Ver el bloque de arriba.
+            "oferta_con_precios": aviso,
             "total_filas": con_datos, "error": None,
         })
 
@@ -525,6 +579,19 @@ async def columnas(
         # Compat: lo que el front leía cuando solo existía una hoja.
         "columnas": sugerida["columnas"],
         "variables_mapeables": list(VARIABLES_MAPEABLES),
+        "campos_reconocidos": sugerida.get("campos_reconocidos", []),
+        # Compat: el aviso de la hoja sugerida (el detalle por hoja va en `hojas`).
+        "oferta_con_precios": sugerida.get("oferta_con_precios"),
+        # Los campos a los que se puede reasignar una columna, con su explicación.
+        # Salen del mismo diccionario que usa Tinín para clasificar columnas, así
+        # la lista no se duplica en el frontend.
+        "campos_asignables": _CAMPOS_SUGERIBLES,
+        # Qué variable mapeable deja de pedirse cuando tal campo de entrada ya
+        # vino reconocido. Viaja desde el backend para que el frontend no tenga
+        # que saber de dónde sale cada variable calculada: hoy es una sola
+        # (tipoOferta sale de la columna OFERTA leída junto con OFERTADET, ver
+        # construir_variables) y si mañana hay otra se agrega acá.
+        "resuelta_por_campo": {"tipoOferta": "oferta"},
         "total_filas": sugerida["total_filas"],
     }
 

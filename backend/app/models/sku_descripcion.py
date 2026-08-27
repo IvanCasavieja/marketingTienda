@@ -21,7 +21,14 @@ class SkuDescripcion(Base):
     # Texto y no entero a propósito: en otras partes del sistema el "código"
     # de un artículo a veces es un rango o trae varios SKUs separados por
     # "/" — no asumimos que el Excel de gestión siempre trae un entero puro.
-    sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    #
+    # 600 y no 64 (migración 0049): un grupo unificado guarda su descripción
+    # bajo el código COMBINADO de todos sus SKU ("520221 - 512909 - ..."), y con
+    # 64 un grupo de 11 productos no entraba -- la unificación se cortaba justo
+    # cuando más sentido tenía. Ver SKU_COMBINADO_MAX_CHARS en
+    # frontend/components/cenefas/convertidor/ConvertidorGrid.tsx, que es el
+    # espejo de este número.
+    sku: Mapped[str] = mapped_column(String(600), nullable=False)
     descripcion: Mapped[str] = mapped_column(String(300), nullable=False)
     # NULL en las filas del seed inicial (no hay usuario); se completa con
     # el usuario real cuando alguien corrige desde el Convertidor.

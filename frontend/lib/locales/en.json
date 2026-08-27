@@ -838,6 +838,8 @@
       "loading": "Tinín rolled up his sleeves and is pickaxing your descriptions out of the data…",
       "notConfigured": "AI generation is not configured in this environment.",
       "genericError": "We couldn't generate the suggestions. Try again in a few minutes.",
+      "edit": "Edit",
+      "saveChanges": "Save changes",
       "approve": "Approve",
       "retry": "Retry",
       "tooLong": "A bit long for the price tag",
@@ -846,7 +848,8 @@
       "approving": "Approving…",
       "failedCount": "We couldn't generate a suggestion for {{count}} product(s) — fill them in by hand.",
       "loadingMore": "Generating the rest in the background… ({{done}}/{{total}})",
-      "fiambreKgBadge": "Deli item by kg → 100g"
+      "fiambreKgBadge": "Deli item by kg → 100g",
+      "unidadVentaBadge": "Charged by {{unidad}}"
     },
     "merge": {
       "bannerTitle": "{{count}} possible duplicate product detected — same product under two SKUs",
@@ -869,6 +872,7 @@
       "noGroups": "We didn't find any groups of variants to unify in this Excel.",
       "combinedSkuNotice": "On approve, these {{count}} rows are combined into a single one under the code \"{{codigo}}\" — the rest are removed from the grid.",
       "codigoTooLong": "This group has too many SKUs to combine into a single code cell — couldn't save it.",
+      "opcionEditada": "Edited by hand",
       "descripcionUnificada": "Unified description",
       "approve": "Approve",
       "approved": "Saved",
@@ -891,6 +895,7 @@
       "errorPlantillas": "Could not load mapping presets",
       "columnasFaltantes": "This file is missing these preset columns: {{columnas}}",
       "variables": "Extra variables — none are required",
+      "yaResueltas": "The converter already resolves {{variables}} on its own, from the file columns — no need to map it.",
       "asignadas": "{{n}} of {{total}} filled in",
       "sinAsignar": "— unassigned —",
       "columnaRepetida": "This column is already assigned to another variable",
@@ -900,6 +905,17 @@
       "modoColumna": "Column",
       "modoTexto": "Type it",
       "textoPlaceholder": "The same text for all {{n}} rows"
+    },
+    "ofertaPrecios": {
+      "titulo": "Column “{{columna}}” has prices, not offer mechanics",
+      "detalle": "That column should carry the offer headline (“2x$299”, “6x4”, “2nd unit at 50%”), but it came with prices. As is, the mechanic can't be built and that price won't be used by anything. Read it as the offer price?",
+      "pasarAPrecio": "Yes, it's the offer price",
+      "ignorar": "None of these — ignore it",
+      "otroCampo": "It's something else…",
+      "elegiCampo": "Which field is it?",
+      "aplicado": "“{{columna}}” will be read as {{campo}} ({{que}}) for this run only.",
+      "aplicadoIgnorar": "“{{columna}}” will be ignored for this run.",
+      "deshacer": "Undo"
     }
   },
   "facturacion": {
