@@ -895,7 +895,6 @@
       "errorPlantillas": "No se pudieron cargar las plantillas de mapeo",
       "columnasFaltantes": "Este archivo no tiene estas columnas de la plantilla: {{columnas}}",
       "variables": "Variables extra — ninguna es obligatoria",
-      "yaResueltas": "El Convertidor ya resuelve {{variables}} solo, desde las columnas del archivo — no hace falta mapearla.",
       "asignadas": "{{n}} de {{total}} completadas",
       "sinAsignar": "— sin asignar —",
       "columnaRepetida": "Esta columna ya está asignada a otra variable",
@@ -946,14 +945,12 @@
     "mapeoIA": {
       "titulo": "Columnas que no reconocí",
       "detalle": "Tinín mira las columnas de tu archivo que el Convertidor no sabe leer y te dice qué cree que es cada una. Lo que confirmes queda aprendido: esa columna no se vuelve a preguntar nunca más.",
-      "boton": "Que las mire Tinín",
       "mirando": "Mirando…",
       "ninguno": "No es ninguno",
       "despues": "Dejarla para después",
       "confirmar": "Confirmar {{count}}",
       "guardado": "{{count}} columna(s) aprendidas. No se vuelven a preguntar.",
       "yaAprendidas": "Ya aprendidas de antes ({{count}}):",
-      "nadaQuePreguntar": "Reconozco todas las columnas de este archivo. {{count}} de ellas las aprendí de vos antes.",
       "nadaPendiente": "No queda nada por confirmar."
     },
     "mecanicaIA": {

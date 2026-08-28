@@ -895,7 +895,6 @@
       "errorPlantillas": "Não foi possível carregar os modelos de mapeamento",
       "columnasFaltantes": "Este arquivo não tem estas colunas do modelo: {{columnas}}",
       "variables": "Variáveis extras — nenhuma é obrigatória",
-      "yaResueltas": "O conversor já resolve {{variables}} sozinho, a partir das colunas do arquivo — não precisa mapear.",
       "asignadas": "{{n}} de {{total}} preenchidas",
       "sinAsignar": "— sem atribuir —",
       "columnaRepetida": "Esta coluna já está atribuída a outra variável",

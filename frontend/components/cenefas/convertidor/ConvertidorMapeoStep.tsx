@@ -334,14 +334,9 @@ export default function ConvertidorMapeoStep({
           </span>
         </div>
 
-        {[...yaResueltas].filter((v) => !variablesVisibles.includes(v)).length > 0 && (
-          <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
-            {t("convertidor.mapeo.yaResueltas", {
-              variables: [...yaResueltas].filter((v) => !variablesVisibles.includes(v)).join(", "),
-            })}
-          </p>
-        )}
-
+        {/* Sin banner de "ya resueltas" (2026-08-29): una variable que el
+            Convertidor resuelve solo directamente no aparece en la lista, y
+            eso alcanza — anunciarlo era ruido. */}
         <div className="space-y-2">
           {variablesVisibles.map((variable) => {
             const def = varDef(variable);

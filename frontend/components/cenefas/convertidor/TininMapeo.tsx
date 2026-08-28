@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Sparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -38,6 +38,20 @@ export default function TininMapeo({ excel, hoja }: Props) {
   // lo corrige. La clave es el header, así una corrección pisa la propuesta.
   const [elegido, setElegido] = useState<Record<string, string>>({});
   const [descartados, setDescartados] = useState<Set<string>>(new Set());
+  // Se acaba de confirmar algo: el panel se queda un momento mostrando el
+  // resultado en vez de desaparecer bajo los pies del que apretó el botón.
+  const [recienConfirmado, setRecienConfirmado] = useState(false);
+  const pedidoRef = useRef(false);
+
+  // Automático (2026-08-29, pedido de Ivan): Tinín mira las columnas solo,
+  // al entrar al mapeo, en vez de esperar a que alguien aprete un botón.
+  // Si no hay nada que preguntar, el panel directamente no aparece.
+  useEffect(() => {
+    if (pedidoRef.current) return;
+    pedidoRef.current = true;
+    preguntar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function preguntar() {
     setCargando(true);
@@ -49,11 +63,8 @@ export default function TininMapeo({ excel, hoja }: Props) {
       ));
       setDescartados(new Set());
       if (data.errores.length) toast.error(data.errores[0]);
-      if (data.sugerencias.length === 0) {
-        toast.success(t("convertidor.mapeoIA.nadaQuePreguntar", {
-          count: data.ya_aprendidas.length,
-        }));
-      }
+      // Sin toast cuando no hay nada que preguntar: corriendo automático en
+      // cada carga, "todo reconocido" es el caso normal y no es noticia.
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("convertidor.unknownError"));
     } finally {
@@ -72,6 +83,7 @@ export default function TininMapeo({ excel, hoja }: Props) {
     setGuardando(true);
     try {
       await convertidorApi.confirmarAliasColumnas(aliases);
+      setRecienConfirmado(true);
       toast.success(t("convertidor.mapeoIA.guardado", { count: aliases.length }));
       // Lo confirmado ya no se pregunta más: se saca de la lista en vez de
       // dejarlo con un tilde, para que quede claro qué falta contestar.
@@ -88,6 +100,13 @@ export default function TininMapeo({ excel, hoja }: Props) {
 
   const pendientes = (datos?.sugerencias ?? []).filter((s) => !descartados.has(s.header_norm));
 
+  // Todo reconocido y nada recién confirmado: el panel no tiene nada que
+  // decir, así que no aparece. Antes había un botón y un aviso permanente;
+  // desde 2026-08-29 esto corre solo y solo habla cuando hay una pregunta.
+  if (!cargando && datos && pendientes.length === 0 && !recienConfirmado) {
+    return null;
+  }
+
   return (
     <div className="rounded-lg border border-violet-200 dark:border-violet-900/60 bg-violet-50/60 dark:bg-violet-950/20 p-3 space-y-3">
       <div className="flex items-start gap-2">
@@ -100,13 +119,10 @@ export default function TininMapeo({ excel, hoja }: Props) {
             {t("convertidor.mapeoIA.detalle")}
           </p>
         </div>
-        {!datos && (
-          <button type="button" onClick={preguntar} disabled={cargando}
-            className="btn-secondary h-8 px-3 text-xs shrink-0 inline-flex items-center gap-1.5">
-            {cargando
-              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />{t("convertidor.mapeoIA.mirando")}</>
-              : t("convertidor.mapeoIA.boton")}
-          </button>
+        {cargando && (
+          <span className="shrink-0 inline-flex items-center gap-1.5 text-xs text-violet-700 dark:text-violet-300">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />{t("convertidor.mapeoIA.mirando")}
+          </span>
         )}
       </div>
 

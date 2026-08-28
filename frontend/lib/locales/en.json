@@ -895,7 +895,6 @@
       "errorPlantillas": "Could not load mapping presets",
       "columnasFaltantes": "This file is missing these preset columns: {{columnas}}",
       "variables": "Extra variables — none are required",
-      "yaResueltas": "The converter already resolves {{variables}} on its own, from the file columns — no need to map it.",
       "asignadas": "{{n}} of {{total}} filled in",
       "sinAsignar": "— unassigned —",
       "columnaRepetida": "This column is already assigned to another variable",

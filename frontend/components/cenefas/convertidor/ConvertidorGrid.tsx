@@ -100,8 +100,11 @@ const COLUMNS: ColumnDef[] = [
   // Sin warningCodes a propósito: los avisos de mecánica nacen de OFERTA y
   // OFERTADET, y se pintan allá. Ver la nota en esas dos columnas.
   { key: "mecanica",      label: "mecanica",    editable: "simple", siempre: true },
+  // Los avisos de mecánica ("combo_no_parseable", etc.) se pintan acá desde
+  // 2026-08-29: tipoOferta ES la columna OFERTA renombrada (el crudo ya no se
+  // muestra aparte), así que el valor, la edición y el aviso viven juntos.
   { key: "tipoOferta",    label: "tipoOferta",    editable: "simple",
-    warningCodes: ["oferta_inesperada"] },
+    warningCodes: ["oferta_inesperada", "combo_no_parseable", "mxn_no_parseable", "mxn_sin_precio"] },
   { key: "precioRegular", label: "precioRegular", editable: "simple", siempre: true,
     warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
   { key: "decimalPrecioRegular", label: "decimalPrecioRegular", editable: "simple", siempre: true },
@@ -138,10 +141,9 @@ const COLUMNS: ColumnDef[] = [
   // por qué mirando esa columna.
   { key: "oferta_det",      label: "· Oferta Det",     contexto: true, siempre: true,
     warningCodes: ["missing_oferta_det", "oferta_det_invalido"] },
-  // El dato crudo de gestion, de solo lectura. Lo que no se entendio se marca
-  // sobre tipoOferta, que es donde queda el valor y donde se puede editar.
-  { key: "oferta_origen",   label: "· Oferta",         contexto: true, siempre: true,
-    warningCodes: ["combo_no_parseable", "mxn_no_parseable", "mxn_sin_precio"] },
+  // La columna "· Oferta" (el crudo de gestión) se eliminó el 2026-08-29:
+  // tipoOferta ES esa columna renombrada por el Convertidor, mostrarla dos
+  // veces era duplicarla. Los avisos que vivían acá pasaron a tipoOferta.
   { key: "moneda",          label: "· Moneda",         contexto: true, siempre: true,
     warningCodes: ["moneda_invalida", "moneda_no_pesos"] },
   { key: "comprador",       label: "· Comprador",      contexto: true },
