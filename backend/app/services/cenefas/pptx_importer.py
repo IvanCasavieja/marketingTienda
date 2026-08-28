@@ -602,7 +602,11 @@ def _build_segments(
             segments.append({"type": "static", "value": text[pos:m.start()], "style": _style_at(pos, m.start())})
         var_name, var_type, transform = _resolve_placeholder(m.group(1).lower(), m.group(2))
         segments.append({"type": "variable", "value": var_name, "transform": transform, "style": _style_at(m.start(), m.end())})
-        seg_vars.append((var_name, var_type))
+        # var_name "" = placeholder dado de baja: el segmento queda (vacío,
+        # no imprime nada) pero no puede entrar al panel de Variables con
+        # nombre vacío.
+        if var_name:
+            seg_vars.append((var_name, var_type))
         pos = m.end()
     if pos < len(text):
         segments.append({"type": "static", "value": text[pos:], "style": _style_at(pos, len(text))})
@@ -834,7 +838,16 @@ def _parse_shape(
         # vocabulario ya no hay razón para que el import se comporte distinto
         # según el mundo.
         multi_run_trigger = len(non_empty_runs) > 1
-        if placeholder_matches and (len(placeholder_matches) > 1 or multi_run_trigger):
+        # Texto estático y placeholder en el MISMO run también van por
+        # segmentos (2026-08-28). PowerPoint junta "$<<precioOferta>>" en un
+        # run único cuando el símbolo y el placeholder comparten formato, y
+        # con el criterio de arriba solo (cantidad de runs) ese cuadro caía a
+        # "variable pura": el "$" se descartaba EN SILENCIO al importar. Caso
+        # real: la A4 REDEX re-subida con el símbolo agregado a mano salía
+        # igual que antes, sin el $. _build_segments corta por posiciones
+        # sobre el texto, no por runs, así que resuelve este caso sin cambios.
+        con_texto_fijo = bool(placeholder_matches) and text != placeholder_matches[0].group(0)
+        if placeholder_matches and (len(placeholder_matches) > 1 or multi_run_trigger or con_texto_fijo):
             segments, seg_vars = _build_segments(shape, text, placeholder_matches, theme_colors)
             return {**common, "type": "text", "name": (text[:30] or "texto"),
                     "variable": None, "segments": segments,

@@ -341,9 +341,15 @@ def construir_variables(
     # arriba y abajo del precio en vez de en un renglon.
     out["tipoOfertaComprando"] = str(mecanica.get("tipoOfertaComprando", "") or "")
     out["unidad"] = str(mecanica.get("unidad", "") or "")
-    # El titular sale de la columna OFERTA del listado, ya filtrado de las
-    # etiquetas internas de gestión (ver resolver_mecanica).
-    out["tipoOferta"] = str(mecanica.get("tipoOferta", "") or "")
+    # El titular sale de la columna OFERTA del listado. Cuando la mecánica ya
+    # resolvió un literal limpio ("2x$299" recortado de "Coca Cola Zero 2.25L
+    # 2x$299"), ese gana; para el resto, el texto crudo de OFERTA pasa TAL
+    # CUAL (decisión de Ivan, 2026-08-28: "el convertidor debería cambiarle
+    # el nombre a la columna OFERTA, no mapearla más"). Ojo: eso incluye lo
+    # que gestión escriba ahí ("PVP", "precio fijo", un precio suelto) — se
+    # ve en la grilla antes de generar, y ahí se corrige o se borra.
+    out["tipoOferta"] = (str(mecanica.get("tipoOferta", "") or "")
+                         or str(parsed.get("oferta", "") or "").strip())
 
     # Lo mapeado pisa lo calculado.
     for var, valor in mapeo.items():
