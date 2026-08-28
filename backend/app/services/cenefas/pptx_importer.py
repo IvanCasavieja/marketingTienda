@@ -101,7 +101,10 @@ _LEGACY_PLACEHOLDERS: dict[str, str | None] = {
     # estuvo en esta tabla, un <<unidad>> se importaba y quedaba vacío para
     # siempre, sin avisar. Ahora `resolve()` la reconoce como canónica y el
     # paso 1 de _resolve_placeholder la resuelve antes de llegar a este puente.
-    "moneda":                None,   # el símbolo pasó a ser texto fijo del diseño
+    # Desde 2026-08-29 el símbolo ES una variable de nuevo (unidadMoneda,
+    # decisión de Ivan): un <<Moneda>> viejo pasa a resolverla en vez de
+    # importarse como cuadro vacío.
+    "moneda":                "unidadMoneda",
     "categoria":             None,   # campo interno, nunca se dibujó
     "subcategoria":          None,
     "descuento":             None,

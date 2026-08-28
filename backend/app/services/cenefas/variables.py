@@ -1,4 +1,4 @@
-"""Vocabulario único de variables de cenefas — 31 nombres, un solo lenguaje.
+"""Vocabulario único de variables de cenefas — 32 nombres, un solo lenguaje.
 
 Desde 08/2026 el nombre de la columna del Excel, el placeholder del PPTX
 (``<<nombre>>``) y la clave del JSON del template son SIEMPRE el mismo
@@ -17,7 +17,7 @@ import re
 import unicodedata
 
 # ---------------------------------------------------------------------------
-# Las 31 variables
+# Las 32 variables
 # ---------------------------------------------------------------------------
 
 # Identificación y textos.
@@ -82,6 +82,13 @@ TEXT_VARS: tuple[str, ...] = (
     "tipoOferta",
     "tipoOfertaComprando",
     "unidad",
+    # El simbolo de moneda ("$" / "U$S"), agregado el 2026-08-29 (decision de
+    # Ivan). El Convertidor la escribe SIEMPRE, leyendo la columna MONEDA del
+    # export de gestion, y el diseno la dibuja al lado de cada precio con el
+    # placeholder <<unidadMoneda>>. Reemplaza al "$" como texto fijo del
+    # diseno: con la variable, una fila en dolares sale con U$S sola, sin
+    # depender de una plantilla especial. Es de TEXTO: se imprime tal cual.
+    "unidadMoneda",
     "vigencia",
     "aclaracionUno",
     "aclaracionDos",
@@ -94,8 +101,8 @@ TEXT_VARS: tuple[str, ...] = (
 )
 
 # Precios: se normalizan al formato uruguayo y se les separa el decimal.
-# SIN prefijo de moneda -- el "$"/"U$S" ahora va como cuadro de texto fijo en
-# el diseño de la PPT (decisión explícita 08/2026), así que si el valor
+# SIN prefijo de moneda -- el "$"/"U$S" viaja aparte en `unidadMoneda`
+# (desde 2026-08-29; antes era texto fijo del diseño), así que si el valor
 # también lo trajera quedaría duplicado ("$$899").
 PRICE_VARS: tuple[str, ...] = (
     "precioRegular",
@@ -142,6 +149,7 @@ ORDEN_EXPORT: tuple[str, ...] = (
     "tipoOferta",
     "tipoOfertaComprando",
     "unidad",
+    "unidadMoneda",
     "precioRegular", "decimalPrecioRegular",
     "precioOferta",  "decimalPrecioOferta",
     "promoOferta",   "decimalPromoOferta",

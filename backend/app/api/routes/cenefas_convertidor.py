@@ -236,6 +236,7 @@ class ConvertidorRowIn(BaseModel):
     tipoOferta:           str = ""
     tipoOfertaComprando:  str = ""
     unidad:               str = ""
+    unidadMoneda:         str = ""
     precioRegular:        str = ""
     decimalPrecioRegular: str = ""
     precioOferta:         str = ""

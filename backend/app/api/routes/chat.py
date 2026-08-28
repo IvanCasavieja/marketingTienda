@@ -166,7 +166,7 @@ REGLAS IMPORTANTES:
 - **Ninguna variable es obligatoria.** Si la plantilla no tiene el cuadro, no se sustituye nada; si el Excel no trae la columna, la variable queda vacía.
 - Los nombres de columna deben coincidir exactamente. No hay nombres legacy: si una columna se llama distinto, se la renombra en la pantalla de mapeo del Convertidor.
 - **Cada precio va partido en entero + decimal**, en dos variables. El decimal siempre lleva la coma adelante (",50") y queda vacío si el precio es redondo.
-- **El símbolo de moneda ya no es una variable**: va como texto fijo en el diseño de la PPT. Por eso los precios viajan sin "$".
+- **El símbolo de moneda es la variable unidadMoneda** ("$" o "U$S", desde 2026-08-29): el Convertidor la escribe siempre desde la columna MONEDA de gestión, y el diseño la dibuja al lado de cada precio con <<unidadMoneda>>. Los precios siguen viajando sin "$" adentro.
 - `legales` está apagado por defecto: muchas plantillas ya traen el texto legal impreso en el diseño y sustituir encima lo duplicaría.
 - Se puede descargar una plantilla Excel de ejemplo con las 26 columnas desde la pantalla de generación ("Descargar plantilla").
 
@@ -298,7 +298,7 @@ Un Superadmin debe ir a [Admin]({_BASE_URL}/admin) → sección Usuarios → "Nu
 Sí. Agregás una columna `dia` en el Excel con el valor del día (ej: "LUNES", "MARTES"). Si el template tiene el componente `dia` en su diseño, mostrará el día de cada producto en la cenefa correspondiente. Ideal para cenefas de tipo "Plato del día".
 
 **Caso 8 — "¿Cómo genero cenefas con precio en dólares?"**
-El símbolo de moneda dejó de ser una variable: va como texto fijo en el diseño de la plantilla. Para dólares hace falta una plantilla cuyo diseño tenga "U$S" escrito. El Convertidor marca en la grilla las filas cuya moneda no es pesos, justamente para que no se impriman con el "$" de una plantilla en moneda local.
+El símbolo de moneda es la variable unidadMoneda (desde 2026-08-29): el Convertidor la llena con "$" o "U$S" según la columna MONEDA de gestión, y el diseño la dibuja con el placeholder <<unidadMoneda>> al lado de cada precio — una fila en dólares sale con U$S sola, sin plantilla especial. El Convertidor igual marca en la grilla las filas cuya moneda no es pesos, para que una persona las mire.
 
 **Caso 9 — "El Dashboard marcó una campaña como problemática, ¿qué hago?"**
 El [Dashboard]({_BASE_URL}/dashboard) detecta automáticamente si una campaña cae más de 30% vs el período anterior y muestra una alerta. Para profundizar, andá a [Campañas]({_BASE_URL}/campaigns) y filtrá por esa campaña para ver el detalle histórico y comparar manualmente, o llevá el dato a [Análisis IA]({_BASE_URL}/analytics) → La Triada para que las tres IAs lo debatan.

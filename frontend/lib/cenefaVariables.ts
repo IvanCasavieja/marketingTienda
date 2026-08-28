@@ -23,6 +23,7 @@ export const CENEFA_VARIABLES: CenefaVarDef[] = [
   { name: "codigo",         desc: "Código de artículo / SKU",                       group: "texto" },
   { name: "descripcion",    desc: "Nombre del producto",                            group: "texto" },
   { name: "mecanica",       desc: "Mecánica ya redactada (\"Comprando 3, $33 la unidad.\")", group: "texto" },
+  { name: "unidadMoneda",   desc: "Símbolo de moneda ($ o U$S) — va al lado de cada precio", group: "texto" },
   { name: "vigencia",       desc: "Período de validez de la promo",                 group: "texto" },
   { name: "aclaracionUno",  desc: "Primera aclaración",                             group: "texto" },
   { name: "aclaracionDos",  desc: "Segunda aclaración",                             group: "texto" },

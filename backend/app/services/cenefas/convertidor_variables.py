@@ -341,15 +341,21 @@ def construir_variables(
     # arriba y abajo del precio en vez de en un renglon.
     out["tipoOfertaComprando"] = str(mecanica.get("tipoOfertaComprando", "") or "")
     out["unidad"] = str(mecanica.get("unidad", "") or "")
-    # El titular sale de la columna OFERTA del listado. Cuando la mecánica ya
-    # resolvió un literal limpio ("2x$299" recortado de "Coca Cola Zero 2.25L
-    # 2x$299"), ese gana; para el resto, el texto crudo de OFERTA pasa TAL
-    # CUAL (decisión de Ivan, 2026-08-28: "el convertidor debería cambiarle
-    # el nombre a la columna OFERTA, no mapearla más"). Ojo: eso incluye lo
-    # que gestión escriba ahí ("PVP", "precio fijo", un precio suelto) — se
-    # ve en la grilla antes de generar, y ahí se corrige o se borra.
-    out["tipoOferta"] = (str(mecanica.get("tipoOferta", "") or "")
-                         or str(parsed.get("oferta", "") or "").strip())
+    # El titular sale de la columna OFERTA del listado, ya filtrado de las
+    # etiquetas internas de gestión (ver resolver_mecanica): SOLO las
+    # mecánicas de verdad (combo, M x N, 2da unidad) escriben la cocarda.
+    # El passthrough directo de OFERTA se probó el 2026-08-28 y se revirtió
+    # al día siguiente: gestión escribe ahí "PVP", "precio fijo" o el precio
+    # repetido, y eso salía impreso gigante en la cocarda (visto en vivo con
+    # el listado de mundo hogar).
+    out["tipoOferta"] = str(mecanica.get("tipoOferta", "") or "")
+
+    # El símbolo de moneda, SIEMPRE presente (2026-08-29): sale de la columna
+    # MONEDA de gestión y viaja como variable propia, para que el diseño lo
+    # dibuje al lado de cada precio con <<unidadMoneda>>. Una fila en dólares
+    # sale con U$S sola, sin plantilla especial.
+    moneda_norm = str(parsed.get("moneda", "") or "").strip().upper()
+    out["unidadMoneda"] = "U$S" if moneda_norm in ("U$S", "US$", "USD") else "$"
 
     # Lo mapeado pisa lo calculado.
     for var, valor in mapeo.items():

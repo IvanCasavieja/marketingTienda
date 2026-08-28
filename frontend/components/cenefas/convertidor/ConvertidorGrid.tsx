@@ -33,7 +33,7 @@ type ColumnKey =
   | "nombre_articulo" | "comprador" | "moneda" | "oferta_origen" | "oferta_det" | "descripcion_web"
   // las 26 variables
   | "codigo" | "descripcion" | "mecanica"
-  | "tipoOferta"
+  | "tipoOferta" | "unidadMoneda"
   | "precioRegular" | "decimalPrecioRegular"
   | "precioOferta" | "decimalPrecioOferta"
   | "ofertaUno" | "decimalPrecioUno"
@@ -105,6 +105,11 @@ const COLUMNS: ColumnDef[] = [
   // muestra aparte), así que el valor, la edición y el aviso viven juntos.
   { key: "tipoOferta",    label: "tipoOferta",    editable: "simple",
     warningCodes: ["oferta_inesperada", "combo_no_parseable", "mxn_no_parseable", "mxn_sin_precio"] },
+  // El simbolo de moneda ("$" / "U$S"), variable propia desde 2026-08-29:
+  // el Convertidor la escribe siempre desde MONEDA. Editable por si una fila
+  // puntual necesita corregirse a mano.
+  { key: "unidadMoneda",  label: "unidadMoneda",  editable: "simple", siempre: true,
+    warningCodes: ["moneda_invalida", "moneda_no_pesos"] },
   { key: "precioRegular", label: "precioRegular", editable: "simple", siempre: true,
     warningCodes: ["missing_precio_anterior", "precio_anterior_invalido"] },
   { key: "decimalPrecioRegular", label: "decimalPrecioRegular", editable: "simple", siempre: true },
@@ -144,8 +149,7 @@ const COLUMNS: ColumnDef[] = [
   // La columna "· Oferta" (el crudo de gestión) se eliminó el 2026-08-29:
   // tipoOferta ES esa columna renombrada por el Convertidor, mostrarla dos
   // veces era duplicarla. Los avisos que vivían acá pasaron a tipoOferta.
-  { key: "moneda",          label: "· Moneda",         contexto: true, siempre: true,
-    warningCodes: ["moneda_invalida", "moneda_no_pesos"] },
+  { key: "moneda",          label: "· Moneda",         contexto: true, siempre: true },
   { key: "comprador",       label: "· Comprador",      contexto: true },
   { key: "descripcion_web", label: "· Descripción web", contexto: true,
     warningCodes: ["missing_descripcion_web", "descripcion_web_invalida"] },

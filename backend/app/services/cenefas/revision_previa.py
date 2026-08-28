@@ -178,6 +178,12 @@ def revisar(
             # decimal tampoco es esperable y avisar por los dos es ruido.
             if var in DECIMAL_OF.values():
                 continue
+            # unidadMoneda viene llena en el 100% de las filas (el Convertidor
+            # la escribe siempre), y varios mundos traen el "$" impreso en el
+            # diseño en vez del cuadro <<unidadMoneda>>. Avisar acá sería un
+            # aviso permanente en cada corrida de esos mundos.
+            if var == "unidadMoneda":
+                continue
             hallazgos.append({
                 "nivel":      "medio",
                 "tipo":       "dato_sin_cuadro",

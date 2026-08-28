@@ -403,6 +403,7 @@ export interface ConvertidorRow {
   mecanica: string;
   /** Titular grande ("2x1", "25% OFF"). Texto: se imprime tal cual venga. */
   tipoOferta: string;
+  unidadMoneda: string;
   precioRegular: string;
   decimalPrecioRegular: string;
   precioOferta: string;

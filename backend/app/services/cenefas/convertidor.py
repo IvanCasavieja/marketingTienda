@@ -1018,10 +1018,10 @@ def _compute_warnings(row: dict) -> list[str]:
     if moneda_norm and moneda_norm not in _VALID_MONEDAS:
         w.append("moneda_invalida")
     elif moneda_norm and moneda_norm not in ("$", "uyu"):
-        # Desde 08/2026 el símbolo de moneda es texto FIJO del diseño de la
-        # PPT (dejó de ser una variable), así que una fila en dólares se
-        # imprimiría con el "$" de la plantilla y un precio que no es en
-        # pesos. No se puede arreglar solo: lo tiene que ver una persona.
+        # Desde 2026-08-29 el símbolo viaja en la variable unidadMoneda, así
+        # que una fila en dólares SÍ sale con "U$S" solo. El aviso queda
+        # igual: un precio en dólares en una góndola de pesos es algo que
+        # una persona tiene que mirar, aunque el símbolo salga bien.
         w.append("moneda_no_pesos")
 
     nombre_articulo = str(row.get("nombre_articulo") or "").strip()
@@ -1318,8 +1318,10 @@ _WARN_VAR = {
     "mxn_sin_precio":           "mecanica",
     "oferta_det_invalido":      "mecanica",
     "missing_oferta_det":       "mecanica",
-    "moneda_invalida":          "precioOferta",
-    "moneda_no_pesos":          "precioOferta",
+    # Desde 2026-08-29 el simbolo es una variable propia: los problemas de
+    # moneda se pintan sobre ella, no sobre el precio.
+    "moneda_invalida":          "unidadMoneda",
+    "moneda_no_pesos":          "unidadMoneda",
 }
 
 # Warnings que NO son "falta el dato" sino "hay contenido que no cierra":
