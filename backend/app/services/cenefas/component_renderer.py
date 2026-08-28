@@ -504,9 +504,16 @@ def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
         if ox is None or oy is None or oh is None or ox <= x + _SEPARACION_MIN_CM:
             continue
         # Tiene que estar en el mismo renglon, no arriba ni abajo: se pide que
-        # se solapen verticalmente en mas de la mitad de mi alto.
+        # se solapen verticalmente en mas de la mitad del alto DEL MAS BAJO de
+        # los dos. Medirlo contra mi propio alto dejaba pasar exactamente el
+        # caso que esta funcion existe para frenar: en el 3xA4 de Redexpres la
+        # caja del precio mide 8,55 cm de alto y la de la descripcion 1,08 --
+        # la descripcion la pisa entera (1,08 de solape) pero eso es menos que
+        # la mitad de 8,55, asi que no contaba como vecina y "U$S449" a 97 pt
+        # se imprimia ENCIMA del texto de la descripcion (visto en el render
+        # real de mundo hogar, 2026-08-29).
         solape = min(y + h, oy + oh) - max(y, oy)
-        if solape <= h / 2:
+        if solape <= min(h, oh) / 2:
             continue
         # Un vecino que va a quedar vacio no limita nada.
         if not _texto_resuelto(otro, product).strip():
