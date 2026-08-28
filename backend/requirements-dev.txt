@@ -1,0 +1,2 @@
+# Dependencias solo de desarrollo/CI -- Render instala requirements.txt, no esto.
+pytest>=8,<10
