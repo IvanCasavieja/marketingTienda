@@ -750,7 +750,16 @@ async def list_jobs(
         .limit(20)
     )
     jobs = result.scalars().all()
-    return [await _job_to_dict(j) for j in jobs]
+    # include_preview=False, por lo mismo que el listado de un lote (ver el
+    # docstring de _job_to_dict): con el preview puesto, esta lista lee de
+    # Postgres el PPTX de origen de CADA job en estado "preview" -- 1,7 MB y
+    # ~15s medidos con 13 previews -- y la pantalla de jobs la pollea cada 3s
+    # mientras hay una corrida activa, compitiendo con los workers que están
+    # generando. Además mandaba template_def y preview_products (descripción,
+    # SKU y precios del Excel) de jobs ajenos a cualquiera con cenefas.view,
+    # justo lo que _get_job se ocupa de impedir en el detalle. La lista solo
+    # dibuja id/status/format/row_count/error_count/created_at.
+    return [await _job_to_dict(j, include_preview=False) for j in jobs]
 
 
 @router.get("/jobs/{job_id}")
