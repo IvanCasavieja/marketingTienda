@@ -23,6 +23,7 @@ from app.models.audit_log import AuditLog
 from app.models.convertidor_mapeo import ConvertidorMapeo
 from app.models.sku_descripcion import SkuDescripcion
 from app.models.user import User
+from app.models.cenefa_grupo_unificado import CenefaGrupoUnificado
 from app.models.cenefa_ofertadet_alias import CenefaOfertadetAlias
 from app.models.convertidor_header_alias import ConvertidorHeaderAlias
 from app.services.cenefas.convertidor_variables import (
@@ -827,6 +828,197 @@ async def buscar_grupos_unificados(
         "grupos":    grupos,
         "parciales": [g for g in grupos if not g["completo"]],
     }
+
+
+# Declarado ANTES de /grupos-unificados/{grupo_id}: con el path param tipado
+# UUID, un GET /grupos-unificados/export matchearía primero esa ruta y daría
+# 422 en vez de llegar acá.
+@router.get("/grupos-unificados/export")
+async def export_grupos_unificados(
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Excel con TODOS los grupos unificados — la solapa Plurales del
+    Diccionario, para revisarla o editarla afuera."""
+    grupos = (await db.execute(
+        select(CenefaGrupoUnificado).order_by(CenefaGrupoUnificado.nombre)
+    )).scalars().all()
+    filas = [
+        # updated_at como texto: openpyxl rechaza datetimes con tzinfo y la
+        # columna es DateTime(timezone=True).
+        (g.nombre, g.descripcion, ", ".join(g.skus), len(g.skus),
+         g.updated_at.date().isoformat() if g.updated_at else "")
+        for g in grupos
+    ]
+    xlsx = _diccionario_xlsx(
+        "Plurales",
+        ["Nombre del grupo", "Descripción del cartel", "SKUs", "Cantidad", "Actualizado"],
+        filas,
+        anchos=[30, 60, 44, 10, 14],
+    )
+    from datetime import date as _date
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.diccionario.export", resource="cenefa_grupo_unificado",
+        details={"tipo": "plurales", "filas": len(filas)}, ip_address=_client_ip(request),
+    ))
+    await db.commit()
+    return Response(
+        content=xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="diccionario_plurales_{_date.today().isoformat()}.xlsx"'},
+    )
+
+
+@router.get("/grupos-unificados")
+async def listar_grupos_unificados(
+    q: str | None = Query(None, description="Busca por nombre, descripción o SKU"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    _: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """La solapa Plurales del Diccionario: los grupos de varios SKU que
+    comparten un cartel. Viven en su propia tabla y NUNCA pisan las
+    descripciones singulares (regla del 2026-08-28)."""
+    stmt = select(CenefaGrupoUnificado)
+    count_stmt = select(func.count()).select_from(CenefaGrupoUnificado)
+    if q:
+        like = f"%{q.strip()}%"
+        filtro = or_(
+            CenefaGrupoUnificado.nombre.ilike(like),
+            CenefaGrupoUnificado.descripcion.ilike(like),
+            # func.array_to_string para buscar un SKU adentro del ARRAY
+            func.array_to_string(CenefaGrupoUnificado.skus, " ").ilike(like),
+        )
+        stmt = stmt.where(filtro)
+        count_stmt = count_stmt.where(filtro)
+    total = (await db.execute(count_stmt)).scalar_one()
+    grupos = (await db.execute(
+        stmt.order_by(CenefaGrupoUnificado.nombre).offset(offset).limit(limit)
+    )).scalars().all()
+    return {
+        "items": [
+            {
+                "id":          str(g.id),
+                "nombre":      g.nombre,
+                "descripcion": g.descripcion,
+                "skus":        g.skus,
+                "updated_at":  g.updated_at.isoformat() if g.updated_at else None,
+            }
+            for g in grupos
+        ],
+        "total": total,
+    }
+
+
+class GrupoUnificadoUpdate(BaseModel):
+    nombre: str | None = Field(default=None, min_length=1, max_length=150)
+    descripcion: str | None = Field(default=None, min_length=1, max_length=300)
+
+
+@router.patch("/grupos-unificados/{grupo_id}")
+async def update_grupo_unificado(
+    grupo_id: uuid.UUID,
+    payload: GrupoUnificadoUpdate,
+    current_user: User = Depends(require_permission("cenefas.edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    grupo = await db.get(CenefaGrupoUnificado, grupo_id)
+    if grupo is None:
+        raise HTTPException(status_code=404, detail="Grupo no encontrado")
+    if payload.nombre is not None:
+        grupo.nombre = payload.nombre.strip()
+    if payload.descripcion is not None:
+        grupo.descripcion = payload.descripcion.strip()
+    await db.commit()
+    return {"id": str(grupo.id), "nombre": grupo.nombre, "descripcion": grupo.descripcion, "skus": grupo.skus}
+
+
+@router.delete("/grupos-unificados/{grupo_id}", status_code=204)
+async def borrar_grupo_unificado(
+    grupo_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    grupo = await db.get(CenefaGrupoUnificado, grupo_id)
+    if grupo is None:
+        raise HTTPException(status_code=404, detail="Grupo no encontrado")
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.grupo.delete", resource="cenefa_grupo_unificado",
+        resource_id=str(grupo_id), details={"nombre": grupo.nombre, "skus": grupo.skus},
+        ip_address=_client_ip(request),
+    ))
+    await db.delete(grupo)
+    await db.commit()
+
+
+def _diccionario_xlsx(titulo: str, headers: list[str], filas: list[tuple], anchos: list[int]) -> bytes:
+    """Workbook simple para las descargas del Diccionario — mismo estilo visual
+    que la plantilla de cenefas (generate_template_bytes)."""
+    import io as _io
+
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = titulo
+    header_fill = PatternFill("solid", fgColor="1E3A5F")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    for col, name in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=name)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.column_dimensions[get_column_letter(col)].width = anchos[col - 1]
+    for r, fila in enumerate(filas, 2):
+        for c, valor in enumerate(fila, 1):
+            ws.cell(row=r, column=c, value=valor).alignment = Alignment(vertical="center", wrap_text=True)
+    ws.row_dimensions[1].height = 24
+    ws.freeze_panes = "A2"
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+@router.get("/descripciones/export")
+async def export_descripciones(
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Excel con TODO el catálogo singular — un SKU, una descripción de ESE
+    producto (las claves combinadas se eliminaron el 2026-08-28)."""
+    items = (await db.execute(
+        select(SkuDescripcion).order_by(SkuDescripcion.descripcion)
+    )).scalars().all()
+    filas = [
+        (i.sku, i.descripcion,
+         i.updated_at.date().isoformat() if i.updated_at else "",
+         # NULL = fila del seed original, nunca editada por una persona.
+         "" if i.updated_by_id is None else str(i.updated_by_id))
+        for i in items
+    ]
+    xlsx = _diccionario_xlsx(
+        "Singulares",
+        ["SKU", "Descripción", "Actualizado", "Editado por (id)"],
+        filas,
+        anchos=[16, 64, 14, 16],
+    )
+    from datetime import date as _date
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.diccionario.export", resource="sku_descripcion",
+        details={"tipo": "singulares", "filas": len(filas)}, ip_address=_client_ip(request),
+    ))
+    await db.commit()
+    return Response(
+        content=xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="diccionario_singulares_{_date.today().isoformat()}.xlsx"'},
+    )
 
 
 # ---------------------------------------------------------------------------

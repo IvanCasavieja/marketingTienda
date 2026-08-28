@@ -750,6 +750,17 @@ export interface SkuDescripcionItem {
   updated_at: string | null;
 }
 
+/** Una fila de la solapa Plurales del Diccionario: un grupo de varios SKU
+ * que comparten un cartel. Vive en cenefa_grupos_unificados, nunca en el
+ * catálogo singular. */
+export interface GrupoUnificadoItem {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  skus: string[];
+  updated_at: string | null;
+}
+
 // Grupo de variantes de la misma línea de producto ("Unificar categorías") que
 // Tinín propuso a partir del nombre crudo de TODAS las filas cargadas -- distinto
 // de MaPair (que son pares exactos "mismo SKU, sufijo M/A" detectados sin IA sin
@@ -859,6 +870,23 @@ export const convertidorApi = {
   buscarGruposUnificados: (skus: string[]) =>
     api.post<BuscarGruposResponse>(
       "/tools/cenefas/convertidor/grupos-unificados/buscar", { skus }),
+  /** La solapa Plurales del Diccionario: grupos de varios SKU con un cartel. */
+  listarGruposUnificados: (q?: string, limit = 100, offset = 0) =>
+    api.get<{ items: GrupoUnificadoItem[]; total: number }>(
+      "/tools/cenefas/convertidor/grupos-unificados",
+      { params: { q: q || undefined, limit, offset } }),
+  updateGrupoUnificado: (id: string, payload: { nombre?: string; descripcion?: string }) =>
+    api.patch<GrupoUnificadoItem>(
+      `/tools/cenefas/convertidor/grupos-unificados/${id}`, payload),
+  deleteGrupoUnificado: (id: string) =>
+    api.delete(`/tools/cenefas/convertidor/grupos-unificados/${id}`),
+  /** Descarga del Diccionario a Excel, una solapa por vez. */
+  exportDiccionario: (tipo: "singulares" | "plurales") =>
+    api.get(
+      tipo === "plurales"
+        ? "/tools/cenefas/convertidor/grupos-unificados/export"
+        : "/tools/cenefas/convertidor/descripciones/export",
+      { responseType: "blob" }),
   sugerirMecanicaIA: (rows: { oferta_det: string; oferta: string }[]) =>
     api.post<SugerirMecanicaIAResponse>(
       "/tools/cenefas/convertidor/mecanica/sugerir-ia", { rows }),

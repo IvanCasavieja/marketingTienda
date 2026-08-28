@@ -123,6 +123,14 @@ def normalize_sku(raw) -> str:
     return s
 
 
+# Clave que junta varios SKU numéricos ("63009-211797", "520221 - 512909",
+# "594879/80/81"). Desde 2026-08-28 esas claves NO entran más al catálogo
+# singular: lo grupal vive en cenefa_grupos_unificados. Solo se bloquean
+# partes numéricas a propósito -- un código real con sufijo de variante
+# ("12345-A") sigue siendo un SKU singular legítimo y pasa.
+_RE_CLAVE_PLURAL = re.compile(r"^\d+(?:\s*[-/]\s*\d+)+$")
+
+
 async def upsert_sku_descripcion(db: AsyncSession, sku: str, descripcion: str, user_id: int) -> str:
     """Upsert vía ON CONFLICT DO UPDATE — evita una condición de carrera real
     si dos personas completan el mismo SKU sin match al mismo tiempo.
@@ -133,6 +141,12 @@ async def upsert_sku_descripcion(db: AsyncSession, sku: str, descripcion: str, u
     sku_norm = normalize_sku(sku)
     if not sku_norm:
         raise ValueError("SKU inválido")
+    if _RE_CLAVE_PLURAL.match(sku_norm):
+        raise ValueError(
+            "Esa clave junta varios SKU. Las descripciones de grupo van en "
+            "Grupos unificados (solapa Plurales del Diccionario), no en el "
+            "catálogo singular: acá cada SKU lleva la descripción de ESE producto."
+        )
     # Mismo largo que SkuDescripcion.sku (migración 0049). Se cierra acá para que
     # un grupo absurdamente grande devuelva un 400 con motivo en vez de un 500
     # de Postgres -- la clave entra además en un índice único y en el path de la
@@ -1049,8 +1063,11 @@ def detect_ma_pairs(rows: list[dict], catalogo: dict[str, str]) -> list[dict]:
     sin sufijo -- no exige igualdad exacta: "S/HUESO" vs "SIN HUESO" ~0.82.
     Un par necesita un M y un A (nunca dos del mismo sufijo) del mismo
     comprador. Saltea pares donde ambos SKUs ya resuelven a la misma
-    descripción en el catálogo (ya unificados antes, incluyendo por la
-    segunda pasada de fallback de SKU compuesto en match_rows)."""
+    descripción en el catálogo singular. Un par unificado ANTES (grupo en
+    cenefa_grupos_unificados, sin entrada singular) sí se vuelve a proponer;
+    no es grave: guardar_grupo_unificado upserta por conjunto de SKU, así
+    que re-aprobarlo actualiza el grupo en vez de duplicarlo, y el aviso de
+    "grupo completo" del frontend ya ofrece aplicarlo con un click."""
     candidatos: dict[str, list[dict]] = {}
     for r in rows:
         parsed = _ma_base_and_suffix(r["nombre_articulo"])
@@ -1132,27 +1149,16 @@ async def match_rows(
         )
         catalogo.update(dict(result.all()))
 
-    # Fallback para SKUs sueltos que ya fueron unificados antes: si un par
-    # M/A se unificó en una carga anterior, sku_descripciones solo tiene la
-    # entrada compuesta "SKU1-SKU2" -- sin este paso, una carga futura con
-    # cualquiera de los dos SKUs sueltos no matchearía más. Solo se busca lo
-    # que hace falta (faltantes), no todos los SKUs de este import.
-    faltantes = {s for s in skus if s not in catalogo}
-    if faltantes:
-        result = await db.execute(
-            select(SkuDescripcion.sku, SkuDescripcion.descripcion).where(SkuDescripcion.sku.contains("-"))
-        )
-        for compuesto, desc in result.all():
-            # .strip() por parte -- el merge M/A junta sin espacios ("SKU1-SKU2"),
-            # pero "Unificar categorías" junta con " - " (espacio-guion-espacio,
-            # ver ConvertidorGrid.tsx: commitUnificacion) para que se lea mejor con
-            # varios SKUs en una celda. Sin el strip, la mitad de cada parte de esos
-            # compuestos quedaría con un espacio colgado y nunca matchearía contra
-            # faltantes (que son SKUs ya normalizados, sin espacios).
-            for parte in compuesto.split("-"):
-                parte = parte.strip()
-                if parte in faltantes:
-                    catalogo.setdefault(parte, desc)
+    # NO hay fallback por claves combinadas (eliminado 2026-08-28, decisión de
+    # Ivan). Antes, un SKU suelto sin entrada propia recibía la descripción DEL
+    # GRUPO si aparecía dentro de una clave compuesta ("SKU1-SKU2"), con
+    # matched=true y sin warning -- o sea, texto de familia ("Todas las
+    # variedades") presentado como si fuera la descripción de ese producto.
+    # La regla ahora es estricta: el catálogo singular (sku_descripciones)
+    # tiene UNA descripción de ESE producto por SKU, y lo grupal vive aparte
+    # en cenefa_grupos_unificados (grupos_para_skus ya avisa cuando los SKU
+    # del import tocan un grupo conocido). Un SKU sin descripción propia queda
+    # vacío y en rojo, que es lo que obliga a escribir la de verdad.
 
     # Las familias de mecánica que alguien ya confirmó para un OFERTADET que el
     # motor no reconoce. Una sola consulta para todo el listado: son un puñado

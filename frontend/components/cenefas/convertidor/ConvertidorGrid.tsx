@@ -168,17 +168,10 @@ const HAS_LETTER_RE = /\p{L}/u;
 const DESCRIPTION_WARN_CHARS = 60;
 const DESCRIPTION_MAX_CHARS = 100;
 const DESCRIPCION_WARNING_CODES = ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"];
-// Mismo límite que SkuDescripcion.sku (String(600) desde la migración 0049) y
-// que SKU_MAX_CHARS en backend/app/services/cenefas/convertidor.py -- un grupo
-// con muchos SKUs largos unidos por " - " podría superarlo, y Postgres rechaza
-// el insert entero en vez de truncarlo solo. Se corta acá ANTES de mandar el
-// PATCH para que el usuario vea un error claro en el modal en vez de un 500.
-//
-// Era 64 y frenaba grupos reales: 11 acondicionadores ELVIVE dan ~130
-// caracteres y la unificación se cortaba justo cuando más sentido tenía. Con
-// 600 entran ~60 SKUs, muy por encima de cualquier grupo de góndola, así que en
-// la práctica este tope dejó de aparecer -- queda solo como red de seguridad.
-const SKU_COMBINADO_MAX_CHARS = 600;
+// El tope SKU_COMBINADO_MAX_CHARS se eliminó el 2026-08-28: la clave combinada
+// ya no se guarda en sku_descripciones (los grupos viven en
+// cenefa_grupos_unificados, donde los SKU van como lista), así que no hay
+// columna que la limite.
 
 // ¿La descripción ya dice con qué cantidad/unidad se cobra? Espejo de
 // _RE_CANTIDAD_PROPIA en backend/app/services/cenefas/convertidor.py, duplicado
@@ -373,12 +366,18 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
       toast.error(t("convertidor.grupos.noEstanLasFilas"));
       return;
     }
-    await commitUnificacion({
-      row_ids:     filas.map((r) => r.row_id),
-      skus:        filas.map((r) => r.codigo),
-      grupo:       g.nombre,
-      descripcion: g.descripcion,
-    });
+    try {
+      await commitUnificacion({
+        row_ids:     filas.map((r) => r.row_id),
+        skus:        filas.map((r) => r.codigo),
+        grupo:       g.nombre,
+        descripcion: g.descripcion,
+      });
+    } catch {
+      // El toast del error ya lo mostró commitUnificacion; el grupo queda
+      // ofrecido para reintentar en vez de descartarse sin haberse aplicado.
+      return;
+    }
     setGruposDescartados((prev) => new Set(prev).add(g.id));
   }
 
@@ -437,14 +436,22 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
     setDismissedPairKeys((prev) => new Set(prev).add(maPairKey(pair.sku1, pair.sku2)));
   }
 
-  // Unifica las dos filas en una sola con SKU combinado "SKU1-SKU2": el PATCH
-  // existente ya alcanza (mismo endpoint que la edición manual), no hace
-  // falta un endpoint nuevo. Se conservan el resto de los campos de la
-  // primera fila (precio, oferta, etc.) -- la segunda fila se descarta del
-  // grid, ya representada por el SKU combinado.
+  // Unifica las dos filas en una sola con SKU combinado "SKU1 - SKU2".
+  // Desde 2026-08-28 el grupo se persiste SOLO en cenefa_grupos_unificados
+  // (guardarGrupoUnificado): el catálogo singular (sku_descripciones) nunca
+  // más recibe claves combinadas -- ahí cada SKU lleva la descripción de ESE
+  // producto, y lo grupal vive aparte. El código combinado queda solo en la
+  // grilla y en el Excel de salida, como texto.
   async function commitMerge(pair: MaPair, descripcion: string) {
-    const skuCombinado = `${pair.sku1}-${pair.sku2}`;
-    await convertidorApi.updateDescripcion(skuCombinado, descripcion);
+    const skuCombinado = `${pair.sku1} - ${pair.sku2}`;
+    try {
+      await convertidorApi.guardarGrupoUnificado(descripcion, descripcion, [pair.sku1, pair.sku2]);
+    } catch (err: any) {
+      // Única persistencia del grupo: si falla, no hay nada guardado y
+      // unificar la grilla igual sería mentirle al usuario.
+      toast.error(err?.response?.data?.detail ?? t("convertidor.grupos.noSeGuardo"));
+      return;
+    }
     setRows((prev) =>
       (prev ?? [])
         .filter((r) => r.codigo !== pair.sku2)
@@ -459,35 +466,29 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
             : r
         )
     );
-    // Un par M/A también es un grupo unificado, de dos. Se recuerda igual.
-    try {
-      await convertidorApi.guardarGrupoUnificado(descripcion, descripcion, [pair.sku1, pair.sku2]);
-    } catch {
-      toast.warning(t("convertidor.grupos.noSeGuardo"));
-    }
     setPendingPairs((prev) => prev.filter((p) => !(p.sku1 === pair.sku1 && p.sku2 === pair.sku2)));
     setMergePair(null);
     toast.success(t("convertidor.merge.merged", { sku: skuCombinado }));
   }
 
-  // Combina las N filas del grupo en una sola -- mismo criterio que commitMerge
-  // (el PATCH existente ya alcanza, no hace falta un endpoint de confirmación
-  // aparte), generalizado a N SKUs en vez de 2: el código combinado une todos
-  // los SKUs con " - " (a diferencia del merge M/A, que no lleva espacios,
-  // porque ahí siempre son 2; acá pueden ser varios y se lee peor pegado). La
-  // primera fila del grupo sobrevive con el código y la descripción combinados;
-  // el resto se saca de la grilla.
+  // Combina las N filas del grupo en una sola. El código combinado ("A - B - C",
+  // ordenado, para que el mismo conjunto sea siempre la misma clave visible)
+  // queda SOLO en la grilla y en el Excel de salida: desde 2026-08-28 el grupo
+  // se persiste únicamente en cenefa_grupos_unificados -- el catálogo singular
+  // no recibe más claves combinadas. La primera fila del grupo sobrevive con
+  // el código y la descripción combinados; el resto se saca de la grilla.
   async function commitUnificacion(grupo: UnificarGrupoItem) {
-    const codigoCombinado = grupo.skus.join(" - ");
-    if (codigoCombinado.length > SKU_COMBINADO_MAX_CHARS) {
-      toast.error(t("convertidor.unificar.codigoTooLong", {
-        count: grupo.skus.length,
-        chars: codigoCombinado.length,
-        max: SKU_COMBINADO_MAX_CHARS,
-      }));
-      throw new Error("Código combinado demasiado largo");
+    const skusOrdenados = [...grupo.skus].sort();
+    const codigoCombinado = skusOrdenados.join(" - ");
+    // Única persistencia del grupo (por su CONJUNTO de SKU, no por el código
+    // combinado: así mañana se detecta que vinieron 2 de los 3). Si falla, no
+    // se unifica nada -- unificar la grilla sin guardar sería mentir.
+    try {
+      await convertidorApi.guardarGrupoUnificado(grupo.grupo, grupo.descripcion, skusOrdenados);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? t("convertidor.grupos.noSeGuardo"));
+      throw err;
     }
-    await convertidorApi.updateDescripcion(codigoCombinado, grupo.descripcion);
     const [rowIdSuperviviente, ...rowIdsAEliminar] = grupo.row_ids;
     const idsAEliminar = new Set(rowIdsAEliminar);
     setRows((prev) =>
@@ -504,19 +505,6 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
             : r
         )
     );
-    // Y se recuerda el grupo por su CONJUNTO de SKU. Guardar la descripción
-    // bajo el código combinado ("63009 - 211797") alcanza para que el MISMO
-    // Excel vuelva a resolver igual y falla para todo lo demás: si mañana la
-    // promo trae dos de esos tres, esa clave no matchea. Con la lista se
-    // detecta el subconjunto y se puede avisar.
-    //
-    // No es fatal: si falla, la unificación ya está hecha igual y lo único que
-    // se pierde es el recuerdo para la próxima.
-    try {
-      await convertidorApi.guardarGrupoUnificado(grupo.grupo, grupo.descripcion, grupo.skus);
-    } catch {
-      toast.warning(t("convertidor.grupos.noSeGuardo"));
-    }
     toast.success(t("convertidor.unificar.saved", { grupo: grupo.grupo, count: grupo.skus.length }));
   }
 
