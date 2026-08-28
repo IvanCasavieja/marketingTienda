@@ -358,7 +358,14 @@ def _fit_font_size(
 # Los decimales siguen a su entero: sin esto, un M x N de "6x4" imprimia el
 # literal y al lado le quedaba colgado el ",33" del precio que ya no se ve.
 _EXCLUYENTES: dict[str, tuple[str, ...]] = {
-    "promoOferta": ("precioOferta", "decimalPrecioOferta"),
+    # Cuando promoOferta trae valor (solo M x N desde 2026-08-29) y el diseno
+    # TIENE su cuadro, tapa al precio -- y tambien a la cocarda de tipoOferta:
+    # en un M x N las dos llevan el MISMO literal, y un diseno con ambos
+    # cuadros (la A4 REDEX) imprimia "2X1" dos veces, una arriba de la otra
+    # (visto en el render real de mundo hogar, pag. 54). Solo aplica si el
+    # cuadro de promoOferta existe de verdad: Rompe del Finde no lo tiene y
+    # su cocarda sigue saliendo.
+    "promoOferta": ("precioOferta", "decimalPrecioOferta", "tipoOferta"),
 }
 
 

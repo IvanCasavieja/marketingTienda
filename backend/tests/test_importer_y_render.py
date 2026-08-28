@@ -148,3 +148,33 @@ def test_una_vecina_chata_tambien_limita_el_ancho():
     disponible_sola = _ancho_disponible_cm(
         precio, [precio, desc], {"precioOferta": "449", "descripcion": ""}, 21.0)
     assert disponible_sola > 9.38 - 1.68
+
+
+def test_mxn_imprime_el_literal_una_sola_vez():
+    # Bug real (pag. 54 de mundo hogar): la A4 REDEX tiene cocarda
+    # (tipoOferta) Y cuadro que tapa al precio (promoOferta) -- en un M x N
+    # los dos llevan el mismo literal y "2X1" salia impreso dos veces. La
+    # regla de excluyentes esconde la cocarda cuando promoOferta tapa.
+    src = _pptx_con_textos("<<tipoOferta>>", "<<unidadMoneda>><<precioOferta>>", "<<promoOferta>>")
+    d = import_pptx(src)
+    pptx, _ = render_template_to_pptx(
+        d, [{"tipoOferta": "2x1", "promoOferta": "2x1",
+             "unidadMoneda": "$", "precioOferta": "49,50"}],
+        "a4", None, src)
+    runs = _runs_del_pptx(pptx)
+    assert runs.count("2x1") == 1, f"el literal salio {runs.count('2x1')} veces: {runs!r}"
+    # y el precio quedo tapado: no se imprime
+    assert "49,50" not in runs
+
+
+def test_combo_muestra_el_precio_con_cocarda():
+    # En un combo promoOferta viene vacia -> el precio unitario se ve, con la
+    # cocarda arriba, aunque el diseno tenga el cuadro de promoOferta.
+    src = _pptx_con_textos("<<tipoOferta>>", "<<unidadMoneda>><<precioOferta>>", "<<promoOferta>>")
+    d = import_pptx(src)
+    pptx, _ = render_template_to_pptx(
+        d, [{"tipoOferta": "2x$299", "promoOferta": "",
+             "unidadMoneda": "$", "precioOferta": "149,50"}],
+        "a4", None, src)
+    runs = _runs_del_pptx(pptx)
+    assert "2x$299" in runs and "149,50" in runs and "$" in runs

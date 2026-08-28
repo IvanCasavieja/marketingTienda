@@ -62,17 +62,15 @@ import unicodedata
 #   arregla una vez, del lado del dato: el precio es el precio, y lo que tape
 #   al precio es otra cosa con su propio nombre.
 #
-# Estado al 2026-08-26:
-#   - M x N ("6x4")  -> precioOferta = el unitario de la columna PRECIO
-#                       promoOferta  = "6x4"
-#   - Las 7 plantillas de Redexpres TODAVIA no tienen el cuadro de promoOferta
-#     superpuesto: hay que agregarselo. Hasta que eso pase, una cenefa M x N de
-#     Redexpres muestra el precio unitario en el cuadro grande en vez del
-#     literal. Ivan lo sabe y lo dejo para despues ("lo de Redexpres despues lo
-#     vemos").
-#   - Combo ("2x$299") -> sigue con el TOTAL en precioOferta. Sin decidir si
-#     pasa al unitario; el diseno de referencia de Rompe del Finde muestra el
-#     unitario (149,50) con "Comprando 2" arriba, asi que probablemente cambie.
+# Estado al 2026-08-29 (decision de Ivan: promoOferta se usa SOLO en M x N):
+#   - M x N ("2x1")    -> precioOferta = el unitario de la columna PRECIO
+#                         promoOferta  = "2x1" (tapa al precio Y a la cocarda
+#                         de tipoOferta si el diseno tiene su cuadro -- son el
+#                         mismo literal y salia impreso dos veces)
+#   - Combo ("2x$299") -> precioOferta = el unitario (total / cantidad)
+#                         promoOferta  = VACIA: hay un precio para mostrar, se
+#                         muestra, con la cocarda de tipoOferta arriba
+#   - Precio fijo      -> las dos vacias.
 # ===========================================================================
 
 TEXT_VARS: tuple[str, ...] = (

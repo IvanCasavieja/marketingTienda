@@ -52,7 +52,10 @@ def test_combo_calcula_el_unitario():
     m, w = resolver_mecanica("Combo", "2x$299", precio=175.0)
     assert m["precioOferta"] == 149.5       # 299/2, NO la columna PRECIO
     assert m["tipoOferta"] == "2x$299"
-    assert m["promoOferta"] == "2x$299"
+    # promoOferta VACIA (decision de Ivan, 2026-08-29): el literal que tapa
+    # al precio se usa SOLO en M x N. En un combo hay un precio que mostrar
+    # (el unitario), asi que se muestra, con la cocarda arriba.
+    assert m["promoOferta"] == ""
     assert m["mecanica"] == "Comprando 2, $149,50 la unidad."
     assert m["tipoOfertaComprando"] == "Comprando 2"
     assert m["unidad"] == "unidad"
@@ -79,7 +82,7 @@ def test_combo_sin_simbolo_tambien():
 def test_mxn_precio_de_la_columna_y_literal_en_promo():
     m, w = resolver_mecanica("MxN", "2x1", precio=49.5)
     assert m["precioOferta"] == 49.5        # precioOferta ES un precio, SIEMPRE
-    assert m["promoOferta"] == "2x1"        # el literal tapa al precio
+    assert m["promoOferta"] == "2x1"        # SOLO M x N llena promoOferta
     assert m["tipoOferta"] == "2x1"
     assert m["mecanica"] == "$49,50 la unidad."
     assert w == []

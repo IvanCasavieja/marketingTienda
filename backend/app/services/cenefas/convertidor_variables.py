@@ -185,15 +185,18 @@ def resolver_mecanica(
             "tipoOferta":   re.sub(r"\s+", "", m.group(0)),
             "ofertaUno":    f"{cantidad}x",
             # El unitario, no el total: precioOferta ES UN PRECIO y es el que
-            # se imprime grande. El literal del combo ("2x$299") va a
-            # promoOferta, igual que el "6x4" de un M x N -- el diseno lo
-            # dibuja tapando al precio cuando corresponde.
+            # se imprime grande.
             #
             # El unitario sale de DIVIDIR el total (299/2), no de la columna
             # PRECIO: esa trae el precio de una unidad suelta, que puede ser
             # otro numero. Ver el bloque del principio de variables.py.
             "precioOferta": unitario,
-            "promoOferta":  re.sub(r"\s+", "", m.group(0)),
+            # VACIA a proposito (decision de Ivan, 2026-08-29): promoOferta --
+            # el literal que TAPA al precio -- se usa SOLO en M x N, donde no
+            # hay un precio de oferta que mostrar. En un combo si lo hay (el
+            # unitario), asi que se muestra el precio grande con la cocarda
+            # de tipoOferta arriba, como en el diseno de Rompe del Finde.
+            "promoOferta":  "",
             "mecanica":     f"Comprando {cantidad}, {prefijo}{fmt_price(unitario)} la unidad.",
             # Los dos pedazos sueltos, para el diseno que los dibuja separados
             # arriba y abajo del precio en vez de en un renglon (Rompe del
