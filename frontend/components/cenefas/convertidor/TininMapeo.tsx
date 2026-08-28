@@ -159,7 +159,10 @@ export default function TininMapeo({ excel, hoja }: Props) {
                   className="input h-7 text-xs py-0 w-44 shrink-0"
                 >
                   <option value={NINGUNO}>{t("convertidor.mapeoIA.ninguno")}</option>
-                  {(datos?.campos ?? []).map((c) => (
+                  {/* Tolerante a las dos formas: el backend manda la lista,
+                      pero una version vieja mandaba el dict {campo: desc} y
+                      .map sobre un objeto volteaba la pantalla entera. */}
+                  {(Array.isArray(datos?.campos) ? datos.campos : Object.keys(datos?.campos ?? {})).map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>

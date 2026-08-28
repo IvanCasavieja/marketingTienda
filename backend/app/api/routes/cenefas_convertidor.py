@@ -1094,7 +1094,7 @@ async def sugerir_columnas_ia(
         candidatos.append({"header_norm": norm, "header_display": nombre, "muestras": vals[:6]})
 
     if not candidatos:
-        return {"sugerencias": [], "ya_aprendidas": [], "errores": [], "campos": _CAMPOS_SUGERIBLES}
+        return {"sugerencias": [], "ya_aprendidas": [], "errores": [], "campos": list(_CAMPOS_SUGERIBLES)}
 
     # Lo ya aprendido se informa aparte: sirve para que se vea POR QUE una
     # columna con nombre raro igual funciono, sin gastar una llamada a IA.
@@ -1122,7 +1122,12 @@ async def sugerir_columnas_ia(
             for k, v in aprendidas.items()
         ],
         "errores": resultado["errores"],
-        "campos":  _CAMPOS_SUGERIBLES,
+        # LISTA de nombres, no el dict {campo: descripcion}: el frontend
+        # declara campos: string[] y hace .map -- el dict volteaba la pantalla
+        # del mapeo entera ("(intermediate value).map is not a function",
+        # visto en produccion el 2026-08-29 cuando el analisis paso a correr
+        # automatico y este camino dejo de ser opcional.
+        "campos":  list(_CAMPOS_SUGERIBLES),
     }
 
 
