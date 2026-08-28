@@ -56,7 +56,7 @@ Si el archivo trae VARIAS HOJAS, cada una es un listado aparte y se convierte po
 LAS COLUMNAS QUE NO RECONOZCO (yo las mapeo, desde 2026-08-26):
 - El Convertidor reconoce por nombre las columnas del export de gestión (CODIGO, NOMBRE DE ARTICULO, OFERTA, OFERTADET...). Las que no reconoce se ignoraban en silencio: si el archivo traía "PVP" o "IMPORTE ANTERIOR", esa columna no existía para el resto del proceso y nadie se enteraba hasta ver la cenefa sin ese dato.
 - Ahora en la pantalla de mapeo hay un panel donde yo miro esas columnas --con sus valores de ejemplo-- y digo a qué campo creo que corresponde cada una. No aplico nada solo: propongo, la persona confirma o corrige.
-- Los campos a los que puedo atar una columna son 12: codigo, nombre_articulo, descripcion_excel, descripcion_web, moneda, precio_anterior, precio, oferta, oferta_det, comprador, fecha_inicio, fecha_fin.
+- Los campos a los que puedo atar una columna son 12: codigo, nombreArticulo, descripcionExcel, descripcionWeb, moneda, precioAnterior, precio, oferta, ofertaDet, comprador, fechaInicio, fechaFin.
 - Lo que se confirma queda APRENDIDO para siempre: de ahí en adelante esa columna la resuelve el código, sin gastar una llamada a IA nunca más. Conviene contestar hasta las que no sirven ("no es ninguno" también se guarda), porque eso hace que la próxima vez la lista sea corta.
 - Ojo: esto mapea COLUMNA -> campo. Es distinto de la pantalla de mapeo de siempre, que va al revés (variable -> columna) y sirve para las variables que el export no trae nunca (vigencia, legales, banco, dia/mes/año).
 
@@ -74,7 +74,7 @@ LOS GRUPOS UNIFICADOS (varios SKU, un solo cartel):
 
 LOS ARTÍCULOS DE 100 g (decisión de Ivan, 2026-08-26):
 - La fiambrería y los quesos de corte se venden por 100 g: el cartel muestra el precio de los 100 g, NO el del kilo.
-- Hay dos errores distintos y la app los avisa por separado. Uno: la descripción todavía dice "Kg" y hay que pasarla a 100 g (aviso `es_fiambre_kg`, y ahí el modal de IA propone descripción + precio÷10 juntos). El otro: la descripción YA dice "100 g" pero el precio que mandó gestión sigue siendo el del kilo (aviso `precio_de_kilo_en_100g`).
+- Hay dos errores distintos y la app los avisa por separado. Uno: la descripción todavía dice "Kg" y hay que pasarla a 100 g (aviso `esFiambreKg`, y ahí el modal de IA propone descripción + precio÷10 juntos). El otro: la descripción YA dice "100 g" pero el precio que mandó gestión sigue siendo el del kilo (aviso `precioDeKiloEn100g`).
 - El segundo pasó de verdad y se imprimió, en el Rompe del Finde del 27 al 30 de agosto de 2026: Jamón Crudo a 1.100 cuando los 100 g eran 110, Queso Colonia a 590 cuando eran 59, Jamón Cocido Extra a 840 cuando eran 84. Se corrigieron los DOS precios de cada uno (el regular tachado y el de oferta), porque gestión los mandó los dos en kilo.
 - No se pide que el comprador sea FIAMBRERIA: el queso de corte puede venir por LACTEOS y tiene el mismo problema.
 - La app NO divide sola: marca las filas, propone el valor y una persona confirma con el botón "Pasar los precios a 100 g". Un falso positivo acá imprime un precio diez veces más barato en la góndola, así que la decisión no es automática.
@@ -162,7 +162,7 @@ _MAX_FILAS_CONTEXTO = 40
 _CAMPOS_FILA = (
     "codigo", "descripcion", "mecanica", "tipoOferta",
     "precioRegular", "precioOferta",
-    "oferta_origen", "oferta_det", "moneda", "nombre_articulo",
+    "ofertaOrigen", "ofertaDet", "moneda", "nombreArticulo",
 )
 
 

@@ -61,7 +61,7 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
         rows.map((r) => ({
           row_id: r.row_id,
           codigo: r.codigo,
-          nombre_articulo: r.nombre_articulo,
+          nombreArticulo: r.nombreArticulo,
           descripcion: r.descripcion,
         }))
       )
@@ -106,7 +106,7 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
   }
 
   function nombreDeFila(rowId: number): string {
-    return rows.find((r) => r.row_id === rowId)?.nombre_articulo || "—";
+    return rows.find((r) => r.row_id === rowId)?.nombreArticulo || "—";
   }
 
   // Qué opción está seleccionada, o -1 si la persona editó el texto a mano. Se

@@ -218,16 +218,16 @@ class ConvertidorRowIn(BaseModel):
     matched: bool = False
 
     # -- contexto de gestión (no se exporta) ------------------------------
-    nombre_articulo:     str = ""
+    nombreArticulo:     str = ""
     comprador:           str = ""
     moneda:              str = "$"
-    oferta_origen:       str = ""
-    oferta_det:          str = ""
-    descripcion_web:     str = ""
-    precio_raw:          str = ""
-    precio_anterior_raw: str = ""
-    es_fiambre_kg:       bool = False
-    warnings_mecanica:   list[str] = Field(default_factory=list)
+    ofertaOrigen:       str = ""
+    ofertaDet:          str = ""
+    descripcionWeb:     str = ""
+    precioRaw:          str = ""
+    precioAnteriorRaw: str = ""
+    esFiambreKg:       bool = False
+    warningsMecanica:   list[str] = Field(default_factory=list)
 
     # -- las 31 variables --------------------------------------------------
     codigo:               str = ""
@@ -296,13 +296,13 @@ async def export(
 class GenerarDescripcionItem(BaseModel):
     row_id: int
     codigo: str
-    nombre_articulo: str = ""
-    descripcion_web: str = ""
-    es_fiambre_kg: bool = False
+    nombreArticulo: str = ""
+    descripcionWeb: str = ""
+    esFiambreKg: bool = False
     # "100g" | "kg" | "" — con qué unidad se cobra el producto cuando el nombre
     # de gestión no lo dice (ver _unidad_de_venta en convertidor.py). Es lo que
     # le permite a Tinín escribir el gramaje sin inventarlo.
-    unidad_venta: str = ""
+    unidadVenta: str = ""
 
 
 class GenerarDescripcionesRequest(BaseModel):
@@ -350,7 +350,7 @@ async def generar_descripciones_ia(
 class UnificarCategoriasItem(BaseModel):
     row_id: int
     codigo: str
-    nombre_articulo: str = ""
+    nombreArticulo: str = ""
     descripcion: str = ""
 
 
@@ -604,7 +604,7 @@ async def columnas(
 
 
 class MecanicaItem(BaseModel):
-    oferta_det: str = ""
+    ofertaDet: str = ""
     oferta: str = ""
 
 
@@ -637,7 +637,7 @@ async def sugerir_mecanica_ia(
     # ya sabe leer no tiene nada que preguntar.
     porTipo: dict[str, dict] = {}
     for r in payload.rows[:_ROWS_MAX_PER_REQUEST]:
-        det = (r.oferta_det or "").strip()
+        det = (r.ofertaDet or "").strip()
         if not det or familia_de_ofertadet(det) is not None:
             continue
         norm = _norm(det)
@@ -734,7 +734,7 @@ class AlcoholItem(BaseModel):
     row_id: int
     codigo: str = ""
     descripcion: str = ""
-    nombre_articulo: str = ""
+    nombreArticulo: str = ""
 
 
 class DetectarAlcoholRequest(BaseModel):
@@ -766,7 +766,7 @@ async def detectar_alcohol_ia(
     # criterios distintos.
     pendientes = [
         r.model_dump() for r in payload.rows[:_ROWS_MAX_PER_REQUEST]
-        if not es_alcohol(r.descripcion, r.nombre_articulo)
+        if not es_alcohol(r.descripcion, r.nombreArticulo)
     ]
     ya_reconocidas = len(payload.rows) - len(pendientes)
 

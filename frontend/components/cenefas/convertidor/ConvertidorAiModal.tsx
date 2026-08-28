@@ -8,7 +8,7 @@ import { DonTinoTrabajando } from "@/components/DonTinoTrabajando";
 
 interface PrecioOverride {
   precio?: number;
-  precio_anterior?: number;
+  precioAnterior?: number;
 }
 
 interface Props {
@@ -21,7 +21,7 @@ interface Props {
 
 type RowState = {
   value: string;
-  // Solo se usan cuando la fila es es_fiambre_kg — precargados con el
+  // Solo se usan cuando la fila es esFiambreKg — precargados con el
   // precio÷10 de la fila original, editables antes de aprobar. El precio
   // NUNCA se persiste en el catálogo compartido (solo la descripción va por
   // ese PATCH) — esto viaja únicamente al estado local de la grilla.
@@ -90,13 +90,13 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
     return {
       row_id: r.row_id,
       codigo: r.codigo,
-      nombre_articulo: r.nombre_articulo,
-      descripcion_web: r.descripcion_web,
-      es_fiambre_kg: r.es_fiambre_kg,
+      nombreArticulo: r.nombreArticulo,
+      descripcionWeb: r.descripcionWeb,
+      esFiambreKg: r.esFiambreKg,
       // Sin esto el nombre de gestión llega pelado ("MUZZA NATURALACT") y
       // Tinín escribe la descripción sin gramaje, porque tiene prohibido
       // inventar lo que no está en la fuente.
-      unidad_venta: r.unidad_venta ?? "",
+      unidadVenta: r.unidadVenta ?? "",
     };
   }
 
@@ -107,8 +107,8 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
         const row = chunkRows.find((r) => r.row_id === s.row_id);
         next.set(s.row_id, {
           value: s.descripcion,
-          precio: row?.es_fiambre_kg ? precioDividido(row.precioOferta, row.decimalPrecioOferta) : "",
-          precioAnterior: row?.es_fiambre_kg ? precioDividido(row.precioRegular, row.decimalPrecioRegular) : "",
+          precio: row?.esFiambreKg ? precioDividido(row.precioOferta, row.decimalPrecioOferta) : "",
+          precioAnterior: row?.esFiambreKg ? precioDividido(row.precioRegular, row.decimalPrecioRegular) : "",
           status: "pending",
           yaAprobado: false,
         });
@@ -209,10 +209,10 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
     if (!row) return;
     setState((prev) => new Map(prev).set(rowId, { ...row, status: "approving" }));
     const rowData = rows.find((r) => r.row_id === rowId);
-    const precioOverride: PrecioOverride | undefined = rowData?.es_fiambre_kg
+    const precioOverride: PrecioOverride | undefined = rowData?.esFiambreKg
       ? {
           precio: row.precio.trim() ? parseFloat(row.precio) : undefined,
-          precio_anterior: row.precioAnterior.trim() ? parseFloat(row.precioAnterior) : undefined,
+          precioAnterior: row.precioAnterior.trim() ? parseFloat(row.precioAnterior) : undefined,
         }
       : undefined;
     try {
@@ -313,21 +313,21 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-[10px] text-slate-400 truncate flex items-center gap-1.5">
-                      {row.es_fiambre_kg && (
+                      {row.esFiambreKg && (
                         <span className="badge badge-yellow text-[9px] px-1.5 py-0 shrink-0">
                           {t("convertidor.ai.fiambreKgBadge")}
                         </span>
                       )}
                       {/* Por qué la sugerencia trae un gramaje que el nombre de
                           gestión no dice: lo puso la plataforma, no el modelo. */}
-                      {!row.es_fiambre_kg && row.unidad_venta && (
+                      {!row.esFiambreKg && row.unidadVenta && (
                         <span className="badge badge-blue text-[9px] px-1.5 py-0 shrink-0">
                           {t("convertidor.ai.unidadVentaBadge", {
-                            unidad: row.unidad_venta === "kg" ? "Kg" : "100g",
+                            unidad: row.unidadVenta === "kg" ? "Kg" : "100g",
                           })}
                         </span>
                       )}
-                      {row.codigo} · {row.nombre_articulo}
+                      {row.codigo} · {row.nombreArticulo}
                     </p>
                     <input
                       value={s.value}
@@ -335,7 +335,7 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                       onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, value: e.target.value }))}
                       className="input text-xs w-full"
                     />
-                    {row.es_fiambre_kg && (
+                    {row.esFiambreKg && (
                       <div className="flex items-center gap-3 mt-1">
                         <label className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
                           {t("convertidor.columns.precio")}

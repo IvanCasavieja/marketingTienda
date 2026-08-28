@@ -73,20 +73,20 @@ def _build_prompt(items: list[dict]) -> str:
     lineas = []
     for n, it in enumerate(items, start=1):
         partes = []
-        if it.get("es_fiambre_kg"):
+        if it.get("esFiambreKg"):
             partes.append("[FIAMBRE POR KG]")
-        elif it.get("unidad_venta") == "100g":
+        elif it.get("unidadVenta") == "100g":
             # El nombre de gestión no trae la unidad y el producto se cobra por
             # 100 g (ver _unidad_de_venta en convertidor.py). Sin esta marca la
             # descripción salía sin gramaje: no es que el modelo se olvidara, es
             # que tiene prohibido inventar lo que no está en la fuente.
             partes.append("[SE COBRA POR 100 G]")
-        elif it.get("unidad_venta") == "kg":
+        elif it.get("unidadVenta") == "kg":
             partes.append("[SE COBRA POR KILO]")
-        if it["nombre_articulo"]:
-            partes.append(f'nombre ERP: "{it["nombre_articulo"]}"')
-        if it["descripcion_web"]:
-            partes.append(f'descripción web: "{it["descripcion_web"]}"')
+        if it["nombreArticulo"]:
+            partes.append(f'nombre ERP: "{it["nombreArticulo"]}"')
+        if it["descripcionWeb"]:
+            partes.append(f'descripción web: "{it["descripcionWeb"]}"')
         lineas.append(f"{n}. " + " | ".join(partes))
     listado = "\n".join(lineas)
     return (
@@ -98,11 +98,11 @@ def _build_prompt(items: list[dict]) -> str:
 
 
 async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
-    """items: [{"row_id", "codigo", "nombre_articulo", "descripcion_web",
-    "es_fiambre_kg", "unidad_venta"}, ...] — ya filtrados por el caller (filas
+    """items: [{"row_id", "codigo", "nombreArticulo", "descripcionWeb",
+    "esFiambreKg", "unidadVenta"}, ...] — ya filtrados por el caller (filas
     sin descripción, fiambres todavía en kg que necesitan pasar a 100g, o filas
-    cuya descripción no dice con qué unidad se cobra). "es_fiambre_kg" y
-    "unidad_venta" son opcionales y solo cambian la redacción de la unidad (ver
+    cuya descripción no dice con qué unidad se cobra). "esFiambreKg" y
+    "unidadVenta" son opcionales y solo cambian la redacción de la unidad (ver
     _STYLE_RULES) — el precio÷10 correspondiente lo calcula el frontend, no esta
     función.
 
@@ -116,9 +116,9 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
     log del servidor y a la persona le llegaba "completalos a mano" sin causa: no había
     forma de distinguir una key vencida de un JSON cortado ni de un producto que no tenía
     con qué generar. Ahora el motivo llega a la pantalla."""
-    # Sin nombre_articulo NI descripcion_web no hay nada que pedirle a Claude —
+    # Sin nombreArticulo NI descripcionWeb no hay nada que pedirle a Claude —
     # se descarta antes de gastar un slot del batch.
-    procesables = [it for it in items if it["nombre_articulo"] or it["descripcion_web"]]
+    procesables = [it for it in items if it["nombreArticulo"] or it["descripcionWeb"]]
     procesables_ids = {it["row_id"] for it in procesables}
     failed_row_ids: list[int] = [it["row_id"] for it in items if it["row_id"] not in procesables_ids]
 
@@ -245,7 +245,7 @@ Los productos que no formen parte de ningún grupo simplemente no aparecen en tu
 def _build_unify_prompt(items: list[dict]) -> str:
     lineas = []
     for n, it in enumerate(items, start=1):
-        partes = [f'nombre ERP: "{it["nombre_articulo"]}"']
+        partes = [f'nombre ERP: "{it["nombreArticulo"]}"']
         if it.get("descripcion"):
             partes.append(f'descripción actual: "{it["descripcion"]}"')
         lineas.append(f"{n}. " + " | ".join(partes))
@@ -262,7 +262,7 @@ def _build_unify_prompt(items: list[dict]) -> str:
 
 
 async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> dict:
-    """items: [{"row_id", "codigo", "nombre_articulo", "descripcion"}, ...] -- pensado
+    """items: [{"row_id", "codigo", "nombreArticulo", "descripcion"}, ...] -- pensado
     para recibir TODAS las filas cargadas en la grilla (matcheadas o no), a diferencia
     de generar_descripciones que solo ve las que faltan: acá lo que importa es el nombre
     crudo, no si ya tiene descripción resuelta. Nunca escribe nada -- al aprobar un grupo
@@ -280,7 +280,7 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
     parsea -- posiblemente cortado por quedarse sin max_tokens) de "Claude ya reviso todo
     y genuinamente no encontro grupos" -- sin esto, ambos casos se verian identicos para
     quien usa el modal (una lista vacia sin explicacion)."""
-    procesables = [it for it in items if it["nombre_articulo"]]
+    procesables = [it for it in items if it["nombreArticulo"]]
     truncated = len(procesables) > _UNIFY_ROWS_MAX
     procesables = procesables[:_UNIFY_ROWS_MAX]
     if len(procesables) < 2:
@@ -398,7 +398,7 @@ def _parsear_opciones(g: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Detección de columnas de fecha_inicio/fecha_fin sin alias reconocido
+# Detección de columnas de fechaInicio/fechaFin sin alias reconocido
 # ---------------------------------------------------------------------------
 #
 # Ninguna de las dos es obligatoria en el Excel de gestión, y el nombre real
@@ -410,7 +410,7 @@ def _parsear_opciones(g: dict) -> list[dict]:
 # vigencia — nunca al revés (nunca se le manda una columna a ciegas para que
 # decida SI es una fecha, eso ya se filtró antes de llegar acá).
 
-_VALID_DATE_FIELDS = {"fecha_inicio", "fecha_fin"}
+_VALID_DATE_FIELDS = {"fechaInicio", "fechaFin"}
 
 _HEADER_SYSTEM_PROMPT = f"""{TININ_BASE}
 
@@ -434,7 +434,7 @@ def _build_header_prompt(candidates: list[dict]) -> str:
     return (
         f"Clasificá estos {len(candidates)} encabezados de columna:\n\n{listado}\n\n"
         'Devolvé SOLO un JSON con esta forma exacta: '
-        '{"clasificaciones": {"1": "fecha_inicio"|"fecha_fin"|null, ...}} '
+        '{"clasificaciones": {"1": "fechaInicio"|"fechaFin"|null, ...}} '
         "— una entrada por cada número de la lista, en el mismo orden. Sin comentarios ni texto fuera del JSON."
     )
 
@@ -445,7 +445,7 @@ async def resolve_date_columns_with_ai(candidates: list[dict], db, user_id: int)
     (ConvertidorHeaderAlias), ya filtrados para que "muestras" tenga al menos
     un par de valores que parsean como fecha real (ver convertidor.py).
 
-    Devuelve {header_norm: "fecha_inicio"|"fecha_fin"|None} con UNA entrada
+    Devuelve {header_norm: "fechaInicio"|"fechaFin"|None} con UNA entrada
     por cada candidato pasado -- None significa que Claude confirmó que esa
     columna no es de vigencia (ej. fecha de alta/modificación), y el caller
     lo cachea igual que un match positivo para no volver a preguntar por ese
@@ -513,17 +513,17 @@ async def resolve_date_columns_with_ai(candidates: list[dict], db, user_id: int)
 # variables de la cenefa: lo que se mapea es la columna del Excel de gestion.
 _CAMPOS_SUGERIBLES: dict[str, str] = {
     "codigo":            "el codigo de articulo / SKU",
-    "nombre_articulo":   "el nombre del producto tal como lo escribe el sistema de gestion",
-    "descripcion_excel": "una descripcion de cartel ya redactada a mano",
-    "descripcion_web":   "la descripcion larga del producto para la web",
+    "nombreArticulo":   "el nombre del producto tal como lo escribe el sistema de gestion",
+    "descripcionExcel": "una descripcion de cartel ya redactada a mano",
+    "descripcionWeb":   "la descripcion larga del producto para la web",
     "moneda":            "el simbolo de moneda ($ o U$S)",
-    "precio_anterior":   "el precio regular / anterior, el que se tacha",
+    "precioAnterior":   "el precio regular / anterior, el que se tacha",
     "precio":            "el precio de la oferta, el vigente",
     "oferta":            "el literal de la mecanica ('6x4', '2x$299', '20%OFF')",
-    "oferta_det":        "el TIPO de mecanica ('M x N', 'Combo', 'Precio fijo', '% descuento')",
+    "ofertaDet":        "el TIPO de mecanica ('M x N', 'Combo', 'Precio fijo', '% descuento')",
     "comprador":         "el rubro o sector del producto (CARNICERIA, BEBIDAS...)",
-    "fecha_inicio":      "la fecha en que arranca la vigencia",
-    "fecha_fin":         "la fecha en que termina la vigencia",
+    "fechaInicio":      "la fecha en que arranca la vigencia",
+    "fechaFin":         "la fecha en que termina la vigencia",
 }
 
 _SUGERIR_SYSTEM_PROMPT = f"""{TININ_BASE}
@@ -687,7 +687,7 @@ kilo de carne o un papel higiénico no llevan leyenda por más raro que sea el n
 def _build_alcohol_prompt(items: list[dict]) -> str:
     lineas = []
     for n, it in enumerate(items, start=1):
-        partes = [p for p in (it.get("descripcion"), it.get("nombre_articulo")) if p]
+        partes = [p for p in (it.get("descripcion"), it.get("nombreArticulo")) if p]
         lineas.append(f'{n}. {" | ".join(partes) or "(sin nombre)"}')
     return (
         f"¿Cuáles de estos {len(items)} productos son bebidas con alcohol?\n\n"
@@ -699,14 +699,14 @@ def _build_alcohol_prompt(items: list[dict]) -> str:
 
 
 async def detectar_alcohol(items: list[dict], db, user_id: int) -> dict:
-    """items: [{"row_id", "codigo", "descripcion", "nombre_articulo"}, ...] — ya
+    """items: [{"row_id", "codigo", "descripcion", "nombreArticulo"}, ...] — ya
     filtrados por el caller para dejar solo los que `es_alcohol()` NO reconocio.
 
     Devuelve {"alcohol": [{row_id, codigo, texto, motivo}, ...], "errores": [...]}
     con SOLO los que Tinin marco como bebida alcoholica. No agrega la leyenda:
     eso lo hace la persona al confirmar.
     """
-    procesables = [it for it in items if (it.get("descripcion") or it.get("nombre_articulo"))]
+    procesables = [it for it in items if (it.get("descripcion") or it.get("nombreArticulo"))]
     if not procesables:
         return {"alcohol": [], "errores": []}
 
@@ -728,7 +728,7 @@ async def detectar_alcohol(items: list[dict], db, user_id: int) -> dict:
                 encontrados.append({
                     "row_id": it["row_id"],
                     "codigo": it.get("codigo", ""),
-                    "texto":  it.get("descripcion") or it.get("nombre_articulo") or "",
+                    "texto":  it.get("descripcion") or it.get("nombreArticulo") or "",
                     "motivo": str(item.get("motivo") or "")[:300],
                 })
     return {"alcohol": encontrados, "errores": errores}

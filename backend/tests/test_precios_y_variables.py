@@ -120,3 +120,15 @@ def test_alcohol_vaso_de_cerveza_es_exceso_aceptado():
     # cerveza dispara la leyenda. Si algún día se decide excluir cristalería,
     # este test se invierte a propósito — no lo "arregles" sin esa decisión.
     assert es_alcohol("", "VASO DE CERVEZA VIDRIO 580ML")
+
+
+def test_campos_de_entrada_en_camel_case():
+    # Regla de la plataforma (Ivan, 2026-08-29): todo el vocabulario visible
+    # va en camelCase — incluidos los 12 campos de entrada del Convertidor
+    # que se ofrecen en el panel de Tinín. Un guion bajo acá es una clave
+    # interna filtrándose a la pantalla de nuevo.
+    from app.services.cenefas.convertidor import _INPUT_ALIASES
+    from app.services.cenefas.convertidor_ai import _CAMPOS_SUGERIBLES
+    assert all("_" not in campo for campo in _CAMPOS_SUGERIBLES), sorted(_CAMPOS_SUGERIBLES)
+    assert all("_" not in campo for campo in _INPUT_ALIASES.values()), sorted(set(_INPUT_ALIASES.values()))
+    assert set(_CAMPOS_SUGERIBLES) <= set(_INPUT_ALIASES.values())

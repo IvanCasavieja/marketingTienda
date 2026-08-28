@@ -49,22 +49,22 @@ def _norm(name) -> str:
 
 _INPUT_ALIASES: dict[str, str] = {
     "codigo":         "codigo",
-    "nombrearticulo": "nombre_articulo",
+    "nombrearticulo": "nombreArticulo",
     # Gestion exporta esta columna con y sin el "de" segun el listado
     # ("NOMBREARTICULO" en el mailing, "NOMBRE DE ARTICULO" en los de MRP).
     # Sin este alias la columna se ignora en silencio y las filas llegan sin
     # nombre: la generacion con IA las descarta antes de llamar a la API
     # --no tiene de donde redactar-- y salen todas como "completalas a mano".
-    "nombredearticulo": "nombre_articulo",
+    "nombredearticulo": "nombreArticulo",
     # La columna "Descripción" del Excel SÍ se lee, y gana sobre el catálogo:
     # si alguien se tomó el trabajo de escribirla, es la que quiere ver en el
     # cartel (decisión de 2026-08-24). Lo que NO cambia es que no se aprende
     # sola en el catálogo compartido -- ver match_rows().
-    "descripcion":    "descripcion_excel",
+    "descripcion":    "descripcionExcel",
     "moneda":         "moneda",
-    "precioant":      "precio_anterior",
-    "precioanterior": "precio_anterior",
-    "pvpregular":     "precio_anterior",
+    "precioant":      "precioAnterior",
+    "precioanterior": "precioAnterior",
+    "pvpregular":     "precioAnterior",
     "pvpoferta":      "precio",
     "precio":         "precio",
     # Los nombres CANONICOS tambien entran. Desde 08/2026 la variable del
@@ -73,31 +73,31 @@ _INPUT_ALIASES: dict[str, str] = {
     # de su Excel a los nombres del sistema (lo mas razonable) tienen que
     # matchear. Sin esto el archivo se leia sin precios y las cenefas salian
     # con el simbolo de moneda solo.
-    "precioregular":  "precio_anterior",
+    "precioregular":  "precioAnterior",
     "preciooferta":   "precio",
     "oferta":         "oferta",
-    "ofertadet":      "oferta_det",
-    "descripcionweb": "descripcion_web",
-    "descripcionesweb": "descripcion_web",   # en plural en los listados de MRP
+    "ofertadet":      "ofertaDet",
+    "descripcionweb": "descripcionWeb",
+    "descripcionesweb": "descripcionWeb",   # en plural en los listados de MRP
     "comprador":      "comprador",
     "descuentoprov":     "descuento",
-    "descuentoprovdet":  "descuento_det",
+    "descuentoprovdet":  "descuentoDet",
     # Fecha inicio/fin de vigencia -- ninguna de las dos es obligatoria en
     # gestión (muchos exports no las traen); si falta una o las dos, vigencia
     # simplemente queda como antes (ver _format_vigencia). Varios alias por
     # lado porque el nombre exacto de la columna varía según el export.
-    "fechainicio":        "fecha_inicio",
-    "fechadeinicio":      "fecha_inicio",
-    "fechainicial":       "fecha_inicio",
-    "fechadesde":         "fecha_inicio",
-    "vigenciadesde":      "fecha_inicio",
-    "iniciovigencia":     "fecha_inicio",
-    "fechafin":           "fecha_fin",
-    "fechadefin":         "fecha_fin",
-    "fechafinal":         "fecha_fin",
-    "fechahasta":         "fecha_fin",
-    "vigenciahasta":      "fecha_fin",
-    "finvigencia":        "fecha_fin",
+    "fechainicio":        "fechaInicio",
+    "fechadeinicio":      "fechaInicio",
+    "fechainicial":       "fechaInicio",
+    "fechadesde":         "fechaInicio",
+    "vigenciadesde":      "fechaInicio",
+    "iniciovigencia":     "fechaInicio",
+    "fechafin":           "fechaFin",
+    "fechadefin":         "fechaFin",
+    "fechafinal":         "fechaFin",
+    "fechahasta":         "fechaFin",
+    "vigenciahasta":      "fechaFin",
+    "finvigencia":        "fechaFin",
 }
 
 _HEADER_SCAN_ROWS = 10
@@ -201,7 +201,7 @@ def _parse_date_or_none(raw) -> date | None:
     """xlsx con la celda formateada como fecha llega ya como date/datetime
     (openpyxl con data_only=True); CSV y celdas de texto llegan como string
     en alguno de los formatos regionales más comunes. Cualquier otra cosa
-    (vacío, texto que no matchea ningún formato) es None -- fecha_inicio/fin
+    (vacío, texto que no matchea ningún formato) es None -- fechaInicio/fin
     son opcionales, así que un valor no reconocible se ignora en vez de
     romper el import entero."""
     if isinstance(raw, datetime):
@@ -225,28 +225,28 @@ _MESES = [
 ]
 
 
-def _format_vigencia(fecha_inicio: date | None, fecha_fin: date | None) -> str:
+def _format_vigencia(fechaInicio: date | None, fechaFin: date | None) -> str:
     """"Desde el 10 al 16 de julio" (mismo mes/año -- el caso común de una
     promo semanal), con fallback a mencionar el mes de cada punta si difieren.
     Ninguna de las dos fechas es obligatoria: con una sola, frase abierta
     ("Desde"/"Hasta" nomás); con ninguna, "" (igual que antes de esta regla,
     completable a mano en la grilla)."""
-    if fecha_inicio and fecha_fin:
-        mes_inicio = _MESES[fecha_inicio.month - 1]
-        if fecha_inicio.year != fecha_fin.year:
-            mes_fin = _MESES[fecha_fin.month - 1]
+    if fechaInicio and fechaFin:
+        mes_inicio = _MESES[fechaInicio.month - 1]
+        if fechaInicio.year != fechaFin.year:
+            mes_fin = _MESES[fechaFin.month - 1]
             return (
-                f"Desde el {fecha_inicio.day} de {mes_inicio} de {fecha_inicio.year} "
-                f"hasta el {fecha_fin.day} de {mes_fin} de {fecha_fin.year}"
+                f"Desde el {fechaInicio.day} de {mes_inicio} de {fechaInicio.year} "
+                f"hasta el {fechaFin.day} de {mes_fin} de {fechaFin.year}"
             )
-        if fecha_inicio.month != fecha_fin.month:
-            mes_fin = _MESES[fecha_fin.month - 1]
-            return f"Desde el {fecha_inicio.day} de {mes_inicio} hasta el {fecha_fin.day} de {mes_fin}"
-        return f"Desde el {fecha_inicio.day} al {fecha_fin.day} de {mes_inicio}"
-    if fecha_inicio:
-        return f"Desde el {fecha_inicio.day} de {_MESES[fecha_inicio.month - 1]}"
-    if fecha_fin:
-        return f"Hasta el {fecha_fin.day} de {_MESES[fecha_fin.month - 1]}"
+        if fechaInicio.month != fechaFin.month:
+            mes_fin = _MESES[fechaFin.month - 1]
+            return f"Desde el {fechaInicio.day} de {mes_inicio} hasta el {fechaFin.day} de {mes_fin}"
+        return f"Desde el {fechaInicio.day} al {fechaFin.day} de {mes_inicio}"
+    if fechaInicio:
+        return f"Desde el {fechaInicio.day} de {_MESES[fechaInicio.month - 1]}"
+    if fechaFin:
+        return f"Hasta el {fechaFin.day} de {_MESES[fechaFin.month - 1]}"
     return ""
 
 
@@ -536,13 +536,13 @@ async def parse_input_excel(
     """Detecta la fila de headers real (puede no ser la fila 1 — el export
     real de gestión trae una fila de título + una fila en blanco antes),
     mapea columnas por nombre normalizado, y extrae por fila: codigo,
-    nombre_articulo, moneda, precio_anterior, precio, oferta, oferta_det,
-    descripcion_web, comprador, descuento, descuento_det, fecha_inicio,
-    fecha_fin (estas últimas dos opcionales -- ver _format_vigencia).
+    nombreArticulo, moneda, precioAnterior, precio, oferta, ofertaDet,
+    descripcionWeb, comprador, descuento, descuentoDet, fechaInicio,
+    fechaFin (estas últimas dos opcionales -- ver _format_vigencia).
 
     Columnas no reconocidas por _INPUT_ALIASES se resuelven en dos pasos más
     antes de darse por ignoradas -- para CUALQUIERA de los campos, no solo
-    fecha_inicio/fecha_fin como fue al principio: primero
+    fechaInicio/fechaFin como fue al principio: primero
     contra ConvertidorHeaderAlias (headers que Tinín ya clasificó en un import
     anterior — nunca vuelve a gastar una llamada a IA en el mismo nombre de
     columna dos veces), y si sigue sin match y allow_ai=True (el caller decide
@@ -744,25 +744,25 @@ async def parse_input_excel(
         if not codigo:
             continue
 
-        precio_raw          = _clean_str(cell(row, "precio"))
-        precio_anterior_raw = _clean_str(cell(row, "precio_anterior"))
+        precioRaw          = _clean_str(cell(row, "precio"))
+        precioAnteriorRaw = _clean_str(cell(row, "precioAnterior"))
         parsed.append({
             "codigo":            codigo,
-            "nombre_articulo":   _clean_str(cell(row, "nombre_articulo")),
+            "nombreArticulo":   _clean_str(cell(row, "nombreArticulo")),
             "moneda":            _clean_str(cell(row, "moneda")) or "$",
-            "precio_anterior":   _parse_price_or_none(precio_anterior_raw),
-            "precio_anterior_raw": precio_anterior_raw,
-            "precio":            _parse_price_or_none(precio_raw),
-            "precio_raw":        precio_raw,
+            "precioAnterior":   _parse_price_or_none(precioAnteriorRaw),
+            "precioAnteriorRaw": precioAnteriorRaw,
+            "precio":            _parse_price_or_none(precioRaw),
+            "precioRaw":        precioRaw,
             "oferta":            _clean_str(cell(row, "oferta")),
-            "oferta_det":        _clean_str(cell(row, "oferta_det")),
-            "descripcion_web":   _clean_str(cell(row, "descripcion_web")),
-            "descripcion_excel": _clean_str(cell(row, "descripcion_excel")),
+            "ofertaDet":        _clean_str(cell(row, "ofertaDet")),
+            "descripcionWeb":   _clean_str(cell(row, "descripcionWeb")),
+            "descripcionExcel": _clean_str(cell(row, "descripcionExcel")),
             "comprador":         _clean_str(cell(row, "comprador")),
             "descuento":         _clean_str(cell(row, "descuento")),
-            "descuento_det":     _clean_str(cell(row, "descuento_det")),
-            "fecha_inicio":      _parse_date_or_none(cell(row, "fecha_inicio")),
-            "fecha_fin":         _parse_date_or_none(cell(row, "fecha_fin")),
+            "descuentoDet":     _clean_str(cell(row, "descuentoDet")),
+            "fechaInicio":      _parse_date_or_none(cell(row, "fechaInicio")),
+            "fechaFin":         _parse_date_or_none(cell(row, "fechaFin")),
             "_mapeado": {
                 **{var: _clean_str(row[i]) if i < len(row) else ""
                    for var, i in mapeo_cols.items()},
@@ -806,12 +806,12 @@ def _tiene_producto_sin_conversion(*textos: str) -> bool:
     return any(_RE_SIN_CONVERSION_100G.search(t) for t in textos if t)
 
 
-def _es_fiambre_por_kg(comprador: str, nombre_articulo: str, descripcion: str, descripcion_web: str) -> bool:
+def _es_fiambre_por_kg(comprador: str, nombreArticulo: str, descripcion: str, descripcionWeb: str) -> bool:
     if not comprador or not _RE_FIAMBRE.search(comprador):
         return False
-    if _tiene_producto_sin_conversion(nombre_articulo, descripcion, descripcion_web):
+    if _tiene_producto_sin_conversion(nombreArticulo, descripcion, descripcionWeb):
         return False
-    return _tiene_unidad_kg(nombre_articulo, descripcion, descripcion_web)
+    return _tiene_unidad_kg(nombreArticulo, descripcion, descripcionWeb)
 
 
 # ---------------------------------------------------------------------------
@@ -866,14 +866,14 @@ def _tiene_cantidad_propia(*textos: str) -> bool:
             or _tiene_unidad_kg(*textos))
 
 
-def _unidad_de_venta(comprador: str, nombre_articulo: str, descripcion: str,
-                     descripcion_web: str) -> str:
+def _unidad_de_venta(comprador: str, nombreArticulo: str, descripcion: str,
+                     descripcionWeb: str) -> str:
     """Con qué unidad se cobra el producto, cuando el texto de origen no lo dice.
 
     Devuelve "100g", "kg" o "" (no se sabe, o el texto ya trae su cantidad). Es
     lo único que le faltaba a Tinín para escribir el gramaje sin inventar nada.
     No calcula ni toca precios: solo marca la fila."""
-    textos = (nombre_articulo, descripcion, descripcion_web)
+    textos = (nombreArticulo, descripcion, descripcionWeb)
     if _tiene_cantidad_propia(*textos):
         return ""
     if any(_RE_LINEA_KG.search(t) for t in textos if t):
@@ -934,22 +934,22 @@ def _es_por_100g(*textos: str) -> bool:
 _RE_SEPARADOR_MILES = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
 
 
-def _precio_es_de_kilo_en_100g(precio_raw, *textos: str, unidad_venta: str = "") -> bool:
+def _precio_es_de_kilo_en_100g(precioRaw, *textos: str, unidadVenta: str = "") -> bool:
     """La fila se vende por 100 g pero el precio que vino parece el del kilo.
 
-    `unidad_venta` ("100g" cuando lo sabemos por línea de producto, ver
+    `unidadVenta` ("100g" cuando lo sabemos por línea de producto, ver
     _unidad_de_venta) cuenta igual que si el texto lo dijera. Sin eso, la MUZZA
     y la PANCETA cuya descripción Tinín recién ahora escribe con "100g" pasarían
     de largo por este chequeo y saldrían con el precio del kilo -- exactamente el
     error que se imprimió en el Rompe del Finde y que el bloque de arriba cuenta.
     """
-    if unidad_venta != "100g" and not _es_por_100g(*textos):
+    if unidadVenta != "100g" and not _es_por_100g(*textos):
         return False
-    crudo = str(precio_raw or "").strip().lstrip("$U S").strip()
+    crudo = str(precioRaw or "").strip().lstrip("$U S").strip()
     if _RE_SEPARADOR_MILES.match(crudo):
         precio = float(crudo.replace(".", ""))
     else:
-        precio = _parse_price_or_none(precio_raw)
+        precio = _parse_price_or_none(precioRaw)
     return precio is not None and precio >= _PRECIO_MAX_POR_100G
 
 
@@ -965,9 +965,9 @@ def _compute_warnings(row: dict) -> list[str]:
     Excel con las columnas corridas, localizada en la columna exacta que no
     cierra. Se suman los warnings de mecánica que ya calculó
     convertidor_variables (oferta_inesperada, combo_no_parseable...), que
-    viajan en la fila bajo "warnings_mecanica".
+    viajan en la fila bajo "warningsMecanica".
     """
-    w = list(row.get("warnings_mecanica") or [])
+    w = list(row.get("warningsMecanica") or [])
 
     descripcion = str(row.get("descripcion") or "").strip()
     if not descripcion:
@@ -983,34 +983,34 @@ def _compute_warnings(row: dict) -> list[str]:
     elif len(descripcion) > DESCRIPTION_WARN_CHARS:
         w.append("descripcion_algo_larga")
 
-    precio_raw = str(row.get("precio_raw") or "").strip()
-    if not precio_raw:
+    precioRaw = str(row.get("precioRaw") or "").strip()
+    if not precioRaw:
         w.append("missing_price")
-    elif not _is_numeric_like(precio_raw):
+    elif not _is_numeric_like(precioRaw):
         w.append("precio_invalido")
 
-    precio_anterior_raw = str(row.get("precio_anterior_raw") or "").strip()
-    if not precio_anterior_raw:
+    precioAnteriorRaw = str(row.get("precioAnteriorRaw") or "").strip()
+    if not precioAnteriorRaw:
         w.append("missing_precio_anterior")
-    elif not _is_numeric_like(precio_anterior_raw):
+    elif not _is_numeric_like(precioAnteriorRaw):
         w.append("precio_anterior_invalido")
 
     # Se vende por 100 g pero el precio vino del kilo. La fila ya trae el
     # chequeo hecho (ver el bloque de arriba); acá solo se convierte en aviso,
     # que es lo que la grilla sabe mostrar.
-    if row.get("precio_de_kilo_en_100g"):
-        w.append("precio_de_kilo_en_100g")
+    if row.get("precioDeKiloEn100g"):
+        w.append("precioDeKiloEn100g")
 
-    oferta_det = str(row.get("oferta_det") or "").strip()
-    if not oferta_det:
+    ofertaDet = str(row.get("ofertaDet") or "").strip()
+    if not ofertaDet:
         w.append("missing_oferta_det")
-    elif _is_numeric_like(oferta_det):
+    elif _is_numeric_like(ofertaDet):
         w.append("oferta_det_invalido")  # es una categoría, nunca un número puro
 
-    descripcion_web = str(row.get("descripcion_web") or "").strip()
-    if not descripcion_web:
+    descripcionWeb = str(row.get("descripcionWeb") or "").strip()
+    if not descripcionWeb:
         w.append("missing_descripcion_web")
-    elif not _has_letters(descripcion_web):
+    elif not _has_letters(descripcionWeb):
         w.append("descripcion_web_invalida")
 
     moneda = str(row.get("moneda") or "").strip()
@@ -1024,8 +1024,8 @@ def _compute_warnings(row: dict) -> list[str]:
         # una persona tiene que mirar, aunque el símbolo salga bien.
         w.append("moneda_no_pesos")
 
-    nombre_articulo = str(row.get("nombre_articulo") or "").strip()
-    if nombre_articulo and not _has_letters(nombre_articulo):
+    nombreArticulo = str(row.get("nombreArticulo") or "").strip()
+    if nombreArticulo and not _has_letters(nombreArticulo):
         w.append("nombre_articulo_invalido")
 
     return w
@@ -1048,8 +1048,8 @@ _MA_SIMILARITY_THRESHOLD = 0.6
 _RE_MA_SUFFIX = re.compile(r'(?:^|\s)["\']*([MA])["\']*\s*$', re.IGNORECASE)
 
 
-def _ma_base_and_suffix(nombre_articulo: str) -> tuple[str, str] | None:
-    s = nombre_articulo.strip()
+def _ma_base_and_suffix(nombreArticulo: str) -> tuple[str, str] | None:
+    s = nombreArticulo.strip()
     m = _RE_MA_SUFFIX.search(s)
     if not m:
         return None
@@ -1070,14 +1070,14 @@ def detect_ma_pairs(rows: list[dict], catalogo: dict[str, str]) -> list[dict]:
     "grupo completo" del frontend ya ofrece aplicarlo con un click."""
     candidatos: dict[str, list[dict]] = {}
     for r in rows:
-        parsed = _ma_base_and_suffix(r["nombre_articulo"])
+        parsed = _ma_base_and_suffix(r["nombreArticulo"])
         if not parsed:
             continue
         base, suffix = parsed
         comprador = (r.get("comprador") or "").strip().lower()
         candidatos.setdefault(comprador, []).append({
             "codigo": r["codigo"],
-            "nombre_articulo": r["nombre_articulo"],
+            "nombreArticulo": r["nombreArticulo"],
             "base": base,
             "suffix": suffix,
         })
@@ -1109,8 +1109,8 @@ def detect_ma_pairs(rows: list[dict], catalogo: dict[str, str]) -> list[dict]:
             pairs.append({
                 "sku1": a["codigo"],
                 "sku2": b["codigo"],
-                "nombre1": a["nombre_articulo"],
-                "nombre2": b["nombre_articulo"],
+                "nombre1": a["nombreArticulo"],
+                "nombre2": b["nombreArticulo"],
                 "base": a["base"] if len(a["base"]) >= len(b["base"]) else b["base"],
             })
     return pairs
@@ -1131,7 +1131,7 @@ async def match_rows(
        UNA, seis salían cambiadas y tres vacías).
     2. **El catálogo** (sku_descripciones), buscando por SKU.
     3. **Vacía**, con warning "missing_description" y fila roja, para
-       resolverse por "Generar con IA" (usa nombre_articulo + descripcion_web)
+       resolverse por "Generar con IA" (usa nombreArticulo + descripcionWeb)
        o a mano.
 
     Lo que NO cambia: nunca se aprende nada en el catálogo compartido de forma
@@ -1164,7 +1164,7 @@ async def match_rows(
     # motor no reconoce. Una sola consulta para todo el listado: son un puñado
     # de textos distintos aunque vengan mil filas.
     familias: dict[str, str] = {}
-    dets = {_norm(r.get("oferta_det") or "") for r in parsed}
+    dets = {_norm(r.get("ofertaDet") or "") for r in parsed}
     dets.discard("")
     if dets:
         familias = {
@@ -1177,7 +1177,7 @@ async def match_rows(
 
     rows = []
     for i, r in enumerate(parsed):
-        del_excel = (r.get("descripcion_excel") or "").strip()
+        del_excel = (r.get("descripcionExcel") or "").strip()
         descripcion = del_excel or catalogo.get(r["codigo"], "")
         origen = "excel" if del_excel else ("catalogo" if descripcion else "")
 
@@ -1187,25 +1187,25 @@ async def match_rows(
             r,
             descripcion,
             r.get("_mapeado") or {},
-            vigencia_fallback=_format_vigencia(r.get("fecha_inicio"), r.get("fecha_fin")),
-            familia_ofertadet=familias.get(_norm(r.get("oferta_det") or "")),
+            vigencia_fallback=_format_vigencia(r.get("fechaInicio"), r.get("fechaFin")),
+            familia_ofertadet=familias.get(_norm(r.get("ofertaDet") or "")),
         )
 
         # Contexto del export de gestión: no son variables y no se exportan,
         # pero se muestran en la grilla para que una persona pueda entender
         # de dónde salió cada valor calculado y corregirlo si algo no cierra.
         contexto = {
-            "nombre_articulo":     r["nombre_articulo"],
+            "nombreArticulo":     r["nombreArticulo"],
             # De dónde salió la descripción: "excel" (la escribió una persona
             # en el listado), "catalogo" (la puso la plataforma) o "" (falta).
-            "descripcion_origen":  origen,
+            "descripcionOrigen":  origen,
             "comprador":           r["comprador"],
             "moneda":              r["moneda"],
-            "oferta_origen":       r["oferta"],
-            "oferta_det":          r["oferta_det"],
-            "descripcion_web":     r["descripcion_web"],
-            "precio_raw":          r["precio_raw"],
-            "precio_anterior_raw": r["precio_anterior_raw"],
+            "ofertaOrigen":       r["oferta"],
+            "ofertaDet":          r["ofertaDet"],
+            "descripcionWeb":     r["descripcionWeb"],
+            "precioRaw":          r["precioRaw"],
+            "precioAnteriorRaw": r["precioAnteriorRaw"],
         }
 
         # Con qué unidad se cobra el producto, cuando el texto de origen no lo
@@ -1213,8 +1213,8 @@ async def match_rows(
         # que va al prompt de Tinín (para que escriba el gramaje) y el chequeo de
         # precio de acá abajo (para que ese gramaje no quede con el precio del
         # kilo).
-        unidad_venta = _unidad_de_venta(
-            r["comprador"], r["nombre_articulo"], descripcion, r["descripcion_web"]
+        unidadVenta = _unidad_de_venta(
+            r["comprador"], r["nombreArticulo"], descripcion, r["descripcionWeb"]
         )
 
         fila = {
@@ -1222,15 +1222,15 @@ async def match_rows(
             "matched": bool(descripcion),
             **contexto,
             **variables,
-            "es_fiambre_kg": _es_fiambre_por_kg(
-                r["comprador"], r["nombre_articulo"], descripcion, r["descripcion_web"]
+            "esFiambreKg": _es_fiambre_por_kg(
+                r["comprador"], r["nombreArticulo"], descripcion, r["descripcionWeb"]
             ),
-            "unidad_venta": unidad_venta,
-            "precio_de_kilo_en_100g": _precio_es_de_kilo_en_100g(
-                r["precio_raw"], r["nombre_articulo"], descripcion, r["descripcion_web"],
-                unidad_venta=unidad_venta,
+            "unidadVenta": unidadVenta,
+            "precioDeKiloEn100g": _precio_es_de_kilo_en_100g(
+                r["precioRaw"], r["nombreArticulo"], descripcion, r["descripcionWeb"],
+                unidadVenta=unidadVenta,
             ),
-            "warnings_mecanica": warn_mecanica,
+            "warningsMecanica": warn_mecanica,
         }
         fila["warnings"] = _compute_warnings(fila)
         rows.append(fila)

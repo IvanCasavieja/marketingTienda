@@ -45,12 +45,12 @@ export default function ConvertidorMergeModal({ pair, rowA, rowB, onConfirm, onC
         {
           row_id: rowA.row_id,
           codigo: `${pair.sku1}-${pair.sku2}`,
-          nombre_articulo: pair.base,
-          descripcion_web: rowA.descripcion_web || rowB.descripcion_web,
-          es_fiambre_kg: rowA.es_fiambre_kg || rowB.es_fiambre_kg,
+          nombreArticulo: pair.base,
+          descripcionWeb: rowA.descripcionWeb || rowB.descripcionWeb,
+          esFiambreKg: rowA.esFiambreKg || rowB.esFiambreKg,
           // Es el MISMO producto con dos SKUs, así que la unidad de cobro es la
           // misma: alcanza con la que haya resuelto cualquiera de las dos filas.
-          unidad_venta: rowA.unidad_venta || rowB.unidad_venta || "",
+          unidadVenta: rowA.unidadVenta || rowB.unidadVenta || "",
         },
       ])
       .then(({ data }) => {
@@ -96,8 +96,8 @@ export default function ConvertidorMergeModal({ pair, rowA, rowB, onConfirm, onC
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-            <p>{pair.sku1} · {rowA.nombre_articulo}</p>
-            <p>{pair.sku2} · {rowB.nombre_articulo}</p>
+            <p>{pair.sku1} · {rowA.nombreArticulo}</p>
+            <p>{pair.sku2} · {rowB.nombreArticulo}</p>
           </div>
           <p className="text-xs text-slate-400">
             {t("convertidor.merge.combinedSkuNotice", { sku: `${pair.sku1}-${pair.sku2}` })}

@@ -30,7 +30,7 @@ const SAVE_DEBOUNCE_MS = 800;
 
 type ColumnKey =
   // contexto del export de gestión (solo lectura, no se exporta)
-  | "nombre_articulo" | "comprador" | "moneda" | "oferta_origen" | "oferta_det" | "descripcion_web"
+  | "nombreArticulo" | "comprador" | "moneda" | "ofertaOrigen" | "ofertaDet" | "descripcionWeb"
   // las 26 variables
   | "codigo" | "descripcion" | "mecanica"
   | "tipoOferta" | "unidadMoneda"
@@ -137,21 +137,21 @@ const COLUMNS: ColumnDef[] = [
   { key: "año",           label: "año",           editable: "simple" },
 
   // ── Contexto de gestión: de dónde salió lo de arriba ────────────────────
-  { key: "nombre_articulo", label: "· Nombre gestión", contexto: true, siempre: true,
+  { key: "nombreArticulo", label: "· Nombre gestión", contexto: true, siempre: true,
     warningCodes: ["nombre_articulo_invalido"] },
   // Estas dos son de donde sale la mecánica, así que también es donde se
   // marca cuando no cierra. Antes se pintaba la columna "mecanica", que es
   // donde se corrige pero no donde está el problema: se veían dos celdas que
   // decían "Precio Final" igual, una morada y otra no, sin forma de entender
   // por qué mirando esa columna.
-  { key: "oferta_det",      label: "· Oferta Det",     contexto: true, siempre: true,
+  { key: "ofertaDet",      label: "· Oferta Det",     contexto: true, siempre: true,
     warningCodes: ["missing_oferta_det", "oferta_det_invalido"] },
   // La columna "· Oferta" (el crudo de gestión) se eliminó el 2026-08-29:
   // tipoOferta ES esa columna renombrada por el Convertidor, mostrarla dos
   // veces era duplicarla. Los avisos que vivían acá pasaron a tipoOferta.
   { key: "moneda",          label: "· Moneda",         contexto: true, siempre: true },
   { key: "comprador",       label: "· Comprador",      contexto: true },
-  { key: "descripcion_web", label: "· Descripción web", contexto: true,
+  { key: "descripcionWeb", label: "· Descripción web", contexto: true,
     warningCodes: ["missing_descripcion_web", "descripcion_web_invalida"] },
 ];
 
@@ -324,7 +324,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
   // Fiambres cuyo nombre/descripción todavía dice "kg" — necesitan pasar a
   // 100g (descripción + precio÷10) aunque ya tengan descripción matcheada
   // del catálogo, por eso es un filtro aparte y no solo un warning más.
-  const rowsFiambresKg = useMemo(() => rows.filter((r) => r.es_fiambre_kg), [rows]);
+  const rowsFiambresKg = useMemo(() => rows.filter((r) => r.esFiambreKg), [rows]);
 
   // Se cobran por 100 g o por kilo y la descripción no lo dice. Mismo criterio
   // de filtro aparte que rowsFiambresKg de arriba: una descripción que ya vino
@@ -334,8 +334,8 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
   // las que alguien escribió a mano en el Excel quedan afuera: esas no se
   // reescriben (decisión de 2026-08-24, ver match_rows en convertidor.py).
   const rowsSinUnidad = useMemo(
-    () => rows.filter((r) => r.unidad_venta && !r.es_fiambre_kg
-                             && r.descripcion_origen !== "excel"
+    () => rows.filter((r) => r.unidadVenta && !r.esFiambreKg
+                             && r.descripcionOrigen !== "excel"
                              && r.descripcion.trim() && !CANTIDAD_EN_TEXTO_RE.test(r.descripcion)),
     [rows]
   );
@@ -394,7 +394,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
   // alguien confirma, porque un falso positivo imprime un precio diez veces
   // más barato en la góndola.
   const rowsPrecioDeKilo = useMemo(
-    () => rows.filter((r) => r.precio_de_kilo_en_100g), [rows]);
+    () => rows.filter((r) => r.precioDeKiloEn100g), [rows]);
 
   function pasarPreciosA100g(ids: Set<number>) {
     setRows((prev) => (prev ?? []).map((r) => {
@@ -409,8 +409,8 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
                         Number.isFinite(regular) ? regular / 10 : undefined),
         // Sin limpiar la bandera y el warning la fila vuelve a aparecer en el
         // aviso en el próximo render, ya con el precio corregido.
-        precio_de_kilo_en_100g: false,
-        warnings: (r.warnings ?? []).filter((w) => w !== "precio_de_kilo_en_100g"),
+        precioDeKiloEn100g: false,
+        warnings: (r.warnings ?? []).filter((w) => w !== "precioDeKiloEn100g"),
       };
     }));
     toast.success(t("convertidor.tinin.cienGramosAplicado", { count: ids.size }));
@@ -606,7 +606,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
     rowId: number,
     sku: string,
     value: string,
-    precioOverride?: { precio?: number; precio_anterior?: number }
+    precioOverride?: { precio?: number; precioAnterior?: number }
   ) {
     const trimmed = value.trim();
     if (!trimmed || !HAS_LETTER_RE.test(trimmed)) {
@@ -627,14 +627,14 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
               // aprobada seguía volviendo a aparecer en "Generar con IA" cada
               // vez que se reabría el modal en la misma sesión, porque este
               // flag nunca se limpiaba y rowsFiambresKg se arma a partir de él.
-              es_fiambre_kg: false,
+              esFiambreKg: false,
               // El precio ajustado (÷10 para fiambres que pasan a 100g) solo
               // se actualiza acá, en el estado local — nunca se manda al
               // backend. sku_descripciones no tiene columnas de precio y así
               // se mantiene: el PATCH de abajo (flushSave) sigue mandando
               // únicamente la descripción, igual que siempre.
               ...partirPrecio("precioOferta", "decimalPrecioOferta", precioOverride?.precio),
-              ...partirPrecio("precioRegular", "decimalPrecioRegular", precioOverride?.precio_anterior),
+              ...partirPrecio("precioRegular", "decimalPrecioRegular", precioOverride?.precioAnterior),
             }
           : r
       )
@@ -749,7 +749,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
       const { data } = await convertidorApi.detectarAlcoholIA(
         rows.map((r) => ({
           row_id: r.row_id, codigo: r.codigo,
-          descripcion: r.descripcion, nombre_articulo: r.nombre_articulo,
+          descripcion: r.descripcion, nombreArticulo: r.nombreArticulo,
         }))
       );
       if (data.errores.length) toast.error(data.errores[0]);
@@ -790,7 +790,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
         },
         items: rowsParaIA.slice(0, 40).map((row) => ({
           clave: String(row.row_id),
-          texto: `${row.codigo} · ${row.nombre_articulo || "—"}`,
+          texto: `${row.codigo} · ${row.nombreArticulo || "—"}`,
           onIr: () => scrollToRow(row.row_id),
         })),
       });
@@ -813,7 +813,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
     // OFERTADET que el motor no conoce: la mecánica se descarta en silencio,
     // así que hay que verlo. Ver resolver_mecanica en convertidor_variables.py.
     const detDesconocido = rows.filter((r) =>
-      (r.warnings_mecanica ?? []).includes("ofertadet_desconocido"));
+      (r.warningsMecanica ?? []).includes("ofertadet_desconocido"));
     if (detDesconocido.length > 0) {
       out.push({
         id: "ofertadet",
@@ -822,14 +822,14 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
         panel: (
           <TininMecanica
             rows={detDesconocido.map((r) => ({
-              oferta_det: r.oferta_det, oferta_origen: r.oferta_origen,
+              ofertaDet: r.ofertaDet, ofertaOrigen: r.ofertaOrigen,
             }))}
             onAprendido={() => onRevalidar?.()}
           />
         ),
         items: detDesconocido.slice(0, 40).map((row) => ({
           clave: String(row.row_id),
-          texto: `${row.codigo} · ${row.oferta_det || "—"}`,
+          texto: `${row.codigo} · ${row.ofertaDet || "—"}`,
           onIr: () => scrollToRow(row.row_id),
         })),
       });
@@ -846,7 +846,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
         },
         items: rowsPrecioDeKilo.slice(0, 40).map((row) => ({
           clave: String(row.row_id),
-          texto: `${row.codigo} · ${row.descripcion || row.nombre_articulo || "—"} · `
+          texto: `${row.codigo} · ${row.descripcion || row.nombreArticulo || "—"} · `
                + `$${row.precioOferta}${row.decimalPrecioOferta} → `
                + `$${precioA100g(row.precioOferta, row.decimalPrecioOferta)}`,
           onIr: () => scrollToRow(row.row_id),

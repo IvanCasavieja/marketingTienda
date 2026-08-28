@@ -108,21 +108,21 @@ _RE_SIN_MECANICA_DET = re.compile(r"precio\s*fijo|%\s*descuento|descuentos?", re
 FAMILIAS_MECANICA = ("combo", "mxn", "segunda", "sin_mecanica")
 
 
-def familia_de_ofertadet(oferta_det: str) -> str | None:
+def familia_de_ofertadet(ofertaDet: str) -> str | None:
     """Qué familia de mecánica es este OFERTADET, o None si no la reconozco.
 
     None es el caso que importa: gestión inventó un tipo nuevo. Sin esto la
     fila perdía la mecánica en silencio y solo quedaba un aviso."""
-    oferta_det = (oferta_det or "").strip()
-    if not oferta_det:
+    ofertaDet = (ofertaDet or "").strip()
+    if not ofertaDet:
         return None
-    if _RE_ES_COMBO_DET.search(oferta_det):
+    if _RE_ES_COMBO_DET.search(ofertaDet):
         return "combo"
-    if _RE_ES_MXN_DET.search(oferta_det):
+    if _RE_ES_MXN_DET.search(ofertaDet):
         return "mxn"
-    if _RE_ES_SEGUNDA_DET.search(oferta_det):
+    if _RE_ES_SEGUNDA_DET.search(ofertaDet):
         return "segunda"
-    if _RE_SIN_MECANICA_DET.search(oferta_det):
+    if _RE_SIN_MECANICA_DET.search(ofertaDet):
         return "sin_mecanica"
     return None
 
@@ -133,7 +133,7 @@ def familia_de_ofertadet(oferta_det: str) -> str | None:
 
 
 def resolver_mecanica(
-    oferta_det: str,
+    ofertaDet: str,
     oferta: str,
     precio: float | None,
     moneda: str = "$",
@@ -157,12 +157,12 @@ def resolver_mecanica(
       Final".
     """
     oferta = (oferta or "").strip()
-    oferta_det = (oferta_det or "").strip()
+    ofertaDet = (ofertaDet or "").strip()
     warnings: list[str] = []
     # `familia` la pasa el caller cuando alguien ya confirmó qué es este
     # OFERTADET (ver cenefa_ofertadet_aliases). Gana sobre el texto: es una
     # persona diciendo lo que las expresiones regulares no supieron leer.
-    familia = familia if familia in FAMILIAS_MECANICA else familia_de_ofertadet(oferta_det)
+    familia = familia if familia in FAMILIAS_MECANICA else familia_de_ofertadet(ofertaDet)
     prefijo = "U$S " if moneda.strip().upper() in ("U$S", "US$", "USD") else "$"
 
     # ── Combo ─────────────────────────────────────────────────────────────
@@ -292,7 +292,7 @@ def resolver_mecanica(
     #
     # El único aviso que queda es para un OFERTADET DESCONOCIDO: con esta regla
     # una mecánica nueva se descartaría en silencio, y eso sí hay que verlo.
-    if oferta_det and familia is None:
+    if ofertaDet and familia is None:
         warnings.append("ofertadet_desconocido")
 
     return {
@@ -332,7 +332,7 @@ def construir_variables(
     out["descripcion"] = descripcion
 
     mecanica, w = resolver_mecanica(
-        parsed.get("oferta_det", ""),
+        parsed.get("ofertaDet", ""),
         parsed.get("oferta", ""),
         parsed.get("precio"),
         parsed.get("moneda", "$"),
@@ -341,7 +341,7 @@ def construir_variables(
     warnings.extend(w)
 
     valores: dict[str, object] = {
-        "precioRegular": parsed.get("precio_anterior"),
+        "precioRegular": parsed.get("precioAnterior"),
         "precioOferta":  mecanica["precioOferta"],
         "promoOferta":   mecanica.get("promoOferta", ""),
         "ofertaUno":     mecanica["ofertaUno"],
@@ -388,7 +388,7 @@ def construir_variables(
         if valor is not None and str(valor).strip():
             out[var] = str(valor).strip()
 
-    # La vigencia se arma sola con fecha_inicio/fecha_fin cuando el export
+    # La vigencia se arma sola con fechaInicio/fechaFin cuando el export
     # las trae y no hay una columna mapeada.
     if not out["vigencia"]:
         out["vigencia"] = vigencia_fallback

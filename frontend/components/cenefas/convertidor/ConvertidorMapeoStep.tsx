@@ -47,7 +47,7 @@ interface Props {
   variablesMapeables: string[];
   /**
    * Campos de entrada que el Convertidor ya reconoció en esta hoja (codigo,
-   * precio, oferta, oferta_det...).
+   * precio, oferta, ofertaDet...).
    */
   camposReconocidos: string[];
   /**

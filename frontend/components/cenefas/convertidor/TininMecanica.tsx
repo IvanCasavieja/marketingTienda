@@ -24,7 +24,7 @@ import { convertidorApi, type SugerirMecanicaIAResponse } from "@/lib/api";
 
 interface Props {
   /** Las filas de la grilla, para agrupar por OFERTADET y ver qué dice OFERTA. */
-  rows: { oferta_det: string; oferta_origen: string }[];
+  rows: { ofertaDet: string; ofertaOrigen: string }[];
   /** Para que la grilla vuelva a resolver las filas con lo recién aprendido. */
   onAprendido: () => void;
 }
@@ -40,7 +40,7 @@ export default function TininMecanica({ rows, onAprendido }: Props) {
     setCargando(true);
     try {
       const { data } = await convertidorApi.sugerirMecanicaIA(
-        rows.map((r) => ({ oferta_det: r.oferta_det, oferta: r.oferta_origen }))
+        rows.map((r) => ({ ofertaDet: r.ofertaDet, oferta: r.ofertaOrigen }))
       );
       setDatos(data);
       setElegido(Object.fromEntries(data.sugerencias.map((s) => [s.ofertadet_norm, s.familia])));

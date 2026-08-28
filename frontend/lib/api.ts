@@ -366,36 +366,36 @@ export interface ConvertidorRow {
 
   // Contexto del export de gestión: no se exporta, sirve para entender de
   // dónde salió cada valor calculado y poder corregirlo.
-  nombre_articulo: string;
+  nombreArticulo: string;
   comprador: string;
   moneda: string;
-  oferta_origen: string;
-  oferta_det: string;
-  descripcion_web: string;
-  precio_raw: string;
-  precio_anterior_raw: string;
-  es_fiambre_kg: boolean;
+  ofertaOrigen: string;
+  ofertaDet: string;
+  descripcionWeb: string;
+  precioRaw: string;
+  precioAnteriorRaw: string;
+  esFiambreKg: boolean;
   /**
    * De dónde salió la descripción: "excel" (la escribió una persona en el
    * listado), "catalogo" (la puso la plataforma) o "" (falta). Una escrita en el
    * Excel no se vuelve a proponer: si alguien la escribió, por algo la escribió
    * (decisión de 2026-08-24, ver match_rows en convertidor.py).
    */
-  descripcion_origen: string;
+  descripcionOrigen: string;
   /**
    * "100g" | "kg" | "" — con qué unidad se cobra el producto, cuando el nombre
    * de gestión no lo dice (morcilla por kilo, queso de corte y panceta por
    * 100 g). Es lo que le permite a Tinín escribir el gramaje sin inventarlo.
    * Ver _unidad_de_venta en backend/app/services/cenefas/convertidor.py.
    */
-  unidad_venta: string;
+  unidadVenta: string;
   /**
    * Se vende por 100 g pero el precio que vino parece el del kilo. La app no
    * divide sola: lo propone y una persona confirma. Ver el bloque de
    * comentarios en backend/app/services/cenefas/convertidor.py.
    */
-  precio_de_kilo_en_100g: boolean;
-  warnings_mecanica: string[];
+  precioDeKiloEn100g: boolean;
+  warningsMecanica: string[];
 
   // Las 27 variables — es lo que se exporta y lo que consume la cenefa.
   codigo: string;
@@ -540,7 +540,7 @@ export interface ConvertidorHoja {
   columnas: ConvertidorColumna[];
   /**
    * Campos de entrada que el Convertidor ya reconoce solo en esta hoja
-   * (codigo, precio, oferta, oferta_det, comprador...). Sirve para no pedir a
+   * (codigo, precio, oferta, ofertaDet, comprador...). Sirve para no pedir a
    * mano una variable que el archivo ya trae resuelta -- ver
    * `resuelta_por_campo`.
    */
@@ -835,10 +835,10 @@ export const convertidorApi = {
     rows: {
       row_id: number;
       codigo: string;
-      nombre_articulo: string;
-      descripcion_web: string;
-      es_fiambre_kg: boolean;
-      unidad_venta: string;
+      nombreArticulo: string;
+      descripcionWeb: string;
+      esFiambreKg: boolean;
+      unidadVenta: string;
     }[]
   ) =>
     api.post<GenerarDescripcionesIAResponse>("/tools/cenefas/convertidor/descripciones/generar-ia", { rows }),
@@ -888,7 +888,7 @@ export const convertidorApi = {
         ? "/tools/cenefas/convertidor/grupos-unificados/export"
         : "/tools/cenefas/convertidor/descripciones/export",
       { responseType: "blob" }),
-  sugerirMecanicaIA: (rows: { oferta_det: string; oferta: string }[]) =>
+  sugerirMecanicaIA: (rows: { ofertaDet: string; oferta: string }[]) =>
     api.post<SugerirMecanicaIAResponse>(
       "/tools/cenefas/convertidor/mecanica/sugerir-ia", { rows }),
   /** Guarda las confirmaciones. Ese OFERTADET no vuelve a pasar por IA nunca. */
@@ -914,11 +914,11 @@ export const convertidorApi = {
     api.post<{ guardados: number }>(
       "/tools/cenefas/convertidor/columnas/confirmar-alias", { aliases }),
   detectarAlcoholIA: (
-    rows: { row_id: number; codigo: string; descripcion: string; nombre_articulo: string }[]
+    rows: { row_id: number; codigo: string; descripcion: string; nombreArticulo: string }[]
   ) =>
     api.post<DetectarAlcoholIAResponse>("/tools/cenefas/convertidor/alcohol/detectar-ia", { rows }),
   unificarCategoriasIA: (
-    rows: { row_id: number; codigo: string; nombre_articulo: string; descripcion: string }[]
+    rows: { row_id: number; codigo: string; nombreArticulo: string; descripcion: string }[]
   ) =>
     api.post<UnificarCategoriasIAResponse>("/tools/cenefas/convertidor/categorias/unificar-ia", { rows }),
 };

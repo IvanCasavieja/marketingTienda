@@ -12,8 +12,8 @@ Regla madre (decisión de Ivan, 2026-08-25/26, ver variables.py):
 from app.services.cenefas.convertidor_variables import construir_variables, resolver_mecanica
 
 
-def _fila(oferta_det="", oferta="", precio=None, moneda="$", **extra):
-    base = {"codigo": "1", "oferta_det": oferta_det, "oferta": oferta,
+def _fila(ofertaDet="", oferta="", precio=None, moneda="$", **extra):
+    base = {"codigo": "1", "ofertaDet": ofertaDet, "oferta": oferta,
             "precio": precio, "moneda": moneda}
     base.update(extra)
     return base
