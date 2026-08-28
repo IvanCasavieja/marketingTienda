@@ -1,3 +1,5 @@
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from typing import List
@@ -44,6 +46,23 @@ class Settings(BaseSettings):
 
     # Demo mode — cuando True, sync_metrics retorna inmediatamente sin llamar APIs externas
     DEMO_MODE: bool = False
+
+    # ¿Este proceso corre las tareas de mantenimiento al arrancar (migraciones,
+    # recuperación de jobs huérfanos, purga de archivos) y los loops periódicos?
+    #
+    # None = automático: SOLO si es el servidor desplegado (ver es_servidor_desplegado).
+    # True/False = forzar, para el caso raro que lo necesite.
+    #
+    # El problema que resuelve: backend/.env de una PC de trabajo apunta a la
+    # MISMA base de producción (ONBOARDING/PENDIENTES lo indican así), y varias
+    # de esas tareas son destructivas — recuperar_jobs_huerfanos marca error y
+    # VACÍA staged_data/staged_source_pptx/staged_excel_bytes de todo job
+    # pending/running anterior al arranque, así que levantar el backend en una
+    # laptop mataba la corrida que alguien tuviera en curso, sin deshacer. La
+    # purga borra archivos apenas arranca, y alembic aplicaría a producción una
+    # migración que todavía no está desplegada. Nada de eso es del servidor,
+    # así que no lo hace nadie que no sea el servidor.
+    MANTENIMIENTO_AL_ARRANCAR: bool | None = None
 
     # Database
     DATABASE_URL: str
@@ -112,6 +131,25 @@ class Settings(BaseSettings):
                 "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
             )
         return v
+
+    @property
+    def es_servidor_desplegado(self) -> bool:
+        """¿Somos la instancia de Render, o una copia corriendo en una PC?
+
+        RENDER_GIT_COMMIT la inyecta Render en cada deploy; en una PC no
+        existe. Es la misma señal que /health ya usa para reportar el commit
+        desplegado ("dev" cuando falta), verificada contra los dos entornos:
+        producción devuelve el hash, local devuelve "dev". No hay que
+        configurar nada en Render para que esto funcione.
+        """
+        return bool(os.environ.get("RENDER_GIT_COMMIT"))
+
+    @property
+    def corre_mantenimiento(self) -> bool:
+        """Si este proceso puede tocar/borrar datos de producción al arrancar."""
+        if self.MANTENIMIENTO_AL_ARRANCAR is not None:
+            return self.MANTENIMIENTO_AL_ARRANCAR
+        return self.es_servidor_desplegado
 
     @property
     def allowed_origins(self) -> List[str]:

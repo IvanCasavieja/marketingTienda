@@ -29,6 +29,22 @@ async def lifespan(app: FastAPI):
     from datetime import datetime, timezone
     arranque = datetime.now(timezone.utc)
 
+    # Nada de lo que sigue —migraciones, recuperación de huérfanos, purga y los
+    # loops periódicos— lo hace un proceso que no sea el servidor desplegado.
+    # backend/.env de una PC apunta a la MISMA base de producción, así que sin
+    # esto levantar el backend para probar algo marcaba como error (y le
+    # VACIABA el Excel y el PPTX subidos) a la corrida que alguien tuviera en
+    # curso en la oficina. Ver settings.corre_mantenimiento.
+    mantenimiento = settings.corre_mantenimiento
+    if not mantenimiento:
+        logger.warning(
+            "mantenimiento de arranque SALTEADO — este proceso no es el servidor "
+            "desplegado (falta RENDER_GIT_COMMIT). NO corren: migraciones, "
+            "recuperacion de jobs huerfanos, purga de archivos ni los loops "
+            "periodicos. Si trabajas con una base LOCAL y las necesitas, corre "
+            "alembic a mano o pone MANTENIMIENTO_AL_ARRANCAR=true."
+        )
+
     if settings.APP_ENV == "development":
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -68,32 +84,33 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error("recuperacion de jobs huerfanos fallo: %s", e)
 
-    asyncio.create_task(_run_migrations())
+    if mantenimiento:
+        asyncio.create_task(_run_migrations())
 
     # Arrancar auto-sync de métricas si está habilitado
     sync_task = None
-    if settings.SYNC_INTERVAL_HOURS > 0:
+    if mantenimiento and settings.SYNC_INTERVAL_HOURS > 0:
         from app.services.auto_sync import run_auto_sync_loop
         sync_task = asyncio.create_task(run_auto_sync_loop())
         logger.info("auto_sync: loop iniciado (cada %dh)", settings.SYNC_INTERVAL_HOURS)
 
     # Arrancar chequeo diario de listas de monitoreo de precios si está habilitado
     watchlist_task = None
-    if settings.WATCHLIST_CHECK_INTERVAL_HOURS > 0:
+    if mantenimiento and settings.WATCHLIST_CHECK_INTERVAL_HOURS > 0:
         from app.services.watchlist_service import run_watchlist_check_loop
         watchlist_task = asyncio.create_task(run_watchlist_check_loop())
         logger.info("watchlist_check: loop iniciado (cada %dh)", settings.WATCHLIST_CHECK_INTERVAL_HOURS)
 
     # Arrancar chequeo de anomalías de campañas de Medios (dashboard/canales/campaigns)
     campaign_alerts_task = None
-    if settings.CAMPAIGN_ALERTS_CHECK_INTERVAL_HOURS > 0:
+    if mantenimiento and settings.CAMPAIGN_ALERTS_CHECK_INTERVAL_HOURS > 0:
         from app.services.campaign_alerts_service import run_campaign_alerts_loop
         campaign_alerts_task = asyncio.create_task(run_campaign_alerts_loop())
         logger.info("campaign_alerts_check: loop iniciado (cada %dh)", settings.CAMPAIGN_ALERTS_CHECK_INTERVAL_HOURS)
 
     # Arrancar actualización diaria (8am Montevideo) de la cotización del dólar BROU
     cotizacion_task = None
-    if settings.COTIZACION_AUTO_UPDATE:
+    if mantenimiento and settings.COTIZACION_AUTO_UPDATE:
         from app.services.cotizacion_service import run_cotizacion_check_loop
         cotizacion_task = asyncio.create_task(run_cotizacion_check_loop())
         logger.info("cotizacion_service: loop iniciado (diario 8am Montevideo)")
@@ -101,7 +118,7 @@ async def lifespan(app: FastAPI):
     # Curaduría diaria del conocimiento de cenefas: funde duplicados y propone
     # resumir o archivar. Nunca toca lo que una persona ya decidió.
     curaduria_task = None
-    if settings.CENEFAS_CURADURIA:
+    if mantenimiento and settings.CENEFAS_CURADURIA:
         from app.services.cenefas.conocimiento import run_curaduria_loop
         curaduria_task = asyncio.create_task(run_curaduria_loop())
         logger.info("cenefas_curaduria: loop iniciado (diario)")
@@ -109,7 +126,7 @@ async def lifespan(app: FastAPI):
     # Retención de archivos de cenefas: el PPTX de una corrida sin verificar
     # se borra a los N días (el número queda; el de una verificada también).
     purga_task = None
-    if settings.CENEFAS_RETENCION_DIAS > 0:
+    if mantenimiento and settings.CENEFAS_RETENCION_DIAS > 0:
         from app.services.cenefas.jobs import run_purga_cenefas_loop
         purga_task = asyncio.create_task(run_purga_cenefas_loop())
         logger.info("purga_cenefas: loop iniciado (diario, retencion %dd)",
