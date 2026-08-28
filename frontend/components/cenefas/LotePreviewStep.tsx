@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, AlertTriangle, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Send } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { cenefasV2Api } from "@/lib/api";
@@ -36,6 +36,8 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   const [yaConfirmado, setYaConfirmado] = useState(false);
   const [descargando, setDescargando] = useState(false);
   const [bajandoUna, setBajandoUna] = useState<string | null>(null);
+  const [verificando, setVerificando] = useState(false);
+  const [verifDescartada, setVerifDescartada] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dlRef = useRef<HTMLAnchorElement>(null);
 
@@ -133,6 +135,25 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
     }
   }
 
+  // Una persona mira el archivo y confirma que salio bien. Ademas de sumar
+  // aparte en el informe de produccion, decide la retencion: el archivo de
+  // una corrida verificada se conserva para siempre (se puede volver a bajar
+  // cuando sea); el de una sin verificar se borra a los dias configurados y
+  // solo quedan los numeros.
+  async function confirmarVerificacion() {
+    setVerificando(true);
+    try {
+      const hechas = lote?.cenefas.filter((c) => c.status === "done" && c.id) ?? [];
+      await Promise.all(hechas.map((c) => cenefasV2Api.verificarCorrida(c.id!, true)));
+      toast.success(t("cenefas.lote.verifOk", { n: hechas.length }));
+      consultar();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? t("cenefas.unknownError"));
+    } finally {
+      setVerificando(false);
+    }
+  }
+
   if (!lote) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -143,6 +164,8 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   }
 
   const listas = lote.cenefas.filter((c) => c.status === "done").length;
+  const todasVerificadas =
+    listas > 0 && lote.cenefas.filter((c) => c.status === "done").every((c) => c.verificado);
   const enPreview = lote.cenefas.filter((c) => c.status === "preview").length;
   const pendientes = lote.cenefas.filter((c) => c.status === "pending" || c.status === "running").length;
   const conError = lote.cenefas.filter((c) => c.status === "error");
@@ -402,6 +425,46 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
           </button>
         )}
       </div>
+
+      {/* Verificacion humana: cuando todo termino, se pregunta si salio bien.
+          Confirmar guarda el archivo para siempre (se puede volver a bajar
+          cuando sea) y la corrida suma como verificada en el informe; sin
+          confirmar, el archivo se borra a los dias configurados y quedan solo
+          los numeros. */}
+      {pendientes === 0 && listas > 0 && !verifDescartada && (
+        <div className={`card p-5 border-l-4 ${todasVerificadas ? "border-emerald-400" : "border-brand-400"}`}>
+          {todasVerificadas ? (
+            <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+              <BadgeCheck size={17} /> {t("cenefas.lote.verifHecha")}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <BadgeCheck size={17} className="text-brand-500" /> {t("cenefas.lote.verifTitulo")}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {t("cenefas.lote.verifDetalle")}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={confirmarVerificacion}
+                  disabled={verificando}
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50"
+                >
+                  {verificando ? <Loader2 size={15} className="animate-spin" /> : <BadgeCheck size={15} />}
+                  {t("cenefas.lote.verifSi")}
+                </button>
+                <button
+                  onClick={() => setVerifDescartada(true)}
+                  className="btn-secondary"
+                >
+                  {t("cenefas.lote.verifAhoraNo")}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -4,10 +4,11 @@ import logging
 import pathlib
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
@@ -413,3 +414,110 @@ async def _resolve_template_def(
     pptx_bytes = path.read_bytes()
     template_def = await asyncio.to_thread(import_pptx, pptx_bytes, "Plantilla importada")
     return template_def, pptx_bytes
+
+
+# ---------------------------------------------------------------------------
+# Recuperacion al arrancar + retencion de archivos (2026-08-29, pedido de Ivan)
+# ---------------------------------------------------------------------------
+#
+# Politica de retencion:
+#   - El NUMERO de cada corrida (cuantas cenefas, cuantas correctas) queda para
+#     siempre: vive en columnas propias (row_count, validation_report) que la
+#     purga no toca -- es lo que suma el informe de produccion.
+#   - El ARCHIVO (result_bytes) de una corrida VERIFICADA se conserva: es la
+#     prueba de lo que salio bien y se puede volver a bajar cuando sea.
+#   - El archivo de una corrida SIN verificar se borra a los
+#     CENEFAS_RETENCION_DIAS dias: nadie confirmo que sirviera, y 500 corridas
+#     de prueba ya pesaban 197 MB de PPTX muertos en la base (medido 2026-08-29,
+#     casi la mitad de la cuota de Supabase).
+
+
+async def recuperar_jobs_huerfanos(arranque: datetime) -> int:
+    """Marca como error los jobs que quedaron en pending/running de un proceso
+    anterior.
+
+    Los jobs corren con BackgroundTasks DENTRO del proceso web: un redeploy de
+    Render mata el proceso y el job queda en "running" para siempre, sin error
+    visible en ningun lado -- el frontend pollea en silencio sin limite (caso
+    real: un job en running desde el 14/08). Al arrancar, ningun task de un
+    proceso anterior puede seguir vivo, asi que todo pending/running creado
+    ANTES de este arranque es huerfano seguro. El filtro por fecha evita tocar
+    un job nuevo creado mientras esta funcion corre en background.
+    """
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            update(CenefaJob)
+            .where(
+                CenefaJob.status.in_(("pending", "running")),
+                CenefaJob.created_at < arranque,
+            )
+            .values(
+                status="error",
+                validation_report={"error": (
+                    "El servidor se reinició mientras se generaba esta cenefa. "
+                    "Volvé a generarla."
+                )},
+                completed_at=datetime.now(timezone.utc),
+                staged_data=None,
+                staged_source_pptx=None,
+                staged_excel_bytes=None,
+            )
+        )
+        await db.commit()
+        if result.rowcount:
+            logger.warning("recuperacion: %d job(s) huerfanos marcados como error", result.rowcount)
+        return result.rowcount or 0
+
+
+async def purgar_archivos_vencidos(dias: int) -> tuple[int, int]:
+    """Una pasada de retencion. Devuelve (archivos_purgados, previews_vencidos)."""
+    corte = datetime.now(timezone.utc) - timedelta(days=dias)
+    async with AsyncSessionLocal() as db:
+        # 1. Corridas terminadas SIN verificar: se va el archivo, queda el numero.
+        r1 = await db.execute(
+            update(CenefaJob)
+            .where(
+                CenefaJob.verificado.is_(False),
+                CenefaJob.status.in_(("done", "error")),
+                # coalesce a mano: los jobs viejos no siempre tienen completed_at
+                or_(CenefaJob.completed_at < corte,
+                    CenefaJob.completed_at.is_(None) & (CenefaJob.created_at < corte)),
+                or_(CenefaJob.result_bytes.isnot(None),
+                    CenefaJob.staged_data.isnot(None),
+                    CenefaJob.staged_source_pptx.isnot(None),
+                    CenefaJob.staged_excel_bytes.isnot(None)),
+            )
+            .values(result_bytes=None, staged_data=None,
+                    staged_source_pptx=None, staged_excel_bytes=None)
+        )
+        # 2. Previews que nadie confirmo: vencen, y su staged (que pesa varios
+        #    MB por job) se libera. El numero no se pierde: nunca se genero nada.
+        r2 = await db.execute(
+            update(CenefaJob)
+            .where(CenefaJob.status == "preview", CenefaJob.created_at < corte)
+            .values(
+                status="error",
+                validation_report={"error": (
+                    f"El preview venció sin confirmarse (más de {dias} días)."
+                )},
+                completed_at=datetime.now(timezone.utc),
+                staged_data=None, staged_source_pptx=None, staged_excel_bytes=None,
+            )
+        )
+        await db.commit()
+        return (r1.rowcount or 0, r2.rowcount or 0)
+
+
+async def run_purga_cenefas_loop() -> None:
+    """Loop perpetuo, mismo patron que run_cotizacion_check_loop: una pasada
+    al arrancar (asi el primer deploy ya limpia lo acumulado) y despues una
+    por dia."""
+    while True:
+        try:
+            purgados, vencidos = await purgar_archivos_vencidos(settings.CENEFAS_RETENCION_DIAS)
+            if purgados or vencidos:
+                logger.info("purga_cenefas: %d archivo(s) liberados, %d preview(s) vencidos",
+                            purgados, vencidos)
+        except Exception as exc:
+            logger.error("purga_cenefas: fallo la pasada -- %s", exc, exc_info=True)
+        await asyncio.sleep(24 * 3600)

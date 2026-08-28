@@ -520,7 +520,13 @@
         "preview": "ready to review",
         "done": "generated",
         "error": "error"
-      }
+      },
+      "verifTitulo": "Did the signs come out right?",
+      "verifDetalle": "Open the file and check it. If you confirm, the file is kept so you can view it anytime and the run counts as verified in the report. Unconfirmed files are deleted after 7 days — the numbers remain.",
+      "verifSi": "Yes, they're good",
+      "verifAhoraNo": "Not now",
+      "verifOk": "{{n}} run(s) verified — the file is kept",
+      "verifHecha": "Run verified: the file is kept and counts in the report."
     },
     "informe": {
       "link": "Report"

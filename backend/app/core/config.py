@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # propone resumir o archivar. Nunca cambia lo que ya se decidió.
     CENEFAS_CURADURIA: bool = True
 
+    # Retención de archivos de cenefas (0 = desactivada). El PPTX de una
+    # corrida SIN verificar se borra a los N días; el número de la corrida
+    # queda para siempre, y el archivo de una corrida VERIFICADA también.
+    CENEFAS_RETENCION_DIAS: int = 7
+
     # Demo mode — cuando True, sync_metrics retorna inmediatamente sin llamar APIs externas
     DEMO_MODE: bool = False
 

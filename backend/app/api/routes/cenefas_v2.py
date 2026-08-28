@@ -879,6 +879,11 @@ async def _job_to_dict(
         "export_type": job.export_type,
         "row_count":   job.row_count,
         "error_count": job.error_count,
+        # Una persona confirmó que esta corrida salió bien. Además de sumar
+        # aparte en el informe, decide la retención: el archivo de una corrida
+        # verificada se conserva; el de una sin verificar se borra a los
+        # CENEFAS_RETENCION_DIAS días (ver purga en jobs.py).
+        "verificado":  job.verificado,
         "created_at":  job.created_at.isoformat() if job.created_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
     }

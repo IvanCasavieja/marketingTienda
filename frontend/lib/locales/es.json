@@ -520,7 +520,13 @@
         "preview": "lista para revisar",
         "done": "generada",
         "error": "error"
-      }
+      },
+      "verifTitulo": "¿Confirmás que las cenefas salieron bien?",
+      "verifDetalle": "Abrí el archivo y miralo. Si confirmás, el archivo queda guardado para volver a verlo cuando quieras y la corrida suma como verificada en el informe. Sin confirmar, el archivo se borra a los 7 días — los números quedan igual.",
+      "verifSi": "Sí, salieron bien",
+      "verifAhoraNo": "Ahora no",
+      "verifOk": "{{n}} corrida(s) verificadas — el archivo queda guardado",
+      "verifHecha": "Corrida verificada: el archivo queda guardado y suma en el informe."
     },
     "informe": {
       "link": "Informe"

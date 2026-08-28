@@ -128,6 +128,8 @@ export interface CenefaLoteItem {
   preview_products?: Record<string, string>[];
   slot_bands?: string[][];
   validation_report?: { error?: string } | null;
+  /** Una persona confirmó que esta corrida salió bien (decide la retención del archivo). */
+  verificado?: boolean;
   /** Revisión del Excel contra esta plantilla, antes de confirmar. Nunca bloquea. */
   revision?: CenefaRevisionItem[];
 }

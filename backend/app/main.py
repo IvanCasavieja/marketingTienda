@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Marca de este arranque: todo job pending/running creado ANTES es de un
+    # proceso que ya no existe (ver recuperar_jobs_huerfanos).
+    from datetime import datetime, timezone
+    arranque = datetime.now(timezone.utc)
+
     if settings.APP_ENV == "development":
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -54,6 +59,14 @@ async def lifespan(app: FastAPI):
                 await migrate_roles(conn)
         except Exception as e:
             logger.error("In-app migrations failed: %s", e)
+        # Jobs que quedaron corriendo en el proceso anterior: sin esto, un
+        # redeploy a mitad de render dejaba el job en "running" para siempre
+        # y el frontend polleando en silencio (caso real: uno desde el 14/08).
+        try:
+            from app.services.cenefas.jobs import recuperar_jobs_huerfanos
+            await recuperar_jobs_huerfanos(arranque)
+        except Exception as e:
+            logger.error("recuperacion de jobs huerfanos fallo: %s", e)
 
     asyncio.create_task(_run_migrations())
 
@@ -93,6 +106,15 @@ async def lifespan(app: FastAPI):
         curaduria_task = asyncio.create_task(run_curaduria_loop())
         logger.info("cenefas_curaduria: loop iniciado (diario)")
 
+    # Retención de archivos de cenefas: el PPTX de una corrida sin verificar
+    # se borra a los N días (el número queda; el de una verificada también).
+    purga_task = None
+    if settings.CENEFAS_RETENCION_DIAS > 0:
+        from app.services.cenefas.jobs import run_purga_cenefas_loop
+        purga_task = asyncio.create_task(run_purga_cenefas_loop())
+        logger.info("purga_cenefas: loop iniciado (diario, retencion %dd)",
+                    settings.CENEFAS_RETENCION_DIAS)
+
     yield
 
     if sync_task:
@@ -127,6 +149,13 @@ async def lifespan(app: FastAPI):
         curaduria_task.cancel()
         try:
             await curaduria_task
+        except asyncio.CancelledError:
+            pass
+
+    if purga_task:
+        purga_task.cancel()
+        try:
+            await purga_task
         except asyncio.CancelledError:
             pass
 

@@ -520,7 +520,13 @@
         "preview": "pronta para revisar",
         "done": "gerada",
         "error": "erro"
-      }
+      },
+      "verifTitulo": "Confirma que os cartazes saíram bem?",
+      "verifDetalle": "Abra o arquivo e confira. Ao confirmar, o arquivo fica guardado para ver quando quiser e a rodada conta como verificada no relatório. Sem confirmar, o arquivo é apagado em 7 dias — os números permanecem.",
+      "verifSi": "Sim, saíram bem",
+      "verifAhoraNo": "Agora não",
+      "verifOk": "{{n}} rodada(s) verificadas — o arquivo fica guardado",
+      "verifHecha": "Rodada verificada: o arquivo fica guardado e conta no relatório."
     },
     "informe": {
       "link": "Relatório"
