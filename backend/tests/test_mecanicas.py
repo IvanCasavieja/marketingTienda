@@ -54,8 +54,8 @@ def test_combo_total_en_precio_y_cantidad_en_oferta_uno():
     # unitario (299/2) queda solo en la letra chica de `mecanica`.
     m, w = resolver_mecanica("Combo", "2x$299", precio=175.0)
     assert m["precioOferta"] == 299.0       # el TOTAL, ni el unitario ni la columna PRECIO
-    assert m["ofertaUno"] == "2x"
-    assert m["tipoOferta"] == "2x$299"
+    assert m["tipoOferta"] == "2x"          # SOLO la cantidad: el cartel se lee "2x $299"
+    assert m["ofertaUno"] == "2x"           # como siempre (anterior a esta semana)
     # promoOferta VACIA (decision de Ivan, 2026-08-29): el literal que tapa
     # al precio se usa SOLO en M x N. En un combo hay un precio que mostrar
     # (el unitario), asi que se muestra, con la cocarda arriba.
@@ -70,7 +70,7 @@ def test_combo_extrae_el_literal_de_una_frase():
     # Bug real: "Coca Cola Zero 2.25 L 2x$299" anclado con ^...$ no matcheaba
     # y la fila perdía TODO.
     m, _ = resolver_mecanica("Combo", "Coca Cola Zero 2.25 L 2x$299", precio=175.0)
-    assert m["tipoOferta"] == "2x$299"      # el literal LIMPIO, no la frase
+    assert m["tipoOferta"] == "2x"          # la cantidad, extraida de la frase entera
     assert m["precioOferta"] == 299.0
 
 

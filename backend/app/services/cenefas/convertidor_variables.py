@@ -180,9 +180,16 @@ def resolver_mecanica(
                     "tipoOfertaComprando": "", "unidad": ""}, warnings
         unitario = round(total / cantidad, 2)
         return {
-            # El literal LIMPIO que matcheo, no la frase entera: gestion escribe
-            # "Coca Cola Zero 2.25 L 2x$299" y en la cocarda va "2x$299".
-            "tipoOferta":   re.sub(r"\s+", "", m.group(0)),
+            # SOLO la cantidad ("2x"), no el literal entero (correccion de
+            # Ivan, 2026-08-29): el cartel de un combo se compone con
+            # tipoOferta = "2x" y precioOferta = el total -- juntos se leen
+            # "2x $299". Antes iba "2x$299" completo y quedaba repetido al
+            # lado del precio.
+            "tipoOferta":   f"{cantidad}x",
+            # ofertaUno conserva la cantidad como SIEMPRE lo hizo (es anterior
+            # a 08/2026; la fila de ejemplo de la plantilla Excel ya traia
+            # "3x"). Las plantillas de redexpres no tienen su cuadro, asi que
+            # ahi no dibuja nada.
             "ofertaUno":    f"{cantidad}x",
             # El TOTAL del combo, no el unitario (correccion de Ivan,
             # 2026-08-29: "pones 2x en ofertaUno y en precioOferta pones
