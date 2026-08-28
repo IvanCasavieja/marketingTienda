@@ -184,13 +184,13 @@ def resolver_mecanica(
             # "Coca Cola Zero 2.25 L 2x$299" y en la cocarda va "2x$299".
             "tipoOferta":   re.sub(r"\s+", "", m.group(0)),
             "ofertaUno":    f"{cantidad}x",
-            # El unitario, no el total: precioOferta ES UN PRECIO y es el que
-            # se imprime grande.
-            #
-            # El unitario sale de DIVIDIR el total (299/2), no de la columna
-            # PRECIO: esa trae el precio de una unidad suelta, que puede ser
-            # otro numero. Ver el bloque del principio de variables.py.
-            "precioOferta": unitario,
+            # El TOTAL del combo, no el unitario (correccion de Ivan,
+            # 2026-08-29: "pones 2x en ofertaUno y en precioOferta pones
+            # $299, eso tenes que hacer en combos"). El cartel dice
+            # "2x $299": la cantidad en ofertaUno y el total grande en
+            # precioOferta. El unitario (299/2 = 149,50) queda solo en la
+            # letra chica de `mecanica`.
+            "precioOferta": total,
             # VACIA a proposito (decision de Ivan, 2026-08-29): promoOferta --
             # el literal que TAPA al precio -- se usa SOLO en M x N, donde no
             # hay un precio de oferta que mostrar. En un combo si lo hay (el

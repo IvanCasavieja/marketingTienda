@@ -67,9 +67,10 @@ import unicodedata
 #                         promoOferta  = "2x1" (tapa al precio Y a la cocarda
 #                         de tipoOferta si el diseno tiene su cuadro -- son el
 #                         mismo literal y salia impreso dos veces)
-#   - Combo ("2x$299") -> precioOferta = el unitario (total / cantidad)
-#                         promoOferta  = VACIA: hay un precio para mostrar, se
-#                         muestra, con la cocarda de tipoOferta arriba
+#   - Combo ("2x$299") -> precioOferta = el TOTAL (299), ofertaUno = "2x"
+#                         (correccion de Ivan 2026-08-29: el cartel dice
+#                         "2x $299"; el unitario queda en `mecanica`)
+#                         promoOferta  = VACIA: hay un precio para mostrar
 #   - Precio fijo      -> las dos vacias.
 # ===========================================================================
 
