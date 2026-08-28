@@ -10,7 +10,17 @@ Para retomar desde otra PC. Todo el código está pusheado y desplegado
    `DATABASE_URL` que está en **Render → servicio backend → Environment**.
 3. Decirle a Claude: *"Leé PENDIENTES.md y seguí desde ahí"*.
 
-## 🔴 PENDIENTE CALIENTE — el bug del precio $2 (diagnosticado, falta el OK)
+## ✅ RESUELTO — el bug del precio $2 (commit dd19026, 29/08 noche)
+
+Ivan dio el OK y se implementó: los exports SIN columna OFERTADET infieren la
+familia del literal de OFERTA (2x$258→combo, 2x1→mxn, 2da al 50%→segunda), y
+el parseo de precio tiene guarda de punta a punta (una celda con texto queda
+vacía y roja, nunca un valor inventado). Verificado con el archivo real: 0
+filas con $2 (eran 9), el agua da tipoOferta="2x" / precioOferta=258, y el
+render de la Mega imprime $258. Redexpres intacto (fijado por test). Queda la
+decisión de diseño de abajo.
+
+## Contexto histórico del bug (por si hace falta)
 
 **Síntoma**: el listado `CENEFAS BEBIDAS_MARGINADORAS MRP.xlsx` genera cenefas
 Mega Rompe Precios con `precioOferta = 2` en 9 de 24 filas (todos los combos).
