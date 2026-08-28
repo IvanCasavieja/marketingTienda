@@ -177,17 +177,44 @@ async def upsert_sku_descripcion(db: AsyncSession, sku: str, descripcion: str, u
     return sku_norm
 
 
+# Copias intencionales de los regex de data_engine (mismo criterio que _norm:
+# tres lineas duplicadas son mas baratas que acoplar los internos de los dos
+# modulos): el precio con la unidad de venta pegada ("148 unidad", "31,2 la
+# unidad", "1.919,20 c/u") y el separador de miles escrito como texto.
+_RE_PRECIO_UNIDAD_PEGADA = re.compile(
+    r"^\s*\$?\s*(\d[\d.,]*)\s+[a-zA-ZáéíóúñÁÉÍÓÚÑ/][a-zA-ZáéíóúñÁÉÍÓÚÑ/.\s]*$"
+)
+_RE_MILES_TEXTO = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
+
+
 def _parse_price_or_none(raw) -> float | None:
+    """Precio crudo de gestión -> float, o None si la celda NO es un precio.
+
+    La guarda del fullmatch es la parte que importa (2026-08-29): antes se
+    descartaba todo lo no numérico DEL PRINCIPIO y se parseaba el resto, así
+    que una celda con la mecánica escrita ("Comprando 2 $129 unidad") se
+    convertía en 2.0 EN SILENCIO -- y ese 2 terminó impreso como $2 en una
+    cenefa real de Mega Rompe Precios. Ahora: o la celda es un precio de
+    punta a punta (tolerando el símbolo adelante y la unidad de venta atrás),
+    o es None y la fila queda sin precio, roja, para que una persona decida.
+    """
     if raw is None or str(raw).strip() == "":
         return None
-    # parse_price_raw exige que el string empiece con un dígito (ver
-    # formatters.py) -- un precio tipo "$150,50" no matchea y devolvería
-    # 0.0 en silencio. _is_numeric_like sí tolera un "$" adelante, así que
-    # sin este strip la validación diría "está bien" mientras el valor
-    # real usado en la fila/export quedaba en cero. Mismo patrón que ya
-    # usa data_engine.py antes de llamar a esta misma función.
-    clean = re.sub(r"^[^\d]*", "", str(raw).strip())
-    return parse_price_raw(clean) if clean else 0.0
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    texto = str(raw).strip()
+    # "148 unidad" -> "148": la unidad de venta pegada sí es un precio.
+    con_unidad = _RE_PRECIO_UNIDAD_PEGADA.match(texto)
+    if con_unidad:
+        texto = con_unidad.group(1)
+    # El símbolo de moneda adelante también se tolera ("$119", "U$S 45").
+    texto = re.sub(r"^(?:U\$S|US\$|USD|\$)\s*", "", texto, flags=re.IGNORECASE).strip()
+    if not re.fullmatch(r"\d[\d.,]*", texto):
+        return None
+    # "1.299" como texto es mil doscientos noventa y nueve, no 1,299.
+    if _RE_MILES_TEXTO.fullmatch(texto):
+        texto = texto.replace(".", "")
+    return parse_price_raw(texto)
 
 
 def _clean_str(raw) -> str:
@@ -755,7 +782,14 @@ async def parse_input_excel(
             "precio":            _parse_price_or_none(precioRaw),
             "precioRaw":        precioRaw,
             "oferta":            _clean_str(cell(row, "oferta")),
-            "ofertaDet":        _clean_str(cell(row, "ofertaDet")),
+            # None = el export NO trae la columna OFERTADET (los listados MRP,
+            # por ejemplo). Es distinto de "" (la columna existe y la celda
+            # vino vacía): sin columna, la familia de la mecánica se infiere
+            # del literal de OFERTA (ver construir_variables); con columna,
+            # OFERTADET decide y el texto de OFERTA nunca clasifica nada
+            # (regla de Ivan del 2026-08-25, intacta).
+            "ofertaDet":        (_clean_str(cell(row, "ofertaDet"))
+                                 if "ofertaDet" in col_by_var else None),
             "descripcionWeb":   _clean_str(cell(row, "descripcionWeb")),
             "descripcionExcel": _clean_str(cell(row, "descripcionExcel")),
             "comprador":         _clean_str(cell(row, "comprador")),
@@ -1202,7 +1236,7 @@ async def match_rows(
             "comprador":           r["comprador"],
             "moneda":              r["moneda"],
             "ofertaOrigen":       r["oferta"],
-            "ofertaDet":          r["ofertaDet"],
+            "ofertaDet":          r["ofertaDet"] or "",
             "descripcionWeb":     r["descripcionWeb"],
             "precioRaw":          r["precioRaw"],
             "precioAnteriorRaw": r["precioAnteriorRaw"],

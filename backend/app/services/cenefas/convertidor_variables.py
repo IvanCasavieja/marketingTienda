@@ -126,6 +126,43 @@ def familia_de_ofertadet(ofertaDet: str) -> str | None:
         return "sin_mecanica"
     return None
 
+def inferir_familia_de_oferta(oferta: str) -> str | None:
+    """Familia de la mecánica deducida del LITERAL de OFERTA.
+
+    SOLO se usa cuando el export no trae columna OFERTADET (parsed["ofertaDet"]
+    es None — los listados MRP, por ejemplo). Con la columna presente, OFERTADET
+    decide y esta función no se llama nunca: la regla del 2026-08-25 ("OFERTADET
+    decide, nunca el texto") queda intacta donde la columna existe. Esto cubre
+    el caso que esa regla dejó afuera sin querer: un export SIN la columna no
+    tenía forma de clasificar sus combos, la fila caía a Precio Final y la
+    celda de precio (que en esos listados trae la letra chica) se parseaba a
+    cualquier cosa — el $2 impreso del 2026-08-29.
+
+    Solo clasifica formas inequívocas:
+      "2x$258" (con símbolo)        -> combo
+      "2x1" (sin símbolo, N<M)      -> mxn      (pagás menos de lo que llevás)
+      "3x99" (sin símbolo, N>M)     -> combo    (el segundo número es un precio)
+      "2da unidad al 50%"           -> segunda
+    "PVP", "precio fijo", un número suelto o un "2x2" ambiguo no matchean
+    nada -> None, y la fila sigue siendo precio fijo, como siempre.
+    """
+    oferta = (oferta or "").strip()
+    if not oferta:
+        return None
+    if _RE_SEGUNDA.search(oferta):
+        return "segunda"
+    if re.search(r"\d+\s*[xX×]\s*\$", oferta):
+        return "combo"
+    m = _RE_MXN.search(oferta)
+    if m:
+        llevas, pagas = int(m.group(1)), int(m.group(2))
+        if pagas < llevas:
+            return "mxn"
+        if pagas > llevas:
+            return "combo"
+    return None
+
+
 # La lista negra de etiquetas de OFERTA ("pvp", "fullprice", "noaplica",
 # "ante/despues"...) junto con _norm_etiqueta() y _es_numero() se eliminaron el
 # 2026-08-25: existían para adivinar desde OFERTA si había mecánica, y OFERTADET
@@ -331,12 +368,19 @@ def construir_variables(
     out["codigo"] = parsed.get("codigo", "")
     out["descripcion"] = descripcion
 
+    familia = familia_ofertadet
+    # parsed["ofertaDet"] es None cuando el export NO trae la columna: ahí (y
+    # solo ahí) la familia se infiere del literal de OFERTA. "" significa que
+    # la columna existe con la celda vacía, y en ese caso OFERTADET ya decidió
+    # que no hay mecánica.
+    if familia is None and parsed.get("ofertaDet", "") is None:
+        familia = inferir_familia_de_oferta(parsed.get("oferta", ""))
     mecanica, w = resolver_mecanica(
-        parsed.get("ofertaDet", ""),
+        parsed.get("ofertaDet") or "",
         parsed.get("oferta", ""),
         parsed.get("precio"),
         parsed.get("moneda", "$"),
-        familia_ofertadet,
+        familia,
     )
     warnings.extend(w)
 

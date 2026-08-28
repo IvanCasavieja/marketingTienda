@@ -132,3 +132,21 @@ def test_campos_de_entrada_en_camel_case():
     assert all("_" not in campo for campo in _CAMPOS_SUGERIBLES), sorted(_CAMPOS_SUGERIBLES)
     assert all("_" not in campo for campo in _INPUT_ALIASES.values()), sorted(set(_INPUT_ALIASES.values()))
     assert set(_CAMPOS_SUGERIBLES) <= set(_INPUT_ALIASES.values())
+
+
+def test_parseo_de_precio_del_convertidor_no_inventa():
+    # Bug real (2026-08-29): "Comprando 2 $129 unidad" en la celda de precio
+    # se parseaba a 2.0 en silencio y salio impreso $2. Ahora: o la celda es
+    # un precio de punta a punta, o es None y la fila queda roja.
+    from app.services.cenefas.convertidor import _parse_price_or_none as pp
+    assert pp("Comprando 2 $129 unidad") is None
+    assert pp("2X148") is None
+    assert pp("2da unidad al 50%") is None
+    # lo que SI es un precio se tolera igual que siempre
+    assert pp("148 unidad") == 148.0
+    assert pp("$119") == 119.0
+    assert pp("U$S 45") == 45.0
+    assert pp("119,50") == 119.5
+    assert pp("1.299") == 1299.0
+    assert pp(148) == 148.0
+    assert pp("") is None

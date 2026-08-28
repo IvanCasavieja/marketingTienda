@@ -125,3 +125,44 @@ def test_ofertadet_desconocido_avisa():
     # Una mecánica nueva de gestión no puede descartarse en silencio.
     _, w = resolver_mecanica("Invento Nuevo 2027", "3x2", precio=100.0)
     assert "ofertadet_desconocido" in w
+
+
+# ---------------------------------------------------------------------------
+# Export SIN columna OFERTADET (los listados MRP) — inferencia por el literal
+# ---------------------------------------------------------------------------
+# parsed["ofertaDet"] = None significa "el export no trae la columna". Con la
+# columna presente (str, aunque sea ""), OFERTADET decide y la inferencia no
+# corre nunca: la regla del 2026-08-25 queda intacta — es lo que protege a
+# redexpres y a todo listado tipo mundo hogar.
+
+def test_sin_columna_ofertadet_el_combo_se_infiere_de_oferta():
+    # El caso real del agua SALUS ($2 impreso, 2026-08-29): OFERTA="2x$258",
+    # PRECIO="Comprando 2 $129 unidad", sin columna OFERTADET.
+    out, w = construir_variables(
+        {"codigo": "113618", "ofertaDet": None, "oferta": "2x$258",
+         "precio": None, "moneda": "$"},
+        "Agua mineral SALUS sin gas. 6.25 l", {})
+    assert out["tipoOferta"] == "2x"
+    assert out["precioOferta"] == "258"          # el TOTAL, nunca el "2"
+    assert out["mecanica"] == "Comprando 2, $129 la unidad."
+    assert out["promoOferta"] == ""
+    assert w == []
+
+
+def test_sin_columna_ofertadet_mxn_y_pvp():
+    out, _ = construir_variables(
+        {"codigo": "1", "ofertaDet": None, "oferta": "2x1", "precio": 49.5}, "X", {})
+    assert out["promoOferta"] == "2x1" and out["precioOferta"] == "49"
+    # "PVP" no matchea ninguna forma -> precio fijo, como siempre
+    out, _ = construir_variables(
+        {"codigo": "2", "ofertaDet": None, "oferta": "PVP", "precio": 1290}, "X", {})
+    assert out["tipoOferta"] == "" and out["precioOferta"] == "1.290"
+
+
+def test_con_columna_ofertadet_la_regla_de_ivan_sigue_mandando():
+    # redexpres / mundo hogar: la columna EXISTE y dice "Precio fijo" -> el
+    # literal de OFERTA jamas clasifica, aunque parezca un combo.
+    out, _ = construir_variables(
+        {"codigo": "3", "ofertaDet": "Precio fijo", "oferta": "2x$258", "precio": 1290}, "X", {})
+    assert out["tipoOferta"] == "" and out["precioOferta"] == "1.290"
+    assert out["mecanica"] == "Precio Final"
