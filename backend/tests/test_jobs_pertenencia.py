@@ -83,3 +83,22 @@ def test_download_lote_cuenta_entradas_y_no_bytes():
     assert "if not escritas" in cuerpo, (
         "sin esa guarda se sirve un .zip vacío con HTTP 200"
     )
+
+
+# ---------------------------------------------------------------------------
+# El tamaño de un lote
+# ---------------------------------------------------------------------------
+
+def test_el_lote_acota_el_total_de_corridas():
+    """MAX_EXCELS_POR_LOTE cuenta archivos subidos y MAX_PLANTILLAS_POR_EXCEL
+    plantillas por par — ninguno acotaba `pares`, y nada impide repetir el
+    mismo nombre de Excel. Con un archivo y mil pares se encolaban miles de
+    corridas de un saque.
+    """
+    fuente = _fuente()
+    i = fuente.index("async def create_lote(")
+    cuerpo = fuente[i:i + 2600]
+    assert "MAX_JOBS_POR_LOTE" in cuerpo, "falta el techo del total de corridas"
+    assert "total_pedido" in cuerpo and "sum(" in cuerpo, (
+        "hay que sumar las plantillas de TODOS los pares, no mirar uno por uno"
+    )

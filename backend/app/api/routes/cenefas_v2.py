@@ -1151,6 +1151,20 @@ async def create_lote(
             detail=f"Máximo {MAX_EXCELS_POR_LOTE} Excel por lote (llegaron {len(excels)})",
         )
 
+    # Los dos topes de arriba cuentan archivos subidos y plantillas por par,
+    # pero `pares` no tenía ninguno y NADA impide repetir el mismo nombre de
+    # Excel: con un solo archivo subido y mil pares apuntándole, se encolaban
+    # miles de corridas de una. Cada una es una fila en cenefa_jobs y trabajo
+    # para los workers, y ademas ensucia el informe. El techo es el que los dos
+    # topes ya daban a entender.
+    MAX_JOBS_POR_LOTE = MAX_EXCELS_POR_LOTE * MAX_PLANTILLAS_POR_EXCEL
+    total_pedido = sum(len(p.get("templates") or []) for p in pares if isinstance(p, dict))
+    if total_pedido > MAX_JOBS_POR_LOTE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Máximo {MAX_JOBS_POR_LOTE} cenefas por lote (pediste {total_pedido})",
+        )
+
     # Los archivos se leen UNA vez y se reusan para cada plantilla de ese Excel:
     # un UploadFile no se puede releer, y además evita subir el mismo contenido
     # a memoria tantas veces como plantillas tenga.
