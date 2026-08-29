@@ -19,7 +19,7 @@ from app.services.ai_usage_service import log_ai_usage
 from app.services.facturacion import documentos as documentos_service
 from app.services.tino_personas import DOGTI_BASE
 
-_MODEL = "claude-sonnet-4-6"  # misma familia Tino, mismo modelo que tinin_agent.py/extraccion.py
+_MODEL = settings.MODELO_IA  # el de toda la familia -- ver MODELO_IA en config.py
 _META = ("anthropic", _MODEL)
 _MAX_TOOL_ITERATIONS = 4  # tope duro contra un loop de tool-use que no converge
 

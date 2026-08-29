@@ -478,11 +478,11 @@ async def responder_consulta(termino: str, items: list[dict], mensaje: str, db=N
 
     for _ in range(_MAX_TOOL_ITERATIONS):
         response = await client.messages.create(
-            model="claude-sonnet-4-6", max_tokens=500, system=DONA_TINA_BASE,
+            model=settings.MODELO_IA, max_tokens=500, system=DONA_TINA_BASE,
             tools=_TOOLS_CONSULTA, messages=messages,
         )
         usage_items.append({
-            "provider": "anthropic", "model": "claude-sonnet-4-6",
+            "provider": "anthropic", "model": settings.MODELO_IA,
             "input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens,
         })
         await _log_uso(db, user_id, _ASK_CLAUDE_META, response.usage.input_tokens, response.usage.output_tokens)

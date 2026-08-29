@@ -368,55 +368,52 @@ class ChatResponse(BaseModel):
 _MAX_MESSAGE_LEN = 2_000
 _MAX_HISTORY_LEN = 10
 _MAX_TOOL_ITERS = 3  # tope de vueltas tool-call → resultado → tool-call, evita loops infinitos
+# Antes eran 700, que es poco para lo que el prompt de sistema pide: una lista
+# numerada de pasos con los links en markdown. Una respuesta cortada a la mitad
+# es peor que una larga.
+_MAX_RESPUESTA_TOKENS = 2_000
 
 
 # ---------------------------------------------------------------------------
 # Tools — le dan a Don Tino acceso a datos reales de la plataforma
 # ---------------------------------------------------------------------------
 
+# Formato de Anthropic: `input_schema` en vez de `parameters`, y sin el sobre
+# {"type": "function", "function": {...}} que pedía la API de Groq.
 _TOOLS = [
     {
-        "type": "function",
-        "function": {
-            "name": "buscar_precio",
-            "description": (
-                "Busca el precio en vivo de un producto en las 13 cadenas uruguayas soportadas "
-                "(supermercados, farmacias y electrodomésticos). Devuelve los resultados más "
-                "relevantes con tienda, nombre, precio y moneda."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "termino": {
-                        "type": "string",
-                        "description": "Nombre del producto a buscar, ej: 'coca cola 1.5l' o 'notebook hp'",
-                    }
-                },
-                "required": ["termino"],
+        "name": "buscar_precio",
+        "description": (
+            "Busca el precio en vivo de un producto en las 13 cadenas uruguayas soportadas "
+            "(supermercados, farmacias y electrodomésticos). Devuelve los resultados más "
+            "relevantes con tienda, nombre, precio y moneda."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "termino": {
+                    "type": "string",
+                    "description": "Nombre del producto a buscar, ej: 'coca cola 1.5l' o 'notebook hp'",
+                }
             },
+            "required": ["termino"],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "consultar_estado_cenefa",
-            "description": "Consulta el estado (pending/running/done/error) de un trabajo de generación de cenefas por su ID.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "job_id": {"type": "string", "description": "El ID (UUID) del trabajo de cenefas a consultar"}
-                },
-                "required": ["job_id"],
+        "name": "consultar_estado_cenefa",
+        "description": "Consulta el estado (pending/running/done/error) de un trabajo de generación de cenefas por su ID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "El ID (UUID) del trabajo de cenefas a consultar"}
             },
+            "required": ["job_id"],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "resumen_ultimo_debate",
-            "description": "Trae el contenido del último debate de La Triada (Claude/ChatGPT/Llama) que generó este usuario, para resumirlo o comentarlo.",
-            "parameters": {"type": "object", "properties": {}},
-        },
+        "name": "resumen_ultimo_debate",
+        "description": "Trae el contenido del último debate de La Triada (Claude/ChatGPT/Llama) que generó este usuario, para resumirlo o comentarlo.",
+        "input_schema": {"type": "object", "properties": {}},
     },
 ]
 
@@ -523,17 +520,29 @@ async def chat_message(
     current_user: User = Depends(require_permission("ai.don_tino")),
     db: AsyncSession = Depends(get_db),
 ):
-    if not settings.GROQ_API_KEY:
+    if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="Chat AI not configured")
     if len(body.message) > _MAX_MESSAGE_LEN:
         raise HTTPException(status_code=400, detail=f"Message too long (max {_MAX_MESSAGE_LEN} characters)")
 
     try:
-        from groq import AsyncGroq
+        import anthropic
 
-        client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+        client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-        messages: list = [{"role": "system", "content": _SYSTEM_PROMPT}]
+        # El prompt de sistema son ~8.250 tokens de conocimiento de la
+        # plataforma que no cambian nunca, y viajaban enteros en CADA llamada
+        # -- hasta 3 veces por pregunta, por las vueltas de tool-use. Marcado
+        # así, la primera llamada lo escribe en caché y las siguientes lo leen
+        # a una décima parte del precio. Va como bloque suelto (no string) por
+        # eso: `cache_control` se cuelga del bloque.
+        system = [{
+            "type": "text",
+            "text": _SYSTEM_PROMPT,
+            "cache_control": {"type": "ephemeral"},
+        }]
+
+        messages: list = []
         for msg in body.history[-_MAX_HISTORY_LEN:]:
             messages.append({"role": msg.role, "content": msg.content})
         messages.append({"role": "user", "content": body.message})
@@ -541,52 +550,72 @@ async def chat_message(
         usage_items: list[dict] = []
 
         for _ in range(_MAX_TOOL_ITERS):
-            completion = await llm_call_with_retry(
-                lambda: client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+            respuesta = await llm_call_with_retry(
+                lambda: client.messages.create(
+                    model=settings.MODELO_IA,
+                    max_tokens=_MAX_RESPUESTA_TOKENS,
+                    system=system,
                     messages=messages,
                     tools=_TOOLS,
-                    tool_choice="auto",
-                    max_tokens=700,
-                    temperature=0.7,
+                    # Un chat de soporte se lee mientras se escribe: `medium`
+                    # deja al modelo razonar lo suficiente para elegir bien la
+                    # herramienta sin que la persona espere de más. Nada de
+                    # `temperature`: la familia 5 la rechaza con 400.
+                    output_config={"effort": "medium"},
                 ),
                 label="chat_message",
             )
-            if not completion.choices:
-                raise HTTPException(status_code=500, detail="Error al contactar el servicio de IA")
 
-            usage = completion.usage
-            if usage:
-                input_tokens, output_tokens = usage.prompt_tokens or 0, usage.completion_tokens or 0
+            uso = respuesta.usage
+            if uso:
+                # Los tokens leídos de caché y los escritos en caché se cobran
+                # distinto (una décima parte y 1,25x), pero acá se suman todos
+                # como entrada: el conteo de tokens queda exacto y el costo
+                # estimado queda POR ENCIMA del real, que es el lado seguro
+                # para equivocarse en un informe de gasto.
+                input_tokens = (
+                    (uso.input_tokens or 0)
+                    + (getattr(uso, "cache_creation_input_tokens", 0) or 0)
+                    + (getattr(uso, "cache_read_input_tokens", 0) or 0)
+                )
+                output_tokens = uso.output_tokens or 0
                 usage_items.append({
-                    "provider": "groq", "model": "llama-3.3-70b-versatile",
+                    "provider": "anthropic", "model": settings.MODELO_IA,
                     "input_tokens": input_tokens, "output_tokens": output_tokens,
                 })
                 await log_ai_usage(
-                    db, current_user.id, "don_tino_home", "groq", "llama-3.3-70b-versatile",
+                    db, current_user.id, "don_tino_home", "anthropic", settings.MODELO_IA,
                     input_tokens, output_tokens,
                 )
 
-            msg = completion.choices[0].message
-            tool_calls = msg.tool_calls or []
-            if not tool_calls:
-                return ChatResponse(reply=msg.content or "No pude generar una respuesta.", usage=resumir_usage(usage_items))
+            if respuesta.stop_reason != "tool_use":
+                texto = "".join(b.text for b in respuesta.content if b.type == "text").strip()
+                return ChatResponse(
+                    reply=texto or "No pude generar una respuesta.",
+                    usage=resumir_usage(usage_items),
+                )
 
-            messages.append({
-                "role": "assistant",
-                "content": msg.content or "",
-                "tool_calls": [
-                    {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                    for tc in tool_calls
-                ],
-            })
-            for tc in tool_calls:
-                try:
-                    args = json.loads(tc.function.arguments or "{}")
-                except json.JSONDecodeError:
-                    args = {}
-                resultado = await _ejecutar_tool(tc.function.name, args, current_user, db)
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": resultado})
+            # La respuesta vuelve tal cual al historial (bloques, no texto): el
+            # bloque tool_use tiene que llegar entero en la próxima vuelta o la
+            # API rechaza el tool_result que lo referencia.
+            messages.append({"role": "assistant", "content": respuesta.content})
+
+            resultados = []
+            for bloque in respuesta.content:
+                if bloque.type != "tool_use":
+                    continue
+                salida = await _ejecutar_tool(
+                    bloque.name, bloque.input or {}, current_user, db
+                )
+                resultados.append({
+                    "type": "tool_result",
+                    "tool_use_id": bloque.id,
+                    "content": salida,
+                })
+            # Todos los tool_result de una tanda van en UN solo mensaje:
+            # repartirlos en varios le enseña al modelo a dejar de pedir
+            # herramientas en paralelo.
+            messages.append({"role": "user", "content": resultados})
 
         return ChatResponse(
             reply="No pude terminar de resolver tu consulta — probá reformularla o preguntá algo más puntual.",

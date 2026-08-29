@@ -266,7 +266,7 @@ async def _ask_claude(system: str, prompt: str, max_tokens: int = 800) -> Tuple[
     def _sync():
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         resp = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=settings.MODELO_IA,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": prompt}],
@@ -317,7 +317,7 @@ async def _ask_claude_stream(system: str, prompt: str, max_tokens: int = 800) ->
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
     full_text: list[str] = []
     async with client.messages.stream(
-        model="claude-sonnet-4-6",
+        model=settings.MODELO_IA,
         max_tokens=max_tokens,
         system=system,
         thinking={"type": "adaptive", "display": "summarized"},
@@ -461,7 +461,7 @@ async def _ask_llama(system: str, prompt: str, max_tokens: int = 900) -> Tuple[s
 
 # (provider, model) por función de bajo nivel — usado para armar los eventos
 # "usage_detail" que alimentan el tracking de costo de IA (ver ai_usage_service.py).
-_ASK_CLAUDE_META = ("anthropic", "claude-sonnet-4-6")
+_ASK_CLAUDE_META = ("anthropic", settings.MODELO_IA)
 _ASK_GPT_META = ("openai", "gpt-4o")
 _ASK_GPT_STREAM_META = ("openai", "gpt-5.4")
 _FETCH_WEB_CONTEXT_META = ("openai", "gpt-4o-search-preview")

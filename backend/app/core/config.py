@@ -44,6 +44,20 @@ class Settings(BaseSettings):
     # queda para siempre, y el archivo de una corrida VERIFICADA también.
     CENEFAS_RETENCION_DIAS: int = 7
 
+    # El modelo de Anthropic que usan TODOS los agentes: Don Tino, Tinín,
+    # Doña Tina, Dogti, la extracción de facturas y la pata de Claude en la
+    # Tríada. Estaba hardcodeado y repetido en seis archivos, cada uno con un
+    # comentario que decía "mismo modelo que los otros" — que es justo la forma
+    # en que seis copias se separan sin que nadie se entere.
+    #
+    # Al 2026-08-29: claude-sonnet-5 reemplaza a claude-sonnet-4-6 — más nuevo
+    # y más barato (US$2/US$10 por millón contra US$3/US$15).
+    #
+    # OJO al cambiarlo: la familia 5 NO acepta `temperature` ni `top_p`;
+    # mandarlos devuelve 400. Si hay que volver atrás en caliente, se puede
+    # setear por env var en Render sin desplegar código.
+    MODELO_IA: str = "claude-sonnet-5"
+
     # Demo mode — cuando True, sync_metrics retorna inmediatamente sin llamar APIs externas
     DEMO_MODE: bool = False
 

@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.services.ai_usage_service import log_ai_usage
 from app.services.tino_personas import DOGTI_BASE
 
-_MODEL = "claude-sonnet-4-6"  # misma familia Tino, mismo modelo que tinin_agent.py/debate_service.py
+_MODEL = settings.MODELO_IA  # el de toda la familia -- ver MODELO_IA en config.py
 _META = ("anthropic", _MODEL)
 
 _INSTRUCCION_EXTRACCION = """

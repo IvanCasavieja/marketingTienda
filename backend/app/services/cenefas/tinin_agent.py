@@ -23,7 +23,7 @@ from app.services.tino_personas import TININ_BASE
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "claude-sonnet-4-6"  # misma familia Tino, mismo modelo que debate_service.py/dona_tina_precios.py
+_MODEL = settings.MODELO_IA  # el de toda la familia -- ver MODELO_IA en config.py
 _META = ("anthropic", _MODEL)
 _MAX_TOOL_ITERATIONS = 4  # tope duro contra un loop de tool-use que no converge
 
@@ -241,12 +241,26 @@ async def consultar(
     # que valga en todos los turnos, no solo en el primero. Sin nada aprobado
     # queda vacío y el agente funciona igual que antes; si falla, se ignora:
     # el conocimiento suma contexto, nunca puede voltear el chat.
-    sistema = _SYSTEM_PROMPT
+    # Dos bloques y no un string, para poder cachear: _SYSTEM_PROMPT son ~4.600
+    # tokens que no cambian nunca y hasta acá viajaban enteros en cada consulta
+    # y en cada vuelta de tool-use. Marcado así se escribe una vez y después se
+    # lee a una décima parte del precio.
+    #
+    # El corte de caché va DESPUÉS de la parte fija y ANTES de lo aprendido: el
+    # caché es por prefijo, así que cualquier cambio en `aprendido` (crece cada
+    # vez que alguien aprueba algo) invalidaría todo lo que venga detrás. Con
+    # este orden, aprobar conocimiento nuevo no tira abajo el caché del
+    # conocimiento base.
+    sistema: list[dict] = [{
+        "type": "text",
+        "text": _SYSTEM_PROMPT,
+        "cache_control": {"type": "ephemeral"},
+    }]
     try:
         from app.services.cenefas.conocimiento import contexto_para_el_agente
         aprendido = await contexto_para_el_agente(db)
         if aprendido:
-            sistema = f"{_SYSTEM_PROMPT}\n\n{aprendido}"
+            sistema.append({"type": "text", "text": aprendido})
     except Exception:
         logger.warning("no se pudo cargar el conocimiento aprobado", exc_info=True)
 
@@ -260,13 +274,23 @@ async def consultar(
             tools=_TOOLS,
             messages=messages,
         )
+        # Con caché, input_tokens deja de traer el prompt: lo que se leyó del
+        # caché viaja aparte. Sin sumarlo, el informe de consumo mostraría de
+        # golpe una caída de tokens que no ocurrió. Se suman los tres, así el
+        # conteo queda exacto y el costo estimado queda por encima del real.
+        _u = response.usage
+        _in = (
+            (_u.input_tokens or 0)
+            + (getattr(_u, "cache_creation_input_tokens", 0) or 0)
+            + (getattr(_u, "cache_read_input_tokens", 0) or 0)
+        )
         usage_items.append({
             "provider": _META[0], "model": _META[1],
-            "input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens,
+            "input_tokens": _in, "output_tokens": _u.output_tokens,
         })
         await log_ai_usage(
             db, user_id, "tinin_cenefas", _META[0], _META[1],
-            response.usage.input_tokens, response.usage.output_tokens,
+            _in, _u.output_tokens,
         )
 
         messages.append({"role": "assistant", "content": response.content})
