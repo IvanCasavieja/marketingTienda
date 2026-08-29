@@ -691,9 +691,14 @@ async def verificar_corrida(
     y cuando, para que el informe pueda separar "el motor no encontro
     problemas" de "una persona lo miro y esta bien".
     """
-    job = await db.get(CenefaJob, job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Esa corrida no existe")
+    # _get_job y no db.get: sin el chequeo de pertenencia, cualquiera con
+    # cenefas.view podia verificar o DESverificar una corrida ajena -- y los
+    # ids se los servia el propio listado. Desverificar no es cosmetico:
+    # verificado=False mete la fila en el WHERE de purgar_archivos_vencidos
+    # (jobs.py), asi que a los CENEFAS_RETENCION_DIAS el PPTX de otro se
+    # borraba sin vuelta atras. Del otro lado, verificar corridas ajenas
+    # infla "verificadas" en el informe, que es la cifra que se factura.
+    job = await _get_job(job_id, current_user, db)
     if job.status != "done":
         raise HTTPException(
             status_code=409,
@@ -1332,6 +1337,7 @@ async def download_lote(
         raise HTTPException(status_code=404, detail="El lote todavía no tiene ninguna cenefa lista")
 
     buffer = io.BytesIO()
+    escritas = 0
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         usados: set[str] = set()
         for job in jobs:
@@ -1349,9 +1355,25 @@ async def download_lote(
                 n += 1
             usados.add(ruta)
             zf.writestr(ruta, contenido)
+            escritas += 1
 
-    if not buffer.tell():
-        raise HTTPException(status_code=404, detail="No se pudo recuperar ninguna cenefa del lote")
+    # Contar entradas, no bytes: un ZIP vacio igual pesa 22 (el End Of Central
+    # Directory), asi que `if not buffer.tell()` era siempre falso y en vez del
+    # 404 se servia un .zip valido y VACIO con HTTP 200. Pasa de verdad cuando
+    # las corridas del lote ya pasaron la retencion sin verificarse: la purga
+    # les deja result_bytes en NULL pero el status en "done", get_job_result
+    # devuelve None para todas y el `continue` de arriba las saltea a todas.
+    if not escritas:
+        raise HTTPException(
+            status_code=410,
+            detail="Las cenefas de este lote ya no estan disponibles — volve a generarlas",
+        )
+    if escritas < len(jobs):
+        # Antes salia incompleto en silencio; que al menos quede en el log.
+        logger.warning(
+            "download_lote %s: %d de %d cenefas recuperadas, el ZIP va incompleto",
+            lote_id, escritas, len(jobs),
+        )
 
     return Response(
         content=buffer.getvalue(),
