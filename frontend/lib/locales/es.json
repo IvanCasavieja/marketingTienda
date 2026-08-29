@@ -137,7 +137,7 @@
     "assistantName": "Don Tino",
     "assistantSubtitle": "Preguntame sobre la plataforma",
     "inputPlaceholder": "Escribí tu pregunta...",
-    "comingSoon": "Asistente con IA real · Powered by Llama 3.3 70B vía Groq",
+    "comingSoon": "Asistente con IA real · Powered by Claude Sonnet 5",
     "assistantWelcome": "Soy Don Tino, tu asistente de MKTG Platform. Puedo guiarte en el uso de la plataforma, explicarte funcionalidades y ayudarte a sacarle el máximo provecho. ¿En qué te puedo ayudar hoy?",
     "suggestions": {
       "s1": "¿Cómo sincronizo Google Ads?",
@@ -1411,7 +1411,7 @@
     "asistente": {
       "title": "Asistente virtual",
       "greeting": "¿En qué te ayudo?",
-      "introPost": "(Llama 3.3 70B via Groq) conoce todas las funcionalidades de la plataforma y además puede hacer cosas por vos, no solo describirlas:",
+      "introPost": "(Claude Sonnet 5) conoce todas las funcionalidades de la plataforma y además puede hacer cosas por vos, no solo describirlas:",
       "feature1": "Buscarte el precio de un producto en las 13 cadenas, en vivo",
       "feature2": "Consultarte el estado de un trabajo de cenefas por su ID",
       "feature3": "Resumirte tu último debate de La Triada",
