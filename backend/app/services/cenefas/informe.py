@@ -95,6 +95,50 @@ def _filtros(desde: date | None, hasta: date | None, template: str | None):
     return cond
 
 
+async def _reales_por_categoria(db: AsyncSession, cond: list) -> dict[str, int]:
+    """Cenefas reales por mundo: filas del listado x formatos distintos pedidos,
+    sin contar de nuevo el reproceso.
+
+    La corrida no es la unidad de trabajo -- el listado si. Un mismo Excel se
+    reprocesa hasta que sale bien (Carniceria necesito 4 salidas y tuvo 25
+    intentos en agosto), y el informe bruto paga cada intento por separado.
+    Aca se agrupa por listado -- `excel_nombre` + `row_count`, NO solo el
+    nombre: "convertidor_cenefas.xlsx" es el nombre generico que deja el
+    Convertidor y se repite para listados distintos, lo unico que los separa
+    es cuantas filas trae cada uno -- y dentro de cada listado se cuentan las
+    plantillas (=formatos) distintas que efectivamente se generaron.
+    Confirmado con Ivan el 2026-08-31 sobre Mega Rompe Precios.
+
+    No usa la agrupacion de `agrupar_intentos` (excel + plantilla) porque esa
+    clave puede juntar dos listados reales distintos que por casualidad usaron
+    el mismo nombre generico Y la misma plantilla en fechas distintas, y se
+    quedaria solo con el ultimo, perdiendo el otro. Por eso `row_count` entra
+    en la clave.
+
+    Solo cubre corridas con `excel_nombre` guardado (desde el 23/08/2026): las
+    anteriores ya quedan afuera de lo cobrable por "sin clasificar", asi que
+    no hace falta un respaldo para esas.
+    """
+    sub = (
+        select(
+            CenefaJob.categoria,
+            CenefaJob.excel_nombre,
+            CenefaJob.row_count,
+            func.count(func.distinct(CenefaJob.template_nombre)).label("n_formatos"),
+        )
+        .where(*cond, CenefaJob.excel_nombre.isnot(None), CenefaJob.row_count.isnot(None))
+        .group_by(CenefaJob.categoria, CenefaJob.excel_nombre, CenefaJob.row_count)
+    ).subquery()
+
+    filas = (await db.execute(
+        select(
+            sub.c.categoria,
+            func.coalesce(func.sum(sub.c.row_count * sub.c.n_formatos), 0).label("reales"),
+        ).group_by(sub.c.categoria)
+    )).all()
+    return {(r.categoria or ""): int(r.reales) for r in filas}
+
+
 async def resumen(
     db: AsyncSession,
     desde: date | None = None,
@@ -179,6 +223,8 @@ async def resumen(
         .order_by(func.coalesce(func.sum(total), 0).desc())
     )).all()
 
+    reales_por_categoria = await _reales_por_categoria(db, cond)
+
     # Produccion declarada: una cifra fija por mundo, sin corridas detras. Solo
     # se incluye en la vista sin filtros -- acotada a un mes o a una plantilla
     # no significa nada, porque no tiene fecha ni plantilla que filtrar.
@@ -201,12 +247,17 @@ async def resumen(
             return r
         return {k: (getattr(r, k, 0) or 0) for k in _CAMPOS}
 
-    def bloque(r, valorizar: bool = True) -> dict[str, Any]:
+    def bloque(r, valorizar: bool = True, reales: int | None = None) -> dict[str, Any]:
         """Un bloque de cifras. `valorizar=False` lo deja en cero pesos sin
         esconder el volumen: es lo que se hace con los mundos sin costo y con
-        lo que no se puede atribuir."""
+        lo que no se puede atribuir.
+
+        `reales` es lo que efectivamente hacia falta -- filas del listado x
+        formatos distintos, sin contar de nuevo el reproceso. Se pasa aparte
+        en vez de salir de `c` porque no es una columna mas: sale de agrupar
+        por listado, no de sumar filas."""
         c = cifras(r)
-        return {
+        d = {
             "corridas":  c["corridas"],
             "cenefas":   c["cenefas"],
             "correctas": c["correctas"],
@@ -218,6 +269,10 @@ async def resumen(
             "costo_correctas":   round(c["correctas"] * costo, 2) if valorizar else 0.0,
             "costo_verificadas": round(c["verif_cenefas"] * costo, 2) if valorizar else 0.0,
         }
+        if reales is not None:
+            d["cenefas_reales"] = reales
+            d["costo_real"] = round(reales * costo, 2) if valorizar else 0.0
+        return d
 
     def sumar(filas) -> dict[str, int]:
         return {k: sum(cifras(r)[k] for r in filas) for k in _CAMPOS}
@@ -231,6 +286,12 @@ async def resumen(
     medido_cobrable    = sumar(g_cobrable)
     declarado_cobrable = sum(r.cenefas_previas for r in declaradas if r.cobrable)
     cenefas_cobrables  = medido_cobrable["cenefas"] + declarado_cobrable
+
+    # Lo declarado ya es una cifra real (no tiene corridas ni reproceso
+    # detras), asi que se suma directo -- lo unico que hay que desagregar del
+    # reproceso es lo medido.
+    reales_cobrable        = sum(reales_por_categoria.get(r.mundo, 0) for r in g_cobrable)
+    cenefas_reales_cobrable = reales_cobrable + declarado_cobrable
 
     return {
         "costo_unitario": costo,
@@ -254,7 +315,8 @@ async def resumen(
                 "mundo":    r.mundo or "",
                 "nombre":   r.nombre or r.mundo or "(sin clasificar)",
                 "cobrable": bool(r.mundo) and bool(r.cobrable),
-                **bloque(r, valorizar=bool(r.mundo) and bool(r.cobrable)),
+                **bloque(r, valorizar=bool(r.mundo) and bool(r.cobrable),
+                         reales=reales_por_categoria.get(r.mundo or "")),
             }
             for r in por_mundo
         ],
@@ -271,10 +333,15 @@ async def resumen(
         ],
         # Lo que de verdad se factura: mundos cobrables, medido + declarado.
         "cobrable": {
-            **bloque(medido_cobrable),
+            **bloque(medido_cobrable, reales=reales_cobrable),
             "declaradas":      declarado_cobrable,
             "cenefas_totales": cenefas_cobrables,
             "costo_total":     round(cenefas_cobrables * costo, 2),
+            # Lo que hacia falta de verdad -- listado x formatos distintos,
+            # sin pagar de nuevo el reproceso. Medido con esa regla + lo
+            # declarado (que ya es real, no tiene corridas detras).
+            "cenefas_reales_totales": cenefas_reales_cobrable,
+            "costo_real_total":       round(cenefas_reales_cobrable * costo, 2),
         },
         "sin_costo":      bloque(sumar(g_sin_costo), valorizar=False),
         "sin_clasificar": bloque(sumar(g_sin_clas),  valorizar=False),

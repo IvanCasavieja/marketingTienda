@@ -619,6 +619,14 @@ export interface CenefaInformeBloque {
   costo: number;
   costo_correctas: number;
   costo_verificadas: number;
+  /**
+   * Lo que hacia falta de verdad: filas del listado x formatos distintos
+   * pedidos, sin pagar de nuevo el reproceso del mismo Excel. Solo viene
+   * cuando hay `excel_nombre` guardado (desde el 23/08/2026) -- ausente en
+   * los bloques que agrupan corridas de antes de esa fecha.
+   */
+  cenefas_reales?: number;
+  costo_real?: number;
 }
 
 /** Un mundo (destino) con su produccion. `cobrable=false` -> valorizado en 0. */
@@ -656,6 +664,9 @@ export interface CenefaInforme {
     declaradas: number;
     cenefas_totales: number;
     costo_total: number;
+    /** Medido con la regla de listado x formatos, mas lo declarado (que ya es real). */
+    cenefas_reales_totales: number;
+    costo_real_total: number;
   };
   /** Mundos marcados sin costo (Redexpres, pruebas). Volumen si, plata no. */
   sin_costo: CenefaInformeBloque;

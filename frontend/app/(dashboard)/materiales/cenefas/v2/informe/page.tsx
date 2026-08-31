@@ -247,6 +247,9 @@ export default function InformePage() {
                     { clave: "total", etiqueta: "Cobrable total", destacar: true,
                       detalle: "Medido + declarado",
                       cenefas: data.cobrable.cenefas_totales, costo: data.cobrable.costo_total },
+                    { clave: "real", etiqueta: "Real (sin reproceso)", real: true,
+                      detalle: "Listado × formatos distintos pedidos — reprocesar el mismo Excel no cuenta de nuevo",
+                      cenefas: data.cobrable.cenefas_reales_totales, costo: data.cobrable.costo_real_total },
                     { clave: "sincosto", etiqueta: "Sin costo", apagado: true,
                       detalle: "Mundos marcados sin costo (Redexpres, pruebas)",
                       cenefas: data.sin_costo.cenefas, costo: 0 },
@@ -256,20 +259,23 @@ export default function InformePage() {
                   ].filter((f) => f.cenefas > 0 || f.clave === "total").map((f) => (
                     <tr key={f.clave}
                         className={`border-b border-slate-100 dark:border-slate-800 ${
-                          f.destacar ? "bg-slate-50 dark:bg-slate-800/40" : ""}`}>
+                          f.destacar || f.real ? "bg-slate-50 dark:bg-slate-800/40" : ""}`}>
                       <td className={`px-3 py-2 ${
-                        f.destacar ? "font-semibold text-slate-800 dark:text-slate-100"
-                                   : f.apagado ? "text-slate-400" : "text-slate-700 dark:text-slate-300"}`}>
+                        f.real ? "font-semibold text-emerald-700 dark:text-emerald-400"
+                               : f.destacar ? "font-semibold text-slate-800 dark:text-slate-100"
+                               : f.apagado ? "text-slate-400" : "text-slate-700 dark:text-slate-300"}`}>
                         {f.etiqueta}
                         <span className="block text-[10px] text-slate-400 font-normal">{f.detalle}</span>
                       </td>
                       <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${
-                        f.destacar ? "font-semibold" : f.apagado ? "text-slate-400" : ""}`}>
+                        f.real ? "font-semibold text-emerald-700 dark:text-emerald-400"
+                               : f.destacar ? "font-semibold" : f.apagado ? "text-slate-400" : ""}`}>
                         {numero(f.cenefas)}
                       </td>
                       <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${
-                        f.destacar ? "font-bold text-slate-800 dark:text-slate-100"
-                                   : f.apagado ? "text-slate-400" : "font-medium"}`}>
+                        f.real ? "font-bold text-emerald-700 dark:text-emerald-400"
+                               : f.destacar ? "font-bold text-slate-800 dark:text-slate-100"
+                               : f.apagado ? "text-slate-400" : "font-medium"}`}>
                         {pesos(f.costo)}
                       </td>
                     </tr>
