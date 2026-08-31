@@ -186,22 +186,26 @@ export default function InformePage() {
 
       {!cargando && t && (
         <>
-          {/* Lo que importa: cuanto se hizo y cuanto vale */}
+          {/* Lo que importa: cuanto hacia falta de verdad y cuanto vale. El
+              real va primero -- es la respuesta a "cuanto se trabajo", no el
+              bruto con reproceso. */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { etiqueta: "Cenefas generadas", valor: numero(t.cenefas),
-                pie: `${numero(t.corridas)} corridas` },
-              { etiqueta: "Salieron correctas", valor: numero(t.correctas),
-                pie: t.cenefas ? `${((t.correctas * 100) / t.cenefas).toFixed(1)}% del total` : "—",
+              { etiqueta: "Cenefas reales", valor: numero(data.cobrable.cenefas_reales_totales),
+                pie: "listado × formato distinto, sin contar el reproceso",
                 acento: "text-emerald-600 dark:text-emerald-400" },
-              // El valor que se muestra arriba es el cobrable, no el bruto:
-              // el bruto incluye Redexpres, las pruebas y las corridas que no
-              // se pueden atribuir a nadie. El desglose esta abajo.
-              { etiqueta: "Valor cobrable", valor: pesos(data.cobrable.costo_total),
-                pie: `${numero(data.cobrable.cenefas_totales)} cenefas · a ${pesos(data.costo_unitario)} c/u` },
+              { etiqueta: "Valor real", valor: pesos(data.cobrable.costo_real_total),
+                pie: `a ${pesos(data.costo_unitario)} c/u`,
+                acento: "text-emerald-600 dark:text-emerald-400" },
               { etiqueta: "Verificadas a mano", valor: numero(t.verificadas),
                 pie: `${numero(t.verificadas_corridas)} de ${numero(t.corridas)} corridas · ${pesos(t.costo_verificadas)}`,
                 acento: "text-brand-600 dark:text-brand-400" },
+              // Bruto: todo lo que paso por el motor, cada reproceso pagado
+              // por separado. Queda como referencia para auditar, no como
+              // titular -- por eso va apagado y al final.
+              { etiqueta: "Bruto medido (con reproceso)", valor: numero(t.cenefas),
+                pie: `${numero(t.corridas)} corridas · no es el resultado real`,
+                acento: "text-slate-400 dark:text-slate-500" },
             ].map((c) => (
               <div key={c.etiqueta} className="card p-4">
                 <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
@@ -217,6 +221,9 @@ export default function InformePage() {
 
           {(t.avisos > 0 || t.criticos > 0) && (
             <div className="card p-4 flex gap-6 flex-wrap text-sm">
+              <span className="text-slate-400 text-xs uppercase tracking-widest font-semibold">
+                Bruto, con reproceso:
+              </span>
               <span className="text-amber-600 dark:text-amber-400">
                 <b>{numero(t.avisos)}</b> salieron con algo para revisar
               </span>
@@ -226,9 +233,10 @@ export default function InformePage() {
             </div>
           )}
 
-          {/* De donde sale el valor cobrable. Lo que no se factura no se
-              esconde: se muestra con su volumen y valorizado en cero, para
-              que se vea la diferencia con el bruto de arriba. */}
+          {/* De donde sale el numero real de arriba: primero la fila real, y
+              abajo -- apagado, de referencia -- como se llega ahi desde el
+              bruto medido + declarado. Lo que no se factura no se esconde:
+              se muestra con su volumen y valorizado en cero. */}
           <div className="card p-0 overflow-hidden">
             <p className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">
               Qué se factura
@@ -237,19 +245,19 @@ export default function InformePage() {
               <table className="w-full text-xs border-collapse">
                 <tbody>
                   {[
-                    { clave: "medido", etiqueta: "Cobrable (medido)",
-                      detalle: "Respaldado corrida por corrida",
-                      cenefas: data.cobrable.cenefas, costo: data.cobrable.costo },
-                    ...data.declaradas.map((d) => ({
-                      clave: `dec-${d.mundo}`, etiqueta: `Declarado · ${d.nombre}`,
-                      detalle: d.nota, cenefas: d.cenefas, costo: d.costo,
-                    })),
-                    { clave: "total", etiqueta: "Cobrable total", destacar: true,
-                      detalle: "Medido + declarado",
-                      cenefas: data.cobrable.cenefas_totales, costo: data.cobrable.costo_total },
                     { clave: "real", etiqueta: "Real (sin reproceso)", real: true,
                       detalle: "Listado × formatos distintos pedidos — reprocesar el mismo Excel no cuenta de nuevo",
                       cenefas: data.cobrable.cenefas_reales_totales, costo: data.cobrable.costo_real_total },
+                    { clave: "medido", etiqueta: "Cobrable (medido, bruto)", apagado: true,
+                      detalle: "Respaldado corrida por corrida, pero con el reproceso pagado de nuevo cada vez",
+                      cenefas: data.cobrable.cenefas, costo: data.cobrable.costo },
+                    ...data.declaradas.map((d) => ({
+                      clave: `dec-${d.mundo}`, etiqueta: `Declarado · ${d.nombre}`, apagado: true,
+                      detalle: d.nota, cenefas: d.cenefas, costo: d.costo,
+                    })),
+                    { clave: "total", etiqueta: "Cobrable total (bruto)", apagado: true,
+                      detalle: "Medido + declarado, sin descontar reproceso",
+                      cenefas: data.cobrable.cenefas_totales, costo: data.cobrable.costo_total },
                     { clave: "sincosto", etiqueta: "Sin costo", apagado: true,
                       detalle: "Mundos marcados sin costo (Redexpres, pruebas)",
                       cenefas: data.sin_costo.cenefas, costo: 0 },
@@ -259,22 +267,20 @@ export default function InformePage() {
                   ].filter((f) => f.cenefas > 0 || f.clave === "total").map((f) => (
                     <tr key={f.clave}
                         className={`border-b border-slate-100 dark:border-slate-800 ${
-                          f.destacar || f.real ? "bg-slate-50 dark:bg-slate-800/40" : ""}`}>
+                          f.real ? "bg-slate-50 dark:bg-slate-800/40" : ""}`}>
                       <td className={`px-3 py-2 ${
                         f.real ? "font-semibold text-emerald-700 dark:text-emerald-400"
-                               : f.destacar ? "font-semibold text-slate-800 dark:text-slate-100"
                                : f.apagado ? "text-slate-400" : "text-slate-700 dark:text-slate-300"}`}>
                         {f.etiqueta}
                         <span className="block text-[10px] text-slate-400 font-normal">{f.detalle}</span>
                       </td>
                       <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${
                         f.real ? "font-semibold text-emerald-700 dark:text-emerald-400"
-                               : f.destacar ? "font-semibold" : f.apagado ? "text-slate-400" : ""}`}>
+                               : f.apagado ? "text-slate-400" : ""}`}>
                         {numero(f.cenefas)}
                       </td>
                       <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${
                         f.real ? "font-bold text-emerald-700 dark:text-emerald-400"
-                               : f.destacar ? "font-bold text-slate-800 dark:text-slate-100"
                                : f.apagado ? "text-slate-400" : "font-medium"}`}>
                         {pesos(f.costo)}
                       </td>
