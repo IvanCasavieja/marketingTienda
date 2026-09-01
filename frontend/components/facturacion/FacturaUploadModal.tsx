@@ -71,12 +71,13 @@ const CONFIANZA_BADGE: Record<string, string> = {
 
 function initDocForm(documento: FacturacionDocumento, cuentas: FacturacionCuenta[]): DocForm {
   const ex = documento.extraccion;
-  // DogTi matchea por nombre contra las cuentas activas que ya le pasamos
-  // como opciones -- si no encontró señal clara en el documento, o el
-  // nombre sugerido no matchea ninguna (cuenta desactivada entre medio,
-  // etc.), no se precompleta y la persona elige a mano.
-  const sugerida = ex?.cuenta_sugerida
-    ? cuentas.find((c) => c.nombre.toLowerCase() === ex.cuenta_sugerida!.toLowerCase())
+  // La cuenta_recomendada (proveedor recurrente: siempre facturó a la misma
+  // cuenta) pisa a la cuenta_sugerida de DogTi -- historial real le gana a
+  // una lectura del membrete. Si ninguna matchea una cuenta activa (cuenta
+  // desactivada entre medio, etc.), no se precompleta y la persona elige.
+  const nombreCuenta = ex?.cuenta_recomendada || ex?.cuenta_sugerida;
+  const sugerida = nombreCuenta
+    ? cuentas.find((c) => c.nombre.toLowerCase() === nombreCuenta.toLowerCase())
     : undefined;
   return {
     documento,
@@ -424,11 +425,15 @@ export default function FacturaUploadModal({ onClose, onConfirmed }: FacturaUplo
                       tipo: ex.tipo_sugerido === "canje" ? t("facturacion.upload.typeCanje") : t("facturacion.upload.typeMovimiento"),
                     })}
                   </p>
-                  {ex.cuenta_sugerida && (
+                  {ex.cuenta_recomendada ? (
+                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                      {t("facturacion.upload.cuentaRecomendada", { cuenta: ex.cuenta_recomendada })}
+                    </p>
+                  ) : ex.cuenta_sugerida ? (
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {t("facturacion.upload.cuentaDetectada", { cuenta: ex.cuenta_sugerida })}
                     </p>
-                  )}
+                  ) : null}
                   {ex.notas && ex.notas.trim() !== "" && (
                     <p className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1.5 pt-0.5">
                       <AlertTriangle size={12} className="shrink-0 mt-0.5" />

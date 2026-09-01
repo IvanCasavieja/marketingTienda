@@ -1001,6 +1001,7 @@
       "analysisTitle": "Análise do DogTi",
       "analysisSummary": "Fornecedor: {{proveedor}} · Conceito: {{concepto}} · Valor: {{monto}} · Sugerido como: {{tipo}}",
       "cuentaDetectada": "Conta detectada: {{cuenta}}",
+      "cuentaRecomendada": "Conta recomendada por recorrência: {{cuenta}} — este fornecedor sempre fatura aqui",
       "confianza": {
         "alta": "Confiança alta",
         "media": "Confiança média",

@@ -1001,6 +1001,7 @@
       "analysisTitle": "DogTi's analysis",
       "analysisSummary": "Supplier: {{proveedor}} · Concept: {{concepto}} · Amount: {{monto}} · Suggested as: {{tipo}}",
       "cuentaDetectada": "Detected account: {{cuenta}}",
+      "cuentaRecomendada": "Recommended account (recurring): {{cuenta}} — this vendor always bills here",
       "confianza": {
         "alta": "High confidence",
         "media": "Medium confidence",

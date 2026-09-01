@@ -980,6 +980,7 @@ export interface FacturacionExtraccion {
   fecha: string;
   numero_factura?: string | null;
   cuenta_sugerida?: string | null;
+  cuenta_recomendada?: string | null;
   vigencia_desde?: string | null;
   vigencia_hasta?: string | null;
   confianza: "alta" | "media" | "baja";

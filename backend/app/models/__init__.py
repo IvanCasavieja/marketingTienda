@@ -26,6 +26,7 @@ from app.models.facturacion_documento import FacturacionDocumento
 from app.models.facturacion_cuenta import FacturacionCuenta
 from app.models.facturacion_movimiento import FacturacionMovimiento
 from app.models.facturacion_canje import FacturacionCanje
+from app.models.facturacion_proveedor_cuenta import FacturacionProveedorCuenta
 
 __all__ = [
     "User", "PlatformConnection", "Platform",
@@ -37,4 +38,5 @@ __all__ = [
     "CotizacionDolar", "AIUsageLog", "SkuDescripcion", "MeridianChannelSummary", "PasswordResetToken",
     "ConvertidorHeaderAlias", "ConvertidorMapeo",
     "FacturacionDocumento", "FacturacionCuenta", "FacturacionMovimiento", "FacturacionCanje",
+    "FacturacionProveedorCuenta",
 ]

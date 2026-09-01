@@ -11,6 +11,7 @@ from app.models.facturacion_documento import FacturacionDocumento
 from app.models.facturacion_movimiento import FacturacionMovimiento
 from app.services.facturacion.cuentas import listar_cuentas
 from app.services.facturacion.extraccion import extraer_factura_raw, registrar_uso_extraccion
+from app.services.facturacion.recomendacion import cuenta_recomendada
 
 _ESTADO_PENDIENTE = "pendiente_revision"
 
@@ -52,6 +53,14 @@ async def crear_documentos_y_extraer(
             documento.extraction_error = str(resultado)[:500]
         else:
             data, input_tokens, output_tokens = resultado
+            # La recomendacion por recurrencia (proveedor que factura
+            # siempre a la misma cuenta) viaja dentro de extraction_raw como
+            # un campo mas: llega al frontend por el mismo camino que la
+            # extraccion y queda guardada con el documento.
+            recomendada = await cuenta_recomendada(
+                db, (data or {}).get("proveedor_marca"))
+            if recomendada:
+                data = {**(data or {}), "cuenta_recomendada": recomendada}
             documento.extraction_raw = data
             await registrar_uso_extraccion(db, user_id, input_tokens, output_tokens)
         documentos.append(documento)
