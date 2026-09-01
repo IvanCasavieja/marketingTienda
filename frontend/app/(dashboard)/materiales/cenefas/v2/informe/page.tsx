@@ -39,7 +39,7 @@ export default function InformePage() {
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const [plantilla, setPlantilla] = useState("");
-  const [costo, setCosto] = useState(45);
+  const [costo, setCosto] = useState(49);
   const dlRef = useRef<HTMLAnchorElement>(null);
 
   const params = useCallback(

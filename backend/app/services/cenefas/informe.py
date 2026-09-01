@@ -1,7 +1,7 @@
 """Informe de produccion de cenefas.
 
 Responde una pregunta concreta: cuantas cenefas se hicieron, cuantas salieron
-correctas, y cuanto vale eso. Cada cenefa disenada tiene un costo (45 pesos
+correctas, y cuanto vale eso. Cada cenefa disenada tiene un costo (49 pesos
 por defecto, configurable desde la pantalla) y ese es el criterio con el que
 se valoriza el trabajo.
 
@@ -59,7 +59,7 @@ from app.models.cenefa_job import CenefaJob
 # Costo por cenefa disenada, en pesos. Es solo el valor por defecto: la
 # pantalla lo deja cambiar y el numero viaja en cada consulta, para que
 # actualizarlo no dependa de un deploy.
-COSTO_POR_CENEFA = 45.0
+COSTO_POR_CENEFA = 49.0
 
 
 def _num(campo: str):
