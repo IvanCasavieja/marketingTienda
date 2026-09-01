@@ -155,8 +155,14 @@ async def _reales_por_mes(db: AsyncSession, cond: list) -> dict[str, dict[str, i
     mes = func.to_char(func.date_trunc("month", CenefaJob.created_at), "YYYY-MM")
 
     async def _sumar(solo_cobrables: bool) -> dict[str, int]:
+        # La categoria ENTRA en la clave, igual que en _reales_por_categoria:
+        # dos listados distintos pueden compartir nombre generico Y cantidad
+        # de filas en mundos distintos (paso con convertidor_cenefas.xlsx de
+        # 43 filas en Rompe Precios y en Pruebas), y sin la categoria el mes
+        # los fusionaba y contaba 43 en vez de 86.
         q = select(
             mes.label("mes"),
+            CenefaJob.categoria,
             CenefaJob.excel_nombre,
             CenefaJob.row_count,
             func.count(func.distinct(CenefaJob.template_nombre)).label("n_formatos"),
@@ -171,7 +177,8 @@ async def _reales_por_mes(db: AsyncSession, cond: list) -> dict[str, dict[str, i
         sub = (
             q.where(*cond, CenefaJob.excel_nombre.isnot(None),
                     CenefaJob.row_count.isnot(None))
-            .group_by(mes, CenefaJob.excel_nombre, CenefaJob.row_count)
+            .group_by(mes, CenefaJob.categoria, CenefaJob.excel_nombre,
+                      CenefaJob.row_count)
         ).subquery()
         filas = (await db.execute(
             select(
@@ -503,20 +510,22 @@ def a_excel(resumen_: dict[str, Any], filas: list[dict[str, Any]]) -> bytes:
     periodo = f'{(t["desde"] or "")[:10]} a {(t["hasta"] or "")[:10]}' if t["desde"] else "sin datos"
     ws["A2"] = f'Periodo: {periodo}    Costo por cenefa: ${costo:g}'
 
+    # Sin "Correctas" (las reales YA son las que salieron bien -- Ivan,
+    # 01/09) y sin "Valor total": valorizar el bruto global (Redexpres,
+    # pruebas y sin clasificar incluidos) es justo el total inflado que este
+    # informe vino a matar. La plata vive solo en "Que se factura".
     ws["A4"] = "Total"
     ws["A4"].font = Font(bold=True)
-    encabezar(ws, 5, ["Corridas", "Cenefas", "Correctas", "Con avisos",
-                      "No se pudieron armar", "Valor total",
+    encabezar(ws, 5, ["Corridas", "Cenefas (bruto, referencia)", "Con avisos",
+                      "No se pudieron armar",
                       "Corridas verificadas", "Cenefas verificadas", "Valor verificado"])
     ws.cell(row=6, column=1, value=t["corridas"])
     ws.cell(row=6, column=2, value=t["cenefas"])
-    ws.cell(row=6, column=3, value=t["correctas"])
-    ws.cell(row=6, column=4, value=t["avisos"])
-    ws.cell(row=6, column=5, value=t["criticos"])
-    ws.cell(row=6, column=6, value=t["costo"]).number_format = dinero
-    ws.cell(row=6, column=7, value=t["verificadas_corridas"])
-    ws.cell(row=6, column=8, value=t["verificadas"])
-    ws.cell(row=6, column=9, value=t["costo_verificadas"]).number_format = dinero
+    ws.cell(row=6, column=3, value=t["avisos"])
+    ws.cell(row=6, column=4, value=t["criticos"])
+    ws.cell(row=6, column=5, value=t["verificadas_corridas"])
+    ws.cell(row=6, column=6, value=t["verificadas"])
+    ws.cell(row=6, column=7, value=t["costo_verificadas"]).number_format = dinero
 
     # ── Que se factura y que no ────────────────────────────────────────────
     # El "Total" de arriba es la cifra bruta: todo lo que paso por el motor.
@@ -527,52 +536,84 @@ def a_excel(resumen_: dict[str, Any], filas: list[dict[str, Any]]) -> bytes:
     sincl = resumen_.get("sin_clasificar") or {}
     declaradas = resumen_.get("declaradas") or []
 
+    # Mismo armado que el PDF semanal: componentes de lo real, TOTAL REAL en
+    # negrita, y el bruto como referencia. "Cobrable" se reserva para lo
+    # real -- llamarle cobrable al bruto invitaba a tomar el numero inflado.
     ws["A8"] = "Que se factura"
     ws["A8"].font = Font(bold=True)
-    encabezar(ws, 9, ["Concepto", "Corridas", "Cenefas", "Valor", "Detalle"])
+    encabezar(ws, 9, ["Concepto", "Cenefas", "Valor", "Detalle"])
     fila = 10
+    mundos_medidos = " + ".join(
+        f'{r["nombre"]} ({r["cenefas_reales"]})'
+        for r in resumen_["por_mundo"]
+        if r["cobrable"] and r.get("cenefas_reales")
+    ) or "Mundos cobrables"
     presentacion = [
-        ("Cobrable (medido)", cob.get("corridas", 0), cob.get("cenefas", 0),
-         cob.get("costo", 0), "Mundos cobrables, respaldado corrida por corrida"),
+        ("Medido (reales)", cob.get("cenefas_reales", 0), cob.get("costo_real", 0),
+         f"{mundos_medidos} - listado x formatos, sin contar de nuevo el reproceso"),
     ]
     for d in declaradas:
+        if not d["cobrable"]:
+            continue
         presentacion.append((
-            f'Declarado - {d["nombre"]}', 0, d["cenefas"], d["costo"], d["nota"],
+            f'Declarado - {d["nombre"]}', d["cenefas"], d["costo"], d["nota"],
         ))
     presentacion += [
-        ("COBRABLE TOTAL", cob.get("corridas", 0), cob.get("cenefas_totales", 0),
-         cob.get("costo_total", 0), "Medido + declarado"),
-        ("Sin costo", sinc.get("corridas", 0), sinc.get("cenefas", 0), 0,
+        ("TOTAL REAL", cob.get("cenefas_reales_totales", 0),
+         cob.get("costo_real_total", 0),
+         "Medido + declarado - el numero que se factura"),
+        ("Referencia: bruto medido", cob.get("cenefas", 0), cob.get("costo", 0),
+         "Cada reproceso cuenta de nuevo; no se factura"),
+        ("Sin costo", sinc.get("cenefas", 0), 0,
          "Mundos marcados sin costo (Redexpres, pruebas)"),
-        ("Sin clasificar", sincl.get("corridas", 0), sincl.get("cenefas", 0), 0,
-         "Corridas anteriores a que el job guardara el mundo; no se valorizan"),
+        ("Sin clasificar", sincl.get("cenefas", 0), 0,
+         "Pre-23/08, sin mundo registrado; no se valoriza"),
     ]
-    for concepto, corridas_, cenefas_, valor_, detalle_ in presentacion:
+    for concepto, cenefas_, valor_, detalle_ in presentacion:
         ws.cell(row=fila, column=1, value=concepto)
-        if concepto == "COBRABLE TOTAL":
-            ws.cell(row=fila, column=1).font = Font(bold=True)
-        ws.cell(row=fila, column=2, value=corridas_ or None)
-        ws.cell(row=fila, column=3, value=cenefas_)
-        ws.cell(row=fila, column=4, value=valor_).number_format = dinero
-        ws.cell(row=fila, column=5, value=detalle_)
+        if concepto == "TOTAL REAL":
+            for c in (1, 2, 3):
+                ws.cell(row=fila, column=c).font = Font(bold=True)
+        ws.cell(row=fila, column=2, value=cenefas_)
+        ws.cell(row=fila, column=3, value=valor_).number_format = dinero
+        ws.cell(row=fila, column=4, value=detalle_)
         fila += 1
 
     fila += 2
+    # Brutas + Reales + Valor real, como el PDF y la web. Por plantilla no
+    # tiene reales (cada fila ES un formato): su bruto va rotulado como
+    # referencia. En Por mundo, lo declarado entra como fila propia para que
+    # Parrilla y Vinos no desaparezca por no tener corridas.
     for titulo, clave, etiqueta in (("Por mundo", "por_mundo", "nombre"),
                                     ("Por mes", "por_mes", "mes"),
                                     ("Por plantilla", "por_plantilla", "plantilla")):
+        con_reales = clave != "por_plantilla"
         ws.cell(row=fila, column=1, value=titulo).font = Font(bold=True)
         rotulo = "Mundo" if clave == "por_mundo" else etiqueta.capitalize()
-        encabezar(ws, fila + 1, [rotulo, "Corridas", "Cenefas",
-                                 "Correctas", "Valor"])
+        encabezar(ws, fila + 1,
+                  [rotulo, "Corridas", "Brutas", "Reales", "Valor real"]
+                  if con_reales else
+                  [rotulo, "Corridas", "Brutas", "Valor bruto (referencia)"])
         fila += 2
         for r in resumen_[clave]:
             ws.cell(row=fila, column=1, value=r[etiqueta])
             ws.cell(row=fila, column=2, value=r["corridas"])
             ws.cell(row=fila, column=3, value=r["cenefas"])
-            ws.cell(row=fila, column=4, value=r["correctas"])
-            ws.cell(row=fila, column=5, value=r["costo"]).number_format = dinero
+            if con_reales:
+                ws.cell(row=fila, column=4, value=r.get("cenefas_reales"))
+                ws.cell(row=fila, column=5,
+                        value=r.get("costo_real") or None).number_format = dinero
+            else:
+                ws.cell(row=fila, column=4, value=r["costo"]).number_format = dinero
             fila += 1
+        if clave == "por_mundo":
+            for d in declaradas:
+                if not d["cobrable"]:
+                    continue
+                ws.cell(row=fila, column=1, value=f'{d["nombre"]} (declarado)')
+                ws.cell(row=fila, column=4, value=d["cenefas"])
+                ws.cell(row=fila, column=5, value=d["costo"]).number_format = dinero
+                fila += 1
         fila += 2
 
     for col, ancho in zip("ABCDEFGHI", (34, 12, 12, 12, 20, 16, 20, 20, 18)):
@@ -580,8 +621,11 @@ def a_excel(resumen_: dict[str, Any], filas: list[dict[str, Any]]) -> bytes:
 
     # ── Detalle ────────────────────────────────────────────────────────────
     ws2 = wb.create_sheet("Detalle")
-    cols = ["Fecha", "Plantilla", "Excel", "Formato", "Cenefas", "Correctas",
-            "Con avisos", "No se pudieron armar", "Valor", "Verificada"]
+    # Sin "Correctas" (Ivan, 01/09) y "Valor bruto (ref.)" en vez de "Valor":
+    # cada reproceso figura con su bruto x costo como referencia de auditoria,
+    # pero el reproceso no se factura.
+    cols = ["Fecha", "Plantilla", "Excel", "Formato", "Cenefas",
+            "Con avisos", "No se pudieron armar", "Valor bruto (ref.)", "Verificada"]
     encabezar(ws2, 1, cols)
     for i, r in enumerate(filas, 2):
         ws2.cell(row=i, column=1, value=(r["fecha"] or "")[:16].replace("T", " "))
@@ -589,12 +633,11 @@ def a_excel(resumen_: dict[str, Any], filas: list[dict[str, Any]]) -> bytes:
         ws2.cell(row=i, column=3, value=r["excel"])
         ws2.cell(row=i, column=4, value=r["formato"])
         ws2.cell(row=i, column=5, value=r["cenefas"])
-        ws2.cell(row=i, column=6, value=r["correctas"])
-        ws2.cell(row=i, column=7, value=r["avisos"])
-        ws2.cell(row=i, column=8, value=r["criticos"])
-        ws2.cell(row=i, column=9, value=r["costo"]).number_format = dinero
-        ws2.cell(row=i, column=10, value="si" if r["verificado"] else "")
-    for c, ancho in enumerate((17, 34, 34, 10, 10, 10, 12, 21, 14, 12), 1):
+        ws2.cell(row=i, column=6, value=r["avisos"])
+        ws2.cell(row=i, column=7, value=r["criticos"])
+        ws2.cell(row=i, column=8, value=r["costo"]).number_format = dinero
+        ws2.cell(row=i, column=9, value="si" if r["verificado"] else "")
+    for c, ancho in enumerate((17, 34, 34, 10, 10, 12, 21, 16, 12), 1):
         ws2.column_dimensions[get_column_letter(c)].width = ancho
     ws2.freeze_panes = "A2"
 
@@ -746,10 +789,16 @@ def a_pdf(resumen_: dict[str, Any]) -> bytes:
     ]
 
     # ── KPIs: el numero que se manda, primero ──────────────────────────────
+    # Un "0 verificadas" gigante en el reporte que se presenta lee como que
+    # nada salio bien, cuando en realidad nadie tildo el check todavia:
+    # mientras no se use, ese lugar muestra el costo vigente.
+    kpi_verif = ((n(t.get("verificadas", 0)), "VERIFICADAS A MANO")
+                 if t.get("verificadas_corridas") else
+                 (f"${costo:g}", "COSTO POR CENEFA"))
     kpis = [
         (n(cob.get("cenefas_reales_totales", 0)), "CENEFAS REALES"),
         (pesos(cob.get("costo_real_total", 0)), "VALOR REAL"),
-        (n(t.get("verificadas", 0)), "VERIFICADAS A MANO"),
+        kpi_verif,
         (n(t.get("corridas", 0)), "CORRIDAS"),
     ]
     tabla_kpi = Table(
@@ -854,8 +903,13 @@ def a_pdf(resumen_: dict[str, Any]) -> bytes:
     # 01/09) -- la validacion automatica sobre el bruto al lado de las reales
     # solo confundia. Lo declarado entra como fila propia para que Parrilla y
     # Vinos no desaparezca del cuadro por no tener corridas.
+    # "(sin clasificar)" al final y con leyenda propia: no es lo mismo que
+    # sin costo (Redexpres no se cobra por decision; esto no tiene mundo) y
+    # sus 25 mil brutas no pueden encabezar el cuadro.
     cuerpo = []
-    for r in resumen_["por_mundo"]:
+    con_mundo = [r for r in resumen_["por_mundo"] if r["mundo"]]
+    sin_clas = [r for r in resumen_["por_mundo"] if not r["mundo"]]
+    for r in con_mundo:
         nombre = r["nombre"] + ("" if r["cobrable"] else " (sin costo)")
         reales = n(r["cenefas_reales"]) if "cenefas_reales" in r else "-"
         valor = pesos(r["costo_real"]) if r.get("costo_real") else "-"
@@ -866,6 +920,11 @@ def a_pdf(resumen_: dict[str, Any]) -> bytes:
             continue
         cuerpo.append([Paragraph(f'{d["nombre"]} (declarado)', st_celda),
                        "-", "-", n(d["cenefas"]), pesos(d["costo"])])
+    for r in sin_clas:
+        reales = n(r["cenefas_reales"]) if "cenefas_reales" in r else "-"
+        cuerpo.append([Paragraph(
+            "(sin clasificar) - pre-23/08, sin mundo; no se valoriza",
+            st_nota), n(r["corridas"]), n(r["cenefas"]), reales, "-"])
     tabla_seccion("Por mundo",
                   ["Mundo", "Corridas", "Brutas", "Reales", "Valor real"],
                   cuerpo, [66, 24, 24, 24, 32])

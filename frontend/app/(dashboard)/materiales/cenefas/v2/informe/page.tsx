@@ -8,16 +8,21 @@ import { useSuperuserGuard } from "@/hooks/useSuperuserGuard";
 
 // Informe de produccion de cenefas.
 //
-// Responde "cuanto se hizo y cuanto vale": cada cenefa disenada tiene un
-// costo y ese es el criterio con el que se valoriza el trabajo. Cada corrida
-// cuenta por separado aunque sea el mismo listado reprocesado -- es trabajo
-// pedido a la herramienta.
+// El numero que vale es el REAL: filas del listado x formatos distintos,
+// sin contar de nuevo el reproceso (Ivan, 01/09). El bruto -- cada corrida
+// contada de nuevo aunque sea el mismo listado -- queda solo como
+// referencia, apagado y rotulado. La plata sale SIEMPRE de reales x costo.
 //
 // Solo entran las corridas confirmadas. Una en "preview" es una
 // previsualizacion que nadie confirmo, y una en "error" no produjo nada.
 
 const numero = (n: number) => n.toLocaleString("es-UY");
 const pesos = (n: number) => `$${Math.round(n).toLocaleString("es-UY")}`;
+
+// El costo vigente acordado el 01/09. El campo editable existe para poder
+// cambiar el precio sin deploy, pero cualquier otro valor es una simulacion
+// y la pantalla lo marca.
+const COSTO_VIGENTE = 49;
 
 const MESES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -40,7 +45,11 @@ export default function InformePage() {
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const [plantilla, setPlantilla] = useState("");
-  const [costo, setCosto] = useState(49);
+  const [costo, setCosto] = useState(COSTO_VIGENTE);
+  // Lo tipeado no se aplica hasta blur/Enter: aplicar por tecla refetcheaba
+  // el informe entero con costos intermedios ("55" pasaba por 5) y borrar
+  // el campo lo dejaba momentaneamente valuado en $0.
+  const [costoInput, setCostoInput] = useState(String(COSTO_VIGENTE));
   const dlRef = useRef<HTMLAnchorElement>(null);
 
   const params = useCallback(
@@ -91,7 +100,18 @@ export default function InformePage() {
     }
   }
 
+  // Si el costo en pantalla no es el vigente, lo que se baja es una
+  // simulacion: se avisa antes de generar un archivo que alguien puede mandar.
+  function confirmarCostoSimulado(): boolean {
+    if (costo === COSTO_VIGENTE) return true;
+    return window.confirm(
+      `Estás por bajar el informe valuado a $${costo} por cenefa, ` +
+      `distinto del vigente ($${COSTO_VIGENTE}). ¿Seguro?`,
+    );
+  }
+
   async function bajarExcel() {
+    if (!confirmarCostoSimulado()) return;
     setBajando(true);
     try {
       const { data: blob } = await cenefasV2Api.downloadInforme(params());
@@ -112,6 +132,7 @@ export default function InformePage() {
   // El PDF es el que se manda como informe semanal: lo real adelante y el
   // respaldo detras. El Excel queda para auditar corrida por corrida.
   async function bajarPdf() {
+    if (!confirmarCostoSimulado()) return;
     setBajandoPdf(true);
     try {
       const { data: blob } = await cenefasV2Api.downloadInformePdf(params());
@@ -200,14 +221,26 @@ export default function InformePage() {
         </label>
         <label className="space-y-1">
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
-            Costo por cenefa
+            Costo por cenefa · vigente ${COSTO_VIGENTE}
           </span>
           <input
-            type="number" min={0} step={1} className="input text-sm w-full" value={costo}
-            onChange={(e) => setCosto(Math.max(0, Number(e.target.value) || 0))}
+            type="number" min={0} step={1} className="input text-sm w-full" value={costoInput}
+            onChange={(e) => setCostoInput(e.target.value)}
+            onBlur={() => setCosto(Math.max(0, Number(costoInput) || 0) || COSTO_VIGENTE)}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
           />
         </label>
       </div>
+
+      {costo !== COSTO_VIGENTE && (
+        <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 rounded-lg px-3 py-2">
+          <span>
+            Estás viendo una <b>simulación a ${numero(costo)}</b> por cenefa — el costo
+            vigente es ${COSTO_VIGENTE}. Todos los montos de la página (y lo que bajes
+            en PDF o Excel) usan el costo simulado.
+          </span>
+        </div>
+      )}
 
       {cargando && (
         <div className="card p-10 flex items-center justify-center text-slate-400">
@@ -228,9 +261,14 @@ export default function InformePage() {
               { etiqueta: "Valor real", valor: pesos(data.cobrable.costo_real_total),
                 pie: `a ${pesos(data.costo_unitario)} c/u`,
                 acento: "text-emerald-600 dark:text-emerald-400" },
-              { etiqueta: "Verificadas a mano", valor: numero(t.verificadas),
-                pie: `${numero(t.verificadas_corridas)} de ${numero(t.corridas)} corridas · ${pesos(t.costo_verificadas)}`,
-                acento: "text-brand-600 dark:text-brand-400" },
+              // La tarjeta de «Salió bien» solo aparece cuando alguien la
+              // esta usando: un "0 de 432 · $0" gigante lee como que nada
+              // salio bien, cuando en realidad nadie tildo el check todavia.
+              ...(t.verificadas_corridas > 0 ? [
+                { etiqueta: "Con «Salió bien» tildado", valor: numero(t.verificadas),
+                  pie: `${numero(t.verificadas_corridas)} de ${numero(t.corridas)} corridas · ${pesos(t.costo_verificadas)}`,
+                  acento: "text-brand-600 dark:text-brand-400" },
+              ] : []),
               // Bruto: todo lo que paso por el motor, cada reproceso pagado
               // por separado. Queda como referencia para auditar, no como
               // titular -- por eso va apagado y al final.
@@ -264,10 +302,11 @@ export default function InformePage() {
             </div>
           )}
 
-          {/* De donde sale el numero real de arriba: primero la fila real, y
-              abajo -- apagado, de referencia -- como se llega ahi desde el
-              bruto medido + declarado. Lo que no se factura no se esconde:
-              se muestra con su volumen y valorizado en cero. */}
+          {/* Mismo armado que el PDF semanal: primero los componentes de lo
+              real (medido sin reproceso + declarado), el TOTAL REAL
+              destacado, y recien despues el bruto como referencia apagada.
+              "Cobrable/facturable" se reserva para lo real -- llamarle
+              cobrable al bruto invitaba a tomar el numero inflado. */}
           <div className="card p-0 overflow-hidden">
             <p className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">
               Qué se factura
@@ -276,26 +315,31 @@ export default function InformePage() {
               <table className="w-full text-xs border-collapse">
                 <tbody>
                   {[
-                    { clave: "real", etiqueta: "Real (sin reproceso)", real: true,
-                      detalle: "Listado × formatos distintos pedidos — reprocesar el mismo Excel no cuenta de nuevo",
-                      cenefas: data.cobrable.cenefas_reales_totales, costo: data.cobrable.costo_real_total },
-                    { clave: "medido", etiqueta: "Cobrable (medido, bruto)", apagado: true,
-                      detalle: "Respaldado corrida por corrida, pero con el reproceso pagado de nuevo cada vez",
-                      cenefas: data.cobrable.cenefas, costo: data.cobrable.costo },
-                    ...data.declaradas.map((d) => ({
-                      clave: `dec-${d.mundo}`, etiqueta: `Declarado · ${d.nombre}`, apagado: true,
+                    { clave: "medido", etiqueta: "Medido (reales)",
+                      detalle: (data.por_mundo
+                        .filter((m) => m.cobrable && m.cenefas_reales)
+                        .map((m) => `${m.nombre} (${numero(m.cenefas_reales!)})`)
+                        .join(" + ") || "Mundos cobrables")
+                        + " — listado × formatos distintos, sin contar de nuevo el reproceso",
+                      cenefas: data.cobrable.cenefas_reales ?? 0,
+                      costo: data.cobrable.costo_real ?? 0 },
+                    ...data.declaradas.filter((d) => d.cobrable).map((d) => ({
+                      clave: `dec-${d.mundo}`, etiqueta: `Declarado · ${d.nombre}`,
                       detalle: d.nota, cenefas: d.cenefas, costo: d.costo,
                     })),
-                    { clave: "total", etiqueta: "Cobrable total (bruto)", apagado: true,
-                      detalle: "Medido + declarado, sin descontar reproceso",
-                      cenefas: data.cobrable.cenefas_totales, costo: data.cobrable.costo_total },
+                    { clave: "totalreal", etiqueta: "TOTAL REAL", real: true,
+                      detalle: `Medido + declarado, a $${numero(costo)} por cenefa — este es el número que se factura`,
+                      cenefas: data.cobrable.cenefas_reales_totales, costo: data.cobrable.costo_real_total },
+                    { clave: "bruto", etiqueta: "Referencia: bruto medido", apagado: true,
+                      detalle: "Todo lo que pasó por el motor; cada reproceso cuenta de nuevo. No se factura",
+                      cenefas: data.cobrable.cenefas, costo: data.cobrable.costo },
                     { clave: "sincosto", etiqueta: "Sin costo", apagado: true,
                       detalle: "Mundos marcados sin costo (Redexpres, pruebas)",
                       cenefas: data.sin_costo.cenefas, costo: 0 },
                     { clave: "sinclas", etiqueta: "Sin clasificar", apagado: true,
-                      detalle: "Corridas anteriores a que se registrara el mundo",
+                      detalle: "Pre-23/08, sin mundo registrado — no se valoriza",
                       cenefas: data.sin_clasificar.cenefas, costo: 0 },
-                  ].filter((f) => f.cenefas > 0 || f.clave === "total").map((f) => (
+                  ].filter((f) => f.cenefas > 0 || f.clave === "totalreal").map((f) => (
                     <tr key={f.clave}
                         className={`border-b border-slate-100 dark:border-slate-800 ${
                           f.real ? "bg-slate-50 dark:bg-slate-800/40" : ""}`}>
@@ -322,12 +366,33 @@ export default function InformePage() {
             </div>
           </div>
 
+          {/* Mismo criterio que el PDF: lo declarado entra como fila propia
+              (Parrilla y Vinos no puede desaparecer por no tener corridas),
+              lo sin costo va apagado, y "(sin clasificar)" -- que no es lo
+              mismo que sin costo: no tiene mundo -- cierra la tabla. */}
           <Tabla titulo="Por mundo" primeraColumna="Mundo"
-                 filas={data.por_mundo.map((m) => ({
-                   clave: m.mundo || "(sin clasificar)",
-                   etiqueta: m.cobrable ? m.nombre : `${m.nombre} · sin costo`,
-                   ...m,
-                 }))} />
+                 filas={[
+                   ...data.por_mundo.filter((m) => m.mundo).map((m) => ({
+                     clave: m.mundo,
+                     etiqueta: m.cobrable ? m.nombre : `${m.nombre} · sin costo`,
+                     apagada: !m.cobrable,
+                     corridas: m.corridas, cenefas: m.cenefas,
+                     cenefas_reales: m.cenefas_reales, costo_real: m.costo_real,
+                     costo: m.costo,
+                   })),
+                   ...data.declaradas.filter((d) => d.cobrable).map((d) => ({
+                     clave: `dec-${d.mundo}`,
+                     etiqueta: `${d.nombre} · declarado`,
+                     cenefas_reales: d.cenefas, costo_real: d.costo, costo: d.costo,
+                   })),
+                   ...data.por_mundo.filter((m) => !m.mundo).map((m) => ({
+                     clave: "(sin clasificar)",
+                     etiqueta: "(sin clasificar) · pre-23/08, sin mundo — no se valoriza",
+                     apagada: true,
+                     corridas: m.corridas, cenefas: m.cenefas,
+                     cenefas_reales: m.cenefas_reales, costo_real: 0, costo: 0,
+                   })),
+                 ]} />
 
           <Tabla titulo="Por mes" primeraColumna="Mes"
                  filas={data.por_mes.map((m) => ({ clave: m.mes, etiqueta: nombreDeMes(m.mes), ...m }))} />
@@ -352,7 +417,7 @@ export default function InformePage() {
                 <table className="w-full text-xs border-collapse">
                   <thead className="bg-slate-100 dark:bg-slate-800">
                     <tr>
-                      {["", "Listado", "Plantilla", "Intentos", "Carteles", "Último"].map((h, i) => (
+                      {["", "Listado", "Plantilla", "Intentos", "Cenefas", "Último"].map((h, i) => (
                         <th key={h || i}
                             className={`px-3 py-2 font-semibold text-slate-500 dark:text-slate-300 uppercase tracking-wide text-[10px] ${i > 2 ? "text-right" : "text-left"}`}>
                           {h}
@@ -493,12 +558,13 @@ export default function InformePage() {
           )}
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            «Correctas» es lo que no encontró problemas la validación automática al generar.
-            «Salió bien» es lo que confirmó una persona abriendo el archivo — queda registrado
-            quién y cuándo. Solo se cuentan las corridas confirmadas, y cada una cuenta por
-            separado aunque sea el mismo listado reprocesado. Hasta el 23/08/2026 no se guardaba
-            qué plantilla ni qué Excel se había usado, así que esas corridas aparecen como
-            «sin registrar».
+            «Reales» = filas del listado × formatos distintos generados, sin pagar de nuevo el
+            reproceso — es el número que se factura. «Brutas» = todo lo que pasó por el motor,
+            solo referencia. «Declarado» = producción anterior al registro en la plataforma,
+            con su nota de respaldo. «Salió bien» es el check opcional de una persona que abrió
+            el archivo — queda registrado quién y cuándo. Solo se cuentan las corridas
+            confirmadas. Hasta el 23/08/2026 no se guardaba qué plantilla ni qué Excel se había
+            usado, así que esas corridas aparecen como «sin registrar».
           </p>
         </>
       )}
@@ -509,19 +575,26 @@ export default function InformePage() {
 interface FilaTabla {
   clave: string;
   etiqueta: string;
-  corridas: number;
-  cenefas: number;
+  corridas?: number;
+  cenefas?: number;
   cenefas_reales?: number;
+  costo_real?: number;
   costo: number;
+  apagada?: boolean;
 }
 
 function Tabla({ titulo, primeraColumna, filas }: {
   titulo: string; primeraColumna: string; filas: FilaTabla[];
 }) {
   if (filas.length === 0) return null;
-  // La columna de reales solo aparece donde el backend la calcula (por mundo
+  // La columna de reales solo existe donde el backend la calcula (por mundo
   // y por mes); por plantilla no tiene sentido, cada fila ES un formato.
+  // Donde hay reales, la plata es "Valor real" (reales cobrables x costo,
+  // mismo criterio que el PDF); donde no, el bruto va rotulado y apagado
+  // como referencia -- nunca "Valor" a secas.
   const conReales = filas.some((f) => f.cenefas_reales !== undefined);
+  const headers = [primeraColumna, "Corridas", "Brutas",
+                   ...(conReales ? ["Reales", "Valor real"] : ["Valor bruto (ref.)"])];
   return (
     <div className="card p-0 overflow-hidden">
       <p className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">
@@ -531,10 +604,7 @@ function Tabla({ titulo, primeraColumna, filas }: {
         <table className="w-full text-xs border-collapse">
           <thead className="bg-slate-100 dark:bg-slate-800">
             <tr>
-              {/* Sin columna "Correctas": las reales YA son las que salieron
-                  bien (Ivan, 01/09) -- mismo criterio que el PDF semanal. */}
-              {[primeraColumna, "Corridas", "Cenefas",
-                ...(conReales ? ["Reales"] : []), "Valor"].map((h, i) => (
+              {headers.map((h, i) => (
                 <th key={h}
                     className={`px-3 py-2 font-semibold text-slate-500 dark:text-slate-300 uppercase tracking-wide text-[10px] ${i ? "text-right" : "text-left"}`}>
                   {h}
@@ -544,17 +614,30 @@ function Tabla({ titulo, primeraColumna, filas }: {
           </thead>
           <tbody>
             {filas.map((f) => (
-              <tr key={f.clave} className="border-b border-slate-100 dark:border-slate-800">
-                <td className="px-3 py-2 text-slate-700 dark:text-slate-300 max-w-[320px] truncate"
+              <tr key={f.clave}
+                  className={`border-b border-slate-100 dark:border-slate-800 ${
+                    f.apagada ? "text-slate-400 dark:text-slate-500" : ""}`}>
+                <td className={`px-3 py-2 max-w-[340px] truncate ${
+                      f.apagada ? "" : "text-slate-700 dark:text-slate-300"}`}
                     title={f.etiqueta}>{f.etiqueta}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-500">{numero(f.corridas)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{numero(f.cenefas)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-slate-500 dark:text-slate-500">
+                  {f.corridas !== undefined ? numero(f.corridas) : "—"}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-slate-500 dark:text-slate-500">
+                  {f.cenefas !== undefined ? numero(f.cenefas) : "—"}
+                </td>
                 {conReales && (
-                  <td className="px-3 py-2 text-right tabular-nums font-medium text-emerald-600 dark:text-emerald-400">
+                  <td className={`px-3 py-2 text-right tabular-nums font-medium ${
+                    f.apagada ? "" : "text-emerald-600 dark:text-emerald-400"}`}>
                     {f.cenefas_reales !== undefined ? numero(f.cenefas_reales) : "—"}
                   </td>
                 )}
-                <td className="px-3 py-2 text-right tabular-nums font-medium">{pesos(f.costo)}</td>
+                <td className={`px-3 py-2 text-right tabular-nums ${
+                  conReales && !f.apagada ? "font-medium" : ""}`}>
+                  {conReales
+                    ? (f.costo_real ? pesos(f.costo_real) : "—")
+                    : pesos(f.costo)}
+                </td>
               </tr>
             ))}
           </tbody>
