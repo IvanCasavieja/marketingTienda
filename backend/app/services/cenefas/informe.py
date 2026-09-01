@@ -628,3 +628,224 @@ def agrupar_intentos(filas: list[dict[str, Any]]) -> list[dict[str, Any]]:
     # Primero los que mas intentos llevaron: son los que hay que mirar.
     salida.sort(key=lambda x: (-x["intentos"], x["ultima"] or ""), reverse=False)
     return salida
+
+
+# ---------------------------------------------------------------------------
+# PDF del informe — pensado para mandarse como reporte semanal
+# ---------------------------------------------------------------------------
+
+_MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+          "agosto", "setiembre", "octubre", "noviembre", "diciembre")
+
+
+def _mes_legible(yyyymm: str) -> str:
+    try:
+        anio, mes = yyyymm.split("-")
+        return f"{_MESES[int(mes) - 1]} {anio}"
+    except (ValueError, IndexError):
+        return yyyymm
+
+
+def a_pdf(resumen_: dict[str, Any]) -> bytes:
+    """El informe como reporte semanal: una o dos paginas para mandar, con lo
+    real adelante y el respaldo (declarado, bruto, sin costo) detras.
+
+    El Excel queda para auditar corrida por corrida; esto es lo que se
+    presenta. Por eso el orden: primero el numero que se defiende (reales y
+    su valor), despues de donde sale (que se factura), y recien al final los
+    desgloses. Todo el texto es latin-1: Helvetica no tiene rayas largas ni
+    flechas, y un caracter fuera de tabla revienta la descarga entera.
+    """
+    import io
+    from datetime import datetime as _dt
+
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (
+        Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    )
+
+    AZUL = colors.HexColor("#1E3A5F")
+    GRIS = colors.HexColor("#64748B")
+    LINEA = colors.HexColor("#E2E8F0")
+    FONDO = colors.HexColor("#F1F5F9")
+
+    def n(x) -> str:
+        return f"{int(round(x or 0)):,}".replace(",", ".")
+
+    def pesos(x) -> str:
+        return f"$ {n(x)}"
+
+    st_titulo = ParagraphStyle("titulo", fontName="Helvetica-Bold",
+                               fontSize=17, textColor=AZUL, leading=21)
+    st_sub = ParagraphStyle("sub", fontName="Helvetica", fontSize=9,
+                            textColor=GRIS, leading=13)
+    st_seccion = ParagraphStyle("seccion", fontName="Helvetica-Bold",
+                                fontSize=11, textColor=AZUL, leading=14,
+                                spaceBefore=6)
+    st_celda = ParagraphStyle("celda", fontName="Helvetica", fontSize=8,
+                              leading=10)
+    st_nota = ParagraphStyle("nota", fontName="Helvetica", fontSize=7,
+                             textColor=GRIS, leading=9)
+    st_kpi_num = ParagraphStyle("kpinum", fontName="Helvetica-Bold",
+                                fontSize=16, textColor=AZUL, leading=19,
+                                alignment=1)
+    st_kpi_lbl = ParagraphStyle("kpilbl", fontName="Helvetica", fontSize=7.5,
+                                textColor=GRIS, leading=10, alignment=1)
+    st_pie = ParagraphStyle("pie", fontName="Helvetica", fontSize=7.5,
+                            textColor=GRIS, leading=10)
+
+    costo = resumen_["costo_unitario"]
+    t = resumen_["total"]
+    cob = resumen_.get("cobrable") or {}
+    sinc = resumen_.get("sin_costo") or {}
+    sincl = resumen_.get("sin_clasificar") or {}
+    declaradas = resumen_.get("declaradas") or []
+
+    periodo = (f'{(t["desde"] or "")[:10]} al {(t["hasta"] or "")[:10]}'
+               if t.get("desde") else "sin datos")
+
+    flujo: list[Any] = [
+        Paragraph("Informe semanal de cenefas", st_titulo),
+        Paragraph(
+            f"Producci&oacute;n y valorizaci&oacute;n &middot; Per&iacute;odo: {periodo} "
+            f"&middot; Costo por cenefa: ${costo:g} "
+            f"&middot; Generado el {_dt.now().strftime('%d/%m/%Y')}",
+            st_sub),
+        Spacer(0, 6 * mm),
+    ]
+
+    # ── KPIs: el numero que se manda, primero ──────────────────────────────
+    kpis = [
+        (n(cob.get("cenefas_reales_totales", 0)), "CENEFAS REALES"),
+        (pesos(cob.get("costo_real_total", 0)), "VALOR REAL"),
+        (n(t.get("verificadas", 0)), "VERIFICADAS A MANO"),
+        (n(t.get("corridas", 0)), "CORRIDAS"),
+    ]
+    tabla_kpi = Table(
+        [[Paragraph(v, st_kpi_num) for v, _ in kpis],
+         [Paragraph(l, st_kpi_lbl) for _, l in kpis]],
+        colWidths=[44 * mm] * 4,
+    )
+    tabla_kpi.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), FONDO),
+        ("BOX", (0, 0), (-1, -1), 0.5, LINEA),
+        ("LINEBEFORE", (1, 0), (-1, -1), 0.5, LINEA),
+        ("TOPPADDING", (0, 0), (-1, 0), 8),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 8),
+    ]))
+    flujo += [tabla_kpi, Spacer(0, 7 * mm)]
+
+    def tabla_seccion(titulo: str, cabecera: list[str], cuerpo: list[list],
+                      anchos: list[float], resaltar: set[int] | None = None,
+                      ultima_izquierda: bool = False):
+        flujo.append(Paragraph(titulo, st_seccion))
+        flujo.append(Spacer(0, 2 * mm))
+        tabla = Table([cabecera] + cuerpo, colWidths=[a * mm for a in anchos],
+                      repeatRows=1)
+        estilo = [
+            ("BACKGROUND", (0, 0), (-1, 0), AZUL),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 1), (-1, -1), 8),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, FONDO]),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.4, LINEA),
+            ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]
+        if ultima_izquierda:
+            estilo.append(("ALIGN", (-1, 0), (-1, -1), "LEFT"))
+        for i in resaltar or set():
+            estilo += [("FONTNAME", (0, i + 1), (-1, i + 1), "Helvetica-Bold"),
+                       ("BACKGROUND", (0, i + 1), (-1, i + 1),
+                        colors.HexColor("#DBEAFE"))]
+        tabla.setStyle(TableStyle(estilo))
+        # extend y no +=: += rebindea el nombre y rompe la clausura.
+        flujo.extend([tabla, Spacer(0, 6 * mm)])
+
+    # ── Que se factura ──────────────────────────────────────────────────────
+    cuerpo: list[list] = [[
+        Paragraph("Medido (reales)", st_celda),
+        n(cob.get("cenefas_reales", 0)), pesos(cob.get("costo_real", 0)),
+        Paragraph("Mundos cobrables: filas del listado x formatos generados, "
+                  "sin contar de nuevo el reproceso", st_nota),
+    ]]
+    for d in declaradas:
+        if not d["cobrable"]:
+            continue
+        cuerpo.append([
+            Paragraph(f'Declarado &middot; {d["nombre"]}', st_celda),
+            n(d["cenefas"]), pesos(d["costo"]),
+            Paragraph(d["nota"] or "", st_nota),
+        ])
+    fila_total = len(cuerpo)
+    cuerpo.append([
+        Paragraph("TOTAL REAL", st_celda),
+        n(cob.get("cenefas_reales_totales", 0)),
+        pesos(cob.get("costo_real_total", 0)),
+        Paragraph(f"Medido + declarado, a ${costo:g} por cenefa", st_nota),
+    ])
+    cuerpo += [
+        [Paragraph("Referencia: bruto medido", st_celda),
+         n(cob.get("cenefas", 0)), pesos(cob.get("costo", 0)),
+         Paragraph("Todo lo que paso por el motor; cada reproceso cuenta "
+                   "de nuevo", st_nota)],
+        [Paragraph("Sin costo", st_celda), n(sinc.get("cenefas", 0)), "-",
+         Paragraph("Mundos marcados sin costo (Redexpres, pruebas)", st_nota)],
+        [Paragraph("Sin clasificar", st_celda), n(sincl.get("cenefas", 0)), "-",
+         Paragraph("Corridas anteriores a que el job guardara el mundo",
+                   st_nota)],
+    ]
+    tabla_seccion("Qu&eacute; se factura", ["Concepto", "Cenefas", "Valor", "Detalle"],
+                  cuerpo, [42, 20, 26, 92], resaltar={fila_total},
+                  ultima_izquierda=True)
+
+    # ── Por mundo ───────────────────────────────────────────────────────────
+    cuerpo = []
+    for r in resumen_["por_mundo"]:
+        nombre = r["nombre"] + ("" if r["cobrable"] else " (sin costo)")
+        reales = n(r["cenefas_reales"]) if "cenefas_reales" in r else "-"
+        valor = pesos(r["costo_real"]) if r.get("costo_real") else "-"
+        cuerpo.append([Paragraph(nombre, st_celda), n(r["corridas"]),
+                       n(r["cenefas"]), reales, n(r["correctas"]), valor])
+    tabla_seccion("Por mundo",
+                  ["Mundo", "Corridas", "Brutas", "Reales", "Correctas",
+                   "Valor real"],
+                  cuerpo, [60, 22, 22, 22, 24, 30])
+
+    # ── Por mes ─────────────────────────────────────────────────────────────
+    cuerpo = []
+    for r in resumen_["por_mes"]:
+        reales = n(r["cenefas_reales"]) if "cenefas_reales" in r else "-"
+        valor = pesos(r["costo_real"]) if r.get("costo_real") else "-"
+        cuerpo.append([Paragraph(_mes_legible(r["mes"]), st_celda),
+                       n(r["corridas"]), n(r["cenefas"]), reales,
+                       n(r["correctas"]), valor])
+    tabla_seccion("Por mes",
+                  ["Mes", "Corridas", "Brutas", "Reales", "Correctas",
+                   "Valor real"],
+                  cuerpo, [60, 22, 22, 22, 24, 30])
+
+    flujo.append(Paragraph(
+        "Reales = filas del listado x formatos distintos generados, sin pagar "
+        "de nuevo el reproceso. Brutas = todo lo que paso por el motor. "
+        "Declarado = produccion anterior al registro en la plataforma, con la "
+        "nota que la respalda. El detalle corrida por corrida esta en el "
+        "Excel del informe.", st_pie))
+
+    buf = io.BytesIO()
+    SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=16 * mm, rightMargin=16 * mm,
+        topMargin=16 * mm, bottomMargin=14 * mm,
+        title="Informe semanal de cenefas",
+    ).build(flujo)
+    return buf.getvalue()

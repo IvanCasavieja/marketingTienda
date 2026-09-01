@@ -743,6 +743,27 @@ async def informe_export(
     )
 
 
+@router.get("/informe/export/pdf")
+async def informe_export_pdf(
+    desde: date | None = Query(None),
+    hasta: date | None = Query(None),
+    template: str | None = Query(None),
+    costo: float = Query(informe_service.COSTO_POR_CENEFA, ge=0),
+    _: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """El informe como PDF, pensado para mandarse como reporte semanal: lo
+    real adelante y el respaldo detras. El Excel queda para auditar corrida
+    por corrida; esto es lo que se presenta."""
+    resumen = await informe_service.resumen(db, desde, hasta, template, costo)
+    pdf = informe_service.a_pdf(resumen)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="informe_semanal_cenefas.pdf"'},
+    )
+
+
 @router.get("/jobs")
 async def list_jobs(
     current_user: User = Depends(require_permission("cenefas.view")),

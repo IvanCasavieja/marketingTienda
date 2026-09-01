@@ -266,6 +266,10 @@ export const cenefasV2Api = {
     desde?: string; hasta?: string; template?: string; costo?: number;
   }) => api.get("/tools/cenefas/v2/informe/export", { params, responseType: "blob" }),
 
+  downloadInformePdf: (params?: {
+    desde?: string; hasta?: string; template?: string; costo?: number;
+  }) => api.get("/tools/cenefas/v2/informe/export/pdf", { params, responseType: "blob" }),
+
   // Marca una corrida como revisada y correcta por una persona. La validacion
   // automatica dice si la cenefa se pudo armar, no si quedo bien.
   verificarCorrida: (jobId: string, verificado: boolean) =>

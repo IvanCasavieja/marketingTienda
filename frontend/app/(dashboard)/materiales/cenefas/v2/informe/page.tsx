@@ -34,6 +34,7 @@ export default function InformePage() {
   const [data, setData] = useState<CenefaInforme | null>(null);
   const [cargando, setCargando] = useState(true);
   const [bajando, setBajando] = useState(false);
+  const [bajandoPdf, setBajandoPdf] = useState(false);
   const [marcando, setMarcando] = useState<string | null>(null);
   const [abierto, setAbierto] = useState<string | null>(null);
   const [desde, setDesde] = useState("");
@@ -108,6 +109,26 @@ export default function InformePage() {
     }
   }
 
+  // El PDF es el que se manda como informe semanal: lo real adelante y el
+  // respaldo detras. El Excel queda para auditar corrida por corrida.
+  async function bajarPdf() {
+    setBajandoPdf(true);
+    try {
+      const { data: blob } = await cenefasV2Api.downloadInformePdf(params());
+      const url = URL.createObjectURL(new Blob([blob as BlobPart]));
+      if (dlRef.current) {
+        dlRef.current.href = url;
+        dlRef.current.download = "informe_semanal_cenefas.pdf";
+        dlRef.current.click();
+      }
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("No se pudo generar el PDF");
+    } finally {
+      setBajandoPdf(false);
+    }
+  }
+
   if (!allowed) return null;
 
   const t = data?.total;
@@ -135,14 +156,24 @@ export default function InformePage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={bajarExcel}
-          disabled={bajando || !data}
-          className="btn-secondary text-xs px-3 py-2 flex items-center gap-1.5 disabled:opacity-40"
-        >
-          {bajando ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-          Bajar en Excel
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={bajarPdf}
+            disabled={bajandoPdf || !data}
+            className="btn-primary text-xs px-3 py-2 flex items-center gap-1.5 disabled:opacity-40"
+          >
+            {bajandoPdf ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            Bajar en PDF
+          </button>
+          <button
+            onClick={bajarExcel}
+            disabled={bajando || !data}
+            className="btn-secondary text-xs px-3 py-2 flex items-center gap-1.5 disabled:opacity-40"
+          >
+            {bajando ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            Bajar en Excel
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}
