@@ -56,3 +56,15 @@ def test_sin_match_no_inventa():
         "DENA S.A",
         [(normalizar_proveedor("DEVON S.A"), "MEDIOS")],
     ) is None
+    # Un token generico solo no puede matchear por subconjunto: "FILMS" esta
+    # adentro de "KAFKA FILMS" pero no identifica al proveedor.
+    assert elegir_cuenta(
+        "FILMS S.R.L.",
+        [(normalizar_proveedor("KAFKA FILMS S.R.L."), "MEDIOS")],
+    ) is None
+    # Dos personas que solo comparten el nombre de pila dan 80.0 clavado:
+    # el umbral es estricto (>80) justamente para dejarlas afuera.
+    assert elegir_cuenta(
+        "PEREZ MAXIMILIANO",
+        [(normalizar_proveedor("PASTOR MAXIMILIANO"), "LOYALTY")],
+    ) is None
