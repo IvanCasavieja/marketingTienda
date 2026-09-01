@@ -257,26 +257,29 @@ export default function InformePage() {
             {[
               { etiqueta: "Cenefas reales", valor: numero(data.cobrable.cenefas_reales_totales),
                 pie: "listado × formato distinto, sin contar el reproceso",
-                acento: "text-emerald-600 dark:text-emerald-400" },
+                acento: "text-emerald-600 dark:text-emerald-400", clase: "" },
               { etiqueta: "Valor real", valor: pesos(data.cobrable.costo_real_total),
                 pie: `a ${pesos(data.costo_unitario)} c/u`,
-                acento: "text-emerald-600 dark:text-emerald-400" },
+                acento: "text-emerald-600 dark:text-emerald-400", clase: "" },
               // La tarjeta de «Salió bien» solo aparece cuando alguien la
               // esta usando: un "0 de 432 · $0" gigante lee como que nada
               // salio bien, cuando en realidad nadie tildo el check todavia.
               ...(t.verificadas_corridas > 0 ? [
                 { etiqueta: "Con «Salió bien» tildado", valor: numero(t.verificadas),
                   pie: `${numero(t.verificadas_corridas)} de ${numero(t.corridas)} corridas · ${pesos(t.costo_verificadas)}`,
-                  acento: "text-brand-600 dark:text-brand-400" },
+                  acento: "text-brand-600 dark:text-brand-400", clase: "" },
               ] : []),
-              // Bruto: todo lo que paso por el motor, cada reproceso pagado
-              // por separado. Queda como referencia para auditar, no como
-              // titular -- por eso va apagado y al final.
+              // Bruto: todo lo que paso por el motor, contando cada pasada.
+              // Referencia para auditar, apagado y al final. Cuando la
+              // tarjeta de verificadas esta oculta, ocupa dos columnas para
+              // que la fila quede completa (Ivan, 01/09) y el pie alcanza
+              // para explicar que significa en vez de solo negarlo.
               { etiqueta: "Bruto medido (con reproceso)", valor: numero(t.cenefas),
-                pie: `${numero(t.corridas)} corridas · no es el resultado real`,
-                acento: "text-slate-400 dark:text-slate-500" },
+                pie: `${numero(t.corridas)} corridas — acá cada pasada cuenta, aunque sea el mismo listado reprocesado hasta que salió bien. Referencia para auditar el trabajo de la máquina`,
+                acento: "text-slate-400 dark:text-slate-500",
+                clase: t.verificadas_corridas > 0 ? "" : "sm:col-span-2 lg:col-span-2" },
             ].map((c) => (
-              <div key={c.etiqueta} className="card p-4">
+              <div key={c.etiqueta} className={`card p-4 ${c.clase}`}>
                 <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
                   {c.etiqueta}
                 </p>
