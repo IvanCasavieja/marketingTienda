@@ -483,6 +483,7 @@ interface FilaTabla {
   etiqueta: string;
   corridas: number;
   cenefas: number;
+  cenefas_reales?: number;
   correctas: number;
   costo: number;
 }
@@ -491,6 +492,9 @@ function Tabla({ titulo, primeraColumna, filas }: {
   titulo: string; primeraColumna: string; filas: FilaTabla[];
 }) {
   if (filas.length === 0) return null;
+  // La columna de reales solo aparece donde el backend la calcula (por mundo
+  // y por mes); por plantilla no tiene sentido, cada fila ES un formato.
+  const conReales = filas.some((f) => f.cenefas_reales !== undefined);
   return (
     <div className="card p-0 overflow-hidden">
       <p className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">
@@ -500,7 +504,8 @@ function Tabla({ titulo, primeraColumna, filas }: {
         <table className="w-full text-xs border-collapse">
           <thead className="bg-slate-100 dark:bg-slate-800">
             <tr>
-              {[primeraColumna, "Corridas", "Cenefas", "Correctas", "Valor"].map((h, i) => (
+              {[primeraColumna, "Corridas", "Cenefas",
+                ...(conReales ? ["Reales"] : []), "Correctas", "Valor"].map((h, i) => (
                 <th key={h}
                     className={`px-3 py-2 font-semibold text-slate-500 dark:text-slate-300 uppercase tracking-wide text-[10px] ${i ? "text-right" : "text-left"}`}>
                   {h}
@@ -515,6 +520,11 @@ function Tabla({ titulo, primeraColumna, filas }: {
                     title={f.etiqueta}>{f.etiqueta}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-500">{numero(f.corridas)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{numero(f.cenefas)}</td>
+                {conReales && (
+                  <td className="px-3 py-2 text-right tabular-nums font-medium">
+                    {f.cenefas_reales !== undefined ? numero(f.cenefas_reales) : "—"}
+                  </td>
+                )}
                 <td className="px-3 py-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
                   {numero(f.correctas)}
                 </td>

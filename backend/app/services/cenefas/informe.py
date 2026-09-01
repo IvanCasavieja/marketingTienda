@@ -139,6 +139,34 @@ async def _reales_por_categoria(db: AsyncSession, cond: list) -> dict[str, int]:
     return {(r.categoria or ""): int(r.reales) for r in filas}
 
 
+async def _reales_por_mes(db: AsyncSession, cond: list) -> dict[str, int]:
+    """Cenefas reales por mes, con la misma regla que _reales_por_categoria:
+    filas del listado x formatos distintos, sin contar de nuevo el reproceso.
+
+    Un listado reprocesado a caballo de dos meses cuenta en cada mes con los
+    formatos que se le generaron ese mes: no hay una atribucion mejor sin
+    inventar a que mes "pertenece" el listado."""
+    mes = func.to_char(func.date_trunc("month", CenefaJob.created_at), "YYYY-MM")
+    sub = (
+        select(
+            mes.label("mes"),
+            CenefaJob.excel_nombre,
+            CenefaJob.row_count,
+            func.count(func.distinct(CenefaJob.template_nombre)).label("n_formatos"),
+        )
+        .where(*cond, CenefaJob.excel_nombre.isnot(None), CenefaJob.row_count.isnot(None))
+        .group_by(mes, CenefaJob.excel_nombre, CenefaJob.row_count)
+    ).subquery()
+
+    filas = (await db.execute(
+        select(
+            sub.c.mes,
+            func.coalesce(func.sum(sub.c.row_count * sub.c.n_formatos), 0).label("reales"),
+        ).group_by(sub.c.mes)
+    )).all()
+    return {r.mes: int(r.reales) for r in filas}
+
+
 async def resumen(
     db: AsyncSession,
     desde: date | None = None,
@@ -224,6 +252,7 @@ async def resumen(
     )).all()
 
     reales_por_categoria = await _reales_por_categoria(db, cond)
+    reales_por_mes = await _reales_por_mes(db, cond)
 
     # Produccion declarada: una cifra fija por mundo, sin corridas detras. Solo
     # se incluye en la vista sin filtros -- acotada a un mes o a una plantilla
@@ -302,7 +331,10 @@ async def resumen(
             "desde": fila.desde.isoformat() if fila.desde else None,
             "hasta": fila.hasta.isoformat() if fila.hasta else None,
         },
-        "por_mes": [{"mes": r.mes, **bloque(r)} for r in por_mes],
+        "por_mes": [
+            {"mes": r.mes, **bloque(r, reales=reales_por_mes.get(r.mes))}
+            for r in por_mes
+        ],
         "por_plantilla": [
             # Hasta el 23/08/2026 no se guardaba el nombre de la plantilla en el
             # job, asi que la mitad del historial no puede atribuirse. Se muestra
