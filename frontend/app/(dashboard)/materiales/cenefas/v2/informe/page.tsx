@@ -446,7 +446,7 @@ export default function InformePage() {
                 <table className="w-full text-xs border-collapse">
                   <thead className="bg-slate-100 dark:bg-slate-800">
                     <tr>
-                      {["Fecha", "Plantilla", "Excel", "Cenefas", "Correctas", "Valor"].map((h, i) => (
+                      {["Fecha", "Plantilla", "Excel", "Cenefas", "Valor"].map((h, i) => (
                         <th key={h}
                             className={`px-3 py-2 font-semibold text-slate-500 dark:text-slate-300 uppercase tracking-wide text-[10px] ${i > 2 ? "text-right" : "text-left"}`}>
                           {h}
@@ -468,9 +468,6 @@ export default function InformePage() {
                         <td className="px-3 py-1.5 text-slate-500 max-w-[240px] truncate"
                             title={d.excel}>{d.excel}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">{numero(d.cenefas)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                          {numero(d.correctas)}
-                        </td>
                         <td className="px-3 py-1.5 text-right tabular-nums font-medium">{pesos(d.costo)}</td>
                         <td className="px-3 py-1.5 text-center">
                           <label className="inline-flex items-center justify-center cursor-pointer"
@@ -515,7 +512,6 @@ interface FilaTabla {
   corridas: number;
   cenefas: number;
   cenefas_reales?: number;
-  correctas: number;
   costo: number;
 }
 
@@ -535,8 +531,10 @@ function Tabla({ titulo, primeraColumna, filas }: {
         <table className="w-full text-xs border-collapse">
           <thead className="bg-slate-100 dark:bg-slate-800">
             <tr>
+              {/* Sin columna "Correctas": las reales YA son las que salieron
+                  bien (Ivan, 01/09) -- mismo criterio que el PDF semanal. */}
               {[primeraColumna, "Corridas", "Cenefas",
-                ...(conReales ? ["Reales"] : []), "Correctas", "Valor"].map((h, i) => (
+                ...(conReales ? ["Reales"] : []), "Valor"].map((h, i) => (
                 <th key={h}
                     className={`px-3 py-2 font-semibold text-slate-500 dark:text-slate-300 uppercase tracking-wide text-[10px] ${i ? "text-right" : "text-left"}`}>
                   {h}
@@ -552,13 +550,10 @@ function Tabla({ titulo, primeraColumna, filas }: {
                 <td className="px-3 py-2 text-right tabular-nums text-slate-500">{numero(f.corridas)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{numero(f.cenefas)}</td>
                 {conReales && (
-                  <td className="px-3 py-2 text-right tabular-nums font-medium">
+                  <td className="px-3 py-2 text-right tabular-nums font-medium text-emerald-600 dark:text-emerald-400">
                     {f.cenefas_reales !== undefined ? numero(f.cenefas_reales) : "—"}
                   </td>
                 )}
-                <td className="px-3 py-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                  {numero(f.correctas)}
-                </td>
                 <td className="px-3 py-2 text-right tabular-nums font-medium">{pesos(f.costo)}</td>
               </tr>
             ))}
