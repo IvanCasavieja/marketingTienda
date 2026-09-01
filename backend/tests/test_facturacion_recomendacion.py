@@ -43,9 +43,16 @@ def test_sin_match_no_inventa():
     assert elegir_cuenta("PROVEEDOR NUEVO QUE NADIE VIO", MAPEO) is None
     assert elegir_cuenta("", MAPEO) is None
     assert elegir_cuenta("KAFKA FILMS S.R.L.", []) is None
-    # El peor par real de proveedores DISTINTOS (76.2) queda bajo el umbral:
-    # comparten "URUGUAY S A" pero no tienen nada que ver.
+    # Pares reales de proveedores DISTINTOS que comparten palabras genericas
+    # ("URUGUAY", el sufijo "S A") quedan bajo el umbral.
     assert elegir_cuenta(
         "GEOCOM URUGUAY S.A.",
         [(normalizar_proveedor("INFONEGOCIOS URUGUAY S.A"), "MEDIOS")],
+    ) is None
+    # DENA y DEVON son dos empresas distintas: sin recortar el sufijo "S A"
+    # daban 82.4 y DENA (multi-cuenta, excluida a proposito) heredaba la
+    # cuenta de DEVON.
+    assert elegir_cuenta(
+        "DENA S.A",
+        [(normalizar_proveedor("DEVON S.A"), "MEDIOS")],
     ) is None
