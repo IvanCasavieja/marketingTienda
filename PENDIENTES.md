@@ -1,73 +1,51 @@
-# Estado y pendientes — 29/08/2026
+# Estado y pendientes — 01/09/2026
 
-Para retomar desde otra PC. Todo el código está pusheado y desplegado
-(último commit `5d916c3`, Render y Vercel al día, CI verde con 34 tests).
+Para retomar desde cualquier PC. Todo el código está pusheado y desplegado
+(último commit `149663c`, Render y Vercel al día, CI verde con 57 tests en
+6 archivos).
 
-## Cómo arrancar en la otra PC
+## Cómo arrancar en otra PC
 
 1. Seguir `ONBOARDING.md` (clonar, `npm install` en frontend, `.env.local`).
 2. Para tocar datos/backend en local: crear `backend/.env` con el
    `DATABASE_URL` que está en **Render → servicio backend → Environment**.
 3. Decirle a Claude: *"Leé PENDIENTES.md y seguí desde ahí"*.
 
-## ✅ RESUELTO — el bug del precio $2 (commit dd19026, 29/08 noche)
-
-Ivan dio el OK y se implementó: los exports SIN columna OFERTADET infieren la
-familia del literal de OFERTA (2x$258→combo, 2x1→mxn, 2da al 50%→segunda), y
-el parseo de precio tiene guarda de punta a punta (una celda con texto queda
-vacía y roja, nunca un valor inventado). Verificado con el archivo real: 0
-filas con $2 (eran 9), el agua da tipoOferta="2x" / precioOferta=258, y el
-render de la Mega imprime $258. Redexpres intacto (fijado por test). Queda la
-decisión de diseño de abajo.
-
-## Contexto histórico del bug (por si hace falta)
-
-**Síntoma**: el listado `CENEFAS BEBIDAS_MARGINADORAS MRP.xlsx` genera cenefas
-Mega Rompe Precios con `precioOferta = 2` en 9 de 24 filas (todos los combos).
-
-**Causa, probada con el archivo real** (la plantilla está BIEN, el problema es
-el Convertidor):
-
-- Ese export NO trae columna OFERTADET (headers: CODIGO, NOMBREARTICULO,
-  MONEDA, REGULAR, PRECIO, OFERTA).
-- Sin OFERTADET no se clasifica la mecánica → el `2x$258` de OFERTA queda sin
-  interpretar → la fila cae a "Precio Final".
-- La columna PRECIO trae la letra chica escrita ("Comprando 2 $129 unidad") y
-  `_parse_price_or_none` (convertidor.py) agarra el "2" del principio.
-
-**Verificado**: si a esa fila se le dice "Combo", `resolver_mecanica` da
-exactamente lo correcto: `tipoOferta="2x"`, `precioOferta=258` (total),
-`mecanica="Comprando 2, $129 la unidad."` (idéntico a lo que gestión escribió).
-
-**Propuesta esperando el OK de Ivan (respuesta pendiente a "¿Avanzo con 1 y 2?")**:
-
-1. Cuando el export NO trae columna OFERTADET, inferir la familia del literal
-   de OFERTA con las regex existentes (`2x$258`→combo, `2x1`→mxn,
-   `2da al 50%`→segunda). La regla "OFERTADET decide" queda intacta para
-   cuando la columna existe.
-2. Guarda en `_parse_price_or_none`: si la celda no es un número de punta a
-   punta (tolerando "148 unidad"), queda vacía + warning rojo — nunca más un
-   texto convertido en precio mudo.
-
-**Decisión de diseño aparte**: la plantilla Mega 3xA4 no tiene cuadro de
-`tipoOferta` ni `mecanica` — un combo saldría "OFERTA $258" sin el "2x" a la
-vista. Si los combos van a Mega, agregarle uno de esos cuadros al PPTX (por el
-picker → "Reemplazar", NO por el editor, que pierde el arte).
-
 ## 🔴 Seguridad — HACER YA
 
-- **Rotar la contraseña de la base**: quedó pegada en el chat del 28/08.
-  Supabase → Settings → Database → Reset password → actualizar en Render
-  (DATABASE_URL) y en `backend/.env` de cada PC.
+- **Rotar la contraseña de la base**: quedó pegada en el chat del 28/08 y ya
+  pasaron 4 días. Supabase → Settings → Database → Reset password →
+  actualizar en Render (DATABASE_URL) y en `backend/.env` de cada PC.
+
+## 🟡 Decisión que espera el OK de Ivan
+
+- **La plantilla Mega 3xA4 no tiene cuadro de `tipoOferta` ni `mecanica`**:
+  un combo saldría "OFERTA $258" sin el "2x" a la vista. Si los combos van a
+  Mega, agregarle uno de esos cuadros al PPTX (por el picker → "Reemplazar",
+  NO por el editor, que pierde el arte).
 
 ## 🟡 Otros pendientes
 
-- **Alcohol**: ¿excluir "vaso/copa/jarra de" del detector de la leyenda?
-  (hoy un vaso de cerveza la imprime — exceso aceptado, decisión de Ivan).
+- **Backups de los borrados del diccionario**: viven SOLO en la PC de Ivan,
+  en `Desktop\marketingTienda-main\backend\backups\` (gitignoreado). Son la
+  única copia de las ~4.180 claves borradas. Copiarlos a un drive.
 - **Botón masivo de "Generar descripciones con IA"** en la grilla (Ivan dijo
-  "después"). Las filas rojas se completan de a una mientras tanto.
-- **Backups de los borrados del diccionario**: están SOLO en la PC vieja, en
-  `backend/backups/` (gitignoreado). Copiarlos a un drive.
+  "después"). Ojo: el panel de Tinín ya abre el modal de IA con TODAS las
+  filas sin descripción de una vez (existe desde julio, `8840db4`); antes de
+  programar nada, aclarar con Ivan qué le falta a ese flujo para ser el
+  "masivo" que pidió.
+
+## Decidido y fijado por test (no tocar sin nuevo OK de Ivan)
+
+- **Alcohol**: "vaso/copa/jarra de cerveza" imprime la leyenda — exceso
+  aceptado, fijado por `test_alcohol_vaso_de_cerveza_es_exceso_aceptado`.
+- **Bug del precio $2**: resuelto en `dd19026`. Los exports SIN columna
+  OFERTADET infieren la familia del literal de OFERTA (2x$258→combo,
+  2x1→mxn, 2da al 50%→segunda) y el parseo de precio tiene guarda de punta
+  a punta: una celda con texto queda vacía y roja, nunca un valor inventado.
+  Verificado con el archivo real; Redexpres intacto (fijado por test).
+- **Costo por cenefa**: $49 desde el 01/09 (`149663c`), configurable desde
+  la pantalla del informe.
 
 ## Reglas de trabajo (Ivan las marcó con énfasis)
 
@@ -77,16 +55,19 @@ picker → "Reemplazar", NO por el editor, que pierde el arte).
 - Límites: solo lo pedido; ante un nombre ambiguo, preguntar antes de
   interpretar. Contexto = estado ACTUAL del código, no comentarios históricos.
 
-## Lo hecho esta semana (resumen)
+## Lo hecho desde el traspaso anterior (29/08 → 01/09)
 
-- `unidadMoneda` (variable 32): el símbolo `$`/`U$S` automático desde la
-  columna MONEDA; las 5 plantillas de redexpres operadas con su placeholder.
-- Tabla de mecánicas final: precio fijo sin cocarda; combo = `tipoOferta="2x"`
-  + `precioOferta=total`; `promoOferta` SOLO en M×N (y tapa precio + cocarda).
-- Diccionario partido: singular/plural en solapas, con descarga a Excel;
-  borradas 826 claves plurales + 3.355 genéricas (backups locales).
-- Ciclo de vida: verificación humana al terminar el lote ("¿salieron bien?"),
-  retención 7 días para no verificadas, rescate de jobs colgados al arrancar.
-- 34 tests en CI + fix del solapamiento precio/descripción en 3xA4 + fix del
-  crash del mapeo + campos de entrada renombrados a camelCase (migración 0050).
+- Privacidad de corridas: el listado ya no muestra corridas ajenas, nadie
+  puede desverificar (ni borrarle el archivo a) la corrida de otro, con
+  tests de pertenencia (`cb84c05`, `a7f3fa9`).
+- Robustez: levantar el backend en una PC ya no le mata la corrida a quien
+  esté generando (`82874ab`), y un lote ya no puede encolar miles de
+  corridas de un saque (`882ac12`).
+- Don Tino pasó a Claude con cache y los 5 agentes comparten un solo modelo
+  (`9843f8f`); la home ya no dice que corre sobre Llama (`790a87a`).
+- Tinín ya no enseña la regla vieja del combo (`a1ab40c`), con test de
+  conocimiento que fija la tabla de mecánicas vigente.
+- El informe de cenefas separa lo real de lo reprocesado (`d905156`) y el
+  titular muestra lo real, no el bruto (`0a95541`).
+- El costo por defecto del informe pasó de $45 a $49 (`149663c`).
 - Referencia del sistema: https://claude.ai/code/artifact/8da1b53f-cced-4be9-9636-b7d1adde6d3a
