@@ -772,11 +772,24 @@ def a_pdf(resumen_: dict[str, Any]) -> bytes:
         flujo.extend([tabla, Spacer(0, 6 * mm)])
 
     # ── Que se factura ──────────────────────────────────────────────────────
+    # El detalle del medido nombra los mundos de donde salen las cenefas
+    # (Ivan lo pidio el 01/09: sin esto parecia que todo era Mega Rompe).
+    mundos_medidos = [
+        f'{r["nombre"]} ({n(r["cenefas_reales"])})'
+        for r in resumen_["por_mundo"]
+        if r["cobrable"] and r.get("cenefas_reales")
+    ]
+    detalle_medido = (
+        f'{" + ".join(mundos_medidos)}: filas del listado x formatos '
+        "generados, sin contar de nuevo el reproceso"
+        if mundos_medidos else
+        "Mundos cobrables: filas del listado x formatos generados, "
+        "sin contar de nuevo el reproceso"
+    )
     cuerpo: list[list] = [[
         Paragraph("Medido (reales)", st_celda),
         n(cob.get("cenefas_reales", 0)), pesos(cob.get("costo_real", 0)),
-        Paragraph("Mundos cobrables: filas del listado x formatos generados, "
-                  "sin contar de nuevo el reproceso", st_nota),
+        Paragraph(detalle_medido, st_nota),
     ]]
     for d in declaradas:
         if not d["cobrable"]:
@@ -809,17 +822,25 @@ def a_pdf(resumen_: dict[str, Any]) -> bytes:
                   ultima_izquierda=True)
 
     # ── Por mundo ───────────────────────────────────────────────────────────
+    # Sin columna "Correctas": las reales YA son las que salieron bien (Ivan,
+    # 01/09) -- la validacion automatica sobre el bruto al lado de las reales
+    # solo confundia. Lo declarado entra como fila propia para que Parrilla y
+    # Vinos no desaparezca del cuadro por no tener corridas.
     cuerpo = []
     for r in resumen_["por_mundo"]:
         nombre = r["nombre"] + ("" if r["cobrable"] else " (sin costo)")
         reales = n(r["cenefas_reales"]) if "cenefas_reales" in r else "-"
         valor = pesos(r["costo_real"]) if r.get("costo_real") else "-"
         cuerpo.append([Paragraph(nombre, st_celda), n(r["corridas"]),
-                       n(r["cenefas"]), reales, n(r["correctas"]), valor])
+                       n(r["cenefas"]), reales, valor])
+    for d in declaradas:
+        if not d["cobrable"]:
+            continue
+        cuerpo.append([Paragraph(f'{d["nombre"]} (declarado)', st_celda),
+                       "-", "-", n(d["cenefas"]), pesos(d["costo"])])
     tabla_seccion("Por mundo",
-                  ["Mundo", "Corridas", "Brutas", "Reales", "Correctas",
-                   "Valor real"],
-                  cuerpo, [60, 22, 22, 22, 24, 30])
+                  ["Mundo", "Corridas", "Brutas", "Reales", "Valor real"],
+                  cuerpo, [66, 24, 24, 24, 32])
 
     # ── Por mes ─────────────────────────────────────────────────────────────
     cuerpo = []
@@ -827,12 +848,10 @@ def a_pdf(resumen_: dict[str, Any]) -> bytes:
         reales = n(r["cenefas_reales"]) if "cenefas_reales" in r else "-"
         valor = pesos(r["costo_real"]) if r.get("costo_real") else "-"
         cuerpo.append([Paragraph(_mes_legible(r["mes"]), st_celda),
-                       n(r["corridas"]), n(r["cenefas"]), reales,
-                       n(r["correctas"]), valor])
+                       n(r["corridas"]), n(r["cenefas"]), reales, valor])
     tabla_seccion("Por mes",
-                  ["Mes", "Corridas", "Brutas", "Reales", "Correctas",
-                   "Valor real"],
-                  cuerpo, [60, 22, 22, 22, 24, 30])
+                  ["Mes", "Corridas", "Brutas", "Reales", "Valor real"],
+                  cuerpo, [66, 24, 24, 24, 32])
 
     flujo.append(Paragraph(
         "Reales = filas del listado x formatos distintos generados, sin pagar "
