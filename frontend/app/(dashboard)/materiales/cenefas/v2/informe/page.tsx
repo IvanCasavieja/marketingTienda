@@ -339,8 +339,11 @@ export default function InformePage() {
                     { clave: "sincosto", etiqueta: "Sin costo", apagado: true,
                       detalle: "Mundos marcados sin costo (Redexpres, pruebas)",
                       cenefas: data.sin_costo.cenefas, costo: 0 },
-                    { clave: "sinclas", etiqueta: "Sin clasificar", apagado: true,
-                      detalle: "Pre-23/08, sin mundo registrado — no se valoriza",
+                    // Ivan (01/09): esas ~25 mil fueron las pruebas de la
+                    // puesta a punto -- mostrarlas esta bien, pero con su
+                    // nombre real, no "sin clasificar" a secas.
+                    { clave: "sinclas", etiqueta: "Pruebas iniciales (antes del 23/08)", apagado: true,
+                      detalle: "La puesta a punto de la herramienta, sin mundo registrado. El trabajo real de esa etapa está declarado aparte y esto no se valoriza",
                       cenefas: data.sin_clasificar.cenefas, costo: 0 },
                   ].filter((f) => f.cenefas > 0 || f.clave === "totalreal").map((f) => (
                     <tr key={f.clave}
@@ -390,7 +393,7 @@ export default function InformePage() {
                    })),
                    ...data.por_mundo.filter((m) => !m.mundo).map((m) => ({
                      clave: "(sin clasificar)",
-                     etiqueta: "(sin clasificar) · pre-23/08, sin mundo — no se valoriza",
+                     etiqueta: "Pruebas iniciales (antes del 23/08) — no se valoriza",
                      apagada: true,
                      corridas: m.corridas, cenefas: m.cenefas,
                      cenefas_reales: m.cenefas_reales, costo_real: 0, costo: 0,

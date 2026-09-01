@@ -566,8 +566,9 @@ def a_excel(resumen_: dict[str, Any], filas: list[dict[str, Any]]) -> bytes:
          "Cada reproceso cuenta de nuevo; no se factura"),
         ("Sin costo", sinc.get("cenefas", 0), 0,
          "Mundos marcados sin costo (Redexpres, pruebas)"),
-        ("Sin clasificar", sincl.get("cenefas", 0), 0,
-         "Pre-23/08, sin mundo registrado; no se valoriza"),
+        ("Pruebas iniciales (antes del 23/08)", sincl.get("cenefas", 0), 0,
+         "Puesta a punto de la herramienta, sin mundo registrado; el trabajo "
+         "real de esa etapa esta declarado aparte y esto no se valoriza"),
     ]
     for concepto, cenefas_, valor_, detalle_ in presentacion:
         ws.cell(row=fila, column=1, value=concepto)
@@ -890,9 +891,13 @@ def a_pdf(resumen_: dict[str, Any]) -> bytes:
                    "de nuevo", st_nota)],
         [Paragraph("Sin costo", st_celda), n(sinc.get("cenefas", 0)), "-",
          Paragraph("Mundos marcados sin costo (Redexpres, pruebas)", st_nota)],
-        [Paragraph("Sin clasificar", st_celda), n(sincl.get("cenefas", 0)), "-",
-         Paragraph("Corridas anteriores a que el job guardara el mundo",
-                   st_nota)],
+        # Ivan (01/09): esas corridas fueron las pruebas de la puesta a
+        # punto -- se muestran con su nombre real, no "sin clasificar".
+        [Paragraph("Pruebas iniciales (antes del 23/08)", st_celda),
+         n(sincl.get("cenefas", 0)), "-",
+         Paragraph("La puesta a punto de la herramienta, sin mundo "
+                   "registrado. El trabajo real de esa etapa esta declarado "
+                   "aparte y esto no se valoriza", st_nota)],
     ]
     tabla_seccion("Qu&eacute; se factura", ["Concepto", "Cenefas", "Valor", "Detalle"],
                   cuerpo, [42, 20, 26, 90], resaltar={fila_total},
@@ -923,7 +928,7 @@ def a_pdf(resumen_: dict[str, Any]) -> bytes:
     for r in sin_clas:
         reales = n(r["cenefas_reales"]) if "cenefas_reales" in r else "-"
         cuerpo.append([Paragraph(
-            "(sin clasificar) - pre-23/08, sin mundo; no se valoriza",
+            "Pruebas iniciales (antes del 23/08) - no se valoriza",
             st_nota), n(r["corridas"]), n(r["cenefas"]), reales, "-"])
     tabla_seccion("Por mundo",
                   ["Mundo", "Corridas", "Brutas", "Reales", "Valor real"],
