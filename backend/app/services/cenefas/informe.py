@@ -139,32 +139,52 @@ async def _reales_por_categoria(db: AsyncSession, cond: list) -> dict[str, int]:
     return {(r.categoria or ""): int(r.reales) for r in filas}
 
 
-async def _reales_por_mes(db: AsyncSession, cond: list) -> dict[str, int]:
+async def _reales_por_mes(db: AsyncSession, cond: list) -> dict[str, dict[str, int]]:
     """Cenefas reales por mes, con la misma regla que _reales_por_categoria:
     filas del listado x formatos distintos, sin contar de nuevo el reproceso.
+
+    Devuelve {mes: {"reales": todas, "cobrables": solo mundos cobrables}}:
+    el volumen mensual se muestra entero (Redexpres y pruebas incluidas),
+    pero valorizar solo corresponde a lo cobrable -- igual que en el cuadro
+    por mundo. Sin esta separacion, el informe valorizaba en agosto las
+    reales de Redexpres como si se facturaran.
 
     Un listado reprocesado a caballo de dos meses cuenta en cada mes con los
     formatos que se le generaron ese mes: no hay una atribucion mejor sin
     inventar a que mes "pertenece" el listado."""
     mes = func.to_char(func.date_trunc("month", CenefaJob.created_at), "YYYY-MM")
-    sub = (
-        select(
+
+    async def _sumar(solo_cobrables: bool) -> dict[str, int]:
+        q = select(
             mes.label("mes"),
             CenefaJob.excel_nombre,
             CenefaJob.row_count,
             func.count(func.distinct(CenefaJob.template_nombre)).label("n_formatos"),
         )
-        .where(*cond, CenefaJob.excel_nombre.isnot(None), CenefaJob.row_count.isnot(None))
-        .group_by(mes, CenefaJob.excel_nombre, CenefaJob.row_count)
-    ).subquery()
+        if solo_cobrables:
+            # Mismo criterio que el cuadro por mundo: con mundo asignado y
+            # cobrable (un mundo borrado cuenta cobrable, que es el default).
+            q = (q.select_from(CenefaJob)
+                 .outerjoin(CenefaDestino, CenefaDestino.slug == CenefaJob.categoria)
+                 .where(CenefaJob.categoria.isnot(None),
+                        func.coalesce(CenefaDestino.cobrable, true())))
+        sub = (
+            q.where(*cond, CenefaJob.excel_nombre.isnot(None),
+                    CenefaJob.row_count.isnot(None))
+            .group_by(mes, CenefaJob.excel_nombre, CenefaJob.row_count)
+        ).subquery()
+        filas = (await db.execute(
+            select(
+                sub.c.mes,
+                func.coalesce(func.sum(sub.c.row_count * sub.c.n_formatos), 0).label("reales"),
+            ).group_by(sub.c.mes)
+        )).all()
+        return {r.mes: int(r.reales) for r in filas}
 
-    filas = (await db.execute(
-        select(
-            sub.c.mes,
-            func.coalesce(func.sum(sub.c.row_count * sub.c.n_formatos), 0).label("reales"),
-        ).group_by(sub.c.mes)
-    )).all()
-    return {r.mes: int(r.reales) for r in filas}
+    todas = await _sumar(solo_cobrables=False)
+    cobrables = await _sumar(solo_cobrables=True)
+    return {m: {"reales": n, "cobrables": cobrables.get(m, 0)}
+            for m, n in todas.items()}
 
 
 async def resumen(
@@ -332,7 +352,15 @@ async def resumen(
             "hasta": fila.hasta.isoformat() if fila.hasta else None,
         },
         "por_mes": [
-            {"mes": r.mes, **bloque(r, reales=reales_por_mes.get(r.mes))}
+            {
+                "mes": r.mes,
+                **bloque(r, reales=(reales_por_mes.get(r.mes) or {}).get("reales")),
+                # La plata del mes sale SOLO de lo cobrable; el volumen
+                # (cenefas_reales) si muestra todo, como el cuadro por mundo.
+                **({"costo_real": round(
+                        (reales_por_mes.get(r.mes) or {}).get("cobrables", 0) * costo, 2)}
+                   if r.mes in reales_por_mes else {}),
+            }
             for r in por_mes
         ],
         "por_plantilla": [
@@ -818,7 +846,7 @@ def a_pdf(resumen_: dict[str, Any]) -> bytes:
                    st_nota)],
     ]
     tabla_seccion("Qu&eacute; se factura", ["Concepto", "Cenefas", "Valor", "Detalle"],
-                  cuerpo, [42, 20, 26, 92], resaltar={fila_total},
+                  cuerpo, [42, 20, 26, 90], resaltar={fila_total},
                   ultima_izquierda=True)
 
     # ── Por mundo ───────────────────────────────────────────────────────────
@@ -857,8 +885,9 @@ def a_pdf(resumen_: dict[str, Any]) -> bytes:
         "Reales = filas del listado x formatos distintos generados, sin pagar "
         "de nuevo el reproceso. Brutas = todo lo que paso por el motor. "
         "Declarado = produccion anterior al registro en la plataforma, con la "
-        "nota que la respalda. El detalle corrida por corrida esta en el "
-        "Excel del informe.", st_pie))
+        "nota que la respalda. El Valor real valoriza solo los mundos "
+        "cobrables. El detalle corrida por corrida esta en el Excel del "
+        "informe.", st_pie))
 
     buf = io.BytesIO()
     SimpleDocTemplate(
