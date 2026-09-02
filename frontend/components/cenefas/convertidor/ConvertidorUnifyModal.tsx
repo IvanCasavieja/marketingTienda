@@ -109,6 +109,25 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
     return rows.find((r) => r.row_id === rowId)?.nombreArticulo || "—";
   }
 
+  // Saca UN producto de un grupo propuesto antes de aprobar -- Tinín agrupa
+  // por nombre y a veces se cuela un SKU que en realidad no corresponde, o
+  // el grupo entero queda muy largo para el cartel y hay que partirlo. El
+  // que se saca no se borra ni se toca: simplemente no
+  // entra en el "combinar en una sola fila" de commitUnificacion, así que
+  // sigue en la grilla como una fila propia, sin combinar.
+  //
+  // Tope de 2: un grupo unificado necesita como mínimo 2 SKU (ver
+  // GrupoUnificadoIn en el backend) -- por debajo de eso no es un grupo, es
+  // un producto suelto, y esta pantalla no ofrece esa opción.
+  function quitarMiembro(idx: number, posicion: number) {
+    const g = grupos[idx];
+    if (!g || g.skus.length <= 2) return;
+    updateGrupo(idx, {
+      row_ids: g.row_ids.filter((_, i) => i !== posicion),
+      skus: g.skus.filter((_, i) => i !== posicion),
+    });
+  }
+
   // Qué opción está seleccionada, o -1 si la persona editó el texto a mano. Se
   // deriva del texto en vez de guardarse aparte: así editar el campo desengancha
   // el desplegable solo, y volver a elegir una opción lo vuelve a enganchar, sin
@@ -182,8 +201,18 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
                 />
                 <div className="text-[10px] text-slate-400 space-y-0.5">
                   {g.row_ids.map((rowId, i) => (
-                    <p key={rowId} className="truncate">
-                      {g.skus[i]} · {nombreDeFila(rowId)}
+                    <p key={rowId} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{g.skus[i]} · {nombreDeFila(rowId)}</span>
+                      {!g.yaAprobado && g.status !== "approving" && g.skus.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => quitarMiembro(idx, i)}
+                          title={t("convertidor.unificar.quitarDelGrupo")}
+                          className="shrink-0 text-slate-400 hover:text-rose-500 dark:hover:text-rose-400"
+                        >
+                          <X size={11} />
+                        </button>
+                      )}
                     </p>
                   ))}
                 </div>

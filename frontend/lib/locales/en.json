@@ -878,6 +878,7 @@
       "noGroups": "We didn't find any groups of variants to unify in this Excel.",
       "combinedSkuNotice": "On approve, these {{count}} rows are combined into a single one under the code \"{{codigo}}\" — the rest are removed from the grid.",
       "codigoTooLong": "This group has too many SKUs to combine into a single code cell — couldn't save it.",
+      "quitarDelGrupo": "Remove from group — stays in the grid as its own row",
       "opcionEditada": "Edited by hand",
       "descripcionUnificada": "Unified description",
       "approve": "Approve",

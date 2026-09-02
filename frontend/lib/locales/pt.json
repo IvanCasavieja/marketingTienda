@@ -878,6 +878,7 @@
       "noGroups": "Não encontramos grupos de variantes para unificar neste Excel.",
       "combinedSkuNotice": "Ao aprovar, essas {{count}} linhas são combinadas em uma só com o código \"{{codigo}}\" — o restante é removido da grade.",
       "codigoTooLong": "Este grupo tem SKUs demais para combinar em uma única célula de código — não foi possível salvar.",
+      "quitarDelGrupo": "Tirar do grupo — continua na grade como linha própria",
       "opcionEditada": "Editada à mão",
       "descripcionUnificada": "Descrição unificada",
       "approve": "Aprovar",
