@@ -271,7 +271,12 @@ async def _ask_claude(system: str, prompt: str, max_tokens: int = 800) -> Tuple[
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
-        return resp.content[0].text, resp.usage.input_tokens, resp.usage.output_tokens
+        # resp.content[0] no siempre es el texto: la familia 5 puede devolver
+        # un ThinkingBlock adelante aunque acá no se pida `thinking` -- mismo
+        # criterio que ya usa responder_consulta() en dona_tina_precios.py
+        # para el mismo caso en un loop de tool-use.
+        texto = next((b.text for b in resp.content if b.type == "text"), "")
+        return texto, resp.usage.input_tokens, resp.usage.output_tokens
     return await llm_call_with_retry(lambda: asyncio.to_thread(_sync), label="_ask_claude")
 
 
