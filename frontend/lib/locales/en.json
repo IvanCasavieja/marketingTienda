@@ -1078,6 +1078,7 @@
       "modalTitle": "Search ready",
       "modalSubtitle": "We found {{total}} relevant product(s), grouped by brand:",
       "sinMarcas": "We couldn't identify brands to group by — see the full list.",
+      "falloParcial": "We couldn't group all products by brand this time — the full list below is still accurate.",
       "continuar": "Continue"
     },
     "all": "All",

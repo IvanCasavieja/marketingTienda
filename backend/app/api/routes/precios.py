@@ -292,14 +292,17 @@ async def buscar_vivo_stream(
                     indices = set(filtro["indices_mantener"])
                     items_filtrados = [it for i, it in enumerate(items_totales) if i in indices]
                     conteo_por_marca = filtro["conteo_por_marca"]
+                    fallo_parcial = filtro["fallo_parcial"]
                 except Exception as exc:
                     logger.error("buscar_vivo_stream: fallo el filtro de Doña Tina para '%s' — %s", q, exc, exc_info=True)
                     items_filtrados = items_totales
                     conteo_por_marca = {}
+                    fallo_parcial = True
                 yield "data: " + json.dumps({
                     "done": True,
                     "items_filtrados": items_filtrados,
                     "conteo_por_marca": conteo_por_marca,
+                    "fallo_parcial": fallo_parcial,
                 }) + "\n\n"
                 break
             items_totales.extend(msg.get("items") or [])

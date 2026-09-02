@@ -1133,6 +1133,7 @@
       "modalTitle": "Búsqueda lista",
       "modalSubtitle": "Encontramos {{total}} producto(s) relevantes, agrupados por marca:",
       "sinMarcas": "No pudimos identificar marcas para agrupar — ver el listado completo.",
+      "falloParcial": "No pudimos agrupar todos los productos por marca esta vez — el listado completo de todos modos está bien.",
       "continuar": "Continuar"
     },
     "all": "Todas",

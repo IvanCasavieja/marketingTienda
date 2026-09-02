@@ -85,6 +85,12 @@ export default function PreciosPage() {
   // totales, recién ahí se revela el listado real (ver render más abajo).
   const [filtroListo,    setFiltroListo]    = useState(false);
   const [conteoPorMarca, setConteoPorMarca] = useState<Record<string, number> | null>(null);
+  // true si Doña Tina no pudo terminar de clasificar todo (falla de IA en
+  // alguna tanda, o el filtro entero tiró excepción) -- en ese caso
+  // items_filtrados igual trae TODO sin filtrar (fail-open, ver backend) pero
+  // conteoPorMarca puede venir incompleto o vacío. El modal usa esto para no
+  // decir "0 productos relevantes" cuando en realidad sí hay resultados.
+  const [filtroFalloParcial, setFiltroFalloParcial] = useState(false);
 
   // Fuentes a consultar EN LA PRÓXIMA búsqueda (se elige antes de buscar, a
   // diferencia de filterCadenas que filtra resultados ya traídos). LOi queda
@@ -121,6 +127,7 @@ export default function PreciosPage() {
     setCadenaErrors({});
     setFiltroListo(false);
     setConteoPorMarca(null);
+    setFiltroFalloParcial(false);
 
     const activas = Array.from(sourceCadenas);
     setQueriedCadenas(activas);
@@ -160,6 +167,7 @@ export default function PreciosPage() {
               if (data.items_filtrados) {
                 setResults(data.items_filtrados as ProductoVivo[]);
                 setConteoPorMarca(data.conteo_por_marca ?? {});
+                setFiltroFalloParcial(!!data.fallo_parcial);
               } else {
                 setFiltroListo(true);
               }
@@ -566,6 +574,8 @@ export default function PreciosPage() {
       {conteoPorMarca && !filtroListo && (
         <TotalesPorMarcaModal
           conteoPorMarca={conteoPorMarca}
+          totalReal={results?.length ?? 0}
+          falloParcial={filtroFalloParcial}
           onContinuar={() => { setFiltroListo(true); setConteoPorMarca(null); }}
         />
       )}

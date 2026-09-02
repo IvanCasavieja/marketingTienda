@@ -5,15 +5,22 @@ import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface Props {
   conteoPorMarca: Record<string, number>;
+  totalReal: number;
+  falloParcial: boolean;
   onContinuar: () => void;
 }
 
-export default function TotalesPorMarcaModal({ conteoPorMarca, onContinuar }: Props) {
+export default function TotalesPorMarcaModal({ conteoPorMarca, totalReal, falloParcial, onContinuar }: Props) {
   const { t } = useTranslation();
   useEscapeKey(onContinuar);
 
   const marcas = Object.entries(conteoPorMarca).sort((a, b) => b[1] - a[1]);
-  const total = marcas.reduce((acc, [, count]) => acc + count, 0);
+  // El total mostrado es SIEMPRE la cantidad real de productos que vas a ver
+  // al tocar Continuar, nunca la suma de conteoPorMarca -- si Doña Tina no
+  // pudo clasificar algunas tandas (falloParcial), esa suma queda por debajo
+  // de la realidad y decir "0 relevantes" con resultados de sobra es peor
+  // que no decir nada.
+  const total = totalReal;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onContinuar}>
@@ -35,7 +42,14 @@ export default function TotalesPorMarcaModal({ conteoPorMarca, onContinuar }: Pr
             {t("precios.donaTina.modalSubtitle", { total })}
           </p>
           {marcas.length === 0 && (
-            <p className="text-sm text-slate-400 text-center py-4">{t("precios.donaTina.sinMarcas")}</p>
+            <p className="text-sm text-slate-400 text-center py-4">
+              {t(falloParcial ? "precios.donaTina.falloParcial" : "precios.donaTina.sinMarcas")}
+            </p>
+          )}
+          {marcas.length > 0 && falloParcial && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 -mt-1 mb-2">
+              {t("precios.donaTina.falloParcial")}
+            </p>
           )}
           {marcas.map(([marca, count]) => (
             <div
