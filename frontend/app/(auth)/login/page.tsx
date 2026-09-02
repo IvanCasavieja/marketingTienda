@@ -32,7 +32,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await authApi.login(emailVal, passwordVal);
-      router.push("/dashboard");
+      router.push("/home");
     } catch {
       toast.error(t("login.wrongCredentials"));
     } finally {
