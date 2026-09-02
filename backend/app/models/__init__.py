@@ -1,4 +1,5 @@
 from app.models.user import User
+from app.models.role import Role
 from app.models.platform_connection import PlatformConnection, Platform
 from app.models.campaign_metric import CampaignMetric
 from app.models.audit_log import AuditLog
@@ -30,7 +31,7 @@ from app.models.facturacion_canje import FacturacionCanje
 from app.models.facturacion_proveedor_cuenta import FacturacionProveedorCuenta
 
 __all__ = [
-    "User", "PlatformConnection", "Platform",
+    "User", "Role", "PlatformConnection", "Platform",
     "CampaignMetric", "AuditLog", "AIAnalysis",
     "CenefaTemplate", "CenefaTemplateV2", "CenefaJob",
     "CenefaConocimiento", "CenefaDestino",
