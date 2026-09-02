@@ -299,7 +299,18 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
         # traer dos o tres más su etiqueta, así que el output por grupo se triplicó. Un
         # corte acá no pierde un grupo: rompe el JSON entero y la pantalla dice que no
         # encontró nada para unificar.
-        content, in_tok, out_tok = await _ask_claude(_UNIFY_SYSTEM_PROMPT, prompt, max_tokens=8192)
+        #
+        # 16000 y no 8192 desde 2026-09-02: reproducido en vivo contra producción con
+        # un listado sintético de 75 productos (20 familias de variantes) -- tardó los
+        # mismos ~60s que uno de 26 productos que SÍ funcionó, pero volvió con "error":
+        # true. El tiempo constante es la pista: la familia 5 razona antes de escribir
+        # el JSON aunque acá no se le pida `thinking` explícito (mismo fenómeno del
+        # ThinkingBlock en _ask_claude, ver debate_service.py), y ese razonamiento
+        # gasta del mismo presupuesto de max_tokens -- con poco output disponible
+        # después de pensar, el JSON de un listado grande se corta a mitad. 16000 ya
+        # se usó con este mismo modelo en el chat de La Triada (ver
+        # _ask_claude_stream), así que no es un valor sin probar.
+        content, in_tok, out_tok = await _ask_claude(_UNIFY_SYSTEM_PROMPT, prompt, max_tokens=16000)
         await log_ai_usage(db, user_id, "convertidor_unificar_categorias", *_ASK_CLAUDE_META, in_tok, out_tok)
         parsed = json.loads(_strip_json_fence(content))
         grupos_raw = parsed.get("grupos", [])
