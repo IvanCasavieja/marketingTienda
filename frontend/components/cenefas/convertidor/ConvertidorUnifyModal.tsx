@@ -116,12 +116,17 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
   // entra en el "combinar en una sola fila" de commitUnificacion, así que
   // sigue en la grilla como una fila propia, sin combinar.
   //
-  // Tope de 2: un grupo unificado necesita como mínimo 2 SKU (ver
-  // GrupoUnificadoIn en el backend) -- por debajo de eso no es un grupo, es
-  // un producto suelto, y esta pantalla no ofrece esa opción.
+  // Disponible siempre, incluso con 2 nada más: un grupo unificado necesita
+  // como mínimo 2 SKU (ver GrupoUnificadoIn en el backend), así que sacar el
+  // segundo no deja "un grupo de 1" -- directamente descarta la tarjeta
+  // entera, porque ya no queda nada para unificar.
   function quitarMiembro(idx: number, posicion: number) {
     const g = grupos[idx];
-    if (!g || g.skus.length <= 2) return;
+    if (!g) return;
+    if (g.skus.length <= 2) {
+      setGrupos((prev) => prev.filter((_, i) => i !== idx));
+      return;
+    }
     updateGrupo(idx, {
       row_ids: g.row_ids.filter((_, i) => i !== posicion),
       skus: g.skus.filter((_, i) => i !== posicion),
@@ -203,7 +208,7 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
                   {g.row_ids.map((rowId, i) => (
                     <p key={rowId} className="flex items-center justify-between gap-2">
                       <span className="truncate">{g.skus[i]} · {nombreDeFila(rowId)}</span>
-                      {!g.yaAprobado && g.status !== "approving" && g.skus.length > 2 && (
+                      {!g.yaAprobado && g.status !== "approving" && (
                         <button
                           type="button"
                           onClick={() => quitarMiembro(idx, i)}
