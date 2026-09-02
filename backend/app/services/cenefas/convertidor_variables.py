@@ -353,6 +353,8 @@ def construir_variables(
     mapeo: dict[str, str],
     vigencia_fallback: str = "",
     familia_ofertadet: str | None = None,
+    banco_multiplicador: float | None = None,
+    banco_nombre: str | None = None,
 ) -> tuple[dict, list[str]]:
     """Arma las 26 variables de una fila.
 
@@ -361,6 +363,13 @@ def construir_variables(
     aplica. Una variable mapeada SIEMPRE gana sobre el valor calculado: si
     el Excel ya trae una columna con los niveles de oferta (el caso de
     Parrilla y Vinos con 4x3/5x3/6x3), eso es más confiable que inferirlo.
+
+    `banco_multiplicador`/`banco_nombre` resuelven precioBanco/banco cuando
+    el descuento bancario es un porcentaje fijo que define Tienda Inglesa
+    ("15% extra con Club Card Scotia") en vez de una columna que gestión
+    calcule por producto (ver ConvertidorBancoPreset). Se aplican ANTES de
+    que "lo mapeado pise lo calculado": si la fila SÍ trae una columna real
+    de precioBanco, esa sigue ganando.
     """
     out: dict[str, str] = {v: "" for v in CANONICAL_VARS}
     warnings: list[str] = []
@@ -410,6 +419,19 @@ def construir_variables(
     # sale con U$S sola, sin plantilla especial.
     moneda_norm = str(parsed.get("moneda", "") or "").strip().upper()
     out["unidadMoneda"] = "U$S" if moneda_norm in ("U$S", "US$", "USD") else "$"
+
+    # precioBanco calculado: multiplicador fijo sobre precioOferta, para
+    # descuentos bancarios que Tienda Inglesa define como porcentaje ("15%
+    # extra con Club Card Scotia") y que gestión nunca trae en una columna
+    # propia. Va ANTES de "lo mapeado pisa lo calculado": si esta fila SÍ
+    # trae una columna real de precioBanco/banco, esa sigue ganando.
+    if banco_multiplicador and mecanica["precioOferta"]:
+        try:
+            valores["precioBanco"] = float(mecanica["precioOferta"]) * banco_multiplicador
+        except (TypeError, ValueError):
+            pass
+    if banco_nombre:
+        valores["banco"] = banco_nombre
 
     # Lo mapeado pisa lo calculado.
     for var, valor in mapeo.items():

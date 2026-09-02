@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   convertidorApi,
+  type BancoPreset,
   type ConvertidorColumna,
   type ConvertidorMapeo,
   type OfertaConPrecios,
@@ -30,7 +31,19 @@ import TininMapeo from "./TininMapeo";
 
 const SIN_MAPEAR = "";
 
-type Modo = "columna" | "texto";
+type Modo = "columna" | "texto" | "calcular";
+
+// "calcular" es un modo aparte, SOLO para precioBanco: precioBanco =
+// precioOferta × multiplicador, para descuentos bancarios que Tienda Inglesa
+// define como porcentaje fijo ("15% extra con Club Card Scotia") en vez de
+// una columna que gestión traiga calculada por producto (ver
+// ConvertidorBancoPreset en el backend).
+const MODOS_PRECIO_BANCO: Modo[] = ["columna", "texto", "calcular"];
+const MODOS_DEFAULT: Modo[] = ["columna", "texto"];
+
+// Sentinel del <select> de bancos para "ninguno de la lista, quiero cargar
+// uno nuevo" -- nunca puede chocar con un id real (son UUID).
+const BANCO_NUEVO = "__nuevo__";
 
 // Variables que no vienen nunca en el export de gestión: arrancan listas para
 // escribir, en vez de obligar a buscar una columna que no existe.
@@ -79,6 +92,7 @@ interface Props {
     mapeo: Record<string, string>,
     valores: Record<string, string>,
     campos: Record<string, string>,
+    bancoCalculado: { nombre: string; multiplicador: number } | null,
   ) => void;
   converting: boolean;
 }
@@ -104,11 +118,65 @@ export default function ConvertidorMapeoStep({
   // nadie acepta el aviso, el archivo se lee exactamente como se leía antes.
   const [camposForzados, setCamposForzados] = useState<Record<string, string>>({});
 
+  // Presets de banco (modo "calcular" de precioBanco) -- ver BANCO_NUEVO.
+  const [bancos, setBancos] = useState<BancoPreset[]>([]);
+  const [bancoPresetId, setBancoPresetId] = useState("");
+  const [bancoNombreNuevo, setBancoNombreNuevo] = useState("");
+  const [bancoMultiplicadorNuevo, setBancoMultiplicadorNuevo] = useState("");
+  const [guardandoBanco, setGuardandoBanco] = useState(false);
+
   useEffect(() => {
     convertidorApi.listarMapeos(destino ?? undefined)
       .then(({ data }) => setPlantillas(data))
       .catch(() => toast.error(t("convertidor.mapeo.errorPlantillas")));
   }, [destino, t]);
+
+  useEffect(() => {
+    convertidorApi.listarBancos()
+      .then(({ data }) => setBancos(data))
+      .catch(() => toast.error(t("convertidor.mapeo.errorBancos")));
+  }, [t]);
+
+  // Elegir un preset de la lista completa el nombre del banco como
+  // conveniencia (para el cartel de Club Card) -- se puede editar o borrar
+  // a mano después, no queda bloqueado.
+  function elegirBancoPreset(id: string) {
+    setBancoPresetId(id);
+    const b = bancos.find((x) => x.id === id);
+    if (b) {
+      setValores((prev) => ({ ...prev, banco: b.nombre }));
+      setModos((prev) => ({ ...prev, banco: "texto" }));
+    }
+  }
+
+  async function guardarBancoPreset() {
+    const nombre = bancoNombreNuevo.trim();
+    const multiplicador = parseFloat(bancoMultiplicadorNuevo.replace(",", "."));
+    if (!nombre || !Number.isFinite(multiplicador) || multiplicador <= 0) return;
+    setGuardandoBanco(true);
+    try {
+      const { data } = await convertidorApi.guardarBanco({ nombre, multiplicador });
+      setBancos((prev) => {
+        const resto = prev.filter((b) => b.id !== data.id);
+        return [...resto, data].sort((a, b) => a.nombre.localeCompare(b.nombre));
+      });
+      elegirBancoPreset(data.id);
+      setBancoNombreNuevo("");
+      setBancoMultiplicadorNuevo("");
+      toast.success(t("convertidor.mapeo.bancoGuardado"));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? t("convertidor.unknownError"));
+    } finally {
+      setGuardandoBanco(false);
+    }
+  }
+
+  const bancoSeleccionado = bancos.find((b) => b.id === bancoPresetId);
+  // Solo cuenta si precioBanco de verdad está en modo "calcular" -- cambiar a
+  // "Columna"/"Texto" sin tocar el preset elegido no debe seguir aplicándolo.
+  const bancoCalculado = modos["precioBanco"] === "calcular" && bancoSeleccionado
+    ? { nombre: bancoSeleccionado.nombre, multiplicador: bancoSeleccionado.multiplicador }
+    : null;
 
   // Si el archivo no trae la columna que la plantilla nombra, ese campo queda
   // vacío en vez de aplicarse a ciegas: mejor que la persona lo vea faltar.
@@ -234,11 +302,13 @@ export default function ConvertidorMapeoStep({
     [variablesVisibles, modos, valores],
   );
 
-  // Cuenta las resueltas de las dos formas: una variable con texto escrito
-  // está tan resuelta como una con columna asignada.
-  const asignadas = variablesVisibles.filter(
-    (v) => (modos[v] === "texto" ? valores[v] : mapeo[v])?.trim(),
-  ).length;
+  // Cuenta las resueltas de las tres formas: una variable con texto escrito
+  // o con un preset de banco elegido está tan resuelta como una con columna
+  // asignada.
+  const asignadas = variablesVisibles.filter((v) => {
+    if (v === "precioBanco" && modos[v] === "calcular") return !!bancoCalculado;
+    return (modos[v] === "texto" ? valores[v] : mapeo[v])?.trim();
+  }).length;
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
@@ -355,9 +425,11 @@ export default function ConvertidorMapeoStep({
                   )}
                 </div>
                 <div className="min-w-0 space-y-1.5">
-                  {/* Columna del Excel, o un texto igual para todas las filas */}
+                  {/* Columna del Excel, un texto igual para todas las filas,
+                      o (solo precioBanco) calculado como precioOferta ×
+                      multiplicador de un preset de banco. */}
                   <div className="flex gap-1 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800/60 w-fit">
-                    {(["columna", "texto"] as Modo[]).map((m) => (
+                    {(variable === "precioBanco" ? MODOS_PRECIO_BANCO : MODOS_DEFAULT).map((m) => (
                       <button
                         key={m}
                         type="button"
@@ -368,12 +440,67 @@ export default function ConvertidorMapeoStep({
                             : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
                         }`}
                       >
-                        {t(m === "columna" ? "convertidor.mapeo.modoColumna" : "convertidor.mapeo.modoTexto")}
+                        {t(
+                          m === "columna" ? "convertidor.mapeo.modoColumna"
+                          : m === "texto" ? "convertidor.mapeo.modoTexto"
+                          : "convertidor.mapeo.modoCalcular",
+                        )}
                       </button>
                     ))}
                   </div>
 
-                  {modo === "columna" ? (
+                  {modo === "calcular" ? (
+                    <div className="space-y-1.5">
+                      <select
+                        className="input text-sm w-full"
+                        value={bancoPresetId}
+                        onChange={(e) =>
+                          e.target.value === BANCO_NUEVO
+                            ? setBancoPresetId(BANCO_NUEVO)
+                            : elegirBancoPreset(e.target.value)
+                        }
+                      >
+                        <option value="">{t("convertidor.mapeo.elegiBanco")}</option>
+                        {bancos.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.nombre} · ×{b.multiplicador}
+                          </option>
+                        ))}
+                        <option value={BANCO_NUEVO}>{t("convertidor.mapeo.agregarBanco")}</option>
+                      </select>
+                      {bancoPresetId === BANCO_NUEVO && (
+                        <div className="flex gap-1.5">
+                          <input
+                            className="input text-sm flex-1"
+                            placeholder={t("convertidor.mapeo.nombreBancoPlaceholder")}
+                            value={bancoNombreNuevo}
+                            onChange={(e) => setBancoNombreNuevo(e.target.value)}
+                            maxLength={120}
+                          />
+                          <input
+                            className="input text-sm w-24"
+                            placeholder={t("convertidor.mapeo.multiplicadorPlaceholder")}
+                            value={bancoMultiplicadorNuevo}
+                            onChange={(e) => setBancoMultiplicadorNuevo(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            onClick={guardarBancoPreset}
+                            disabled={!bancoNombreNuevo.trim() || !bancoMultiplicadorNuevo.trim() || guardandoBanco}
+                            className="btn-secondary text-xs px-2.5 shrink-0 disabled:opacity-40"
+                            title={t("convertidor.mapeo.guardarBanco")}
+                          >
+                            {guardandoBanco ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                          </button>
+                        </div>
+                      )}
+                      {bancoSeleccionado && (
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                          {t("convertidor.mapeo.bancoAplicado", { multiplicador: bancoSeleccionado.multiplicador })}
+                        </p>
+                      )}
+                    </div>
+                  ) : modo === "columna" ? (
                     <>
                       <select
                         className={`input text-sm w-full ${duplicadas.has(valor) ? "border-amber-400" : ""}`}
@@ -434,7 +561,7 @@ export default function ConvertidorMapeoStep({
           <ArrowLeft size={15} /> {t("convertidor.mapeo.volver")}
         </button>
         <button
-          onClick={() => onConfirm(mapeoEfectivo, valoresEfectivos, camposForzados)}
+          onClick={() => onConfirm(mapeoEfectivo, valoresEfectivos, camposForzados, bancoCalculado)}
           disabled={converting}
           className="btn-primary flex items-center gap-2 disabled:opacity-50"
         >

@@ -21,6 +21,7 @@ from app.core.rate_limit import limiter
 from app.core.uploads import read_limited
 from app.models.audit_log import AuditLog
 from app.models.convertidor_mapeo import ConvertidorMapeo
+from app.models.convertidor_banco_preset import ConvertidorBancoPreset
 from app.models.sku_descripcion import SkuDescripcion
 from app.models.user import User
 from app.models.cenefa_grupo_unificado import CenefaGrupoUnificado
@@ -84,6 +85,7 @@ async def preview(
     mapeo_json: str = Form(default="{}", description='JSON {variable: nombre_de_columna} de la pantalla de mapeo'),
     valores_json: str = Form(default="{}", description='JSON {variable: texto_fijo} escrito a mano en la pantalla de mapeo'),
     campos_json: str = Form(default="{}", description='JSON {nombre_de_columna: campo} que pisa el campo de entrada de esa columna SOLO en esta corrida ("" para ignorarla)'),
+    banco_calculado_json: str = Form(default="null", description='JSON {nombre, multiplicador} o null -- precioBanco/banco calculados como precioOferta × multiplicador en vez de mapear una columna (ver ConvertidorBancoPreset)'),
     hoja: int | None = Form(default=None, description="Índice de la hoja a convertir (0-based). Sin esto, la primera."),
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
@@ -93,8 +95,17 @@ async def preview(
         mapeo = {str(k): str(v) for k, v in (json.loads(mapeo_json or "{}") or {}).items()}
         valores = {str(k): str(v) for k, v in (json.loads(valores_json or "{}") or {}).items()}
         campos = {str(k): str(v) for k, v in (json.loads(campos_json or "{}") or {}).items()}
+        banco_calculado = json.loads(banco_calculado_json or "null")
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="El mapeo de columnas no es un JSON válido")
+    banco_multiplicador: float | None = None
+    banco_nombre: str | None = None
+    if isinstance(banco_calculado, dict):
+        try:
+            banco_multiplicador = float(banco_calculado.get("multiplicador"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="El multiplicador del banco calculado no es un número válido")
+        banco_nombre = str(banco_calculado.get("nombre") or "").strip() or None
     # Un campo que no existe no tendría efecto y podría pisar una columna buena
     # con basura -- se descarta acá para que el resultado no dependa de qué mandó
     # el cliente. "" es válido a propósito: quiere decir "ignorá esta columna".
@@ -127,7 +138,9 @@ async def preview(
         logger.error("convertidor preview parse error: %s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=f"Error al parsear el archivo: {e}")
 
-    rows, ma_pairs = await match_rows(parsed, db)
+    rows, ma_pairs = await match_rows(
+        parsed, db, banco_multiplicador=banco_multiplicador, banco_nombre=banco_nombre,
+    )
     if learned_aliases_count:
         await db.commit()
     matched = sum(1 for r in rows if r["matched"])
@@ -1284,6 +1297,81 @@ async def borrar_mapeo(
         resource_id=str(mapeo_id), details={"nombre": m.nombre}, ip_address=_client_ip(request),
     ))
     await db.delete(m)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Presets de banco con descuento (precioBanco = precioOferta × multiplicador)
+# ---------------------------------------------------------------------------
+
+class BancoPresetUpsert(BaseModel):
+    nombre: str = Field(min_length=1, max_length=120)
+    multiplicador: float = Field(gt=0)
+
+
+@router.get("/bancos")
+async def listar_bancos(
+    _: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(ConvertidorBancoPreset).order_by(ConvertidorBancoPreset.nombre))
+    return [
+        {"id": str(b.id), "nombre": b.nombre, "multiplicador": b.multiplicador}
+        for b in result.scalars().all()
+    ]
+
+
+@router.post("/bancos", status_code=201)
+async def crear_banco(
+    payload: BancoPresetUpsert,
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    nombre = payload.nombre.strip()
+    # Mismo nombre se pisa en vez de duplicar -- mismo criterio que /mapeos:
+    # "guardá Scotia con 0,80" una segunda vez actualiza el multiplicador,
+    # no deja dos "Scotia" en la lista.
+    existente = (await db.execute(
+        select(ConvertidorBancoPreset).where(ConvertidorBancoPreset.nombre == nombre)
+    )).scalar_one_or_none()
+
+    if existente is not None:
+        existente.multiplicador = payload.multiplicador
+        accion = "cenefas.banco_preset.update"
+        b = existente
+    else:
+        b = ConvertidorBancoPreset(
+            nombre=nombre, multiplicador=payload.multiplicador, created_by=current_user.id,
+        )
+        db.add(b)
+        accion = "cenefas.banco_preset.create"
+
+    await db.flush()
+    db.add(AuditLog(
+        user_id=current_user.id, action=accion, resource="convertidor_banco_preset",
+        resource_id=str(b.id), details={"nombre": nombre, "multiplicador": payload.multiplicador},
+        ip_address=_client_ip(request),
+    ))
+    await db.commit()
+    return {"id": str(b.id), "nombre": b.nombre, "multiplicador": b.multiplicador}
+
+
+@router.delete("/bancos/{banco_id}", status_code=204)
+async def borrar_banco(
+    banco_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    b = await db.get(ConvertidorBancoPreset, banco_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail="Preset de banco no encontrado")
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.banco_preset.delete", resource="convertidor_banco_preset",
+        resource_id=str(banco_id), details={"nombre": b.nombre}, ip_address=_client_ip(request),
+    ))
+    await db.delete(b)
     await db.commit()
 
 

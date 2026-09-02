@@ -1151,7 +1151,9 @@ def detect_ma_pairs(rows: list[dict], catalogo: dict[str, str]) -> list[dict]:
 
 
 async def match_rows(
-    parsed: list[dict], db: AsyncSession
+    parsed: list[dict], db: AsyncSession,
+    banco_multiplicador: float | None = None,
+    banco_nombre: str | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Bulk lookup por SKU (un SELECT por cada 1000 códigos distintos, no
     N queries) + cómputo de warnings por fila.
@@ -1171,6 +1173,10 @@ async def match_rows(
     Lo que NO cambia: nunca se aprende nada en el catálogo compartido de forma
     automática. Una descripción escrita en el Excel vale para esa corrida; al
     catálogo se sube solo cuando alguien lo decide explícitamente.
+
+    `banco_multiplicador`/`banco_nombre`: mismo valor para TODA la corrida
+    (no varían por fila, a diferencia de `mapeo`/`valores`) -- ver
+    ConvertidorBancoPreset y construir_variables().
 
     Devuelve (rows, ma_pairs) -- ma_pairs son los pares "mismo producto, dos
     SKUs" detectados (ver detect_ma_pairs) todavía sin unificar."""
@@ -1223,6 +1229,8 @@ async def match_rows(
             r.get("_mapeado") or {},
             vigencia_fallback=_format_vigencia(r.get("fechaInicio"), r.get("fechaFin")),
             familia_ofertadet=familias.get(_norm(r.get("ofertaDet") or "")),
+            banco_multiplicador=banco_multiplicador,
+            banco_nombre=banco_nombre,
         )
 
         # Contexto del export de gestión: no son variables y no se exportan,

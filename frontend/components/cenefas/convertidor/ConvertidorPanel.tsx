@@ -63,6 +63,7 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
       mapeo: Record<string, string>;
       valores: Record<string, string>;
       campos?: Record<string, string>;
+      bancoCalculado?: { nombre: string; multiplicador: number } | null;
     }>
   >({});
 
@@ -130,9 +131,13 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
     // en esta corrida. Hoy lo llena una sola cosa: aceptar el aviso de "la
     // columna OFERTA trae precios". No se aprende, a propósito.
     campos: Record<string, string> = {},
+    // precioBanco/banco calculados como precioOferta × multiplicador en vez
+    // de mapear una columna -- ver ConvertidorBancoPreset. null = no se usa
+    // este modo, precioBanco sale de mapeo/valores como siempre.
+    bancoCalculado: { nombre: string; multiplicador: number } | null = null,
   ) {
     if (!excel) return;
-    setUltimoMapeo((prev) => ({ ...prev, [hojaActual]: { mapeo, valores, campos } }));
+    setUltimoMapeo((prev) => ({ ...prev, [hojaActual]: { mapeo, valores, campos, bancoCalculado } }));
     setLoading(true);
     try {
       const fd = new FormData();
@@ -140,6 +145,7 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
       fd.append("mapeo_json", JSON.stringify(mapeo));
       fd.append("valores_json", JSON.stringify(valores));
       fd.append("campos_json", JSON.stringify(campos));
+      fd.append("banco_calculado_json", JSON.stringify(bancoCalculado));
       fd.append("hoja", String(hojaActual));
       const { data } = await convertidorApi.preview(fd);
       setResultados((prev) => ({
@@ -165,7 +171,7 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
   function revalidar() {
     const guardado = ultimoMapeo[hojaActual];
     if (!guardado) return;
-    handleConvertir(guardado.mapeo, guardado.valores, guardado.campos ?? {});
+    handleConvertir(guardado.mapeo, guardado.valores, guardado.campos ?? {}, guardado.bancoCalculado ?? null);
   }
 
   // Barra de hojas: solo aparece si el archivo trae más de una. Numeradas 1, 2,

@@ -909,7 +909,16 @@
       "convertir": "Convert",
       "modoColumna": "Column",
       "modoTexto": "Type it",
-      "textoPlaceholder": "The same text for all {{n}} rows"
+      "modoCalcular": "Calculate",
+      "textoPlaceholder": "The same text for all {{n}} rows",
+      "elegiBanco": "— choose a bank —",
+      "agregarBanco": "+ Add new bank",
+      "nombreBancoPlaceholder": "Name (e.g. Scotia)",
+      "multiplicadorPlaceholder": "× (e.g. 0.85)",
+      "guardarBanco": "Save bank",
+      "bancoGuardado": "Bank saved",
+      "errorBancos": "Couldn't load the saved banks",
+      "bancoAplicado": "precioBanco = precioOferta × {{multiplicador}} on every row"
     },
     "ofertaPrecios": {
       "titulo": "Column “{{columna}}” has prices, not offer mechanics",

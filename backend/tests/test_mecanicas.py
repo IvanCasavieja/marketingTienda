@@ -166,3 +166,49 @@ def test_con_columna_ofertadet_la_regla_de_ivan_sigue_mandando():
         {"codigo": "3", "ofertaDet": "Precio fijo", "oferta": "2x$258", "precio": 1290}, "X", {})
     assert out["tipoOferta"] == "" and out["precioOferta"] == "1.290"
     assert out["mecanica"] == "Precio Final"
+
+
+# ---------------------------------------------------------------------------
+# precioBanco calculado (ConvertidorBancoPreset): multiplicador fijo sobre
+# precioOferta, para descuentos bancarios que Tienda Inglesa define como
+# porcentaje ("15% extra con Club Card Scotia") en vez de una columna que
+# gestión traiga calculada por producto.
+# ---------------------------------------------------------------------------
+
+def test_banco_multiplicador_calcula_precio_y_decimal():
+    out, _ = construir_variables(
+        _fila("Precio fijo", "PVP", 1290), "Aspiradora", {},
+        banco_multiplicador=0.85, banco_nombre="Scotia")
+    assert out["precioBanco"] == "1.096"          # 1290 * 0.85 = 1096.5
+    assert out["decimalPrecioBanco"] == ",50"
+    assert out["banco"] == "Scotia"
+
+
+def test_banco_multiplicador_sin_precio_oferta_no_calcula_nada():
+    # Fila sin match / sin precio -> no hay nada que multiplicar, precioBanco
+    # queda vacío como hoy (no None, no 0 impreso en el cartel).
+    out, _ = construir_variables(
+        {"codigo": "1", "ofertaDet": None, "oferta": "", "precio": None}, "X", {},
+        banco_multiplicador=0.85, banco_nombre="Scotia")
+    assert out["precioBanco"] == ""
+    assert out["decimalPrecioBanco"] == ""
+
+
+def test_banco_mapeado_explicito_gana_sobre_el_multiplicador():
+    # Si esta fila puntual SÍ trae una columna real de precioBanco (o un
+    # valor fijo cargado a mano), esa gana -- "lo mapeado pisa lo calculado"
+    # sigue valiendo igual acá.
+    out, _ = construir_variables(
+        _fila("Precio fijo", "PVP", 1290), "Aspiradora",
+        {"precioBanco": "500", "banco": "Itaú"},
+        banco_multiplicador=0.85, banco_nombre="Scotia")
+    assert out["precioBanco"] == "500"
+    assert out["banco"] == "Itaú"
+
+
+def test_sin_banco_multiplicador_precio_banco_sigue_vacio():
+    # Comportamiento de siempre cuando no se usa este feature: nada nuevo se
+    # cuela si no se pasan los parámetros.
+    out, _ = construir_variables(_fila("Precio fijo", "PVP", 1290), "Aspiradora", {})
+    assert out["precioBanco"] == ""
+    assert out["banco"] == ""

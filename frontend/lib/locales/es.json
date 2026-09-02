@@ -909,7 +909,16 @@
       "convertir": "Convertir",
       "modoColumna": "Columna",
       "modoTexto": "Escribir",
-      "textoPlaceholder": "El mismo texto para las {{n}} filas"
+      "modoCalcular": "Calcular",
+      "textoPlaceholder": "El mismo texto para las {{n}} filas",
+      "elegiBanco": "— elegí un banco —",
+      "agregarBanco": "+ Agregar nuevo banco",
+      "nombreBancoPlaceholder": "Nombre (ej. Scotia)",
+      "multiplicadorPlaceholder": "× (ej. 0,85)",
+      "guardarBanco": "Guardar banco",
+      "bancoGuardado": "Banco guardado",
+      "errorBancos": "No se pudieron cargar los bancos guardados",
+      "bancoAplicado": "precioBanco = precioOferta × {{multiplicador}} en todas las filas"
     },
     "ofertaPrecios": {
       "titulo": "La columna “{{columna}}” trae precios, no mecánicas",

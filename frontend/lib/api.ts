@@ -723,6 +723,16 @@ export interface ConvertidorMapeo {
   updated_at?: string | null;
 }
 
+// Preset reutilizable de "banco con descuento": resuelve precioBanco/banco
+// como precioOferta × multiplicador en vez de mapear una columna del Excel —
+// para descuentos que Tienda Inglesa define como porcentaje fijo ("15%
+// extra con Club Card Scotia") y que gestión nunca trae calculados por fila.
+export interface BancoPreset {
+  id: string;
+  nombre: string;
+  multiplicador: number;
+}
+
 export interface ConvertidorSummary {
   total: number;
   matched_count: number;
@@ -835,6 +845,12 @@ export const convertidorApi = {
     api.post<ConvertidorMapeo>("/tools/cenefas/convertidor/mapeos", payload),
   borrarMapeo: (id: string) =>
     api.delete(`/tools/cenefas/convertidor/mapeos/${id}`),
+  listarBancos: () =>
+    api.get<BancoPreset[]>("/tools/cenefas/convertidor/bancos"),
+  guardarBanco: (payload: { nombre: string; multiplicador: number }) =>
+    api.post<BancoPreset>("/tools/cenefas/convertidor/bancos", payload),
+  borrarBanco: (id: string) =>
+    api.delete(`/tools/cenefas/convertidor/bancos/${id}`),
   updateDescripcion: (sku: string, descripcion: string) =>
     api.patch<{ sku: string; descripcion: string }>(
       `/tools/cenefas/convertidor/descripciones/${encodeURIComponent(sku)}`,
