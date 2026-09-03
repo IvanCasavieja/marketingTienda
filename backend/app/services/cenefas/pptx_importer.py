@@ -773,6 +773,19 @@ def _make_common(shape, z_index: int) -> dict | None:
         "z_index":          z_index,
         "locked":           False,
         "visible":          True,
+        # Cuadros que ANTES eran uno solo con varios placeholders juntos
+        # ("2x $<<precioOferta>><<decimalPrecioOferta>>") y se separaron en un
+        # cuadro de texto independiente por variable (plantillas tipo
+        # Preciazos de la Tienda) necesitan achicarse siempre TODOS JUNTOS a
+        # la misma escala si alguno no entra -- si no, cada uno se achica
+        # solo contra su propia caja y terminan con tamaños relativos
+        # distintos de los que tenía el diseño original ("2x $" chico al
+        # lado de un "129" gigante, cuando el diseño los quería iguales).
+        # El herramental que arma esas plantillas (separar_cuadros2.py, fuera
+        # de este repo) le pone a cada cuadro de una misma fila el mismo
+        # nombre de shape "cnf-grupo-<id>" -- ver _fit_text_to_box en
+        # component_renderer.py, que agrupa por esto.
+        "group_id":         shape.name if (shape.name or "").startswith("cnf-grupo-") else None,
     }
 
 

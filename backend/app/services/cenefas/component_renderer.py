@@ -599,28 +599,50 @@ def _fit_text_to_box(
         fitted_por_id[id(c)] = fitted
         base_por_id[id(c)] = base_font_size
 
-    # _EMPAREJAR_DECIMAL: un precio partido en cuadro-entero + cuadro-decimal
-    # (plantillas con variables separadas, ej. Preciazos de la Tienda) tiene
-    # que achicarse LOS DOS A LA MISMA ESCALA si a alguno le hace falta --
-    # si no, un decimal con estilo más grande que su entero (la coma
-    # destacada de Club Card, "$109,65") puede terminar con un tamaño
-    # relativo distinto del que le dio el diseño ("109" chico al lado de
-    # ",65" gigante) aunque ninguno de los dos desborde ni se superponga a
-    # nada. Sólo aplica cuando entero y decimal son CADA UNO su propio
-    # componente (comp["variable"] directo) -- el caso multi-segmento de
-    # arriba ya los achica juntos, en un solo cuadro.
-    por_variable = {c.get("variable"): c for c in comps if c.get("variable")}
-    for var_entero, var_decimal in DECIMAL_OF.items():
-        c_entero, c_decimal = por_variable.get(var_entero), por_variable.get(var_decimal)
-        if c_entero is None or c_decimal is None:
+    # _AGRUPAR_POR_FILA: una cocarda/precio partido en un cuadro de texto
+    # POR VARIABLE (mecánica + signo + precio + decimal cada uno el suyo --
+    # plantillas con variables separadas, ej. Preciazos de la Tienda) tiene
+    # que achicarse TODA LA FILA A LA MISMA ESCALA si a alguno le hace falta.
+    # Si no, cada cuadro se achica solo contra su propia caja y la fila
+    # termina con tamaños relativos distintos de los que le dio el diseño
+    # ("2x $" chico al lado de un "129" gigante, o un decimal con estilo más
+    # grande que su entero, "$109,65", quedando "109" chico al lado de un
+    # ",65" gigante) -- aunque ninguno de los cuadros desborde ni se
+    # superponga a nada, así de mal se ve.
+    #
+    # El group_id lo pone el propio herramental que arma esas plantillas
+    # (separar_cuadros2.py, fuera de este repo: le da a cada cuadro de una
+    # misma fila el mismo nombre de shape "cnf-grupo-N", que pptx_importer.py
+    # lee como component["group_id"]) -- ver ese script para el detalle.
+    # Sin group_id (el caso de CUALQUIER plantilla existente, que no separa
+    # las variables así) se cae al emparejamiento viejo por entero+decimal
+    # vía DECIMAL_OF, que sigue cubriendo el caso más común (precio+decimal
+    # cada uno su cuadro, sin mecánica/signo de por medio).
+    grupos: dict[str, list[dict]] = {}
+    for c in comps:
+        gid = c.get("group_id")
+        if gid and c.get("variable") and id(c) in fitted_por_id:
+            grupos.setdefault(gid, []).append(c)
+    if not grupos:
+        por_variable = {c.get("variable"): c for c in comps if c.get("variable")}
+        for var_entero, var_decimal in DECIMAL_OF.items():
+            c_entero, c_decimal = por_variable.get(var_entero), por_variable.get(var_decimal)
+            if c_entero is not None and c_decimal is not None:
+                grupos[f"_decimal_{var_entero}"] = [c_entero, c_decimal]
+
+    for miembros in grupos.values():
+        escalas = []
+        for c in miembros:
+            base, fit = base_por_id.get(id(c)), fitted_por_id.get(id(c))
+            if base and fit is not None:
+                escalas.append(fit / base)
+        if not escalas:
             continue
-        base_e, fit_e = base_por_id.get(id(c_entero)), fitted_por_id.get(id(c_entero))
-        base_d, fit_d = base_por_id.get(id(c_decimal)), fitted_por_id.get(id(c_decimal))
-        if not base_e or not base_d or fit_e is None or fit_d is None:
-            continue
-        escala_min = min(fit_e / base_e, fit_d / base_d)
-        fitted_por_id[id(c_entero)] = round(base_e * escala_min, 1)
-        fitted_por_id[id(c_decimal)] = round(base_d * escala_min, 1)
+        escala_min = min(escalas)
+        for c in miembros:
+            base = base_por_id.get(id(c))
+            if base:
+                fitted_por_id[id(c)] = round(base * escala_min, 1)
 
     result = []
     for c in comps:
