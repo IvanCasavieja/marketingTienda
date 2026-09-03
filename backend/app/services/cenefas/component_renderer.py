@@ -17,7 +17,7 @@ from app.services.cenefas.font_metrics import ancho_texto_cm
 from app.services.cenefas.formatters import split_caps
 from app.services.cenefas.layout_engine import compute_layout, get_format
 from app.services.cenefas.rules_engine import apply_visibility, evaluate_rules
-from app.services.cenefas.variables import DECIMAL_OF, PRICE_VARS
+from app.services.cenefas.variables import PRICE_VARS
 
 # ---------------------------------------------------------------------------
 # Dimensiones de slide por formato
@@ -207,13 +207,24 @@ _MARGEN_INTERNO_CM = 0.5
 # contenido no cambia entre productos, así que si el diseñador lo dejó justo,
 # está justo a propósito.
 #
-# Los decimales quedan afuera: son siempre dos dígitos, nunca desbordan, y
-# achicarlos desalinearía la coma respecto del entero de al lado.
-#
 # Antes la lista era sólo {descripción + precios} y por eso un código de varios
 # SKU ("594879/80/81/82/83 -593838/39/40 - 621032 - ...", 86 caracteres) se
 # partía en tres líneas y se montaba sobre la descripción.
-_FIT_EXCLUIDAS: frozenset = frozenset(DECIMAL_OF.values())
+#
+# Los decimales YA NO están afuera de esta lista. Estaban excluidos con el
+# argumento de que "son siempre dos dígitos, nunca desbordan" -- cierto
+# mientras el decimal viviera SIEMPRE pegado a su entero en el mismo cuadro
+# (ahí el achique combinado de más abajo, _segmentos_medibles, ya los trata
+# juntos). Con plantillas que separan cada variable en su propio cuadro
+# (Preciazos de la Tienda, 09/2026) un decimal puede terminar solo en su
+# cuadro, y esa garantía deja de valer: en un cartel real, un decimal
+# estilizado más grande que su entero ("$109,65" con la coma en tamaño
+# destacado) no entraba en el cuadro medido para el diseño y PowerPoint lo
+# recortaba ("109,6") sin que nada lo detectara ni lo achicara. Sacarlos de
+# la exclusión no cambia nada para un cuadro que ya entraba (_fit_font_size
+# devuelve el mismo tamaño sin tocar nada) -- sólo entra en juego para el
+# que de verdad desborda.
+_FIT_EXCLUIDAS: frozenset = frozenset()
 
 
 def _variables_del_componente(c: dict) -> set[str]:
