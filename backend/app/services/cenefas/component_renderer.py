@@ -17,7 +17,7 @@ from app.services.cenefas.font_metrics import ancho_texto_cm
 from app.services.cenefas.formatters import split_caps
 from app.services.cenefas.layout_engine import compute_layout, get_format
 from app.services.cenefas.rules_engine import apply_visibility, evaluate_rules
-from app.services.cenefas.variables import PRICE_VARS
+from app.services.cenefas.variables import DECIMAL_OF, PRICE_VARS
 
 # ---------------------------------------------------------------------------
 # Dimensiones de slide por formato
@@ -211,20 +211,18 @@ _MARGEN_INTERNO_CM = 0.5
 # SKU ("594879/80/81/82/83 -593838/39/40 - 621032 - ...", 86 caracteres) se
 # partía en tres líneas y se montaba sobre la descripción.
 #
-# Los decimales YA NO están afuera de esta lista. Estaban excluidos con el
+# Los decimales YA NO se excluyen de este achique (hasta 09/2026 sí, con el
 # argumento de que "son siempre dos dígitos, nunca desbordan" -- cierto
-# mientras el decimal viviera SIEMPRE pegado a su entero en el mismo cuadro
-# (ahí el achique combinado de más abajo, _segmentos_medibles, ya los trata
-# juntos). Con plantillas que separan cada variable en su propio cuadro
-# (Preciazos de la Tienda, 09/2026) un decimal puede terminar solo en su
-# cuadro, y esa garantía deja de valer: en un cartel real, un decimal
-# estilizado más grande que su entero ("$109,65" con la coma en tamaño
-# destacado) no entraba en el cuadro medido para el diseño y PowerPoint lo
-# recortaba ("109,6") sin que nada lo detectara ni lo achicara. Sacarlos de
-# la exclusión no cambia nada para un cuadro que ya entraba (_fit_font_size
-# devuelve el mismo tamaño sin tocar nada) -- sólo entra en juego para el
-# que de verdad desborda.
-_FIT_EXCLUIDAS: frozenset = frozenset()
+# mientras el decimal viviera SIEMPRE pegado a su entero en el mismo cuadro,
+# donde el achique combinado de _segmentos_medibles ya los trata juntos).
+# Con plantillas que separan cada variable en su propio cuadro (Preciazos de
+# la Tienda, 09/2026) un decimal puede terminar solo en su cuadro, y esa
+# garantía deja de valer: un decimal estilizado más grande que su entero
+# ("$109,65" con la coma en tamaño destacado) no entraba en el cuadro medido
+# para el diseño y PowerPoint lo recortaba ("109,6") sin que nada lo
+# detectara ni lo achicara. Ver también _EMPAREJAR_DECIMAL más abajo: cuando
+# entero y decimal son cada uno su propio cuadro, además de dejar de
+# desbordar hace falta que se achiquen JUNTOS a la misma escala.
 
 
 def _variables_del_componente(c: dict) -> set[str]:
@@ -557,18 +555,20 @@ def _fit_text_to_box(
     Solo cambia tamaños de fuente. Ninguna caja se mueve de donde la puso el
     diseño.
     """
-    result = []
+    fitted_por_id: dict[int, float | None] = {}
+    base_por_id: dict[int, float | None] = {}
+    sin_achique: set[int] = set()
+
     for c in comps:
         usadas = _variables_del_componente(c)
-        if c.get("type") != "text" or not usadas or usadas <= _FIT_EXCLUIDAS:
-            result.append(c)
+        if c.get("type") != "text" or not usadas:
+            sin_achique.add(id(c))
             continue
 
         style = c.get("style", {})
         base_font_size = style.get("font_size")
         bold = bool(style.get("font_bold"))
         familia = style.get("font_family")
-        bounds = c.get("computed_bounds") or c.get("base_bounds") or {}
         texto = _texto_resuelto(c, product)
 
         piezas = _segmentos_medibles(c, product)
@@ -596,6 +596,41 @@ def _fit_text_to_box(
                 _alto_disponible_cm(c, comps),
                 base_font_size, bold, familia,
             )
+        fitted_por_id[id(c)] = fitted
+        base_por_id[id(c)] = base_font_size
+
+    # _EMPAREJAR_DECIMAL: un precio partido en cuadro-entero + cuadro-decimal
+    # (plantillas con variables separadas, ej. Preciazos de la Tienda) tiene
+    # que achicarse LOS DOS A LA MISMA ESCALA si a alguno le hace falta --
+    # si no, un decimal con estilo más grande que su entero (la coma
+    # destacada de Club Card, "$109,65") puede terminar con un tamaño
+    # relativo distinto del que le dio el diseño ("109" chico al lado de
+    # ",65" gigante) aunque ninguno de los dos desborde ni se superponga a
+    # nada. Sólo aplica cuando entero y decimal son CADA UNO su propio
+    # componente (comp["variable"] directo) -- el caso multi-segmento de
+    # arriba ya los achica juntos, en un solo cuadro.
+    por_variable = {c.get("variable"): c for c in comps if c.get("variable")}
+    for var_entero, var_decimal in DECIMAL_OF.items():
+        c_entero, c_decimal = por_variable.get(var_entero), por_variable.get(var_decimal)
+        if c_entero is None or c_decimal is None:
+            continue
+        base_e, fit_e = base_por_id.get(id(c_entero)), fitted_por_id.get(id(c_entero))
+        base_d, fit_d = base_por_id.get(id(c_decimal)), fitted_por_id.get(id(c_decimal))
+        if not base_e or not base_d or fit_e is None or fit_d is None:
+            continue
+        escala_min = min(fit_e / base_e, fit_d / base_d)
+        fitted_por_id[id(c_entero)] = round(base_e * escala_min, 1)
+        fitted_por_id[id(c_decimal)] = round(base_d * escala_min, 1)
+
+    result = []
+    for c in comps:
+        if id(c) in sin_achique:
+            result.append(c)
+            continue
+
+        style = c.get("style", {})
+        base_font_size = base_por_id.get(id(c))
+        fitted = fitted_por_id.get(id(c))
         if fitted == base_font_size:
             result.append(c)
             continue
