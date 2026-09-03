@@ -347,7 +347,17 @@ async def generar_descripciones_ia(
         logger.error("generar_descripciones_ia: error — %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="No pude generar las descripciones en este momento")
 
-    await db.commit()  # persiste el ai_usage_log acumulado en generar_descripciones
+    # Este commit solo persiste el ai_usage_log (métrica de costo, no dato de
+    # usuario) -- si falla por un hipo transitorio del pooler de Supabase
+    # (fragilidad ya documentada), NO puede tirar por la borda las
+    # descripciones que Claude ya generó bien: eso convertía un problema de
+    # 2 segundos de la base en "no pudimos generar las sugerencias" para
+    # todo el lote, cuando el trabajo real ya estaba hecho.
+    try:
+        await db.commit()
+    except Exception as exc:
+        logger.warning("generar_descripciones_ia: no se pudo guardar el ai_usage_log — %s", exc)
+        await db.rollback()
     return {
         "suggestions": result["suggestions"],
         "failed_row_ids": result["failed_row_ids"],
@@ -399,7 +409,11 @@ async def unificar_categorias_ia(
         logger.error("unificar_categorias_ia: error — %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="No pude analizar los productos en este momento")
 
-    await db.commit()  # persiste el ai_usage_log acumulado en detectar_grupos_unificables
+    try:
+        await db.commit()  # solo el ai_usage_log -- ver el comentario en generar_descripciones_ia
+    except Exception as exc:
+        logger.warning("unificar_categorias_ia: no se pudo guardar el ai_usage_log — %s", exc)
+        await db.rollback()
     return result
 
 
@@ -676,7 +690,11 @@ async def sugerir_mecanica_ia(
     pendientes = [v for k, v in porTipo.items() if k not in aprendidas]
 
     resultado = await sugerir_familia_mecanica(pendientes, db, current_user.id)
-    await db.commit()   # persiste el ai_usage_log
+    try:
+        await db.commit()  # solo el ai_usage_log -- ver el comentario en generar_descripciones_ia
+    except Exception as exc:
+        logger.warning("sugerir_familia_mecanica route: no se pudo guardar el ai_usage_log — %s", exc)
+        await db.rollback()
     return {
         "sugerencias":   resultado["sugerencias"],
         "ya_aprendidas": [
