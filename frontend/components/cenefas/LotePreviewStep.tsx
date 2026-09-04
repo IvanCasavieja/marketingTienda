@@ -105,7 +105,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
       .filter((c) => c.variable === "descripcion")
       .map((c) => ({ id: c.id.slice(0, 8), x: c.base_bounds.x, y: c.base_bounds.y }));
     // eslint-disable-next-line no-console
-    console.log("[CLAUDE-DEBUG] detalle actualizado, descripciones:", descs);
+    console.log("[CLAUDE-DEBUG] detalle actualizado, descripciones:", JSON.stringify(descs));
   }, [detalle]);
 
   // Arrastre/resize en el canvas de LA CENEFA QUE SE ESTÁ MIRANDO — se
