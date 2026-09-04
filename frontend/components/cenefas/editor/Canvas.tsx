@@ -439,6 +439,8 @@ export default function Canvas({
     () => buildSiblingMap(template.components, slotBands),
     [template.components, slotBands],
   );
+  // eslint-disable-next-line no-console
+  console.log("[CLAUDE-DEBUG] slotBands:", slotBands, "siblingMap size:", siblingMap.size, [...siblingMap.entries()].slice(0, 5));
 
   const containerRef    = useRef<HTMLDivElement>(null);
   const stageRef        = useRef<Konva.Stage | null>(null);
@@ -599,6 +601,10 @@ export default function Canvas({
         return s && !s.locked;
       });
       const group = nodeMap.get(comp.id);
+      if (siblingMap.get(comp.id)?.length) {
+        // eslint-disable-next-line no-console
+        console.log("[CLAUDE-DEBUG] comp con hermanos:", comp.id, comp.variable, "raw siblings:", siblingMap.get(comp.id), "filtrados:", siblings, "hasGroup:", !!group, "isEditMode:", isEditMode, "locked:", comp.locked);
+      }
       if (!group || siblings.length === 0 || !isEditMode || comp.locked) continue;
 
       let dragStart: { x: number; y: number } | null = null;
