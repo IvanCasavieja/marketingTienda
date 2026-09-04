@@ -219,28 +219,30 @@ def resolver_mecanica(
         return {
             # SOLO la cantidad ("2x"), no el literal entero (correccion de
             # Ivan, 2026-08-29): el cartel de un combo se compone con
-            # tipoOferta = "2x" y precioOferta = el total -- juntos se leen
+            # tipoOferta = "2x" y el precio al lado -- juntos se leen
             # "2x $299". Antes iba "2x$299" completo y quedaba repetido al
             # lado del precio.
             "tipoOferta":   f"{cantidad}x",
-            # ofertaUno conserva la cantidad como SIEMPRE lo hizo (es anterior
-            # a 08/2026; la fila de ejemplo de la plantilla Excel ya traia
-            # "3x"). Las plantillas de redexpres no tienen su cuadro, asi que
-            # ahi no dibuja nada.
-            "ofertaUno":    f"{cantidad}x",
-            # El TOTAL del combo, no el unitario (correccion de Ivan,
-            # 2026-08-29: "pones 2x en ofertaUno y en precioOferta pones
-            # $299, eso tenes que hacer en combos"). El cartel dice
-            # "2x $299": la cantidad en ofertaUno y el total grande en
-            # precioOferta. El unitario (299/2 = 149,50) queda solo en la
-            # letra chica de `mecanica`.
-            "precioOferta": total,
-            # VACIA a proposito (decision de Ivan, 2026-08-29): promoOferta --
-            # el literal que TAPA al precio -- se usa SOLO en M x N, donde no
-            # hay un precio de oferta que mostrar. En un combo si lo hay (el
-            # unitario), asi que se muestra el precio grande con la cocarda
-            # de tipoOferta arriba, como en el diseno de Rompe del Finde.
-            "promoOferta":  "",
+            # VACIA siempre (decision de Ivan, 2026-09-04): ofertaUno no se
+            # autocompleta en NINGUNA mecanica -- solo toma valor si una
+            # persona la mapea a mano en la pantalla de mapeo del
+            # Convertidor (VARIABLES_MAPEABLES). Antes traia la cantidad
+            # ("2x") calculada aca mismo; eso ahora vive solo en tipoOferta.
+            "ofertaUno":    "",
+            # El precio REAL por unidad, de la columna PRECIO -- igual que en
+            # M x N, nunca calculado a partir del texto de OFERTA (decision
+            # de Ivan, 2026-09-04). El TOTAL del combo (299 en "2x$299") se
+            # separo a promoOferta, dos lineas mas abajo: asi precioOferta
+            # es SIEMPRE el precio real, en TODAS las mecanicas, y
+            # promoOferta queda libre para comunicar la promo sin tener que
+            # pisar precioOferta con el total.
+            "precioOferta": precio,
+            # El numero que sigue a la "x" en OFERTA (299 en "2x$299", el
+            # TOTAL del combo) -- promoOferta se creo para liberar a
+            # precioOferta de tener que comunicar la promo (decision de
+            # Ivan, 2026-09-04). El diseno que lo dibuje lo hace SUPERPUESTO
+            # al cuadro del precio, igual que ya hace M x N.
+            "promoOferta":  total,
             "mecanica":     f"Comprando {cantidad}, {prefijo}{fmt_price(unitario)} la unidad.",
             # Los dos pedazos sueltos, para el diseno que los dibuja separados
             # arriba y abajo del precio en vez de en un renglon (Rompe del

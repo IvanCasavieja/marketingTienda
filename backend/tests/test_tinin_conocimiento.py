@@ -26,8 +26,8 @@ def test_el_combo_ensena_solo_la_cantidad():
     """tipoOferta de un combo es "2x", no el literal entero."""
     m, _ = resolver_mecanica("Combo", "2x$299", precio=175.0)
     assert m["tipoOferta"] == "2x"          # lo que el motor hace hoy
-    assert m["precioOferta"] == 299.0       # el TOTAL
-    assert m["promoOferta"] == ""           # vacía en combo
+    assert m["precioOferta"] == 175.0       # el REAL de la columna PRECIO (2026-09-04)
+    assert m["promoOferta"] == 299.0        # el TOTAL, ahora en promoOferta
 
     # La frase vieja decía: Combo -> tipoOferta "2x$299".
     vieja = re.search(r'tipoOferta\s+"2x\$299"', _CONOCIMIENTO)
@@ -82,8 +82,8 @@ def test_precio_oferta_se_declara_siempre_como_precio():
 @pytest.mark.parametrize(
     "ofertadet,oferta,precio,esperado",
     [
-        ("Combo",       "2x$299",            175.0, {"tipoOferta": "2x",         "precioOferta": 299.0}),
-        ("Combo",       "3x99",              None,  {"tipoOferta": "3x",         "precioOferta": 99.0}),
+        ("Combo",       "2x$299",            175.0, {"tipoOferta": "2x",         "precioOferta": 175.0, "promoOferta": 299.0}),
+        ("Combo",       "3x99",              None,  {"tipoOferta": "3x",         "promoOferta": 99.0}),
         ("MxN",         "6x4",               120.0, {"tipoOferta": "6x4",        "promoOferta": "6x4"}),
         ("Unidad al",   "2da unidad al 50%", 90.0,  {"tipoOferta": "2da al 50%", "promoOferta": ""}),
         ("Precio Fijo", "Precio Oferta",     148.0, {"tipoOferta": "",           "mecanica": "Precio Final"}),

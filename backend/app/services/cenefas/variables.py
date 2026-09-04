@@ -62,16 +62,23 @@ import unicodedata
 #   arregla una vez, del lado del dato: el precio es el precio, y lo que tape
 #   al precio es otra cosa con su propio nombre.
 #
-# Estado al 2026-08-29 (decision de Ivan: promoOferta se usa SOLO en M x N):
-#   - M x N ("2x1")    -> precioOferta = el unitario de la columna PRECIO
+# Estado al 2026-09-04 (decision de Ivan: promoOferta se creo para liberar a
+# precioOferta de tener que comunicar una promo -- ahora se usa en M x N Y
+# en Combo, no solo en M x N):
+#   - M x N ("2x1")    -> precioOferta = el REAL de la columna PRECIO
 #                         promoOferta  = "2x1" (tapa al precio Y a la cocarda
 #                         de tipoOferta si el diseno tiene su cuadro -- son el
 #                         mismo literal y salia impreso dos veces)
-#   - Combo ("2x$299") -> precioOferta = el TOTAL (299), ofertaUno = "2x"
-#                         (correccion de Ivan 2026-08-29: el cartel dice
-#                         "2x $299"; el unitario queda en `mecanica`)
-#                         promoOferta  = VACIA: hay un precio para mostrar
-#   - Precio fijo      -> las dos vacias.
+#   - Combo ("2x$299") -> precioOferta = el REAL de la columna PRECIO (2026-09-04:
+#                         antes era el TOTAL del combo; ese numero se movio a
+#                         promoOferta para que precioOferta sea SIEMPRE el
+#                         precio real, en toda mecanica, sin excepcion)
+#                         promoOferta  = el TOTAL (299, el numero despues de la
+#                         "x" en OFERTA)
+#                         ofertaUno    = VACIA salvo que una persona la mapee a
+#                         mano (2026-09-04: ya no se autocompleta con "2x" --
+#                         esa cantidad vive en tipoOferta)
+#   - Precio fijo      -> ofertaUno y promoOferta vacias.
 # ===========================================================================
 
 TEXT_VARS: tuple[str, ...] = (

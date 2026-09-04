@@ -48,18 +48,17 @@ def test_unidad_moneda_siempre_presente():
 # Combo ("3x99"): total ÷ cantidad = unitario
 # ---------------------------------------------------------------------------
 
-def test_combo_total_en_precio_y_cantidad_en_oferta_uno():
-    # Correccion de Ivan (2026-08-29): en un combo el cartel dice "2x $299" --
-    # la cantidad va en ofertaUno y el TOTAL grande en precioOferta. El
-    # unitario (299/2) queda solo en la letra chica de `mecanica`.
+def test_combo_precio_real_en_precio_oferta_y_total_en_promo():
+    # Decision de Ivan (2026-09-04): promoOferta se creo para liberar a
+    # precioOferta de tener que comunicar una promo -- en un combo ahora se
+    # usa igual que en M x N. precioOferta SIEMPRE el precio real (columna
+    # PRECIO), promoOferta el TOTAL del combo (299 en "2x$299"), ofertaUno
+    # vacia salvo mapeo manual. El unitario (299/2) sigue solo en `mecanica`.
     m, w = resolver_mecanica("Combo", "2x$299", precio=175.0)
-    assert m["precioOferta"] == 299.0       # el TOTAL, ni el unitario ni la columna PRECIO
+    assert m["precioOferta"] == 175.0       # el REAL de la columna PRECIO, no el total
+    assert m["promoOferta"] == 299.0        # el TOTAL del combo
     assert m["tipoOferta"] == "2x"          # SOLO la cantidad: el cartel se lee "2x $299"
-    assert m["ofertaUno"] == "2x"           # como siempre (anterior a esta semana)
-    # promoOferta VACIA (decision de Ivan, 2026-08-29): el literal que tapa
-    # al precio se usa SOLO en M x N. En un combo hay un precio que mostrar
-    # (el unitario), asi que se muestra, con la cocarda arriba.
-    assert m["promoOferta"] == ""
+    assert m["ofertaUno"] == ""             # ya no se autocompleta (2026-09-04)
     assert m["mecanica"] == "Comprando 2, $149,50 la unidad."
     assert m["tipoOfertaComprando"] == "Comprando 2"
     assert m["unidad"] == "unidad"
@@ -71,13 +70,15 @@ def test_combo_extrae_el_literal_de_una_frase():
     # y la fila perdía TODO.
     m, _ = resolver_mecanica("Combo", "Coca Cola Zero 2.25 L 2x$299", precio=175.0)
     assert m["tipoOferta"] == "2x"          # la cantidad, extraida de la frase entera
-    assert m["precioOferta"] == 299.0
+    assert m["precioOferta"] == 175.0
+    assert m["promoOferta"] == 299.0
 
 
 def test_combo_sin_simbolo_tambien():
     m, _ = resolver_mecanica("Combo", "3x99", precio=None)
-    assert m["precioOferta"] == 99.0        # el total; el unitario ($33) va en mecanica
-    assert m["ofertaUno"] == "3x"
+    assert m["precioOferta"] is None        # sin columna PRECIO, sin precio real que mostrar
+    assert m["promoOferta"] == 99.0         # el total; el unitario ($33) va en mecanica
+    assert m["ofertaUno"] == ""
     assert m["mecanica"] == "Comprando 3, $33 la unidad."
 
 
@@ -137,15 +138,17 @@ def test_ofertadet_desconocido_avisa():
 
 def test_sin_columna_ofertadet_el_combo_se_infiere_de_oferta():
     # El caso real del agua SALUS ($2 impreso, 2026-08-29): OFERTA="2x$258",
-    # PRECIO="Comprando 2 $129 unidad", sin columna OFERTADET.
+    # sin columna OFERTADET. Sin columna PRECIO en este caso puntual,
+    # precioOferta queda vacio (2026-09-04: ya no cae al total del combo) y
+    # el total se ve igual, vía promoOferta.
     out, w = construir_variables(
         {"codigo": "113618", "ofertaDet": None, "oferta": "2x$258",
          "precio": None, "moneda": "$"},
         "Agua mineral SALUS sin gas. 6.25 l", {})
     assert out["tipoOferta"] == "2x"
-    assert out["precioOferta"] == "258"          # el TOTAL, nunca el "2"
+    assert out["precioOferta"] == ""
+    assert out["promoOferta"] == "258"           # el TOTAL, nunca el "2"
     assert out["mecanica"] == "Comprando 2, $129 la unidad."
-    assert out["promoOferta"] == ""
     assert w == []
 
 
