@@ -578,6 +578,8 @@ export default function Canvas({
         previewData: compPreviewData,
         onSelect: () => { if (isEditMode) selectComponent(comp.id); },
         onDragEnd: (x, y) => {
+          // eslint-disable-next-line no-console
+          console.log("[CLAUDE-DEBUG] onDragEnd PRIMARIO en", comp.id, comp.variable, comp.name);
           const newX = +Math.max(0, Math.min((x - pageLeft) / PX_PER_CM, dims.w - comp.base_bounds.width)).toFixed(2);
           const newY = +Math.max(0, Math.min((y - pageTop)  / PX_PER_CM, dims.h - comp.base_bounds.height)).toFixed(2);
           updateComponent(comp.id, {
@@ -617,6 +619,8 @@ export default function Canvas({
           const sNode = nodeMap.get(sid);
           if (sNode) siblingStarts.set(sid, { x: sNode.x(), y: sNode.y() });
         }
+        // eslint-disable-next-line no-console
+        console.log("[CLAUDE-DEBUG] dragstart en", comp.id, comp.variable, "siblingStarts:", [...siblingStarts.entries()]);
       });
       group.on("dragmove", () => {
         if (!dragStart) return;
@@ -629,6 +633,8 @@ export default function Canvas({
         layer.batchDraw();
       });
       group.on("dragend", () => {
+        // eslint-disable-next-line no-console
+        console.log("[CLAUDE-DEBUG] dragend en", comp.id, comp.variable, "dragStart era:", dragStart, "siblingStarts:", [...siblingStarts.entries()]);
         if (!dragStart) return;
         const dxCm = (group.x() - dragStart.x) / PX_PER_CM;
         const dyCm = (group.y() - dragStart.y) / PX_PER_CM;
@@ -638,6 +644,8 @@ export default function Canvas({
           if (!sComp) continue;
           const newX = +Math.max(0, Math.min(sComp.base_bounds.x + dxCm, dims.w - sComp.base_bounds.width)).toFixed(2);
           const newY = +Math.max(0, Math.min(sComp.base_bounds.y + dyCm, dims.h - sComp.base_bounds.height)).toFixed(2);
+          // eslint-disable-next-line no-console
+          console.log("[CLAUDE-DEBUG] moviendo hermano", sid, "de", sComp.base_bounds.x, sComp.base_bounds.y, "a", newX, newY);
           updateComponent(sid, { base_bounds: { ...sComp.base_bounds, x: newX, y: newY } });
         }
       });
