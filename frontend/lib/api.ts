@@ -330,8 +330,13 @@ export const cenefasV2Api = {
     }),
   getLote: (loteId: string) =>
     api.get<CenefaLote>(`/tools/cenefas/v2/lotes/${loteId}`),
-  confirmLote: (loteId: string) =>
-    api.post<{ lote_id: string; confirmadas: number }>(`/tools/cenefas/v2/lotes/${loteId}/confirm`),
+  // overrides: job_id -> lo que se ajustó en ESE job dentro de LotePreviewStep
+  // (arrastre/resize en el canvas), mismo formato que confirmJob.
+  confirmLote: (loteId: string, overrides?: Record<string, ComponentOverride[]>) =>
+    api.post<{ lote_id: string; confirmadas: number }>(
+      `/tools/cenefas/v2/lotes/${loteId}/confirm`,
+      { overrides: overrides ?? {} },
+    ),
   downloadLote: (loteId: string) =>
     api.get(`/tools/cenefas/v2/lotes/${loteId}/download`, { responseType: "blob" }),
 

@@ -1343,14 +1343,27 @@ async def get_lote(
     return {"lote_id": str(lote_id), "status": estado, "total": len(cenefas), "cenefas": cenefas}
 
 
+class _ConfirmLoteBody(BaseModel):
+    # job_id (string) -> overrides de ESE job, mismo formato que ya acepta
+    # POST /jobs/{id}/confirm (ver ComponentOverride en el frontend). Ausente
+    # o vacío = comportamiento de siempre, sin ajustes.
+    overrides: dict[str, list[dict]] = {}
+
+
 @router.post("/lotes/{lote_id}/confirm", status_code=status.HTTP_202_ACCEPTED)
 async def confirm_lote(
     lote_id: uuid.UUID,
     background_tasks: BackgroundTasks,
+    body: _ConfirmLoteBody | None = None,
     current_user: User = Depends(require_permission("cenefas.generate")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Confirma de una todas las cenefas del lote que estén en preview."""
+    """Confirma de una todas las cenefas del lote que estén en preview.
+
+    `body.overrides` trae, por cenefa que la persona ajustó en LotePreviewStep
+    (arrastre/resize en el canvas), los mismos cambios que ya viajan en
+    POST /jobs/{id}/confirm -- acá simplemente se reparten, cada uno a SU
+    job, antes de confirmar todo el lote junto."""
     result = await db.execute(
         select(CenefaJob).where(
             CenefaJob.lote_id == lote_id,
@@ -1377,8 +1390,10 @@ async def confirm_lote(
         job.status = "running"
     await db.commit()
 
+    overrides_por_job = (body.overrides if body else {}) or {}
     for job_id in ids:
-        background_tasks.add_task(confirm_generation_job, job_id=job_id, position_overrides=None)
+        propios = overrides_por_job.get(str(job_id))
+        background_tasks.add_task(confirm_generation_job, job_id=job_id, position_overrides=propios)
 
     return {"lote_id": str(lote_id), "confirmadas": len(ids)}
 

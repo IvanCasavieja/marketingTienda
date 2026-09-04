@@ -1,10 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, AlertTriangle, ArrowLeft, BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Send } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Save, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { cenefasV2Api } from "@/lib/api";
-import type { CenefaLote, CenefaLoteItem } from "@/types/cenefas";
+import type { CenefaComponent, CenefaLote, CenefaLoteItem, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
 import Canvas from "@/components/cenefas/editor/Canvas";
 
 // Preview de un lote: se recorren de a una las cenefas que se van a generar,
@@ -16,9 +16,10 @@ import Canvas from "@/components/cenefas/editor/Canvas";
 // base varios MB por vuelta, compitiendo con los mismos workers que están
 // generando las cenefas. O sea, mirar la pantalla hacía que tardara más.
 //
-// A diferencia de PreviewStep (una cenefa suelta) acá no se reposicionan
-// cuadros: con varias combinaciones a la vez, mover algo en una no dice nada
-// de las otras, y el ajuste real va en el diseño de la plantilla.
+// Cada cenefa del lote es su propio job con su propia plantilla -- mover o
+// redimensionar acá edita SOLO la que se está mirando (Canvas.tsx ya vincula
+// entre bandas de una misma hoja multi-producto; una cenefa del lote no tiene
+// nada que ver con la de al lado, cada una guarda sus propios cambios).
 
 const POLL_MS = 2500;
 
@@ -38,8 +39,27 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   const [bajandoUna, setBajandoUna] = useState<string | null>(null);
   const [verificando, setVerificando] = useState(false);
   const [verifDescartada, setVerifDescartada] = useState(false);
+  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [savingTemplates, setSavingTemplates] = useState(false);
+  // Espejo en estado de templatesEditados.current.size, solo para el render
+  // del modal — un ref no se puede leer durante el render (React no
+  // garantiza que esté al día ahí).
+  const [cantPlantillasEditadas, setCantPlantillasEditadas] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dlRef = useRef<HTMLAnchorElement>(null);
+
+  // Por job (cenefa del lote), lo que la persona ajustó en el canvas —
+  // arrastre = base_bounds; resize con los 4 puntos = base_bounds +
+  // style.font_size (+ segments si es multi-segmento). Se manda tal cual a
+  // confirmLote, uno por job, sin importar cuántas cenefas distintas se
+  // hayan tocado.
+  const overridesPorJob = useRef<Record<string, Record<string, ComponentOverride>>>({});
+  // Por plantilla (templateId), el último `template_def` con los cambios ya
+  // aplicados — de acá sale lo que se manda a updateTemplate si la persona
+  // elige "Guardar" en el modal. Varias cenefas del lote pueden compartir
+  // plantilla; se guarda la versión más reciente de cada una.
+  const templatesEditados = useRef<Map<string, CenefaTemplate>>(new Map());
 
   const consultar = useCallback(async () => {
     try {
@@ -71,6 +91,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   useEffect(() => {
     let cancelado = false;
     setDetalle(null);
+    setSelectedComponentId(null); // cambiar de cenefa deselecciona -- no es el mismo set de componentes
     if (!actualId || actualStatus !== "preview") return;
     cenefasV2Api.getJob(actualId)
       .then(({ data }) => { if (!cancelado) setDetalle(data as unknown as CenefaLoteItem); })
@@ -78,11 +99,49 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
     return () => { cancelado = true; };
   }, [actualId, actualStatus]);
 
+  // Arrastre/resize en el canvas de LA CENEFA QUE SE ESTÁ MIRANDO — se
+  // guarda contra actualId (el job actual), nunca se mezcla con lo que se
+  // ajustó en otra cenefa del lote.
+  function handleUpdateComponent(id: string, updates: Partial<CenefaComponent>) {
+    if (!actualId) return;
+    setDetalle((prev) => {
+      if (!prev?.template_def) return prev;
+      const nuevoDef: CenefaTemplate = {
+        ...prev.template_def,
+        components: prev.template_def.components.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+      };
+      if (actual?.template_id) {
+        templatesEditados.current.set(actual.template_id, nuevoDef);
+        setCantPlantillasEditadas(templatesEditados.current.size);
+      }
+      return { ...prev, template_def: nuevoDef };
+    });
+    const previo = overridesPorJob.current[actualId]?.[id] ?? { id };
+    overridesPorJob.current[actualId] = {
+      ...overridesPorJob.current[actualId],
+      [id]: {
+        ...previo,
+        ...(updates.base_bounds ? { base_bounds: updates.base_bounds } : {}),
+        ...(updates.style       ? { style: { ...previo.style, ...updates.style } } : {}),
+        ...(updates.segments    ? { segments: updates.segments } : {}),
+      },
+    };
+  }
+
+  function hayCambiosPendientes(): boolean {
+    return Object.values(overridesPorJob.current).some((porComp) => Object.keys(porComp).length > 0);
+  }
+
   async function handleConfirmar() {
     setConfirmando(true);
     setYaConfirmado(true);   // el boton no vuelve: un segundo click no dispara nada
     try {
-      const { data } = await cenefasV2Api.confirmLote(loteId);
+      const overrides: Record<string, ComponentOverride[]> = {};
+      for (const [jobId, porComp] of Object.entries(overridesPorJob.current)) {
+        const vals = Object.values(porComp);
+        if (vals.length) overrides[jobId] = vals;
+      }
+      const { data } = await cenefasV2Api.confirmLote(loteId, overrides);
       if (data.confirmadas > 0) {
         toast.success(t("cenefas.lote.generando", { n: data.confirmadas }));
       }
@@ -94,6 +153,39 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
     } finally {
       setConfirmando(false);
     }
+  }
+
+  // Click del botón "Generar": si hay ajustes pendientes y tocan al menos
+  // una plantilla propia del equipo, pregunta primero si guardarlos ahí
+  // (mismo criterio que PreviewStep). Sin cambios, sigue directo.
+  function handleConfirmarClick() {
+    if (hayCambiosPendientes() && cantPlantillasEditadas > 0) {
+      setShowSaveModal(true);
+      return;
+    }
+    handleConfirmar();
+  }
+
+  async function handleSaveModalChoice(guardar: boolean) {
+    setShowSaveModal(false);
+    if (guardar) {
+      setSavingTemplates(true);
+      try {
+        await Promise.all(
+          [...templatesEditados.current.entries()].map(([id, def]) => cenefasV2Api.updateTemplate(id, def)),
+        );
+        toast.success(
+          templatesEditados.current.size === 1
+            ? "Guardado en la plantilla — las próximas cenefas ya salen con este diseño."
+            : `Guardado en ${templatesEditados.current.size} plantillas — las próximas cenefas ya salen con este diseño.`,
+        );
+      } catch {
+        toast.error("No se pudo guardar algún cambio en la plantilla (estas cenefas se generan igual).");
+      } finally {
+        setSavingTemplates(false);
+      }
+    }
+    handleConfirmar();
   }
 
   async function descargarUna(jobId: string) {
@@ -298,9 +390,9 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
             key={actualId}
             template={detalle.template_def}
             activeFormat={detalle.format ?? detalle.template_def.master_format}
-            selectedComponentId={null}
-            onSelectComponent={() => {}}
-            onUpdateComponent={() => {}}
+            selectedComponentId={selectedComponentId}
+            onSelectComponent={setSelectedComponentId}
+            onUpdateComponent={handleUpdateComponent}
             previewData={detalle.preview_product}
             previewProducts={detalle.preview_products}
             slotBands={detalle.slot_bands}
@@ -406,7 +498,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
       <div className="flex flex-wrap gap-3 items-center">
         {enPreview > 0 && !yaConfirmado && (
           <button
-            onClick={handleConfirmar}
+            onClick={handleConfirmarClick}
             disabled={confirmando}
             className="btn-primary flex items-center gap-2 disabled:opacity-50"
           >
@@ -463,6 +555,40 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {showSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="card w-full max-w-md p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                Vimos que hiciste cambios en el diseño de {cantPlantillasEditadas === 1 ? "esta plantilla" : `${cantPlantillasEditadas} plantillas`}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                ¿Querés guardarlos para las próximas veces? Si guardás, las siguientes cenefas
+                que generes desde {cantPlantillasEditadas === 1 ? "esta plantilla" : "estas plantillas"} ya
+                van a salir con este diseño.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+              <button
+                onClick={() => handleSaveModalChoice(false)}
+                disabled={savingTemplates}
+                className="btn-secondary text-xs py-2 px-3.5 flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <X size={13} /> Solo esta vez
+              </button>
+              <button
+                onClick={() => handleSaveModalChoice(true)}
+                disabled={savingTemplates}
+                className="btn-primary text-xs py-2 px-3.5 flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {savingTemplates ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                Guardar en la plantilla
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
