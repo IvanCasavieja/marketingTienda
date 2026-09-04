@@ -68,6 +68,21 @@ export interface CenefaComponent {
   visible: boolean;
 }
 
+/** Override efímero de UN componente al confirmar un job (POST
+ * /jobs/{id}/confirm) — lo que la persona ajustó en PreviewStep antes de
+ * bajar el archivo. Cada campo es opcional y se mergea sobre el componente
+ * original del lado del backend (ver confirm_generation_job en jobs.py);
+ * lo que no se manda queda como estaba. `style` cubre el font_size que
+ * cambia al redimensionar con los 4 puntos (ver Canvas.tsx); `segments` va
+ * completo cuando el componente es multi-segmento, porque cada segmento
+ * lleva su propio font_size. */
+export interface ComponentOverride {
+  id: string;
+  base_bounds?: ComponentBounds;
+  style?: Partial<ComponentStyle>;
+  segments?: TextSegment[];
+}
+
 export type RuleOperator =
   | "equals"
   | "not_equals"
@@ -103,6 +118,19 @@ export interface CenefaVariable {
   default_value?: string;
 }
 
+/** Aviso de auto-corrección al importar un PPTX (ver _autocorregir_geometria
+ * en pptx_importer.py) — misma forma que CenefaRevisionItem, pero es un
+ * "ya se corrigió esto", no un pendiente. Solo viaja en la respuesta de
+ * POST /import-pptx, nunca en una plantilla ya guardada. */
+export interface CenefaImportWarning {
+  nivel: "alto" | "medio" | "info";
+  tipo: string;
+  titulo: string;
+  detalle: string;
+  sugerencia: string;
+  detalle_datos?: { variable?: string | null; [key: string]: unknown };
+}
+
 export interface CenefaTemplate {
   version: string;
   name: string;
@@ -111,6 +139,8 @@ export interface CenefaTemplate {
   variables: CenefaVariable[];
   components: CenefaComponent[];
   rules: CenefaRule[];
+  /** Solo presente en la respuesta de POST /import-pptx. */
+  import_warnings?: CenefaImportWarning[];
 }
 
 /** Una cenefa dentro de un lote: un Excel contra una plantilla. */
@@ -202,6 +232,10 @@ export interface CenefaJob {
   status: "pending" | "running" | "preview" | "done" | "error";
   format: string;
   export_type: string;
+  // Solo presente cuando el job se generó desde una plantilla del equipo
+  // (no builtin_slug ni template_upload) — decide si tiene sentido ofrecer
+  // "guardar estos cambios en la plantilla" al confirmar (ver PreviewStep).
+  template_id?: string | null;
   row_count?: number;
   error_count: number;
   created_at: string;

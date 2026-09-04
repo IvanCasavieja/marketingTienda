@@ -29,6 +29,25 @@ function scalePx(cm: number) {
   return Math.round(cm * PX_PER_CM);
 }
 
+// ---------------------------------------------------------------------------
+// Regla en centímetros (arriba + costado, como PowerPoint) — pedido
+// explícito: la persona tiene que poder ver en qué centímetro exacto está
+// parada una caja al moverla/redimensionarla, no solo "a ojo".
+// ---------------------------------------------------------------------------
+
+const RULER_SIZE = 18; // px
+
+interface RegleTick { pos: number; major: boolean; label?: number }
+
+function buildRulerTicks(lengthCm: number, offset: number): RegleTick[] {
+  const ticks: RegleTick[] = [];
+  for (let cm = 0; cm <= Math.ceil(lengthCm); cm++) {
+    const major = cm % 5 === 0;
+    ticks.push({ pos: offset + scalePx(cm), major, label: major ? cm : undefined });
+  }
+  return ticks;
+}
+
 // Proporcion del cuerpo que ocupa el ascendente en las tipografias de titular
 // que usan estas plantillas (Impact y condensadas). Aproximado a proposito:
 // esto es el preview, no el render final.
@@ -158,6 +177,64 @@ function applyTransform(value: string, transform?: string): string {
   if (transform === "uppercase") return value.toUpperCase();
 
   return value;
+}
+
+// ---------------------------------------------------------------------------
+// Vinculación por variable entre bandas de una plantilla multi-producto
+// (3xA4/6xA4/A5/pinchos) — mover/achicar/agrandar la caja de una variable en
+// una banda replica el mismo cambio en las demás. Ver Parte 2 del plan.
+// ---------------------------------------------------------------------------
+
+// Identidad de "qué variable imprime este cuadro", para emparejar la MISMA
+// caja entre bandas. Sin variable (texto fijo, o sin match) nunca vincula --
+// su key es única por componente.
+function keyOfComponent(c: CenefaComponent): string {
+  if (c.variable) return c.variable;
+  const vars = (c.segments ?? [])
+    .filter((s) => s.type === "variable")
+    .map((s) => s.value);
+  return vars.length ? vars.join("+") : `_id_${c.id}`;
+}
+
+// Mapa componente -> ids de sus "hermanos" (misma variable, en OTRAS
+// bandas). Nunca vincula dos apariciones de la misma variable DENTRO de una
+// banda (ej. "unidad" repetida dos veces en un solo cartel de la A4 de
+// Preciazos, confirmado intencional). Si el multiset de keys no es idéntico
+// en todas las bandas, esa key queda sin vincular -- nunca se adivina un
+// emparejamiento que no cierra parejo.
+function buildSiblingMap(
+  components: CenefaComponent[], slotBands: string[][] | null | undefined,
+): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  if (!slotBands || slotBands.length < 2) return map;
+
+  const byId = new Map(components.map((c) => [c.id, c]));
+  const porBanda: Map<string, string[]>[] = slotBands.map((ids) => {
+    const g = new Map<string, string[]>();
+    for (const id of ids) {
+      const c = byId.get(id);
+      if (!c) continue;
+      const k = keyOfComponent(c);
+      (g.get(k) ?? g.set(k, []).get(k)!).push(id);
+    }
+    return g;
+  });
+
+  const todasLasKeys = new Set<string>();
+  porBanda.forEach((g) => g.forEach((_, k) => todasLasKeys.add(k)));
+
+  for (const k of todasLasKeys) {
+    if (k.startsWith("_id_")) continue; // sin variable: nunca vincula
+    const counts = porBanda.map((g) => (g.get(k) ?? []).length);
+    if (counts[0] === 0 || counts.some((n) => n !== counts[0])) continue;
+    for (let occ = 0; occ < counts[0]; occ++) {
+      const idsEnEstaOcurrencia = porBanda.map((g) => g.get(k)![occ]);
+      for (const id of idsEnEstaOcurrencia) {
+        map.set(id, idsEnEstaOcurrencia.filter((otro) => otro !== id));
+      }
+    }
+  }
+  return map;
 }
 
 // Resuelve el texto a mostrar cuando hay datos reales (previewData),
@@ -331,7 +408,7 @@ export default function Canvas({
   onSelectComponent,
   onUpdateComponent,
   previewData,
-  slotBands,
+  slotBands: propSlotBands,
   previewProducts,
 }: CanvasProps) {
   const store = useEditorStore();
@@ -341,6 +418,10 @@ export default function Canvas({
   const selectComponent      = onSelectComponent ?? store.selectComponent;
   const updateComponent      = onUpdateComponent ?? store.updateComponent;
   const interactive          = previewData !== undefined; // true en PreviewStep
+  // Sin prop explícita (uso standalone del editor, ver v2/page.tsx) cae al
+  // store, que las pide con detectSlotBands() cuando el formato activo tiene
+  // más de un slot. PreviewStep/LotePreviewStep siempre pasan la prop.
+  const slotBands = propSlotBands ?? store.slotBands ?? undefined;
 
   // Mapa id de componente -> índice de banda, para elegir qué producto de
   // previewProducts le toca a cada uno (ver slotBands en CanvasProps).
@@ -353,12 +434,21 @@ export default function Canvas({
     return map;
   }, [slotBands]);
 
+  // Hermanos por variable entre bandas — ver buildSiblingMap arriba.
+  const siblingMap = useMemo(
+    () => buildSiblingMap(template.components, slotBands),
+    [template.components, slotBands],
+  );
+
   const containerRef    = useRef<HTMLDivElement>(null);
   const stageRef        = useRef<Konva.Stage | null>(null);
   const bgLayerRef      = useRef<Konva.Layer | null>(null);
   const compLayerRef    = useRef<Konva.Layer | null>(null);
   const transformerRef  = useRef<Konva.Transformer | null>(null);
   const selectedNodeRef = useRef<Konva.Group | null>(null);
+  // id de componente -> nodo Konva, para mover/escalar hermanos en vivo sin
+  // pasar por el reconciliador de React en cada frame de arrastre/resize.
+  const nodeMapRef      = useRef<Map<string, Konva.Group>>(new Map());
 
   const getImage = useImageCache(template.components);
 
@@ -469,6 +559,8 @@ export default function Canvas({
     if (!layer || !transformer) return;
 
     layer.find(`.${CENEFA_COMP_NAME}`).forEach((n) => n.destroy());
+    const nodeMap = new Map<string, Konva.Group>();
+    nodeMapRef.current = nodeMap;
 
     let selectedNode: Konva.Group | null = null;
 
@@ -492,24 +584,110 @@ export default function Canvas({
         },
       });
       layer.add(group);
+      nodeMap.set(comp.id, group);
       if (isSelected) selectedNode = group;
+    }
+
+    // Arrastre vinculado por variable entre bandas — segundo set de
+    // listeners además del que ya conecta buildComponentGroup arriba (Konva
+    // soporta varios handlers para el mismo evento). Solo para componentes
+    // con hermanos DETECTADOS (siblingMap ya excluye pares dentro de una
+    // misma banda, como "unidad" repetida a propósito en la A4).
+    for (const comp of displayComps) {
+      const siblings = (siblingMap.get(comp.id) ?? []).filter((sid) => {
+        const s = template.components.find((c) => c.id === sid);
+        return s && !s.locked;
+      });
+      const group = nodeMap.get(comp.id);
+      if (!group || siblings.length === 0 || !isEditMode || comp.locked) continue;
+
+      let dragStart: { x: number; y: number } | null = null;
+      const siblingStarts = new Map<string, { x: number; y: number }>();
+
+      group.on("dragstart", () => {
+        dragStart = { x: group.x(), y: group.y() };
+        siblingStarts.clear();
+        for (const sid of siblings) {
+          const sNode = nodeMap.get(sid);
+          if (sNode) siblingStarts.set(sid, { x: sNode.x(), y: sNode.y() });
+        }
+      });
+      group.on("dragmove", () => {
+        if (!dragStart) return;
+        const dx = group.x() - dragStart.x;
+        const dy = group.y() - dragStart.y;
+        for (const [sid, start] of siblingStarts) {
+          const sNode = nodeMap.get(sid);
+          if (sNode) { sNode.x(start.x + dx); sNode.y(start.y + dy); }
+        }
+        layer.batchDraw();
+      });
+      group.on("dragend", () => {
+        if (!dragStart) return;
+        const dxCm = (group.x() - dragStart.x) / PX_PER_CM;
+        const dyCm = (group.y() - dragStart.y) / PX_PER_CM;
+        dragStart = null;
+        for (const sid of siblingStarts.keys()) {
+          const sComp = template.components.find((c) => c.id === sid);
+          if (!sComp) continue;
+          const newX = +Math.max(0, Math.min(sComp.base_bounds.x + dxCm, dims.w - sComp.base_bounds.width)).toFixed(2);
+          const newY = +Math.max(0, Math.min(sComp.base_bounds.y + dyCm, dims.h - sComp.base_bounds.height)).toFixed(2);
+          updateComponent(sid, { base_bounds: { ...sComp.base_bounds, x: newX, y: newY } });
+        }
+      });
     }
 
     transformer.moveToTop();
     selectedNodeRef.current = selectedNode;
     transformer.nodes(selectedNode ? [selectedNode] : []);
     layer.batchDraw();
-  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, bandIndexByCompId, selectComponent, updateComponent]);
+  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, bandIndexByCompId, siblingMap, template.components, selectComponent, updateComponent]);
 
-  // "Última versión conocida" de template/selectedComponentId — evita closures
-  // viejas dentro de handleTransformEnd sin depender de useEditorStore.getState(),
+  // "Última versión conocida" de template/selectedComponentId/siblingMap —
+  // evita closures viejas dentro de los handlers de abajo (registrados una
+  // sola vez con [] o pocas deps) sin depender de useEditorStore.getState(),
   // que no existe cuando estas props vienen de afuera (ej. PreviewStep).
-  const latestRef = useRef({ template, selectedComponentId });
+  const latestRef = useRef({ template, selectedComponentId, siblingMap });
   useEffect(() => {
-    latestRef.current = { template, selectedComponentId };
-  }, [template, selectedComponentId]);
+    latestRef.current = { template, selectedComponentId, siblingMap };
+  }, [template, selectedComponentId, siblingMap]);
 
-  // Handler de fin de transformacion (resize), registrado una sola vez
+  // Escala uniforme (por diagonal, para no deformar el texto si el resize
+  // no fue simétrico) que le corresponde a un tamaño de letra cuando la caja
+  // pasó de `original` a `nuevo`.
+  function escalaDeResize(
+    original: { width: number; height: number },
+    nuevo: { width: number; height: number },
+  ): number {
+    const diagOriginal = Math.hypot(original.width, original.height);
+    if (diagOriginal <= 0) return 1;
+    return Math.hypot(nuevo.width, nuevo.height) / diagOriginal;
+  }
+
+  // Aplica el factor de escala al font_size del componente Y al de cada
+  // segmento que lo declare (un cuadro multi-segmento -- precio partido en
+  // signo + entero + decimal -- lleva un font_size por segmento que pisa al
+  // del componente, ver _populate_text_frame en component_renderer.py).
+  function escalarLetra(comp: CenefaComponent, k: number): Partial<CenefaComponent> {
+    const updates: Partial<CenefaComponent> = {};
+    if (comp.style.font_size) {
+      updates.style = { ...comp.style, font_size: +(comp.style.font_size * k).toFixed(1) };
+    }
+    if (comp.segments?.length) {
+      updates.segments = comp.segments.map((s) =>
+        s.style?.font_size
+          ? { ...s, style: { ...s.style, font_size: +(s.style.font_size * k).toFixed(1) } }
+          : s,
+      );
+    }
+    return updates;
+  }
+
+  // Handler de fin de transformacion (resize con los 4 puntos), registrado
+  // una sola vez. Agranda/achica la caja Y la letra de adentro
+  // proporcionalmente (pedido explícito: no solo el contenedor), y replica
+  // el mismo cambio de bounds (delta absoluto) + el mismo factor de escala
+  // de letra a cada hermano detectado en otras bandas.
   useEffect(() => {
     const transformer = transformerRef.current;
     if (!transformer) return;
@@ -522,33 +700,156 @@ export default function Canvas({
       node.scaleX(1);
       node.scaleY(1);
 
-      const { template: t, selectedComponentId: selId } = latestRef.current;
+      const { template: t, selectedComponentId: selId, siblingMap: siblings } = latestRef.current;
       const comp = t.components.find((c) => c.id === selId);
       if (!comp) return;
 
-      updateComponent(comp.id, {
-        base_bounds: {
-          x:      +((node.x() - pageLeft) / PX_PER_CM).toFixed(2),
-          y:      +((node.y() - pageTop)  / PX_PER_CM).toFixed(2),
-          width:  +((node.width()  * scaleX) / PX_PER_CM).toFixed(2),
-          height: +((node.height() * scaleY) / PX_PER_CM).toFixed(2),
-        },
-      });
+      const nuevoBounds = {
+        x:      +((node.x() - pageLeft) / PX_PER_CM).toFixed(2),
+        y:      +((node.y() - pageTop)  / PX_PER_CM).toFixed(2),
+        width:  +((node.width()  * scaleX) / PX_PER_CM).toFixed(2),
+        height: +((node.height() * scaleY) / PX_PER_CM).toFixed(2),
+      };
+      const k = escalaDeResize(comp.base_bounds, nuevoBounds);
+
+      updateComponent(comp.id, { base_bounds: nuevoBounds, ...escalarLetra(comp, k) });
+
+      const dx = nuevoBounds.x      - comp.base_bounds.x;
+      const dy = nuevoBounds.y      - comp.base_bounds.y;
+      const dw = nuevoBounds.width  - comp.base_bounds.width;
+      const dh = nuevoBounds.height - comp.base_bounds.height;
+      for (const sid of siblings.get(comp.id) ?? []) {
+        const sComp = t.components.find((c) => c.id === sid);
+        if (!sComp || sComp.locked) continue;
+        const sBounds = {
+          x:      +(sComp.base_bounds.x + dx).toFixed(2),
+          y:      +(sComp.base_bounds.y + dy).toFixed(2),
+          width:  +Math.max(0.5, sComp.base_bounds.width  + dw).toFixed(2),
+          height: +Math.max(0.3, sComp.base_bounds.height + dh).toFixed(2),
+        };
+        updateComponent(sid, { base_bounds: sBounds, ...escalarLetra(sComp, k) });
+      }
     }
 
     transformer.on("transformend", handleTransformEnd);
     return () => { transformer.off("transformend", handleTransformEnd); };
   }, [pageLeft, pageTop, updateComponent]);
 
+  // Feedback en vivo mientras se arrastra un handle de resize: refleja el
+  // mismo desplazamiento + escala del nodo primario sobre sus hermanos, para
+  // "ver en vivo" cómo cambian las otras cenefas de la hoja (pedido
+  // explícito) sin esperar a soltar. Konva escala TODO lo de adentro del
+  // grupo (rect + texto) vía scaleX/scaleY -- el mismo mecanismo con el que
+  // ya se ve crecer/achicarse el nodo seleccionado durante el arrastre; acá
+  // solo se replica sobre los grupos hermanos, que el Transformer no toca
+  // por no estar seleccionados.
+  useEffect(() => {
+    const transformer = transformerRef.current;
+    if (!transformer) return;
+
+    let inicio: { x: number; y: number } | null = null;
+    const hermanoInicio = new Map<string, { x: number; y: number }>();
+
+    function handleTransformStart() {
+      const node = selectedNodeRef.current;
+      const selId = latestRef.current.selectedComponentId;
+      if (!node || !selId) return;
+      inicio = { x: node.x(), y: node.y() };
+      hermanoInicio.clear();
+      for (const sid of latestRef.current.siblingMap.get(selId) ?? []) {
+        const sNode = nodeMapRef.current.get(sid);
+        if (sNode) hermanoInicio.set(sid, { x: sNode.x(), y: sNode.y() });
+      }
+    }
+
+    function handleTransform() {
+      const node = selectedNodeRef.current;
+      if (!node || !inicio) return;
+      const dx = node.x() - inicio.x;
+      const dy = node.y() - inicio.y;
+      const scaleX = node.scaleX();
+      const scaleY = node.scaleY();
+      for (const [sid, start] of hermanoInicio) {
+        const sNode = nodeMapRef.current.get(sid);
+        if (!sNode) continue;
+        sNode.x(start.x + dx);
+        sNode.y(start.y + dy);
+        sNode.scaleX(scaleX);
+        sNode.scaleY(scaleY);
+      }
+      compLayerRef.current?.batchDraw();
+    }
+
+    function handleTransformEndReset() {
+      inicio = null;
+      hermanoInicio.clear();
+    }
+
+    transformer.on("transformstart", handleTransformStart);
+    transformer.on("transform", handleTransform);
+    transformer.on("transformend", handleTransformEndReset);
+    return () => {
+      transformer.off("transformstart", handleTransformStart);
+      transformer.off("transform", handleTransform);
+      transformer.off("transformend", handleTransformEndReset);
+    };
+  }, []);
+
+  const hTicks = useMemo(() => buildRulerTicks(dims.w, pageLeft), [dims.w, pageLeft]);
+  const vTicks = useMemo(() => buildRulerTicks(dims.h, pageTop),  [dims.h, pageTop]);
+
   return (
     <div className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-center items-start ${className}`}>
       {/* Badge modo preview (solo en el editor standalone, no en PreviewStep) */}
       {!interactive && !isEditMode && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">
           Vista previa — {activeFormat.toUpperCase()} (solo lectura)
         </div>
       )}
-      <div ref={containerRef} />
+      {/* Regla en cm: esquina + tira horizontal + tira vertical, todas
+          `sticky` DENTRO del mismo contenedor con overflow-auto que envuelve
+          el Stage -- así se scrollean solas con el canvas (mismo patrón que
+          la fila/columna congelada de una planilla), sin sincronizar scroll
+          por JS. */}
+      <div
+        className="grid"
+        style={{ gridTemplateColumns: `${RULER_SIZE}px ${stageW}px`, gridTemplateRows: `${RULER_SIZE}px ${stageH}px` }}
+      >
+        <div
+          className="sticky top-0 left-0 z-30 bg-slate-100 dark:bg-slate-900 border-b border-r border-slate-300 dark:border-slate-700"
+        />
+        <div
+          className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-900 border-b border-slate-300 dark:border-slate-700 relative overflow-hidden"
+          style={{ width: stageW, height: RULER_SIZE }}
+        >
+          {hTicks.map((t, i) => (
+            <div key={i} className="absolute bottom-0" style={{ left: t.pos }}>
+              <div className="bg-slate-400 dark:bg-slate-600" style={{ width: 1, height: t.major ? 8 : 4 }} />
+              {t.label !== undefined && (
+                <span className="absolute -top-px left-1 text-[9px] leading-none text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                  {t.label}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+        <div
+          className="sticky left-0 z-20 bg-slate-100 dark:bg-slate-900 border-r border-slate-300 dark:border-slate-700 relative overflow-hidden"
+          style={{ width: RULER_SIZE, height: stageH }}
+        >
+          {vTicks.map((t, i) => (
+            <div key={i} className="absolute right-0" style={{ top: t.pos }}>
+              <div className="bg-slate-400 dark:bg-slate-600" style={{ height: 1, width: t.major ? 8 : 4 }} />
+              {t.label !== undefined && (
+                <span className="absolute left-0.5 top-0.5 text-[8px] leading-none text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                  {t.label}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+        <div ref={containerRef} />
+      </div>
     </div>
   );
 }

@@ -35,6 +35,11 @@ interface EditorStore {
   selectedComponentId: string | null;
   activeFormat: string;
   leftPanel: LeftPanel;
+  // Bandas de una plantilla multi-producto (3xA4/6xA4/A5/pinchos) — ids de
+  // componente por banda, para que Canvas.tsx vincule edición entre bandas.
+  // null cuando el formato activo tiene un solo slot, o mientras no se pidió
+  // todavía (ver useSlotBands en v2/page.tsx).
+  slotBands: string[][] | null;
 
   // Inicialización
   initNew: () => void;
@@ -64,6 +69,7 @@ interface EditorStore {
   // UI
   setActiveFormat: (format: string) => void;
   setLeftPanel: (panel: LeftPanel) => void;
+  setSlotBands: (bands: string[][] | null) => void;
 
   // Computed (no son estado reactivo — se leen en componentes)
   getSelectedComponent: () => CenefaComponent | null;
@@ -76,6 +82,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   selectedComponentId: null,
   activeFormat: "a4",
   leftPanel: "components",
+  slotBands: null,
 
   initNew: () =>
     set({
@@ -84,6 +91,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       isDirty: false,
       selectedComponentId: null,
       activeFormat: "a4",
+      slotBands: null,
     }),
 
   loadTemplate: (id, template) => {
@@ -99,6 +107,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       isDirty: false,
       selectedComponentId: null,
       activeFormat: template.master_format,
+      slotBands: null,
     });
   },
 
@@ -115,6 +124,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       isDirty: true,
       selectedComponentId: null,
       activeFormat: template.master_format,
+      slotBands: null,
     });
   },
 
@@ -215,6 +225,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setActiveFormat: (format) => set({ activeFormat: format }),
 
   setLeftPanel: (panel) => set({ leftPanel: panel }),
+
+  setSlotBands: (bands) => set({ slotBands: bands }),
 
   getSelectedComponent: () => {
     const { template, selectedComponentId } = get();

@@ -149,6 +149,29 @@ async def list_formats(_: User = Depends(require_permission("cenefas.view"))):
     ]
 
 
+class _SlotBandsRequest(BaseModel):
+    components: list[dict]
+
+
+@router.post("/slot-bands")
+async def detect_slot_bands(
+    payload: _SlotBandsRequest,
+    _: User = Depends(require_permission("cenefas.view")),
+):
+    """Agrupa los componentes de una plantilla multi-banda (3xA4/6xA4/A5/
+    pinchos) en bandas -- una por cenefa de la hoja -- para que el editor
+    standalone pueda vincular edición entre bandas (mover/achicar/agrandar
+    una variable en una banda replica el cambio en las demás), igual que ya
+    hace PreviewStep con job.slot_bands.
+
+    Reusa `_detect_slot_bands` tal cual -- es la misma lógica ya probada en
+    generación (jobs.py), no se reimplementa nada acá ni en el frontend."""
+    bands = _detect_slot_bands(payload.components)
+    return {
+        "slot_bands": [[c["id"] for c in band] for band in bands] if bands else None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # CRUD de templates v2
 # ---------------------------------------------------------------------------
@@ -912,6 +935,11 @@ async def _job_to_dict(
         "status":      job.status,
         "format":      job.format,
         "export_type": job.export_type,
+        # Solo presente cuando el job se generó desde una plantilla del
+        # equipo (no builtin_slug ni template_upload) -- PreviewStep lo usa
+        # para saber si tiene sentido ofrecer "guardar estos cambios en la
+        # plantilla" al confirmar (ver PreviewStep.tsx).
+        "template_id": str(job.template_id) if job.template_id else None,
         "row_count":   job.row_count,
         "error_count": job.error_count,
         # Una persona confirmó que esta corrida salió bien. Además de sumar

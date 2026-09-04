@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { cenefasV2Api } from "@/lib/api";
-import type { CenefaComponent, CenefaJob, CenefaTemplate, ComponentBounds } from "@/types/cenefas";
-import { ArrowLeft, Download, Loader2, RefreshCw } from "lucide-react";
+import type { CenefaComponent, CenefaJob, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
+import { ArrowLeft, Download, Loader2, RefreshCw, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import Canvas from "@/components/cenefas/editor/Canvas";
@@ -26,8 +26,20 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Al confirmar, si hay cambios y el job viene de una plantilla del equipo,
+  // se pregunta si guardarlos ahí para las próximas veces (ver Parte 3 del
+  // plan) — nunca si no hay `template_id` (builtin/upload al vuelo) o si no
+  // se tocó nada.
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
-  const dirtyBounds = useRef<Record<string, ComponentBounds>>({});
+  // Por componente, lo que la persona cambió en este preview (arrastre =
+  // base_bounds; resize con los 4 puntos = base_bounds + style.font_size,
+  // y segments si el cuadro es multi-segmento). Se manda como
+  // position_overrides al confirmar (siempre, aplica solo a ESTE job) y,
+  // si la persona elige "Guardar", se usa además para armar el `template`
+  // completo que se persiste con updateTemplate.
+  const dirtyOverrides = useRef<Record<string, ComponentOverride>>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dlRef = useRef<HTMLAnchorElement>(null);
 
@@ -62,9 +74,13 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
         components: prev.components.map((c) => (c.id === id ? { ...c, ...updates } : c)),
       };
     });
-    if (updates.base_bounds) {
-      dirtyBounds.current[id] = updates.base_bounds;
-    }
+    const previo = dirtyOverrides.current[id] ?? { id };
+    dirtyOverrides.current[id] = {
+      ...previo,
+      ...(updates.base_bounds ? { base_bounds: updates.base_bounds } : {}),
+      ...(updates.style       ? { style: { ...previo.style, ...updates.style } } : {}),
+      ...(updates.segments    ? { segments: updates.segments } : {}),
+    };
   }
 
   async function triggerDownload() {
@@ -91,7 +107,7 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
         return;
       }
 
-      const components = Object.entries(dirtyBounds.current).map(([id, base_bounds]) => ({ id, base_bounds }));
+      const components = Object.values(dirtyOverrides.current);
       await cenefasV2Api.confirmJob(jobId, components);
 
       // Poll hasta "done", después descarga automática. OJO: no pisar el
@@ -144,6 +160,43 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
     }
   }
 
+  // Click del botón principal: si hay cambios pendientes y el job viene de
+  // una plantilla propia del equipo, primero pregunta si guardarlos ahí
+  // (modal) antes de seguir. Sin cambios, o sin `template_id` (builtin/
+  // upload al vuelo, sin plantilla propia a la que guardar), sigue directo
+  // — cero cambio de comportamiento respecto de antes.
+  function handleConfirmClick() {
+    if (confirmed) { handleConfirm(); return; }
+    const hayCambios = Object.keys(dirtyOverrides.current).length > 0;
+    if (hayCambios && job?.template_id) {
+      setShowSaveModal(true);
+      return;
+    }
+    handleConfirm();
+  }
+
+  async function handleSaveModalChoice(guardar: boolean) {
+    setShowSaveModal(false);
+    if (guardar && job?.template_id && template) {
+      setSavingTemplate(true);
+      try {
+        // `template` ya tiene los base_bounds/font_size finales (Canvas.tsx
+        // escribe directo sobre este estado en handleUpdateComponent) — se
+        // manda tal cual, mismo objeto que ya se está mostrando.
+        await cenefasV2Api.updateTemplate(job.template_id, template);
+        toast.success("Guardado en la plantilla — las próximas cenefas ya salen con este diseño.");
+      } catch {
+        toast.error("No se pudo guardar el cambio en la plantilla (esta cenefa se descarga igual).");
+      } finally {
+        setSavingTemplate(false);
+      }
+    }
+    // El job se confirma con position_overrides igual que siempre, sin
+    // depender de si el guardado de arriba salió bien: esta descarga ya
+    // sale con el diseño nuevo de cualquier manera.
+    handleConfirm();
+  }
+
   if (errorMsg) {
     return (
       <div className="card p-8 flex flex-col items-center text-center gap-3">
@@ -177,7 +230,7 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
           <button onClick={onBack} disabled={confirming} className="btn-secondary text-xs py-2 px-3 disabled:opacity-50">
             <ArrowLeft size={13} /> {t("cenefas.previewStep.back")}
           </button>
-          <button onClick={handleConfirm} disabled={confirming} className="btn-primary text-xs py-2 px-4 disabled:opacity-50">
+          <button onClick={handleConfirmClick} disabled={confirming} className="btn-primary text-xs py-2 px-4 disabled:opacity-50">
             {confirming
               ? <span className="flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> {t("cenefas.generating")}</span>
               : <span className="flex items-center gap-1.5">
@@ -202,6 +255,42 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
       />
 
       <a ref={dlRef} className="hidden" />
+
+      {showSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="card w-full max-w-md p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                Vimos que hiciste cambios en el diseño de esta cenefa
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                ¿Querés guardarlos en la plantilla para las próximas veces? Si guardás,
+                las siguientes cenefas que generes desde esta plantilla ya van a salir
+                con este diseño, sin que tengas que volver a ajustarlas.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+              <button
+                onClick={() => handleSaveModalChoice(false)}
+                disabled={savingTemplate}
+                className="btn-secondary text-xs py-2 px-3.5 flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <X size={13} /> Solo esta vez
+              </button>
+              <button
+                onClick={() => handleSaveModalChoice(true)}
+                disabled={savingTemplate}
+                className="btn-primary text-xs py-2 px-3.5 flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {savingTemplate
+                  ? <Loader2 size={13} className="animate-spin" />
+                  : <Save size={13} />}
+                Guardar en la plantilla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

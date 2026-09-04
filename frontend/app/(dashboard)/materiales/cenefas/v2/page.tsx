@@ -53,6 +53,7 @@ export default function EditorPage() {
     leftPanel, setLeftPanel,
     initNew, loadTemplate, markSaved,
     setTemplateName,
+    activeFormat, setSlotBands,
   } = useEditorStore();
 
   const [formats,      setFormats]      = useState<CenefaFormat[]>([]);
@@ -79,6 +80,26 @@ export default function EditorPage() {
       initNew();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Bandas de la plantilla activa, para que Canvas.tsx vincule edición entre
+  // cenefas de una misma hoja (3xA4/6xA4/A5/pinchos) — mover/achicar/agrandar
+  // una variable en una banda replica el cambio en las demás (ver
+  // Canvas.tsx). Se gatea contra `slots > 1` del formato activo para no
+  // pedir nada en el caso normal (A4/A3, la mayoría de las plantillas).
+  const componentIds = template.components.map((c) => c.id).join(",");
+  useEffect(() => {
+    const fmt = formats.find((f) => f.id === activeFormat);
+    if (!fmt || fmt.slots <= 1 || template.components.length === 0) {
+      setSlotBands(null);
+      return;
+    }
+    let cancelado = false;
+    cenefasV2Api.detectSlotBands(template.components)
+      .then(({ data }) => { if (!cancelado) setSlotBands(data.slot_bands); })
+      .catch(() => { if (!cancelado) setSlotBands(null); });
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFormat, componentIds, formats]);
 
   // Cerrar menú de templates al hacer clic fuera
   useEffect(() => {

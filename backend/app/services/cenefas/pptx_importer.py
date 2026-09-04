@@ -7,6 +7,7 @@ from io import BytesIO
 from pptx import Presentation
 from pptx.enum.text import PP_ALIGN
 
+from app.services.cenefas.font_metrics import ancho_texto_cm
 from app.services.cenefas.variables import INTERNAL_SET, is_decimal, is_price, norm, resolve
 
 _EMU_PER_CM = 360_000
@@ -912,6 +913,195 @@ def _parse_shape(
 
 
 # ---------------------------------------------------------------------------
+# Auto-corrección de geometría rota — caso real 09/2026
+# ---------------------------------------------------------------------------
+#
+# PowerPoint tiene un autoajuste ("Cambiar tamaño de la forma al texto",
+# spAutoFit) que agranda un cuadro EN VIVO mientras se tipea, para que el
+# texto entre sin cortarse. El problema: cuando alguien escribe el nombre
+# largo de la variable directamente adentro del cuadro de precio a fuente
+# grande (ej. "<<decimalPrecioOferta>>", 24 caracteres, a 180pt), PowerPoint
+# agranda el cuadro para ESE texto -- mucho más largo que cualquier precio
+# real ("$129,50", 7 caracteres) -- y nadie lo vuelve a angostar después de
+# escribir el placeholder. El archivo queda guardado con un cuadro de 70cm en
+# una hoja de 21: el precio, centrado en SU cuadro, termina centrado fuera de
+# la página entera, invisible en el PPTX final.
+#
+# Caso real medido en CENEFAS-A4---PRECIAZOS-B.pptx: precioOferta pasó de
+# necesitar ~9cm a medir 54,2cm (centro en x=30,66 sobre una hoja de 21cm) y
+# decimalPrecioOferta a 70,58cm (centro en x=45,99). Verificado renderizando
+# con el motor real: el texto final caía fuera del área imprimible.
+#
+# El invariante roto NUNCA es "la caja es más ancha que la hoja" -- eso es
+# legítimo y ya lo maneja _ancho_util_cm en component_renderer.py (una caja
+# mucho más ancha que la hoja pero CENTRADA en el centro de la página, truco
+# de autoría real visto en la A4 HELVETICO de Redexpres: x=-11.74, ancho
+# 44.47, centro exactamente en el centro de la hoja -- el recorte contra la
+# intersección con la página ya la reproduce bien). Lo que SIEMPRE es un
+# defecto es que el CENTRO de la caja caiga fuera de la hoja: ningún recorte
+# en tiempo de render puede rescatar un diseño cuyo centro nunca fue visible.
+
+# Peor caso razonable de precio real para calcular un ancho seguro. No hace
+# falta que sea exacto: el achique de texto en tiempo de generación
+# (_fit_text_to_box en component_renderer.py) sigue cubriendo cualquier
+# precio real que termine necesitando más espacio -- esta corrección solo
+# tiene que dejar la caja en condiciones de que ESE mecanismo pueda trabajar,
+# en vez de partir de una caja centrada a kilómetros de la hoja.
+_PRECIO_PEOR_CASO = "99.999"
+_DECIMAL_PEOR_CASO = ",99"
+
+# Margen agregado al ancho ideal calculado por métricas, y piso para no dejar
+# una caja degenerada de ancho casi cero.
+_MARGEN_REPARACION_CM = 0.4
+_ANCHO_MINIMO_REPARADO_CM = 1.0
+
+# Cuánto margen exigir entre el centro de la caja y el borde de la hoja para
+# considerarlo "adentro" de verdad. Sin esto, un centro a 5mm del borde
+# (precioBanco en el caso real: centro en x=20,05 sobre una hoja de 21) pasa
+# el chequeo por una uña -- técnicamente adentro, pero el texto se corta
+# contra el borde igual. El caso legítimo que este margen NO puede romper
+# (la caja simétrica al centro de la página, tipo Redexpres A4 HELVETICO) cae
+# con el centro pegado a la mitad de la hoja, muy lejos de cualquier margen
+# razonable acá.
+_MARGEN_CENTRO_CM = 1.0
+
+# Solo se chequea el eje X (ancho), nunca el Y (alto). Los 4 casos reales
+# medidos (precioOferta, decimalPrecioOferta, precioBanco, decimalPrecioBanco
+# en CENEFAS-A4---PRECIAZOS-B.pptx) son SIEMPRE un ancho desbordado por
+# autoajuste de PowerPoint -- nunca un alto. Agregar el mismo chequeo al eje Y
+# "por las dudas" (sin evidencia real de que ese modo de falla exista) dio un
+# falso positivo confirmado: el "legales" de la plantilla BLACK, un pie de
+# página LEGÍTIMO a 0,24cm del margen vertical elegido acá, se marcaba como
+# roto y se le reescribía el ANCHO -- que ni siquiera es el eje que había
+# "fallado" -- sin necesidad. Mejor no tocar un eje del que no hay caso real
+# medido que lo justifique.
+
+
+def _variable_del_componente(comp: dict) -> str | None:
+    """La variable que ese componente imprime (directa o por segmentos), o
+    None si es texto fijo. Alcanza con UNA -- un cuadro de precio roto por
+    autoajuste trae la variable de precio como único segmento no-estático."""
+    if comp.get("variable"):
+        return comp["variable"]
+    for seg in comp.get("segments") or []:
+        if seg.get("type") == "variable" and seg.get("value"):
+            return seg["value"]
+    return None
+
+
+def _ancho_seguro_cm(comp: dict, x: float, page_w: float) -> float:
+    """Cuánto ancho darle a una caja rota, sin inventar la intención del
+    diseñador.
+
+    Con datos suficientes (variable de precio/decimal conocida + tamaño de
+    fuente real) se calcula el ancho que necesita un caso extremo razonable
+    con las métricas reales de la tipografía -- las mismas que ya usa el
+    motor para decidir si un texto entra. Sin eso (texto libre, estático, o
+    sin tamaño de fuente declarado) no hay forma de adivinar un "peor caso"
+    de contenido, así que el arreglo es puramente geométrico: angostar hasta
+    lo que queda de hoja a la derecha de `x`. Ese camino SIEMPRE deja el
+    centro de la caja dentro de la hoja (con x ya dentro de [0, page_w]), sin
+    asumir nada sobre qué va a decir el cuadro.
+    """
+    fallback = max(_ANCHO_MINIMO_REPARADO_CM, page_w - x - _MARGEN_REPARACION_CM)
+
+    style = comp.get("style") or {}
+    font_size = style.get("font_size")
+    if not font_size:
+        return fallback
+
+    var = _variable_del_componente(comp)
+    if not var or not (is_price(var) or is_decimal(var)):
+        return fallback
+
+    texto = _DECIMAL_PEOR_CASO if is_decimal(var) else _PRECIO_PEOR_CASO
+    ideal = ancho_texto_cm(
+        texto, font_size, style.get("font_family"), bool(style.get("font_bold"))
+    ) + _MARGEN_REPARACION_CM
+    # Nunca más ancho que lo que de verdad entra en la hoja desde `x`: el
+    # cálculo por métricas es una mejora sobre el fallback, no un permiso
+    # para volver a salirse de la página si diera un número más grande.
+    return min(max(ideal, _ANCHO_MINIMO_REPARADO_CM), fallback)
+
+
+def _autocorregir_geometria(
+    components: list[dict], page_w: float, page_h: float
+) -> tuple[list[dict], list[dict]]:
+    """Corrige cajas de texto cuyo CENTRO cae fuera de la hoja, y devuelve
+    (componentes_corregidos, avisos) -- avisos con la misma forma que usa
+    revision_previa.revisar() (nivel/tipo/titulo/detalle/sugerencia), para
+    hablar el mismo idioma que el resto del sistema.
+
+    Solo toca `width` (y, si además arranca fuera de la hoja, un nudge mínimo
+    de `x`) -- nunca `height`, nunca reposiciona verticalmente, nunca toca
+    cuadros de imagen/fondo. Angostar es siempre seguro: el peor caso es una
+    caja más chica de lo ideal, que el achique de texto en generación puede
+    seguir ajustando; una caja centrada fuera de la hoja no tiene arreglo
+    posible en tiempo de render.
+    """
+    if page_w <= 0 or page_h <= 0:
+        return components, []
+
+    corregidos: list[dict] = []
+    avisos: list[dict] = []
+
+    for comp in components:
+        if comp.get("type") != "text":
+            corregidos.append(comp)
+            continue
+
+        b = comp.get("base_bounds") or {}
+        x, y, w, h = b.get("x"), b.get("y"), b.get("width"), b.get("height")
+        if x is None or y is None or w is None or h is None:
+            corregidos.append(comp)
+            continue
+
+        center_x = x + w / 2
+        roto = not (_MARGEN_CENTRO_CM <= center_x <= page_w - _MARGEN_CENTRO_CM)
+        if not roto:
+            corregidos.append(comp)
+            continue
+
+        # Nudge mínimo: si además arranca fuera de la hoja, se entra primero
+        # -- sin esto el cálculo de ancho seguro (que depende de `x` estando
+        # ya en la página) no garantiza nada. No observado en el caso real
+        # (x siempre arrancaba dentro de la hoja), pero cierra el caso
+        # general sin costo extra.
+        nuevo_x = max(0.0, min(x, page_w - _ANCHO_MINIMO_REPARADO_CM))
+        nuevo_w = _ancho_seguro_cm(comp, nuevo_x, page_w)
+
+        nuevo_b = {**b, "x": round(nuevo_x, 3), "width": round(nuevo_w, 3)}
+        comp_corregido = {**comp, "base_bounds": nuevo_b}
+        corregidos.append(comp_corregido)
+
+        var = _variable_del_componente(comp)
+        etiqueta = var or comp.get("name") or "cuadro de texto"
+        avisos.append({
+            "nivel":      "info",
+            "tipo":       "geometria_corregida",
+            "titulo":     f'Se corrigió el ancho de «{etiqueta}»',
+            "detalle":    (
+                f'El cuadro medía {w:.1f} cm en una hoja de {page_w:.1f} cm '
+                f'de ancho -- el texto se iba a centrar fuera de la página, '
+                f'invisible en el PPTX final. Probablemente PowerPoint '
+                f'agrandó el cuadro solo al escribir el nombre de la '
+                f'variable, más largo que cualquier valor real. Se angostó '
+                f'a {nuevo_w:.1f} cm.'
+            ),
+            "sugerencia": (
+                'Revisá el tamaño en el editor antes de generar; si '
+                'preferís otro ancho, ajustalo ahí.'
+            ),
+            "detalle_datos": {
+                "variable": var, "ancho_original_cm": round(w, 2),
+                "ancho_corregido_cm": round(nuevo_w, 2),
+            },
+        })
+
+    return corregidos, avisos
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -1016,12 +1206,21 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
         for vname, vinfo in variables_seen.items()
     ]
 
+    # slot_width ya es el ancho REAL de una sola celda (== width_cm cuando
+    # slot_cols==1, que es el caso de a4/a3/3xa4 -- exactamente el de la
+    # cenefa real que motivó esto). Para pinchos/6xa4 es más chico que
+    # width_cm a propósito: es la misma frontera que ya usa el filtro de
+    # "solo primera columna" de arriba, así que angostar contra ella nunca
+    # deja un componente reparado más ancho que la celda a la que pertenece.
+    components, import_warnings = _autocorregir_geometria(components, slot_width, height_cm)
+
     return {
-        "version":       "2.0",
-        "name":          name,
-        "master_format": format_id,
-        "formats":       [format_id],
-        "variables":     variables,
-        "components":    components,
-        "rules":         [],
+        "version":         "2.0",
+        "name":            name,
+        "master_format":   format_id,
+        "formats":         [format_id],
+        "variables":       variables,
+        "components":      components,
+        "rules":           [],
+        "import_warnings": import_warnings,
     }

@@ -247,7 +247,9 @@ import type {
   CenefaJob,
   CenefaTemplate,
   CenefaTemplateRecord,
+  CenefaComponent,
   ComponentBounds,
+  ComponentOverride,
   CenefaDestino,
   CenefaLote,
   CenefaLoteItem,
@@ -286,6 +288,15 @@ export const cenefasV2Api = {
       `/tools/cenefas/v2/conocimiento/${id}`, { estado, contenido }),
 
   getFormats: () => api.get<CenefaFormat[]>("/tools/cenefas/v2/formats"),
+
+  // Agrupa los componentes de una plantilla multi-banda (3xA4/6xA4/A5/
+  // pinchos) en bandas -- una por cenefa de la hoja. Reusa la misma lógica
+  // que ya corre en generación (_detect_slot_bands), para que el editor
+  // standalone pueda vincular edición entre bandas igual que ya hace
+  // PreviewStep con job.slot_bands.
+  detectSlotBands: (components: CenefaComponent[]) =>
+    api.post<{ slot_bands: string[][] | null }>(
+      "/tools/cenefas/v2/slot-bands", { components }),
 
   // Templates
   listTemplates: (params?: { category?: string }) =>
@@ -333,7 +344,7 @@ export const cenefasV2Api = {
       formData,
       { headers: { "Content-Type": "multipart/form-data" } }
     ),
-  confirmJob: (id: string, components: { id: string; base_bounds: ComponentBounds }[]) =>
+  confirmJob: (id: string, components: ComponentOverride[]) =>
     api.post<{ job_id: string; status: string }>(
       `/tools/cenefas/v2/jobs/${id}/confirm`,
       { components }

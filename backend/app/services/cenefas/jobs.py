@@ -329,13 +329,31 @@ async def confirm_generation_job(
     try:
         template_def = staged.template_def
         if position_overrides:
-            bounds_by_id = {o["id"]: o["base_bounds"] for o in position_overrides if o.get("id")}
+            # Cada override puede traer base_bounds (arrastre) y/o style
+            # (resize con los 4 puntos, que además de agrandar la caja
+            # escala la letra de adentro -- ver Canvas.tsx) y/o segments
+            # (cuando el componente es multi-segmento, cada segmento lleva
+            # su propio font_size que pisa al del componente). Solo se
+            # mergea lo que el override trae; lo que no manda queda como
+            # estaba en el template_def original.
+            overrides_by_id = {o["id"]: o for o in position_overrides if o.get("id")}
+
+            def _con_override(c: dict) -> dict:
+                ov = overrides_by_id.get(c["id"])
+                if not ov:
+                    return c
+                nuevo = dict(c)
+                if "base_bounds" in ov:
+                    nuevo["base_bounds"] = ov["base_bounds"]
+                if "style" in ov:
+                    nuevo["style"] = {**c.get("style", {}), **ov["style"]}
+                if "segments" in ov:
+                    nuevo["segments"] = ov["segments"]
+                return nuevo
+
             template_def = {
                 **template_def,
-                "components": [
-                    {**c, "base_bounds": bounds_by_id.get(c["id"], c["base_bounds"])}
-                    for c in template_def.get("components", [])
-                ],
+                "components": [_con_override(c) for c in template_def.get("components", [])],
             }
         try:
             pptx_bytes, missing_vars = await asyncio.wait_for(

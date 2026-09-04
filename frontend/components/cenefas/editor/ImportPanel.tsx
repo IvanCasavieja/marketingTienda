@@ -60,6 +60,25 @@ export default function ImportPanel({ onDismiss }: Props) {
         loadDefinition(data);
         onDismiss();
         toast.success(`PPTX importado: ${data.components.length} componentes detectados`);
+        // PowerPoint puede agrandar una caja al escribir el nombre de una
+        // variable larga adentro (autoajuste "cambiar tamaño de la forma al
+        // texto") y dejarla centrada fuera de la hoja -- invisible en el
+        // PPTX final. El backend ya lo corrige solo al importar
+        // (_autocorregir_geometria en pptx_importer.py); esto solo avisa,
+        // nunca bloquea, mismo criterio que la revisión previa del Excel.
+        const avisos = data.import_warnings ?? [];
+        if (avisos.length > 0) {
+          const variables = avisos
+            .map((w) => w.detalle_datos?.variable)
+            .filter(Boolean)
+            .join(", ");
+          toast.warning(
+            `Se corrigieron ${avisos.length} cuadro${avisos.length > 1 ? "s" : ""} que PowerPoint había agrandado mal` +
+              (variables ? ` (${variables})` : "") +
+              " — revisalos en el editor si querés ajustarlos.",
+            { duration: 8000 },
+          );
+        }
       } catch {
         toast.error("No se pudo importar el PPTX. Verificá que sea una cenefa válida.");
       } finally {
