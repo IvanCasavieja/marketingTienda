@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { cenefasV2Api } from "@/lib/api";
 import type { CenefaComponent, CenefaLote, CenefaLoteItem, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
 import Canvas from "@/components/cenefas/editor/Canvas";
+import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
 
 // Preview de un lote: se recorren de a una las cenefas que se van a generar,
 // con siguiente/anterior, viendo la primera página de cada una.
@@ -383,27 +384,42 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
         </button>
       </div>
 
-      {/* Primera página de la cenefa actual */}
+      {/* Primera página de la cenefa actual. Con canvas + panel de
+          propiedades lado a lado: pedido explícito de Ivan, "todo se
+          debería hacer en esta vista" -- no hay otra pantalla de editor a
+          la que la gente sepa llegar, así que esta ES el editor. El panel
+          se arma con las mismas props que ya usa el store del editor
+          completo (/materiales/cenefas/v2), pero apuntando al estado LOCAL
+          de la cenefa que se está mirando (ver handleUpdateComponent). */}
       <div className="card p-4">
         {detalle?.template_def ? (
-          <Canvas
-            key={actualId}
-            template={detalle.template_def}
-            activeFormat={detalle.format ?? detalle.template_def.master_format}
-            selectedComponentId={selectedComponentId}
-            onSelectComponent={setSelectedComponentId}
-            onUpdateComponent={handleUpdateComponent}
-            previewData={detalle.preview_product}
-            previewProducts={detalle.preview_products}
-            slotBands={detalle.slot_bands}
-            className="h-[560px]"
-          />
+          <div className="flex gap-3 items-stretch">
+            <Canvas
+              key={actualId}
+              template={detalle.template_def}
+              activeFormat={detalle.format ?? detalle.template_def.master_format}
+              selectedComponentId={selectedComponentId}
+              onSelectComponent={setSelectedComponentId}
+              onUpdateComponent={handleUpdateComponent}
+              previewData={detalle.preview_product}
+              previewProducts={detalle.preview_products}
+              slotBands={detalle.slot_bands}
+              className="flex-1 h-[820px]"
+            />
+            <div className="w-72 shrink-0 h-[820px] border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col">
+              <PropertiesPanel
+                template={detalle.template_def}
+                selectedComponentId={selectedComponentId}
+                updateComponent={handleUpdateComponent}
+              />
+            </div>
+          </div>
         ) : actualStatus === "done" ? (
           // Al generar la cenefa se libera su preview (ver pop_job_products en
           // jobs.py), asi que no hay nada que dibujar y nunca lo va a haber.
           // Antes esto era un spinner eterno: parecia colgado y no informaba
           // nada. Ahora se dice que esta lista y se ofrece bajarla sola.
-          <div className="flex flex-col items-center justify-center h-[560px] gap-4">
+          <div className="flex flex-col items-center justify-center h-[820px] gap-4">
             <span className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
               <CheckCircle2 size={26} className="text-emerald-500" />
             </span>
@@ -431,7 +447,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
             )}
           </div>
         ) : actualStatus === "error" ? (
-          <div className="flex flex-col items-center justify-center h-[560px] gap-3 px-8">
+          <div className="flex flex-col items-center justify-center h-[820px] gap-3 px-8">
             <span className="w-14 h-14 rounded-full bg-rose-500/10 flex items-center justify-center">
               <AlertCircle size={26} className="text-rose-500" />
             </span>
@@ -445,7 +461,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
           // repetir la barra de progreso de arriba en un espacio enorme. Se
           // usa para lo que no esta en ningun otro lado: el estado de las 16,
           // y para saltar a cualquiera sin apretar "Siguiente" quince veces.
-          <div className="h-[560px] overflow-y-auto -m-1 p-1">
+          <div className="h-[820px] overflow-y-auto -m-1 p-1">
             <div className="grid gap-1.5">
               {lote.cenefas.map((c, i) => {
                 const esActual = i === posicion;

@@ -16,11 +16,40 @@ const TRANSFORMS = [
   { value: "smart_bold",     label: "Bold automático (MARCAS)" },
 ];
 
-export default function PropertiesPanel() {
-  const { template, selectedComponentId, getSelectedComponent, updateComponent, deleteComponent, addRule, deleteRule } =
-    useEditorStore();
+interface PropertiesPanelProps {
+  /**
+   * Fuente de datos + acciones -- por defecto vienen del store global del
+   * editor completo (/materiales/cenefas/v2). LotePreviewStep.tsx pasa las
+   * suyas propias (el `template_def` de LA CENEFA QUE SE ESTÁ MIRANDO, que
+   * vive en estado local, no en el store) para reusar este mismo panel ahí
+   * -- pedido explícito de Ivan: "todo se debería hacer en esta vista", sin
+   * un editor aparte que nadie encuentra.
+   *
+   * `deleteComponent`/`addRule`/`deleteRule` quedan afuera a propósito
+   * cuando no vienen: borrar un componente o agregar una regla ahí no tiene
+   * dónde guardarse (ComponentOverride, lo único que manda LotePreviewStep
+   * al confirmar, no tiene ni "eliminado" ni "reglas") -- mostrar esos
+   * controles igual sería una accion que no hace nada.
+   */
+  template?: CenefaTemplate;
+  selectedComponentId?: string | null;
+  updateComponent?: (id: string, updates: Partial<CenefaComponent>) => void;
+  deleteComponent?: (id: string) => void;
+  addRule?: (rule: CenefaRule) => void;
+  deleteRule?: (id: string) => void;
+}
 
-  const comp = getSelectedComponent();
+export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
+  const store = useEditorStore();
+  const template = props.template ?? store.template;
+  const selectedComponentId =
+    props.selectedComponentId !== undefined ? props.selectedComponentId : store.selectedComponentId;
+  const updateComponent = props.updateComponent ?? store.updateComponent;
+  const deleteComponent = props.deleteComponent;
+  const addRule = props.addRule;
+  const deleteRule = props.deleteRule;
+
+  const comp = template.components.find((c) => c.id === selectedComponentId) ?? null;
   const [showRuleForm, setShowRuleForm] = useState(false);
 
   if (!comp) {
@@ -75,13 +104,15 @@ export default function PropertiesPanel() {
           >
             {comp.locked ? <Lock size={14} /> : <Unlock size={14} />}
           </button>
-          <button
-            onClick={() => deleteComponent(comp.id)}
-            className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-            title="Eliminar componente"
-          >
-            <Trash2 size={14} />
-          </button>
+          {deleteComponent && (
+            <button
+              onClick={() => deleteComponent(comp.id)}
+              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+              title="Eliminar componente"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -379,47 +410,51 @@ export default function PropertiesPanel() {
           <FormatOverridesSection comp={comp} updateComponent={updateComponent} template={template} />
         )}
 
-        {/* Reglas de visibilidad para este componente */}
-        <Section label="Reglas de visibilidad">
-          {(() => {
-            const compRules = template.rules.filter(
-              (r) => r.target_component_id === comp.id
-            );
-            return (
-              <div className="space-y-0.5">
-                {compRules.length === 0 && !showRuleForm && (
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
-                    Siempre visible — sin reglas
-                  </p>
-                )}
-                {compRules.map((rule) => (
-                  <RuleChip
-                    key={rule.id}
-                    rule={rule}
-                    onDelete={() => deleteRule(rule.id)}
-                  />
-                ))}
-                {showRuleForm ? (
-                  <div className="mt-2">
-                    <RuleForm
-                      componentId={comp.id}
-                      variables={template.variables}
-                      onSave={(rule: CenefaRule) => { addRule(rule); setShowRuleForm(false); }}
-                      onCancel={() => setShowRuleForm(false)}
+        {/* Reglas de visibilidad para este componente -- solo si el caller
+            las soporta (LotePreviewStep no: ComponentOverride no tiene
+            dónde guardarlas). */}
+        {addRule && deleteRule && (
+          <Section label="Reglas de visibilidad">
+            {(() => {
+              const compRules = template.rules.filter(
+                (r) => r.target_component_id === comp.id
+              );
+              return (
+                <div className="space-y-0.5">
+                  {compRules.length === 0 && !showRuleForm && (
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                      Siempre visible — sin reglas
+                    </p>
+                  )}
+                  {compRules.map((rule) => (
+                    <RuleChip
+                      key={rule.id}
+                      rule={rule}
+                      onDelete={() => deleteRule(rule.id)}
                     />
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowRuleForm(true)}
-                    className="flex items-center gap-1 text-[10px] text-brand-600 hover:text-brand-700 font-medium mt-1"
-                  >
-                    <Plus size={10} /> Agregar regla
-                  </button>
-                )}
-              </div>
-            );
-          })()}
-        </Section>
+                  ))}
+                  {showRuleForm ? (
+                    <div className="mt-2">
+                      <RuleForm
+                        componentId={comp.id}
+                        variables={template.variables}
+                        onSave={(rule: CenefaRule) => { addRule(rule); setShowRuleForm(false); }}
+                        onCancel={() => setShowRuleForm(false)}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowRuleForm(true)}
+                      className="flex items-center gap-1 text-[10px] text-brand-600 hover:text-brand-700 font-medium mt-1"
+                    >
+                      <Plus size={10} /> Agregar regla
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+          </Section>
+        )}
       </div>
     </div>
   );

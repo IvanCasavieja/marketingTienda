@@ -6,6 +6,7 @@ import { ArrowLeft, Download, Loader2, RefreshCw, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import Canvas from "@/components/cenefas/editor/Canvas";
+import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
 
 // Paso compartido por Redexpres y Rompe Precios: el job se generó hasta
 // quedar en status="preview" (ver jobs.py) con la definición de componentes
@@ -242,17 +243,29 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
         </div>
       </div>
 
-      <Canvas
-        className="h-[70vh]"
-        template={template}
-        activeFormat={job.format}
-        selectedComponentId={selectedComponentId}
-        onSelectComponent={setSelectedComponentId}
-        onUpdateComponent={handleUpdateComponent}
-        previewData={job.preview_product ?? {}}
-        slotBands={job.slot_bands}
-        previewProducts={job.preview_products}
-      />
+      {/* Canvas + panel de propiedades lado a lado -- esta pantalla ES el
+          editor (no hay otra a la que la gente sepa llegar), mismo criterio
+          que LotePreviewStep.tsx. */}
+      <div className="flex gap-3 items-stretch">
+        <Canvas
+          className="flex-1 h-[70vh]"
+          template={template}
+          activeFormat={job.format}
+          selectedComponentId={selectedComponentId}
+          onSelectComponent={setSelectedComponentId}
+          onUpdateComponent={handleUpdateComponent}
+          previewData={job.preview_product ?? {}}
+          slotBands={job.slot_bands}
+          previewProducts={job.preview_products}
+        />
+        <div className="w-72 shrink-0 h-[70vh] border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col">
+          <PropertiesPanel
+            template={template}
+            selectedComponentId={selectedComponentId}
+            updateComponent={handleUpdateComponent}
+          />
+        </div>
+      </div>
 
       <a ref={dlRef} className="hidden" />
 
