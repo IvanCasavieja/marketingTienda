@@ -879,9 +879,21 @@ def _apply_run_style(run, style: dict, bold_override: bool | None = None) -> Non
         font.color.rgb = hex_to_rgb(style["color"])
     if style.get("font_family"):
         font.name = style["font_family"]
-    # python-pptx no expone tachado en Font — hay que bajar al XML crudo.
-    if style.get("strikethrough"):
-        run._r.get_or_add_rPr().set("strike", "sngStrike")
+    # No existe concepto de "subrayado" en este vocabulario de estilos (nunca
+    # se guarda ni se usa) -- se fuerza apagado siempre, por la misma razón
+    # que el tachado de abajo: el run mutado es el del PPTX FUENTE, que puede
+    # traer un subrayado heredado (de un placeholder tipeado encima de texto
+    # ya subrayado, o de un estilo de lista/master) que nunca se pidió.
+    font.underline = False
+    # python-pptx no expone tachado en Font -- hay que bajar al XML crudo.
+    # SIEMPRE se fija explícito (on u off), nunca se deja "como estaba": el
+    # run mutado es el del PPTX FUENTE, que puede traer strike="sngStrike"
+    # heredado de antes (ej. alguien tipeó el placeholder encima de un "$XXX"
+    # que ya tenía tachado de caracter aplicado) -- sin el else, un template
+    # con `strikethrough` en False/ausente en su definición pero con ese
+    # atributo viejo en el XML seguía mostrando el tachado de todos modos,
+    # sumado a cualquier línea diagonal de tachado que el diseño ya trajera.
+    run._r.get_or_add_rPr().set("strike", "sngStrike" if style.get("strikethrough") else "noStrike")
     # Tampoco expone la voladita. Es lo que mantiene el "$" y los centavos
     # arriba de la línea de base del número grande.
     if style.get("baseline"):
