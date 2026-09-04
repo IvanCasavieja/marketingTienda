@@ -505,9 +505,6 @@ export default function Canvas({
     bgLayerRef.current = bgLayer;
     compLayerRef.current = compLayer;
     transformerRef.current = transformer;
-    // TEMP DEBUG — se saca en el proximo commit.
-    (window as any).__claudeDebugStage = stage;
-    (window as any).__claudeDebugNodeMapRef = nodeMapRef;
 
     return () => {
       stage.destroy();
