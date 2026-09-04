@@ -7,6 +7,7 @@ import { cenefasV2Api } from "@/lib/api";
 import type { CenefaComponent, CenefaLote, CenefaLoteItem, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
 import Canvas from "@/components/cenefas/editor/Canvas";
 import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
+import TininRevision, { type TemaTinin } from "@/components/cenefas/convertidor/TininRevision";
 
 // Preview de un lote: se recorren de a una las cenefas que se van a generar,
 // con siguiente/anterior, viendo la primera página de cada una.
@@ -265,15 +266,29 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
 
   // La revisión de la cenefa que se está mirando. Se de-duplica por título
   // porque el mismo Excel emparejado con varias plantillas repite el hallazgo.
+  // Los "alto" (para corregir antes de confirmar) van primero.
   const revision = (() => {
     const vistos = new Set<string>();
-    return (actual?.revision ?? []).filter((r) => {
+    const unicos = (actual?.revision ?? []).filter((r) => {
       if (vistos.has(r.titulo)) return false;
       vistos.add(r.titulo);
       return true;
     });
+    return [...unicos].sort((a, b) => (a.nivel === "alto" ? 0 : 1) - (b.nivel === "alto" ? 0 : 1));
   })();
-  const graves = revision.filter((r) => r.nivel === "alto").length;
+  // Misma puerta "de a uno, con Siguiente" que ya usa el Convertidor para lo
+  // que encuentra Tinín (ver TininRevision) -- acá el hallazgo es de reglas,
+  // no de IA, así que se le pasan textos propios en vez de decir "Tinín".
+  const temasRevision: TemaTinin[] = revision.map((r, i) => ({
+    id: String(i),
+    titulo: r.titulo,
+    detalle: r.detalle,
+    panel: (
+      <p className="text-xs text-slate-600 dark:text-slate-300">
+        <span className="font-semibold">Qué hacer: </span>{r.sugerencia}
+      </p>
+    ),
+  }));
 
   return (
     <div className="space-y-4">
@@ -320,35 +335,18 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
       )}
 
       {/* Revisión del archivo: qué va a salir mal, antes de confirmar. Nunca
-          bloquea -- a veces el que sabe es el que está mirando. */}
+          bloquea -- a veces el que sabe es el que está mirando. Mismo patrón
+          "de a uno, con Siguiente" que el Convertidor (ver TininRevision):
+          antes esto era una lista larga apilada, ilegible con varios
+          hallazgos juntos. */}
       {revision.length > 0 && (
-        <div className="card p-4 space-y-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-              <AlertTriangle size={15} className={graves > 0 ? "text-rose-500" : "text-amber-500"} />
-              Revisión del archivo
-            </p>
-            <span className="text-[11px] text-slate-400">
-              {graves > 0
-                ? `${graves} para corregir antes de confirmar`
-                : `${revision.length} para revisar`}
-            </span>
-          </div>
-          {revision.map((r, i) => (
-            <div key={i}
-                 className={`rounded-lg p-3 border-l-[3px] ${
-                   r.nivel === "alto"
-                     ? "border-rose-400 bg-rose-50/60 dark:bg-rose-950/20"
-                     : "border-amber-400 bg-amber-50/60 dark:bg-amber-950/20"
-                 }`}>
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{r.titulo}</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{r.detalle}</p>
-              <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1">
-                <span className="font-semibold">Qué hacer: </span>{r.sugerencia}
-              </p>
-            </div>
-          ))}
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+        <div className="space-y-1.5">
+          <TininRevision
+            temas={temasRevision}
+            i18nPrefix="cenefas.lote.revision"
+            icon={AlertTriangle}
+          />
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 px-1">
             Podés confirmar igual: esto es un aviso, no un bloqueo.
           </p>
         </div>

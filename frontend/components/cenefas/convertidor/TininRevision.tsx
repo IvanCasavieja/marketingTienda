@@ -1,6 +1,6 @@
 "use client";
 import { type ReactNode, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, X, Check, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 // Una sola puerta para todo lo que Tinín encontró en la grilla.
@@ -45,9 +45,19 @@ export interface TemaTinin {
 
 interface Props {
   temas: TemaTinin[];
+  /**
+   * Prefijo i18n para los textos de la barra (barra/paso/anterior/siguiente/
+   * cerrar/sinTemas) — por default los de Tinín. Otro llamador que use este
+   * mismo patrón "de a uno, con Siguiente" para algo que NO es una sugerencia
+   * de IA (ej. la revisión de reglas de un lote de cenefas) pasa el suyo acá
+   * para no atribuirle a Tinín un hallazgo que no generó.
+   */
+  i18nPrefix?: string;
+  /** Ícono de la barra colapsada — por default el sparkle de IA. */
+  icon?: LucideIcon;
 }
 
-export default function TininRevision({ temas }: Props) {
+export default function TininRevision({ temas, i18nPrefix = "convertidor.tinin", icon: Icon = Sparkles }: Props) {
   const { t } = useTranslation();
   const [abierto, setAbierto] = useState(false);
   const [paso, setPaso] = useState(0);
@@ -69,7 +79,7 @@ export default function TininRevision({ temas }: Props) {
       <div className="card px-4 py-2.5 flex items-center gap-2 border-l-4 border-l-emerald-400">
         <Check size={14} className="text-emerald-500 shrink-0" />
         <p className="text-xs text-slate-600 dark:text-slate-300">
-          {t("convertidor.tinin.sinTemas")}
+          {t(`${i18nPrefix}.sinTemas`)}
         </p>
       </div>
     );
@@ -82,9 +92,9 @@ export default function TininRevision({ temas }: Props) {
         onClick={() => setAbierto((v) => !v)}
         className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
       >
-        <Sparkles size={15} className="text-brand-500 shrink-0" />
+        <Icon size={15} className="text-brand-500 shrink-0" />
         <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 shrink-0">
-          {t("convertidor.tinin.barra", { count: total })}
+          {t(`${i18nPrefix}.barra`, { count: total })}
         </span>
         <span className="text-xs text-slate-400 truncate flex-1 min-w-0">{resumen}</span>
         <ChevronRight
@@ -103,7 +113,7 @@ export default function TininRevision({ temas }: Props) {
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{actual.detalle}</p>
             </div>
             <span className="text-[11px] text-slate-400 shrink-0 tabular-nums">
-              {t("convertidor.tinin.paso", { actual: pasoActual + 1, total })}
+              {t(`${i18nPrefix}.paso`, { actual: pasoActual + 1, total })}
             </span>
           </div>
 
@@ -161,7 +171,7 @@ export default function TininRevision({ temas }: Props) {
               disabled={pasoActual === 0}
               className="btn-ghost text-xs flex items-center gap-1 disabled:opacity-30"
             >
-              <ChevronLeft size={13} /> {t("convertidor.tinin.anterior")}
+              <ChevronLeft size={13} /> {t(`${i18nPrefix}.anterior`)}
             </button>
             {pasoActual < total - 1 ? (
               <button
@@ -169,7 +179,7 @@ export default function TininRevision({ temas }: Props) {
                 onClick={() => setPaso(pasoActual + 1)}
                 className="btn-primary text-xs flex items-center gap-1"
               >
-                {t("convertidor.tinin.siguiente")} <ChevronRight size={13} />
+                {t(`${i18nPrefix}.siguiente`)} <ChevronRight size={13} />
               </button>
             ) : (
               <button
@@ -177,7 +187,7 @@ export default function TininRevision({ temas }: Props) {
                 onClick={() => setAbierto(false)}
                 className="btn-secondary text-xs flex items-center gap-1"
               >
-                <X size={13} /> {t("convertidor.tinin.cerrar")}
+                <X size={13} /> {t(`${i18nPrefix}.cerrar`)}
               </button>
             )}
           </div>

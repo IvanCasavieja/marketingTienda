@@ -526,7 +526,15 @@
       "verifSi": "Yes, they're good",
       "verifAhoraNo": "Not now",
       "verifOk": "{{n}} run(s) verified — the file is kept",
-      "verifHecha": "Run verified: the file is kept and counts in the report."
+      "verifHecha": "Run verified: the file is kept and counts in the report.",
+      "revision": {
+        "barra": "{{count}} things to review before confirming",
+        "paso": "{{actual}} of {{total}}",
+        "anterior": "Previous",
+        "siguiente": "Next",
+        "cerrar": "Done",
+        "sinTemas": "Nothing to review in this file."
+      }
     },
     "informe": {
       "link": "Report"

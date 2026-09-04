@@ -526,7 +526,15 @@
       "verifSi": "Sí, salieron bien",
       "verifAhoraNo": "Ahora no",
       "verifOk": "{{n}} corrida(s) verificadas — el archivo queda guardado",
-      "verifHecha": "Corrida verificada: el archivo queda guardado y suma en el informe."
+      "verifHecha": "Corrida verificada: el archivo queda guardado y suma en el informe.",
+      "revision": {
+        "barra": "{{count}} cosas para revisar antes de confirmar",
+        "paso": "{{actual}} de {{total}}",
+        "anterior": "Anterior",
+        "siguiente": "Siguiente",
+        "cerrar": "Listo",
+        "sinTemas": "No hay nada para revisar en este archivo."
+      }
     },
     "informe": {
       "link": "Informe"

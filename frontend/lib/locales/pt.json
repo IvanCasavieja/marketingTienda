@@ -526,7 +526,15 @@
       "verifSi": "Sim, saíram bem",
       "verifAhoraNo": "Agora não",
       "verifOk": "{{n}} rodada(s) verificadas — o arquivo fica guardado",
-      "verifHecha": "Rodada verificada: o arquivo fica guardado e conta no relatório."
+      "verifHecha": "Rodada verificada: o arquivo fica guardado e conta no relatório.",
+      "revision": {
+        "barra": "{{count}} coisas para revisar antes de confirmar",
+        "paso": "{{actual}} de {{total}}",
+        "anterior": "Anterior",
+        "siguiente": "Próximo",
+        "cerrar": "Concluído",
+        "sinTemas": "Nada para revisar neste arquivo."
+      }
     },
     "informe": {
       "link": "Relatório"
