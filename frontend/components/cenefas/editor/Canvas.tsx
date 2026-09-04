@@ -564,6 +564,10 @@ export default function Canvas({
     const nodeMap = new Map<string, Konva.Group>();
     nodeMapRef.current = nodeMap;
 
+    // eslint-disable-next-line no-console
+    console.log("[CLAUDE-DEBUG] rebuild effect corriendo, descripciones en displayComps:",
+      JSON.stringify(displayComps.filter((c) => c.variable === "descripcion").map((c) => ({ id: c.id.slice(0,8), x: c.base_bounds.x, y: c.base_bounds.y }))));
+
     let selectedNode: Konva.Group | null = null;
 
     for (const comp of displayComps) {
