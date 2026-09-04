@@ -612,6 +612,16 @@ export default function Canvas({
           if (sNode) siblingStarts.set(sid, { x: sNode.x(), y: sNode.y() });
         }
       });
+      group.on("dragmove", () => {
+        if (!dragStart) return;
+        const dx = group.x() - dragStart.x;
+        const dy = group.y() - dragStart.y;
+        for (const [sid, start] of siblingStarts) {
+          const sNode = nodeMap.get(sid);
+          if (sNode) { sNode.x(start.x + dx); sNode.y(start.y + dy); }
+        }
+        layer.batchDraw();
+      });
       group.on("dragend", () => {
         if (!dragStart) return;
         const dxCm = (group.x() - dragStart.x) / PX_PER_CM;
