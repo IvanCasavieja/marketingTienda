@@ -657,6 +657,16 @@ def _fit_text_to_box(
         familia = style.get("font_family")
         texto = _texto_resuelto(c, product)
 
+        if c.get("_manual_font_override"):
+            # La persona escribió este tamaño a mano en el panel de
+            # propiedades (Canvas.tsx ya no lo toca al redimensionar la
+            # caja) -- se respeta tal cual, sin volver a medir contra el
+            # espacio disponible. Es una elección explícita, no un valor de
+            # diseño que haya que proteger de un desborde que nadie pidió.
+            fitted_por_id[id(c)] = base_font_size
+            base_por_id[id(c)] = base_font_size
+            continue
+
         piezas = _segmentos_medibles(c, product)
         if piezas:
             # Cuadro con tamaños mezclados (el precio): se busca la escala más

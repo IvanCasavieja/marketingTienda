@@ -12,6 +12,7 @@ from pptx.util import Cm, Pt
 
 from app.services.cenefas.component_renderer import (
     _ancho_disponible_cm,
+    _fit_text_to_box,
     render_template_to_pptx,
 )
 from app.services.cenefas.pptx_importer import import_pptx
@@ -167,6 +168,28 @@ def test_etiqueta_comprando_no_limita_el_precio_que_decora():
     producto = {"precioOferta": "129", "tipoOfertaComprando": "Comprando 2"}
     disponible = _ancho_disponible_cm(precio, [precio, comprando], producto, 21.0)
     assert disponible > 6.262 - 3.559
+
+
+def test_font_size_manual_no_se_achica_al_exportar():
+    # Pedido explícito de Ivan (09/2026): redimensionar la caja con los 4
+    # puntos en el editor ya NO escala la letra (antes sí, y esa escala "de
+    # facto" desaparecía al exportar porque este mismo achique la pisaba con
+    # el tamaño que en verdad entraba en el espacio disponible -- "achico la
+    # caja, la letra se ve mas grande en el preview, pero al exportar se
+    # achica sola"). Ahora el tamaño se fija a mano en el panel de
+    # propiedades y se manda con _manual_font_override=True: el achique
+    # automático tiene que respetarlo tal cual, aunque la caja sea chica.
+    angosta = _caja(1.0, 1.0, 1.0, 1.0, "descripcion")
+    angosta["_manual_font_override"] = True
+    producto = {"descripcion": "Un texto bastante largo que no entraria"}
+    resultado = _fit_text_to_box([angosta], producto, ancho_pagina_cm=21.0)
+    assert resultado[0]["style"]["font_size"] == 97.0
+
+    # Sin la marca, el mismo cuadro SI se achica -- confirma que el test de
+    # arriba prueba lo que dice probar, no que _fit_text_to_box nunca achique.
+    sin_marca = _caja(1.0, 1.0, 1.0, 1.0, "descripcion")
+    resultado_sin_marca = _fit_text_to_box([sin_marca], producto, ancho_pagina_cm=21.0)
+    assert resultado_sin_marca[0]["style"]["font_size"] < 97.0
 
 
 def test_mxn_imprime_el_literal_una_sola_vez():

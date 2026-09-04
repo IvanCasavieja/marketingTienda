@@ -652,42 +652,17 @@ export default function Canvas({
     latestRef.current = { template, selectedComponentId, siblingMap };
   }, [template, selectedComponentId, siblingMap]);
 
-  // Escala uniforme (por diagonal, para no deformar el texto si el resize
-  // no fue simétrico) que le corresponde a un tamaño de letra cuando la caja
-  // pasó de `original` a `nuevo`.
-  function escalaDeResize(
-    original: { width: number; height: number },
-    nuevo: { width: number; height: number },
-  ): number {
-    const diagOriginal = Math.hypot(original.width, original.height);
-    if (diagOriginal <= 0) return 1;
-    return Math.hypot(nuevo.width, nuevo.height) / diagOriginal;
-  }
-
-  // Aplica el factor de escala al font_size del componente Y al de cada
-  // segmento que lo declare (un cuadro multi-segmento -- precio partido en
-  // signo + entero + decimal -- lleva un font_size por segmento que pisa al
-  // del componente, ver _populate_text_frame en component_renderer.py).
-  function escalarLetra(comp: CenefaComponent, k: number): Partial<CenefaComponent> {
-    const updates: Partial<CenefaComponent> = {};
-    if (comp.style.font_size) {
-      updates.style = { ...comp.style, font_size: +(comp.style.font_size * k).toFixed(1) };
-    }
-    if (comp.segments?.length) {
-      updates.segments = comp.segments.map((s) =>
-        s.style?.font_size
-          ? { ...s, style: { ...s.style, font_size: +(s.style.font_size * k).toFixed(1) } }
-          : s,
-      );
-    }
-    return updates;
-  }
-
   // Handler de fin de transformacion (resize con los 4 puntos), registrado
-  // una sola vez. Agranda/achica la caja Y la letra de adentro
-  // proporcionalmente (pedido explícito: no solo el contenedor), y replica
-  // el mismo cambio de bounds (delta absoluto) + el mismo factor de escala
-  // de letra a cada hermano detectado en otras bandas.
+  // una sola vez. SOLO cambia la caja -- desde 09/2026 (pedido explícito de
+  // Ivan, reemplaza la decisión anterior) redimensionar NUNCA toca el
+  // tamaño de letra: los dos se controlan por separado, como en PowerPoint
+  // (ver el campo "Tamaño (pt)" en PropertiesPanel.tsx). Antes se escalaba
+  // la letra en proporción a la caja, lo que obligaba a agrandar la caja
+  // muchísimo más de lo necesario solo para conseguir letra más grande, y
+  // encima ese tamaño "de facto" no sobrevivía al exportar (el motor de
+  // render lo recalculaba solo contra el espacio disponible). Solo replica
+  // el cambio de bounds (delta absoluto) a cada hermano detectado en otras
+  // bandas -- nunca font_size.
   useEffect(() => {
     const transformer = transformerRef.current;
     if (!transformer) return;
@@ -710,9 +685,8 @@ export default function Canvas({
         width:  +((node.width()  * scaleX) / PX_PER_CM).toFixed(2),
         height: +((node.height() * scaleY) / PX_PER_CM).toFixed(2),
       };
-      const k = escalaDeResize(comp.base_bounds, nuevoBounds);
 
-      updateComponent(comp.id, { base_bounds: nuevoBounds, ...escalarLetra(comp, k) });
+      updateComponent(comp.id, { base_bounds: nuevoBounds });
 
       const dx = nuevoBounds.x      - comp.base_bounds.x;
       const dy = nuevoBounds.y      - comp.base_bounds.y;
@@ -727,7 +701,7 @@ export default function Canvas({
           width:  +Math.max(0.5, sComp.base_bounds.width  + dw).toFixed(2),
           height: +Math.max(0.3, sComp.base_bounds.height + dh).toFixed(2),
         };
-        updateComponent(sid, { base_bounds: sBounds, ...escalarLetra(sComp, k) });
+        updateComponent(sid, { base_bounds: sBounds });
       }
     }
 

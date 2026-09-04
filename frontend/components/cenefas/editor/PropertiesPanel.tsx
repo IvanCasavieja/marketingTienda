@@ -271,8 +271,24 @@ export default function PropertiesPanel() {
                   max={200}
                   className="input text-sm"
                   value={comp.style.font_size ?? 16}
-                  onChange={(e) => setStyle("font_size", parseInt(e.target.value) || 16)}
+                  onChange={(e) =>
+                    // Escrito a mano acá -> el backend lo respeta tal cual al
+                    // exportar, sin volver a achicarlo contra el espacio
+                    // disponible (ver _manual_font_override en
+                    // component_renderer.py). Redimensionar la caja con los 4
+                    // puntos ya NO pasa por acá ni toca este tamaño (ver
+                    // Canvas.tsx) -- los dos se controlan por separado.
+                    updateComponent(comp!.id, {
+                      style: { ...comp!.style, font_size: parseInt(e.target.value) || 16 },
+                      _manual_font_override: true,
+                    })
+                  }
                 />
+                {comp._manual_font_override && (
+                  <span className="text-[9px] text-slate-400 dark:text-slate-500">
+                    Fijado a mano — no se va a achicar solo al exportar.
+                  </span>
+                )}
               </label>
 
               <div className="flex gap-2">

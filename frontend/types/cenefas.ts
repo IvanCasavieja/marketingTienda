@@ -66,6 +66,15 @@ export interface CenefaComponent {
   z_index: number;
   locked: boolean;
   visible: boolean;
+  /**
+   * true cuando la persona escribió el tamaño de letra a mano en el panel de
+   * propiedades (no al redimensionar la caja, que desde 09/2026 ya no toca
+   * la letra -- pedido explícito de Ivan: la caja y el tamaño de fuente se
+   * controlan por separado, como en PowerPoint). El backend (ver
+   * _fit_text_to_box en component_renderer.py) respeta este tamaño tal cual
+   * y no lo vuelve a achicar contra el ancho/alto disponible.
+   */
+  _manual_font_override?: boolean;
 }
 
 /** Override efímero de UN componente al confirmar un job (POST
