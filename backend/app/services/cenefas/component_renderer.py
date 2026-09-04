@@ -391,6 +391,17 @@ _SEPARACION_MIN_CM = 0.5
 _SOLAPE_MIN_DECORACION = 0.7
 _ALTO_MAX_DECORACION = 0.6
 
+# Variables que por vocabulario (variables.py) son SIEMPRE una etiqueta/leyenda
+# chica pensada para flotar pegada a un precio, nunca contenido "de verdad"
+# compitiendo por su propio espacio -- ver ancho/alto/relación de solape NO
+# alcanza para distinguir esto de un vecino real: probado con números reales,
+# "Comprando 2" sobre precioOferta (46,7% del ancho, 99,5% de solape vertical)
+# y una descripción angosta al lado de un precio ancho y vacío (caso real
+# "vecina chata", 42,5% del ancho, 100% de solape) dan proporciones casi
+# idénticas -- geométricamente indistinguibles. La única señal confiable es
+# CUÁL variable es, no cuánto mide su caja.
+_VARIABLES_ETIQUETA_FLOTANTE = frozenset({"tipoOfertaComprando", "tipoOferta", "unidad"})
+
 
 def _son_decoracion_superpuesta(a: dict, b: dict) -> bool:
     """True si uno de los dos cuadros es una etiqueta chica que vive
@@ -419,7 +430,18 @@ def _son_decoracion_superpuesta(a: dict, b: dict) -> bool:
     comentarios de _alto_disponible_cm/_ancho_disponible_cm) tiene alto
     parecido al del entero, así que "sensiblemente menos alto" no lo agarra
     y sigue bloqueando como corresponde.
+
+    Requiere ADEMÁS que uno de los dos sea una de _VARIABLES_ETIQUETA_FLOTANTE
+    -- la relación de alto/ancho/solape sola no alcanza para distinguir esto
+    de un vecino real (ver el comentario de esa constante): sin este filtro
+    de variable, cualquier caja chica y baja que cayera por casualidad dentro
+    del rango vertical de una caja mucho más ancha (ej. una descripción al
+    lado de un precio ancho y vacío, caso real "vecina chata") se confundía
+    con una decoración y dejaba de contar como vecina de verdad -- rompía
+    exactamente el chequeo que _ancho_disponible_cm existe para hacer.
     """
+    if not ((_variables_del_componente(a) | _variables_del_componente(b)) & _VARIABLES_ETIQUETA_FLOTANTE):
+        return False
     ba = a.get("computed_bounds") or a.get("base_bounds") or {}
     bb = b.get("computed_bounds") or b.get("base_bounds") or {}
     y1, h1 = ba.get("y"), ba.get("height")

@@ -150,6 +150,25 @@ def test_una_vecina_chata_tambien_limita_el_ancho():
     assert disponible_sola > 9.38 - 1.68
 
 
+def test_etiqueta_comprando_no_limita_el_precio_que_decora():
+    # Caso real (Preciazos-202608-A4, producción): "Comprando 2"
+    # (tipoOfertaComprando) vive superpuesta arriba de precioOferta a
+    # propósito -- geométricamente es CASI IDÉNTICA a la "vecina chata" de
+    # arriba (46,7% del ancho vs 42,5%, 99,5% de solape vertical vs 100%):
+    # ninguna relación de ancho/alto/solape sola alcanza para distinguirlas.
+    # La señal que sí distingue es la variable: "descripcion" es contenido de
+    # verdad, "tipoOfertaComprando" es una etiqueta pensada para flotar sobre
+    # un precio (ver _VARIABLES_ETIQUETA_FLOTANTE). Sin ese chequeo por
+    # variable, este caso rompía el fix de la "vecina chata": cualquier
+    # heurística puramente geométrica que lo arreglara volvía a tratar a
+    # "Comprando 2" como pared y achicaba el precio al mínimo.
+    precio = _caja(3.559, 7.589, 17.5, 7.951, "precioOferta")
+    comprando = _caja(6.262, 7.574, 8.177, 2.821, "tipoOfertaComprando")
+    producto = {"precioOferta": "129", "tipoOfertaComprando": "Comprando 2"}
+    disponible = _ancho_disponible_cm(precio, [precio, comprando], producto, 21.0)
+    assert disponible > 6.262 - 3.559
+
+
 def test_mxn_imprime_el_literal_una_sola_vez():
     # Bug real (pag. 54 de mundo hogar): la A4 REDEX tiene cocarda
     # (tipoOferta) Y cuadro que tapa al precio (promoOferta) -- en un M x N
