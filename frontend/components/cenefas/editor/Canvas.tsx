@@ -593,6 +593,10 @@ export default function Canvas({
       });
       layer.add(group);
       nodeMap.set(comp.id, group);
+      if (comp.variable === "descripcion") {
+        // eslint-disable-next-line no-console
+        console.log("[CLAUDE-DEBUG] group construido para", comp.id.slice(0,8), "base_bounds:", JSON.stringify(comp.base_bounds), "group.x/y:", group.x(), group.y());
+      }
       if (isSelected) selectedNode = group;
     }
 
