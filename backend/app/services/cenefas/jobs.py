@@ -347,6 +347,12 @@ async def confirm_generation_job(
                     nuevo["base_bounds"] = ov["base_bounds"]
                 if "style" in ov:
                     nuevo["style"] = {**c.get("style", {}), **ov["style"]}
+                    if "font_size" in ov["style"]:
+                        # La persona ya eligió a mano el tamaño de letra para
+                        # ESTA caja (resize con los 4 puntos en el preview) --
+                        # _fit_text_to_box no debe forzarlo a compartir escala
+                        # con su pareja entero/decimal (ver ese flag más abajo).
+                        nuevo["_manual_font_override"] = True
                 if "segments" in ov:
                     nuevo["segments"] = ov["segments"]
                 return nuevo

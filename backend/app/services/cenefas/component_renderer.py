@@ -695,15 +695,28 @@ def _fit_text_to_box(
                 grupos[f"_decimal_{var_entero}"] = [c_entero, c_decimal]
 
     for miembros in grupos.values():
+        # Un cuadro que la persona acaba de redimensionar a mano en el
+        # preview (resize con los 4 puntos) ya trae SU propio tamaño de
+        # letra elegido para SU propia caja nueva -- forzarlo a compartir la
+        # escala mínima del resto del grupo pisaría esa elección con la del
+        # cuadro que nadie tocó. Sin esta exclusión, achicar solo el decimal
+        # de un precio (ej. decimalPrecioBanco) terminaba saliendo con OTRO
+        # tamaño de letra en el PPTX final del que se veía en el preview --
+        # el propio entero (precioBanco), que nadie movió, podía necesitar
+        # una escala más chica por motivos suyos (ej. sus vecinos cambiaron
+        # de lugar) y esa escala ajena se le imponía igual al decimal editado.
+        auto = [c for c in miembros if not c.get("_manual_font_override")]
+        if not auto:
+            continue
         escalas = []
-        for c in miembros:
+        for c in auto:
             base, fit = base_por_id.get(id(c)), fitted_por_id.get(id(c))
             if base and fit is not None:
                 escalas.append(fit / base)
         if not escalas:
             continue
         escala_min = min(escalas)
-        for c in miembros:
+        for c in auto:
             base = base_por_id.get(id(c))
             if base:
                 fitted_por_id[id(c)] = round(base * escala_min, 1)
