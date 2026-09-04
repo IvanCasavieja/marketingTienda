@@ -55,12 +55,35 @@ interface Props {
   i18nPrefix?: string;
   /** Ícono de la barra colapsada — por default el sparkle de IA. */
   icon?: LucideIcon;
+  /**
+   * "neutral" (default): la sugerencia tranquila de Tinín, colapsada, se
+   * abre si a la persona le interesa. "alerta": algo que puede arruinar el
+   * cartel si nadie lo mira -- arranca ABIERTA y con más peso visual, para
+   * que no compita en silencio contra el resto de la pantalla y se pierda.
+   */
+  tono?: "neutral" | "alerta";
 }
 
-export default function TininRevision({ temas, i18nPrefix = "convertidor.tinin", icon: Icon = Sparkles }: Props) {
+const ESTILOS_TONO = {
+  neutral: {
+    barra: "card overflow-hidden border-l-4 border-l-brand-400",
+    icono: "text-brand-500",
+    titulo: "text-sm font-semibold text-slate-800 dark:text-slate-100",
+  },
+  alerta: {
+    barra: "overflow-hidden rounded-xl border-2 border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-950/30 shadow-sm",
+    icono: "text-amber-600 dark:text-amber-400",
+    titulo: "text-sm font-bold text-amber-800 dark:text-amber-300",
+  },
+} as const;
+
+export default function TininRevision({
+  temas, i18nPrefix = "convertidor.tinin", icon: Icon = Sparkles, tono = "neutral",
+}: Props) {
   const { t } = useTranslation();
-  const [abierto, setAbierto] = useState(false);
+  const [abierto, setAbierto] = useState(tono === "alerta");
   const [paso, setPaso] = useState(0);
+  const estilo = ESTILOS_TONO[tono];
 
   // Los temas se recalculan con cada cambio de la grilla: si el que estabas
   // mirando se resolvió y desapareció, el paso guardado queda apuntando al
@@ -86,14 +109,21 @@ export default function TininRevision({ temas, i18nPrefix = "convertidor.tinin",
   }
 
   return (
-    <div className="card overflow-hidden border-l-4 border-l-brand-400">
+    <div className={estilo.barra}>
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
-        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors"
       >
-        <Icon size={15} className="text-brand-500 shrink-0" />
-        <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 shrink-0">
+        {tono === "alerta" ? (
+          <span className="relative shrink-0 w-7 h-7 rounded-full bg-amber-400/20 flex items-center justify-center">
+            <span className="absolute inset-0 rounded-full bg-amber-400/40 animate-ping" />
+            <Icon size={15} className={`relative ${estilo.icono}`} />
+          </span>
+        ) : (
+          <Icon size={15} className={`${estilo.icono} shrink-0`} />
+        )}
+        <span className={`${estilo.titulo} shrink-0`}>
           {t(`${i18nPrefix}.barra`, { count: total })}
         </span>
         <span className="text-xs text-slate-400 truncate flex-1 min-w-0">{resumen}</span>

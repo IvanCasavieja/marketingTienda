@@ -524,9 +524,12 @@
       "verifTitulo": "¿Confirmás que las cenefas salieron bien?",
       "verifDetalle": "Abrí el archivo y miralo. Si confirmás, el archivo queda guardado para volver a verlo cuando quieras y la corrida suma como verificada en el informe. Sin confirmar, el archivo se borra a los 7 días — los números quedan igual.",
       "verifSi": "Sí, salieron bien",
-      "verifAhoraNo": "Ahora no",
+      "verifNo": "No, salieron mal",
       "verifOk": "{{n}} corrida(s) verificadas — el archivo queda guardado",
       "verifHecha": "Corrida verificada: el archivo queda guardado y suma en el informe.",
+      "verifMalTitulo": "Quedó marcado para revisar",
+      "verifMalDetalle": "No se guarda para siempre: sigue la retención normal (se borra a los 7 días). Corregí y volvé a confirmar cuando esté bien.",
+      "verifVolverAPreguntar": "Volver a preguntar",
       "revision": {
         "barra": "{{count}} cosas para revisar antes de confirmar",
         "paso": "{{actual}} de {{total}}",

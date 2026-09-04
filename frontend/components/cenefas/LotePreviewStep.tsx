@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, AlertTriangle, ArrowLeft, BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Save, Send, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Save, Send, X, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { cenefasV2Api } from "@/lib/api";
@@ -40,7 +40,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   const [descargando, setDescargando] = useState(false);
   const [bajandoUna, setBajandoUna] = useState<string | null>(null);
   const [verificando, setVerificando] = useState(false);
-  const [verifDescartada, setVerifDescartada] = useState(false);
+  const [verifNegativa, setVerifNegativa] = useState(false);
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [savingTemplates, setSavingTemplates] = useState(false);
@@ -229,17 +229,22 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
     }
   }
 
-  // Una persona mira el archivo y confirma que salio bien. Ademas de sumar
-  // aparte en el informe de produccion, decide la retencion: el archivo de
-  // una corrida verificada se conserva para siempre (se puede volver a bajar
-  // cuando sea); el de una sin verificar se borra a los dias configurados y
-  // solo quedan los numeros.
-  async function confirmarVerificacion() {
+  // Una persona mira el archivo y dice si salio bien o mal -- una respuesta
+  // real, no un "despues lo veo" que no queda registrado en ningun lado.
+  // Ademas de sumar aparte en el informe de produccion, decide la retencion:
+  // el archivo de una corrida verificada se conserva para siempre (se puede
+  // volver a bajar cuando sea); el de una marcada mal (o nunca contestada)
+  // sigue la retencion normal y se borra a los dias configurados.
+  async function marcarVerificacion(salioBien: boolean) {
     setVerificando(true);
     try {
       const hechas = lote?.cenefas.filter((c) => c.status === "done" && c.id) ?? [];
-      await Promise.all(hechas.map((c) => cenefasV2Api.verificarCorrida(c.id!, true)));
-      toast.success(t("cenefas.lote.verifOk", { n: hechas.length }));
+      await Promise.all(hechas.map((c) => cenefasV2Api.verificarCorrida(c.id!, salioBien)));
+      if (salioBien) {
+        toast.success(t("cenefas.lote.verifOk", { n: hechas.length }));
+      } else {
+        setVerifNegativa(true);
+      }
       consultar();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("cenefas.unknownError"));
@@ -289,6 +294,20 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
       </p>
     ),
   }));
+
+  // El panel de la derecha lo ocupa el editor mientras hay algo para editar
+  // (preview) -- una vez que TODO el lote terminó de generarse, el editor
+  // ya no tiene sentido (no queda template_def) y ese espacio quedaba
+  // vacío mientras la pregunta de verificación languidecía al final de la
+  // página. Se reusa ese lugar para la pregunta en vez de dejarlo en blanco.
+  const mostrarPanelDerecho = !!detalle?.template_def || (pendientes === 0 && listas > 0);
+  const panelDerechoFondo = detalle?.template_def
+    ? ""
+    : todasVerificadas
+    ? "bg-emerald-50 dark:bg-emerald-950/20"
+    : verifNegativa
+    ? "bg-rose-50 dark:bg-rose-950/20"
+    : "bg-brand-50 dark:bg-brand-950/20";
 
   return (
     <div className="space-y-4">
@@ -345,6 +364,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
             temas={temasRevision}
             i18nPrefix="cenefas.lote.revision"
             icon={AlertTriangle}
+            tono="alerta"
           />
           <p className="text-[11px] text-slate-400 dark:text-slate-500 px-1">
             Podés confirmar igual: esto es un aviso, no un bloqueo.
@@ -388,124 +408,190 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
           la que la gente sepa llegar, así que esta ES el editor. El panel
           se arma con las mismas props que ya usa el store del editor
           completo (/materiales/cenefas/v2), pero apuntando al estado LOCAL
-          de la cenefa que se está mirando (ver handleUpdateComponent). */}
+          de la cenefa que se está mirando (ver handleUpdateComponent).
+
+          El panel de la derecha se reusa para la pregunta de verificación
+          una vez que todo el lote terminó (ver mostrarPanelDerecho): en ese
+          momento ya no queda template_def de ninguna cenefa, así que el
+          editor no tiene nada que mostrar y ese espacio quedaba vacío. */}
       <div className="card p-4">
-        {detalle?.template_def ? (
-          <div className="flex gap-3 items-stretch">
-            <Canvas
-              key={actualId}
-              template={detalle.template_def}
-              activeFormat={detalle.format ?? detalle.template_def.master_format}
-              selectedComponentId={selectedComponentId}
-              onSelectComponent={setSelectedComponentId}
-              onUpdateComponent={handleUpdateComponent}
-              previewData={detalle.preview_product}
-              previewProducts={detalle.preview_products}
-              slotBands={detalle.slot_bands}
-              className="flex-1 h-[820px]"
-            />
-            <div className="w-72 shrink-0 h-[820px] border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col">
-              <PropertiesPanel
+        <div className={mostrarPanelDerecho ? "flex gap-3 items-stretch" : ""}>
+          <div className={mostrarPanelDerecho ? "flex-1 h-[820px]" : "h-[820px]"}>
+            {detalle?.template_def ? (
+              <Canvas
+                key={actualId}
                 template={detalle.template_def}
+                activeFormat={detalle.format ?? detalle.template_def.master_format}
                 selectedComponentId={selectedComponentId}
-                updateComponent={handleUpdateComponent}
+                onSelectComponent={setSelectedComponentId}
+                onUpdateComponent={handleUpdateComponent}
+                previewData={detalle.preview_product}
+                previewProducts={detalle.preview_products}
+                slotBands={detalle.slot_bands}
+                className="w-full h-full"
               />
-            </div>
-          </div>
-        ) : actualStatus === "done" ? (
-          // Al generar la cenefa se libera su preview (ver pop_job_products en
-          // jobs.py), asi que no hay nada que dibujar y nunca lo va a haber.
-          // Antes esto era un spinner eterno: parecia colgado y no informaba
-          // nada. Ahora se dice que esta lista y se ofrece bajarla sola.
-          <div className="flex flex-col items-center justify-center h-[820px] gap-4">
-            <span className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
-              <CheckCircle2 size={26} className="text-emerald-500" />
-            </span>
-            <div className="text-center">
-              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                {t("cenefas.lote.yaGenerada")}
-              </p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                {actual?.row_count
-                  ? t("cenefas.lote.productos", { n: actual.row_count })
-                  : ""}
-              </p>
-            </div>
-            {actualId && (
-              <button
-                onClick={() => descargarUna(actualId)}
-                disabled={bajandoUna === actualId}
-                className="btn-secondary flex items-center gap-2 disabled:opacity-50"
-              >
-                {bajandoUna === actualId
-                  ? <Loader2 size={15} className="animate-spin" />
-                  : <Download size={15} />}
-                {t("cenefas.lote.descargarUna")}
-              </button>
+            ) : actualStatus === "done" ? (
+              // Al generar la cenefa se libera su preview (ver pop_job_products en
+              // jobs.py), asi que no hay nada que dibujar y nunca lo va a haber.
+              // Antes esto era un spinner eterno: parecia colgado y no informaba
+              // nada. Ahora se dice que esta lista y se ofrece bajarla sola.
+              <div className="flex flex-col items-center justify-center h-full gap-4">
+                <span className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                  <CheckCircle2 size={26} className="text-emerald-500" />
+                </span>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    {t("cenefas.lote.yaGenerada")}
+                  </p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                    {actual?.row_count
+                      ? t("cenefas.lote.productos", { n: actual.row_count })
+                      : ""}
+                  </p>
+                </div>
+                {actualId && (
+                  <button
+                    onClick={() => descargarUna(actualId)}
+                    disabled={bajandoUna === actualId}
+                    className="btn-secondary flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {bajandoUna === actualId
+                      ? <Loader2 size={15} className="animate-spin" />
+                      : <Download size={15} />}
+                    {t("cenefas.lote.descargarUna")}
+                  </button>
+                )}
+              </div>
+            ) : actualStatus === "error" ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 px-8">
+                <span className="w-14 h-14 rounded-full bg-rose-500/10 flex items-center justify-center">
+                  <AlertCircle size={26} className="text-rose-500" />
+                </span>
+                <p className="text-sm text-rose-600 dark:text-rose-400 text-center">
+                  {actual?.validation_report?.error ?? t("cenefas.unknownError")}
+                </p>
+              </div>
+            ) : (
+              // Mientras esta cenefa no tenga preview, el cuadro grande no puede
+              // mostrar nada. Antes decia "En cola — cenefa 1 de 16", que era
+              // repetir la barra de progreso de arriba en un espacio enorme. Se
+              // usa para lo que no esta en ningun otro lado: el estado de las 16,
+              // y para saltar a cualquiera sin apretar "Siguiente" quince veces.
+              <div className="h-full overflow-y-auto -m-1 p-1">
+                <div className="grid gap-1.5">
+                  {lote.cenefas.map((c, i) => {
+                    const esActual = i === posicion;
+                    const estado = c.status ?? "pending";
+                    const color = {
+                      done:    "text-emerald-500 bg-emerald-500/10",
+                      preview: "text-brand-500 bg-brand-500/10",
+                      error:   "text-rose-500 bg-rose-500/10",
+                    }[estado] ?? "text-slate-400 bg-slate-400/10";
+                    return (
+                      <button
+                        key={c.id ?? i}
+                        onClick={() => setIndice(i)}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-colors ${
+                          esActual
+                            ? "border-brand-400 bg-brand-50/50 dark:bg-brand-950/20"
+                            : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                        }`}
+                      >
+                        <span className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold ${color}`}>
+                          {i + 1}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
+                            {c.template}
+                          </span>
+                          <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                            {c.excel}
+                          </span>
+                        </span>
+                        <span className="shrink-0 flex items-center gap-1.5">
+                          {estado === "done" && <CheckCircle2 size={14} className="text-emerald-500" />}
+                          {estado === "error" && <AlertCircle size={14} className="text-rose-500" />}
+                          {(estado === "pending" || estado === "running") && (
+                            <Loader2 size={13} className="animate-spin text-slate-400" />
+                          )}
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                            {t(`cenefas.lote.estado.${estado}`)}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
-        ) : actualStatus === "error" ? (
-          <div className="flex flex-col items-center justify-center h-[820px] gap-3 px-8">
-            <span className="w-14 h-14 rounded-full bg-rose-500/10 flex items-center justify-center">
-              <AlertCircle size={26} className="text-rose-500" />
-            </span>
-            <p className="text-sm text-rose-600 dark:text-rose-400 text-center">
-              {actual?.validation_report?.error ?? t("cenefas.unknownError")}
-            </p>
-          </div>
-        ) : (
-          // Mientras esta cenefa no tenga preview, el cuadro grande no puede
-          // mostrar nada. Antes decia "En cola — cenefa 1 de 16", que era
-          // repetir la barra de progreso de arriba en un espacio enorme. Se
-          // usa para lo que no esta en ningun otro lado: el estado de las 16,
-          // y para saltar a cualquiera sin apretar "Siguiente" quince veces.
-          <div className="h-[820px] overflow-y-auto -m-1 p-1">
-            <div className="grid gap-1.5">
-              {lote.cenefas.map((c, i) => {
-                const esActual = i === posicion;
-                const estado = c.status ?? "pending";
-                const color = {
-                  done:    "text-emerald-500 bg-emerald-500/10",
-                  preview: "text-brand-500 bg-brand-500/10",
-                  error:   "text-rose-500 bg-rose-500/10",
-                }[estado] ?? "text-slate-400 bg-slate-400/10";
-                return (
-                  <button
-                    key={c.id ?? i}
-                    onClick={() => setIndice(i)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-colors ${
-                      esActual
-                        ? "border-brand-400 bg-brand-50/50 dark:bg-brand-950/20"
-                        : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/60"
-                    }`}
-                  >
-                    <span className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold ${color}`}>
-                      {i + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
-                        {c.template}
-                      </span>
-                      <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                        {c.excel}
-                      </span>
-                    </span>
-                    <span className="shrink-0 flex items-center gap-1.5">
-                      {estado === "done" && <CheckCircle2 size={14} className="text-emerald-500" />}
-                      {estado === "error" && <AlertCircle size={14} className="text-rose-500" />}
-                      {(estado === "pending" || estado === "running") && (
-                        <Loader2 size={13} className="animate-spin text-slate-400" />
-                      )}
-                      <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                        {t(`cenefas.lote.estado.${estado}`)}
-                      </span>
-                    </span>
+
+          {mostrarPanelDerecho && (
+            <div className={`w-72 shrink-0 h-[820px] border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col ${panelDerechoFondo}`}>
+              {detalle?.template_def ? (
+                <PropertiesPanel
+                  template={detalle.template_def}
+                  selectedComponentId={selectedComponentId}
+                  updateComponent={handleUpdateComponent}
+                />
+              ) : todasVerificadas ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-5">
+                  <span className="w-14 h-14 rounded-full bg-emerald-500/15 flex items-center justify-center">
+                    <BadgeCheck size={26} className="text-emerald-500" />
+                  </span>
+                  <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                    {t("cenefas.lote.verifHecha")}
+                  </p>
+                </div>
+              ) : verifNegativa ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-5">
+                  <span className="w-14 h-14 rounded-full bg-rose-500/15 flex items-center justify-center">
+                    <XCircle size={26} className="text-rose-500" />
+                  </span>
+                  <p className="text-sm font-bold text-rose-700 dark:text-rose-400">
+                    {t("cenefas.lote.verifMalTitulo")}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {t("cenefas.lote.verifMalDetalle")}
+                  </p>
+                  <button onClick={() => setVerifNegativa(false)} className="btn-ghost text-xs mt-1">
+                    {t("cenefas.lote.verifVolverAPreguntar")}
                   </button>
-                );
-              })}
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col justify-center gap-4 text-center p-5">
+                  <span className="relative w-14 h-14 mx-auto rounded-full bg-brand-500/15 flex items-center justify-center">
+                    <span className="absolute inset-0 rounded-full bg-brand-400/30 animate-ping" />
+                    <BadgeCheck size={26} className="relative text-brand-500" />
+                  </span>
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                    {t("cenefas.lote.verifTitulo")}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {t("cenefas.lote.verifDetalle")}
+                  </p>
+                  <div className="flex flex-col gap-2 mt-1">
+                    <button
+                      onClick={() => marcarVerificacion(true)}
+                      disabled={verificando}
+                      className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {verificando ? <Loader2 size={15} className="animate-spin" /> : <BadgeCheck size={15} />}
+                      {t("cenefas.lote.verifSi")}
+                    </button>
+                    <button
+                      onClick={() => marcarVerificacion(false)}
+                      disabled={verificando}
+                      className="w-full flex items-center justify-center gap-2 disabled:opacity-50 rounded-lg border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 py-2 text-sm font-semibold transition-colors"
+                    >
+                      <XCircle size={15} /> {t("cenefas.lote.verifNo")}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Acciones */}
@@ -531,46 +617,6 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
           </button>
         )}
       </div>
-
-      {/* Verificacion humana: cuando todo termino, se pregunta si salio bien.
-          Confirmar guarda el archivo para siempre (se puede volver a bajar
-          cuando sea) y la corrida suma como verificada en el informe; sin
-          confirmar, el archivo se borra a los dias configurados y quedan solo
-          los numeros. */}
-      {pendientes === 0 && listas > 0 && !verifDescartada && (
-        <div className={`card p-5 border-l-4 ${todasVerificadas ? "border-emerald-400" : "border-brand-400"}`}>
-          {todasVerificadas ? (
-            <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-              <BadgeCheck size={17} /> {t("cenefas.lote.verifHecha")}
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                <BadgeCheck size={17} className="text-brand-500" /> {t("cenefas.lote.verifTitulo")}
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {t("cenefas.lote.verifDetalle")}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={confirmarVerificacion}
-                  disabled={verificando}
-                  className="btn-primary flex items-center gap-2 disabled:opacity-50"
-                >
-                  {verificando ? <Loader2 size={15} className="animate-spin" /> : <BadgeCheck size={15} />}
-                  {t("cenefas.lote.verifSi")}
-                </button>
-                <button
-                  onClick={() => setVerifDescartada(true)}
-                  className="btn-secondary"
-                >
-                  {t("cenefas.lote.verifAhoraNo")}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {showSaveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

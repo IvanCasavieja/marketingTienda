@@ -524,9 +524,12 @@
       "verifTitulo": "Confirma que os cartazes saíram bem?",
       "verifDetalle": "Abra o arquivo e confira. Ao confirmar, o arquivo fica guardado para ver quando quiser e a rodada conta como verificada no relatório. Sem confirmar, o arquivo é apagado em 7 dias — os números permanecem.",
       "verifSi": "Sim, saíram bem",
-      "verifAhoraNo": "Agora não",
+      "verifNo": "Não, saíram com erro",
       "verifOk": "{{n}} rodada(s) verificadas — o arquivo fica guardado",
       "verifHecha": "Rodada verificada: o arquivo fica guardado e conta no relatório.",
+      "verifMalTitulo": "Marcado para revisar",
+      "verifMalDetalle": "Não fica guardado para sempre: segue a retenção normal (apagado em 7 dias). Corrija e confirme de novo quando estiver certo.",
+      "verifVolverAPreguntar": "Perguntar de novo",
       "revision": {
         "barra": "{{count}} coisas para revisar antes de confirmar",
         "paso": "{{actual}} de {{total}}",
