@@ -439,8 +439,6 @@ export default function Canvas({
     () => buildSiblingMap(template.components, slotBands),
     [template.components, slotBands],
   );
-  // eslint-disable-next-line no-console
-  console.log("[CLAUDE-DEBUG] slotBands:", slotBands, "siblingMap size:", siblingMap.size, [...siblingMap.entries()].slice(0, 5));
 
   const containerRef    = useRef<HTMLDivElement>(null);
   const stageRef        = useRef<Konva.Stage | null>(null);
@@ -564,10 +562,6 @@ export default function Canvas({
     const nodeMap = new Map<string, Konva.Group>();
     nodeMapRef.current = nodeMap;
 
-    // eslint-disable-next-line no-console
-    console.log("[CLAUDE-DEBUG] rebuild effect corriendo, descripciones en displayComps:",
-      JSON.stringify(displayComps.filter((c) => c.variable === "descripcion").map((c) => ({ id: c.id.slice(0,8), x: c.base_bounds.x, y: c.base_bounds.y }))));
-
     let selectedNode: Konva.Group | null = null;
 
     for (const comp of displayComps) {
@@ -582,8 +576,6 @@ export default function Canvas({
         previewData: compPreviewData,
         onSelect: () => { if (isEditMode) selectComponent(comp.id); },
         onDragEnd: (x, y) => {
-          // eslint-disable-next-line no-console
-          console.log("[CLAUDE-DEBUG] onDragEnd PRIMARIO en", comp.id, comp.variable, comp.name);
           const newX = +Math.max(0, Math.min((x - pageLeft) / PX_PER_CM, dims.w - comp.base_bounds.width)).toFixed(2);
           const newY = +Math.max(0, Math.min((y - pageTop)  / PX_PER_CM, dims.h - comp.base_bounds.height)).toFixed(2);
           updateComponent(comp.id, {
@@ -593,10 +585,6 @@ export default function Canvas({
       });
       layer.add(group);
       nodeMap.set(comp.id, group);
-      if (comp.variable === "descripcion") {
-        // eslint-disable-next-line no-console
-        console.log("[CLAUDE-DEBUG] group construido para", comp.id.slice(0,8), "base_bounds:", JSON.stringify(comp.base_bounds), "group.x/y:", group.x(), group.y());
-      }
       if (isSelected) selectedNode = group;
     }
 
@@ -611,10 +599,6 @@ export default function Canvas({
         return s && !s.locked;
       });
       const group = nodeMap.get(comp.id);
-      if (siblingMap.get(comp.id)?.length) {
-        // eslint-disable-next-line no-console
-        console.log("[CLAUDE-DEBUG] comp con hermanos:", comp.id, comp.variable, "raw siblings:", siblingMap.get(comp.id), "filtrados:", siblings, "hasGroup:", !!group, "isEditMode:", isEditMode, "locked:", comp.locked);
-      }
       if (!group || siblings.length === 0 || !isEditMode || comp.locked) continue;
 
       let dragStart: { x: number; y: number } | null = null;
@@ -627,22 +611,8 @@ export default function Canvas({
           const sNode = nodeMap.get(sid);
           if (sNode) siblingStarts.set(sid, { x: sNode.x(), y: sNode.y() });
         }
-        // eslint-disable-next-line no-console
-        console.log("[CLAUDE-DEBUG] dragstart en", comp.id, comp.variable, "siblingStarts:", [...siblingStarts.entries()]);
-      });
-      group.on("dragmove", () => {
-        if (!dragStart) return;
-        const dx = group.x() - dragStart.x;
-        const dy = group.y() - dragStart.y;
-        for (const [sid, start] of siblingStarts) {
-          const sNode = nodeMap.get(sid);
-          if (sNode) { sNode.x(start.x + dx); sNode.y(start.y + dy); }
-        }
-        layer.batchDraw();
       });
       group.on("dragend", () => {
-        // eslint-disable-next-line no-console
-        console.log("[CLAUDE-DEBUG] dragend en", comp.id, comp.variable, "dragStart era:", dragStart, "siblingStarts:", [...siblingStarts.entries()]);
         if (!dragStart) return;
         const dxCm = (group.x() - dragStart.x) / PX_PER_CM;
         const dyCm = (group.y() - dragStart.y) / PX_PER_CM;
@@ -652,8 +622,6 @@ export default function Canvas({
           if (!sComp) continue;
           const newX = +Math.max(0, Math.min(sComp.base_bounds.x + dxCm, dims.w - sComp.base_bounds.width)).toFixed(2);
           const newY = +Math.max(0, Math.min(sComp.base_bounds.y + dyCm, dims.h - sComp.base_bounds.height)).toFixed(2);
-          // eslint-disable-next-line no-console
-          console.log("[CLAUDE-DEBUG] moviendo hermano", sid, "de", sComp.base_bounds.x, sComp.base_bounds.y, "a", newX, newY);
           updateComponent(sid, { base_bounds: { ...sComp.base_bounds, x: newX, y: newY } });
         }
       });

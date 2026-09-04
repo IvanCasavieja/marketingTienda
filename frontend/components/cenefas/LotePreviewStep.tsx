@@ -99,28 +99,13 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
     return () => { cancelado = true; };
   }, [actualId, actualStatus]);
 
-  useEffect(() => {
-    if (!detalle?.template_def) return;
-    const descs = detalle.template_def.components
-      .filter((c) => c.variable === "descripcion")
-      .map((c) => ({ id: c.id.slice(0, 8), x: c.base_bounds.x, y: c.base_bounds.y }));
-    // eslint-disable-next-line no-console
-    console.log("[CLAUDE-DEBUG] detalle actualizado, descripciones:", JSON.stringify(descs));
-  }, [detalle]);
-
   // Arrastre/resize en el canvas de LA CENEFA QUE SE ESTÁ MIRANDO — se
   // guarda contra actualId (el job actual), nunca se mezcla con lo que se
   // ajustó en otra cenefa del lote.
   function handleUpdateComponent(id: string, updates: Partial<CenefaComponent>) {
     if (!actualId) return;
-    // eslint-disable-next-line no-console
-    console.log("[CLAUDE-DEBUG] handleUpdateComponent llamado", id, updates.base_bounds, "actualId:", actualId);
     setDetalle((prev) => {
-      if (!prev?.template_def) {
-        // eslint-disable-next-line no-console
-        console.log("[CLAUDE-DEBUG] setDetalle: prev.template_def es null/undefined, NO SE APLICA");
-        return prev;
-      }
+      if (!prev?.template_def) return prev;
       const nuevoDef: CenefaTemplate = {
         ...prev.template_def,
         components: prev.template_def.components.map((c) => (c.id === id ? { ...c, ...updates } : c)),
