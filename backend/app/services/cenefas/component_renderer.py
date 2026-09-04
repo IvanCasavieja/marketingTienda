@@ -383,6 +383,58 @@ _EXCLUYENTES: dict[str, tuple[str, ...]] = {
 # diseno hecho a mano, es desprolijidad de posicionamiento, no una fila nueva.
 _SEPARACION_MIN_CM = 0.5
 
+# Cuánto del alto del más chico de los dos tiene que caer dentro del rango
+# vertical del más grande para contar como "superpuesto a propósito", y
+# cuánto más bajo tiene que ser el chico respecto del grande. No es 100%:
+# los diseños reales no calzan al milímetro (caso real, "Comprando 2" contra
+# precioBanco: 78,8% de solape, no lo agarraba un chequeo de bordes exacto).
+_SOLAPE_MIN_DECORACION = 0.7
+_ALTO_MAX_DECORACION = 0.6
+
+
+def _son_decoracion_superpuesta(a: dict, b: dict) -> bool:
+    """True si uno de los dos cuadros es una etiqueta chica que vive
+    superpuesta a propósito dentro del rango vertical del otro, mucho más
+    grande -- señal de que el diseño la dibujó ahí a propósito (una cocarda
+    o "Comprando 2" flotando sobre/dentro de un precio gigante), no una fila
+    o columna vecina que compite por el mismo espacio. Da igual cuál de los
+    dos se pase como `a` o `b`: la relación es simétrica.
+
+    Caso real que motivó esto (Cenefas A4 Preciazos, 09/2026): la etiqueta
+    "Comprando 2" (alto 2,82cm) vive superpuesta arriba del cuadro de
+    precioOferta (alto 7,95cm) a propósito -- el diseño la dibuja ahí para
+    que se lea "Comprando 2" arriba del número grande. _ancho_disponible_cm
+    la tomaba como pared a la derecha del precio (ancho disponible 2,2cm en
+    una caja de 17,5) y _alto_disponible_cm tomaba al precio como techo de la
+    etiqueta chica (alto disponible 0,7cm) -- las dos cosas para el MISMO
+    cartel, con el precio y la etiqueta achicándose al piso (180pt→99pt,
+    30pt→16,5pt) sin que ninguno de los dos cuadros desbordara ni se
+    superpusiera de verdad: el texto real ("129" a 180pt, "Comprando 2" a
+    30pt) entraba perfecto en su caja, el problema era puramente esta
+    detección de vecino.
+
+    No reemplaza el resto de la heurística de vecinos -- solo la desactiva
+    para ESTE par puntual cuando la geometría deja claro que uno vive adentro
+    del otro. Un cuadro de decimal al lado del entero (caso legítimo, ver
+    comentarios de _alto_disponible_cm/_ancho_disponible_cm) tiene alto
+    parecido al del entero, así que "sensiblemente menos alto" no lo agarra
+    y sigue bloqueando como corresponde.
+    """
+    ba = a.get("computed_bounds") or a.get("base_bounds") or {}
+    bb = b.get("computed_bounds") or b.get("base_bounds") or {}
+    y1, h1 = ba.get("y"), ba.get("height")
+    y2, h2 = bb.get("y"), bb.get("height")
+    if y1 is None or h1 is None or y2 is None or h2 is None:
+        return False
+    if h1 <= h2:
+        chico_y, chico_h, grande_h = y1, h1, h2
+    else:
+        chico_y, chico_h, grande_h = y2, h2, h1
+    if grande_h <= 0 or chico_h <= 0 or chico_h >= grande_h * _ALTO_MAX_DECORACION:
+        return False
+    solape = min(y1 + h1, y2 + h2) - max(y1, y2)
+    return solape / chico_h >= _SOLAPE_MIN_DECORACION
+
 
 def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
     """Cuánto puede crecer hacia abajo un cuadro antes de pisar a otro.
@@ -418,6 +470,12 @@ def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
         # -- visible como una franja con el precio la mitad de grande que las
         # otras dos, con el mismo diseno.
         if oy <= y + _SEPARACION_MIN_CM:
+            continue
+        # Etiqueta chica superpuesta a propósito con este cuadro (ver
+        # _son_decoracion_superpuesta) -- no cuenta como techo aunque
+        # geométricamente esté "debajo": el diseño la dibujó ahí sabiendo que
+        # se solapa.
+        if _son_decoracion_superpuesta(comp, otro):
             continue
         # Hay que distinguir "abajo" de "al costado", y el ancho del solape solo
         # no alcanza. Dos casos reales que se parecen y necesitan lo contrario:
@@ -530,6 +588,12 @@ def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
         # real de mundo hogar, 2026-08-29).
         solape = min(y + h, oy + oh) - max(y, oy)
         if solape <= min(h, oh) / 2:
+            continue
+        # Etiqueta chica superpuesta a propósito con este cuadro (ver
+        # _son_decoracion_superpuesta) -- no cuenta como pared aunque
+        # geométricamente esté "a la derecha": el diseño la dibujó ahí
+        # sabiendo que se solapa.
+        if _son_decoracion_superpuesta(comp, otro):
             continue
         # Un vecino que va a quedar vacio no limita nada.
         if not _texto_resuelto(otro, product).strip():
