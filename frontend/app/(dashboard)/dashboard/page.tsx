@@ -640,7 +640,7 @@ export default function DashboardPage() {
           </thead>
           <tbody>
             {loading ? (
-              Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
+              Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} colSpan={7} />)
             ) : summary.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-400 dark:text-slate-500">

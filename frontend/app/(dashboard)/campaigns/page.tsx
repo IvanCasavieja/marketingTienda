@@ -384,7 +384,7 @@ export default function CampaignsPage() {
           </thead>
           <tbody>
             {loading
-              ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
+              ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} colSpan={10} />)
               : displayed.length === 0
               ? (
                 <tr>

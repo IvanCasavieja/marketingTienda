@@ -175,11 +175,8 @@ async def get_meses(
 async def crear_mes(
     data: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("redexpres.manage")),
 ):
-    if not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="Solo superadmins pueden crear meses")
-
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
     if not (1 <= month <= 12) or year < 2024:
@@ -337,11 +334,8 @@ async def desconfirmar_pedido(
     month: int,
     local_nombre: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("redexpres.manage")),
 ):
-    if not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="Solo superadmins pueden desconfirmar")
-
     result = await db.execute(
         select(PlanillaPedido).where(
             PlanillaPedido.year == year,
@@ -364,11 +358,8 @@ async def desconfirmar_pedido(
 @router.get("/asignaciones")
 async def get_asignaciones(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("redexpres.manage")),
 ):
-    if not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="Solo superadmins")
-
     result = await db.execute(
         select(LocalAsignacion, User).join(User, LocalAsignacion.user_id == User.id)
     )
@@ -388,11 +379,8 @@ async def get_asignaciones(
 async def create_asignacion(
     data: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("redexpres.manage")),
 ):
-    if not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="Solo superadmins")
-
     user_id = data.get("user_id")
     local_nombre = data.get("local_nombre")
     if not user_id or not local_nombre:
@@ -420,11 +408,8 @@ async def create_asignacion(
 async def delete_asignacion(
     asig_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("redexpres.manage")),
 ):
-    if not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="Solo superadmins")
-
     result = await db.execute(select(LocalAsignacion).where(LocalAsignacion.id == asig_id))
     asig = result.scalar_one_or_none()
     if not asig:

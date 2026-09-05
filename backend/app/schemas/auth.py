@@ -21,17 +21,6 @@ def _validate_password_strength(v: str) -> str:
     return v
 
 
-class UserRegister(BaseModel):
-    email: EmailStr
-    full_name: str
-    password: str
-
-    @field_validator("password")
-    @classmethod
-    def password_strength(cls, v: str) -> str:
-        return _validate_password_strength(v)
-
-
 class UserLogin(BaseModel):
     # No es EmailStr a propósito: los usuarios de sucursal de Redexpres
     # loguean con el nombre del local como "email" (ver create_sucursal_users.py),

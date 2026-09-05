@@ -33,6 +33,7 @@ ALL_PERMISSIONS: dict[str, str] = {
 
     # Redexpres
     "redexpres.view":          "Ver y completar la planilla de pedidos Redexpres",
+    "redexpres.manage":        "Administrar Redexpres: crear meses, gestionar asignaciones de sucursales y desconfirmar pedidos",
 
     # Facturación
     "facturacion.view":        "Ver el dashboard de Facturación (presupuesto y canjes)",

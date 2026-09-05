@@ -351,7 +351,11 @@ function RoleEditorModal({
 
 export default function AdminPage() {
   const { t, i18n } = useTranslation();
-  const { allowed, checked } = usePermissionGuard({ requireSuperuser: true });
+  // "platform.admin" (no requireSuperuser) — el backend (_require_admin_panel
+  // en admin.py) ya permite entrar a un Admin no-superuser con ese permiso;
+  // el guard client-side tiene que reflejar el mismo criterio, sino un Admin
+  // real queda con acceso solo por API directa y nunca desde la UI.
+  const { allowed, checked } = usePermissionGuard({ permission: "platform.admin" });
   const [users,       setUsers]       = useState<AdminUser[]>([]);
   const [roles,       setRoles]       = useState<RoleItem[]>([]);
   const [allPerms,    setAllPerms]    = useState<PermissionDef[]>([]);
@@ -372,9 +376,9 @@ export default function AdminPage() {
   // reservado para la cuenta principal, no algo que se elija en un select.
   const assignableRoles = roles.filter((r) => r.name !== "Superadmin");
 
-  // No disparamos /admin/* hasta confirmar que el usuario es superuser —
-  // evita requests innecesarios (y un toast de error confuso) para
-  // cualquier usuario logueado que entre a esta ruta sin ser admin.
+  // No disparamos /admin/* hasta confirmar que el usuario tiene acceso al
+  // panel (superuser o permiso platform.admin) — evita requests innecesarios
+  // (y un toast de error confuso) para cualquier logueado que entre sin serlo.
   useEffect(() => {
     if (!checked) return;
     if (allowed) {

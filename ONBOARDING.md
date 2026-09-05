@@ -100,6 +100,8 @@ Una vez que tengas VS Code abierto con la carpeta del proyecto, decile a Claude:
 - Análisis con Claude AI + Mesa Redonda (debate Claude vs ChatGPT vs Llama)
 - Generador de Cenefas PPTX con templates guardados
 - Multi-idioma (ES/EN/PT)
-- Usuarios con roles y permisos granulares (Superadmin, Admin, Editor, Viewer, o roles
-  personalizados) — no hay equipos/organizaciones separadas: es una plataforma
-  single-tenant, un solo pool de usuarios con rol y permisos globales
+- Usuarios con roles y permisos granulares — no hay equipos/organizaciones
+  separadas: es una plataforma single-tenant, un solo pool de usuarios. Hay 4
+  roles de sistema (Superadmin, Admin, Usuario, Viewer) que sirven como punto
+  de partida, pero el permiso real vive por usuario individual (se puede
+  afinar uno por uno desde `/admin` sin crear un rol nuevo)

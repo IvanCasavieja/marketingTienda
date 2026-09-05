@@ -16,7 +16,6 @@ from app.models.user import User
 from app.models.audit_log import AuditLog
 from app.models.local_asignacion import LocalAsignacion
 from app.schemas.auth import (
-    UserRegister,
     UserLogin,
     TokenResponse,
     RefreshRequest,
@@ -66,26 +65,6 @@ def _user_response(
         assigned_locales=assigned_locales or [],
         must_change_password=must_change_password,
     )
-
-
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/minute")
-async def register(payload: UserRegister, request: Request, db: AsyncSession = Depends(get_db)):
-    existing = await db.execute(select(User).where(User.email == payload.email))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Email already registered")
-
-    user = User(
-        email=payload.email,
-        full_name=payload.full_name,
-        hashed_password=hash_password(payload.password),
-        password_changed_at=datetime.now(timezone.utc),  # elegida por el propio dueño desde el vamos
-    )
-    db.add(user)
-    await db.flush()
-
-    db.add(AuditLog(user_id=user.id, action="user.register", ip_address=_client_ip(request)))
-    return _user_response(user)
 
 
 _LOGIN_FAIL_LIMIT = 5
