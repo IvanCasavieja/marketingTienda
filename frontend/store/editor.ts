@@ -84,6 +84,19 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   leftPanel: "components",
   slotBands: null,
 
+  // Ninguna de las tres acciones de abajo toca `slotBands`: es responsabilidad
+  // exclusiva del efecto de v2/page.tsx (clave componentIds), el único que lo
+  // escribe con un valor real. Antes cada una lo pisaba con null al cargar --
+  // inofensivo la mayoría de las veces, pero si el mismo template se carga
+  // dos veces seguidas con los MISMOS componentes (por ejemplo el doble
+  // efecto de montaje que hace React StrictMode en desarrollo), la segunda
+  // pisada llega DESPUÉS de que ese efecto ya detectó las bandas reales --y
+  // como componentIds no cambió entre una carga y la otra, el efecto no
+  // vuelve a dispararse para corregirlo-- dejando slotBands en null para
+  // siempre aunque el template sí tenga varios productos por hoja (bug real,
+  // visto en Preciazos 6xA4/A5: la cocarda quedaba sin poder vincularse entre
+  // bandas). Con una sola fuente de verdad para este campo, no hay pisada
+  // posible.
   initNew: () =>
     set({
       templateId: null,
@@ -91,7 +104,6 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       isDirty: false,
       selectedComponentId: null,
       activeFormat: "a4",
-      slotBands: null,
     }),
 
   loadTemplate: (id, template) => {
@@ -107,7 +119,6 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       isDirty: false,
       selectedComponentId: null,
       activeFormat: template.master_format,
-      slotBands: null,
     });
   },
 
@@ -124,7 +135,6 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       isDirty: true,
       selectedComponentId: null,
       activeFormat: template.master_format,
-      slotBands: null,
     });
   },
 

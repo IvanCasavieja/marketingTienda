@@ -791,8 +791,15 @@ export default function Canvas({
   const hTicks = useMemo(() => buildRulerTicks(dims.w, pageLeft), [dims.w, pageLeft]);
   const vTicks = useMemo(() => buildRulerTicks(dims.h, pageTop),  [dims.h, pageTop]);
 
+  // justify-start, no justify-center: con overflow-auto + contenido más ancho
+  // que el contenedor, "justify-content: center" en flexbox recorta el
+  // desborde por igual a los dos lados y ese sobrante queda inalcanzable con
+  // scroll (bug conocido de flexbox) -- pasó desapercibido porque hasta ahora
+  // ningún formato desbordaba el contenedor. Con la hoja completa de
+  // 6xA4/A5 (ver el cálculo de `dims` más arriba) sí desborda, y quedaba
+  // cortada sin forma de scrollear hasta verla entera.
   return (
-    <div className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-center items-start ${className}`}>
+    <div className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-start items-start ${className}`}>
       {/* Badge modo preview (solo en el editor standalone, no en PreviewStep) */}
       {!interactive && !isEditMode && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">
