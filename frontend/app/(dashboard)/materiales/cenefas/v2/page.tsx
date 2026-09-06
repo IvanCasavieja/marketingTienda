@@ -463,7 +463,14 @@ export default function EditorPage() {
                 Agregá componentes desde el panel izquierdo para comenzar a diseñar
               </div>
             )}
-            <Canvas />
+            {/* w-full: sin esto el div raíz de Canvas se ajusta a su propio
+                contenido (el `<main>` que lo envuelve lo centra con
+                items-center, sin forzarle ancho) -- y el zoom automático de
+                Canvas.tsx mide ESE mismo div para saber cuánto espacio hay
+                disponible. Sin w-full quedaba circular: se autoachicaba a su
+                propio tamaño de contenido en vez de usar el ancho real del
+                área de trabajo. */}
+            <Canvas className="w-full" />
           </main>
         )}
 

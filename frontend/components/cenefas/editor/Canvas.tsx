@@ -440,6 +440,23 @@ export default function Canvas({
     [template.components, slotBands],
   );
 
+  const wrapperRef       = useRef<HTMLDivElement>(null);
+  const [wrapperWidth, setWrapperWidth] = useState<number | null>(null);
+
+  // Ancho disponible del contenedor scrolleable, para el zoom automático de
+  // más abajo -- se re-mide solo (ResizeObserver), sin depender de un resize
+  // de la ventana entera: alcanza con que el usuario abra/cierre un panel
+  // lateral para que este mismo ancho cambie.
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      setWrapperWidth(entries[0].contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const containerRef    = useRef<HTMLDivElement>(null);
   const stageRef        = useRef<Konva.Stage | null>(null);
   const bgLayerRef      = useRef<Konva.Layer | null>(null);
@@ -487,6 +504,26 @@ export default function Canvas({
   const pageLeft     = margin;
   const pageTop      = margin;
 
+  // Zoom automático: ajusta el dibujo al ANCHO disponible del contenedor en
+  // vez de dibujar siempre al mismo tamaño fijo en píxeles (28px/cm) sin
+  // importar la pantalla -- en un monitor ancho un A4 fijo dejaba una franja
+  // vacía enorme al costado (se pidió centrarlo bien, pero eso no usa el
+  // espacio de más; lo notó Ivan viendo la plantilla real). Con `zoom`, una
+  // hoja chica (A4) se agranda para llenar el ancho disponible, y una hoja
+  // más ancha que la pantalla (6xA4/A5) se achica para entrar entera SIN
+  // scroll horizontal -- ambos casos con la MISMA cuenta. Los nodos de Konva
+  // siguen viviendo en su espacio de coordenadas de siempre (28px/cm, sin
+  // multiplicar por zoom en ningún otro lado del archivo); el escalado lo
+  // aplica Konva mismo vía stage.scale(), que ya sabe traducir clicks y
+  // arrastres correctamente sobre un stage escalado -- no hay que tocar la
+  // lógica de selección/arrastre/resize de más abajo.
+  const ZOOM_MIN = 0.25;
+  const ZOOM_MAX = 2;
+  const WRAPPER_PADDING = 32; // aire para que la hoja no quede pegada al borde
+  const zoom = wrapperWidth
+    ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, (wrapperWidth - WRAPPER_PADDING) / stageW))
+    : 1;
+
   // Corregir cajas de texto más anchas que la propia hoja: es un truco de
   // autoría de PowerPoint (caja invisible mucho más ancha que la diapositiva,
   // con el texto centrado adentro, para que el centrado no dependa de la
@@ -505,7 +542,13 @@ export default function Canvas({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const stage = new Konva.Stage({ container: containerRef.current, width: stageW, height: stageH });
+    const stage = new Konva.Stage({
+      container: containerRef.current,
+      width: stageW * zoom,
+      height: stageH * zoom,
+      scaleX: zoom,
+      scaleY: zoom,
+    });
     const bgLayer = new Konva.Layer();
     const compLayer = new Konva.Layer();
     const transformer = new Konva.Transformer({
@@ -536,11 +579,19 @@ export default function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Tamaño del stage (cambia al cambiar de formato)
+  // Tamaño y zoom del stage (cambia al cambiar de formato o de ancho
+  // disponible). stage.scale() es el mecanismo propio de Konva para esto --
+  // ya traduce clicks/arrastres/handles del Transformer sobre el stage
+  // escalado, así que todo el código de más abajo sigue trabajando en
+  // coordenadas sin escalar.
   useEffect(() => {
-    stageRef.current?.width(stageW);
-    stageRef.current?.height(stageH);
-  }, [stageW, stageH]);
+    const stage = stageRef.current;
+    if (!stage) return;
+    stage.width(stageW * zoom);
+    stage.height(stageH * zoom);
+    stage.scale({ x: zoom, y: zoom });
+    stage.batchDraw();
+  }, [stageW, stageH, zoom]);
 
   // Fondo de pagina (sombra + rect blanco + etiqueta de formato)
   useEffect(() => {
@@ -801,7 +852,7 @@ export default function Canvas({
   // (6xA4/A5, ver el calculo de `dims` mas arriba), sin la fea franja vacia
   // de justify-start ni el recorte de justify-center a secas.
   return (
-    <div className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-[safe_center] items-start ${className}`}>
+    <div ref={wrapperRef} className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-[safe_center] items-start ${className}`}>
       {/* Badge modo preview (solo en el editor standalone, no en PreviewStep) */}
       {!interactive && !isEditMode && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">
@@ -815,17 +866,17 @@ export default function Canvas({
           por JS. */}
       <div
         className="grid"
-        style={{ gridTemplateColumns: `${RULER_SIZE}px ${stageW}px`, gridTemplateRows: `${RULER_SIZE}px ${stageH}px` }}
+        style={{ gridTemplateColumns: `${RULER_SIZE}px ${stageW * zoom}px`, gridTemplateRows: `${RULER_SIZE}px ${stageH * zoom}px` }}
       >
         <div
           className="sticky top-0 left-0 z-30 bg-slate-100 dark:bg-slate-900 border-b border-r border-slate-300 dark:border-slate-700"
         />
         <div
           className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-900 border-b border-slate-300 dark:border-slate-700 relative overflow-hidden"
-          style={{ width: stageW, height: RULER_SIZE }}
+          style={{ width: stageW * zoom, height: RULER_SIZE }}
         >
           {hTicks.map((t, i) => (
-            <div key={i} className="absolute bottom-0" style={{ left: t.pos }}>
+            <div key={i} className="absolute bottom-0" style={{ left: t.pos * zoom }}>
               <div className="bg-slate-400 dark:bg-slate-600" style={{ width: 1, height: t.major ? 8 : 4 }} />
               {t.label !== undefined && (
                 <span className="absolute -top-px left-1 text-[9px] leading-none text-slate-500 dark:text-slate-400 whitespace-nowrap">
@@ -837,10 +888,10 @@ export default function Canvas({
         </div>
         <div
           className="sticky left-0 z-20 bg-slate-100 dark:bg-slate-900 border-r border-slate-300 dark:border-slate-700 relative overflow-hidden"
-          style={{ width: RULER_SIZE, height: stageH }}
+          style={{ width: RULER_SIZE, height: stageH * zoom }}
         >
           {vTicks.map((t, i) => (
-            <div key={i} className="absolute right-0" style={{ top: t.pos }}>
+            <div key={i} className="absolute right-0" style={{ top: t.pos * zoom }}>
               <div className="bg-slate-400 dark:bg-slate-600" style={{ height: 1, width: t.major ? 8 : 4 }} />
               {t.label !== undefined && (
                 <span className="absolute left-0.5 top-0.5 text-[8px] leading-none text-slate-500 dark:text-slate-400 whitespace-nowrap">
