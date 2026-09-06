@@ -533,6 +533,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
                   template={detalle.template_def}
                   selectedComponentId={selectedComponentId}
                   updateComponent={handleUpdateComponent}
+                  slotBands={detalle.slot_bands}
                 />
               ) : todasVerificadas ? (
                 <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-5">

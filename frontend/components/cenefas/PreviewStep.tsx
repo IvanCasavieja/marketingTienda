@@ -263,6 +263,7 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
             template={template}
             selectedComponentId={selectedComponentId}
             updateComponent={handleUpdateComponent}
+            slotBands={job.slot_bands}
           />
         </div>
       </div>

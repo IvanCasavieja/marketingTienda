@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent, CenefaRule, CenefaTemplate, CenefaVariable, TextSegment, TextTransform } from "@/types/cenefas";
 import { Trash2, Lock, Unlock, Plus, GripVertical } from "lucide-react";
 import { RuleChip, RuleForm } from "./RulesPanel";
+import { buildSiblingMap } from "@/lib/cenefas/siblingMap";
 
 const TRANSFORMS = [
   { value: "none",           label: "Sin transformación" },
@@ -37,6 +38,11 @@ interface PropertiesPanelProps {
   deleteComponent?: (id: string) => void;
   addRule?: (rule: CenefaRule) => void;
   deleteRule?: (id: string) => void;
+  /** Bandas de la plantilla activa, para vincular la edición numérica de
+   * posición/tamaño con los mismos hermanos que ya vincula el arrastre en
+   * Canvas.tsx (ver buildSiblingMap). Igual patrón que el resto de props:
+   * sin prop explícita cae al store global. */
+  slotBands?: string[][] | null;
 }
 
 export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
@@ -48,6 +54,12 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
   const deleteComponent = props.deleteComponent;
   const addRule = props.addRule;
   const deleteRule = props.deleteRule;
+  const slotBands = props.slotBands !== undefined ? props.slotBands : store.slotBands;
+
+  const siblingMap = useMemo(
+    () => buildSiblingMap(template.components, slotBands),
+    [template.components, slotBands],
+  );
 
   const comp = template.components.find((c) => c.id === selectedComponentId) ?? null;
   const [showRuleForm, setShowRuleForm] = useState(false);
@@ -74,10 +86,30 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
     updateComponent(comp!.id, { style: { ...comp!.style, [key]: value } });
   }
 
-  function setBounds(key: string, value: number) {
+  function setBounds(key: "x" | "y" | "width" | "height", value: number) {
+    const previous = comp!.base_bounds[key];
     updateComponent(comp!.id, {
       base_bounds: { ...comp!.base_bounds, [key]: value },
     });
+
+    // Igual que el arrastre/resize en Canvas.tsx: el delta de ESTA edición
+    // se replica a los hermanos detectados en otras bandas, para que tipear
+    // un valor acá no desalinee el cuadro del resto de las cenefas de la
+    // hoja (antes solo el arrastre con el mouse vinculaba, y editar el
+    // número a mano en este panel dejaba ese cuadro puntual desalineado).
+    const delta = value - previous;
+    if (!delta) return;
+    for (const sid of siblingMap.get(comp!.id) ?? []) {
+      const sComp = template.components.find((c) => c.id === sid);
+      if (!sComp || sComp.locked) continue;
+      const isSize = key === "width" || key === "height";
+      const nextValue = isSize
+        ? Math.max(key === "width" ? 0.5 : 0.3, sComp.base_bounds[key] + delta)
+        : sComp.base_bounds[key] + delta;
+      updateComponent(sid, {
+        base_bounds: { ...sComp.base_bounds, [key]: +nextValue.toFixed(2) },
+      });
+    }
   }
 
   return (
