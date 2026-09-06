@@ -84,12 +84,18 @@ export default function EditorPage() {
   // Bandas de la plantilla activa, para que Canvas.tsx vincule edición entre
   // cenefas de una misma hoja (3xA4/6xA4/A5/pinchos) — mover/achicar/agrandar
   // una variable en una banda replica el cambio en las demás (ver
-  // Canvas.tsx). Se gatea contra `slots > 1` del formato activo para no
-  // pedir nada en el caso normal (A4/A3, la mayoría de las plantillas).
+  // Canvas.tsx). Antes se gateaba contra `slots > 1` del formato activo para
+  // no pedir nada en el caso normal (A4/A3) -- pero ese dato de formato es el
+  // detectado al importar (pptx_importer._detect_format), que solo conoce
+  // dimensiones de CELDA: un PPTX de hoja ya armada de 29,7x21cm (6xA4/A5)
+  // puede detectarse como "a5" (slots=1 en el catálogo) y esto nunca llegaba
+  // a pedir las bandas, aunque el PPTX sí tuviera varios productos
+  // pre-tileados (ver Canvas.tsx, mismo bug de fondo). _detect_slot_bands ya
+  // devuelve None por su cuenta cuando de verdad hay un solo slot -- no hace
+  // falta adivinarlo acá antes de preguntar.
   const componentIds = template.components.map((c) => c.id).join(",");
   useEffect(() => {
-    const fmt = formats.find((f) => f.id === activeFormat);
-    if (!fmt || fmt.slots <= 1 || template.components.length === 0) {
+    if (template.components.length === 0) {
       setSlotBands(null);
       return;
     }
@@ -99,7 +105,7 @@ export default function EditorPage() {
       .catch(() => { if (!cancelado) setSlotBands(null); });
     return () => { cancelado = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFormat, componentIds, formats]);
+  }, [componentIds]);
 
   // Cerrar menú de templates al hacer clic fuera
   useEffect(() => {
@@ -457,7 +463,14 @@ export default function EditorPage() {
                 Agregá componentes desde el panel izquierdo para comenzar a diseñar
               </div>
             )}
-            <Canvas />
+            {/* w-full: sin esto el div raíz de Canvas se ajusta a su propio
+                contenido (el `<main>` que lo envuelve lo centra con
+                items-center, sin forzarle ancho) -- y el zoom automático de
+                Canvas.tsx mide ESE mismo div para saber cuánto espacio hay
+                disponible. Sin w-full quedaba circular: se autoachicaba a su
+                propio tamaño de contenido en vez de usar el ancho real del
+                área de trabajo. */}
+            <Canvas className="w-full" />
           </main>
         )}
 

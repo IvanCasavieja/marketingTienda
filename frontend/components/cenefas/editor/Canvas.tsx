@@ -440,6 +440,23 @@ export default function Canvas({
     [template.components, slotBands],
   );
 
+  const wrapperRef       = useRef<HTMLDivElement>(null);
+  const [wrapperWidth, setWrapperWidth] = useState<number | null>(null);
+
+  // Ancho disponible del contenedor scrolleable, para el zoom automático de
+  // más abajo -- se re-mide solo (ResizeObserver), sin depender de un resize
+  // de la ventana entera: alcanza con que el usuario abra/cierre un panel
+  // lateral para que este mismo ancho cambie.
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      setWrapperWidth(entries[0].contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const containerRef    = useRef<HTMLDivElement>(null);
   const stageRef        = useRef<Konva.Stage | null>(null);
   const bgLayerRef      = useRef<Konva.Layer | null>(null);
@@ -454,7 +471,31 @@ export default function Canvas({
 
   const masterFormat = template.master_format;
   const isEditMode   = interactive || activeFormat === masterFormat;
-  const dims         = FORMAT_DIMS[activeFormat] ?? FORMAT_DIMS.a4;
+
+  const layoutComps = applyFormatLayout(
+    [...template.components].sort((a, b) => a.z_index - b.z_index),
+    activeFormat,
+    masterFormat,
+  );
+
+  // FORMAT_DIMS describe la CELDA de formatos que el motor tilea por offset
+  // (pinchos, 6xa4 "arte propio"): una plantilla de una sola celda chica que
+  // se repite. Pero una plantilla de "hoja ya armada" (varios productos
+  // pre-tileados en el mismo slide -- ver slotBands/_detect_slot_bands en el
+  // backend) puede tener el contenido real más ancho/alto que esa celda: el
+  // caso real es Preciazos 6xA4/A5, cuyo PPTX fuente mide 29,7×21cm pero
+  // detectó master_format "a5" (14,85×21, la mitad) al importar -- ver
+  // pptx_importer._detect_format, que solo conoce dimensiones de celda.
+  // Créce el lienzo para que entre el contenido real; nunca lo achica, así
+  // que no cambia nada en los formatos de celda-única que ya andaban bien.
+  const tableDims = FORMAT_DIMS[activeFormat] ?? FORMAT_DIMS.a4;
+  const dims = slotBands
+    ? {
+        w: Math.max(tableDims.w, ...layoutComps.map((c) => c.base_bounds.x + c.base_bounds.width)),
+        h: Math.max(tableDims.h, ...layoutComps.map((c) => c.base_bounds.y + c.base_bounds.height)),
+      }
+    : tableDims;
+
   const pageW        = scalePx(dims.w);
   const pageH        = scalePx(dims.h);
   const margin       = 40;
@@ -463,19 +504,34 @@ export default function Canvas({
   const pageLeft     = margin;
   const pageTop      = margin;
 
-  // Aplicar layout del formato activo para la vista previa, y corregir para
-  // mostrar cajas de texto más anchas que la propia hoja: es un truco de
+  // Zoom automático: ajusta el dibujo al ANCHO disponible del contenedor en
+  // vez de dibujar siempre al mismo tamaño fijo en píxeles (28px/cm) sin
+  // importar la pantalla -- en un monitor ancho un A4 fijo dejaba una franja
+  // vacía enorme al costado (se pidió centrarlo bien, pero eso no usa el
+  // espacio de más; lo notó Ivan viendo la plantilla real). Con `zoom`, una
+  // hoja chica (A4) se agranda para llenar el ancho disponible, y una hoja
+  // más ancha que la pantalla (6xA4/A5) se achica para entrar entera SIN
+  // scroll horizontal -- ambos casos con la MISMA cuenta. Los nodos de Konva
+  // siguen viviendo en su espacio de coordenadas de siempre (28px/cm, sin
+  // multiplicar por zoom en ningún otro lado del archivo); el escalado lo
+  // aplica Konva mismo vía stage.scale(), que ya sabe traducir clicks y
+  // arrastres correctamente sobre un stage escalado -- no hay que tocar la
+  // lógica de selección/arrastre/resize de más abajo.
+  const ZOOM_MIN = 0.25;
+  const ZOOM_MAX = 2;
+  const WRAPPER_PADDING = 32; // aire para que la hoja no quede pegada al borde
+  const zoom = wrapperWidth
+    ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, (wrapperWidth - WRAPPER_PADDING) / stageW))
+    : 1;
+
+  // Corregir cajas de texto más anchas que la propia hoja: es un truco de
   // autoría de PowerPoint (caja invisible mucho más ancha que la diapositiva,
   // con el texto centrado adentro, para que el centrado no dependa de la
   // cantidad de dígitos) — no es un error de la plantilla ni algo que este
   // código esté agrandando, pero acá se ve tal cual el shape crudo, sin el
   // ajuste que el motor de export sí aplica al generar el archivo final. Solo
   // afecta cómo se dibuja el preview — no toca los bounds guardados.
-  const displayComps = applyFormatLayout(
-    [...template.components].sort((a, b) => a.z_index - b.z_index),
-    activeFormat,
-    masterFormat,
-  ).map((comp) => {
+  const displayComps = layoutComps.map((comp) => {
     if (comp.type !== "text" || comp.base_bounds.width <= dims.w) return comp;
     return { ...comp, base_bounds: { ...comp.base_bounds, x: 0, width: dims.w } };
   });
@@ -486,7 +542,13 @@ export default function Canvas({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const stage = new Konva.Stage({ container: containerRef.current, width: stageW, height: stageH });
+    const stage = new Konva.Stage({
+      container: containerRef.current,
+      width: stageW * zoom,
+      height: stageH * zoom,
+      scaleX: zoom,
+      scaleY: zoom,
+    });
     const bgLayer = new Konva.Layer();
     const compLayer = new Konva.Layer();
     const transformer = new Konva.Transformer({
@@ -517,11 +579,19 @@ export default function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Tamaño del stage (cambia al cambiar de formato)
+  // Tamaño y zoom del stage (cambia al cambiar de formato o de ancho
+  // disponible). stage.scale() es el mecanismo propio de Konva para esto --
+  // ya traduce clicks/arrastres/handles del Transformer sobre el stage
+  // escalado, así que todo el código de más abajo sigue trabajando en
+  // coordenadas sin escalar.
   useEffect(() => {
-    stageRef.current?.width(stageW);
-    stageRef.current?.height(stageH);
-  }, [stageW, stageH]);
+    const stage = stageRef.current;
+    if (!stage) return;
+    stage.width(stageW * zoom);
+    stage.height(stageH * zoom);
+    stage.scale({ x: zoom, y: zoom });
+    stage.batchDraw();
+  }, [stageW, stageH, zoom]);
 
   // Fondo de pagina (sombra + rect blanco + etiqueta de formato)
   useEffect(() => {
@@ -772,8 +842,17 @@ export default function Canvas({
   const hTicks = useMemo(() => buildRulerTicks(dims.w, pageLeft), [dims.w, pageLeft]);
   const vTicks = useMemo(() => buildRulerTicks(dims.h, pageTop),  [dims.h, pageTop]);
 
+  // justify-[safe_center], no justify-center a secas: centrado normal
+  // ("unsafe") con overflow-auto recorta el desborde por igual a los dos
+  // lados cuando el contenido es mas ancho que el contenedor, y ese sobrante
+  // queda inalcanzable con scroll (bug conocido de flexbox) -- paso
+  // desapercibido porque hasta ahora ningun formato desbordaba. `safe center`
+  // es exactamente el valor de la spec de CSS Box Alignment para esto: centra
+  // cuando entra (A4, 3xA4) y cae a alineado-al-inicio SOLO si desborda
+  // (6xA4/A5, ver el calculo de `dims` mas arriba), sin la fea franja vacia
+  // de justify-start ni el recorte de justify-center a secas.
   return (
-    <div className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-center items-start ${className}`}>
+    <div ref={wrapperRef} className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-[safe_center] items-start ${className}`}>
       {/* Badge modo preview (solo en el editor standalone, no en PreviewStep) */}
       {!interactive && !isEditMode && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">
@@ -787,17 +866,17 @@ export default function Canvas({
           por JS. */}
       <div
         className="grid"
-        style={{ gridTemplateColumns: `${RULER_SIZE}px ${stageW}px`, gridTemplateRows: `${RULER_SIZE}px ${stageH}px` }}
+        style={{ gridTemplateColumns: `${RULER_SIZE}px ${stageW * zoom}px`, gridTemplateRows: `${RULER_SIZE}px ${stageH * zoom}px` }}
       >
         <div
           className="sticky top-0 left-0 z-30 bg-slate-100 dark:bg-slate-900 border-b border-r border-slate-300 dark:border-slate-700"
         />
         <div
           className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-900 border-b border-slate-300 dark:border-slate-700 relative overflow-hidden"
-          style={{ width: stageW, height: RULER_SIZE }}
+          style={{ width: stageW * zoom, height: RULER_SIZE }}
         >
           {hTicks.map((t, i) => (
-            <div key={i} className="absolute bottom-0" style={{ left: t.pos }}>
+            <div key={i} className="absolute bottom-0" style={{ left: t.pos * zoom }}>
               <div className="bg-slate-400 dark:bg-slate-600" style={{ width: 1, height: t.major ? 8 : 4 }} />
               {t.label !== undefined && (
                 <span className="absolute -top-px left-1 text-[9px] leading-none text-slate-500 dark:text-slate-400 whitespace-nowrap">
@@ -809,10 +888,10 @@ export default function Canvas({
         </div>
         <div
           className="sticky left-0 z-20 bg-slate-100 dark:bg-slate-900 border-r border-slate-300 dark:border-slate-700 relative overflow-hidden"
-          style={{ width: RULER_SIZE, height: stageH }}
+          style={{ width: RULER_SIZE, height: stageH * zoom }}
         >
           {vTicks.map((t, i) => (
-            <div key={i} className="absolute right-0" style={{ top: t.pos }}>
+            <div key={i} className="absolute right-0" style={{ top: t.pos * zoom }}>
               <div className="bg-slate-400 dark:bg-slate-600" style={{ height: 1, width: t.major ? 8 : 4 }} />
               {t.label !== undefined && (
                 <span className="absolute left-0.5 top-0.5 text-[8px] leading-none text-slate-500 dark:text-slate-400 whitespace-nowrap">
