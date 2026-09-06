@@ -1236,6 +1236,15 @@ def _render_slide(
         if not oculto and dominantes_presentes:
             usadas = _variables_del_componente(comp)
             for manda in dominantes_presentes:
+                if manda in usadas:
+                    # Este cuadro ES el que trae la variable dominante (un
+                    # componente multi-segmento que junta, ej., tipoOferta y
+                    # promoOferta en la misma caja) -- no se autoexcluye por
+                    # traer también una de las variables que ese dominante
+                    # tapa en OTROS cuadros. Sin este continue, cualquier
+                    # compuesto <<tipoOferta>> $ <<promoOferta>> se ocultaba
+                    # a sí mismo apenas el producto traía promoOferta.
+                    continue
                 if usadas & set(_EXCLUYENTES[manda]) and str(product.get(manda, "") or "").strip():
                     oculto = True
                     break
