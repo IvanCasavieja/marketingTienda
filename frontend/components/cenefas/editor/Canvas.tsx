@@ -454,7 +454,31 @@ export default function Canvas({
 
   const masterFormat = template.master_format;
   const isEditMode   = interactive || activeFormat === masterFormat;
-  const dims         = FORMAT_DIMS[activeFormat] ?? FORMAT_DIMS.a4;
+
+  const layoutComps = applyFormatLayout(
+    [...template.components].sort((a, b) => a.z_index - b.z_index),
+    activeFormat,
+    masterFormat,
+  );
+
+  // FORMAT_DIMS describe la CELDA de formatos que el motor tilea por offset
+  // (pinchos, 6xa4 "arte propio"): una plantilla de una sola celda chica que
+  // se repite. Pero una plantilla de "hoja ya armada" (varios productos
+  // pre-tileados en el mismo slide -- ver slotBands/_detect_slot_bands en el
+  // backend) puede tener el contenido real más ancho/alto que esa celda: el
+  // caso real es Preciazos 6xA4/A5, cuyo PPTX fuente mide 29,7×21cm pero
+  // detectó master_format "a5" (14,85×21, la mitad) al importar -- ver
+  // pptx_importer._detect_format, que solo conoce dimensiones de celda.
+  // Créce el lienzo para que entre el contenido real; nunca lo achica, así
+  // que no cambia nada en los formatos de celda-única que ya andaban bien.
+  const tableDims = FORMAT_DIMS[activeFormat] ?? FORMAT_DIMS.a4;
+  const dims = slotBands
+    ? {
+        w: Math.max(tableDims.w, ...layoutComps.map((c) => c.base_bounds.x + c.base_bounds.width)),
+        h: Math.max(tableDims.h, ...layoutComps.map((c) => c.base_bounds.y + c.base_bounds.height)),
+      }
+    : tableDims;
+
   const pageW        = scalePx(dims.w);
   const pageH        = scalePx(dims.h);
   const margin       = 40;
@@ -463,19 +487,14 @@ export default function Canvas({
   const pageLeft     = margin;
   const pageTop      = margin;
 
-  // Aplicar layout del formato activo para la vista previa, y corregir para
-  // mostrar cajas de texto más anchas que la propia hoja: es un truco de
+  // Corregir cajas de texto más anchas que la propia hoja: es un truco de
   // autoría de PowerPoint (caja invisible mucho más ancha que la diapositiva,
   // con el texto centrado adentro, para que el centrado no dependa de la
   // cantidad de dígitos) — no es un error de la plantilla ni algo que este
   // código esté agrandando, pero acá se ve tal cual el shape crudo, sin el
   // ajuste que el motor de export sí aplica al generar el archivo final. Solo
   // afecta cómo se dibuja el preview — no toca los bounds guardados.
-  const displayComps = applyFormatLayout(
-    [...template.components].sort((a, b) => a.z_index - b.z_index),
-    activeFormat,
-    masterFormat,
-  ).map((comp) => {
+  const displayComps = layoutComps.map((comp) => {
     if (comp.type !== "text" || comp.base_bounds.width <= dims.w) return comp;
     return { ...comp, base_bounds: { ...comp.base_bounds, x: 0, width: dims.w } };
   });
