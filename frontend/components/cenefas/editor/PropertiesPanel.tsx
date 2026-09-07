@@ -86,6 +86,16 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
   >(null);
   const [errorEscaneo, setErrorEscaneo] = useState<string | null>(null);
 
+  // En qué banda vive cada componente, para poder replicar una relación al
+  // cuadro equivalente de las demás bandas. Va con el resto de los hooks:
+  // más abajo hay un `return` condicional y un useMemo después de él no se
+  // llamaría en todos los renders.
+  const bandaDe = useMemo(() => {
+    const m = new Map<string, number>();
+    (slotBands ?? []).forEach((ids, i) => ids.forEach((id) => m.set(id, i)));
+    return m;
+  }, [slotBands]);
+
   const candidatosRelacion = useMemo(
     () => template.components.filter((c) => c.type === "text" && tieneVariable(c)),
     [template.components],
@@ -108,6 +118,39 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
   // La misma resolución que usa el canvas para dibujar -- asi lo que dice el
   // panel es exactamente lo que se ve.
   const fuente = resolverFuente(comp.style?.font_family, comp.style?.font_bold);
+
+  /**
+   * Declara "este cuadro acompaña a aquel" y lo REPLICA en las demás bandas,
+   * cada una apuntando al cuadro de SU banda.
+   *
+   * Es el punto del pedido: el problema no era acomodar un "$", era tener que
+   * acomodarlo cenefa por cenefa porque no estaba relacionado con nada.
+   * Declararlo una vez en la 6xA4 lo declara en las seis.
+   *
+   * Si el destino no existe en alguna banda (un cuadro que aparece una sola
+   * vez en toda la hoja) esa banda queda sin declarar: no se inventa a quién
+   * apuntar.
+   */
+  function relacionar(origenId: string, destinoId: string | null) {
+    updateComponent(origenId, { vinculado_a: destinoId });
+    const hermanosOrigen = siblingMap.get(origenId) ?? [];
+    if (hermanosOrigen.length === 0) return;
+
+    if (!destinoId) {
+      for (const sid of hermanosOrigen) updateComponent(sid, { vinculado_a: null });
+      return;
+    }
+    const destinoPorBanda = new Map<number, string>();
+    for (const id of [destinoId, ...(siblingMap.get(destinoId) ?? [])]) {
+      const b = bandaDe.get(id);
+      if (b !== undefined) destinoPorBanda.set(b, id);
+    }
+    for (const sid of hermanosOrigen) {
+      const b = bandaDe.get(sid);
+      const destino = b === undefined ? undefined : destinoPorBanda.get(b);
+      if (destino) updateComponent(sid, { vinculado_a: destino });
+    }
+  }
 
   async function detectarRelaciones() {
     setEscaneando(true);
@@ -428,9 +471,7 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
                 <select
                   className="input text-sm"
                   value={comp.vinculado_a ?? ""}
-                  onChange={(e) =>
-                    updateComponent(comp.id, { vinculado_a: e.target.value || null })
-                  }
+                  onChange={(e) => relacionar(comp.id, e.target.value || null)}
                 >
                   <option value="">Sin relación (el motor lo deduce)</option>
                   {candidatosRelacion.map((c) => (
@@ -444,6 +485,8 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
                 {comp.vinculado_a
                   ? "Declarada a mano: al exportar se alinea con ese cuadro y no se deduce nada por posición."
                   : "Sin declarar, el motor deduce por posición cuál es su pareja, y puede equivocarse."}
+                {(siblingMap.get(comp.id)?.length ?? 0) > 0 &&
+                  ` Se aplica también a las otras ${siblingMap.get(comp.id)!.length} cenefas de la hoja.`}
               </p>
 
               {/* Escaneo de toda la plantilla. Propone, no aplica: cada
@@ -493,7 +536,7 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
                             type="button"
                             className="btn-primary text-[10px] px-2 py-1"
                             onClick={() => {
-                              updateComponent(sg.desde, { vinculado_a: sg.hacia });
+                              relacionar(sg.desde, sg.hacia);
                               setSugerencias((prev) =>
                                 (prev ?? []).filter((x) => x.desde !== sg.desde));
                             }}
