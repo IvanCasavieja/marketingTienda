@@ -260,9 +260,63 @@ LLAMA_PERSONA = (
 )
 
 
-async def _ask_claude(system: str, prompt: str, max_tokens: int = 800) -> Tuple[str, int, int]:
+async def _ask_claude(
+    system: str, prompt: str, max_tokens: int = 800, effort: str | None = None,
+) -> Tuple[str, int, int]:
+    """Una pregunta, la respuesta en texto y los tokens gastados.
+
+    `effort` ("low" | "medium" | "high") acota cuánto razona el modelo ANTES de
+    escribir. Importa porque ese razonamiento sale del MISMO presupuesto que
+    `max_tokens`, no de uno aparte: en un pedido grande el modelo puede gastar
+    el techo entero pensando y devolver texto vacío.
+
+    Sin `effort` esto sigue funcionando igual que siempre (una llamada normal,
+    sin streaming) -- se deja así a propósito para no cambiarle el
+    comportamiento a los llamadores que hoy andan bien. Con `effort` se pasa a
+    streaming a nivel SDK, que además es lo recomendado cuando el pedido puede
+    tardar minutos.
+
+    Medido contra producción el 07/09/2026 con el listado real de 150
+    productos del unificador de categorías (prompt de ~12.400 tokens de
+    entrada, techo de 16.000):
+
+        sin effort   145 s   16000 tokens de salida   stop=max_tokens   0 caracteres de texto
+        medium       134 s   16000 tokens de salida   stop=max_tokens   JSON cortado a la mitad
+        low           89 s   12343 tokens de salida   stop=end_turn     JSON completo, 32 grupos
+
+    O sea que para pedidos así de grandes ni "medium" alcanza, aunque sea el
+    valor que usa el chat de La Triada (ver _ask_claude_stream): ahí el output
+    es prosa corta, acá es un JSON largo.
+    """
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY no configurado")
+
+    if effort:
+        async def _stream():
+            client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+            partes: list[str] = []
+            async with client.messages.stream(
+                model=settings.MODELO_IA,
+                max_tokens=max_tokens,
+                system=system,
+                output_config={"effort": effort},
+                messages=[{"role": "user", "content": prompt}],
+            ) as stream:
+                async for event in stream:
+                    if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                        partes.append(event.delta.text)
+                final = await stream.get_final_message()
+            texto = "".join(partes)
+            if not texto and final.stop_reason == "max_tokens":
+                # Se quedó sin presupuesto pensando. Se dice explícitamente en
+                # vez de devolver "" y que el llamador crea que el modelo no
+                # tenía nada que contestar.
+                raise RuntimeError(
+                    f"el modelo gastó los {max_tokens} tokens razonando y no llegó a responder"
+                )
+            return texto, final.usage.input_tokens, final.usage.output_tokens
+        return await llm_call_with_retry(_stream, label="_ask_claude")
+
     def _sync():
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         resp = client.messages.create(

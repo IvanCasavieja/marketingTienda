@@ -310,7 +310,23 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
         # después de pensar, el JSON de un listado grande se corta a mitad. 16000 ya
         # se usó con este mismo modelo en el chat de La Triada (ver
         # _ask_claude_stream), así que no es un valor sin probar.
-        content, in_tok, out_tok = await _ask_claude(_UNIFY_SYSTEM_PROMPT, prompt, max_tokens=16000)
+        # effort="low" NO es tacañería: es lo único que deja terminar el JSON.
+        # El razonamiento sale del MISMO presupuesto que max_tokens, y con un
+        # listado grande el modelo se lo gastaba entero pensando. Medido contra
+        # producción el 07/09/2026 con el listado real de Gran Bretaña, 150
+        # productos (el tope de acá), techo de 16.000:
+        #
+        #   sin effort   145 s   16000 de salida   stop=max_tokens   texto VACIO
+        #   medium       134 s   16000 de salida   stop=max_tokens   JSON cortado
+        #   low           89 s   12343 de salida   stop=end_turn     JSON entero, 32 grupos
+        #
+        # O sea que el modal decía "No pudimos generar las sugerencias" después
+        # de esperar dos minutos y medio, siempre, para cualquier listado de
+        # este tamaño. Ni "medium" --el valor que usa el chat de La Triada--
+        # alcanza acá: allá el output es prosa corta, acá es un JSON largo con
+        # un grupo por familia de variantes.
+        content, in_tok, out_tok = await _ask_claude(
+            _UNIFY_SYSTEM_PROMPT, prompt, max_tokens=16000, effort="low")
         await log_ai_usage(db, user_id, "convertidor_unificar_categorias", *_ASK_CLAUDE_META, in_tok, out_tok)
         parsed = json.loads(_strip_json_fence(content))
         grupos_raw = parsed.get("grupos", [])
