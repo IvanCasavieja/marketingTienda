@@ -249,6 +249,118 @@ def test_font_size_manual_igual_se_achica_si_no_entra_en_su_caja():
     assert alto[0]["style"]["font_size"] < 97.0
 
 
+def _pptx_con_grupo(texto_hijo, *, grupo, hijo):
+    """Un A4 con UN grupo que contiene un cuadro de texto.
+
+    `grupo` es (x, y, w, h) en cm sobre la hoja; `hijo` es (x, y, w, h) en el
+    sistema INTERNO del grupo. Se arma el XML a mano porque python-pptx no
+    sabe crear grupos con chOff/chExt propios, que es justo lo que hace falta
+    para reproducir el caso: un grupo cuyo sistema interno NO coincide con el
+    de la hoja.
+    """
+    from pptx.oxml.ns import qn, nsmap
+    from lxml import etree
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Cm(21.0), Cm(29.7)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    caja = slide.shapes.add_textbox(Cm(hijo[0]), Cm(hijo[1]), Cm(hijo[2]), Cm(hijo[3]))
+    caja.text_frame.paragraphs[0].add_run().text = texto_hijo
+    sp = caja._element
+    spTree = sp.getparent()
+    spTree.remove(sp)
+
+    grp = etree.SubElement(spTree, qn("p:grpSp"))
+    nv = etree.SubElement(grp, qn("p:nvGrpSpPr"))
+    cnv = etree.SubElement(nv, qn("p:cNvPr")); cnv.set("id", "900"); cnv.set("name", "cocarda")
+    etree.SubElement(nv, qn("p:cNvGrpSpPr")); etree.SubElement(nv, qn("p:nvPr"))
+    pr = etree.SubElement(grp, qn("p:grpSpPr"))
+    xfrm = etree.SubElement(pr, qn("a:xfrm"))
+    for tag, a, b, va, vb in (
+        ("a:off", "x", "y", grupo[0], grupo[1]), ("a:ext", "cx", "cy", grupo[2], grupo[3]),
+        ("a:chOff", "x", "y", hijo[0], hijo[1]), ("a:chExt", "cx", "cy", hijo[2], hijo[3]),
+    ):
+        e = etree.SubElement(xfrm, qn(tag)); e.set(a, str(int(Cm(va)))); e.set(b, str(int(Cm(vb))))
+    grp.append(sp)
+
+    buf = io.BytesIO(); prs.save(buf)
+    return buf.getvalue()
+
+
+def _pos_en_hoja(prs, texto):
+    """Dónde queda un shape EN LA HOJA, resolviendo la transformación de los
+    grupos que lo contienen -- que es lo que hace PowerPoint al dibujar."""
+    from pptx.oxml.ns import qn
+    CM = 360000.0
+    encontrado = []
+
+    def rec(shapes, tf):
+        for sh in shapes:
+            if sh.shape_type == 6:
+                x = sh._element.find(qn("p:grpSpPr") + "/" + qn("a:xfrm"))
+                o, e = x.find(qn("a:off")), x.find(qn("a:ext"))
+                co, ce = x.find(qn("a:chOff")), x.find(qn("a:chExt"))
+                rec(sh.shapes, tf + [(
+                    int(o.get("x")) / CM, int(o.get("y")) / CM,
+                    int(co.get("x")) / CM, int(co.get("y")) / CM,
+                    int(e.get("cx")) / int(ce.get("cx")), int(e.get("cy")) / int(ce.get("cy")),
+                )])
+                continue
+            if not sh.has_text_frame or texto not in sh.text_frame.text:
+                continue
+            hx, hy = sh.left / CM, sh.top / CM
+            for ox, oy, cx, cy, sx, sy in reversed(tf):
+                hx, hy = ox + (hx - cx) * sx, oy + (hy - cy) * sy
+            encontrado.append((hx, hy))
+
+    rec(prs.slides[0].shapes, [])
+    assert len(encontrado) == 1, f"se esperaba un shape con {texto!r}, hay {len(encontrado)}"
+    return encontrado[0]
+
+
+def test_shape_dentro_de_un_grupo_se_exporta_donde_lo_muestra_el_editor():
+    # Bug real (Fiesta de Gran Bretaña A4, 07/09/2026): la cocarda del
+    # "XX% OFF" es un GRUPO, y un shape adentro de un grupo guarda su posición
+    # en el sistema interno del grupo (chOff/chExt), no en el de la hoja.
+    #
+    # El importer ya convertía interno -> hoja al leer, así que la cocarda se
+    # veía bien en el editor. Pero al exportar el motor escribía la coordenada
+    # de HOJA tal cual adentro del grupo y PowerPoint la volvía a transformar:
+    # guardada en (14,83 , 18,54), terminaba dibujada en (25,65 , 40,56) sobre
+    # una hoja de 21 x 29,7 -- fuera de la página, abajo y a la derecha.
+    #
+    # El grupo de acá tiene la misma forma que el real: ocupa el doble de lo
+    # que mide su sistema interno, así que cualquier coordenada escrita sin
+    # invertir la transformación se va al doble de distancia.
+    src = _pptx_con_grupo("<<precioOferta>>", grupo=(10.0, 12.0, 8.0, 4.0), hijo=(3.0, 2.0, 4.0, 2.0))
+    d = import_pptx(src)
+
+    comp = _componente(d, "precioOferta")
+    # Lo que ve el editor: coordenadas de HOJA, no las internas (3,0 , 2,0).
+    assert abs(comp["base_bounds"]["x"] - 10.0) < 0.02
+    assert abs(comp["base_bounds"]["y"] - 12.0) < 0.02
+
+    pptx, _ = render_template_to_pptx(d, [{"precioOferta": "239"}], "a4", None, src)
+    x, y = _pos_en_hoja(Presentation(io.BytesIO(pptx)), "239")
+    assert abs(x - 10.0) < 0.05, f"la cocarda salio en x={x:.2f}, el editor la muestra en 10,00"
+    assert abs(y - 12.0) < 0.05, f"la cocarda salio en y={y:.2f}, el editor la muestra en 12,00"
+
+
+def test_shape_dentro_de_un_grupo_respeta_que_lo_muevan():
+    # El caso que lo destapó: la cocarda salía mal del importador viejo, Ivan
+    # la acomodó a mano en el editor y guardó la plantilla. Ahí el movimiento
+    # a mano y la transformación del grupo se sumaron y la mandaron al fondo.
+    src = _pptx_con_grupo("<<precioOferta>>", grupo=(10.0, 12.0, 8.0, 4.0), hijo=(3.0, 2.0, 4.0, 2.0))
+    d = import_pptx(src)
+    comp = _componente(d, "precioOferta")
+    comp["base_bounds"]["x"] = 4.5     # arrastrado a mano en el editor
+    comp["base_bounds"]["y"] = 6.25
+
+    pptx, _ = render_template_to_pptx(d, [{"precioOferta": "239"}], "a4", None, src)
+    x, y = _pos_en_hoja(Presentation(io.BytesIO(pptx)), "239")
+    assert abs(x - 4.5) < 0.05, f"salio en x={x:.2f} en vez de 4,50"
+    assert abs(y - 6.25) < 0.05, f"salio en y={y:.2f} en vez de 6,25"
+
+
 def test_mxn_imprime_el_literal_una_sola_vez():
     # Bug real (pag. 54 de mundo hogar): la A4 REDEX tiene cocarda
     # (tipoOferta) Y cuadro que tapa al precio (promoOferta) -- en un M x N

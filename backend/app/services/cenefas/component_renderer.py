@@ -1558,6 +1558,69 @@ def _duplicate_slide(prs, source_slide):
     return new_slide
 
 
+def _cadena_de_grupos(shape) -> list[tuple[float, float, float, float, float, float]]:
+    """Transformaciones de los grupos que contienen a este shape, del MÁS
+    EXTERNO al más interno.
+
+    Cada una es (off.x, off.y, chOff.x, chOff.y, escalaX, escalaY) en EMU,
+    igual que `_transformacion_de_grupo` del importer -- son las dos mitades
+    de la misma cuenta y tienen que coincidir.
+    """
+    from pptx.oxml.ns import qn as _qn
+    cadena: list[tuple[float, float, float, float, float, float]] = []
+    try:
+        el = shape._element.getparent()
+    except Exception:
+        return cadena
+    while el is not None:
+        if el.tag == _qn("p:grpSp"):
+            try:
+                xfrm = el.find(_qn("p:grpSpPr") + "/" + _qn("a:xfrm"))
+                off, ext = xfrm.find(_qn("a:off")), xfrm.find(_qn("a:ext"))
+                cho, che = xfrm.find(_qn("a:chOff")), xfrm.find(_qn("a:chExt"))
+                cw, ch = int(che.get("cx")), int(che.get("cy"))
+                if cw and ch:
+                    cadena.append((
+                        float(off.get("x")), float(off.get("y")),
+                        float(cho.get("x")), float(cho.get("y")),
+                        int(ext.get("cx")) / cw, int(ext.get("cy")) / ch,
+                    ))
+            except Exception:
+                pass
+        el = el.getparent()
+    cadena.reverse()
+    return cadena
+
+
+def _a_coordenadas_internas(shape, x_emu, y_emu, w_emu, h_emu):
+    """Pasa una posición de LA HOJA al sistema de coordenadas donde vive el
+    shape.
+
+    Un shape suelto ya está en coordenadas de hoja y esto no lo toca. Uno que
+    está DENTRO DE UN GRUPO no: PowerPoint guarda su `off` en el sistema
+    interno del grupo (chOff/chExt), y ponerle ahí una coordenada de hoja lo
+    manda a cualquier lado.
+
+    Bug real (Fiesta de Gran Bretaña A4, 07/09/2026). El importer ya convertía
+    interno -> hoja al leer, así que la cocarda del "XX% OFF" se veía bien en
+    el editor; pero al exportar el motor escribía la coordenada de hoja tal
+    cual adentro del grupo y PowerPoint la volvía a transformar: la cocarda,
+    guardada en (14,83 , 18,54), terminaba dibujada en (25,65 , 40,56) sobre
+    una hoja de 21 x 29,7 -- fuera de la página, abajo y a la derecha.
+
+    Con grupos anidados se invierte de afuera hacia adentro, en el orden
+    inverso al que PowerPoint los aplica.
+    """
+    for ox, oy, cx, cy, sx, sy in _cadena_de_grupos(shape):
+        if not sx or not sy:
+            continue
+        x_emu = cx + (x_emu - ox) / sx
+        y_emu = cy + (y_emu - oy) / sy
+        w_emu = w_emu / sx
+        h_emu = h_emu / sy
+    return x_emu, y_emu, w_emu, h_emu
+
+
 def _place_component(slide, comp: dict, value: str, shape_map: dict[int, object]) -> None:
     """Coloca un componente en el slide. Si viene de una plantilla con
     diseño original preservado y matchea un shape real del archivo fuente
@@ -1572,10 +1635,19 @@ def _place_component(slide, comp: dict, value: str, shape_map: dict[int, object]
     if shape is not None:
         bounds = comp["computed_bounds"]
         try:
-            shape.left   = Cm(bounds["x"])
-            shape.top    = Cm(bounds["y"])
-            shape.width  = Cm(max(bounds["width"],  0.1))
-            shape.height = Cm(max(bounds["height"], 0.1))
+            # `computed_bounds` está SIEMPRE en coordenadas de hoja. Si el
+            # shape vive adentro de un grupo hay que pasarlo a las internas
+            # del grupo antes de escribirlo (ver _a_coordenadas_internas).
+            x, y, w, h = _a_coordenadas_internas(
+                shape,
+                float(Cm(bounds["x"])), float(Cm(bounds["y"])),
+                float(Cm(max(bounds["width"],  0.1))),
+                float(Cm(max(bounds["height"], 0.1))),
+            )
+            shape.left   = int(round(x))
+            shape.top    = int(round(y))
+            shape.width  = max(1, int(round(w)))
+            shape.height = max(1, int(round(h)))
         except Exception:
             pass
 
