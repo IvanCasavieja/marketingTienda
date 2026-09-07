@@ -4,6 +4,7 @@ import Konva from "konva";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent, CenefaTemplate } from "@/types/cenefas";
 import { buildSiblingMap } from "@/lib/cenefas/siblingMap";
+import { resolverFuente } from "@/lib/cenefas/fuentes";
 
 // ---------------------------------------------------------------------------
 // Constantes de escala y dimensiones de formatos
@@ -60,14 +61,6 @@ function ptToPx(pt: number) {
   return (pt / 72) * 2.54 * PX_PER_CM;
 }
 
-// La tipografia del diseno con alternativas: si la maquina no la tiene
-// instalada, el navegador cae a algo parecido en vez de a la fuente por
-// defecto. Impact y las condensadas son las que usan estas plantillas.
-function fontStack(familia?: string | null) {
-  const base = (familia ?? "").trim();
-  const alternativas = "Impact, 'Haettenschweiler', 'Arial Narrow Bold', 'Franklin Gothic Medium', Arial, sans-serif";
-  return base ? `${base}, ${alternativas}` : alternativas;
-}
 
 // ---------------------------------------------------------------------------
 // Aplicar layout del formato destino sobre los componentes
@@ -302,12 +295,18 @@ function buildComponentGroup({
     // mas arriba de donde sale en el PPTX.
     const lineHeightPt = comp.style?.line_height_pt ?? pt;
     const offsetY = lineHeightPt > pt ? ptToPx(lineHeightPt - pt) * ASCENDENTE_EM : 0;
+    const fuente = resolverFuente(comp.style?.font_family, comp.style?.font_bold);
     group.add(new Konva.Text({
       x: 0, y: offsetY, width: w,
       text,
       fontSize: fontSizePx,
-      fontFamily: fontStack(comp.style?.font_family),
-      fontStyle: comp.style?.font_bold ? "bold" : "normal",
+      // PowerPoint mete el peso adentro del nombre ("Libre Franklin Black"
+      // es Libre Franklin en 900). Konva arma la cadena `font` del canvas
+      // como `fontStyle fontVariant fontSize px fontFamily`, asi que el peso
+      // numerico va en fontStyle -- "900 normal 40px Libre Franklin" es
+      // shorthand CSS valido. Ver lib/cenefas/fuentes.ts.
+      fontFamily: fuente.stack,
+      fontStyle: String(fuente.weight),
       fill: comp.style?.color ?? "#1e293b",
       align: comp.style?.align ?? "center",
       lineHeight: 1.2,
@@ -585,6 +584,21 @@ export default function Canvas({
     layer.batchDraw();
   }, [pageLeft, pageTop, pageW, pageH, activeFormat, dims.w, dims.h, selectComponent]);
 
+  // Las tipografias del diseno se bajan de Google (ver globals.css) y tardan
+  // un instante. Konva MIDE el texto con la fuente que haya en ese momento:
+  // si la capa se arma antes de que lleguen, cada cuadro queda medido con la
+  // de reemplazo y ya no se corrige solo. Este flag entra en las
+  // dependencias del efecto de abajo para que la capa se rearme una vez que
+  // cargaron. `fonts.ready` resuelve una sola vez por carga de pagina, asi
+  // que no es un bucle.
+  const [fuentesListas, setFuentesListas] = useState(false);
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.fonts) { setFuentesListas(true); return; }
+    let vivo = true;
+    document.fonts.ready.then(() => { if (vivo) setFuentesListas(true); });
+    return () => { vivo = false; };
+  }, []);
+
   // Componentes: se reconstruye toda la capa en cada cambio relevante (igual
   // de simple que el reconciliador de React, sin diffing fino — para la
   // cantidad de componentes tipica de una cenefa el costo es despreciable).
@@ -677,7 +691,7 @@ export default function Canvas({
     selectedNodeRef.current = selectedNode;
     transformer.nodes(selectedNode ? [selectedNode] : []);
     layer.batchDraw();
-  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, bandIndexByCompId, siblingMap, template.components, selectComponent, updateComponent]);
+  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, bandIndexByCompId, siblingMap, template.components, selectComponent, updateComponent, fuentesListas]);
 
   // "Última versión conocida" de template/selectedComponentId/siblingMap —
   // evita closures viejas dentro de los handlers de abajo (registrados una

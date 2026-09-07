@@ -1,4 +1,23 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* Tipografias de las PLANTILLAS de cenefas (no de la interfaz).
+ *
+ * El preview del editor dibuja con la fuente que declara el PPTX. Las que no
+ * vienen instaladas caian a la primera alternativa de la cadena, que era
+ * Impact, y todo el cartel se veia gordo y condensado (bug del 07/09/2026).
+ * Estas son las que se pueden traer de Google:
+ *
+ *  - Libre Franklin: es el revival libre de la Franklin Gothic, o sea que
+ *    cubre TANTO las plantillas que piden "Libre Franklin *" como las que
+ *    piden "Franklin Gothic *" en una maquina sin Office. Se pide el rango
+ *    variable completo porque el peso viene en el nombre (Medium = 500,
+ *    Black = 900). Ver lib/cenefas/fuentes.ts.
+ *  - Archivo Narrow / Archivo Black: reemplazos de las condensadas y de
+ *    Arial Black.
+ *  - Anton: reemplazo de Impact para maquinas que no la tengan.
+ *  - Carlito: clon metrico de Calibri.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@300..900&family=Archivo+Narrow:wght@400..700&family=Archivo+Black&family=Anton&family=Carlito:wght@400;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

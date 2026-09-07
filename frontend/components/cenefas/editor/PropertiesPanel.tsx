@@ -2,9 +2,11 @@
 import { useMemo, useState } from "react";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent, CenefaRule, CenefaTemplate, CenefaVariable, TextSegment, TextTransform } from "@/types/cenefas";
-import { Trash2, Lock, Unlock, Plus, GripVertical } from "lucide-react";
+import { Trash2, Lock, Unlock, Plus, GripVertical, Search } from "lucide-react";
 import { RuleChip, RuleForm } from "./RulesPanel";
 import { buildSiblingMap } from "@/lib/cenefas/siblingMap";
+import { resolverFuente } from "@/lib/cenefas/fuentes";
+import { cenefasV2Api } from "@/lib/api";
 
 const TRANSFORMS = [
   { value: "none",           label: "Sin transformación" },
@@ -75,6 +77,15 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
   // valor acompaña. Va aca arriba, con el resto de los hooks, porque abajo
   // hay un `return` condicional (sin componente seleccionado) y un useMemo
   // despues de el no se llamaria en todos los renders.
+  // Escaneo de relaciones: el backend PROPONE con qué cuadro va cada "$"
+  // suelto y acá se confirman de a una. Nunca se aplica solo -- fue el
+  // pedido explícito: "no dejemos a la adivinanza".
+  const [escaneando, setEscaneando] = useState(false);
+  const [sugerencias, setSugerencias] = useState<
+    { desde: string; desde_nombre: string; hacia: string; hacia_nombre: string; confianza: number }[] | null
+  >(null);
+  const [errorEscaneo, setErrorEscaneo] = useState<string | null>(null);
+
   const candidatosRelacion = useMemo(
     () => template.components.filter((c) => c.type === "text" && tieneVariable(c)),
     [template.components],
@@ -92,6 +103,30 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
         </p>
       </div>
     );
+  }
+
+  // La misma resolución que usa el canvas para dibujar -- asi lo que dice el
+  // panel es exactamente lo que se ve.
+  const fuente = resolverFuente(comp.style?.font_family, comp.style?.font_bold);
+
+  async function detectarRelaciones() {
+    setEscaneando(true);
+    setErrorEscaneo(null);
+    try {
+      const { data } = await cenefasV2Api.detectarRelaciones(template.components);
+      // Las que ya están declaradas no se vuelven a proponer.
+      setSugerencias(
+        (data.sugerencias ?? []).filter((sg) => {
+          const c = template.components.find((x) => x.id === sg.desde);
+          return c && !c.vinculado_a;
+        }),
+      );
+    } catch (e) {
+      setErrorEscaneo(e instanceof Error ? e.message : "No se pudo escanear");
+      setSugerencias(null);
+    } finally {
+      setEscaneando(false);
+    }
   }
 
   function set<K extends keyof CenefaComponent>(key: K, value: CenefaComponent[K]) {
@@ -410,6 +445,77 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
                   ? "Declarada a mano: al exportar se alinea con ese cuadro y no se deduce nada por posición."
                   : "Sin declarar, el motor deduce por posición cuál es su pareja, y puede equivocarse."}
               </p>
+
+              {/* Escaneo de toda la plantilla. Propone, no aplica: cada
+                  relación se confirma a mano, una por una. */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs w-full flex items-center justify-center gap-1.5"
+                  onClick={detectarRelaciones}
+                  disabled={escaneando}
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  {escaneando ? "Escaneando…" : "Detectar relaciones en toda la plantilla"}
+                </button>
+
+                {errorEscaneo && (
+                  <p className="text-[10px] text-rose-500 mt-1.5">{errorEscaneo}</p>
+                )}
+
+                {sugerencias !== null && sugerencias.length === 0 && !errorEscaneo && (
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
+                    No quedan cuadros fijos sin relacionar.
+                  </p>
+                )}
+
+                {sugerencias !== null && sugerencias.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                      {sugerencias.length} propuesta{sugerencias.length === 1 ? "" : "s"} —
+                      confirmá las que estén bien:
+                    </p>
+                    {sugerencias.map((sg) => (
+                      <div
+                        key={sg.desde}
+                        className="rounded border border-slate-200 dark:border-slate-700 p-2 text-[11px]"
+                      >
+                        <div className="text-slate-600 dark:text-slate-300">
+                          <span className="font-medium">{sg.desde_nombre}</span>
+                          {" acompaña a "}
+                          <span className="font-medium">{sg.hacia_nombre}</span>
+                        </div>
+                        <div className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                          confianza {Math.round(sg.confianza * 100)}%
+                        </div>
+                        <div className="flex gap-1.5 mt-1.5">
+                          <button
+                            type="button"
+                            className="btn-primary text-[10px] px-2 py-1"
+                            onClick={() => {
+                              updateComponent(sg.desde, { vinculado_a: sg.hacia });
+                              setSugerencias((prev) =>
+                                (prev ?? []).filter((x) => x.desde !== sg.desde));
+                            }}
+                          >
+                            Confirmar
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary text-[10px] px-2 py-1"
+                            onClick={() =>
+                              setSugerencias((prev) =>
+                                (prev ?? []).filter((x) => x.desde !== sg.desde))
+                            }
+                          >
+                            Descartar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </Section>
         )}
@@ -418,6 +524,32 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
         {comp.type === "text" && (
           <Section label="Estilo">
             <div className="space-y-3">
+              {/* Qué tipografía se está dibujando. Antes no se veía en ningún
+                  lado y por eso costó tanto darse cuenta de que el preview
+                  caía en Impact: el cartel se veía gordo y no había forma de
+                  saber con qué fuente estaba dibujando. */}
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">Tipografía (viene del PPTX)</span>
+                <div className="rounded border border-slate-200 dark:border-slate-700 px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50">
+                  <div
+                    className="text-sm text-slate-700 dark:text-slate-200 truncate"
+                    style={{ fontFamily: fuente.stack, fontWeight: fuente.weight }}
+                    title={comp.style.font_family ?? "sin definir"}
+                  >
+                    {comp.style.font_family || "(sin definir)"}
+                  </div>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                    {fuente.familia} · {fuente.pesoNombre} ({fuente.weight})
+                  </div>
+                  {fuente.sustituida && (
+                    <div className="text-[10px] text-amber-600 dark:text-amber-500 mt-1 leading-snug">
+                      Esta máquina no tiene la fuente exacta: el preview la dibuja
+                      con una parecida. El PPTX exportado sí lleva el nombre original.
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <label className="flex flex-col gap-1">
                 <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">Tamaño (pt)</span>
                 <input
