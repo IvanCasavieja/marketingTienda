@@ -5,6 +5,7 @@ import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent, CenefaTemplate } from "@/types/cenefas";
 import { buildSiblingMap } from "@/lib/cenefas/siblingMap";
 import { resolverFuente } from "@/lib/cenefas/fuentes";
+import { mascaraNegrita, tieneMarca } from "@/lib/cenefas/smartBold";
 
 // ---------------------------------------------------------------------------
 // Constantes de escala y dimensiones de formatos
@@ -57,6 +58,20 @@ const ASCENDENTE_EM = 0.9;
 
 // Los cuerpos de fuente viajan en puntos (1 pt = 1/72 pulgada) y el canvas
 // trabaja en px a razon de PX_PER_CM.
+// Cuándo corresponde el bold automático de marcas. Hoy las 43 cajas que lo
+// usan en la base lo declaran a nivel de COMPONENTE sobre <<descripcion>>, y
+// no hay ninguna con segmentos mezclados (unos con smart_bold y otros con
+// otra transformación). Se contempla igual el caso por segmento, exigiendo
+// que NINGÚN otro segmento pida una transformación distinta -- si algún día
+// aparece uno mezclado, el preview se abstiene en vez de resaltar mayúsculas
+// que el export no va a resaltar.
+function aplicaSmartBold(comp: CenefaComponent): boolean {
+  if (comp.transform === "smart_bold") return true;
+  const segs = comp.segments ?? [];
+  if (!segs.some((s) => s.transform === "smart_bold")) return false;
+  return !segs.some((s) => s.transform && s.transform !== "smart_bold" && s.transform !== "none");
+}
+
 function ptToPx(pt: number) {
   return (pt / 72) * 2.54 * PX_PER_CM;
 }
@@ -296,7 +311,7 @@ function buildComponentGroup({
     const lineHeightPt = comp.style?.line_height_pt ?? pt;
     const offsetY = lineHeightPt > pt ? ptToPx(lineHeightPt - pt) * ASCENDENTE_EM : 0;
     const fuente = resolverFuente(comp.style?.font_family, comp.style?.font_bold);
-    group.add(new Konva.Text({
+    const nodoTexto = new Konva.Text({
       x: 0, y: offsetY, width: w,
       text,
       fontSize: fontSizePx,
@@ -315,7 +330,38 @@ function buildComponentGroup({
       // Sin ellipsis y sin alto fijo A PROPÓSITO: si el texto no entra tiene
       // que VERSE desbordando, que es justamente lo que hay que detectar.
       listening: false,
-    }));
+    });
+
+    // "Bold automático (MARCAS)": la marca va en negrita dentro de una
+    // descripción que no lo está. El PPTX exportado ya salía así --el backend
+    // parte el texto en runs y le pone negrita al de mayúsculas-- pero el
+    // preview dibujaba todo con un peso solo y la marca se veía igual que el
+    // resto. Konva no admite estilos mezclados en un mismo Text, pero sí deja
+    // tocar el contexto antes de pintar cada carácter (charRenderFunc), que
+    // es justo lo que hace falta.
+    //
+    // La máscara se calcula sobre el RENGLÓN YA CORTADO, no sobre el texto
+    // entero: Konva descarta el espacio donde parte la línea y los índices se
+    // corren uno por salto. Se cachea por texto de renglón, no por número,
+    // para que siga valiendo si cambia el corte.
+    //
+    // Solo se activa si de verdad hay mayúsculas: dibujar carácter por
+    // carácter pierde el kerning entre letras, y no tiene sentido pagarlo en
+    // un cuadro donde no va a haber ninguna negrita.
+    if (aplicaSmartBold(comp) && tieneMarca(text)) {
+      const cacheLineas = new Map<string, boolean[]>();
+      const pesoNegrita = Math.min(900, fuente.weight + 300);
+      nodoTexto.charRenderFunc(({ lineIndex, column, context }) => {
+        const linea = nodoTexto.textArr?.[lineIndex]?.text ?? "";
+        let mascara = cacheLineas.get(linea);
+        if (!mascara) { mascara = mascaraNegrita(linea); cacheLineas.set(linea, mascara); }
+        if (mascara[column]) {
+          context.setAttr("font", `${pesoNegrita} normal ${fontSizePx}px ${fuente.stack}`);
+        }
+      });
+    }
+
+    group.add(nodoTexto);
   } else {
     group.add(new Konva.Text({
       x: 4, y: 4, width: w - 8, height: h - 8,
