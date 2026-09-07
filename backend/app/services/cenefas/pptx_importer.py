@@ -8,7 +8,7 @@ from pptx import Presentation
 from pptx.enum.text import PP_ALIGN
 
 from app.services.cenefas.font_metrics import ancho_texto_cm
-from app.services.cenefas.variables import INTERNAL_SET, is_decimal, is_price, norm, resolve
+from app.services.cenefas.variables import resolver_alias, INTERNAL_SET, is_decimal, is_price, norm, resolve
 
 _EMU_PER_CM = 360_000
 
@@ -445,13 +445,23 @@ def _resolve_placeholder(root: str, suffix: str) -> tuple[str, str, str]:
         if canonica is not None and canonica not in INTERNAL_SET:
             return _spec(canonica)
 
-    # 2. Puente de nombres viejos -- solo al importar un archivo.
+    # 2. Alias corto -- el segundo nombre oficial de cada variable, para
+    #    poder escribir <<po>> en vez de <<precioOferta>> al armar la
+    #    plantilla. Se resuelve al nombre largo acá mismo, asi que el
+    #    template queda guardado con el canonico y en el resto del sistema
+    #    sigue habiendo un solo nombre por variable (ver ALIAS_CORTOS).
+    for candidato in (full, root):
+        canonica = resolver_alias(candidato)
+        if canonica != candidato and canonica not in INTERNAL_SET:
+            return _spec(canonica)
+
+    # 3. Puente de nombres viejos -- solo al importar un archivo.
     for candidato in (norm(full), norm(root)):
         if candidato in _LEGACY_PLACEHOLDERS:
             destino = _LEGACY_PLACEHOLDERS[candidato]
             return ("", "text", "none") if destino is None else _spec(destino)
 
-    # 3. Desconocido: se importa como variable propia, que quedará vacía
+    # 4. Desconocido: se importa como variable propia, que quedará vacía
     #    salvo que el Excel traiga una columna con ese mismo nombre.
     return (full, "text", "none")
 

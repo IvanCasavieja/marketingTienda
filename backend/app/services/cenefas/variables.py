@@ -144,6 +144,73 @@ CANONICAL_VARS: tuple[str, ...] = TEXT_VARS + PRICE_VARS + DECIMAL_VARS
 
 CANONICAL_SET: frozenset[str] = frozenset(CANONICAL_VARS)
 
+# ---------------------------------------------------------------------------
+# Alias cortos
+# ---------------------------------------------------------------------------
+#
+# Segundo nombre para cada variable, para poder escribir <<po>> en vez de
+# <<precioOferta>> al armar una plantilla. El nombre largo NO se toca y
+# sigue siendo el canónico: es el que se guarda en el template, el que
+# viaja en el Excel y el que se ve en el editor. El alias solo se acepta a
+# la ENTRADA (placeholder del PPTX y encabezado del Excel) y se resuelve al
+# nombre largo ahí mismo, así que en el resto del sistema no hay dos formas
+# de llamar a lo mismo.
+#
+# La convención es la inicial de cada palabra: precioOferta -> po,
+# decimalPrecioRegular -> dpr, tipoOfertaComprando -> toc. Los que llevan
+# número lo conservan (ofertaUno -> o1, aclaracionDos -> a2).
+#
+# No colisionan con los nombres de PPT viejas que resuelve
+# _LEGACY_PLACEHOLDERS en pptx_importer (verificado: 0 choques).
+ALIAS_CORTOS: dict[str, str] = {
+    "c":    "codigo",
+    "d":    "descripcion",
+    "m":    "mecanica",
+    "to":   "tipoOferta",
+    "toc":  "tipoOfertaComprando",
+    "u":    "unidad",
+    "um":   "unidadMoneda",
+    "pr":   "precioRegular",
+    "dpr":  "decimalPrecioRegular",
+    "po":   "precioOferta",
+    "dpo":  "decimalPrecioOferta",
+    "pmo":  "promoOferta",
+    "dpmo": "decimalPromoOferta",
+    "o1":   "ofertaUno",
+    "do1":  "decimalPrecioUno",
+    "o2":   "ofertaDos",
+    "do2":  "decimalPrecioDos",
+    "o3":   "ofertaTres",
+    "do3":  "decimalPrecioTres",
+    "o4":   "ofertaCuatro",
+    "do4":  "decimalPrecioCuatro",
+    "pb":   "precioBanco",
+    "dpb":  "decimalPrecioBanco",
+    "b":    "banco",
+    "v":    "vigencia",
+    "a1":   "aclaracionUno",
+    "a2":   "aclaracionDos",
+    "a3":   "aclaracionTres",
+    "l":    "legales",
+    "dd":   "dia",
+    "mm":   "mes",
+    "aa":   "año",
+}
+
+assert set(ALIAS_CORTOS.values()) == CANONICAL_SET, "faltan o sobran alias cortos"
+assert not (set(ALIAS_CORTOS) & CANONICAL_SET), "un alias no puede llamarse igual que una variable"
+
+
+def resolver_alias(nombre: str) -> str:
+    """Devuelve el nombre canónico. Si no es un alias, lo deja como está.
+
+    Case-insensitive: <<PO>>, <<Po>> y <<po>> son la misma variable, igual
+    que ya pasa con los nombres largos.
+    """
+    if not nombre:
+        return nombre
+    return ALIAS_CORTOS.get(nombre.strip().lower(), nombre)
+
 # Orden de las columnas en todo Excel que produce o entrega la plataforma
 # (la plantilla descargable y la salida del Convertidor). Agrupa cada precio
 # con su decimal al lado, que es como se leen: una persona revisando la
@@ -299,8 +366,17 @@ _BY_NORM.update({norm(f): f for f in INTERNAL_FIELDS})
 
 
 def resolve(name) -> str | None:
-    """Nombre de columna/placeholder -> variable canónica, o None si no es una."""
-    return _BY_NORM.get(norm(name))
+    """Nombre de columna/placeholder -> variable canónica, o None si no es una.
+
+    Acepta el nombre largo (`precioOferta`) y el alias corto (`po`). El
+    largo sigue siendo el canónico: el alias se resuelve acá y de este punto
+    en adelante el sistema maneja un solo nombre por variable.
+    """
+    directo = _BY_NORM.get(norm(name))
+    if directo is not None:
+        return directo
+    corto = ALIAS_CORTOS.get(str(name or "").strip().lower())
+    return corto
 
 
 def is_price(var_name: str) -> bool:
