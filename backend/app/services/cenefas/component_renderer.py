@@ -499,6 +499,18 @@ def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
         # se solapa.
         if _son_decoracion_superpuesta(comp, otro):
             continue
+        # Etiqueta SIEMPRE flotante (_VARIABLES_ETIQUETA_FLOTANTE) -- nunca
+        # cuenta como techo aunque su caja declarada mida casi lo mismo que
+        # la mía. _son_decoracion_superpuesta exige que sea CLARAMENTE más
+        # baja (<=60% de mi alto) para reconocerla como decoración, pero
+        # estas etiquetas suelen venir con una caja tan alta como la del
+        # precio de al lado -- caso real: "Comprando 2" (2,821 cm) al lado
+        # de <<precioOferta>> (2,82 cm), casi idéntico -- así que ese filtro
+        # no las agarra y un precio con combo se achicaba a la mitad sin que
+        # hubiera ningún desborde real (Preciazos A4, 09/2026: "64" a 99pt
+        # en vez de 180 solo porque "Comprando 2" vivía al lado).
+        if _variables_del_componente(otro) & _VARIABLES_ETIQUETA_FLOTANTE:
+            continue
         # Hay que distinguir "abajo" de "al costado", y el ancho del solape solo
         # no alcanza. Dos casos reales que se parecen y necesitan lo contrario:
         #
@@ -617,6 +629,14 @@ def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
         # sabiendo que se solapa.
         if _son_decoracion_superpuesta(comp, otro):
             continue
+        # Etiqueta SIEMPRE flotante (_VARIABLES_ETIQUETA_FLOTANTE) -- ver el
+        # comentario gemelo en _alto_disponible_cm: su caja declarada puede
+        # medir casi lo mismo que la del precio de al lado ("Comprando 2" al
+        # lado de <<precioOferta>>, mismo alto casi exacto), así que
+        # _son_decoracion_superpuesta no la reconoce como decoración y sin
+        # este chequeo cuenta como pared real.
+        if _variables_del_componente(otro) & _VARIABLES_ETIQUETA_FLOTANTE:
+            continue
         # Un vecino que va a quedar vacio no limita nada.
         if not _texto_resuelto(otro, product).strip():
             continue
@@ -659,11 +679,54 @@ def _fit_text_to_box(
 
         if c.get("_manual_font_override"):
             # La persona escribió este tamaño a mano en el panel de
-            # propiedades (Canvas.tsx ya no lo toca al redimensionar la
-            # caja) -- se respeta tal cual, sin volver a medir contra el
-            # espacio disponible. Es una elección explícita, no un valor de
-            # diseño que haya que proteger de un desborde que nadie pidió.
-            fitted_por_id[id(c)] = base_font_size
+            # propiedades -- es el TECHO para este cuadro, nunca se agranda
+            # por encima de eso. Pero el tamaño se fijó mirando UN producto
+            # (el que estaba abierto en el editor en ese momento); otro
+            # producto con un texto más largo en la MISMA plantilla puede no
+            # entrar a ese tamaño ("179" casi al límite, "1.599" claramente
+            # no) y antes esto se aceptaba tal cual, sin medir nunca -- caso
+            # real: <<precioOferta>> de Preciazos A4 a 180pt fijo, desbordaba
+            # con Alfajor ("179") y agentes con precios de 4 cifras. Se mide
+            # iguel que un cuadro automático, con un piso: nunca por encima
+            # de lo que la persona eligió, solo hacia abajo si de verdad no
+            # entra.
+            #
+            # _segmentos_medibles no sirve acá: lee el font_size guardado
+            # POR SEGMENTO, que para estos cuadros suele quedar desactualizado
+            # respecto al font_size del componente (_manual_font_override
+            # fuerza a todos los segmentos a ese tamaño al dibujar, ver
+            # _populate_text_frame) -- medir con el tamaño viejo del segmento
+            # daría un "entra" falso. Se mide con el texto completo resuelto
+            # al tamaño ÚNICO que de verdad se va a imprimir.
+            #
+            # Solo el ANCHO PROPIO de la caja -- ni _alto_disponible_cm ni
+            # _ancho_disponible_cm (las versiones que miran vecinos).
+            #
+            # Alto: estos cuadros son precios gigantes pensados para
+            # desbordar su alto declarado a propósito (ver el comentario de
+            # _alto_disponible_cm sobre por qué el alto de la caja no es el
+            # límite real).
+            #
+            # Ancho: acá el problema es otro. Estas plantillas traen pares
+            # entero+decimal con las cajas declaradas A PROPÓSITO
+            # superpuestas (ej. <<precioBanco>> mide 4,52 cm de ancho pero
+            # <<decimalPrecioBanco>>, la caja de al lado, arranca DENTRO de
+            # esa misma franja -- el diseño cuenta con que el número real
+            # nunca va a ser tan largo como para chocar). _ancho_disponible_cm
+            # trata a ese vecino como pared real y achicaba "67"/"84" a la
+            # mitad sin que hubiera ningún desborde -- ver el comentario de
+            # <<precioOferta>> más arriba para el caso gemelo con
+            # "Comprando 2". Medir contra la propia caja (sin vecinos) es
+            # justo lo conservador que hace falta: agarra el desborde real
+            # ("179" que sí es más ancho que su caja) sin inventar uno
+            # donde el diseño ya contaba con el margen.
+            texto_manual = _texto_resuelto(c, product)
+            ancho_propio = _ancho_util_cm(
+                c.get("computed_bounds") or c.get("base_bounds") or {}, ancho_pagina_cm)
+            fitted = _fit_font_size(
+                texto_manual, ancho_propio, None, base_font_size, bold, familia,
+            )
+            fitted_por_id[id(c)] = min(fitted, base_font_size) if (fitted and base_font_size) else fitted
             base_por_id[id(c)] = base_font_size
             continue
 
