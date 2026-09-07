@@ -2289,10 +2289,14 @@ def render_template_to_pptx(
                 # Criterio que manda al generar: que ningun texto quede
                 # impreso encima de otro cuadro con contenido. Ver
                 # _resolver_solapes -- es distinto de "entra en su caja".
-            _unificar_tamanos_entre_bandas(ajustadas)
             # El solape se revisa sobre la HOJA entera, no celda por celda:
             # la descripcion de una cenefa puede invadir la de al lado.
             _resolver_solapes([(c, pg[bi]) for bi, cs in ajustadas.items() for c in cs])
+            # Unificar va DESPUES de resolver: resolver achica solo la celda
+            # que choca y desempareja el resto de la hoja. Al reves no hay
+            # riesgo -- unificar solo achica, y achicar nunca crea un solape
+            # nuevo.
+            _unificar_tamanos_entre_bandas(ajustadas)
 
             for band_idx, band_comps in enumerate(slot_bands):
                 if band_idx < len(pg):
