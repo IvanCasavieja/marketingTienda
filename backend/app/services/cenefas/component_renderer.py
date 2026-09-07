@@ -1288,6 +1288,33 @@ def _excluido_por_dominante(
 _SOLAPE_MIN_EXCLUSION_PAREJA = 0.1
 
 
+# Qué fracción del ALTO del cuadro fijo (el "$" sin variable propia) cae
+# dentro del rango vertical de un candidato -- usado para encontrarle su
+# pareja de verdad entre los cuadros CON variable del mismo layout (ver más
+# abajo, dentro de _render_slide). El área (_rect_overlap_ratio) sirve para
+# _excluido_por_dominante porque ahí las dos cajas están pensadas para
+# superponerse (Redexpres). Acá NO: precio y "$" van uno AL LADO del otro
+# ("$" a la izquierda, número a la derecha), casi sin superponerse en X, así
+# que el área da un número chico e inestable -- y en 3xA4 (09/2026) le daba
+# más área a la cocarda de arriba (10%, apenas rozando la esquina del "$")
+# que al propio <<precioOferta>> de al lado (0%, ni un pixel de solape en
+# X), apagando el "$" en cualquier producto sin combo. El alto de las dos
+# cajas SÍ se diseña igual a propósito (mismo renglón), así que cuánto del
+# alto del "$" cae dentro del candidato es la señal que no falla: measured
+# en los 4 formatos reales, la pareja correcta siempre cubre >=54% del alto
+# del "$", y el vecino más parecido que NO es la pareja no pasa de ~7-8%.
+_COBERTURA_MIN_PAREJA = 0.3
+
+
+def _cobertura_vertical(fijo: dict, candidato: dict) -> float:
+    y1, h1 = fijo.get("y", 0), fijo.get("height", 0)
+    y2, h2 = candidato.get("y", 0), candidato.get("height", 0)
+    if h1 <= 0:
+        return 0.0
+    solape = min(y1 + h1, y2 + h2) - max(y1, y2)
+    return max(0.0, solape / h1)
+
+
 def _rect_overlap_ratio(a: dict, b: dict) -> float:
     ax, ay = a.get("x", 0), a.get("y", 0)
     aw, ah = a.get("width", 0), a.get("height", 0)
@@ -1340,12 +1367,25 @@ def _render_slide(
         )
         return not partes_fijas and not _texto_resuelto(c, product).strip()
 
-    bounds_ocultos_variables = [
-        c.get("computed_bounds") or c.get("base_bounds") or {}
-        for c in comp_layout
-        if _variables_del_componente(c) and (
-            _excluido_por_dominante(c, product, dominantes_presentes, bounds_por_dominante) or _var_sin_dato(c)
+    # Bounds + estado "se tapa" + variables de TODOS los cuadros con variable
+    # propia (no solo los que se tapan). Un cuadro fijo sin variable (el "$"
+    # del diseño) tiene que compararse contra su VECINO MÁS CERCANO
+    # geométricamente, no contra "cualquiera que se haya tapado en la hoja"
+    # -- caso real: el "$" de <<precioBanco>> (Preciazos A4) solapaba 11,8%
+    # con <<tipoOfertaComprando>> (la etiqueta "Comprando 2" arriba del
+    # precio, vacía en productos sin combo) y se apagaba junto con ella
+    # aunque <<precioBanco>> -- su verdadero par, con 46% de solape -- tuviera
+    # dato de sobra. Sin esto el "$" de precioBanco desaparecía en TODOS los
+    # productos sin combo (48 de 56 en el listado real), y lo mismo le pasaba
+    # al "$" de precioRegular en 3xA4.
+    variables_bounds = [
+        (
+            c.get("computed_bounds") or c.get("base_bounds") or {},
+            _excluido_por_dominante(c, product, dominantes_presentes, bounds_por_dominante) or _var_sin_dato(c),
+            _variables_del_componente(c),
         )
+        for c in comp_layout
+        if _variables_del_componente(c)
     ]
 
     for comp in comp_layout:
@@ -1376,10 +1416,24 @@ def _render_slide(
         # número al lado (caso real: <<precioOferta>> de Preciazos A4
         # tapado por promoOferta en un combo, con su "$" de 90pt fijo
         # sobreviviendo solo, sin nada que acompañar).
-        if not oculto and not usadas and bounds_ocultos_variables:
+        if not oculto and not usadas and variables_bounds:
             propios = comp.get("computed_bounds") or comp.get("base_bounds") or {}
-            if any(_rect_overlap_ratio(propios, b) >= _SOLAPE_MIN_EXCLUSION_PAREJA
-                   for b in bounds_ocultos_variables):
+            # Etiquetas puramente flotantes (unidad, tipoOferta,
+            # tipoOfertaComprando) quedan afuera de la búsqueda de pareja: no
+            # son "el precio" que el "$" acompaña, son captions chicas que el
+            # diseño pone cerca de cualquier precio -- si entraran a competir,
+            # ganaban por casualidad de posición (ver comentario de
+            # variables_bounds más arriba). Si no queda ningún candidato de
+            # contenido real (plantilla rarísima con solo etiquetas), se cae
+            # a la lista completa antes que no comparar contra nada.
+            candidatos = [
+                (b, oc) for b, oc, vars_c in variables_bounds
+                if not (vars_c <= _VARIABLES_ETIQUETA_FLOTANTE)
+            ] or [(b, oc) for b, oc, _ in variables_bounds]
+            mejor_bounds, mejor_oculto = max(
+                candidatos, key=lambda par: _cobertura_vertical(propios, par[0])
+            )
+            if mejor_oculto and _cobertura_vertical(propios, mejor_bounds) >= _COBERTURA_MIN_PAREJA:
                 oculto = True
         # Un cuadro cuyo contenido sale SOLO de variables y todas quedaron
         # vacías no tiene nada que imprimir. Borrarle el texto no alcanza: si
