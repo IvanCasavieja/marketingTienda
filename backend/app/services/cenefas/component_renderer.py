@@ -604,25 +604,6 @@ def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
     if base is None or x is None or y is None or h is None:
         return base
 
-    # Un texto SIN espacios (un precio: "179", "$152,15", "4x3") no tiene
-    # dónde cortarse: o entra en una línea o desborda hacia los costados. Y
-    # desbordar está BIEN: igual que con el alto, estas plantillas dibujan el
-    # número en una caja chica --ancla de posición-- y dejan que crezca por
-    # fuera a propósito. El ancho DECLARADO no es el límite real; el límite
-    # real es el vecino que de verdad va a tener contenido en esa fila (el
-    # bucle de abajo), y si no hay ninguno, el borde del papel.
-    #
-    # Sin esto, medir contra la caja propia hacía que casi todo "no entrara"
-    # y cayera al piso de _FIT_MIN_SCALE: en la 6xA4 real, "Comprando 4" de
-    # 6 pt salía a 3,3 y "$152,15" de 35 pt salía a 19,2 -- ilegibles, y con
-    # un salto de golpe al 55% en vez de bajar los dos o tres puntos que
-    # hacían falta. Una descripción (con espacios) sí envuelve de verdad y
-    # sigue midiendo contra su propia caja, como antes.
-    if not _texto_resuelto(comp, product).strip().count(" "):
-        hasta_el_papel = (ancho_pagina_cm - x - _MARGEN_INTERNO_CM) if ancho_pagina_cm else None
-        if hasta_el_papel and hasta_el_papel > base:
-            base = hasta_el_papel
-
     for otro in comps:
         if otro is comp:
             continue
@@ -822,53 +803,87 @@ def _fit_text_to_box(
 
         if c.get("_manual_font_override"):
             # La persona escribió este tamaño a mano en el panel de
-            # propiedades mirando el preview. Lo que ve ahí es lo que tiene
-            # que salir en el archivo: NO se vuelve a achicar contra la caja.
+            # propiedades -- es el TECHO para este cuadro, nunca se agranda
+            # por encima de eso. Pero el tamaño se fijó mirando UN producto
+            # (el que estaba abierto en el editor en ese momento); otro
+            # producto con un texto más largo en la MISMA plantilla puede no
+            # entrar a ese tamaño ("179" casi al límite, "1.599" claramente
+            # no) y antes esto se aceptaba tal cual, sin medir nunca -- caso
+            # real: <<precioOferta>> de Preciazos A4 a 180pt fijo, desbordaba
+            # con Alfajor ("179") y agentes con precios de 4 cifras. Se mide
+            # iguel que un cuadro automático, con un piso: nunca por encima
+            # de lo que la persona eligió, solo hacia abajo si de verdad no
+            # entra.
             #
-            # El ancho declarado de la caja NO es el límite real de estos
-            # cuadros. Igual que pasa con el alto (ver _alto_disponible_cm),
-            # el diseño dibuja el precio en una caja chica --ancla de
-            # posición-- y deja que el número desborde hacia los costados a
-            # propósito: en 6xA4 la caja de <<precioRegular>> mide 1,96 cm y
-            # el número sale bastante más ancho que eso en el arte original.
-            # Medir contra ese ancho y achicar hacía que un 45 pt elegido a
-            # mano saliera a 24,75 (el piso de _FIT_MIN_SCALE) en las seis
-            # celdas -- el preview mostraba 45 y el archivo traía 25.
+            # _segmentos_medibles no sirve acá: lee el font_size guardado
+            # POR SEGMENTO, que para estos cuadros suele quedar desactualizado
+            # respecto al font_size del componente (_manual_font_override
+            # fuerza a todos los segmentos a ese tamaño al dibujar, ver
+            # _populate_text_frame) -- medir con el tamaño viejo del segmento
+            # daría un "entra" falso. Se mide con el texto completo resuelto
+            # al tamaño ÚNICO que de verdad se va a imprimir.
             #
-            # El desborde a lo ancho no es el bug: el bug era que PowerPoint
-            # PARTÍA el número en dos renglones ("179" -> "17" + "9"). Eso se
-            # arregla apagándole el word-wrap al cuadro (ver
-            # _sin_word_wrap/_populate_text_frame), no achicando la letra.
+            # Solo el ANCHO PROPIO de la caja -- ni _alto_disponible_cm ni
+            # _ancho_disponible_cm (las versiones que miran vecinos).
             #
-            # Un cuadro con ESPACIOS es otra cosa: una descripción SÍ hace
-            # word-wrap de verdad, y si crece de más se mete encima del
-            # cuadro de abajo (caso real: "Atún en lomo VALLE DEL SOL al
-            # aceite y al natural. 170g" pisando el precio tachado). Para ese
-            # caso, y solo para ese, se sigue midiendo contra el alto
-            # disponible hasta el vecino de abajo.
+            # Alto: estos cuadros son precios gigantes pensados para
+            # desbordar su alto declarado a propósito (ver el comentario de
+            # _alto_disponible_cm sobre por qué el alto de la caja no es el
+            # límite real).
+            #
+            # Ancho: acá el problema es otro. Estas plantillas traen pares
+            # entero+decimal con las cajas declaradas A PROPÓSITO
+            # superpuestas (ej. <<precioBanco>> mide 4,52 cm de ancho pero
+            # <<decimalPrecioBanco>>, la caja de al lado, arranca DENTRO de
+            # esa misma franja -- el diseño cuenta con que el número real
+            # nunca va a ser tan largo como para chocar). _ancho_disponible_cm
+            # trata a ese vecino como pared real y achicaba "67"/"84" a la
+            # mitad sin que hubiera ningún desborde -- ver el comentario de
+            # <<precioOferta>> más arriba para el caso gemelo con
+            # "Comprando 2". Medir contra la propia caja (sin vecinos) es
+            # justo lo conservador que hace falta: agarra el desborde real
+            # ("179" que sí es más ancho que su caja) sin inventar uno
+            # donde el diseño ya contaba con el margen.
+            #
+            # Excepción: un cuadro con ESPACIOS (una descripción, no un
+            # precio) sí necesita el chequeo de alto -- es texto real que
+            # hace word-wrap a varias líneas, no un token único pensado para
+            # desbordar. Sin el chequeo de alto, una descripción larga
+            # ("Atún en lomo VALLE DEL SOL al aceite y al natural. 170g")
+            # crecía a 3 líneas sin achicarse y se metía encima del precio
+            # tachado de abajo (caso real, Preciazos A4, 09/2026:
+            # <<descripcion>> también tiene _manual_font_override). Un precio
+            # nunca tiene espacios (no hay dónde cortarlo), así que esta
+            # distinción no le pega a ningún caso de precio real.
             texto_manual = _texto_resuelto(c, product)
-            if " " in texto_manual.strip():
-                fitted = _fit_font_size(
-                    texto_manual,
-                    _ancho_util_cm(c.get("computed_bounds") or c.get("base_bounds") or {}, ancho_pagina_cm),
-                    _alto_disponible_cm(c, comps),
-                    base_font_size, bold, familia,
-                )
-                fitted_por_id[id(c)] = min(fitted, base_font_size) if (fitted and base_font_size) else fitted
-            else:
-                fitted_por_id[id(c)] = base_font_size
+            es_texto_con_espacios = " " in texto_manual.strip()
+            propios = c.get("computed_bounds") or c.get("base_bounds") or {}
+            ancho_propio = _ancho_util_cm(propios, ancho_pagina_cm)
+            # El "$" que acompaña a este precio vive DENTRO de su misma caja
+            # a propósito (ver _dollar_parejas) -- un precio centrado y ancho
+            # puede crecer hacia la izquierda por encima de su propio "$" sin
+            # que ninguno de los dos chequeos de arriba lo note (cada uno
+            # entra en SU caja por separado). Caso real, Preciazos A4:
+            # "339" (precioOferta, 3 cifras) al tamaño que entraba en su
+            # caja de 11,44 cm ya pisaba visualmente el "$" de al lado --
+            # "64" (2 cifras) nunca llegaba tan lejos. Si el texto está
+            # centrado, se lo achica más si hace falta para que ni la mitad
+            # izquierda del texto cruce el borde derecho del "$".
+            if (style.get("align") == "center" and not es_texto_con_espacios
+                    and id(c) in dollar_parejas and propios.get("width")):
+                db = dollar_parejas[id(c)]
+                centro = propios["x"] + propios["width"] / 2.0
+                borde_dollar = db.get("x", 0) + db.get("width", 0)
+                if borde_dollar > propios["x"]:
+                    despeje = max(0.1, (centro - borde_dollar) - 0.15)
+                    ancho_propio = min(ancho_propio, 2 * despeje) if ancho_propio else 2 * despeje
+            alto_para_medir = _alto_disponible_cm(c, comps) if es_texto_con_espacios else None
+            fitted = _fit_font_size(
+                texto_manual, ancho_propio, alto_para_medir, base_font_size, bold, familia,
+            )
+            fitted_por_id[id(c)] = min(fitted, base_font_size) if (fitted and base_font_size) else fitted
             base_por_id[id(c)] = base_font_size
             continue
-
-        # El alto solo limita a lo que de verdad envuelve. Un texto sin
-        # espacios sale en UNA línea (ver word_wrap en _populate_text_frame):
-        # que sobresalga del alto de su caja es justamente lo que el diseño
-        # hace a propósito con los precios --la caja es un ancla de posición,
-        # no un contenedor-- y medir contra el hueco hasta el cuadro de abajo
-        # lo mandaba al piso de _FIT_MIN_SCALE de una. Caso real: en la 6xA4,
-        # "unidad" de 6 pt salía a 3,3 y en la A5 "$152,15" de 35 pt salía a
-        # 19,2. Una descripción sí envuelve y sigue midiendo contra el alto.
-        _envuelve = " " in _texto_resuelto(c, product).strip()
 
         piezas = _segmentos_medibles(c, product)
         if piezas:
@@ -876,7 +891,7 @@ def _fit_text_to_box(
             # grande a la que la suma de los pedazos entra, y se aplica a todos
             # por igual para no desalinear la coma con el entero.
             ancho_caja = _ancho_disponible_cm(c, comps, product, ancho_pagina_cm) or 0
-            alto_caja = _alto_disponible_cm(c, comps) if _envuelve else None
+            alto_caja = _alto_disponible_cm(c, comps)
             escala = 1.0
             if ancho_caja and not _entra_por_segmentos(piezas, ancho_caja, alto_caja, bold, familia):
                 lo, hi = _FIT_MIN_SCALE, 1.0
@@ -892,7 +907,7 @@ def _fit_text_to_box(
         else:
             fitted = _fit_font_size(
                 texto, _ancho_disponible_cm(c, comps, product, ancho_pagina_cm),
-                _alto_disponible_cm(c, comps) if _envuelve else None,
+                _alto_disponible_cm(c, comps),
                 base_font_size, bold, familia,
             )
         fitted_por_id[id(c)] = fitted
@@ -1030,23 +1045,7 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
     style    = comp.get("style", {})
     segments = comp.get("segments")
 
-    # Word-wrap SOLO si el texto tiene dónde cortarse. Un precio es un token
-    # único ("179", "1.599"): si no entra a lo ancho de su caja, PowerPoint
-    # lo parte al medio igual, sin espacios, y sale "17" arriba y "9" abajo
-    # (caso real reportado, Preciazos A4). Estas cajas de precio son un ancla
-    # de posición, no un contenedor: el diseño dibuja el número más ancho que
-    # su caja a propósito, y así lo muestra el preview. Con el wrap apagado
-    # desborda hacia los costados --como en el preview-- en vez de partirse.
-    #
-    # Una descripción sí tiene espacios y sí tiene que envolver: ahí el wrap
-    # queda como estaba, y el achique por alto lo maneja _fit_text_to_box.
-    if segments:
-        _texto_plano = "".join(
-            str(seg.get("_resolved", seg.get("value", "")) or "") for seg in segments
-        )
-    else:
-        _texto_plano = str(value or "")
-    tf.word_wrap = " " in _texto_plano.strip()
+    tf.word_wrap = True
 
     # Vertical anchor (preserved from original PPTX)
     vertical_align = style.get("vertical_align")
@@ -2143,7 +2142,7 @@ def render_template_to_pptx(
                 # antes escalaba por target_format y comprimía la grilla.
                 laid_bg = compute_layout(bg_comps, master_format, master_format)
                 _render_slide(slide, laid_bg, {}, missing_vars=missing_vars, shape_map=shape_map)
-            # Primero se ajusta cada celda por separado, después se unifican
+            # Primero se ajusta cada celda por separado, despues se unifican
             # los tamaños entre celdas: la MISMA variable tiene que salir del
             # MISMO cuerpo en las N cenefas de la hoja. Ver
             # _unificar_tamanos_entre_bandas.
