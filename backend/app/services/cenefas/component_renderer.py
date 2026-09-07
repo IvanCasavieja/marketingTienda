@@ -576,7 +576,13 @@ def _ancho_util_cm(bounds: dict, ancho_pagina_cm: float | None) -> float | None:
         return ancho
     izq = max(x, 0.0)
     der = min(x + ancho, ancho_pagina_cm)
-    return max(0.5, der - izq - _MARGEN_INTERNO_CM)
+    # NO se descuenta el margen interno aca: lo descuenta _entra_en_caja con
+    # _INSET_CM, que es el mismo margen (0,254 cm por lado). Restarlo en los
+    # dos lados le comia casi 1 cm a cada caja. En la A4, con cajas de 11 cm,
+    # pasaba desapercibido; en la 6xA4, con la caja del precio de 2,58 cm, se
+    # llevaba el 39% del espacio util y ningun tamaño "entraba" -- de ahi que
+    # todo saliera al piso de _FIT_MIN_SCALE.
+    return max(0.5, der - izq)
 
 
 def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
