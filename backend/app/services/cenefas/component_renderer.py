@@ -644,6 +644,58 @@ def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
     return base
 
 
+def _dollar_parejas(comps: list[dict]) -> dict[int, dict]:
+    """Para cada precio, los bounds del "$" fijo (sin variable) que lo
+    acompaña -- misma pareja que arma _render_slide (ver el comentario de
+    _COBERTURA_MIN_PAREJA), pero indexada por precio en vez de por "$", para
+    poder consultarla acá sin duplicar la búsqueda por cada cuadro.
+
+    Hace falta porque el "$" y el precio NO están declarados uno al lado del
+    otro: sus cajas se superponen a propósito (ver ese mismo comentario), así
+    que un precio centrado y ancho puede crecer hacia la izquierda por
+    encima de su propio "$" -- caso real, Preciazos A4: "339" (precioOferta,
+    3 cifras) a su tamaño "que entra en la caja" ya pisaba el "$" de al lado,
+    algo que un precio de 2 cifras nunca hacía. _fit_text_to_box usa esto
+    para no dejarlo crecer más allá de donde el "$" termina.
+    """
+    fijos = [
+        c for c in comps
+        if c.get("type") == "text" and not _variables_del_componente(c)
+        and str(c.get("static_value", "")).strip() == "$"
+    ]
+    if not fijos:
+        return {}
+    candidatos = [
+        c for c in comps
+        if _variables_del_componente(c)
+        and not (_variables_del_componente(c) <= _VARIABLES_ETIQUETA_FLOTANTE)
+        and not (_variables_del_componente(c) <= set(DECIMAL_VARS))
+    ] or [c for c in comps if _variables_del_componente(c)]
+    if not candidatos:
+        return {}
+
+    # Puede haber más de un "$" fijo compitiendo por el MISMO precio -- caso
+    # real (6xA4, 09/2026): _detect_slot_bands le arma a la banda 4 una lista
+    # con 14 cuadros que incluye, de más, el "$" que en realidad vive en la
+    # banda 5 (columna derecha) y no tiene ahí ningún precio propio para
+    # emparejar -- termina compitiendo por el precio de la banda 4, y sin
+    # esto el último "$" del for pisaba en silencio la pareja correcta.
+    # Se guarda la cobertura junto al resultado para quedarse siempre con
+    # la MEJOR pareja de cada precio, no con la última procesada.
+    mejor_cobertura: dict[int, float] = {}
+    resultado: dict[int, dict] = {}
+    for fijo in fijos:
+        fb = fijo.get("computed_bounds") or fijo.get("base_bounds") or {}
+        mejor = max(candidatos, key=lambda c2: _cobertura_vertical(
+            fb, c2.get("computed_bounds") or c2.get("base_bounds") or {}))
+        mb = mejor.get("computed_bounds") or mejor.get("base_bounds") or {}
+        cobertura = _cobertura_vertical(fb, mb)
+        if cobertura >= _COBERTURA_MIN_PAREJA and cobertura > mejor_cobertura.get(id(mejor), -1.0):
+            resultado[id(mejor)] = fb
+            mejor_cobertura[id(mejor)] = cobertura
+    return resultado
+
+
 def _fit_text_to_box(
     comps: list[dict], product: dict, ancho_pagina_cm: float | None = None,
 ) -> list[dict]:
@@ -664,6 +716,7 @@ def _fit_text_to_box(
     fitted_por_id: dict[int, float | None] = {}
     base_por_id: dict[int, float | None] = {}
     sin_achique: set[int] = set()
+    dollar_parejas = _dollar_parejas(comps)
 
     for c in comps:
         usadas = _variables_del_componente(c)
@@ -720,11 +773,42 @@ def _fit_text_to_box(
             # justo lo conservador que hace falta: agarra el desborde real
             # ("179" que sí es más ancho que su caja) sin inventar uno
             # donde el diseño ya contaba con el margen.
+            #
+            # Excepción: un cuadro con ESPACIOS (una descripción, no un
+            # precio) sí necesita el chequeo de alto -- es texto real que
+            # hace word-wrap a varias líneas, no un token único pensado para
+            # desbordar. Sin el chequeo de alto, una descripción larga
+            # ("Atún en lomo VALLE DEL SOL al aceite y al natural. 170g")
+            # crecía a 3 líneas sin achicarse y se metía encima del precio
+            # tachado de abajo (caso real, Preciazos A4, 09/2026:
+            # <<descripcion>> también tiene _manual_font_override). Un precio
+            # nunca tiene espacios (no hay dónde cortarlo), así que esta
+            # distinción no le pega a ningún caso de precio real.
             texto_manual = _texto_resuelto(c, product)
-            ancho_propio = _ancho_util_cm(
-                c.get("computed_bounds") or c.get("base_bounds") or {}, ancho_pagina_cm)
+            es_texto_con_espacios = " " in texto_manual.strip()
+            propios = c.get("computed_bounds") or c.get("base_bounds") or {}
+            ancho_propio = _ancho_util_cm(propios, ancho_pagina_cm)
+            # El "$" que acompaña a este precio vive DENTRO de su misma caja
+            # a propósito (ver _dollar_parejas) -- un precio centrado y ancho
+            # puede crecer hacia la izquierda por encima de su propio "$" sin
+            # que ninguno de los dos chequeos de arriba lo note (cada uno
+            # entra en SU caja por separado). Caso real, Preciazos A4:
+            # "339" (precioOferta, 3 cifras) al tamaño que entraba en su
+            # caja de 11,44 cm ya pisaba visualmente el "$" de al lado --
+            # "64" (2 cifras) nunca llegaba tan lejos. Si el texto está
+            # centrado, se lo achica más si hace falta para que ni la mitad
+            # izquierda del texto cruce el borde derecho del "$".
+            if (style.get("align") == "center" and not es_texto_con_espacios
+                    and id(c) in dollar_parejas and propios.get("width")):
+                db = dollar_parejas[id(c)]
+                centro = propios["x"] + propios["width"] / 2.0
+                borde_dollar = db.get("x", 0) + db.get("width", 0)
+                if borde_dollar > propios["x"]:
+                    despeje = max(0.1, (centro - borde_dollar) - 0.15)
+                    ancho_propio = min(ancho_propio, 2 * despeje) if ancho_propio else 2 * despeje
+            alto_para_medir = _alto_disponible_cm(c, comps) if es_texto_con_espacios else None
             fitted = _fit_font_size(
-                texto_manual, ancho_propio, None, base_font_size, bold, familia,
+                texto_manual, ancho_propio, alto_para_medir, base_font_size, bold, familia,
             )
             fitted_por_id[id(c)] = min(fitted, base_font_size) if (fitted and base_font_size) else fitted
             base_por_id[id(c)] = base_font_size
