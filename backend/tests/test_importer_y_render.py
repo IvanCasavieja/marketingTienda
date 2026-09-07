@@ -361,6 +361,45 @@ def test_shape_dentro_de_un_grupo_respeta_que_lo_muevan():
     assert abs(y - 6.25) < 0.05, f"salio en y={y:.2f} en vez de 6,25"
 
 
+def test_el_achique_de_un_producto_no_se_le_pega_al_siguiente():
+    # Bug real que encontró Ivan (Gran Bretaña A4, 07/09/2026): "cuando las
+    # cifras de precioOferta pasan a ser 4 reducís el tamaño, pero cuando
+    # vuelven a 3 no volvés al original".
+    #
+    # Y no solo no volvía: seguía bajando hoja tras hoja. Con 140 pt de
+    # diseño, seis hojas seguidas salieron 120 / 88,3 / 88,3 / 88,3 / 83,9 /
+    # 83,9 -- cada producto arrancaba del tamaño que le dejó el anterior.
+    #
+    # La causa: el layout se arma UNA vez y se reusa para todos los productos,
+    # pero _resolver_solapes achica MODIFICANDO EN EL LUGAR el style del
+    # cuadro. _fit_text_to_box devolvía el diccionario ORIGINAL cuando el
+    # tamaño ya entraba, así que esa modificación caía sobre el layout
+    # compartido.
+    #
+    # Se prueba la invariante y no un tamaño puntual: lo que sale depende de
+    # la geometría de cada plantilla, pero que el resultado sea SIEMPRE
+    # material propio no depende de nada.
+    # Cuerpo chico en una caja grande A PROPOSITO: asi el texto ENTRA y no hay
+    # nada que achicar, que es justamente el caso en el que la version vieja
+    # devolvia el diccionario original en vez de una copia. Con un cuadro que
+    # si se achica el bug no se ve, porque ahi ya devolvia material propio.
+    caja = _caja(1.0, 10.0, 12.0, 3.0, "precioOferta")
+    caja["style"] = {"font_size": 20.0}
+    producto = {"precioOferta": "396"}
+    resultado = _fit_text_to_box([caja], producto, ancho_pagina_cm=21.0)
+
+    assert resultado[0] is not caja, "devolvio el MISMO componente del layout compartido"
+    assert resultado[0]["style"] is not caja["style"], "devolvio el MISMO style"
+
+    # Y achicarlo --exactamente lo que hace _resolver_solapes despues-- no
+    # tiene que tocar el layout del que salio.
+    antes = caja["style"]["font_size"]
+    resultado[0]["style"]["font_size"] = 10.0
+    assert caja["style"]["font_size"] == antes, (
+        f"achicar la copia dejo el layout compartido en {caja['style']['font_size']} "
+        f"en vez de {antes}: el proximo producto arranca de ahi")
+
+
 def test_mxn_imprime_el_literal_una_sola_vez():
     # Bug real (pag. 54 de mundo hogar): la A4 REDEX tiene cocarda
     # (tipoOferta) Y cuadro que tapa al precio (promoOferta) -- en un M x N

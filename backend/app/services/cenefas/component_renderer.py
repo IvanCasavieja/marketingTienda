@@ -1181,17 +1181,41 @@ def _fit_text_to_box(
             if base:
                 fitted_por_id[id(c)] = round(base * escala_min, 1)
 
+    # SIEMPRE se devuelven copias, aunque el tamaño no haya cambiado.
+    #
+    # No es prolijidad: es lo que impide que el achique de un producto se le
+    # pegue al siguiente. El layout se arma UNA vez y se reusa para todos los
+    # productos, y _resolver_solapes --que corre justo después de esto-- achica
+    # MODIFICANDO EN EL LUGAR el `style` del cuadro. Devolver acá el
+    # diccionario original (lo que se hacía cuando el texto ya entraba) hacía
+    # que esa modificación cayera sobre el layout compartido.
+    #
+    # Bug real (Gran Bretaña A4, 07/09/2026), encontrado por Ivan: "cuando las
+    # cifras de precioOferta pasan a ser 4 reducís el tamaño, pero cuando
+    # vuelven a 3 no volvés al original". Y no solo no volvía: seguía bajando,
+    # porque cada producto arrancaba del tamaño que le dejó el anterior. Con
+    # <<precioOferta>> fijado a mano en 140 pt, seis hojas seguidas salieron
+    # 120 / 88,3 / 88,3 / 88,3 / 83,9 / 83,9.
+    #
+    # Alcanza con una copia superficial: el resolver ASIGNA un style nuevo, no
+    # muta el de adentro, así que el original queda intacto.
+    def _copia(comp: dict) -> dict:
+        nueva = dict(comp)
+        if isinstance(comp.get("style"), dict):
+            nueva["style"] = dict(comp["style"])
+        return nueva
+
     result = []
     for c in comps:
         if id(c) in sin_achique:
-            result.append(c)
+            result.append(_copia(c))
             continue
 
         style = c.get("style", {})
         base_font_size = base_por_id.get(id(c))
         fitted = fitted_por_id.get(id(c))
         if fitted == base_font_size:
-            result.append(c)
+            result.append(_copia(c))
             continue
 
         nuevo_style = {**style, "font_size": fitted}
