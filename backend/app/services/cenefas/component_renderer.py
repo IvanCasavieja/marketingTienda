@@ -736,14 +736,24 @@ def _unificar_tamanos_entre_bandas(ajustadas: dict[int, list[dict]]) -> None:
 
 
 # Campo donde vive la relación EXPLÍCITA entre un cuadro fijo (el "$") y el
-# cuadro cuyo valor acompaña. Lo escribe la persona en el editor, y manda
-# sobre cualquier heurística: donde hay relación declarada no se adivina.
+# cuadro cuyo valor acompaña. Lo escribe la persona en el editor, y es la
+# ÚNICA forma de que dos cuadros queden emparejados: no se adivina nunca.
 #
-# La heurística geométrica (ver _COBERTURA_MIN_PAREJA) queda solo como
-# ayuda para PROPONER relaciones y como último recurso en plantillas viejas
-# que todavía no tienen ninguna declarada. Adivinar por posición ya falló
-# de sobra: emparejó un "$" con el decimal vacío en vez de con su precio, y
-# en la 6xA4 con el "$" de la celda de al lado.
+# Hubo una heurística geométrica que deducía la pareja por solape de cajas.
+# Se eliminó el 07/09/2026 por pedido explícito de Ivan. Habia fallado de
+# todas las formas posibles --emparejó un "$" con el decimal vacío en vez de
+# con su precio, en la 6xA4 con el "$" de la celda de al lado, y en Gran
+# Bretaña con un cuadro a 10 cm-- y lo peor es que fallaba EN SILENCIO: de
+# una pareja equivocada salen un límite de ancho y una exención de choque que
+# no corresponden, y nadie se entera.
+#
+# Sacarla mejoró los números: renderizando las 17 plantillas con 6 productos,
+# cambian 20 de 559 cuadros -- 12 quedan MÁS GRANDES (el precio de banco de
+# Preciazos A4 pasa de 38,5 a 60 pt en todas las hojas) y 8 bajan entre 0,4 y
+# 3,5 pt.
+#
+# Para proponer relaciones está el botón "Detectar relaciones" del panel, que
+# muestra sugerencias y espera confirmación de a una.
 _CAMPO_RELACION = "vinculado_a"
 
 
@@ -766,64 +776,27 @@ def _parejas_declaradas(comps: list[dict]) -> dict[int, dict]:
 
 
 def _dollar_parejas(comps: list[dict]) -> dict[int, dict]:
-    """Para cada precio, los bounds del "$" fijo (sin variable) que lo
-    acompaña -- misma pareja que arma _render_slide (ver el comentario de
-    _COBERTURA_MIN_PAREJA), pero indexada por precio en vez de por "$", para
-    poder consultarla acá sin duplicar la búsqueda por cada cuadro.
+    """Para cada precio, los bounds del "$" que lo acompaña -- SOLO si alguien
+    lo declaró a mano en el panel de propiedades.
 
-    Hace falta porque el "$" y el precio NO están declarados uno al lado del
-    otro: sus cajas se superponen a propósito (ver ese mismo comentario), así
-    que un precio centrado y ancho puede crecer hacia la izquierda por
-    encima de su propio "$" -- caso real, Preciazos A4: "339" (precioOferta,
-    3 cifras) a su tamaño "que entra en la caja" ya pisaba el "$" de al lado,
-    algo que un precio de 2 cifras nunca hacía. _fit_text_to_box usa esto
-    para no dejarlo crecer más allá de donde el "$" termina.
+    Antes esto tenía además una heurística que ADIVINABA la pareja mirando
+    cuánto se solapaban las cajas. Se saco por pedido explícito de Ivan
+    (07/09/2026): "quita eso de la pareja automatica". Adivinar mal tiene
+    consecuencias silenciosas y caras --el "$" del precio de banco de Gran
+    Bretaña quedaba emparejado con un cuadro a 10 cm, y de esa pareja
+    equivocada salían un límite de ancho y una exención de choque que no
+    correspondían-- y no hay forma de que la persona se entere de que el motor
+    eligió mal.
+
+    Lo que queda es lo declarado: el desplegable "Acompaña al cuadro" del panel
+    (`vinculado_a`), y el botón "Detectar relaciones", que PROPONE y espera
+    confirmación. Nada se empareja solo.
+
+    Un cuadro con <<unidadMoneda>> (o <<um>>) nunca hizo falta que entrara acá:
+    quien lo pone como variable ya decidió dónde va, y se hermana solo entre
+    las cenefas de la hoja.
     """
-    # Lo declarado a mano manda. La heurística solo completa los cuadros que
-    # todavía no tienen relación declarada.
-    declaradas = _parejas_declaradas(comps)
-    ya_resueltos = set(declaradas)
-
-    fijos = [
-        c for c in comps
-        if c.get("type") == "text" and not _variables_del_componente(c)
-        and str(c.get("static_value", "")).strip() == "$"
-        and not c.get(_CAMPO_RELACION)
-    ]
-    if not fijos:
-        return dict(declaradas)
-    candidatos = [
-        c for c in comps
-        if _variables_del_componente(c)
-        and not (_variables_del_componente(c) <= _VARIABLES_ETIQUETA_FLOTANTE)
-        and not (_variables_del_componente(c) <= set(DECIMAL_VARS))
-    ] or [c for c in comps if _variables_del_componente(c)]
-    if not candidatos:
-        return dict(declaradas)
-
-    # Puede haber más de un "$" fijo compitiendo por el MISMO precio -- caso
-    # real (6xA4, 09/2026): _detect_slot_bands le arma a la banda 4 una lista
-    # con 14 cuadros que incluye, de más, el "$" que en realidad vive en la
-    # banda 5 (columna derecha) y no tiene ahí ningún precio propio para
-    # emparejar -- termina compitiendo por el precio de la banda 4, y sin
-    # esto el último "$" del for pisaba en silencio la pareja correcta.
-    # Se guarda la cobertura junto al resultado para quedarse siempre con
-    # la MEJOR pareja de cada precio, no con la última procesada.
-    mejor_cobertura: dict[int, float] = {}
-    resultado: dict[int, dict] = {}
-    for fijo in fijos:
-        fb = fijo.get("computed_bounds") or fijo.get("base_bounds") or {}
-        mejor = max(candidatos, key=lambda c2: _cobertura_vertical(
-            fb, c2.get("computed_bounds") or c2.get("base_bounds") or {}))
-        mb = mejor.get("computed_bounds") or mejor.get("base_bounds") or {}
-        cobertura = _cobertura_vertical(fb, mb)
-        if id(mejor) in ya_resueltos:
-            continue  # ese precio ya tiene su "$" declarado a mano
-        if cobertura >= _COBERTURA_MIN_PAREJA and cobertura > mejor_cobertura.get(id(mejor), -1.0):
-            resultado[id(mejor)] = fb
-            mejor_cobertura[id(mejor)] = cobertura
-    resultado.update(declaradas)
-    return resultado
+    return dict(_parejas_declaradas(comps))
 
 
 def _rect_texto_real(comp: dict, product: dict) -> dict | None:
