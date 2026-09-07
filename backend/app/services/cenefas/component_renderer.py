@@ -1209,19 +1209,66 @@ def _place_component(slide, comp: dict, value: str, shape_map: dict[int, object]
 # Render de un slide completo
 # ---------------------------------------------------------------------------
 
-def _excluido_por_dominante(comp: dict, product: dict, dominantes_presentes: list[str]) -> bool:
+def _bounds_por_dominante(
+    comp_layout: list[dict], dominantes_presentes: list[str],
+) -> dict[str, list[dict]]:
+    """Para cada variable dominante presente, los bounds de los cuadros que
+    EFECTIVAMENTE la dibujan en este layout -- ver _excluido_por_dominante,
+    que compara contra esto para decidir si de verdad hay una colisión de
+    lugar, no solo coincidencia de variable."""
+    resultado: dict[str, list[dict]] = {m: [] for m in dominantes_presentes}
+    for c in comp_layout:
+        usadas = _variables_del_componente(c)
+        for m in dominantes_presentes:
+            if m in usadas:
+                resultado[m].append(c.get("computed_bounds") or c.get("base_bounds") or {})
+    return resultado
+
+
+# Cuánto tiene que solaparse un cuadro con el que dibuja la variable
+# dominante para que la exclusión de _EXCLUYENTES aplique de verdad --
+# ver el comentario de _EXCLUYENTES: la regla existe para cuando dos
+# cuadros "ocupan EL MISMO lugar del cartel", no para cualquier plantilla
+# que use ambas variables en cualquier parte de la hoja.
+#
+# Medido en los dos casos reales que existen hoy: Redexpres (A4 y 3xA4)
+# diseña precioOferta y promoOferta literalmente superpuestos -- 91-100%
+# de solape, el diseño los pone ahí a propósito para que solo se vea uno
+# de los dos. Preciazos de la Tienda (09/2026) NO: su <<precioOferta>>
+# grande y la cocarda con promoOferta comparten apenas ~20% de área
+# (cajas vecinas, no superpuestas) -- el diseño real muestra los dos a la
+# vez ("2x $129" en la cocarda Y "$64" grande más abajo). Sin este piso,
+# agregarle promoOferta a la cocarda de Preciazos (pedido explícito de
+# Ivan, para que las 4 plantillas mostraran lo mismo) apagaba precioOferta
+# en toda la plantilla sin que nadie lo pidiera -- exclusión pensada para
+# Redexpres, aplicada por error a un diseño que nunca la necesitó.
+_SOLAPE_MIN_EXCLUSION_DOMINANTE = 0.5
+
+
+def _excluido_por_dominante(
+    comp: dict, product: dict, dominantes_presentes: list[str],
+    bounds_por_dominante: dict[str, list[dict]],
+) -> bool:
     """True si `comp` se tapa porque el producto trae valor en alguna
-    variable "dominante" de _EXCLUYENTES cuyo par el diseño también dibuja
-    -- ver el comentario de _EXCLUYENTES. Extraído de _render_slide para
-    poder consultarlo en una pasada previa (ver _rect_overlap_ratio más
-    abajo: un "$" fijo sin variable propia que vive pegado a un precio
-    excluido necesita saber que SU vecino se ocultó antes de decidir si se
-    oculta también)."""
+    variable "dominante" de _EXCLUYENTES, su par el diseño también la
+    dibuja, Y ese par vive en el MISMO lugar del cartel (ver
+    _SOLAPE_MIN_EXCLUSION_DOMINANTE) -- no en cualquier parte de la hoja.
+    Extraído de _render_slide para poder consultarlo en una pasada previa
+    (ver _rect_overlap_ratio más abajo: un "$" fijo sin variable propia
+    que vive pegado a un precio excluido necesita saber que SU vecino se
+    ocultó antes de decidir si se oculta también)."""
     usadas = _variables_del_componente(comp)
+    propios = comp.get("computed_bounds") or comp.get("base_bounds") or {}
     for manda in dominantes_presentes:
         if manda in usadas:
             continue
-        if usadas & set(_EXCLUYENTES[manda]) and str(product.get(manda, "") or "").strip():
+        if not (usadas & set(_EXCLUYENTES[manda])):
+            continue
+        if not str(product.get(manda, "") or "").strip():
+            continue
+        bounds_dominante = bounds_por_dominante.get(manda) or []
+        if any(_rect_overlap_ratio(propios, b) >= _SOLAPE_MIN_EXCLUSION_DOMINANTE
+               for b in bounds_dominante):
             return True
     return False
 
@@ -1272,6 +1319,7 @@ def _render_slide(
     for c in comp_layout:
         dibujadas |= _variables_del_componente(c)
     dominantes_presentes = [m for m in _EXCLUYENTES if m in dibujadas]
+    bounds_por_dominante = _bounds_por_dominante(comp_layout, dominantes_presentes)
 
     # Cuadros fijos (sin variable propia, ej. el "$" del diseño) que viven
     # pegados a un cuadro que se va a tapar -- por exclusión (_EXCLUYENTES)
@@ -1296,7 +1344,7 @@ def _render_slide(
         c.get("computed_bounds") or c.get("base_bounds") or {}
         for c in comp_layout
         if _variables_del_componente(c) and (
-            _excluido_por_dominante(c, product, dominantes_presentes) or _var_sin_dato(c)
+            _excluido_por_dominante(c, product, dominantes_presentes, bounds_por_dominante) or _var_sin_dato(c)
         )
     ]
 
@@ -1319,7 +1367,7 @@ def _render_slide(
         # tipoOferta y no necesita promoOferta).
         usadas = _variables_del_componente(comp)
         if not oculto and dominantes_presentes and usadas:
-            oculto = _excluido_por_dominante(comp, product, dominantes_presentes)
+            oculto = _excluido_por_dominante(comp, product, dominantes_presentes, bounds_por_dominante)
         # Un cuadro FIJO sin variable propia (el "$" del diseño) no entra en
         # la exclusión de arriba -- ninguna de sus "usadas" está en juego,
         # así que la condición de arriba nunca lo agarra. Si vive pegado a
