@@ -743,11 +743,75 @@ def _extract_style(shape, theme_colors: dict[str, str] | None = None) -> dict:
     return style
 
 
+def _transformacion_de_grupo(grupo):
+    """Cómo pasar de las coordenadas INTERNAS de un grupo a las de la hoja.
+
+    Un grupo de PowerPoint tiene su propio sistema de coordenadas: `chOff` es
+    el origen y `chExt` la extensión de ese sistema, y `off`/`ext` son la
+    posición y el tamaño que el grupo ocupa en la hoja. python-pptx reporta
+    `shape.left`/`shape.top` de los hijos en el sistema INTERNO, no en el de
+    la diapositiva, así que hay que convertirlos:
+
+        x_hoja = off.x + (x_hijo - chOff.x) * (ext.cx / chExt.cx)
+
+    Sin esto, los hijos de un grupo se importaban con las coordenadas
+    internas tal cual. Caso real (Fiesta de Gran Bretaña A4, 09/2026): la
+    cocarda del "XX% OFF" es un grupo puesto en (14,83 , 17,27) y sus cuatro
+    piezas quedaron guardadas en (7,39 , 2,89) -- la cocarda aparecía arriba
+    en el medio, encima del logo, en vez de abajo a la derecha.
+    """
+    from pptx.oxml.ns import qn as _qn_g
+    try:
+        xfrm = grupo._element.find(".//" + _qn_g("a:xfrm"))
+        off, ext = xfrm.find(_qn_g("a:off")), xfrm.find(_qn_g("a:ext"))
+        choff, chext = xfrm.find(_qn_g("a:chOff")), xfrm.find(_qn_g("a:chExt"))
+        cw, ch = int(chext.get("cx")), int(chext.get("cy"))
+        if not cw or not ch:
+            return None
+        return (int(off.get("x")), int(off.get("y")),
+                int(choff.get("x")), int(choff.get("y")),
+                int(ext.get("cx")) / cw, int(ext.get("cy")) / ch)
+    except Exception:
+        return None
+
+
+class _ShapeEnHoja:
+    """Envuelve un shape hijo de un grupo y le corrige la geometría.
+
+    Se delega todo lo demás al shape original (texto, formato, relleno): lo
+    único que cambia es dónde está y cuánto mide, ya convertido al sistema de
+    la diapositiva.
+    """
+    def __init__(self, shape, left, top, width, height):
+        self._shape = shape
+        self.left, self.top = left, top
+        self.width, self.height = width, height
+
+    def __getattr__(self, nombre):
+        return getattr(self._shape, nombre)
+
+
 def _flatten_shapes(shapes) -> list:
     result = []
     for shape in shapes:
         if hasattr(shape, "shapes"):
-            result.extend(_flatten_shapes(shape.shapes))
+            t = _transformacion_de_grupo(shape)
+            hijos = _flatten_shapes(shape.shapes)
+            if t is None:
+                result.extend(hijos)
+                continue
+            ox, oy, cx, cy, sx, sy = t
+            for h in hijos:
+                try:
+                    result.append(_ShapeEnHoja(
+                        h,
+                        int(ox + ((h.left or 0) - cx) * sx),
+                        int(oy + ((h.top  or 0) - cy) * sy),
+                        int((h.width  or 0) * sx),
+                        int((h.height or 0) * sy),
+                    ))
+                except Exception:
+                    result.append(h)
         else:
             result.append(shape)
     return result
