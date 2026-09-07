@@ -248,6 +248,7 @@ import type {
   CenefaTemplate,
   CenefaTemplateRecord,
   CenefaComponent,
+  CenefaRule,
   ComponentBounds,
   ComponentOverride,
   CenefaDestino,
@@ -332,10 +333,16 @@ export const cenefasV2Api = {
     api.get<CenefaLote>(`/tools/cenefas/v2/lotes/${loteId}`),
   // overrides: job_id -> lo que se ajustó en ESE job dentro de LotePreviewStep
   // (arrastre/resize en el canvas), mismo formato que confirmJob.
-  confirmLote: (loteId: string, overrides?: Record<string, ComponentOverride[]>) =>
+  // rules: job_id -> lista de reglas de visibilidad completa de ESE job, si
+  // se agregó/borró alguna revisando esa cenefa puntual.
+  confirmLote: (
+    loteId: string,
+    overrides?: Record<string, ComponentOverride[]>,
+    rules?: Record<string, CenefaRule[]>,
+  ) =>
     api.post<{ lote_id: string; confirmadas: number }>(
       `/tools/cenefas/v2/lotes/${loteId}/confirm`,
-      { overrides: overrides ?? {} },
+      { overrides: overrides ?? {}, rules: rules ?? {} },
     ),
   downloadLote: (loteId: string) =>
     api.get(`/tools/cenefas/v2/lotes/${loteId}/download`, { responseType: "blob" }),

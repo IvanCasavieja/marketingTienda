@@ -301,10 +301,19 @@ async def _finish_job(
 async def confirm_generation_job(
     job_id: uuid.UUID,
     position_overrides: list[dict] | None = None,
+    rules_override: list[dict] | None = None,
 ) -> None:
     """Etapa B: toma lo que quedó guardado por run_generation_job(), aplica
     los deltas de posición que el usuario movió en el preview (por id de
     componente) y genera el PPTX final.
+
+    rules_override reemplaza template_def["rules"] entero cuando viene --
+    es lo que manda LotePreviewStep/PreviewStep cuando la persona agrega o
+    borra una regla de visibilidad revisando el job, en vez del editor de
+    plantillas completo (que esa gente nunca abre). No se mergea por id
+    como los overrides de componentes porque una regla nueva no tiene un id
+    previo con el que emparejar -- se reemplaza la lista completa, ya
+    resuelta del lado del frontend.
 
     A propósito NO mantiene una única conexión a la base abierta durante
     todo esto -- el render puede tardar hasta _RENDER_TIMEOUT_SECONDS, y
@@ -361,6 +370,8 @@ async def confirm_generation_job(
                 **template_def,
                 "components": [_con_override(c) for c in template_def.get("components", [])],
             }
+        if rules_override is not None:
+            template_def = {**template_def, "rules": rules_override}
         try:
             pptx_bytes, missing_vars = await asyncio.wait_for(
                 asyncio.to_thread(

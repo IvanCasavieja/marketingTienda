@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useEditorStore } from "@/store/editor";
-import type { CenefaRule, RuleOperator, RuleAction } from "@/types/cenefas";
+import type { CenefaComponent, CenefaRule, RuleOperator, RuleAction } from "@/types/cenefas";
 import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 
 export const OPERATORS: { value: RuleOperator; label: string }[] = [
@@ -29,13 +29,33 @@ const SIMPLE_CONDITIONS = [
 // Panel principal — vista agrupada por componente
 // ---------------------------------------------------------------------------
 
-export default function RulesPanel() {
-  const { template, addRule, deleteRule, selectComponent } = useEditorStore();
+interface RulesPanelProps {
+  /** Mismo patrón que PropertiesPanel.tsx: sin props explícitas cae al
+   * store global del editor completo (/materiales/cenefas/v2).
+   * LotePreviewStep/PreviewStep pasan las suyas propias para reusar este
+   * panel apuntando al template_def de LA CENEFA QUE SE ESTÁ MIRANDO, que
+   * vive en estado local, no en el store. */
+  components?: CenefaComponent[];
+  rules?: CenefaRule[];
+  variables?: { name: string; csv_column: string }[];
+  addRule?: (rule: CenefaRule) => void;
+  deleteRule?: (id: string) => void;
+  selectComponent?: (id: string) => void;
+}
+
+export default function RulesPanel(props: RulesPanelProps = {}) {
+  const store = useEditorStore();
+  const components     = props.components ?? store.template.components;
+  const allRules        = props.rules ?? store.template.rules;
+  const variables      = props.variables ?? store.template.variables;
+  const addRule        = props.addRule ?? store.addRule;
+  const deleteRule     = props.deleteRule ?? store.deleteRule;
+  const selectComponent = props.selectComponent ?? store.selectComponent;
   const [expanded, setExpanded]   = useState<string | null>(null);
   const [addingFor, setAddingFor] = useState<string | null>(null);
 
   const rulesFor = (compId: string) =>
-    template.rules.filter((r) => r.target_component_id === compId);
+    allRules.filter((r) => r.target_component_id === compId);
 
   function handleAdd(compId: string, rule: CenefaRule) {
     addRule(rule);
@@ -54,7 +74,7 @@ export default function RulesPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {template.components.length === 0 ? (
+        {components.length === 0 ? (
           <div className="p-6 text-center">
             <p className="text-sm text-slate-400 dark:text-slate-500">Sin componentes</p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
@@ -63,7 +83,7 @@ export default function RulesPanel() {
           </div>
         ) : (
           <div className="p-2 space-y-1">
-            {[...template.components]
+            {[...components]
               .sort((a, b) => a.z_index - b.z_index)
               .map((comp) => {
                 const rules   = rulesFor(comp.id);
@@ -115,7 +135,7 @@ export default function RulesPanel() {
                           <div className="p-3 border-t border-slate-100 dark:border-slate-800">
                             <RuleForm
                               componentId={comp.id}
-                              variables={template.variables}
+                              variables={variables}
                               onSave={(rule) => handleAdd(comp.id, rule)}
                               onCancel={() => setAddingFor(null)}
                             />

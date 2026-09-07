@@ -4,9 +4,10 @@ import { AlertCircle, AlertTriangle, ArrowLeft, BadgeCheck, CheckCircle2, Chevro
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { cenefasV2Api } from "@/lib/api";
-import type { CenefaComponent, CenefaLote, CenefaLoteItem, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
+import type { CenefaComponent, CenefaLote, CenefaLoteItem, CenefaRule, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
 import Canvas from "@/components/cenefas/editor/Canvas";
 import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
+import RulesPanel from "@/components/cenefas/editor/RulesPanel";
 import TininRevision, { type TemaTinin } from "@/components/cenefas/convertidor/TininRevision";
 
 // Preview de un lote: se recorren de a una las cenefas que se van a generar,
@@ -62,6 +63,12 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   // elige "Guardar" en el modal. Varias cenefas del lote pueden compartir
   // plantilla; se guarda la versión más reciente de cada una.
   const templatesEditados = useRef<Map<string, CenefaTemplate>>(new Map());
+  // Por job, la lista completa de reglas de visibilidad tal como quedó
+  // despues de agregar/borrar alguna revisando esa cenefa puntual — se
+  // manda entera (no un diff) a confirmLote, igual que hace el editor
+  // completo con la plantilla (ver RulesPanel.tsx).
+  const rulesPorJob = useRef<Record<string, CenefaRule[]>>({});
+  const [panelDerechoTab, setPanelDerechoTab] = useState<"propiedades" | "reglas">("propiedades");
 
   const consultar = useCallback(async () => {
     try {
@@ -130,6 +137,32 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
     };
   }
 
+  // Agregar/borrar una regla de visibilidad revisando ESTA cenefa puntual
+  // -- mismo criterio que handleUpdateComponent: se guarda contra actualId,
+  // y también se refleja en templatesEditados por si la persona elige
+  // "Guardar en la plantilla" al confirmar.
+  function actualizarReglas(nuevasReglas: CenefaRule[]) {
+    if (!actualId) return;
+    setDetalle((prev) => {
+      if (!prev?.template_def) return prev;
+      const nuevoDef: CenefaTemplate = { ...prev.template_def, rules: nuevasReglas };
+      if (actual?.template_id) {
+        templatesEditados.current.set(actual.template_id, nuevoDef);
+        setCantPlantillasEditadas(templatesEditados.current.size);
+      }
+      return { ...prev, template_def: nuevoDef };
+    });
+    rulesPorJob.current[actualId] = nuevasReglas;
+  }
+
+  function handleAddRule(rule: CenefaRule) {
+    actualizarReglas([...(detalle?.template_def?.rules ?? []), rule]);
+  }
+
+  function handleDeleteRule(id: string) {
+    actualizarReglas((detalle?.template_def?.rules ?? []).filter((r) => r.id !== id));
+  }
+
   function hayCambiosPendientes(): boolean {
     return Object.values(overridesPorJob.current).some((porComp) => Object.keys(porComp).length > 0);
   }
@@ -143,7 +176,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
         const vals = Object.values(porComp);
         if (vals.length) overrides[jobId] = vals;
       }
-      const { data } = await cenefasV2Api.confirmLote(loteId, overrides);
+      const { data } = await cenefasV2Api.confirmLote(loteId, overrides, rulesPorJob.current);
       if (data.confirmadas > 0) {
         toast.success(t("cenefas.lote.generando", { n: data.confirmadas }));
       }
@@ -529,12 +562,42 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
           {mostrarPanelDerecho && (
             <div className={`w-72 shrink-0 h-[820px] border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col ${panelDerechoFondo}`}>
               {detalle?.template_def ? (
-                <PropertiesPanel
-                  template={detalle.template_def}
-                  selectedComponentId={selectedComponentId}
-                  updateComponent={handleUpdateComponent}
-                  slotBands={detalle.slot_bands}
-                />
+                <>
+                  <div className="flex border-b border-slate-200 dark:border-slate-700 shrink-0">
+                    {(["propiedades", "reglas"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setPanelDerechoTab(tab)}
+                        className={`flex-1 py-2 text-xs font-semibold transition-colors ${
+                          panelDerechoTab === tab
+                            ? "text-brand-600 dark:text-brand-400 border-b-2 border-brand-500"
+                            : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                        }`}
+                      >
+                        {tab === "propiedades" ? "Propiedades" : "Reglas"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    {panelDerechoTab === "propiedades" ? (
+                      <PropertiesPanel
+                        template={detalle.template_def}
+                        selectedComponentId={selectedComponentId}
+                        updateComponent={handleUpdateComponent}
+                        slotBands={detalle.slot_bands}
+                      />
+                    ) : (
+                      <RulesPanel
+                        components={detalle.template_def.components}
+                        rules={detalle.template_def.rules}
+                        variables={detalle.template_def.variables}
+                        addRule={handleAddRule}
+                        deleteRule={handleDeleteRule}
+                        selectComponent={setSelectedComponentId}
+                      />
+                    )}
+                  </div>
+                </>
               ) : todasVerificadas ? (
                 <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-5">
                   <span className="w-14 h-14 rounded-full bg-emerald-500/15 flex items-center justify-center">

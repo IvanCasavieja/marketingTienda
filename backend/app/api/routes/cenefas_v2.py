@@ -564,9 +564,12 @@ async def confirm_job(
     """Confirma el preview (con los componentes eventualmente reposicionados
     por el usuario) y dispara la generación final del PPTX.
 
-    payload: {"components": [{"id": "...", "base_bounds": {"x","y","width","height"}}]}
-    — solo hace falta mandar los que se movieron, el resto conserva su
-    posición original."""
+    payload: {"components": [{"id": "...", "base_bounds": {"x","y","width","height"}}],
+    "rules": [...]} — solo hace falta mandar los componentes que se
+    movieron, el resto conserva su posición original. "rules", si viene,
+    reemplaza la lista de reglas de visibilidad completa (ver
+    confirm_generation_job) -- lo manda LotePreviewStep/PreviewStep cuando
+    se agrega o borra una regla revisando el job."""
     job = await _get_job(job_id, current_user, db)
     if job.status != "preview":
         raise HTTPException(
@@ -575,6 +578,7 @@ async def confirm_job(
         )
 
     position_overrides = payload.get("components") or []
+    rules_override = payload.get("rules")
 
     # Marcarlo "running" ya mismo (no al empezar el background task) para
     # que un segundo POST /confirm mientras el primero corre choque con el
@@ -586,6 +590,7 @@ async def confirm_job(
         confirm_generation_job,
         job_id=job_id,
         position_overrides=position_overrides,
+        rules_override=rules_override,
     )
 
     return {"job_id": str(job_id), "status": "running"}
@@ -1348,6 +1353,10 @@ class _ConfirmLoteBody(BaseModel):
     # POST /jobs/{id}/confirm (ver ComponentOverride en el frontend). Ausente
     # o vacío = comportamiento de siempre, sin ajustes.
     overrides: dict[str, list[dict]] = {}
+    # job_id (string) -> lista de reglas que reemplaza template_def["rules"]
+    # entero para ESE job (ver confirm_generation_job). Mismo patrón que
+    # overrides, pero para reglas de visibilidad en vez de posición/estilo.
+    rules: dict[str, list[dict]] = {}
 
 
 @router.post("/lotes/{lote_id}/confirm", status_code=status.HTTP_202_ACCEPTED)
@@ -1391,9 +1400,13 @@ async def confirm_lote(
     await db.commit()
 
     overrides_por_job = (body.overrides if body else {}) or {}
+    rules_por_job = (body.rules if body else {}) or {}
     for job_id in ids:
         propios = overrides_por_job.get(str(job_id))
-        background_tasks.add_task(confirm_generation_job, job_id=job_id, position_overrides=propios)
+        reglas = rules_por_job.get(str(job_id))
+        background_tasks.add_task(
+            confirm_generation_job, job_id=job_id, position_overrides=propios, rules_override=reglas,
+        )
 
     return {"lote_id": str(lote_id), "confirmadas": len(ids)}
 
