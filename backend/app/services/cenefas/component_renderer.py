@@ -857,6 +857,17 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
             seg_style = {**style}
             if seg.get("style"):
                 seg_style.update(seg["style"])
+            if comp.get("_manual_font_override") and style.get("font_size"):
+                # La persona fijó un tamaño a mano para TODA la caja (panel
+                # de propiedades, campo "Tamaño (pt)") -- ese valor manda
+                # incluso en un componente multi-segmento, donde cada
+                # segmento puede traer su propio font_size heredado de
+                # cuando se importó el PPTX (a veces desactualizado). Sin
+                # esto, fijar el tamaño en el panel se veía bien en el
+                # preview (que lee el estilo del componente) pero el
+                # export seguía usando el tamaño viejo guardado en el
+                # segmento, sin que nadie lo hubiera tocado a mano ahí.
+                seg_style["font_size"] = style["font_size"]
             seg_transform = seg.get("transform") or "none"
             if seg_transform == "smart_bold":
                 for part, is_bold in split_caps(seg_val):
@@ -1198,6 +1209,52 @@ def _place_component(slide, comp: dict, value: str, shape_map: dict[int, object]
 # Render de un slide completo
 # ---------------------------------------------------------------------------
 
+def _excluido_por_dominante(comp: dict, product: dict, dominantes_presentes: list[str]) -> bool:
+    """True si `comp` se tapa porque el producto trae valor en alguna
+    variable "dominante" de _EXCLUYENTES cuyo par el diseño también dibuja
+    -- ver el comentario de _EXCLUYENTES. Extraído de _render_slide para
+    poder consultarlo en una pasada previa (ver _rect_overlap_ratio más
+    abajo: un "$" fijo sin variable propia que vive pegado a un precio
+    excluido necesita saber que SU vecino se ocultó antes de decidir si se
+    oculta también)."""
+    usadas = _variables_del_componente(comp)
+    for manda in dominantes_presentes:
+        if manda in usadas:
+            continue
+        if usadas & set(_EXCLUYENTES[manda]) and str(product.get(manda, "") or "").strip():
+            return True
+    return False
+
+
+# Cuánto de la caja MÁS CHICA tiene que caer dentro de la más grande para
+# contar como "el mismo lugar del cartel" -- ver _EXCLUYENTES y el "$" fijo
+# de Preciazos A4 (caso real: un <<precioOferta>> de 180pt tapado por
+# promoOferta dejaba su "$" fijo de al lado solo en pantalla, sin ningún
+# número, porque ese "$" no tiene variable propia y ninguna de las
+# exclusiones de arriba lo alcanza). Medido en ese caso real: el "$" (caja
+# 2,6x3,9cm) y el <<precioOferta>> (caja 11,4x2,8cm) solo se solapan 13,6%
+# del área del "$" -- las cajas están pensadas para leerse juntas ("$" a la
+# izquierda del número) pero no calzan como un rectángulo adentro del otro,
+# así que el piso queda bajo a propósito. Un vecino real (otra fila/
+# columna del diseño) no llega ni a este piso salvo que las cajas ya
+# estuvieran mal puestas de por sí.
+_SOLAPE_MIN_EXCLUSION_PAREJA = 0.1
+
+
+def _rect_overlap_ratio(a: dict, b: dict) -> float:
+    ax, ay = a.get("x", 0), a.get("y", 0)
+    aw, ah = a.get("width", 0), a.get("height", 0)
+    bx, by = b.get("x", 0), b.get("y", 0)
+    bw, bh = b.get("width", 0), b.get("height", 0)
+    ix = max(0.0, min(ax + aw, bx + bw) - max(ax, bx))
+    iy = max(0.0, min(ay + ah, by + bh) - max(ay, by))
+    area_i = ix * iy
+    area_chica = min(aw * ah, bw * bh)
+    if area_chica <= 0:
+        return 0.0
+    return area_i / area_chica
+
+
 def _render_slide(
     slide,
     comp_layout: list[dict],
@@ -1216,6 +1273,33 @@ def _render_slide(
         dibujadas |= _variables_del_componente(c)
     dominantes_presentes = [m for m in _EXCLUYENTES if m in dibujadas]
 
+    # Cuadros fijos (sin variable propia, ej. el "$" del diseño) que viven
+    # pegados a un cuadro que se va a tapar -- por exclusión (_EXCLUYENTES)
+    # O porque su dato vino vacío del Excel (precioOferta sin valor, caso
+    # real: Durazno en almíbar, Puré de papas VIDA, Pulpa de tomates
+    # Morixe -- traen precioRegular pero no precioOferta) -- se ocultan
+    # junto con él, si no quedan solos en pantalla sin ningún número al
+    # lado (ver _rect_overlap_ratio). Se resuelve en una pasada aparte
+    # porque necesita conocer los bounds de TODOS los componentes que se
+    # van a tapar antes de decidir, no solo el propio.
+    def _var_sin_dato(c: dict) -> bool:
+        usadas = _variables_del_componente(c)
+        if not usadas or c.get("type") != "text":
+            return False
+        partes_fijas = any(
+            str(seg.get("value", "")).strip()
+            for seg in (c.get("segments") or []) if seg.get("type") == "static"
+        )
+        return not partes_fijas and not _texto_resuelto(c, product).strip()
+
+    bounds_ocultos_variables = [
+        c.get("computed_bounds") or c.get("base_bounds") or {}
+        for c in comp_layout
+        if _variables_del_componente(c) and (
+            _excluido_por_dominante(c, product, dominantes_presentes) or _var_sin_dato(c)
+        )
+    ]
+
     for comp in comp_layout:
         comp_type = comp.get("type", "text")
         source_id = comp.get("_source_shape_id")
@@ -1233,21 +1317,22 @@ def _render_slide(
         # cenefa de un M x N salia con el hueco del precio en blanco (visto en
         # la A4 de Rompe del Finde, que muestra el literal en la cocarda de
         # tipoOferta y no necesita promoOferta).
-        if not oculto and dominantes_presentes:
-            usadas = _variables_del_componente(comp)
-            for manda in dominantes_presentes:
-                if manda in usadas:
-                    # Este cuadro ES el que trae la variable dominante (un
-                    # componente multi-segmento que junta, ej., tipoOferta y
-                    # promoOferta en la misma caja) -- no se autoexcluye por
-                    # traer también una de las variables que ese dominante
-                    # tapa en OTROS cuadros. Sin este continue, cualquier
-                    # compuesto <<tipoOferta>> $ <<promoOferta>> se ocultaba
-                    # a sí mismo apenas el producto traía promoOferta.
-                    continue
-                if usadas & set(_EXCLUYENTES[manda]) and str(product.get(manda, "") or "").strip():
-                    oculto = True
-                    break
+        usadas = _variables_del_componente(comp)
+        if not oculto and dominantes_presentes and usadas:
+            oculto = _excluido_por_dominante(comp, product, dominantes_presentes)
+        # Un cuadro FIJO sin variable propia (el "$" del diseño) no entra en
+        # la exclusión de arriba -- ninguna de sus "usadas" está en juego,
+        # así que la condición de arriba nunca lo agarra. Si vive pegado a
+        # un cuadro que SÍ se acaba de tapar por exclusión, se tapa junto
+        # con él: si no, quedaba el símbolo solo en pantalla sin ningún
+        # número al lado (caso real: <<precioOferta>> de Preciazos A4
+        # tapado por promoOferta en un combo, con su "$" de 90pt fijo
+        # sobreviviendo solo, sin nada que acompañar).
+        if not oculto and not usadas and bounds_ocultos_variables:
+            propios = comp.get("computed_bounds") or comp.get("base_bounds") or {}
+            if any(_rect_overlap_ratio(propios, b) >= _SOLAPE_MIN_EXCLUSION_PAREJA
+                   for b in bounds_ocultos_variables):
+                oculto = True
         # Un cuadro cuyo contenido sale SOLO de variables y todas quedaron
         # vacías no tiene nada que imprimir. Borrarle el texto no alcanza: si
         # el shape tiene relleno propio --la cocarda roja de tipoOferta-- queda
