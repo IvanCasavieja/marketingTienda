@@ -767,6 +767,136 @@ def _dollar_parejas(comps: list[dict]) -> dict[int, dict]:
     return resultado
 
 
+def _rect_texto_real(comp: dict, product: dict) -> dict | None:
+    """El rectángulo que el texto va a OCUPAR de verdad al dibujarse.
+
+    No es la caja declarada: un número más ancho que su caja se dibuja igual,
+    centrado, sobresaliendo a los costados. Para saber si un cuadro pisa a
+    otro hay que comparar estos rectángulos, no las cajas.
+    """
+    if comp.get("type") != "text":
+        return None
+    texto = _texto_resuelto(comp, product).strip()
+    if not texto:
+        return None
+    b = comp.get("computed_bounds") or comp.get("base_bounds") or {}
+    if not b.get("width"):
+        return None
+    style = comp.get("style", {})
+    fs    = style.get("font_size") or 12
+    fam   = style.get("font_family")
+    bold  = bool(style.get("font_bold"))
+
+    piezas = _segmentos_medibles(comp, product)
+    if piezas and comp.get("_manual_font_override"):
+        # Con el tamaño puesto a mano, _populate_text_frame le fuerza a TODOS
+        # los segmentos el cuerpo del componente; el que guarda cada segmento
+        # suele estar desactualizado. Medir con ese viejo daba un rectángulo
+        # ridículamente chico -- un "64" de 174 pt medido como si fuera de 29,
+        # 1,1 cm en vez de 7 -- y ningún choque se detectaba.
+        piezas = [(t, fs) for t, _ in piezas]
+    if piezas:
+        ancho = sum(_ancho_medido_cm(t, sz, fam, bold) for t, sz in piezas)
+        alto  = _alto_texto_cm(1, max(sz for _, sz in piezas), texto)
+    else:
+        lineas = _estimate_wrapped_lines(texto, b["width"], fs, bold, fam) if " " in texto else 1
+        ancho  = min(_ancho_medido_cm(texto, fs, fam, bold), b["width"]) if lineas > 1 \
+                 else _ancho_medido_cm(texto, fs, fam, bold)
+        alto   = _alto_texto_cm(lineas, fs, texto)
+
+    align = style.get("align", "center")
+    if align == "left":
+        x = b["x"]
+    elif align == "right":
+        x = b["x"] + b["width"] - ancho
+    else:
+        x = b["x"] + (b["width"] - ancho) / 2.0
+    return {"x": x, "y": b["y"], "width": max(0.01, ancho), "height": max(0.01, alto)}
+
+
+# Cuánto se tienen que pisar dos textos para contar como solape de verdad.
+# No es cero: los diseños reales dejan los cuadros rozándose por décimas de
+# milímetro y eso no se ve. Medio milímetro cuadrado ya es visible impreso.
+_SOLAPE_TEXTO_MIN_CM2 = 0.05
+
+
+def _resolver_solapes(pares: list[tuple[dict, dict]], max_pasadas: int = 12) -> None:
+    """Achica lo justo para que ningún texto quede impreso encima de otro.
+
+    Este es el criterio que importa al generar, y es distinto de "entra en su
+    caja": un precio puede sobresalir de su caja sin molestar a nadie (el
+    diseño cuenta con eso) y otro puede entrar justo en la suya y sin embargo
+    tener el vecino pegado. Lo que no puede pasar nunca es que un carácter se
+    imprima sobre otro cuadro que tiene contenido -- la descripción metida
+    abajo del precio, el decimal cayendo sobre el número, dos cifras de un
+    precio pisando la cocarda de al lado.
+
+    Se resuelve acá, al generar, y no se delega al autoajuste de PowerPoint:
+    ese autoajuste no lo recalculan todos los visores, y lo que se ve en el
+    preview tiene que ser lo que sale en el archivo.
+
+    Baja de a poco (5% por pasada) y solo al cuadro con el texto más grande
+    del par, que es el que invade: bajar al chico no despeja nada. Nunca por
+    debajo del piso de legibilidad de _FIT_MIN_SCALE respecto del tamaño con
+    el que entró.
+    """
+    piso = {id(c): (c.get("style", {}).get("font_size") or 12) * _FIT_MIN_SCALE for c, _ in pares}
+    for _ in range(max_pasadas):
+        rects = []
+        for c, prod in pares:
+            r = _rect_texto_real(c, prod)
+            if r:
+                rects.append((c, r))
+        hubo = False
+        for i in range(len(rects)):
+            for j in range(i + 1, len(rects)):
+                ca, ra = rects[i]
+                cb, rb = rects[j]
+                ix = min(ra["x"] + ra["width"],  rb["x"] + rb["width"])  - max(ra["x"], rb["x"])
+                iy = min(ra["y"] + ra["height"], rb["y"] + rb["height"]) - max(ra["y"], rb["y"])
+                if ix <= 0 or iy <= 0 or ix * iy < _SOLAPE_TEXTO_MIN_CM2:
+                    continue
+                # Cajas declaradas superpuestas a propósito por el diseño (el
+                # "$" metido dentro del cuadro del precio, la etiqueta
+                # flotante encima) no son un choque a resolver: el arte las
+                # dibujó así.
+                va, vb = _variables_del_componente(ca), _variables_del_componente(cb)
+                es_par_precio_decimal = any(
+                    (e in va and d in vb) or (e in vb and d in va)
+                    for e, d in DECIMAL_OF.items()
+                )
+                ba = ca.get("computed_bounds") or ca.get("base_bounds") or {}
+                bb = cb.get("computed_bounds") or cb.get("base_bounds") or {}
+                if not es_par_precio_decimal and _rect_overlap_ratio(ba, bb) > 0.05:
+                    continue
+                if _son_decoracion_superpuesta(ca, cb):
+                    continue
+                fa = ca.get("style", {}).get("font_size") or 12
+                fb = cb.get("style", {}).get("font_size") or 12
+                victima, actual = (ca, fa) if fa >= fb else (cb, fb)
+                nuevo = round(actual * 0.95, 1)
+                if nuevo < piso[id(victima)]:
+                    continue
+                escala = nuevo / actual
+                victima["style"] = {**victima.get("style", {}), "font_size": nuevo}
+                if victima["style"].get("line_height_pt"):
+                    victima["style"]["line_height_pt"] = round(
+                        victima["style"]["line_height_pt"] * escala, 1)
+                if victima.get("segments"):
+                    victima["segments"] = [
+                        {**seg, "style": {**seg["style"],
+                                          "font_size": round(seg["style"]["font_size"] * escala, 1)}}
+                        if (seg.get("style") or {}).get("font_size") else seg
+                        for seg in victima["segments"]
+                    ]
+                hubo = True
+                break
+            if hubo:
+                break
+        if not hubo:
+            return
+
+
 def _fit_text_to_box(
     comps: list[dict], product: dict, ancho_pagina_cm: float | None = None,
 ) -> list[dict]:
@@ -2156,7 +2286,13 @@ def render_template_to_pptx(
                 visible_comps = apply_visibility(laid_band, visibility)
                 ajustadas[band_idx] = _fit_text_to_box(
                     visible_comps, product, get_format(master_format)["width_cm"])
+                # Criterio que manda al generar: que ningun texto quede
+                # impreso encima de otro cuadro con contenido. Ver
+                # _resolver_solapes -- es distinto de "entra en su caja".
             _unificar_tamanos_entre_bandas(ajustadas)
+            # El solape se revisa sobre la HOJA entera, no celda por celda:
+            # la descripcion de una cenefa puede invadir la de al lado.
+            _resolver_solapes([(c, pg[bi]) for bi, cs in ajustadas.items() for c in cs])
 
             for band_idx, band_comps in enumerate(slot_bands):
                 if band_idx < len(pg):
@@ -2212,6 +2348,7 @@ def render_template_to_pptx(
             # ancho de papel disponible se mide desde donde va a caer de verdad.
             visible_comps = _fit_text_to_box(
                 visible_comps, product, max(0.5, fmt_info["width_cm"] * slot_cols - slot_offset_x))
+            _resolver_solapes([(c, product) for c in visible_comps])
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map)
 
