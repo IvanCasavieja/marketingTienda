@@ -604,6 +604,25 @@ def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
     if base is None or x is None or y is None or h is None:
         return base
 
+    # Un texto SIN espacios (un precio: "179", "$152,15", "4x3") no tiene
+    # dónde cortarse: o entra en una línea o desborda hacia los costados. Y
+    # desbordar está BIEN: igual que con el alto, estas plantillas dibujan el
+    # número en una caja chica --ancla de posición-- y dejan que crezca por
+    # fuera a propósito. El ancho DECLARADO no es el límite real; el límite
+    # real es el vecino que de verdad va a tener contenido en esa fila (el
+    # bucle de abajo), y si no hay ninguno, el borde del papel.
+    #
+    # Sin esto, medir contra la caja propia hacía que casi todo "no entrara"
+    # y cayera al piso de _FIT_MIN_SCALE: en la 6xA4 real, "Comprando 4" de
+    # 6 pt salía a 3,3 y "$152,15" de 35 pt salía a 19,2 -- ilegibles, y con
+    # un salto de golpe al 55% en vez de bajar los dos o tres puntos que
+    # hacían falta. Una descripción (con espacios) sí envuelve de verdad y
+    # sigue midiendo contra su propia caja, como antes.
+    if not _texto_resuelto(comp, product).strip().count(" "):
+        hasta_el_papel = (ancho_pagina_cm - x - _MARGEN_INTERNO_CM) if ancho_pagina_cm else None
+        if hasta_el_papel and hasta_el_papel > base:
+            base = hasta_el_papel
+
     for otro in comps:
         if otro is comp:
             continue
@@ -770,13 +789,23 @@ def _fit_text_to_box(
             base_por_id[id(c)] = base_font_size
             continue
 
+        # El alto solo limita a lo que de verdad envuelve. Un texto sin
+        # espacios sale en UNA línea (ver word_wrap en _populate_text_frame):
+        # que sobresalga del alto de su caja es justamente lo que el diseño
+        # hace a propósito con los precios --la caja es un ancla de posición,
+        # no un contenedor-- y medir contra el hueco hasta el cuadro de abajo
+        # lo mandaba al piso de _FIT_MIN_SCALE de una. Caso real: en la 6xA4,
+        # "unidad" de 6 pt salía a 3,3 y en la A5 "$152,15" de 35 pt salía a
+        # 19,2. Una descripción sí envuelve y sigue midiendo contra el alto.
+        _envuelve = " " in _texto_resuelto(c, product).strip()
+
         piezas = _segmentos_medibles(c, product)
         if piezas:
             # Cuadro con tamaños mezclados (el precio): se busca la escala más
             # grande a la que la suma de los pedazos entra, y se aplica a todos
             # por igual para no desalinear la coma con el entero.
             ancho_caja = _ancho_disponible_cm(c, comps, product, ancho_pagina_cm) or 0
-            alto_caja = _alto_disponible_cm(c, comps)
+            alto_caja = _alto_disponible_cm(c, comps) if _envuelve else None
             escala = 1.0
             if ancho_caja and not _entra_por_segmentos(piezas, ancho_caja, alto_caja, bold, familia):
                 lo, hi = _FIT_MIN_SCALE, 1.0
@@ -792,7 +821,7 @@ def _fit_text_to_box(
         else:
             fitted = _fit_font_size(
                 texto, _ancho_disponible_cm(c, comps, product, ancho_pagina_cm),
-                _alto_disponible_cm(c, comps),
+                _alto_disponible_cm(c, comps) if _envuelve else None,
                 base_font_size, bold, familia,
             )
         fitted_por_id[id(c)] = fitted
