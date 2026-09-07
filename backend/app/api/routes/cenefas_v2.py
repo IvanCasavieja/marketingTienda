@@ -25,6 +25,11 @@ from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
 from app.services.cenefas.capacidad import capacidad_por_componente
+from app.services.cenefas.component_renderer import (
+    _cobertura_vertical,
+    _dollar_parejas,
+    _variables_del_componente,
+)
 from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.component_renderer import _detect_slot_bands, _fit_text_to_box
 from app.services.cenefas.jobs import (
@@ -175,6 +180,64 @@ async def calcular_capacidad(
     decide el achique al exportar.
     """
     return {"capacidad": capacidad_por_componente({"components": payload.components})}
+
+
+class _RelacionesRequest(BaseModel):
+    components: list[dict]
+
+
+@router.post("/detectar-relaciones")
+async def detectar_relaciones(
+    payload: _RelacionesRequest,
+    _: User = Depends(require_permission("cenefas.view")),
+):
+    """PROPONE con qué cuadro se podría relacionar cada "$" suelto.
+
+    Solo propone: no guarda nada ni cambia la plantilla. La relación queda
+    declarada cuando la persona la confirma en el editor, y a partir de ahi
+    el render usa esa y deja de adivinar (ver _CAMPO_RELACION en
+    component_renderer).
+
+    Se devuelve la confianza de cada propuesta -- cuanto del alto del "$"
+    cae dentro del cuadro propuesto -- para poder mostrar primero las
+    seguras y marcar las dudosas.
+    """
+    comps = payload.components
+    por_uuid = {c.get("id"): c for c in comps if c.get("id")}
+    sugerencias = []
+    parejas = _dollar_parejas(comps)
+    # _dollar_parejas indexa por precio; se da vuelta para responder por "$"
+    for precio_pyid, bounds_dollar in parejas.items():
+        precio = next((c for c in comps if id(c) == precio_pyid), None)
+        if precio is None:
+            continue
+        fijo = next(
+            (c for c in comps
+             if (c.get("computed_bounds") or c.get("base_bounds")) == bounds_dollar
+             and not _variables_del_componente(c)),
+            None,
+        )
+        if fijo is None or fijo.get("vinculado_a"):
+            continue
+        cobertura = _cobertura_vertical(
+            bounds_dollar,
+            precio.get("computed_bounds") or precio.get("base_bounds") or {},
+        )
+        sugerencias.append({
+            "desde": fijo.get("id"),
+            "desde_nombre": fijo.get("name") or fijo.get("static_value"),
+            "hacia": precio.get("id"),
+            "hacia_nombre": precio.get("name"),
+            "confianza": round(cobertura, 3),
+        })
+    sugerencias.sort(key=lambda x: -x["confianza"])
+    ya = [
+        {"desde": c.get("id"), "desde_nombre": c.get("name") or c.get("static_value"),
+         "hacia": c.get("vinculado_a"),
+         "hacia_nombre": (por_uuid.get(c.get("vinculado_a")) or {}).get("name")}
+        for c in comps if c.get("vinculado_a")
+    ]
+    return {"sugerencias": sugerencias, "ya_declaradas": ya}
 
 
 @router.post("/slot-bands")

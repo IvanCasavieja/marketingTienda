@@ -302,6 +302,13 @@ export const cenefasV2Api = {
   // su cuerpo. Lo calcula el backend con la MISMA tabla de metricas de
   // fuente que usa el render final, para que lo que se ve en el preview sea
   // la misma cuenta que despues decide el achique al exportar.
+  // Propone con que cuadro se podria relacionar cada "$" suelto. Solo
+  // propone: la relacion queda declarada cuando la persona la confirma.
+  detectarRelaciones: (components: CenefaComponent[]) =>
+    api.post<{
+      sugerencias: { desde: string; desde_nombre: string; hacia: string; hacia_nombre: string; confianza: number }[];
+      ya_declaradas: { desde: string; desde_nombre: string; hacia: string; hacia_nombre: string }[];
+    }>("/tools/cenefas/v2/detectar-relaciones", { components }),
   calcularCapacidad: (components: CenefaComponent[]) =>
     api.post<{ capacidad: Record<string, string> }>(
       "/tools/cenefas/v2/capacidad", { components }),

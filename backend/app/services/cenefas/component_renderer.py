@@ -735,6 +735,36 @@ def _unificar_tamanos_entre_bandas(ajustadas: dict[int, list[dict]]) -> None:
                     ]
 
 
+# Campo donde vive la relación EXPLÍCITA entre un cuadro fijo (el "$") y el
+# cuadro cuyo valor acompaña. Lo escribe la persona en el editor, y manda
+# sobre cualquier heurística: donde hay relación declarada no se adivina.
+#
+# La heurística geométrica (ver _COBERTURA_MIN_PAREJA) queda solo como
+# ayuda para PROPONER relaciones y como último recurso en plantillas viejas
+# que todavía no tienen ninguna declarada. Adivinar por posición ya falló
+# de sobra: emparejó un "$" con el decimal vacío en vez de con su precio, y
+# en la 6xA4 con el "$" de la celda de al lado.
+_CAMPO_RELACION = "vinculado_a"
+
+
+def _parejas_declaradas(comps: list[dict]) -> dict[int, dict]:
+    """{id(precio) -> bounds del "$"} según lo que la persona declaró."""
+    por_uuid = {c.get("id"): c for c in comps if c.get("id")}
+    salida: dict[int, dict] = {}
+    for c in comps:
+        destino_uuid = c.get(_CAMPO_RELACION)
+        if not destino_uuid:
+            continue
+        destino = por_uuid.get(destino_uuid)
+        if destino is None:
+            continue
+        # La relación se declara desde el "$" hacia el precio que acompaña,
+        # y acá se indexa al revés (por precio), que es como la consultan
+        # _fit_text_to_box y el resolver de solapes.
+        salida[id(destino)] = c.get("computed_bounds") or c.get("base_bounds") or {}
+    return salida
+
+
 def _dollar_parejas(comps: list[dict]) -> dict[int, dict]:
     """Para cada precio, los bounds del "$" fijo (sin variable) que lo
     acompaña -- misma pareja que arma _render_slide (ver el comentario de
@@ -749,13 +779,19 @@ def _dollar_parejas(comps: list[dict]) -> dict[int, dict]:
     algo que un precio de 2 cifras nunca hacía. _fit_text_to_box usa esto
     para no dejarlo crecer más allá de donde el "$" termina.
     """
+    # Lo declarado a mano manda. La heurística solo completa los cuadros que
+    # todavía no tienen relación declarada.
+    declaradas = _parejas_declaradas(comps)
+    ya_resueltos = set(declaradas)
+
     fijos = [
         c for c in comps
         if c.get("type") == "text" and not _variables_del_componente(c)
         and str(c.get("static_value", "")).strip() == "$"
+        and not c.get(_CAMPO_RELACION)
     ]
     if not fijos:
-        return {}
+        return dict(declaradas)
     candidatos = [
         c for c in comps
         if _variables_del_componente(c)
@@ -763,7 +799,7 @@ def _dollar_parejas(comps: list[dict]) -> dict[int, dict]:
         and not (_variables_del_componente(c) <= set(DECIMAL_VARS))
     ] or [c for c in comps if _variables_del_componente(c)]
     if not candidatos:
-        return {}
+        return dict(declaradas)
 
     # Puede haber más de un "$" fijo compitiendo por el MISMO precio -- caso
     # real (6xA4, 09/2026): _detect_slot_bands le arma a la banda 4 una lista
@@ -781,9 +817,12 @@ def _dollar_parejas(comps: list[dict]) -> dict[int, dict]:
             fb, c2.get("computed_bounds") or c2.get("base_bounds") or {}))
         mb = mejor.get("computed_bounds") or mejor.get("base_bounds") or {}
         cobertura = _cobertura_vertical(fb, mb)
+        if id(mejor) in ya_resueltos:
+            continue  # ese precio ya tiene su "$" declarado a mano
         if cobertura >= _COBERTURA_MIN_PAREJA and cobertura > mejor_cobertura.get(id(mejor), -1.0):
             resultado[id(mejor)] = fb
             mejor_cobertura[id(mejor)] = cobertura
+    resultado.update(declaradas)
     return resultado
 
 

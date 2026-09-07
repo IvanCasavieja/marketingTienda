@@ -82,6 +82,20 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
     updateComponent(comp!.id, { [key]: value } as Partial<CenefaComponent>);
   }
 
+  // Un cuadro "fijo" es el que no imprime ninguna variable: su texto es del
+  // diseño (el "$", una leyenda). Son los unicos que necesitan declarar a
+  // que valor acompañan.
+  function tieneVariable(c: CenefaComponent): boolean {
+    if (c.variable) return true;
+    return (c.segments ?? []).some((s) => s.type === "variable");
+  }
+
+  // Candidatos a ser la pareja: los cuadros que SI imprimen una variable.
+  const candidatosRelacion = useMemo(
+    () => (template?.components ?? []).filter((c) => c.type === "text" && tieneVariable(c)),
+    [template?.components],
+  );
+
   function setFontSize(value: number) {
     updateComponent(comp!.id, {
       style: { ...comp!.style, font_size: value },
@@ -362,6 +376,41 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
             ))}
           </div>
         </Section>
+
+        {/* Relación con otro cuadro. Solo tiene sentido para un cuadro FIJO
+            (un "$", una leyenda del diseño): es el que necesita saber a qué
+            valor acompaña. Un cuadro con variable propia ya se identifica
+            solo. Ver vinculado_a en types/cenefas.ts. */}
+        {comp.type === "text" && !tieneVariable(comp) && (
+          <Section label="Relación">
+            <div className="space-y-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">
+                  Acompaña al cuadro
+                </span>
+                <select
+                  className="input text-sm"
+                  value={comp.vinculado_a ?? ""}
+                  onChange={(e) =>
+                    updateComponent(comp.id, { vinculado_a: e.target.value || null })
+                  }
+                >
+                  <option value="">Sin relación (el motor lo deduce)</option>
+                  {candidatosRelacion.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name || c.variable || c.id.slice(0, 8)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-snug">
+                {comp.vinculado_a
+                  ? "Declarada a mano: al exportar se alinea con ese cuadro y no se deduce nada por posición."
+                  : "Sin declarar, el motor deduce por posición cuál es su pareja, y puede equivocarse."}
+              </p>
+            </div>
+          </Section>
+        )}
 
         {/* Estilo tipográfico */}
         {comp.type === "text" && (

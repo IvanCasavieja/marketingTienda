@@ -75,6 +75,18 @@ export interface CenefaComponent {
    * y no lo vuelve a achicar contra el ancho/alto disponible.
    */
   _manual_font_override?: boolean;
+  /**
+   * Relación EXPLÍCITA con otro cuadro: el id del componente cuyo valor este
+   * cuadro acompaña. La declara la persona en el panel de propiedades, y
+   * manda sobre cualquier heurística — donde hay relación declarada el motor
+   * no adivina por posición.
+   *
+   * El caso típico es el "$" suelto del diseño: sin esto, el motor tenía que
+   * deducir a qué precio pertenece mirando la geometría, y se equivocaba
+   * (lo emparejaba con el cuadro del decimal vacío, o con el "$" de la celda
+   * de al lado en la 6xA4).
+   */
+  vinculado_a?: string | null;
 }
 
 /** Override efímero de UN componente al confirmar un job (POST
