@@ -1694,18 +1694,13 @@ def _excluido_por_dominante(
             continue
         if not str(product.get(manda, "") or "").strip():
             continue
-        # Cuando `promoOferta` trae el MISMO literal que `tipoOferta` estamos
-        # en un M x N: ahi promoOferta es el literal que va EN LUGAR del
-        # precio (asi lo llena el converter, ver resolver_mecanica familia
-        # "mxn"), y el precio no se imprime, se dibujen las cajas donde se
-        # dibujen. Es la misma señal de contenido que evita el literal
-        # duplicado en _render_slide, y es la que distingue este caso del
-        # combo de Preciazos, donde promoOferta lleva un PRECIO distinto
-        # ("2x" + "129") y el diseño muestra las dos cosas a la vez.
-        if manda == "promoOferta":
-            literal = str(product.get("promoOferta", "") or "").strip()
-            if literal and literal == str(product.get("tipoOferta", "") or "").strip():
-                return True
+        # OJO: acá NO alcanza con mirar el contenido. Se probó "si promoOferta
+        # trae el mismo literal que tipoOferta, tapá el precio" y le borraba el
+        # precio a productos reales: en las cuatro plantillas Preciazos las
+        # cajas de promoOferta y del precio están SEPARADAS (solape 0,00-0,07)
+        # y Budweiser ("4x3") y Granny ("3x99") traen ese literal en las dos
+        # variables -- el cartel se quedaba sin precio. Quién tapa a quién lo
+        # dice el DISEÑO, o sea la geometría, y solo ella.
         bounds_dominante = bounds_por_dominante.get(manda) or []
         if any(_rect_overlap_ratio(propios, b) >= _SOLAPE_MIN_EXCLUSION_DOMINANTE
                for b in bounds_dominante):

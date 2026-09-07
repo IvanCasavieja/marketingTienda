@@ -34,6 +34,30 @@ def _pptx_con_textos(*textos, size_pt=100):
     return buf.getvalue()
 
 
+def _pptx_con_cajas(*cajas, size_pt=100):
+    """Un A4 con los cuadros EN LAS POSICIONES que se le pasan.
+
+    `_pptx_con_textos` apila los cuadros uno debajo del otro, que alcanza para
+    la mayoria de los tests pero no para los que dependen de que un cuadro
+    TAPE a otro: en las plantillas reales de Redexpres el cuadro de
+    <<promoOferta>> se dibuja encima del del precio (66% a 100% de solape
+    medido en produccion), y esa superposicion es justamente la señal que usa
+    el render para saber cual de los dos manda.
+    """
+    prs = Presentation()
+    prs.slide_width = Cm(21.0)
+    prs.slide_height = Cm(29.7)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    for texto, x, y, w, h in cajas:
+        box = slide.shapes.add_textbox(Cm(x), Cm(y), Cm(w), Cm(h))
+        run = box.text_frame.paragraphs[0].add_run()
+        run.text = texto
+        run.font.size = Pt(size_pt)
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
 def _componente(defin, contiene):
     return next(c for c in defin["components"] if contiene in str(c))
 
@@ -230,7 +254,13 @@ def test_mxn_imprime_el_literal_una_sola_vez():
     # (tipoOferta) Y cuadro que tapa al precio (promoOferta) -- en un M x N
     # los dos llevan el mismo literal y "2X1" salia impreso dos veces. La
     # regla de excluyentes esconde la cocarda cuando promoOferta tapa.
-    src = _pptx_con_textos("<<tipoOferta>>", "<<unidadMoneda>><<precioOferta>>", "<<promoOferta>>")
+    # El cuadro de promoOferta va ENCIMA del precio, como en las plantillas
+    # reales -- es la superposicion la que dice cual de los dos manda.
+    src = _pptx_con_cajas(
+        ("<<tipoOferta>>",                    2.0,  2.0, 6.0, 3.0),   # cocarda, aparte
+        ("<<unidadMoneda>><<precioOferta>>",  2.0, 10.0, 17.0, 6.0),  # el precio
+        ("<<promoOferta>>",                   2.0, 10.0, 17.0, 6.0),  # lo tapa entero
+    )
     d = import_pptx(src)
     pptx, _ = render_template_to_pptx(
         d, [{"tipoOferta": "2x1", "promoOferta": "2x1",
