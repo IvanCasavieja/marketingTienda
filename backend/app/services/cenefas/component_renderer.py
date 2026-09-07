@@ -17,7 +17,7 @@ from app.services.cenefas.font_metrics import ancho_texto_cm
 from app.services.cenefas.formatters import split_caps
 from app.services.cenefas.layout_engine import compute_layout, get_format
 from app.services.cenefas.rules_engine import apply_visibility, evaluate_rules
-from app.services.cenefas.variables import DECIMAL_OF, PRICE_VARS
+from app.services.cenefas.variables import DECIMAL_OF, DECIMAL_VARS, PRICE_VARS
 
 # ---------------------------------------------------------------------------
 # Dimensiones de slide por formato
@@ -1363,10 +1363,25 @@ _SOLAPE_MIN_EXCLUSION_PAREJA = 0.1
 # que al propio <<precioOferta>> de al lado (0%, ni un pixel de solape en
 # X), apagando el "$" en cualquier producto sin combo. El alto de las dos
 # cajas SÍ se diseña igual a propósito (mismo renglón), así que cuánto del
-# alto del "$" cae dentro del candidato es la señal que no falla: measured
-# en los 4 formatos reales, la pareja correcta siempre cubre >=54% del alto
-# del "$", y el vecino más parecido que NO es la pareja no pasa de ~7-8%.
-_COBERTURA_MIN_PAREJA = 0.3
+# alto del "$" cae dentro del candidato es la señal que no falla -- siempre
+# que el candidato se limite a cuadros de "contenido real" (ver el filtro de
+# etiquetas flotantes Y de DECIMAL_VARS más abajo, en el llamado real: un
+# decimal puede venir vacío --precio redondo-- mientras el ENTERO al lado
+# tiene dato de sobra, y sin sacarlo de la lista ganaba por cobertura contra
+# el propio precio: caso real, Alfajor en A4, "179" sin decimales, el "$"
+# de <<precioOferta>> cubría 54% de <<decimalPrecioOferta>> vacío contra
+# apenas 19% de <<precioOferta>> con dato -- se apagaba el "$" con el
+# número completo al lado).
+#
+# Con ese filtro puesto, medido en los 4 formatos reales: la pareja
+# correcta (siempre el precio en sí) va de 19% (A4, precioOferta -- su "$"
+# es angosto y alto, el precio es una sola línea bien más baja) a 100%; el
+# vecino más parecido que NO es la pareja (la descripción, en 3xA4) llega a
+# 55% pero nunca gana el candidato correcto en ningún caso real. El piso
+# queda bajo el mínimo verificado (19%) con margen, no al punto medio entre
+# ganador y perdedor -- achicarlo de más vuelve a exponer al "$" a apagarse
+# con un decimal vacío.
+_COBERTURA_MIN_PAREJA = 0.1
 
 
 def _cobertura_vertical(fijo: dict, candidato: dict) -> float:
@@ -1486,12 +1501,25 @@ def _render_slide(
             # son "el precio" que el "$" acompaña, son captions chicas que el
             # diseño pone cerca de cualquier precio -- si entraran a competir,
             # ganaban por casualidad de posición (ver comentario de
-            # variables_bounds más arriba). Si no queda ningún candidato de
-            # contenido real (plantilla rarísima con solo etiquetas), se cae
-            # a la lista completa antes que no comparar contra nada.
+            # variables_bounds más arriba).
+            #
+            # El cuadro del DECIMAL de un precio (DECIMAL_VARS, ej.
+            # decimalPrecioOferta) tampoco es válido como pareja: es un
+            # sufijo del precio, nunca "el precio" en sí, y puede venir
+            # vacío (precio redondo, sin centavos) mientras el ENTERO al
+            # lado tiene dato de sobra -- caso real: Alfajor
+            # (precioOferta="179", sin decimalPrecioOferta) tenía más
+            # cobertura vertical contra el cuadro del decimal (54%) que
+            # contra el propio precioOferta (19%, caja de una sola línea
+            # bien más baja que el "$"), así que el "$" se apagaba con el
+            # decimal vacío aunque el "179" completo estuviera ahí al lado.
+            #
+            # Si no queda ningún candidato de contenido real (plantilla
+            # rarísima con solo etiquetas y decimales), se cae a la lista
+            # completa antes que no comparar contra nada.
             candidatos = [
                 (b, oc) for b, oc, vars_c in variables_bounds
-                if not (vars_c <= _VARIABLES_ETIQUETA_FLOTANTE)
+                if not (vars_c <= _VARIABLES_ETIQUETA_FLOTANTE) and not (vars_c <= set(DECIMAL_VARS))
             ] or [(b, oc) for b, oc, _ in variables_bounds]
             mejor_bounds, mejor_oculto = max(
                 candidatos, key=lambda par: _cobertura_vertical(propios, par[0])
