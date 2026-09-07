@@ -637,6 +637,20 @@ def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
         # este chequeo cuenta como pared real.
         if _variables_del_componente(otro) & _VARIABLES_ETIQUETA_FLOTANTE:
             continue
+        # El DECIMAL de este mismo precio no es una pared: van pegados a
+        # proposito y el diseño declara las dos cajas superpuestas, contando
+        # con que el numero real nunca llena la suya. Tomarlo como pared
+        # recortaba el ancho del entero a lo que va desde su borde izquierdo
+        # hasta donde arranca el decimal -- en la 6xA4 real, 1,40 cm para un
+        # precio de 46 pt, con lo cual NINGUN tamaño "entraba" y la bisección
+        # devolvia siempre el piso de _FIT_MIN_SCALE: el precio de oferta
+        # salia a 25 pt en las seis celdas. La escala del par ya la empareja
+        # _AGRUPAR_POR_FILA mas abajo, que es donde corresponde.
+        vars_yo = _variables_del_componente(comp)
+        vars_otro = _variables_del_componente(otro)
+        es_mi_decimal = any(e in vars_yo and dv in vars_otro for e, dv in DECIMAL_OF.items())
+        if es_mi_decimal and ox < x + (b.get("width") or 0):
+            continue
         # Un vecino que va a quedar vacio no limita nada.
         if not _texto_resuelto(otro, product).strip():
             continue
@@ -819,8 +833,14 @@ def _rect_texto_real(comp: dict, product: dict) -> dict | None:
 # milímetro y eso no se ve. Medio milímetro cuadrado ya es visible impreso.
 _SOLAPE_TEXTO_MIN_CM2 = 0.05
 
+# Para el par entero+decimal de un mismo precio hace falta un piso mas alto:
+# el diseño los dibuja pegados y el roce lateral es normal. Medio centimetro
+# cuadrado ya es el decimal montado sobre el numero, que es el caso real que
+# hay que corregir (el ",50" cayendo debajo del "64" en la A4).
+_SOLAPE_PAR_DECIMAL_MIN_CM2 = 0.25
 
-def _resolver_solapes(pares: list[tuple[dict, dict]], max_pasadas: int = 12) -> None:
+
+def _resolver_solapes(pares: list[tuple[dict, dict]], max_pasadas: int = 40) -> None:
     """Achica lo justo para que ningún texto quede impreso encima de otro.
 
     Este es el criterio que importa al generar, y es distinto de "entra en su
@@ -841,6 +861,12 @@ def _resolver_solapes(pares: list[tuple[dict, dict]], max_pasadas: int = 12) -> 
     el que entró.
     """
     piso = {id(c): (c.get("style", {}).get("font_size") or 12) * _FIT_MIN_SCALE for c, _ in pares}
+    # El "$" fijo de cada precio no cuenta como choque: el diseño los dibuja
+    # pegados y el numero, centrado, se le acerca todo lo que haga falta.
+    # Sin esta excepcion el resolver separaba el precio de su propio simbolo
+    # bajandolo al piso -- en la 6xA4 dejaba el precio de oferta en 25 pt
+    # sobre 46 de diseño, en las seis celdas.
+    _parejas_dollar = _dollar_parejas([c for c, _ in pares])
     for _ in range(max_pasadas):
         rects = []
         for c, prod in pares:
@@ -867,9 +893,18 @@ def _resolver_solapes(pares: list[tuple[dict, dict]], max_pasadas: int = 12) -> 
                 )
                 ba = ca.get("computed_bounds") or ca.get("base_bounds") or {}
                 bb = cb.get("computed_bounds") or cb.get("base_bounds") or {}
+                # El par entero+decimal va PEGADO por diseño: un roce lateral
+                # no es un choque, es como se lee un precio. Solo se separan
+                # si de verdad se montan uno sobre otro. Sin este piso mas
+                # alto, en la 6xA4 el resolver separaba "64" de su ",50" y
+                # bajaba el precio al minimo (25 pt sobre 46).
+                if es_par_precio_decimal and ix * iy < _SOLAPE_PAR_DECIMAL_MIN_CM2:
+                    continue
                 if not es_par_precio_decimal and _rect_overlap_ratio(ba, bb) > 0.05:
                     continue
                 if _son_decoracion_superpuesta(ca, cb):
+                    continue
+                if (_parejas_dollar.get(id(ca)) is bb) or (_parejas_dollar.get(id(cb)) is ba):
                     continue
                 fa = ca.get("style", {}).get("font_size") or 12
                 fb = cb.get("style", {}).get("font_size") or 12
@@ -2284,8 +2319,15 @@ def render_template_to_pptx(
                 product       = pg[band_idx]
                 visibility    = evaluate_rules(rules, product)
                 visible_comps = apply_visibility(laid_band, visibility)
+                # El ancho de papel para medir es el de la HOJA, no el de una
+                # celda: en slot_bands los componentes vienen en coordenadas
+                # absolutas de la hoja entera. Pasando el ancho de la celda
+                # (7 cm en la 6xA4) todo lo de la columna derecha, que arranca
+                # en x=16, quedaba "fuera del papel" y _ancho_util_cm lo
+                # mandaba al minimo -- de ahi que el precio de oferta saliera
+                # al piso de _FIT_MIN_SCALE en las seis celdas.
                 ajustadas[band_idx] = _fit_text_to_box(
-                    visible_comps, product, get_format(master_format)["width_cm"])
+                    visible_comps, product, prs.slide_width / 360000.0)
                 # Criterio que manda al generar: que ningun texto quede
                 # impreso encima de otro cuadro con contenido. Ver
                 # _resolver_solapes -- es distinto de "entra en su caja".
