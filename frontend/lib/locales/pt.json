@@ -885,7 +885,7 @@
       "button": "Unificar categorias",
       "modalTitle": "Unificar categorias",
       "loading": "Tinín está revisando os nomes do Excel para encontrar variantes do mesmo produto…",
-      "truncated": "O arquivo tem muitos produtos — Tinín só analisou os primeiros da lista.",
+      "truncated": "Tinín não conseguiu analisar todos os produtos do arquivo — podem faltar grupos.",
       "noGroups": "Não encontramos grupos de variantes para unificar neste Excel.",
       "combinedSkuNotice": "Ao aprovar, essas {{count}} linhas são combinadas em uma só com o código \"{{codigo}}\" — o restante é removido da grade.",
       "codigoTooLong": "Este grupo tem SKUs demais para combinar em uma única célula de código — não foi possível salvar.",

@@ -4,9 +4,11 @@ para filas que, después del match con el catálogo y de la columna
 descripción. Nunca escribe en sku_descripciones por su cuenta — solo
 produce sugerencias; la persistencia se hace vía el mismo PATCH que ya usa
 la edición manual, en cenefas_convertidor.py."""
+import asyncio
 import json
 import logging
 import re
+import unicodedata
 
 from app.services.ai_usage_service import log_ai_usage
 from app.services.cenefas.validation_engine import DESCRIPTION_MAX_CHARS, DESCRIPTION_WARN_CHARS
@@ -179,14 +181,95 @@ def _sumar_error(errores: list[str], texto: str) -> None:
 # del Excel cargado, y redactar una única descripción de cartel por grupo.
 # ---------------------------------------------------------------------------
 #
-# A diferencia de generar_descripciones, acá NO se trocea en chunks: agrupar
-# necesita ver todos los productos en una sola pasada, porque dos miembros
-# del mismo grupo podrían caer en chunks distintos y nunca detectarse como
-# relacionados. Por eso hay un tope duro de filas por request (_UNIFY_ROWS_MAX)
-# en vez de un tamaño de lote.
+# Agrupar necesita que los productos relacionados se vean JUNTOS: dos miembros
+# de la misma familia en tandas distintas no se detectan nunca. Durante mucho
+# tiempo eso se resolvió con una sola pasada y un tope duro de filas -- pero el
+# tope dejaba afuera todo lo que sobrara (207 productos de Gran Bretaña, 57 sin
+# mirar) y encima una pasada tan grande se comía el presupuesto de tokens.
+#
+# Ahora se parte en tandas, pero NO a ciegas:
+#
+#  1. Se ordena por MARCA (la palabra en mayúsculas del nombre, misma regla que
+#     usa el bold automático) y después por nombre. Así "Almendras con
+#     chocolate negro FOREST Feast" y "Frutos secos FOREST FEAST" quedan
+#     pegadas aunque empiecen con palabras distintas, que es justo el caso que
+#     una partición alfabética simple rompía.
+#  2. Las tandas se solapan: las últimas filas de una se repiten al principio de
+#     la siguiente, así una familia que cae justo en el corte igual se ve
+#     entera al menos una vez.
+#  3. Al juntar los resultados, si dos tandas reclaman la misma fila gana el
+#     grupo MÁS GRANDE, que es el que vio la familia más completa.
 
-_UNIFY_ROWS_MAX = 150  # tope duro por request síncrona -- mismo criterio que
-                       # _ROWS_MAX_PER_REQUEST (sin jobs asíncronos acá).
+_UNIFY_ROWS_MAX = 150   # filas por tanda (una llamada al modelo)
+_UNIFY_SOLAPE = 20      # filas que se repiten entre tandas consecutivas --
+                        # cubre de sobra una familia típica (2 a 10 miembros)
+_UNIFY_TANDAS_MAX = 8   # techo de costo: ~1000 productos por análisis
+_UNIFY_CONCURRENCIA = 3 # tandas en vuelo a la vez. Más no acelera (el cuello es
+                        # el modelo) y arriesga el rate limit.
+
+
+_MARCA_MIN_LETRAS = 2  # "TE" o "KP" pueden ser marca; una sola letra no.
+
+
+def _marca_de(nombre: str) -> str:
+    """La primera palabra EN MAYUSCULAS del nombre, o "" si no hay.
+
+    Misma senal que usa split_caps para la negrita automatica de la marca en la
+    descripcion: en estos listados el nombre viene como "Mermelada strawberry
+    TIPTREE. 340g" y lo que identifica la linea de producto es TIPTREE.
+
+    Se recorre por palabra y no con una expresion regular a proposito: la
+    version con \b se escribio mal una vez y quedo matcheando un caracter de
+    retroceso, asi que la marca salia siempre vacia y el orden caia de nuevo en
+    alfabetico por nombre --sin que nada fallara ni avisara.
+    """
+    for palabra in nombre.split():
+        limpia = "".join(c for c in palabra if c.isalnum())
+        letras = [c for c in limpia if c.isalpha()]
+        if len(letras) >= _MARCA_MIN_LETRAS and all(c.isupper() for c in letras):
+            return limpia.upper()
+    return ""
+
+
+def _clave_agrupado(it: dict) -> tuple[str, str]:
+    """(marca, nombre) normalizados, para ordenar antes de partir en tandas.
+
+    Ordenar por marca primero es lo que mantiene juntas a las variantes de una
+    misma linea aunque empiecen con palabras distintas -- "Almendras con
+    chocolate negro FOREST Feast" y "Mix frutos secos trufa FOREST FEAST" van
+    una al lado de la otra, cosa que un orden alfabetico por nombre separaba
+    por completo.
+    """
+    nombre = it.get("nombreArticulo") or ""
+    plano = unicodedata.normalize("NFKD", nombre.casefold())
+    plano = "".join(c for c in plano if not unicodedata.combining(c))
+    limpio = "".join(c if (c.isalnum() or c == " ") else " " for c in plano)
+    return (_marca_de(nombre), " ".join(limpio.split()))
+
+
+def _armar_tandas(procesables: list[dict]) -> list[list[dict]]:
+    """Parte la lista YA ORDENADA en tandas solapadas de a lo sumo _UNIFY_ROWS_MAX.
+
+    Las tandas se hacen lo más parejas posible en vez de llenar la primera al
+    tope: 207 productos salen como 2 tandas de ~104 y no como 150 + 57. Dos
+    pedidos medianos terminan antes que uno enorme y uno chico, y ninguno queda
+    cerca del techo de tokens.
+    """
+    total = len(procesables)
+    if total <= _UNIFY_ROWS_MAX:
+        return [procesables]
+    n_tandas = min(_UNIFY_TANDAS_MAX, -(-total // _UNIFY_ROWS_MAX))
+    paso = -(-total // n_tandas)
+    tandas = []
+    for i in range(n_tandas):
+        ini = i * paso
+        if ini >= total:
+            break
+        # el solape se toma hacia ATRÁS: la tanda arranca un poco antes de
+        # donde terminó la anterior.
+        desde = max(0, ini - _UNIFY_SOLAPE) if i else 0
+        tandas.append(procesables[desde:ini + paso])
+    return tandas
 
 # Cuántas redacciones alternativas se muestran por grupo. Tres es el techo por
 # una razón de pantalla, no de modelo: es un desplegable que se lee de un
@@ -281,103 +364,117 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
     y genuinamente no encontro grupos" -- sin esto, ambos casos se verian identicos para
     quien usa el modal (una lista vacia sin explicacion)."""
     procesables = [it for it in items if it["nombreArticulo"]]
-    truncated = len(procesables) > _UNIFY_ROWS_MAX
-    procesables = procesables[:_UNIFY_ROWS_MAX]
     if len(procesables) < 2:
-        return {"grupos": [], "truncated": truncated, "error": False}
+        return {"grupos": [], "truncated": False, "error": False}
 
-    try:
-        prompt = _build_unify_prompt(procesables)
-        # max_tokens generoso a propósito: a diferencia de generar_descripciones (que
-        # trocea en chunks de a 20 porque cada item es independiente), acá TODOS los
-        # productos van en un solo pedido -- con muchas variantes chicas (2-3 miembros)
-        # la cantidad de grupos puede ser alta, y cada uno carga su propio array de
-        # filas + nombre + descripción completa. Preferible pagar de más por un output
-        # grande que arriesgar un corte a mitad del JSON.
-        #
-        # 8192 y no 4096 desde 2026-08-27: cada grupo pasó de traer UNA descripción a
-        # traer dos o tres más su etiqueta, así que el output por grupo se triplicó. Un
-        # corte acá no pierde un grupo: rompe el JSON entero y la pantalla dice que no
-        # encontró nada para unificar.
-        #
-        # 16000 y no 8192 desde 2026-09-02: reproducido en vivo contra producción con
-        # un listado sintético de 75 productos (20 familias de variantes) -- tardó los
-        # mismos ~60s que uno de 26 productos que SÍ funcionó, pero volvió con "error":
-        # true. El tiempo constante es la pista: la familia 5 razona antes de escribir
-        # el JSON aunque acá no se le pida `thinking` explícito (mismo fenómeno del
-        # ThinkingBlock en _ask_claude, ver debate_service.py), y ese razonamiento
-        # gasta del mismo presupuesto de max_tokens -- con poco output disponible
-        # después de pensar, el JSON de un listado grande se corta a mitad. 16000 ya
-        # se usó con este mismo modelo en el chat de La Triada (ver
-        # _ask_claude_stream), así que no es un valor sin probar.
-        # effort="low" NO es tacañería: es lo único que deja terminar el JSON.
-        # El razonamiento sale del MISMO presupuesto que max_tokens, y con un
-        # listado grande el modelo se lo gastaba entero pensando. Medido contra
-        # producción el 07/09/2026 con el listado real de Gran Bretaña, 150
-        # productos (el tope de acá), techo de 16.000:
-        #
-        #   sin effort   145 s   16000 de salida   stop=max_tokens   texto VACIO
-        #   medium       134 s   16000 de salida   stop=max_tokens   JSON cortado
-        #   low           89 s   12343 de salida   stop=end_turn     JSON entero, 32 grupos
-        #
-        # O sea que el modal decía "No pudimos generar las sugerencias" después
-        # de esperar dos minutos y medio, siempre, para cualquier listado de
-        # este tamaño. Ni "medium" --el valor que usa el chat de La Triada--
-        # alcanza acá: allá el output es prosa corta, acá es un JSON largo con
-        # un grupo por familia de variantes.
-        content, in_tok, out_tok = await _ask_claude(
-            _UNIFY_SYSTEM_PROMPT, prompt, max_tokens=16000, effort="low")
-        await log_ai_usage(db, user_id, "convertidor_unificar_categorias", *_ASK_CLAUDE_META, in_tok, out_tok)
-        parsed = json.loads(_strip_json_fence(content))
-        grupos_raw = parsed.get("grupos", [])
-        if not isinstance(grupos_raw, list):
-            raise ValueError(f"'grupos' no es una lista: {grupos_raw!r}")
-    except Exception as exc:
-        log.warning("convertidor_ai.detectar_grupos_unificables: fallo — %s", exc)
+    # Ordenar ANTES de partir es lo que hace que las tandas no rompan familias
+    # (ver el comentario de _armar_tandas).
+    procesables.sort(key=_clave_agrupado)
+    truncated = len(procesables) > _UNIFY_ROWS_MAX * _UNIFY_TANDAS_MAX
+    procesables = procesables[:_UNIFY_ROWS_MAX * _UNIFY_TANDAS_MAX]
+    tandas = _armar_tandas(procesables)
+
+    limite = asyncio.Semaphore(_UNIFY_CONCURRENCIA)
+
+    async def _analizar(tanda: list[dict]):
+        async with limite:
+            # effort="low" NO es tacañería: es lo único que deja terminar el
+            # JSON. El razonamiento sale del MISMO presupuesto que max_tokens, y
+            # con un listado grande el modelo se lo gastaba entero pensando.
+            # Medido contra producción el 07/09/2026 con el listado real de Gran
+            # Bretaña, 150 productos, techo de 16.000:
+            #
+            #   sin effort   145 s   16000 de salida   stop=max_tokens   texto VACIO
+            #   medium       134 s   16000 de salida   stop=max_tokens   JSON cortado
+            #   low           89 s   12343 de salida   stop=end_turn     JSON entero
+            #
+            # O sea que el modal decía "No pudimos generar las sugerencias"
+            # después de esperar dos minutos y medio, siempre. Ni "medium" --el
+            # valor que usa el chat de La Triada-- alcanza: allá el output es
+            # prosa corta, acá un JSON largo con un grupo por familia.
+            content, in_tok, out_tok = await _ask_claude(
+                _UNIFY_SYSTEM_PROMPT, _build_unify_prompt(tanda), max_tokens=16000, effort="low")
+            parsed = json.loads(_strip_json_fence(content))
+            crudos = parsed.get("grupos", [])
+            if not isinstance(crudos, list):
+                raise ValueError(f"'grupos' no es una lista: {crudos!r}")
+            return crudos, in_tok, out_tok
+
+    resultados = await asyncio.gather(*(_analizar(t) for t in tandas), return_exceptions=True)
+
+    # Candidatos de TODAS las tandas, ya con los items resueltos. Los índices
+    # que devuelve el modelo son locales a su tanda, así que se resuelven acá
+    # mismo, mientras se sabe a qué tanda pertenecen.
+    candidatos: list[dict] = []
+    in_total = out_total = 0
+    fallaron = 0
+    for tanda, res in zip(tandas, resultados):
+        if isinstance(res, BaseException):
+            fallaron += 1
+            log.warning("convertidor_ai.detectar_grupos_unificables: tanda fallida — %s", res)
+            continue
+        crudos, in_tok, out_tok = res
+        in_total += in_tok
+        out_total += out_tok
+        for g in crudos:
+            if not isinstance(g, dict):
+                continue
+            filas = g.get("filas")
+            nombre = g.get("grupo")
+            if not isinstance(filas, list) or not isinstance(nombre, str) or not nombre.strip():
+                continue
+            opciones = _parsear_opciones(g)
+            if not opciones:
+                continue
+            vistos: set[int] = set()
+            miembros = []
+            for n in filas:
+                if not (isinstance(n, int) and 1 <= n <= len(tanda)):
+                    continue
+                it = tanda[n - 1]
+                if it["row_id"] in vistos:
+                    continue
+                vistos.add(it["row_id"])
+                miembros.append(it)
+            if len(miembros) >= 2:
+                candidatos.append({"grupo": nombre.strip()[:150],
+                                   "opciones": opciones, "miembros": miembros})
+
+    if fallaron == len(tandas):
         return {"grupos": [], "truncated": truncated, "error": True}
+    if fallaron:
+        # Algo se analizó, pero no todo. Se avisa con la misma marca que el
+        # recorte por tamaño: para quien mira la pantalla el efecto es el mismo,
+        # pueden faltar grupos.
+        truncated = True
 
-    # Una fila no puede pertenecer a dos grupos a la vez -- si Claude la repite
-    # (alucinación o solapamiento en su respuesta), se queda con el primer
-    # grupo que la reclamó y se descarta de cualquier grupo posterior, en vez
-    # de dejar que un mismo SKU termine con dos descripciones "unificadas"
-    # distintas según qué grupo se apruebe último.
+    if in_total or out_total:
+        await log_ai_usage(db, user_id, "convertidor_unificar_categorias",
+                           *_ASK_CLAUDE_META, in_total, out_total)
+
+    # Una fila no puede pertenecer a dos grupos a la vez -- si dos tandas la
+    # reclaman (por el solape) o el modelo la repite dentro de una, gana el
+    # grupo MÁS GRANDE: es el que vio la familia más completa. Antes ganaba el
+    # primero del listado, que con tandas solapadas podía ser el pedazo que
+    # quedó cortado justo en el borde.
+    candidatos.sort(key=lambda c: len(c["miembros"]), reverse=True)
     grupos: list[dict] = []
     usadas: set[int] = set()
-    for g in grupos_raw:
-        if not isinstance(g, dict):
+    for c in candidatos:
+        miembros = [m for m in c["miembros"] if m["row_id"] not in usadas]
+        if len(miembros) < 2:
             continue
-        filas = g.get("filas")
-        grupo_nombre = g.get("grupo")
-        if not isinstance(filas, list) or not isinstance(grupo_nombre, str) or not grupo_nombre.strip():
-            continue
-        opciones = _parsear_opciones(g)
-        if not opciones:
-            continue
-
-        # Se arma la lista de candidatos SIN todavía marcarlos como usados --
-        # si el grupo termina descartado (menos de 2 miembros válidos), sus
-        # filas tienen que seguir disponibles para el próximo grupo del
-        # listado. Recién se marca "usadas" una vez confirmado que el grupo
-        # entero es válido (ver abajo).
-        candidatas: list[int] = []
-        for n in filas:
-            if isinstance(n, int) and 1 <= n <= len(procesables) and n not in usadas and n not in candidatas:
-                candidatas.append(n)
-        if len(candidatas) < 2:
-            continue
-
-        usadas.update(candidatas)
-        miembros = [procesables[n - 1] for n in candidatas]
+        usadas.update(m["row_id"] for m in miembros)
         grupos.append({
             "row_ids": [m["row_id"] for m in miembros],
             "skus": [m["codigo"] for m in miembros],
-            "grupo": grupo_nombre.strip()[:150],
+            "grupo": c["grupo"],
             # La primera es la que Tinín puso primera, o sea la más segura (ver
             # _UNIFY_SYSTEM_PROMPT). Se manda aparte y no solo dentro de
             # `opciones` porque es la que el modal precarga y la que viaja al
             # PATCH si nadie toca el desplegable.
-            "descripcion": opciones[0]["texto"],
-            "opciones": opciones,
+            "descripcion": c["opciones"][0]["texto"],
+            "opciones": c["opciones"],
         })
 
     return {"grupos": grupos, "truncated": truncated, "error": False}
