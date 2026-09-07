@@ -663,6 +663,77 @@ def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
     return base
 
 
+def _unificar_tamanos_entre_bandas(ajustadas: dict[int, list[dict]]) -> None:
+    """Iguala el cuerpo de una MISMA variable entre las N cenefas de la hoja.
+
+    En 3xA4/6xA4/A5 la hoja lleva varias cenefas, y cada una se ajusta contra
+    SU producto: una con "79" y otra con "1.599" terminaban con el precio en
+    dos cuerpos distintos, uno al lado del otro en la misma hoja impresa. El
+    pedido es explícito: los precios regulares de la 6xA4 tienen que tener el
+    mismo tamaño entre sí, los de oferta entre sí, y así con cada variable.
+
+    Se toma el cuerpo MÁS CHICO del grupo (el que le hizo falta a la celda más
+    exigida) y se aplica a todas: bajar una celda que entraba es seguro,
+    subirla a la de al lado la haría desbordar.
+
+    Empareja igual que la vinculación del editor (siblingMap.ts): por variable
+    y por orden de aparición dentro de la banda, y solo cuando la variable
+    aparece la MISMA cantidad de veces en todas las bandas -- si no cierra
+    parejo no se toca nada, antes que adivinar un emparejamiento que no es.
+    Modifica los componentes in place (ya son copias del template).
+    """
+    if len(ajustadas) < 2:
+        return
+
+    def _key(c: dict) -> str | None:
+        usadas = _variables_del_componente(c)
+        if not usadas:
+            return None
+        return "+".join(sorted(usadas))
+
+    por_banda: list[dict[str, list[dict]]] = []
+    for _, comps in sorted(ajustadas.items()):
+        g: dict[str, list[dict]] = {}
+        for c in comps:
+            k = _key(c)
+            if k:
+                g.setdefault(k, []).append(c)
+        por_banda.append(g)
+
+    todas = set()
+    for g in por_banda:
+        todas |= set(g)
+
+    for k in todas:
+        cuentas = [len(g.get(k, [])) for g in por_banda]
+        if cuentas[0] == 0 or any(n != cuentas[0] for n in cuentas):
+            continue
+        for occ in range(cuentas[0]):
+            grupo = [g[k][occ] for g in por_banda]
+            tamanos = [c.get("style", {}).get("font_size") for c in grupo]
+            if any(t is None for t in tamanos):
+                continue
+            minimo = min(tamanos)
+            for c in grupo:
+                actual = c["style"]["font_size"]
+                if actual == minimo:
+                    continue
+                escala = minimo / actual if actual else 1.0
+                c["style"] = {**c["style"], "font_size": minimo}
+                if c["style"].get("line_height_pt"):
+                    c["style"]["line_height_pt"] = round(c["style"]["line_height_pt"] * escala, 1)
+                # Cada segmento lleva su propio cuerpo y pisa al del
+                # componente al dibujar (ver _populate_text_frame): sin
+                # escalarlos, la unificación se descartaba en silencio.
+                if c.get("segments"):
+                    c["segments"] = [
+                        {**seg, "style": {**seg["style"],
+                                          "font_size": round(seg["style"]["font_size"] * escala, 1)}}
+                        if (seg.get("style") or {}).get("font_size") else seg
+                        for seg in c["segments"]
+                    ]
+
+
 def _dollar_parejas(comps: list[dict]) -> dict[int, dict]:
     """Para cada precio, los bounds del "$" fijo (sin variable) que lo
     acompaña -- misma pareja que arma _render_slide (ver el comentario de
@@ -2072,16 +2143,28 @@ def render_template_to_pptx(
                 # antes escalaba por target_format y comprimía la grilla.
                 laid_bg = compute_layout(bg_comps, master_format, master_format)
                 _render_slide(slide, laid_bg, {}, missing_vars=missing_vars, shape_map=shape_map)
+            # Primero se ajusta cada celda por separado, después se unifican
+            # los tamaños entre celdas: la MISMA variable tiene que salir del
+            # MISMO cuerpo en las N cenefas de la hoja. Ver
+            # _unificar_tamanos_entre_bandas.
+            ajustadas: dict[int, list[dict]] = {}
             for band_idx, band_comps in enumerate(slot_bands):
-                laid_band = compute_layout(band_comps, master_format, master_format)
+                if band_idx >= len(pg):
+                    continue
+                laid_band     = compute_layout(band_comps, master_format, master_format)
+                product       = pg[band_idx]
+                visibility    = evaluate_rules(rules, product)
+                visible_comps = apply_visibility(laid_band, visibility)
+                ajustadas[band_idx] = _fit_text_to_box(
+                    visible_comps, product, get_format(master_format)["width_cm"])
+            _unificar_tamanos_entre_bandas(ajustadas)
+
+            for band_idx, band_comps in enumerate(slot_bands):
                 if band_idx < len(pg):
-                    product       = pg[band_idx]
-                    visibility    = evaluate_rules(rules, product)
-                    visible_comps = apply_visibility(laid_band, visibility)
-                    visible_comps = _fit_text_to_box(
-                        visible_comps, product, get_format(master_format)["width_cm"])
-                    _render_slide(slide, visible_comps, product, missing_vars=missing_vars, shape_map=shape_map)
+                    _render_slide(slide, ajustadas[band_idx], pg[band_idx],
+                                  missing_vars=missing_vars, shape_map=shape_map)
                 elif preserve_source:
+                    laid_band = compute_layout(band_comps, master_format, master_format)
                     # Página parcial (menos productos que celdas) y estamos
                     # preservando el diseño original: si no se limpia, la
                     # celda sin producto queda con lo que tuviera el archivo
