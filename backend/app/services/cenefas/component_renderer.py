@@ -1486,6 +1486,34 @@ def _render_slide(
                 else:
                     seg_val = seg.get("value", "")
                 resolved.append({**seg, "_resolved": seg_val})
+
+            # Guarda contra el literal repetido a los dos lados de un
+            # separador fijo (ej. "<<tipoOferta>> $ <<promoOferta>>"). Ese
+            # diseño asume que las dos variables son SIEMPRE distintas
+            # (tipoOferta="2x" + promoOferta="129" -> "2x $129"), pero
+            # promoOferta también puede venir IGUAL a tipoOferta a propósito
+            # -- ver convertidor_variables.resolver_mecanica, familia "mxn":
+            # para un M x N ("4x3", "3x99") el converter copia el mismo
+            # literal en las dos variables porque Redexpres dibuja
+            # promoOferta TAPANDO el cuadro del precio, sin necesitar un
+            # separador. Caso real (Preciazos, 09/2026): Cerveza BUDWEISER
+            # (tipoOferta=promoOferta="4x3") imprimía "4x3 $ 4x3". Si el
+            # texto a los dos lados de un separador estático es idéntico,
+            # se apaga el separador y la segunda copia -- nunca reformatea,
+            # solo saca la repetición (mismo criterio que el guardado de
+            # "$$" de arriba).
+            for i, seg in enumerate(resolved):
+                if seg.get("type") != "static" or i == 0 or i == len(resolved) - 1:
+                    continue
+                anterior, siguiente = resolved[i - 1], resolved[i + 1]
+                if anterior.get("type") != "variable" or siguiente.get("type") != "variable":
+                    continue
+                val_anterior = anterior.get("_resolved", "").strip()
+                val_siguiente = siguiente.get("_resolved", "").strip()
+                if val_anterior and val_anterior == val_siguiente:
+                    resolved[i] = {**seg, "_resolved": ""}
+                    resolved[i + 1] = {**siguiente, "_resolved": ""}
+
             comp  = {**comp, "segments": resolved}
             value = ""  # unused when segments present
         else:
