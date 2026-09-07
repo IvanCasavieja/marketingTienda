@@ -38,9 +38,24 @@ export const CENEFA_VARIABLES: CenefaVarDef[] = [
   // numeros y simbolos: no se le separa el decimal ni se le da formato.
   { name: "tipoOferta",    desc: "Tipo de oferta (ej. \"2x1\", \"25% OFF\") — se imprime tal cual", group: "texto" },
 
+  // tipoOfertaComprando y unidad: agregadas 2026-08-26 para Rompe del Finde
+  // (Tienda Inglesa), donde la mecánica se reparte en tres lugares en vez de
+  // en un renglón: la cocarda (tipoOferta), "Comprando N" arriba del precio
+  // (tipoOfertaComprando) y "unidad" abajo del precio (unidad). En Redexpres
+  // esa misma mecánica va entera adentro de `mecanica`, así que estas dos
+  // quedan vacías ahí. Espejo de backend/app/services/cenefas/variables.py.
+  { name: "tipoOfertaComprando", desc: "Cuántas se llevan (ej. \"Comprando 2\")", group: "texto" },
+  { name: "unidad",              desc: "La palabra que va debajo del precio (\"unidad\")", group: "texto" },
+
   // ── Precios (parte entera) ────────────────────────────────────────────
   { name: "precioRegular", desc: "Precio regular / anterior",  group: "precio", decimal: "decimalPrecioRegular" },
   { name: "precioOferta",  desc: "Precio de oferta — el que se muestra grande", group: "precio", decimal: "decimalPrecioOferta" },
+  // promoOferta: el literal de la mecánica ("6x4", o el total de un combo)
+  // cuando el diseño lo dibuja SUPERPUESTO tapando el cuadro del precio.
+  // Es de tipo "precio" solo para que arrastre su decimal como el resto —
+  // el valor que lleva puede ser texto. precioOferta siempre es un precio
+  // real; lo que tapa al precio es esta variable. Ver variables.py.
+  { name: "promoOferta",   desc: "Literal de la mecánica que tapa al precio (ej. \"6x4\")", group: "precio", decimal: "decimalPromoOferta" },
   { name: "ofertaUno",     desc: "Nivel de oferta 1 (ej. \"3x\") — número o texto", group: "precio", decimal: "decimalPrecioUno" },
   { name: "ofertaDos",     desc: "Nivel de oferta 2",          group: "precio", decimal: "decimalPrecioDos" },
   { name: "ofertaTres",    desc: "Nivel de oferta 3",          group: "precio", decimal: "decimalPrecioTres" },
@@ -50,6 +65,7 @@ export const CENEFA_VARIABLES: CenefaVarDef[] = [
   // ── Decimales (cuadro aparte, siempre con la coma: ",50") ─────────────
   { name: "decimalPrecioRegular", desc: "Decimales de precioRegular", group: "decimal" },
   { name: "decimalPrecioOferta",  desc: "Decimales de precioOferta",  group: "decimal" },
+  { name: "decimalPromoOferta",   desc: "Decimales de promoOferta",   group: "decimal" },
   { name: "decimalPrecioUno",     desc: "Decimales de ofertaUno",     group: "decimal" },
   { name: "decimalPrecioDos",     desc: "Decimales de ofertaDos",     group: "decimal" },
   { name: "decimalPrecioTres",    desc: "Decimales de ofertaTres",    group: "decimal" },

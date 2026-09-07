@@ -170,26 +170,59 @@ def test_etiqueta_comprando_no_limita_el_precio_que_decora():
     assert disponible > 6.262 - 3.559
 
 
-def test_font_size_manual_no_se_achica_al_exportar():
+def test_font_size_manual_lo_miden_contra_su_propia_caja():
     # Pedido explícito de Ivan (09/2026): redimensionar la caja con los 4
     # puntos en el editor ya NO escala la letra (antes sí, y esa escala "de
-    # facto" desaparecía al exportar porque este mismo achique la pisaba con
-    # el tamaño que en verdad entraba en el espacio disponible -- "achico la
-    # caja, la letra se ve mas grande en el preview, pero al exportar se
-    # achica sola"). Ahora el tamaño se fija a mano en el panel de
-    # propiedades y se manda con _manual_font_override=True: el achique
-    # automático tiene que respetarlo tal cual, aunque la caja sea chica.
-    angosta = _caja(1.0, 1.0, 1.0, 1.0, "descripcion")
-    angosta["_manual_font_override"] = True
-    producto = {"descripcion": "Un texto bastante largo que no entraria"}
-    resultado = _fit_text_to_box([angosta], producto, ancho_pagina_cm=21.0)
+    # facto" desaparecía al exportar porque este mismo achique la pisaba --
+    # "achico la caja, la letra se ve mas grande en el preview, pero al
+    # exportar se achica sola"). El tamaño se fija a mano en el panel de
+    # propiedades y viaja con _manual_font_override=True.
+    #
+    # Lo que ese tamaño a mano garantiza es que NINGÚN VECINO lo achique: las
+    # plantillas traen pares entero+decimal y etiquetas ("Comprando 2")
+    # declarados a propósito encima del precio, y el achique automático los
+    # tomaba por pared. Contra su propia caja sí se mide (abajo).
+    precio = _caja(1.0, 1.0, 12.0, 8.0, "precioOferta")
+    precio["_manual_font_override"] = True
+    vecina = _caja(4.0, 1.0, 3.0, 8.0, "descripcion")
+    producto = {"precioOferta": "179",
+                "descripcion": "Atun en lomo VALLE DEL SOL al aceite"}
+    resultado = _fit_text_to_box([precio, vecina], producto, ancho_pagina_cm=21.0)
     assert resultado[0]["style"]["font_size"] == 97.0
 
-    # Sin la marca, el mismo cuadro SI se achica -- confirma que el test de
+    # Sin la marca, esa misma vecina SÍ lo achica -- confirma que el test de
     # arriba prueba lo que dice probar, no que _fit_text_to_box nunca achique.
-    sin_marca = _caja(1.0, 1.0, 1.0, 1.0, "descripcion")
-    resultado_sin_marca = _fit_text_to_box([sin_marca], producto, ancho_pagina_cm=21.0)
-    assert resultado_sin_marca[0]["style"]["font_size"] < 97.0
+    auto = _caja(1.0, 1.0, 12.0, 8.0, "precioOferta")
+    resultado_auto = _fit_text_to_box(
+        [auto, _caja(4.0, 1.0, 3.0, 8.0, "descripcion")], producto, ancho_pagina_cm=21.0)
+    assert resultado_auto[0]["style"]["font_size"] < 97.0
+
+
+def test_font_size_manual_igual_se_achica_si_no_entra_en_su_caja():
+    # El tamaño a mano es un TECHO, no una orden de imprimir como sea: se
+    # eligió mirando UN producto (el que estaba abierto en el editor) y otro
+    # producto de la misma tanda puede traer un texto más largo. Casos reales
+    # de Preciazos A4 (09/2026), los dos vistos impresos:
+    #
+    #  - <<precioOferta>> fijado a 180pt: "179" desbordaba su caja y
+    #    PowerPoint lo partía al medio ("17" + "9") en el cartel.
+    precio = _caja(1.0, 1.0, 3.0, 8.0, "precioOferta")
+    precio["_manual_font_override"] = True
+    fuera = _fit_text_to_box([precio], {"precioOferta": "1.599"}, ancho_pagina_cm=21.0)
+    assert fuera[0]["style"]["font_size"] < 97.0
+
+    #  - <<descripcion>> también viene con tamaño a mano, y un texto largo
+    #    crecía a 3 líneas y se metía encima del precio tachado de abajo. Un
+    #    cuadro CON ESPACIOS hace word-wrap de verdad, así que se le mide
+    #    también el alto; un precio no tiene dónde cortarse y por eso a él se
+    #    le mide solo el ancho (los precios gigantes desbordan su alto
+    #    declarado a propósito).
+    desc = _caja(1.0, 1.0, 8.0, 1.0, "descripcion")
+    desc["_manual_font_override"] = True
+    alto = _fit_text_to_box(
+        [desc], {"descripcion": "Atun en lomo VALLE DEL SOL al aceite y al natural. 170g"},
+        ancho_pagina_cm=21.0)
+    assert alto[0]["style"]["font_size"] < 97.0
 
 
 def test_mxn_imprime_el_literal_una_sola_vez():
@@ -207,6 +240,28 @@ def test_mxn_imprime_el_literal_una_sola_vez():
     assert runs.count("2x1") == 1, f"el literal salio {runs.count('2x1')} veces: {runs!r}"
     # y el precio quedo tapado: no se imprime
     assert "49,50" not in runs
+
+
+def test_combo_con_total_en_promo_no_tapa_el_precio_unitario():
+    # Regresion de Preciazos (09/2026): en un combo la cocarda lleva "2x" y
+    # promoOferta lleva el TOTAL ("129"), y el diseno muestra las dos cosas a
+    # la vez -- arriba "2x $129", abajo el unitario. Una regla que escondiera
+    # el precio cada vez que promoOferta trae valor borraba el unitario de
+    # todos los carteles de combo.
+    #
+    # Lo que distingue este caso del M x N de Redexpres (donde promoOferta SI
+    # va en lugar del precio) es el CONTENIDO: en un M x N promoOferta trae el
+    # mismo literal que la cocarda ("2x1" y "2x1"); en un combo trae un numero
+    # distinto. Es la misma senal que evita el literal duplicado.
+    src = _pptx_con_textos("<<tipoOferta>>", "<<unidadMoneda>><<precioOferta>>", "<<promoOferta>>")
+    d = import_pptx(src)
+    pptx, _ = render_template_to_pptx(
+        d, [{"tipoOferta": "2x", "promoOferta": "129",
+             "unidadMoneda": "$", "precioOferta": "64,50"}],
+        "a4", None, src)
+    runs = _runs_del_pptx(pptx)
+    assert "64,50" in runs, f"se perdio el precio unitario del combo: {runs!r}"
+    assert "129" in runs, f"se perdio el total del combo: {runs!r}"
 
 
 def test_combo_muestra_el_precio_con_cocarda():

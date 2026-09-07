@@ -45,6 +45,11 @@ interface PropertiesPanelProps {
   slotBands?: string[][] | null;
 }
 
+function tieneVariable(c: CenefaComponent): boolean {
+  if (c.variable) return true;
+  return (c.segments ?? []).some((s) => s.type === "variable");
+}
+
 export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
   const store = useEditorStore();
   const template = props.template ?? store.template;
@@ -64,6 +69,17 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
   const comp = template.components.find((c) => c.id === selectedComponentId) ?? null;
   const [showRuleForm, setShowRuleForm] = useState(false);
 
+  // Candidatos a ser la pareja de un cuadro fijo: los que SI imprimen una
+  // variable. Un cuadro "fijo" es el que no imprime ninguna (su texto es del
+  // diseño: el "$", una leyenda) y es el unico que necesita declarar a que
+  // valor acompaña. Va aca arriba, con el resto de los hooks, porque abajo
+  // hay un `return` condicional (sin componente seleccionado) y un useMemo
+  // despues de el no se llamaria en todos los renders.
+  const candidatosRelacion = useMemo(
+    () => template.components.filter((c) => c.type === "text" && tieneVariable(c)),
+    [template.components],
+  );
+
   if (!comp) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center p-6">
@@ -81,20 +97,6 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
   function set<K extends keyof CenefaComponent>(key: K, value: CenefaComponent[K]) {
     updateComponent(comp!.id, { [key]: value } as Partial<CenefaComponent>);
   }
-
-  // Un cuadro "fijo" es el que no imprime ninguna variable: su texto es del
-  // diseño (el "$", una leyenda). Son los unicos que necesitan declarar a
-  // que valor acompañan.
-  function tieneVariable(c: CenefaComponent): boolean {
-    if (c.variable) return true;
-    return (c.segments ?? []).some((s) => s.type === "variable");
-  }
-
-  // Candidatos a ser la pareja: los cuadros que SI imprimen una variable.
-  const candidatosRelacion = useMemo(
-    () => (template?.components ?? []).filter((c) => c.type === "text" && tieneVariable(c)),
-    [template?.components],
-  );
 
   function setFontSize(value: number) {
     updateComponent(comp!.id, {

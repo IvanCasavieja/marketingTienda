@@ -1694,6 +1694,18 @@ def _excluido_por_dominante(
             continue
         if not str(product.get(manda, "") or "").strip():
             continue
+        # Cuando `promoOferta` trae el MISMO literal que `tipoOferta` estamos
+        # en un M x N: ahi promoOferta es el literal que va EN LUGAR del
+        # precio (asi lo llena el converter, ver resolver_mecanica familia
+        # "mxn"), y el precio no se imprime, se dibujen las cajas donde se
+        # dibujen. Es la misma señal de contenido que evita el literal
+        # duplicado en _render_slide, y es la que distingue este caso del
+        # combo de Preciazos, donde promoOferta lleva un PRECIO distinto
+        # ("2x" + "129") y el diseño muestra las dos cosas a la vez.
+        if manda == "promoOferta":
+            literal = str(product.get("promoOferta", "") or "").strip()
+            if literal and literal == str(product.get("tipoOferta", "") or "").strip():
+                return True
         bounds_dominante = bounds_por_dominante.get(manda) or []
         if any(_rect_overlap_ratio(propios, b) >= _SOLAPE_MIN_EXCLUSION_DOMINANTE
                for b in bounds_dominante):
@@ -1791,6 +1803,35 @@ def _render_slide(
     dominantes_presentes = [m for m in _EXCLUYENTES if m in dibujadas]
     bounds_por_dominante = _bounds_por_dominante(comp_layout, dominantes_presentes)
 
+    # El MISMO literal no se imprime dos veces en el mismo cartel.
+    #
+    # En un M x N (2x1, 4x3) `tipoOferta` y `promoOferta` traen el mismo
+    # texto a proposito: el converter llena las dos porque cada diseño usa
+    # una (ver resolver_mecanica, familia "mxn"). Un diseño que tenga los DOS
+    # cuadros -- la A4 de Redexpres -- imprimia "2X1" dos veces, una en la
+    # cocarda y otra tapando el precio (bug real, pag. 54 de mundo hogar).
+    #
+    # Esto NO se decide por geometria. Antes lo resolvia la regla de
+    # excluyentes, que se apoya en cuanto se superponen las cajas, y eso
+    # solo funciona cuando el diseño las dibuja encimadas: en Redexpres si,
+    # en Preciazos no (ahi la cocarda y el precio son cajas vecinas y el
+    # diseño muestra las dos, "2x $129" arriba y "$64" abajo). La señal
+    # confiable es el CONTENIDO: si dos cuadros van a imprimir exactamente
+    # lo mismo, sobra uno, esten donde esten. Se conserva el que tapa al
+    # precio (promoOferta) y se apaga la cocarda, que es el criterio que ya
+    # tenia _EXCLUYENTES.
+    literales_repetidos: set[int] = set()
+    if "promoOferta" in dibujadas and "tipoOferta" in dibujadas:
+        texto_promo = str(product.get("promoOferta", "") or "").strip()
+        texto_tipo  = str(product.get("tipoOferta", "") or "").strip()
+        if texto_promo and texto_promo == texto_tipo:
+            for c in comp_layout:
+                usadas_c = _variables_del_componente(c)
+                # solo el cuadro que imprime UNICAMENTE el literal de la
+                # cocarda; uno compuesto que ademas lleve el precio no se toca
+                if usadas_c == {"tipoOferta"}:
+                    literales_repetidos.add(id(c))
+
     # Cuadros fijos (sin variable propia, ej. el "$" del diseño) que viven
     # pegados a un cuadro que se va a tapar -- por exclusión (_EXCLUYENTES)
     # O porque su dato vino vacío del Excel (precioOferta sin valor, caso
@@ -1849,6 +1890,8 @@ def _render_slide(
         # la A4 de Rompe del Finde, que muestra el literal en la cocarda de
         # tipoOferta y no necesita promoOferta).
         usadas = _variables_del_componente(comp)
+        if not oculto and id(comp) in literales_repetidos:
+            oculto = True
         if not oculto and dominantes_presentes and usadas:
             oculto = _excluido_por_dominante(comp, product, dominantes_presentes, bounds_por_dominante)
         # Un cuadro FIJO sin variable propia (el "$" del diseño) no entra en
