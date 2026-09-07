@@ -82,8 +82,49 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
     updateComponent(comp!.id, { [key]: value } as Partial<CenefaComponent>);
   }
 
+  function setFontSize(value: number) {
+    updateComponent(comp!.id, {
+      style: { ...comp!.style, font_size: value },
+      _manual_font_override: true,
+    });
+    // Mismo criterio que setStyle: se replica a los hermanos, marcándolos
+    // también como _manual_font_override para que el tamaño puesto a mano
+    // sobreviva al export en las tres bandas, no solo en la editada.
+    for (const sid of siblingMap.get(comp!.id) ?? []) {
+      const sComp = template.components.find((c) => c.id === sid);
+      if (!sComp || sComp.locked) continue;
+      updateComponent(sid, {
+        style: { ...sComp.style, font_size: value },
+        _manual_font_override: true,
+      });
+    }
+  }
+
   function setStyle(key: string, value: unknown) {
     updateComponent(comp!.id, { style: { ...comp!.style, [key]: value } });
+
+    // Mismo criterio que setBounds: un cambio de estilo (tamaño de letra,
+    // color, negrita, alineación) en un cuadro se replica a sus hermanos
+    // de las otras bandas -- acá se copia el mismo VALOR, a diferencia de
+    // setBounds que replica un delta, porque el pedido es que las cenefas
+    // de una misma hoja queden con el mismo diseño, no un cambio relativo.
+    for (const sid of siblingMap.get(comp!.id) ?? []) {
+      const sComp = template.components.find((c) => c.id === sid);
+      if (!sComp || sComp.locked) continue;
+      updateComponent(sid, { style: { ...sComp.style, [key]: value } });
+    }
+  }
+
+  function setSegments(segs: TextSegment[]) {
+    const value = segs.length ? segs : undefined;
+    updateComponent(comp!.id, { segments: value });
+    // Mismo criterio que setStyle: el estilo por segmento (tamaño, color,
+    // negrita) de un cuadro compuesto también se replica a sus hermanos.
+    for (const sid of siblingMap.get(comp!.id) ?? []) {
+      const sComp = template.components.find((c) => c.id === sid);
+      if (!sComp || sComp.locked) continue;
+      updateComponent(sid, { segments: value });
+    }
   }
 
   function setBounds(key: "x" | "y" | "width" | "height", value: number) {
@@ -183,7 +224,7 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
               <SegmentsEditor
                 segments={comp.segments}
                 variables={template.variables}
-                onChange={(segs) => updateComponent(comp.id, { segments: segs.length ? segs : undefined })}
+                onChange={setSegments}
               />
             ) : (
               <div className="space-y-3">
@@ -341,10 +382,7 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
                     // component_renderer.py). Redimensionar la caja con los 4
                     // puntos ya NO pasa por acá ni toca este tamaño (ver
                     // Canvas.tsx) -- los dos se controlan por separado.
-                    updateComponent(comp!.id, {
-                      style: { ...comp!.style, font_size: parseInt(e.target.value) || 16 },
-                      _manual_font_override: true,
-                    })
+                    setFontSize(parseInt(e.target.value) || 16)
                   }
                 />
                 {comp._manual_font_override && (
