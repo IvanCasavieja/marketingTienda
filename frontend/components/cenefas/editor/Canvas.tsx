@@ -189,7 +189,17 @@ function applyTransform(value: string, transform?: string): string {
 // Resuelve el texto a mostrar cuando hay datos reales (previewData),
 // aplicando el mismo transform por segmento/componente que usa el render
 // final (_populate_text_frame en component_renderer.py).
-function resolveComponentText(comp: CenefaComponent, previewData: Record<string, string>): string {
+function resolveComponentText(
+  comp: CenefaComponent,
+  previewData: Record<string, string>,
+  capacidad?: Record<string, string> | null,
+): string {
+  // Vista de capacidad: el cuadro se muestra LLENO de "X" hasta donde entra,
+  // en vez del valor del primer producto del Excel. Sirve para ver el peor
+  // caso antes de tener el dato -- y para que aparezcan las variables que ese
+  // producto no trae (el decimal, cuando el primer precio es redondo).
+  const relleno = capacidad?.[comp.id];
+  if (relleno) return relleno;
   if (comp.segments?.length) {
     return comp.segments
       .map((seg) => {
@@ -203,7 +213,7 @@ function resolveComponentText(comp: CenefaComponent, previewData: Record<string,
 }
 
 function buildComponentGroup({
-  comp, pageLeft, pageTop, isSelected, draggable, image, previewData, onSelect, onDragEnd,
+  comp, pageLeft, pageTop, isSelected, draggable, image, previewData, capacidad, onSelect, onDragEnd,
 }: {
   comp: CenefaComponent;
   pageLeft: number;
@@ -212,6 +222,7 @@ function buildComponentGroup({
   draggable: boolean;
   image?: HTMLImageElement;
   previewData?: Record<string, string>;
+  capacidad?: Record<string, string> | null;
   onSelect: () => void;
   onDragEnd: (x: number, y: number) => void;
 }): Konva.Group {
@@ -268,7 +279,7 @@ function buildComponentGroup({
     imgInvalid
       ? `⚠ Re-importá el PPTX\n(${comp.image_ext ?? "?"} no soportado)`
       : previewData
-        ? resolveComponentText(comp, previewData)
+        ? resolveComponentText(comp, previewData, capacidad)
         : comp.segments?.length
           ? `${comp.name}\n${comp.segments.map((s) => s.type === "static" ? `"${s.value}"` : `{${s.value}}`).join(" + ")}`
           : comp.variable
@@ -347,6 +358,10 @@ interface CanvasProps {
   // previewData por igual y las 3 bandas muestran el mismo producto.
   slotBands?: string[][];
   previewProducts?: Record<string, string>[];
+  /** Relleno de "X" por componente (ver /capacidad). Cuando viene, cada
+   *  cuadro rellenable se dibuja lleno hasta donde entra en vez de mostrar
+   *  el valor del primer producto. */
+  capacidad?: Record<string, string> | null;
 }
 
 export default function Canvas({
@@ -359,6 +374,7 @@ export default function Canvas({
   previewData,
   slotBands: propSlotBands,
   previewProducts,
+  capacidad,
 }: CanvasProps) {
   const store = useEditorStore();
   const template             = propTemplate ?? store.template;
@@ -593,6 +609,7 @@ export default function Canvas({
         draggable: isEditMode && !comp.locked,
         image: getImage(comp),
         previewData: compPreviewData,
+        capacidad,
         onSelect: () => { if (isEditMode) selectComponent(comp.id); },
         onDragEnd: (x, y) => {
           const newX = +Math.max(0, Math.min((x - pageLeft) / PX_PER_CM, dims.w - comp.base_bounds.width)).toFixed(2);
@@ -660,7 +677,7 @@ export default function Canvas({
     selectedNodeRef.current = selectedNode;
     transformer.nodes(selectedNode ? [selectedNode] : []);
     layer.batchDraw();
-  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, bandIndexByCompId, siblingMap, template.components, selectComponent, updateComponent]);
+  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, bandIndexByCompId, siblingMap, template.components, selectComponent, updateComponent]);
 
   // "Última versión conocida" de template/selectedComponentId/siblingMap —
   // evita closures viejas dentro de los handlers de abajo (registrados una

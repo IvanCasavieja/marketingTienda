@@ -24,6 +24,7 @@ from app.models.cenefa_destino import CenefaDestino
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
+from app.services.cenefas.capacidad import capacidad_por_componente
 from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.component_renderer import _detect_slot_bands, _fit_text_to_box
 from app.services.cenefas.jobs import (
@@ -151,6 +152,29 @@ async def list_formats(_: User = Depends(require_permission("cenefas.view"))):
 
 class _SlotBandsRequest(BaseModel):
     components: list[dict]
+
+
+class _CapacidadRequest(BaseModel):
+    components: list[dict]
+
+
+@router.post("/capacidad")
+async def calcular_capacidad(
+    payload: _CapacidadRequest,
+    _: User = Depends(require_permission("cenefas.view")),
+):
+    """Cuantas "X" entra en cada cuadro rellenable, a su caja y su cuerpo.
+
+    Lo usa el preview para mostrar el cartel LLENO en vez del primer producto
+    del Excel: asi se ve de entrada cuanto texto soporta cada cuadro, y
+    aparecen tambien las variables que ese producto no trae (el caso tipico
+    es el decimal, que si el primer precio es redondo no se ve nunca).
+
+    Se calcula con la misma tabla de metricas de fuente que usa el render
+    final, asi que lo que se ve en pantalla es la misma cuenta que despues
+    decide el achique al exportar.
+    """
+    return {"capacidad": capacidad_por_componente({"components": payload.components})}
 
 
 @router.post("/slot-bands")

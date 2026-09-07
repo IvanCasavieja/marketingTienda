@@ -298,6 +298,13 @@ export const cenefasV2Api = {
   detectSlotBands: (components: CenefaComponent[]) =>
     api.post<{ slot_bands: string[][] | null }>(
       "/tools/cenefas/v2/slot-bands", { components }),
+  // Relleno de capacidad: cuántas "X" entra en cada cuadro segun su caja y
+  // su cuerpo. Lo calcula el backend con la MISMA tabla de metricas de
+  // fuente que usa el render final, para que lo que se ve en el preview sea
+  // la misma cuenta que despues decide el achique al exportar.
+  calcularCapacidad: (components: CenefaComponent[]) =>
+    api.post<{ capacidad: Record<string, string> }>(
+      "/tools/cenefas/v2/capacidad", { components }),
 
   // Templates
   listTemplates: (params?: { category?: string }) =>

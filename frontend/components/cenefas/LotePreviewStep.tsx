@@ -69,6 +69,14 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   // completo con la plantilla (ver RulesPanel.tsx).
   const rulesPorJob = useRef<Record<string, CenefaRule[]>>({});
   const [panelDerechoTab, setPanelDerechoTab] = useState<"propiedades" | "reglas">("propiedades");
+  // Vista de capacidad: cada cuadro rellenable se muestra lleno de "X" hasta
+  // donde entra, en vez del valor del primer producto del Excel. Sirve para
+  // ver el peor caso ANTES de tener el dato -- y para que aparezcan las
+  // variables que ese producto no trae (el decimal, cuando el primer precio
+  // es redondo). El calculo lo hace el backend con la misma tabla de metricas
+  // de fuente que usa el render final.
+  const [verCapacidad, setVerCapacidad] = useState(false);
+  const [capacidad, setCapacidad] = useState<Record<string, string> | null>(null);
 
   const consultar = useCallback(async () => {
     try {
@@ -107,6 +115,18 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
       .catch(() => { /* se muestra el estado de carga */ });
     return () => { cancelado = true; };
   }, [actualId, actualStatus]);
+
+  // Pide el relleno cada vez que se prende la vista o cambia lo que se mira:
+  // depende de la caja y el cuerpo de cada cuadro, asi que al mover o
+  // redimensionar algo hay que recalcularlo.
+  useEffect(() => {
+    if (!verCapacidad || !detalle?.template_def) { setCapacidad(null); return; }
+    let cancelado = false;
+    cenefasV2Api.calcularCapacidad(detalle.template_def.components)
+      .then(({ data }) => { if (!cancelado) setCapacidad(data.capacidad); })
+      .catch(() => { if (!cancelado) setCapacidad(null); });
+    return () => { cancelado = true; };
+  }, [verCapacidad, detalle?.template_def]);
 
   // Arrastre/resize en el canvas de LA CENEFA QUE SE ESTÁ MIRANDO — se
   // guarda contra actualId (el job actual), nunca se mezcla con lo que se
@@ -426,13 +446,31 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
           </p>
         </div>
 
-        <button
-          onClick={() => setIndice(Math.min(total - 1, posicion + 1))}
-          disabled={posicion >= total - 1}
-          className="btn-secondary flex items-center gap-1.5 px-3 py-2 disabled:opacity-30"
-        >
-          {t("cenefas.lote.siguiente")} <ChevronRight size={15} />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Vista de capacidad: llena cada cuadro de "X" hasta donde entra,
+              para ver el peor caso y las variables que este producto no trae
+              (ej. el decimal cuando el precio es redondo). */}
+          <button
+            onClick={() => setVerCapacidad((v) => !v)}
+            disabled={!detalle?.template_def}
+            title="Llena cada cuadro con X hasta donde entra, para ver cuánto texto soporta y cómo quedarían los decimales"
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition disabled:opacity-30 ${
+              verCapacidad
+                ? "bg-amber-500 text-white shadow"
+                : "btn-secondary"
+            }`}
+          >
+            {verCapacidad ? "Ver datos reales" : "Ver capacidad (XXX)"}
+          </button>
+
+          <button
+            onClick={() => setIndice(Math.min(total - 1, posicion + 1))}
+            disabled={posicion >= total - 1}
+            className="btn-secondary flex items-center gap-1.5 px-3 py-2 disabled:opacity-30"
+          >
+            {t("cenefas.lote.siguiente")} <ChevronRight size={15} />
+          </button>
+        </div>
       </div>
 
       {/* Primera página de la cenefa actual. Con canvas + panel de
@@ -460,6 +498,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
                 onUpdateComponent={handleUpdateComponent}
                 previewData={detalle.preview_product}
                 previewProducts={detalle.preview_products}
+                capacidad={verCapacidad ? capacidad : null}
                 slotBands={detalle.slot_bands}
                 className="w-full h-full"
               />
