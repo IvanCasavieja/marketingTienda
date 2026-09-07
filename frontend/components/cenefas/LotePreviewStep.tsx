@@ -578,7 +578,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
                       </button>
                     ))}
                   </div>
-                  <div className="flex-1 min-h-0">
+                  <div className="flex-1 min-h-0 flex flex-col">
                     {panelDerechoTab === "propiedades" ? (
                       <PropertiesPanel
                         template={detalle.template_def}
