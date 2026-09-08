@@ -437,10 +437,31 @@ def _resolve_placeholder(root: str, suffix: str) -> tuple[str, str, str]:
     """
     full = root + suffix
 
-    # 1. Nombre canónico -- el caso normal del sistema nuevo. Los campos
-    #    internos (categoria, subCategoria...) no son dibujables, así que no
-    #    cuentan como match acá: caen al puente de abajo, que los da de baja.
-    for candidato in (full, root):
+    # Candidatos, del más largo al más corto: el nombre completo, después el
+    # mismo nombre devolviéndole a la raíz un dígito por vez, y al final la
+    # raíz pelada.
+    #
+    # Ese paso intermedio existe por los alias que TERMINAN en dígito (o1..o4,
+    # do1..do4, a1..a3). El regex le entrega los dígitos finales al grupo del
+    # sufijo, así que <<o11>> ("ofertaUno" en la banda 1) llegaba acá partido
+    # en root="o" + suffix="11": ni "o11" ni "o" son nombres conocidos y el
+    # placeholder caía al paso 4 como variable propia. Con el nombre largo el
+    # mismo caso resuelve bien (<<ofertaUno1>> -> root="ofertaUno"), así que
+    # era una diferencia de trato entre los dos nombres de LA MISMA variable.
+    #
+    # No era solo un cuadro vacío: `_detect_slot_bands` saca la cantidad de
+    # slots del GCD de cuántas veces aparece cada variable, y tres variables
+    # inventadas ("o11", "o12", "o13", una por banda) bajan ese GCD a 1. La
+    # plantilla entera pasaba a ser de un solo slot y se apagaba la
+    # vinculación entre bandas -- mover una caja dejaba de mover sus hermanas
+    # en TODA la plantilla, no solo en la caja mal resuelta.
+    candidatos = [root + suffix[:k] for k in range(len(suffix), -1, -1)]
+
+    # 1. Nombre canónico -- el caso normal del sistema nuevo. Resuelve también
+    #    el alias corto (ver `variables.resolve`). Los campos internos
+    #    (categoria, subCategoria...) no son dibujables, así que no cuentan
+    #    como match acá: caen al puente de abajo, que los da de baja.
+    for candidato in candidatos:
         canonica = resolve(candidato)
         if canonica is not None and canonica not in INTERNAL_SET:
             return _spec(canonica)
@@ -450,15 +471,16 @@ def _resolve_placeholder(root: str, suffix: str) -> tuple[str, str, str]:
     #    plantilla. Se resuelve al nombre largo acá mismo, asi que el
     #    template queda guardado con el canonico y en el resto del sistema
     #    sigue habiendo un solo nombre por variable (ver ALIAS_CORTOS).
-    for candidato in (full, root):
+    for candidato in candidatos:
         canonica = resolver_alias(candidato)
         if canonica != candidato and canonica not in INTERNAL_SET:
             return _spec(canonica)
 
     # 3. Puente de nombres viejos -- solo al importar un archivo.
-    for candidato in (norm(full), norm(root)):
-        if candidato in _LEGACY_PLACEHOLDERS:
-            destino = _LEGACY_PLACEHOLDERS[candidato]
+    for candidato in candidatos:
+        clave = norm(candidato)
+        if clave in _LEGACY_PLACEHOLDERS:
+            destino = _LEGACY_PLACEHOLDERS[clave]
             return ("", "text", "none") if destino is None else _spec(destino)
 
     # 4. Desconocido: se importa como variable propia, que quedará vacía

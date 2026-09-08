@@ -6,7 +6,9 @@ viejo": es que se rompió algo que ya rompió antes en producción.
 """
 from app.services.cenefas.data_engine import normalize_decimal, split_price
 from app.services.cenefas.formatters import fmt_price
+from app.services.cenefas.pptx_importer import _LEGACY_PLACEHOLDERS, _detect_placeholder
 from app.services.cenefas.variables import (
+    ALIAS_CORTOS,
     CANONICAL_SET,
     CANONICAL_VARS,
     ORDEN_EXPORT,
@@ -93,6 +95,64 @@ def test_resolve_normaliza_nombres():
     # una columna ajena no matchea nada (no hay alias acá)
     assert resolve("OFERTA") is None
     assert resolve("columna inventada") is None
+
+
+# ---------------------------------------------------------------------------
+# Alias cortos — el segundo nombre de cada variable
+# ---------------------------------------------------------------------------
+#
+# La regla es que el alias y el nombre largo son LA MISMA variable en todos
+# los caminos de entrada: encabezado de Excel y placeholder del PPTX. Lo que
+# se fija acá es la paridad, no el contenido de la tabla.
+
+def test_cada_variable_tiene_exactamente_un_alias():
+    assert set(ALIAS_CORTOS.values()) == CANONICAL_SET
+    assert len(ALIAS_CORTOS) == len(CANONICAL_VARS) == 32
+    # Un alias no puede llamarse igual que una variable: sería ambiguo.
+    assert not (set(ALIAS_CORTOS) & CANONICAL_SET)
+
+
+def test_alias_resuelve_igual_que_el_nombre_largo():
+    # Camino del encabezado de Excel (data_engine usa resolve()).
+    for alias, largo in ALIAS_CORTOS.items():
+        assert resolve(alias) == largo
+        # Mayúsculas y espacios alrededor, igual que tolera el nombre largo.
+        assert resolve(alias.upper()) == largo
+        assert resolve(f"  {alias}  ") == largo
+
+
+def test_placeholder_con_alias_resuelve_igual_que_el_largo():
+    # Camino del placeholder del PPTX: la terna (variable, tipo, transform)
+    # tiene que ser idéntica escriba uno u otro nombre.
+    for alias, largo in ALIAS_CORTOS.items():
+        esperado = _detect_placeholder(f"<<{largo}>>")
+        for escrito in (alias, alias.upper(), alias.capitalize()):
+            assert _detect_placeholder(f"<<{escrito}>>") == esperado, escrito
+
+
+def test_alias_terminado_en_digito_acepta_sufijo_de_banda():
+    # Bug real (08/09/2026): el regex <<(\w+?)(\d*)>> le entrega los dígitos
+    # finales al sufijo, así que <<o11>> ("ofertaUno" en la banda 1) llegaba
+    # partido en "o" + "11" y no resolvía, mientras que <<ofertaUno1>> sí.
+    #
+    # No era un cuadro vacío y nada más: _detect_slot_bands saca la cantidad
+    # de slots del GCD de los conteos por variable, y tres nombres inventados
+    # ("o11", "o12", "o13") lo bajaban a 1 — la plantilla entera quedaba como
+    # un solo slot y se apagaba la vinculación entre bandas.
+    for alias, largo in ALIAS_CORTOS.items():
+        for slot in ("1", "2", "3"):
+            assert (
+                _detect_placeholder(f"<<{alias}{slot}>>")
+                == _detect_placeholder(f"<<{largo}{slot}>>")
+            ), f"<<{alias}{slot}>>"
+
+
+def test_los_alias_no_pisan_los_placeholders_viejos():
+    # Los alias se prueban ANTES que la tabla de compatibilidad, así que uno
+    # de una o dos letras podría robarse un placeholder de una PPT vieja.
+    for clave, destino in _LEGACY_PLACEHOLDERS.items():
+        variable, _tipo, _transform = _detect_placeholder(f"<<{clave}>>")
+        assert variable == ("" if destino is None else destino), clave
 
 
 # ---------------------------------------------------------------------------
