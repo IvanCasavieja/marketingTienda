@@ -4,6 +4,7 @@ import { AlertCircle, AlertTriangle, ArrowLeft, BadgeCheck, CheckCircle2, Chevro
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { cenefasV2Api } from "@/lib/api";
+import { alternarSeleccion, seleccionUnica, type Seleccion } from "@/lib/cenefas/seleccion";
 import type { CenefaComponent, CenefaLote, CenefaLoteItem, CenefaRule, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
 import Canvas from "@/components/cenefas/editor/Canvas";
 import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
@@ -42,7 +43,21 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   const [bajandoUna, setBajandoUna] = useState<string | null>(null);
   const [verificando, setVerificando] = useState(false);
   const [verifNegativa, setVerifNegativa] = useState(false);
-  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+  // Selección local (esta pantalla no usa el store del editor). Va entera en
+  // un solo estado —lista de marcados + primario— porque las dos partes
+  // cambian siempre juntas. La regla de cómo se suman y se sacan vive en
+  // lib/cenefas/seleccion.ts, compartida con el store, para que Ctrl + click
+  // se comporte igual acá que en el editor completo.
+  const [seleccion, setSeleccion] = useState<Seleccion>({ ids: [], primary: null });
+  const selectedComponentId  = seleccion.primary;
+  const selectedComponentIds = seleccion.ids;
+
+  const setSelectedComponentId = useCallback(
+    (id: string | null) => setSeleccion(seleccionUnica(id)), [],
+  );
+  const toggleComponentSelection = useCallback(
+    (id: string) => setSeleccion((s) => alternarSeleccion(s, id)), [],
+  );
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [savingTemplates, setSavingTemplates] = useState(false);
   // Espejo en estado de templatesEditados.current.size, solo para el render
@@ -495,6 +510,8 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
                 activeFormat={detalle.format ?? detalle.template_def.master_format}
                 selectedComponentId={selectedComponentId}
                 onSelectComponent={setSelectedComponentId}
+                selectedComponentIds={selectedComponentIds}
+                onToggleComponentSelection={toggleComponentSelection}
                 onUpdateComponent={handleUpdateComponent}
                 previewData={detalle.preview_product}
                 previewProducts={detalle.preview_products}
@@ -633,6 +650,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
                         addRule={handleAddRule}
                         deleteRule={handleDeleteRule}
                         selectComponent={setSelectedComponentId}
+                        selectedComponentIds={selectedComponentIds}
                       />
                     )}
                   </div>

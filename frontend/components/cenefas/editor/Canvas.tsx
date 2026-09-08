@@ -231,7 +231,8 @@ function buildComponentGroup({
   image?: HTMLImageElement;
   previewData?: Record<string, string>;
   capacidad?: Record<string, string> | null;
-  onSelect: () => void;
+  /** `conCtrl` = el click traía Ctrl/Cmd apretado (selección múltiple). */
+  onSelect: (conCtrl: boolean) => void;
   onDragEnd: (x: number, y: number) => void;
 }): Konva.Group {
   const color = COMP_COLORS[comp.type] ?? "#64748b";
@@ -243,7 +244,12 @@ function buildComponentGroup({
   const imgInvalid = comp.type === "image" && !!comp.image_data && !_WEB_EXTS.has(comp.image_ext ?? "");
 
   const group = new Konva.Group({ name: CENEFA_COMP_NAME, x, y, width: w, height: h, draggable });
-  group.on("click tap", onSelect);
+  // metaKey además de ctrlKey: en Mac el modificador de "sumar a la selección"
+  // es Cmd, y el navegador no lo reporta como ctrlKey.
+  group.on("click tap", (e) => {
+    const evt = e.evt as MouseEvent | undefined;
+    onSelect(!!evt && (evt.ctrlKey || evt.metaKey));
+  });
   group.on("dragend", (e) => onDragEnd(e.target.x(), e.target.y()));
 
   if (image) {
@@ -391,6 +397,11 @@ interface CanvasProps {
   activeFormat?: string;
   selectedComponentId?: string | null;
   onSelectComponent?: (id: string | null) => void;
+  /** Selección múltiple (Ctrl/Cmd + click). Sin esto, el canvas se comporta
+   *  como siempre: un cuadro por vez. Quien la pase tiene que pasar TAMBIÉN
+   *  onToggleComponentSelection, si no el Ctrl no tiene dónde escribir. */
+  selectedComponentIds?: string[];
+  onToggleComponentSelection?: (id: string) => void;
   onUpdateComponent?: (id: string, updates: Partial<CenefaComponent>) => void;
   // Datos reales de un producto para reemplazar los placeholders {variable}
   // por su valor resuelto — y habilita edición sin importar activeFormat
@@ -415,6 +426,8 @@ export default function Canvas({
   activeFormat: propActiveFormat,
   selectedComponentId: propSelectedComponentId,
   onSelectComponent,
+  selectedComponentIds: propSelectedComponentIds,
+  onToggleComponentSelection,
   onUpdateComponent,
   previewData,
   slotBands: propSlotBands,
@@ -427,6 +440,21 @@ export default function Canvas({
   const selectedComponentId  = propSelectedComponentId !== undefined ? propSelectedComponentId : store.selectedComponentId;
   const selectComponent      = onSelectComponent ?? store.selectComponent;
   const updateComponent      = onUpdateComponent ?? store.updateComponent;
+  // Quien controla la selección de afuera pero no pasó la lista (PreviewStep
+  // hoy) sigue trabajando de a un cuadro: la lista es su cuadro primario.
+  const seleccionControlada =
+    propSelectedComponentId !== undefined || propSelectedComponentIds !== undefined;
+  const selectedComponentIds =
+    propSelectedComponentIds ??
+    (seleccionControlada
+      ? (propSelectedComponentId ? [propSelectedComponentId] : [])
+      : store.selectedComponentIds);
+  // El toggle del store solo sirve si la selección TAMBIÉN sale del store: si
+  // la controla el que nos llama y no nos dio un toggle propio, escribir en el
+  // store no se vería en pantalla y el Ctrl + click parecería no hacer nada.
+  // Sin toggle, Ctrl + click cae en la selección simple de siempre.
+  const toggleComponentSelection =
+    onToggleComponentSelection ?? (seleccionControlada ? undefined : store.toggleComponentSelection);
   const interactive          = previewData !== undefined; // true en PreviewStep
   // Sin prop explícita (uso standalone del editor, ver v2/page.tsx) cae al
   // store, que las pide con detectSlotBands() cuando el formato activo tiene
@@ -660,7 +688,10 @@ export default function Canvas({
     let selectedNode: Konva.Group | null = null;
 
     for (const comp of displayComps) {
-      const isSelected = comp.id === selectedComponentId && isEditMode;
+      // Marcado = está en la selección, sea el primario o uno sumado con
+      // Ctrl. El Transformer (los 4 puntos de resize) es aparte: se engancha
+      // más abajo y solo cuando hay UN cuadro seleccionado.
+      const isSelected = selectedComponentIds.includes(comp.id) && isEditMode;
       const bandIdx = bandIndexByCompId.get(comp.id);
       const compPreviewData =
         bandIdx !== undefined && previewProducts ? previewProducts[bandIdx] ?? previewData : previewData;
@@ -670,7 +701,11 @@ export default function Canvas({
         image: getImage(comp),
         previewData: compPreviewData,
         capacidad,
-        onSelect: () => { if (isEditMode) selectComponent(comp.id); },
+        onSelect: (conCtrl) => {
+          if (!isEditMode) return;
+          if (conCtrl && toggleComponentSelection) toggleComponentSelection(comp.id);
+          else selectComponent(comp.id);
+        },
         onDragEnd: (x, y) => {
           const newX = +Math.max(0, Math.min((x - pageLeft) / PX_PER_CM, dims.w - comp.base_bounds.width)).toFixed(2);
           const newY = +Math.max(0, Math.min((y - pageTop)  / PX_PER_CM, dims.h - comp.base_bounds.height)).toFixed(2);
@@ -681,7 +716,9 @@ export default function Canvas({
       });
       layer.add(group);
       nodeMap.set(comp.id, group);
-      if (isSelected) selectedNode = group;
+      // El Transformer va sobre el PRIMARIO, no sobre cualquiera de los
+      // marcados: redimensiona un cuadro a la vez.
+      if (comp.id === selectedComponentId && isEditMode) selectedNode = group;
     }
 
     // Arrastre vinculado por variable entre bandas — segundo set de
@@ -735,9 +772,16 @@ export default function Canvas({
 
     transformer.moveToTop();
     selectedNodeRef.current = selectedNode;
-    transformer.nodes(selectedNode ? [selectedNode] : []);
+    // Con varios cuadros marcados no se muestran los handles de resize: el
+    // Transformer, el achique automático y la réplica a los hermanos entre
+    // bandas están escritos alrededor de UN nodo primario. Mostrarlos acá
+    // haría que un resize se aplique solo al primario mientras la persona ve
+    // tres cuadros marcados, que es peor que no ofrecerlo. La selección
+    // múltiple hoy sirve para las reglas en lote (ver RulesPanel.tsx).
+    const soloUnoMarcado = selectedComponentIds.length <= 1;
+    transformer.nodes(selectedNode && soloUnoMarcado ? [selectedNode] : []);
     layer.batchDraw();
-  }, [displayComps, selectedComponentId, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, bandIndexByCompId, siblingMap, template.components, selectComponent, updateComponent, fuentesListas]);
+  }, [displayComps, selectedComponentId, selectedComponentIds, toggleComponentSelection, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, bandIndexByCompId, siblingMap, template.components, selectComponent, updateComponent, fuentesListas]);
 
   // "Última versión conocida" de template/selectedComponentId/siblingMap —
   // evita closures viejas dentro de los handlers de abajo (registrados una

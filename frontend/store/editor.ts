@@ -1,5 +1,6 @@
 "use client";
 import { create } from "zustand";
+import { alternarSeleccion, seleccionUnica } from "@/lib/cenefas/seleccion";
 import type {
   CenefaComponent,
   CenefaRule,
@@ -32,7 +33,15 @@ interface EditorStore {
   isDirty: boolean;
 
   // Estado del editor
+  //
+  // Dos campos para una sola selección: `selectedComponentIds` es TODO lo
+  // seleccionado (Ctrl + click suma, como en PowerPoint) y
+  // `selectedComponentId` es el cuadro primario dentro de esa selección —
+  // el último tocado. El panel de propiedades y el Transformer trabajan
+  // sobre uno solo, así que siguen mirando el primario; lo que opera en
+  // lote (por ahora, las reglas) mira la lista.
   selectedComponentId: string | null;
+  selectedComponentIds: string[];
   activeFormat: string;
   leftPanel: LeftPanel;
   // Bandas de una plantilla multi-producto (3xA4/6xA4/A5/pinchos) — ids de
@@ -54,6 +63,8 @@ interface EditorStore {
   // Componentes
   addComponent: (comp: CenefaComponent) => void;
   selectComponent: (id: string | null) => void;
+  /** Ctrl/Cmd + click: suma o saca un cuadro de la selección. */
+  toggleComponentSelection: (id: string) => void;
   updateComponent: (id: string, updates: Partial<CenefaComponent>) => void;
   deleteComponent: (id: string) => void;
 
@@ -80,6 +91,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   template: { ...EMPTY_TEMPLATE, components: [], rules: [] },
   isDirty: false,
   selectedComponentId: null,
+  selectedComponentIds: [],
   activeFormat: "a4",
   leftPanel: "components",
   slotBands: null,
@@ -103,6 +115,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       template: { ...EMPTY_TEMPLATE, components: [], rules: [] },
       isDirty: false,
       selectedComponentId: null,
+      selectedComponentIds: [],
       activeFormat: "a4",
     }),
 
@@ -118,6 +131,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       template: { ...template, variables: merged },
       isDirty: false,
       selectedComponentId: null,
+      selectedComponentIds: [],
       activeFormat: template.master_format,
     });
   },
@@ -134,6 +148,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       template: { ...template, variables: merged },
       isDirty: true,
       selectedComponentId: null,
+      selectedComponentIds: [],
       activeFormat: template.master_format,
     });
   },
@@ -159,10 +174,24 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         components: [...s.template.components, comp],
       },
       selectedComponentId: comp.id,
+      selectedComponentIds: [comp.id],
       isDirty: true,
     })),
 
-  selectComponent: (id) => set({ selectedComponentId: id }),
+  // Las dos acciones de selección delegan la regla en lib/cenefas/seleccion.ts,
+  // que es la misma que usan las pantallas con selección en estado local.
+  selectComponent: (id) => {
+    const { ids, primary } = seleccionUnica(id);
+    set({ selectedComponentId: primary, selectedComponentIds: ids });
+  },
+
+  toggleComponentSelection: (id) =>
+    set((s) => {
+      const { ids, primary } = alternarSeleccion(
+        { ids: s.selectedComponentIds, primary: s.selectedComponentId }, id,
+      );
+      return { selectedComponentIds: ids, selectedComponentId: primary };
+    }),
 
   updateComponent: (id, updates) =>
     set((s) => ({
@@ -183,6 +212,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       },
       selectedComponentId:
         s.selectedComponentId === id ? null : s.selectedComponentId,
+      selectedComponentIds: s.selectedComponentIds.filter((x) => x !== id),
       isDirty: true,
     })),
 
