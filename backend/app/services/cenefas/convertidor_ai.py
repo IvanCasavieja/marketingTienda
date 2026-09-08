@@ -22,28 +22,16 @@ log = logging.getLogger(__name__)
 # Reglas de estilo — ÚNICO bloque a tocar cuando cambien los lineamientos.
 # ---------------------------------------------------------------------------
 _STYLE_RULES = f"""\
-- EL ORDEN ES: producto, MARCA, variedad o sabor, y al final el tamaño después de un punto.
-  La marca va INMEDIATAMENTE DESPUÉS del nombre del producto, ANTES de la variedad — nunca al final:
-    "Mermelada lime curd TIPTREE. 312g"                   -> "Mermelada TIPTREE lime curd. 312g"
-    "Salsa cebolla caramelizada MRS. DARLINGTON'S. 330g"  -> "Salsa MRS. DARLINGTON'S cebolla caramelizada. 330g"
-    "Aceite oliva extra virgen TIENDA INGLESA. 500 ml"    -> "Aceite de oliva TIENDA INGLESA extra virgen. 500 ml"
-    "Alfajor de chocolate clásico TIENDA INGLESA. 48g"    -> "Alfajor TIENDA INGLESA de chocolate clásico. 48g"
-  EXCEPCIÓN — nombres de producto de dos palabras: cuando la segunda palabra es parte del NOMBRE y no
-  una variedad, el nombre no se parte y la marca va después del nombre COMPLETO. Son casos como
-  "Papas fritas", "Budín inglés", "Curry en polvo", "Mix frutos secos", "Snacks de proteína":
-    "Papas fritas onduladas TIENDA INGLESA. 200g" -> "Papas fritas TIENDA INGLESA onduladas. 200g"
-  (nunca "Papas TIENDA INGLESA fritas onduladas").
-  Los productos de panadería que vienen SIN marca (Cookies, Scones) se dejan tal cual, sin inventarles una.
 - La marca del producto va SIEMPRE en MAYÚSCULA COMPLETA, la palabra entera (no solo la primera letra).
-- El punto va después de la marca y de la variedad/sabor que la sigue, o sea justo ANTES del tamaño, separando las dos partes como si fuera el inicio de una nueva oración corta.
-  Ejemplos reales ya en el catálogo: "Aceite CAÑUELAS alto oleico. 900 ml", "Yogur YOGURISIMO natural original. 460g".
-  Si no hay nada después (ni tamaño ni otra info), NO pongas un punto colgado al final — el punto separa dos partes, no es un cierre de oración.
+- Justo después de la marca (y de alguna palabra corta de variante/sabor que la siga inmediatamente, si la hay) va SIEMPRE un punto, separando la marca de lo que venga después (cantidad/tamaño u otra info) como si fuera el inicio de una nueva oración corta — incluso si la marca no está al final del todo del texto.
+  Ejemplos reales ya en el catálogo: "Aceite alto oleico CAÑUELAS. 900 ml", "Yogur natural YOGURISIMO original. 460g".
+  Si la marca queda al final de la descripción y no hay nada más después, NO pongas un punto colgado ahí — el punto separa dos partes, no es un cierre de oración.
 - El resto del texto va en minúscula, con reglas normales de oración en español: mayúscula SOLO en la primera letra de toda la descripción y en la primera letra de la palabra que sigue a cada punto (incluido el punto después de la marca) — ninguna otra palabra lleva mayúscula inicial (ej. "sin piel", "con azúcar", "de cerdo", nunca "Sin Piel" ni "Con Azúcar"). Dos excepciones que no cambian nunca, sea cual sea su posición en el texto: la marca (siempre mayúscula completa, ver arriba) y las unidades de medida (ml, g, kg, L, un, etc.), siempre en minúscula incluso si quedaran al principio de una oración.
 - Incluí cantidad/tamaño si se puede inferir de la fuente (ml, g, kg, L, unidades, etc.).
 - Es para un cartel de precio: tiene que ser CORTA. Apuntá a menos de {DESCRIPTION_WARN_CHARS} caracteres, nunca más de {DESCRIPTION_MAX_CHARS}.
 - No inventes datos (sabor, variedad, tamaño) que no estén sugeridos por el nombre o la descripción de origen.
 - Si un producto viene marcado "[FIAMBRE POR KG]", la unidad en la descripción tiene que decir "100g", nunca "kg" — el precio de ese producto ya se va a recalcular aparte para esa unidad, así que el texto tiene que ser consistente con eso.
-- Si un producto viene marcado "[SE COBRA POR 100 G]" o "[SE COBRA POR KILO]", la descripción TIENE QUE terminar con esa unidad, escrita exactamente "100g" o "Kg", después del punto: "Muzzarella NATURALACT. 100g", "Panceta VILLA MARGARITA ahumada. 100g", "Morcilla DON JOAQUIN dulce. Kg". Esa marca la pone la plataforma, que sabe con qué unidad se cobra ese producto en la góndola, así que NO cae en "no inventes datos": el nombre del sistema de gestión no la trae y sin ella el cartel no dice por cuánto se está cobrando. "Kg" es la única unidad que va con mayúscula, justamente porque ahí va sola después del punto y no pegada a un número.
+- Si un producto viene marcado "[SE COBRA POR 100 G]" o "[SE COBRA POR KILO]", la descripción TIENE QUE terminar con esa unidad, escrita exactamente "100g" o "Kg", después del punto que cierra la marca: "Muzzarella NATURALACT. 100g", "Panceta ahumada VILLA MARGARITA. 100g", "Morcilla dulce DON JOAQUIN. Kg". Esa marca la pone la plataforma, que sabe con qué unidad se cobra ese producto en la góndola, así que NO cae en "no inventes datos": el nombre del sistema de gestión no la trae y sin ella el cartel no dice por cuánto se está cobrando. "Kg" es la única unidad que va con mayúscula, justamente porque ahí va sola después del punto y no pegada a un número.
 - Con una de esas dos marcas, la unidad de cobro es la ÚNICA que va: no le agregues además un peso de envase ("500g", "1 kg") ni lo cambies por otra unidad."""
 
 _SYSTEM_PROMPT = f"""{TININ_BASE}
