@@ -837,6 +837,34 @@ export interface OpcionDescripcion {
   etiqueta: string;
 }
 
+/**
+ * Lo que se le manda al analisis de unificacion por cada fila de la grilla.
+ *
+ * El nombre y la descripcion son lo que MIRA Tinin para reconocer variantes de
+ * la misma linea de producto. Los precios no: los usa el backend para
+ * descartar del grupo lo que no este exactamente al mismo precio, porque un
+ * grupo unificado imprime UN precio para todos sus SKU. Van partidos en sus
+ * dos columnas, como en toda la plataforma -- comparar solo la entera da
+ * $276,75 == $276.
+ */
+export interface UnificarCategoriasRow {
+  row_id: number;
+  codigo: string;
+  nombreArticulo: string;
+  descripcion: string;
+  precioRegular: string;
+  decimalPrecioRegular: string;
+  precioOferta: string;
+  decimalPrecioOferta: string;
+  precioBanco: string;
+  decimalPrecioBanco: string;
+  ofertaUno: string;
+  decimalPrecioUno: string;
+  mecanica: string;
+  unidadMoneda: string;
+  banco: string;
+}
+
 export interface UnificarGrupoItem {
   row_ids: number[];
   skus: string[];
@@ -986,7 +1014,7 @@ export const convertidorApi = {
   ) =>
     api.post<DetectarAlcoholIAResponse>("/tools/cenefas/convertidor/alcohol/detectar-ia", { rows }),
   unificarCategoriasIA: (
-    rows: { row_id: number; codigo: string; nombreArticulo: string; descripcion: string }[]
+    rows: UnificarCategoriasRow[]
   ) =>
     api.post<UnificarCategoriasIAResponse>("/tools/cenefas/convertidor/categorias/unificar-ia", { rows }),
 };

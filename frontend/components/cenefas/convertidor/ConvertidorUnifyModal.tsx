@@ -73,6 +73,21 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
           codigo: r.codigo,
           nombreArticulo: r.nombreArticulo,
           descripcion: r.descripcion,
+          // Los precios no se le muestran a Tinín: los usa el backend para
+          // descartar del grupo lo que no esté al mismo precio. Cada uno va
+          // partido en sus dos columnas, porque comparar solo la entera da
+          // $276,75 == $276 (ver _filtrar_por_precio).
+          precioRegular: r.precioRegular,
+          decimalPrecioRegular: r.decimalPrecioRegular,
+          precioOferta: r.precioOferta,
+          decimalPrecioOferta: r.decimalPrecioOferta,
+          precioBanco: r.precioBanco,
+          decimalPrecioBanco: r.decimalPrecioBanco,
+          ofertaUno: r.ofertaUno,
+          decimalPrecioUno: r.decimalPrecioUno,
+          mecanica: r.mecanica,
+          unidadMoneda: r.unidadMoneda,
+          banco: r.banco,
         }))
       )
       .then(({ data }) => {

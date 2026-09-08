@@ -651,6 +651,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
                         deleteRule={handleDeleteRule}
                         selectComponent={setSelectedComponentId}
                         selectedComponentIds={selectedComponentIds}
+                        selectedComponentId={selectedComponentId}
                       />
                     )}
                   </div>

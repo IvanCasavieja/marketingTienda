@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent, CenefaRule, RuleOperator, RuleAction, TextSegment } from "@/types/cenefas";
 import { Plus, Trash2, ChevronDown, ChevronRight, Layers } from "lucide-react";
@@ -51,6 +51,10 @@ interface RulesPanelProps {
   /** Cuadros marcados en el canvas con Ctrl + click. Con más de uno aparece
    *  el formulario para ponerles la misma regla a todos de una. */
   selectedComponentIds?: string[];
+  /** El cuadro primario. Al cambiar, su fila se abre y se scrollea hasta
+   *  ella: clickear una caja en el canvas tiene que llevarte a sus reglas,
+   *  igual que clickear la fila te lleva a la caja. */
+  selectedComponentId?: string | null;
 }
 
 export default function RulesPanel(props: RulesPanelProps = {}) {
@@ -62,9 +66,26 @@ export default function RulesPanel(props: RulesPanelProps = {}) {
   const deleteRule     = props.deleteRule ?? store.deleteRule;
   const selectComponent = props.selectComponent ?? store.selectComponent;
   const selectedIds    = props.selectedComponentIds ?? store.selectedComponentIds;
+  const selectedId     = props.selectedComponentId !== undefined
+    ? props.selectedComponentId : store.selectedComponentId;
   const [expanded, setExpanded]   = useState<string | null>(null);
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [addingLote, setAddingLote] = useState(false);
+  const filaRefs = useRef(new Map<string, HTMLDivElement>());
+
+  // Clickear una caja en el canvas abre su fila acá y la trae a la vista. El
+  // camino de ida ya existía (clickear la fila selecciona la caja) y sin la
+  // vuelta hay que buscar a mano entre cuarenta cuadros cuál es el que se
+  // acaba de tocar.
+  //
+  // La dependencia es SOLO el id: así, volver a clickear la misma fila para
+  // cerrarla no la reabre — el id no cambió, el efecto no corre.
+  useEffect(() => {
+    if (!selectedId) return;
+    setExpanded(selectedId);
+    // `nearest` en vez de `center`: si la fila ya se ve, no se mueve nada.
+    filaRefs.current.get(selectedId)?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
 
   const rulesFor = (compId: string) =>
     allRules.filter((r) => r.target_component_id === compId);
@@ -163,6 +184,10 @@ export default function RulesPanel(props: RulesPanelProps = {}) {
                 return (
                   <div
                     key={comp.id}
+                    ref={(el) => {
+                      if (el) filaRefs.current.set(comp.id, el);
+                      else filaRefs.current.delete(comp.id);
+                    }}
                     className={`rounded-lg border overflow-hidden ${
                       marcado
                         ? "border-brand-300 dark:border-brand-800 ring-1 ring-brand-200 dark:ring-brand-900"
