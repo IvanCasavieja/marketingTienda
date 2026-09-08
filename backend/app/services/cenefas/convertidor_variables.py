@@ -444,14 +444,29 @@ def construir_variables(
         valores[var] = valor
 
     # Precios -> entero + decimal en columnas separadas.
+    #
+    # El decimal se DERIVA del precio entero... salvo que venga en su propia
+    # columna. Un archivo que salió del Convertidor trae los centavos aparte
+    # ("321" + ",75"), y derivarlos de "321" da "" -- los centavos se perdían
+    # en cada ida y vuelta. Si la columna del decimal está, esa manda.
     for var in PRICE_VARS:
         entero, decimal = split_price(valores.get(var, ""))
         out[var] = entero
-        out[DECIMAL_OF[var]] = decimal
+        dec_var = DECIMAL_OF[var]
+        dec_mapeado = mapeo.get(dec_var)
+        out[dec_var] = (str(dec_mapeado).strip()
+                        if dec_mapeado is not None and str(dec_mapeado).strip()
+                        else decimal)
 
-    # Textos mapeados.
+    # Textos mapeados. `mecanica`, `unidadMoneda`, `unidad` y
+    # `tipoOfertaComprando` entraron el 08/09/2026: no se pueden elegir en la
+    # pantalla de mapeo (no están en VARIABLES_MAPEABLES), así que la única
+    # forma de que lleguen acá es que el archivo subido ya traiga la columna
+    # con el nombre de la variable -- o sea, que sea una salida del propio
+    # Convertidor. Ahí lo que trae el archivo es más confiable que recalcular.
     for var in ("tipoOferta", "vigencia", "aclaracionUno", "aclaracionDos", "aclaracionTres",
-                "legales", "banco", "dia", "mes", "año"):
+                "legales", "banco", "dia", "mes", "año",
+                "mecanica", "unidadMoneda", "unidad", "tipoOfertaComprando"):
         valor = valores.get(var, mapeo.get(var, ""))
         if valor is not None and str(valor).strip():
             out[var] = str(valor).strip()

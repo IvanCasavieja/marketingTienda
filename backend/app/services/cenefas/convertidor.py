@@ -27,7 +27,12 @@ from app.models.cenefa_grupo_unificado import CenefaGrupoUnificado
 from app.models.sku_descripcion import SkuDescripcion
 from app.services.cenefas.convertidor_ai import resolve_date_columns_with_ai
 from app.services.cenefas.convertidor_variables import construir_variables
-from app.services.cenefas.variables import DECIMAL_OF, ORDEN_EXPORT, PRICE_VARS
+from app.services.cenefas.variables import (
+    DECIMAL_OF,
+    ORDEN_EXPORT,
+    PRICE_VARS,
+    resolve as resolve_variable,
+)
 from app.services.cenefas.formatters import parse_price_raw
 from app.services.cenefas.validation_engine import DESCRIPTION_MAX_CHARS, DESCRIPTION_WARN_CHARS
 
@@ -751,6 +756,31 @@ async def parse_input_excel(
         idx = por_norm.get(_norm(col_nombre or ""))
         if idx is not None:
             mapeo_cols[var] = idx
+
+    # Vuelta del propio Convertidor: una columna que YA se llama como una
+    # variable final se toma tal cual, sin recalcular nada.
+    #
+    # El Convertidor está pensado para leer el export CRUDO de gestión y
+    # calcular las variables. Pero su propia salida se vuelve a subir todo el
+    # tiempo --se corrige una descripción, se unifican categorías, se guarda y
+    # se sube de nuevo-- y ahí el archivo ya trae las variables resueltas. Sin
+    # esto, de las 13 columnas de un archivo ya convertido matcheaban 4: los
+    # decimales, `mecanica`, `unidadMoneda`, `precioBanco` y `banco` se perdían
+    # en silencio, y los cuatro decimales ni siquiera se podían mapear a mano
+    # porque no están en VARIABLES_MAPEABLES.
+    #
+    # Esto no es un camino nuevo: entra por el mismo `_mapeado` que ya usa la
+    # pantalla de mapeo, donde "lo mapeado pisa lo calculado". Por eso lo
+    # elegido a mano sigue ganando -- se agrega solo lo que nadie mapeó.
+    #
+    # `resolve` (variables.py) es el mismo que usan el encabezado del Excel del
+    # generador y el placeholder del PPTX: tolera mayúsculas, separadores y el
+    # alias corto. Un encabezado que NO es una variable no entra acá y sigue el
+    # camino de siempre, así que los export crudos no cambian en nada.
+    for i, h in enumerate(headers_crudos):
+        canonica = resolve_variable(h) if h else None
+        if canonica and canonica not in mapeo_cols:
+            mapeo_cols[canonica] = i
 
     # Valores escritos a mano: el mismo texto en todas las filas. Se limpian
     # acá una sola vez en vez de por fila.
