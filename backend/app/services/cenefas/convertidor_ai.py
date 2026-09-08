@@ -290,6 +290,26 @@ producto tampoco van juntas). Sé conservador: ante la duda, no agrupes -- es me
 producto sin agrupar que mezclarlo con otro que en realidad es distinto. Un grupo necesita \
 como mínimo 2 productos.
 
+EL PRECIO DECIDE TANTO COMO EL NOMBRE. Un grupo unificado imprime UN SOLO cartel: una \
+descripción y un precio para todos sus SKU. Si dos productos no están exactamente al mismo \
+precio, ese cartel miente para alguno de los dos, aunque sean la misma línea de producto. Te \
+paso los precios de cada fila justamente para que puedas verlo.
+
+Para poder agrupar dos productos tienen que coincidir TODOS estos, exactos:
+
+- el precio regular (el tachado), hasta los centavos: $276,75 NO es $276
+- el precio de oferta, hasta los centavos
+- el precio de banco, si lo tienen
+- el % off, la mecánica, el símbolo de moneda y el banco
+
+Si alguno difiere, NO los agrupes y no lo propongas como grupo. Dos mermeladas de la misma \
+marca, una a $369 y otra a $299, son dos carteles distintos: no es un grupo. Si de cuatro \
+salsas de la misma línea tres están a un precio y la cuarta a otro, el grupo son esas TRES y \
+la cuarta queda afuera -- y ojo, entonces la descripción tampoco puede nombrarla.
+
+Mirá los centavos de verdad antes de decidir. La diferencia entre dos productos suele estar \
+ahí y no en el número grande.
+
 Para cada grupo que encuentres, redactá DOS O TRES descripciones de cartel ALTERNATIVAS que \
 sirvan para todas las variantes de ese grupo, para que la persona elija cuál poner. No es \
 elegir la mejor: son ángulos distintos, y cuál sirve depende de algo que vos NO podés saber.
@@ -331,6 +351,11 @@ def _build_unify_prompt(items: list[dict]) -> str:
         partes = [f'nombre ERP: "{it["nombreArticulo"]}"']
         if it.get("descripcion"):
             partes.append(f'descripción actual: "{it["descripcion"]}"')
+        # El precio va ya armado entero (ver _monto): partido en dos columnas
+        # no se puede comparar de un vistazo, y comparar mal es agrupar mal.
+        precios = _linea_precios(it)
+        if precios:
+            partes.append(precios)
         lineas.append(f"{n}. " + " | ".join(partes))
     listado = "\n".join(lineas)
     return (
@@ -478,6 +503,73 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
         })
 
     return {"grupos": grupos, "truncated": truncated, "error": False}
+
+
+# ---------------------------------------------------------------------------
+# El precio, como lo tiene que LEER Tinín
+# ---------------------------------------------------------------------------
+#
+# En toda la plataforma el precio viaja partido en dos columnas: el entero en
+# `precioOferta` y la parte decimal en `decimalPrecioOferta`. Mostrarle a
+# Tinín las dos columnas por separado es pedirle que se equivoque -- leyendo
+# solo la entera, $276,75 y $276 son el mismo número, que es exactamente el
+# falso positivo que se quiere evitar.
+#
+# Así que se le arma el precio ya entero antes de mostrárselo. Tinín trabaja
+# con un número por precio, escrito como lo lee una persona.
+
+_RE_SOLO_DIGITOS = re.compile(r"^\d+$")
+
+
+def _monto(entero, decimal) -> str:
+    """El precio completo, a partir de sus dos columnas: ``"1.124"`` + ``",75"``
+    -> ``"1.124,75"``.
+
+    El punto de la columna entera es separador de MILES (1.124 = mil ciento
+    veinticuatro), así que se conserva tal cual. La columna decimal vacía es
+    ",00" y se escribe: es la diferencia entre $276,75 y $276, y si no se
+    escribe, no se puede ver.
+
+    Un valor que no es un número (una mecánica escrita en la celda, "2x1") se
+    devuelve tal cual: no es un precio, pero es lo que hay en esa fila y Tinín
+    tiene que verlo igual.
+    """
+    txt = str(entero or "").strip()
+    if not txt:
+        return ""
+    limpio = txt.replace(".", "").replace(" ", "")
+    if not _RE_SOLO_DIGITOS.fullmatch(limpio):
+        return txt
+    dec = str(decimal or "").strip().lstrip(",.").strip()
+    dec = dec if dec.isdigit() else ""
+    return f"{txt},{(dec or '0').ljust(2, '0')[:2]}"
+
+
+def _linea_precios(it: dict) -> str:
+    """Los precios y condiciones de una fila, en una línea legible.
+
+    Solo lo que está: una fila sin precio de banco no arrastra un "banco: —"
+    que ocupa lugar en el prompt y no dice nada.
+    """
+    moneda = str(it.get("unidadMoneda") or "").strip()
+    def _con_moneda(valor: str) -> str:
+        return f"{moneda}{valor}" if moneda and valor else valor
+
+    partes = []
+    for etiqueta, entero, decimal in (
+        ("regular", "precioRegular", "decimalPrecioRegular"),
+        ("oferta",  "precioOferta",  "decimalPrecioOferta"),
+        ("banco",   "precioBanco",   "decimalPrecioBanco"),
+    ):
+        valor = _monto(it.get(entero), it.get(decimal))
+        if valor:
+            partes.append(f"{etiqueta} {_con_moneda(valor)}")
+    for etiqueta, campo in (("% off", "ofertaUno"), ("banco", "banco"),
+                            ("mecánica", "mecanica")):
+        valor = str(it.get(campo) or "").strip()
+        if valor:
+            partes.append(f"{etiqueta}: {valor}")
+    return " | ".join(partes)
 
 
 # Etiqueta de fallback cuando Claude manda una opción sin `etiqueta`: el

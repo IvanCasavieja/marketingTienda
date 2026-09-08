@@ -376,6 +376,26 @@ class UnificarCategoriasItem(BaseModel):
     nombreArticulo: str = ""
     descripcion: str = ""
 
+    # Los precios NO se le muestran a Tinín: no los necesita para reconocer
+    # que dos productos son variantes de la misma línea, que es lo suyo. Se
+    # usan después, en un filtro exacto que descarta del grupo lo que no esté
+    # al mismo precio (ver _filtrar_por_precio). Antes ni llegaban acá, y por
+    # eso dos mermeladas de la misma marca a $369 y $299 se proponían juntas.
+    #
+    # Cada precio viene partido en sus dos columnas, como en toda la
+    # plataforma: comparar solo la entera da $276,75 == $276.
+    precioRegular: str = ""
+    decimalPrecioRegular: str = ""
+    precioOferta: str = ""
+    decimalPrecioOferta: str = ""
+    precioBanco: str = ""
+    decimalPrecioBanco: str = ""
+    ofertaUno: str = ""
+    decimalPrecioUno: str = ""
+    mecanica: str = ""
+    unidadMoneda: str = ""
+    banco: str = ""
+
 
 class UnificarCategoriasRequest(BaseModel):
     rows: list[UnificarCategoriasItem]
