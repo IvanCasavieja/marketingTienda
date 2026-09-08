@@ -43,7 +43,7 @@ from app.services.cenefas.jobs import (
 from app.services.cenefas import conocimiento as saber
 from app.services.cenefas import informe as informe_service
 from app.services.cenefas.layout_engine import FORMATS
-from app.services.cenefas.rules_engine import evaluate_rules
+from app.services.cenefas.rules_engine import evaluate_rules, evaluate_segment_rules
 from app.services.cenefas.validation_engine import build_summary, validate_products
 
 logger = logging.getLogger(__name__)
@@ -459,12 +459,20 @@ async def validate_csv(
     rule_hits: dict[str, int] = {r["id"]: 0 for r in rules if "id" in r}
     for product in products:
         visibility = evaluate_rules(rules, product)
+        # Las reglas de segmento se resuelven aparte: sin esto, una regla que
+        # oculta un pedazo del texto no aparecía nunca como activada (el
+        # cuadro no está en `visibility`, así que se leía como visible).
+        seg_visibility = evaluate_segment_rules(rules, product)
         for rule in rules:
             if "id" not in rule:
                 continue
             action = rule.get("action", {}).get("type", "show")
             comp_id = rule.get("target_component_id", "")
-            is_visible = visibility.get(comp_id, True)
+            seg_idx = rule.get("target_segment_index")
+            is_visible = (
+                visibility.get(comp_id, True) if seg_idx is None
+                else seg_visibility.get(comp_id, {}).get(seg_idx, True)
+            )
             if (action == "show" and is_visible) or (action == "hide" and not is_visible):
                 rule_hits[rule["id"]] += 1
 

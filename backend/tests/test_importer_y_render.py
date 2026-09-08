@@ -456,3 +456,39 @@ def test_combo_muestra_el_precio_con_cocarda():
         "a4", None, src)
     runs = _runs_del_pptx(pptx)
     assert "2x$299" in runs and "149,50" in runs and "$" in runs
+
+
+def test_regla_de_segmento_oculta_solo_esa_palabra_del_renglon():
+    # Caso de Ivan (08/09/2026): la palabra "unidad" al lado del precio solo
+    # corresponde cuando la cenefa es de una categoria unificada (varios SKU
+    # en una fila, que quedan con el codigo combinado "A - B"). En un cuadro
+    # aparte quedaba desalineada del precio; con una regla sobre el CUADRO,
+    # ocultarla se llevaba puesto tambien al precio.
+    #
+    # El campo se escribe "CODIGO" a proposito: el formulario de reglas pasa a
+    # mayusculas lo que se tipea en "Columna del Excel", y tiene que resolver
+    # igual contra la clave canonica `codigo` de la fila.
+    src = _pptx_con_textos("$<<precioOferta>> unidad", "<<descripcion>>")
+    d = import_pptx(src)
+    precio = next(c for c in d["components"]
+                  if any(s.get("value") == "precioOferta" for s in (c.get("segments") or [])))
+    idx = next(i for i, s in enumerate(precio["segments"])
+               if s["type"] == "static" and "unidad" in str(s["value"]))
+    d["rules"] = [{
+        "id": "r1", "name": "unidad solo si es grupo unificado",
+        "target_component_id": precio["id"],
+        "target_segment_index": idx,
+        "condition": {"field": "CODIGO", "operator": "contains", "value": " - "},
+        "action": {"type": "show"},
+    }]
+
+    un_sku = {"codigo": "580735", "precioOferta": "321,75", "descripcion": "ALMENDRAS"}
+    pptx, _ = render_template_to_pptx(d, [un_sku], "a4", None, src)
+    runs = _runs_del_pptx(pptx)
+    assert "321,75" in runs, f"se perdio el precio: {runs!r}"
+    assert "unidad" not in runs, f"'unidad' no debia imprimirse con un solo SKU: {runs!r}"
+
+    unificada = {"codigo": "580735 - 590183", "precioOferta": "321,75", "descripcion": "ALMENDRAS"}
+    pptx, _ = render_template_to_pptx(d, [unificada], "a4", None, src)
+    runs = _runs_del_pptx(pptx)
+    assert "321,75" in runs and "unidad" in runs, f"falto el precio o la palabra: {runs!r}"

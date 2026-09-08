@@ -127,6 +127,17 @@ export interface CenefaRule {
   id: string;
   name: string;
   target_component_id: string;
+  /**
+   * Índice del segmento al que apunta la regla, dentro de `segments` del
+   * cuadro. Sin esto, la regla apunta al CUADRO ENTERO (el caso de siempre).
+   *
+   * Existe para condicionar un pedazo de un texto compuesto sin tocar el
+   * resto: la palabra "unidad" al lado del precio, que solo corresponde
+   * cuando la cenefa es de una categoría unificada. En un cuadro aparte
+   * quedaba desalineada del precio; con una regla sobre el cuadro, ocultarla
+   * se llevaba puesto también al precio.
+   */
+  target_segment_index?: number;
   condition: RuleCondition;
   action: { type: RuleAction };
 }

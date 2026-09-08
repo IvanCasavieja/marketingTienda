@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useEditorStore } from "@/store/editor";
-import type { CenefaComponent, CenefaRule, RuleOperator, RuleAction } from "@/types/cenefas";
-import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import type { CenefaComponent, CenefaRule, RuleOperator, RuleAction, TextSegment } from "@/types/cenefas";
+import { Plus, Trash2, ChevronDown, ChevronRight, Layers } from "lucide-react";
 
 export const OPERATORS: { value: RuleOperator; label: string }[] = [
   { value: "equals",       label: "es igual a" },
@@ -18,11 +18,18 @@ export const NEEDS_VALUE: RuleOperator[] = [
   "equals", "not_equals", "greater_than", "less_than", "contains",
 ];
 
-// Opciones simplificadas para el formulario amigable
+// Opciones simplificadas para el formulario amigable.
+//
+// "Contiene…" se agregó el 08/09/2026: es lo que permite preguntar si la
+// cenefa es de una categoría unificada, porque una fila unificada queda con el
+// código combinado ("580735 - 590183", lo arma commitUnificacion con
+// skus.join(" - ")). Sin este operador el caso no se podía escribir, aunque el
+// motor de reglas ya lo soportaba.
 const SIMPLE_CONDITIONS = [
   { value: "is_not_empty", label: "Sí tiene valor",  emoji: "✓" },
   { value: "is_empty",     label: "No tiene valor",   emoji: "✗" },
   { value: "equals",       label: "Es igual a…",      emoji: "=" },
+  { value: "contains",     label: "Contiene…",        emoji: "⊂" },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -41,6 +48,9 @@ interface RulesPanelProps {
   addRule?: (rule: CenefaRule) => void;
   deleteRule?: (id: string) => void;
   selectComponent?: (id: string) => void;
+  /** Cuadros marcados en el canvas con Ctrl + click. Con más de uno aparece
+   *  el formulario para ponerles la misma regla a todos de una. */
+  selectedComponentIds?: string[];
 }
 
 export default function RulesPanel(props: RulesPanelProps = {}) {
@@ -51,15 +61,33 @@ export default function RulesPanel(props: RulesPanelProps = {}) {
   const addRule        = props.addRule ?? store.addRule;
   const deleteRule     = props.deleteRule ?? store.deleteRule;
   const selectComponent = props.selectComponent ?? store.selectComponent;
+  const selectedIds    = props.selectedComponentIds ?? store.selectedComponentIds;
   const [expanded, setExpanded]   = useState<string | null>(null);
   const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [addingLote, setAddingLote] = useState(false);
 
   const rulesFor = (compId: string) =>
     allRules.filter((r) => r.target_component_id === compId);
 
+  // Solo los que existen de verdad y en el orden en que se ven en el panel:
+  // la selección puede arrastrar ids de un componente borrado.
+  const seleccionados = components.filter((c) => selectedIds.includes(c.id));
+  const enLote = seleccionados.length > 1;
+
   function handleAdd(compId: string, rule: CenefaRule) {
     addRule(rule);
     setAddingFor(null);
+  }
+
+  // Una regla por cuadro seleccionado: el modelo ata cada regla a UN
+  // target_component_id, así que "la misma regla para varios" son N reglas
+  // iguales con distinto destino. Se ven después en la fila de cada cuadro y
+  // se borran de a una, como cualquier otra.
+  function handleAddEnLote(rule: CenefaRule) {
+    for (const comp of seleccionados) {
+      addRule({ ...rule, id: crypto.randomUUID(), target_component_id: comp.id });
+    }
+    setAddingLote(false);
   }
 
   return (
@@ -71,7 +99,48 @@ export default function RulesPanel(props: RulesPanelProps = {}) {
         <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
           Controlá qué elementos se muestran según los datos del CSV
         </p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+          Ctrl + click en el canvas para marcar varios y darles la misma regla.
+        </p>
       </div>
+
+      {/* Barra de selección múltiple — solo con más de un cuadro marcado. */}
+      {enLote && (
+        <div className="border-b border-brand-200 dark:border-brand-900 bg-brand-50/70 dark:bg-brand-950/30">
+          <div className="px-3 py-2">
+            <div className="flex items-center gap-2">
+              <Layers size={12} className="text-brand-600 dark:text-brand-400 flex-shrink-0" />
+              <p className="text-xs font-semibold text-brand-700 dark:text-brand-300 flex-1">
+                {seleccionados.length} cuadros seleccionados
+              </p>
+            </div>
+            <p className="text-[10px] text-brand-600/80 dark:text-brand-400/80 mt-1 leading-relaxed">
+              {seleccionados.map((c) => c.name).join(" · ")}
+            </p>
+
+            {addingLote ? (
+              <div className="mt-2.5 rounded-lg bg-white dark:bg-slate-900 border border-brand-200 dark:border-brand-900 p-3">
+                <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase mb-2">
+                  Misma regla para los {seleccionados.length}
+                </p>
+                <RuleForm
+                  componentId={seleccionados[0].id}
+                  variables={variables}
+                  onSave={handleAddEnLote}
+                  onCancel={() => setAddingLote(false)}
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setAddingLote(true)}
+                className="mt-2 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10px] font-semibold bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+              >
+                <Plus size={10} /> Misma regla para los {seleccionados.length}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         {components.length === 0 ? (
@@ -89,9 +158,17 @@ export default function RulesPanel(props: RulesPanelProps = {}) {
                 const rules   = rulesFor(comp.id);
                 const isOpen  = expanded === comp.id;
                 const isAdding = addingFor === comp.id;
+                const marcado = selectedIds.includes(comp.id);
 
                 return (
-                  <div key={comp.id} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
+                  <div
+                    key={comp.id}
+                    className={`rounded-lg border overflow-hidden ${
+                      marcado
+                        ? "border-brand-300 dark:border-brand-800 ring-1 ring-brand-200 dark:ring-brand-900"
+                        : "border-slate-100 dark:border-slate-800"
+                    }`}
+                  >
                     {/* Header del componente */}
                     <button
                       onClick={() => {
@@ -126,6 +203,7 @@ export default function RulesPanel(props: RulesPanelProps = {}) {
                           <RuleChip
                             key={rule.id}
                             rule={rule}
+                            segments={comp.segments}
                             onDelete={() => deleteRule(rule.id)}
                           />
                         ))}
@@ -136,6 +214,7 @@ export default function RulesPanel(props: RulesPanelProps = {}) {
                             <RuleForm
                               componentId={comp.id}
                               variables={variables}
+                              segments={comp.segments}
                               onSave={(rule) => handleAdd(comp.id, rule)}
                               onCancel={() => setAddingFor(null)}
                             />
@@ -166,9 +245,12 @@ export default function RulesPanel(props: RulesPanelProps = {}) {
 
 export function RuleChip({
   rule,
+  segments,
   onDelete,
 }: {
   rule: CenefaRule;
+  /** Segmentos del cuadro, para poder nombrar a cuál apunta la regla. */
+  segments?: TextSegment[];
   onDelete: () => void;
 }) {
   const cond = rule.condition as {
@@ -178,6 +260,12 @@ export function RuleChip({
   const operatorLabel = OPERATORS.find((o) => o.value === cond.operator)?.label ?? cond.operator ?? "";
   const valueStr      = NEEDS_VALUE.includes(cond.operator as RuleOperator) ? ` "${cond.value}"` : "";
   const summary       = `${cond.field ?? ""} ${operatorLabel}${valueStr}`;
+  // Sin esto, dos reglas del mismo cuadro que apuntan a pedazos distintos se
+  // ven idénticas en la lista.
+  const seg = rule.target_segment_index;
+  const segLabel = seg !== undefined && segments?.[seg]
+    ? etiquetaDeSegmento(segments[seg])
+    : null;
 
   return (
     <div className="flex items-center gap-2 px-4 py-2 group hover:bg-white/60 dark:hover:bg-white/5 transition-colors">
@@ -190,6 +278,11 @@ export function RuleChip({
         }`}>
           {action === "show" ? "Mostrar" : "Ocultar"}
         </span>
+        {segLabel && (
+          <span className="text-[10px] font-mono text-brand-600 dark:text-brand-400 ml-1">
+            {segLabel}
+          </span>
+        )}
         <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-1 italic">{summary}</span>
       </div>
       <button
@@ -206,14 +299,30 @@ export function RuleChip({
 // Formulario de nueva regla (reutilizable desde PropertiesPanel)
 // ---------------------------------------------------------------------------
 
+/**
+ * Cómo se nombra un segmento en pantalla. Un texto compuesto se ve como un
+ * solo renglón, así que para elegir "a cuál de los pedazos" hay que mostrar
+ * su contenido: la variable con sus `<< >>` (que es como está escrita en la
+ * plantilla) y el texto fijo entre comillas.
+ */
+export function etiquetaDeSegmento(seg: TextSegment): string {
+  if (seg.type === "variable") return `<<${seg.value}>>`;
+  const fijo = seg.value ?? "";
+  return fijo.trim() ? `"${fijo}"` : `(espacio)`;
+}
+
 export function RuleForm({
   componentId,
   variables,
+  segments,
   onSave,
   onCancel,
 }: {
   componentId: string;
   variables:   { name: string; csv_column: string }[];
+  /** Segmentos del cuadro, si es de texto compuesto: habilita apuntar la
+   *  regla a UNO solo en vez de a todo el cuadro. */
+  segments?:   TextSegment[];
   onSave:      (rule: CenefaRule) => void;
   onCancel:    () => void;
 }) {
@@ -223,11 +332,18 @@ export function RuleForm({
   const [customCol,  setCustomCol]  = useState("");
   const [operator,   setOperator]   = useState<RuleOperator>("is_not_empty");
   const [value,      setValue]      = useState("");
+  // -1 = todo el cuadro (el caso de siempre).
+  const [segmentIdx, setSegmentIdx] = useState(-1);
 
   const effectiveField  = fieldSrc === "custom" ? customCol.trim().toUpperCase() : field;
   const actionLabel     = action === "show" ? "Mostrar" : "Ocultar";
   const operatorLabel   = OPERATORS.find((o) => o.value === operator)?.label ?? "";
-  const autoName        = `${actionLabel} si ${effectiveField} ${operatorLabel}`;
+  // Solo tiene sentido elegir si hay más de un pedazo.
+  const puedeElegirSegmento = (segments?.length ?? 0) > 1;
+  const alcance = puedeElegirSegmento && segmentIdx >= 0 && segments
+    ? ` ${etiquetaDeSegmento(segments[segmentIdx])}`
+    : "";
+  const autoName        = `${actionLabel}${alcance} si ${effectiveField} ${operatorLabel}`;
 
   function handleSave() {
     if (!effectiveField) return;
@@ -239,6 +355,9 @@ export function RuleForm({
       id:                  crypto.randomUUID(),
       name:                autoName,
       target_component_id: componentId,
+      // Se omite cuando apunta al cuadro entero: el backend distingue por la
+      // ausencia del campo, no por un valor centinela.
+      ...(puedeElegirSegmento && segmentIdx >= 0 ? { target_segment_index: segmentIdx } : {}),
       condition:           condition as CenefaRule["condition"],
       action:              { type: action },
     });
@@ -246,6 +365,26 @@ export function RuleForm({
 
   return (
     <div className="space-y-3">
+      {/* Paso 0: a qué le aplica — solo en cuadros de texto compuesto, donde
+          un mismo renglón tiene varias variables y elegir importa. */}
+      {puedeElegirSegmento && (
+        <div>
+          <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase mb-1.5">¿A qué parte?</p>
+          <select
+            className="input text-xs w-full"
+            value={segmentIdx}
+            onChange={(e) => setSegmentIdx(Number(e.target.value))}
+          >
+            <option value={-1}>Todo el cuadro</option>
+            {segments!.map((seg, i) => (
+              <option key={i} value={i}>
+                Solo {etiquetaDeSegmento(seg)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Paso 1: Acción */}
       <div>
         <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase mb-1.5">¿Qué hace?</p>
@@ -328,7 +467,10 @@ export function RuleForm({
           {SIMPLE_CONDITIONS.map((c) => (
             <button
               key={c.value}
-              onClick={() => { setOperator(c.value as RuleOperator); if (c.value !== "equals") setValue(""); }}
+              onClick={() => {
+                setOperator(c.value as RuleOperator);
+                if (!NEEDS_VALUE.includes(c.value as RuleOperator)) setValue("");
+              }}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                 operator === c.value
                   ? "bg-brand-100 dark:bg-brand-950/40 text-brand-700 dark:text-brand-400 ring-1 ring-brand-300 dark:ring-brand-800"
@@ -339,10 +481,10 @@ export function RuleForm({
             </button>
           ))}
         </div>
-        {operator === "equals" && (
+        {NEEDS_VALUE.includes(operator) && (
           <input
             className="input w-full text-xs mt-2"
-            placeholder="Escribí el valor exacto…"
+            placeholder={operator === "contains" ? "Escribí el texto que tiene que aparecer…" : "Escribí el valor exacto…"}
             value={value}
             onChange={(e) => setValue(e.target.value)}
           />

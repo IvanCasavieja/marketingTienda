@@ -726,6 +726,7 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
                     <RuleChip
                       key={rule.id}
                       rule={rule}
+                      segments={comp.segments}
                       onDelete={() => deleteRule(rule.id)}
                     />
                   ))}
@@ -734,6 +735,7 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
                       <RuleForm
                         componentId={comp.id}
                         variables={template.variables}
+                        segments={comp.segments}
                         onSave={(rule: CenefaRule) => { addRule(rule); setShowRuleForm(false); }}
                         onCancel={() => setShowRuleForm(false)}
                       />

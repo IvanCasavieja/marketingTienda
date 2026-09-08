@@ -16,7 +16,11 @@ from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.font_metrics import ancho_texto_cm
 from app.services.cenefas.formatters import split_caps
 from app.services.cenefas.layout_engine import compute_layout, get_format
-from app.services.cenefas.rules_engine import apply_visibility, evaluate_rules
+from app.services.cenefas.rules_engine import (
+    apply_visibility,
+    evaluate_rules,
+    evaluate_segment_rules,
+)
 from app.services.cenefas.variables import DECIMAL_OF, DECIMAL_VARS, PRICE_VARS
 
 # ---------------------------------------------------------------------------
@@ -2470,7 +2474,8 @@ def render_template_to_pptx(
                 laid_band     = compute_layout(band_comps, master_format, master_format)
                 product       = pg[band_idx]
                 visibility    = evaluate_rules(rules, product)
-                visible_comps = apply_visibility(laid_band, visibility)
+                visible_comps = apply_visibility(
+                    laid_band, visibility, evaluate_segment_rules(rules, product))
                 # El ancho de papel para medir es el de la HOJA, no el de una
                 # celda: en slot_bands los componentes vienen en coordenadas
                 # absolutas de la hoja entera. Pasando el ancho de la celda
@@ -2541,7 +2546,8 @@ def render_template_to_pptx(
             slot_offset_y = row * cell_h
 
             visibility    = evaluate_rules(rules, product)
-            visible_comps = apply_visibility(laid_out, visibility)
+            visible_comps = apply_visibility(
+                laid_out, visibility, evaluate_segment_rules(rules, product))
             # El offset del slot corre el cuadro dentro de la hoja, asi que el
             # ancho de papel disponible se mide desde donde va a caer de verdad.
             visible_comps = _fit_text_to_box(
