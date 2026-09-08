@@ -894,7 +894,14 @@
       "descripcionUnificada": "Unified description",
       "approve": "Approve",
       "approved": "Saved",
-      "saved": "\"{{grupo}}\" saved to the unified dictionary ({{count}} products)"
+      "saved": "\"{{grupo}}\" saved to the unified dictionary ({{count}} products)",
+      "agregarSku": "Add product",
+      "agregarSkuAyuda": "Add a product Tinín left out of the group (e.g. an infusion among the teas).",
+      "buscarSku": "Search by code or name…",
+      "sinCandidatos": "No more products from the list to add.",
+      "listo": "Done",
+      "precioAnterior": "precioRegular (previous)",
+      "precioOferta": "precioOferta"
     },
     "continuar": "Continue",
     "convertirACenefa": "Convert to shelf tag",

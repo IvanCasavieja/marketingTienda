@@ -894,7 +894,14 @@
       "descripcionUnificada": "Descripción unificada",
       "approve": "Aprobar",
       "approved": "Guardado",
-      "saved": "\"{{grupo}}\" guardado en el diccionario unificado ({{count}} productos)"
+      "saved": "\"{{grupo}}\" guardado en el diccionario unificado ({{count}} productos)",
+      "agregarSku": "Agregar producto",
+      "agregarSkuAyuda": "Sumá al grupo un producto que Tinín dejó afuera (ej. una infusión entre los tés).",
+      "buscarSku": "Buscar por código o nombre…",
+      "sinCandidatos": "No hay más productos del listado para agregar.",
+      "listo": "Listo",
+      "precioAnterior": "precioRegular (anterior)",
+      "precioOferta": "precioOferta"
     },
     "continuar": "Continuar",
     "convertirACenefa": "Convertir a cenefa",
