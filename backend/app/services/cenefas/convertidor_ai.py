@@ -231,6 +231,26 @@ def _marca_de(nombre: str) -> str:
     return ""
 
 
+def nombre_para_agrupar(it: dict) -> str:
+    """Con qué texto se reconoce este producto al buscar variantes.
+
+    El nombre de gestion primero, y la descripcion como respaldo. NO es un
+    detalle: hay exports enteros que no traen la columna NOMBREARTICULO --
+    los "Listado de Mailing" traen DESCRIPCION y DESCRIPCIONWEB y nada mas--
+    y hasta el 09/09/2026 esos listados salian del unificador con CERO grupos
+    en cero segundos, sin llamar a la IA y sin decir por que. Medido con el
+    listado real de congelados: 0 grupos con la columna ausente, 7 grupos
+    (helados CRUFI 1L, CRUFI 2L, empanadas SARUBBI, chipa CELISANO,
+    CRUFIMAX, canelones LA ESPECIALISTA, hamburguesas SCHNECK) con el
+    respaldo puesto.
+
+    La descripcion sirve igual de bien para esto: trae marca y variedad, que
+    es de donde sale la familia. `generar_descripciones` ya usaba el mismo
+    criterio de respaldo (nombreArticulo o descripcionWeb); acá faltaba.
+    """
+    return (it.get("nombreArticulo") or "").strip() or (it.get("descripcion") or "").strip()
+
+
 def _clave_agrupado(it: dict) -> tuple[str, str]:
     """(marca, nombre) normalizados, para ordenar antes de partir en tandas.
 
@@ -240,7 +260,7 @@ def _clave_agrupado(it: dict) -> tuple[str, str]:
     una al lado de la otra, cosa que un orden alfabetico por nombre separaba
     por completo.
     """
-    nombre = it.get("nombreArticulo") or ""
+    nombre = nombre_para_agrupar(it)
     plano = unicodedata.normalize("NFKD", nombre.casefold())
     plano = "".join(c for c in plano if not unicodedata.combining(c))
     limpio = "".join(c if (c.isalnum() or c == " ") else " " for c in plano)
@@ -348,7 +368,10 @@ Los productos que no formen parte de ningún grupo simplemente no aparecen en tu
 def _build_unify_prompt(items: list[dict]) -> str:
     lineas = []
     for n, it in enumerate(items, start=1):
-        partes = [f'nombre ERP: "{it["nombreArticulo"]}"']
+        # El nombre de gestion si vino; si no, la descripcion (ver
+        # nombre_para_agrupar). Sin el respaldo esta linea salia como
+        # 'nombre ERP: ""' para listados enteros.
+        partes = [f'nombre ERP: "{nombre_para_agrupar(it)}"']
         if it.get("descripcion"):
             partes.append(f'descripción actual: "{it["descripcion"]}"')
         # El precio va ya armado entero (ver _monto): partido en dos columnas
@@ -388,7 +411,7 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
     parsea -- posiblemente cortado por quedarse sin max_tokens) de "Claude ya reviso todo
     y genuinamente no encontro grupos" -- sin esto, ambos casos se verian identicos para
     quien usa el modal (una lista vacia sin explicacion)."""
-    procesables = [it for it in items if it["nombreArticulo"]]
+    procesables = [it for it in items if nombre_para_agrupar(it)]
     if len(procesables) < 2:
         return {"grupos": [], "truncated": False, "error": False}
 

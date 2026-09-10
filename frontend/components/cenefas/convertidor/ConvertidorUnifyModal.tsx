@@ -130,8 +130,13 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
     updateGrupo(idx, { status: "pending" });
   }
 
+  /** Con qué texto se identifica una fila en pantalla — el nombre de gestión
+   *  si vino, si no la descripción. Espejo de `nombre_para_agrupar` del
+   *  backend: hay exports (los "Listado de Mailing") que no traen columna
+   *  NOMBREARTICULO, y ahí este modal listaba todos los miembros como "—". */
   function nombreDeFila(rowId: number): string {
-    return rows.find((r) => r.row_id === rowId)?.nombreArticulo || "—";
+    const r = rows.find((x) => x.row_id === rowId);
+    return r?.nombreArticulo || r?.descripcion || "—";
   }
 
   // Los dos precios de una fila, ya armados con su decimal y su símbolo, para
@@ -167,6 +172,7 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
       .filter((r) =>
         !q ||
         r.nombreArticulo.toLowerCase().includes(q) ||
+        r.descripcion.toLowerCase().includes(q) ||
         r.codigo.toLowerCase().includes(q))
       .slice(0, MAX_CANDIDATOS);
   }
@@ -358,7 +364,7 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
                               >
                                 <Plus size={10} className="shrink-0 text-brand-500" />
                                 <span className="truncate flex-1 min-w-0 text-slate-600 dark:text-slate-300">
-                                  {r.codigo} · {r.nombreArticulo}
+                                  {r.codigo} · {nombreDeFila(r.row_id)}
                                 </span>
                                 {precios?.oferta && (
                                   <span className="shrink-0 tabular-nums text-slate-400">{precios.oferta}</span>
