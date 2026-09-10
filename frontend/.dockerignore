@@ -1,0 +1,16 @@
+# Lo que NO entra en la imagen del frontend.
+#
+# Hasta el 10/09/2026 no existía este archivo, y el `COPY . .` de la etapa de
+# build arrastraba node_modules local (580 MB, que además puede ser de Windows
+# y no servir en Alpine) y la carpeta .next de un build anterior.
+
+node_modules/
+.next/
+
+# Configuración local. La URL del backend entra por el build-arg
+# NEXT_PUBLIC_API_URL (ver Dockerfile), no por estos archivos.
+.env.local
+.env.local.*
+!.env.local.example
+
+tsconfig.tsbuildinfo

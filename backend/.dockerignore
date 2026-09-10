@@ -1,0 +1,27 @@
+# Lo que NO entra en la imagen del backend.
+#
+# Hasta el 10/09/2026 no existía este archivo, y el `COPY . .` del Dockerfile
+# arrastraba todo el directorio: el venv local (612 MB) y, lo grave,
+# backend/.env, que tiene las credenciales de la base de PRODUCCIÓN. Cualquier
+# imagen construida en una PC de trabajo quedaba con esos secretos adentro,
+# legibles por cualquiera que tuviera la imagen.
+#
+# Los secretos se le pasan al contenedor como variables de entorno al
+# arrancarlo, nunca en el build.
+
+# Secretos y configuración local. .env.example sí entra: es documentación.
+.env
+.env.*
+!.env.example
+
+# Entornos y cachés de Python
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+
+# No hacen falta para correr
+tests/
+setup_tarea_programada.ps1
