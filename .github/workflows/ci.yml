@@ -51,3 +51,58 @@ jobs:
         run: python -c "import app.main"
       - name: Tests del motor de cenefas (precios, mecanicas, importer, render)
         run: python -m pytest tests/ -q
+
+  despliegue:
+    name: Despliegue desde cero (Docker + Postgres vacia)
+    runs-on: ubuntu-latest
+    # Por que existe. El 20/08/2026 se arreglo la cadena de migraciones para que
+    # una base vacia se pudiera crear desde cero, y al dia siguiente el revert
+    # del merge de staging se llevo el arreglo sin que nadie lo notara. Tres
+    # semanas y 14 migraciones despues, un servidor nuevo no podia crear su
+    # base: fallaba en la 0001, Alembic deshacia todo, y el backend respondia
+    # /health 200 con la base vacia y sin una linea de error. Los Dockerfile,
+    # por su parte, estuvieron rotos cuatro meses porque nadie los ejecutaba.
+    # Este job hace en cada push lo mismo que va a hacer un servidor nuevo.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir la imagen del backend
+        run: docker build -t mktg-backend:ci backend
+      - name: Construir la imagen del frontend
+        run: docker build -t mktg-frontend:ci --build-arg NEXT_PUBLIC_API_URL=https://api.example.invalid/api/v1 frontend
+      - name: Arrancar el backend contra la base vacia
+        # Los loops que salen a internet se apagan; la purga queda prendida a
+        # proposito, porque corre apenas arranca y es la que chocaba con una
+        # base todavia sin migrar.
+        run: |
+          docker run -d --name backend --network host             -e DATABASE_URL=postgresql+asyncpg://ci:ci@localhost:5432/ci             -e APP_SECRET_KEY=ci-dummy-secret-not-used-in-prod             -e ENCRYPTION_KEY="Y2q_vIGd2FgQ4CqY3Fh3du3ZehOWmx4pVHPfpJC44bA="             -e MANTENIMIENTO_AL_ARRANCAR=true             -e SYNC_INTERVAL_HOURS=0             -e WATCHLIST_CHECK_INTERVAL_HOURS=0             -e CAMPAIGN_ALERTS_CHECK_INTERVAL_HOURS=0             -e COTIZACION_AUTO_UPDATE=false             -e CENEFAS_CURADURIA=false             mktg-backend:ci
+      - name: Migraciones completas, /health OK y ni un error en el log
+        run: |
+          for i in $(seq 1 60); do
+            if docker logs backend 2>&1 | grep -q "Alembic migration failed"; then break; fi
+            if docker logs backend 2>&1 | grep -q "Alembic migrations completed"; then
+              curl -fsS http://localhost:8000/health
+              if docker logs backend 2>&1 | grep -qiE '"level": "(error|critical)"|Traceback'; then
+                echo "::error::El backend arranco pero dejo errores en el log"
+                docker logs backend
+                exit 1
+              fi
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::El backend no pudo crear la base desde cero"
+          docker logs backend
+          exit 1
