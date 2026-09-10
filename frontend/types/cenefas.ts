@@ -97,11 +97,30 @@ export interface CenefaComponent {
  * cambia al redimensionar con los 4 puntos (ver Canvas.tsx); `segments` va
  * completo cuando el componente es multi-segmento, porque cada segmento
  * lleva su propio font_size. */
+/**
+ * Lo que se ajustó de UN cuadro revisando una cenefa, para mandarlo al
+ * confirmar. No es el componente entero: solo los campos tocados, que se
+ * mergean sobre el `template_def` congelado del job (ver `_con_override` en
+ * jobs.py, que tiene la lista espejo de esto).
+ *
+ * Además de la caja y el estilo van los campos de CONTENIDO. Sin ellos,
+ * cambiar la variable de un cuadro en el preview se veía en pantalla y no
+ * salía en el archivo.
+ *
+ * `segments: null` es "volver a modo simple" — distinto de no mandar el
+ * campo, que es "no lo toqué".
+ */
 export interface ComponentOverride {
   id: string;
   base_bounds?: ComponentBounds;
   style?: Partial<ComponentStyle>;
-  segments?: TextSegment[];
+  segments?: TextSegment[] | null;
+  variable?: string | null;
+  static_value?: string | null;
+  transform?: TextTransform;
+  vinculado_a?: string | null;
+  image_data?: string | null;
+  image_ext?: string | null;
 }
 
 export type RuleOperator =

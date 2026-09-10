@@ -28,11 +28,19 @@ interface PropertiesPanelProps {
    * -- pedido explícito de Ivan: "todo se debería hacer en esta vista", sin
    * un editor aparte que nadie encuentra.
    *
-   * `deleteComponent`/`addRule`/`deleteRule` quedan afuera a propósito
-   * cuando no vienen: borrar un componente o agregar una regla ahí no tiene
-   * dónde guardarse (ComponentOverride, lo único que manda LotePreviewStep
-   * al confirmar, no tiene ni "eliminado" ni "reglas") -- mostrar esos
-   * controles igual sería una accion que no hace nada.
+   * `deleteComponent` queda afuera cuando no viene: borrar un componente ahí
+   * no tiene dónde guardarse (ComponentOverride, lo que mandan las pantallas
+   * de preview al confirmar, no tiene "eliminado") -- mostrar el control
+   * igual sería una acción que no hace nada. Para no dibujar un cuadro está
+   * la regla de visibilidad, que sí viaja.
+   *
+   * `addRule`/`deleteRule` SÍ los pasan las dos pantallas de preview desde el
+   * 09/09/2026. Antes no, con el argumento de que las reglas no tenían dónde
+   * guardarse -- y era cierto cuando se escribió, pero dejó de serlo al
+   * agregarse `rules_override` en confirm_generation_job: las reglas se
+   * mandan enteras al confirmar y se aplican. La sección quedó apagada por un
+   * motivo vencido, así que en el preview de lote el botón "Agregar regla" de
+   * cada cuadro no aparecía aunque la pestaña Reglas de al lado sí funcionara.
    */
   template?: CenefaTemplate;
   selectedComponentId?: string | null;
@@ -292,15 +300,22 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
               <span className="text-xs text-slate-500 dark:text-slate-400">Texto compuesto</span>
               <button
                 onClick={() => {
+                  // Por setSegments y no por updateComponent directo: prender
+                  // o apagar el modo compuesto es un cambio de segmentos como
+                  // cualquier otro y tiene que replicarse a las hermanas de la
+                  // hoja. Sin esto, editar los segmentos DESPUÉS sí replicaba
+                  // (setSegments manda el array entero) pero el apagado no, y
+                  // las otras cenefas de la 3xA4 quedaban compuestas mientras
+                  // la editada volvía a modo simple.
                   if (comp.segments?.length) {
-                    updateComponent(comp.id, { segments: undefined });
+                    setSegments([]);   // [] -> undefined: vuelve a modo simple
                   } else {
                     const initial: TextSegment[] = comp.variable
                       ? [{ type: "variable", value: comp.variable, transform: comp.transform ?? "none" }]
                       : comp.static_value
                       ? [{ type: "static", value: comp.static_value }]
                       : [{ type: "static", value: "" }];
-                    updateComponent(comp.id, { segments: initial });
+                    setSegments(initial);
                   }
                 }}
                 className={`relative inline-flex w-9 h-5 rounded-full transition-colors ${

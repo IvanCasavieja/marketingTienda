@@ -98,3 +98,53 @@ export const VARIABLES_MAPEABLES: string[] = [
 export function varDef(name: string): CenefaVarDef | undefined {
   return CENEFA_VARIABLES.find((v) => v.name === name);
 }
+
+/**
+ * Alias corto de cada variable — espejo de ALIAS_CORTOS en variables.py.
+ *
+ * La convención es la inicial de cada palabra (`precioOferta` -> `po`,
+ * `decimalPrecioRegular` -> `dpr`), conservando el número si lo lleva
+ * (`ofertaUno` -> `o1`). El nombre largo sigue siendo el canónico: el alias
+ * se acepta solo a la entrada y se resuelve ahí mismo.
+ */
+export const ALIAS_CORTOS: Record<string, string> = {
+  c: "codigo", d: "descripcion", m: "mecanica",
+  to: "tipoOferta", toc: "tipoOfertaComprando", u: "unidad", um: "unidadMoneda",
+  pr: "precioRegular", dpr: "decimalPrecioRegular",
+  po: "precioOferta", dpo: "decimalPrecioOferta",
+  pmo: "promoOferta", dpmo: "decimalPromoOferta",
+  o1: "ofertaUno", do1: "decimalPrecioUno",
+  o2: "ofertaDos", do2: "decimalPrecioDos",
+  o3: "ofertaTres", do3: "decimalPrecioTres",
+  o4: "ofertaCuatro", do4: "decimalPrecioCuatro",
+  pb: "precioBanco", dpb: "decimalPrecioBanco",
+  b: "banco", v: "vigencia",
+  a1: "aclaracionUno", a2: "aclaracionDos", a3: "aclaracionTres",
+  l: "legales", dd: "dia", mm: "mes", aa: "año",
+};
+
+/** Sin acentos, sin separadores, minúsculas — espejo de `norm()` en variables.py. */
+function norm(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\s_\-.]+/g, "")
+    .toLowerCase();
+}
+
+const POR_NORM: Record<string, string> = Object.fromEntries(
+  CENEFA_VARIABLE_NAMES.map((v) => [norm(v), v]),
+);
+
+/**
+ * Nombre de columna o placeholder -> variable canónica, o null si no es una.
+ * Espejo de `resolve()` en variables.py: tolera mayúsculas, separadores,
+ * acentos y el alias corto, igual que el encabezado del Excel y el `<<...>>`
+ * del PPTX.
+ */
+export function resolverNombreVariable(name: string): string | null {
+  if (!name) return null;
+  const directo = POR_NORM[norm(name)];
+  if (directo) return directo;
+  return ALIAS_CORTOS[name.trim().toLowerCase()] ?? null;
+}

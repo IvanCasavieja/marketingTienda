@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { cenefasV2Api } from "@/lib/api";
 import { alternarSeleccion, seleccionUnica, type Seleccion } from "@/lib/cenefas/seleccion";
+import { acumularOverride, afectaAlArchivo } from "@/lib/cenefas/overrides";
 import type { CenefaComponent, CenefaLote, CenefaLoteItem, CenefaRule, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
 import Canvas from "@/components/cenefas/editor/Canvas";
 import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
@@ -160,15 +161,11 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
       }
       return { ...prev, template_def: nuevoDef };
     });
+    if (!afectaAlArchivo(updates)) return;
     const previo = overridesPorJob.current[actualId]?.[id] ?? { id };
     overridesPorJob.current[actualId] = {
       ...overridesPorJob.current[actualId],
-      [id]: {
-        ...previo,
-        ...(updates.base_bounds ? { base_bounds: updates.base_bounds } : {}),
-        ...(updates.style       ? { style: { ...previo.style, ...updates.style } } : {}),
-        ...(updates.segments    ? { segments: updates.segments } : {}),
-      },
+      [id]: acumularOverride(previo, updates),
     };
   }
 
@@ -517,6 +514,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
                 previewProducts={detalle.preview_products}
                 capacidad={verCapacidad ? capacidad : null}
                 slotBands={detalle.slot_bands}
+                rules={detalle.template_def.rules}
                 className="w-full h-full"
               />
             ) : actualStatus === "done" ? (
@@ -640,6 +638,8 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
                         template={detalle.template_def}
                         selectedComponentId={selectedComponentId}
                         updateComponent={handleUpdateComponent}
+                        addRule={handleAddRule}
+                        deleteRule={handleDeleteRule}
                         slotBands={detalle.slot_bands}
                       />
                     ) : (

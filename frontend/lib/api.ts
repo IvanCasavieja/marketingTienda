@@ -370,10 +370,13 @@ export const cenefasV2Api = {
       formData,
       { headers: { "Content-Type": "multipart/form-data" } }
     ),
-  confirmJob: (id: string, components: ComponentOverride[]) =>
+  // `rules`, si viene, reemplaza la lista de reglas de visibilidad completa de
+  // este job -- lo manda PreviewStep cuando se agregó o borró alguna revisando
+  // la cenefa. Sin el campo, el job conserva las reglas de la plantilla.
+  confirmJob: (id: string, components: ComponentOverride[], rules?: CenefaRule[]) =>
     api.post<{ job_id: string; status: string }>(
       `/tools/cenefas/v2/jobs/${id}/confirm`,
-      { components }
+      rules ? { components, rules } : { components }
     ),
   downloadJob: (id: string) =>
     api.get(`/tools/cenefas/v2/jobs/${id}/download`, { responseType: "blob" }),

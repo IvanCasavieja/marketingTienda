@@ -1,12 +1,15 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cenefasV2Api } from "@/lib/api";
-import type { CenefaComponent, CenefaJob, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
+import type { CenefaComponent, CenefaJob, CenefaRule, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
+import { acumularOverride, afectaAlArchivo } from "@/lib/cenefas/overrides";
+import { alternarSeleccion, seleccionUnica, type Seleccion } from "@/lib/cenefas/seleccion";
 import { ArrowLeft, Download, Loader2, RefreshCw, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import Canvas from "@/components/cenefas/editor/Canvas";
 import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
+import RulesPanel from "@/components/cenefas/editor/RulesPanel";
 
 // Paso compartido por Redexpres y Rompe Precios: el job se generó hasta
 // quedar en status="preview" (ver jobs.py) con la definición de componentes
@@ -23,7 +26,28 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
   const { t } = useTranslation();
   const [job, setJob] = useState<CenefaJob | null>(null);
   const [template, setTemplate] = useState<CenefaTemplate | null>(null);
-  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+  // Selección local — misma regla de Ctrl + click que el editor completo y que
+  // LotePreviewStep, delegada en lib/cenefas/seleccion.ts. Hace falta acá
+  // desde que esta pantalla tiene panel de reglas: sin `ids` no se puede
+  // marcar varios cuadros y darles la misma regla de una.
+  const [seleccion, setSeleccion] = useState<Seleccion>({ ids: [], primary: null });
+  const selectedComponentId  = seleccion.primary;
+  const selectedComponentIds = seleccion.ids;
+  // useCallback y no una función suelta: las dos viajan al Canvas y entran en
+  // las dependencias del efecto que arma la capa de dibujo. Recreadas en cada
+  // render, ese efecto vuelve a construir los ~40 nodos de Konva siempre.
+  const setSelectedComponentId = useCallback(
+    (id: string | null) => setSeleccion(seleccionUnica(id)), [],
+  );
+  const toggleComponentSelection = useCallback(
+    (id: string) => setSeleccion((s) => alternarSeleccion(s, id)), [],
+  );
+  // Propiedades o reglas, igual que LotePreviewStep. Hasta el 09/09/2026 esta
+  // pantalla no tenía forma de crear una regla de visibilidad: había que
+  // abrir el editor de plantillas, que es justo la pantalla a la que la gente
+  // no llega. El backend ya aceptaba las reglas al confirmar (ver
+  // rules_override en confirm_generation_job), solo faltaba dónde escribirlas.
+  const [panelTab, setPanelTab] = useState<"propiedades" | "reglas">("propiedades");
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -41,6 +65,11 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
   // si la persona elige "Guardar", se usa además para armar el `template`
   // completo que se persiste con updateTemplate.
   const dirtyOverrides = useRef<Record<string, ComponentOverride>>({});
+  // La lista COMPLETA de reglas si se agregó o borró alguna revisando esta
+  // cenefa. Se manda entera (no un diff) porque una regla nueva no tiene un
+  // id previo con el que emparejar -- mismo criterio que LotePreviewStep.
+  // `null` = no se tocó ninguna, y entonces no se manda nada.
+  const [reglasEditadas, setReglasEditadas] = useState<CenefaRule[] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dlRef = useRef<HTMLAnchorElement>(null);
 
@@ -75,13 +104,25 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
         components: prev.components.map((c) => (c.id === id ? { ...c, ...updates } : c)),
       };
     });
+    if (!afectaAlArchivo(updates)) return;
     const previo = dirtyOverrides.current[id] ?? { id };
-    dirtyOverrides.current[id] = {
-      ...previo,
-      ...(updates.base_bounds ? { base_bounds: updates.base_bounds } : {}),
-      ...(updates.style       ? { style: { ...previo.style, ...updates.style } } : {}),
-      ...(updates.segments    ? { segments: updates.segments } : {}),
-    };
+    dirtyOverrides.current[id] = acumularOverride(previo, updates);
+  }
+
+  // Agregar/borrar una regla de visibilidad revisando ESTA cenefa. Se refleja
+  // en el `template` local (para que "Guardar en la plantilla" la incluya) y
+  // se manda al confirmar.
+  function actualizarReglas(nuevas: CenefaRule[]) {
+    setReglasEditadas(nuevas);
+    setTemplate((prev) => (prev ? { ...prev, rules: nuevas } : prev));
+  }
+
+  function handleAddRule(rule: CenefaRule) {
+    actualizarReglas([...(template?.rules ?? []), rule]);
+  }
+
+  function handleDeleteRule(id: string) {
+    actualizarReglas((template?.rules ?? []).filter((r) => r.id !== id));
   }
 
   async function triggerDownload() {
@@ -109,7 +150,7 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
       }
 
       const components = Object.values(dirtyOverrides.current);
-      await cenefasV2Api.confirmJob(jobId, components);
+      await cenefasV2Api.confirmJob(jobId, components, reglasEditadas ?? undefined);
 
       // Poll hasta "done", después descarga automática. OJO: no pisar el
       // estado `job` acá con setJob(data) — apenas se confirma, el status
@@ -253,18 +294,53 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
           activeFormat={job.format}
           selectedComponentId={selectedComponentId}
           onSelectComponent={setSelectedComponentId}
+          selectedComponentIds={selectedComponentIds}
+          onToggleComponentSelection={toggleComponentSelection}
           onUpdateComponent={handleUpdateComponent}
           previewData={job.preview_product ?? {}}
           slotBands={job.slot_bands}
           previewProducts={job.preview_products}
+          rules={template.rules}
         />
         <div className="w-72 shrink-0 h-[70vh] border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden flex flex-col">
-          <PropertiesPanel
-            template={template}
-            selectedComponentId={selectedComponentId}
-            updateComponent={handleUpdateComponent}
-            slotBands={job.slot_bands}
-          />
+          <div className="flex border-b border-slate-200 dark:border-slate-700 shrink-0">
+            {(["propiedades", "reglas"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setPanelTab(tab)}
+                className={`flex-1 py-2 text-xs font-semibold transition-colors ${
+                  panelTab === tab
+                    ? "text-brand-600 dark:text-brand-400 border-b-2 border-brand-500"
+                    : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                }`}
+              >
+                {tab === "propiedades" ? "Propiedades" : "Reglas"}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 min-h-0 flex flex-col">
+            {panelTab === "propiedades" ? (
+              <PropertiesPanel
+                template={template}
+                selectedComponentId={selectedComponentId}
+                updateComponent={handleUpdateComponent}
+                addRule={handleAddRule}
+                deleteRule={handleDeleteRule}
+                slotBands={job.slot_bands}
+              />
+            ) : (
+              <RulesPanel
+                components={template.components}
+                rules={template.rules}
+                variables={template.variables}
+                addRule={handleAddRule}
+                deleteRule={handleDeleteRule}
+                selectComponent={setSelectedComponentId}
+                selectedComponentIds={selectedComponentIds}
+                selectedComponentId={selectedComponentId}
+              />
+            )}
+          </div>
         </div>
       </div>
 

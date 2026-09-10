@@ -298,6 +298,71 @@ async def _finish_job(
         await db.commit()
 
 
+# Lo que un override puede cambiar de un cuadro, además de la caja y el
+# estilo. Espejo de CAMPOS_DEL_OVERRIDE en frontend/lib/cenefas/overrides.ts:
+# los dos lados se mueven juntos.
+#
+# Lista explícita y no un merge a ciegas: un override llega del navegador y no
+# puede inyectar claves internas del motor (_source_shape_id, group_id,
+# computed_bounds) sin romper el render.
+#
+# `z_index` NO está, y no es un olvido: el renderer no lo mira (con
+# preserve_source el orden de dibujo sale del PPTX fuente), así que mandarlo no
+# cambiaría nada en el archivo.
+_CAMPOS_DE_CONTENIDO = ("variable", "static_value", "transform",
+                        "vinculado_a", "image_data", "image_ext")
+
+
+def aplicar_overrides(template_def: dict, position_overrides: list[dict]) -> dict:
+    """El template_def del job con los ajustes que la persona hizo en el preview.
+
+    Cada override puede traer `base_bounds` (arrastre), `style` (resize con los
+    4 puntos), `segments`, y los campos de CONTENIDO de `_CAMPOS_DE_CONTENIDO`.
+    Solo se mergea lo que el override trae; lo que no manda queda como estaba.
+
+    Los campos de contenido se sumaron el 09/09/2026. Hasta entonces el
+    override llevaba caja + estilo + segmentos y nada más, así que cambiarle la
+    variable a un cuadro en el preview se veía aplicado en pantalla y NO salía
+    en el archivo: el template_def del job es una foto tomada al armar el
+    preview, y nadie la actualizaba. La persona veía el cambio, apretaba
+    Generar y bajaba el PPTX con el valor viejo, sin ningún aviso.
+    """
+    overrides_by_id = {o["id"]: o for o in position_overrides if o.get("id")}
+
+    def _con_override(c: dict) -> dict:
+        ov = overrides_by_id.get(c["id"])
+        if not ov:
+            return c
+        nuevo = dict(c)
+        if "base_bounds" in ov:
+            nuevo["base_bounds"] = ov["base_bounds"]
+        if "style" in ov:
+            nuevo["style"] = {**c.get("style", {}), **ov["style"]}
+            if "font_size" in ov["style"]:
+                # La persona ya eligió a mano el tamaño de letra para ESTA caja
+                # (resize con los 4 puntos en el preview) -- _fit_text_to_box
+                # no debe forzarlo a compartir escala con su pareja
+                # entero/decimal.
+                nuevo["_manual_font_override"] = True
+        for campo in _CAMPOS_DE_CONTENIDO:
+            if campo in ov:
+                nuevo[campo] = ov[campo]
+        # `segments` va aparte porque su valor "apagado" es null: es así como un
+        # cuadro compuesto vuelve a modo simple, y un `if ov.get("segments")` lo
+        # leía como "no vino nada" -- el cuadro volvía a simple en pantalla y
+        # salía compuesto en el archivo. El `or None` normaliza la lista vacía
+        # al mismo apagado, que es lo que manda el editor al borrar el último
+        # segmento.
+        if "segments" in ov:
+            nuevo["segments"] = ov["segments"] or None
+        return nuevo
+
+    return {
+        **template_def,
+        "components": [_con_override(c) for c in template_def.get("components", [])],
+    }
+
+
 async def confirm_generation_job(
     job_id: uuid.UUID,
     position_overrides: list[dict] | None = None,
@@ -338,38 +403,7 @@ async def confirm_generation_job(
     try:
         template_def = staged.template_def
         if position_overrides:
-            # Cada override puede traer base_bounds (arrastre) y/o style
-            # (resize con los 4 puntos, que además de agrandar la caja
-            # escala la letra de adentro -- ver Canvas.tsx) y/o segments
-            # (cuando el componente es multi-segmento, cada segmento lleva
-            # su propio font_size que pisa al del componente). Solo se
-            # mergea lo que el override trae; lo que no manda queda como
-            # estaba en el template_def original.
-            overrides_by_id = {o["id"]: o for o in position_overrides if o.get("id")}
-
-            def _con_override(c: dict) -> dict:
-                ov = overrides_by_id.get(c["id"])
-                if not ov:
-                    return c
-                nuevo = dict(c)
-                if "base_bounds" in ov:
-                    nuevo["base_bounds"] = ov["base_bounds"]
-                if "style" in ov:
-                    nuevo["style"] = {**c.get("style", {}), **ov["style"]}
-                    if "font_size" in ov["style"]:
-                        # La persona ya eligió a mano el tamaño de letra para
-                        # ESTA caja (resize con los 4 puntos en el preview) --
-                        # _fit_text_to_box no debe forzarlo a compartir escala
-                        # con su pareja entero/decimal (ver ese flag más abajo).
-                        nuevo["_manual_font_override"] = True
-                if "segments" in ov:
-                    nuevo["segments"] = ov["segments"]
-                return nuevo
-
-            template_def = {
-                **template_def,
-                "components": [_con_override(c) for c in template_def.get("components", [])],
-            }
+            template_def = aplicar_overrides(template_def, position_overrides)
         if rules_override is not None:
             template_def = {**template_def, "rules": rules_override}
         try:

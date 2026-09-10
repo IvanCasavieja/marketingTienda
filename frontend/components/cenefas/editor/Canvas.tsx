@@ -2,8 +2,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Konva from "konva";
 import { useEditorStore } from "@/store/editor";
-import type { CenefaComponent, CenefaTemplate } from "@/types/cenefas";
+import type { CenefaComponent, CenefaRule, CenefaTemplate } from "@/types/cenefas";
 import { buildSiblingMap } from "@/lib/cenefas/siblingMap";
+// Con alias: `segmentosOcultos` es además el nombre de la prop que recibe
+// buildComponentGroup más abajo, y ahí la prop tapa a la función.
+import {
+  cuadrosOcultos as evaluarCuadrosOcultos,
+  segmentosOcultos as evaluarSegmentosOcultos,
+} from "@/lib/cenefas/reglas";
 import { resolverFuente } from "@/lib/cenefas/fuentes";
 import { mascaraNegrita, tieneMarca } from "@/lib/cenefas/smartBold";
 
@@ -201,6 +207,7 @@ function resolveComponentText(
   comp: CenefaComponent,
   previewData: Record<string, string>,
   capacidad?: Record<string, string> | null,
+  segmentosOcultos?: Set<number>,
 ): string {
   // Vista de capacidad: el cuadro se muestra LLENO de "X" hasta donde entra,
   // en vez del valor del primer producto del Excel. Sirve para ver el peor
@@ -210,7 +217,12 @@ function resolveComponentText(
   if (relleno) return relleno;
   if (comp.segments?.length) {
     return comp.segments
-      .map((seg) => {
+      .map((seg, i) => {
+        // Un segmento ocultado por una regla se dibuja VACÍO, no se saca:
+        // mismo criterio que `apply_visibility` en el backend, que lo
+        // reemplaza por un estático vacío para que el resto del motor lo vea
+        // como "sin dato" y no se entere de que hubo una regla.
+        if (segmentosOcultos?.has(i)) return "";
         if (seg.type === "static") return seg.value;
         return applyTransform(previewData[seg.value] ?? "", seg.transform);
       })
@@ -221,7 +233,8 @@ function resolveComponentText(
 }
 
 function buildComponentGroup({
-  comp, pageLeft, pageTop, isSelected, draggable, image, previewData, capacidad, onSelect, onDragEnd,
+  comp, pageLeft, pageTop, isSelected, draggable, image, previewData, capacidad,
+  ocultoPorRegla, segmentosOcultos, onSelect, onDragEnd,
 }: {
   comp: CenefaComponent;
   pageLeft: number;
@@ -231,6 +244,13 @@ function buildComponentGroup({
   image?: HTMLImageElement;
   previewData?: Record<string, string>;
   capacidad?: Record<string, string> | null;
+  /** Una regla de visibilidad lo saca de ESTA cenefa. Se sigue dibujando —
+   *  como silueta, sin contenido— en vez de desaparecer: si desapareciera no
+   *  habría forma de seleccionarlo para revisar o borrar la regla que lo
+   *  oculta, y el hueco en el diseño no se distinguiría de un error. */
+  ocultoPorRegla?: boolean;
+  /** Índices de segmento que una regla oculta dentro de este cuadro. */
+  segmentosOcultos?: Set<number>;
   /** `conCtrl` = el click traía Ctrl/Cmd apretado (selección múltiple). */
   onSelect: (conCtrl: boolean) => void;
   onDragEnd: (x: number, y: number) => void;
@@ -251,6 +271,25 @@ function buildComponentGroup({
     onSelect(!!evt && (evt.ctrlKey || evt.metaKey));
   });
   group.on("dragend", (e) => onDragEnd(e.target.x(), e.target.y()));
+
+  // Ocultado por una regla: silueta punteada y nada adentro. Es lo que va a
+  // pasar de verdad al generar (el motor le saca el shape al slide), y verlo
+  // acá es todo el punto de que las reglas existan -- hasta el 09/09/2026 el
+  // canvas las ignoraba y agregar una no cambiaba nada en pantalla.
+  if (ocultoPorRegla) {
+    group.add(new Konva.Rect({
+      width: w, height: h, fill: "transparent",
+      stroke: "#f43f5e", strokeWidth: 1, dash: [3, 3], cornerRadius: 3, opacity: 0.55,
+    }));
+    if (h >= 16) {
+      group.add(new Konva.Text({
+        x: 3, y: 2, width: Math.max(0, w - 6), text: "oculto por regla",
+        fontSize: 9, fill: "#f43f5e", opacity: 0.75, ellipsis: true, wrap: "none",
+        fontFamily: "Inter, system-ui, sans-serif",
+      }));
+    }
+    return group;
+  }
 
   if (image) {
     group.add(new Konva.Image({ image, width: w, height: h, cornerRadius: comp.locked ? 0 : 2 }));
@@ -293,7 +332,7 @@ function buildComponentGroup({
     imgInvalid
       ? `⚠ Re-importá el PPTX\n(${comp.image_ext ?? "?"} no soportado)`
       : previewData
-        ? resolveComponentText(comp, previewData, capacidad)
+        ? resolveComponentText(comp, previewData, capacidad, segmentosOcultos)
         : comp.segments?.length
           ? `${comp.name}\n${comp.segments.map((s) => s.type === "static" ? `"${s.value}"` : `{${s.value}}`).join(" + ")}`
           : comp.variable
@@ -418,6 +457,11 @@ interface CanvasProps {
    *  cuadro rellenable se dibuja lleno hasta donde entra en vez de mostrar
    *  el valor del primer producto. */
   capacidad?: Record<string, string> | null;
+  /** Reglas de visibilidad de la plantilla. Solo tienen efecto cuando además
+   *  hay `previewData`: sin datos reales no hay contra qué evaluarlas, y en
+   *  el editor sin datos ocultar cuadros dejaría medio diseño invisible y sin
+   *  forma de seleccionarlo. Sin la prop se usan las de `template.rules`. */
+  rules?: CenefaRule[];
 }
 
 export default function Canvas({
@@ -433,6 +477,7 @@ export default function Canvas({
   slotBands: propSlotBands,
   previewProducts,
   capacidad,
+  rules: propRules,
 }: CanvasProps) {
   const store = useEditorStore();
   const template             = propTemplate ?? store.template;
@@ -477,6 +522,54 @@ export default function Canvas({
     () => buildSiblingMap(template.components, slotBands),
     [template.components, slotBands],
   );
+
+  // Reglas de visibilidad aplicadas al dibujo. Cada banda se evalúa contra SU
+  // producto: en una 3xA4 la cocarda puede corresponder en la primera cenefa y
+  // no en la segunda, y mostrar las tres iguales sería mentir igual que no
+  // aplicar nada.
+  //
+  // Solo con datos reales (`previewData`): en el editor de plantillas no hay
+  // fila contra la cual evaluar, y ocultar cuadros ahí dejaría al diseño con
+  // agujeros que además no se podrían ni seleccionar para sacarles la regla.
+  // En su propio useMemo: sin esto, cuando ni la prop ni el template traen
+  // reglas, el `?? []` fabrica un array nuevo en cada render y el memo de
+  // abajo --y con él la capa de dibujo entera-- se recalcula siempre.
+  const rules = useMemo(
+    () => propRules ?? template.rules ?? [],
+    [propRules, template.rules],
+  );
+  const reglasPorComp = useMemo(() => {
+    const vacio = { ocultos: new Set<string>(), segmentos: new Map<string, Set<number>>() };
+    if (!previewData || rules.length === 0) return vacio;
+    const ocultos = new Set<string>();
+    const segmentos = new Map<string, Set<number>>();
+
+    // Se recorren las BANDAS, no los productos: la banda es la que dice qué
+    // cuadros se evalúan contra qué fila. Al revés, un `previewProducts` más
+    // largo que `slotBands` (o al contrario) hacía que una fila se evaluara
+    // contra el conjunto entero de cuadros y ocultara los de otra cenefa.
+    //
+    // Igual que el motor, un cuadro que no pertenece a ninguna banda no recibe
+    // reglas: en el render de una hoja multi-cenefa esos se dibujan aparte,
+    // con la fila vacía y sin evaluar nada (ver bg_comps en
+    // render_template_to_pptx).
+    const evaluar = (ids: string[], fila: Record<string, string>) => {
+      const deEstaBanda = new Set(ids);
+      for (const id of evaluarCuadrosOcultos(rules, fila)) {
+        if (deEstaBanda.has(id)) ocultos.add(id);
+      }
+      for (const [id, idx] of evaluarSegmentosOcultos(rules, fila)) {
+        if (deEstaBanda.has(id)) segmentos.set(id, idx);
+      }
+    };
+
+    if (slotBands?.length) {
+      slotBands.forEach((ids, i) => evaluar(ids, previewProducts?.[i] ?? previewData));
+    } else {
+      evaluar(template.components.map((c) => c.id), previewData);
+    }
+    return { ocultos, segmentos };
+  }, [rules, previewData, previewProducts, slotBands, template.components]);
 
   const wrapperRef       = useRef<HTMLDivElement>(null);
   const [wrapperWidth, setWrapperWidth] = useState<number | null>(null);
@@ -701,6 +794,8 @@ export default function Canvas({
         image: getImage(comp),
         previewData: compPreviewData,
         capacidad,
+        ocultoPorRegla: reglasPorComp.ocultos.has(comp.id),
+        segmentosOcultos: reglasPorComp.segmentos.get(comp.id),
         onSelect: (conCtrl) => {
           if (!isEditMode) return;
           if (conCtrl && toggleComponentSelection) toggleComponentSelection(comp.id);
@@ -781,7 +876,11 @@ export default function Canvas({
     const soloUnoMarcado = selectedComponentIds.length <= 1;
     transformer.nodes(selectedNode && soloUnoMarcado ? [selectedNode] : []);
     layer.batchDraw();
-  }, [displayComps, selectedComponentId, selectedComponentIds, toggleComponentSelection, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, bandIndexByCompId, siblingMap, template.components, selectComponent, updateComponent, fuentesListas]);
+    // `reglasPorComp` va en las dependencias o el arreglo no sirve para nada:
+    // agregar o borrar una regla cambia ese memo y NO redibujaría la capa, así
+    // que en pantalla seguiría sin pasar nada -- que es justo el problema que
+    // vino a resolver.
+  }, [displayComps, selectedComponentId, selectedComponentIds, toggleComponentSelection, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, bandIndexByCompId, siblingMap, reglasPorComp, template.components, selectComponent, updateComponent, fuentesListas]);
 
   // "Última versión conocida" de template/selectedComponentId/siblingMap —
   // evita closures viejas dentro de los handlers de abajo (registrados una
