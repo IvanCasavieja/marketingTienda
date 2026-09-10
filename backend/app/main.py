@@ -61,7 +61,11 @@ async def lifespan(app: FastAPI):
             return
         from alembic import command
         from alembic.config import Config
-        command.upgrade(Config("alembic.ini"), "head")
+        cfg = Config("alembic.ini")
+        # Que migrations/env.py no reconfigure el logging: este proceso ya
+        # tiene el suyo, y pisarlo dejaba mudo el "Alembic migration failed".
+        cfg.attributes["configure_logger"] = False
+        command.upgrade(cfg, "head")
         logger.info("Alembic migrations completed")
 
     async def _run_migrations():
@@ -84,6 +88,21 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error("recuperacion de jobs huerfanos fallo: %s", e)
 
+        # La purga arranca RECIEN ACA, con la base ya migrada, y no en el cuerpo
+        # del lifespan como el resto de los loops. Es el unico que hace una
+        # pasada apenas arranca (los demas esperan minutos u horas antes de
+        # tocar la base), asi que en un servidor nuevo corria antes que las
+        # migraciones y fallaba con 'relation "cenefa_jobs" does not exist'.
+        # Visto el 10/09/2026 al levantar la plataforma desde cero en Docker:
+        # inofensivo, pero es lo primero que ve IT en el log del primer deploy.
+        if settings.CENEFAS_RETENCION_DIAS > 0:
+            from app.services.cenefas.jobs import run_purga_cenefas_loop
+            tareas_post_migracion.append(asyncio.create_task(run_purga_cenefas_loop()))
+            logger.info("purga_cenefas: loop iniciado (diario, retencion %dd)",
+                        settings.CENEFAS_RETENCION_DIAS)
+
+    # Lo que _run_migrations arranca al terminar, para poder cancelarlo al apagar.
+    tareas_post_migracion: list[asyncio.Task] = []
     if mantenimiento:
         asyncio.create_task(_run_migrations())
 
@@ -123,14 +142,8 @@ async def lifespan(app: FastAPI):
         curaduria_task = asyncio.create_task(run_curaduria_loop())
         logger.info("cenefas_curaduria: loop iniciado (diario)")
 
-    # Retención de archivos de cenefas: el PPTX de una corrida sin verificar
-    # se borra a los N días (el número queda; el de una verificada también).
-    purga_task = None
-    if mantenimiento and settings.CENEFAS_RETENCION_DIAS > 0:
-        from app.services.cenefas.jobs import run_purga_cenefas_loop
-        purga_task = asyncio.create_task(run_purga_cenefas_loop())
-        logger.info("purga_cenefas: loop iniciado (diario, retencion %dd)",
-                    settings.CENEFAS_RETENCION_DIAS)
+    # La retención de archivos de cenefas (purga) NO arranca acá: la lanza
+    # _run_migrations cuando la base ya está migrada. Ver el comentario ahí.
 
     yield
 
@@ -169,10 +182,10 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-    if purga_task:
-        purga_task.cancel()
+    for tarea in tareas_post_migracion:
+        tarea.cancel()
         try:
-            await purga_task
+            await tarea
         except asyncio.CancelledError:
             pass
 
