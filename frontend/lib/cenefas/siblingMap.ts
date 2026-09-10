@@ -39,6 +39,36 @@ export function keyOfComponent(c: CenefaComponent): string {
     const fijo = (c.static_value ?? "").trim();
     if (fijo) return `_fijo_${fijo}`;
   }
+
+  // Formas e imágenes sin variable ni texto: la cocarda roja, el fondo de una
+  // celda, la línea del tachado del precio anterior, un ícono. No tienen
+  // contenido con el que identificarse, y hasta el 09/09/2026 caían todas en
+  // `_id_<id>` -- o sea que NUNCA vinculaban con nada. Medido sobre las 20
+  // plantillas de producción: 33 cuadros quedaban sueltos, y son justo los que
+  // más se quieren mover de a todos (las 6 cocardas de la 6xA4 de Preciazos,
+  // los 3 tachados + 3 "unidad" de la 3xA4 de Rompe Precios). Mover la cocarda
+  // de una cenefa había que repetirlo cenefa por cenefa.
+  //
+  // La identidad es la GEOMETRÍA: tipo + tamaño de la caja. En una hoja
+  // tileada la misma pieza mide exactamente lo mismo en todas las bandas, y
+  // lo que cambia es dónde está -- que es justo lo que `buildSiblingMap`
+  // desempata por posición relativa. Se redondea al MILÍMETRO porque el
+  // importer convierte de EMU y dos celdas clonadas del mismo diseño no salen
+  // idénticas: medido en Preciazos 3xA4, las tres cocardas son 2,62 / 2,62 /
+  // 2,61 cm. Con centésima de cm esas tres quedaban en dos grupos distintos y
+  // no vinculaba ninguna -- el milímetro absorbe la deriva con 10x de margen.
+  //
+  // Que dos piezas distintas midan igual no rompe nada: si no aparecen la
+  // MISMA cantidad de veces en cada banda, `buildSiblingMap` descarta la key
+  // entera antes que emparejar mal (esa garantía ya estaba y sigue valiendo).
+  // Para las imágenes se suma el largo de los datos, que separa dos íconos
+  // distintos del mismo tamaño sin tener que hashear el base64.
+  const b = c.base_bounds;
+  if ((c.type === "shape" || c.type === "image") && b) {
+    const dim = `${b.width.toFixed(1)}x${b.height.toFixed(1)}`;
+    const contenido = c.type === "image" ? `_${(c.image_data ?? "").length}` : "";
+    return `_forma_${c.type}_${dim}${contenido}`;
+  }
   return `_id_${c.id}`;
 }
 
