@@ -237,7 +237,7 @@ BUSCADOR DE PRECIOS EN VIVO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [Buscar precios]({_BASE_URL}/precios) — requiere el permiso `precios.search`.
 
-Busca precios EN VIVO (no guarda una base propia) en 13 cadenas uruguayas al mismo tiempo: supermercados (Disco, Devoto y Géant vía la API de GDU, Ta-Ta, El Dorado), farmacias (FarmaShop, Botiga) y electrodomésticos/electrónica (Fama, Stienda, Black Dog, Cover Company, DIMM, Electrohogar). Los precios de electrodomésticos suelen venir en dólares (U$S) — cada resultado muestra su moneda real, no se convierte automáticamente.
+Busca precios EN VIVO (no guarda una base propia) en 17 cadenas uruguayas al mismo tiempo: supermercados (Disco, Devoto y Géant vía la API de GDU, Ta-Ta, El Dorado), farmacias (FarmaShop, Botiga) y electrodomésticos/electrónica (Fama, Stienda, Black Dog, Cover Company, DIMM, Electrohogar, Pigalle, Zona Tecno, AMV, Estación Hogar). Los precios de electrodomésticos suelen venir en dólares (U$S) — cada resultado muestra su moneda real, no se convierte automáticamente.
 
 Cómo usarlo:
 1. Escribir el nombre del producto (mínimo 2 caracteres) y presionar Enter o el botón "Buscar". También se puede pegar un código de barras: el sistema resuelve el nombre del producto automáticamente antes de buscar.
@@ -310,7 +310,7 @@ Depende del caso de uso:
 - Si solo necesitás salir rápido con el formato estándar: usá "Plantilla clásica" (A4, Pinchos o Cenefas 3xA4).
 
 **Caso 11 — "¿Dónde busco precios de la competencia?"**
-Ir a [Buscar precios]({_BASE_URL}/precios), escribir el nombre del producto (o pegar un código de barras) y presionar Enter. Los resultados de las 13 cadenas soportadas (supermercados, farmacias y electrodomésticos) van apareciendo en vivo a medida que cada una responde. También podés preguntarme el precio de un producto directo acá en el chat y lo busco por vos.
+Ir a [Buscar precios]({_BASE_URL}/precios), escribir el nombre del producto (o pegar un código de barras) y presionar Enter. Los resultados de las 17 cadenas soportadas (supermercados, farmacias y electrodomésticos) van apareciendo en vivo a medida que cada una responde. También podés preguntarme el precio de un producto directo acá en el chat y lo busco por vos.
 
 **Caso 12 — "¿Cómo cargo el pedido de mi local en la Planilla de Redexpres?"**
 Ir a [Planilla de pedidos]({_BASE_URL}/redexpres/planilla), elegir el mes (pestañas arriba), completar las cantidades en la fila de tu local — se guarda solo — y al terminar hacer click en "Confirmar pedido" en esa fila. Si no ves tu local, necesitás que un Superadmin te lo asigne primero.
@@ -326,7 +326,7 @@ TUS HERRAMIENTAS (TOOL CALLING)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Además de responder con lo que sabés del prompt, tenés acceso a estas herramientas — usalas cada vez que la pregunta del usuario las necesite, no esperes a que te las pidan explícitamente:
 
-- **buscar_precio**: buscá el precio en vivo de un producto en las 13 cadenas soportadas. Usala cuando te pregunten el precio de algo o quieran comparar.
+- **buscar_precio**: buscá el precio en vivo de un producto en las 17 cadenas soportadas. Usala cuando te pregunten el precio de algo o quieran comparar.
 - **consultar_estado_cenefa**: consultá el estado (pending/running/done/error) de un trabajo de generación de cenefas por su ID. Usala si mencionan un ID de trabajo o preguntan "¿ya terminó mi cenefa?".
 - **resumen_ultimo_debate**: traé el contenido del último debate de La Triada que generó este usuario, para resumirlo o comentarlo.
 
@@ -384,7 +384,7 @@ _TOOLS = [
     {
         "name": "buscar_precio",
         "description": (
-            "Busca el precio en vivo de un producto en las 13 cadenas uruguayas soportadas "
+            "Busca el precio en vivo de un producto en las 17 cadenas uruguayas soportadas "
             "(supermercados, farmacias y electrodomésticos). Devuelve los resultados más "
             "relevantes con tienda, nombre, precio y moneda."
         ),

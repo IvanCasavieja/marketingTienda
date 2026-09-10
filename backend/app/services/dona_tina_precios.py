@@ -574,7 +574,7 @@ def _stats_por_moneda(items: list[dict]) -> dict[str, dict]:
 
 def _resumen_por_cadena(items: list[dict]) -> str:
     """Rango de precios por cadena — a diferencia de listar cada producto, esto
-    queda acotado a lo sumo a las ~13 cadenas soportadas, sin importar cuántos
+    queda acotado a lo sumo a las ~17 cadenas soportadas, sin importar cuántos
     productos haya en total."""
     agregado: dict[tuple[str, str], list[float]] = {}
     for it in items:

@@ -20,8 +20,17 @@ from app.models import (  # noqa: F401
 
 config = context.config
 
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# Configurar el logging SOLO cuando alembic corre desde la terminal. Adentro
+# del backend (el lifespan de app/main.py llama a command.upgrade al arrancar)
+# el proceso ya tiene su propio logging -- JSON, con sus niveles -- y fileConfig
+# se lo pisaba entero: primero apagaba los loggers existentes, incluido el que
+# escribe "Alembic migration failed", y despues dejaba todo en nivel WARNING,
+# asi que tampoco salia "Alembic migrations completed". Hasta el 10/09/2026 una
+# migracion rota en el servidor no dejaba NINGUNA linea en el log: Alembic
+# deshacia todo, la base quedaba sin tocar y /health seguia respondiendo 200.
+# El backend pide que no se toque el logging con el atributo configure_logger.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Convertir URL async → sync para alembic (usa psycopg2 en vez de asyncpg)
 _db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")

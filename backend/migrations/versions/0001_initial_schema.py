@@ -17,8 +17,18 @@ depends_on = None
 
 def upgrade() -> None:
     # --- Enum ---
+    # Las etiquetas van con los NOMBRES de los miembros del enum de Python
+    # (Platform.META, Platform.GOOGLE_ADS...), no con sus valores en minuscula.
+    # SQLAlchemy, al declarar la columna como Enum(Platform), persiste el NOMBRE
+    # del miembro. Hasta el 10/09/2026 esta migracion creaba el tipo con los
+    # valores, asi que una base creada desde cero quedaba con etiquetas que la
+    # aplicacion nunca usaba: cualquier consulta filtrando por plataforma moria
+    # con 'invalid input value for enum platform: "META"' y el modulo de Medios
+    # (/dashboard y /campaigns) arrancaba roto. Produccion no lo sufria porque su
+    # tipo se creo por otra via, ya en mayusculas -- la migracion 0012 lo dice al
+    # pasar la etiqueta de Google Analytics "a la convencion existente".
     platform_enum = postgresql.ENUM(
-        "meta", "google_ads", "tiktok", "dv360", "sfmc",
+        "META", "GOOGLE_ADS", "TIKTOK", "DV360", "SFMC",
         name="platform",
         create_type=True,
     )
@@ -66,7 +76,7 @@ def upgrade() -> None:
         "platform_connections",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("team_group_id", sa.Integer(), sa.ForeignKey("team_groups.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("platform", sa.Enum("meta", "google_ads", "tiktok", "dv360", "sfmc", name="platform"), nullable=False),
+        sa.Column("platform", postgresql.ENUM("META", "GOOGLE_ADS", "TIKTOK", "DV360", "SFMC", name="platform", create_type=False), nullable=False),
         sa.Column("account_id", sa.String(255), nullable=False),
         sa.Column("account_name", sa.String(255), nullable=True),
         sa.Column("access_token_enc", sa.Text(), nullable=False),
@@ -82,7 +92,7 @@ def upgrade() -> None:
         "campaign_metrics",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("team_group_id", sa.Integer(), sa.ForeignKey("team_groups.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("platform", sa.Enum("meta", "google_ads", "tiktok", "dv360", "sfmc", name="platform"), nullable=False),
+        sa.Column("platform", postgresql.ENUM("META", "GOOGLE_ADS", "TIKTOK", "DV360", "SFMC", name="platform", create_type=False), nullable=False),
         sa.Column("account_id", sa.String(255), nullable=False),
         sa.Column("campaign_id", sa.String(255), nullable=False),
         sa.Column("campaign_name", sa.String(500), nullable=False),

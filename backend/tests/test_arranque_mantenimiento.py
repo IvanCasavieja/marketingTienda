@@ -92,9 +92,44 @@ def test_el_lifespan_gatea_todas_las_tareas():
         "CAMPAIGN_ALERTS_CHECK_INTERVAL_HOURS",
         "COTIZACION_AUTO_UPDATE",
         "CENEFAS_CURADURIA",
-        "CENEFAS_RETENCION_DIAS",
     ):
         assert f"if mantenimiento and settings.{flag}" in fuente, (
             f"{flag} arranca sin consultar el mantenimiento — una PC apuntada a "
             f"produccion volveria a correr esa tarea"
         )
+
+    # La purga es la excepcion: hace una pasada apenas arranca, asi que la lanza
+    # _run_migrations cuando termina, y queda gateada por el mismo
+    # `if mantenimiento` que _run_migrations. Arrancada en el cuerpo del
+    # lifespan, en un servidor nuevo corria antes que las migraciones y fallaba
+    # con 'relation "cenefa_jobs" does not exist' (visto el 10/09/2026).
+    lanzar_purga = "asyncio.create_task(run_purga_cenefas_loop())"
+    assert fuente.count(lanzar_purga) == 1, "la purga se lanza en mas de un lugar, o en ninguno"
+    donde = fuente.index(lanzar_purga)
+    inicio = fuente.index("async def _run_migrations():")
+    fin = fuente.index("if mantenimiento:" + chr(10) + "        asyncio.create_task(_run_migrations())")
+    assert inicio < donde < fin, "la purga tiene que arrancar adentro de _run_migrations"
+    assert fuente.index("recuperar_jobs_huerfanos(arranque)") < donde, (
+        "la purga tiene que arrancar despues de migrar y de recuperar los jobs huerfanos"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Una migracion rota tiene que dejar rastro en el log
+# ---------------------------------------------------------------------------
+
+def test_alembic_no_le_pisa_el_logging_al_backend():
+    """Hasta el 10/09/2026, migrations/env.py llamaba a fileConfig() siempre,
+    tambien cuando lo invocaba el lifespan del backend. Eso apagaba el logger de
+    app.main y dejaba todo en WARNING: una migracion rota no escribia "Alembic
+    migration failed", Alembic deshacia la transaccion entera, y el servidor
+    quedaba con la base vacia respondiendo /health 200. Se descubrio levantando
+    la plataforma desde cero en Docker.
+    """
+    base = os.path.join(os.path.dirname(__file__), "..")
+    with open(os.path.join(base, "migrations", "env.py"), encoding="utf-8") as fh:
+        env = fh.read()
+    with open(os.path.join(base, "app", "main.py"), encoding="utf-8") as fh:
+        main = fh.read()
+    assert 'config.attributes.get("configure_logger", True)' in env
+    assert 'cfg.attributes["configure_logger"] = False' in main

@@ -31,6 +31,23 @@ const csp = [
 ].join("; ");
 
 const nextConfig = {
+  // `output: "standalone"` hace que el build deje en .next/standalone un
+  // servidor autocontenido (con solo las dependencias que realmente se usan),
+  // que es exactamente lo que copia frontend/Dockerfile.
+  //
+  // Va CONDICIONADO a DOCKER_BUILD y no fijo a propósito: en Vercel no hace
+  // falta —construye con su propio pipeline— y no queremos que el deploy de
+  // producción, que se dispara solo en cada push a main, cambie de forma por
+  // una necesidad del contenedor. Sin la variable, este config es idéntico al
+  // que Vercel viene construyendo.
+  //
+  // Sin esto el Dockerfile del frontend copiaba una carpeta que Next nunca
+  // generaba, así que fallaba en el COPY. Estuvo roto desde el commit inicial
+  // (c689f0d, 12/05/2026, donde entró como andamiaje) hasta el 10/09/2026, y
+  // no se notó nunca porque el frontend va a Vercel y ese Dockerfile no lo
+  // corre nadie: un archivo que no se ejecuta no puede fallar.
+  ...(process.env.DOCKER_BUILD ? { output: "standalone" } : {}),
+
   // El editor de cenefas (materiales/cenefas/v2) usa Konva directo; konva
   // soporta opcionalmente node-canvas para renderizar en Node y el bundler
   // intenta resolver ese require("canvas") al armar el bundle de servidor
