@@ -90,7 +90,7 @@ Una vez que tengas VS Code abierto con la carpeta del proyecto, decile a Claude:
 
 ## Resumen de lo que es el proyecto
 
-- **Frontend:** Next.js 14 en `/frontend` — páginas en `app/(dashboard)/`
+- **Frontend:** Next.js 16 en `/frontend` — páginas en `app/(dashboard)/`
 - **Backend:** FastAPI en `/backend` — rutas en `app/api/routes/`, servicios en `app/services/`
 - **Producción:** Frontend en Vercel (`marketing-tienda.vercel.app`), Backend en Render
 - **Para deployar cambios:** `git add -A && git commit -m "..." && git push origin main` — Vercel y Render se actualizan solos
