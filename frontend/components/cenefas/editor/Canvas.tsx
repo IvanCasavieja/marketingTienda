@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Konva from "konva";
 import { useEditorStore } from "@/store/editor";
-import type { CenefaComponent, CenefaRule, CenefaTemplate } from "@/types/cenefas";
+import type { CenefaComponent, CenefaRule, CenefaTemplate, TextSegment } from "@/types/cenefas";
 import { buildSiblingMap } from "@/lib/cenefas/siblingMap";
 // Con alias: `segmentosOcultos` es además el nombre de la prop que recibe
 // buildComponentGroup más abajo, y ahí la prop tapa a la función.
@@ -12,6 +12,8 @@ import {
 } from "@/lib/cenefas/reglas";
 import { resolverFuente } from "@/lib/cenefas/fuentes";
 import { mascaraNegrita, tieneMarca } from "@/lib/cenefas/smartBold";
+import { tramosConEstiloPropio } from "@/lib/cenefas/textoEnriquecido";
+import { nodoTextoEnriquecido } from "@/lib/cenefas/dibujarTextoEnriquecido";
 
 // ---------------------------------------------------------------------------
 // Constantes de escala y dimensiones de formatos
@@ -200,6 +202,24 @@ function applyTransform(value: string, transform?: string): string {
 // igual, si no un cuadro editado a mano en el panel queda desalineado del
 // resto aunque el arrastre con el mouse sí lo hubiera vinculado.
 
+// Texto de UN segmento con datos reales. Lo usan el texto del cuadro entero y
+// el dibujo pedazo por pedazo (ver textoEnriquecido.ts), que tienen que
+// resolverlo exactamente igual.
+function textoDeSegmento(
+  seg: TextSegment,
+  indice: number,
+  previewData: Record<string, string>,
+  segmentosOcultos?: Set<number>,
+): string {
+  // Un segmento ocultado por una regla se dibuja VACÍO, no se saca:
+  // mismo criterio que `apply_visibility` en el backend, que lo
+  // reemplaza por un estático vacío para que el resto del motor lo vea
+  // como "sin dato" y no se entere de que hubo una regla.
+  if (segmentosOcultos?.has(indice)) return "";
+  if (seg.type === "static") return seg.value;
+  return applyTransform(previewData[seg.value] ?? "", seg.transform);
+}
+
 // Resuelve el texto a mostrar cuando hay datos reales (previewData),
 // aplicando el mismo transform por segmento/componente que usa el render
 // final (_populate_text_frame en component_renderer.py).
@@ -217,15 +237,7 @@ function resolveComponentText(
   if (relleno) return relleno;
   if (comp.segments?.length) {
     return comp.segments
-      .map((seg, i) => {
-        // Un segmento ocultado por una regla se dibuja VACÍO, no se saca:
-        // mismo criterio que `apply_visibility` en el backend, que lo
-        // reemplaza por un estático vacío para que el resto del motor lo vea
-        // como "sin dato" y no se entere de que hubo una regla.
-        if (segmentosOcultos?.has(i)) return "";
-        if (seg.type === "static") return seg.value;
-        return applyTransform(previewData[seg.value] ?? "", seg.transform);
-      })
+      .map((seg, i) => textoDeSegmento(seg, i, previewData, segmentosOcultos))
       .join("");
   }
   if (comp.variable) return applyTransform(previewData[comp.variable] ?? comp.static_value ?? "", comp.transform);
@@ -342,6 +354,28 @@ function buildComponentGroup({
               : comp.name;
 
   if (fiel) {
+    // Cuadro compuesto cuyos pedazos NO comparten el estilo de la caja: el
+    // "$" y los centavos más chicos y arriba (Rompe Precios A4: "$ 250 ,85"
+    // se veía todo a 130 pt), una parte en negrita, o un tamaño puesto a mano
+    // en un segmento. El PPTX arma un run por segmento con su propio estilo y
+    // Konva.Text no admite estilos mezclados: se dibuja pedazo por pedazo.
+    // Todos los demás cuadros siguen por el Konva.Text de abajo, sin cambios.
+    // La vista de capacidad tampoco pasa por acá: ahí el cuadro es una tira
+    // de "X" de un solo estilo.
+    const datos = previewData;
+    const tramos = datos && comp.segments?.length && !capacidad?.[comp.id]
+      ? tramosConEstiloPropio(comp, (seg, i) => textoDeSegmento(seg, i, datos, segmentosOcultos))
+      : null;
+    if (tramos) {
+      group.add(nodoTextoEnriquecido(tramos, {
+        anchoPx: w,
+        align: comp.style?.align ?? "center",
+        lineHeightPt: comp.style?.line_height_pt,
+        ptToPx,
+      }));
+      return group;
+    }
+
     // El cuerpo viaja en puntos; el canvas trabaja en px a PX_PER_CM.
     const pt = comp.style?.font_size ?? 12;
     const fontSizePx = ptToPx(pt);

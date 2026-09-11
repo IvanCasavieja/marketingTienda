@@ -36,6 +36,12 @@ export interface ComponentStyle {
    * precio). Ver _populate_text_frame en component_renderer.py.
    */
   line_height_pt?: number;
+  /**
+   * Voladita (superíndice) como la guarda PowerPoint: 30000 = 30% del cuerpo
+   * arriba de la línea de base. Es lo que deja el "$" y los centavos arriba
+   * del número grande. La lee el importer; ver _apply_run_style.
+   */
+  baseline?: number;
 }
 
 export interface TextSegment {
@@ -47,6 +53,9 @@ export interface TextSegment {
     font_bold?: boolean;
     strikethrough?: boolean;
     color?: string;
+    font_family?: string;
+    /** Ver ComponentStyle.baseline. */
+    baseline?: number;
   };
   /**
    * El tamaño de ESTE segmento lo puso una persona a mano en el panel. Manda en
