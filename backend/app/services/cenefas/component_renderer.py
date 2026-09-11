@@ -269,8 +269,17 @@ def _segmentos_medibles(comp: dict, product: dict, escala: float = 1.0) -> list[
     return salida
 
 
+def _tiene_segmento_a_mano(comp: dict) -> bool:
+    """¿Algún segmento del cuadro tiene su tamaño puesto a mano en el panel?"""
+    return any(
+        s.get("_manual_font_override") and (s.get("style") or {}).get("font_size")
+        for s in comp.get("segments") or []
+    )
+
+
 def _piezas_con_tamano_manual(comp: dict, product: dict) -> list[tuple[str, float]]:
-    """(texto, tamaño) de cada pedazo de un cuadro con tamaño puesto a MANO.
+    """(texto, tamaño) de cada pedazo de un cuadro con un tamaño puesto a MANO,
+    en la caja o en alguno de sus segmentos.
 
     Al dibujar (_populate_text_frame), con tamaño manual en la caja cada
     segmento toma el cuerpo de la caja -- salvo el segmento que tiene su PROPIO
@@ -290,7 +299,14 @@ def _piezas_con_tamano_manual(comp: dict, product: dict) -> list[tuple[str, floa
         if not texto:
             continue
         propio = (seg.get("style") or {}).get("font_size")
-        salida.append((texto, propio if (seg.get("_manual_font_override") and propio) else fs))
+        if seg.get("_manual_font_override") and propio:
+            tam = propio
+        elif comp.get("_manual_font_override"):
+            tam = fs
+        else:
+            # Caja sin tamaño manual: cada segmento se dibuja con el suyo.
+            tam = propio or fs
+        salida.append((texto, tam))
     return salida
 
 
@@ -1053,7 +1069,14 @@ def _fit_text_to_box(
             base_por_id[id(c)] = base_font_size
             continue
 
-        if c.get("_manual_font_override"):
+        if c.get("_manual_font_override") or _tiene_segmento_a_mano(c):
+            # Un segmento con tamaño puesto a mano cuenta igual que la caja
+            # (11/09/2026). Sin esto, con la caja sin tamaño manual el cuadro
+            # iba por el achique automático, que mide contra los vecinos y el
+            # alto: en Rompe Precios Congelados A4 el "$" a 102 y el número a
+            # 160 salieron al mínimo (56 y 88). Lo puesto a mano solo baja si
+            # no entra en SU caja.
+            #
             # La persona escribió este tamaño a mano en el panel de
             # propiedades -- es el TECHO para este cuadro, nunca se agranda
             # por encima de eso. Pero el tamaño se fijó mirando UN producto
@@ -1140,10 +1163,7 @@ def _fit_text_to_box(
             # 11/09/2026). Solo para precios (sin espacios): una descripción
             # hace word-wrap y la suma de anchos en una línea no la representa;
             # esa sigue midiéndose como antes.
-            hay_segmento_a_mano = any(
-                s.get("_manual_font_override") and (s.get("style") or {}).get("font_size")
-                for s in c.get("segments") or []
-            )
+            hay_segmento_a_mano = _tiene_segmento_a_mano(c)
             piezas_manual = _piezas_con_tamano_manual(c, product) if hay_segmento_a_mano else []
             if piezas_manual and not es_texto_con_espacios and ancho_propio and base_font_size:
                 escala = 1.0
@@ -1237,7 +1257,10 @@ def _fit_text_to_box(
         # el propio entero (precioBanco), que nadie movió, podía necesitar
         # una escala más chica por motivos suyos (ej. sus vecinos cambiaron
         # de lugar) y esa escala ajena se le imponía igual al decimal editado.
-        auto = [c for c in miembros if not c.get("_manual_font_override")]
+        # Mismo criterio para un cuadro con un SEGMENTO puesto a mano
+        # (11/09/2026): su tamaño no se iguala con el del resto de la fila.
+        auto = [c for c in miembros
+                if not (c.get("_manual_font_override") or _tiene_segmento_a_mano(c))]
         if not auto:
             continue
         escalas = []
@@ -1753,6 +1776,20 @@ def _a_coordenadas_internas(shape, x_emu, y_emu, w_emu, h_emu):
     return x_emu, y_emu, w_emu, h_emu
 
 
+def _escribir_xfrm(elemento, x_emu, y_emu, w_emu, h_emu) -> None:
+    """Escribe posición y tamaño en el <a:xfrm> de un shape recién creado."""
+    xfrm = elemento.find(".//" + qn("a:xfrm"))
+    if xfrm is None:
+        return
+    off, ext = xfrm.find(qn("a:off")), xfrm.find(qn("a:ext"))
+    if off is not None:
+        off.set("x", str(int(round(x_emu))))
+        off.set("y", str(int(round(y_emu))))
+    if ext is not None:
+        ext.set("cx", str(max(1, int(round(w_emu)))))
+        ext.set("cy", str(max(1, int(round(h_emu)))))
+
+
 def _place_component(slide, comp: dict, value: str, shape_map: dict[int, object]) -> None:
     """Coloca un componente en el slide. Si viene de una plantilla con
     diseño original preservado y matchea un shape real del archivo fuente
@@ -1766,6 +1803,7 @@ def _place_component(slide, comp: dict, value: str, shape_map: dict[int, object]
 
     if shape is not None:
         bounds = comp["computed_bounds"]
+        interna = None
         try:
             # `computed_bounds` está SIEMPRE en coordenadas de hoja. Si el
             # shape vive adentro de un grupo hay que pasarlo a las internas
@@ -1780,6 +1818,7 @@ def _place_component(slide, comp: dict, value: str, shape_map: dict[int, object]
             shape.top    = int(round(y))
             shape.width  = max(1, int(round(w)))
             shape.height = max(1, int(round(h)))
+            interna = (x, y, w, h)
         except Exception:
             pass
 
@@ -1810,16 +1849,30 @@ def _place_component(slide, comp: dict, value: str, shape_map: dict[int, object]
                 # que traen el arte como imagen DE LA HOJA. Las de Rompe del
                 # Finde no se veían afectadas porque ahí el arte está en el
                 # master, que se dibuja antes que cualquier shape del slide.
+                #
+                # add_picture agrega SIEMPRE al final de la HOJA, no del grupo
+                # donde vivía la imagen. Hasta el 11/09/2026 se buscaba lo
+                # agregado al final del padre: con una imagen dentro de un
+                # grupo el padre no crecía, la imagen nueva quedaba suelta
+                # arriba de todo y tapaba lo que el diseño pone encima (caso
+                # real: el fondo rojo de Club Card de Rompe Precios Congelados
+                # A4 tapando el precio, el decimal y "unidad"). Ahora se toma
+                # del final de la hoja, se devuelve a su lugar en el padre y, si
+                # el padre es un grupo, se le escribe la posición en las
+                # coordenadas del grupo.
                 padre = shape._element.getparent()
                 if padre is not None:
                     indice = list(padre).index(shape._element)
-                    antes = len(padre)
+                    raiz = slide.shapes._spTree
                     padre.remove(shape._element)
+                    antes = len(raiz)
                     add_image_from_data(slide, comp)
-                    if len(padre) >= antes:          # se agregó algo
-                        nuevo = list(padre)[-1]
-                        padre.remove(nuevo)
+                    if len(raiz) > antes:            # se agregó algo al final de la hoja
+                        nuevo = list(raiz)[-1]
+                        raiz.remove(nuevo)
                         padre.insert(indice, nuevo)
+                        if padre.tag == qn("p:grpSp") and interna is not None:
+                            _escribir_xfrm(nuevo, *interna)
             return
         return
 
