@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cenefasV2Api } from "@/lib/api";
 import type { CenefaComponent, CenefaJob, CenefaRule, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
-import { acumularOverride, afectaAlArchivo } from "@/lib/cenefas/overrides";
+import { acumularOverride, afectaAlArchivo, overrideEliminado, sacarCuadros } from "@/lib/cenefas/overrides";
 import { alternarSeleccion, seleccionUnica, type Seleccion } from "@/lib/cenefas/seleccion";
 import { ArrowLeft, Download, Loader2, RefreshCw, Save, X } from "lucide-react";
 import { toast } from "sonner";
@@ -107,6 +107,21 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
     if (!afectaAlArchivo(updates)) return;
     const previo = dirtyOverrides.current[id] ?? { id };
     dirtyOverrides.current[id] = acumularOverride(previo, updates);
+  }
+
+  // Eliminar cuadros revisando esta cenefa: mismo criterio que LotePreviewStep
+  // (ver sacarCuadros). `template` queda sin ellos, así que "Guardar en la
+  // plantilla" también los saca de ahí.
+  function handleDeleteComponents(ids: string[]) {
+    if (!template || !ids.length) return;
+    const { def: nuevo, liberados, reglasCambiaron } = sacarCuadros(template, ids);
+    setTemplate(nuevo);
+    for (const id of ids) dirtyOverrides.current[id] = overrideEliminado(id);
+    for (const id of liberados) {
+      dirtyOverrides.current[id] = acumularOverride(dirtyOverrides.current[id] ?? { id }, { vinculado_a: null });
+    }
+    if (reglasCambiaron) setReglasEditadas(nuevo.rules);
+    setSeleccion({ ids: [], primary: null });
   }
 
   // Agregar/borrar una regla de visibilidad revisando ESTA cenefa. Se refleja
@@ -324,6 +339,7 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
                 template={template}
                 selectedComponentId={selectedComponentId}
                 updateComponent={handleUpdateComponent}
+                deleteComponents={handleDeleteComponents}
                 addRule={handleAddRule}
                 deleteRule={handleDeleteRule}
                 slotBands={job.slot_bands}

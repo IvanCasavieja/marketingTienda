@@ -1,4 +1,4 @@
-import type { CenefaComponent, ComponentOverride } from "@/types/cenefas";
+import type { CenefaComponent, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
 
 // ---------------------------------------------------------------------------
 // Acumulación de lo ajustado en un cuadro mientras se revisa una cenefa.
@@ -18,6 +18,9 @@ import type { CenefaComponent, ComponentOverride } from "@/types/cenefas";
  * Todo lo que un override puede llevar. Solo se usa para `afectaAlArchivo`:
  * el copiado va campo por campo en `acumularOverride`, para que el compilador
  * pueda verificarlo.
+ *
+ * `eliminado` no está: no es un campo del cuadro sino su baja, y viaja aparte
+ * (ver `overrideEliminado`).
  */
 const CAMPOS_DEL_OVERRIDE = [
   "base_bounds", "style", "segments",
@@ -75,4 +78,51 @@ export function acumularOverride(
  */
 export function afectaAlArchivo(updates: Partial<CenefaComponent>): boolean {
   return CAMPOS_DEL_OVERRIDE.some((campo) => campo in updates);
+}
+
+/**
+ * Saca cuadros de la plantilla que se está revisando (botón "Eliminar" del
+ * panel en el preview). Compartido por PreviewStep y LotePreviewStep.
+ *
+ * Además de sacarlos de la lista, anota su forma del PPTX fuente en
+ * `formas_eliminadas`: el render parte de ese archivo, así que sin anotarla la
+ * forma se seguiría imprimiendo, y "Guardar en la plantilla" la traería de
+ * vuelta en la próxima corrida. También suelta las relaciones (`vinculado_a`)
+ * que apuntaban a ellos y borra sus reglas. Es el espejo de lo que hace
+ * aplicar_overrides en backend/app/services/cenefas/jobs.py con el override
+ * `eliminado`.
+ *
+ * `liberados` son los cuadros que quedaron sin relación: su cambio también
+ * tiene que viajar como override.
+ */
+export function sacarCuadros(
+  def: CenefaTemplate,
+  ids: string[],
+): { def: CenefaTemplate; liberados: string[]; reglasCambiaron: boolean } {
+  const borrar = new Set(ids);
+  const formas = [...(def.formas_eliminadas ?? [])];
+  for (const c of def.components) {
+    const forma = c._source_shape_id;
+    if (borrar.has(c.id) && forma != null && !formas.includes(forma)) formas.push(forma);
+  }
+  const liberados: string[] = [];
+  const components = def.components
+    .filter((c) => !borrar.has(c.id))
+    .map((c) => {
+      if (!c.vinculado_a || !borrar.has(c.vinculado_a)) return c;
+      liberados.push(c.id);
+      return { ...c, vinculado_a: null };
+    });
+  const reglas = def.rules ?? [];
+  const rules = reglas.filter((r) => !borrar.has(r.target_component_id));
+  return {
+    def: { ...def, components, rules, formas_eliminadas: formas },
+    liberados,
+    reglasCambiaron: rules.length !== reglas.length,
+  };
+}
+
+/** El override que le avisa al backend que el cuadro se eliminó (ver `sacarCuadros`). */
+export function overrideEliminado(id: string): ComponentOverride {
+  return { id, eliminado: true };
 }

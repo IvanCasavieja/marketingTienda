@@ -28,11 +28,11 @@ interface PropertiesPanelProps {
    * -- pedido explícito de Ivan: "todo se debería hacer en esta vista", sin
    * un editor aparte que nadie encuentra.
    *
-   * `deleteComponent` queda afuera cuando no viene: borrar un componente ahí
-   * no tiene dónde guardarse (ComponentOverride, lo que mandan las pantallas
-   * de preview al confirmar, no tiene "eliminado") -- mostrar el control
-   * igual sería una acción que no hace nada. Para no dibujar un cuadro está
-   * la regla de visibilidad, que sí viaja.
+   * `deleteComponents` lo pasan las dos pantallas de preview desde el
+   * 11/09/2026 (pedido de Ivan: poder borrar ahí un cuadro que sobra). Viaja
+   * como override `eliminado` y el backend saca también la forma del PPTX
+   * fuente (ver sacarCuadros en lib/cenefas/overrides.ts). Donde no viene, el
+   * botón no aparece.
    *
    * `addRule`/`deleteRule` SÍ los pasan las dos pantallas de preview desde el
    * 09/09/2026. Antes no, con el argumento de que las reglas no tenían dónde
@@ -45,7 +45,7 @@ interface PropertiesPanelProps {
   template?: CenefaTemplate;
   selectedComponentId?: string | null;
   updateComponent?: (id: string, updates: Partial<CenefaComponent>) => void;
-  deleteComponent?: (id: string) => void;
+  deleteComponents?: (ids: string[]) => void;
   addRule?: (rule: CenefaRule) => void;
   deleteRule?: (id: string) => void;
   /** Bandas de la plantilla activa, para vincular la edición numérica de
@@ -66,7 +66,7 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
   const selectedComponentId =
     props.selectedComponentId !== undefined ? props.selectedComponentId : store.selectedComponentId;
   const updateComponent = props.updateComponent ?? store.updateComponent;
-  const deleteComponent = props.deleteComponent;
+  const deleteComponents = props.deleteComponents;
   const addRule = props.addRule;
   const deleteRule = props.deleteRule;
   const slotBands = props.slotBands !== undefined ? props.slotBands : store.slotBands;
@@ -78,6 +78,9 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
 
   const comp = template.components.find((c) => c.id === selectedComponentId) ?? null;
   const [showRuleForm, setShowRuleForm] = useState(false);
+  // Id del cuadro con el "¿Eliminar?" abierto. Por id y no un booleano: al
+  // elegir otro cuadro la confirmación no queda colgada sobre el nuevo.
+  const [borrandoId, setBorrandoId] = useState<string | null>(null);
 
   // Candidatos a ser la pareja de un cuadro fijo: los que SI imprimen una
   // variable. Un cuadro "fijo" es el que no imprime ninguna (su texto es del
@@ -255,6 +258,12 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
     }
   }
 
+  // Mismo criterio que setStyle/setSegments: en una hoja de varias cenefas se
+  // elimina también el mismo cuadro de las otras bandas (menos los bloqueados).
+  const hermanosBorrables = (siblingMap.get(comp.id) ?? []).filter(
+    (sid) => !template.components.find((c) => c.id === sid)?.locked,
+  );
+
   return (
     <div className="flex-1 overflow-y-auto min-h-0">
       {/* Header del componente */}
@@ -279,17 +288,43 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
           >
             {comp.locked ? <Lock size={14} /> : <Unlock size={14} />}
           </button>
-          {deleteComponent && (
+          {deleteComponents && borrandoId !== comp.id && (
             <button
-              onClick={() => deleteComponent(comp.id)}
+              onClick={() => setBorrandoId(comp.id)}
               className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-              title="Eliminar componente"
+              title="Eliminar cuadro"
             >
               <Trash2 size={14} />
             </button>
           )}
         </div>
       </div>
+      {deleteComponents && borrandoId === comp.id && (
+        <div className="mx-4 mt-3 p-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 space-y-2">
+          <p className="text-xs text-red-700 dark:text-red-300">
+            ¿Eliminar este cuadro? No va a salir en el archivo.
+            {hermanosBorrables.length > 0 &&
+              ` También se elimina de las otras ${hermanosBorrables.length} cenefas de la hoja.`}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                deleteComponents([comp.id, ...hermanosBorrables]);
+                setBorrandoId(null);
+              }}
+              className="text-xs font-semibold text-white bg-red-600 hover:bg-red-700 px-3 py-1 rounded"
+            >
+              Sí, eliminar
+            </button>
+            <button
+              onClick={() => setBorrandoId(null)}
+              className="text-xs text-slate-600 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="p-4 space-y-5">
         {/* === TEXTO: sección unificada de contenido con modo simple / compuesto === */}

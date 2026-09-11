@@ -1624,6 +1624,34 @@ def _shape_id_map(shapes) -> dict[int, object]:
     return result
 
 
+def _sacar_formas_eliminadas(slide, formas_eliminadas, components: list[dict]) -> None:
+    """Saca del slide base las formas del PPTX fuente de los cuadros eliminados.
+
+    El render parte del PPTX fuente: una forma que ningún cuadro reescribe
+    sigue impresa tal cual vino del diseño, así que sacar el cuadro de la
+    lista no alcanza para borrarlo (caso real, 11/09/2026: un "9" blanco
+    olvidado en el diseño de Rompe Precios Congelados, que tapaba al cuadro de
+    "PRECIO REGULAR" en el preview). Se hace sobre el slide base antes de
+    duplicarlo, así ninguna hoja lo trae.
+
+    Una forma que todavía usa otro cuadro no se toca: el PPTX puede traer dos
+    shapes con el mismo id (ver el comentario de `oculto` en _render_slide).
+    """
+    if not formas_eliminadas:
+        return
+    en_uso = {c.get("_source_shape_id") for c in components if c.get("_source_shape_id") is not None}
+    mapa = _shape_id_map(slide.shapes)
+    for forma in formas_eliminadas:
+        if forma in en_uso:
+            continue
+        shape = mapa.get(forma)
+        if shape is None:
+            continue
+        padre = shape._element.getparent()
+        if padre is not None:
+            padre.remove(shape._element)
+
+
 def _duplicate_slide(prs, source_slide):
     """Clona un slide completo (layout, shapes, relaciones de imagen y fondo
     propio si tiene) — python-pptx no trae esto de fábrica. Hace falta para
@@ -2515,6 +2543,10 @@ def render_template_to_pptx(
         preserve_source = prs is not None
 
     if preserve_source:
+        # Cuadros eliminados (en el preview o guardados así en la plantilla):
+        # su forma del PPTX fuente sale de la hoja base ANTES de copiarla.
+        _sacar_formas_eliminadas(prs.slides[0], template_def.get("formas_eliminadas"), components)
+
         # El fondo extraído del MASTER (pptx_importer.py, name="fondo",
         # _source_shape_id=None a propósito) no tiene un shape real en el
         # slide para mutar — cualquier slide que comparta layout/master ya lo

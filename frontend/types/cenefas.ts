@@ -103,6 +103,13 @@ export interface CenefaComponent {
    * de al lado en la 6xA4).
    */
   vinculado_a?: string | null;
+  /**
+   * Id de la forma del PPTX fuente que este cuadro reescribe al generar. Lo
+   * pone el importer. Hace falta para eliminar el cuadro de verdad: el render
+   * parte del PPTX fuente, así que la forma se tiene que anotar en
+   * `CenefaTemplate.formas_eliminadas` o seguiría impresa.
+   */
+  _source_shape_id?: number | null;
 }
 
 /** Override efímero de UN componente al confirmar un job (POST
@@ -137,6 +144,8 @@ export interface ComponentOverride {
   vinculado_a?: string | null;
   image_data?: string | null;
   image_ext?: string | null;
+  /** El cuadro se eliminó revisando la cenefa (ver sacarCuadros en lib/cenefas/overrides.ts). */
+  eliminado?: boolean;
 }
 
 export type RuleOperator =
@@ -206,6 +215,12 @@ export interface CenefaTemplate {
   variables: CenefaVariable[];
   components: CenefaComponent[];
   rules: CenefaRule[];
+  /**
+   * Formas del PPTX fuente (por `_source_shape_id`) de cuadros eliminados. El
+   * render las saca de la hoja antes de copiarla; sin esto la forma original
+   * seguiría impresa aunque el cuadro ya no esté en `components`.
+   */
+  formas_eliminadas?: number[];
   /** Solo presente en la respuesta de POST /import-pptx. */
   import_warnings?: CenefaImportWarning[];
 }

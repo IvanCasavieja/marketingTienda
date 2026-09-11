@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { cenefasV2Api } from "@/lib/api";
 import { alternarSeleccion, seleccionUnica, type Seleccion } from "@/lib/cenefas/seleccion";
-import { acumularOverride, afectaAlArchivo } from "@/lib/cenefas/overrides";
+import { acumularOverride, afectaAlArchivo, overrideEliminado, sacarCuadros } from "@/lib/cenefas/overrides";
 import type { CenefaComponent, CenefaLote, CenefaLoteItem, CenefaRule, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
 import Canvas from "@/components/cenefas/editor/Canvas";
 import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
@@ -167,6 +167,26 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
       ...overridesPorJob.current[actualId],
       [id]: acumularOverride(previo, updates),
     };
+  }
+
+  // Eliminar cuadros revisando ESTA cenefa (botón del panel). Desaparecen del
+  // canvas al instante, viajan al archivo como override `eliminado` y, si la
+  // persona elige "Guardar en la plantilla", la plantilla queda sin ellos
+  // (ver sacarCuadros).
+  function handleDeleteComponents(ids: string[]) {
+    if (!actualId || !detalle?.template_def || !ids.length) return;
+    const { def: nuevoDef, liberados, reglasCambiaron } = sacarCuadros(detalle.template_def, ids);
+    setDetalle({ ...detalle, template_def: nuevoDef });
+    if (actual?.template_id) {
+      templatesEditados.current.set(actual.template_id, nuevoDef);
+      setCantPlantillasEditadas(templatesEditados.current.size);
+    }
+    const porComp = { ...overridesPorJob.current[actualId] };
+    for (const id of ids) porComp[id] = overrideEliminado(id);
+    for (const id of liberados) porComp[id] = acumularOverride(porComp[id] ?? { id }, { vinculado_a: null });
+    overridesPorJob.current[actualId] = porComp;
+    if (reglasCambiaron) rulesPorJob.current[actualId] = nuevoDef.rules;
+    setSeleccion({ ids: [], primary: null });
   }
 
   // Agregar/borrar una regla de visibilidad revisando ESTA cenefa puntual
@@ -638,6 +658,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
                         template={detalle.template_def}
                         selectedComponentId={selectedComponentId}
                         updateComponent={handleUpdateComponent}
+                        deleteComponents={handleDeleteComponents}
                         addRule={handleAddRule}
                         deleteRule={handleDeleteRule}
                         slotBands={detalle.slot_bands}

@@ -326,8 +326,18 @@ def aplicar_overrides(template_def: dict, position_overrides: list[dict]) -> dic
     en el archivo: el template_def del job es una foto tomada al armar el
     preview, y nadie la actualizaba. La persona veía el cambio, apretaba
     Generar y bajaba el PPTX con el valor viejo, sin ningún aviso.
+
+    Un override con `eliminado: true` saca el cuadro (11/09/2026, pedido de
+    Ivan: poder borrar desde el preview un cuadro que sobra, como un "9"
+    blanco olvidado en el diseño). No alcanza con sacarlo de la lista: el
+    render parte del PPTX fuente y la forma original seguiría impresa. Por eso
+    su `_source_shape_id` se anota en `formas_eliminadas`, y el render saca
+    esas formas de la hoja base antes de copiarla (ver
+    _sacar_formas_eliminadas en component_renderer.py). También se sueltan las
+    relaciones (`vinculado_a`) y las reglas que apuntaban a ese cuadro.
     """
     overrides_by_id = {o["id"]: o for o in position_overrides if o.get("id")}
+    eliminados = {o["id"] for o in position_overrides if o.get("id") and o.get("eliminado")}
 
     def _con_override(c: dict) -> dict:
         ov = overrides_by_id.get(c["id"])
@@ -357,9 +367,30 @@ def aplicar_overrides(template_def: dict, position_overrides: list[dict]) -> dic
             nuevo["segments"] = ov["segments"] or None
         return nuevo
 
+    if not eliminados:
+        return {
+            **template_def,
+            "components": [_con_override(c) for c in template_def.get("components", [])],
+        }
+
+    formas = list(template_def.get("formas_eliminadas") or [])
+    componentes = []
+    for c in template_def.get("components", []):
+        if c.get("id") in eliminados:
+            forma = c.get("_source_shape_id")
+            if forma is not None and forma not in formas:
+                formas.append(forma)
+            continue
+        nuevo = _con_override(c)
+        if nuevo.get("vinculado_a") in eliminados:
+            nuevo = {**nuevo, "vinculado_a": None}
+        componentes.append(nuevo)
     return {
         **template_def,
-        "components": [_con_override(c) for c in template_def.get("components", [])],
+        "components": componentes,
+        "rules": [r for r in template_def.get("rules") or []
+                  if r.get("target_component_id") not in eliminados],
+        "formas_eliminadas": formas,
     }
 
 

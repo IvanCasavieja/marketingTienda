@@ -148,3 +148,43 @@ def test_no_muta_el_template_original():
         "id": "precio", "base_bounds": {"x": 99.0, "y": 2.0, "width": 5.0, "height": 2.0},
     }])
     assert _comp(TEMPLATE, "precio")["base_bounds"]["x"] == antes
+
+
+# ---------------------------------------------------------------------------
+# Eliminar un cuadro desde el preview (11/09/2026)
+# ---------------------------------------------------------------------------
+
+def test_eliminar_saca_el_cuadro_y_anota_su_forma():
+    salida = aplicar_overrides(TEMPLATE, [{"id": "precio", "eliminado": True}])
+    assert [c["id"] for c in salida["components"]] == ["cocarda"]
+    # Sin anotar la forma, el render la seguiría imprimiendo desde el PPTX fuente.
+    assert salida["formas_eliminadas"] == [7]
+
+
+def test_eliminar_suelta_relaciones_y_reglas_de_ese_cuadro():
+    plantilla = {
+        **TEMPLATE,
+        "components": [
+            TEMPLATE["components"][0],
+            {**TEMPLATE["components"][1], "vinculado_a": "precio"},
+        ],
+        "rules": [
+            {"id": "r1", "target_component_id": "precio", "conditions": []},
+            {"id": "r2", "target_component_id": "cocarda", "conditions": []},
+        ],
+    }
+    salida = aplicar_overrides(plantilla, [{"id": "precio", "eliminado": True}])
+    assert _comp(salida, "cocarda")["vinculado_a"] is None
+    assert [r["id"] for r in salida["rules"]] == ["r2"]
+
+
+def test_eliminar_un_cuadro_sin_forma_de_origen_no_rompe():
+    salida = aplicar_overrides(TEMPLATE, [{"id": "cocarda", "eliminado": True}])
+    assert [c["id"] for c in salida["components"]] == ["precio"]
+    assert salida["formas_eliminadas"] == []
+
+
+def test_eliminar_no_muta_el_template_original():
+    aplicar_overrides(TEMPLATE, [{"id": "precio", "eliminado": True}])
+    assert len(TEMPLATE["components"]) == 2
+    assert "formas_eliminadas" not in TEMPLATE
