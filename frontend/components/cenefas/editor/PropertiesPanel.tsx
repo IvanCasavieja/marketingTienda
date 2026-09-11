@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent, CenefaRule, CenefaTemplate, CenefaVariable, TextSegment, TextTransform } from "@/types/cenefas";
-import { Trash2, Lock, Unlock, Plus, GripVertical, Search } from "lucide-react";
+import { Trash2, Lock, Unlock, Plus, GripVertical, Search, ArrowDown, ArrowUp } from "lucide-react";
 import { RuleChip, RuleForm } from "./RulesPanel";
 import { buildSiblingMap } from "@/lib/cenefas/siblingMap";
 import { resolverFuente } from "@/lib/cenefas/fuentes";
@@ -845,6 +845,25 @@ function SegmentsEditor({
     );
   }
 
+  // Subir o bajar ESTE segmento dentro del renglón: es el "desplazamiento" de
+  // PowerPoint, en milésimas de porcentaje del tamaño del segmento (30 % =
+  // 30000, igual que lo guarda el PPTX y lo lee el importer). El 0 también se
+  // guarda: si la caja trae el pedazo subido, un 0 explícito es lo que lo baja
+  // a la línea. Vaciar el campo vuelve a heredar. Viaja con los segmentos, así
+  // que se replica a las otras bandas (setSegments) y sale igual en todas las
+  // hojas.
+  function setSegBaseline(idx: number, porcentaje: number | undefined) {
+    const valor = porcentaje === undefined || Number.isNaN(porcentaje)
+      ? undefined
+      : Math.round(Math.max(-100, Math.min(100, porcentaje)) * 1000);
+    updateSegStyle(idx, "baseline", valor);
+  }
+
+  function moverSeg(idx: number, pasoPorcentaje: number) {
+    const actual = (segments[idx].style?.baseline ?? 0) / 1000;
+    setSegBaseline(idx, actual + pasoPorcentaje);
+  }
+
   function removeSeg(idx: number) {
     onChange(segments.filter((_, i) => i !== idx));
   }
@@ -965,6 +984,42 @@ function SegmentsEditor({
                   />
                 </div>
               </label>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase">Subir / bajar (%)</span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  title="Bajar 5 %"
+                  onClick={() => moverSeg(idx, -5)}
+                  className="px-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-brand-600 hover:border-brand-300 transition-colors"
+                >
+                  <ArrowDown size={12} />
+                </button>
+                <input
+                  type="number"
+                  min={-100}
+                  max={100}
+                  step={5}
+                  className="input text-xs flex-1 min-w-0"
+                  placeholder="Hereda"
+                  value={seg.style?.baseline !== undefined ? seg.style.baseline / 1000 : ""}
+                  onChange={(e) =>
+                    setSegBaseline(idx, e.target.value === "" ? undefined : Number(e.target.value))
+                  }
+                />
+                <button
+                  type="button"
+                  title="Subir 5 %"
+                  onClick={() => moverSeg(idx, 5)}
+                  className="px-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-brand-600 hover:border-brand-300 transition-colors"
+                >
+                  <ArrowUp size={12} />
+                </button>
+              </div>
+              <span className="text-[9px] text-slate-400 dark:text-slate-500">
+                Positivo sube, negativo baja (en % del tamaño del segmento). 0 lo deja en la línea.
+              </span>
             </div>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
