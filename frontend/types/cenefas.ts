@@ -48,6 +48,13 @@ export interface TextSegment {
     strikethrough?: boolean;
     color?: string;
   };
+  /**
+   * El tamaño de ESTE segmento lo puso una persona a mano en el panel. Manda en
+   * su pedazo aunque la caja tenga tamaño manual. Sin la marca, el tamaño que
+   * el segmento trae copiado del PPTX al importar es indistinguible del puesto
+   * a mano, y el tamaño de la caja pisaba a los dos.
+   */
+  _manual_font_override?: boolean;
 }
 
 export interface CenefaComponent {

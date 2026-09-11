@@ -269,6 +269,31 @@ def _segmentos_medibles(comp: dict, product: dict, escala: float = 1.0) -> list[
     return salida
 
 
+def _piezas_con_tamano_manual(comp: dict, product: dict) -> list[tuple[str, float]]:
+    """(texto, tamaño) de cada pedazo de un cuadro con tamaño puesto a MANO.
+
+    Al dibujar (_populate_text_frame), con tamaño manual en la caja cada
+    segmento toma el cuerpo de la caja -- salvo el segmento que tiene su PROPIO
+    tamaño puesto a mano (`_manual_font_override` en el segmento), que conserva
+    el suyo. Medir tiene que dar exactamente lo mismo que dibujar, así que acá
+    se aplica la misma regla.
+
+    Criterio de Ivan (11/09/2026): lo que se pone a mano manda donde se pone.
+    """
+    fs = (comp.get("style") or {}).get("font_size") or 18.0
+    salida: list[tuple[str, float]] = []
+    for seg in comp.get("segments") or []:
+        if seg.get("type") == "variable":
+            texto = str(product.get(seg.get("value"), "") or "")
+        else:
+            texto = str(seg.get("value", "") or "")
+        if not texto:
+            continue
+        propio = (seg.get("style") or {}).get("font_size")
+        salida.append((texto, propio if (seg.get("_manual_font_override") and propio) else fs))
+    return salida
+
+
 def _entra_por_segmentos(
     piezas: list[tuple[str, float]], box_width_cm: float, box_height_cm: float | None,
     bold: bool, font_family: str | None,
@@ -830,7 +855,10 @@ def _rect_texto_real(comp: dict, product: dict) -> dict | None:
         # suele estar desactualizado. Medir con ese viejo daba un rectángulo
         # ridículamente chico -- un "64" de 174 pt medido como si fuera de 29,
         # 1,1 cm en vez de 7 -- y ningún choque se detectaba.
-        piezas = [(t, fs) for t, _ in piezas]
+        #
+        # Salvo el segmento con tamaño propio puesto a mano, que conserva el
+        # suyo al dibujar: se mide igual que se dibuja.
+        piezas = _piezas_con_tamano_manual(comp, product)
     if piezas:
         ancho = sum(_ancho_medido_cm(t, sz, fam, bold) for t, sz in piezas)
         alto  = _alto_texto_cm(1, max(sz for _, sz in piezas), texto)
@@ -1102,6 +1130,36 @@ def _fit_text_to_box(
                     despeje = max(0.1, (centro - borde_dollar) - 0.15)
                     ancho_propio = min(ancho_propio, 2 * despeje) if ancho_propio else 2 * despeje
             alto_para_medir = _alto_disponible_cm(c, comps) if es_texto_con_espacios else None
+            # Si además algún segmento tiene SU tamaño puesto a mano (ej. el
+            # "$" a 60 dentro de una caja fijada en 150), ese pedazo se dibuja
+            # a su tamaño y no al de la caja (_populate_text_frame): medir
+            # todo al tamaño de la caja achicaría un número que sí entra. Se
+            # mide pedazo por pedazo con los tamaños que de verdad se imprimen
+            # y, si no entra, se bajan TODOS en la misma proporción: el tamaño
+            # manual es un techo, no un valor fijo (criterio de Ivan,
+            # 11/09/2026). Solo para precios (sin espacios): una descripción
+            # hace word-wrap y la suma de anchos en una línea no la representa;
+            # esa sigue midiéndose como antes.
+            hay_segmento_a_mano = any(
+                s.get("_manual_font_override") and (s.get("style") or {}).get("font_size")
+                for s in c.get("segments") or []
+            )
+            piezas_manual = _piezas_con_tamano_manual(c, product) if hay_segmento_a_mano else []
+            if piezas_manual and not es_texto_con_espacios and ancho_propio and base_font_size:
+                escala = 1.0
+                if not _entra_por_segmentos(piezas_manual, ancho_propio, None, bold, familia):
+                    lo, hi = _FIT_MIN_SCALE, 1.0
+                    escala = _FIT_MIN_SCALE
+                    for _ in range(12):
+                        medio = (lo + hi) / 2.0
+                        if _entra_por_segmentos([(t, sz * medio) for t, sz in piezas_manual],
+                                                ancho_propio, None, bold, familia):
+                            escala, lo = medio, medio
+                        else:
+                            hi = medio
+                fitted_por_id[id(c)] = min(round(base_font_size * escala, 1), base_font_size)
+                base_por_id[id(c)] = base_font_size
+                continue
             fitted = _fit_font_size(
                 texto_manual, ancho_propio, alto_para_medir, base_font_size, bold, familia,
             )
@@ -1323,7 +1381,15 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
             seg_style = {**style}
             if seg.get("style"):
                 seg_style.update(seg["style"])
-            if comp.get("_manual_font_override") and style.get("font_size"):
+            if (comp.get("_manual_font_override") and style.get("font_size")
+                    and not seg.get("_manual_font_override")):
+                # Salvo el segmento al que la persona le puso SU tamaño a mano
+                # (campo "Tamaño (pt)" del segmento): ese manda en su pedazo.
+                # Criterio de Ivan, 11/09/2026: "lo que ponés a mano manda donde
+                # lo ponés". La marca del segmento existe para distinguir ese
+                # tamaño del que el segmento trae copiado del PPTX al importar,
+                # que es el que sí tiene que seguir a la caja (lo de abajo).
+                #
                 # La persona fijó un tamaño a mano para TODA la caja (panel
                 # de propiedades, campo "Tamaño (pt)") -- ese valor manda
                 # incluso en un componente multi-segmento, donde cada

@@ -822,6 +822,29 @@ function SegmentsEditor({
     );
   }
 
+  // Tamaño puesto a mano en ESTE segmento: además del valor deja la marca que
+  // le dice al motor que manda en su pedazo aunque la caja tenga tamaño manual
+  // (ver _populate_text_frame en component_renderer.py). Sin la marca no se
+  // puede distinguir del tamaño que el segmento trae copiado del PPTX, y la caja
+  // lo pisaba. Vaciar el campo vuelve a "Hereda": se van el valor y la marca.
+  function setSegFontSize(idx: number, value: number | undefined) {
+    onChange(
+      segments.map((s, i) => {
+        if (i !== idx) return s;
+        const style = { ...s.style };
+        const nuevo: TextSegment = { ...s, style };
+        if (value === undefined) {
+          delete style.font_size;
+          delete nuevo._manual_font_override;
+        } else {
+          style.font_size = value;
+          nuevo._manual_font_override = true;
+        }
+        return nuevo;
+      }),
+    );
+  }
+
   function removeSeg(idx: number) {
     onChange(segments.filter((_, i) => i !== idx));
   }
@@ -915,9 +938,14 @@ function SegmentsEditor({
                   placeholder="Hereda"
                   value={seg.style?.font_size ?? ""}
                   onChange={(e) =>
-                    updateSegStyle(idx, "font_size", e.target.value ? parseInt(e.target.value) : undefined)
+                    setSegFontSize(idx, e.target.value ? parseInt(e.target.value) : undefined)
                   }
                 />
+                {seg._manual_font_override && (
+                  <span className="text-[9px] text-slate-400 dark:text-slate-500">
+                    Fijado a mano — manda sobre la caja.
+                  </span>
+                )}
               </label>
               <label className="flex flex-col gap-0.5">
                 <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase">Color</span>
