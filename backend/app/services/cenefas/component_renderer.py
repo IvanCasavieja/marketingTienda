@@ -988,6 +988,43 @@ def _fit_text_to_box(
         familia = style.get("font_family")
         texto = _texto_resuelto(c, product)
 
+        # El cuadro del símbolo de moneda se achica SOLO si su propio texto no
+        # entra en su propia caja -- nunca por culpa de la caja de otro cuadro.
+        #
+        # El achique automático existe para que el contenido de un cuadro entre
+        # en él, no para achicar un cuadro distinto (criterio de Ivan,
+        # 11/09/2026). Medido contra los vecinos (_ancho_disponible_cm), el "$"
+        # tomaba como pared la CAJA declarada del precio de al lado aunque los
+        # dos textos no se tocaran. Caso real, Red Expres 17 A4: en un combo la
+        # caja de <<promoOferta>> arranca en x=4,11, adentro de la franja del
+        # "$" (0,64..7,46); el motor veía 2,97 cm libres y bajaba el "$" de 166
+        # a 128 pt, mientras el texto real del "$" terminaba en 5,28 y el del
+        # "50" empezaba en 7,09 -- 1,8 cm de aire. En precio fijo esa caja
+        # está vacía, no hay pared, y el "$" quedaba en 166. Resultado: el
+        # símbolo cambiaba de tamaño hoja por hoja según la mecánica.
+        #
+        # Si el número real de verdad llegara a tocar al símbolo, el que tiene
+        # que ceder es el número. OJO: hoy _resolver_solapes NO lo hace cuando
+        # las cajas DECLARADAS de los dos se pisan más del 5% (las trata como
+        # superpuestas a propósito), que es justo el caso del "$" y el precio
+        # en Redexpres. Medido el 11/09/2026 contra las 20 plantillas y los 264
+        # productos reales, este cambio no generó ningún choque nuevo, así que
+        # no hizo falta tocar el resolver; si aparece uno, ese es el lugar.
+        #
+        # Mismo criterio de medida que el tamaño puesto a mano (ver abajo):
+        # solo el ancho de la propia caja y sin límite de alto, porque es un
+        # token único pensado para desbordar su alto declarado. "U$S" sí se
+        # achica cuando no entra, porque ahí el que no entra es su contenido.
+        if usadas == {"unidadMoneda"}:
+            propios = c.get("computed_bounds") or c.get("base_bounds") or {}
+            fitted = _fit_font_size(
+                texto, _ancho_util_cm(propios, ancho_pagina_cm), None,
+                base_font_size, bold, familia,
+            )
+            fitted_por_id[id(c)] = min(fitted, base_font_size) if (fitted and base_font_size) else fitted
+            base_por_id[id(c)] = base_font_size
+            continue
+
         if c.get("_manual_font_override"):
             # La persona escribió este tamaño a mano en el panel de
             # propiedades -- es el TECHO para este cuadro, nunca se agranda
