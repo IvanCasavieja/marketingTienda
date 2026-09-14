@@ -300,16 +300,19 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
         </div>
       </div>
 
-      {/* Los choques de texto, antes de confirmar. El motor ya no los arregla
-          solo (ver AvisosSolape). */}
-      <AvisosSolape avisos={job.avisos_solape} template={template} />
-
-      {/* Canvas + panel de propiedades lado a lado -- esta pantalla ES el
-          editor (no hay otra a la que la gente sepa llegar), mismo criterio
-          que LotePreviewStep.tsx. */}
+      {/* Tres columnas: avisos | cenefa | editor. Mismo criterio que
+          LotePreviewStep.tsx -- los avisos a la izquierda y no arriba a todo
+          el ancho, así la hoja queda centrada entre las dos columnas en vez de
+          empujada hacia abajo y corrida a un lado (pedido de Ivan, 14/09/2026).
+          Esta pantalla ES el editor: no hay otra a la que la gente sepa llegar. */}
       <div className="flex gap-3 items-stretch">
+        {(job.avisos_solape?.length ?? 0) > 0 && (
+          <div className="w-72 shrink-0 h-[70vh] overflow-y-auto pr-0.5">
+            <AvisosSolape avisos={job.avisos_solape} template={template} />
+          </div>
+        )}
         <Canvas
-          className="flex-1 h-[70vh]"
+          className="flex-1 min-w-0 h-[70vh]"
           template={template}
           activeFormat={job.format}
           selectedComponentId={selectedComponentId}

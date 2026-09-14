@@ -387,6 +387,9 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   // vacío mientras la pregunta de verificación languidecía al final de la
   // página. Se reusa ese lugar para la pregunta en vez de dejarlo en blanco.
   const mostrarPanelDerecho = !!detalle?.template_def || (pendientes === 0 && listas > 0);
+  // La columna de avisos solo ocupa lugar si tiene algo que decir: sin esto,
+  // una corrida limpia perdía 288 px de ancho para mostrar un hueco.
+  const mostrarAvisos = revision.length > 0 || (detalle?.avisos_solape?.length ?? 0) > 0;
   const panelDerechoFondo = detalle?.template_def
     ? ""
     : todasVerificadas
@@ -436,25 +439,6 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
               {c.excel} × {c.template}: {c.validation_report?.error ?? "—"}
             </p>
           ))}
-        </div>
-      )}
-
-      {/* Revisión del archivo: qué va a salir mal, antes de confirmar. Nunca
-          bloquea -- a veces el que sabe es el que está mirando. Mismo patrón
-          "de a uno, con Siguiente" que el Convertidor (ver TininRevision):
-          antes esto era una lista larga apilada, ilegible con varios
-          hallazgos juntos. */}
-      {revision.length > 0 && (
-        <div className="space-y-1.5">
-          <TininRevision
-            temas={temasRevision}
-            i18nPrefix="cenefas.lote.revision"
-            icon={AlertTriangle}
-            tono="alerta"
-          />
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 px-1">
-            Podés confirmar igual: esto es un aviso, no un bloqueo.
-          </p>
         </div>
       )}
 
@@ -518,12 +502,37 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
           una vez que todo el lote terminó (ver mostrarPanelDerecho): en ese
           momento ya no queda template_def de ninguna cenefa, así que el
           editor no tiene nada que mostrar y ese espacio quedaba vacío. */}
+      {/* Tres columnas: avisos | cenefa | editor.
+          Los avisos estaban arriba, a todo el ancho (pedido de Ivan, 14/09/2026:
+          "prefiero que las advertencias aparezcan a la izquierda y centremos
+          entre esa columna y la columna de editor el preview"). A todo el ancho
+          empujaban la hoja hacia abajo y la dejaban descentrada respecto del
+          panel de la derecha; en su propia columna, la cenefa queda al medio
+          entre las dos, que es donde tiene que estar. */}
       <div className="card p-4">
-        {/* Los choques de texto de ESTA cenefa del lote. El motor ya no los
-            arregla solo (ver AvisosSolape). */}
-        <AvisosSolape avisos={detalle?.avisos_solape} template={detalle?.template_def ?? null} />
-        <div className={mostrarPanelDerecho ? "flex gap-3 items-stretch" : ""}>
-          <div className={mostrarPanelDerecho ? "flex-1 h-[820px]" : "h-[820px]"}>
+        <div className="flex gap-3 items-stretch">
+          {mostrarAvisos && (
+            <div className="w-72 shrink-0 h-[820px] overflow-y-auto space-y-2 pr-0.5">
+              <AvisosSolape
+                avisos={detalle?.avisos_solape}
+                template={detalle?.template_def ?? null}
+              />
+              {revision.length > 0 && (
+                <div className="space-y-1.5">
+                  <TininRevision
+                    temas={temasRevision}
+                    i18nPrefix="cenefas.lote.revision"
+                    icon={AlertTriangle}
+                    tono="alerta"
+                  />
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 px-1">
+                    Podés confirmar igual: esto es un aviso, no un bloqueo.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex-1 min-w-0 h-[820px]">
             {detalle?.template_def ? (
               <Canvas
                 key={actualId}

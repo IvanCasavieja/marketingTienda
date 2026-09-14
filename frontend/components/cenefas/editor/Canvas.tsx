@@ -1097,7 +1097,7 @@ export default function Canvas({
   // (6xA4/A5, ver el calculo de `dims` mas arriba), sin la fea franja vacia
   // de justify-start ni el recorte de justify-center a secas.
   return (
-    <div ref={wrapperRef} className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-[safe_center] items-[safe_center] ${className}`}>
+    <div ref={wrapperRef} className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex ${className}`}>
       {/* Badge modo preview (solo en el editor standalone, no en PreviewStep) */}
       {!interactive && !isEditMode && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">
@@ -1109,8 +1109,13 @@ export default function Canvas({
           el Stage -- así se scrollean solas con el canvas (mismo patrón que
           la fila/columna congelada de una planilla), sin sincronizar scroll
           por JS. */}
+      {/* `m-auto` y no `justify-center` en el contenedor: en flexbox los
+          márgenes automáticos absorben SOLO el espacio libre positivo, así que
+          centran cuando la hoja entra y se resuelven a 0 cuando no, sin dejar
+          el borde de arriba/izquierda fuera del scroll. Es lo que hace
+          `safe center`, pero sin depender de esa palabra clave. */}
       <div
-        className="grid"
+        className="grid m-auto"
         style={{ gridTemplateColumns: `${RULER_SIZE}px ${stageW * zoom}px`, gridTemplateRows: `${RULER_SIZE}px ${stageH * zoom}px` }}
       >
         <div
