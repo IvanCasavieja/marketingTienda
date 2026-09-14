@@ -1469,7 +1469,11 @@ def _render_slide(
         # --el "$" del diseno mas {precioOferta}-- sigue teniendo el simbolo, y
         # en la celda sobrante de una hoja parcial quedaba un "$" solo impreso
         # (3xA4 con 8 productos: 3 hojas x 3 celdas, la novena celda vacia).
-        oculto = slot_vacio or not comp.get("visible", True)
+        # Las dos: el ojito del panel (`visible`, decisión de una persona para
+        # todos los productos) y la regla evaluada contra ESTE producto
+        # (`_oculto_por_regla`). Ver apply_visibility.
+        oculto = (slot_vacio or not comp.get("visible", True)
+                  or comp.get("_oculto_por_regla", False))
         # Excluyentes: si la que manda del par trae valor, esta no se dibuja.
         # Solo aplica si el diseno TIENE de verdad el cuadro que tapa. Sin ese
         # chequeo, una plantilla que usa precioOferta y no tiene cuadro de

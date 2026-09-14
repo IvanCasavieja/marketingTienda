@@ -355,8 +355,32 @@ def apply_visibility(
     """
     salida = []
     for c in components:
-        if not visibility.get(c["id"], True):
-            salida.append({**c, "visible": False})
+        # `_oculto_por_regla` y NO `visible`. Son dos cosas distintas que hasta
+        # el 14/09/2026 compartían el mismo campo, con consecuencias caras:
+        #
+        #   `visible`            -> el ojito de "Ocultar" del panel de
+        #                           componentes. Lo decide una persona, vale
+        #                           para TODOS los productos, y es dato suyo.
+        #   `_oculto_por_regla`  -> lo deriva el motor para ESTE producto.
+        #
+        # Escribiendo el resultado derivado en `visible`, ese valor viajaba en
+        # el template_def que devuelve el preview y "Guardar en la plantilla" lo
+        # horneaba como si la persona hubiera apagado el cuadro a mano. A partir
+        # de ahí el cuadro quedaba muerto para siempre: _render_slide mira
+        # `visible` y ninguna regla podía volver a encenderlo, porque
+        # apply_visibility solo sabía apagar. Caso real de Ivan (14/09/2026):
+        # los dos cuadros "unidad" de Rompe Precios Congelados quedaron con
+        # visible=False guardado; la regla decía "mostrar si codigo contiene
+        # '-'", el canvas del preview los dibujaba (no mira `visible`) y el
+        # PPTX salía sin ellos.
+        #
+        # Se escribe SIEMPRE, en los dos sentidos, no solo cuando hay que
+        # ocultar: un campo derivado que solo se escribe en una dirección se
+        # queda pegado en el valor viejo, que es exactamente lo que pasó.
+        oculto = not visibility.get(c["id"], True)
+        c = {**c, "_oculto_por_regla": oculto}
+        if oculto:
+            salida.append(c)
             continue
 
         ocultos = (segment_visibility or {}).get(c["id"])

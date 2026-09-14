@@ -1097,24 +1097,38 @@ async def _job_to_dict(
             #
             # Ahora no hay nada que medir --el cuerpo lo declara una regla sobre
             # el largo del texto-- y las dos rutas entran por la misma puerta.
+            # `componentes` se devuelve CRUDO, tal como está en la plantilla.
+            #
+            # Antes se devolvía el resultado de aplicar las reglas, y eso era el
+            # agujero por el que se filtraban datos: el template_def que sale de
+            # acá es el mismo objeto que "Guardar en la plantilla" escribe
+            # encima del diseño, así que cualquier valor DERIVADO que se le
+            # pegue queda horneado como si lo hubiera elegido una persona.
+            # Ya pasó dos veces -- con el cuerpo de letra (auditoría 10/09) y
+            # con `visible`, que dejó muertos los dos cuadros "unidad" de Rompe
+            # Precios Congelados (14/09, reportado por Ivan).
+            #
+            # Y no hace falta: el canvas evalúa las reglas por su cuenta
+            # --visibilidad Y tamaño, ver lib/cenefas/reglas.ts-- así que
+            # mandarle el resultado ya masticado era además redundante.
+            #
+            # preparar_componentes se sigue usando, pero solo para MEDIR: los
+            # avisos de solape necesitan los tamaños y las visibilidades reales
+            # de esta fila. Ese resultado no sale de esta función.
             reglas = staged.template_def.get("rules", [])
             avisos_solape: list[dict] = []
             if staged.products:
                 if slot_bands:
-                    preparadas = {
-                        i: preparar_componentes(banda, reglas, producto)
-                        for i, (banda, producto) in enumerate(zip(slot_bands, staged.products))
-                    }
                     avisos_solape = detectar_solapes([
-                        (c, staged.products[i]) for i, cs in preparadas.items() for c in cs
+                        (c, producto)
+                        for i, (banda, producto) in enumerate(zip(slot_bands, staged.products))
+                        for c in preparar_componentes(banda, reglas, producto)
                     ])
-                    ajustados = {c["id"]: c for cs in preparadas.values() for c in cs}
-                    componentes = [ajustados.get(c["id"], c) for c in componentes]
                 else:
-                    componentes = preparar_componentes(
-                        componentes, reglas, staged.products[0])
-                    avisos_solape = detectar_solapes(
-                        [(c, staged.products[0]) for c in componentes])
+                    avisos_solape = detectar_solapes([
+                        (c, staged.products[0])
+                        for c in preparar_componentes(componentes, reglas, staged.products[0])
+                    ])
 
             # Ya no se achica solo para despejar un choque: se avisa y decide la
             # persona, poniéndole una regla de tamaño al cuadro que invade.
