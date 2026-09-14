@@ -86,9 +86,11 @@ export interface CenefaComponent {
    * true cuando la persona escribió el tamaño de letra a mano en el panel de
    * propiedades (no al redimensionar la caja, que desde 09/2026 ya no toca
    * la letra -- pedido explícito de Ivan: la caja y el tamaño de fuente se
-   * controlan por separado, como en PowerPoint). El backend (ver
-   * _fit_text_to_box en component_renderer.py) respeta este tamaño tal cual
-   * y no lo vuelve a achicar contra el ancho/alto disponible.
+   * controlan por separado, como en PowerPoint). Desde el 14/09/2026 el
+   * backend respeta CUALQUIER tamaño tal cual --se eliminó el achique
+   * automático y solo lo cambia una regla `set_font_size`--, así que la marca
+   * ya no tiene que protegerlo de nada; queda como señal de que el cuerpo lo
+   * eligió una persona y no vino del PPTX.
    */
   _manual_font_override?: boolean;
   /**
@@ -155,9 +157,24 @@ export type RuleOperator =
   | "less_than"
   | "contains"
   | "is_empty"
-  | "is_not_empty";
+  | "is_not_empty"
+  /**
+   * Largo del TEXTO, no su valor numérico. `greater_than` compara 1599 > 3
+   * como números y da verdadero para cualquier precio; estos cuentan
+   * caracteres, que es con lo que se declara el cuerpo de un precio.
+   */
+  | "length_greater_than"
+  | "length_less_than";
 
-export type RuleAction = "show" | "hide";
+/**
+ * `set_font_size` reemplaza al achique automático, eliminado el 14/09/2026.
+ * Aquel medía el texto contra la caja y los vecinos y decidía solo; dependía
+ * de métricas de fuente, geometría y ancho de papel, o sea de tres cosas que
+ * había que replicar idénticas acá para que el preview no mintiera -- y no se
+ * replicaban. Una condición sobre el largo del texto da lo mismo en Python que
+ * en TypeScript, así que la divergencia deja de ser posible.
+ */
+export type RuleAction = "show" | "hide" | "set_font_size";
 
 export interface RuleCondition {
   field?: string;
@@ -183,7 +200,8 @@ export interface CenefaRule {
    */
   target_segment_index?: number;
   condition: RuleCondition;
-  action: { type: RuleAction };
+  /** `value` solo lo usa `set_font_size`: el cuerpo en pt. */
+  action: { type: RuleAction; value?: number };
 }
 
 export interface CenefaVariable {
@@ -225,6 +243,18 @@ export interface CenefaTemplate {
   import_warnings?: CenefaImportWarning[];
 }
 
+/**
+ * Un cuadro cuyo texto se imprime ENCIMA de otro. Ver `detectar_solapes` en
+ * component_renderer.py y el comentario de `avisos_solape` en CenefaJob.
+ */
+export interface AvisoSolape {
+  component_id: string;
+  contra_id:    string;
+  area_cm2:     number;
+  font_size?:   number;
+  texto?:       string;
+}
+
 /** Una cenefa dentro de un lote: un Excel contra una plantilla. */
 export interface CenefaLoteItem {
   job_id?: string;
@@ -239,6 +269,7 @@ export interface CenefaLoteItem {
   preview_product?: Record<string, string>;
   preview_products?: Record<string, string>[];
   slot_bands?: string[][];
+  avisos_solape?: AvisoSolape[];
   validation_report?: { error?: string } | null;
   /** Una persona confirmó que esta corrida salió bien (decide la retención del archivo). */
   verificado?: boolean;
@@ -343,6 +374,15 @@ export interface CenefaJob {
   // preview_products[i].
   slot_bands?: string[][];
   preview_products?: Record<string, string>[];
+  /**
+   * Cuadros cuyo texto se va a imprimir ENCIMA de otro, para esta fila.
+   *
+   * Hasta el 14/09/2026 el motor no avisaba de esto: los achicaba solo hasta
+   * despejar. Ese achique se eliminó (ver `set_font_size` en RuleAction), así
+   * que el choque ahora se muestra y lo resuelve una persona poniéndole una
+   * regla de tamaño al cuadro que invade. Ver `detectar_solapes`.
+   */
+  avisos_solape?: AvisoSolape[];
 }
 
 export interface ValidationReport {

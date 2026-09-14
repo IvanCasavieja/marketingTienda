@@ -9,8 +9,11 @@ trae copiado del PPTX al importar.
 Criterio de Ivan:
   - El tamaño puesto a mano en un segmento manda en ese segmento, aunque la
     caja tenga tamaño manual. Los segmentos sin tamaño propio siguen a la caja.
-  - El tamaño manual es un techo: si el contenido no entra en su propia caja,
-    baja (todo en la misma proporción), nunca sube.
+  - El tamaño manual es EL tamaño. Hasta el 14/09/2026 era un "techo" y el
+    motor lo bajaba solo cuando el contenido no entraba; eso se eliminó junto
+    con todo el achique automático. Si algo no entra, desborda a la vista y se
+    avisa (detectar_solapes); bajarlo es una decisión que se escribe como
+    regla (ver rules_engine.set_font_size).
 
 Se prueba de punta a punta: PPTX armado en memoria -> importer -> render.
 """
@@ -116,19 +119,21 @@ def test_d_el_numero_no_se_achica_por_medir_el_simbolo_al_tamano_de_la_caja():
     assert _tamanos(src, d, "1.234") == (60, 150)
 
 
-# --- E: el tamaño manual es un techo -------------------------------------------
+# --- E: el tamaño manual NO baja solo -----------------------------------------
+#
+# "12.345" no entra en la caja a 180 pt. Antes eso bastaba para que el motor lo
+# bajara --y, por el piso compuesto de 0,55 sobre 0,55, podía terminar en el 30%
+# del cuerpo de diseño--. Ahora desborda a la vista, que es lo buscado: el
+# desborde se ve y se corrige poniendo una regla, en vez de taparse con un
+# achique silencioso que nadie pidió y que la pantalla no mostraba.
 
-def test_e_caja_a_mano_baja_si_el_numero_no_entra():
+def test_e_la_caja_a_mano_no_baja_aunque_el_numero_no_entre():
     src = _pptx_precio()
     d, _ = _preparar(src, 180, 180, caja_manual=180)
-    simbolo, numero = _tamanos(src, d, "12.345")
-    assert numero < 180
-    assert simbolo == numero
+    assert _tamanos(src, d, "12.345") == (180, 180)
 
 
-def test_e_con_segmento_a_mano_bajan_todos_en_la_misma_proporcion():
+def test_e_el_segmento_a_mano_tampoco_baja():
     src = _pptx_precio()
     d, _ = _preparar(src, 60, 180, caja_manual=180, simbolo_a_mano=True)
-    simbolo, numero = _tamanos(src, d, "12.345")
-    assert numero < 180 and simbolo < 60
-    assert abs(simbolo / numero - 60 / 180) < 0.01
+    assert _tamanos(src, d, "12.345") == (60, 180)

@@ -14,7 +14,7 @@ misma que decide el achique al exportar.
 """
 from __future__ import annotations
 
-from app.services.cenefas.font_metrics import ancho_texto_cm
+from app.services.cenefas.font_metrics import ancho_texto_cm, digito_mas_ancho
 from app.services.cenefas.variables import DECIMAL_VARS
 
 # Cuadros que se rellenan. Son los que llevan dato variable y cambian de
@@ -49,20 +49,37 @@ def texto_de_capacidad(
     bold: bool,
     envuelve: bool,
 ) -> str:
-    """El relleno de "X" más largo que entra en esa caja a ese cuerpo.
+    """El relleno más largo que entra en esa caja a ese cuerpo.
 
     `envuelve` distingue la descripción (texto real, va en varias líneas y se
     corta por palabra) de un precio (un solo bloque sin dónde cortarse, que
-    ocupa una sola línea).
+    ocupa una sola línea), y además decide CON QUÉ se rellena:
+
+    - La descripción, con "X": es texto, y la X es de las letras más anchas.
+    - Un precio, con el DÍGITO MÁS ANCHO de su tipografía, no con "X".
+
+    Lo segundo no es un detalle. En Impact --la fuente de los precios-- la "X"
+    mide 0,4800 em y el "6" 0,5400: la X es un 11% MÁS ANGOSTA que el dígito
+    más ancho, así que el relleno prometía lugar para más caracteres de los que
+    después entraban de verdad. En Franklin Gothic pasa lo mismo, 3,4% corto.
+    En las otras siete la X sobra ancho y el relleno quedaba conservador, que
+    es el lado seguro -- por eso el error solo se veía en los precios grandes,
+    que son justo donde importa.
+
+    Esto es además la vara con la que se elige el cuerpo que se escribe en una
+    regla de tamaño (`set_font_size`): la regla condiciona por CANTIDAD de
+    caracteres, y en Impact la cantidad no determina el ancho, así que el pt
+    hay que elegirlo para el peor caso. El peor caso es esto.
     """
     if not font_size or ancho_caja_cm is None or ancho_caja_cm <= 0:
         return "X"
     usable = max(0.1, ancho_caja_cm - _INSET_CM)
 
     if not envuelve:
-        texto = "X"
-        while len(texto) < _MAX_CARACTERES and _cabe(texto + "X", usable, font_size, familia, bold):
-            texto += "X"
+        relleno = digito_mas_ancho(familia)
+        texto = relleno
+        while len(texto) < _MAX_CARACTERES and _cabe(texto + relleno, usable, font_size, familia, bold):
+            texto += relleno
         return texto
 
     # Con wrap: se arman palabras de 4 letras separadas por espacio y se

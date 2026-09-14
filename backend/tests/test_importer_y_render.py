@@ -11,8 +11,7 @@ from pptx import Presentation
 from pptx.util import Cm, Pt
 
 from app.services.cenefas.component_renderer import (
-    _ancho_disponible_cm,
-    _fit_text_to_box,
+    preparar_componentes,
     render_template_to_pptx,
 )
 from app.services.cenefas.pptx_importer import import_pptx
@@ -158,97 +157,6 @@ def _caja(x, y, w, h, variable, texto=""):
     }
 
 
-def test_una_vecina_chata_tambien_limita_el_ancho():
-    # Bug real (29/08): la caja del precio del 3xA4 mide 8,55 de alto y la de
-    # la descripción 1,08 — la descripción la pisa ENTERA pero era menos que
-    # la mitad de 8,55, no contaba como vecina, y "U$S449" se imprimía encima
-    # del texto. El umbral es la mitad del alto DEL MÁS BAJO de los dos.
-    precio = _caja(1.68, 4.53, 19.83, 8.55, "precioOferta")
-    desc = _caja(9.38, 4.86, 8.42, 1.08, "descripcion")
-    producto = {"precioOferta": "449", "descripcion": "Refrigerador MIDEA"}
-    disponible = _ancho_disponible_cm(precio, [precio, desc], producto, 21.0)
-    # limitado por la descripción (arranca en 9,38), no por su propia caja
-    assert disponible < 9.38 - 1.68
-    # y una vecina VACÍA no limita nada
-    disponible_sola = _ancho_disponible_cm(
-        precio, [precio, desc], {"precioOferta": "449", "descripcion": ""}, 21.0)
-    assert disponible_sola > 9.38 - 1.68
-
-
-def test_etiqueta_comprando_no_limita_el_precio_que_decora():
-    # Caso real (Preciazos-202608-A4, producción): "Comprando 2"
-    # (tipoOfertaComprando) vive superpuesta arriba de precioOferta a
-    # propósito -- geométricamente es CASI IDÉNTICA a la "vecina chata" de
-    # arriba (46,7% del ancho vs 42,5%, 99,5% de solape vertical vs 100%):
-    # ninguna relación de ancho/alto/solape sola alcanza para distinguirlas.
-    # La señal que sí distingue es la variable: "descripcion" es contenido de
-    # verdad, "tipoOfertaComprando" es una etiqueta pensada para flotar sobre
-    # un precio (ver _VARIABLES_ETIQUETA_FLOTANTE). Sin ese chequeo por
-    # variable, este caso rompía el fix de la "vecina chata": cualquier
-    # heurística puramente geométrica que lo arreglara volvía a tratar a
-    # "Comprando 2" como pared y achicaba el precio al mínimo.
-    precio = _caja(3.559, 7.589, 17.5, 7.951, "precioOferta")
-    comprando = _caja(6.262, 7.574, 8.177, 2.821, "tipoOfertaComprando")
-    producto = {"precioOferta": "129", "tipoOfertaComprando": "Comprando 2"}
-    disponible = _ancho_disponible_cm(precio, [precio, comprando], producto, 21.0)
-    assert disponible > 6.262 - 3.559
-
-
-def test_font_size_manual_lo_miden_contra_su_propia_caja():
-    # Pedido explícito de Ivan (09/2026): redimensionar la caja con los 4
-    # puntos en el editor ya NO escala la letra (antes sí, y esa escala "de
-    # facto" desaparecía al exportar porque este mismo achique la pisaba --
-    # "achico la caja, la letra se ve mas grande en el preview, pero al
-    # exportar se achica sola"). El tamaño se fija a mano en el panel de
-    # propiedades y viaja con _manual_font_override=True.
-    #
-    # Lo que ese tamaño a mano garantiza es que NINGÚN VECINO lo achique: las
-    # plantillas traen pares entero+decimal y etiquetas ("Comprando 2")
-    # declarados a propósito encima del precio, y el achique automático los
-    # tomaba por pared. Contra su propia caja sí se mide (abajo).
-    precio = _caja(1.0, 1.0, 12.0, 8.0, "precioOferta")
-    precio["_manual_font_override"] = True
-    vecina = _caja(4.0, 1.0, 3.0, 8.0, "descripcion")
-    producto = {"precioOferta": "179",
-                "descripcion": "Atun en lomo VALLE DEL SOL al aceite"}
-    resultado = _fit_text_to_box([precio, vecina], producto, ancho_pagina_cm=21.0)
-    assert resultado[0]["style"]["font_size"] == 97.0
-
-    # Sin la marca, esa misma vecina SÍ lo achica -- confirma que el test de
-    # arriba prueba lo que dice probar, no que _fit_text_to_box nunca achique.
-    auto = _caja(1.0, 1.0, 12.0, 8.0, "precioOferta")
-    resultado_auto = _fit_text_to_box(
-        [auto, _caja(4.0, 1.0, 3.0, 8.0, "descripcion")], producto, ancho_pagina_cm=21.0)
-    assert resultado_auto[0]["style"]["font_size"] < 97.0
-
-
-def test_font_size_manual_igual_se_achica_si_no_entra_en_su_caja():
-    # El tamaño a mano es un TECHO, no una orden de imprimir como sea: se
-    # eligió mirando UN producto (el que estaba abierto en el editor) y otro
-    # producto de la misma tanda puede traer un texto más largo. Casos reales
-    # de Preciazos A4 (09/2026), los dos vistos impresos:
-    #
-    #  - <<precioOferta>> fijado a 180pt: "179" desbordaba su caja y
-    #    PowerPoint lo partía al medio ("17" + "9") en el cartel.
-    precio = _caja(1.0, 1.0, 3.0, 8.0, "precioOferta")
-    precio["_manual_font_override"] = True
-    fuera = _fit_text_to_box([precio], {"precioOferta": "1.599"}, ancho_pagina_cm=21.0)
-    assert fuera[0]["style"]["font_size"] < 97.0
-
-    #  - <<descripcion>> también viene con tamaño a mano, y un texto largo
-    #    crecía a 3 líneas y se metía encima del precio tachado de abajo. Un
-    #    cuadro CON ESPACIOS hace word-wrap de verdad, así que se le mide
-    #    también el alto; un precio no tiene dónde cortarse y por eso a él se
-    #    le mide solo el ancho (los precios gigantes desbordan su alto
-    #    declarado a propósito).
-    desc = _caja(1.0, 1.0, 8.0, 1.0, "descripcion")
-    desc["_manual_font_override"] = True
-    alto = _fit_text_to_box(
-        [desc], {"descripcion": "Atun en lomo VALLE DEL SOL al aceite y al natural. 170g"},
-        ancho_pagina_cm=21.0)
-    assert alto[0]["style"]["font_size"] < 97.0
-
-
 def _pptx_con_grupo(texto_hijo, *, grupo, hijo):
     """Un A4 con UN grupo que contiene un cuadro de texto.
 
@@ -361,45 +269,6 @@ def test_shape_dentro_de_un_grupo_respeta_que_lo_muevan():
     assert abs(y - 6.25) < 0.05, f"salio en y={y:.2f} en vez de 6,25"
 
 
-def test_el_achique_de_un_producto_no_se_le_pega_al_siguiente():
-    # Bug real que encontró Ivan (Gran Bretaña A4, 07/09/2026): "cuando las
-    # cifras de precioOferta pasan a ser 4 reducís el tamaño, pero cuando
-    # vuelven a 3 no volvés al original".
-    #
-    # Y no solo no volvía: seguía bajando hoja tras hoja. Con 140 pt de
-    # diseño, seis hojas seguidas salieron 120 / 88,3 / 88,3 / 88,3 / 83,9 /
-    # 83,9 -- cada producto arrancaba del tamaño que le dejó el anterior.
-    #
-    # La causa: el layout se arma UNA vez y se reusa para todos los productos,
-    # pero _resolver_solapes achica MODIFICANDO EN EL LUGAR el style del
-    # cuadro. _fit_text_to_box devolvía el diccionario ORIGINAL cuando el
-    # tamaño ya entraba, así que esa modificación caía sobre el layout
-    # compartido.
-    #
-    # Se prueba la invariante y no un tamaño puntual: lo que sale depende de
-    # la geometría de cada plantilla, pero que el resultado sea SIEMPRE
-    # material propio no depende de nada.
-    # Cuerpo chico en una caja grande A PROPOSITO: asi el texto ENTRA y no hay
-    # nada que achicar, que es justamente el caso en el que la version vieja
-    # devolvia el diccionario original en vez de una copia. Con un cuadro que
-    # si se achica el bug no se ve, porque ahi ya devolvia material propio.
-    caja = _caja(1.0, 10.0, 12.0, 3.0, "precioOferta")
-    caja["style"] = {"font_size": 20.0}
-    producto = {"precioOferta": "396"}
-    resultado = _fit_text_to_box([caja], producto, ancho_pagina_cm=21.0)
-
-    assert resultado[0] is not caja, "devolvio el MISMO componente del layout compartido"
-    assert resultado[0]["style"] is not caja["style"], "devolvio el MISMO style"
-
-    # Y achicarlo --exactamente lo que hace _resolver_solapes despues-- no
-    # tiene que tocar el layout del que salio.
-    antes = caja["style"]["font_size"]
-    resultado[0]["style"]["font_size"] = 10.0
-    assert caja["style"]["font_size"] == antes, (
-        f"achicar la copia dejo el layout compartido en {caja['style']['font_size']} "
-        f"en vez de {antes}: el proximo producto arranca de ahi")
-
-
 def test_mxn_imprime_el_literal_una_sola_vez():
     # Bug real (pag. 54 de mundo hogar): la A4 REDEX tiene cocarda
     # (tipoOferta) Y cuadro que tapa al precio (promoOferta) -- en un M x N
@@ -492,3 +361,44 @@ def test_regla_de_segmento_oculta_solo_esa_palabra_del_renglon():
     pptx, _ = render_template_to_pptx(d, [unificada], "a4", None, src)
     runs = _runs_del_pptx(pptx)
     assert "321,75" in runs and "unidad" in runs, f"falto el precio o la palabra: {runs!r}"
+
+
+def test_lo_que_se_prepara_para_un_producto_no_se_le_pega_al_siguiente():
+    # Bug real que encontró Ivan (Gran Bretaña A4, 07/09/2026): "cuando las
+    # cifras de precioOferta pasan a ser 4 reducís el tamaño, pero cuando
+    # vuelven a 3 no volvés al original". Y no solo no volvía: seguía bajando
+    # hoja tras hoja. Con 140 pt de diseño, seis hojas seguidas salieron
+    # 120 / 88,3 / 88,3 / 88,3 / 83,9 / 83,9 -- cada producto arrancaba del
+    # tamaño que le dejó el anterior.
+    #
+    # La causa era estructural y sigue estándolo: el layout se arma UNA vez y
+    # se reusa para TODOS los productos de la corrida. Cualquier cosa que
+    # escriba el cuerpo de un cuadro tiene que escribirla sobre material
+    # propio. El achique automático que lo provocaba ya no existe (14/09/2026),
+    # pero preparar_componentes sigue escribiendo font_size --ahora porque lo
+    # dice una regla-- así que la invariante hay que seguir fijándola.
+    #
+    # Se prueba la invariante y no un tamaño puntual: lo que sale depende de la
+    # geometría de cada plantilla, pero que el resultado sea SIEMPRE material
+    # propio no depende de nada.
+    caja = _caja(1.0, 10.0, 12.0, 3.0, "precioOferta")
+    caja["style"] = {"font_size": 20.0}
+    reglas = [{
+        "id": "r1", "target_component_id": caja["id"],
+        "condition": {"field": "precioOferta", "operator": "length_greater_than", "value": 2},
+        "action": {"type": "set_font_size", "value": 12},
+    }]
+    resultado = preparar_componentes([caja], reglas, {"precioOferta": "396"})
+
+    assert resultado[0] is not caja, "devolvio el MISMO componente del layout compartido"
+    assert resultado[0]["style"] is not caja["style"], "devolvio el MISMO style"
+    assert resultado[0]["style"]["font_size"] == 12, "no aplico la regla de tamaño"
+    assert caja["style"]["font_size"] == 20.0, (
+        f"la regla dejo el layout compartido en {caja['style']['font_size']} "
+        f"en vez de 20: el proximo producto arranca de ahi")
+
+    # Y el producto siguiente, que NO matchea la regla, vuelve al cuerpo del
+    # diseño. Esa es literalmente la mitad del bug que reportó Ivan: "cuando
+    # vuelven a 3 no volvés al original".
+    otro = preparar_componentes([caja], reglas, {"precioOferta": "39"})
+    assert otro[0]["style"]["font_size"] == 20.0

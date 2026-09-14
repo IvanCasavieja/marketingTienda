@@ -17,8 +17,11 @@ from app.services.cenefas.font_metrics import ancho_texto_cm
 from app.services.cenefas.formatters import split_caps
 from app.services.cenefas.layout_engine import compute_layout, get_format
 from app.services.cenefas.rules_engine import (
+    apply_font_sizes,
     apply_visibility,
+    evaluate_font_size_rules,
     evaluate_rules,
+    evaluate_segment_font_size_rules,
     evaluate_segment_rules,
 )
 from app.services.cenefas.variables import DECIMAL_OF, DECIMAL_VARS, PRICE_VARS
@@ -195,7 +198,6 @@ def _texto_resuelto(comp: dict, product: dict) -> str:
 # Piso de achique: por debajo de esto el texto deja de ser legible en un cartel
 # de góndola, y es preferible que se note el desborde a imprimir algo que nadie
 # puede leer de lejos.
-_FIT_MIN_SCALE = 0.55
 
 # PowerPoint no dibuja el texto pegado al borde del cuadro: deja un margen
 # interno, 0,25 cm de cada lado por defecto. Medir contra el ancho DIBUJADO de
@@ -204,7 +206,6 @@ _FIT_MIN_SCALE = 0.55
 # "PowerPoint lo parte al medio": la cocarda de 2,60 cm del Rompe del Finde
 # tiene 2,09 utiles, y "2x$299" mide 1,97 -- entraba por 0,12 cm segun el motor
 # y salia impresa como "2x$29 / 9".
-_MARGEN_INTERNO_CM = 0.5
 
 # Se achica cualquier cuadro que traiga DATO del Excel y no entre. Un cuadro de
 # texto fijo del diseño ("OFERTA", "PRECIO REGULAR") no se toca nunca: su
@@ -269,14 +270,6 @@ def _segmentos_medibles(comp: dict, product: dict, escala: float = 1.0) -> list[
     return salida
 
 
-def _tiene_segmento_a_mano(comp: dict) -> bool:
-    """¿Algún segmento del cuadro tiene su tamaño puesto a mano en el panel?"""
-    return any(
-        s.get("_manual_font_override") and (s.get("style") or {}).get("font_size")
-        for s in comp.get("segments") or []
-    )
-
-
 def _piezas_con_tamano_manual(comp: dict, product: dict) -> list[tuple[str, float]]:
     """(texto, tamaño) de cada pedazo de un cuadro con un tamaño puesto a MANO,
     en la caja o en alguno de sus segmentos.
@@ -310,96 +303,6 @@ def _piezas_con_tamano_manual(comp: dict, product: dict) -> list[tuple[str, floa
     return salida
 
 
-def _entra_por_segmentos(
-    piezas: list[tuple[str, float]], box_width_cm: float, box_height_cm: float | None,
-    bold: bool, font_family: str | None,
-) -> bool:
-    """Igual que _entra_en_caja pero sumando el ancho pedazo por pedazo.
-
-    Un precio no tiene espacios, así que no hay dónde cortarlo por palabra: o
-    entra entero en una línea o PowerPoint lo parte al medio. Por eso se exige
-    que la suma de los anchos entre en el ancho útil, sin word-wrap posible.
-    """
-    usable_cm = max(0.1, box_width_cm - _INSET_CM)
-    ancho = sum(_ancho_medido_cm(t, sz, font_family, bold) for t, sz in piezas)
-    if ancho > usable_cm:
-        return False
-    if box_height_cm:
-        mayor = max(sz for _, sz in piezas)
-        if _alto_texto_cm(1, mayor, "".join(t for t, _ in piezas)) > box_height_cm:
-            return False
-    return True
-
-
-def _entra_en_caja(
-    texto: str, box_width_cm: float, box_height_cm: float | None,
-    font_size: float, bold: bool, font_family: str | None,
-) -> bool:
-    """True si el texto entra en el cuadro a ese tamaño de fuente.
-
-    Dos condiciones, las dos obligatorias:
-
-    1. **Ancho**: la palabra más larga tiene que entrar en una línea. Es el
-       chequeo que salva a los precios: "1.919" no tiene espacios, así que no
-       hay dónde cortarlo por palabra -- PowerPoint lo parte al medio
-       ("1.91" + "9", visto en un cartel real) y el chequeo de alto ni se
-       entera, porque para él sigue siendo una sola línea.
-    2. **Alto**: las líneas que resultan del word-wrap tienen que entrar en el
-       alto disponible. Es el chequeo que salva a las descripciones largas.
-    """
-    usable_cm = max(0.1, box_width_cm - _INSET_CM)
-
-    palabra_larga = max(texto.split() or [texto], key=len)
-    if _ancho_medido_cm(palabra_larga, font_size, font_family, bold) > usable_cm:
-        return False
-
-    if box_height_cm:
-        lineas = _estimate_wrapped_lines(texto, box_width_cm, font_size, bold, font_family)
-        if _alto_texto_cm(lineas, font_size, texto) > box_height_cm:
-            return False
-
-    return True
-
-
-def _fit_font_size(
-    texto: str, box_width_cm: float | None, box_height_cm: float | None,
-    base_font_size: float | None, bold: bool = False, font_family: str | None = None,
-) -> float | None:
-    """El tamaño de fuente MÁS GRANDE al que el texto entra en su cuadro.
-
-    Se busca por bisección en vez de calcular una escala de una sola pasada.
-    La escala directa (alto_disponible / alto_necesario) achica de más: al
-    bajar el tamaño el texto pasa a ocupar menos líneas, así que el alto que
-    hacía falta era mucho menor que el que se usó para calcularla. En un caso
-    real la descripción del 3xA4 terminaba en 18,8 pt cuando en 22,5 pt ya
-    entraba. Achicar lo menos posible es respetar el diseño.
-
-    "Entra" es monótono respecto del tamaño --si entra a N pt, entra a
-    cualquier tamaño menor-- que es lo que hace válida la bisección.
-    """
-    if not texto or not box_width_cm or not base_font_size:
-        return base_font_size
-
-    if _entra_en_caja(texto, box_width_cm, box_height_cm, base_font_size, bold, font_family):
-        return base_font_size
-
-    # Piso de legibilidad: por debajo de esto es preferible que se note el
-    # desborde antes que imprimir algo ilegible a dos metros de distancia.
-    minimo = base_font_size * _FIT_MIN_SCALE
-    mejor = minimo
-    lo, hi = minimo, base_font_size
-    for _ in range(12):
-        medio = (lo + hi) / 2.0
-        if _entra_en_caja(texto, box_width_cm, box_height_cm, medio, bold, font_family):
-            mejor = medio
-            lo = medio
-        else:
-            hi = medio
-
-    # Se redondea hacia ABAJO a medio punto: hacia arriba podría dejar de entrar.
-    return max(minimo, math.floor(mejor * 2.0) / 2.0)
-
-
 # Pares de variables que NUNCA se dibujan juntas: si la primera trae valor, la
 # segunda no se dibuja aunque el diseno tenga su cuadro.
 #
@@ -426,7 +329,6 @@ _EXCLUYENTES: dict[str, tuple[str, ...]] = {
 # Cuanto tiene que bajar otro cuadro para contar como "el de abajo" y no como
 # un vecino puesto a la misma altura. Medio centimetro: menos que eso, en un
 # diseno hecho a mano, es desprolijidad de posicionamiento, no una fila nueva.
-_SEPARACION_MIN_CM = 0.5
 
 # Cuánto del alto del más chico de los dos tiene que caer dentro del rango
 # vertical del más grande para contar como "superpuesto a propósito", y
@@ -501,283 +403,6 @@ def _son_decoracion_superpuesta(a: dict, b: dict) -> bool:
         return False
     solape = min(y1 + h1, y2 + h2) - max(y1, y2)
     return solape / chico_h >= _SOLAPE_MIN_DECORACION
-
-
-def _alto_disponible_cm(comp: dict, comps: list[dict]) -> float | None:
-    """Cuánto puede crecer hacia abajo un cuadro antes de pisar a otro.
-
-    El alto declarado de la caja NO sirve como límite: los diseñadores la
-    dibujan del alto de UNA línea aunque abajo haya lugar de sobra, y el texto
-    simplemente se desborda por fuera. Usarlo hacía que cualquier descripción
-    de dos líneas se achicara de golpe cuando en el cartel entraba perfecta.
-
-    El límite real es el cuadro de abajo. Solo cuentan los que están realmente
-    debajo y no al costado: se exige que se solapen horizontalmente en más de
-    la mitad del ancho. Sin ese filtro, el cuadro del decimal --que va pegado
-    al precio, apenas más abajo-- se tomaría como techo del precio y lo
-    achicaría a la nada.
-    """
-    b = comp.get("computed_bounds") or comp.get("base_bounds") or {}
-    y, h, x, w = b.get("y"), b.get("height"), b.get("x"), b.get("width")
-    if y is None or h is None or x is None or w is None:
-        return h
-
-    techo = None
-    for otro in comps:
-        if otro is comp:
-            continue
-        ob = otro.get("computed_bounds") or otro.get("base_bounds") or {}
-        oy, ox, ow = ob.get("y"), ob.get("x"), ob.get("width")
-        if oy is None or ox is None or ow is None:
-            continue
-        # Un cuadro que arranca a la MISMA altura que este no esta abajo: esta
-        # al lado. Sin este margen, el cuadro de "Comprando 6" que en una franja
-        # quedo 0,9 mm por debajo del techo del precio se tomaba como el piso
-        # del precio: alto disponible 0,09 cm, y el precio se achicaba al minimo
-        # -- visible como una franja con el precio la mitad de grande que las
-        # otras dos, con el mismo diseno.
-        if oy <= y + _SEPARACION_MIN_CM:
-            continue
-        # Etiqueta chica superpuesta a propósito con este cuadro (ver
-        # _son_decoracion_superpuesta) -- no cuenta como techo aunque
-        # geométricamente esté "debajo": el diseño la dibujó ahí sabiendo que
-        # se solapa.
-        if _son_decoracion_superpuesta(comp, otro):
-            continue
-        # Etiqueta SIEMPRE flotante (_VARIABLES_ETIQUETA_FLOTANTE) -- nunca
-        # cuenta como techo aunque su caja declarada mida casi lo mismo que
-        # la mía. _son_decoracion_superpuesta exige que sea CLARAMENTE más
-        # baja (<=60% de mi alto) para reconocerla como decoración, pero
-        # estas etiquetas suelen venir con una caja tan alta como la del
-        # precio de al lado -- caso real: "Comprando 2" (2,821 cm) al lado
-        # de <<precioOferta>> (2,82 cm), casi idéntico -- así que ese filtro
-        # no las agarra y un precio con combo se achicaba a la mitad sin que
-        # hubiera ningún desborde real (Preciazos A4, 09/2026: "64" a 99pt
-        # en vez de 180 solo porque "Comprando 2" vivía al lado).
-        if _variables_del_componente(otro) & _VARIABLES_ETIQUETA_FLOTANTE:
-            continue
-        # Hay que distinguir "abajo" de "al costado", y el ancho del solape solo
-        # no alcanza. Dos casos reales que se parecen y necesitan lo contrario:
-        #
-        #   descripcion 4,16 ancho 15,46  /  precio tachado 4,16 ancho 7,00
-        #       -> solape 7,00. Es el renglon de ABAJO: la descripcion no puede
-        #          crecer sobre el. Con el filtro de "la mitad de mi ancho"
-        #          (7,73) no contaba, y una descripcion de cuatro renglones se
-        #          imprimia encima del tachado.
-        #
-        #   precio 11,29 ancho 12,35  /  cuadro del decimal 18,14 ancho 2,54
-        #       -> solape 2,54. NO es el renglon de abajo: son los centavos, AL
-        #          COSTADO del numero. Tomarlo como techo achica el precio a la
-        #          nada.
-        #
-        # Lo que los separa no es cuanto se solapan sino DONDE arranca el otro:
-        # un cuadro alineado con nuestro borde izquierdo es la linea siguiente;
-        # uno que arranca pasada la mitad de nuestro ancho es una anotacion al
-        # costado.
-        solape = min(x + w, ox + ow) - max(x, ox)
-        if solape <= 0:
-            continue
-        tapa_lo_ancho = solape >= w * 0.5
-        arranca_donde_yo = abs(ox - x) <= w * 0.15
-        if not (tapa_lo_ancho or arranca_donde_yo):
-            continue
-        techo = oy if techo is None else min(techo, oy)
-
-    if techo is None:
-        return h
-    # El hueco manda, aunque sea MENOR que el alto dibujado de la caja. Los
-    # diseños reales tienen la caja de la descripción solapada con la de
-    # abajo (en la A5: caja de 3,68 cm pero solo 2,80 cm hasta "PRECIO
-    # REGULAR"), así que quedarse con el mayor de los dos --como se hacía
-    # antes-- era justamente ignorar la colisión que hay que evitar.
-    return techo - y
-
-
-def _ancho_util_cm(bounds: dict, ancho_pagina_cm: float | None) -> float | None:
-    """Cuanto ancho tiene REALMENTE el cuadro, sin pasarse del borde del papel.
-
-    Un cuadro puede estar declarado mas ancho que lo que queda de hoja: el
-    autoajuste de PowerPoint estira la caja del precio hasta 12,36 cm arrancando
-    en x=11,28, o sea 2,64 cm afuera de una A4. Midiendo contra la caja el motor
-    cree que "$1.100" entra, no achica nada, y el precio se imprime cortado por
-    el borde.
-
-    Y puede arrancar ANTES del papel, con x negativa: la caja del precio de la
-    A4 HELVETICO de Redexpres arranca en -11,74 y mide 44,47 cm de ancho, o sea
-    el doble de una A4, simetrica respecto al centro de la pagina. Restar una x
-    negativa AGRANDA el limite (21 - (-11,74) = 32,74), asi que el motor creia
-    tener 32 cm de ancho en una hoja de 21 y dejaba "2x$299" a 239 pt: se
-    imprimia saliendose por los dos lados.
-
-    El ancho util es la INTERSECCION de la caja con el papel, no la caja
-    recortada por un solo borde. Y de eso todavia hay que descontar los
-    margenes internos del cuadro (ver _MARGEN_INTERNO_CM).
-    """
-    ancho = bounds.get("width")
-    if not ancho or not ancho_pagina_cm:
-        return ancho
-    x = bounds.get("x")
-    if x is None:
-        return ancho
-    izq = max(x, 0.0)
-    der = min(x + ancho, ancho_pagina_cm)
-    # NO se descuenta el margen interno aca: lo descuenta _entra_en_caja con
-    # _INSET_CM, que es el mismo margen (0,254 cm por lado). Restarlo en los
-    # dos lados le comia casi 1 cm a cada caja. En la A4, con cajas de 11 cm,
-    # pasaba desapercibido; en la 6xA4, con la caja del precio de 2,58 cm, se
-    # llevaba el 39% del espacio util y ningun tamaño "entraba" -- de ahi que
-    # todo saliera al piso de _FIT_MIN_SCALE.
-    return max(0.5, der - izq)
-
-
-def _ancho_disponible_cm(comp: dict, comps: list[dict], product: dict,
-                         ancho_pagina_cm: float | None) -> float | None:
-    """Cuanto puede crecer hacia la DERECHA un cuadro antes de pisar a otro.
-
-    Espejo horizontal de _alto_disponible_cm, y hace falta por la misma razon:
-    el ancho declarado de la caja no es el limite real cuando hay otro cuadro
-    al lado.
-
-    El caso concreto es el precio del 3xA4 de Rompe del Finde. Su caja arranca
-    en 11,28 y mide 12,36, pero el cuadro de los centavos esta fijo en 18,14.
-    Con dos cifras el precio termina en 17,61 y queda bien; con TRES termina en
-    20,08 y se mete 1,94 cm adentro de los centavos -- "$149" y ",50"
-    impresos encima. El motor no lo veia porque solo miraba su propia caja.
-
-    Solo limita el vecino que de verdad va a tener contenido para ESTA fila: si
-    el precio es redondo, los centavos quedan vacios y el precio puede usar
-    todo el ancho. Por eso hace falta el producto, no alcanza con la geometria.
-    """
-    base = _ancho_util_cm(comp.get("computed_bounds") or comp.get("base_bounds") or {},
-                          ancho_pagina_cm)
-    b = comp.get("computed_bounds") or comp.get("base_bounds") or {}
-    x, y, h = b.get("x"), b.get("y"), b.get("height")
-    if base is None or x is None or y is None or h is None:
-        return base
-
-    for otro in comps:
-        if otro is comp:
-            continue
-        ob = otro.get("computed_bounds") or otro.get("base_bounds") or {}
-        ox, oy, oh = ob.get("x"), ob.get("y"), ob.get("height")
-        if ox is None or oy is None or oh is None or ox <= x + _SEPARACION_MIN_CM:
-            continue
-        # Tiene que estar en el mismo renglon, no arriba ni abajo: se pide que
-        # se solapen verticalmente en mas de la mitad del alto DEL MAS BAJO de
-        # los dos. Medirlo contra mi propio alto dejaba pasar exactamente el
-        # caso que esta funcion existe para frenar: en el 3xA4 de Redexpres la
-        # caja del precio mide 8,55 cm de alto y la de la descripcion 1,08 --
-        # la descripcion la pisa entera (1,08 de solape) pero eso es menos que
-        # la mitad de 8,55, asi que no contaba como vecina y "U$S449" a 97 pt
-        # se imprimia ENCIMA del texto de la descripcion (visto en el render
-        # real de mundo hogar, 2026-08-29).
-        solape = min(y + h, oy + oh) - max(y, oy)
-        if solape <= min(h, oh) / 2:
-            continue
-        # Etiqueta chica superpuesta a propósito con este cuadro (ver
-        # _son_decoracion_superpuesta) -- no cuenta como pared aunque
-        # geométricamente esté "a la derecha": el diseño la dibujó ahí
-        # sabiendo que se solapa.
-        if _son_decoracion_superpuesta(comp, otro):
-            continue
-        # Etiqueta SIEMPRE flotante (_VARIABLES_ETIQUETA_FLOTANTE) -- ver el
-        # comentario gemelo en _alto_disponible_cm: su caja declarada puede
-        # medir casi lo mismo que la del precio de al lado ("Comprando 2" al
-        # lado de <<precioOferta>>, mismo alto casi exacto), así que
-        # _son_decoracion_superpuesta no la reconoce como decoración y sin
-        # este chequeo cuenta como pared real.
-        if _variables_del_componente(otro) & _VARIABLES_ETIQUETA_FLOTANTE:
-            continue
-        # El DECIMAL de este mismo precio no es una pared: van pegados a
-        # proposito y el diseño declara las dos cajas superpuestas, contando
-        # con que el numero real nunca llena la suya. Tomarlo como pared
-        # recortaba el ancho del entero a lo que va desde su borde izquierdo
-        # hasta donde arranca el decimal -- en la 6xA4 real, 1,40 cm para un
-        # precio de 46 pt, con lo cual NINGUN tamaño "entraba" y la bisección
-        # devolvia siempre el piso de _FIT_MIN_SCALE: el precio de oferta
-        # salia a 25 pt en las seis celdas. La escala del par ya la empareja
-        # _AGRUPAR_POR_FILA mas abajo, que es donde corresponde.
-        vars_yo = _variables_del_componente(comp)
-        vars_otro = _variables_del_componente(otro)
-        es_mi_decimal = any(e in vars_yo and dv in vars_otro for e, dv in DECIMAL_OF.items())
-        if es_mi_decimal and ox < x + (b.get("width") or 0):
-            continue
-        # Un vecino que va a quedar vacio no limita nada.
-        if not _texto_resuelto(otro, product).strip():
-            continue
-        base = min(base, max(0.5, ox - x - _MARGEN_INTERNO_CM))
-    return base
-
-
-def _unificar_tamanos_entre_bandas(ajustadas: dict[int, list[dict]]) -> None:
-    """Iguala el cuerpo de una MISMA variable entre las N cenefas de la hoja.
-
-    En 3xA4/6xA4/A5 la hoja lleva varias cenefas, y cada una se ajusta contra
-    SU producto: una con "79" y otra con "1.599" terminaban con el precio en
-    dos cuerpos distintos, uno al lado del otro en la misma hoja impresa. El
-    pedido es explícito: los precios regulares de la 6xA4 tienen que tener el
-    mismo tamaño entre sí, los de oferta entre sí, y así con cada variable.
-
-    Se toma el cuerpo MÁS CHICO del grupo (el que le hizo falta a la celda más
-    exigida) y se aplica a todas: bajar una celda que entraba es seguro,
-    subirla a la de al lado la haría desbordar.
-
-    Empareja igual que la vinculación del editor (siblingMap.ts): por variable
-    y por orden de aparición dentro de la banda, y solo cuando la variable
-    aparece la MISMA cantidad de veces en todas las bandas -- si no cierra
-    parejo no se toca nada, antes que adivinar un emparejamiento que no es.
-    Modifica los componentes in place (ya son copias del template).
-    """
-    if len(ajustadas) < 2:
-        return
-
-    def _key(c: dict) -> str | None:
-        usadas = _variables_del_componente(c)
-        if not usadas:
-            return None
-        return "+".join(sorted(usadas))
-
-    por_banda: list[dict[str, list[dict]]] = []
-    for _, comps in sorted(ajustadas.items()):
-        g: dict[str, list[dict]] = {}
-        for c in comps:
-            k = _key(c)
-            if k:
-                g.setdefault(k, []).append(c)
-        por_banda.append(g)
-
-    todas = set()
-    for g in por_banda:
-        todas |= set(g)
-
-    for k in todas:
-        cuentas = [len(g.get(k, [])) for g in por_banda]
-        if cuentas[0] == 0 or any(n != cuentas[0] for n in cuentas):
-            continue
-        for occ in range(cuentas[0]):
-            grupo = [g[k][occ] for g in por_banda]
-            tamanos = [c.get("style", {}).get("font_size") for c in grupo]
-            if any(t is None for t in tamanos):
-                continue
-            minimo = min(tamanos)
-            for c in grupo:
-                actual = c["style"]["font_size"]
-                if actual == minimo:
-                    continue
-                escala = minimo / actual if actual else 1.0
-                c["style"] = {**c["style"], "font_size": minimo}
-                if c["style"].get("line_height_pt"):
-                    c["style"]["line_height_pt"] = round(c["style"]["line_height_pt"] * escala, 1)
-                # Cada segmento lleva su propio cuerpo y pisa al del
-                # componente al dibujar (ver _populate_text_frame): sin
-                # escalarlos, la unificación se descartaba en silencio.
-                if c.get("segments"):
-                    c["segments"] = [
-                        {**seg, "style": {**seg["style"],
-                                          "font_size": round(seg["style"]["font_size"] * escala, 1)}}
-                        if (seg.get("style") or {}).get("font_size") else seg
-                        for seg in c["segments"]
-                    ]
 
 
 # Campo donde vive la relación EXPLÍCITA entre un cuadro fijo (el "$") y el
@@ -906,436 +531,111 @@ _SOLAPE_TEXTO_MIN_CM2 = 0.05
 _SOLAPE_PAR_DECIMAL_MIN_CM2 = 0.25
 
 
-def _resolver_solapes(pares: list[tuple[dict, dict]], max_pasadas: int = 40) -> None:
-    """Achica lo justo para que ningún texto quede impreso encima de otro.
+def detectar_solapes(pares: list[tuple[dict, dict]]) -> list[dict]:
+    """Los cuadros cuyo texto se va a imprimir ENCIMA de otro. Solo AVISA.
 
-    Este es el criterio que importa al generar, y es distinto de "entra en su
-    caja": un precio puede sobresalir de su caja sin molestar a nadie (el
-    diseño cuenta con eso) y otro puede entrar justo en la suya y sin embargo
-    tener el vecino pegado. Lo que no puede pasar nunca es que un carácter se
-    imprima sobre otro cuadro que tiene contenido -- la descripción metida
-    abajo del precio, el decimal cayendo sobre el número, dos cifras de un
-    precio pisando la cocarda de al lado.
+    Hasta el 14/09/2026 esta función no avisaba: achicaba. Bajaba de a 5% al
+    cuadro más grande de cada par hasta despejar, con un piso propio de 0,55
+    calculado sobre el cuerpo que ya venía achicado por _fit_text_to_box --o
+    sea dos pisos multiplicados, 30% del cuerpo que puso el diseño-- y después
+    _unificar_tamanos_entre_bandas copiaba ese peor caso a todas las cenefas de
+    la hoja. De ahí que una corrida entera saliera impresa a un tercio del
+    tamaño aprobado en pantalla.
 
-    Se resuelve acá, al generar, y no se delega al autoajuste de PowerPoint:
-    ese autoajuste no lo recalculan todos los visores, y lo que se ve en el
-    preview tiene que ser lo que sale en el archivo.
+    Ahora el cuerpo lo declara una regla explícita (ver `set_font_size` en
+    rules_engine) y acá no se toca ningún tamaño: se reporta y listo.
 
-    Baja de a poco (5% por pasada) y solo al cuadro con el texto más grande
-    del par, que es el que invade: bajar al chico no despeja nada. Nunca por
-    debajo del piso de legibilidad de _FIT_MIN_SCALE respecto del tamaño con
-    el que entró.
+    Se reporta --y no se ignora-- porque esto no es una cuestión de estética.
+    Un precio impreso sobre otro texto es un cartel inservible, y enterarse en
+    la góndola cuesta la corrida entera reimpresa. El aviso sale en el preview,
+    antes de confirmar.
+
+    El criterio de qué cuenta como choque se conserva tal cual del resolver
+    viejo, que es lo que estaba bien de él: no cualquier roce es un choque. Los
+    diseños reales dejan cuadros superpuestos a propósito (el "$" adentro de la
+    caja del precio, el decimal pegado a su entero, una etiqueta flotante
+    encima), y marcarlos daría un aviso por cartel que nadie leería.
     """
-    piso = {id(c): (c.get("style", {}).get("font_size") or 12) * _FIT_MIN_SCALE for c, _ in pares}
-    # El "$" fijo de cada precio no cuenta como choque: el diseño los dibuja
-    # pegados y el numero, centrado, se le acerca todo lo que haga falta.
-    # Sin esta excepcion el resolver separaba el precio de su propio simbolo
-    # bajandolo al piso -- en la 6xA4 dejaba el precio de oferta en 25 pt
-    # sobre 46 de diseño, en las seis celdas.
+    avisos: list[dict] = []
     _parejas_dollar = _dollar_parejas([c for c, _ in pares])
-    for _ in range(max_pasadas):
-        rects = []
-        for c, prod in pares:
-            r = _rect_texto_real(c, prod)
-            if r:
-                rects.append((c, r))
-        hubo = False
-        for i in range(len(rects)):
-            for j in range(i + 1, len(rects)):
-                ca, ra = rects[i]
-                cb, rb = rects[j]
-                ix = min(ra["x"] + ra["width"],  rb["x"] + rb["width"])  - max(ra["x"], rb["x"])
-                iy = min(ra["y"] + ra["height"], rb["y"] + rb["height"]) - max(ra["y"], rb["y"])
-                if ix <= 0 or iy <= 0 or ix * iy < _SOLAPE_TEXTO_MIN_CM2:
-                    continue
-                # Cajas declaradas superpuestas a propósito por el diseño (el
-                # "$" metido dentro del cuadro del precio, la etiqueta
-                # flotante encima) no son un choque a resolver: el arte las
-                # dibujó así.
-                va, vb = _variables_del_componente(ca), _variables_del_componente(cb)
-                es_par_precio_decimal = any(
-                    (e in va and d in vb) or (e in vb and d in va)
-                    for e, d in DECIMAL_OF.items()
-                )
-                ba = ca.get("computed_bounds") or ca.get("base_bounds") or {}
-                bb = cb.get("computed_bounds") or cb.get("base_bounds") or {}
-                # El par entero+decimal va PEGADO por diseño: un roce lateral
-                # no es un choque, es como se lee un precio. Solo se separan
-                # si de verdad se montan uno sobre otro. Sin este piso mas
-                # alto, en la 6xA4 el resolver separaba "64" de su ",50" y
-                # bajaba el precio al minimo (25 pt sobre 46).
-                if es_par_precio_decimal and ix * iy < _SOLAPE_PAR_DECIMAL_MIN_CM2:
-                    continue
-                if not es_par_precio_decimal and _rect_overlap_ratio(ba, bb) > 0.05:
-                    continue
-                if _son_decoracion_superpuesta(ca, cb):
-                    continue
-                if (_parejas_dollar.get(id(ca)) is bb) or (_parejas_dollar.get(id(cb)) is ba):
-                    continue
-                fa = ca.get("style", {}).get("font_size") or 12
-                fb = cb.get("style", {}).get("font_size") or 12
-                victima, actual = (ca, fa) if fa >= fb else (cb, fb)
-                nuevo = round(actual * 0.95, 1)
-                if nuevo < piso[id(victima)]:
-                    continue
-                escala = nuevo / actual
-                victima["style"] = {**victima.get("style", {}), "font_size": nuevo}
-                if victima["style"].get("line_height_pt"):
-                    victima["style"]["line_height_pt"] = round(
-                        victima["style"]["line_height_pt"] * escala, 1)
-                if victima.get("segments"):
-                    victima["segments"] = [
-                        {**seg, "style": {**seg["style"],
-                                          "font_size": round(seg["style"]["font_size"] * escala, 1)}}
-                        if (seg.get("style") or {}).get("font_size") else seg
-                        for seg in victima["segments"]
-                    ]
-                hubo = True
-                break
-            if hubo:
-                break
-        if not hubo:
-            return
 
+    # Se guarda el producto de CADA cuadro, no solo el rectángulo: en una hoja
+    # multi-cenefa cada celda va contra su propia fila, y el texto del aviso
+    # tiene que ser el que de verdad se va a imprimir en ese cuadro.
+    rects = []
+    for c, prod in pares:
+        r = _rect_texto_real(c, prod)
+        if r:
+            rects.append((c, r, prod))
 
-def _fit_text_to_box(
-    comps: list[dict], product: dict, ancho_pagina_cm: float | None = None,
-) -> list[dict]:
-    """Achica la fuente de los cuadros cuyo valor no entra.
-
-    Aplica a la descripción y a los precios: son cuadros de texto
-    independientes apilados, sin auto-layout compartido, así que el texto de
-    uno se desborda sobre otro (o se parte al medio) si no se achica.
-
-    La idea es RESPETAR el tamaño del diseño y tocarlo solo cuando de verdad
-    no entra. Por eso el límite vertical no es el alto dibujado de la caja
-    sino el espacio hasta el cuadro de abajo, y el ancho del texto se mide con
-    la tipografía real y no con un promedio.
-
-    Solo cambia tamaños de fuente. Ninguna caja se mueve de donde la puso el
-    diseño.
-    """
-    fitted_por_id: dict[int, float | None] = {}
-    base_por_id: dict[int, float | None] = {}
-    sin_achique: set[int] = set()
-    dollar_parejas = _dollar_parejas(comps)
-
-    for c in comps:
-        usadas = _variables_del_componente(c)
-        if c.get("type") != "text" or not usadas:
-            sin_achique.add(id(c))
-            continue
-
-        style = c.get("style", {})
-        base_font_size = style.get("font_size")
-        bold = bool(style.get("font_bold"))
-        familia = style.get("font_family")
-        texto = _texto_resuelto(c, product)
-
-        # El cuadro del símbolo de moneda se achica SOLO si su propio texto no
-        # entra en su propia caja -- nunca por culpa de la caja de otro cuadro.
-        #
-        # El achique automático existe para que el contenido de un cuadro entre
-        # en él, no para achicar un cuadro distinto (criterio de Ivan,
-        # 11/09/2026). Medido contra los vecinos (_ancho_disponible_cm), el "$"
-        # tomaba como pared la CAJA declarada del precio de al lado aunque los
-        # dos textos no se tocaran. Caso real, Red Expres 17 A4: en un combo la
-        # caja de <<promoOferta>> arranca en x=4,11, adentro de la franja del
-        # "$" (0,64..7,46); el motor veía 2,97 cm libres y bajaba el "$" de 166
-        # a 128 pt, mientras el texto real del "$" terminaba en 5,28 y el del
-        # "50" empezaba en 7,09 -- 1,8 cm de aire. En precio fijo esa caja
-        # está vacía, no hay pared, y el "$" quedaba en 166. Resultado: el
-        # símbolo cambiaba de tamaño hoja por hoja según la mecánica.
-        #
-        # Si el número real de verdad llegara a tocar al símbolo, el que tiene
-        # que ceder es el número. OJO: hoy _resolver_solapes NO lo hace cuando
-        # las cajas DECLARADAS de los dos se pisan más del 5% (las trata como
-        # superpuestas a propósito), que es justo el caso del "$" y el precio
-        # en Redexpres. Medido el 11/09/2026 contra las 20 plantillas y los 264
-        # productos reales, este cambio no generó ningún choque nuevo, así que
-        # no hizo falta tocar el resolver; si aparece uno, ese es el lugar.
-        #
-        # Mismo criterio de medida que el tamaño puesto a mano (ver abajo):
-        # solo el ancho de la propia caja y sin límite de alto, porque es un
-        # token único pensado para desbordar su alto declarado. "U$S" sí se
-        # achica cuando no entra, porque ahí el que no entra es su contenido.
-        if usadas == {"unidadMoneda"}:
-            propios = c.get("computed_bounds") or c.get("base_bounds") or {}
-            fitted = _fit_font_size(
-                texto, _ancho_util_cm(propios, ancho_pagina_cm), None,
-                base_font_size, bold, familia,
-            )
-            fitted_por_id[id(c)] = min(fitted, base_font_size) if (fitted and base_font_size) else fitted
-            base_por_id[id(c)] = base_font_size
-            continue
-
-        if c.get("_manual_font_override") or _tiene_segmento_a_mano(c):
-            # Un segmento con tamaño puesto a mano cuenta igual que la caja
-            # (11/09/2026). Sin esto, con la caja sin tamaño manual el cuadro
-            # iba por el achique automático, que mide contra los vecinos y el
-            # alto: en Rompe Precios Congelados A4 el "$" a 102 y el número a
-            # 160 salieron al mínimo (56 y 88). Lo puesto a mano solo baja si
-            # no entra en SU caja.
-            #
-            # La persona escribió este tamaño a mano en el panel de
-            # propiedades -- es el TECHO para este cuadro, nunca se agranda
-            # por encima de eso. Pero el tamaño se fijó mirando UN producto
-            # (el que estaba abierto en el editor en ese momento); otro
-            # producto con un texto más largo en la MISMA plantilla puede no
-            # entrar a ese tamaño ("179" casi al límite, "1.599" claramente
-            # no) y antes esto se aceptaba tal cual, sin medir nunca -- caso
-            # real: <<precioOferta>> de Preciazos A4 a 180pt fijo, desbordaba
-            # con Alfajor ("179") y agentes con precios de 4 cifras. Se mide
-            # iguel que un cuadro automático, con un piso: nunca por encima
-            # de lo que la persona eligió, solo hacia abajo si de verdad no
-            # entra.
-            #
-            # _segmentos_medibles no sirve acá: lee el font_size guardado
-            # POR SEGMENTO, que para estos cuadros suele quedar desactualizado
-            # respecto al font_size del componente (_manual_font_override
-            # fuerza a todos los segmentos a ese tamaño al dibujar, ver
-            # _populate_text_frame) -- medir con el tamaño viejo del segmento
-            # daría un "entra" falso. Se mide con el texto completo resuelto
-            # al tamaño ÚNICO que de verdad se va a imprimir.
-            #
-            # Solo el ANCHO PROPIO de la caja -- ni _alto_disponible_cm ni
-            # _ancho_disponible_cm (las versiones que miran vecinos).
-            #
-            # Alto: estos cuadros son precios gigantes pensados para
-            # desbordar su alto declarado a propósito (ver el comentario de
-            # _alto_disponible_cm sobre por qué el alto de la caja no es el
-            # límite real).
-            #
-            # Ancho: acá el problema es otro. Estas plantillas traen pares
-            # entero+decimal con las cajas declaradas A PROPÓSITO
-            # superpuestas (ej. <<precioBanco>> mide 4,52 cm de ancho pero
-            # <<decimalPrecioBanco>>, la caja de al lado, arranca DENTRO de
-            # esa misma franja -- el diseño cuenta con que el número real
-            # nunca va a ser tan largo como para chocar). _ancho_disponible_cm
-            # trata a ese vecino como pared real y achicaba "67"/"84" a la
-            # mitad sin que hubiera ningún desborde -- ver el comentario de
-            # <<precioOferta>> más arriba para el caso gemelo con
-            # "Comprando 2". Medir contra la propia caja (sin vecinos) es
-            # justo lo conservador que hace falta: agarra el desborde real
-            # ("179" que sí es más ancho que su caja) sin inventar uno
-            # donde el diseño ya contaba con el margen.
-            #
-            # Excepción: un cuadro con ESPACIOS (una descripción, no un
-            # precio) sí necesita el chequeo de alto -- es texto real que
-            # hace word-wrap a varias líneas, no un token único pensado para
-            # desbordar. Sin el chequeo de alto, una descripción larga
-            # ("Atún en lomo VALLE DEL SOL al aceite y al natural. 170g")
-            # crecía a 3 líneas sin achicarse y se metía encima del precio
-            # tachado de abajo (caso real, Preciazos A4, 09/2026:
-            # <<descripcion>> también tiene _manual_font_override). Un precio
-            # nunca tiene espacios (no hay dónde cortarlo), así que esta
-            # distinción no le pega a ningún caso de precio real.
-            texto_manual = _texto_resuelto(c, product)
-            es_texto_con_espacios = " " in texto_manual.strip()
-            propios = c.get("computed_bounds") or c.get("base_bounds") or {}
-            ancho_propio = _ancho_util_cm(propios, ancho_pagina_cm)
-            # El "$" que acompaña a este precio vive DENTRO de su misma caja
-            # a propósito (ver _dollar_parejas) -- un precio centrado y ancho
-            # puede crecer hacia la izquierda por encima de su propio "$" sin
-            # que ninguno de los dos chequeos de arriba lo note (cada uno
-            # entra en SU caja por separado). Caso real, Preciazos A4:
-            # "339" (precioOferta, 3 cifras) al tamaño que entraba en su
-            # caja de 11,44 cm ya pisaba visualmente el "$" de al lado --
-            # "64" (2 cifras) nunca llegaba tan lejos. Si el texto está
-            # centrado, se lo achica más si hace falta para que ni la mitad
-            # izquierda del texto cruce el borde derecho del "$".
-            if (style.get("align") == "center" and not es_texto_con_espacios
-                    and id(c) in dollar_parejas and propios.get("width")):
-                db = dollar_parejas[id(c)]
-                centro = propios["x"] + propios["width"] / 2.0
-                borde_dollar = db.get("x", 0) + db.get("width", 0)
-                if borde_dollar > propios["x"]:
-                    despeje = max(0.1, (centro - borde_dollar) - 0.15)
-                    ancho_propio = min(ancho_propio, 2 * despeje) if ancho_propio else 2 * despeje
-            alto_para_medir = _alto_disponible_cm(c, comps) if es_texto_con_espacios else None
-            # Si además algún segmento tiene SU tamaño puesto a mano (ej. el
-            # "$" a 60 dentro de una caja fijada en 150), ese pedazo se dibuja
-            # a su tamaño y no al de la caja (_populate_text_frame): medir
-            # todo al tamaño de la caja achicaría un número que sí entra. Se
-            # mide pedazo por pedazo con los tamaños que de verdad se imprimen
-            # y, si no entra, se bajan TODOS en la misma proporción: el tamaño
-            # manual es un techo, no un valor fijo (criterio de Ivan,
-            # 11/09/2026). Solo para precios (sin espacios): una descripción
-            # hace word-wrap y la suma de anchos en una línea no la representa;
-            # esa sigue midiéndose como antes.
-            hay_segmento_a_mano = _tiene_segmento_a_mano(c)
-            piezas_manual = _piezas_con_tamano_manual(c, product) if hay_segmento_a_mano else []
-            if piezas_manual and not es_texto_con_espacios and ancho_propio and base_font_size:
-                escala = 1.0
-                if not _entra_por_segmentos(piezas_manual, ancho_propio, None, bold, familia):
-                    lo, hi = _FIT_MIN_SCALE, 1.0
-                    escala = _FIT_MIN_SCALE
-                    for _ in range(12):
-                        medio = (lo + hi) / 2.0
-                        if _entra_por_segmentos([(t, sz * medio) for t, sz in piezas_manual],
-                                                ancho_propio, None, bold, familia):
-                            escala, lo = medio, medio
-                        else:
-                            hi = medio
-                fitted_por_id[id(c)] = min(round(base_font_size * escala, 1), base_font_size)
-                base_por_id[id(c)] = base_font_size
+    for i in range(len(rects)):
+        for j in range(i + 1, len(rects)):
+            ca, ra, pa = rects[i]
+            cb, rb, pb = rects[j]
+            ix = min(ra["x"] + ra["width"],  rb["x"] + rb["width"])  - max(ra["x"], rb["x"])
+            iy = min(ra["y"] + ra["height"], rb["y"] + rb["height"]) - max(ra["y"], rb["y"])
+            if ix <= 0 or iy <= 0 or ix * iy < _SOLAPE_TEXTO_MIN_CM2:
                 continue
-            fitted = _fit_font_size(
-                texto_manual, ancho_propio, alto_para_medir, base_font_size, bold, familia,
+            # Cajas declaradas superpuestas a propósito por el diseño (el "$"
+            # metido dentro del cuadro del precio, la etiqueta flotante encima)
+            # no son un choque: el arte las dibujó así.
+            va, vb = _variables_del_componente(ca), _variables_del_componente(cb)
+            es_par_precio_decimal = any(
+                (e in va and d in vb) or (e in vb and d in va)
+                for e, d in DECIMAL_OF.items()
             )
-            fitted_por_id[id(c)] = min(fitted, base_font_size) if (fitted and base_font_size) else fitted
-            base_por_id[id(c)] = base_font_size
-            continue
+            ba = ca.get("computed_bounds") or ca.get("base_bounds") or {}
+            bb = cb.get("computed_bounds") or cb.get("base_bounds") or {}
+            # El par entero+decimal va PEGADO por diseño: un roce lateral no es
+            # un choque, es como se lee un precio. Solo cuenta si de verdad se
+            # montan uno sobre otro.
+            if es_par_precio_decimal and ix * iy < _SOLAPE_PAR_DECIMAL_MIN_CM2:
+                continue
+            if not es_par_precio_decimal and _rect_overlap_ratio(ba, bb) > 0.05:
+                continue
+            if _son_decoracion_superpuesta(ca, cb):
+                continue
+            if (_parejas_dollar.get(id(ca)) is bb) or (_parejas_dollar.get(id(cb)) is ba):
+                continue
 
-        piezas = _segmentos_medibles(c, product)
-        if piezas:
-            # Cuadro con tamaños mezclados (el precio): se busca la escala más
-            # grande a la que la suma de los pedazos entra, y se aplica a todos
-            # por igual para no desalinear la coma con el entero.
-            ancho_caja = _ancho_disponible_cm(c, comps, product, ancho_pagina_cm) or 0
-            alto_caja = _alto_disponible_cm(c, comps)
-            escala = 1.0
-            if ancho_caja and not _entra_por_segmentos(piezas, ancho_caja, alto_caja, bold, familia):
-                lo, hi = _FIT_MIN_SCALE, 1.0
-                escala = _FIT_MIN_SCALE
-                for _ in range(12):
-                    medio = (lo + hi) / 2.0
-                    if _entra_por_segmentos(_segmentos_medibles(c, product, medio),
-                                            ancho_caja, alto_caja, bold, familia):
-                        escala, lo = medio, medio
-                    else:
-                        hi = medio
-            fitted = round(base_font_size * escala, 1) if base_font_size else base_font_size
-        else:
-            fitted = _fit_font_size(
-                texto, _ancho_disponible_cm(c, comps, product, ancho_pagina_cm),
-                _alto_disponible_cm(c, comps),
-                base_font_size, bold, familia,
-            )
-        fitted_por_id[id(c)] = fitted
-        base_por_id[id(c)] = base_font_size
+            # El que "invade" es el de texto más grande, que es el criterio con
+            # el que el resolver elegía a quién achicar. Se conserva para que
+            # el aviso señale el cuadro al que hay que ponerle la regla.
+            fa = ca.get("style", {}).get("font_size") or 12
+            fb = cb.get("style", {}).get("font_size") or 12
+            invasor, invadido, suyo = (ca, cb, pa) if fa >= fb else (cb, ca, pb)
+            avisos.append({
+                "component_id":   invasor.get("id"),
+                "contra_id":      invadido.get("id"),
+                "area_cm2":       round(ix * iy, 3),
+                "font_size":      invasor.get("style", {}).get("font_size"),
+                "texto":          _texto_resuelto(invasor, suyo)[:40],
+            })
+    return avisos
 
-    # _AGRUPAR_POR_FILA: una cocarda/precio partido en un cuadro de texto
-    # POR VARIABLE (mecánica + signo + precio + decimal cada uno el suyo --
-    # plantillas con variables separadas, ej. Preciazos de la Tienda) tiene
-    # que achicarse TODA LA FILA A LA MISMA ESCALA si a alguno le hace falta.
-    # Si no, cada cuadro se achica solo contra su propia caja y la fila
-    # termina con tamaños relativos distintos de los que le dio el diseño
-    # ("2x $" chico al lado de un "129" gigante, o un decimal con estilo más
-    # grande que su entero, "$109,65", quedando "109" chico al lado de un
-    # ",65" gigante) -- aunque ninguno de los cuadros desborde ni se
-    # superponga a nada, así de mal se ve.
-    #
-    # El group_id lo pone el propio herramental que arma esas plantillas
-    # (separar_cuadros2.py, fuera de este repo: le da a cada cuadro de una
-    # misma fila el mismo nombre de shape "cnf-grupo-N", que pptx_importer.py
-    # lee como component["group_id"]) -- ver ese script para el detalle.
-    # Sin group_id (el caso de CUALQUIER plantilla existente, que no separa
-    # las variables así) se cae al emparejamiento viejo por entero+decimal
-    # vía DECIMAL_OF, que sigue cubriendo el caso más común (precio+decimal
-    # cada uno su cuadro, sin mecánica/signo de por medio).
-    grupos: dict[str, list[dict]] = {}
-    for c in comps:
-        gid = c.get("group_id")
-        if gid and c.get("variable") and id(c) in fitted_por_id:
-            grupos.setdefault(gid, []).append(c)
-    if not grupos:
-        por_variable = {c.get("variable"): c for c in comps if c.get("variable")}
-        for var_entero, var_decimal in DECIMAL_OF.items():
-            c_entero, c_decimal = por_variable.get(var_entero), por_variable.get(var_decimal)
-            if c_entero is not None and c_decimal is not None:
-                grupos[f"_decimal_{var_entero}"] = [c_entero, c_decimal]
 
-    for miembros in grupos.values():
-        # Un cuadro que la persona acaba de redimensionar a mano en el
-        # preview (resize con los 4 puntos) ya trae SU propio tamaño de
-        # letra elegido para SU propia caja nueva -- forzarlo a compartir la
-        # escala mínima del resto del grupo pisaría esa elección con la del
-        # cuadro que nadie tocó. Sin esta exclusión, achicar solo el decimal
-        # de un precio (ej. decimalPrecioBanco) terminaba saliendo con OTRO
-        # tamaño de letra en el PPTX final del que se veía en el preview --
-        # el propio entero (precioBanco), que nadie movió, podía necesitar
-        # una escala más chica por motivos suyos (ej. sus vecinos cambiaron
-        # de lugar) y esa escala ajena se le imponía igual al decimal editado.
-        # Mismo criterio para un cuadro con un SEGMENTO puesto a mano
-        # (11/09/2026): su tamaño no se iguala con el del resto de la fila.
-        auto = [c for c in miembros
-                if not (c.get("_manual_font_override") or _tiene_segmento_a_mano(c))]
-        if not auto:
-            continue
-        escalas = []
-        for c in auto:
-            base, fit = base_por_id.get(id(c)), fitted_por_id.get(id(c))
-            if base and fit is not None:
-                escalas.append(fit / base)
-        if not escalas:
-            continue
-        escala_min = min(escalas)
-        for c in auto:
-            base = base_por_id.get(id(c))
-            if base:
-                fitted_por_id[id(c)] = round(base * escala_min, 1)
+def preparar_componentes(comps: list[dict], rules: list[dict], product: dict) -> list[dict]:
+    """Los componentes listos para dibujar, para ESTE producto.
 
-    # SIEMPRE se devuelven copias, aunque el tamaño no haya cambiado.
-    #
-    # No es prolijidad: es lo que impide que el achique de un producto se le
-    # pegue al siguiente. El layout se arma UNA vez y se reusa para todos los
-    # productos, y _resolver_solapes --que corre justo después de esto-- achica
-    # MODIFICANDO EN EL LUGAR el `style` del cuadro. Devolver acá el
-    # diccionario original (lo que se hacía cuando el texto ya entraba) hacía
-    # que esa modificación cayera sobre el layout compartido.
-    #
-    # Bug real (Gran Bretaña A4, 07/09/2026), encontrado por Ivan: "cuando las
-    # cifras de precioOferta pasan a ser 4 reducís el tamaño, pero cuando
-    # vuelven a 3 no volvés al original". Y no solo no volvía: seguía bajando,
-    # porque cada producto arrancaba del tamaño que le dejó el anterior. Con
-    # <<precioOferta>> fijado a mano en 140 pt, seis hojas seguidas salieron
-    # 120 / 88,3 / 88,3 / 88,3 / 83,9 / 83,9.
-    #
-    # Alcanza con una copia superficial: el resolver ASIGNA un style nuevo, no
-    # muta el de adentro, así que el original queda intacto.
-    def _copia(comp: dict) -> dict:
-        nueva = dict(comp)
-        if isinstance(comp.get("style"), dict):
-            nueva["style"] = dict(comp["style"])
-        return nueva
+    Un solo lugar donde se decide qué se ve y de qué tamaño sale, para que el
+    preview y el export no puedan diferir: los dos llaman acá. La divergencia
+    que arrastrábamos venía justo de tener dos secuencias parecidas pero no
+    iguales --el preview llamaba al achique sin el ancho de papel, así que en
+    pantalla nada se achicaba y en el PPTX todo salía al piso.
 
-    result = []
-    for c in comps:
-        if id(c) in sin_achique:
-            result.append(_copia(c))
-            continue
-
-        style = c.get("style", {})
-        base_font_size = base_por_id.get(id(c))
-        fitted = fitted_por_id.get(id(c))
-        if fitted == base_font_size:
-            result.append(_copia(c))
-            continue
-
-        nuevo_style = {**style, "font_size": fitted}
-        # El alto de línea acompaña al achique. Es el run vacío que
-        # _populate_text_frame agrega para fijar el interlineado: si queda en el
-        # tamaño original mientras el número baja, el renglón conserva el alto
-        # de antes y el texto se planta más abajo de donde lo puso el diseño.
-        if style.get("line_height_pt") and base_font_size:
-            nuevo_style["line_height_pt"] = round(
-                style["line_height_pt"] * (fitted / base_font_size), 1)
-        c = {**c, "style": nuevo_style}
-        # En un componente multi-segmento cada segmento lleva su propio
-        # font_size, que pisa al del componente en _populate_text_frame. Sin
-        # esto el achique se descartaba en silencio para cualquier cuadro
-        # importado como multi-segmento (que ahora son casi todos).
-        segs = c.get("segments")
-        if segs:
-            escala = fitted / base_font_size
-            c["segments"] = [
-                {**seg, "style": {**seg["style"], "font_size": seg["style"]["font_size"] * escala}}
-                if seg.get("style", {}).get("font_size") else seg
-                for seg in segs
-            ]
-        result.append(c)
-    return result
+    Devuelve copias (ver apply_font_sizes): el layout se arma una vez y se
+    reusa para todos los productos de la corrida.
+    """
+    visibles = apply_visibility(
+        comps,
+        evaluate_rules(rules, product),
+        evaluate_segment_rules(rules, product),
+    )
+    return apply_font_sizes(
+        visibles,
+        evaluate_font_size_rules(rules, product),
+        evaluate_segment_font_size_rules(rules, product),
+    )
 
 
 def hex_to_rgb(hex_color: str | None) -> RGBColor:
@@ -2651,39 +1951,20 @@ def render_template_to_pptx(
                 # antes escalaba por target_format y comprimía la grilla.
                 laid_bg = compute_layout(bg_comps, master_format, master_format)
                 _render_slide(slide, laid_bg, {}, missing_vars=missing_vars, shape_map=shape_map)
-            # Primero se ajusta cada celda por separado, despues se unifican
-            # los tamaños entre celdas: la MISMA variable tiene que salir del
-            # MISMO cuerpo en las N cenefas de la hoja. Ver
-            # _unificar_tamanos_entre_bandas.
+            # Cada celda se resuelve contra SU producto. Ya no se unifican los
+            # cuerpos entre celdas: eso lo hacía _unificar_tamanos_entre_bandas,
+            # que copiaba a toda la hoja el cuerpo de la celda más exigida --un
+            # solo producto con un precio de 5 cifras arrastraba las otras cinco
+            # al mínimo. Con el cuerpo declarado por regla el problema no existe:
+            # la regla se evalúa igual en las seis celdas, así que un mismo
+            # largo de precio da el mismo cuerpo sin necesidad de emparejar nada
+            # después.
             ajustadas: dict[int, list[dict]] = {}
             for band_idx, band_comps in enumerate(slot_bands):
                 if band_idx >= len(pg):
                     continue
-                laid_band     = compute_layout(band_comps, master_format, master_format)
-                product       = pg[band_idx]
-                visibility    = evaluate_rules(rules, product)
-                visible_comps = apply_visibility(
-                    laid_band, visibility, evaluate_segment_rules(rules, product))
-                # El ancho de papel para medir es el de la HOJA, no el de una
-                # celda: en slot_bands los componentes vienen en coordenadas
-                # absolutas de la hoja entera. Pasando el ancho de la celda
-                # (7 cm en la 6xA4) todo lo de la columna derecha, que arranca
-                # en x=16, quedaba "fuera del papel" y _ancho_util_cm lo
-                # mandaba al minimo -- de ahi que el precio de oferta saliera
-                # al piso de _FIT_MIN_SCALE en las seis celdas.
-                ajustadas[band_idx] = _fit_text_to_box(
-                    visible_comps, product, prs.slide_width / 360000.0)
-                # Criterio que manda al generar: que ningun texto quede
-                # impreso encima de otro cuadro con contenido. Ver
-                # _resolver_solapes -- es distinto de "entra en su caja".
-            # El solape se revisa sobre la HOJA entera, no celda por celda:
-            # la descripcion de una cenefa puede invadir la de al lado.
-            _resolver_solapes([(c, pg[bi]) for bi, cs in ajustadas.items() for c in cs])
-            # Unificar va DESPUES de resolver: resolver achica solo la celda
-            # que choca y desempareja el resto de la hoja. Al reves no hay
-            # riesgo -- unificar solo achica, y achicar nunca crea un solape
-            # nuevo.
-            _unificar_tamanos_entre_bandas(ajustadas)
+                laid_band = compute_layout(band_comps, master_format, master_format)
+                ajustadas[band_idx] = preparar_componentes(laid_band, rules, pg[band_idx])
 
             for band_idx, band_comps in enumerate(slot_bands):
                 if band_idx < len(pg):
@@ -2733,14 +2014,7 @@ def render_template_to_pptx(
             slot_offset_x = col * cell_w
             slot_offset_y = row * cell_h
 
-            visibility    = evaluate_rules(rules, product)
-            visible_comps = apply_visibility(
-                laid_out, visibility, evaluate_segment_rules(rules, product))
-            # El offset del slot corre el cuadro dentro de la hoja, asi que el
-            # ancho de papel disponible se mide desde donde va a caer de verdad.
-            visible_comps = _fit_text_to_box(
-                visible_comps, product, max(0.5, fmt_info["width_cm"] * slot_cols - slot_offset_x))
-            _resolver_solapes([(c, product) for c in visible_comps])
+            visible_comps = preparar_componentes(laid_out, rules, product)
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map)
 

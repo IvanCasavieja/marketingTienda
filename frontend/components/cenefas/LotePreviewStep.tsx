@@ -10,6 +10,7 @@ import type { CenefaComponent, CenefaLote, CenefaLoteItem, CenefaRule, CenefaTem
 import Canvas from "@/components/cenefas/editor/Canvas";
 import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
 import RulesPanel from "@/components/cenefas/editor/RulesPanel";
+import AvisosSolape from "@/components/cenefas/AvisosSolape";
 import TininRevision, { type TemaTinin } from "@/components/cenefas/convertidor/TininRevision";
 
 // Preview de un lote: se recorren de a una las cenefas que se van a generar,
@@ -518,6 +519,9 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
           momento ya no queda template_def de ninguna cenefa, así que el
           editor no tiene nada que mostrar y ese espacio quedaba vacío. */}
       <div className="card p-4">
+        {/* Los choques de texto de ESTA cenefa del lote. El motor ya no los
+            arregla solo (ver AvisosSolape). */}
+        <AvisosSolape avisos={detalle?.avisos_solape} template={detalle?.template_def ?? null} />
         <div className={mostrarPanelDerecho ? "flex gap-3 items-stretch" : ""}>
           <div className={mostrarPanelDerecho ? "flex-1 h-[820px]" : "h-[820px]"}>
             {detalle?.template_def ? (
