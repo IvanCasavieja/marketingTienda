@@ -243,3 +243,83 @@ def test_en_una_fuente_tabular_cualquier_digito_sirve():
 def test_fuente_desconocida_no_rompe():
     assert digito_mas_ancho("Tipografia Inexistente") == "8"
     assert digito_mas_ancho(None) == "8"
+
+
+# ---------------------------------------------------------------------------
+# El autoajuste de PowerPoint
+# ---------------------------------------------------------------------------
+#
+# El achique que MÁS caro salió: no el del motor, el de PowerPoint.
+#
+# Si el PPTX del diseñador traía la caja con "Reducir el texto al desbordarse",
+# el importer lo anotaba (style["auto_fit"]) y el export se lo volvía a activar
+# al archivo final. Mientras el motor achicaba solo no se notaba --para cuando
+# PowerPoint abría el archivo el texto ya entraba-- pero al eliminar el achique
+# automático el de PowerPoint quedó como único actor y encogió todo hasta
+# meterlo en la caja. Como el canvas del preview no hace autofit, en pantalla se
+# veía el cuerpo declarado y en el archivo salía otro: el mismo síntoma de
+# siempre por una causa nueva. Reportado por Ivan con el export de Congelados.
+
+import io
+import zipfile
+
+from pptx import Presentation
+from pptx.util import Cm, Pt
+
+from app.services.cenefas.component_renderer import render_template_to_pptx
+from app.services.cenefas.pptx_importer import import_pptx
+
+
+def _pptx_con_autoajuste():
+    """Un A4 cuyo cuadro de precio tiene 'Reducir el texto al desbordarse'."""
+    from pptx.oxml.ns import qn
+    from lxml import etree
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Cm(21.0), Cm(29.7)
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    caja = sl.shapes.add_textbox(Cm(13.2), Cm(10.2), Cm(4.0), Cm(2.0))
+    run = caja.text_frame.paragraphs[0].add_run()
+    run.text = "$<<precioOferta>>"
+    run.font.size = Pt(60)
+    body_pr = caja.text_frame._txBody.find(qn("a:bodyPr"))
+    for tag in (qn("a:noAutofit"), qn("a:spAutoFit")):
+        for el in body_pr.findall(tag):
+            body_pr.remove(el)
+    # Como lo deja PowerPoint cuando ya calculó el encogimiento.
+    af = etree.SubElement(body_pr, qn("a:normAutofit"))
+    af.set("fontScale", "45000")
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
+def _bodypr_del_export(src, fila):
+    d = import_pptx(src)
+    pptx, _ = render_template_to_pptx(d, [fila], "a4", None, src)
+    with zipfile.ZipFile(io.BytesIO(pptx)) as z:
+        return "".join(
+            z.read(n).decode("utf-8", "ignore")
+            for n in z.namelist() if n.startswith("ppt/slides/slide"))
+
+
+def test_el_importer_reconoce_el_autoajuste_del_diseno():
+    # Si esto falla, el test de abajo no prueba lo que dice probar.
+    d = import_pptx(_pptx_con_autoajuste())
+    assert any(c.get("style", {}).get("auto_fit") for c in d["components"])
+
+
+def test_el_export_apaga_el_autoajuste_de_powerpoint():
+    xml = _bodypr_del_export(_pptx_con_autoajuste(), {"precioOferta": "12.345"})
+    assert "noAutofit" in xml
+    assert "normAutofit" not in xml, (
+        "quedó el autoajuste de PowerPoint: el archivo se ve más chico que el "
+        "preview aunque el motor ya no achique")
+    # Y el fontScale que PowerPoint había dejado calculado se va con él.
+    assert "fontScale" not in xml
+
+
+def test_el_cuerpo_del_pptx_es_el_declarado_aunque_desborde():
+    # "$12.345" a 60 pt no entra en una caja de 4 cm. Antes PowerPoint lo
+    # encogía al abrirlo; ahora desborda y el sz del archivo es el de diseño.
+    xml = _bodypr_del_export(_pptx_con_autoajuste(), {"precioOferta": "12.345"})
+    assert 'sz="6000"' in xml

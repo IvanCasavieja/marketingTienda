@@ -654,16 +654,51 @@ def hex_to_rgb(hex_color: str | None) -> RGBColor:
 # Renderizado de componentes individuales
 # ---------------------------------------------------------------------------
 
-def _enable_normAutofit(tf) -> None:
+def _forzar_sin_autoajuste(tf) -> None:
+    """Apaga el autoajuste de PowerPoint en este cuadro.
+
+    Esto es lo que ANTES hacía lo contrario: si el PPTX del diseñador traía la
+    caja con "Reducir el texto al desbordarse", el export se lo volvía a poner
+    al archivo final (`style["auto_fit"]`, que arma el importer leyendo
+    a:normAutofit / a:spAutoFit del original).
+
+    Mientras el motor achicaba solo, no se notaba: para cuando PowerPoint
+    abría el archivo el texto ya entraba y su autoajuste no tenía nada que
+    hacer. Al eliminar el achique automático (14/09/2026) el de PowerPoint
+    quedó como ÚNICO actor y achicó todo hasta meterlo en la caja -- con el
+    agravante de que el canvas del preview no hace autofit, así que en pantalla
+    se veía el cuerpo declarado y en el archivo salía cualquier otro. Era el
+    mismo síntoma de siempre ("el preview lo veo divino y el export no tiene
+    nada que ver") por una causa nueva.
+
+    No alcanza con dejar de agregarlo. Con preserve_source --que es como se
+    genera todo desde 08/2026-- el shape YA VIENE del archivo del diseñador con
+    su propio a:normAutofit adentro, así que hay que sacarlo activamente y
+    dejar a:noAutofit en su lugar.
+
+    Consecuencia buscada: un texto que no entra DESBORDA, a la vista, en vez de
+    encogerse solo. Que se note es el punto -- se corrige con una regla de
+    tamaño (ver rules_engine.set_font_size) y mientras tanto lo avisa
+    detectar_solapes.
+    """
     body_pr = tf._txBody.find(qn("a:bodyPr"))
     if body_pr is None:
         return
-    for tag in (qn("a:spAutoFit"), qn("a:noAutofit")):
-        el = body_pr.find(tag)
-        if el is not None:
+    # Se reemplaza EN EL LUGAR: el orden de los hijos de a:bodyPr lo fija el
+    # esquema (el autoajuste va después de a:prstTxWarp y antes de a:scene3d),
+    # y appendear al final lo dejaría fuera de lugar en un shape preservado que
+    # traiga elementos posteriores.
+    posicion = None
+    for tag in (qn("a:normAutofit"), qn("a:spAutoFit"), qn("a:noAutofit")):
+        for el in body_pr.findall(tag):
+            if posicion is None:
+                posicion = list(body_pr).index(el)
             body_pr.remove(el)
-    if body_pr.find(qn("a:normAutofit")) is None:
-        body_pr.append(etree.Element(qn("a:normAutofit")))
+    sin_ajuste = etree.Element(qn("a:noAutofit"))
+    if posicion is None:
+        body_pr.append(sin_ajuste)
+    else:
+        body_pr.insert(posicion, sin_ajuste)
 
 
 def _populate_text_frame(tf, comp: dict, value: str) -> None:
@@ -686,8 +721,9 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
         except Exception:
             pass
 
-    if style.get("auto_fit", False):
-        _enable_normAutofit(tf)
+    # SIEMPRE, no solo cuando el diseño lo pedía: el cuerpo lo decide una regla
+    # y nadie más. Ver _forzar_sin_autoajuste.
+    _forzar_sin_autoajuste(tf)
 
     tf.clear()  # saca cualquier texto previo (ej. "<<Descripción>>" del original)
     transform = comp.get("transform", "none")
