@@ -95,6 +95,54 @@ export const VARIABLES_MAPEABLES: string[] = [
   "legales",
 ];
 
+/** Una opción del desplegable de variables de un cuadro. */
+export interface OpcionDeVariable {
+  name: string;
+  csv_column: string;
+  desc?: string;
+  /** Si la plantilla ya la declara (porque algún cuadro la usa). */
+  enPlantilla: boolean;
+}
+
+/**
+ * Las variables que se le pueden asignar a un cuadro: TODAS las del sistema,
+ * no solo las que la plantilla ya usa.
+ *
+ * Hasta el 14/09/2026 los desplegables ofrecían únicamente
+ * `template.variables`, y esa lista la arma el importer con las variables que
+ * encuentra en los placeholders del PPTX original (`variables_seen` en
+ * pptx_importer.py). O sea: solo se podía elegir entre las que YA estaban, y no
+ * había ninguna pantalla para agregar una. Una variable que el diseñador no
+ * hubiera escrito en el archivo quedaba fuera del alcance para siempre.
+ *
+ * Caso real (Ivan, 14/09/2026): en Rompe Precios Congelados la cocarda de CLUB
+ * CARD tenía el entero atado a `precioOferta` y el decimal a
+ * `decimalPrecioBanco` -- el entero de un precio con el decimal de otro. Para
+ * arreglarlo había que poner `precioBanco`, que no figuraba en la plantilla
+ * porque ningún cuadro la usaba. No se podía elegir. El error seguía imprimiéndose
+ * y, mientras los dos precios coincidieran, sin que se notara.
+ *
+ * Las que la plantilla ya declara van primero y conservan su `csv_column` (que
+ * puede diferir del nombre). Para el resto, columna == nombre, que es la
+ * convención de todo el vocabulario: el encabezado del Excel, el placeholder
+ * del PPTX y la clave del JSON son el mismo string.
+ */
+export function variablesDisponibles(
+  delTemplate?: { name: string; csv_column?: string }[],
+): OpcionDeVariable[] {
+  const declaradas = new Map((delTemplate ?? []).map((v) => [v.name, v]));
+  const propias: OpcionDeVariable[] = [...declaradas.values()].map((v) => ({
+    name: v.name,
+    csv_column: v.csv_column ?? v.name,
+    desc: varDef(v.name)?.desc,
+    enPlantilla: true,
+  }));
+  const resto: OpcionDeVariable[] = CENEFA_VARIABLES
+    .filter((v) => !declaradas.has(v.name))
+    .map((v) => ({ name: v.name, csv_column: v.name, desc: v.desc, enPlantilla: false }));
+  return [...propias, ...resto];
+}
+
 export function varDef(name: string): CenefaVarDef | undefined {
   return CENEFA_VARIABLES.find((v) => v.name === name);
 }

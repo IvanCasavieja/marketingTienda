@@ -1,4 +1,5 @@
 "use client";
+import { variablesDisponibles } from "@/lib/cenefaVariables";
 import { useMemo, useState } from "react";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent, CenefaRule, CenefaTemplate, CenefaVariable, TextSegment, TextTransform } from "@/types/cenefas";
@@ -381,11 +382,25 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
                     onChange={(e) => set("variable", e.target.value || undefined)}
                   >
                     <option value="">— Texto fijo (sin variable) —</option>
-                    {template.variables.map((v) => (
-                      <option key={v.name} value={v.name}>
-                        {v.name} ({v.csv_column})
-                      </option>
-                    ))}
+                    {(() => {
+                      const opciones = variablesDisponibles(template.variables);
+                      const propias = opciones.filter((o) => o.enPlantilla);
+                      const otras   = opciones.filter((o) => !o.enPlantilla);
+                      return (
+                        <>
+                          <optgroup label="Usadas en esta plantilla">
+                            {propias.map((v) => (
+                              <option key={v.name} value={v.name}>{v.name} ({v.csv_column})</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Otras variables del sistema">
+                            {otras.map((v) => (
+                              <option key={v.name} value={v.name}>{v.name}</option>
+                            ))}
+                          </optgroup>
+                        </>
+                      );
+                    })()}
                   </select>
                 </div>
 
@@ -433,11 +448,25 @@ export default function PropertiesPanel(props: PropertiesPanelProps = {}) {
               onChange={(e) => set("variable", e.target.value || undefined)}
             >
               <option value="">— Sin variable (imagen estática) —</option>
-              {template.variables.map((v) => (
-                <option key={v.name} value={v.name}>
-                  {v.name} ({v.csv_column})
-                </option>
-              ))}
+              {(() => {
+                const opciones = variablesDisponibles(template.variables);
+                const propias = opciones.filter((o) => o.enPlantilla);
+                const otras   = opciones.filter((o) => !o.enPlantilla);
+                return (
+                  <>
+                    <optgroup label="Usadas en esta plantilla">
+                      {propias.map((v) => (
+                        <option key={v.name} value={v.name}>{v.name} ({v.csv_column})</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Otras variables del sistema">
+                      {otras.map((v) => (
+                        <option key={v.name} value={v.name}>{v.name}</option>
+                      ))}
+                    </optgroup>
+                  </>
+                );
+              })()}
             </select>
           </Section>
         )}
@@ -959,11 +988,25 @@ function SegmentsEditor({
                 onChange={(e) => updateSeg(idx, { value: e.target.value })}
               >
                 <option value="">— Seleccionar variable —</option>
-                {variables.map((v) => (
-                  <option key={v.name} value={v.name}>
-                    {v.name} ({v.csv_column})
-                  </option>
-                ))}
+                {(() => {
+                    const opciones = variablesDisponibles(variables);
+                    const propias = opciones.filter((o) => o.enPlantilla);
+                    const otras   = opciones.filter((o) => !o.enPlantilla);
+                    return (
+                      <>
+                        <optgroup label="Usadas en esta plantilla">
+                          {propias.map((v) => (
+                            <option key={v.name} value={v.name}>{v.name} ({v.csv_column})</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Otras variables del sistema">
+                          {otras.map((v) => (
+                            <option key={v.name} value={v.name}>{v.name}</option>
+                          ))}
+                        </optgroup>
+                      </>
+                    );
+                  })()}
               </select>
             )}
 

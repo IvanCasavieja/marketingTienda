@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useEditorStore } from "@/store/editor";
+import { variablesDisponibles } from "@/lib/cenefaVariables";
 import type { CenefaComponent, CenefaRule, RuleOperator, RuleAction, TextSegment } from "@/types/cenefas";
 import { Plus, Trash2, ChevronDown, ChevronRight, Layers } from "lucide-react";
 
@@ -517,9 +518,29 @@ export function RuleForm({
             value={field}
             onChange={(e) => setField(e.target.value)}
           >
-            {variables.map((v) => (
-              <option key={v.name} value={v.name}>{v.name} ({v.csv_column})</option>
-            ))}
+{(() => {
+              // Todas las del sistema, no solo las que la plantilla ya usa:
+              // una regla puede condicionar por una variable que ningún cuadro
+              // dibuja (ej. `codigo` en un diseño que no lo imprime). Ver
+              // variablesDisponibles.
+              const opciones = variablesDisponibles(variables);
+              const propias = opciones.filter((o) => o.enPlantilla);
+              const otras   = opciones.filter((o) => !o.enPlantilla);
+              return (
+                <>
+                  <optgroup label="Usadas en esta plantilla">
+                    {propias.map((v) => (
+                      <option key={v.name} value={v.name}>{v.name} ({v.csv_column})</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Otras variables del sistema">
+                    {otras.map((v) => (
+                      <option key={v.name} value={v.name}>{v.name}</option>
+                    ))}
+                  </optgroup>
+                </>
+              );
+            })()}
           </select>
         ) : (
           <input
