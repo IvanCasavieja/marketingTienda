@@ -9,6 +9,9 @@ import { buildSiblingMap } from "@/lib/cenefas/siblingMap";
 import {
   cuadrosOcultos as evaluarCuadrosOcultos,
   segmentosOcultos as evaluarSegmentosOcultos,
+  tamanosDeCuadro,
+  tamanosDeSegmento,
+  aplicarTamanos,
 } from "@/lib/cenefas/reglas";
 import { resolverFuente } from "@/lib/cenefas/fuentes";
 import { mascaraNegrita, tieneMarca } from "@/lib/cenefas/smartBold";
@@ -573,10 +576,18 @@ export default function Canvas({
     [propRules, template.rules],
   );
   const reglasPorComp = useMemo(() => {
-    const vacio = { ocultos: new Set<string>(), segmentos: new Map<string, Set<number>>() };
+    const vacio = {
+      ocultos: new Set<string>(), segmentos: new Map<string, Set<number>>(),
+      tamanos: new Map<string, number>(), tamanosSeg: new Map<string, Map<number, number>>(),
+    };
     if (!previewData || rules.length === 0) return vacio;
     const ocultos = new Set<string>();
     const segmentos = new Map<string, Set<number>>();
+    // El cuerpo que declaran las reglas. Desde el 14/09/2026 es lo ÚNICO que
+    // cambia un tamaño de letra: el achique automático se eliminó entero, así
+    // que lo que se ve acá es exactamente lo que sale impreso.
+    const tamanos = new Map<string, number>();
+    const tamanosSeg = new Map<string, Map<number, number>>();
 
     // Se recorren las BANDAS, no los productos: la banda es la que dice qué
     // cuadros se evalúan contra qué fila. Al revés, un `previewProducts` más
@@ -595,6 +606,12 @@ export default function Canvas({
       for (const [id, idx] of evaluarSegmentosOcultos(rules, fila)) {
         if (deEstaBanda.has(id)) segmentos.set(id, idx);
       }
+      for (const [id, pt] of tamanosDeCuadro(rules, fila)) {
+        if (deEstaBanda.has(id)) tamanos.set(id, pt);
+      }
+      for (const [id, porSeg] of tamanosDeSegmento(rules, fila)) {
+        if (deEstaBanda.has(id)) tamanosSeg.set(id, porSeg);
+      }
     };
 
     if (slotBands?.length) {
@@ -602,7 +619,7 @@ export default function Canvas({
     } else {
       evaluar(template.components.map((c) => c.id), previewData);
     }
-    return { ocultos, segmentos };
+    return { ocultos, segmentos, tamanos, tamanosSeg };
   }, [rules, previewData, previewProducts, slotBands, template.components]);
 
   const wrapperRef       = useRef<HTMLDivElement>(null);
@@ -823,7 +840,9 @@ export default function Canvas({
       const compPreviewData =
         bandIdx !== undefined && previewProducts ? previewProducts[bandIdx] ?? previewData : previewData;
       const group = buildComponentGroup({
-        comp, pageLeft, pageTop, isSelected,
+        comp: aplicarTamanos(
+          comp, reglasPorComp.tamanos.get(comp.id), reglasPorComp.tamanosSeg.get(comp.id)),
+        pageLeft, pageTop, isSelected,
         draggable: isEditMode && !comp.locked,
         image: getImage(comp),
         previewData: compPreviewData,

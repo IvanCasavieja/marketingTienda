@@ -1,5 +1,5 @@
 import { resolverNombreVariable } from "@/lib/cenefaVariables";
-import type { CenefaRule, RuleCondition } from "@/types/cenefas";
+import type { CenefaComponent, CenefaRule, RuleCondition } from "@/types/cenefas";
 
 // ---------------------------------------------------------------------------
 // Evaluación de reglas de visibilidad EN EL NAVEGADOR.
@@ -67,6 +67,14 @@ function evaluarCondicion(cond: RuleCondition, values: Valores): boolean {
     case "contains":     return s(value).toLowerCase().includes(String(target ?? "").toLowerCase());
     case "is_empty":     return s(value) === "";
     case "is_not_empty": return s(value) !== "";
+    case "length_greater_than":
+    case "length_less_than": {
+      // Largo del texto, no valor numérico. Ver el tipo RuleOperator.
+      const largo = s(value).length;
+      const objetivo = parseFloat(String(target).trim());
+      if (!Number.isFinite(objetivo)) return false;
+      return op === "length_greater_than" ? largo > objetivo : largo < objetivo;
+    }
     default:             return true;   // operador desconocido no filtra
   }
 }
@@ -157,4 +165,121 @@ export function segmentosOcultos(
     salida.set(compId, set);
   }
   return salida;
+}
+
+// ---------------------------------------------------------------------------
+// Cuerpo declarado por regla
+// ---------------------------------------------------------------------------
+//
+// Espejo de `_resolver_tamanos` / `evaluate_font_size_rules` en
+// rules_engine.py. A diferencia del achique automático que esto reemplaza, acá
+// no hay NADA que pueda desincronizarse: no se mide texto, no se miran vecinos
+// y no se usa el ancho del papel. Se cuenta `len()` y se compara un número.
+
+/**
+ * El cuerpo en pt que las reglas le imponen a cada clave.
+ *
+ * Si matchean varias gana la MÁS CHICA, no la última: el orden de las reglas
+ * no importa, igual que en `resolverVisibilidad`.
+ */
+function resolverTamanos<K>(
+  rules: CenefaRule[],
+  values: Valores,
+  claveDe: (r: CenefaRule) => K | null,
+  serializar: (k: K) => string,
+): Map<string, { clave: K; pt: number }> {
+  const salida = new Map<string, { clave: K; pt: number }>();
+  for (const rule of rules) {
+    const clave = claveDe(rule);
+    if (clave === null) continue;
+    if (rule.action?.type !== "set_font_size") continue;
+    const pt = Number(rule.action?.value);
+    if (!Number.isFinite(pt) || pt <= 0) continue;
+    if (!evaluarCondicion(rule.condition, values)) continue;
+    const k = serializar(clave);
+    const previo = salida.get(k);
+    if (!previo || pt < previo.pt) salida.set(k, { clave, pt });
+  }
+  return salida;
+}
+
+/** {id de cuadro -> cuerpo en pt} para los cuadros con regla de tamaño. */
+export function tamanosDeCuadro(rules: CenefaRule[], values: Valores): Map<string, number> {
+  const mapa = resolverTamanos<string>(
+    rules, values,
+    (r) => (r.target_segment_index !== undefined ? null : r.target_component_id || null),
+    (k) => k,
+  );
+  const salida = new Map<string, number>();
+  for (const { clave, pt } of mapa.values()) salida.set(clave, pt);
+  return salida;
+}
+
+/** Por cuadro, {índice de segmento -> cuerpo en pt}. */
+export function tamanosDeSegmento(
+  rules: CenefaRule[], values: Valores,
+): Map<string, Map<number, number>> {
+  const mapa = resolverTamanos<[string, number]>(
+    rules, values,
+    (r) => {
+      const idx = r.target_segment_index;
+      return idx === undefined || !r.target_component_id ? null : [r.target_component_id, idx];
+    },
+    ([id, idx]) => `${id}#${idx}`,
+  );
+  const salida = new Map<string, Map<number, number>>();
+  for (const { clave, pt } of mapa.values()) {
+    const [compId, idx] = clave;
+    const porSegmento = salida.get(compId) ?? new Map<number, number>();
+    porSegmento.set(idx, pt);
+    salida.set(compId, porSegmento);
+  }
+  return salida;
+}
+
+/**
+ * El cuadro con el cuerpo que dictan las reglas. Espejo de `apply_font_sizes`.
+ *
+ * En un cuadro multi-segmento cada segmento lleva SU font_size y ese pisa al
+ * del componente al dibujar --tanto acá como en _populate_text_frame del
+ * backend--, así que una regla sobre el cuadro entero tiene que escalar
+ * también a sus segmentos. Sin eso el cuerpo declarado se descarta en silencio
+ * en casi todas las plantillas, que se importan multi-segmento.
+ *
+ * Devuelve el MISMO objeto si no hay nada que aplicar: el Canvas lo llama en
+ * cada render y una copia nueva por cuadro invalidaría memos río abajo.
+ */
+export function aplicarTamanos(
+  comp: CenefaComponent,
+  pt?: number,
+  porSegmento?: Map<number, number>,
+): CenefaComponent {
+  if (pt === undefined && !porSegmento?.size) return comp;
+
+  let nuevo = comp;
+  if (pt !== undefined) {
+    // Un cuadro puede no tener font_size propio y llevar el tamaño solo en sus
+    // segmentos (pasa con los importados): ahí la referencia para la escala es
+    // el segmento más grande. Espejo de apply_font_sizes en rules_engine.py.
+    const propio = comp.style?.font_size;
+    const deSegs = comp.segments
+      ?.map((s) => s.style?.font_size)
+      .filter((n): n is number => !!n) ?? [];
+    const base = propio || (deSegs.length ? Math.max(...deSegs) : undefined);
+    const escala = base ? pt / base : 1;
+    nuevo = { ...nuevo, style: { ...nuevo.style, font_size: pt } };
+    if (nuevo.segments) {
+      nuevo = { ...nuevo, segments: nuevo.segments.map((seg) =>
+        seg.style?.font_size
+          ? { ...seg, style: { ...seg.style, font_size: +(seg.style.font_size * escala).toFixed(1) } }
+          : seg) };
+    }
+  }
+  if (porSegmento?.size && nuevo.segments) {
+    nuevo = { ...nuevo, segments: nuevo.segments.map((seg, i) =>
+      porSegmento.has(i)
+        ? { ...seg, style: { ...seg.style, font_size: porSegmento.get(i)! } }
+        : seg) };
+  }
+  return nuevo;
 }

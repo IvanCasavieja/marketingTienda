@@ -88,5 +88,29 @@ def ancho_texto_cm(
     return ancho_texto_em(texto, font_family, bold) * font_size_pt / 72 * 2.54
 
 
+def digito_mas_ancho(font_family: str | None = None) -> str:
+    """El dígito que más ancho ocupa en esa tipografía.
+
+    En siete de las nueve fuentes de la tabla los dígitos son TABULARES --todos
+    exactamente el mismo ancho, que es como se diseñan las fuentes pensadas
+    para alinear cifras en columna-- y ahí da igual con cuál se mida.
+
+    Las excepciones son las dos que importan: Impact, que es la de los precios,
+    y Georgia. En Impact el "1" mide 0,38 em y el "6" 0,54 -- un 42% de
+    diferencia, o 2,37 cm entre "$111" y "$666" a 140 pt. Medir la capacidad de
+    un cuadro con el dígito equivocado es prometer lugar que no hay.
+
+    Orden real en Impact: 6 y 9 (0,540) › 0, 5 y 8 (0,535) › 3 › 2 y 4 › 7 › 1.
+    """
+    datos = _metricas(font_family)
+    if datos is None:
+        # Sin métricas todos los caracteres miden _EM_FALLBACK, así que
+        # cualquiera sirve; el "8" es el que la intuición espera ver.
+        return "8"
+    chars = datos["chars"]
+    por_defecto = datos["default"]
+    return max("0123456789", key=lambda d: chars.get(d, por_defecto))
+
+
 def fuentes_conocidas() -> list[str]:
     return sorted(_TABLA)

@@ -32,7 +32,7 @@ from app.services.cenefas.component_renderer import (
 )
 from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.component_renderer import (
-    _detect_slot_bands, _fit_text_to_box, _resolver_solapes, _unificar_tamanos_entre_bandas,
+    _detect_slot_bands, detectar_solapes, preparar_componentes,
 )
 from app.services.cenefas.jobs import (
     confirm_generation_job,
@@ -1082,35 +1082,43 @@ async def _job_to_dict(
             # duplica la lógica de conteo/orden-por-Y en el frontend.
             slot_bands = _detect_slot_bands(componentes)
 
-            # El ajuste de texto se aplica ACÁ TAMBIÉN, con los mismos datos
-            # que va a usar el render: si no, el preview muestra el cuerpo
-            # original del diseño y el archivo final sale con otro. Se aprobaba
-            # en pantalla algo distinto de lo que se imprimía.
+            # Las reglas se aplican ACÁ TAMBIÉN, con los mismos datos y por la
+            # MISMA función que usa el render final (preparar_componentes): si
+            # no, se aprueba en pantalla algo distinto de lo que se imprime.
             #
-            # Son los TRES pasos, en el mismo orden que render_template_to_pptx,
-            # no solo el primero. Hasta el 07/09/2026 acá corría únicamente
-            # _fit_text_to_box: el preview mostraba <<precioOferta>> en los
-            # 140 pt de la plantilla y el PPTX salía en 120, porque el resolver
-            # de solapes --que corre solo al exportar-- lo bajaba para que no
-            # se imprimiera encima de "OFERTA" y del decimal. Es exactamente el
-            # "se ve bien en el preview y sale distinto" que veníamos
-            # arrastrando: la pantalla no mentía sobre la posición, mentía
-            # sobre el cuerpo.
+            # Que sea la misma función y no "los mismos pasos en el mismo
+            # orden" es el punto. Hasta el 14/09/2026 acá corrían los tres pasos
+            # del achique automático, copiados uno por uno del render, y el
+            # preview igual mentía: los llamaba SIN el ancho de papel. En
+            # pantalla ninguna caja se recortaba contra el borde de la hoja y
+            # entonces nada se achicaba; al exportar sí se recortaba y los
+            # cuerpos se iban al piso. Ese era el "el preview lo veo divino y el
+            # export no tiene nada que ver".
+            #
+            # Ahora no hay nada que medir --el cuerpo lo declara una regla sobre
+            # el largo del texto-- y las dos rutas entran por la misma puerta.
+            reglas = staged.template_def.get("rules", [])
+            avisos_solape: list[dict] = []
             if staged.products:
                 if slot_bands:
-                    ajustadas = {}
-                    for i, (banda, producto) in enumerate(zip(slot_bands, staged.products)):
-                        ajustadas[i] = _fit_text_to_box(banda, producto)
-                    _resolver_solapes([
-                        (c, staged.products[i]) for i, cs in ajustadas.items() for c in cs
+                    preparadas = {
+                        i: preparar_componentes(banda, reglas, producto)
+                        for i, (banda, producto) in enumerate(zip(slot_bands, staged.products))
+                    }
+                    avisos_solape = detectar_solapes([
+                        (c, staged.products[i]) for i, cs in preparadas.items() for c in cs
                     ])
-                    _unificar_tamanos_entre_bandas(ajustadas)
-                    ajustados = {c["id"]: c for cs in ajustadas.values() for c in cs}
+                    ajustados = {c["id"]: c for cs in preparadas.values() for c in cs}
                     componentes = [ajustados.get(c["id"], c) for c in componentes]
                 else:
-                    componentes = _fit_text_to_box(componentes, staged.products[0])
-                    _resolver_solapes([(c, staged.products[0]) for c in componentes])
+                    componentes = preparar_componentes(
+                        componentes, reglas, staged.products[0])
+                    avisos_solape = detectar_solapes(
+                        [(c, staged.products[0]) for c in componentes])
 
+            # Ya no se achica solo para despejar un choque: se avisa y decide la
+            # persona, poniéndole una regla de tamaño al cuadro que invade.
+            d["avisos_solape"]    = avisos_solape
             d["template_def"]     = {**staged.template_def, "components": componentes}
             d["preview_product"]  = staged.products[0] if staged.products else {}
             if slot_bands:

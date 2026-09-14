@@ -12,10 +12,13 @@ export const OPERATORS: { value: RuleOperator; label: string }[] = [
   { value: "contains",     label: "contiene" },
   { value: "is_empty",     label: "está vacío" },
   { value: "is_not_empty", label: "tiene valor" },
+  { value: "length_greater_than", label: "tiene más de … caracteres" },
+  { value: "length_less_than",    label: "tiene menos de … caracteres" },
 ];
 
 export const NEEDS_VALUE: RuleOperator[] = [
   "equals", "not_equals", "greater_than", "less_than", "contains",
+  "length_greater_than", "length_less_than",
 ];
 
 // Opciones simplificadas para el formulario amigable.
@@ -30,6 +33,11 @@ const SIMPLE_CONDITIONS = [
   { value: "is_empty",     label: "No tiene valor",   emoji: "✗" },
   { value: "equals",       label: "Es igual a…",      emoji: "=" },
   { value: "contains",     label: "Contiene…",        emoji: "⊂" },
+  // El largo del texto. Es la condición con la que se declara el cuerpo de un
+  // precio desde que se eliminó el achique automático (14/09/2026): "si tiene
+  // más de 3 caracteres, 90 pt". OJO al escribir el umbral: "1.599" son CINCO
+  // caracteres, no cuatro -- el punto de miles cuenta.
+  { value: "length_greater_than", label: "Tiene más de…", emoji: "#" },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -295,13 +303,18 @@ export function RuleChip({
   return (
     <div className="flex items-center gap-2 px-4 py-2 group hover:bg-white/60 dark:hover:bg-white/5 transition-colors">
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-        action === "show" ? "bg-emerald-400" : "bg-rose-400"
+        action === "show" ? "bg-emerald-400"
+          : action === "hide" ? "bg-rose-400" : "bg-sky-400"
       }`} />
       <div className="flex-1 min-w-0">
         <span className={`text-[10px] font-semibold ${
-          action === "show" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+          action === "show" ? "text-emerald-600 dark:text-emerald-400"
+            : action === "hide" ? "text-rose-600 dark:text-rose-400"
+            : "text-sky-600 dark:text-sky-400"
         }`}>
-          {action === "show" ? "Mostrar" : "Ocultar"}
+          {action === "show" ? "Mostrar"
+            : action === "hide" ? "Ocultar"
+            : `${rule.action.value ?? "?"} pt`}
         </span>
         {segLabel && (
           <span className="text-[10px] font-mono text-brand-600 dark:text-brand-400 ml-1">
@@ -357,11 +370,19 @@ export function RuleForm({
   const [customCol,  setCustomCol]  = useState("");
   const [operator,   setOperator]   = useState<RuleOperator>("is_not_empty");
   const [value,      setValue]      = useState("");
+  // Cuerpo en pt para la acción "Tamaño". Se elige mirando el relleno de
+  // capacidad, que muestra cada cuadro lleno con el DÍGITO MÁS ANCHO de su
+  // tipografía: en Impact la cantidad de caracteres no determina el ancho
+  // ("$111" y "$666" se llevan 2,37 cm a 140 pt), así que el pt hay que
+  // elegirlo para el peor caso.
+  const [pt,         setPt]         = useState("");
   // -1 = todo el cuadro (el caso de siempre).
   const [segmentIdx, setSegmentIdx] = useState(-1);
 
   const effectiveField  = fieldSrc === "custom" ? customCol.trim().toUpperCase() : field;
-  const actionLabel     = action === "show" ? "Mostrar" : "Ocultar";
+  const actionLabel     = action === "show" ? "Mostrar"
+                        : action === "hide" ? "Ocultar"
+                        : `Poner en ${pt || "…"} pt`;
   const operatorLabel   = OPERATORS.find((o) => o.value === operator)?.label ?? "";
   // Solo tiene sentido elegir si hay más de un pedazo.
   const puedeElegirSegmento = (segments?.length ?? 0) > 1;
@@ -370,8 +391,13 @@ export function RuleForm({
     : "";
   const autoName        = `${actionLabel}${alcance} si ${effectiveField} ${operatorLabel}`;
 
+  // Una regla de tamaño sin pt no hace nada: el motor la descarta en silencio
+  // (ver _resolver_tamanos). Mejor no dejar guardarla.
+  const puedeGuardar = !!effectiveField
+    && (action !== "set_font_size" || Number(pt) > 0);
+
   function handleSave() {
-    if (!effectiveField) return;
+    if (!puedeGuardar) return;
     const condition = NEEDS_VALUE.includes(operator)
       ? { field: effectiveField, operator, value }
       : { field: effectiveField, operator };
@@ -384,7 +410,9 @@ export function RuleForm({
       // ausencia del campo, no por un valor centinela.
       ...(puedeElegirSegmento && segmentIdx >= 0 ? { target_segment_index: segmentIdx } : {}),
       condition:           condition as CenefaRule["condition"],
-      action:              { type: action },
+      action:              action === "set_font_size"
+                             ? { type: action, value: Number(pt) }
+                             : { type: action },
     });
   }
 
@@ -414,7 +442,7 @@ export function RuleForm({
       <div>
         <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase mb-1.5">¿Qué hace?</p>
         <div className="flex gap-2">
-          {(["show", "hide"] as RuleAction[]).map((a) => (
+          {(["show", "hide", "set_font_size"] as RuleAction[]).map((a) => (
             <button
               key={a}
               onClick={() => setAction(a)}
@@ -422,14 +450,37 @@ export function RuleForm({
                 action === a
                   ? a === "show"
                     ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 ring-1 ring-emerald-300 dark:ring-emerald-800"
-                    : "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 ring-1 ring-rose-300 dark:ring-rose-800"
+                    : a === "hide"
+                    ? "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 ring-1 ring-rose-300 dark:ring-rose-800"
+                    : "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400 ring-1 ring-sky-300 dark:ring-sky-800"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
               }`}
             >
-              {a === "show" ? "Mostrar" : "Ocultar"}
+              {a === "show" ? "Mostrar" : a === "hide" ? "Ocultar" : "Tamaño"}
             </button>
           ))}
         </div>
+        {action === "set_font_size" && (
+          <div className="mt-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                className="input text-xs w-24"
+                placeholder="pt"
+                value={pt}
+                onChange={(e) => setPt(e.target.value)}
+              />
+              <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                tamaño de letra, en puntos
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+              Si matchean varias reglas de tamaño, gana la más chica: el orden
+              en que estén no importa.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Paso 2: Campo — variable de plantilla o columna de Excel */}
@@ -509,7 +560,12 @@ export function RuleForm({
         {NEEDS_VALUE.includes(operator) && (
           <input
             className="input w-full text-xs mt-2"
-            placeholder={operator === "contains" ? "Escribí el texto que tiene que aparecer…" : "Escribí el valor exacto…"}
+            placeholder={
+              operator === "contains" ? "Escribí el texto que tiene que aparecer…"
+              : operator === "length_greater_than" || operator === "length_less_than"
+                ? "Cantidad de caracteres (ej: 3)"
+              : "Escribí el valor exacto…"
+            }
             value={value}
             onChange={(e) => setValue(e.target.value)}
           />
@@ -522,7 +578,13 @@ export function RuleForm({
       </p>
 
       <div className="flex gap-1.5">
-        <button onClick={handleSave} className="btn-primary text-xs px-2.5 py-1">Guardar</button>
+        <button
+          onClick={handleSave}
+          disabled={!puedeGuardar}
+          className="btn-primary text-xs px-2.5 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Guardar
+        </button>
         <button onClick={onCancel} className="btn-secondary text-xs px-2.5 py-1">Cancelar</button>
       </div>
     </div>

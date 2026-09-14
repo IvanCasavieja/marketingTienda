@@ -350,9 +350,11 @@ def aplicar_overrides(template_def: dict, position_overrides: list[dict]) -> dic
             nuevo["style"] = {**c.get("style", {}), **ov["style"]}
             if "font_size" in ov["style"]:
                 # La persona ya eligió a mano el tamaño de letra para ESTA caja
-                # (resize con los 4 puntos en el preview) -- _fit_text_to_box
-                # no debe forzarlo a compartir escala con su pareja
-                # entero/decimal.
+                # (resize con los 4 puntos en el preview). Desde que se eliminó
+                # el achique automático (14/09/2026) la marca ya no tiene que
+                # defenderla de nada --ningún tamaño se cambia solo-- pero se
+                # sigue guardando porque el editor la usa para saber que el
+                # cuerpo es elección de una persona y no lo que trajo el PPTX.
                 nuevo["_manual_font_override"] = True
         for campo in _CAMPOS_DE_CONTENIDO:
             if campo in ov:

@@ -880,8 +880,15 @@ def _make_common(shape, z_index: int) -> dict | None:
         # lado de un "129" gigante, cuando el diseño los quería iguales).
         # El herramental que arma esas plantillas (separar_cuadros2.py, fuera
         # de este repo) le pone a cada cuadro de una misma fila el mismo
-        # nombre de shape "cnf-grupo-<id>" -- ver _fit_text_to_box en
-        # component_renderer.py, que agrupa por esto.
+        # nombre de shape "cnf-grupo-<id>".
+        #
+        # OJO: desde el 14/09/2026 NADA lee este campo. Lo consumía
+        # _AGRUPAR_POR_FILA dentro del achique automático, que se eliminó, y el
+        # problema que resolvía desapareció con él: si ningún cuadro se achica
+        # solo, la fila conserva las proporciones del diseño sin que haya que
+        # emparejar nada. Se sigue importando porque es barato y porque
+        # identifica la fila si alguna vez hace falta (ej. para aplicarle una
+        # regla de tamaño a todos los cuadros de una fila de una).
         "group_id":         shape.name if (shape.name or "").startswith("cnf-grupo-") else None,
     }
 
@@ -1037,12 +1044,14 @@ def _parse_shape(
 # defecto es que el CENTRO de la caja caiga fuera de la hoja: ningún recorte
 # en tiempo de render puede rescatar un diseño cuyo centro nunca fue visible.
 
-# Peor caso razonable de precio real para calcular un ancho seguro. No hace
-# falta que sea exacto: el achique de texto en tiempo de generación
-# (_fit_text_to_box en component_renderer.py) sigue cubriendo cualquier
-# precio real que termine necesitando más espacio -- esta corrección solo
-# tiene que dejar la caja en condiciones de que ESE mecanismo pueda trabajar,
-# en vez de partir de una caja centrada a kilómetros de la hoja.
+# Peor caso razonable de precio real para calcular un ancho seguro.
+#
+# Antes esto no necesitaba ser exacto: el achique automático cubría después
+# cualquier precio que pidiera más espacio. Ese achique se eliminó el
+# 14/09/2026, así que ya no hay una segunda red -- si la caja queda corta, el
+# precio desborda y se avisa (detectar_solapes) para que una persona le ponga
+# una regla de tamaño. Esta corrección sigue siendo la que evita el caso
+# imposible: una caja centrada a kilómetros de la hoja.
 _PRECIO_PEOR_CASO = "99.999"
 _DECIMAL_PEOR_CASO = ",99"
 

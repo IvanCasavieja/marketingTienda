@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import Canvas from "@/components/cenefas/editor/Canvas";
 import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
 import RulesPanel from "@/components/cenefas/editor/RulesPanel";
+import AvisosSolape from "@/components/cenefas/AvisosSolape";
 
 // Paso compartido por Redexpres y Rompe Precios: el job se generó hasta
 // quedar en status="preview" (ver jobs.py) con la definición de componentes
@@ -298,6 +299,10 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
           </button>
         </div>
       </div>
+
+      {/* Los choques de texto, antes de confirmar. El motor ya no los arregla
+          solo (ver AvisosSolape). */}
+      <AvisosSolape avisos={job.avisos_solape} template={template} />
 
       {/* Canvas + panel de propiedades lado a lado -- esta pantalla ES el
           editor (no hay otra a la que la gente sepa llegar), mismo criterio

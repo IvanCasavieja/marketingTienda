@@ -8,8 +8,10 @@
    número a 160) no se respetaban: como la CAJA no tenía tamaño manual, el
    motor los achicaba contra los cuadros vecinos y el alto, hasta el mínimo.
 
-Criterio de Ivan: lo que se pone a mano manda donde se pone, y solo baja si no
-entra en su propia caja.
+Criterio de Ivan: lo que se pone a mano manda donde se pone. Desde el
+14/09/2026 eso dejó de necesitar excepciones -- el achique automático se
+eliminó entero, así que el tamaño a mano manda siempre y solo lo cambia una
+regla explícita. Los tests del punto 2 fijan ahora esa garantía.
 """
 import io
 
@@ -18,7 +20,7 @@ from pptx import Presentation
 from pptx.oxml.ns import qn
 from pptx.util import Cm, Emu, Pt
 
-from app.services.cenefas.component_renderer import _fit_text_to_box, render_template_to_pptx
+from app.services.cenefas.component_renderer import preparar_componentes, render_template_to_pptx
 from app.services.cenefas.pptx_importer import import_pptx
 
 ANCHO_HOJA_A4 = 21.0
@@ -116,25 +118,36 @@ def _vecinos():
 PRODUCTO = {"unidadMoneda": "$", "precioRegular": "253", "decimalPrecioOferta": ""}
 
 
-def _tamanos(comps):
-    precio = next(c for c in _fit_text_to_box(comps, PRODUCTO, ANCHO_HOJA_A4) if c["id"] == "precio")
+
+
+def _tamanos(comps, reglas=()):
+    precio = next(c for c in preparar_componentes(comps, list(reglas), PRODUCTO)
+                  if c["id"] == "precio")
     return [s["style"]["font_size"] for s in precio["segments"]]
 
 
-def test_segmentos_a_mano_no_se_achican_por_los_vecinos():
-    # Los vecinos no cuentan: con o sin ellos, el precio sale igual. Antes
-    # salía al mínimo (56 y 88) solo por tenerlos al lado.
-    con_vecinos = _tamanos([_precio(), *_vecinos()])
-    solo = _tamanos([_precio()])
-    assert con_vecinos == solo
-    # "$253" en negrita a 102/160 roza el ancho útil de su caja de 12 cm: a lo
-    # sumo baja un poquito, nunca a la mitad.
-    assert con_vecinos[1] > 150
+def test_los_tamanos_a_mano_de_los_segmentos_salen_intactos():
+    # 102 y 160 son lo que escribió la persona en el panel. Antes el motor los
+    # bajaba a 56 y 88 solo por tener vecinos al lado; ahora salen tal cual,
+    # con vecinos o sin ellos.
+    assert _tamanos([_precio(), *_vecinos()]) == [102, 160]
+    assert _tamanos([_precio()]) == [102, 160]
 
 
-def test_segmentos_a_mano_bajan_si_no_entran_en_su_propia_caja():
-    # Caja angosta: "$253" a 102/160 mide ~10,8 cm y no entra en 8 cm. Baja,
-    # y los dos en la misma proporción.
-    simbolo, numero = _tamanos([_precio(w=8.0), *_vecinos()])
-    assert numero < 160 and simbolo < 102
-    assert abs(simbolo / numero - 102 / 160) < 0.01
+def test_una_caja_angosta_tampoco_los_achica():
+    # "$253" a 102/160 mide ~10,8 cm y no entra en una caja de 8 cm. Antes eso
+    # disparaba el achique; ahora desborda y se avisa (detectar_solapes). El
+    # tamaño solo lo cambia una regla.
+    assert _tamanos([_precio(w=8.0), *_vecinos()]) == [102, 160]
+
+
+def test_una_regla_sobre_un_segmento_cambia_solo_ese_segmento():
+    # El caso para el que existe esta plantilla: achicar el NÚMERO cuando el
+    # precio tiene 4 cifras, sin tocar el "$" de al lado.
+    regla = [{
+        "id": "r1", "target_component_id": "precio", "target_segment_index": 1,
+        "condition": {"field": "precioRegular", "operator": "length_greater_than", "value": 3},
+        "action": {"type": "set_font_size", "value": 120},
+    }]
+    # "253" son 3 caracteres: no matchea, sale el tamaño de diseño.
+    assert _tamanos([_precio(), *_vecinos()], regla) == [102, 160]
