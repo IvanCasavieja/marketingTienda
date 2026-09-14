@@ -323,3 +323,61 @@ def test_el_cuerpo_del_pptx_es_el_declarado_aunque_desborde():
     # encogía al abrirlo; ahora desborda y el sz del archivo es el de diseño.
     xml = _bodypr_del_export(_pptx_con_autoajuste(), {"precioOferta": "12.345"})
     assert 'sz="6000"' in xml
+
+
+# ---------------------------------------------------------------------------
+# La negrita puesta a mano le gana a la automática
+# ---------------------------------------------------------------------------
+#
+# Reportado por Ivan (14/09/2026): "la negrita no funciona, no hay diferencia
+# entre activa o no activa". No estaba rota: estaba anulada. Un segmento con
+# transform "smart_bold" pone en negrita SOLO las palabras en MAYÚSCULAS y
+# hasta ahora ignoraba `font_bold` por completo, así que tildar la casilla del
+# panel no cambiaba nada ni en el preview ni en el archivo.
+#
+# La automática existe para decidir cuando la persona no decidió; en cuanto
+# decide, manda lo suyo.
+
+def _runs_de(comp, product):
+    from pptx import Presentation
+    from pptx.util import Cm
+    from app.services.cenefas.component_renderer import _populate_text_frame, _texto_resuelto
+    prs = Presentation()
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    caja = sl.shapes.add_textbox(Cm(1), Cm(1), Cm(10), Cm(3))
+    # _render_slide resuelve las variables antes de llamar; acá se hace igual.
+    comp = {**comp, "segments": [
+        {**s, "_resolved": product.get(s.get("value"), "")} if s.get("type") == "variable" else s
+        for s in (comp.get("segments") or [])
+    ]}
+    _populate_text_frame(caja.text_frame, comp, _texto_resuelto(comp, product))
+    return [(r.text, r.font.bold) for p in caja.text_frame.paragraphs for r in p.runs if r.text]
+
+
+_DESC = {
+    "id": "desc", "type": "text",
+    "style": {"font_size": 27.3, "font_family": "Impact"},
+    "segments": [{"type": "variable", "value": "descripcion", "transform": "smart_bold"}],
+}
+_FILA = {"descripcion": "Aros de Cebolla LEDUC 450 gr"}
+
+
+def test_sin_negrita_a_mano_solo_se_resaltan_las_mayusculas():
+    runs = _runs_de(_DESC, _FILA)
+    assert len(runs) > 1, "smart_bold tiene que partir el texto en varios runs"
+    assert any(b for _, b in runs), "LEDUC tiene que salir en negrita"
+    assert any(not b for _, b in runs), "el resto NO tiene que salir en negrita"
+
+
+def test_con_negrita_a_mano_va_todo_en_negrita():
+    comp = {**_DESC, "style": {**_DESC["style"], "font_bold": True}}
+    runs = _runs_de(comp, _FILA)
+    assert all(b for _, b in runs), f"quedó texto sin negrita: {runs}"
+    assert "".join(t for t, _ in runs) == _FILA["descripcion"]
+
+
+def test_la_casilla_cambia_el_resultado():
+    # La regresión concreta que reportó Ivan: antes las dos daban lo mismo.
+    sin = _runs_de(_DESC, _FILA)
+    con = _runs_de({**_DESC, "style": {**_DESC["style"], "font_bold": True}}, _FILA)
+    assert sin != con, "tildar negrita no cambia nada"

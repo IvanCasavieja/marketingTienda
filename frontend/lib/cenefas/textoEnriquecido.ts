@@ -89,9 +89,18 @@ export function tramosConEstiloPropio(
     if (!texto) return;
     const estilo = estiloEfectivoSegmento(comp, seg);
     if (difiereDeLaCaja(estilo, caja)) alguno = true;
-    // Bold automático en un segmento: el export le pone negrita SOLO a las
-    // mayúsculas, sin mirar la negrita del estilo (bold_override).
-    const partes: [string, boolean][] = seg.transform === "smart_bold"
+    // Bold automático en un segmento: pone en negrita SOLO las mayúsculas.
+    //
+    // Pero la negrita puesta a mano le gana: si el estilo dice negrita, va
+    // TODO en negrita y la automática no se aplica. Espejo exacto de
+    // _populate_text_frame en component_renderer.py -- si tocás una, tocá la
+    // otra.
+    //
+    // Antes smart_bold ignoraba `font_bold` por completo y tildar la casilla
+    // del panel no cambiaba nada, ni acá ni en el archivo (reportado por Ivan,
+    // 14/09/2026). La automática decide por vos cuando no decidiste; en cuanto
+    // decidís, manda lo tuyo.
+    const partes: [string, boolean][] = seg.transform === "smart_bold" && !estilo.font_bold
       ? tramosSmartBold(texto)
       : [[texto, !!estilo.font_bold]];
     for (const [parte, negrita] of partes) {

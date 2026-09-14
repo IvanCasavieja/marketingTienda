@@ -77,6 +77,11 @@ const ASCENDENTE_EM = 0.9;
 // aparece uno mezclado, el preview se abstiene en vez de resaltar mayúsculas
 // que el export no va a resaltar.
 function aplicaSmartBold(comp: CenefaComponent): boolean {
+  // La negrita puesta a mano en la caja le gana a la automática: si está
+  // tildada, va todo en negrita y no hay nada que resaltar aparte. Mismo
+  // criterio que _populate_text_frame en el motor y que tramosConEstiloPropio
+  // -- los tres tienen que decidir igual o el preview vuelve a mentir.
+  if (comp.style?.font_bold) return false;
   if (comp.transform === "smart_bold") return true;
   const segs = comp.segments ?? [];
   if (!segs.some((s) => s.transform === "smart_bold")) return false;

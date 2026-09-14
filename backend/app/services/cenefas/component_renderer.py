@@ -760,7 +760,16 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
                 # segmento, sin que nadie lo hubiera tocado a mano ahí.
                 seg_style["font_size"] = style["font_size"]
             seg_transform = seg.get("transform") or "none"
-            if seg_transform == "smart_bold":
+            # La negrita puesta a mano le gana a la automática: si el estilo
+            # dice negrita, va TODO en negrita y smart_bold no se aplica.
+            #
+            # Antes smart_bold ignoraba `font_bold` por completo, así que en un
+            # cuadro con negrita automática tildar la casilla del panel no
+            # cambiaba absolutamente nada -- ni en el preview ni en el archivo.
+            # Reportado por Ivan (14/09/2026): "no hay diferencia entre activa
+            # o no activa". La automática existe para decidir por vos cuando no
+            # decidiste; en cuanto decidís, manda lo tuyo.
+            if seg_transform == "smart_bold" and not seg_style.get("font_bold"):
                 for part, is_bold in split_caps(seg_val):
                     if part:
                         run = p.add_run()
@@ -772,7 +781,8 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
                 run = p.add_run()
                 run.text = seg_val
                 _apply_run_style(run, seg_style)
-    elif transform == "smart_bold":
+    elif transform == "smart_bold" and not style.get("font_bold"):
+        # Ver el comentario gemelo más arriba: lo puesto a mano manda.
         for segment, is_bold in split_caps(value):
             if not segment:
                 continue
