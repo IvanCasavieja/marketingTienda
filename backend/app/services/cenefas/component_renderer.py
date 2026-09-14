@@ -1819,14 +1819,53 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     if not var_counts:
         return None
 
-    n_slots = reduce(math.gcd, var_counts.values())
-    if n_slots <= 1:
+    cuentas = list(var_counts.values())
+    gcd_total = reduce(math.gcd, cuentas)
+
+    # Cuántos slots puede tener la hoja, del más probable al menos.
+    #
+    # El GCD de TODOS los conteos era el único criterio, y un solo cuadro
+    # suelto lo tiraba a 1 -- o sea, la hoja entera pasaba a tratarse como un
+    # producto. Caso real de Ivan (14/09/2026), Rompe Precios Congelados 3xA4:
+    # seis variables aparecían 3 veces cada una y `decimalPrecioBanco` UNA sola
+    # (el diseño tiene ese cuadro en la primera cenefa y no en las otras dos).
+    # GCD(3,3,3,3,3,3,1) = 1, y las tres cenefas de la hoja salían con el mismo
+    # producto. De paso se caía el "muevo uno, muevo todos", que se apoya en
+    # las bandas para saber quiénes son hermanos.
+    #
+    # Ahora el GCD sigue siendo el PRIMER candidato --así ninguna plantilla que
+    # hoy anda cambia de comportamiento-- y detrás van los divisores que la
+    # mayoría de las variables respeta. Elegir de más apoyo a menos, y no de
+    # más grande a más chico, evita que un precio partido en dos placeholders
+    # (una variable con el doble de apariciones) haga creer que hay el doble de
+    # cenefas.
+    #
+    # Ser más permisivo acá no es riesgoso: _asignar_grilla valida en serio
+    # --exige un ancla por celda, ninguna celda vacía y el paso de la grilla
+    # consistente-- y descarta cualquier candidato que no cierre.
+    candidatos: list[int] = [gcd_total] if gcd_total > 1 else []
+    apoyo: dict[int, int] = {}
+    for n in range(max(cuentas), 1, -1):
+        soporte = sum(1 for k in cuentas if k % n == 0)
+        # Hace falta una variable que aparezca EXACTAMENTE n veces: es la que
+        # da las anclas. Y que la mayoría de las variables acompañe, para no
+        # inventar una grilla a partir de un caso aislado.
+        if any(k == n for k in cuentas) and soporte * 2 >= len(cuentas):
+            apoyo[n] = soporte
+    for n in sorted(apoyo, key=lambda k: (-apoyo[k], -k)):
+        if n not in candidatos:
+            candidatos.append(n)
+
+    if not candidatos:
         return None
 
-    # Las ANCLAS son los cuadros de una variable que aparece exactamente una
-    # vez por slot (descripcion, codigo...): marcan dónde está cada cenefa.
-    ancla = next((v for v, n in var_counts.items() if n == n_slots), None)
-    if ancla is not None:
+    for n_slots in candidatos:
+        # Las ANCLAS son los cuadros de una variable que aparece exactamente
+        # una vez por slot (descripcion, codigo...): marcan dónde está cada
+        # cenefa.
+        ancla = next((v for v, n in var_counts.items() if n == n_slots), None)
+        if ancla is None:
+            continue
         anclas = [c for c in non_bg if ancla in _comp_variable_names(c)]
         xs_ancla = sorted({round(_esquina(c)[0], 1) for c in anclas})
 
@@ -1841,7 +1880,12 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
                 return grilla
 
     # Sin anclas utilizables o con una grilla que no cierra, se cae al criterio
-    # viejo: ordenar por Y y cortar en grupos iguales.
+    # viejo: ordenar por Y y cortar en grupos iguales. Solo con el GCD: repartir
+    # a ciegas en N grupos iguales a partir de un candidato adivinado mezclaría
+    # datos de productos distintos, que es peor que no agrupar.
+    if gcd_total <= 1:
+        return None
+    n_slots = gcd_total
     sorted_comps = sorted(non_bg, key=lambda c: _esquina(c)[1])
     total = len(sorted_comps)
     group_size = total // n_slots
