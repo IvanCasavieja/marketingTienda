@@ -623,17 +623,26 @@ export default function Canvas({
   }, [rules, previewData, previewProducts, slotBands, template.components]);
 
   const wrapperRef       = useRef<HTMLDivElement>(null);
-  const [wrapperWidth, setWrapperWidth] = useState<number | null>(null);
+  const [wrapperWidth,  setWrapperWidth]  = useState<number | null>(null);
+  const [wrapperHeight, setWrapperHeight] = useState<number | null>(null);
 
-  // Ancho disponible del contenedor scrolleable, para el zoom automático de
+  // Espacio disponible del contenedor scrolleable, para el zoom automático de
   // más abajo -- se re-mide solo (ResizeObserver), sin depender de un resize
   // de la ventana entera: alcanza con que el usuario abra/cierre un panel
-  // lateral para que este mismo ancho cambie.
+  // lateral para que esto cambie.
+  //
+  // El ALTO hace falta tanto como el ancho: hasta el 14/09/2026 solo se medía
+  // el ancho y la hoja se agrandaba hasta llenarlo, quedando más alta que el
+  // contenedor. Una A4 salía cortada por abajo y había que scrollear para ver
+  // el cartel entero, que es justo lo que un preview no tiene que obligarte a
+  // hacer (reportado por Ivan: "la idea es que se vea entera").
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
-      setWrapperWidth(entries[0].contentRect.width);
+      const r = entries[0].contentRect;
+      setWrapperWidth(r.width);
+      setWrapperHeight(r.height);
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -702,8 +711,22 @@ export default function Canvas({
   const ZOOM_MIN = 0.25;
   const ZOOM_MAX = 2;
   const WRAPPER_PADDING = 32; // aire para que la hoja no quede pegada al borde
-  const zoom = wrapperWidth
-    ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, (wrapperWidth - WRAPPER_PADDING) / stageW))
+  // La hoja entra ENTERA: manda la dimensión más exigente de las dos, igual que
+  // el "Ajustar a la ventana" de PowerPoint. Mirando solo el ancho, una A4
+  // (21 x 29,7) se estiraba hasta llenarlo y se pasaba de alto.
+  //
+  // Se descuenta RULER_SIZE porque las reglas ocupan lugar dentro del mismo
+  // contenedor; sin eso la hoja se pasa por 18 px justo en el borde.
+  const fitAncho = wrapperWidth
+    ? (wrapperWidth  - WRAPPER_PADDING - RULER_SIZE) / stageW
+    : null;
+  const fitAlto = wrapperHeight
+    ? (wrapperHeight - WRAPPER_PADDING - RULER_SIZE) / stageH
+    : null;
+  const ajuste = fitAncho !== null && fitAlto !== null ? Math.min(fitAncho, fitAlto)
+               : fitAncho ?? fitAlto;
+  const zoom = ajuste !== null && ajuste !== undefined
+    ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, ajuste))
     : 1;
 
   // Corregir cajas de texto más anchas que la propia hoja: es un truco de
@@ -1074,7 +1097,7 @@ export default function Canvas({
   // (6xA4/A5, ver el calculo de `dims` mas arriba), sin la fea franja vacia
   // de justify-start ni el recorte de justify-center a secas.
   return (
-    <div ref={wrapperRef} className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-[safe_center] items-start ${className}`}>
+    <div ref={wrapperRef} className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex justify-[safe_center] items-[safe_center] ${className}`}>
       {/* Badge modo preview (solo en el editor standalone, no en PreviewStep) */}
       {!interactive && !isEditMode && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">
