@@ -146,6 +146,16 @@ export interface ComponentOverride {
   vinculado_a?: string | null;
   image_data?: string | null;
   image_ext?: string | null;
+  /**
+   * El cuerpo de letra lo eligió una persona en el campo "Tamaño (pt)".
+   *
+   * Viaja explícito desde el 14/09/2026. El backend lo deducía de que el
+   * override trajera `style.font_size`, y como `setStyle` manda el objeto
+   * `style` ENTERO, tocar la negrita o un color lo marcaba igual -- y con esa
+   * marca el export aplasta el cuerpo de todos los segmentos del cuadro al de
+   * la caja. Ver aplicar_overrides en backend/app/services/cenefas/jobs.py.
+   */
+  _manual_font_override?: boolean;
   /** El cuadro se eliminó revisando la cenefa (ver sacarCuadros en lib/cenefas/overrides.ts). */
   eliminado?: boolean;
 }

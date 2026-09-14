@@ -348,14 +348,30 @@ def aplicar_overrides(template_def: dict, position_overrides: list[dict]) -> dic
             nuevo["base_bounds"] = ov["base_bounds"]
         if "style" in ov:
             nuevo["style"] = {**c.get("style", {}), **ov["style"]}
-            if "font_size" in ov["style"]:
-                # La persona ya eligió a mano el tamaño de letra para ESTA caja
-                # (resize con los 4 puntos en el preview). Desde que se eliminó
-                # el achique automático (14/09/2026) la marca ya no tiene que
-                # defenderla de nada --ningún tamaño se cambia solo-- pero se
-                # sigue guardando porque el editor la usa para saber que el
-                # cuerpo es elección de una persona y no lo que trajo el PPTX.
-                nuevo["_manual_font_override"] = True
+        if "_manual_font_override" in ov:
+            # La marca viaja EXPLÍCITA desde el navegador; acá no se deduce.
+            #
+            # Antes se infería de la presencia de `font_size` en el style del
+            # override, y eso estaba mal por una razón que no se veía: el panel
+            # de propiedades no manda la clave que tocaste, manda el objeto
+            # `style` COMPLETO (PropertiesPanel.setStyle), y ese objeto siempre
+            # incluye font_size. O sea que tildar la casilla "Negrita",
+            # cambiar un color o tocar la alineación marcaba el cuadro como
+            # "tamaño elegido a mano" sin que nadie hubiera tocado el tamaño.
+            #
+            # Lo que sigue es caro: con la marca puesta, _populate_text_frame
+            # aplasta el font_size de TODOS los segmentos con el de la caja.
+            # Medido en Rompe Precios Congelados A4, cuadro 63609775: la caja
+            # dice 58,5 y sus segmentos 108 y 220, así que el precio salía
+            # impreso en 58,5 -- un 73% más chico-- por haber tocado la negrita.
+            # Y el preview no podía mostrarlo, porque en el navegador la marca
+            # solo la pone el campo "Tamaño (pt)": la divergencia nacía recién
+            # al confirmar. Reportado por Ivan (14/09/2026) como "en el preview
+            # se ve enorme y en el PPTX sale notoriamente más chico".
+            #
+            # Rama propia y no `_CAMPOS_DE_CONTENIDO` porque su valor "apagado"
+            # es False, no None.
+            nuevo["_manual_font_override"] = bool(ov["_manual_font_override"])
         for campo in _CAMPOS_DE_CONTENIDO:
             if campo in ov:
                 nuevo[campo] = ov[campo]

@@ -25,6 +25,12 @@ import type { CenefaComponent, CenefaTemplate, ComponentOverride } from "@/types
 const CAMPOS_DEL_OVERRIDE = [
   "base_bounds", "style", "segments",
   "variable", "static_value", "transform", "vinculado_a", "image_data", "image_ext",
+  // Viaja explícito desde el 14/09/2026. El backend lo deducía de la presencia
+  // de `font_size` en el style del override, y como `setStyle` manda el style
+  // ENTERO, tocar la negrita o un color marcaba el cuadro como "tamaño elegido
+  // a mano" -- y el export aplastaba todos sus segmentos al cuerpo de la caja.
+  // Ver el comentario en aplicar_overrides (jobs.py).
+  "_manual_font_override",
 ] as const;
 
 /**
@@ -65,6 +71,10 @@ export function acumularOverride(
   if ("vinculado_a"  in updates) siguiente.vinculado_a  = updates.vinculado_a  ?? null;
   if ("image_data"   in updates) siguiente.image_data   = updates.image_data   ?? null;
   if ("image_ext"    in updates) siguiente.image_ext    = updates.image_ext    ?? null;
+  // Sin `?? null`: su valor apagado es `false`, no la ausencia del campo.
+  if ("_manual_font_override" in updates) {
+    siguiente._manual_font_override = !!updates._manual_font_override;
+  }
   return siguiente;
 }
 

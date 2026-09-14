@@ -58,14 +58,50 @@ def test_caja_y_estilo_se_mergean_sin_pisar_el_resto():
     # El merge de style es superficial: lo que el override no manda sobrevive.
     assert precio["style"]["color"] == "#000000"
     assert precio["style"]["align"] == "center"
-    # Un tamaño elegido a mano es un techo, no algo para re-escalar contra la
-    # pareja entero/decimal.
-    assert precio["_manual_font_override"] is True
+    # La marca YA NO se deduce de que el override traiga font_size: viaja
+    # explícita desde el navegador. Ver el test de abajo para el porqué.
+    assert "_manual_font_override" not in precio
 
 
-def test_font_size_sin_tocar_no_marca_override_manual():
-    salida = aplicar_overrides(TEMPLATE, [{"id": "precio", "style": {"color": "#ff0000"}}])
-    assert "_manual_font_override" not in _comp(salida, "precio")
+def test_la_marca_de_tamano_a_mano_viaja_explicita():
+    salida = aplicar_overrides(TEMPLATE, [{
+        "id": "precio",
+        "style": {"font_size": 40},
+        "_manual_font_override": True,
+    }])
+    assert _comp(salida, "precio")["_manual_font_override"] is True
+
+
+def test_tocar_otro_estilo_no_marca_el_tamano_como_elegido_a_mano():
+    """El bug del 14/09/2026, reportado por Ivan: "en el preview se ve enorme y
+    en el PPTX sale notoriamente más chico".
+
+    El panel de propiedades NO manda la clave que tocaste: manda el objeto
+    `style` COMPLETO (PropertiesPanel.setStyle), y ese objeto siempre incluye
+    font_size. El backend deducía de esa presencia que la persona había elegido
+    el tamaño a mano, y con esa marca _populate_text_frame aplasta el font_size
+    de TODOS los segmentos del cuadro con el de la caja.
+
+    Medido en Rompe Precios Congelados A4, cuadro 63609775: la caja dice 58,5 y
+    sus segmentos 108 y 220. Tildar la casilla "Negrita" dejaba el precio
+    impreso en 58,5 -- un 73% más chico-- sin que nadie hubiera tocado el
+    tamaño. Y el preview no lo mostraba, porque en el navegador la marca solo
+    la pone el campo "Tamaño (pt)".
+
+    El test viejo no lo agarraba porque mandaba SOLO la clave tocada
+    ({"color": "#ff0000"}), que no es lo que manda el panel de verdad.
+    """
+    estilo_original = _comp(TEMPLATE, "precio")["style"]
+    salida = aplicar_overrides(TEMPLATE, [{
+        "id": "precio",
+        # Exactamente lo que arma setStyle: el style entero con la clave nueva.
+        "style": {**estilo_original, "font_bold": True},
+    }])
+    precio = _comp(salida, "precio")
+    assert precio["style"]["font_bold"] is True, "el cambio pedido tiene que llegar"
+    assert "_manual_font_override" not in precio, (
+        "tocar la negrita marcó el cuadro como 'tamaño elegido a mano': el "
+        "export va a aplastar sus segmentos al cuerpo de la caja")
 
 
 def test_cambiar_la_variable_llega_al_archivo():
