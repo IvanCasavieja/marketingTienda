@@ -13,7 +13,16 @@ class SkuDescripcion(Base):
     scripts/seed_sku_descripciones_standalone.py) y alimentado en adelante
     por el Convertidor de Excel: cada corrección manual de una fila sin
     match queda guardada acá, para que la próxima vez que ese SKU aparezca
-    en cualquier import futuro (de cualquier usuario) ya venga resuelto."""
+    en cualquier import futuro (de cualquier usuario) ya venga resuelto.
+
+    El 16/09/2026 se cargaron además 253 filas desde un export de stock por
+    sucursal de AC Corp (ver scripts/seed_sku_descripciones_desde_stock.py):
+    ésas traen la descripción CRUDA del ERP, en MAYÚSCULA y con abreviaturas
+    ("AURICULAR PHILIPS INALAM. UPBEAT NEGRO"), no el estilo que pide
+    _STYLE_RULES. Fue una decisión de Ivan --tener algo es mejor que la fila
+    roja de "falta descripción"-- y si se re-castean tiene que ser con
+    fix_sku_descripciones_casing_ai.py: el heurístico no puede con las filas
+    100% en mayúscula porque no tiene cómo saber cuál era la marca."""
 
     __tablename__ = "sku_descripciones"
 
