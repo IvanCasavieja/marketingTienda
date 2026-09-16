@@ -7,6 +7,7 @@ import {
   convertidorApi,
   type BancoPreset,
   type ConvertidorColumna,
+  type ConvertidorFormatoLargo,
   type ConvertidorMapeo,
   type OfertaConPrecios,
 } from "@/lib/api";
@@ -74,6 +75,12 @@ interface Props {
    * bien. La app no lo cambia sola: lo propone y la persona decide.
    */
   ofertaConPrecios: OfertaConPrecios | null;
+  /**
+   * La hoja viene en formato largo: una fila por producto y por sucursal. null =
+   * no y la pantalla queda igual que siempre. Solo se avisa: no hay nada que
+   * elegir ni nada que mandar de vuelta.
+   */
+  formatoLargo: ConvertidorFormatoLargo | null;
   /** {campo: qué es} -- a qué campos se puede reasignar una columna. */
   camposAsignables: Record<string, string>;
   totalFilas: number;
@@ -99,7 +106,7 @@ interface Props {
 
 export default function ConvertidorMapeoStep({
   columnas, variablesMapeables, camposReconocidos, resueltaPorCampo,
-  ofertaConPrecios, camposAsignables, totalFilas,
+  ofertaConPrecios, formatoLargo, camposAsignables, totalFilas,
   destino, excel, hoja, onBack, onConfirm, converting,
 }: Props) {
   const { t } = useTranslation();
@@ -117,7 +124,6 @@ export default function ConvertidorMapeoStep({
   // {nombre_de_columna: campo} -- el override de esta corrida. Arranca vacío: si
   // nadie acepta el aviso, el archivo se lee exactamente como se leía antes.
   const [camposForzados, setCamposForzados] = useState<Record<string, string>>({});
-
   // Presets de banco (modo "calcular" de precioBanco) -- ver BANCO_NUEVO.
   const [bancos, setBancos] = useState<BancoPreset[]>([]);
   const [bancoPresetId, setBancoPresetId] = useState("");
@@ -342,6 +348,8 @@ export default function ConvertidorMapeoStep({
         />
       )}
 
+      {formatoLargo && <AvisoFormatoLargo aviso={formatoLargo} />}
+
       {excel && <TininMapeo excel={excel} hoja={hoja} />}
 
       {/* Plantillas guardadas */}
@@ -561,7 +569,9 @@ export default function ConvertidorMapeoStep({
           <ArrowLeft size={15} /> {t("convertidor.mapeo.volver")}
         </button>
         <button
-          onClick={() => onConfirm(mapeoEfectivo, valoresEfectivos, camposForzados, bancoCalculado)}
+          onClick={() =>
+            onConfirm(mapeoEfectivo, valoresEfectivos, camposForzados, bancoCalculado)
+          }
           disabled={converting}
           className="btn-primary flex items-center gap-2 disabled:opacity-50"
         >
@@ -569,6 +579,58 @@ export default function ConvertidorMapeoStep({
           {converting ? t("convertidor.processing") : t("convertidor.mapeo.convertir")}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// "Este listado trae el stock por sucursal"
+// ---------------------------------------------------------------------------
+//
+// El export de gestión de electro viene en FORMATO LARGO: una fila por producto
+// y por sucursal, con el nombre del local como VALOR de la columna `sucursal`.
+// El de Ivan del 30/08 son 4.773 filas que son 274 productos en 18 sucursales.
+//
+// Sin este aviso, la persona mapea 4.773 filas y en la grilla le aparecen 274:
+// parece que el Convertidor se comió el archivo. Y es al revés, es lo que tiene
+// que pasar -- el Convertidor hace UNA cenefa por producto, así que sin juntar
+// saldría la misma cenefa repetida 18 veces, una por sucursal.
+//
+// Antes de acá vivía otro aviso, el de las columnas de stock por sucursal, con
+// un checkbox por columna para confirmar cuáles eran. Se fue entero: suponía un
+// formato que no existe (una columna por local, con el encabezado llamándose
+// como la sucursal) y en el export real ninguna columna se llama así. Ahora no
+// hay nada que elegir ni nada que mandarle al backend: alcanza con que la hoja
+// traiga columna `sucursal`, y eso el backend lo ve solo.
+//
+// Queda como aviso y no como dato escondido por la misma doctrina del aviso de
+// OFERTA con precios: el backend detecta, la pantalla avisa, la persona decide
+// -- acá lo que decide es seguir o volver a elegir otra hoja.
+function AvisoFormatoLargo({ aviso }: { aviso: ConvertidorFormatoLargo }) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="card p-4 space-y-2 border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20">
+      <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+        {t("convertidor.formatoLargo.aviso")}
+      </p>
+      <p className="text-xs text-amber-700 dark:text-amber-400">
+        {t("convertidor.formatoLargo.detalle", {
+          filas: aviso.filas,
+          productos: aviso.productos,
+          sucursales: aviso.sucursales.length,
+        })}
+      </p>
+      {/* Los nombres tal cual los escribe gestión, sin normalizar, como las
+          muestras del aviso de OFERTA. Son los que van a nombrar las carpetas
+          del ZIP al dividir por sucursales: verlos acá es la única forma de
+          cazar antes de convertir que el export trajo "Deposito A.Saravia" o
+          una sucursal nueva que nadie esperaba. */}
+      {aviso.sucursales.length > 0 && (
+        <p className="text-[11px] font-mono text-amber-700/80 dark:text-amber-400/80 break-words">
+          {aviso.sucursales.join("   ·   ")}
+        </p>
+      )}
     </div>
   );
 }

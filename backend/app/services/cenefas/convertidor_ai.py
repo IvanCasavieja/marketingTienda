@@ -763,6 +763,17 @@ _CAMPOS_SUGERIBLES: dict[str, str] = {
     "comprador":         "el rubro o sector del producto (CARNICERIA, BEBIDAS...)",
     "fechaInicio":      "la fecha en que arranca la vigencia",
     "fechaFin":         "la fecha en que termina la vigencia",
+    # Los tres del FORMATO LARGO: listados que repiten el producto una vez por
+    # sucursal (ver juntar_filas_por_producto en convertidor.py). El export que
+    # conocemos los titula sucursal / stock / dsc_subfamilia y esos nombres ya
+    # estan en _INPUT_ALIASES, asi que se reconocen solos. Estan aca para el
+    # export siguiente, que los va a titular distinto ("local", "unidades",
+    # "familia"): que se puedan asignar a mano en la pantalla de mapeo es el
+    # camino que ya existe para eso, y es mejor que agregar un alias nuevo cada
+    # vez que alguien renombra una columna.
+    "sucursal":          "la sucursal de ESA fila (el listado repite el producto una vez por sucursal)",
+    "stock":             "las unidades que hay en esa sucursal",
+    "categoriaProducto": "el tipo de producto, para partir la descarga (FREIDORA, MIXER, AURICULARES)",
 }
 
 _SUGERIR_SYSTEM_PROMPT = f"""{TININ_BASE}
@@ -1067,3 +1078,5 @@ async def sugerir_familia_mecanica(candidatos: list[dict], db, user_id: int) -> 
             "motivo":            str(item.get("motivo") or "")[:300],
         })
     return {"sugerencias": sugerencias, "errores": errores}
+
+# Acá vivía clasificar_categorias, con sus prompts y su validación contra la lista cerrada: se borró el 15/09/2026 junto con la deducción por palabras clave, porque la categoría sale de la columna dsc_subfamilia del listado y no hay nada que adivinarle (Ivan: "no hace falta tinín ni nada de detectar automáticamente").

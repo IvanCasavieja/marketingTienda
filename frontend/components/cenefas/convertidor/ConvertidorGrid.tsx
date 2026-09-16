@@ -2,11 +2,12 @@
 import { useEffect, useMemo, useRef, useState, ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
-import { ArrowLeft, Download, Loader2, Merge, Presentation, Target } from "lucide-react";
+import { ArrowLeft, Download, FolderTree, Loader2, Merge, Presentation, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   convertidorApi,
+  type ConvertidorJuntado,
   type ConvertidorRow,
   type GrupoUnificado,
   type MaPair,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/api";
 import { guardarExcelParaCenefa } from "@/lib/cenefaHandoff";
 import ConvertidorAiModal from "./ConvertidorAiModal";
+import ConvertidorDividirModal from "./ConvertidorDividirModal";
 import ConvertidorMergeModal from "./ConvertidorMergeModal";
 import ConvertidorUnifyModal from "./ConvertidorUnifyModal";
 import TininMecanica from "./TininMecanica";
@@ -31,6 +33,9 @@ const SAVE_DEBOUNCE_MS = 800;
 type ColumnKey =
   // contexto del export de gestión (solo lectura, no se exporta)
   | "nombreArticulo" | "comprador" | "moneda" | "ofertaOrigen" | "ofertaDet" | "descripcionWeb"
+  // Contexto también, pero es el único de esta lista que decide algo: el
+  // nombre del Excel cuando se divide la descarga. Por eso es editable.
+  | "categoriaProducto"
   // las 26 variables
   | "codigo" | "descripcion" | "mecanica"
   | "tipoOferta" | "unidadMoneda"
@@ -153,6 +158,13 @@ const COLUMNS: ColumnDef[] = [
   { key: "comprador",       label: "· Comprador",      contexto: true },
   { key: "descripcionWeb", label: "· Descripción web", contexto: true,
     warningCodes: ["missing_descripcion_web", "descripcion_web_invalida"] },
+  // El tipo de producto deducido del nombre ("Freidoras de aire",
+  // "Heladeras"): es lo que decide el nombre de cada Excel al dividir la
+  // descarga. A propósito SIN `siempre`: aparece sola cuando hay dato, como
+  // el resto, así que en un listado que no se divide no molesta. Editable
+  // porque la deducción puede errarle y acá es donde se corrige, antes de
+  // bajar el ZIP — después ya es un nombre de archivo.
+  { key: "categoriaProducto", label: "categoriaProducto", editable: "simple", contexto: true },
 ];
 
 // Warnings de "hay contenido que no cierra" — no se arreglan completando el
@@ -232,6 +244,12 @@ interface Props {
   rows: ConvertidorRow[];
   setRows: Dispatch<SetStateAction<ConvertidorRow[] | null>>;
   maPairs: MaPair[];
+  /**
+   * De dónde salieron estas filas cuando el listado venía en formato largo (una
+   * fila por producto y por sucursal). null = no hubo juntado y cada fila de la
+   * grilla es una fila del archivo, como siempre.
+   */
+  juntado?: ConvertidorJuntado | null;
   onReset: () => void;
   /**
    * Rehace la conversión con el mismo mapeo. Hace falta cuando Tinín aprende
@@ -245,7 +263,32 @@ function maPairKey(sku1: string, sku2: string): string {
   return `${sku1}|${sku2}`;
 }
 
-export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRevalidar }: Props) {
+/**
+ * Suma, sucursal por sucursal, el stock de varias filas. La usan las dos
+ * unificaciones (commitMerge y commitUnificacion): la fila que sobrevive tiene
+ * que llevarse el stock de las que absorbe, porque ese stockPorSucursal es
+ * después lo único que decide en qué carpeta del ZIP aparece la cenefa.
+ *
+ * Una sucursal que no aparece en ninguna de las filas tampoco aparece en el
+ * resultado: "no hay dato" no es lo mismo que cero, el mismo criterio que
+ * _parse_stock_or_none en el backend.
+ */
+function sumarStockPorSucursal(filas: ConvertidorRow[]): Record<string, number> {
+  const total: Record<string, number> = {};
+  for (const fila of filas) {
+    // Tipado a mano: con el `?? {}` pelado, Object.entries cae en la sobrecarga
+    // de {} y las cantidades llegan como any.
+    const stock: Record<string, number> = fila.stockPorSucursal ?? {};
+    for (const [sucursal, cantidad] of Object.entries(stock)) {
+      const n = Number(cantidad);
+      if (!Number.isFinite(n)) continue;
+      total[sucursal] = (total[sucursal] ?? 0) + n;
+    }
+  }
+  return total;
+}
+
+export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onReset, onRevalidar }: Props) {
   const { t } = useTranslation();
   const [scrollTop, setScrollTop] = useState(0);
   const [exporting, setExporting] = useState(false);
@@ -280,6 +323,20 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
     for (const [precio, decimal] of DECIMAL_DE) {
       if (conDato.has(precio)) conDato.add(decimal);
     }
+    // categoriaProducto es la excepcion al criterio de arriba. Con "las que
+    // traen algun dato" la columna no aparecia justo cuando mas falta hace:
+    // un listado de electro donde la tabla de palabras clave no reconocio
+    // NINGUN producto quedaba sin ninguna celda donde escribir la categoria a
+    // mano, y al dividir por categorias bajaba un ZIP con todo en
+    // "Sin categoria.xlsx".
+    //
+    // No se arregla con `siempre: true`: eso le agregaria una columna vacia a
+    // TODOS los listados, incluidos los que nunca se dividen. La senal de que
+    // este listado se va a dividir es que traiga stock por sucursal, asi que
+    // alcanza con que alguna fila lo traiga para mostrarla, con dato o sin el.
+    if (rows.some((r) => Object.keys(r.stockPorSucursal ?? {}).length > 0)) {
+      conDato.add("categoriaProducto");
+    }
     return COLUMNS.filter((c) => c.siempre || conDato.has(c.key));
   }, [rows]);
   const activeCellColumn = activeCell ? COLUMNS.find((c) => c.key === activeCell.key) : undefined;
@@ -296,6 +353,12 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
   // "Unificar categorías" analiza TODAS las filas del Excel cargado (no solo
   // las que faltan descripción, a diferencia del modal de IA de arriba).
   const [unifyModalRows, setUnifyModalRows] = useState<ConvertidorRow[] | null>(null);
+  // Un booleano y no un snapshot de filas como los dos de arriba: el modal
+  // de dividir muestra un resumen en vivo (cuántos archivos van a salir) y
+  // "Clasificar con Tinín" completa categorías mientras está abierto, así que
+  // congelar las filas dejaría el resumen mintiendo justo después de
+  // clasificar.
+  const [dividirAbierto, setDividirAbierto] = useState(false);
   const pendingSaves = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const dlRef = useRef<HTMLAnchorElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -458,8 +521,20 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
       toast.error(err?.response?.data?.detail ?? t("convertidor.grupos.noSeGuardo"));
       return;
     }
-    setRows((prev) =>
-      (prev ?? [])
+    setRows((prev) => {
+      const todas = prev ?? [];
+      // El stock de las dos filas se suma ANTES de tirar la absorbida. Hasta
+      // ahora la que sobrevivía se quedaba solo con su propio stockPorSucursal:
+      // un combo "A - B" donde A no tenía stock en una sucursal y B tenía 4 no
+      // salía en esa sucursal, aunque ahí hubiera mercadería para venderlo.
+      //
+      // Se eligió SUMAR: con que una de las partes tenga stock ya hay con qué
+      // vender el combo. Si Ivan prefiere el mínimo (que el combo salga solo
+      // donde están las dos partes), es la misma línea con Math.min.
+      const stockCombinado = sumarStockPorSucursal(
+        todas.filter((r) => r.codigo === pair.sku1 || r.codigo === pair.sku2),
+      );
+      return todas
         .filter((r) => r.codigo !== pair.sku2)
         .map((r) =>
           r.codigo === pair.sku1
@@ -467,11 +542,12 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
                 ...r,
                 codigo: skuCombinado,
                 descripcion,
+                stockPorSucursal: stockCombinado,
                 warnings: computeDescripcionWarnings(r.warnings, descripcion),
               }
             : r
-        )
-    );
+        );
+    });
     setPendingPairs((prev) => prev.filter((p) => !(p.sku1 === pair.sku1 && p.sku2 === pair.sku2)));
     setMergePair(null);
     toast.success(t("convertidor.merge.merged", { sku: skuCombinado }));
@@ -497,8 +573,20 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
     }
     const [rowIdSuperviviente, ...rowIdsAEliminar] = grupo.row_ids;
     const idsAEliminar = new Set(rowIdsAEliminar);
-    setRows((prev) =>
-      (prev ?? [])
+    const idsDelGrupo = new Set(grupo.row_ids);
+    setRows((prev) => {
+      const todas = prev ?? [];
+      // Mismo criterio que commitMerge, con N filas en vez de dos: el stock de
+      // todo el grupo se suma ANTES de filtrar las absorbidas. Antes la
+      // superviviente se quedaba solo con el suyo y la cenefa del combo no
+      // aparecía en una sucursal donde sí había stock de otra de las partes.
+      //
+      // Se eligió sumar (si alguna parte tiene stock, hay con qué vender el
+      // combo); si Ivan prefiere el mínimo, es la misma línea con Math.min.
+      const stockCombinado = sumarStockPorSucursal(
+        todas.filter((r) => idsDelGrupo.has(r.row_id)),
+      );
+      return todas
         .filter((r) => !idsAEliminar.has(r.row_id))
         .map((r) =>
           r.row_id === rowIdSuperviviente
@@ -506,11 +594,12 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
                 ...r,
                 codigo: codigoCombinado,
                 descripcion: grupo.descripcion,
+                stockPorSucursal: stockCombinado,
                 warnings: computeDescripcionWarnings(r.warnings, grupo.descripcion),
               }
             : r
-        )
-    );
+        );
+    });
     toast.success(t("convertidor.unificar.saved", { grupo: grupo.grupo, count: grupo.skus.length }));
   }
 
@@ -689,6 +778,11 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
       setEnviandoACenefa(false);
     }
   }
+
+  // Acá estaba aplicarCategorias, que escribía en la grilla lo que proponía
+  // Tinín: se fue el 15/09/2026 con la deducción de categorías, porque la
+  // categoría sale de la columna dsc_subfamilia del listado. La columna
+  // categoriaProducto sigue siendo editable y es la única forma de corregirla.
 
   // Por qué está marcada esta celda, en castellano. Sin esto hay que deducirlo
   // mirando otras columnas, y con dos filas que dicen lo mismo es imposible.
@@ -955,6 +1049,26 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
 
       <TininRevision temas={temasTinin} />
 
+      {/* De dónde salió esta grilla. Es la ÚNICA señal de que el archivo traía
+          4.773 filas y acá hay 274: sin la línea, el total de la grilla no
+          coincide con nada de lo que la persona vio al subir el archivo y
+          parece que el Convertidor perdió filas. El texto es el mismo del aviso
+          del paso de mapeo, a propósito: es la misma cuenta, contada dos veces
+          en el único orden en que sirve -- antes de convertir y después. */}
+      {juntado && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-slate-600 dark:text-slate-300">
+            {t("convertidor.formatoLargo.aviso")}
+          </span>
+          {" · "}
+          {t("convertidor.formatoLargo.detalle", {
+            filas: juntado.filas,
+            productos: juntado.productos,
+            sucursales: juntado.sucursales.length,
+          })}
+        </p>
+      )}
+
       <div className="h-9 flex items-center gap-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs">
         {activeCellColumn ? (
           <>
@@ -1079,6 +1193,17 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
           {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
           {exporting ? t("convertidor.exporting") : t("convertidor.download")}
         </button>
+        {/* Deshabilitado junto con los otros dos: las tres salidas parten de
+            las MISMAS filas, y dejar abrir el modal mientras se está armando
+            el Excel deja bajar dos versiones distintas del mismo listado. */}
+        <button
+          onClick={() => setDividirAbierto(true)}
+          disabled={exporting || enviandoACenefa}
+          className="btn-secondary flex items-center gap-2 disabled:opacity-50"
+        >
+          <FolderTree size={16} />
+          {t("convertidor.dividir.boton")}
+        </button>
       </div>
 
       {aiModalRows && (
@@ -1094,6 +1219,17 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, onReset, onRev
           rows={unifyModalRows}
           onApprove={commitUnificacion}
           onClose={() => setUnifyModalRows(null)}
+        />
+      )}
+
+      {/* `rows` vivas, no un snapshot: ver dividirAbierto. flushPendientes va
+          como prop porque el ZIP lo pide el modal, y una descripción recién
+          tipeada todavía puede estar esperando el debounce de 800 ms. */}
+      {dividirAbierto && (
+        <ConvertidorDividirModal
+          rows={rows}
+          onAntesDeDescargar={flushPendientes}
+          onClose={() => setDividirAbierto(false)}
         />
       )}
 

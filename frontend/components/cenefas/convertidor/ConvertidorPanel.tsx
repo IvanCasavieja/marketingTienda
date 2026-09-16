@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   convertidorApi,
   type ConvertidorHoja,
+  type ConvertidorJuntado,
   type ConvertidorRow,
   type MaPair,
 } from "@/lib/api";
@@ -30,6 +31,13 @@ type Paso = "subir" | "mapear" | "grilla";
 interface EstadoHoja {
   rows: ConvertidorRow[];
   maPairs: MaPair[];
+  /**
+   * De dónde salieron estas filas cuando el listado venía en formato largo (una
+   * fila por producto y por sucursal). null = no hubo juntado. Se guarda por
+   * hoja, igual que las filas: en un mismo archivo puede venir el export de
+   * gestión con stock y un "Frente" curado a mano sin él.
+   */
+  juntado: ConvertidorJuntado | null;
 }
 
 interface Props {
@@ -137,7 +145,10 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
     bancoCalculado: { nombre: string; multiplicador: number } | null = null,
   ) {
     if (!excel) return;
-    setUltimoMapeo((prev) => ({ ...prev, [hojaActual]: { mapeo, valores, campos, bancoCalculado } }));
+    setUltimoMapeo((prev) => ({
+      ...prev,
+      [hojaActual]: { mapeo, valores, campos, bancoCalculado },
+    }));
     setLoading(true);
     try {
       const fd = new FormData();
@@ -150,7 +161,11 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
       const { data } = await convertidorApi.preview(fd);
       setResultados((prev) => ({
         ...prev,
-        [hojaActual]: { rows: data.rows, maPairs: data.ma_pairs },
+        [hojaActual]: {
+          rows: data.rows,
+          maPairs: data.ma_pairs,
+          juntado: data.juntado ?? null,
+        },
       }));
       onRowsChange?.(data.rows);
       setPaso("grilla");
@@ -168,10 +183,20 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
   // mano en ella. Es aceptable porque el aviso que dispara esto (una mecánica
   // que el motor no reconoce) aparece apenas se convierte, antes de que haya
   // trabajo manual encima -- y el texto del botón lo dice.
+  //
+  // El juntado por producto no se guarda acá: lo decide el backend mirando si la
+  // hoja trae columna `sucursal`, así que revalidar con el mismo mapeo lo vuelve
+  // a hacer igual. Antes había que reenviarle las columnas de stock confirmadas
+  // a mano y revalidar las perdía.
   function revalidar() {
     const guardado = ultimoMapeo[hojaActual];
     if (!guardado) return;
-    handleConvertir(guardado.mapeo, guardado.valores, guardado.campos ?? {}, guardado.bancoCalculado ?? null);
+    handleConvertir(
+      guardado.mapeo,
+      guardado.valores,
+      guardado.campos ?? {},
+      guardado.bancoCalculado ?? null,
+    );
   }
 
   // Barra de hojas: solo aparece si el archivo trae más de una. Numeradas 1, 2,
@@ -220,6 +245,7 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
           rows={actual.rows}
           setRows={setRows}
           maPairs={actual.maPairs}
+          juntado={actual.juntado}
           onReset={reset}
           onRevalidar={revalidar}
         />
@@ -238,6 +264,7 @@ export default function ConvertidorPanel({ onRowsChange }: Props = {}) {
           camposReconocidos={hoja.campos_reconocidos ?? []}
           resueltaPorCampo={resueltaPorCampo}
           ofertaConPrecios={hoja.oferta_con_precios ?? null}
+          formatoLargo={hoja.formato_largo ?? null}
           camposAsignables={camposAsignables}
           totalFilas={hoja.total_filas}
           excel={excel}

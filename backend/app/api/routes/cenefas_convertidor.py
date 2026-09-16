@@ -3,8 +3,10 @@
 Sin jobs asíncronos ni Redis: parsear un Excel y hacer lookups de SKU es
 rápido, a diferencia de renderizar PPTX — no hay razón para repetir acá el
 patrón de jobs del generador de Cenefas."""
+import asyncio
 import json
 import logging
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -34,8 +36,10 @@ from app.services.cenefas.convertidor_variables import (
 from app.services.cenefas.variables import LEGAL_ALCOHOL, es_alcohol
 from app.services.cenefas.convertidor import (
     _INPUT_ALIASES,
+    _mapear_columnas,
     _norm,
     ConvertidorParseError,
+    armar_zip_dividido,
     build_output_workbook,
     campos_reconocidos,
     grupos_para_skus,
@@ -45,6 +49,7 @@ from app.services.cenefas.convertidor import (
     leer_filas,
     listar_hojas,
     match_rows,
+    normalize_sku,
     parse_input_excel,
     upsert_sku_descripcion,
 )
@@ -127,7 +132,12 @@ async def preview(
         current_user.is_superuser or "ai.tinin" in (current_user.permissions or [])
     )
     try:
-        parsed, learned_aliases_count, _headers = await parse_input_excel(
+        # El cuarto valor es el resumen del juntado: los listados con stock por
+        # sucursal vienen en formato largo (una fila por producto y por sucursal)
+        # y el parser los junta en una sola fila por producto. Nadie lo pide ni
+        # lo confirma -- el formato se reconoce solo por la columna `sucursal`,
+        # así que acá no hay nada que mandarle.
+        parsed, learned_aliases_count, _headers, juntado = await parse_input_excel(
             excel_bytes, excel.filename or "",
             db=db, current_user_id=current_user.id, allow_ai=allow_ai,
             mapeo=mapeo, valores=valores, campos=campos, hoja=hoja,
@@ -150,6 +160,13 @@ async def preview(
         "matched_count": matched,
         "unmatched_count": len(rows) - matched,
         "ma_pairs": ma_pairs,
+        # De dónde salieron estas filas cuando el listado venía en formato largo:
+        # {filas, productos, sucursales, con_diferencias}. Es la única señal de
+        # que 4.773 filas se volvieron 274 cenefas -- sin esto la grilla muestra
+        # un total que no se parece en nada al Excel que la persona subió. None
+        # en los listados de siempre: sin columna `sucursal` no hubo juntado y el
+        # parser devuelve el resumen en cero, que no hay nada que contar.
+        "juntado": juntado if juntado.get("sucursales") else None,
     }
 
 
@@ -241,6 +258,22 @@ class ConvertidorRowIn(BaseModel):
     precioAnteriorRaw: str = ""
     esFiambreKg:       bool = False
     warningsMecanica:   list[str] = Field(default_factory=list)
+    # Los dos datos que deciden en qué archivo del ZIP cae la fila
+    # (/export-dividido). Van declarados acá por la misma razón que el resto del
+    # contexto: con `extra="ignore"`, un campo que no esté enumerado se descarta
+    # SIN UN SOLO ERROR. Y el modo de fallar de estos dos es el peor de todos:
+    # sin stockPorSucursal ninguna fila queda afuera de ninguna sucursal, y sin
+    # categoriaProducto todas caen en "Sin categoría" -- o sea, el ZIP sale con
+    # todas las filas repetidas en todas las carpetas y parece que anduvo. El
+    # chequeo del final del módulo NO cubre este caso: solo mira ORDEN_EXPORT, y
+    # estos dos justamente no se exportan (si se llamaran como una variable de
+    # ORDEN_EXPORT se convertirían en columna del xlsx sin querer).
+    #
+    # El nombre de cada sucursal es el encabezado de su columna de stock, tal
+    # cual vino del Excel de gestión: acá no se normaliza nada, porque lo que
+    # mandó el grid es exactamente lo que se le devolvió en el preview.
+    stockPorSucursal:   dict[str, int] = Field(default_factory=dict)
+    categoriaProducto:  str = ""
 
     # -- las 31 variables --------------------------------------------------
     codigo:               str = ""
@@ -303,6 +336,137 @@ async def export(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="convertidor_cenefas.xlsx"'},
+    )
+
+
+class ExportDivididoRequest(BaseModel):
+    rows: list[ConvertidorRowIn]
+    por_categoria: bool = False
+    por_sucursal:  bool = False
+    nombre_base:   str = "cenefas"
+
+
+def _nombre_para_descarga(texto: str) -> str:
+    """Deja un texto usable adentro del header Content-Disposition.
+
+    NO es lo mismo que el saneado de los nombres de archivo de adentro del ZIP
+    (`_nombre_para_zip`, en el service): acá el problema no es Windows sino el
+    header HTTP. Se sacan las comillas --que cerrarían el filename="..." antes
+    de tiempo-- y los saltos de línea y caracteres de control, que permitirían
+    inyectar un header entero; y se descarta lo que no entre en latin-1, que es
+    como Starlette codifica los headers: un nombre con un carácter fuera de ese
+    rango revienta con UnicodeEncodeError DESPUÉS de haber armado todo el ZIP,
+    o sea 500 con el trabajo ya hecho.
+    """
+    limpio = re.sub(r'[\x00-\x1f\x7f/\\:*?"<>|]', "", texto or "")
+    limpio = limpio.encode("latin-1", "ignore").decode("latin-1")
+    limpio = re.sub(r"\s+", " ", limpio).strip().rstrip(". ")
+    return limpio[:120] or "cenefas"
+
+
+# 3 por minuto, como las otras rutas pesadas del módulo y por la misma razón:
+# armar la tanda es 100% CPU y la instancia de Render tiene una sola. Medido
+# acá, 270 libros son 8 s en una máquina rápida; en Render la estimación
+# realista es 25-60 s. Sin límite, dos clics seguidos en "Descargar ZIP" ponen
+# dos tandas a pelear por ese único CPU: las dos tardan el doble y atrás queda
+# esperando el polling de los jobs del generador.
+@router.post("/export-dividido")
+@limiter.limit("3/minute")
+async def export_dividido(
+    # `request` no se usa en el cuerpo: lo pide slowapi para sacar la IP del
+    # cliente, y sin el parámetro el @limiter.limit de arriba revienta.
+    request: Request,
+    payload: ExportDivididoRequest,
+    _: User = Depends(require_permission("cenefas.view")),
+):
+    """Baja un ZIP con la misma tanda partida en varios Excel: una carpeta por
+    sucursal y/o un archivo por categoría de producto (pedido de Ivan, 15/09/2026).
+
+    Va aparte de /export y no como un parámetro suyo a propósito: el cliente de
+    /export hardcodea la extensión .xlsx y handleConvertirACenefa le manda ese
+    mismo blob al generador dando por sentado que es un Excel. Devolver un ZIP
+    por ahí rompería las dos cosas sin que el tipo de dato lo delate.
+
+    Igual que /export, se arma exclusivamente con lo que mandó el browser: la
+    categoría que se ve corregida en la grilla es la que decide el archivo.
+    """
+    # Los dos apagados no es "bajame todo junto": para eso está /export, que
+    # además devuelve un .xlsx de verdad y no un ZIP con un solo archivo adentro.
+    if not payload.por_categoria and not payload.por_sucursal:
+        raise HTTPException(
+            status_code=400,
+            detail="Elegí al menos una forma de dividir: por categorías, por sucursales o las dos",
+        )
+
+    rows = [r.to_export() for r in payload.rows]
+    try:
+        # openpyxl es 100% CPU y bloquea el event loop mientras escribe cada
+        # libro. Acá no es un libro: son N sucursales × M categorías, y la
+        # instancia de Render tiene 1 CPU (misma razón por la que el generador
+        # empuja el render a un thread, ver services/cenefas/jobs.py:28-32). Sin
+        # el to_thread, una tanda grande deja la API entera sin responder --
+        # incluido el polling de los jobs de cenefas que estén corriendo.
+        zip_bytes, resumen = await asyncio.to_thread(
+            armar_zip_dividido,
+            rows,
+            por_categoria=payload.por_categoria,
+            por_sucursal=payload.por_sucursal,
+            nombre_base=payload.nombre_base,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("export_dividido: error armando el ZIP — %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"No pude armar el ZIP: {e}")
+
+    # Contar ENTRADAS del ZIP, no bytes: un ZIP sin un solo archivo adentro pesa
+    # igual 22 (el End Of Central Directory), así que esto se bajaba como un .zip
+    # válido y VACÍO con HTTP 200 y el modal festejaba "ZIP descargado". Es
+    # exactamente el bug que ya está documentado en cenefas_v2.py:1585-1590 para
+    # el download del lote ("contar entradas, no bytes"), donde `if not
+    # buffer.tell()` era siempre falso. Acá el caso concreto que lo dispara es
+    # destildar todas las columnas de stock en la pantalla de mapeo: sin
+    # stockPorSucursal ninguna fila llega a _STOCK_MINIMO en ninguna sucursal,
+    # armar_zip_dividido las descarta a todas y devuelve archivos=0 sin levantar
+    # un solo error.
+    if not resumen.get("archivos"):
+        if not rows:
+            motivo = "No mandaste ninguna fila: no hay nada para dividir."
+        elif payload.por_sucursal:
+            sujeto = ("La única fila que mandaste no tiene" if len(rows) == 1
+                      else f"Ninguna de las {len(rows)} filas tiene")
+            motivo = (
+                f"{sujeto} stock 1 o más en ninguna sucursal, así que el ZIP salía vacío. "
+                "Fijate en la pantalla de mapeo que estén marcadas las columnas de stock "
+                "de las sucursales."
+            )
+        else:
+            motivo = "No quedó ninguna fila para armar el ZIP."
+        raise HTTPException(status_code=400, detail=motivo)
+
+    nombre = _nombre_para_descarga(payload.nombre_base)
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nombre}.zip"',
+            # El resumen viaja en headers y no en el cuerpo porque el cuerpo ya
+            # es el ZIP. Son los tres números que la pantalla necesita para poder
+            # decir qué pasó con lo que NO está en el archivo: perder filas en
+            # silencio es justo lo que motivó todo el sistema de warnings.
+            "X-Archivos": str(resumen.get("archivos", 0)),
+            "X-Filas-Sin-Stock": str(resumen.get("filas_sin_stock", 0)),
+            "X-Filas-Sin-Categoria": str(resumen.get("filas_sin_categoria", 0)),
+            # Sin esto el browser NO deja leer ninguno de estos headers desde
+            # fetch/axios cuando el front está en otro origen (lo normal acá:
+            # Vercel contra Render). El CORSMiddleware de main.py se registra sin
+            # expose_headers, así que la lista tiene que salir en la respuesta
+            # misma -- incluido Content-Disposition, de donde el front saca el
+            # nombre del archivo en vez de hardcodearlo.
+            "Access-Control-Expose-Headers": (
+                "Content-Disposition, X-Archivos, X-Filas-Sin-Stock, X-Filas-Sin-Categoria"
+            ),
+        },
     )
 
 
@@ -532,8 +696,68 @@ async def columnas(
                 str(f[i]).strip() for f in muestras
                 if i < len(f) and f[i] is not None and str(f[i]).strip()
             ]
-            salida.append({"nombre": nombre, "muestras": valores[:3]})
+            # El col_idx ya se calculaba y se tiraba. Se devuelve desde 09/2026
+            # porque el aviso de formato largo (ver _formato_largo_de) trabaja
+            # por índice de columna y no por nombre: un export de gestión puede
+            # traer el mismo encabezado repetido, y ahí el nombre solo no alcanza
+            # para saber de cuál se está hablando. Es aditivo: lo que ya leía
+            # `nombre` y `muestras` no se entera.
+            salida.append({"nombre": nombre, "muestras": valores[:3], "col_idx": i})
         return salida
+
+    def _formato_largo_de(filas: list, header_idx: int, col_map: dict[int, str]) -> dict | None:
+        """¿Esta hoja viene en formato largo, una fila por producto y por sucursal?
+
+        El export real de stock que pasó Ivan (15/09/2026) trae 4.772 filas con
+        CODIGO que son 273 productos repetidos en 18 sucursales, con el nombre de
+        la sucursal como VALOR de la columna `sucursal`. El Convertidor hace UNA
+        cenefa por producto, así que al convertir esas filas se juntan (ver
+        juntar_filas_por_producto) -- y la pantalla de mapeo tiene que poder
+        avisarlo ANTES, porque ver 4.772 y después 273 sin explicación parece un
+        archivo que se perdió por el camino.
+
+        Se calcula acá y no con parse_input_excel: parsear el archivo entero
+        cuesta lo mismo que convertirlo, y esta ruta corre para TODAS las hojas
+        del archivo. Con los dos índices de columna alcanza, y la pasada sobre
+        las filas solo se hace en las hojas que tienen columna `sucursal` -- un
+        listado de oferta de los de siempre no paga nada.
+
+        None cuando la hoja no trae esa columna, o la trae toda vacía: en los dos
+        casos no hay nada que juntar y no hay nada que avisar.
+        """
+        idx_sucursal = next((i for i, campo in col_map.items() if campo == "sucursal"), None)
+        idx_codigo = next((i for i, campo in col_map.items() if campo == "codigo"), None)
+        if idx_sucursal is None or idx_codigo is None:
+            return None
+
+        sucursales: list[str] = []
+        vistas: set[str] = set()
+        productos: set[str] = set()
+        filas_con_codigo = 0
+        for f in filas[header_idx + 1:]:
+            # Mismo criterio de "esto es una fila" que parse_input_excel: sin
+            # CODIGO legible la fila no existe. No es teoría: el export de Ivan
+            # termina con una fila entera en blanco que openpyxl igual reporta, y
+            # contándola el aviso diría 4.773 filas y 274 productos (el vacío
+            # cuenta como uno más) mientras la grilla muestra 4.772 y 273. Dos
+            # números distintos para lo mismo es justo lo que este aviso viene a
+            # evitar.
+            if idx_codigo >= len(f):
+                continue
+            codigo = normalize_sku(f[idx_codigo])
+            if not codigo:
+                continue
+            filas_con_codigo += 1
+            productos.add(codigo)
+            suc = str(f[idx_sucursal]).strip() if idx_sucursal < len(f) and f[idx_sucursal] is not None else ""
+            if suc and suc not in vistas:
+                vistas.add(suc)
+                sucursales.append(suc)
+        if not sucursales:
+            return None
+        # En orden de aparición, igual que el resumen del juntado: es el orden en
+        # que gestión escribe las sucursales y el que la persona espera leer.
+        return {"filas": filas_con_codigo, "productos": len(productos), "sucursales": sucursales}
 
     hojas_out: list[dict] = []
     for indice, nombre_hoja in enumerate(nombres):
@@ -542,6 +766,11 @@ async def columnas(
         except Exception as e:
             hojas_out.append({
                 "indice": indice, "nombre": nombre_hoja, "columnas": [],
+                # None pero PRESENTE: la hoja ilegible viaja igual en el listado
+                # y el front lee `formato_largo` de cada hoja para decidir si
+                # muestra el aviso. Que en una falte la clave rompe la pantalla
+                # entera por una hoja que ni siquiera se puede usar.
+                "formato_largo": None,
                 "total_filas": 0, "error": f"No pude leer la hoja: {e}",
             })
             continue
@@ -550,6 +779,7 @@ async def columnas(
         if header_idx is None:
             hojas_out.append({
                 "indice": indice, "nombre": nombre_hoja, "columnas": [],
+                "formato_largo": None,  # ver el comentario de la rama de arriba
                 "total_filas": 0,
                 "error": "No encontré una columna 'CODIGO' reconocible en las primeras filas",
             })
@@ -564,6 +794,22 @@ async def columnas(
         )
         cols = _columnas_de(filas, header_idx)
         reconocidos = await campos_reconocidos(filas[header_idx], db)
+
+        # El stock por sucursal no viene en columnas (pedido de Ivan, 15/09/2026):
+        # hasta que llegó el export real se suponía una columna por sucursal y se
+        # detectaban por el nombre del encabezado contra una lista de sucursales.
+        # El archivo de verdad es formato LARGO -- una fila por producto y por
+        # sucursal, con la sucursal como valor -- así que no hay nada que detectar
+        # por nombre ni nada que tildar: el formato se reconoce solo. Lo único que
+        # queda es avisarlo, con la misma doctrina que oferta_con_precios: el
+        # backend detecta, la pantalla avisa, la persona decide.
+        #
+        # El col_map sale de los alias fijos, que es donde vive `sucursal` desde
+        # esta misma vuelta. Un export que titule esa columna distinto no dispara
+        # el aviso hasta que la persona la mapee a mano en la pantalla -- el
+        # mismo camino que cualquier otra columna que gestión renombra.
+        col_map, _codigo = _mapear_columnas(filas[header_idx])
+        formato_largo = _formato_largo_de(filas, header_idx, col_map)
 
         # La columna OFERTA trae precios en vez del titular de la mecánica. Pasa
         # cuando alguien edita el Excel a mano, y el Convertidor la seguía
@@ -606,6 +852,11 @@ async def columnas(
             "campos_reconocidos": sorted(reconocidos),
             # null si la columna OFERTA está bien. Ver el bloque de arriba.
             "oferta_con_precios": aviso,
+            # {filas, productos, sucursales} -- null si esta hoja no viene en
+            # formato largo, que es el caso normal. Va por hoja y no del archivo
+            # por lo mismo que campos_reconocidos: el export crudo y la hoja
+            # curada a mano no traen las mismas columnas.
+            "formato_largo": formato_largo,
             "total_filas": con_datos, "error": None,
         })
 
@@ -631,6 +882,9 @@ async def columnas(
         "campos_reconocidos": sugerida.get("campos_reconocidos", []),
         # Compat: el aviso de la hoja sugerida (el detalle por hoja va en `hojas`).
         "oferta_con_precios": sugerida.get("oferta_con_precios"),
+        # Compat: el aviso de formato largo de la hoja sugerida (el detalle por
+        # hoja va en `hojas`), mismo criterio que la línea de arriba.
+        "formato_largo": sugerida.get("formato_largo"),
         # Los campos a los que se puede reasignar una columna, con su explicación.
         # Salen del mismo diccionario que usa Tinín para clasificar columnas, así
         # la lista no se duplica en el frontend.
@@ -830,6 +1084,9 @@ async def detectar_alcohol_ia(
         "ya_reconocidas":  ya_reconocidas,
         "leyenda":         LEGAL_ALCOHOL,
     }
+
+
+# Acá vivía POST /categorias/detectar-ia: se borró el 15/09/2026 porque la categoría sale de la columna dsc_subfamilia del listado y no hay nada que deducir.
 
 
 # ---------------------------------------------------------------------------

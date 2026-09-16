@@ -12,6 +12,7 @@ import difflib
 import io
 import re
 import unicodedata
+import zipfile
 from datetime import date, datetime
 
 import openpyxl
@@ -103,6 +104,29 @@ _INPUT_ALIASES: dict[str, str] = {
     "fechahasta":         "fechaFin",
     "vigenciahasta":      "fechaFin",
     "finvigencia":        "fechaFin",
+    # El export con stock por sucursal (15/09/2026, el primero de verdad que
+    # vimos) viene en FORMATO LARGO: una fila por producto y por sucursal, con
+    # el nombre de la sucursal como VALOR de una columna y no como encabezado
+    # (ver juntar_filas_por_producto). Nombra sus columnas distinto que los
+    # listados de oferta, y esto es el mecanismo de siempre para eso.
+    #
+    # "idproducto" es el que NO se puede sacar: detectar_fila_headers busca una
+    # columna que normalice a `codigo` para encontrar la fila de encabezados, y
+    # sin este alias el archivo entero se rechaza con "No encontré una columna
+    # 'CODIGO' reconocible" -- no es que saliera mal dividido, es que no se
+    # podía ni abrir.
+    "idproducto":     "codigo",
+    "sucursal":       "sucursal",
+    "stock":          "stock",
+    # La categoría del producto la trae el propio export, en dsc_subfamilia
+    # (AURICULARES, FREIDORA, MIXER, CAFETERA: 45 valores). Es exactamente el
+    # nivel "por producto" que hace falta para partir la descarga, escrito por
+    # gestión y no deducido por nosotros del texto del nombre (decisión de Ivan,
+    # 15/09/2026). Los otros tres niveles que trae el archivo --dsc_categoria
+    # (ELECTRO HOGAR / TECNOLOGIA), dsc_subcategoria y dsc_familia-- son
+    # demasiado gruesos para una carpeta y no se leen.
+    "dscsubfamilia":  "categoriaProducto",
+    "subfamilia":     "categoriaProducto",
 }
 
 _HEADER_SCAN_ROWS = 10
@@ -220,6 +244,46 @@ def _parse_price_or_none(raw) -> float | None:
     if _RE_MILES_TEXTO.fullmatch(texto):
         texto = texto.replace(".", "")
     return parse_price_raw(texto)
+
+
+# La forma de una celda de stock: "12", "0", y el "12.0" / "12,0" que deja
+# openpyxl cuando la columna del Excel está formateada como número. El decimal
+# se tolera únicamente si es CERO -- ver el docstring de abajo.
+#
+# Este regex llegó a decidir además si una COLUMNA entera era de stock: primero
+# por la forma de sus valores (parece_columna_de_stock) y después por el nombre
+# del encabezado contra una lista fija de sucursales (SUCURSALES). Las dos cosas
+# se borraron el 15/09/2026, cuando llegó el export real y resultó que no hay
+# una columna por sucursal: hay UNA sola columna `stock` y una FILA por sucursal
+# (ver juntar_filas_por_producto). Así que esto volvió a ser lo que dice el
+# nombre -- la forma de UNA celda-- y nada más.
+_RE_STOCK_ENTERO = re.compile(r"(\d+)(?:[.,]0+)?")
+
+
+def _parse_stock_or_none(valor) -> int | None:
+    """Celda de stock por sucursal -> int, o None si no hay dato legible.
+
+    Misma doctrina que _parse_price_or_none, y por el mismo motivo: acá no se
+    inventa nada. Lo que importa es la diferencia entre VACÍO y CERO. Una celda
+    vacía es "esta sucursal no informó" y un 0 es "informó que no tiene": si el
+    vacío se leyera como 0, una fila que quedó afuera por falta de dato tendría
+    exactamente la misma cara que una que de verdad no tiene stock, y no habría
+    forma de distinguir un listado incompleto de una góndola vacía. Las dos
+    salen como None, sí, pero None significa "no hay dato" y nunca entra al
+    "_stock" de la fila, mientras que el 0 sí entra y se ve.
+
+    Tampoco se redondea: "12,5" no es una cantidad de unidades. Devolver 12
+    sería inventar la mitad que falta, y devolver 13 peor. Ilegible es None.
+
+    Un negativo también es None: no es un stock, y dejarlo pasar como -3
+    obligaría a que todos los que lo comparan contra _STOCK_MINIMO se acuerden
+    del caso. La forma de un stock es la misma acá y en la columna entera.
+    """
+    texto = _clean_str(valor)
+    if not texto:
+        return None
+    m = _RE_STOCK_ENTERO.fullmatch(texto)
+    return int(m.group(1)) if m else None
 
 
 def _clean_str(raw) -> str:
@@ -491,6 +555,171 @@ def oferta_trae_precios(valores: list[str]) -> bool:
     return pelados / len(no_vacios) >= _PROPORCION_PRECIOS_PELADOS
 
 
+# ---------------------------------------------------------------------------
+# Formato largo: una fila por producto y POR SUCURSAL (pedido de Ivan, 2026-09-15)
+# ---------------------------------------------------------------------------
+#
+# Algunos listados traen, además de los datos del producto, cuántas unidades hay
+# en cada sucursal. Con eso se puede partir la descarga: una carpeta por
+# sucursal y adentro solo lo que esa sucursal tiene para vender (ver
+# armar_zip_dividido).
+#
+# La forma de ese dato NO es la que habíamos supuesto, y conviene que quede
+# escrito porque se implementaron las dos. Hasta el 15/09/2026 dimos por hecho
+# que venía UNA COLUMNA POR SUCURSAL, con el nombre de la sucursal como
+# encabezado: primero se reconocían por la forma de los valores
+# (parece_columna_de_stock -- cualquier columna de enteros pasaba, y un precio
+# redondo es un entero) y después por el nombre, contra una lista fija de
+# sucursales (SUCURSALES, es_columna_de_sucursal, detectar_columnas_stock). Ese
+# mismo día Ivan pasó el primer export de verdad y no era ninguna de las dos: es
+# FORMATO LARGO.
+#
+#   id_producto | descripcion  | ... | sucursal | stock | ... | dsc_subfamilia
+#   503996      | AURICULAR... | ... | Central  | 5     | ... | AURICULARES
+#   503996      | AURICULAR... | ... | Arocena  | 0     | ... | AURICULARES
+#   503996      | AURICULAR... | ... | Unión    | 0     | ... | AURICULARES
+#
+# Una fila por producto y por sucursal: ese archivo trae 4.773 filas para 271
+# productos y 18 sucursales (no todos los productos traen las 18: el primero
+# tiene 17). El nombre de la sucursal es un VALOR de la columna `sucursal`, no un
+# encabezado, así que no hay ninguna columna que se llame como una sucursal ni
+# lista de sucursales que mantener. Salen todas las que traiga el archivo
+# --"Central", "Deposito A.Saravia" y "Propios" incluidas, sin lista blanca ni
+# negra-- y el día que abra un local nuevo aparece solo, sin tocar código.
+#
+# OJO con contar productos por el número de arriba: ese export termina con tres
+# filas de PIE DE PÁGINA ("Total", una en blanco, y "Filtros aplicados: ..."
+# con todo el filtro escrito adentro de la celda del código). La vacía se
+# descarta sola --no tiene código-- pero las otras dos entran como si fueran
+# productos, así que el juntado devuelve 273 y no 271. No es algo que este
+# módulo resuelva hoy: ninguna de las dos trae sucursal, así que quedan sin
+# "_stock" y armar_zip_dividido las deja afuera y las cuenta en
+# "filas_sin_stock", a la vista.
+#
+# Todo el bloque de detección por nombre se borró ese mismo día en vez de
+# dejarlo apagado: código muerto en un módulo de 2.000 líneas es peor que nada,
+# y lo único que sobreviviría de aquello es una lista de sucursales inventadas
+# que alguien podría creerse.
+
+# Cuántas unidades tiene que haber en una sucursal para que la fila entre en su
+# carpeta. Ivan lo dijo primero como "mayor a 1" y lo corrigió a "mayor o igual
+# a 1" el mismo 15/09/2026: con una sola unidad ya hay algo para vender y el
+# cartel tiene que estar puesto. Si mañana cambia, se cambia acá y en ningún
+# otro lado -- la UI no repite el número.
+_STOCK_MINIMO = 1
+
+
+def _sin_dato(valor) -> bool:
+    """"No vino nada" para juntar_filas_por_producto: None y texto en blanco.
+
+    Un 0 NO es "sin dato", y por eso no alcanza con preguntar si el valor es
+    falsy. Es la misma distinción que cuida _parse_stock_or_none --vacío es "no
+    informó", cero es "informó que no tiene"-- y acá además hay precios: un 0
+    escrito en el listado es un valor que alguien puso, y si contara como vacío
+    lo pisaría el de la fila siguiente.
+    """
+    if valor is None:
+        return True
+    if isinstance(valor, str):
+        return not valor.strip()
+    return False
+
+
+def juntar_filas_por_producto(parsed: list[dict]) -> tuple[list[dict], dict]:
+    """Formato largo -> una fila por producto, con el stock de cada sucursal.
+
+    Por qué existe: el Convertidor hace UNA cenefa por producto. Sin juntar, el
+    export de arriba llega a la grilla con 4.773 filas --la misma cenefa
+    repetida una vez por sucursal, hasta 18 veces-- y el que la revisa tiene que
+    corregir 18 veces la misma descripción para que salgan 18 carteles iguales.
+
+    Es PURA y no toca `db` a propósito: es la pieza que hay que poder probar con
+    filas escritas a mano, y conftest.py prohíbe base y red en los tests.
+
+    Solo se aplica si la hoja trae la columna `sucursal`, o sea si ALGUNA fila la
+    tiene con algo adentro (una columna con todas las celdas en blanco es lo
+    mismo que no tenerla). Si no, devuelve `parsed` TAL CUAL --la misma lista,
+    sin copiar ni tocar una clave-- y el resumen en cero: los listados de
+    siempre, que son la enorme mayoría, se convierten exactamente igual que
+    antes de que esto existiera.
+
+    Se agrupa por `codigo` respetando el orden de aparición, y la fila que queda
+    es la PRIMERA del grupo (así el orden de la grilla sigue siendo el del
+    archivo), más:
+
+    - `"_stock"` = {sucursal: unidades}, hermana de "_mapeado", con las filas del
+      grupo cuyo stock es legible. Una celda vacía no deja rastro, porque "no
+      informó" y "tiene cero" son dos cosas distintas (ver _parse_stock_or_none)
+      y el que arma el ZIP tiene que poder verlas distinto. Si la MISMA sucursal
+      aparece dos veces para un producto se SUMAN: un export puede traer el
+      stock físico y el que está en tránsito en dos filas, y son unidades de la
+      misma góndola. Una fila sin sucursal no tiene carpeta a la que ir, así que
+      sus unidades no entran en ningún lado.
+    - El resto de los campos: gana el PRIMER valor no vacío del grupo. Las
+      filas de un producto traen los mismos datos repetidos, pero basta que la
+      primera venga con la descripción en blanco para que, quedándose ciegamente
+      con ella, el producto entero saliera sin descripción teniéndola 17 veces
+      más abajo.
+
+    `sucursal` y `stock` se SACAN de la fila resultante: ese dato ya vive adentro
+    de "_stock", y dejarlos sueltos es una invitación a que alguien los lea como
+    si fueran del producto ("este auricular es de Central") cuando en realidad
+    son de una sola de las filas que se juntaron.
+
+    El segundo valor es el resumen, para poder avisar en pantalla de dónde
+    salieron las filas: {"filas", "productos", "sucursales", "con_diferencias"}.
+    `sucursales` va en orden de aparición y sin repetir. `con_diferencias` es
+    cuántos productos traían dos valores distintos no vacíos en algún campo entre
+    sus filas; es un dato para mostrar y no frena nada: lo normal es 0, y si da
+    alto quiere decir que el archivo no es lo que creemos que es.
+    """
+    if all(_sin_dato(r.get("sucursal")) for r in parsed):
+        return parsed, {"filas": 0, "productos": 0, "sucursales": [], "con_diferencias": 0}
+
+    # dict por código: conserva el orden de inserción, así que el primero que
+    # aparece manda y las filas de un producto se juntan aunque vengan salteadas.
+    grupos: dict[str, list[dict]] = {}
+    sucursales: list[str] = []
+    for r in parsed:
+        grupos.setdefault(r.get("codigo") or "", []).append(r)
+        sucursal = _clean_str(r.get("sucursal"))
+        if sucursal and sucursal not in sucursales:
+            sucursales.append(sucursal)
+
+    salida: list[dict] = []
+    con_diferencias = 0
+    for grupo in grupos.values():
+        fila = {k: v for k, v in grupo[0].items() if k not in ("sucursal", "stock")}
+        stock: dict[str, int] = {}
+        difiere = False
+        for r in grupo:
+            for clave, valor in r.items():
+                if clave in ("sucursal", "stock"):
+                    continue
+                if _sin_dato(fila.get(clave)):
+                    fila[clave] = valor
+                elif not _sin_dato(valor) and valor != fila[clave]:
+                    # Se cuenta el PRODUCTO una sola vez, no el campo ni la
+                    # fila: lo que hay que poder decir en pantalla es "3
+                    # productos vienen con datos distintos entre sus filas", no
+                    # "51 diferencias", que no le dice nada a nadie.
+                    difiere = True
+            sucursal = _clean_str(r.get("sucursal"))
+            unidades = r.get("stock")
+            if sucursal and unidades is not None:
+                stock[sucursal] = stock.get(sucursal, 0) + unidades
+        fila["_stock"] = stock
+        salida.append(fila)
+        con_diferencias += 1 if difiere else 0
+
+    return salida, {
+        "filas":           len(parsed),
+        "productos":       len(salida),
+        "sucursales":      sucursales,
+        "con_diferencias": con_diferencias,
+    }
+
+
 def detectar_fila_headers(rows: list[tuple]) -> int | None:
     """Indice (0-based) de la fila de encabezados, o None si no la hay.
 
@@ -564,13 +793,15 @@ async def parse_input_excel(
     valores: dict[str, str] | None = None,
     campos: dict[str, str] | None = None,
     hoja: str | int | None = None,
-) -> tuple[list[dict], int, list[str]]:
+) -> tuple[list[dict], int, list[str], dict]:
     """Detecta la fila de headers real (puede no ser la fila 1 — el export
     real de gestión trae una fila de título + una fila en blanco antes),
     mapea columnas por nombre normalizado, y extrae por fila: codigo,
     nombreArticulo, moneda, precioAnterior, precio, oferta, ofertaDet,
     descripcionWeb, comprador, descuento, descuentoDet, fechaInicio,
-    fechaFin (estas últimas dos opcionales -- ver _format_vigencia).
+    fechaFin (estas últimas dos opcionales -- ver _format_vigencia), y
+    sucursal, stock y categoriaProducto, que solo traen los listados en formato
+    largo (ver juntar_filas_por_producto).
 
     Columnas no reconocidas por _INPUT_ALIASES se resuelven en dos pasos más
     antes de darse por ignoradas -- para CUALQUIERA de los campos, no solo
@@ -603,10 +834,20 @@ async def parse_input_excel(
     valor fijo (es lo que se escribió explícitamente para esta corrida).
     Ambas viajan resueltas en cada fila bajo la clave "_mapeado".
 
-    Devuelve (filas, learned_aliases_count, headers) -- learned_aliases_count
-    es cuántos headers nuevos aprendió Tinín en esta llamada, para que el
-    caller sepa si hace falta commitear; headers son los nombres crudos de la
-    fila de encabezados, para poder re-abrir la pantalla de mapeo."""
+    Un listado en FORMATO LARGO --una fila por producto y por sucursal-- se
+    junta acá adentro antes de devolverse: salen 274 filas de producto con su
+    "_stock" por sucursal y no las 4.773 del archivo (ver
+    juntar_filas_por_producto). No hay nada que prender ni confirmar; el formato
+    se reconoce solo por la columna `sucursal`, y un listado que no la trae sale
+    exactamente igual que siempre.
+
+    Devuelve (filas, learned_aliases_count, headers, juntado) --
+    learned_aliases_count es cuántos headers nuevos aprendió Tinín en esta
+    llamada, para que el caller sepa si hace falta commitear; headers son los
+    nombres crudos de la fila de encabezados, para poder re-abrir la pantalla de
+    mapeo; juntado es el resumen del formato largo, todo en cero cuando no lo
+    hubo, con `filas_sin_sucursal` = cuántas filas de pie de reporte se
+    saltearon."""
     rows = leer_filas(file_bytes, filename, hoja)
 
     header_row_idx = detectar_fila_headers(rows)
@@ -660,11 +901,19 @@ async def parse_input_excel(
     learned_aliases_count = 0
     header_row = rows[header_row_idx]
     mapped_cols = set(col_map.keys())
+
     # col_idx de cada celda con texto en la fila de headers que _INPUT_ALIASES
     # no supo mapear -- candidatas a resolverse por el cache aprendido o por IA.
     unresolved_by_norm: dict[str, int] = {}
     unresolved_display: dict[str, str] = {}
     for col_idx, cell_val in enumerate(header_row):
+        # `sucursal` y `stock` no llegan acá porque _INPUT_ALIASES las
+        # reconoce, y esa es media razón de ser de esos dos alias: una columna
+        # que queda como "no reconocida" se lleva una llamada a Tinín al pedo y
+        # --mucho peor-- lo que Tinín conteste se guarda en
+        # ConvertidorHeaderAlias, que es un cache global y permanente. Un alias
+        # falso ahí ("sucursal" -> fechaInicio) no se desaprende solo y se lo
+        # come todo import futuro que traiga esa columna.
         if cell_val is None or col_idx in mapped_cols or col_idx in forzadas:
             continue
         norm = _norm(cell_val)
@@ -827,13 +1076,54 @@ async def parse_input_excel(
             "descuentoDet":     _clean_str(cell(row, "descuentoDet")),
             "fechaInicio":      _parse_date_or_none(cell(row, "fechaInicio")),
             "fechaFin":         _parse_date_or_none(cell(row, "fechaFin")),
+            # Los tres del formato largo, vacíos en todos los demás listados.
+            # `sucursal` y `stock` son datos de ESTA fila y no del producto:
+            # viven sueltos acá nada más que hasta juntar_filas_por_producto,
+            # que los mete adentro de "_stock" y los saca de la fila.
+            "sucursal":          _clean_str(cell(row, "sucursal")),
+            "stock":             _parse_stock_or_none(cell(row, "stock")),
+            "categoriaProducto": _clean_str(cell(row, "categoriaProducto")),
             "_mapeado": {
                 **{var: _clean_str(row[i]) if i < len(row) else ""
                    for var, i in mapeo_cols.items()},
                 **fijos,
             },
         })
-    return parsed, learned_aliases_count, headers_crudos
+
+    # Pie de reporte: en una hoja de formato largo, la fila SIN sucursal no es
+    # un producto. El export de ejemplo termina con una fila "Total" y otra que
+    # arranca "Filtros aplicados: ...", las dos con texto en la primera columna
+    # y todo lo demás vacío, y sin esto llegan a la grilla como dos artículos
+    # más. Se reconocen por la FORMA y no por el texto: toda fila de producto de
+    # este formato trae sucursal --es la razón de ser del formato--, así que la
+    # que no la trae no es una; el día que el reporte diga "Totales" el criterio
+    # por texto se cae y este no. Ivan, 15/09/2026: "no siempre va a venir así
+    # pero es una posibilidad, no lo hagas como fila obligatoria" -- si vienen se
+    # saltean, si no vienen no pasa nada y el archivo NUNCA falla por esto.
+    #
+    # Y solo en las hojas que traen sucursal, que es el mismo criterio con el que
+    # juntar_filas_por_producto reconoce el formato largo (alguna fila con algo
+    # adentro). En un listado de los de siempre, una fila con código y nada más
+    # ES un producto que la persona completa a mano --para eso está el warning
+    # missing_description y el resaltado rojo--, y descartarla ahí sería hacerle
+    # perder una cenefa sin decirle nada.
+    filas_sin_sucursal = 0
+    if any(not _sin_dato(r["sucursal"]) for r in parsed):
+        con_sucursal = [r for r in parsed if not _sin_dato(r["sucursal"])]
+        filas_sin_sucursal = len(parsed) - len(con_sucursal)
+        parsed = con_sucursal
+
+    # Última parada: si el archivo vino en formato largo, acá es donde las 4.773
+    # filas se vuelven 274 productos y nadie más se entera. Va adentro del
+    # parser y no en la ruta a propósito: si viviera afuera, cada caller nuevo
+    # tendría que acordarse de juntar, y el que se olvidara generaría la misma
+    # cenefa 18 veces sin un solo error a la vista.
+    parsed, juntado = juntar_filas_por_producto(parsed)
+    # Va siempre, 0 incluido, para que la pantalla pueda decir cuántas filas se
+    # saltearon sin tener que preguntarse si la clave existe. Es para avisar, no
+    # para frenar nada.
+    juntado["filas_sin_sucursal"] = filas_sin_sucursal
+    return parsed, learned_aliases_count, headers_crudos, juntado
 
 
 # ---------------------------------------------------------------------------
@@ -951,6 +1241,9 @@ def _unidad_de_venta(comprador: str, nombreArticulo: str, descripcion: str,
     if comprador and _RE_FIAMBRE.search(comprador):
         return "100g"
     return ""
+
+
+# Acá vivían CATEGORIAS_PRODUCTO, _RE_CATEGORIAS_PRODUCTO y categoria_de_producto: se borraron el 15/09/2026 porque la categoría sale de la columna dsc_subfamilia del listado y de ningún otro lado (Ivan: "no hace falta tinín ni nada de detectar automáticamente").
 
 
 # ---------------------------------------------------------------------------
@@ -1278,6 +1571,20 @@ async def match_rows(
             "descripcionWeb":     r["descripcionWeb"],
             "precioRaw":          r["precioRaw"],
             "precioAnteriorRaw": r["precioAnteriorRaw"],
+            # Stock por sucursal tal cual vino del listado: {sucursal: unidades}.
+            # Vacío cuando el archivo no trae columnas de stock, que es el caso
+            # normal -- y ese vacío es exactamente lo que hace que "dividir por
+            # sucursales" no tenga nada para ofrecer. Va y vuelve por la grilla
+            # (ver armar_zip_dividido), no sale en ninguna columna del Excel.
+            "stockPorSucursal":   r.get("_stock") or {},
+            # Qué tipo de producto es. Sale de la columna del listado y de
+            # ningún otro lado (Ivan, 15/09/2026): el export trae dsc_subfamilia
+            # --AURICULARES, FREIDORA, MIXER, CAFETERA-- escrita por quien carga
+            # el producto, en 271 de 273 filas, así que deducirla del texto sería
+            # adivinar lo que el archivo ya dice. La fila que no la traiga va a
+            # "Sin categoría.xlsx" y se corrige a mano en la grilla, que para eso
+            # tiene la columna editable.
+            "categoriaProducto":  r.get("categoriaProducto", ""),
         }
 
         # Con qué unidad se cobra el producto, cuando el texto de origen no lo
@@ -1408,8 +1715,22 @@ _INVALID_TYPE_CODES = {
 }
 
 
-def build_output_workbook(rows: list[dict]) -> bytes:
-    fields = _columnas_de_salida(rows)
+def build_output_workbook(rows: list[dict], columnas: list[str] | None = None) -> bytes:
+    """El xlsx de salida. `columnas` fija cuáles lleva; None = las que
+    _columnas_de_salida deduce de ESTAS filas, que es el comportamiento de
+    siempre y el de todas las descargas de un solo archivo.
+
+    El parámetro existe para la descarga dividida (ver armar_zip_dividido): ahí
+    un mismo listado sale partido en varios Excel y las columnas se calculan una
+    sola vez sobre TODAS las filas. Si cada libro dedujera las suyas, la sucursal
+    que ese día no tuviera ninguna fila con banco saldría sin las columnas de
+    banco y la de al lado con ellas -- y son archivos que se abren uno al lado
+    del otro justamente para compararlos.
+
+    Una lista vacía se trata igual que None a propósito: un Excel sin ninguna
+    columna no le sirve a nadie y el error recién se vería al abrir el archivo.
+    """
+    fields = list(columnas) if columnas else _columnas_de_salida(rows)
     headers = fields
     col_widths = [34 if v in _ANCHAS else 18 for v in fields]
     # {codigo_de_warning: indice_de_columna} solo para las columnas que
@@ -1462,6 +1783,292 @@ def build_output_workbook(rows: list[dict]) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Descarga dividida: una carpeta por sucursal, un Excel por categoría
+# ---------------------------------------------------------------------------
+#
+# Ivan, 15/09/2026: "el resultado esperado es una carpeta mayor que tendrá sub
+# carpetas por sucursales de tienda inglesa que tendrán adentro diferentes
+# excels por cada categoría que correspondan a un stock mayor o igual a 1 para
+# esa sucursal".
+#
+# La "carpeta mayor" no se arma acá: es la que crea el descompresor con el
+# nombre del propio ZIP. Adentro van rutas y nada más -- "suc1/Heladeras.xlsx"
+# ya crea la carpeta "suc1", así que no se escriben entradas de directorio.
+
+# El nombre del Excel donde caen las filas que ninguna regla clasificó. No es un
+# descarte: es un archivo visible, con las filas adentro, y además se cuenta en
+# el resumen. Que se pierdan filas en silencio es lo que motivó todo el sistema
+# de warnings de este módulo, y partir la descarga en N archivos es justo el
+# momento en que nadie se daría cuenta.
+_SIN_CATEGORIA = "Sin categoría"
+
+# Lo que Windows no acepta en un nombre de archivo, más los caracteres de
+# control (que ningún sistema acepta).
+_RE_PROHIBIDO_EN_NOMBRE = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]')
+
+# Los nombres que Windows tiene reservados desde el DOS: son dispositivos, no
+# archivos, y no se puede crear ninguno ni como archivo ni como carpeta. Acá no
+# hay ningún caracter prohibido que sacar --"CON" es un nombre perfectamente
+# normal--, así que pasaban enteros y la extracción fallaba al llegar a ese
+# archivo. Es un caso real y no teórico: una categoría "Aux", una sucursal
+# escrita "Con" o un "PRN" de impresión alcanzan.
+_NOMBRES_RESERVADOS_WINDOWS: frozenset[str] = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{n}" for n in range(1, 10)}
+    | {f"LPT{n}" for n in range(1, 10)}
+)
+
+
+def _nombre_para_zip(texto: str) -> str:
+    """Deja un texto usable como nombre de archivo O DE CARPETA dentro del ZIP.
+
+    Es una copia con cambios de _nombre_archivo (cenefas_v2.py), igual que _norm
+    es copia de data_engine._norm y por la misma razón: importar un helper
+    privado de una ruta desde un servicio acopla las dos cosas para siempre y
+    son cuatro líneas. Pero además la de allá NO sirve tal cual, porque solo saca
+    separadores y controles, y acá los nombres son encabezados de un Excel que
+    sube cualquiera:
+
+    - los PUNTOS del final ("Tienda Inglesa S.A.") hacen un nombre que Windows
+      no puede escribir al descomprimir: en el mejor caso se come el punto en
+      silencio, en el peor falla la extracción del ZIP entero.
+    - ".." como nombre de carpeta no es un nombre, es una ruta relativa.
+    - los ESPACIOS del final son el mismo problema que el punto y encima
+      invisibles: nadie va a entender por qué ese archivo no se puede abrir.
+    - los NOMBRES RESERVADOS de Windows ("CON", "AUX", "NUL", "PRN",
+      "COM1".."COM9", "LPT1".."LPT9") no son archivos sino dispositivos: no se
+      pueden crear, y el que descomprime se queda sin ESE archivo o sin el ZIP
+      entero según con qué lo abra. Se les pega un "_" y dejan de serlo.
+
+    Si no queda nada -> "SIN NOMBRE", en mayúsculas para que se note: una
+    sucursal sin nombre igual tiene que poder bajarse. Perder el archivo es
+    peor que un nombre feo.
+    """
+    limpio = _RE_PROHIBIDO_EN_NOMBRE.sub("", str(texto or ""))
+    limpio = re.sub(r"\s+", " ", limpio)
+    # Los puntos seguidos se colapsan en uno: así no sobrevive ningún ".." y un
+    # "S.A." o un "2.5 L" quedan intactos.
+    limpio = re.sub(r"\.{2,}", ".", limpio)
+    # El corte va ANTES de sacar los puntos y espacios finales: cortar a 120
+    # puede dejar justo un espacio o un punto colgando, que es lo que estamos
+    # sacando.
+    limpio = limpio.strip()[:120].rstrip(" .") or "SIN NOMBRE"
+    # Windows mira el nombre ANTES del primer punto, así que "CON", "CON.xlsx" y
+    # "CON.2.xlsx" son los tres el dispositivo de consola. Por eso el "_" va
+    # pegado a ESA parte y no al final del nombre entero: un "NUL.xlsx" que
+    # quedara como "NUL.xlsx_" sigue empezando con "NUL." y sigue sin poder
+    # crearse. Con el "_" adelante del punto queda "NUL_.xlsx", que es un archivo
+    # común. Acá la extensión .xlsx la pega el que llama, así que el nombre
+    # reservado puede llegar pelado ("CON") o con puntos adentro ("CON.2").
+    cabeza, punto, resto = limpio.partition(".")
+    if cabeza.upper() in _NOMBRES_RESERVADOS_WINDOWS:
+        limpio = f"{cabeza}_{punto}{resto}"
+    return limpio
+
+
+def armar_zip_dividido(
+    rows: list[dict], *, por_categoria: bool, por_sucursal: bool, nombre_base: str,
+) -> tuple[bytes, dict]:
+    """El ZIP de la descarga dividida y su resumen: (bytes, dict).
+
+    Pura y sin `db` a propósito: todo lo que necesita ya viaja en las filas que
+    la grilla devuelve (`stockPorSucursal` y `categoriaProducto` son contexto
+    que sale de match_rows, se ve y se corrige en pantalla). Así se puede testear
+    de verdad -- conftest.py prohíbe base y red -- y así el trabajo pesado se
+    puede tirar a un thread desde la ruta sin arrastrar una sesión de SQLAlchemy.
+
+    Los dos interruptores son independientes y los tres modos existen:
+
+    - `por_sucursal`: cada fila va a TODAS las sucursales donde tenga
+      stockPorSucursal >= _STOCK_MINIMO. Una fila puede salir repetida en varias
+      carpetas (está en varias góndolas, es correcto) y una fila sin stock en
+      ninguna no sale en ningún archivo: esa se cuenta en "filas_sin_stock", que
+      es el número que la pantalla muestra antes de descargar. En False no se
+      filtra por stock: van todas.
+    - `por_categoria`: adentro de cada grupo, un Excel por categoriaProducto.
+      Las vacías caen en "Sin categoría.xlsx" y se cuentan.
+    - Los dos en False es ValueError y no "bajá el Excel entero": para eso está
+      /export, que devuelve un xlsx y no un zip, y confundir las dos cosas le
+      rompe la descarga al cliente (que asume la extensión).
+
+    Una sucursal sin ninguna fila simplemente no aparece en el ZIP. No hay nada
+    que hacer al respecto ni forma de "crear la carpeta vacía": las entradas son
+    rutas de archivo ("suc1/Heladeras.xlsx"), la carpeta la inventa el
+    descompresor, y sin archivos adentro no hay carpeta. Queda documentado acá
+    porque la pregunta va a volver.
+
+    `nombre_base` NO entra en ninguna ruta de adentro del ZIP, y es a propósito:
+    la "carpeta mayor" que pidió Ivan es la que crea el descompresor con el
+    nombre del archivo .zip, así que ese nombre es cosa del Content-Disposition
+    de la ruta. Queda en la firma porque es el dato que identifica la tanda y
+    porque el día que haya que prefijar una carpeta de verdad adentro del ZIP ya
+    está acá, sin cambiarle la firma a nadie.
+
+    Si no queda ninguna fila el ZIP sale sin entradas y "archivos" es 0. Acá no
+    se levanta un error por eso: la función arma lo que le piden y la ruta, que
+    es la que habla con una persona, decide si eso es un 404 (mismo criterio que
+    download_lote, que cuenta entradas y no bytes -- un ZIP vacío igual pesa 22).
+
+    El resumen: {"archivos", "filas_sin_stock", "filas_sin_categoria",
+    "sucursales", "categorias"}.
+    """
+    if not por_categoria and not por_sucursal:
+        raise ValueError(
+            "Elegí al menos una forma de dividir: por categorías, por sucursales o las dos"
+        )
+
+    # Las columnas, UNA sola vez y sobre TODAS las filas -- ver el docstring de
+    # build_output_workbook. Es la razón por la que ese parámetro existe.
+    columnas = _columnas_de_salida(rows)
+
+    # Se agrupan ÍNDICES y no filas para poder contar sin repetir: con la
+    # división por sucursal la misma fila entra en varias carpetas, y "3 filas
+    # sin categoría" tiene que seguir diciendo 3 aunque esas 3 aparezcan en ocho
+    # sucursales cada una. Un set de índices es la única forma barata de saber
+    # "cuántas filas distintas", porque un dict no es hasheable.
+    #
+    # Sucursales y categorías se agrupan por su forma NORMALIZADA (_norm: sin
+    # mayúsculas, sin acentos, sin espacios ni guiones) y se muestran con la
+    # PRIMERA grafía que apareció. Es el arreglo del 15/09/2026: estas filas
+    # vienen de la GRILLA, donde las dos cosas se ven y se corrigen a mano, así
+    # que una fila arreglada como "heladeras" y otra como "Heladeras" son el
+    # mismo tipo de producto -- pero agrupadas por el string exacto armaban DOS
+    # archivos con el mismo nombre para Windows, uno pisando al otro al
+    # descomprimir, y el set de colisiones de más abajo tampoco los veía porque
+    # comparaba respetando las mayúsculas. Lo mismo entre "suc1" y "SUC1".
+    filas_sin_stock = 0
+    grupos: dict[str, list[int]] = {}
+    # {clave normalizada: cómo se escribió la primera vez} de las sucursales.
+    sucursal_visible: dict[str, str] = {}
+    if por_sucursal:
+        for i, r in enumerate(rows):
+            # {clave: grafía} de ESTA fila, dict y no lista para que una fila que
+            # trae "suc1" y "SUC1" a la vez --dos columnas del mismo listado-- no
+            # se escriba dos veces adentro de la misma carpeta.
+            donde: dict[str, str] = {}
+            for sucursal, unidades in (r.get("stockPorSucursal") or {}).items():
+                # Se vuelve a parsear en vez de confiar en el número: esto llega
+                # de un request, y un "3" de string comparado contra un int
+                # explota. _parse_stock_or_none es el mismo criterio con el que
+                # se leyó el Excel, así que no hay dos formas de decir 3.
+                cantidad = _parse_stock_or_none(unidades)
+                if cantidad is None or cantidad < _STOCK_MINIMO:
+                    continue
+                nombre_suc = _clean_str(sucursal)
+                donde.setdefault(_norm(nombre_suc), nombre_suc)
+            if not donde:
+                filas_sin_stock += 1
+                continue
+            for clave, nombre_suc in sorted(donde.items()):
+                sucursal_visible.setdefault(clave, nombre_suc)
+                grupos.setdefault(clave, []).append(i)
+    else:
+        # Un solo grupo sin eje de sucursal. La clave "" no se usa para nada más
+        # que para no duplicar el bucle de abajo.
+        grupos[""] = list(range(len(rows)))
+
+    # Los nombres de CARPETA se sanean y se deduplican acá, UNA vez y ANTES del
+    # bucle. Antes se saneaban al armar cada ruta, y entonces dos sucursales
+    # distintas cuyos nombres sanean al mismo texto ("Suc/1" y "Suc1" quedan las
+    # dos en "Suc1") terminaban compartiendo UNA carpeta con las filas de las dos
+    # mezcladas: salía "Suc1/Heladeras.xlsx" y "Suc1/Heladeras (2).xlsx" y el que
+    # repone góndola no tenía cómo saber cuál archivo era de cuál tienda --el
+    # sufijo se lo comía el archivo en lugar de la carpeta--. Con el mapa armado
+    # de antemano cada tienda tiene su carpeta y la segunda pasa a ser "Suc1 (2)".
+    carpetas: dict[str, str] = {}
+    if por_sucursal and por_categoria:
+        usadas_carpetas: set[str] = set()
+        for clave in sorted(grupos):
+            base = _nombre_para_zip(sucursal_visible.get(clave, clave))
+            carpeta_unica = base
+            n = 2
+            # La unicidad se mide por _norm y no por el string crudo, por lo
+            # mismo que el agrupado: dos carpetas que se diferencian solo en las
+            # mayúsculas son UNA sola carpeta cuando esto se descomprime.
+            while _norm(carpeta_unica) in usadas_carpetas:
+                carpeta_unica = f"{base} ({n})"
+                n += 1
+            usadas_carpetas.add(_norm(carpeta_unica))
+            carpetas[clave] = carpeta_unica
+
+    sin_categoria: set[int] = set()
+    # {clave normalizada: primera grafía} de las categorías, compartido por TODAS
+    # las sucursales a propósito: así el mismo tipo de producto se llama igual en
+    # las ocho carpetas, aunque la fila que lo trajo primero en cada una esté
+    # escrita distinto.
+    categoria_visible: dict[str, str] = {}
+    # El set lleva la RUTA COMPLETA y no el nombre suelto: ahora hay dos ejes, y
+    # "Heladeras.xlsx" en suc1 y en suc2 no es una colisión sino lo esperable.
+    usadas: set[str] = set()
+    archivos = 0
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Ordenado para que la misma tanda dé siempre el mismo ZIP: el orden de
+        # los dicts sale del orden de las filas del Excel, que cambia solo.
+        for clave_suc in sorted(grupos):
+            indices = grupos[clave_suc]
+            if por_categoria:
+                por_cat: dict[str, list[int]] = {}
+                for i in indices:
+                    cat = _clean_str(rows[i].get("categoriaProducto"))
+                    if not cat:
+                        cat = _SIN_CATEGORIA
+                        sin_categoria.add(i)
+                    clave_cat = _norm(cat)
+                    categoria_visible.setdefault(clave_cat, cat)
+                    por_cat.setdefault(clave_cat, []).append(i)
+                bloques = [(categoria_visible[c], por_cat[c]) for c in sorted(por_cat)]
+            else:
+                # Sin eje de categoría el archivo se llama como la sucursal
+                # (si llegamos acá, por_sucursal es True: el caso de los dos
+                # apagados ya salió por el ValueError de arriba).
+                bloques = [(sucursal_visible.get(clave_suc, clave_suc), indices)]
+
+            # La carpeta existe solo cuando hay DOS ejes. Con uno solo el ZIP
+            # queda plano: "suc1.xlsx" o "Heladeras.xlsx" sueltos, que es lo que
+            # alguien espera cuando pidió una sola división.
+            carpeta = (f"{carpetas[clave_suc]}/"
+                       if por_sucursal and por_categoria else "")
+
+            for nombre, idxs in bloques:
+                base = f"{carpeta}{_nombre_para_zip(nombre)}"
+                ruta = f"{base}.xlsx"
+                # Dos nombres distintos pueden sanear al mismo ("Suc 1/2" y
+                # "Suc 12"), y ahí uno se comía al otro dentro del ZIP sin que
+                # nadie se enterara -- el mismo problema que ya tiene resuelto
+                # download_lote con las plantillas repetidas. La comparación va
+                # por _norm por lo mismo que la de las carpetas: "Heladeras.xlsx"
+                # y "heladeras.xlsx" no pueden convivir en la misma carpeta.
+                n = 2
+                while _norm(ruta) in usadas:
+                    ruta = f"{base} ({n}).xlsx"
+                    n += 1
+                usadas.add(_norm(ruta))
+                zf.writestr(ruta, build_output_workbook([rows[i] for i in idxs], columnas))
+                archivos += 1
+
+    resumen = {
+        "archivos":            archivos,
+        "filas_sin_stock":     filas_sin_stock,
+        # Cuenta filas DISTINTAS que cayeron en "Sin categoría.xlsx", no veces
+        # que se escribieron: la misma fila sin categoría con stock en ocho
+        # sucursales es una sola fila para clasificar, no ocho. Sin división por
+        # categoría queda en 0, y está bien: no existe ningún "Sin categoría" al
+        # que puedan estar cayendo.
+        "filas_sin_categoria": len(sin_categoria),
+        # Los nombres LÓGICOS, sin sanear y sin el sufijo de la carpeta: son los
+        # que la persona ve en la grilla. De cada grupo sale la primera grafía
+        # que apareció, que es la misma con la que se nombra el archivo.
+        "sucursales":          ([sucursal_visible[c] for c in sorted(grupos)]
+                                if por_sucursal else []),
+        "categorias":          sorted(categoria_visible.values()),
+    }
+    return buf.getvalue(), resumen
+
 
 # ---------------------------------------------------------------------------
 # Grupos unificados: varios SKU, un solo cartel

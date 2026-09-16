@@ -440,6 +440,37 @@ export interface ConvertidorRow {
    */
   precioDeKiloEn100g: boolean;
   warningsMecanica: string[];
+  /**
+   * {nombre_de_columna: unidades} — cuánto stock tiene esta fila en cada
+   * sucursal. El nombre de la clave es el encabezado crudo de la columna, que es
+   * literalmente el nombre de la sucursal: los listados que traen stock no usan
+   * ningún prefijo (decisión de Ivan, 15/09/2026, todavía sin un export real
+   * a la vista).
+   *
+   * Viene vacío salvo que alguien haya confirmado columnas de stock en el paso
+   * de mapeo — el listado normal de gestión no las trae. Es contexto puro: no se
+   * exporta al xlsx, solo decide a qué carpeta va la fila cuando se descarga
+   * dividido por sucursales.
+   *
+   * Las sucursales sin valor legible NO entran en el dict: celda vacía es "no
+   * hay dato", que no es lo mismo que cero, y una fila con cero se tiene que
+   * poder distinguir de una que nadie cargó.
+   */
+  stockPorSucursal?: Record<string, number>;
+  /**
+   * Categoría deducida del NOMBRE del producto ("Freidoras de aire",
+   * "Heladeras"), porque los listados casi nunca traen una columna de categoría.
+   * La resuelve primero una tabla de palabras clave en el backend y solo lo que
+   * queda sin clasificar se le manda a Tinín — el mismo reparto que ya usa la
+   * detección de alcohol, que es lo que evita gastar IA en lo obvio.
+   *
+   * Ojo con el nombre: no tiene nada que ver con "Unificar categorías" (agrupar
+   * variantes de la misma línea de producto) ni con el campo `categoria` del
+   * generador (el que dispara la leyenda de alcohol). Son tres cosas distintas
+   * que ya se pisaban al hablar, así que ésta se llama categoriaProducto de
+   * punta a punta.
+   */
+  categoriaProducto?: string;
 
   // Las 27 variables — es lo que se exporta y lo que consume la cenefa.
   codigo: string;
@@ -553,6 +584,52 @@ export interface SugerirColumnasIAResponse {
 export interface ConvertidorColumna {
   nombre: string;
   muestras: string[];
+  /**
+   * Posición 0-based de la columna en la hoja. El backend siempre la tuvo (la
+   * necesita para juntar las muestras) pero la descartaba al armar la respuesta;
+   * se empezó a devolver para poder señalar columnas que NO están mapeadas a
+   * ninguna variable y por eso no tienen otro identificador estable que el
+   * índice -- hoy lo usa el aviso de formato largo, que mira la columna
+   * `sucursal` sin parsear el archivo entero. Opcional para que la pantalla
+   * siga funcionando contra un backend que todavía no la manda.
+   */
+  col_idx?: number;
+}
+
+/**
+ * La hoja viene en FORMATO LARGO: una fila por producto y por sucursal, con el
+ * nombre de la sucursal como VALOR de la columna `sucursal`.
+ *
+ * Así es el export real de gestión que pasó Ivan (15/09/2026): 4.773 filas que
+ * son 274 productos en 18 sucursales. Durante un tiempo supusimos lo contrario
+ * —una columna por sucursal, con el encabezado llamándose como el local— y no
+ * existe: ninguna columna se llama como una sucursal.
+ *
+ * Esto es un AVISO, no un interruptor: no hay nada que elegir porque el formato
+ * se reconoce solo mirando si la hoja trae columna `sucursal`. Lo que sí hace
+ * falta es que la persona sepa, ANTES de convertir, que esas 4.773 filas van a
+ * bajar a 274 cenefas -- si no, el número de la grilla parece un error.
+ *
+ * null = la hoja no trae columna `sucursal` y se lee como siempre.
+ */
+export interface ConvertidorFormatoLargo {
+  /** Filas de datos de la hoja, antes de juntar. */
+  filas: number;
+  /** Códigos distintos: las cenefas que van a salir. */
+  productos: number;
+  /** Los nombres tal como los escribe gestión, en orden de aparición. */
+  sucursales: string[];
+}
+
+/**
+ * El resumen de lo que efectivamente se juntó al convertir. Es
+ * ConvertidorFormatoLargo ya consumado, más lo que solo se puede saber
+ * parseando de verdad: cuántos productos traían un valor distinto entre sus
+ * filas (mismo código, dos descripciones). Se avisa, no frena nada: gana el
+ * primer valor no vacío.
+ */
+export interface ConvertidorJuntado extends ConvertidorFormatoLargo {
+  con_diferencias: number;
 }
 
 /**
@@ -591,6 +668,13 @@ export interface ConvertidorHoja {
   campos_reconocidos: string[];
   /** null = la columna OFERTA esta bien. */
   oferta_con_precios: OfertaConPrecios | null;
+  /**
+   * null = esta hoja no trae stock por sucursal, que es el caso normal. Va por
+   * hoja y no solo a nivel archivo porque un mismo boceto puede traer el export
+   * crudo de gestión con stock y un "Frente" curado a mano sin él, y cada hoja
+   * se mapea por separado.
+   */
+  formato_largo: ConvertidorFormatoLargo | null;
   total_filas: number;
   /** Por que no se puede convertir. null = se puede. */
   error: string | null;
@@ -607,6 +691,8 @@ export interface DetectarAlcoholIAResponse {
   /** El texto exacto de la leyenda, para no duplicarlo en el front. */
   leyenda: string;
 }
+
+// Acá estaba DetectarCategoriasIAResponse: se fue con categoriasIa el 15/09/2026, cuando la categoría pasó a salir de dsc_subfamilia y dejó de deducirse.
 
 export interface ConvertidorColumnasResponse {
   hojas: ConvertidorHoja[];
@@ -627,6 +713,8 @@ export interface ConvertidorColumnasResponse {
   resuelta_por_campo: Record<string, string>;
   /** Compat: el aviso de la hoja sugerida. */
   oferta_con_precios: OfertaConPrecios | null;
+  /** Compat: el aviso de formato largo de la hoja sugerida. */
+  formato_largo: ConvertidorFormatoLargo | null;
   /** {campo: que es} -- a que campos se puede reasignar una columna. */
   campos_asignables: Record<string, string>;
   total_filas: number;
@@ -793,6 +881,13 @@ export interface MaPair {
 export interface ConvertidorPreviewResponse extends ConvertidorSummary {
   rows: ConvertidorRow[];
   ma_pairs: MaPair[];
+  /**
+   * De dónde salieron estas filas cuando el listado venía en formato largo.
+   * null = no hubo juntado y `rows` es fila por fila del archivo, como siempre.
+   * Es la única señal de que 4.773 filas se volvieron 274: sin esto la grilla
+   * muestra un total que no coincide con nada de lo que la persona vio.
+   */
+  juntado: ConvertidorJuntado | null;
 }
 
 export interface DescripcionSugerencia {
@@ -930,6 +1025,29 @@ export const convertidorApi = {
     }),
   export: (rows: ConvertidorRow[]) =>
     api.post("/tools/cenefas/convertidor/export", { rows }, { responseType: "blob" }),
+  /**
+   * La misma descarga, pero partida: un zip con una carpeta por sucursal y/o un
+   * Excel por categoría de producto, según los dos interruptores.
+   *
+   * Es un endpoint aparte y NO una opción de `export` a propósito: el que
+   * descarga el Excel hardcodea la extensión .xlsx, y handleConvertirACenefa le
+   * manda ese mismo blob al generador dando por sentado que es un Excel. Meter
+   * un zip por ahí rompía las dos cosas sin un solo error visible.
+   *
+   * Los dos interruptores en false son 400, no "bajá todo junto": para eso está
+   * `export`. El resumen (cuántos archivos salieron, cuántas filas quedaron
+   * afuera por no tener stock, cuántas cayeron en "Sin categoría") viaja en los
+   * headers X-Archivos, X-Filas-Sin-Stock y X-Filas-Sin-Categoria.
+   */
+  exportDividido: (
+    rows: ConvertidorRow[],
+    opts: { por_categoria: boolean; por_sucursal: boolean; nombre_base: string },
+  ) =>
+    api.post(
+      "/tools/cenefas/convertidor/export-dividido",
+      { rows, ...opts },
+      { responseType: "blob" },
+    ),
   generarDescripcionesIA: (
     rows: {
       row_id: number;
@@ -1016,6 +1134,7 @@ export const convertidorApi = {
     rows: { row_id: number; codigo: string; descripcion: string; nombreArticulo: string }[]
   ) =>
     api.post<DetectarAlcoholIAResponse>("/tools/cenefas/convertidor/alcohol/detectar-ia", { rows }),
+  // Acá estaba categoriasIa (POST /categorias/detectar-ia): se sacó el 15/09/2026 porque la categoría sale de la columna dsc_subfamilia y ya no se deduce con IA.
   unificarCategoriasIA: (
     rows: UnificarCategoriasRow[]
   ) =>

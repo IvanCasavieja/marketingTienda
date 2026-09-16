@@ -1004,6 +1004,24 @@
       "aplicar": "Unificar de nuevo",
       "noSeGuardo": "Unifiqué las filas, pero no pude recordar el grupo para la próxima.",
       "noEstanLasFilas": "No encuentro las filas de ese grupo en la grilla."
+    },
+    "dividir": {
+      "boton": "Descargar dividido",
+      "titulo": "Dividir la descarga",
+      "porCategoria": "Dividir por categorías",
+      "porSucursal": "Dividir por sucursales",
+      "porCategoriaHint": "Un Excel por categoría, según la columna del listado",
+      "porSucursalHint": "Una carpeta por sucursal, con lo que tiene stock ahí",
+      "resumen": "{{archivos}} archivos en {{carpetas}} carpetas",
+      "sinStock": "{{count}} filas quedan afuera: no tienen stock en ninguna sucursal",
+      "sinCategoria": "{{count}} filas van a \"Sin categoría\"",
+      "descargar": "Descargar ZIP",
+      "elegirUno": "Elegí al menos una forma de dividir",
+      "listo": "ZIP descargado"
+    },
+    "formatoLargo": {
+      "aviso": "Este listado trae el stock por sucursal",
+      "detalle": "{{filas}} filas que son {{productos}} productos en {{sucursales}} sucursales. Al convertir se junta una fila por producto."
     }
   },
   "facturacion": {
