@@ -1657,6 +1657,18 @@ def _esquina(c: dict) -> tuple[float, float]:
     return (b.get("x", 0.0), b.get("y", 0.0))
 
 
+def _nombres_de_variable(c: dict) -> list[str]:
+    """Qué variables usa un cuadro.
+
+    Mira c["variable"] y, si no lo tiene, los segmentos: PowerPoint parte los
+    placeholders en varios runs al editarlos, y una plantilla real puede tener
+    TODOS sus componentes como multi-segmento.
+    """
+    if c.get("variable"):
+        return [c["variable"]]
+    return [seg["value"] for seg in (c.get("segments") or []) if seg.get("type") == "variable"]
+
+
 def _cortar_por_huecos(valores: list[float], n_grupos: int) -> list[float]:
     """Límites que parten `valores` en n_grupos, cortando por los huecos mayores.
 
@@ -1716,12 +1728,71 @@ def _paso_de_grilla(valores: list[float], n_grupos: int) -> float | None:
     return paso if paso > 0 else None
 
 
+def _indices_por_orden(comps: list[dict], n: int, paso: float, eje: int) -> dict[int, int]:
+    """Celda de cada cuadro por ORDEN, para las variables que aparecen una vez por celda.
+
+    Por qué existe: repartir por paso fijo (`_indice_por_paso`) es una división
+    entera, y una división entera tiene un borde. Caso real (Ivan, 16/09/2026,
+    plantilla "Cenefas 3xa4-202609-3xA4"): al editarla, el <<promoOferta>> de la
+    tercera cenefa quedó en y=22,88 cm y el corte entre la banda 2 y la 3 caía
+    en y=22,882. Por DOS CENTÉSIMAS DE MILÍMETRO ese cuadro se fue a la banda
+    del medio: la banda 2 terminó con dos <<promoOferta>> y la 3 sin ninguno.
+    Consecuencia medida sobre un mailing real de 440 filas: 17 de las 147 hojas
+    salieron mal. La tercera cenefa sacó el precio UNITARIO de un combo en vez
+    del total --un precio falso en góndola, $69 donde iba "2 por $139"-- y el
+    cuadro de más se dibujó a 0,84 cm del precio del tercer producto, o sea
+    encima. Nadie se enteró hasta que salió impreso.
+
+    Si una variable aparece EXACTAMENTE n veces --una por celda, que es lo que
+    significa-- no hace falta medir nada: la de más arriba va a la primera
+    celda, la siguiente a la segunda, y así. Es ordinal, no métrico; ningún
+    milímetro lo puede correr de lugar.
+
+    El resguardo: solo se reparte por orden si las n apariciones están de
+    verdad separadas, con un salto de al menos medio paso entre una y la
+    siguiente. Una variable que aparece n veces pero TODAS dentro de la misma
+    cenefa --por ejemplo un precio partido en varios cuadros-- se deja al
+    camino por paso, porque ahí el orden mentiría.
+
+    Devuelve {id(cuadro): índice}; los cuadros que no están en el diccionario
+    se siguen ubicando como siempre.
+    """
+    if n <= 1 or paso <= 0:
+        return {}
+
+    por_variable: dict[str, list[dict]] = {}
+    for c in comps:
+        for var in _nombres_de_variable(c):
+            por_variable.setdefault(var, []).append(c)
+
+    propuestas: dict[int, set[int]] = {}
+    for grupo in por_variable.values():
+        if len(grupo) != n:
+            continue
+        ordenados = sorted(grupo, key=lambda c: _esquina(c)[eje])
+        coords = [_esquina(c)[eje] for c in ordenados]
+        if any(b - a < paso / 2 for a, b in zip(coords, coords[1:])):
+            continue
+        for i, c in enumerate(ordenados):
+            propuestas.setdefault(id(c), set()).add(i)
+
+    # Un mismo cuadro puede contar para dos variables (multi-segmento). Si las
+    # dos lo mandan a la misma celda, listo; si se contradicen, no se decide
+    # acá y queda para el reparto por paso.
+    return {cid: next(iter(celdas)) for cid, celdas in propuestas.items() if len(celdas) == 1}
+
+
 def _asignar_grilla(
     non_bg: list[dict], anclas: list[dict], n_filas: int, n_cols: int
 ) -> list[list[dict]] | None:
     """Reparte los componentes en una grilla de n_filas x n_cols, o None si no cierra.
 
-    El reparto es por PASO FIJO, no por el punto medio entre anclas. Las celdas
+    Primero se reparte por ORDEN (`_indices_por_orden`): las variables que
+    aparecen una vez por celda se ubican contándolas, sin medir. Lo que ahí no
+    se pueda decidir --cuadros fijos, imágenes, variables que aparecen varias
+    veces por cenefa-- cae al reparto por paso, que es lo que sigue.
+
+    El reparto por paso es por PASO FIJO, no por el punto medio entre anclas. Las celdas
     de una cenefa son rectángulos iguales y repetidos: el ancla marca dónde
     ARRANCA cada celda, y el contenido de esa celda se extiende hacia la
     derecha y hacia abajo hasta donde arranca la siguiente.
@@ -1739,9 +1810,16 @@ def _asignar_grilla(
         return None
     origen_x = min(_esquina(c)[0] for c in non_bg)
 
+    # Primero por orden (ver `_indices_por_orden`), y lo que ahí no se pueda
+    # decidir --cuadros fijos, variables que no aparecen una vez por celda--
+    # sigue cayendo por paso, como siempre.
+    orden_x = _indices_por_orden(non_bg, n_cols, paso_x, 0)
     columnas: dict[int, list[dict]] = {}
     for c in non_bg:
-        columnas.setdefault(_indice_por_paso(_esquina(c)[0], origen_x, paso_x, n_cols), []).append(c)
+        col = orden_x.get(id(c))
+        if col is None:
+            col = _indice_por_paso(_esquina(c)[0], origen_x, paso_x, n_cols)
+        columnas.setdefault(col, []).append(c)
     if len(columnas) != n_cols:
         return None
 
@@ -1758,8 +1836,11 @@ def _asignar_grilla(
         if paso_y is None:
             return None
         origen_y = min(_esquina(c)[1] for c in comps_col)
+        orden_y = _indices_por_orden(comps_col, n_filas, paso_y, 1)
         for c in comps_col:
-            fila = _indice_por_paso(_esquina(c)[1], origen_y, paso_y, n_filas)
+            fila = orden_y.get(id(c))
+            if fila is None:
+                fila = _indice_por_paso(_esquina(c)[1], origen_y, paso_y, n_filas)
             celdas.setdefault((fila, col), []).append(c)
 
     # Orden de lectura: izquierda a derecha, después hacia abajo.
@@ -1770,6 +1851,26 @@ def _asignar_grilla(
     # con dos, la grilla propuesta no es la que tiene el diseño.
     if any(sum(1 for c in g if id(c) in ids_ancla) != 1 for g in ordenadas):
         return None
+
+    # Red de seguridad para todo lo que el reparto por orden no pudo decidir:
+    # una variable que aparece exactamente una vez por celda NO puede terminar
+    # DOS veces en la misma celda. Si eso pasa, la grilla propuesta no es la
+    # que tiene el diseño, y es preferible no repartir --que se note-- antes
+    # que imprimir en una cenefa el dato de otro producto, que es lo que pasó
+    # el 16/09/2026 con <<promoOferta>> y nadie vio hasta la impresión.
+    from collections import Counter
+
+    n_slots = n_filas * n_cols
+    conteo: Counter = Counter()
+    for c in non_bg:
+        conteo.update(_nombres_de_variable(c))
+    for grupo in ordenadas:
+        vistas: set[str] = set()
+        for c in grupo:
+            for var in _nombres_de_variable(c):
+                if var in vistas and conteo[var] == n_slots:
+                    return None
+                vistas.add(var)
     return ordenadas
 
 
@@ -1807,15 +1908,10 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
     from collections import Counter
     from functools import reduce
 
-    def _comp_variable_names(c: dict) -> list[str]:
-        if c.get("variable"):
-            return [c["variable"]]
-        return [seg["value"] for seg in (c.get("segments") or []) if seg.get("type") == "variable"]
-
     non_bg = [c for c in components if not c.get("locked")]
     var_counts: Counter = Counter()
     for c in non_bg:
-        var_counts.update(_comp_variable_names(c))
+        var_counts.update(_nombres_de_variable(c))
     if not var_counts:
         return None
 
@@ -1866,7 +1962,7 @@ def _detect_slot_bands(components: list[dict]) -> list[list[dict]] | None:
         ancla = next((v for v, n in var_counts.items() if n == n_slots), None)
         if ancla is None:
             continue
-        anclas = [c for c in non_bg if ancla in _comp_variable_names(c)]
+        anclas = [c for c in non_bg if ancla in _nombres_de_variable(c)]
         xs_ancla = sorted({round(_esquina(c)[0], 1) for c in anclas})
 
         # Cuántas columnas hay: se prueba de más a menos, y se acepta la

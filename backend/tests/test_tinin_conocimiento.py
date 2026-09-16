@@ -44,7 +44,7 @@ def test_mxn_manda_el_literal_a_promo_oferta_y_no_a_precio_oferta():
     m, _ = resolver_mecanica("MxN", "2x1", precio=49.5)
     assert m["precioOferta"] == 49.5        # un NÚMERO, el de la columna PRECIO
     assert m["promoOferta"] == "2x1"        # el literal va acá
-    assert m["tipoOferta"] == "2x1"
+    assert m["tipoOferta"] == ""            # y la cocarda queda vacía (16/09/2026)
 
     assert "precioOferta también el literal" not in _CONOCIMIENTO, (
         "el conocimiento sigue diciendo que en M x N precioOferta lleva el "
@@ -84,7 +84,7 @@ def test_precio_oferta_se_declara_siempre_como_precio():
     [
         ("Combo",       "2x$299",            175.0, {"tipoOferta": "2x",         "precioOferta": 175.0, "promoOferta": 299.0}),
         ("Combo",       "3x99",              None,  {"tipoOferta": "3x",         "promoOferta": 99.0}),
-        ("MxN",         "6x4",               120.0, {"tipoOferta": "6x4",        "promoOferta": "6x4"}),
+        ("MxN",         "6x4",               120.0, {"tipoOferta": "",           "promoOferta": "6x4"}),
         ("Unidad al",   "2da unidad al 50%", 90.0,  {"tipoOferta": "2da al 50%", "promoOferta": ""}),
         ("Precio Fijo", "Precio Oferta",     148.0, {"tipoOferta": "",           "mecanica": "Precio Final"}),
     ],

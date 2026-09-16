@@ -265,11 +265,16 @@ def resolver_mecanica(
             # Sin precio unitario no hay mecánica que redactar; el literal
             # igual va al cuadro grande, para no perder la oferta.
             warnings.append("mxn_sin_precio")
-            return {"ofertaUno": "", "tipoOferta": literal, "precioOferta": "", "promoOferta": literal, "mecanica": "",
+            return {"ofertaUno": "", "tipoOferta": "", "precioOferta": "", "promoOferta": literal, "mecanica": "",
                     "tipoOfertaComprando": "", "unidad": ""}, warnings
         cantidad = m.group(1)
         return {
-            "tipoOferta":   literal,       # "2x1" / "6x4" -- la cocarda
+            # VACIA en M x N (decision de Ivan, 16/09/2026). El "3x2" lo
+            # comunica promoOferta, que es el cuadro grande superpuesto al
+            # precio; poner ademas el literal en la cocarda lo decia dos veces
+            # en el mismo cartel. Ojo que NO es lo mismo que en un combo, donde
+            # la cocarda SI lleva "2x" y promoOferta lleva el total en pesos.
+            "tipoOferta":   "",
             "ofertaUno":    "",
             # precioOferta ES UN PRECIO, SIEMPRE. El literal ya no va aca: va a
             # promoOferta, que el diseno de Redexpres dibuja TAPANDO el cuadro

@@ -90,7 +90,10 @@ def test_mxn_precio_de_la_columna_y_literal_en_promo():
     m, w = resolver_mecanica("MxN", "2x1", precio=49.5)
     assert m["precioOferta"] == 49.5        # precioOferta ES un precio, SIEMPRE
     assert m["promoOferta"] == "2x1"        # SOLO M x N llena promoOferta
-    assert m["tipoOferta"] == "2x1"
+    # La cocarda queda VACIA: el literal ya lo dice promoOferta, que va grande
+    # encima del precio. Hasta el 16/09/2026 tipoOferta tambien traia "2x1" y
+    # el cartel lo decia dos veces (decision de Ivan).
+    assert m["tipoOferta"] == ""
     assert m["mecanica"] == "$49,50 la unidad."
     assert w == []
 
