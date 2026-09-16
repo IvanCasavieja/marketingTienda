@@ -774,6 +774,7 @@ _CAMPOS_SUGERIBLES: dict[str, str] = {
     "sucursal":          "la sucursal de ESA fila (el listado repite el producto una vez por sucursal)",
     "stock":             "las unidades que hay en esa sucursal",
     "categoriaProducto": "el tipo de producto, para partir la descarga (FREIDORA, MIXER, AURICULARES)",
+    "familiaProducto":   "la familia, un nivel más arriba del tipo (ELECTRO COCINA, AUDIO, TVS MENOS 65\")",
 }
 
 _SUGERIR_SYSTEM_PROMPT = f"""{TININ_BASE}

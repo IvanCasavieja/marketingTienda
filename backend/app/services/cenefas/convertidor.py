@@ -122,12 +122,46 @@ _INPUT_ALIASES: dict[str, str] = {
     # (AURICULARES, FREIDORA, MIXER, CAFETERA: 45 valores). Es exactamente el
     # nivel "por producto" que hace falta para partir la descarga, escrito por
     # gestión y no deducido por nosotros del texto del nombre (decisión de Ivan,
-    # 15/09/2026). Los otros tres niveles que trae el archivo --dsc_categoria
-    # (ELECTRO HOGAR / TECNOLOGIA), dsc_subcategoria y dsc_familia-- son
-    # demasiado gruesos para una carpeta y no se leen.
+    # 15/09/2026). Los otros dos niveles que trae el archivo --dsc_categoria
+    # (ELECTRO HOGAR / TECNOLOGIA) y dsc_subcategoria-- son demasiado gruesos
+    # para una carpeta y no se leen.
     "dscsubfamilia":  "categoriaProducto",
     "subfamilia":     "categoriaProducto",
+    # dsc_familia se lee SOLO como respaldo de las subfamilias que no dicen qué
+    # es el producto -- ver _SUBFAMILIAS_SIN_PRODUCTO.
+    "dscfamilia":     "familiaProducto",
+    "familia":        "familiaProducto",
 }
+
+
+# Subfamilias que NO nombran al producto, y para las que manda dsc_familia.
+#
+# Gestión le pone "4K" de subfamilia a TODOS los televisores, chicos y grandes
+# por igual: lo que los separa está un nivel más arriba, en dsc_familia
+# ("TVS MENOS 65\"" y "TVS 65\" O MAS"). Con la subfamilia sola, un 32" y un 75"
+# caían en el mismo "4K.xlsx", un nombre de archivo que no dice qué hay adentro.
+# Ivan lo marcó el 16/09/2026 mirando la grilla: "lo que sea 4k en realidad son
+# tvs, tenemos que tomar la columna porque ahí está el valor real".
+#
+# Es una lista y no un `if` para que agregar la próxima sea una línea: el resto
+# de las 45 subfamilias (FREIDORA, CAFETERA, AURICULARES, LAVARROPA) se explican
+# solas y NO hay que tocarlas.
+_SUBFAMILIAS_SIN_PRODUCTO: frozenset[str] = frozenset(("4k",))
+
+
+def categoria_del_listado(subfamilia: str, familia: str) -> str:
+    """Qué categoría le corresponde a una fila según las columnas del listado.
+
+    La subfamilia manda, salvo que sea una de las que no nombran al producto
+    (ver _SUBFAMILIAS_SIN_PRODUCTO), donde manda la familia. Si la familia
+    viniera vacía igual se devuelve la subfamilia: es preferible un "4K.xlsx"
+    a una fila que cae en "Sin categoría" por un dato que sí estaba.
+    """
+    sub = _clean_str(subfamilia)
+    fam = _clean_str(familia)
+    if sub and _norm(sub) in _SUBFAMILIAS_SIN_PRODUCTO and fam:
+        return fam
+    return sub
 
 _HEADER_SCAN_ROWS = 10
 _DATE_SAMPLE_ROWS = 8  # filas de datos a mirar para juntar valores de muestra para la IA
@@ -1083,6 +1117,7 @@ async def parse_input_excel(
             "sucursal":          _clean_str(cell(row, "sucursal")),
             "stock":             _parse_stock_or_none(cell(row, "stock")),
             "categoriaProducto": _clean_str(cell(row, "categoriaProducto")),
+            "familiaProducto":   _clean_str(cell(row, "familiaProducto")),
             "_mapeado": {
                 **{var: _clean_str(row[i]) if i < len(row) else ""
                    for var, i in mapeo_cols.items()},
@@ -1577,14 +1612,17 @@ async def match_rows(
             # sucursales" no tenga nada para ofrecer. Va y vuelve por la grilla
             # (ver armar_zip_dividido), no sale en ninguna columna del Excel.
             "stockPorSucursal":   r.get("_stock") or {},
-            # Qué tipo de producto es. Sale de la columna del listado y de
+            # Qué tipo de producto es. Sale de las columnas del listado y de
             # ningún otro lado (Ivan, 15/09/2026): el export trae dsc_subfamilia
             # --AURICULARES, FREIDORA, MIXER, CAFETERA-- escrita por quien carga
             # el producto, en 271 de 273 filas, así que deducirla del texto sería
-            # adivinar lo que el archivo ya dice. La fila que no la traiga va a
-            # "Sin categoría.xlsx" y se corrige a mano en la grilla, que para eso
-            # tiene la columna editable.
-            "categoriaProducto":  r.get("categoriaProducto", ""),
+            # adivinar lo que el archivo ya dice. La excepción son los televisores,
+            # que vienen todos como "4K" y se resuelven por dsc_familia (ver
+            # categoria_del_listado). La fila que no traiga ninguna de las dos va
+            # a "Sin categoría.xlsx" y se corrige a mano en la grilla, que para
+            # eso tiene la columna editable.
+            "categoriaProducto":  categoria_del_listado(
+                r.get("categoriaProducto", ""), r.get("familiaProducto", "")),
         }
 
         # Con qué unidad se cobra el producto, cuando el texto de origen no lo

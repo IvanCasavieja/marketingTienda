@@ -60,6 +60,7 @@ from app.services.cenefas.convertidor import (
     ConvertidorParseError,
     armar_zip_dividido,
     build_output_workbook,
+    categoria_del_listado,
     detectar_fila_headers,
     juntar_filas_por_producto,
     leer_filas,
@@ -93,10 +94,10 @@ _HEADERS_EXPORT_LARGO = (
 )
 
 
-def _fila_export(codigo, descripcion, sucursal, stock, subfamilia):
+def _fila_export(codigo, descripcion, sucursal, stock, subfamilia, familia="AUDIO"):
     """Una fila del export real, con las diez columnas en su lugar."""
     return (codigo, descripcion, "AC CORP URUGUAY SRL", sucursal, stock, None,
-            "TECNOLOGIA", "AUDIO, TV Y VIDEO", "AUDIO", subfamilia)
+            "TECNOLOGIA", "AUDIO, TV Y VIDEO", familia, subfamilia)
 
 
 def _xlsx(*filas) -> bytes:
@@ -274,16 +275,17 @@ def test_sin_el_alias_de_id_producto_el_archivo_no_se_podia_ni_abrir():
     assert detectar_fila_headers(filas) == 0
     col_map, encontro_codigo = _mapear_columnas(filas[0])
     assert encontro_codigo
-    # Las cinco columnas que el Convertidor lee de este export, cada una en su
+    # Las seis columnas que el Convertidor lee de este export, cada una en su
     # lugar (la 1, `descripcion`, entra por el alias de siempre). Las otras
-    # cinco --proveedor, cantidad_vendida y los tres niveles de categoría más
-    # gruesos que dsc_subfamilia-- no se mapean a propósito: son demasiado
-    # gruesas para nombrar una carpeta (decisión de Ivan, 15/09/2026).
+    # cuatro --proveedor, cantidad_vendida, dsc_categoria y dsc_subcategoria--
+    # no se mapean a propósito: son demasiado gruesas para nombrar una carpeta
+    # (decisión de Ivan, 15/09/2026).
     assert col_map[0] == "codigo"
     assert col_map[3] == "sucursal"
     assert col_map[4] == "stock"
+    assert col_map[8] == "familiaProducto"
     assert col_map[9] == "categoriaProducto"
-    assert sorted(col_map) == [0, 1, 3, 4, 9]
+    assert sorted(col_map) == [0, 1, 3, 4, 8, 9]
 
     # Y el otro lado, para que quede claro que el alias resolvió ESTE export y
     # no apagó el chequeo: una columna de código que nadie reconoce sigue siendo
@@ -722,6 +724,49 @@ def test_la_categoria_sale_de_la_columna_y_es_el_nombre_del_excel():
     assert _codigos(zip_bytes, "Sin categoría.xlsx") == ["503996"]
     assert resumen["categorias"] == ["FREIDORA", "Sin categoría"]
     assert resumen["filas_sin_categoria"] == 1
+
+
+def test_los_televisores_se_parten_por_familia_porque_todos_dicen_4k():
+    # Bug real, visto por Ivan en la grilla el 16/09/2026: gestión le pone "4K"
+    # de dsc_subfamilia a TODOS los televisores, así que un 32" y un 75" caían
+    # en el mismo "4K.xlsx" -- un nombre de archivo que no dice qué hay adentro.
+    # Lo que los separa está un nivel más arriba, en dsc_familia. Ivan: "lo que
+    # sea 4k en realidad son tvs, tenemos que tomar la columna porque ahí está
+    # el valor real".
+    parsed, _aliases, _headers, _juntado = _parsear(_xlsx(
+        _HEADERS_EXPORT_LARGO,
+        _fila_export("549610", 'TV 32" PHILIPS HD', "Central", 3, "4K", 'TVS MENOS 65"'),
+        _fila_export("504046", 'SMART TV PHILIPS 70"', "Central", 2, "4K", 'TVS 65" O MAS'),
+        # El resto NO cambia: la subfamilia sigue mandando cuando dice qué es el
+        # producto, que son 44 de las 45 del export real.
+        _fila_export("610220", "FREIDORA ATMA", "Central", 4, "FREIDORA", "ELECTRO COCINA"),
+    ))
+    rows = _a_la_grilla(parsed)
+    assert [r["categoriaProducto"] for r in rows] == [
+        'TVS MENOS 65"', 'TVS 65" O MAS', "FREIDORA"]
+
+    # Y en el ZIP: las comillas del nombre las saca el saneado, porque Windows
+    # no las acepta en un nombre de archivo.
+    zip_bytes, _resumen = armar_zip_dividido(
+        rows, por_categoria=True, por_sucursal=False, nombre_base="cenefas")
+    assert _rutas(zip_bytes) == [
+        "FREIDORA.xlsx", "TVS 65 O MAS.xlsx", "TVS MENOS 65.xlsx"]
+    assert "4K.xlsx" not in _rutas(zip_bytes)
+
+
+def test_la_familia_solo_se_usa_para_las_subfamilias_que_no_dicen_el_producto():
+    # La regla es una lista chica y explícita (_SUBFAMILIAS_SIN_PRODUCTO), no un
+    # "si la subfamilia es corta" ni nada que se pueda disparar solo: cambiar la
+    # categoría de un producto cambia en qué Excel cae, y eso no puede depender
+    # de una heurística.
+    assert categoria_del_listado("4K", 'TVS MENOS 65"') == 'TVS MENOS 65"'
+    assert categoria_del_listado("4k", 'TVS 65" O MAS') == 'TVS 65" O MAS'   # sin importar el casing
+    assert categoria_del_listado("FREIDORA", "ELECTRO COCINA") == "FREIDORA"
+    assert categoria_del_listado("AURICULARES", "AUDIO") == "AURICULARES"
+    # Si la familia faltara, es preferible "4K" a perder la fila en "Sin
+    # categoría" por un dato que sí estaba.
+    assert categoria_del_listado("4K", "") == "4K"
+    assert categoria_del_listado("", "AUDIO") == ""
 
 
 def test_la_fila_sin_categoria_cae_en_sin_categoria_y_se_cuenta():
