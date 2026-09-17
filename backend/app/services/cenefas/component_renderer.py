@@ -15,6 +15,9 @@ from pptx.util import Cm, Pt
 from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.font_metrics import ancho_texto_cm
 from app.services.cenefas.formatters import split_caps
+# Lo único que el motor genérico sabe del mundo de pruebas: una llamada al
+# final del render, que no hace NADA en los otros mundos. Ver pruebas.py.
+from app.services.cenefas.pruebas import aplicar_autofit as aplicar_autofit_de_pruebas
 from app.services.cenefas.layout_engine import compute_layout, get_format
 from app.services.cenefas.rules_engine import (
     apply_font_sizes,
@@ -2193,6 +2196,7 @@ def render_template_to_pptx(
                 # simplemente nunca tuvo shapes creados (comportamiento
                 # de siempre para el canvas en blanco).
 
+        aplicar_autofit_de_pruebas(prs, template_def)
         buf = io.BytesIO()
         prs.save(buf)
         return buf.getvalue(), sorted(missing_vars)
@@ -2230,6 +2234,7 @@ def render_template_to_pptx(
 
             _render_slide(slide, visible_comps, product, slot_offset_x, slot_offset_y, missing_vars=missing_vars, shape_map=shape_map)
 
+    aplicar_autofit_de_pruebas(prs, template_def)
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue(), sorted(missing_vars)

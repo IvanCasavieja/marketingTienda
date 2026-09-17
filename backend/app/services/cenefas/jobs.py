@@ -504,7 +504,17 @@ async def _resolve_template_v2(db, template_id: uuid.UUID) -> tuple[dict, bytes 
     tmpl = result.scalar_one_or_none()
     if tmpl is None:
         raise ValueError(f"Template {template_id} no encontrado")
-    return tmpl.definition, tmpl.source_pptx
+    # El mundo (destino) se estampa en la definición que recibe el motor.
+    #
+    # La columna `category` es la que manda --es la que usa el selector de
+    # mundos y la que se guarda en el job-- pero el motor solo ve el JSON, y
+    # al 17/09/2026 NUEVE de las 22 plantillas guardadas no lo traían adentro
+    # (solo en la columna). Sin esto, "esta corrida es del mundo X" es una
+    # pregunta que el motor no puede contestar para casi la mitad de las
+    # plantillas, y cualquier regla por mundo sería de mentira justo donde
+    # más importa: ver `pruebas.es_de_pruebas`.
+    definicion = {**(tmpl.definition or {}), "category": tmpl.category}
+    return definicion, tmpl.source_pptx
 
 
 async def _resolve_template_def(
