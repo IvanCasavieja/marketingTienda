@@ -1365,37 +1365,11 @@ def _excluido_por_dominante(
 _SOLAPE_MIN_EXCLUSION_PAREJA = 0.1
 
 
-# Qué fracción del ALTO del cuadro fijo (el "$" sin variable propia) cae
-# dentro del rango vertical de un candidato -- usado para encontrarle su
-# pareja de verdad entre los cuadros CON variable del mismo layout (ver más
-# abajo, dentro de _render_slide). El área (_rect_overlap_ratio) sirve para
-# _excluido_por_dominante porque ahí las dos cajas están pensadas para
-# superponerse (Redexpres). Acá NO: precio y "$" van uno AL LADO del otro
-# ("$" a la izquierda, número a la derecha), casi sin superponerse en X, así
-# que el área da un número chico e inestable -- y en 3xA4 (09/2026) le daba
-# más área a la cocarda de arriba (10%, apenas rozando la esquina del "$")
-# que al propio <<precioOferta>> de al lado (0%, ni un pixel de solape en
-# X), apagando el "$" en cualquier producto sin combo. El alto de las dos
-# cajas SÍ se diseña igual a propósito (mismo renglón), así que cuánto del
-# alto del "$" cae dentro del candidato es la señal que no falla -- siempre
-# que el candidato se limite a cuadros de "contenido real" (ver el filtro de
-# etiquetas flotantes Y de DECIMAL_VARS más abajo, en el llamado real: un
-# decimal puede venir vacío --precio redondo-- mientras el ENTERO al lado
-# tiene dato de sobra, y sin sacarlo de la lista ganaba por cobertura contra
-# el propio precio: caso real, Alfajor en A4, "179" sin decimales, el "$"
-# de <<precioOferta>> cubría 54% de <<decimalPrecioOferta>> vacío contra
-# apenas 19% de <<precioOferta>> con dato -- se apagaba el "$" con el
-# número completo al lado).
-#
-# Con ese filtro puesto, medido en los 4 formatos reales: la pareja
-# correcta (siempre el precio en sí) va de 19% (A4, precioOferta -- su "$"
-# es angosto y alto, el precio es una sola línea bien más baja) a 100%; el
-# vecino más parecido que NO es la pareja (la descripción, en 3xA4) llega a
-# 55% pero nunca gana el candidato correcto en ningún caso real. El piso
-# queda bajo el mínimo verificado (19%) con margen, no al punto medio entre
-# ganador y perdedor -- achicarlo de más vuelve a exponer al "$" a apagarse
-# con un decimal vacío.
-_COBERTURA_MIN_PAREJA = 0.1
+# _COBERTURA_MIN_PAREJA se elimino el 17/09/2026 junto con la adopcion
+# automatica de cuadros fijos que la usaba (ver _render_slide). Era el piso
+# de cobertura vertical para decidir a quien acompañaba un "$" sin variable.
+# `_cobertura_vertical` sigue viva: la usa el boton "Detectar relaciones",
+# que PROPONE una pareja y espera que una persona la confirme.
 
 
 def _cobertura_vertical(fijo: dict, candidato: dict) -> float:
@@ -1469,46 +1443,6 @@ def _render_slide(
                 if usadas_c == {"tipoOferta"}:
                     literales_repetidos.add(id(c))
 
-    # Cuadros fijos (sin variable propia, ej. el "$" del diseño) que viven
-    # pegados a un cuadro que se va a tapar -- por exclusión (_EXCLUYENTES)
-    # O porque su dato vino vacío del Excel (precioOferta sin valor, caso
-    # real: Durazno en almíbar, Puré de papas VIDA, Pulpa de tomates
-    # Morixe -- traen precioRegular pero no precioOferta) -- se ocultan
-    # junto con él, si no quedan solos en pantalla sin ningún número al
-    # lado (ver _rect_overlap_ratio). Se resuelve en una pasada aparte
-    # porque necesita conocer los bounds de TODOS los componentes que se
-    # van a tapar antes de decidir, no solo el propio.
-    def _var_sin_dato(c: dict) -> bool:
-        usadas = _variables_del_componente(c)
-        if not usadas or c.get("type") != "text":
-            return False
-        partes_fijas = any(
-            str(seg.get("value", "")).strip()
-            for seg in (c.get("segments") or []) if seg.get("type") == "static"
-        )
-        return not partes_fijas and not _texto_resuelto(c, product).strip()
-
-    # Bounds + estado "se tapa" + variables de TODOS los cuadros con variable
-    # propia (no solo los que se tapan). Un cuadro fijo sin variable (el "$"
-    # del diseño) tiene que compararse contra su VECINO MÁS CERCANO
-    # geométricamente, no contra "cualquiera que se haya tapado en la hoja"
-    # -- caso real: el "$" de <<precioBanco>> (Preciazos A4) solapaba 11,8%
-    # con <<tipoOfertaComprando>> (la etiqueta "Comprando 2" arriba del
-    # precio, vacía en productos sin combo) y se apagaba junto con ella
-    # aunque <<precioBanco>> -- su verdadero par, con 46% de solape -- tuviera
-    # dato de sobra. Sin esto el "$" de precioBanco desaparecía en TODOS los
-    # productos sin combo (48 de 56 en el listado real), y lo mismo le pasaba
-    # al "$" de precioRegular en 3xA4.
-    variables_bounds = [
-        (
-            c.get("computed_bounds") or c.get("base_bounds") or {},
-            _excluido_por_dominante(c, product, dominantes_presentes, bounds_por_dominante) or _var_sin_dato(c),
-            _variables_del_componente(c),
-        )
-        for c in comp_layout
-        if _variables_del_componente(c)
-    ]
-
     for comp in comp_layout:
         comp_type = comp.get("type", "text")
         source_id = comp.get("_source_shape_id")
@@ -1543,38 +1477,37 @@ def _render_slide(
         # número al lado (caso real: <<precioOferta>> de Preciazos A4
         # tapado por promoOferta en un combo, con su "$" de 90pt fijo
         # sobreviviendo solo, sin nada que acompañar).
-        if not oculto and not usadas and variables_bounds:
-            propios = comp.get("computed_bounds") or comp.get("base_bounds") or {}
-            # Etiquetas puramente flotantes (unidad, tipoOferta,
-            # tipoOfertaComprando) quedan afuera de la búsqueda de pareja: no
-            # son "el precio" que el "$" acompaña, son captions chicas que el
-            # diseño pone cerca de cualquier precio -- si entraran a competir,
-            # ganaban por casualidad de posición (ver comentario de
-            # variables_bounds más arriba).
-            #
-            # El cuadro del DECIMAL de un precio (DECIMAL_VARS, ej.
-            # decimalPrecioOferta) tampoco es válido como pareja: es un
-            # sufijo del precio, nunca "el precio" en sí, y puede venir
-            # vacío (precio redondo, sin centavos) mientras el ENTERO al
-            # lado tiene dato de sobra -- caso real: Alfajor
-            # (precioOferta="179", sin decimalPrecioOferta) tenía más
-            # cobertura vertical contra el cuadro del decimal (54%) que
-            # contra el propio precioOferta (19%, caja de una sola línea
-            # bien más baja que el "$"), así que el "$" se apagaba con el
-            # decimal vacío aunque el "179" completo estuviera ahí al lado.
-            #
-            # Si no queda ningún candidato de contenido real (plantilla
-            # rarísima con solo etiquetas y decimales), se cae a la lista
-            # completa antes que no comparar contra nada.
-            candidatos = [
-                (b, oc) for b, oc, vars_c in variables_bounds
-                if not (vars_c <= _VARIABLES_ETIQUETA_FLOTANTE) and not (vars_c <= set(DECIMAL_VARS))
-            ] or [(b, oc) for b, oc, _ in variables_bounds]
-            mejor_bounds, mejor_oculto = max(
-                candidatos, key=lambda par: _cobertura_vertical(propios, par[0])
-            )
-            if mejor_oculto and _cobertura_vertical(propios, mejor_bounds) >= _COBERTURA_MIN_PAREJA:
-                oculto = True
+        # ACÁ ESTABA la adopción automática de un cuadro fijo, eliminada el
+        # 17/09/2026. Hacía esto: un cuadro de texto SIN variable propia
+        # buscaba de quién era acompañante --el candidato con más cobertura
+        # vertical-- y se apagaba junto con él.
+        #
+        # Existía por un solo motivo: que el "$" escrito a mano en el diseño no
+        # quedara solo en el cartel cuando el precio de al lado no se dibujaba.
+        #
+        # Se eliminó porque ese motivo desapareció: los 41 cuadros que tenían
+        # el símbolo escrito a mano pasaron a usar <<unidadMoneda>>
+        # (scripts/simbolo_a_variable.py, decisión de Ivan: "la idea es que las
+        # plantillas tengan, en vez de $ o U$S, directamente la variable").
+        # Con una variable propia, esos cuadros ya se apagan solos cuando su
+        # dato viene vacío, por la regla de abajo, que no adivina nada.
+        #
+        # Y hacía daño: sin ningún "$" fijo que atender, sus únicos clientes
+        # eran las 56 ETIQUETAS del parque ("OFERTA" x22, "%", "OFF",
+        # "Promoción válida..."), que no acompañan a nadie. La palabra OFERTA
+        # desaparecía de la Gran Bretaña A4 en cuanto `ofertaUno` venía vacía:
+        # las dos cajas están a la misma altura --86,7% de cobertura-- aunque
+        # haya 5 cm de distancia entre ellas.
+        #
+        # Y no se podía arreglar con geometría: medido sobre las 22 plantillas,
+        # los "$" legítimos llegaban a estar a 10,94 cm de su precio y las
+        # etiquetas mal emparejadas a 7,53 cm. No hay umbral de distancia que
+        # los separe.
+        #
+        # Si algún diseño futuro necesita que una etiqueta desaparezca con un
+        # dato vacío, eso se declara con una REGLA de visibilidad, que se ve en
+        # el panel, en vez de deducirse de la posición.
+        #
         # Un cuadro cuyo contenido sale SOLO de variables y todas quedaron
         # vacías no tiene nada que imprimir. Borrarle el texto no alcanza: si
         # el shape tiene relleno propio --la cocarda roja de tipoOferta-- queda
