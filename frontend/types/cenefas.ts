@@ -212,6 +212,18 @@ export interface CenefaRule {
   condition: RuleCondition;
   /** `value` solo lo usa `set_font_size`: el cuerpo en pt. */
   action: { type: RuleAction; value?: number };
+  /**
+   * Regla que impone el sistema, no una persona. El backend la vuelve a
+   * poner en cada guardado, en cada import y en cada generación (ver
+   * `reglas_fijas.py`), así que borrarla acá no la borra: reaparece.
+   *
+   * Por eso se muestra sin botón de borrar y no se puede editar. Ofrecer un
+   * botón que no hace nada sería peor que no ofrecerlo — y esconderla del
+   * todo es justamente lo que había que evitar: la razón de que estas reglas
+   * vivan en el panel, y no adentro del motor, es que se entienda de dónde
+   * sale cada cosa (criterio de Ivan, 17/09/2026).
+   */
+  bloqueada?: boolean;
 }
 
 export interface CenefaVariable {

@@ -15,6 +15,7 @@ from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.services.cenefas.component_renderer import patch_image_overrides, render_template_to_pptx
 from app.services.cenefas.data_engine import load_products_con_headers
 from app.services.cenefas.pptx_importer import import_pptx
+from app.services.cenefas.reglas_fijas import asegurar_reglas_fijas
 from app.services.cenefas import conocimiento as saber
 from app.services.cenefas.revision_previa import revisar
 from app.services.cenefas.validation_engine import build_summary, validate_products
@@ -454,7 +455,12 @@ async def confirm_generation_job(
         if position_overrides:
             template_def = aplicar_overrides(template_def, position_overrides)
         if rules_override is not None:
-            template_def = {**template_def, "rules": rules_override}
+            # `asegurar_reglas_fijas` va DESPUÉS del reemplazo: el panel del
+            # preview manda la lista entera de reglas, así que si alguien
+            # borra una fija ahí, esto la vuelve a poner para esta corrida.
+            # Sin eso, una regla "bloqueada" se podría saltear generando en
+            # vez de guardando, que es el camino por el que más se genera.
+            template_def = asegurar_reglas_fijas({**template_def, "rules": rules_override})
         try:
             pptx_bytes, missing_vars = await asyncio.wait_for(
                 asyncio.to_thread(

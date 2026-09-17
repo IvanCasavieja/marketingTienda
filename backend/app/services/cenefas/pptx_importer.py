@@ -8,6 +8,7 @@ from pptx import Presentation
 from pptx.enum.text import PP_ALIGN
 
 from app.services.cenefas.font_metrics import ancho_texto_cm
+from app.services.cenefas.reglas_fijas import asegurar_reglas_fijas
 from app.services.cenefas.variables import resolver_alias, INTERNAL_SET, is_decimal, is_price, norm, resolve
 
 _EMU_PER_CM = 360_000
@@ -1319,7 +1320,13 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
     # deja un componente reparado más ancho que la celda a la que pertenece.
     components, import_warnings = _autocorregir_geometria(components, slot_width, height_cm)
 
-    return {
+    # `rules: []` es a propósito: un PPTX no trae reglas, las escribe una
+    # persona en el editor. Pero eso significa que resubir el archivo de una
+    # plantilla BORRA las que tuviera, y hasta el 17/09/2026 recuperarlas
+    # dependía de acordarse de correr un script a mano (ver
+    # scripts/agregar_regla_cocarda_vacia.py). Las que el sistema garantiza se
+    # vuelven a poner acá mismo, en el mismo acto de importar.
+    return asegurar_reglas_fijas({
         "version":         "2.0",
         "name":            name,
         "master_format":   format_id,
@@ -1328,4 +1335,4 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
         "components":      components,
         "rules":           [],
         "import_warnings": import_warnings,
-    }
+    })

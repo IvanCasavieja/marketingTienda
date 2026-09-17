@@ -31,6 +31,7 @@ from app.services.cenefas.component_renderer import (
     _variables_del_componente,
 )
 from app.services.cenefas.data_engine import load_products_from_bytes
+from app.services.cenefas.reglas_fijas import asegurar_reglas_fijas
 from app.services.cenefas.component_renderer import (
     _detect_slot_bands, detectar_solapes, preparar_componentes,
 )
@@ -297,6 +298,10 @@ async def create_template(
     db: AsyncSession = Depends(get_db),
 ):
     _validate_template_payload(payload)
+    # Las reglas que el sistema garantiza se ponen acá, no en el navegador:
+    # una plantilla guardada NUNCA queda sin ellas, venga de donde venga el
+    # payload (editor, import, o un POST a mano). Ver reglas_fijas.py.
+    payload = asegurar_reglas_fijas(payload)
 
     # source_pptx_b64: bytes del PPTX original en base64 (si el template vino
     # de importar un archivo, no de armarlo desde cero en el editor) — se
@@ -355,6 +360,9 @@ async def update_template(
         raise HTTPException(status_code=403, detail="No se pueden modificar templates del sistema")
 
     _validate_template_payload(payload)
+    # Idem create_template: borrar una regla fija desde la UI y guardar no la
+    # borra, vuelve acá mismo. Es lo que la hace fija.
+    payload = asegurar_reglas_fijas(payload)
 
     # source_pptx_b64 opcional: mismo criterio que create_template (ver línea
     # ~183) — se popea del payload ANTES de guardarlo como definition, para

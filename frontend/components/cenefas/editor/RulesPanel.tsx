@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useEditorStore } from "@/store/editor";
 import { variablesDisponibles } from "@/lib/cenefaVariables";
 import type { CenefaComponent, CenefaRule, RuleOperator, RuleAction, TextSegment } from "@/types/cenefas";
-import { Plus, Trash2, ChevronDown, ChevronRight, Layers } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Layers, Lock } from "lucide-react";
 
 export const OPERATORS: { value: RuleOperator; label: string }[] = [
   { value: "equals",       label: "es igual a" },
@@ -324,12 +324,26 @@ export function RuleChip({
         )}
         <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-1 italic">{summary}</span>
       </div>
-      <button
-        onClick={onDelete}
-        className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 flex-shrink-0"
-      >
-        <Trash2 size={11} />
-      </button>
+      {rule.bloqueada ? (
+        // Sin botón de borrar: el backend la repone en el próximo guardado
+        // (ver `bloqueada` en types/cenefas.ts). Se muestra igual que las
+        // demás —misma fila, misma condición legible— para que se entienda
+        // qué hace y por qué el cartel sale como sale.
+        <span
+          title="Regla del sistema: se mantiene aunque se vuelva a subir la PPT"
+          className="flex items-center gap-1 flex-shrink-0 text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500"
+        >
+          <Lock size={9} />
+          Fija
+        </span>
+      ) : (
+        <button
+          onClick={onDelete}
+          className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 flex-shrink-0"
+        >
+          <Trash2 size={11} />
+        </button>
+      )}
     </div>
   );
 }
