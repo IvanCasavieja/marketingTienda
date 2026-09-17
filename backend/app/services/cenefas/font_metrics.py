@@ -33,6 +33,59 @@ _EM_FALLBACK = 0.52
 # Las negritas ensanchan sin que cambie el nombre de la familia.
 _FACTOR_BOLD = 1.08
 
+# ---------------------------------------------------------------------------
+# El achique de un pedazo VOLADO (superíndice / subíndice)
+# ---------------------------------------------------------------------------
+#
+# PowerPoint no dibuja un run volado en su cuerpo declarado: lo dibuja a unos
+# dos tercios. Y NO cambia el número: al abrir el PPTX la casilla del tamaño
+# sigue diciendo el original. De ahí que un precio "de 180" se viera mucho más
+# chico que 180 sin que nadie lo hubiera achicado (reportado por Ivan el
+# 17/09/2026, Rompe Precios Congelados A4, donde el diseño le dejó
+# baseline=30000 al precio entero y no solo al "$").
+#
+# El achique es BINARIO, no proporcional al desplazamiento: subir un pedazo 5 %
+# o 95 % da el mismo cuerpo, solo cambia la altura. Vuelve a su tamaño completo
+# únicamente con desplazamiento 0.
+#
+# El 0,65 es el factor clásico de Office para superíndice, y lo respaldan dos
+# medidas independientes sobre el mismo cartel:
+#
+#   - La compensación que el equipo venía haciendo a mano para que el precio se
+#     viera bien: subir de 180 a 280 pt. Para imprimir 180 reales hay que
+#     tipear 180/0,65 = 276,9. Le erraron por 1,1 %.
+#   - Medido sobre el PPTX exportado, usando como regla el renglón
+#     "PRECIO REGULAR: $253" de la misma hoja (calculado 8,11 cm, medido
+#     8,1 cm, o sea la escala era confiable): el "219" tenía que medir
+#     11,06 cm y medía ~7,3 cm. Factor 0,66, dentro del error de la medición.
+#
+# No se pudo verificar contra PowerPoint desde el entorno de desarrollo (no hay
+# PowerPoint ni LibreOffice instalados). Hay un candidato rival, 0,528, que es
+# el factor que la propia Impact declara adentro del archivo de la fuente; si
+# el preview y el PPTX siguen sin coincidir, ese es el otro número a probar.
+#
+# ESTE VALOR ESTÁ ESPEJADO en frontend/lib/cenefas/textoEnriquecido.ts
+# (FACTOR_VOLADITA). Si se toca acá, tocarlo allá: el preview y la medición
+# tienen que coincidir o vuelve el problema que esto viene a arreglar.
+FACTOR_VOLADITA = 0.65
+
+
+def pt_efectivo(pt: float | None, baseline) -> float | None:
+    """El cuerpo con el que se DIBUJA de verdad, ya con la voladita aplicada.
+
+    Todo lo que mida texto para decidir si entra --capacidad.py, la detección
+    de solapes-- tiene que usar esto y no el cuerpo declarado, o va a creer
+    que un pedazo volado ocupa una vez y media lo que ocupa.
+    """
+    if not pt or not baseline:
+        return pt
+    try:
+        return pt * FACTOR_VOLADITA if int(baseline) != 0 else pt
+    except (TypeError, ValueError):
+        return pt
+# Las negritas ensanchan sin que cambie el nombre de la familia.
+_FACTOR_BOLD = 1.08
+
 
 def _cargar() -> dict:
     try:

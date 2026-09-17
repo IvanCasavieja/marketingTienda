@@ -150,6 +150,52 @@ export function cadenaFont(weight: number, sizePx: number, stack: string): strin
   return `${weight} normal ${sizePx}px ${stack}`;
 }
 
+/**
+ * Cuánto achica PowerPoint un pedazo VOLADO (superíndice/subíndice).
+ *
+ * PowerPoint no dibuja un run volado en su cuerpo declarado: lo dibuja a unos
+ * dos tercios. Y no cambia el número: si abrís el PPTX y mirás la casilla del
+ * tamaño, sigue diciendo el original. De ahí que un precio "de 180" se viera
+ * mucho más chico que 180 sin que nadie lo hubiera achicado (reportado por
+ * Ivan el 17/09/2026, Rompe Precios Congelados A4).
+ *
+ * Lo más importante: el achique es BINARIO, no proporcional al desplazamiento.
+ * Subir un pedazo 5 % o 95 % da el mismo tamaño; lo único que cambia es la
+ * altura. Solo vuelve a su cuerpo completo con desplazamiento 0. Por eso mover
+ * el "$" con las flechitas del panel nunca pareció cambiarle el tamaño: ya
+ * estaba achicado antes de tocarlo.
+ *
+ * El 0,65 es el factor clásico de Office para superíndice, y lo respaldan dos
+ * medidas independientes sobre el MISMO cartel:
+ *
+ *   - La compensación que el equipo venía haciendo a mano para que el precio
+ *     se viera bien: subir de 180 a 280 pt. Para imprimir 180 reales hay que
+ *     tipear 180/0,65 = 276,9. Le erraron por 1,1 %.
+ *   - Medido sobre el PPTX exportado, usando como regla el renglón
+ *     "PRECIO REGULAR: $253" de la misma hoja (calculado 8,11 cm, medido
+ *     8,1 cm, o sea la escala era confiable): el "219" tenía que medir
+ *     11,06 cm y medía ~7,3 cm. Factor 0,66, dentro del error de la medición.
+ *
+ * No se pudo verificar contra PowerPoint desde el entorno de desarrollo (no
+ * hay PowerPoint ni LibreOffice instalados), así que es CALIBRABLE: si el
+ * preview y el PPTX siguen sin coincidir, este es el número a mover. El otro
+ * candidato es 0,528, el factor que la propia Impact declara adentro del
+ * archivo de la fuente.
+ *
+ * ESPEJADO en backend/app/services/cenefas/font_metrics.py (FACTOR_VOLADITA).
+ * Si se toca acá, tocarlo allá.
+ */
+export const FACTOR_VOLADITA = 0.65;
+
+/**
+ * El cuerpo con el que de verdad se dibuja un tramo, ya con el achique de la
+ * voladita aplicado. Todo lo que mida o dibuje texto tiene que usar ESTO y no
+ * `tramo.pt`, o el preview vuelve a mentir.
+ */
+export function ptEfectivo(tramo: { pt: number; voladita: number }): number {
+  return tramo.voladita ? tramo.pt * FACTOR_VOLADITA : tramo.pt;
+}
+
 interface Atomo {
   texto: string;
   tramo: number;
@@ -171,7 +217,7 @@ interface Atomo {
  *   run espaciador, que es lo que baja al "$" chico hasta el precio grande.
  */
 export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas: Pieza[]; alto: number } {
-  const fontDe = (i: number) => cadenaFont(tramos[i].weight, op.ptToPx(tramos[i].pt), tramos[i].stack);
+  const fontDe = (i: number) => cadenaFont(tramos[i].weight, op.ptToPx(ptEfectivo(tramos[i])), tramos[i].stack);
   const anchoDe = (a: Atomo) => op.medir(a.texto, fontDe(a.tramo));
 
   const atomos: Atomo[] = [];
@@ -239,7 +285,7 @@ export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas
 
   const piezas: Pieza[] = [];
   let arriba = 0;
-  let ptAnterior = tramos.length ? tramos[0].pt : PT_POR_DEFECTO;
+  let ptAnterior = tramos.length ? ptEfectivo(tramos[0]) : PT_POR_DEFECTO;
   lineas.forEach((linea, n) => {
     // Átomos seguidos del mismo tramo se miden juntos: así entra el kerning.
     const grupos: { tramo: number; texto: string }[] = [];
@@ -250,8 +296,11 @@ export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas
     }
 
     let mayor = grupos.length ? grupos[0].tramo : -1;
-    for (const g of grupos) if (tramos[g.tramo].pt > tramos[mayor].pt) mayor = g.tramo;
-    let ptLinea = mayor >= 0 ? tramos[mayor].pt : ptAnterior;
+    // Quién manda en el renglón es el que se DIBUJA más grande, no el que
+    // declara el número más grande: un pedazo volado de 220 pt se dibuja más
+    // chico que uno de 160 sin volar.
+    for (const g of grupos) if (ptEfectivo(tramos[g.tramo]) > ptEfectivo(tramos[mayor])) mayor = g.tramo;
+    let ptLinea = mayor >= 0 ? ptEfectivo(tramos[mayor]) : ptAnterior;
     if (n === 0 && op.lineHeightPt && op.lineHeightPt > ptLinea) ptLinea = op.lineHeightPt;
     ptAnterior = ptLinea;
     const sizeLinea = op.ptToPx(ptLinea);
@@ -268,7 +317,7 @@ export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas
       const base = arriba + (ascent - descent) / 2 + (sizeLinea * ALTO_DE_LINEA) / 2;
       grupos.forEach((g, k) => {
         const tramo = tramos[g.tramo];
-        const sizePx = op.ptToPx(tramo.pt);
+        const sizePx = op.ptToPx(ptEfectivo(tramo));
         piezas.push({
           texto: g.texto,
           font: fontDe(g.tramo),
@@ -276,7 +325,12 @@ export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas
           tachado: tramo.tachado,
           sizePx,
           x,
-          y: base - (sizePx * tramo.voladita) / 100000,
+          // El DESPLAZAMIENTO se sigue midiendo sobre el cuerpo DECLARADO, no
+          // sobre el achicado: el esquema define la voladita como un
+          // porcentaje "del tamaño de la fuente", y es el que venía dando la
+          // altura correcta contra los PPTX reales. Solo cambia el cuerpo con
+          // el que se dibuja, que es lo que estaba mintiendo.
+          y: base - (op.ptToPx(tramo.pt) * tramo.voladita) / 100000,
           ancho: anchos[k],
         });
         x += anchos[k];

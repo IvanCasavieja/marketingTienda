@@ -13,7 +13,7 @@ from pptx.oxml.ns import qn
 from pptx.util import Cm, Pt
 
 from app.services.cenefas.data_engine import load_products_from_bytes
-from app.services.cenefas.font_metrics import ancho_texto_cm
+from app.services.cenefas.font_metrics import ancho_texto_cm, pt_efectivo
 from app.services.cenefas.formatters import split_caps
 # Lo único que el motor genérico sabe del mundo de pruebas: una llamada al
 # final del render, que no hace NADA en los otros mundos. Ver pruebas.py.
@@ -269,7 +269,14 @@ def _segmentos_medibles(comp: dict, product: dict, escala: float = 1.0) -> list[
             texto = str(seg.get("value", "") or "")
         if not texto:
             continue
-        salida.append((texto, ((seg.get("style") or {}).get("font_size") or base) * escala))
+        # Un pedazo VOLADO (superíndice) lo dibuja PowerPoint a ~2/3 del cuerpo
+        # que declara, sin cambiar el número. Medirlo por el declarado da un
+        # rectángulo una vez y media más grande que el real. Ver pt_efectivo
+        # en font_metrics.py. Mismo criterio en _piezas_con_tamano_manual.
+        tam = ((seg.get("style") or {}).get("font_size") or base) * escala
+        voladita = (seg.get("style") or {}).get("baseline",
+                                                (comp.get("style") or {}).get("baseline"))
+        salida.append((texto, pt_efectivo(tam, voladita) or tam))
     return salida
 
 
@@ -302,7 +309,14 @@ def _piezas_con_tamano_manual(comp: dict, product: dict) -> list[tuple[str, floa
         else:
             # Caja sin tamaño manual: cada segmento se dibuja con el suyo.
             tam = propio or fs
-        salida.append((texto, tam))
+        # Y si el pedazo va VOLADO, PowerPoint lo dibuja a ~2/3 del cuerpo que
+        # declara, sin cambiar el número. Medir con el declarado daba un
+        # rectángulo una vez y media más grande que el real, así que un cuadro
+        # con el "$" o los centavos volados parecía pisar a su vecino cuando
+        # no lo pisaba. Ver pt_efectivo en font_metrics.py.
+        seg_baseline = (seg.get("style") or {}).get("baseline",
+                                                    (comp.get("style") or {}).get("baseline"))
+        salida.append((texto, pt_efectivo(tam, seg_baseline) or tam))
     return salida
 
 

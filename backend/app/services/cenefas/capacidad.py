@@ -14,7 +14,7 @@ misma que decide el achique al exportar.
 """
 from __future__ import annotations
 
-from app.services.cenefas.font_metrics import ancho_texto_cm, digito_mas_ancho
+from app.services.cenefas.font_metrics import ancho_texto_cm, digito_mas_ancho, pt_efectivo
 from app.services.cenefas.variables import DECIMAL_VARS
 
 # Cuadros que se rellenan. Son los que llevan dato variable y cambian de
@@ -132,12 +132,19 @@ def capacidad_por_componente(definition: dict) -> dict[str, str]:
         if not b.get("width"):
             continue
         estilo = c.get("style") or {}
-        cuerpo = estilo.get("font_size")
+        # El cuerpo con el que se DIBUJA, no el declarado: un pedazo volado
+        # (superíndice) sale a ~2/3 y entran más caracteres de los que la
+        # cuenta cruda decía. Sin esto, el precio de Congelados A4 --220 pt
+        # declarados, ~145 dibujados-- rellenaba con dos dígitos cuando en el
+        # cartel real entran varios más.
+        cuerpo = pt_efectivo(estilo.get("font_size"), estilo.get("baseline"))
         if c.get("segments") and not c.get("_manual_font_override"):
             tam_segs = [
-                (seg.get("style") or {}).get("font_size")
+                pt_efectivo((seg.get("style") or {}).get("font_size"),
+                            (seg.get("style") or {}).get("baseline", estilo.get("baseline")))
                 for seg in c["segments"] if (seg.get("style") or {}).get("font_size")
             ]
+            tam_segs = [t for t in tam_segs if t]
             if tam_segs:
                 cuerpo = max(tam_segs)
         if not cuerpo:
