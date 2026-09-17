@@ -12,6 +12,7 @@ La segunda es la que importa de verdad: "hasta ahora lo que tenemos por suerte
 está funcionando bien, entonces precisamos que no salpique para otros lados".
 """
 import io
+import re
 import zipfile
 
 import pytest
@@ -52,21 +53,72 @@ def _bodypr_xml(pptx_bytes):
         )
 
 
-def _generar(category, texto="Una descripcion larguisima que no entra ni a palos"):
+def _generar(category, texto="Una descripcion larguisima que no entra ni a palos", filas=1):
     src = _pptx_base()
     d = {**import_pptx(src), "category": category}
-    pptx, _ = render_template_to_pptx(d, [{"descripcion": texto}], "a4", None, src)
+    pptx, _ = render_template_to_pptx(d, [{"descripcion": texto}] * filas, "a4", None, src)
     return _bodypr_xml(pptx)
+
+
+def _autoajuste_por_hoja(pptx_bytes):
+    """Qué autoajuste quedó en cada hoja, en orden."""
+    salida = []
+    with zipfile.ZipFile(io.BytesIO(pptx_bytes)) as z:
+        nombres = sorted(
+            (n for n in z.namelist() if n.startswith("ppt/slides/slide") and n.endswith(".xml")),
+            key=lambda n: int("".join(ch for ch in n if ch.isdigit())),
+        )
+        for n in nombres:
+            xml = z.read(n).decode("utf-8", "ignore")
+            if "spAutoFit" in xml:
+                salida.append("spAutoFit")
+            elif "normAutofit" in xml:
+                escala = re.search(r'normAutofit[^/>]*fontScale="(\d+)"', xml)
+                salida.append(f"normAutofit:{escala.group(1)}" if escala else "normAutofit")
+            else:
+                salida.append("noAutofit")
+    return salida
 
 
 # ---------------------------------------------------------------------------
 # 1. En pruebas: el autoajuste sale prendido
 # ---------------------------------------------------------------------------
 
-def test_en_pruebas_el_pptx_sale_con_el_autoajuste_activado():
-    xml = _generar("pruebas")
-    assert "normAutofit" in xml, "el mundo de pruebas tiene que salir con autoajuste"
-    assert "noAutofit" not in xml, "quedó el apagado de producción"
+def test_en_pruebas_cada_hoja_lleva_su_variante_del_ciclo():
+    # El experimento: un solo PPTX donde lo UNICO que cambia entre hojas es el
+    # autoajuste. Si dos hojas salieran iguales, compararlas no diria nada.
+    src = _pptx_base()
+    d = {**import_pptx(src), "category": "pruebas"}
+    largo = "YERBA CANARIAS TRADICIONAL 1 KG con una coletilla larga"
+    pptx, _ = render_template_to_pptx(d, [{"descripcion": largo}] * 5, "a4", None, src)
+    hojas = _autoajuste_por_hoja(pptx)
+    assert len(hojas) == 5
+    assert hojas[0] == "noAutofit", "la hoja 1 es el control: lo mismo que produccion"
+    assert hojas[1] == "normAutofit", "la hoja 2 va sin escala, a proposito"
+    assert hojas[2] == "normAutofit:50000", "la hoja 3 lleva el 50% puesto a mano"
+    assert hojas[3].startswith("normAutofit"), "la hoja 4 lleva la escala medida"
+    assert hojas[4] == "spAutoFit"
+    assert len(set(hojas)) == 5, f"dos hojas salieron iguales: {hojas}"
+
+
+def test_la_escala_medida_achica_un_texto_que_no_entra():
+    # Un texto que desborda tiene que salir con una escala MENOR al 100%; si
+    # saliera al 100% el modo no estaria midiendo nada.
+    src = _pptx_base()
+    d = {**import_pptx(src), "category": "pruebas"}
+    largo = "UNA DESCRIPCION DESMESURADAMENTE LARGA QUE NO ENTRA NI A PALOS EN ESA CAJITA"
+    pptx, _ = render_template_to_pptx(d, [{"descripcion": largo}] * 4, "a4", None, src)
+    hoja4 = _autoajuste_por_hoja(pptx)[3]
+    assert ":" in hoja4, f"la hoja de escala medida salio sin escala: {hoja4}"
+    escala = int(hoja4.split(":")[1])
+    assert 25000 <= escala < 100000, f"escala fuera de rango: {escala}"
+
+
+def test_la_escala_medida_no_achica_lo_que_ya_entra():
+    src = _pptx_base()
+    d = {**import_pptx(src), "category": "pruebas"}
+    pptx, _ = render_template_to_pptx(d, [{"descripcion": "Corto"}] * 4, "a4", None, src)
+    assert _autoajuste_por_hoja(pptx)[3] == "normAutofit", "achico un texto que entraba"
 
 
 def test_en_pruebas_se_activa_en_TODOS_los_cuadros():
@@ -118,15 +170,20 @@ def test_una_definicion_sin_mundo_no_es_de_pruebas():
 # 3. El XML tiene que quedar bien formado, no solo tener el tag
 # ---------------------------------------------------------------------------
 
-def test_el_autoajuste_queda_en_su_lugar_del_esquema():
-    # El orden de los hijos de a:bodyPr lo fija el esquema: el autoajuste va
-    # antes de a:scene3d. Appendearlo al final deja un XML que PowerPoint
-    # rechaza, y eso no se nota hasta que alguien abre el archivo.
-    xml = _generar("pruebas")
-    assert xml.count("normAutofit") >= 1
-    # Ningún cuadro puede quedar con dos autoajustes a la vez: son
-    # mutuamente excluyentes.
-    assert "noAutofit" not in xml and "spAutoFit" not in xml
+def test_ningun_cuadro_queda_con_dos_autoajustes():
+    # Son mutuamente excluyentes en el esquema. Un cuadro con dos es un XML
+    # que PowerPoint rechaza, y eso no se nota hasta que alguien lo abre.
+    src = _pptx_base()
+    d = {**import_pptx(src), "category": "pruebas"}
+    pptx, _ = render_template_to_pptx(d, [{"descripcion": "Texto"}] * 5, "a4", None, src)
+    with zipfile.ZipFile(io.BytesIO(pptx)) as z:
+        for n in z.namelist():
+            if not (n.startswith("ppt/slides/slide") and n.endswith(".xml")):
+                continue
+            xml = z.read(n).decode("utf-8", "ignore")
+            for body in re.findall(r"<a:bodyPr.*?(?:</a:bodyPr>|/>)", xml, re.S):
+                cuantos = sum(body.count(t) for t in ("noAutofit", "normAutofit", "spAutoFit"))
+                assert cuantos <= 1, f"{n}: un bodyPr con {cuantos} autoajustes -> {body[:120]}"
 
 
 def test_el_archivo_de_pruebas_sigue_abriendose():
