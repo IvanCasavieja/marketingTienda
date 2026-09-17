@@ -314,6 +314,53 @@ def test_combo_con_total_en_promo_no_tapa_el_precio_unitario():
     assert "129" in runs, f"se perdio el total del combo: {runs!r}"
 
 
+def test_combo_imprime_la_cocarda_aunque_el_diseno_la_encime_al_precio():
+    # Bug real (Ivan, 17/09/2026): "Empanadas horneadas congeladas" salia sin
+    # el "3x" arriba del precio en la 3xA4 de Redexpres -- la MISMA fila salia
+    # bien en la A4. El dato estaba perfecto (tipoOferta="3x",
+    # promoOferta="160"): lo borraba la regla de excluyentes, que escondia la
+    # cocarda cuando promoOferta la pisaba mas del 50%. La 3xA4 encima las dos
+    # cajas 60-70% y la A4 solo 43%, asi que la misma oferta se perdia en una
+    # y salia en la otra.
+    #
+    # Las medidas de abajo son las reales de la plantilla (cocarda 8,48x2,13cm
+    # en 1,68/3,58; el cuadro del precio 19,83x4,40 en 1,41/4,29): 67% de
+    # solape, justo por encima del viejo umbral.
+    src = _pptx_con_cajas(
+        ("<<tipoOferta>>",                    1.682, 3.583,  8.478, 2.133),
+        ("<<unidadMoneda>><<precioOferta>>",  1.410, 4.290, 19.827, 4.403),
+        ("<<promoOferta>>",                   1.410, 4.290, 19.827, 4.403),
+    )
+    d = import_pptx(src)
+    pptx, _ = render_template_to_pptx(
+        d, [{"tipoOferta": "3x", "promoOferta": "160",
+             "unidadMoneda": "$", "precioOferta": "53"}],
+        "a4", None, src)
+    runs = _runs_del_pptx(pptx)
+    assert "3x" in runs, f"se perdio la cocarda del combo: {runs!r}"
+    assert "160" in runs, f"se perdio el total del combo: {runs!r}"
+
+
+def test_mxn_encimado_sigue_sin_repetir_el_literal():
+    # La contracara del test de arriba, con la MISMA geometria: si el literal
+    # es el mismo en las dos variables (M x N viejo, antes de que el
+    # Convertidor dejara tipoOferta vacia), sigue saliendo una sola vez. Eso
+    # ya no lo decide la geometria sino el contenido, y tiene que aguantar sin
+    # la entrada de tipoOferta en _EXCLUYENTES.
+    src = _pptx_con_cajas(
+        ("<<tipoOferta>>",                    1.682, 3.583,  8.478, 2.133),
+        ("<<unidadMoneda>><<precioOferta>>",  1.410, 4.290, 19.827, 4.403),
+        ("<<promoOferta>>",                   1.410, 4.290, 19.827, 4.403),
+    )
+    d = import_pptx(src)
+    pptx, _ = render_template_to_pptx(
+        d, [{"tipoOferta": "2x1", "promoOferta": "2x1",
+             "unidadMoneda": "$", "precioOferta": "49,50"}],
+        "a4", None, src)
+    runs = _runs_del_pptx(pptx)
+    assert runs.count("2x1") == 1, f"el literal salio {runs.count('2x1')} veces: {runs!r}"
+
+
 def test_combo_muestra_el_precio_con_cocarda():
     # En un combo promoOferta viene vacia -> el precio unitario se ve, con la
     # cocarda arriba, aunque el diseno tenga el cuadro de promoOferta.

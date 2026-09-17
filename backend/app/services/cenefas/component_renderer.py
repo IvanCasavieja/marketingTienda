@@ -312,17 +312,39 @@ def _piezas_con_tamano_manual(comp: dict, product: dict) -> list[tuple[str, floa
 # texto no tapa nada --se leen los dos encimados-- asi que la exclusion se
 # resuelve acá: cuando hay mecanica se dibuja el literal, cuando no, el precio.
 #
-# Los decimales siguen a su entero: sin esto, un M x N de "6x4" imprimia el
-# literal y al lado le quedaba colgado el ",33" del precio que ya no se ve.
+# OJO: esto vale para dos cuadros que compiten por EL MISMO lugar. Una cocarda
+# (tipoOferta) tambien vive encimada al precio y NO compite con el: se lee
+# junto, no en lugar de. Ver abajo por que salio de esta lista.
 _EXCLUYENTES: dict[str, tuple[str, ...]] = {
-    # Cuando promoOferta trae valor (solo M x N desde 2026-08-29) y el diseno
-    # TIENE su cuadro, tapa al precio -- y tambien a la cocarda de tipoOferta:
-    # en un M x N las dos llevan el MISMO literal, y un diseno con ambos
-    # cuadros (la A4 REDEX) imprimia "2X1" dos veces, una arriba de la otra
-    # (visto en el render real de mundo hogar, pag. 54). Solo aplica si el
-    # cuadro de promoOferta existe de verdad: Rompe del Finde no lo tiene y
-    # su cocarda sigue saliendo.
-    "promoOferta": ("precioOferta", "decimalPrecioOferta", "tipoOferta"),
+    # Cuando promoOferta trae valor y el diseno TIENE su cuadro, tapa al
+    # precio. Solo aplica si el cuadro de promoOferta existe de verdad:
+    # Rompe del Finde no lo tiene y su precio sigue saliendo.
+    #
+    # `tipoOferta` estaba en esta lista desde el 2026-08-28 y se saco el
+    # 17/09/2026: la cocarda de un COMBO se perdia. Entro cuando promoOferta
+    # era solo de M x N, donde la cocarda y el cuadro grande llevan el MISMO
+    # literal y la A4 REDEX imprimia "2X1" dos veces (mundo hogar, pag. 54).
+    # Pero la geometria es la senal equivocada para ESTE par: una cocarda se
+    # dibuja a proposito pisando el cuadro del precio, asi que el solape no
+    # distingue "repetido" de "puesto ahi por el diseno". En un combo
+    # tipoOferta="3x" y promoOferta="160" son cosas DISTINTAS que se leen
+    # juntas ("3x $160"), y la regla borraba la cocarda en cuanto el diseno
+    # las encimaba mas del 50%: la 3xA4 de Redexpres las encima 60-70% y
+    # perdia el "3x" en toda fila de combo, mientras la A4 --mismo diseno,
+    # 43% de solape-- lo imprimia bien (visto en vivo, Empanadas horneadas
+    # congeladas, 17/09/2026).
+    #
+    # El literal duplicado de M x N que motivo la entrada ya no depende de
+    # esto y queda cubierto dos veces: el Convertidor deja `tipoOferta` VACIA
+    # en M x N desde el 16/09/2026 (ver resolver_mecanica), y el chequeo por
+    # CONTENIDO de _render_slide (literales_repetidos, 07/09/2026) apaga la
+    # cocarda cuando va a imprimir exactamente lo mismo que promoOferta,
+    # esten las cajas donde esten.
+    #
+    # Los decimales siguen a su entero: sin esto, un M x N de "6x4" imprimia
+    # el literal y al lado le quedaba colgado el ",33" del precio que ya no
+    # se ve.
+    "promoOferta": ("precioOferta", "decimalPrecioOferta"),
 }
 
 
