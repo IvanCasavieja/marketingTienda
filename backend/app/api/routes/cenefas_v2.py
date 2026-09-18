@@ -32,6 +32,7 @@ from app.services.cenefas.component_renderer import (
 )
 from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.reglas_fijas import asegurar_reglas_fijas
+from app.services.cenefas.reglas_medicion import CRUDO as _REGLAS_DE_MEDICION
 from app.services.cenefas.component_renderer import (
     _detect_slot_bands, detectar_solapes, preparar_componentes,
 )
@@ -156,6 +157,26 @@ async def list_formats(_: User = Depends(require_permission("cenefas.view"))):
         }
         for fmt_id, fmt in FORMATS.items()
     ]
+
+
+@router.get("/reglas-de-medicion")
+async def get_reglas_de_medicion(_: User = Depends(require_permission("cenefas.view"))):
+    """Las reglas de medicion, para que el preview mida como mide el exportador.
+
+    Una cenefa se dibuja dos veces --acá se arma el PPTX, en el navegador se
+    dibuja el preview-- y cada regla de medición estaba escrita a mano en los
+    dos lados. Cuando una se tocaba y la otra no, la pantalla dejaba de mostrar
+    lo que salía impreso y nadie se enteraba hasta que un cartel salía mal.
+
+    Ahora los números viven en UN solo archivo (app/data/reglas_de_medicion.json)
+    y esto es la ventanita por la que el navegador los lee: los dos despliegues
+    están rooteados cada uno en su carpeta, así que el frontend no puede
+    importar ese archivo -- lo pide.
+
+    Devuelve el JSON TAL CUAL, sin rearmar nada: si acá se reformateara, la
+    forma pasaría a ser un segundo lugar donde se puede desfasar.
+    """
+    return _REGLAS_DE_MEDICION
 
 
 class _SlotBandsRequest(BaseModel):

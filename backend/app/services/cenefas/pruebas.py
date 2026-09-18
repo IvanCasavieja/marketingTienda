@@ -52,6 +52,7 @@ from lxml import etree
 from pptx.oxml.ns import qn
 
 from app.services.cenefas.font_metrics import ancho_texto_cm
+from app.services.cenefas.reglas_medicion import REGLAS
 
 # El slug del destino de pruebas, tal como está en la tabla `cenefa_destinos`
 # ("Pruebas -- Corridas de prueba. No suman al informe de produccion",
@@ -184,7 +185,7 @@ def _escala_que_entra(shape) -> int:
 
     # Alto: cuántos renglones entran, contando el corte por palabra que hace
     # PowerPoint cuando el texto es más ancho que la caja.
-    alto_linea = tam / 72.0 * 2.54 * 1.2
+    alto_linea = tam / 72.0 * 2.54 * REGLAS.alto_de_linea
     renglones = 0
     for linea in (texto.splitlines() or [""]):
         w = ancho_texto_cm(linea, tam, familia, negrita)

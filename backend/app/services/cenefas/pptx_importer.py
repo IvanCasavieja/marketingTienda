@@ -8,6 +8,7 @@ from pptx import Presentation
 from pptx.enum.text import PP_ALIGN
 
 from app.services.cenefas.font_metrics import ancho_texto_cm
+from app.services.cenefas.reglas_medicion import REGLAS
 from app.services.cenefas.reglas_fijas import asegurar_reglas_fijas
 from app.services.cenefas.variables import resolver_alias, INTERNAL_SET, is_decimal, is_price, norm, resolve
 
@@ -499,7 +500,14 @@ def _detect_placeholder(text: str) -> tuple[str, str, str] | None:
 # Tamaño por defecto de PowerPoint cuando no hay ninguno declarado en ningún
 # lado. Último recurso: sin un número acá, el achique de texto no puede correr
 # (no sabe de qué partir) y el cuadro se desborda sin que nadie lo frene.
-_FONT_SIZE_DEFAULT_PT = 18.0
+#
+# Sale del archivo único (app/data/reglas_de_medicion.json) y NO se escribe acá.
+# Hasta el 18/09/2026 este archivo tenía su propia copia del 18.0 y quedó fuera
+# del barrido que controla las copias: el importador MIDE texto (usa
+# ancho_texto_cm), así que una copia desfasada acá le cambia el tamaño con el
+# que entra cada cuadro al importar una plantilla, y de ahí en adelante todo el
+# resto mide sobre un dato ya equivocado.
+_FONT_SIZE_DEFAULT_PT = REGLAS.pt_por_defecto
 
 
 def _font_size_pt(run, para, tf) -> float:

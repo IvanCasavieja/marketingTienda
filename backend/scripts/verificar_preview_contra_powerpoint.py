@@ -88,6 +88,7 @@ from app.services.cenefas.font_metrics import (  # noqa: E402
     fuentes_conocidas,
     pt_efectivo,
 )
+from app.services.cenefas.reglas_medicion import REGLAS  # noqa: E402
 from app.services.cenefas.layout_engine import get_format  # noqa: E402
 from app.services.cenefas.variables import DECIMAL_VARS, PRICE_VARS  # noqa: E402
 
@@ -764,8 +765,9 @@ def informar(todas: list[Comparacion]) -> None:
 
     # --- La negrita, que también es UN número global --------------------------
     #
-    # font_metrics ensancha un 8 % (_FACTOR_BOLD) cualquier texto en negrita, sea
-    # la fuente que sea. Es una estimación, nunca se midió, y se aplica a TODAS.
+    # font_metrics ensancha cualquier texto en negrita por `factor_negrita` (hoy
+    # 1,08), sea la fuente que sea. Es una estimación, nunca se midió, y se
+    # aplica a TODAS. El número sale de app/data/reglas_de_medicion.json.
     # Partir las cuentas por familia y por negrita la deja a la vista: si una
     # familia da bien en redonda y mal en negrita por el mismo porcentaje en
     # todas, el que está mal es el factor, no la tabla.
@@ -774,7 +776,7 @@ def informar(todas: list[Comparacion]) -> None:
         if c.div_ancho_pct is not None:
             por_peso.setdefault((c.familia_declarada, c.negrita), []).append(c.div_ancho_pct)
     print("\n" + "=" * 118)
-    print(f"NEGRITA  (_FACTOR_BOLD = 1.08 en font_metrics, el mismo para todas las fuentes)")
+    print(f"NEGRITA  (factor_negrita = {REGLAS.factor_negrita} en reglas_de_medicion.json, el mismo para todas las fuentes)")
     print("=" * 118)
     print(f"{'familia declarada':<30} {'redonda: n':>12} {'error %':>10}   "
           f"{'negrita: n':>12} {'error %':>10}   {'lo que agrega la negrita':>24}")
@@ -787,7 +789,7 @@ def informar(todas: list[Comparacion]) -> None:
         mb = sum(b) / len(b) if b else None
         # Cuánto ensancha la negrita DE VERDAD en esa familia: el 1,08 corregido
         # por lo que cada lado se desvía. Solo tiene sentido con las dos medidas.
-        real = (1.08 * (1 + mr / 100) / (1 + mb / 100)) if (mr is not None and mb is not None) else None
+        real = (REGLAS.factor_negrita * (1 + mr / 100) / (1 + mb / 100)) if (mr is not None and mb is not None) else None
         txt_r = "-" if mr is None else f"{mr:+.1f}"
         txt_b = "-" if mb is None else f"{mb:+.1f}"
         print(f"{f[:29]:<30} {len(r):>12} {txt_r:>10}   {len(b):>12} {txt_b:>10}   "

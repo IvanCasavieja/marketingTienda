@@ -14,20 +14,15 @@
 import type { CenefaComponent, ComponentStyle, TextSegment } from "@/types/cenefas";
 import { resolverFuente } from "@/lib/cenefas/fuentes";
 import { tramosSmartBold } from "@/lib/cenefas/smartBold";
+import { reglas } from "@/lib/cenefas/reglasDeMedicion";
 
-// Los mismos valores por defecto con los que el canvas dibuja un cuadro sin
-// estilo propio (ver buildComponentGroup en Canvas.tsx).
-const PT_POR_DEFECTO = 12;
 const COLOR_POR_DEFECTO = "#1e293b";
-// Konva.Text se arma con lineHeight 1.2: los renglones de acá tienen que medir
-// lo mismo para no correrse respecto de los cuadros que siguen por ese camino.
-//
-// ESPEJADO en backend/app/services/cenefas/component_renderer.py
-// (_INTERLINEADO): es el mismo interlineado con el que el exportador calcula
-// cuántas líneas entran en un cuadro. Si se separan, el preview parte el texto
-// en una cantidad de renglones distinta de la que sale impresa.
-// backend/tests/test_factor_voladita.py compara los dos y falla si difieren.
-const ALTO_DE_LINEA = 1.2;
+// EL TAMANO POR DEFECTO Y EL ALTO DE LINEA NO SE ESCRIBEN ACA. Salen de
+// reglasDeMedicion.ts, que los pide al backend, porque son las MISMAS reglas
+// con las que el exportador decide cuántos renglones entran en un cuadro. Si
+// este lado tuviera su propia copia y alguien tocara una sola, una descripción
+// que en pantalla entra en dos líneas saldría impresa en tres y se le montaría
+// encima al precio. Ver backend/app/data/reglas_de_medicion.json.
 // El achique del backend deja 91.29999999999998 en un segmento y 91.3 en la
 // caja (Red Expres 17): son el mismo tamaño, no un estilo propio.
 const TOLERANCIA_PT = 0.05;
@@ -65,7 +60,7 @@ function difiereDeLaCaja(estilo: EstiloSegmento, caja: ComponentStyle): boolean 
   const fuente = resolverFuente(estilo.font_family, estilo.font_bold);
   const fuenteCaja = resolverFuente(caja.font_family, caja.font_bold);
   return (
-    Math.abs((estilo.font_size ?? PT_POR_DEFECTO) - (caja.font_size ?? PT_POR_DEFECTO)) > TOLERANCIA_PT
+    Math.abs((estilo.font_size ?? reglas().ptPorDefecto) - (caja.font_size ?? reglas().ptPorDefecto)) > TOLERANCIA_PT
     || fuente.weight !== fuenteCaja.weight
     || fuente.stack !== fuenteCaja.stack
     || (estilo.color ?? COLOR_POR_DEFECTO).toLowerCase() !== (caja.color ?? COLOR_POR_DEFECTO).toLowerCase()
@@ -122,7 +117,7 @@ export function tramosConEstiloPropio(
       const fuente = resolverFuente(estilo.font_family, negrita);
       tramos.push({
         texto: parte,
-        pt: estilo.font_size ?? PT_POR_DEFECTO,
+        pt: estilo.font_size ?? reglas().ptPorDefecto,
         weight: fuente.weight,
         stack: fuente.stack,
         color: estilo.color ?? COLOR_POR_DEFECTO,
@@ -165,55 +160,24 @@ export function cadenaFont(weight: number, sizePx: number, stack: string): strin
 }
 
 /**
- * Cuánto achica PowerPoint un pedazo VOLADO (superíndice/subíndice).
- *
- * PowerPoint no dibuja un run volado en su cuerpo declarado: lo dibuja a dos
- * tercios. Y no cambia el número: si abrís el PPTX y mirás la casilla del
- * tamaño, sigue diciendo el original. De ahí que un precio "de 180" se viera
- * mucho más chico que 180 sin que nadie lo hubiera achicado (reportado por
- * Ivan el 17/09/2026, Rompe Precios Congelados A4).
- *
- * El achique es BINARIO, no proporcional al desplazamiento. Subir un pedazo
- * 5 % o 95 % da el mismo tamaño; lo único que cambia es la altura. Solo vuelve
- * a su cuerpo completo con desplazamiento 0. Por eso mover el "$" con las
- * flechitas del panel nunca pareció cambiarle el tamaño: ya estaba achicado
- * antes de tocarlo. Eso está MEDIDO, no deducido.
- *
- * CÓMO SE MIDIÓ (18/09/2026). Antes acá decía 0,65 --el factor clásico de
- * Office-- sacado de dos cuentas indirectas sobre un cartel real, y con la
- * advertencia de que no se había podido verificar por no haber PowerPoint en
- * la máquina de desarrollo. Ahora se verificó:
- *
- *   1. Un PPTX con "888" en Impact, Arial, Arial Black y Calibri, a 100 pt
- *      declarados, repetido con baseline 0, 5 %, 30 %, 95 % y -40 %.
- *   2. Exportado a PDF con PowerPoint DE VERDAD (POWERPNT.EXE por COM/pywin32,
- *      SaveAs formato 32).
- *   3. Leído con PyMuPDF, mirando el `size` real de cada span.
- *
- * Dio 0,6675 / 0,6677 / 0,6675 / 0,6677 en las cuatro tipografías y los cuatro
- * desplazamientos, más 0,6650 repitiendo con otro cuerpo declarado: dos
- * tercios, sin depender de la fuente ni de cuánto se levante el pedazo. El
- * 0,65 viejo quedaba 2,6 % corto y el preview dibujaba de más.
- *
- * ESTE NÚMERO ES DE POWERPOINT, NO ES UNIVERSAL: el mismo PPTX convertido con
- * LibreOffice da 0,580. Hoy se imprime desde PowerPoint, así que manda 0,667;
- * si mañana cambia la cadena de impresión, este es el número a recalibrar con
- * la receta de arriba.
- *
- * ESPEJADO en backend/app/services/cenefas/font_metrics.py (FACTOR_VOLADITA).
- * Si se toca acá, tocarlo allá -- y backend/tests/test_factor_voladita.py lee
- * este archivo como texto y falla si los dos se separan, así que el olvido se
- * ve solo.
- */
-export const FACTOR_VOLADITA = 0.667;
-
-/**
  * El cuerpo con el que de verdad se dibuja un tramo, ya con el achique de la
  * voladita aplicado. Todo lo que mida o dibuje texto tiene que usar ESTO y no
  * `tramo.pt`, o el preview vuelve a mentir.
+ *
+ * PowerPoint no dibuja un pedazo volado (el "$", los centavos) en su cuerpo
+ * declarado: lo dibuja a dos tercios, y no cambia el número -- si abrís el
+ * PPTX, la casilla del tamaño sigue diciendo el original. El achique es
+ * BINARIO: subir un pedazo 5 % o 95 % da el mismo tamaño, solo cambia la
+ * altura; recién vuelve al completo con desplazamiento 0. Por eso mover el "$"
+ * con las flechitas del panel nunca pareció cambiarle el tamaño.
+ *
+ * EL FACTOR NO SE ESCRIBE ACA: sale de reglasDeMedicion.ts, que lo pide al
+ * backend. Está medido contra PowerPoint de verdad y la medición entera está
+ * contada en backend/app/data/reglas_de_medicion.json, que es el único lugar
+ * donde vive el número.
  */
 export function ptEfectivo(tramo: { pt: number; voladita: number }): number {
-  return tramo.voladita ? tramo.pt * FACTOR_VOLADITA : tramo.pt;
+  return tramo.voladita ? tramo.pt * reglas().factorVoladita : tramo.pt;
 }
 
 interface Atomo {
@@ -305,7 +269,7 @@ export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas
 
   const piezas: Pieza[] = [];
   let arriba = 0;
-  let ptAnterior = tramos.length ? ptEfectivo(tramos[0]) : PT_POR_DEFECTO;
+  let ptAnterior = tramos.length ? ptEfectivo(tramos[0]) : reglas().ptPorDefecto;
   lineas.forEach((linea, n) => {
     // Átomos seguidos del mismo tramo se miden juntos: así entra el kerning.
     const grupos: { tramo: number; texto: string }[] = [];
@@ -334,7 +298,7 @@ export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas
       // la base queda a medio renglón más la mitad de ascendente - descendente.
       const t = tramos[mayor];
       const { ascent, descent } = op.metricas(cadenaFont(t.weight, sizeLinea, t.stack));
-      const base = arriba + (ascent - descent) / 2 + (sizeLinea * ALTO_DE_LINEA) / 2;
+      const base = arriba + (ascent - descent) / 2 + (sizeLinea * reglas().altoDeLinea) / 2;
       grupos.forEach((g, k) => {
         const tramo = tramos[g.tramo];
         const sizePx = op.ptToPx(ptEfectivo(tramo));
@@ -356,7 +320,7 @@ export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas
         x += anchos[k];
       });
     }
-    arriba += sizeLinea * ALTO_DE_LINEA;
+    arriba += sizeLinea * reglas().altoDeLinea;
   });
 
   return { piezas, alto: arriba };

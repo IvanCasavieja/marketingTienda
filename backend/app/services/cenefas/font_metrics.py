@@ -22,63 +22,35 @@ import pathlib
 import re
 import unicodedata
 
+from app.services.cenefas.reglas_medicion import REGLAS
+
 logger = logging.getLogger(__name__)
 
 _RUTA = pathlib.Path(__file__).parent.parent.parent / "data" / "font_metrics.json"
 
-# Ancho de reserva para una tipografía que no está en la tabla. Es un promedio
-# de las nueve medidas, así que un diseño con una fuente desconocida queda
-# aproximado --como antes-- en vez de romper.
-_EM_FALLBACK = 0.52
-# Las negritas ensanchan sin que cambie el nombre de la familia.
-_FACTOR_BOLD = 1.08
+# Ancho de reserva para una tipografía que no está en la tabla, y cuánto
+# ensancha la negrita. Los dos salen de app/data/reglas_de_medicion.json, con
+# su explicación: no los escribas acá.
+_EM_FALLBACK = REGLAS.em_fallback
+_FACTOR_BOLD = REGLAS.factor_negrita
 
 # ---------------------------------------------------------------------------
 # El achique de un pedazo VOLADO (superíndice / subíndice)
 # ---------------------------------------------------------------------------
 #
-# PowerPoint no dibuja un run volado en su cuerpo declarado: lo dibuja a unos
-# dos tercios. Y NO cambia el número: al abrir el PPTX la casilla del tamaño
-# sigue diciendo el original. De ahí que un precio "de 180" se viera mucho más
-# chico que 180 sin que nadie lo hubiera achicado (reportado por Ivan el
-# 17/09/2026, Rompe Precios Congelados A4, donde el diseño le dejó
-# baseline=30000 al precio entero y no solo al "$").
+# PowerPoint no dibuja un run volado en su cuerpo declarado: lo dibuja a dos
+# tercios, y NO cambia el número --al abrir el PPTX la casilla del tamaño sigue
+# diciendo el original--. De ahí que un precio "de 180" se viera mucho más
+# chico que 180 sin que nadie lo hubiera achicado (Ivan, 17/09/2026, Rompe
+# Precios Congelados A4). El achique es BINARIO: subir un pedazo 5 % o 95 % da
+# el mismo cuerpo; solo vuelve al completo con desplazamiento 0.
 #
-# El achique es BINARIO, no proporcional al desplazamiento: subir un pedazo 5 %
-# o 95 % da el mismo cuerpo, solo cambia la altura. Vuelve a su tamaño completo
-# únicamente con desplazamiento 0. Eso NO es una suposición: está medido, ver
-# abajo.
-#
-# CÓMO SE MIDIÓ (18/09/2026). Hasta acá el número era 0,65 --el factor clásico
-# de Office-- estimado desde dos cuentas indirectas sobre un cartel real, y con
-# la advertencia de que no se había podido verificar porque la máquina de
-# desarrollo no tenía PowerPoint. Ahora sí se verificó, de esta forma:
-#
-#   1. Se armó un PPTX con "888" en Impact, Arial, Arial Black y Calibri, a
-#      100 pt declarados, repetido con baseline 0, 5 %, 30 %, 95 % y -40 %.
-#   2. Se exportó a PDF con PowerPoint DE VERDAD (POWERPNT.EXE manejado por
-#      COM/pywin32, SaveAs con formato 32).
-#   3. Se leyó ese PDF con PyMuPDF y se miró el `size` real de cada span.
-#
-# Resultados: 0,6675 / 0,6677 / 0,6675 / 0,6677 sobre las cuatro tipografías y
-# los cuatro desplazamientos, más 0,6650 repitiendo con otro cuerpo declarado.
-# O sea: DOS TERCIOS. El factor no depende de la tipografía ni del
-# desplazamiento --confirmando que el achique es binario--, y el 0,65 anterior
-# quedaba 2,6 % corto: un precio de 220 pt se dibujaba 3,7 pt más grande de lo
-# que el motor creía.
-#
-# ESTE NÚMERO ES DE POWERPOINT, NO ES UNIVERSAL. El mismo PPTX convertido con
-# LibreOffice (soffice --headless --convert-to pdf) da 0,580. Distinto
-# programa, distinto factor. Hoy la cadena de impresión es PowerPoint, así que
-# manda 0,667; si mañana se imprime desde otro lado, ESTE es el número a
-# recalibrar y el procedimiento de arriba es la receta para hacerlo.
-#
-# ESTE VALOR ESTÁ ESPEJADO en frontend/lib/cenefas/textoEnriquecido.ts
-# (FACTOR_VOLADITA). Si se toca acá, tocarlo allá: el preview y la medición
-# tienen que coincidir o vuelve el problema que esto viene a arreglar. Para que
-# nadie se olvide, backend/tests/test_factor_voladita.py lee el .ts como texto
-# y falla si los dos números se separan.
-FACTOR_VOLADITA = 0.667
+# EL NÚMERO NO SE ESCRIBE ACÁ. Sale de app/data/reglas_de_medicion.json, que es
+# el único lugar donde viven las reglas de medición, y ahí está también cómo se
+# midió (PPTX exportado a PDF con PowerPoint de verdad vía COM/pywin32 y leído
+# con PyMuPDF), por qué es de PowerPoint y no universal, y la receta para
+# recalibrarlo si cambia la cadena de impresión.
+FACTOR_VOLADITA = REGLAS.factor_voladita
 
 
 def pt_efectivo(pt: float | None, baseline) -> float | None:
@@ -94,8 +66,6 @@ def pt_efectivo(pt: float | None, baseline) -> float | None:
         return pt * FACTOR_VOLADITA if int(baseline) != 0 else pt
     except (TypeError, ValueError):
         return pt
-# Las negritas ensanchan sin que cambie el nombre de la familia.
-_FACTOR_BOLD = 1.08
 
 
 def _cargar() -> dict:

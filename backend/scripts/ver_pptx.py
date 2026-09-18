@@ -1,3 +1,5 @@
+import sys
+import pathlib
 """Dibuja una hoja de un PPTX como PNG, para poder MIRARLA.
 
 No hay PowerPoint ni LibreOffice en esta maquina, asi que no se puede convertir
@@ -17,6 +19,13 @@ import io, os, sys
 from PIL import Image, ImageDraw, ImageFont
 from pptx import Presentation
 from pptx.util import Emu
+
+# Las reglas de medición salen del archivo único (app/data/reglas_de_medicion.json).
+# Este visor dibuja un PNG de un PPTX para chequear A OJO si el motor miente, así
+# que tenía cinco copias a mano del alto de línea y del tamaño por defecto: si el
+# visor miente, miente justo la herramienta con la que uno va a verificar.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from app.services.cenefas.reglas_medicion import REGLAS  # noqa: E402
 
 CM = 360000
 FUENTES = {
@@ -107,9 +116,9 @@ def dibujar(ruta_pptx, hoja=0, salida=None, ppcm=38):
         for p in s.text_frame.paragraphs:
             rr = [r for r in p.runs if r.text]
             if rr:
-                pt0 = rr[0].font.size.pt if rr[0].font.size else 18
+                pt0 = rr[0].font.size.pt if rr[0].font.size else REGLAS.pt_por_defecto
                 f0 = _fuente(rr[0].font.name, rr[0].font.bold, pt0/72*2.54*ppcm)
-                bloque += len(_partir("".join(r.text for r in rr), f0, ancho or W)) * pt0/72*2.54*ppcm*1.2
+                bloque += len(_partir("".join(r.text for r in rr), f0, ancho or W)) * pt0/72*2.54*ppcm*REGLAS.alto_de_linea
         anc = str(s.text_frame.vertical_anchor or "").lower()
         if "middle" in anc:   y += max(0, (alto - bloque) / 2)
         elif "bottom" in anc: y += max(0, alto - bloque)
@@ -124,7 +133,7 @@ def dibujar(ruta_pptx, hoja=0, salida=None, ppcm=38):
             # dibuja el precio a la mitad de lo que sale impreso.
             piezas = []
             for r in runs:
-                pt = r.font.size.pt if r.font.size else 18
+                pt = r.font.size.pt if r.font.size else REGLAS.pt_por_defecto
                 px = pt / 72 * 2.54 * ppcm
                 f = _fuente(r.font.name, r.font.bold, px)
                 try:
@@ -135,7 +144,7 @@ def dibujar(ruta_pptx, hoja=0, salida=None, ppcm=38):
 
             # Una sola linea si entra; si no, se parte por el run mas ancho.
             total = sum(pz[1].getlength(pz[0]) for pz in piezas)
-            alto_linea = max(pz[2] for pz in piezas) * 1.2
+            alto_linea = max(pz[2] for pz in piezas) * REGLAS.alto_de_linea
             if total <= (ancho or W) or len(piezas) > 1:
                 if "center" in alin:   lx = x0 + (ancho - total) / 2
                 elif "right" in alin:  lx = x0 + ancho - total
@@ -144,7 +153,7 @@ def dibujar(ruta_pptx, hoja=0, salida=None, ppcm=38):
                 for texto, f, px, col in piezas:
                     # Los runs chicos se alinean por ARRIBA de los grandes: asi
                     # es como se dibujan los centavos del precio.
-                    d.text((lx, base - px * 1.2), texto, font=f, fill=col)
+                    d.text((lx, base - px * REGLAS.alto_de_linea), texto, font=f, fill=col)
                     lx += f.getlength(texto)
                 y += alto_linea
             else:
@@ -155,7 +164,7 @@ def dibujar(ruta_pptx, hoja=0, salida=None, ppcm=38):
                     elif "right" in alin:  lx = x0 + ancho - lw
                     else:                  lx = x0
                     d.text((lx, y), linea, font=f, fill=col)
-                    y += px * 1.2
+                    y += px * REGLAS.alto_de_linea
     salida = salida or os.path.splitext(ruta_pptx)[0] + f"_hoja{hoja+1}.png"
     lienzo.save(salida)
     if _FALTANTES:

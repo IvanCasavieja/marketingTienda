@@ -15,6 +15,7 @@ from pptx.util import Cm, Pt
 from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.font_metrics import ancho_texto_cm, pt_efectivo
 from app.services.cenefas.formatters import split_caps
+from app.services.cenefas.reglas_medicion import REGLAS
 # Lo único que el motor genérico sabe del mundo de pruebas: una llamada al
 # final del render, que no hace NADA en los otros mundos. Ver pruebas.py.
 from app.services.cenefas.pruebas import aplicar_autofit as aplicar_autofit_de_pruebas
@@ -98,13 +99,15 @@ def apply_transform(value: str, transform: str | None) -> str:
 # donde la puso el diseño.
 
 
-# Inset interno por defecto de PowerPoint: 0,1" a cada lado (lIns/rIns =
-# 91440 EMU). Antes se descontaba 0,4 cm y el word-wrap simulado cortaba una
-# palabra más tarde que el real.
-_INSET_CM = 0.508
-
-# Interlineado tipico de una caja sin espaciado explicito.
-_INTERLINEADO = 1.2
+# Margen interno e interlineado: los dos salen de
+# app/data/reglas_de_medicion.json, que es el único lugar donde viven las
+# reglas de medición, porque el preview los necesita EXACTAMENTE iguales. Ahí
+# está el porqué de cada uno. No los escribas acá.
+#
+# Los alias se conservan porque los usa el resto del archivo y porque
+# backend/tests/test_tamano_manual_segmento.py importa _INSET_CM por nombre.
+_INSET_CM = REGLAS.inset_cm
+_INTERLINEADO = REGLAS.alto_de_linea
 
 # Letras que bajan de la línea de base.
 _DESCENDENTES = frozenset("gjpqy")
@@ -259,8 +262,9 @@ def _segmentos_medibles(comp: dict, product: dict, escala: float = 1.0) -> list[
     segs = comp.get("segments") or []
     if not any((seg.get("style") or {}).get("font_size") for seg in segs):
         return []
-    # 18 pt es el default real de PowerPoint cuando el cuadro no declara tamano.
-    base = (comp.get("style") or {}).get("font_size") or 18.0
+    # Cuerpo que se asume cuando el cuadro no declara tamaño: sale del archivo
+    # único de reglas (es el default real de PowerPoint).
+    base = (comp.get("style") or {}).get("font_size") or REGLAS.pt_por_defecto
     salida: list[tuple[str, float]] = []
     for seg in segs:
         if seg.get("type") == "variable":
@@ -292,7 +296,7 @@ def _piezas_con_tamano_manual(comp: dict, product: dict) -> list[tuple[str, floa
 
     Criterio de Ivan (11/09/2026): lo que se pone a mano manda donde se pone.
     """
-    fs = (comp.get("style") or {}).get("font_size") or 18.0
+    fs = (comp.get("style") or {}).get("font_size") or REGLAS.pt_por_defecto
     salida: list[tuple[str, float]] = []
     for seg in comp.get("segments") or []:
         if seg.get("type") == "variable":
@@ -524,7 +528,7 @@ def _rect_texto_real(comp: dict, product: dict) -> dict | None:
     if not b.get("width"):
         return None
     style = comp.get("style", {})
-    fs    = style.get("font_size") or 12
+    fs    = style.get("font_size") or REGLAS.pt_por_defecto
     fam   = style.get("font_family")
     bold  = bool(style.get("font_bold"))
 
@@ -640,8 +644,8 @@ def detectar_solapes(pares: list[tuple[dict, dict]]) -> list[dict]:
             # El que "invade" es el de texto más grande, que es el criterio con
             # el que el resolver elegía a quién achicar. Se conserva para que
             # el aviso señale el cuadro al que hay que ponerle la regla.
-            fa = ca.get("style", {}).get("font_size") or 12
-            fb = cb.get("style", {}).get("font_size") or 12
+            fa = ca.get("style", {}).get("font_size") or REGLAS.pt_por_defecto
+            fb = cb.get("style", {}).get("font_size") or REGLAS.pt_por_defecto
             invasor, invadido, suyo = (ca, cb, pa) if fa >= fb else (cb, ca, pb)
             avisos.append({
                 "component_id":   invasor.get("id"),

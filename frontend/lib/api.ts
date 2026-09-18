@@ -290,6 +290,14 @@ export const cenefasV2Api = {
 
   getFormats: () => api.get<CenefaFormat[]>("/tools/cenefas/v2/formats"),
 
+  // Las reglas de medicion, que viven en UN solo archivo del backend
+  // (app/data/reglas_de_medicion.json). El preview las PIDE en vez de tener su
+  // propia copia: hasta el 18/09/2026 cada numero estaba escrito a mano de los
+  // dos lados y cuando uno se tocaba y el otro no, la pantalla dejaba de
+  // mostrar lo que salia impreso. Ver lib/cenefas/reglasDeMedicion.ts.
+  getReglasDeMedicion: () =>
+    api.get<Record<string, { valor: number }>>("/tools/cenefas/v2/reglas-de-medicion"),
+
   // Agrupa los componentes de una plantilla multi-banda (3xA4/6xA4/A5/
   // pinchos) en bandas -- una por cenefa de la hoja. Reusa la misma lógica
   // que ya corre en generación (_detect_slot_bands), para que el editor

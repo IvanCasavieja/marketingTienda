@@ -17,6 +17,7 @@ import { resolverFuente } from "@/lib/cenefas/fuentes";
 import { mascaraNegrita, tieneMarca } from "@/lib/cenefas/smartBold";
 import { tramosConEstiloPropio } from "@/lib/cenefas/textoEnriquecido";
 import { nodoTextoEnriquecido } from "@/lib/cenefas/dibujarTextoEnriquecido";
+import { cargarReglasDeMedicion, reglas } from "@/lib/cenefas/reglasDeMedicion";
 
 // ---------------------------------------------------------------------------
 // Constantes de escala y dimensiones de formatos
@@ -441,9 +442,23 @@ function buildComponentGroup({
           ? (seg, i) => textoDeSegmentoCapacidad(seg, i, rellenoSegs, segmentosOcultos)
           : (seg, i) => textoDeSegmento(seg, i, datos, segmentosOcultos))
       : null;
+    // EL MARGEN INTERNO. PowerPoint reserva 0,254 cm a cada lado adentro de
+    // todo cuadro de texto (lIns/rIns) y el texto nunca llega al borde: el
+    // exportador lo descuenta antes de decidir dónde corta una palabra
+    // (_estimate_wrapped_lines en component_renderer.py). Hasta el 18/09/2026
+    // el preview NO lo descontaba --dibujaba con el ancho entero de la caja--
+    // así que en pantalla el texto cortaba una palabra MÁS TARDE que en el
+    // papel, en todos los cuadros de texto de todas las plantillas. Y no había
+    // test que lo agarrara, porque de este lado el número directamente no
+    // existía: no había dos valores que comparar.
+    //
+    // El número sale del archivo único de reglas, nunca escrito acá.
+    const insetPx = reglas().insetCm * PX_PER_CM;
+    const anchoUtilPx = Math.max(1, w - insetPx);
+
     if (tramos) {
       group.add(nodoTextoEnriquecido(tramos, {
-        anchoPx: w,
+        anchoPx: anchoUtilPx,
         align: comp.style?.align ?? "center",
         lineHeightPt: comp.style?.line_height_pt,
         ptToPx,
@@ -451,8 +466,10 @@ function buildComponentGroup({
       return group;
     }
 
-    // El cuerpo viaja en puntos; el canvas trabaja en px a PX_PER_CM.
-    const pt = comp.style?.font_size ?? 12;
+    // El cuerpo viaja en puntos; el canvas trabaja en px a PX_PER_CM. El
+    // tamaño que se asume cuando el cuadro no declara ninguno sale del archivo
+    // único de reglas: es el mismo con el que el exportador mide.
+    const pt = comp.style?.font_size ?? reglas().ptPorDefecto;
     const fontSizePx = ptToPx(pt);
     // PowerPoint apoya la primera linea en el ASCENDENTE del run mas grande
     // del parrafo. Cuando el diseno mete un "run espaciador" --un espacio en
@@ -466,7 +483,11 @@ function buildComponentGroup({
     const offsetY = lineHeightPt > pt ? ptToPx(lineHeightPt - pt) * ASCENDENTE_EM : 0;
     const fuente = resolverFuente(comp.style?.font_family, comp.style?.font_bold);
     const nodoTexto = new Konva.Text({
-      x: 0, y: offsetY, width: w,
+      // `x: insetPx / 2` y no 0: PowerPoint mete la mitad del margen de cada
+      // lado, así que el texto queda centrado igual que en el PPTX. Este es el
+      // camino por el que va la MAYORÍA de los cuadros (los de un solo
+      // estilo); arreglar solo el del texto enriquecido los dejaba mintiendo.
+      x: insetPx / 2, y: offsetY, width: anchoUtilPx,
       text,
       fontSize: fontSizePx,
       // PowerPoint mete el peso adentro del nombre ("Libre Franklin Black"
@@ -478,7 +499,7 @@ function buildComponentGroup({
       fontStyle: String(fuente.weight),
       fill: comp.style?.color ?? "#1e293b",
       align: comp.style?.align ?? "center",
-      lineHeight: 1.2,
+      lineHeight: reglas().altoDeLinea,
       textDecoration: comp.style?.strikethrough ? "line-through" : undefined,
       wrap: "word",
       // Sin ellipsis y sin alto fijo A PROPÓSITO: si el texto no entra tiene
@@ -919,6 +940,28 @@ export default function Canvas({
     return () => { vivo = false; };
   }, []);
 
+  // LA PUERTA DE LAS REGLAS DE MEDICION. Canvas es el unico lugar por el que
+  // se dibuja una cenefa (lo importan v2/page.tsx, PreviewStep y
+  // LotePreviewStep, y nada mas dibuja), asi que con esperar aca alcanza para
+  // garantizar que ningun cuadro se mida con un numero adivinado.
+  //
+  // Las reglas viven en UN solo archivo del backend
+  // (app/data/reglas_de_medicion.json) y se piden por HTTP. Si no llegan, NO
+  // se dibuja: se muestra un cartel. Dibujar con valores propios es
+  // exactamente el bug que esto viene a matar, y ademas el editor ya no
+  // funciona sin backend (pide /formats al montar y /capacidad para el
+  // relleno del preview), asi que no se pierde nada que hoy funcione.
+  const [reglasListas, setReglasListas] = useState(false);
+  const [errorReglas, setErrorReglas] = useState<string | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    cargarReglasDeMedicion().then(
+      () => { if (vivo) { setErrorReglas(null); setReglasListas(true); } },
+      (err) => { if (vivo) setErrorReglas(err?.message ?? String(err)); },
+    );
+    return () => { vivo = false; };
+  }, []);
+
   // Componentes: se reconstruye toda la capa en cada cambio relevante (igual
   // de simple que el reconciliador de React, sin diffing fino — para la
   // cantidad de componentes tipica de una cenefa el costo es despreciable).
@@ -926,6 +969,9 @@ export default function Canvas({
     const layer = compLayerRef.current;
     const transformer = transformerRef.current;
     if (!layer || !transformer) return;
+    // Sin las reglas de medicion no se dibuja nada: ver LA PUERTA mas arriba.
+    // buildComponentGroup llama a reglas(), que TIRA si todavia no llegaron.
+    if (!reglasListas) return;
 
     layer.find(`.${CENEFA_COMP_NAME}`).forEach((n) => n.destroy());
     const nodeMap = new Map<string, Konva.Group>();
@@ -1036,7 +1082,7 @@ export default function Canvas({
     // agregar o borrar una regla cambia ese memo y NO redibujaría la capa, así
     // que en pantalla seguiría sin pasar nada -- que es justo el problema que
     // vino a resolver.
-  }, [displayComps, selectedComponentId, selectedComponentIds, toggleComponentSelection, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, capacidadSegmentos, bandIndexByCompId, siblingMap, reglasPorComp, template.components, selectComponent, updateComponent, fuentesListas]);
+  }, [displayComps, selectedComponentId, selectedComponentIds, toggleComponentSelection, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, capacidadSegmentos, bandIndexByCompId, siblingMap, reglasPorComp, template.components, selectComponent, updateComponent, fuentesListas, reglasListas]);
 
   // "Última versión conocida" de template/selectedComponentId/siblingMap —
   // evita closures viejas dentro de los handlers de abajo (registrados una
@@ -1178,6 +1224,27 @@ export default function Canvas({
   // de justify-start ni el recorte de justify-center a secas.
   return (
     <div ref={wrapperRef} className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex ${className}`}>
+      {/* Mientras no lleguen las reglas de medicion no hay nada dibujado
+          debajo (ver LA PUERTA): este cartel es lo unico que se ve. */}
+      {!reglasListas && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-200/90 dark:bg-slate-950/90 px-6 text-center">
+          {errorReglas ? (
+            <div className="max-w-md">
+              <p className="text-sm font-semibold text-red-600 dark:text-red-400">
+                No se pudieron traer las reglas de medición
+              </p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                Sin ellas la cenefa se dibujaría con medidas distintas de las que
+                usa el archivo que se imprime, así que no se dibuja nada. Probá
+                recargar; si sigue, el backend no está respondiendo.
+              </p>
+              <p className="mt-2 text-[10px] font-mono text-slate-500 break-words">{errorReglas}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-600 dark:text-slate-400">Cargando las reglas de medición…</p>
+          )}
+        </div>
+      )}
       {/* Badge modo preview (solo en el editor standalone, no en PreviewStep) */}
       {!interactive && !isEditMode && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full shadow pointer-events-none">

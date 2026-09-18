@@ -15,6 +15,7 @@ misma que decide el achique al exportar.
 from __future__ import annotations
 
 from app.services.cenefas.font_metrics import ancho_texto_cm, digito_mas_ancho, pt_efectivo
+from app.services.cenefas.reglas_medicion import REGLAS
 from app.services.cenefas.variables import DECIMAL_VARS
 
 # Cuadros que se rellenan. Son los que llevan dato variable y cambian de
@@ -27,9 +28,13 @@ VARIABLES_RELLENABLES: frozenset[str] = frozenset({
     *DECIMAL_VARS,
 })
 
-# Margen interno de PowerPoint (0,254 cm por lado). Mismo criterio que
-# _INSET_CM en component_renderer: el texto nunca llega al borde de la caja.
-_INSET_CM = 0.508
+# Margen interno de PowerPoint: el texto nunca llega al borde de la caja.
+# Sale de app/data/reglas_de_medicion.json, igual que el _INSET_CM de
+# component_renderer -- son la MISMA regla, y hasta el 18/09/2026 eran dos
+# copias del número escritas a mano en dos archivos. El alias local se lee de
+# la fuente común en vez de importarse de component_renderer para no armar un
+# ciclo entre los dos módulos.
+_INSET_CM = REGLAS.inset_cm
 
 # Tope de seguridad: si una caja es enorme respecto del cuerpo, no tiene
 # sentido devolver cientos de caracteres.
@@ -83,9 +88,9 @@ def texto_de_capacidad(
         return texto
 
     # Con wrap: se arman palabras de 4 letras separadas por espacio y se
-    # agregan hasta llenar el alto disponible. El alto de línea es el mismo
-    # 1,2 del cuerpo que usa el render.
-    alto_linea = font_size / 72.0 * 2.54 * 1.2
+    # agregan hasta llenar el alto disponible. El alto de línea es el mismo que
+    # usa el render, leído del archivo único de reglas.
+    alto_linea = font_size / 72.0 * 2.54 * REGLAS.alto_de_linea
     max_lineas = max(1, int((alto_caja_cm or alto_linea) / alto_linea)) if alto_linea else 1
     palabras: list[str] = []
     lineas = 1
@@ -206,8 +211,8 @@ def _estilo_segmento(comp: dict, seg: dict) -> tuple[float | None, str | None, b
     elif comp.get("_manual_font_override"):
         pt = est_comp.get("font_size")
     else:
-        # 18 pt es el default real de PowerPoint cuando nadie declara tamano.
-        pt = propio or est_comp.get("font_size") or 18.0
+        # Cuerpo que se asume cuando nadie declara tamaño: archivo único.
+        pt = propio or est_comp.get("font_size") or REGLAS.pt_por_defecto
     baseline = est_seg.get("baseline", est_comp.get("baseline"))
     familia = est_seg.get("font_family") or est_comp.get("font_family")
     bold = bool(est_seg.get("font_bold", est_comp.get("font_bold")))

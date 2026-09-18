@@ -1,0 +1,68 @@
+{
+  "_lea_esto": [
+    "ESTE ES EL UNICO LUGAR DONDE VIVEN LAS REGLAS DE MEDICION DE LAS CENEFAS.",
+    "",
+    "Una cenefa se dibuja DOS VECES, con dos programas distintos: el que arma el",
+    "PPTX (Python, en el servidor) y el que la muestra en pantalla (TypeScript, en",
+    "el navegador). Hasta el 18/09/2026 cada numero de medicion estaba escrito a",
+    "mano en los dos lados. Cuando alguien tocaba uno y se olvidaba del otro, la",
+    "pantalla dejaba de mostrar lo que salia impreso y nadie se enteraba hasta que",
+    "un cartel salia mal. Paso tres veces: la voladita, Arial Black medida como",
+    "Arial, y el margen interno (que el preview directamente no tenia).",
+    "",
+    "Por eso el numero se escribe ACA y en ningun otro lado.",
+    " - El exportador lo lee del disco: app/services/cenefas/reglas_medicion.py",
+    " - El preview lo pide por HTTP: GET /tools/cenefas/v2/reglas-de-medicion",
+    "",
+    "NO COPIES NINGUNO DE ESTOS NUMEROS a un .py ni a un .ts, ni 'por ahora'.",
+    "backend/tests/test_factor_voladita.py busca con grep en los dos lados y",
+    "falla si alguno reaparece escrito a mano.",
+    "",
+    "Cada regla trae 'valor' (el numero), 'usa' (quien lo necesita) y 'porque'",
+    "(de donde salio). El porque tambien va aca y no en un comentario del codigo,",
+    "porque si no la explicacion queda duplicada igual que el numero."
+  ],
+
+  "factor_voladita": {
+    "valor": 0.667,
+    "usa": ["exportador", "preview"],
+    "que_es": "Cuanto achica PowerPoint un pedazo VOLADO (el '$', los centavos, a veces el precio entero). Un pedazo volado NO se dibuja en el tamano que dice: se dibuja a dos tercios, y el numero de la casilla sigue mostrando el original.",
+    "porque": "MEDIDO CONTRA POWERPOINT DE VERDAD el 18/09/2026, no estimado. Se armo un PPTX con '888' en Impact, Arial, Arial Black y Calibri a 100 pt declarados, repetido con voladita 0, 5%, 30%, 95% y -40%; se exporto a PDF con POWERPNT.EXE manejado por COM/pywin32 (SaveAs formato 32); se leyo ese PDF con PyMuPDF mirando el 'size' real de cada span. Dio 0,6675 / 0,6677 / 0,6675 / 0,6677 en las cuatro tipografias y los cuatro desplazamientos, mas 0,6650 repitiendo con otro cuerpo declarado. O sea: dos tercios, sin depender de la fuente ni de cuanto se levante el pedazo (el achique es BINARIO: solo vuelve a su tamano completo con voladita 0). Antes aca decia 0,65 --el factor clasico de Office, sacado de dos cuentas indirectas-- y quedaba 2,6% corto: un precio de 220 pt se dibujaba 3,7 pt mas grande de lo que el motor creia.",
+    "ojo": "ESTE NUMERO ES DE POWERPOINT, NO ES UNIVERSAL. El mismo PPTX convertido con LibreOffice (soffice --headless --convert-to pdf) da 0,580. Hoy se imprime desde PowerPoint, asi que manda 0,667. Si manana cambia la cadena de impresion, ESTE es el numero a recalibrar y la receta esta dos lineas mas arriba."
+  },
+
+  "alto_de_linea": {
+    "valor": 1.2,
+    "usa": ["exportador", "preview"],
+    "que_es": "Cuanto ocupa de alto un renglon, en multiplos del tamano de la letra. Un renglon de 100 pt ocupa 120 pt de alto.",
+    "porque": "Es el interlineado de una caja de PowerPoint que no declara espaciado propio, y es tambien el lineHeight con el que se arma el Konva.Text del preview. Si los dos se separan, el preview parte el texto en una cantidad de renglones distinta de la que sale impresa: una descripcion que en pantalla entra en dos lineas sale en tres y se le monta encima al precio."
+  },
+
+  "inset_cm": {
+    "valor": 0.508,
+    "usa": ["exportador", "preview"],
+    "que_es": "El margen interno que PowerPoint reserva adentro de todo cuadro de texto: 0,254 cm a la izquierda y 0,254 cm a la derecha (lIns/rIns = 91440 EMU cada uno). El texto NUNCA llega al borde del cuadro. Este 0,508 es la suma de los dos lados, o sea el ancho que hay que DESCONTAR de la caja antes de decidir donde se corta una palabra.",
+    "porque": "Es el default de PowerPoint, no una estimacion. Antes el exportador descontaba 0,4 cm y el corte simulado partia una palabra mas tarde que el real. Y hasta el 18/09/2026 el PREVIEW no lo descontaba EN ABSOLUTO: dibujaba con el ancho entero de la caja, asi que en pantalla el texto cortaba una palabra mas tarde que en el papel, en todos los cuadros de texto de todas las plantillas. Esa era la mentira mas vieja y la mas invisible, porque del lado del navegador el numero ni siquiera existia: no habia dos valores que comparar."
+  },
+
+  "pt_por_defecto": {
+    "valor": 18,
+    "usa": ["exportador", "preview"],
+    "que_es": "Que tamano de letra se asume cuando un cuadro no declara ninguno.",
+    "porque": "18 pt es el tamano con el que PowerPoint dibuja un cuadro de texto sin tamano declarado. Y el exportador declara el tamano SOLO si el diseno lo trae (component_renderer._apply_run_style: 'if style.get(\"font_size\")'), asi que cuando no lo trae, lo que se imprime son 18 pt de verdad. OJO: esto UNIFICA dos valores que estaban peleados. Hasta el 18/09/2026 el repo respondia esta misma pregunta con 18 en tres lugares (component_renderer 263 y 295, capacidad 210) y con 12 en cuatro (component_renderer 527 y 643-644, Canvas.tsx 455, textoEnriquecido.ts 20). El 12 es un default de pagina web que se colo por el lado del navegador; medir a 12 lo que se imprime a 18 subestima el rectangulo un 50% y los avisos de choque entre cuadros no saltaban. Ver DUDAS del informe: el cambio 12 -> 18 se ve en pantalla y en los avisos, a proposito."
+  },
+
+  "factor_negrita": {
+    "valor": 1.08,
+    "usa": ["exportador"],
+    "que_es": "Cuanto ensancha un texto cuando va en negrita.",
+    "porque": "Las negritas ocupan mas ancho sin que cambie el nombre de la familia tipografica, asi que la tabla de anchos (font_metrics.json) no las distingue y hay que compensarlo a mano. El preview NO lo necesita y por eso 'usa' dice solo exportador: el navegador mide la fuente negrita real con ctx.measureText, no con una tabla."
+  },
+
+  "em_fallback": {
+    "valor": 0.52,
+    "usa": ["exportador"],
+    "que_es": "Ancho de reserva por caracter, en fracciones del tamano de la letra, para una tipografia que no esta en la tabla de anchos.",
+    "porque": "Promedio de las nueve tipografias medidas. Un diseno con una fuente desconocida queda aproximado --como estaba todo antes de la tabla-- en vez de romper. El preview no lo necesita: el navegador siempre puede medir la fuente que efectivamente dibuja."
+  }
+}
