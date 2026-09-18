@@ -352,7 +352,7 @@ async def get_template(
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    tmpl = await _get_owned_template(template_id, current_user, db)
+    tmpl = await _get_template_o_404(template_id, db)
     return {
         "id":         str(tmpl.id),
         "name":       tmpl.name,
@@ -372,7 +372,7 @@ async def update_template(
     current_user: User = Depends(require_permission("cenefas.edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
+    tmpl = await _get_template_o_404(template_id, db)
     if tmpl.is_builtin:
         raise HTTPException(status_code=403, detail="No se pueden modificar templates del sistema")
 
@@ -408,7 +408,7 @@ async def rename_template(
     current_user: User = Depends(require_permission("cenefas.edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
+    tmpl = await _get_template_o_404(template_id, db)
     if tmpl.is_builtin:
         raise HTTPException(status_code=403, detail="No se pueden modificar templates del sistema")
     name = (payload.get("name") or "").strip()
@@ -424,7 +424,7 @@ async def delete_template(
     current_user: User = Depends(require_permission("cenefas.delete")),
     db: AsyncSession = Depends(get_db),
 ):
-    tmpl = await _get_owned_template(template_id, current_user, db, write_check=True)
+    tmpl = await _get_template_o_404(template_id, db)
     if tmpl.is_builtin:
         raise HTTPException(status_code=403, detail="No se pueden eliminar templates del sistema")
     # AsyncSession.delete() es una corrutina (a diferencia de Session.delete()
@@ -456,7 +456,7 @@ async def validate_csv(
     - variables requeridas faltantes en el CSV
     - resumen por regla: cuántas filas activan cada regla
     """
-    tmpl = await _get_owned_template(template_id, current_user, db)
+    tmpl = await _get_template_o_404(template_id, db)
     definition = tmpl.definition
 
     excel_bytes = await read_limited(excel, "Excel")
@@ -521,12 +521,9 @@ async def validate_csv(
 # Helpers privados
 # ---------------------------------------------------------------------------
 
-async def _get_owned_template(
+async def _get_template_o_404(
     template_id: uuid.UUID,
-    current_user: User,
     db: AsyncSession,
-    *,
-    write_check: bool = False,
 ) -> CenefaTemplateV2:
     result = await db.execute(
         select(CenefaTemplateV2).where(CenefaTemplateV2.id == template_id)
@@ -534,9 +531,18 @@ async def _get_owned_template(
     tmpl = result.scalar_one_or_none()
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template no encontrado")
-    if write_check and not tmpl.is_builtin and not current_user.is_superuser:
-        if tmpl.created_by != current_user.id:
-            raise HTTPException(status_code=403, detail="No tenés permiso para modificar este template")
+    # NO se chequea quién la creó. Hasta el 18/09/2026 una plantilla solo la
+    # podía modificar su autor (o un superusuario), y eso frenaba el trabajo
+    # real: las cenefas las arma el equipo entre varios, y el "dueño" terminaba
+    # siendo quien apretó subir primero. Valentina no podía guardar cambios en
+    # "3xA4 SOLO X 25" porque la había creado Ivan, y recibía un 403 sin
+    # explicación en la pantalla. Decisión de Ivan: las plantillas son de la
+    # empresa, no de quien las subió.
+    #
+    # El control no desaparece, se mueve a donde corresponde: cada endpoint pide
+    # su propio permiso --`cenefas.edit` para guardar y renombrar,
+    # `cenefas.delete` para borrar-- y ahí se decide quién puede qué. Lo único
+    # que sigue protegido acá abajo es `is_builtin`, que son las del sistema.
     return tmpl
 
 
@@ -1017,11 +1023,13 @@ async def _get_job(
     current_user: User,
     db: AsyncSession,
 ) -> CenefaJob:
-    """Los jobs solo son visibles para quien los creó o para un superusuario —
-    mismo criterio que _get_owned_template. Los Excel subidos a un job pueden
-    traer precios/datos de negocio de la sucursal que los generó, así que no
-    deberían quedar accesibles por UUID para cualquier otro usuario con
-    cenefas.view."""
+    """Los jobs solo son visibles para quien los creó o para un superusuario.
+
+    Acá el dueño SÍ importa, al revés que en las plantillas: los Excel subidos a
+    un job pueden traer precios y datos de negocio de la sucursal que los generó,
+    así que no deberían quedar accesibles por UUID para cualquier otro usuario
+    con cenefas.view. Una plantilla, en cambio, es de la empresa y la edita
+    cualquiera con el permiso (ver _get_template_o_404, 18/09/2026)."""
     result = await db.execute(
         select(CenefaJob).where(CenefaJob.id == job_id)
     )
