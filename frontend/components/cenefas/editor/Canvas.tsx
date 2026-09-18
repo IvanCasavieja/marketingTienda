@@ -228,6 +228,41 @@ function textoDeSegmento(
   return applyTransform(previewData[seg.value] ?? "", seg.transform);
 }
 
+/** Los rellenos de capacidad de ESTE cuadro, uno por segmento, o null.
+ *
+ *  El backend solo los manda para los cuadros de 2 o mas segmentos; para
+ *  todos los demas --casi todos-- devuelve nada y sigue mandando una sola
+ *  tira por cuadro en `capacidad`. */
+function rellenosDeSegmentos(
+  comp: CenefaComponent,
+  capacidadSegmentos?: Record<string, string[]> | null,
+): string[] | null {
+  const rellenos = capacidadSegmentos?.[comp.id];
+  if (!rellenos?.length || !comp.segments?.length) return null;
+  return rellenos;
+}
+
+/** Texto de UN segmento en la vista de capacidad. Espejo de textoDeSegmento,
+ *  pero el texto no sale del producto sino del relleno que calculo el backend
+ *  para ESE segmento, con SU cuerpo. */
+function textoDeSegmentoCapacidad(
+  seg: TextSegment,
+  indice: number,
+  rellenos: string[],
+  segmentosOcultos?: Set<number>,
+): string {
+  // Las reglas de visibilidad las conoce el front, no el endpoint de
+  // capacidad: un segmento tapado por una regla se dibuja vacio igual que con
+  // datos reales.
+  if (segmentosOcultos?.has(indice)) return "";
+  const relleno = rellenos[indice];
+  // Se respeta el "" que mande el backend (ej. un segmento que no se rellena).
+  // Si directamente falta --array mas corto de lo esperado-- el estatico cae
+  // en su literal: mejor ver el "de" o el "$" del diseno que un hueco.
+  if (relleno !== undefined) return relleno;
+  return seg.type === "static" ? seg.value : "";
+}
+
 // Resuelve el texto a mostrar cuando hay datos reales (previewData),
 // aplicando el mismo transform por segmento/componente que usa el render
 // final (_populate_text_frame en component_renderer.py).
@@ -236,7 +271,19 @@ function resolveComponentText(
   previewData: Record<string, string>,
   capacidad?: Record<string, string> | null,
   segmentosOcultos?: Set<number>,
+  rellenoSegs?: string[] | null,
 ): string {
+  // Capacidad POR SEGMENTO: cada pedazo con su propio relleno, medido con su
+  // propio cuerpo. Manda sobre la tira del cuadro entero, que para estos
+  // cuadros se calcula con el cuerpo MAXIMO de los segmentos y por eso llenaba
+  // la caja de digitos gigantes: en "Fiesta Alemania-202608-A4" el precio es
+  // un solo cuadro con unidadMoneda + precioOferta + decimalPrecioOferta, y
+  // asi el decimal no se veia nunca (Ivan, 18/09/2026).
+  if (rellenoSegs) {
+    return (comp.segments ?? [])
+      .map((seg, i) => textoDeSegmentoCapacidad(seg, i, rellenoSegs, segmentosOcultos))
+      .join("");
+  }
   // Vista de capacidad: el cuadro se muestra LLENO de "X" hasta donde entra,
   // en vez del valor del primer producto del Excel. Sirve para ver el peor
   // caso antes de tener el dato -- y para que aparezcan las variables que ese
@@ -254,7 +301,7 @@ function resolveComponentText(
 
 function buildComponentGroup({
   comp, pageLeft, pageTop, isSelected, draggable, image, previewData, capacidad,
-  ocultoPorRegla, segmentosOcultos, onSelect, onDragEnd,
+  capacidadSegmentos, ocultoPorRegla, segmentosOcultos, onSelect, onDragEnd,
 }: {
   comp: CenefaComponent;
   pageLeft: number;
@@ -264,6 +311,8 @@ function buildComponentGroup({
   image?: HTMLImageElement;
   previewData?: Record<string, string>;
   capacidad?: Record<string, string> | null;
+  /** Relleno de capacidad por segmento, solo para los cuadros de 2+ segmentos. */
+  capacidadSegmentos?: Record<string, string[]> | null;
   /** Una regla de visibilidad lo saca de ESTA cenefa. Se sigue dibujando —
    *  como silueta, sin contenido— en vez de desaparecer: si desapareciera no
    *  habría forma de seleccionarlo para revisar o borrar la regla que lo
@@ -337,6 +386,11 @@ function buildComponentGroup({
   // lo que importa es ver qué variable tiene cada cuadro, no cómo queda.
   const fiel = !!previewData && !imgInvalid;
 
+  // Relleno de capacidad segmento por segmento. Null para todo lo demas: los
+  // cuadros de una sola variable --casi todos-- siguen con la tira de
+  // `capacidad`, exactamente igual que antes.
+  const rellenoSegs = rellenosDeSegmentos(comp, capacidadSegmentos);
+
   group.add(new Konva.Rect({
     width: w, height: h,
     fill: comp.type === "shape" && comp.style?.background_color
@@ -352,7 +406,7 @@ function buildComponentGroup({
     imgInvalid
       ? `⚠ Re-importá el PPTX\n(${comp.image_ext ?? "?"} no soportado)`
       : previewData
-        ? resolveComponentText(comp, previewData, capacidad, segmentosOcultos)
+        ? resolveComponentText(comp, previewData, capacidad, segmentosOcultos, rellenoSegs)
         : comp.segments?.length
           ? `${comp.name}\n${comp.segments.map((s) => s.type === "static" ? `"${s.value}"` : `{${s.value}}`).join(" + ")}`
           : comp.variable
@@ -368,11 +422,24 @@ function buildComponentGroup({
     // en un segmento. El PPTX arma un run por segmento con su propio estilo y
     // Konva.Text no admite estilos mezclados: se dibuja pedazo por pedazo.
     // Todos los demás cuadros siguen por el Konva.Text de abajo, sin cambios.
-    // La vista de capacidad tampoco pasa por acá: ahí el cuadro es una tira
-    // de "X" de un solo estilo.
+    //
+    // La vista de capacidad SÍ pasa por acá cuando el backend mandó un relleno
+    // por segmento (`capacidadSegmentos`). Antes no: el cuadro se reemplazaba
+    // por una tira de "X" de un solo estilo, y en "Fiesta Alemania-202608-A4"
+    // --un solo cuadro con unidadMoneda (60 pt) + precioOferta (140) +
+    // decimalPrecioOferta (36)-- esa tira se calculaba con el cuerpo más
+    // grande y se comía la caja entera: el decimal no se dibujaba nunca con su
+    // tamaño, así que no había con qué verlo ni cómo acomodarlo (reportado por
+    // Ivan, 18/09/2026). Con los rellenos por segmento el cuadro se dibuja
+    // igual que con datos reales, cada pedazo con su cuerpo y su voladita.
+    //
+    // Sin `capacidadSegmentos` --el resto de las plantillas-- la vista de
+    // capacidad sigue siendo la tira de siempre.
     const datos = previewData;
-    const tramos = datos && comp.segments?.length && !capacidad?.[comp.id]
-      ? tramosConEstiloPropio(comp, (seg, i) => textoDeSegmento(seg, i, datos, segmentosOcultos))
+    const tramos = datos && comp.segments?.length && (rellenoSegs || !capacidad?.[comp.id])
+      ? tramosConEstiloPropio(comp, rellenoSegs
+          ? (seg, i) => textoDeSegmentoCapacidad(seg, i, rellenoSegs, segmentosOcultos)
+          : (seg, i) => textoDeSegmento(seg, i, datos, segmentosOcultos))
       : null;
     if (tramos) {
       group.add(nodoTextoEnriquecido(tramos, {
@@ -499,6 +566,12 @@ interface CanvasProps {
    *  cuadro rellenable se dibuja lleno hasta donde entra en vez de mostrar
    *  el valor del primer producto. */
   capacidad?: Record<string, string> | null;
+  /** Relleno de capacidad POR SEGMENTO (ver /capacidad, clave `segmentos`).
+   *  Solo viene para los cuadros de 2 o más segmentos: ahí la tira única de
+   *  `capacidad` se calcula con el cuerpo más grande del cuadro y tapa a los
+   *  pedazos chicos (el decimal de la Alemania A4). Con esto el cuadro se
+   *  dibuja por segmentos, cada uno con su relleno y su cuerpo. */
+  capacidadSegmentos?: Record<string, string[]> | null;
   /** Reglas de visibilidad de la plantilla. Solo tienen efecto cuando además
    *  hay `previewData`: sin datos reales no hay contra qué evaluarlas, y en
    *  el editor sin datos ocultar cuadros dejaría medio diseño invisible y sin
@@ -519,6 +592,7 @@ export default function Canvas({
   slotBands: propSlotBands,
   previewProducts,
   capacidad,
+  capacidadSegmentos,
   rules: propRules,
 }: CanvasProps) {
   const store = useEditorStore();
@@ -875,6 +949,7 @@ export default function Canvas({
         image: getImage(comp),
         previewData: compPreviewData,
         capacidad,
+        capacidadSegmentos,
         ocultoPorRegla: reglasPorComp.ocultos.has(comp.id),
         segmentosOcultos: reglasPorComp.segmentos.get(comp.id),
         onSelect: (conCtrl) => {
@@ -961,7 +1036,7 @@ export default function Canvas({
     // agregar o borrar una regla cambia ese memo y NO redibujaría la capa, así
     // que en pantalla seguiría sin pasar nada -- que es justo el problema que
     // vino a resolver.
-  }, [displayComps, selectedComponentId, selectedComponentIds, toggleComponentSelection, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, bandIndexByCompId, siblingMap, reglasPorComp, template.components, selectComponent, updateComponent, fuentesListas]);
+  }, [displayComps, selectedComponentId, selectedComponentIds, toggleComponentSelection, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, capacidadSegmentos, bandIndexByCompId, siblingMap, reglasPorComp, template.components, selectComponent, updateComponent, fuentesListas]);
 
   // "Última versión conocida" de template/selectedComponentId/siblingMap —
   // evita closures viejas dentro de los handlers de abajo (registrados una

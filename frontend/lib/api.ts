@@ -309,9 +309,22 @@ export const cenefasV2Api = {
       sugerencias: { desde: string; desde_nombre: string; hacia: string; hacia_nombre: string; confianza: number }[];
       ya_declaradas: { desde: string; desde_nombre: string; hacia: string; hacia_nombre: string }[];
     }>("/tools/cenefas/v2/detectar-relaciones", { components }),
+  // `capacidad` es el relleno del CUADRO ENTERO, uno por componente: sigue
+  // siendo lo que usan los cuadros de una sola variable, que son casi todos.
+  //
+  // `segmentos` viene SOLO para los cuadros de 2 o mas segmentos, y trae un
+  // relleno por segmento en el mismo orden que `component.segments`. Se
+  // agrego porque en "Fiesta Alemania-202608-A4" el bloque del precio es UN
+  // cuadro con tres segmentos (unidadMoneda 60 pt, precioOferta 140,
+  // decimalPrecioOferta 36): el relleno del cuadro entero se calculaba con el
+  // cuerpo MAXIMO y tapaba la caja con un solo bloque de digitos, asi que el
+  // decimal no se dibujaba nunca con su tamano y no habia forma de verlo ni
+  // de acomodarlo (reportado por Ivan, 18/09/2026).
   calcularCapacidad: (components: CenefaComponent[]) =>
-    api.post<{ capacidad: Record<string, string> }>(
-      "/tools/cenefas/v2/capacidad", { components }),
+    api.post<{
+      capacidad: Record<string, string>;
+      segmentos?: Record<string, string[]>;
+    }>("/tools/cenefas/v2/capacidad", { components }),
 
   // Templates
   listTemplates: (params?: { category?: string }) =>

@@ -46,28 +46,39 @@ _FACTOR_BOLD = 1.08
 #
 # El achique es BINARIO, no proporcional al desplazamiento: subir un pedazo 5 %
 # o 95 % da el mismo cuerpo, solo cambia la altura. Vuelve a su tamaño completo
-# únicamente con desplazamiento 0.
+# únicamente con desplazamiento 0. Eso NO es una suposición: está medido, ver
+# abajo.
 #
-# El 0,65 es el factor clásico de Office para superíndice, y lo respaldan dos
-# medidas independientes sobre el mismo cartel:
+# CÓMO SE MIDIÓ (18/09/2026). Hasta acá el número era 0,65 --el factor clásico
+# de Office-- estimado desde dos cuentas indirectas sobre un cartel real, y con
+# la advertencia de que no se había podido verificar porque la máquina de
+# desarrollo no tenía PowerPoint. Ahora sí se verificó, de esta forma:
 #
-#   - La compensación que el equipo venía haciendo a mano para que el precio se
-#     viera bien: subir de 180 a 280 pt. Para imprimir 180 reales hay que
-#     tipear 180/0,65 = 276,9. Le erraron por 1,1 %.
-#   - Medido sobre el PPTX exportado, usando como regla el renglón
-#     "PRECIO REGULAR: $253" de la misma hoja (calculado 8,11 cm, medido
-#     8,1 cm, o sea la escala era confiable): el "219" tenía que medir
-#     11,06 cm y medía ~7,3 cm. Factor 0,66, dentro del error de la medición.
+#   1. Se armó un PPTX con "888" en Impact, Arial, Arial Black y Calibri, a
+#      100 pt declarados, repetido con baseline 0, 5 %, 30 %, 95 % y -40 %.
+#   2. Se exportó a PDF con PowerPoint DE VERDAD (POWERPNT.EXE manejado por
+#      COM/pywin32, SaveAs con formato 32).
+#   3. Se leyó ese PDF con PyMuPDF y se miró el `size` real de cada span.
 #
-# No se pudo verificar contra PowerPoint desde el entorno de desarrollo (no hay
-# PowerPoint ni LibreOffice instalados). Hay un candidato rival, 0,528, que es
-# el factor que la propia Impact declara adentro del archivo de la fuente; si
-# el preview y el PPTX siguen sin coincidir, ese es el otro número a probar.
+# Resultados: 0,6675 / 0,6677 / 0,6675 / 0,6677 sobre las cuatro tipografías y
+# los cuatro desplazamientos, más 0,6650 repitiendo con otro cuerpo declarado.
+# O sea: DOS TERCIOS. El factor no depende de la tipografía ni del
+# desplazamiento --confirmando que el achique es binario--, y el 0,65 anterior
+# quedaba 2,6 % corto: un precio de 220 pt se dibujaba 3,7 pt más grande de lo
+# que el motor creía.
+#
+# ESTE NÚMERO ES DE POWERPOINT, NO ES UNIVERSAL. El mismo PPTX convertido con
+# LibreOffice (soffice --headless --convert-to pdf) da 0,580. Distinto
+# programa, distinto factor. Hoy la cadena de impresión es PowerPoint, así que
+# manda 0,667; si mañana se imprime desde otro lado, ESTE es el número a
+# recalibrar y el procedimiento de arriba es la receta para hacerlo.
 #
 # ESTE VALOR ESTÁ ESPEJADO en frontend/lib/cenefas/textoEnriquecido.ts
 # (FACTOR_VOLADITA). Si se toca acá, tocarlo allá: el preview y la medición
-# tienen que coincidir o vuelve el problema que esto viene a arreglar.
-FACTOR_VOLADITA = 0.65
+# tienen que coincidir o vuelve el problema que esto viene a arreglar. Para que
+# nadie se olvide, backend/tests/test_factor_voladita.py lee el .ts como texto
+# y falla si los dos números se separan.
+FACTOR_VOLADITA = 0.667
 
 
 def pt_efectivo(pt: float | None, baseline) -> float | None:

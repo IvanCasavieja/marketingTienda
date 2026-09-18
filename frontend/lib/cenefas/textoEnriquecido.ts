@@ -21,6 +21,12 @@ const PT_POR_DEFECTO = 12;
 const COLOR_POR_DEFECTO = "#1e293b";
 // Konva.Text se arma con lineHeight 1.2: los renglones de acá tienen que medir
 // lo mismo para no correrse respecto de los cuadros que siguen por ese camino.
+//
+// ESPEJADO en backend/app/services/cenefas/component_renderer.py
+// (_INTERLINEADO): es el mismo interlineado con el que el exportador calcula
+// cuántas líneas entran en un cuadro. Si se separan, el preview parte el texto
+// en una cantidad de renglones distinta de la que sale impresa.
+// backend/tests/test_factor_voladita.py compara los dos y falla si difieren.
 const ALTO_DE_LINEA = 1.2;
 // El achique del backend deja 91.29999999999998 en un segmento y 91.3 en la
 // caja (Red Expres 17): son el mismo tamaño, no un estilo propio.
@@ -76,6 +82,14 @@ function difiereDeLaCaja(estilo: EstiloSegmento, caja: ComponentStyle): boolean 
  * `textoDeSegmento` devuelve el texto ya resuelto (variable + transformación,
  * vacío si una regla lo oculta). Un segmento vacío no cuenta ni se dibuja,
  * igual que en el export, que no le crea run.
+ *
+ * El texto llega YA RESUELTO a propósito: de dónde sale no es asunto de acá.
+ * Hoy hay dos orígenes. Con datos reales sale del producto del Excel; en la
+ * vista de capacidad sale del relleno que calcula el backend para CADA
+ * segmento (ver /capacidad, clave `segmentos`). El segundo se sumó el
+ * 18/09/2026: con la tira de relleno del cuadro entero, el decimal de la
+ * "Fiesta Alemania-202608-A4" quedaba tapado por los dígitos del precio y no
+ * se podía ni ver ni acomodar.
  */
 export function tramosConEstiloPropio(
   comp: CenefaComponent,
@@ -153,39 +167,45 @@ export function cadenaFont(weight: number, sizePx: number, stack: string): strin
 /**
  * Cuánto achica PowerPoint un pedazo VOLADO (superíndice/subíndice).
  *
- * PowerPoint no dibuja un run volado en su cuerpo declarado: lo dibuja a unos
- * dos tercios. Y no cambia el número: si abrís el PPTX y mirás la casilla del
+ * PowerPoint no dibuja un run volado en su cuerpo declarado: lo dibuja a dos
+ * tercios. Y no cambia el número: si abrís el PPTX y mirás la casilla del
  * tamaño, sigue diciendo el original. De ahí que un precio "de 180" se viera
  * mucho más chico que 180 sin que nadie lo hubiera achicado (reportado por
  * Ivan el 17/09/2026, Rompe Precios Congelados A4).
  *
- * Lo más importante: el achique es BINARIO, no proporcional al desplazamiento.
- * Subir un pedazo 5 % o 95 % da el mismo tamaño; lo único que cambia es la
- * altura. Solo vuelve a su cuerpo completo con desplazamiento 0. Por eso mover
- * el "$" con las flechitas del panel nunca pareció cambiarle el tamaño: ya
- * estaba achicado antes de tocarlo.
+ * El achique es BINARIO, no proporcional al desplazamiento. Subir un pedazo
+ * 5 % o 95 % da el mismo tamaño; lo único que cambia es la altura. Solo vuelve
+ * a su cuerpo completo con desplazamiento 0. Por eso mover el "$" con las
+ * flechitas del panel nunca pareció cambiarle el tamaño: ya estaba achicado
+ * antes de tocarlo. Eso está MEDIDO, no deducido.
  *
- * El 0,65 es el factor clásico de Office para superíndice, y lo respaldan dos
- * medidas independientes sobre el MISMO cartel:
+ * CÓMO SE MIDIÓ (18/09/2026). Antes acá decía 0,65 --el factor clásico de
+ * Office-- sacado de dos cuentas indirectas sobre un cartel real, y con la
+ * advertencia de que no se había podido verificar por no haber PowerPoint en
+ * la máquina de desarrollo. Ahora se verificó:
  *
- *   - La compensación que el equipo venía haciendo a mano para que el precio
- *     se viera bien: subir de 180 a 280 pt. Para imprimir 180 reales hay que
- *     tipear 180/0,65 = 276,9. Le erraron por 1,1 %.
- *   - Medido sobre el PPTX exportado, usando como regla el renglón
- *     "PRECIO REGULAR: $253" de la misma hoja (calculado 8,11 cm, medido
- *     8,1 cm, o sea la escala era confiable): el "219" tenía que medir
- *     11,06 cm y medía ~7,3 cm. Factor 0,66, dentro del error de la medición.
+ *   1. Un PPTX con "888" en Impact, Arial, Arial Black y Calibri, a 100 pt
+ *      declarados, repetido con baseline 0, 5 %, 30 %, 95 % y -40 %.
+ *   2. Exportado a PDF con PowerPoint DE VERDAD (POWERPNT.EXE por COM/pywin32,
+ *      SaveAs formato 32).
+ *   3. Leído con PyMuPDF, mirando el `size` real de cada span.
  *
- * No se pudo verificar contra PowerPoint desde el entorno de desarrollo (no
- * hay PowerPoint ni LibreOffice instalados), así que es CALIBRABLE: si el
- * preview y el PPTX siguen sin coincidir, este es el número a mover. El otro
- * candidato es 0,528, el factor que la propia Impact declara adentro del
- * archivo de la fuente.
+ * Dio 0,6675 / 0,6677 / 0,6675 / 0,6677 en las cuatro tipografías y los cuatro
+ * desplazamientos, más 0,6650 repitiendo con otro cuerpo declarado: dos
+ * tercios, sin depender de la fuente ni de cuánto se levante el pedazo. El
+ * 0,65 viejo quedaba 2,6 % corto y el preview dibujaba de más.
+ *
+ * ESTE NÚMERO ES DE POWERPOINT, NO ES UNIVERSAL: el mismo PPTX convertido con
+ * LibreOffice da 0,580. Hoy se imprime desde PowerPoint, así que manda 0,667;
+ * si mañana cambia la cadena de impresión, este es el número a recalibrar con
+ * la receta de arriba.
  *
  * ESPEJADO en backend/app/services/cenefas/font_metrics.py (FACTOR_VOLADITA).
- * Si se toca acá, tocarlo allá.
+ * Si se toca acá, tocarlo allá -- y backend/tests/test_factor_voladita.py lee
+ * este archivo como texto y falla si los dos se separan, así que el olvido se
+ * ve solo.
  */
-export const FACTOR_VOLADITA = 0.65;
+export const FACTOR_VOLADITA = 0.667;
 
 /**
  * El cuerpo con el que de verdad se dibuja un tramo, ya con el achique de la

@@ -94,6 +94,14 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   // de fuente que usa el render final.
   const [verCapacidad, setVerCapacidad] = useState(false);
   const [capacidad, setCapacidad] = useState<Record<string, string> | null>(null);
+  // Relleno POR SEGMENTO, solo para los cuadros de 2 o mas segmentos. El
+  // relleno del cuadro entero no alcanza cuando adentro conviven cuerpos muy
+  // distintos: en "Fiesta Alemania-202608-A4" el precio es un solo cuadro con
+  // unidadMoneda (60 pt) + precioOferta (140) + decimalPrecioOferta (36), y la
+  // tira unica se calculaba con el cuerpo mas grande y se comia la caja, asi
+  // que el decimal no aparecia y no se podia acomodar (Ivan, 18/09/2026).
+  const [capacidadSegmentos, setCapacidadSegmentos] =
+    useState<Record<string, string[]> | null>(null);
 
   const consultar = useCallback(async () => {
     try {
@@ -137,11 +145,25 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   // depende de la caja y el cuerpo de cada cuadro, asi que al mover o
   // redimensionar algo hay que recalcularlo.
   useEffect(() => {
-    if (!verCapacidad || !detalle?.template_def) { setCapacidad(null); return; }
+    if (!verCapacidad || !detalle?.template_def) {
+      setCapacidad(null);
+      setCapacidadSegmentos(null);
+      return;
+    }
     let cancelado = false;
     cenefasV2Api.calcularCapacidad(detalle.template_def.components)
-      .then(({ data }) => { if (!cancelado) setCapacidad(data.capacidad); })
-      .catch(() => { if (!cancelado) setCapacidad(null); });
+      .then(({ data }) => {
+        if (cancelado) return;
+        setCapacidad(data.capacidad);
+        // Puede no venir: las plantillas sin cuadros de varios segmentos --
+        // casi todas -- solo mandan `capacidad`.
+        setCapacidadSegmentos(data.segmentos ?? null);
+      })
+      .catch(() => {
+        if (cancelado) return;
+        setCapacidad(null);
+        setCapacidadSegmentos(null);
+      });
     return () => { cancelado = true; };
   }, [verCapacidad, detalle?.template_def]);
 
@@ -546,6 +568,7 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
                 previewData={detalle.preview_product}
                 previewProducts={detalle.preview_products}
                 capacidad={verCapacidad ? capacidad : null}
+                capacidadSegmentos={verCapacidad ? capacidadSegmentos : null}
                 slotBands={detalle.slot_bands}
                 rules={detalle.template_def.rules}
                 className="w-full h-full"

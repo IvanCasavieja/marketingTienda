@@ -155,3 +155,170 @@ def capacidad_por_componente(definition: dict) -> dict[str, str]:
             envuelve="descripcion" in usadas,
         )
     return salida
+
+
+# ---------------------------------------------------------------------------
+# Relleno POR SEGMENTO
+# ---------------------------------------------------------------------------
+#
+# Hasta el 18/09/2026 la capacidad se calculaba de a un cuadro entero: un
+# string por componente, con el cuerpo MAXIMO de sus segmentos, y se llenaba la
+# caja de digitos. Eso alcanzaba mientras cada variable viviera en su propio
+# cuadro.
+#
+# Lo rompio la plantilla nueva de Alemania ("Fiesta Alemania-202608-A4"), que
+# mete todo el bloque del precio en UN cuadro de tres segmentos:
+#
+#     [ unidadMoneda 60 pt | precioOferta 140 pt | decimalPrecioOferta 36 pt ]
+#
+# Con el criterio viejo el cuadro se llenaba con un solo bloque de digitos a
+# 140 pt: el decimal no se dibujaba nunca con su propio cuerpo. Ivan lo reporto
+# asi: "el primer precio que tengo de oferta no tiene decimal, y no tengo como
+# verlo ni como ordenarlo porque el relleno de x no funciona en esa variable".
+#
+# De paso se corrige algo que el relleno viejo tambien mentia: no todo segmento
+# es de largo libre. El simbolo de moneda solo puede ser "$" o "U$S", y un
+# decimal es SIEMPRE coma y dos cifras. Rellenarlos con digitos hasta el borde
+# mostraba un peor caso que no existe. Ahora lo de largo conocido se mide tal
+# cual, y recien lo que SOBRA se reparte entre los segmentos de largo variable
+# (el precio): esa es la cuenta que de verdad importa, cuantos digitos entran
+# al lado del simbolo y del decimal.
+
+# El peor caso real del simbolo de moneda. Los unicos dos valores que escribe
+# el Convertidor son "$" y "U$S" (columna MONEDA del export de gestion), asi
+# que el ancho maximo es este y no "cuantos digitos entren".
+_PEOR_CASO_MONEDA = "U$S"
+
+
+def _estilo_segmento(comp: dict, seg: dict) -> tuple[float | None, str | None, bool]:
+    """(cuerpo efectivo, familia, negrita) con los que se DIBUJA ese segmento.
+
+    Misma regla que al dibujar y al medir (_piezas_con_tamano_manual): lo que
+    se pone a mano manda donde se pone. Si la caja tiene tamano manual, todos
+    los segmentos toman el de la caja salvo el que tenga el suyo propio puesto
+    a mano; si no, cada segmento usa el suyo y cae al de la caja si no tiene.
+    """
+    est_comp = comp.get("style") or {}
+    est_seg = seg.get("style") or {}
+    propio = est_seg.get("font_size")
+    if seg.get("_manual_font_override") and propio:
+        pt = propio
+    elif comp.get("_manual_font_override"):
+        pt = est_comp.get("font_size")
+    else:
+        # 18 pt es el default real de PowerPoint cuando nadie declara tamano.
+        pt = propio or est_comp.get("font_size") or 18.0
+    baseline = est_seg.get("baseline", est_comp.get("baseline"))
+    familia = est_seg.get("font_family") or est_comp.get("font_family")
+    bold = bool(est_seg.get("font_bold", est_comp.get("font_bold")))
+    return pt_efectivo(pt, baseline), familia, bold
+
+
+def _texto_fijo_del_segmento(seg: dict, familia: str | None) -> str | None:
+    """El relleno de un segmento de largo CONOCIDO, o None si es de largo libre.
+
+    - Un pedazo estatico del diseno ("Comprando 2", "x") ya es su propio peor
+      caso: se mide tal cual.
+    - `unidadMoneda`: "U$S".
+    - Cualquier decimal: coma y dos cifras, con el digito mas ancho de la
+      tipografia (no un "6" literal: en Impact el "1" mide 0,38 em y el "6"
+      0,54, ver digito_mas_ancho).
+    """
+    if seg.get("type") != "variable":
+        return str(seg.get("value", "") or "")
+    var = seg.get("value")
+    if var == "unidadMoneda":
+        return _PEOR_CASO_MONEDA
+    if var in DECIMAL_VARS:
+        return "," + digito_mas_ancho(familia) * 2
+    return None
+
+
+def capacidad_por_segmento(comp: dict) -> list[str] | None:
+    """Relleno de CADA segmento del cuadro, en el orden de comp["segments"].
+
+    Devuelve None si el cuadro tiene menos de 2 segmentos: ahi el relleno del
+    cuadro entero (capacidad_por_componente) ya es correcto y el front lo sigue
+    usando.
+
+    El orden del calculo importa: primero se mide todo lo de largo conocido
+    --estaticos, moneda, decimales-- con SU propio cuerpo, y recien el ancho
+    que sobra se reparte entre los segmentos de largo libre (los precios).
+    Medir todo con el cuerpo maximo, como se hacia antes, daba un decimal de
+    140 pt que en el cartel se dibuja a 36.
+
+    Si hay MAS DE UN segmento de largo libre, el sobrante se reparte en partes
+    iguales. Es una decision arbitraria --ninguna plantilla de hoy tiene dos
+    precios variables en la misma caja-- pero es la unica neutral: cualquier
+    otro reparto le estaria prometiendo lugar a un precio a costa del otro, y
+    el relleno existe justamente para no prometer lugar que no hay.
+    """
+    segs = comp.get("segments") or []
+    if len(segs) < 2:
+        return None
+    b = comp.get("base_bounds") or {}
+    ancho = b.get("width")
+    if not ancho or ancho <= 0:
+        return None
+    usable = max(0.1, ancho - _INSET_CM)
+
+    # Primera pasada: lo de largo conocido, cada uno con su cuerpo.
+    fijos: list[str | None] = []
+    ocupado = 0.0
+    libres: list[int] = []
+    estilos: list[tuple[float | None, str | None, bool]] = []
+    for i, seg in enumerate(segs):
+        cuerpo, familia, bold = _estilo_segmento(comp, seg)
+        estilos.append((cuerpo, familia, bold))
+        texto = _texto_fijo_del_segmento(seg, familia)
+        fijos.append(texto)
+        if texto is None:
+            libres.append(i)
+        elif cuerpo:
+            ocupado += ancho_texto_cm(texto, cuerpo, familia, bold)
+
+    salida = [t if t is not None else "" for t in fijos]
+    if not libres:
+        return salida
+
+    cuota = max(0.0, usable - ocupado) / len(libres)
+    for i in libres:
+        cuerpo, familia, bold = estilos[i]
+        seg = segs[i]
+        # La descripcion es texto, y la "X" es de las letras mas anchas; un
+        # precio se rellena con el digito mas ancho de su tipografia (el
+        # porque, largo, esta en texto_de_capacidad). Aca no se envuelve en
+        # varias lineas: un segmento comparte renglon con los otros.
+        relleno = "X" if seg.get("value") == "descripcion" else digito_mas_ancho(familia)
+        if not cuerpo:
+            salida[i] = relleno
+            continue
+        # Siempre al menos un caracter: un segmento vacio en el preview se lee
+        # como "esta variable no existe", que es justo la confusion que este
+        # relleno viene a sacar.
+        texto = relleno
+        while len(texto) < _MAX_CARACTERES and _cabe(texto + relleno, cuota, cuerpo, familia, bold):
+            texto += relleno
+        salida[i] = texto
+    return salida
+
+
+def segmentos_por_componente(definition: dict) -> dict[str, list[str]]:
+    """{id de componente -> relleno de cada segmento} para los cuadros de 2+.
+
+    Hermana de capacidad_por_componente y con el MISMO filtro de que cuadros
+    entran, para que el preview no empiece a rellenar etiquetas fijas del
+    diseno. Los cuadros de una sola variable no aparecen aca: para esos el
+    front sigue usando `capacidad`.
+    """
+    salida: dict[str, list[str]] = {}
+    for c in definition.get("components", []):
+        if c.get("type") != "text":
+            continue
+        usadas = _variables_del_componente(c)
+        if not usadas or not (usadas & VARIABLES_RELLENABLES):
+            continue
+        rellenos = capacidad_por_segmento(c)
+        if rellenos is not None:
+            salida[c["id"]] = rellenos
+    return salida

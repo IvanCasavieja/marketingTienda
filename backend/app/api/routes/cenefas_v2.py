@@ -24,7 +24,7 @@ from app.models.cenefa_destino import CenefaDestino
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
-from app.services.cenefas.capacidad import capacidad_por_componente
+from app.services.cenefas.capacidad import capacidad_por_componente, segmentos_por_componente
 from app.services.cenefas.component_renderer import (
     _cobertura_vertical,
     _dollar_parejas,
@@ -181,8 +181,25 @@ async def calcular_capacidad(
     Se calcula con la misma tabla de metricas de fuente que usa el render
     final, asi que lo que se ve en pantalla es la misma cuenta que despues
     decide el achique al exportar.
+
+    Devuelve DOS claves:
+
+      "capacidad": {id: str}        el relleno del cuadro entero, como siempre.
+      "segmentos": {id: [str, ...]} un relleno POR SEGMENTO, en el orden de
+                                    component.segments, y solo para los cuadros
+                                    de 2 o mas segmentos.
+
+    `segmentos` se agrego el 18/09/2026 por la plantilla de Alemania, que mete
+    moneda + precio + decimal en un solo cuadro: con un unico string el decimal
+    nunca se dibujaba con su cuerpo y no habia forma de verlo ni de acomodarlo.
+    `capacidad` queda igual a proposito -- los cuadros de una sola variable son
+    la mayoria y el front los sigue leyendo de ahi.
     """
-    return {"capacidad": capacidad_por_componente({"components": payload.components})}
+    definition = {"components": payload.components}
+    return {
+        "capacidad": capacidad_por_componente(definition),
+        "segmentos": segmentos_por_componente(definition),
+    }
 
 
 class _RelacionesRequest(BaseModel):
