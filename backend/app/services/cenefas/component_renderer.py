@@ -13,7 +13,7 @@ from pptx.oxml.ns import qn
 from pptx.util import Cm, Pt
 
 from app.services.cenefas.data_engine import load_products_from_bytes
-from app.services.cenefas.font_metrics import ancho_texto_cm, pt_efectivo
+from app.services.cenefas.font_metrics import ancho_texto_cm, margen_de_error, pt_efectivo
 from app.services.cenefas.formatters import split_caps
 from app.services.cenefas.reglas_fijas import VAR_SIMBOLO
 from app.services.cenefas.reglas_medicion import REGLAS
@@ -183,6 +183,54 @@ def _estimate_wrapped_lines(
         else:
             actual = tentativa
     return lineas
+
+
+def _renglones_de_piezas(
+    piezas: list[tuple[str, float]], box_width_cm: float | None,
+    bold: bool = False, font_family: str | None = None,
+) -> tuple[int, float]:
+    """A cuántas líneas se parte un cuadro de VARIOS pedazos, y cuánto mide la
+    más ancha.
+
+    Mismo criterio voraz que `_estimate_wrapped_lines` --agregar palabras hasta
+    que no entran más-- pero midiendo cada palabra con el cuerpo de SU pedazo:
+    en un cuadro compuesto la descripción puede ir a 40 pt y el "unidad" de al
+    lado a 14, y medir todo con un solo cuerpo erra por una línea entera.
+
+    Existe porque `_rect_texto_real` daba por sentado que un cuadro con
+    segmentos ocupaba UN renglón (20/09/2026). Y los cuadros con segmentos son
+    casi todos: el importador los crea así. Consecuencia medida en la plantilla
+    de Alemania: la descripción del pack de cervezas necesita 5 renglones de
+    40 pt --8,5 cm-- en una caja de 5,39, se imprime encima de "PRECIO REGULAR"
+    y de "OFERTA", y el detector no avisaba nada porque la medía como un
+    renglón de 1,62 cm de alto.
+    """
+    usable_cm = max(0.1, (box_width_cm or 0) - _INSET_CM)
+    palabras: list[tuple[str, float]] = []
+    for texto, pt in piezas:
+        partes = str(texto).split()
+        if not partes:
+            # Un pedazo de solo espacios no aporta palabra, pero sí separa: se
+            # suma al ancho de la que viene (si no, "$ 1.299" mediría de menos).
+            if palabras and texto:
+                palabras[-1] = (palabras[-1][0] + " ", palabras[-1][1])
+            continue
+        for parte in partes:
+            palabras.append((parte, pt))
+
+    lineas = 1
+    actual = 0.0
+    mayor = 0.0
+    for i, (palabra, pt) in enumerate(palabras):
+        ancho = _ancho_medido_cm(palabra, pt, font_family, bold)
+        espacio = _ancho_medido_cm(" ", pt, font_family, bold) if i else 0.0
+        if actual and actual + espacio + ancho > usable_cm:
+            mayor = max(mayor, actual)
+            lineas += 1
+            actual = ancho
+        else:
+            actual += espacio + ancho
+    return lineas, max(mayor, actual)
 
 
 def _texto_resuelto(comp: dict, product: dict) -> str:
@@ -567,8 +615,22 @@ def _rect_texto_real(comp: dict, product: dict) -> dict | None:
         # suyo al dibujar: se mide igual que se dibuja.
         piezas = _piezas_con_tamano_manual(comp, product)
     if piezas:
-        ancho = sum(_ancho_medido_cm(t, sz, fam, bold) for t, sz in piezas)
-        alto  = _alto_texto_cm(1, max(sz for _, sz in piezas), texto)
+        mayor_pt = max(sz for _, sz in piezas)
+        total    = sum(_ancho_medido_cm(t, sz, fam, bold) for t, sz in piezas)
+        # El corte de línea se declara solo si el exceso supera el error de
+        # medición de esa tipografía: con una familia que no medimos exacto, un
+        # 8% de más no es un renglón nuevo, es la duda de la medición. Ver
+        # font_metrics.margen_de_error.
+        tope = (b["width"] - _INSET_CM) * (1 + margen_de_error(fam))
+        if total <= tope or " " not in texto:
+            # Entra en un renglón, o no tiene por dónde cortarse (un precio no
+            # se parte): se dibuja de una sola línea, sobresaliendo a los
+            # costados si es más ancho que su caja.
+            lineas, ancho = 1, total
+        else:
+            lineas, mas_ancha = _renglones_de_piezas(piezas, b["width"], bold, fam)
+            ancho = min(mas_ancha, b["width"])
+        alto = _alto_texto_cm(lineas, mayor_pt, texto)
     else:
         lineas = _estimate_wrapped_lines(texto, b["width"], fs, bold, fam) if " " in texto else 1
         ancho  = min(_ancho_medido_cm(texto, fs, fam, bold), b["width"]) if lineas > 1 \
@@ -678,6 +740,60 @@ def detectar_solapes(pares: list[tuple[dict, dict]]) -> list[dict]:
                 "texto":          _texto_resuelto(invasor, suyo)[:40],
             })
     return avisos
+
+
+def detectar_solapes_del_lote(
+    componentes: list[dict],
+    rules: list[dict],
+    productos: list[dict],
+    slot_bands: list[list[dict]] | None = None,
+) -> list[dict]:
+    """Los avisos de TODA la corrida, no solo de la primera fila.
+
+    Hasta el 20/09/2026 el preview medía únicamente `productos[0]`: un desborde
+    que aparecía en la fila 7 --el precio más largo del listado, la descripción
+    más larga-- no daba ningún aviso, y quien mira la pantalla ve la fila 1 y
+    se queda tranquilo. Medido sobre la plantilla de Alemania con sus 14 filas:
+    la primera está limpia, y hay dos filas con choques (el Parrillero de
+    $14.990 y el pack de cervezas, cuya descripción se imprime encima de
+    "PRECIO REGULAR" y de "OFERTA").
+
+    Un choque se agrupa por PAR DE CUADROS: el mismo par pisándose en 30 filas
+    es UN aviso con su peor caso y la cuenta de filas, no 30 avisos --si no, un
+    mailing de 440 filas devolvía cientos de renglones repetidos y el panel se
+    volvía ilegible. Se conservan las claves que ya leía el frontend
+    (`component_id`, `contra_id`, `area_cm2`, `font_size`, `texto`, del PEOR
+    caso) y se agregan dos: `filas` (en cuántas pasa) y `fila` (el número de
+    fila del peor caso, 1 = la primera del Excel).
+
+    Cuesta 0,20 s para 1291 filas de una 3xA4 (medido, 20/09/2026), así que no
+    hace falta ningún tope: se miran todas.
+    """
+    if not productos:
+        return []
+
+    peor: dict[tuple, dict] = {}
+    por_hoja = len(slot_bands) if slot_bands else 1
+    for inicio in range(0, len(productos), por_hoja):
+        hoja = productos[inicio:inicio + por_hoja]
+        pares: list[tuple[dict, dict]] = []
+        fila_de: dict[str, int] = {}
+        for i, prod in enumerate(hoja):
+            banda = slot_bands[i] if slot_bands else componentes
+            for c in preparar_componentes(banda, rules, prod):
+                pares.append((c, prod))
+                if c.get("id"):
+                    fila_de[c["id"]] = inicio + i + 1
+        for aviso in detectar_solapes(pares):
+            clave = (aviso.get("component_id"), aviso.get("contra_id"))
+            anterior = peor.get(clave)
+            candidato = {**aviso, "fila": fila_de.get(aviso.get("component_id")),
+                         "filas": (anterior or {}).get("filas", 0) + 1}
+            if anterior is None or aviso["area_cm2"] > anterior["area_cm2"]:
+                peor[clave] = candidato
+            else:
+                anterior["filas"] = candidato["filas"]
+    return sorted(peor.values(), key=lambda a: -a["area_cm2"])
 
 
 def preparar_componentes(comps: list[dict], rules: list[dict], product: dict) -> list[dict]:

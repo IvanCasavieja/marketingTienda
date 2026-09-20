@@ -34,7 +34,7 @@ from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.reglas_fijas import asegurar_reglas_fijas
 from app.services.cenefas.reglas_medicion import CRUDO as _REGLAS_DE_MEDICION
 from app.services.cenefas.component_renderer import (
-    _detect_slot_bands, detectar_solapes, preparar_componentes,
+    _detect_slot_bands, detectar_solapes_del_lote, preparar_componentes,
 )
 from app.services.cenefas.jobs import (
     confirm_generation_job,
@@ -1170,19 +1170,13 @@ async def _job_to_dict(
             # avisos de solape necesitan los tamaños y las visibilidades reales
             # de esta fila. Ese resultado no sale de esta función.
             reglas = staged.template_def.get("rules", [])
-            avisos_solape: list[dict] = []
-            if staged.products:
-                if slot_bands:
-                    avisos_solape = detectar_solapes([
-                        (c, producto)
-                        for i, (banda, producto) in enumerate(zip(slot_bands, staged.products))
-                        for c in preparar_componentes(banda, reglas, producto)
-                    ])
-                else:
-                    avisos_solape = detectar_solapes([
-                        (c, staged.products[0])
-                        for c in preparar_componentes(componentes, reglas, staged.products[0])
-                    ])
+            # TODAS las filas, no solo la primera: un desborde que aparece en la
+            # fila 7 --el precio más largo del listado, la descripción más
+            # larga-- no daba ningún aviso, y la pantalla mostraba la fila 1
+            # limpia. Los avisos vienen agrupados por par de cuadros, con su
+            # peor caso y en cuántas filas pasa (ver detectar_solapes_del_lote).
+            avisos_solape = detectar_solapes_del_lote(
+                componentes, reglas, staged.products, slot_bands)
 
             # Ya no se achica solo para despejar un choque: se avisa y decide la
             # persona, poniéndole una regla de tamaño al cuadro que invade.

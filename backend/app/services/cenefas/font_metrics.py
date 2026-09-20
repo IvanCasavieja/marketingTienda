@@ -101,6 +101,40 @@ def _metricas(font_family: str | None) -> dict | None:
     return None
 
 
+def margen_de_error(font_family: str | None) -> float:
+    """Cuánto puede errar la medición de ancho de ESA tipografía, en tanto por uno.
+
+    No todas las familias se miden igual de bien y la diferencia importa cuando
+    hay que decidir si un texto se parte en dos renglones: un error de medición
+    del 20% inventa un corte de línea que en el papel no existe, y un aviso que
+    salta en todos los carteles no lo lee nadie.
+
+    Tres casos, de mejor a peor:
+
+    - **exacta** (0%): la familia está en la tabla, medida contra el archivo de
+      fuente real. Impact, Arial, Arial Black, Calibri, Verdana, Tahoma,
+      Trebuchet, Georgia, Times.
+
+    - **por prefijo** (20%): "Franklin Gothic Medium Cond" cae en "Franklin
+      Gothic Medium". Una condensada mide alrededor de 15-20% menos que su base,
+      así que el ancho sale de MÁS. Caso real (Alemania A4, 20/09/2026): el
+      renglón "PRECIO REGULAR: $320 unidad" a 25 pt se mide en 12,63 cm contra
+      11,70 de caja útil --se pasa 8%-- y con la condensada de verdad entra
+      holgado. Sin este margen el detector avisaba un choque en los 14 carteles.
+
+    - **sin datos** (25%): no está en la tabla ni por prefijo, se mide con el em
+      de reserva. Al 20/09/2026 le pasa a las cinco Franklin Gothic de Office y
+      a Aptos (esta máquina no tiene Office, ver scripts/generar_font_metrics.py).
+
+    El margen se usa SOLO para no inventar cortes de línea. El ancho que se
+    informa sigue siendo el medido: acá no se corrige nada, se declara la duda.
+    """
+    if _metricas(font_family) is None:
+        return 0.25
+    clave = _norm(font_family)
+    return 0.0 if clave in _TABLA else 0.20
+
+
 def ancho_texto_em(texto: str, font_family: str | None = None, bold: bool = False) -> float:
     """Ancho del texto en múltiplos del tamaño de fuente (em)."""
     if not texto:

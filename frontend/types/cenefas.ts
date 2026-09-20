@@ -268,6 +268,11 @@ export interface CenefaTemplate {
 /**
  * Un cuadro cuyo texto se imprime ENCIMA de otro. Ver `detectar_solapes` en
  * component_renderer.py y el comentario de `avisos_solape` en CenefaJob.
+ *
+ * Viene UNO por par de cuadros, con su peor caso de toda la corrida: desde el
+ * 20/09/2026 el backend mira TODAS las filas del Excel y no solo la primera
+ * (`detectar_solapes_del_lote`), así que el mismo choque repetido en 30 filas
+ * llega como un aviso con `filas: 30`, no como 30 avisos.
  */
 export interface AvisoSolape {
   component_id: string;
@@ -275,6 +280,10 @@ export interface AvisoSolape {
   area_cm2:     number;
   font_size?:   number;
   texto?:       string;
+  /** En cuántas filas del Excel pasa este choque. */
+  filas?:       number;
+  /** La fila del peor caso; 1 es la primera del Excel. */
+  fila?:        number;
 }
 
 /** Una cenefa dentro de un lote: un Excel contra una plantilla. */

@@ -17,6 +17,12 @@ import type { AvisoSolape, CenefaTemplate } from "@/types/cenefas";
 // mismo criterio de siempre (no cualquier roce cuenta: el "$" adentro de la
 // caja del precio o el decimal pegado a su entero están así por diseño), pero
 // ahora se muestra acá y lo resuelve una persona.
+//
+// Cada aviso es UN par de cuadros con su peor caso de toda la corrida, y dice
+// en qué fila pasa. Hasta el 20/09/2026 el backend medía solo la PRIMERA fila
+// del Excel: un desborde que aparecía en la fila 7 --el precio más largo del
+// listado, la descripción más larga-- no se avisaba, y quien mira la pantalla
+// veía la fila 1 limpia y mandaba a imprimir.
 
 export default function AvisosSolape({
   avisos,
@@ -47,6 +53,14 @@ export default function AvisosSolape({
                 {a.font_size ? ` (${a.font_size} pt)` : ""} pisa a{" "}
                 <span className="font-medium">{nombre(a.contra_id)}</span>
                 <span className="opacity-70"> — {a.area_cm2} cm²</span>
+                {a.fila ? (
+                  <span className="opacity-70">
+                    {a.filas && a.filas > 1
+                      ? `, en ${a.filas} filas (la peor es la ${a.fila})`
+                      : `, en la fila ${a.fila}`}
+                    {a.texto ? `: “${a.texto}”` : ""}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
