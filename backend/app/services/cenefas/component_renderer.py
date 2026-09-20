@@ -15,6 +15,7 @@ from pptx.util import Cm, Pt
 from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.font_metrics import ancho_texto_cm, pt_efectivo
 from app.services.cenefas.formatters import split_caps
+from app.services.cenefas.reglas_fijas import VAR_SIMBOLO
 from app.services.cenefas.reglas_medicion import REGLAS
 # Lo único que el motor genérico sabe del mundo de pruebas: una llamada al
 # final del render, que no hace NADA en los otros mundos. Ver pruebas.py.
@@ -199,6 +200,28 @@ def _texto_resuelto(comp: dict, product: dict) -> str:
     if variable:
         return str(product.get(variable, "") or "")
     return str(comp.get("static_value", "") or "")
+
+
+# Los espacios que el diseño dibuja alrededor del símbolo de moneda viven en
+# segmentos estáticos propios: la conversión del "$" tipeado a <<unidadMoneda>>
+# (20/09/2026) tuvo que partir " $ " en tres pedazos para no perderlos. Las dos
+# guardas de _render_slide comparaban contra el segmento PEGADO, así que sin
+# esto dejaban de reconocer al símbolo en cuanto un espacio se interponía.
+def _es_espacio(seg: dict) -> bool:
+    """Un estático que no aporta dato: solo espacios."""
+    return seg.get("type") == "static" and not str(seg.get("value", "") or "").strip()
+
+
+def _es_separador(seg: dict) -> bool:
+    """Un pedazo que puede hacer de separador entre dos variables.
+
+    Texto fijo del diseño (" $ ", " x ", " de ") o el propio símbolo de moneda
+    ya convertido en variable. Verificado sobre las 23 plantillas de producción
+    (20/09/2026): ninguna tiene dos estáticos seguidos entre dos variables, así
+    que tratar la corrida entera como un separador no cambia nada de lo que hay
+    hoy -- solo permite que el símbolo viaje adentro de ella.
+    """
+    return seg.get("type") == "static" or seg.get("value") == VAR_SIMBOLO
 
 
 # Piso de achique: por debajo de esto el texto deja de ser legible en un cartel
@@ -1556,10 +1579,20 @@ def _render_slide(
                     # mano con "$899" en una plantilla que además tiene el
                     # "$" como run propio -- sin el chequeo queda "$$899".
                     # Solo saca un símbolo repetido, nunca reformatea nada.
-                    if i > 0 and segments[i - 1].get("type") == "static":
-                        prev = segments[i - 1].get("value", "").strip()
-                        if prev in ("U$S", "$") and seg_val.strip().startswith(prev):
-                            seg_val = seg_val.strip()[len(prev):].lstrip()
+                    # El símbolo puede estar tipeado en el diseño o ser
+                    # <<unidadMoneda>>, y tener espacios propios en el medio:
+                    # se busca hacia atrás salteando los espacios.
+                    prev = ""
+                    for anterior in reversed(segments[:i]):
+                        if _es_espacio(anterior):
+                            continue
+                        if anterior.get("type") == "static":
+                            prev = str(anterior.get("value", "") or "").strip()
+                        elif anterior.get("value") == VAR_SIMBOLO:
+                            prev = str(product.get(VAR_SIMBOLO, "") or "").strip()
+                        break
+                    if prev in ("U$S", "$") and seg_val.strip().startswith(prev):
+                        seg_val = seg_val.strip()[len(prev):].lstrip()
                 else:
                     seg_val = seg.get("value", "")
                 resolved.append({**seg, "_resolved": seg_val})
@@ -1579,17 +1612,28 @@ def _render_slide(
             # se apaga el separador y la segunda copia -- nunca reformatea,
             # solo saca la repetición (mismo criterio que el guardado de
             # "$$" de arriba).
-            for i, seg in enumerate(resolved):
-                if seg.get("type") != "static" or i == 0 or i == len(resolved) - 1:
+            # El separador puede ser UNA corrida de pedazos (" ", <<unidadMoneda>>,
+            # " ") y no un solo estático, desde que el símbolo es variable.
+            i = 0
+            while i < len(resolved):
+                if not _es_separador(resolved[i]):
+                    i += 1
                     continue
-                anterior, siguiente = resolved[i - 1], resolved[i + 1]
+                inicio = i
+                while i < len(resolved) and _es_separador(resolved[i]):
+                    i += 1
+                fin = i  # el primer pedazo DESPUÉS del separador
+                if inicio == 0 or fin >= len(resolved):
+                    continue
+                anterior, siguiente = resolved[inicio - 1], resolved[fin]
                 if anterior.get("type") != "variable" or siguiente.get("type") != "variable":
                     continue
                 val_anterior = anterior.get("_resolved", "").strip()
                 val_siguiente = siguiente.get("_resolved", "").strip()
                 if val_anterior and val_anterior == val_siguiente:
-                    resolved[i] = {**seg, "_resolved": ""}
-                    resolved[i + 1] = {**siguiente, "_resolved": ""}
+                    for j in range(inicio, fin):
+                        resolved[j] = {**resolved[j], "_resolved": ""}
+                    resolved[fin] = {**siguiente, "_resolved": ""}
 
             comp  = {**comp, "segments": resolved}
             value = ""  # unused when segments present

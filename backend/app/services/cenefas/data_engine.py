@@ -194,6 +194,21 @@ def process_row(
         valor = celda(var)
         result[var] = "" if valor is None else str(valor).strip()
 
+    # -- El símbolo de moneda nunca puede faltar --------------------------
+    # Un cartel con el precio pelado, sin "$" ni "U$S", es un cartel roto. El
+    # Convertidor escribe la variable SIEMPRE (convertidor_variables: "U$S" si
+    # la columna MONEDA dice dólares, "$" en cualquier otro caso), pero un
+    # Excel cargado a mano puede no traer la columna, y ahí el passthrough de
+    # arriba deja "".
+    #
+    # Mientras el "$" era texto tipeado en el diseño eso no se notaba: el
+    # cuadro lo imprimía igual. Desde que los diseños dibujan
+    # <<unidadMoneda>> (17 y 20/09/2026) la ausencia SÍ se imprime, como un
+    # precio sin símbolo. El default es pesos, que es el mismo que ya usa el
+    # Convertidor cuando la columna no dice nada.
+    if not result.get("unidadMoneda"):
+        result["unidadMoneda"] = "$"
+
     # -- Campos internos (no se dibujan, deciden comportamiento) ----------
     internos = {}
     for campo in INTERNAL_FIELDS:
