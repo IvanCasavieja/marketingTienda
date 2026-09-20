@@ -238,6 +238,26 @@ export function tamanosDeSegmento(
 }
 
 /**
+ * Una décima, redondeando los empates al par: es lo que hace `round(x, 1)` de
+ * Python, y el backend redondea así cada cuerpo escalado.
+ *
+ * `toFixed(1)` de JavaScript redondea los empates para arriba, y eso alcanzaba
+ * para separar las dos pantallas: en Inglaterra Rural un segmento de 11 pt con
+ * una regla de 90 sobre una caja de 24 da 41,25, y el PPTX escribía 41,2
+ * mientras el preview mostraba 41,3. Es medio punto de nada, pero es una regla
+ * escrita dos veces con dos resultados, que es exactamente lo que no queremos.
+ * Manda el que imprime.
+ */
+function aDecima(x: number): number {
+  const y = x * 10;
+  const piso = Math.floor(y);
+  const resto = y - piso;
+  if (resto > 0.5) return (piso + 1) / 10;
+  if (resto < 0.5) return piso / 10;
+  return (piso % 2 === 0 ? piso : piso + 1) / 10;
+}
+
+/**
  * El cuadro con el cuerpo que dictan las reglas. Espejo de `apply_font_sizes`.
  *
  * En un cuadro multi-segmento cada segmento lleva SU font_size y ese pisa al
@@ -268,10 +288,25 @@ export function aplicarTamanos(
     const base = propio || (deSegs.length ? Math.max(...deSegs) : undefined);
     const escala = base ? pt / base : 1;
     nuevo = { ...nuevo, style: { ...nuevo.style, font_size: pt } };
+    // El alto del renglón escala con el cuerpo, igual que en el backend.
+    //
+    // `line_height_pt` es el pedazo invisible con el que el diseño fuerza la
+    // altura del renglón cuando algo va volado (lo tienen los 22 cuadros de
+    // precio de 9 plantillas). Si el cuerpo cambia y el alto no, el precio se
+    // dibuja a una altura en pantalla y se imprime a otra: con una regla de
+    // 90 pt, en Rompe Precios A4 el preview armaba el renglón con 250 pt y el
+    // PPTX con 173,1. No se notaba porque todavía no hay ninguna regla de
+    // tamaño declarada: aparecía con la primera.
+    if (nuevo.style?.line_height_pt) {
+      nuevo = { ...nuevo, style: {
+        ...nuevo.style,
+        line_height_pt: aDecima(nuevo.style.line_height_pt * escala),
+      } };
+    }
     if (nuevo.segments) {
       nuevo = { ...nuevo, segments: nuevo.segments.map((seg) =>
         seg.style?.font_size
-          ? { ...seg, style: { ...seg.style, font_size: +(seg.style.font_size * escala).toFixed(1) } }
+          ? { ...seg, style: { ...seg.style, font_size: aDecima(seg.style.font_size * escala) } }
           : seg) };
     }
   }
