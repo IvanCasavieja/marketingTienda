@@ -275,9 +275,37 @@ def apply_font_sizes(
 
     En un cuadro multi-segmento cada segmento lleva SU font_size y ese pisa al
     del componente al dibujar (ver _populate_text_frame). Por eso una regla
-    sobre el cuadro entero escala también a sus segmentos: sin eso el cuerpo
-    declarado se descartaba en silencio en casi todas las plantillas, que se
-    importan multi-segmento.
+    sobre el cuadro entero tiene que llegar también a sus segmentos: sin eso el
+    cuerpo declarado se descartaba en silencio en casi todas las plantillas, que
+    se importan multi-segmento.
+
+    EL NÚMERO DE LA REGLA ES EL NÚMERO QUE SALE, en todos los pedazos del
+    cuadro. Decisión de Ivan (20/09/2026): "si yo pongo 90 en el cuadro entero,
+    todo tiene que medir 90 y punto".
+
+    Hasta hoy no era así: el motor calculaba una escala --el pt de la regla
+    dividido el font_size de la CAJA-- y multiplicaba cada segmento por ella,
+    para conservar la proporción que el diseño le daba a cada pedazo. La idea
+    era razonable y el resultado era imposible de predecir, porque el font_size
+    de la caja no es un número que alguien elija: lo llena el importador con el
+    del PRIMER pedazo del cuadro (pptx_importer, style["font_size"]), que en un
+    cuadro de precio es casi siempre el "$", el chico. Medido sobre las 23
+    plantillas de producción: de los 112 cuadros de varios pedazos, en 83 ese
+    número es el del primer pedazo y en 26 no es ni el primero ni el mayor.
+
+    El caso que lo destapó, en Rompe Precios Congelados A4 (cuadro 63609775):
+    la caja dice 58,5 y sus pedazos 108 ("$") y 220 (el precio). Una regla de
+    90 daba escala 90/58,5 = 1,54 y dejaba el precio en 338,5 -- una regla
+    escrita para achicar agrandaba un 54%. Y ese 58,5 ni siquiera es del
+    diseño: el PPTX del diseñador tiene ese cuadro entero a 108 (con dos
+    pedazos invisibles de 130 y 180 para el alto del renglón), y 58,5 = 108 x
+    0,5417 igual que 97,5 = 180 x 0,5417 -- los dos números escalados por el
+    MISMO factor, que es la huella del achique automático horneado por "Guardar
+    en la plantilla" antes de que se eliminara el 14/09.
+
+    `line_height_pt` NO se toca: no es una letra, es el pedazo invisible con el
+    que el diseño fuerza la altura del renglón. Si una regla achica el precio,
+    el renglón queda donde el diseño lo puso y el precio no se mueve de lugar.
     """
     segment_sizes = segment_sizes or {}
     salida = []
@@ -288,27 +316,11 @@ def apply_font_sizes(
 
         pt = sizes.get(c.get("id"))
         if pt:
-            # El cuerpo contra el que se calcula la escala de los segmentos.
-            # Un cuadro puede no tener font_size propio y llevar el tamaño solo
-            # en sus segmentos (pasa con los importados); ahí la referencia es
-            # el segmento más grande, mismo criterio que usa capacidad.py. Sin
-            # esto la escala quedaba en 1 y la regla no movía ningún segmento,
-            # o sea no hacía nada visible.
-            base = (c.get("style") or {}).get("font_size")
-            if not base and c.get("segments"):
-                tam = [(s.get("style") or {}).get("font_size") for s in c["segments"]]
-                tam = [t for t in tam if t]
-                base = max(tam) if tam else None
+            # El número de la regla, tal cual, en la caja y en cada pedazo.
             nueva["style"] = {**nueva.get("style", {}), "font_size": pt}
-            escala = (pt / base) if base else 1.0
-            if nueva["style"].get("line_height_pt"):
-                nueva["style"]["line_height_pt"] = round(
-                    nueva["style"]["line_height_pt"] * escala, 1)
             if nueva.get("segments"):
                 nueva["segments"] = [
-                    {**seg, "style": {**seg["style"],
-                                      "font_size": round(seg["style"]["font_size"] * escala, 1)}}
-                    if (seg.get("style") or {}).get("font_size") else seg
+                    {**seg, "style": {**(seg.get("style") or {}), "font_size": pt}}
                     for seg in nueva["segments"]
                 ]
 

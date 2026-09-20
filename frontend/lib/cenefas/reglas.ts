@@ -238,33 +238,24 @@ export function tamanosDeSegmento(
 }
 
 /**
- * Una décima, redondeando los empates al par: es lo que hace `round(x, 1)` de
- * Python, y el backend redondea así cada cuerpo escalado.
- *
- * `toFixed(1)` de JavaScript redondea los empates para arriba, y eso alcanzaba
- * para separar las dos pantallas: en Inglaterra Rural un segmento de 11 pt con
- * una regla de 90 sobre una caja de 24 da 41,25, y el PPTX escribía 41,2
- * mientras el preview mostraba 41,3. Es medio punto de nada, pero es una regla
- * escrita dos veces con dos resultados, que es exactamente lo que no queremos.
- * Manda el que imprime.
- */
-function aDecima(x: number): number {
-  const y = x * 10;
-  const piso = Math.floor(y);
-  const resto = y - piso;
-  if (resto > 0.5) return (piso + 1) / 10;
-  if (resto < 0.5) return piso / 10;
-  return (piso % 2 === 0 ? piso : piso + 1) / 10;
-}
-
-/**
  * El cuadro con el cuerpo que dictan las reglas. Espejo de `apply_font_sizes`.
  *
  * En un cuadro multi-segmento cada segmento lleva SU font_size y ese pisa al
  * del componente al dibujar --tanto acá como en _populate_text_frame del
- * backend--, así que una regla sobre el cuadro entero tiene que escalar
- * también a sus segmentos. Sin eso el cuerpo declarado se descarta en silencio
- * en casi todas las plantillas, que se importan multi-segmento.
+ * backend--, así que una regla sobre el cuadro entero tiene que llegar también
+ * a sus segmentos. Sin eso el cuerpo declarado se descarta en silencio en casi
+ * todas las plantillas, que se importan multi-segmento.
+ *
+ * El número de la regla es el número que sale, en todos los pedazos: 90 en el
+ * cuadro es 90 en cada uno (decisión de Ivan, 20/09/2026). Antes se calculaba
+ * una escala contra el font_size de la caja --un número que nadie elige, lo
+ * llena el importador con el del primer pedazo-- y el resultado era
+ * impredecible: en Congelados A4 una regla de 90 dejaba el precio en 338,5. El
+ * porqué completo está en apply_font_sizes (rules_engine.py), que es de donde
+ * este archivo es espejo.
+ *
+ * `line_height_pt` no se toca: no es una letra, es el pedazo invisible con el
+ * que el diseño fuerza la altura del renglón.
  *
  * Devuelve el MISMO objeto si no hay nada que aplicar: el Canvas lo llama en
  * cada render y una copia nueva por cuadro invalidaría memos río abajo.
@@ -278,36 +269,10 @@ export function aplicarTamanos(
 
   let nuevo = comp;
   if (pt !== undefined) {
-    // Un cuadro puede no tener font_size propio y llevar el tamaño solo en sus
-    // segmentos (pasa con los importados): ahí la referencia para la escala es
-    // el segmento más grande. Espejo de apply_font_sizes en rules_engine.py.
-    const propio = comp.style?.font_size;
-    const deSegs = comp.segments
-      ?.map((s) => s.style?.font_size)
-      .filter((n): n is number => !!n) ?? [];
-    const base = propio || (deSegs.length ? Math.max(...deSegs) : undefined);
-    const escala = base ? pt / base : 1;
     nuevo = { ...nuevo, style: { ...nuevo.style, font_size: pt } };
-    // El alto del renglón escala con el cuerpo, igual que en el backend.
-    //
-    // `line_height_pt` es el pedazo invisible con el que el diseño fuerza la
-    // altura del renglón cuando algo va volado (lo tienen los 22 cuadros de
-    // precio de 9 plantillas). Si el cuerpo cambia y el alto no, el precio se
-    // dibuja a una altura en pantalla y se imprime a otra: con una regla de
-    // 90 pt, en Rompe Precios A4 el preview armaba el renglón con 250 pt y el
-    // PPTX con 173,1. No se notaba porque todavía no hay ninguna regla de
-    // tamaño declarada: aparecía con la primera.
-    if (nuevo.style?.line_height_pt) {
-      nuevo = { ...nuevo, style: {
-        ...nuevo.style,
-        line_height_pt: aDecima(nuevo.style.line_height_pt * escala),
-      } };
-    }
     if (nuevo.segments) {
       nuevo = { ...nuevo, segments: nuevo.segments.map((seg) =>
-        seg.style?.font_size
-          ? { ...seg, style: { ...seg.style, font_size: aDecima(seg.style.font_size * escala) } }
-          : seg) };
+        ({ ...seg, style: { ...seg.style, font_size: pt } })) };
     }
   }
   if (porSegmento?.size && nuevo.segments) {

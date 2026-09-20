@@ -171,13 +171,19 @@ def test_una_regla_sobre_un_segmento_toca_solo_ese_segmento():
     assert _segs_pt(reglas, "1.599") == [102.0, 120]
 
 
-def test_una_regla_sobre_el_cuadro_escala_todos_sus_segmentos():
+def test_una_regla_sobre_el_cuadro_pone_ese_pt_en_todos_sus_segmentos():
     # En un cuadro multi-segmento cada segmento lleva SU font_size y ese pisa
-    # al del componente al dibujar (_populate_text_frame). Sin escalarlos, el
-    # cuerpo declarado se descartaba en silencio -- que es como se perdían los
-    # achiques en casi todas las plantillas, que se importan multi-segmento.
-    reglas = [_regla(80, 3)]                      # 160 -> 80, o sea la mitad
-    assert _segs_pt(reglas, "1.599") == [51.0, 80.0]
+    # al del componente al dibujar (_populate_text_frame), así que una regla
+    # sobre el cuadro tiene que llegar a los segmentos o no hace nada visible.
+    #
+    # Y llega con el número TAL CUAL: los dos pedazos quedan en 80, el "$"
+    # incluido. Decisión de Ivan (20/09/2026): "si yo pongo 90 en el cuadro
+    # entero, todo tiene que medir 90 y punto"; si alguien quiere tocar un solo
+    # pedazo, para eso está la regla por segmento (el test de arriba). Antes
+    # esto escalaba por pt / font_size de la CAJA y daba [51, 80] -- ver el
+    # porqué en apply_font_sizes y en test_reglas_tamano_paridad.py.
+    reglas = [_regla(80, 3)]
+    assert _segs_pt(reglas, "1.599") == [80.0, 80.0]
 
 
 # ---------------------------------------------------------------------------
