@@ -16,7 +16,11 @@ const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // Tailwind/Radix usan style="" inline en JSX
-  "img-src 'self' data:",
+  // blob: para las miniaturas de las placas que se van a subir en Validación de
+  // RRSS: son URL.createObjectURL(file) de archivos que la propia persona eligió
+  // (no hay nada remoto), y armar 30 data: URL de imágenes de 2 MB c/u en memoria
+  // no es razonable.
+  "img-src 'self' data: blob:",
   "font-src 'self' data: https://fonts.gstatic.com",
   `connect-src 'self' ${apiOrigin}`,
   // 'self' NO cubre blob: -- sin esto, el <iframe> de preview de PDF en

@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Megaphone, Brain, Settings, LogOut,
   BarChart3, ChevronRight, Presentation, Globe, ShieldCheck, HelpCircle, X, Tag,
   Sun, Moon, ClipboardList, Bell, Star, Activity, TrendingUp, TrendingDown, AlertTriangle, Check,
-  FileSpreadsheet, BookOpen, Receipt, Landmark,
+  FileSpreadsheet, BookOpen, Receipt, Landmark, ScanSearch,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
@@ -96,6 +96,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: t("sidebar.medios"),         perm: "analytics.view" },
     { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: t("sidebar.medios"),         perm: "ai.triada" },
     { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.medios"),         perm: "connections.view" },
+    { href: "/redes-sociales/validacion", label: t("sidebar.validacionRrss"), icon: ScanSearch, section: t("sidebar.redesSociales"), perm: "rrss.view" },
     { href: "/materiales/cenefas",    label: t("sidebar.cenefas"),  icon: Presentation, section: t("sidebar.materiales"), perm: "cenefas.view" },
     { href: "/materiales/convertidor", label: t("sidebar.convertidor"), icon: FileSpreadsheet, section: t("sidebar.materiales"), perm: "cenefas.view" },
     { href: "/materiales/diccionario", label: t("sidebar.diccionario"), icon: BookOpen, section: t("sidebar.materiales"), perm: "cenefas.view" },

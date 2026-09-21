@@ -40,6 +40,10 @@ ALL_PERMISSIONS: dict[str, str] = {
     "facturacion.upload":      "Subir facturas PDF, revisar la extracción de DogTi y confirmar o descartar movimientos y canjes",
     "facturacion.manage":      "Administrar las cuentas de Facturación (crear, renombrar, desactivar)",
 
+    # Redes sociales
+    "rrss.view":               "Ver la Validación de RRSS y su historial de validaciones",
+    "rrss.validate":           "Validar placas de redes sociales contra el mailing con CatTi y borrar las validaciones propias",
+
     # IA — un permiso por agente de la familia "Tino" + La Triada
     "ai.don_tino":             "Usar el chat de Don Tino, la guía general de la plataforma",
     "ai.dona_tina":            "Usar a Doña Tina — consultas y reportes de precios con IA",

@@ -1337,6 +1337,161 @@ export const dogtiApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Redes sociales — Validación de RRSS: CatTi compara las placas contra el
+// mailing original (ver backend/app/services/rrss/)
+// ---------------------------------------------------------------------------
+
+export type RrssEstado = "ok" | "avisos" | "diferencias" | "sin_match" | "error";
+
+/** [x0, y0, x1, y1] como fracción (0..1) de la imagen. */
+export type RrssCaja = [number, number, number, number];
+
+export interface RrssProductoMailing {
+  descripcion: string;
+  precio_anterior: string;
+  precio_anterior_tachado: boolean;
+  mecanica: string;
+  oferta_encabezado: string;
+  oferta_precio: string;
+  oferta_pie: string;
+  es_alcohol: boolean;
+  cajas: Record<string, RrssCaja>;
+  pagina: number;
+  /** Recorte del producto en la página del mailing (data URI). */
+  recorte: string | null;
+}
+
+export interface RrssMailing {
+  fecha: string;
+  fecha_pagina: number | null;
+  legal_alcohol: string;
+  productos: RrssProductoMailing[];
+}
+
+export interface RrssFila {
+  campo: string;
+  etiqueta: string;
+  grupo: "producto" | "placa";
+  placa: string | null;
+  mailing: string | null;
+  estado: "ok" | "diferente" | "falta_en_placa" | "sobra_en_placa" | "revisar" | "info";
+  severidad: "error" | "aviso" | null;
+  nota: string;
+  caja: string | null;
+  recorte_placa: string | null;
+  recorte_mailing: string | null;
+}
+
+export interface RrssImagen {
+  id: number;
+  orden: number;
+  nombre_archivo: string;
+  ancho: number;
+  alto: number;
+  formato: string;
+  estado: RrssEstado;
+  match: { indice: number; puntaje: number } | null;
+  filas: RrssFila[];
+  error: string | null;
+  /** Vista de la placa (data URI). */
+  vista: string | null;
+}
+
+export interface RrssAvisoGrupo {
+  tipo: "repetida" | "formato_raro" | "falta_formato" | "inconsistente";
+  formato: string | null;
+  imagenes: number[];
+  texto: string;
+}
+
+export interface RrssGrupo {
+  clave: string;
+  titulo: string;
+  match_indice: number | null;
+  imagenes: number[];
+  formatos: string[];
+  avisos: RrssAvisoGrupo[];
+  inconsistencias: { campo: string; etiqueta: string; valores: { imagen: number; formato: string; valor: string }[] }[];
+}
+
+export interface RrssResumen {
+  total: number;
+  ok: number;
+  avisos: number;
+  diferencias: number;
+  sin_match: number;
+  error: number;
+  grupos: RrssGrupo[];
+  formatos_esperados: string[];
+  cta: { hay_mezcla: boolean; variantes: { cta: string | null; cantidad: number; imagenes: number[] }[] };
+  productos_mailing: number;
+  productos_con_placa: number;
+}
+
+export interface RrssPagina {
+  numero: number;
+  ancho: number;
+  alto: number;
+  imagen: string;
+}
+
+export interface RrssConfig {
+  legal_bases: string;
+  legal_alcohol: string;
+}
+
+export interface RrssValidacion {
+  id: number;
+  nombre_mailing: string;
+  estado: "en_proceso" | "completada";
+  config: RrssConfig;
+  mailing: RrssMailing;
+  resumen: RrssResumen | null;
+  created_at: string | null;
+  usuario: string | null;
+  paginas: RrssPagina[];
+  imagenes: RrssImagen[];
+}
+
+export interface RrssValidacionResumen {
+  id: number;
+  nombre_mailing: string;
+  estado: string;
+  created_at: string | null;
+  usuario: string | null;
+  total: number;
+  ok: number;
+  con_diferencias: number;
+  sin_match: number;
+  error: number;
+}
+
+const _MULTIPART = { headers: { "Content-Type": "multipart/form-data" } };
+
+export const rrssApi = {
+  config: () => api.get<RrssConfig>("/rrss/config"),
+  // Leer el mailing con CatTi tarda: se lee y se ubica cada producto.
+  crear: (mailing: File, config: RrssConfig) => {
+    const fd = new FormData();
+    fd.append("mailing", mailing);
+    fd.append("legal_bases", config.legal_bases);
+    fd.append("legal_alcohol", config.legal_alcohol);
+    return api.post<RrssValidacion>("/rrss/validaciones", fd, { ..._MULTIPART, timeout: 300_000 });
+  },
+  validarImagen: (validacionId: number, archivo: File, orden: number) => {
+    const fd = new FormData();
+    fd.append("archivo", archivo);
+    fd.append("orden", String(orden));
+    return api.post<RrssImagen>(`/rrss/validaciones/${validacionId}/imagenes`, fd, { ..._MULTIPART, timeout: 300_000 });
+  },
+  cerrar: (validacionId: number) =>
+    api.post<{ resumen: RrssResumen }>(`/rrss/validaciones/${validacionId}/cerrar`),
+  listar: () => api.get<RrssValidacionResumen[]>("/rrss/validaciones"),
+  obtener: (validacionId: number) => api.get<RrssValidacion>(`/rrss/validaciones/${validacionId}`),
+  borrar: (validacionId: number) => api.delete(`/rrss/validaciones/${validacionId}`),
+};
+
+// ---------------------------------------------------------------------------
 // Precios — catálogo de supermercados uruguayos
 // ---------------------------------------------------------------------------
 

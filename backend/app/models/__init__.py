@@ -29,6 +29,7 @@ from app.models.facturacion_cuenta import FacturacionCuenta
 from app.models.facturacion_movimiento import FacturacionMovimiento
 from app.models.facturacion_canje import FacturacionCanje
 from app.models.facturacion_proveedor_cuenta import FacturacionProveedorCuenta
+from app.models.rrss_validacion import RrssValidacion, RrssValidacionPagina, RrssValidacionImagen
 
 __all__ = [
     "User", "Role", "PlatformConnection", "Platform",
@@ -41,4 +42,5 @@ __all__ = [
     "ConvertidorHeaderAlias", "ConvertidorMapeo", "ConvertidorBancoPreset",
     "FacturacionDocumento", "FacturacionCuenta", "FacturacionMovimiento", "FacturacionCanje",
     "FacturacionProveedorCuenta",
+    "RrssValidacion", "RrssValidacionPagina", "RrssValidacionImagen",
 ]
