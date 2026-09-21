@@ -1489,6 +1489,9 @@ export const rrssApi = {
   listar: () => api.get<RrssValidacionResumen[]>("/rrss/validaciones"),
   obtener: (validacionId: number) => api.get<RrssValidacion>(`/rrss/validaciones/${validacionId}`),
   borrar: (validacionId: number) => api.delete(`/rrss/validaciones/${validacionId}`),
+  // El Excel de correcciones para el diseñador (ver backend/app/services/rrss/excel.py).
+  excel: (validacionId: number) =>
+    api.get<Blob>(`/rrss/validaciones/${validacionId}/excel`, { responseType: "blob", timeout: 120_000 }),
 };
 
 // ---------------------------------------------------------------------------

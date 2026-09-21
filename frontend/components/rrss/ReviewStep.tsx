@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, Loader2, Radi
 import { clsx } from "clsx";
 import type { RrssFila, RrssGrupo, RrssImagen, RrssPagina, RrssValidacion } from "@/lib/api";
 import CatTiBadge from "./CatTiBadge";
+import DescargarExcel from "./DescargarExcel";
 import { diferenciar, ESTILO_ESTADO, etiquetaImagen, filasConProblema, ordenFormato } from "./rrssUtils";
 
 export interface ItemPendiente {
@@ -372,6 +373,8 @@ export default function ReviewStep({ validacion: v, pendientes, progreso, onRein
   const siguienteProblema = pos >= 0 ? porOrden.slice(pos + 1).find(conProblema) ?? porOrden.find((i, k) => k < pos && conProblema(i)) : undefined;
 
   const cuenta = (e: RrssImagen["estado"]) => v.imagenes.filter((i) => i.estado === e).length;
+  // Solo las que quedaron guardadas (id > 0): una placa que falló en el navegador no está en el servidor.
+  const hayParaCorregir = v.imagenes.some((i) => i.estado !== "ok" && i.id > 0);
   const resumen = v.resumen;
   const alertas = resumen
     ? [
@@ -412,6 +415,7 @@ export default function ReviewStep({ validacion: v, pendientes, progreso, onRein
               <span key={e} className={ESTILO_ESTADO[e].badge}>{cuenta(e)} · {t(`rrss.estado.${e}`)}</span>
             ))}
             {pendientes.length > 0 && <span className="badge-slate">{pendientes.length} · {t("rrss.estado.pendiente")}</span>}
+            {!enVivo && hayParaCorregir && <DescargarExcel validacionId={v.id} nombreMailing={v.nombre_mailing} />}
             {onReintentar && (pausada || (!enVivo && cuenta("error") > 0)) && (
               <button onClick={onReintentar} className="btn-primary text-xs">
                 {pausada ? t("rrss.reintentar") : t("rrss.reintentarConError", { count: cuenta("error") })}

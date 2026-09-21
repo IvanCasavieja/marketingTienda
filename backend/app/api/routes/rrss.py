@@ -8,11 +8,12 @@ archivo roto no tira abajo al resto. Ver app/services/rrss/.
 """
 import io
 import logging
+import re
 import time
 
 import anthropic
 from PIL import Image
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +24,7 @@ from app.core.uploads import read_limited
 from app.models.rrss_validacion import RrssValidacion, RrssValidacionImagen, RrssValidacionPagina
 from app.models.user import User
 from app.services.ai_usage_service import log_ai_usage
-from app.services.rrss import catti, comparador, imagenes, validador
+from app.services.rrss import catti, comparador, excel, imagenes, validador
 from app.services.rrss.hilos import en_hilo
 
 logger = logging.getLogger(__name__)
@@ -271,6 +272,57 @@ async def get_validacion(
     db: AsyncSession = Depends(get_db),
 ):
     return await _detalle(db, await _get_validacion_or_404(db, validacion_id))
+
+
+def _nombre_para_descarga(texto: str) -> str:
+    """Un nombre usable dentro del header Content-Disposition: sin comillas ni
+    caracteres de control (cerrarían el filename="..." o inyectarían un header)
+    y solo latin-1, que es como Starlette codifica los headers -- un carácter
+    fuera de ese rango revienta con UnicodeEncodeError DESPUÉS de armar el Excel.
+    Mismo criterio que cenefas_convertidor._nombre_para_descarga."""
+    limpio = re.sub(r'[\x00-\x1f\x7f/\\:*?"<>|]', "", texto or "")
+    limpio = limpio.encode("latin-1", "ignore").decode("latin-1")
+    return re.sub(r"\s+", " ", limpio).strip().rstrip(". ")[:120] or "placas"
+
+
+@router.get("/validaciones/{validacion_id}/excel")
+@limiter.limit("6/minute")
+async def descargar_excel(
+    request: Request,
+    validacion_id: int,
+    _: User = Depends(require_permission("rrss.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """El Excel de correcciones para el diseñador: solo las placas con algo para
+    corregir, con la placa, el mailing y qué hacer (ver rrss/excel.py)."""
+    v = await _get_validacion_or_404(db, validacion_id)
+    res = await db.execute(
+        select(RrssValidacionImagen).where(RrssValidacionImagen.validacion_id == v.id)
+        .order_by(RrssValidacionImagen.orden, RrssValidacionImagen.id)
+    )
+    datos = {
+        "mailing": v.mailing,
+        "imagenes": [
+            {
+                "nombre_archivo": i.nombre_archivo, "formato": i.formato, "estado": i.estado, "orden": i.orden,
+                **i.resultado, "vista": i.vista,
+            }
+            for i in res.scalars()
+        ],
+    }
+    try:
+        # decodifica y arma imágenes: CPU puro, va a un hilo (ver hilos.py)
+        xlsx = await en_hilo(excel.construir, datos)
+    except excel.NadaParaCorregir as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    base = re.sub(r"\.[A-Za-z0-9]+$", "", v.nombre_mailing or "")
+    nombre = _nombre_para_descarga(f"Correcciones RRSS - {base}")
+    return Response(
+        content=xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}.xlsx"'},
+    )
 
 
 @router.delete("/validaciones/{validacion_id}")
