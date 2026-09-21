@@ -14,11 +14,13 @@ los tokens para que el llamador decida cuándo y cómo loguear el uso.
 """
 import asyncio
 import unicodedata
+from dataclasses import dataclass
 
 import anthropic
 
 from app.core.config import settings
 from app.services.rrss import imagenes
+from app.services.rrss.hilos import en_hilo
 from app.services.tino_personas import CATTI_BASE
 
 _MODEL = settings.MODELO_IA  # el de toda la familia -- ver MODELO_IA en config.py
@@ -331,7 +333,7 @@ def _bloque_imagen(im) -> dict:
     }
 
 
-async def _llamar(tool: dict, instruccion: str, imgs: list, texto: str, max_tokens: int) -> tuple[dict, int, int]:
+async def _llamar(tool: dict, instruccion: str, bloques: list[dict], texto: str, max_tokens: int) -> tuple[dict, int, int]:
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY no configurado")
 
@@ -344,7 +346,7 @@ async def _llamar(tool: dict, instruccion: str, imgs: list, texto: str, max_toke
         tool_choice={"type": "tool", "name": tool["name"]},
         messages=[{
             "role": "user",
-            "content": [*[_bloque_imagen(i) for i in imgs], {"type": "text", "text": texto}],
+            "content": [*bloques, {"type": "text", "text": texto}],
         }],
     )
     if response.stop_reason == "max_tokens":
@@ -369,14 +371,21 @@ async def _llamar(tool: dict, instruccion: str, imgs: list, texto: str, max_toke
 # Lectura
 # --------------------------------------------------------------------------
 
-async def leer_pagina_mailing(pagina_img, indice: int) -> tuple[dict, int, int]:
-    """Lee UNA página del mailing. Devuelve (lectura normalizada, tokens_in, tokens_out)."""
+def _preparar_pagina(pagina_img) -> list[dict]:
+    """SINCRÓNICO (va en un hilo, ver hilos.py): lo que se le manda al modelo
+    de una página del mailing -- la página entera y sus dos mitades ampliadas."""
     completa = imagenes.reducir(pagina_img, _LADO_LARGO_MODELO)
     mitades = [
         imagenes.ajustar_ancho(m, _ANCHO_TIRA) for m, _, _ in imagenes.mitades_con_solape(pagina_img)
     ]
+    return [_bloque_imagen(i) for i in (completa, *mitades)]
+
+
+async def leer_pagina_mailing(pagina_img, indice: int) -> tuple[dict, int, int]:
+    """Lee UNA página del mailing. Devuelve (lectura normalizada, tokens_in, tokens_out)."""
+    bloques = await en_hilo(_preparar_pagina, pagina_img)
     raw, t_in, t_out = await _llamar(
-        _TOOL_MAILING, _INSTRUCCION_MAILING, [completa, *mitades],
+        _TOOL_MAILING, _INSTRUCCION_MAILING, bloques,
         f"Registrá la página {indice + 1} del mailing.", max_tokens=8000,
     )
     return normalizar_pagina_mailing(raw, indice), t_in, t_out
@@ -407,12 +416,30 @@ async def leer_mailing(paginas: list) -> tuple[dict, int, int]:
     return mailing, t_in, t_out
 
 
-async def leer_placa(placa_img) -> tuple[dict, int, int]:
+@dataclass
+class PlacaPreparada:
+    """Lo que se le manda al modelo de una placa, ya armado (base64), más su
+    tamaño. NO trae la imagen decodificada: una placa de 2250 px ocupa 15 a 30 MB
+    en memoria, y tenerla viva mientras se espera al modelo, con varias placas a
+    la vez, era lo que reventaba la memoria del servidor. Las etapas que la
+    necesitan de nuevo la reabren desde los bytes (decodificar tarda ~50 ms)."""
+    bloques: list[dict]
+    ancho: int
+    alto: int
+
+
+def preparar_placa(datos: bytes) -> PlacaPreparada:
+    """SINCRÓNICO (va en un hilo, ver hilos.py). ArchivoInvalido si no es una imagen."""
+    im = imagenes.abrir_imagen(datos)
+    completa = imagenes.reducir(im, _LADO_LARGO_MODELO)
+    tira = imagenes.ajustar_ancho(imagenes.tira_inferior(im), _ANCHO_TIRA)
+    return PlacaPreparada([_bloque_imagen(completa), _bloque_imagen(tira)], im.width, im.height)
+
+
+async def leer_placa(prep: PlacaPreparada) -> tuple[dict, int, int]:
     """Lee UNA placa. Devuelve (lectura normalizada, tokens_in, tokens_out)."""
-    completa = imagenes.reducir(placa_img, _LADO_LARGO_MODELO)
-    tira = imagenes.ajustar_ancho(imagenes.tira_inferior(placa_img), _ANCHO_TIRA)
     raw, t_in, t_out = await _llamar(
-        _TOOL_PLACA, _INSTRUCCION_PLACA, [completa, tira], "Registrá esta placa.", max_tokens=3000,
+        _TOOL_PLACA, _INSTRUCCION_PLACA, prep.bloques, "Registrá esta placa.", max_tokens=3000,
     )
     return normalizar_placa(raw), t_in, t_out
 
@@ -448,8 +475,20 @@ def _elegir_candidata(candidatas: list[tuple[list[float], float, bool, bool]]) -
     return max(candidatas, key=lambda c: c[1])[0]
 
 
-async def localizar(im, pedidos: list[tuple[str, str]]) -> tuple[dict, int, int]:
-    """Ubica cada elemento de `pedidos` [(id, qué es)] sobre `im`, con una
+def _preparar_bandas(fuente) -> list[tuple[float, float, dict]]:
+    """SINCRÓNICO (va en un hilo, ver hilos.py): cada franja de la imagen con su
+    grilla, lista para mandar. `fuente` son los bytes de una imagen o una imagen."""
+    im = imagenes.abrir_imagen(fuente) if isinstance(fuente, (bytes, bytearray)) else fuente
+    salida = []
+    for y0, y1 in _bandas(im.height / im.width):
+        franja = im.crop((0, int(y0 * im.height), im.width, int(y1 * im.height)))
+        franja = imagenes.reducir(franja, _LADO_LARGO_MODELO)
+        salida.append((y0, y1, _bloque_imagen(imagenes.con_grilla(franja))))
+    return salida
+
+
+async def localizar(fuente, pedidos: list[tuple[str, str]]) -> tuple[dict, int, int]:
+    """Ubica cada elemento de `pedidos` [(id, qué es)] sobre la imagen, con una
     grilla rotulada encima. Devuelve ({id: caja}, tokens_in, tokens_out).
 
     Va aparte de la lectura a propósito: pedirle al modelo que transcriba
@@ -460,11 +499,9 @@ async def localizar(im, pedidos: list[tuple[str, str]]) -> tuple[dict, int, int]
         return {}, 0, 0
     lista = "\n".join(f"- {id_}: {que}" for id_, que in pedidos)
     validos = {p[0] for p in pedidos}
-    bandas = _bandas(im.height / im.width)
+    bandas = await en_hilo(_preparar_bandas, fuente)
 
-    async def por_banda(y0: float, y1: float):
-        franja = im.crop((0, int(y0 * im.height), im.width, int(y1 * im.height)))
-        franja = imagenes.reducir(franja, _LADO_LARGO_MODELO)
+    async def por_banda(y0: float, y1: float, bloque: dict):
         texto = f"Ubicá estos elementos:\n{lista}"
         if len(bandas) > 1:
             texto += (
@@ -472,18 +509,18 @@ async def localizar(im, pedidos: list[tuple[str, str]]) -> tuple[dict, int, int]
                 "cortado en el borde de arriba o de abajo. Ubicá únicamente los elementos que se ven "
                 "COMPLETOS acá; los cortados omitilos (se van a ubicar en otra franja)."
             )
-        raw, ti, to = await _llamar(
-            _TOOL_CAJAS, _INSTRUCCION_CAJAS, [imagenes.con_grilla(franja)], texto, max_tokens=3000,
-        )
+        raw, ti, to = await _llamar(_TOOL_CAJAS, _INSTRUCCION_CAJAS, [bloque], texto, max_tokens=3000)
         return raw, ti, to, y0, y1
 
-    resultados = await asyncio.gather(*(por_banda(y0, y1) for y0, y1 in bandas))
+    resultados = await asyncio.gather(*(por_banda(*b) for b in bandas))
     t_in = t_out = 0
     candidatas: dict[str, list] = {}
     for raw, ti, to, y0, y1 in resultados:
         t_in += ti
         t_out += to
         for e in raw.get("elementos") or []:
+            if not isinstance(e, dict):
+                continue  # el modelo a veces devuelve algo que no es un objeto: se ignora, no rompe la placa
             caja = imagenes.caja_valida(e.get("caja"))
             if caja is None or e.get("id") not in validos:
                 continue
@@ -543,7 +580,7 @@ async def localizar_mailing(paginas: list, mailing: dict) -> tuple[int, int]:
     return t_in, t_out
 
 
-async def localizar_placa(placa_img, lectura: dict) -> tuple[dict, int, int]:
+async def localizar_placa(datos: bytes, lectura: dict) -> tuple[dict, int, int]:
     """Cajas de lo que se ve en una placa. Solo se llama cuando la placa tiene
     diferencias: el recorte es para mostrarlas, no para validar."""
     prod = lectura["producto"]
@@ -552,4 +589,4 @@ async def localizar_placa(placa_img, lectura: dict) -> tuple[dict, int, int]:
         ("legales", "las leyendas legales del pie de la placa"),
         ("imagen", "la foto del producto"),
     ]
-    return await localizar(placa_img, pedidos)
+    return await localizar(datos, pedidos)

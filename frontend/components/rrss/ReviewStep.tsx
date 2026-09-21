@@ -15,7 +15,7 @@ export interface ItemPendiente {
 }
 
 export interface Progreso {
-  fase: "validando" | "cerrando" | "listo";
+  fase: "validando" | "cerrando" | "pausada" | "listo";
   hechas: number;
   total: number;
 }
@@ -24,6 +24,8 @@ interface Props {
   validacion: RrssValidacion;
   pendientes: ItemPendiente[];
   progreso: Progreso | null;
+  /** Retoma lo que quedó cortado o con error. Solo existe en una sesión en vivo, no al abrir del historial. */
+  onReintentar?: () => void;
 }
 
 type Seleccion = { tipo: "imagen"; id: number } | { tipo: "pendiente"; orden: number } | null;
@@ -344,7 +346,7 @@ function Miniatura({ src, estado, activa, onClick, etiqueta }: {
 
 // ── Componente principal ───────────────────────────────────────────────────
 
-export default function ReviewStep({ validacion: v, pendientes, progreso }: Props) {
+export default function ReviewStep({ validacion: v, pendientes, progreso, onReintentar }: Props) {
   const { t } = useTranslation();
   // `elegida` es lo que la persona clickeó; sin nada elegido la selección la decide el
   // momento: en vivo, acompaña a la placa que acaba de terminar; ya terminado (o
@@ -352,7 +354,8 @@ export default function ReviewStep({ validacion: v, pendientes, progreso }: Prop
   const [elegida, setElegida] = useState<Seleccion>(null);
   const [soloProblemas, setSoloProblemas] = useState(false);
 
-  const enVivo = progreso !== null && progreso.fase !== "listo";
+  const enVivo = progreso !== null && (progreso.fase === "validando" || progreso.fase === "cerrando");
+  const pausada = progreso?.fase === "pausada";
   const porOrden = useMemo(() => [...v.imagenes].sort((a, b) => a.orden - b.orden), [v.imagenes]);
   const grupos = useMemo(() => armarGrupos(v), [v]);
   const conProblema = (i: RrssImagen) => i.estado !== "ok";
@@ -383,7 +386,14 @@ export default function ReviewStep({ validacion: v, pendientes, progreso }: Prop
         <div className="flex items-center gap-3 flex-wrap">
           <CatTiBadge trabajando={enVivo} />
           <div className="flex-1 min-w-[14rem]">
-            {progreso && progreso.fase !== "listo" ? (
+            {pausada ? (
+              <>
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                  <AlertTriangle size={14} /> {t("rrss.pausada", { count: pendientes.length })}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">{t("rrss.pausadaHint")}</p>
+              </>
+            ) : progreso && progreso.fase !== "listo" ? (
               <>
                 <p className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
                   <Loader2 size={14} className="animate-spin text-brand-500" />
@@ -402,6 +412,11 @@ export default function ReviewStep({ validacion: v, pendientes, progreso }: Prop
               <span key={e} className={ESTILO_ESTADO[e].badge}>{cuenta(e)} · {t(`rrss.estado.${e}`)}</span>
             ))}
             {pendientes.length > 0 && <span className="badge-slate">{pendientes.length} · {t("rrss.estado.pendiente")}</span>}
+            {onReintentar && (pausada || (!enVivo && cuenta("error") > 0)) && (
+              <button onClick={onReintentar} className="btn-primary text-xs">
+                {pausada ? t("rrss.reintentar") : t("rrss.reintentarConError", { count: cuenta("error") })}
+              </button>
+            )}
           </div>
         </div>
 

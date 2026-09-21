@@ -3,13 +3,21 @@ cada placa leerla, emparejarla con su producto, compararla y armar los
 recortes que dejan ver cada diferencia sin abrir nada aparte.
 
 No toca la base (el llamador guarda lo que devuelve) y no sabe de HTTP.
+
+Todo el trabajo de imágenes va por `en_hilo` (ver hilos.py): es CPU sincrónico y
+el servidor corre un solo proceso, así que hecho directo congelaba a todos.
+Y la placa no se mantiene decodificada mientras se espera al modelo: se guardan
+sus bytes y cada etapa que la necesita la reabre.
 """
 import logging
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from PIL import Image
 
 from app.services.rrss import catti, comparador, imagenes
+from app.services.rrss.hilos import en_hilo
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +36,8 @@ _ANCHO_RECORTE = 640
 _MARGEN_PRODUCTO = 0.04
 _MARGEN_CAMPO = 0.03
 _LADO_VISTA = 800  # lado largo de la vista guardada de cada placa
+
+CargarPaginas = Callable[[], Awaitable[list[Image.Image]]]
 
 
 @dataclass
@@ -54,10 +64,25 @@ def _uri(im: Image.Image | None, calidad: int = 78) -> str | None:
     return imagenes.data_uri(imagenes.jpeg(im, calidad)) if im is not None else None
 
 
+def _ms(desde: float) -> int:
+    return round((time.perf_counter() - desde) * 1000)
+
+
+# --------------------------------------------------------------------------
+# Mailing
+# --------------------------------------------------------------------------
+
+def _recortes_de_productos(paginas: list[Image.Image], mailing: dict) -> None:
+    for prod in mailing["productos"]:
+        prod["recorte"] = _uri(
+            imagenes.recortar(paginas[prod["pagina"]], prod["cajas"].get("producto"), margen=_MARGEN_PRODUCTO, ancho_max=520)
+        )
+
+
 async def preparar_mailing(datos: bytes, content_type: str, filename: str) -> MailingPreparado:
     """Renderiza el mailing, lo lee, ubica cada producto y deja el recorte de
     cada uno (el que se muestra al lado de la placa que le corresponde)."""
-    paginas = imagenes.paginas_del_mailing(datos, content_type, filename)
+    paginas = await en_hilo(imagenes.paginas_del_mailing, datos, content_type, filename)
     mailing, t_in, t_out = await catti.leer_mailing(paginas)
     try:
         ti, to = await catti.localizar_mailing(paginas, mailing)
@@ -66,11 +91,17 @@ async def preparar_mailing(datos: bytes, content_type: str, filename: str) -> Ma
     except Exception:
         # Sin cajas el mailing igual sirve para validar: solo se pierden los recortes.
         logger.warning("rrss: no se pudieron ubicar los productos del mailing", exc_info=True)
-    for prod in mailing["productos"]:
-        prod["recorte"] = _uri(
-            imagenes.recortar(paginas[prod["pagina"]], prod["cajas"].get("producto"), margen=_MARGEN_PRODUCTO, ancho_max=520)
-        )
+    await en_hilo(_recortes_de_productos, paginas, mailing)
     return MailingPreparado(mailing, paginas, t_in, t_out)
+
+
+# --------------------------------------------------------------------------
+# Placas
+# --------------------------------------------------------------------------
+
+def _vista(datos: bytes) -> bytes:
+    """Vista chica de la placa, para guardarla y mostrarla junto al mailing."""
+    return imagenes.jpeg(imagenes.reducir(imagenes.abrir_imagen(datos), _LADO_VISTA), 70)
 
 
 def _recortes_de_las_filas(
@@ -104,50 +135,87 @@ def _recortes_de_las_filas(
             )
 
 
+def _armar_recortes(datos: bytes, filas: list[dict], cajas: dict, mailing: dict, idx: int | None,
+                    paginas: list[Image.Image]) -> None:
+    _recortes_de_las_filas(filas, imagenes.abrir_imagen(datos), cajas, mailing, idx, paginas)
+
+
 async def validar_placa(
-    datos: bytes, nombre_archivo: str, mailing: dict, paginas: list[Image.Image], config: dict,
+    datos: bytes, nombre_archivo: str, mailing: dict, cargar_paginas: CargarPaginas, config: dict,
 ) -> ResultadoPlaca:
     """Valida UNA placa. Los errores de lectura no se propagan como excepción:
     devuelven una placa en estado 'error' con el motivo, para que un archivo
-    roto en un lote de 30 no tire abajo a los otros 29."""
-    try:
-        im = imagenes.abrir_imagen(datos)
-    except imagenes.ArchivoInvalido as exc:
-        return _con_error(nombre_archivo, str(exc))
+    roto en un lote de 30 no tire abajo a los otros 29.
 
-    formato = imagenes.clasificar_formato(im.width, im.height)
+    `cargar_paginas` trae las páginas del mailing SOLO si hacen falta (una placa
+    sin diferencias no las necesita: no hay nada que recortar del mailing).
+
+    Cada etapa queda medida en `resultado["tiempos_ms"]`: cuando una validación
+    anda lenta hay que poder ver DÓNDE, en vez de suponerlo."""
+    inicio = time.perf_counter()
+    tiempos: dict[str, int] = {}
+
+    try:
+        t = time.perf_counter()
+        prep = await en_hilo(catti.preparar_placa, datos)
+        tiempos["preparar"] = _ms(t)
+    except imagenes.ArchivoInvalido as exc:
+        return await _con_error(str(exc), tiempos, inicio)
+
+    formato = imagenes.clasificar_formato(prep.ancho, prep.alto)
     t_in = t_out = 0
     try:
-        lectura, ti, to = await catti.leer_placa(im)
+        t = time.perf_counter()
+        lectura, ti, to = await catti.leer_placa(prep)
         t_in, t_out = t_in + ti, t_out + to
+        tiempos["lectura"] = _ms(t)
 
         idx, puntaje, filas = comparador.comparar_placa(lectura, mailing, config)
 
         # Un error de texto solo se sostiene si una segunda lectura lo repite:
         # acusar a una placa de un error que fue de lectura es peor que no ver nada.
         if any(f["severidad"] == "error" and f["campo"] in comparador.CAMPOS_DE_TEXTO for f in filas):
-            segunda, ti, to = await catti.leer_placa(im)
+            t = time.perf_counter()
+            segunda, ti, to = await catti.leer_placa(prep)
             t_in, t_out = t_in + ti, t_out + to
             filas = comparador.confirmar_con_segunda_lectura(filas, comparador.campos_leidos(segunda))
+            tiempos["segunda_lectura"] = _ms(t)
 
         if any(f["severidad"] in ("error", "aviso") and f["caja"] for f in filas):
+            t = time.perf_counter()
             try:
-                cajas, ti, to = await catti.localizar_placa(im, lectura)
+                cajas, ti, to = await catti.localizar_placa(datos, lectura)
                 t_in, t_out = t_in + ti, t_out + to
             except Exception:
                 logger.warning("rrss: no se pudo ubicar lo marcado en %s", nombre_archivo, exc_info=True)
                 cajas = {}
-            _recortes_de_las_filas(filas, im, cajas, mailing, idx, paginas)
+            tiempos["ubicar"] = _ms(t)
+
+            t = time.perf_counter()
+            paginas = await cargar_paginas()
+            tiempos["paginas"] = _ms(t)
+
+            t = time.perf_counter()
+            await en_hilo(_armar_recortes, datos, filas, cajas, mailing, idx, paginas)
+            tiempos["recortes"] = _ms(t)
         else:
             for f in filas:
                 f["recorte_placa"] = f["recorte_mailing"] = None
     except catti.LecturaFallida as exc:
-        return _con_error(nombre_archivo, str(exc), im, formato, t_in, t_out)
+        return await _con_error(str(exc), tiempos, inicio, datos, prep, formato, t_in, t_out)
     except Exception as exc:
         # RuntimeError de configuración (sin API key) o errores del API: se
         # dejan registrados y el usuario ve un motivo, no un 500 por placa.
         logger.error("rrss: error leyendo %s — %s", nombre_archivo, exc, exc_info=True)
-        return _con_error(nombre_archivo, "No pude leer esta placa ahora; probá de nuevo", im, formato, t_in, t_out)
+        return await _con_error(
+            "No pude leer esta placa ahora; probá de nuevo", tiempos, inicio, datos, prep, formato, t_in, t_out,
+        )
+
+    t = time.perf_counter()
+    vista = await en_hilo(_vista, datos)
+    tiempos["vista"] = _ms(t)
+    tiempos["total"] = _ms(inicio)
+    logger.info("rrss placa %s: %s ms=%s", nombre_archivo, comparador.estado_de_la_placa(filas, idx), tiempos)
 
     estado = comparador.estado_de_la_placa(filas, idx)
     resultado = {
@@ -155,21 +223,28 @@ async def validar_placa(
         "filas": filas,
         "lectura": lectura,
         "error": None,
+        "tiempos_ms": tiempos,
     }
     return ResultadoPlaca(
-        resultado=resultado,
-        vista=imagenes.jpeg(imagenes.reducir(im, _LADO_VISTA), 70),
-        ancho=im.width, alto=im.height, formato=formato, estado=estado,
+        resultado=resultado, vista=vista, ancho=prep.ancho, alto=prep.alto, formato=formato, estado=estado,
         tokens_in=t_in, tokens_out=t_out,
     )
 
 
-def _con_error(nombre: str, motivo: str, im: Image.Image | None = None, formato: str = "",
-               t_in: int = 0, t_out: int = 0) -> ResultadoPlaca:
+async def _con_error(motivo: str, tiempos: dict, inicio: float, datos: bytes | None = None,
+                     prep: "catti.PlacaPreparada | None" = None, formato: str = "",
+                     t_in: int = 0, t_out: int = 0) -> ResultadoPlaca:
+    vista = None
+    if datos is not None:
+        try:
+            vista = await en_hilo(_vista, datos)
+        except Exception:
+            vista = None
+    tiempos["total"] = _ms(inicio)
     return ResultadoPlaca(
-        resultado={"match": None, "filas": [], "lectura": None, "error": motivo},
-        vista=imagenes.jpeg(imagenes.reducir(im, _LADO_VISTA), 70) if im is not None else None,
-        ancho=im.width if im is not None else 0, alto=im.height if im is not None else 0,
+        resultado={"match": None, "filas": [], "lectura": None, "error": motivo, "tiempos_ms": tiempos},
+        vista=vista,
+        ancho=prep.ancho if prep else 0, alto=prep.alto if prep else 0,
         formato=formato, estado="error", tokens_in=t_in, tokens_out=t_out,
     )
 

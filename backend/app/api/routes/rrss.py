@@ -8,11 +8,12 @@ archivo roto no tira abajo al resto. Ver app/services/rrss/.
 """
 import io
 import logging
+import time
 
 import anthropic
 from PIL import Image
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -23,6 +24,7 @@ from app.models.rrss_validacion import RrssValidacion, RrssValidacionImagen, Rrs
 from app.models.user import User
 from app.services.ai_usage_service import log_ai_usage
 from app.services.rrss import catti, comparador, imagenes, validador
+from app.services.rrss.hilos import en_hilo
 
 logger = logging.getLogger(__name__)
 
@@ -129,10 +131,10 @@ async def crear_validacion(
     )
     db.add(v)
     await db.flush()
-    for numero, pagina in enumerate(preparado.paginas):
+    jpegs = await en_hilo(lambda: [imagenes.jpeg(p, 80) for p in preparado.paginas])
+    for numero, (pagina, jpg) in enumerate(zip(preparado.paginas, jpegs)):
         db.add(RrssValidacionPagina(
-            validacion_id=v.id, numero=numero, ancho=pagina.width, alto=pagina.height,
-            imagen=imagenes.jpeg(pagina, 80),
+            validacion_id=v.id, numero=numero, ancho=pagina.width, alto=pagina.height, imagen=jpg,
         ))
     await log_ai_usage(
         db, current_user.id, catti.FEATURE, catti.PROVEEDOR, catti._MODEL, preparado.tokens_in, preparado.tokens_out,
@@ -153,6 +155,7 @@ async def validar_imagen(
     db: AsyncSession = Depends(get_db),
 ):
     """Valida UNA placa contra el mailing de esta validación."""
+    inicio = time.perf_counter()
     v = await _get_validacion_or_404(db, validacion_id)
     _exigir_dueno(v, current_user)
     if v.estado != "en_proceso":
@@ -169,10 +172,21 @@ async def validar_imagen(
     if len(datos) > _MAX_BYTES_PLACA:
         raise HTTPException(status_code=400, detail=f"'{archivo.filename}' supera los 25 MB")
 
-    # las páginas ya renderizadas, para recortar el lado del mailing
-    paginas = [Image.open(io.BytesIO(p.imagen)).convert("RGB") for p in await _paginas(db, v.id)]
+    async def cargar_paginas():
+        # Las páginas del mailing (ya renderizadas) sirven para recortar el lado del
+        # mailing de cada diferencia: solo se traen si la placa tiene alguna.
+        paginas_db = await _paginas(db, v.id)
+        return await en_hilo(lambda: [Image.open(io.BytesIO(p.imagen)).convert("RGB") for p in paginas_db])
 
-    r = await validador.validar_placa(datos, archivo.filename or "placa", v.mailing, paginas, v.config)
+    r = await validador.validar_placa(datos, archivo.filename or "placa", v.mailing, cargar_paginas, v.config)
+    r.resultado["tiempos_ms"]["hasta_guardar"] = round((time.perf_counter() - inicio) * 1000)
+
+    # Idempotente por `orden`: si el navegador reintenta una placa (la request se
+    # cortó pero el servidor sí la había guardado) o la persona reintenta las que
+    # fallaron, la nueva REEMPLAZA a la anterior en vez de duplicarla.
+    await db.execute(delete(RrssValidacionImagen).where(
+        RrssValidacionImagen.validacion_id == v.id, RrssValidacionImagen.orden == orden,
+    ))
     fila = RrssValidacionImagen(
         validacion_id=v.id, orden=orden, nombre_archivo=(archivo.filename or "placa")[:255],
         ancho=r.ancho, alto=r.alto, formato=r.formato, estado=r.estado,
@@ -181,9 +195,10 @@ async def validar_imagen(
     db.add(fila)
     if r.tokens_in or r.tokens_out:
         await log_ai_usage(db, current_user.id, catti.FEATURE, catti.PROVEEDOR, catti._MODEL, r.tokens_in, r.tokens_out)
+    await db.flush()  # asigna el id; no hace falta releer la fila (incluye la vista y todo el resultado)
+    respuesta = _imagen_a_dict(fila)
     await db.commit()
-    await db.refresh(fila)
-    return _imagen_a_dict(fila)
+    return respuesta
 
 
 @router.post("/validaciones/{validacion_id}/cerrar")

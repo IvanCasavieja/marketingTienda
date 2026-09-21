@@ -11,6 +11,7 @@ import CatTiBadge from "@/components/rrss/CatTiBadge";
 import Historial from "@/components/rrss/Historial";
 import ReviewStep, { type ItemPendiente, type Progreso } from "@/components/rrss/ReviewStep";
 import UploadStep, { type PlacaLocal } from "@/components/rrss/UploadStep";
+import { conReintentos, esTransitorio } from "@/components/rrss/reintentos";
 
 const PARALELO = 3; // placas validándose a la vez
 
@@ -18,6 +19,9 @@ function mensajeDeError(e: unknown, porDefecto: string): string {
   const detalle = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
   return typeof detalle === "string" ? detalle : porDefecto;
 }
+
+// Sin respuesta = el servidor no contestó (caído, reiniciándose, cortado por el proxy).
+const sinRespuesta = (e: unknown): boolean => !(e as { response?: unknown } | null)?.response;
 
 export default function ValidacionRrssPage() {
   const { t } = useTranslation();
@@ -48,43 +52,39 @@ export default function ValidacionRrssPage() {
   // Las URLs de las miniaturas viven mientras viva la página.
   useEffect(() => () => placasRef.current.forEach((p) => URL.revokeObjectURL(p.url)), []);
 
-  const iniciar = useCallback(async () => {
-    if (!mailing || placas.length === 0) return;
-    setErrorCarga(null);
-    setCreando(true);
-    let v: RrssValidacion;
-    try {
-      v = (await rrssApi.crear(mailing, config)).data;
-    } catch (e) {
-      setErrorCarga(mensajeDeError(e, t("rrss.errorMailing")));
-      setCreando(false);
-      return;
-    }
-    setCreando(false);
+  const archivosRef = useRef<PlacaLocal[]>([]);
 
-    const archivos = [...placas];
-    const total = archivos.length;
-    setValidacion({ ...v, imagenes: [] });
-    setPendientes(archivos.map((p, i) => ({ orden: i, nombre: p.file.name, url: p.url, analizando: false })));
-    setProgreso({ fase: "validando", hechas: 0, total });
-    setFase("revisar");
+  // Valida las placas `ordenes` (posiciones en archivosRef) de la validación `validacionId`
+  // y, cuando no queda ninguna, la cierra. Sirve para la primera pasada y para reintentar.
+  const ejecutar = useCallback(async (validacionId: number, ordenes: number[], total: number) => {
+    let siguiente = 0;
+    let hechas = total - ordenes.length;
+    let caido = false;
+    setProgreso({ fase: "validando", hechas, total });
 
     // Un pool de PARALELO trabajadores: cada placa se valida en su propia request,
     // y a medida que termina aparece en pantalla.
-    let siguiente = 0;
-    let hechas = 0;
     const trabajador = async () => {
-      while (siguiente < total) {
-        const i = siguiente++;
+      while (!caido && siguiente < ordenes.length) {
+        const i = ordenes[siguiente++];
+        const placa = archivosRef.current[i];
         setPendientes((prev) => prev.map((p) => (p.orden === i ? { ...p, analizando: true } : p)));
         let img: RrssImagen;
         try {
-          img = (await rrssApi.validarImagen(v.id, archivos[i].file, i)).data;
+          img = (await conReintentos(() => rrssApi.validarImagen(validacionId, placa.file, i))).data;
         } catch (e) {
-          // Una placa que falla no frena a las demás: queda marcada con su motivo.
+          if (esTransitorio(e)) {
+            // El servidor no responde ni después de reintentar: se frena todo en vez de
+            // marcar esta placa y las que faltan como error. Quedan pendientes, y con
+            // "Reintentar" se retoma justo donde se cortó.
+            caido = true;
+            setPendientes((prev) => prev.map((p) => (p.orden === i ? { ...p, analizando: false } : p)));
+            return;
+          }
+          // Una placa que falla por su cuenta (no es una imagen, etc.) no frena a las demás.
           img = {
-            id: -(i + 1), orden: i, nombre_archivo: archivos[i].file.name, ancho: 0, alto: 0, formato: "",
-            estado: "error", match: null, filas: [], error: mensajeDeError(e, t("rrss.errorPlaca")), vista: archivos[i].url,
+            id: -(i + 1), orden: i, nombre_archivo: placa.file.name, ancho: 0, alto: 0, formato: "",
+            estado: "error", match: null, filas: [], error: mensajeDeError(e, t("rrss.errorPlaca")), vista: placa.url,
           };
         }
         setValidacion((prev) => (prev ? { ...prev, imagenes: [...prev.imagenes, img] } : prev));
@@ -93,17 +93,59 @@ export default function ValidacionRrssPage() {
         setProgreso({ fase: "validando", hechas, total });
       }
     };
-    await Promise.all(Array.from({ length: Math.min(PARALELO, total) }, trabajador));
+    await Promise.all(Array.from({ length: Math.min(PARALELO, ordenes.length) }, trabajador));
 
+    if (caido) {
+      setProgreso({ fase: "pausada", hechas, total });
+      return;
+    }
     setProgreso({ fase: "cerrando", hechas: total, total });
     try {
-      const { data } = await rrssApi.cerrar(v.id);
+      const { data } = await conReintentos(() => rrssApi.cerrar(validacionId));
       setValidacion((prev) => (prev ? { ...prev, resumen: data.resumen, estado: "completada" } : prev));
+      setProgreso({ fase: "listo", hechas: total, total });
     } catch (e) {
-      toast.error(mensajeDeError(e, t("rrss.errorCerrar")));
+      // Sin cerrar no hay resumen del lote: queda pausada y "Reintentar" vuelve a cerrar.
+      toast.error(sinRespuesta(e) ? t("rrss.errorServidor") : mensajeDeError(e, t("rrss.errorCerrar")));
+      setProgreso({ fase: "pausada", hechas: total, total });
     }
-    setProgreso({ fase: "listo", hechas: total, total });
-  }, [mailing, placas, config, t]);
+  }, [t]);
+
+  const iniciar = useCallback(async () => {
+    if (!mailing || placas.length === 0) return;
+    setErrorCarga(null);
+    setCreando(true);
+    let v: RrssValidacion;
+    try {
+      v = (await rrssApi.crear(mailing, config)).data;
+    } catch (e) {
+      setErrorCarga(sinRespuesta(e) ? t("rrss.errorServidor") : mensajeDeError(e, t("rrss.errorMailing")));
+      setCreando(false);
+      return;
+    }
+    setCreando(false);
+
+    archivosRef.current = [...placas];
+    setValidacion({ ...v, imagenes: [] });
+    setPendientes(placas.map((p, i) => ({ orden: i, nombre: p.file.name, url: p.url, analizando: false })));
+    setFase("revisar");
+    await ejecutar(v.id, placas.map((_, i) => i), placas.length);
+  }, [mailing, placas, config, t, ejecutar]);
+
+  // Retoma una validación cortada: las placas que faltaban y las que dieron error.
+  const reintentar = useCallback(async () => {
+    if (!validacion) return;
+    const archivos = archivosRef.current;
+    const ordenes = Array.from(new Set([
+      ...pendientes.map((p) => p.orden),
+      ...validacion.imagenes.filter((i) => i.estado === "error").map((i) => i.orden),
+    ])).sort((a, b) => a - b);
+    // Las que dieron error salen de la lista y vuelven a la cola (el servidor
+    // reemplaza la anterior por su `orden`, no la duplica).
+    setValidacion({ ...validacion, imagenes: validacion.imagenes.filter((i) => i.estado !== "error") });
+    setPendientes(ordenes.map((o) => ({ orden: o, nombre: archivos[o].file.name, url: archivos[o].url, analizando: false })));
+    await ejecutar(validacion.id, ordenes, archivos.length);
+  }, [validacion, pendientes, ejecutar]);
 
   async function abrirDelHistorial(id: number) {
     setAbriendoId(id);
@@ -114,7 +156,7 @@ export default function ValidacionRrssPage() {
       setProgreso(null);
       setFase("revisar");
     } catch (e) {
-      toast.error(mensajeDeError(e, t("rrss.errorAbrir")));
+      toast.error(sinRespuesta(e) ? t("rrss.errorServidor") : mensajeDeError(e, t("rrss.errorAbrir")));
     } finally {
       setAbriendoId(null);
     }
@@ -135,7 +177,9 @@ export default function ValidacionRrssPage() {
     setTab("nueva");
   }
 
-  const corriendo = progreso !== null && progreso.fase !== "listo";
+  // "pausada" (el servidor no respondió) no cuenta como corriendo: no hay nada en marcha
+  // y hay que poder empezar otra validación o reintentar.
+  const corriendo = progreso !== null && (progreso.fase === "validando" || progreso.fase === "cerrando");
 
   return (
     <div className="animate-fade-in w-full space-y-6">
@@ -203,7 +247,10 @@ export default function ValidacionRrssPage() {
       )}
 
       {fase === "revisar" && validacion && (
-        <ReviewStep validacion={validacion} pendientes={pendientes} progreso={progreso} />
+        <ReviewStep
+          validacion={validacion} pendientes={pendientes} progreso={progreso}
+          onReintentar={progreso ? reintentar : undefined}
+        />
       )}
     </div>
   );
