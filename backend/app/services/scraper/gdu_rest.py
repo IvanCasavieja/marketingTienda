@@ -72,6 +72,61 @@ def _clasificar_cadena(branch_id: str) -> str:
     return "excluir"
 
 
+# La API de sucursales no dice a qué cadena pertenece cada tienda: hay que
+# deducirlo. El rango del ID manda, porque las Express y Fresh Market de Devoto
+# no dicen "Devoto" en el nombre; si el rango no la reconoce, se mira cómo
+# empieza el nombre (así entran "Disco Fresh Market La Cabaña" y "Devoto
+# Lagomar", cuyos IDs caen fuera de todos los rangos).
+_SUCURSALES_URL = "https://gdu-branchoffices.azurewebsites.net/api/accounts/gdu/branch-offices"
+
+# IDs que existen en la API pero no son una tienda: depósito, marketplace, pruebas.
+_IDS_QUE_NO_SON_TIENDA = {"CDPerimetral", "Marketplace", "SUC-01", "string", "{{branchId}}", "2606"}
+
+
+def clasificar_sucursal(branch_id: str, nombre: str) -> str:
+    """'Disco' | 'Devoto' | 'Geant' | 'excluir'."""
+    bid = (branch_id or "").strip()
+    if bid in _IDS_QUE_NO_SON_TIENDA or not bid.isdigit():
+        return "excluir"
+    cadena = _clasificar_cadena(bid)
+    if cadena != "excluir":
+        return cadena
+    n = (nombre or "").lower()
+    if n.startswith("disco"):
+        return "Disco"
+    if n.startswith("devoto"):
+        return "Devoto"
+    if n.startswith(("géant", "geant")):
+        return "Geant"
+    return "excluir"
+
+
+def descargar_sucursales() -> list[dict]:
+    """Las sucursales activas, de la API de GDU, ya clasificadas por cadena.
+
+    No la usa la búsqueda en vivo (leería la red en cada consulta): sirve para
+    regenerar sucursales_gdu.json con scripts/actualizar_sucursales_gdu.py."""
+    r = requests.get(_SUCURSALES_URL, params={"Page": 1, "ItemsPerPage": 500},
+                     headers={"User-Agent": _UA, "Accept": "application/json"}, timeout=25)
+    r.raise_for_status()
+    salida = []
+    for item in (r.json().get("items") or []):
+        if not item.get("isActive"):
+            continue
+        bid = str(item.get("id") or "").strip()
+        desc = item.get("description")
+        nombre = (desc.get("name") if isinstance(desc, dict) else desc) or bid
+        cadena = clasificar_sucursal(bid, nombre)
+        if cadena == "excluir":
+            continue
+        salida.append({
+            "id": bid, "nombre": nombre, "cadena": cadena, "activa": True,
+            "lat": item.get("latitude") or 0.0, "lon": item.get("longitude") or 0.0,
+            "zoneId": item.get("zoneId") or "",
+        })
+    return salida
+
+
 def _construir_url(cadena: str, product_id: str, branch_id: str) -> str:
     """URL con parámetro de sucursal. /product/p/{id} funciona sin slug ni categoría."""
     base = _DOMINIOS.get(cadena, "https://www.disco.com.uy")
@@ -207,21 +262,25 @@ def _llamar(session: requests.Session, method: str, url: str, **kwargs) -> reque
 
 # ── Metadatos de sucursales ───────────────────────────────────────────────────
 
+# Hasta el 21/09/2026 había además una clave "GDU" que se descartaba: eran las
+# Devoto Express y Fresh Market, 27 tiendas ACTIVAS y CON PRECIO PROPIO que
+# quedaban afuera de toda búsqueda (Devoto aparecía con 39 de sus 66). El motivo
+# era que devoto.com.uy ignora el ?sc= de esas sucursales y muestra el precio de
+# la tienda por defecto -- un problema del LINK, no del precio. Se decidió
+# incluirlas: el precio es correcto y es lo que se compara.
 _CHAIN_MAP = {
     "Disco":  "Disco",
     "Devoto": "Devoto",
     "Geant":  "Geant",
-    "GDU":    "excluir",  # Express/Fresh Market: sus IDs no son reconocidos en devoto.com.uy
 }
 
 
 def _load_branch_meta() -> dict[str, dict]:
     """
-    Carga {branch_id: {nombre, cadena}} desde el JSON empaquetado.
-    Usa el campo 'chain' del JSON para clasificar (Disco/Devoto/Geant/GDU).
-    chain='GDU' → excluir: son Express/Fresh Market cuyo ?sc= no es reconocido
-    por devoto.com.uy (el sitio muestra el store default ignorando el parámetro).
-    chain='Devoto' incluye tanto Devoto clásico como Devoto Express.
+    Carga {branch_id: {nombre, cadena}} desde el JSON empaquetado, que se
+    regenera con scripts/actualizar_sucursales_gdu.py cuando GDU abre o cierra
+    tiendas (el archivo se quedó viejo una vez y costó 27 sucursales).
+    'Devoto' incluye Devoto clásico, Devoto Express y Fresh Market.
     """
     json_path = _PKG_DIR / "sucursales_gdu.json"
     if not json_path.exists():
