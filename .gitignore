@@ -3,6 +3,11 @@ gdu_sucursales/
 
 # Archivos locales
 *.xlsx
+# ...salvo las planillas de prueba, que son parte de los tests. Sin esta
+# excepción backend/tests/data/planilla_rrss.xlsx no se subió nunca: los tests
+# de la validación por planilla pasaban en la máquina donde se escribieron y
+# daban 34 errores en cualquier clon limpio (22/09/2026).
+!backend/tests/data/*.xlsx
 *.db
 frontend/.env.local.dev
 backend/.env

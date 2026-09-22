@@ -227,6 +227,36 @@ def instruccion(estado: str, placa: str, mailing: str, origen: str = "mailing") 
     return f"Escribilo así: «{mailing}»"
 
 
+# Lo que se marca por presencia (está / no está), no por texto.
+_PRESENCIA = {"logo_campana", "isotipo", "imagen_producto"}
+
+
+def que_hacer(fila: dict, origen: str = "mailing", con_detalle: bool = False) -> str:
+    """La instrucción de UNA fila de comparación, para el Excel.
+
+    `instruccion` trabaja sobre dos textos y no sabe qué campo compara: para
+    un logo que falta recibía placa="no está" / mailing="debe estar" y decía
+    «Falta «debe estar»: agregalo». Acá se mira el campo primero y se manda a
+    `instruccion` solo lo que es texto contra texto.
+
+    `con_detalle`: en la hoja ancha no hay columnas "dice / tiene que decir",
+    así que lo que explica un "sin pareja" (contra qué se pareció) va en la
+    misma frase."""
+    campo, estado = fila.get("campo"), fila.get("estado") or ""
+    placa, mailing, nota = fila.get("placa") or "", fila.get("mailing") or "", fila.get("nota") or ""
+    if campo in _PRESENCIA:
+        return "Falta: agregalo" if estado == "falta_en_placa" else ""
+    if campo == "precio_anterior_tachado":
+        return f"Tiene que ir {mailing}" if mailing else ""
+    if campo in ("sin_match", "lectura"):
+        frase = instruccion("revisar", placa, mailing, origen)
+        return f"{frase}. {placa}" + (f". {mailing}" if mailing else "") if con_detalle else frase
+    if estado == "revisar":
+        frase = instruccion("revisar", placa, mailing, origen)
+        return f"{frase}: {nota}" if nota else frase
+    return instruccion(estado, placa, mailing, origen)
+
+
 # ── Nombres para una persona ──────────────────────────────────────────────
 
 _CAMPOS = {
@@ -256,15 +286,25 @@ def nombre_de_la_fuente(origen: str) -> str:
     """Cómo se llama en pantalla la fuente contra la que se validó. Vive acá
     para no tener "el mailing" escrito a mano en cada texto que lo nombra: una
     validación por planilla que dijera "no está en el mailing" haría buscar un
-    archivo que no existe."""
+    archivo que no existe.
+
+    OJO al interpolarlo después de "de": se lee "de el mailing". Para eso está
+    `de_la_fuente`, que contrae el artículo."""
     return "la planilla" if origen == "planilla" else "el mailing"
+
+
+def de_la_fuente(origen: str) -> str:
+    """"del mailing" / "de la planilla". Existe porque `f"fila de {fuente}"`
+    imprimía "fila de el mailing" en el Excel y en la pantalla (22/09/2026): el
+    castellano contrae "de el" y un f-string no."""
+    return "de la planilla" if origen == "planilla" else "del mailing"
 
 
 def nombre_campo(campo: str, origen: str = "mailing") -> str:
     if campo == "sin_match":
         return f"No está en {nombre_de_la_fuente(origen)}"
     if campo == "emparejamiento":
-        return f"Con qué fila de {nombre_de_la_fuente(origen)} la emparejé"
+        return f"Con qué fila {de_la_fuente(origen)} la emparejé"
     return _CAMPOS.get(campo, campo.replace("_", " ").capitalize())
 
 

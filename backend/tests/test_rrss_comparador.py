@@ -350,3 +350,64 @@ def test_paginas_del_mailing_desde_un_pdf():
     doc.new_page(width=300, height=400)
     paginas = imagenes.paginas_del_mailing(doc.tobytes(), "application/pdf", "m.pdf")
     assert len(paginas) == 2 and paginas[0].width == 1600
+
+
+# ---------------------------------------------------------------- (22/09) la relectura del mailing y la cola del precio
+
+def test_cola_del_precio():
+    assert c.cola_del_precio("$340 unidad") == "unidad"
+    assert c.cola_del_precio("$171") == ""
+    assert c.cola_del_precio("U$S149 c/u") == "c/u"
+    assert c.cola_del_precio("") == "" and c.cola_del_precio("Oferta") == ""
+
+
+def _error_de_precio():
+    return [c._fila("precio_anterior", "Precio anterior", "producto", "$1090", "$1.090", "diferente", "error"),
+            c._fila("descripcion", "Descripción", "producto", "Jarra", "Jarra", "ok", None)]
+
+
+def test_la_relectura_del_mailing_que_coincide_con_la_placa_levanta_el_error():
+    """Placa leída dos veces igual + recorte ampliado del mailing igual a la
+    placa = tres lecturas contra una: la fila queda en ok y explica por qué."""
+    filas = c.confirmar_con_relectura_de_la_fuente(_error_de_precio(), {"precio_anterior": "$1090"})
+    fila = filas_por_campo(filas)["precio_anterior"]
+    assert fila["estado"] == "ok" and fila["severidad"] is None and fila["mailing"] == "$1090"
+    assert "'$1.090'" in fila["nota"] and "recorte ampliado" in fila["nota"]
+    assert c.estado_de_la_placa(filas, 0) == "ok"
+
+
+def test_la_relectura_que_repite_la_primera_sostiene_el_error():
+    filas = c.confirmar_con_relectura_de_la_fuente(_error_de_precio(), {"precio_anterior": "$1.090"})
+    assert filas_por_campo(filas)["precio_anterior"]["severidad"] == "error"
+
+
+def test_la_relectura_que_dice_otra_cosa_baja_a_aviso():
+    filas = c.confirmar_con_relectura_de_la_fuente(_error_de_precio(), {"precio_anterior": "$1O90"})
+    fila = filas_por_campo(filas)["precio_anterior"]
+    assert fila["severidad"] == "aviso" and fila["estado"] == "revisar"
+    assert "dos lecturas" in fila["nota"] and "'$1O90'" in fila["nota"]
+
+
+def test_la_relectura_no_toca_lo_que_no_es_texto_ni_lo_que_no_releyo():
+    filas = [c._fila("precio_anterior_tachado", "Tachado", "producto", "sin tachar", "tachado", "diferente", "error"),
+             c._fila("oferta_precio", "Precio de oferta", "producto", "$799", "$7799", "diferente", "error")]
+    filas = c.confirmar_con_relectura_de_la_fuente(filas, {"precio_anterior": "$1090"})
+    assert all(f["severidad"] == "error" for f in filas)
+
+
+def test_el_tachado_tambien_se_confirma_con_la_segunda_lectura():
+    """Era el único error que se acusaba con UNA lectura: en la corrida real del
+    22/09 una placa 9:16 salió acusada de "sin tachar" por una línea de un píxel
+    que la lectura no vio. Ahora entra en la segunda lectura como los textos."""
+    assert "precio_anterior_tachado" in c.CAMPOS_CONFIRMABLES
+    fila = c._fila("precio_anterior_tachado", "Tachado", "producto", "sin tachar", "tachado", "diferente", "error")
+    segunda = c.campos_leidos(placa(prod(precio_anterior_tachado=True)))
+    assert segunda["precio_anterior_tachado"] == "tachado"
+    filas = c.confirmar_con_segunda_lectura([fila], segunda)
+    assert filas[0]["severidad"] == "aviso" and "dos lecturas" in filas[0]["nota"]
+    # y si la segunda lectura repite "sin tachar", el error se sostiene
+    fila = c._fila("precio_anterior_tachado", "Tachado", "producto", "sin tachar", "tachado", "diferente", "error")
+    filas = c.confirmar_con_segunda_lectura([fila], c.campos_leidos(placa(prod(precio_anterior_tachado=False))))
+    assert filas[0]["severidad"] == "error"
+    # del lado del mailing, el producto releído se aplana igual
+    assert c.campos_del_producto(prod(precio_anterior_tachado=False))["precio_anterior_tachado"] == "sin tachar"

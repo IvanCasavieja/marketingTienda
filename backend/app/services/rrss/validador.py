@@ -46,6 +46,15 @@ _ANCHO_RECORTE = 640
 # corta una letra no sirve para confirmar nada.
 _MARGEN_PRODUCTO = 0.04
 _MARGEN_CAMPO = 0.03
+# El ancho al que se le manda a CatTi el recorte del producto para RELEER el
+# mailing (ver `_releer_producto_del_mailing`). La página se guarda a 1600 px y
+# un producto ocupa un quinto de eso: el recorte sale de ~460 px y así CatTi
+# leyó '$1.090' dos veces seguidas donde dice '$1090' (probado el 22/09/2026
+# sobre la Jarra INHAUS); AMPLIADO a 1000 o 1400 px leyó '$1090' las cuatro
+# veces. Ampliar no agrega información, pero el modelo lee mejor la letra chica
+# cuando ocupa más píxeles, así que el recorte se agranda siempre a este ancho.
+_ANCHO_RELECTURA = 1400
+_CAMPOS_QUE_SE_RELEEN = comparador.CAMPOS_DE_PRECIO | {"precio_anterior_tachado"}
 _LADO_VISTA = 800  # lado largo de la vista guardada de cada placa
 
 CargarPaginas = Callable[[], Awaitable[list[Image.Image]]]
@@ -204,6 +213,7 @@ async def validar_placa(
 
     formato = imagenes.clasificar_formato(prep.ancho, prep.alto)
     t_in = t_out = 0
+    paginas_relectura: list[Image.Image] = []
     try:
         t = time.perf_counter()
         lectura, ti, to = await catti.leer_placa(prep)
@@ -228,12 +238,33 @@ async def validar_placa(
 
         # Un error de texto solo se sostiene si una segunda lectura lo repite:
         # acusar a una placa de un error que fue de lectura es peor que no ver nada.
-        if any(f["severidad"] == "error" and f["campo"] in comparador.CAMPOS_DE_TEXTO for f in filas):
+        if any(f["severidad"] == "error" and f["campo"] in comparador.CAMPOS_CONFIRMABLES for f in filas):
             t = time.perf_counter()
             segunda, ti, to = await catti.leer_placa(prep)
             t_in, t_out = t_in + ti, t_out + to
             filas = comparador.confirmar_con_segunda_lectura(filas, comparador.campos_leidos(segunda))
             tiempos["segunda_lectura"] = _ms(t)
+
+        # Y lo mismo del lado del MAILING, que hasta el 22/09/2026 se leía una
+        # sola vez: si después de confirmar la placa queda un error de PRECIO (o
+        # de tachado) contra un mailing, se relee el producto desde su recorte
+        # ampliado. Solo la línea del precio y solo contra un mailing: es donde
+        # se vio fallar la lectura de la página entera ('$1.090', '$7799'), y
+        # una planilla no se lee, se abre. Cuesta una llamada por placa con
+        # error de precio.
+        if (
+            mailing.get("origen") != "planilla" and idx is not None
+            and any(f["severidad"] == "error" and f["campo"] in _CAMPOS_QUE_SE_RELEEN for f in filas)
+        ):
+            t = time.perf_counter()
+            paginas_relectura = await cargar_paginas()
+            tiempos["paginas"] = _ms(t)
+            t = time.perf_counter()
+            releido, ti, to = await _releer_producto_del_mailing(mailing["productos"][idx], paginas_relectura)
+            t_in, t_out = t_in + ti, t_out + to
+            if releido is not None:
+                filas = comparador.confirmar_con_relectura_de_la_fuente(filas, comparador.campos_del_producto(releido))
+            tiempos["relectura_mailing"] = _ms(t)
 
         if any(f["severidad"] in ("error", "aviso") and f["caja"] for f in filas):
             t = time.perf_counter()
@@ -250,8 +281,8 @@ async def validar_placa(
             paginas: list[Image.Image] = []
             if mailing.get("origen") != "planilla":
                 t = time.perf_counter()
-                paginas = await cargar_paginas()
-                tiempos["paginas"] = _ms(t)
+                paginas = paginas_relectura if "paginas" in tiempos else await cargar_paginas()
+                tiempos["paginas"] = tiempos.get("paginas", 0) + _ms(t)
 
             t = time.perf_counter()
             await en_hilo(_armar_recortes, datos, filas, cajas, mailing, idx, paginas)
@@ -308,6 +339,37 @@ async def validar_placa(
         resultado=resultado, vista=vista, ancho=prep.ancho, alto=prep.alto, formato=formato, estado=estado,
         tokens_in=t_in, tokens_out=t_out,
     )
+
+
+def _recorte_ampliado(pagina: Image.Image, caja) -> Image.Image | None:
+    """SINCRÓNICO (va en un hilo): el recorte del producto llevado a
+    _ANCHO_RELECTURA, agrandándolo si hace falta (ver el comentario de la
+    constante). `imagenes.recortar` solo achica."""
+    recorte = imagenes.recortar(pagina, caja, margen=_MARGEN_PRODUCTO, ancho_max=_ANCHO_RELECTURA)
+    if recorte is None or recorte.width >= _ANCHO_RELECTURA:
+        return recorte
+    alto = max(1, round(recorte.height * _ANCHO_RELECTURA / recorte.width))
+    return recorte.resize((_ANCHO_RELECTURA, alto), Image.LANCZOS)
+
+
+async def _releer_producto_del_mailing(item: dict, paginas: list[Image.Image]) -> tuple[dict | None, int, int]:
+    """La segunda lectura del mailing, de UN producto: su recorte ampliado de la
+    página. None si no hay de dónde recortar (sin cajas, sin páginas): en ese
+    caso el error queda como estaba, que es lo que pasaba hasta ahora."""
+    caja = (item.get("cajas") or {}).get("producto")
+    pagina = item.get("pagina")
+    if not caja or pagina is None or not (0 <= pagina < len(paginas)):
+        return None, 0, 0
+    recorte = await en_hilo(_recorte_ampliado, paginas[pagina], caja)
+    if recorte is None:
+        return None, 0, 0
+    try:
+        return await catti.leer_producto_del_mailing(recorte)
+    except Exception:
+        # Es una confirmación, no la validación: si falla, la fila queda como
+        # la dejó la primera lectura, y se registra.
+        logger.warning("rrss: no se pudo releer el producto del mailing", exc_info=True)
+        return None, 0, 0
 
 
 async def _con_error(motivo: str, tiempos: dict, inicio: float, datos: bytes | None = None,

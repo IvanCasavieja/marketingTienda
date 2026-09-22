@@ -75,7 +75,7 @@ from app.services.cenefas.convertidor import (
 )
 from app.services.cenefas.formatters import fmt_price
 from app.services.rrss import archivos, imagenes
-from app.services.rrss.comparador import importe
+from app.services.rrss.comparador import cola_del_precio, importe
 
 logger = logging.getLogger(__name__)
 
@@ -149,21 +149,46 @@ _DE_LA_COLUMNA: dict[str, str] = {
 # Columnas que son solo de la validación de placas y que el Convertidor no
 # conoce (no le sirven para una cenefa). Se normalizan con el mismo _norm del
 # Convertidor para que "Texto arriba" y "TEXTOARRIBA" sean la misma columna.
+#
+# Los títulos que el propio informe usa ("ARRIBA DEL PRECIO", "ABAJO DEL PRECIO",
+# ver _TITULO_POR_DEFECTO y la hoja «Como la pediste» del Excel) están acá a
+# propósito: si alguien copia una columna del informe a su planilla, tiene que
+# entrar. Hasta el 22/09/2026 no entraban y nadie podía adivinar los nombres.
 _ALIAS_RRSS: dict[str, str] = {
     "mecanica": "mecanica",
     "titularoferta": "mecanica",
     "encabezadooferta": "ofertaEncabezado",
     "textoarriba": "ofertaEncabezado",
     "textoarribadelprecio": "ofertaEncabezado",
+    "arribadelprecio": "ofertaEncabezado",
     "pieoferta": "ofertaPie",
     "textoabajo": "ofertaPie",
     "textoabajodelprecio": "ofertaPie",
+    "abajodelprecio": "ofertaPie",
     "vigencia": "vigencia",
+    "vigenciacampana": "vigencia",
+    "vigenciadelacampana": "vigencia",
+    "fecha": "vigencia",
+    "fechas": "vigencia",
     "fechacampana": "vigencia",
+    "fechadecampana": "vigencia",
     "fechadelacampana": "vigencia",
     "legalalcohol": "legalAlcohol",
+    "legaldealcohol": "legalAlcohol",
     "leyendaalcohol": "legalAlcohol",
+    "leyendadealcohol": "legalAlcohol",
 }
+
+# Cómo se llama cada columna opcional para una persona: es lo que la pantalla
+# de carga muestra como "columnas que entiende". Un solo nombre por columna, el
+# que también usa el informe, para no enseñar dos vocabularios.
+COLUMNAS_OPCIONALES: tuple[tuple[str, str], ...] = (
+    ("mecanica", "MECÁNICA"),
+    ("ofertaEncabezado", "ARRIBA DEL PRECIO"),
+    ("ofertaPie", "ABAJO DEL PRECIO"),
+    ("vigencia", "VIGENCIA"),
+    ("legalAlcohol", "LEYENDA ALCOHOL"),
+)
 
 # Qué columna de la planilla mira cada campo, para poder encuadrar la celda
 # exacta en la tira de evidencia. Los dos precios y la descripción son los que
@@ -248,12 +273,32 @@ def _precio(valor, moneda: str) -> str:
     numero = importe(texto)
     if numero is None:
         return texto  # la celda trae algo que no es un número: se muestra tal cual
-    return f"{(moneda or '').strip()}{fmt_price(numero)}"
+    m = _RE_NUMERO.search(texto)
+    # Lo que la celda trae ALREDEDOR del número no se tira: el símbolo que la
+    # persona escribió ("U$S 149" sin columna MONEDA) y lo que acompaña al
+    # precio ("$340 unidad"). Sin esto, "$340 unidad" quedaba en "$340" y la
+    # planilla perdía justo la palabra que el diseñador había puesto ahí.
+    simbolo = (moneda or "").strip() or texto[:m.start()].strip()
+    cola = texto[m.end():].strip()
+    return f"{simbolo}{fmt_price(numero)}" + (f" {cola}" if cola else "")
+
+
+_RE_NUMERO = re.compile(r"\d[\d.,]*")
 
 
 def _fila_de_datos(valores: dict) -> bool:
     """Una fila sirve si tiene descripción."""
     return bool(valores.get("descripcion"))
+
+
+def _fila_vacia(valores: dict) -> bool:
+    """Una fila en la que ninguna columna reconocida trae nada. Es el renglón en
+    blanco que queda entre el título y los datos, o los que Excel agrega al
+    final: no es una fila que "quedó afuera", y contarla como "sin descripción"
+    le hacía decir al informe "Afuera: 3 filas sin descripción" en una planilla
+    perfecta. Una fila con código o precio y sin descripción SÍ se cuenta: ahí
+    hay un producto al que le falta lo que lo amarra con la placa."""
+    return not any(v for v in valores.values())
 
 
 # Cómo empieza la fila de pie de un reporte de gestión. Hasta ahora se decía que
@@ -688,6 +733,8 @@ def leer(datos: bytes, filename: str = "", hoja: str | int | None = None) -> Pla
     sin_descripcion = 0
     for n, cruda in enumerate(filas[idx_headers + 1:], start=idx_headers + 2):
         valores = {campo: _texto(cruda[i]) if i < len(cruda) else "" for i, campo in col_map.items()}
+        if _fila_vacia(valores):
+            continue  # un renglón en blanco no es una fila que quedó afuera
         if not _fila_de_datos(valores):
             sin_descripcion += 1
             continue
@@ -762,6 +809,16 @@ def leer(datos: bytes, filename: str = "", hoja: str | int | None = None) -> Pla
         if columna in titulos and any(p[campo] for p in productos)
     ]
 
+    # Las columnas de precio en las que alguna fila escribió lo que acompaña al
+    # número ("$340 unidad"): ahí la columna dicta también la cola, y una fila
+    # que dice "$171" a secas está diciendo que NO va "unidad" (ver
+    # comparador._comparar_precio). Un export de gestión trae números y no
+    # entra acá: sus precios se siguen comparando solo por importe.
+    precios_con_cola = [
+        campo for campo, columna in (("precio_anterior", "precioAnterior"), ("oferta_precio", "precio"))
+        if columna in titulos and any(cola_del_precio(p[campo]) for p in productos)
+    ]
+
     # La columna elegida trae el nombre corto de gestión y no el texto impreso:
     # se sigue usando para EMPAREJAR (el parecido ignora mayúsculas y tildes)
     # pero deja de dictar la descripción, igual que cualquier otra columna que
@@ -814,6 +871,7 @@ def leer(datos: bytes, filename: str = "", hoja: str | int | None = None) -> Pla
         "legal_alcohol": alcoholes[0] if alcoholes else "",
         "legal_alcohol_pagina": None, "legal_alcohol_caja": None,
         "campos": campos,
+        "precios_con_cola": precios_con_cola,
         "planilla": {
             "archivo": filename or "planilla",
             "hoja": nombre_hoja,
@@ -1091,15 +1149,37 @@ _ETIQUETA_CAMPO = {
 }
 
 
-def campos_que_no_dicta(mailing: dict) -> list[str]:
-    """Los campos del producto que esta planilla NO puede exigir, con el nombre
-    con que se los conoce en pantalla. Se muestran siempre: "lo muestro distinto
-    según el caso" solo vale si se ve POR QUÉ."""
+def campos_que_no_dicta(mailing: dict, config: dict | None = None) -> list[str]:
+    """Los campos que esta planilla NO puede exigir, con el nombre con que se
+    los conoce en pantalla. Se muestran siempre: "lo muestro distinto según el
+    caso" solo vale si se ve POR QUÉ.
+
+    Además de los campos del producto entran la FECHA y la LEYENDA DE ALCOHOL:
+    se comparan solo si la planilla trae la columna (VIGENCIA, LEYENDA ALCOHOL)
+    o la persona las escribió en la pantalla de carga (`config`). Sin ninguna de
+    las dos no se comparan (comparador.comparar_elementos), y hasta el
+    22/09/2026 el informe no lo decía en ningún lado."""
     if mailing.get("origen") != "planilla":
         return []
+    config = config or {}
     trae = set(mailing.get("campos") or ())
     afuera = [c for c in _DE_LA_COLUMNA if c not in trae] + ["precio_anterior_tachado"]
-    return [_ETIQUETA_CAMPO[c] for c in afuera]
+    nombres = [_ETIQUETA_CAMPO[c] for c in afuera]
+    if not ((config.get("fecha") or "").strip() or mailing.get("fecha")):
+        nombres.append("Fecha de la campaña")
+    if not ((config.get("legal_alcohol") or "").strip() or mailing.get("legal_alcohol")):
+        nombres.append("Leyenda de alcohol")
+    return nombres
+
+
+def dicta_todo(mailing: dict) -> bool:
+    """¿Esta fuente dicta TODOS los campos del producto que una planilla puede
+    traer? Un mailing siempre; una planilla, solo si trae las seis columnas con
+    algo escrito. Es lo que decide si el Excel puede decir "Está bien" de una
+    placa o tiene que conformarse con "Sin diferencias (2 de 7 campos)"."""
+    if mailing.get("origen") != "planilla":
+        return True
+    return set(_DE_LA_COLUMNA) <= set(mailing.get("campos") or ())
 
 
 def cita(mailing: dict, indice: int) -> str:

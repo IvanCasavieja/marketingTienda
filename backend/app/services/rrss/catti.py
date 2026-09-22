@@ -50,6 +50,14 @@ _LITERAL = (
     "unen con un espacio. Cadena vacía si no existe."
 )
 
+# En dos de tres lecturas reales del mismo mailing la Jarra INHAUS salió con un
+# dígito de más ('$7799' por '$799') o con un punto de miles que no está
+# impreso ('$1.090' por '$1090'). Se le dice explícito: cada dígito una vez.
+_DIGITOS = (
+    "Los dígitos van UNA sola vez y en el orden impreso: si dudás entre dos cifras no dupliques "
+    "ninguna ('$799' no es '$7799'). "
+)
+
 _PROPIEDADES_PRODUCTO = {
     "descripcion": {
         "type": "string",
@@ -62,7 +70,7 @@ _PROPIEDADES_PRODUCTO = {
         "type": "string",
         "description": (
             "La línea de precio que está debajo de la descripción, con lo que la acompaña en ESA "
-            "misma línea, tal cual: '$499', '$340 unidad', '$48 unidad', 'US$149'. " + _LITERAL
+            "misma línea, tal cual: '$499', '$340 unidad', '$48 unidad', 'US$149'. " + _DIGITOS + _LITERAL
         ),
     },
     "precio_anterior_tachado": {
@@ -84,7 +92,7 @@ _PROPIEDADES_PRODUCTO = {
         "type": "string",
         "description": (
             "El precio grande del círculo con su símbolo. Si los centavos van chicos arriba, "
-            "pegalos con coma: '$37,50'. " + _LITERAL
+            "pegalos con coma: '$37,50'. " + _DIGITOS + _LITERAL
         ),
     },
     "oferta_pie": {
@@ -143,7 +151,11 @@ _TOOL_PLACA = {
             "otros_textos": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Cualquier otro texto visible que NO sea nada de lo anterior. Lista vacía si no hay.",
+                "description": (
+                    "Cualquier otro texto visible que NO sea nada de lo anterior. NO incluyas el texto que "
+                    "forma parte del logo de la campaña ('Los Rompe del finde') ni el nombre de la tienda: "
+                    "esos van en logo_campana_presente / isotipo_presente. Lista vacía si no hay."
+                ),
             },
             "imagen_producto": {
                 "type": "object",
@@ -162,6 +174,32 @@ _TOOL_PLACA = {
         ],
     },
 }
+
+_TOOL_PRODUCTO = {
+    "name": "registrar_producto_del_mailing",
+    "description": "Registra UN producto del mailing original, tal cual está impreso, a partir de su recorte.",
+    "input_schema": {
+        "type": "object",
+        "properties": _PROPIEDADES_PRODUCTO,
+        "required": _REQUERIDOS_PRODUCTO,
+    },
+}
+
+_INSTRUCCION_PRODUCTO = """
+Te paso el recorte de UN producto del mailing original de una campaña de
+supermercado, ampliado, para que lo registres con la tool
+registrar_producto_del_mailing.
+
+Cómo está armado: una foto, un texto de descripción al costado (con un precio
+tachado abajo), y un círculo rojo con 'Oferta' y el precio. Si hay una mecánica
+(2x$75, 4x3, 2x1) aparece en un rótulo aparte y el círculo dice 'Comprando N'
+arriba y 'unidad' abajo. Cada campo de la tool explica qué va en él. Si en el
+borde del recorte asoma parte de OTRO producto, ignoralo.
+
+Lo que importa es la EXACTITUD de cada carácter y de cada dígito: este recorte
+se lee para confirmar una lectura anterior de la página entera, así que no
+supongas nada; registrá lo que está impreso.
+""".strip()
 
 _INSTRUCCION_MAILING = """
 Te paso UNA página del mailing original de una campaña de supermercado, para
@@ -414,6 +452,23 @@ async def leer_mailing(paginas: list) -> tuple[dict, int, int]:
     if not mailing["productos"]:
         raise LecturaFallida("No encontré ningún producto con precio en el mailing")
     return mailing, t_in, t_out
+
+
+async def leer_producto_del_mailing(recorte) -> tuple[dict, int, int]:
+    """Lee UN producto del mailing desde su recorte ampliado. Devuelve el
+    producto normalizado (mismas claves que los de `leer_mailing`) y los tokens.
+
+    Es la segunda lectura del lado del MAILING (ver
+    comparador.confirmar_con_relectura_de_la_fuente): se llama solo cuando una
+    placa quedó acusada de un error de precio, y se lee el recorte del producto
+    --y no la página entera-- porque es donde la lectura es más fiel: la página
+    completa entra al modelo achicada a 1568 px y ahí un '$1090' de 18 px de
+    alto se convierte en '$1.090' o en '$7799'."""
+    bloques = await en_hilo(lambda: [_bloque_imagen(imagenes.reducir(recorte, _LADO_LARGO_MODELO))])
+    raw, t_in, t_out = await _llamar(
+        _TOOL_PRODUCTO, _INSTRUCCION_PRODUCTO, bloques, "Registrá este producto.", max_tokens=1500,
+    )
+    return _producto(raw), t_in, t_out
 
 
 @dataclass

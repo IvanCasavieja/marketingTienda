@@ -7,6 +7,7 @@ de a una el usuario ve avanzar cada placa a medida que se valida, y un
 archivo roto no tira abajo al resto. Ver app/services/rrss/.
 """
 import io
+import json
 import logging
 import re
 import time
@@ -96,7 +97,13 @@ async def get_config(_: User = Depends(require_permission("rrss.view"))):
     así el `accept` de los inputs y los textos de ayuda salen del MISMO archivo
     que usa el backend para aceptar o rechazar, y no de una lista escrita a mano
     en el navegador (ver app/data/rrss_archivos.json)."""
-    return {**validador.CONFIG_DEFECTO, "tipos": archivos.TIPOS}
+    tipos = json.loads(json.dumps(archivos.TIPOS))  # copia: no se toca el dict compartido
+    # Qué columnas OPCIONALES entiende la planilla, con el nombre que también usa
+    # el informe. Hasta el 22/09/2026 la pantalla decía "se valida lo que la
+    # planilla trae" sin decir cómo tenían que llamarse las columnas, y los
+    # nombres vivían solo en planilla._ALIAS_RRSS.
+    tipos["fuentes"]["planilla"]["columnas"] = [nombre for _, nombre in planilla.COLUMNAS_OPCIONALES]
+    return {**validador.CONFIG_DEFECTO, "tipos": tipos}
 
 
 @router.post("/validaciones")

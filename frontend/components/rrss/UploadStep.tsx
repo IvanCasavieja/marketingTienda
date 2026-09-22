@@ -358,6 +358,15 @@ export default function UploadStep({ placas, onPlacas, mailing, onMailing, confi
               <p className="text-sm font-medium text-slate-800 dark:text-slate-100 break-all">{mailing.name}</p>
               <p className="text-xs text-slate-600 dark:text-slate-300 max-w-sm">{t("rrss.planillaComoSeLee")}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">{t("rrss.planillaColumnas")}</p>
+              {/* Los nombres de las columnas opcionales salen del backend (GET
+                  /rrss/config, planilla.COLUMNAS_OPCIONALES): son los mismos
+                  que entiende el lector y los mismos que usa el informe. Sin
+                  esto nadie podía adivinar cómo llamar a la columna. */}
+              {(tipos.fuentes.planilla.columnas ?? []).length > 0 && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
+                  {t("rrss.planillaColumnasNombres", { columnas: (tipos.fuentes.planilla.columnas ?? []).join(", ") })}
+                </p>
+              )}
               {/* El tope de filas sale del mismo JSON que el backend usa para
                   rechazar (max_filas): decirlo acá es la diferencia entre
                   enterarse ahora y enterarse después de subir el catálogo. */}

@@ -101,6 +101,16 @@ function fuenteEsPlanilla(v: RrssValidacion): boolean {
   return v.mailing.origen === "planilla";
 }
 
+/** El nombre de la fuente ADENTRO de una frase, con el artículo contraído: "del
+ *  mailing", "en la planilla". Antes se interpolaba el título de la columna
+ *  ("El mailing") y salía "Hay más de una fila de El mailing" (22/09/2026). Las
+ *  tres formas viven en los JSON de idioma porque cada idioma contrae distinto
+ *  ("do mailing", "na planilha"). */
+function nombreFuente(t: (k: string) => string, v: RrssValidacion, forma: "nombre" | "de" | "en"): string {
+  const clave = { nombre: "rrss.fuenteNombre", de: "rrss.fuenteDe", en: "rrss.fuenteEn" }[forma];
+  return t(`${clave}.${fuenteEsPlanilla(v) ? "planilla" : "mailing"}`);
+}
+
 /** "LISTADO.xlsx · hoja «Alemania 2026» · fila 24": la coordenada que permite
  *  ir a chequearlo a mano, que es la diferencia entre creerle al sistema y
  *  poder auditarlo. */
@@ -128,8 +138,8 @@ function SinPareja({ v, img }: { v: RrssValidacion; img: RrssImagen }) {
     <div className="space-y-3">
       <p className="text-sm text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/20 rounded-xl px-3 py-2">
         {img.sin_pareja === "ambiguo"
-          ? t("rrss.sinParejaAmbiguo", { fuente: t(fuenteEsPlanilla(v) ? "rrss.laPlanilla" : "rrss.elMailing") })
-          : t("rrss.sinParejaNinguna", { fuente: t(fuenteEsPlanilla(v) ? "rrss.laPlanilla" : "rrss.elMailing") })}
+          ? t("rrss.sinParejaAmbiguo", { fuente: nombreFuente(t, v, "de") })
+          : t("rrss.sinParejaNinguna", { fuente: nombreFuente(t, v, "en") })}
       </p>
       {candidatos.length > 0 && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
@@ -329,7 +339,10 @@ function PanelPlaca({
 }) {
   const { t } = useTranslation();
   const [verOk, setVerOk] = useState(false);
+  // `fuente` es el TÍTULO de la columna ("El mailing"); `fuenteEnFrase` es
+  // cómo se la nombra adentro de una oración ("el mailing").
   const fuente = t(fuenteEsPlanilla(v) ? "rrss.laPlanilla" : "rrss.elMailing");
+  const fuenteEnFrase = nombreFuente(t, v, "nombre");
   const problemas = filasConProblema(img);
   const ok = img.filas.filter((f) => f.estado === "ok");
   const info = img.filas.filter((f) => f.estado === "info" && f.placa && f.placa !== "sin CTA");
@@ -386,9 +399,9 @@ function PanelPlaca({
           <Check size={16} />
           {fuenteEsPlanilla(v)
             ? t("rrss.coincideLoQueDicta", {
-                fuente, dictados: (v.mailing.campos ?? []).length, total: ETIQUETA_CAMPO_PRODUCTO.size,
+                fuente: fuenteEnFrase, dictados: (v.mailing.campos ?? []).length, total: ETIQUETA_CAMPO_PRODUCTO.size,
               })
-            : t("rrss.todoCoincide", { fuente })}
+            : t("rrss.todoCoincide", { fuente: fuenteEnFrase })}
         </p>
       )}
 
@@ -528,10 +541,18 @@ export default function ReviewStep({ validacion: v, pendientes, progreso, onRein
   // validaron. Se calcula acá, del mismo `campos` que usó el backend para
   // comparar: si se escribiera una lista a mano, un día diría que se validó
   // algo que no se miró.
+  // La fecha y la leyenda de alcohol entran también: se comparan solo si la
+  // planilla trae la columna (VIGENCIA, LEYENDA ALCOHOL) o la persona las
+  // escribió en la carga. Mismo criterio que planilla.campos_que_no_dicta del
+  // otro lado; hasta el 22/09/2026 acá no se decían.
   const camposSinValidar = fuenteEsPlanilla(v)
-    ? [...ETIQUETA_CAMPO_PRODUCTO.entries()]
-        .filter(([campo]) => !(v.mailing.campos ?? []).includes(campo))
-        .map(([, clave]) => t(clave))
+    ? [
+        ...[...ETIQUETA_CAMPO_PRODUCTO.entries()]
+          .filter(([campo]) => !(v.mailing.campos ?? []).includes(campo))
+          .map(([, clave]) => t(clave)),
+        ...(!(v.config?.fecha?.trim() || v.mailing.fecha) ? [t("rrss.campoFecha")] : []),
+        ...(!(v.config?.legal_alcohol?.trim() || v.mailing.legal_alcohol) ? [t("rrss.legalAlcohol")] : []),
+      ]
     : [];
   const alertas = resumen
     ? [

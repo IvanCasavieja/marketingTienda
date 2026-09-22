@@ -113,6 +113,18 @@ CAJA_DEL_CAMPO = {
 CAMPOS_DE_TEXTO = {c for c, _ in CAMPOS_PRODUCTO if c != "precio_anterior_tachado"} | {
     "fecha", "legal_bases", "legal_alcohol",
 }
+# Los que una segunda lectura puede confirmar o desmentir: los de texto y si el
+# precio va tachado. El tachado es un booleano y quedaba afuera, así que era
+# el ÚNICO error que se acusaba con una sola lectura: en la corrida real del
+# 22/09/2026 una placa 9:16 salió acusada de "sin tachar" por una línea de un
+# píxel que la lectura no vio, y nada la volvió a mirar.
+CAMPOS_CONFIRMABLES = CAMPOS_DE_TEXTO | {"precio_anterior_tachado"}
+
+
+def texto_tachado(tachado: bool) -> str:
+    """Cómo se escribe el booleano del tachado en una fila: es lo que se compara
+    entre lecturas y lo que se le muestra a la persona."""
+    return "tachado" if tachado else "sin tachar"
 
 # Los que son plata. Contra un mailing se comparan como cualquier otro texto;
 # contra una planilla, por importe (ver `_comparar_precio`).
@@ -364,8 +376,13 @@ def reglas_de_la_fuente(mailing: dict) -> dict:
     exigir un formato sería inventar una regla que nadie escribió. Lo que la
     planilla no trae no se compara -- y se dice cuál, no se esconde."""
     if mailing.get("origen") == "planilla":
-        return {"campos": tuple(mailing.get("campos") or ()), "precios": "importe"}
-    return {"campos": CAMPOS_TODOS, "precios": "texto"}
+        return {
+            "campos": tuple(mailing.get("campos") or ()), "precios": "importe",
+            # Las columnas de precio en las que la planilla escribió lo que
+            # acompaña al número (ver planilla.leer y `_comparar_precio`).
+            "colas": tuple(mailing.get("precios_con_cola") or ()),
+        }
+    return {"campos": CAMPOS_TODOS, "precios": "texto", "colas": ()}
 
 
 # --------------------------------------------------------------------------
@@ -395,14 +412,29 @@ def _comparar_texto(campo: str, etiqueta: str, grupo: str, placa: str, esperado:
     return _fila(campo, etiqueta, grupo, placa, esperado, "diferente", "error")
 
 
-def _comparar_precio(campo: str, etiqueta: str, placa: str, esperado: str) -> dict | None:
+def cola_del_precio(texto: str) -> str:
+    """Lo que acompaña al número en una línea de precio: "unidad" en "$340
+    unidad", "c/u" en "$99 c/u". Cadena vacía si no hay nada después del número."""
+    m = _RE_NUMERO.search(texto or "")
+    return (texto or "")[m.end():].strip() if m else ""
+
+
+def _comparar_precio(campo: str, etiqueta: str, placa: str, esperado: str,
+                     cola_dictada: bool = False) -> dict | None:
     """El precio contra una PLANILLA: vale lo que vale, no cómo está escrito.
 
     La planilla trae un número; el símbolo, el separador de miles y si los
     centavos van o no son decisiones del diseño, no de la planilla. Lo que sí
     se puede afirmar es el importe, y eso es lo que se compara. El texto que se
     muestra como referencia es el canónico (el mismo formato con el que se
-    imprimen las cenefas)."""
+    imprimen las cenefas).
+
+    `cola_dictada`: la planilla escribió, en alguna fila de esa columna, lo que
+    acompaña al precio ("$340 unidad"). Ahí la columna deja de ser un número y
+    pasa a dictar también la cola: una fila que dice "$171" a secas está
+    diciendo que NO va "unidad", igual que lo diría un mailing. Sin eso, la
+    misma campaña validada contra el PDF y contra su planilla daba resultados
+    distintos (22/09/2026: el "unidad" de la Stella salía solo en el PDF)."""
     if not placa and not esperado:
         return None
     if not esperado:
@@ -418,12 +450,20 @@ def _comparar_precio(campo: str, etiqueta: str, placa: str, esperado: str) -> di
             f"La planilla dice {nombre_moneda(moneda(esperado))} y la placa "
             f"{nombre_moneda(moneda(placa))}",
         )
-    if mismo_importe(placa, esperado):
-        return _fila(campo, etiqueta, "producto", placa, esperado, "ok", None)
-    return _fila(
-        campo, etiqueta, "producto", placa, esperado, "diferente", "error",
-        "La planilla trae un número, no un texto: lo que se compara es el importe",
-    )
+    if not mismo_importe(placa, esperado):
+        return _fila(
+            campo, etiqueta, "producto", placa, esperado, "diferente", "error",
+            "La planilla trae un número, no un texto: lo que se compara es el importe",
+        )
+    if cola_dictada and cola_del_precio(placa) != cola_del_precio(esperado):
+        # Mismo importe, pero lo que lo acompaña no es lo que la planilla
+        # escribió. Va como "diferente" y no como sobra/falta para que la
+        # instrucción diga "Sobra «unidad»" y no "Sobra «$171 unidad»".
+        return _fila(
+            campo, etiqueta, "producto", placa, esperado, "diferente", "error",
+            "El importe es el mismo; lo que cambia es lo que acompaña al precio",
+        )
+    return _fila(campo, etiqueta, "producto", placa, esperado, "ok", None)
 
 
 def comparar_producto(placa: dict, item: dict, reglas: dict | None = None) -> list[dict]:
@@ -435,6 +475,7 @@ def comparar_producto(placa: dict, item: dict, reglas: dict | None = None) -> li
     reglas = reglas or {"campos": CAMPOS_TODOS, "precios": "texto"}
     campos = set(reglas["campos"])
     por_importe = reglas["precios"] == "importe"
+    con_cola = set(reglas.get("colas") or ())
     filas = []
     for campo, etiqueta in CAMPOS_PRODUCTO:
         if campo not in campos:
@@ -446,14 +487,13 @@ def comparar_producto(placa: dict, item: dict, reglas: dict | None = None) -> li
             # Tachado o no solo tiene sentido si hay un precio de los dos lados.
             if placa["precio_anterior"] and item["precio_anterior"]:
                 p, m = placa[campo], item[campo]
-                texto = lambda t: "tachado" if t else "sin tachar"  # noqa: E731
                 filas.append(_fila(
-                    campo, etiqueta, "producto", texto(p), texto(m),
+                    campo, etiqueta, "producto", texto_tachado(p), texto_tachado(m),
                     "ok" if p == m else "diferente", None if p == m else "error",
                 ))
             continue
         if por_importe and campo in CAMPOS_DE_PRECIO:
-            fila = _comparar_precio(campo, etiqueta, placa[campo], item[campo])
+            fila = _comparar_precio(campo, etiqueta, placa[campo], item[campo], cola_dictada=campo in con_cola)
         else:
             fila = _comparar_texto(campo, etiqueta, "producto", placa[campo], item[campo])
         if fila:
@@ -573,9 +613,9 @@ def confirmar_con_segunda_lectura(filas: list[dict], segunda: dict) -> list[dict
     "encontró" pudo ser un error de lectura y no de la placa: se degrada a un
     aviso para que una persona lo mire, en vez de acusar a la placa.
 
-    `segunda` es {campo: valor_leído} de la segunda lectura."""
+    `segunda` es {campo: valor_leído} de la segunda lectura (ver `campos_leidos`)."""
     for fila in filas:
-        if fila["severidad"] != "error" or fila["campo"] not in CAMPOS_DE_TEXTO:
+        if fila["severidad"] != "error" or fila["campo"] not in CAMPOS_CONFIRMABLES:
             continue
         if fila["estado"] == "falta_en_placa":
             leido = segunda.get(fila["campo"], "")
@@ -591,10 +631,66 @@ def confirmar_con_segunda_lectura(filas: list[dict], segunda: dict) -> list[dict
     return filas
 
 
+def confirmar_con_relectura_de_la_fuente(filas: list[dict], releido: dict, fuente: str = "el mailing") -> list[dict]:
+    """El espejo de `confirmar_con_segunda_lectura`, del lado del MAILING.
+
+    Hasta el 22/09/2026 la segunda lectura existía solo para la placa: el
+    mailing se leía UNA vez, de la página entera, y nunca se confirmaba. Con
+    la misma campaña leída tres veces, la Jarra INHAUS salió '$1090' / '$799',
+    '$1.090' / '$799' y '$1090' / '$7799': dos de las tres corridas acusaron a
+    las tres placas de la Jarra de un error de precio que la placa no tenía.
+    Un error de lectura del mailing acusa igual que uno de la placa, y es peor,
+    porque el diseñador va a "corregir" la placa hacia algo que el mailing no
+    dice.
+
+    `releido` es el producto leído POR SEGUNDA VEZ, del recorte ampliado del
+    mailing (ver catti.leer_producto_del_mailing). Para cada fila en error de
+    un campo de texto:
+      - si la relectura dice lo mismo que la PLACA, el error cae: la placa se
+        leyó dos veces igual y el recorte ampliado del mailing --que se lee
+        mejor que la página entera-- coincide con ella. Son tres lecturas
+        contra una. La fila queda en "ok" con la nota de lo que pasó.
+      - si la relectura repite la primera lectura del mailing, el error se
+        sostiene.
+      - si dice una tercera cosa, no se sabe qué dice el mailing: baja a aviso
+        para que lo mire una persona, igual que del lado de la placa."""
+    for fila in filas:
+        if fila["severidad"] != "error" or fila["campo"] not in CAMPOS_CONFIRMABLES or fila["campo"] not in releido:
+            continue
+        primera, segunda = fila["mailing"] or "", releido.get(fila["campo"]) or ""
+        if segunda == primera:
+            continue
+        if segunda == (fila["placa"] or ""):
+            fila["estado"] = "ok"
+            fila["severidad"] = None
+            fila["nota"] = (
+                f"Leí {fuente} dos veces: la página entera decía {primera!r} y el recorte ampliado "
+                f"dice {segunda!r}, igual que la placa. Me quedo con el recorte."
+            )
+            fila["mailing"] = segunda
+            continue
+        fila["estado"] = "revisar"
+        fila["severidad"] = "aviso"
+        fila["nota"] = (
+            f"CatTi leyó distinto {fuente} en dos lecturas ({primera!r} y {segunda!r}): "
+            f"confirmalo mirando {fuente}"
+        )
+    return filas
+
+
+def campos_del_producto(producto: dict) -> dict:
+    """Los campos confirmables de UN producto leído, como texto: el tachado va
+    como "tachado" / "sin tachar", igual que en la fila que lo compara."""
+    salida = {c: producto[c] for c in CAMPOS_DE_TEXTO if c in producto}
+    if "precio_anterior_tachado" in producto:
+        salida["precio_anterior_tachado"] = texto_tachado(bool(producto["precio_anterior_tachado"]))
+    return salida
+
+
 def campos_leidos(placa: dict) -> dict:
-    """Los campos de texto de una lectura, aplanados: lo que se compara entre
-    la primera y la segunda lectura."""
-    salida = {c: placa["producto"][c] for c in CAMPOS_DE_TEXTO if c in placa["producto"]}
+    """Los campos confirmables de una lectura de placa, aplanados: lo que se
+    compara entre la primera y la segunda lectura."""
+    salida = campos_del_producto(placa["producto"])
     salida.update(fecha=placa["fecha"], legal_bases=placa["legal_bases"], legal_alcohol=placa["legal_alcohol"])
     return salida
 

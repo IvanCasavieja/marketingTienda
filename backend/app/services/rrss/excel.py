@@ -1,21 +1,36 @@
 """El Excel de correcciones para el diseñador.
 
-Salen SOLO las placas que tienen algo para corregir. La idea es que se entienda
-sin explicación:
+Tres hojas, en este orden, con el formato que Ivan aprobó el 2026-09-21 sobre
+la campaña del 17 al 20 de setiembre (el archivo «Correcciones RRSS -
+ejemplo.xlsx» es el molde, y este módulo lo reproduce celda por celda):
 
-- Un bloque por ARREGLO, no por placa. Las adaptaciones de un mismo producto
-  (1:1, 4:5, 9:16) casi siempre traen el mismo error: van juntas, así se corrige
-  una vez y se exportan las tres. Si una tiene algo distinto a sus hermanas, va
-  en su propio bloque y lo avisa.
-- Placa y mailing lado a lado, y al costado solo lo que está mal: lo que dice
-  (en rojo), lo que tiene que decir (en verde) y qué hacer, en una frase.
+- «Recomendada»: SOLO las placas que tienen algo para corregir, un bloque por
+  ARREGLO y no por placa. Las adaptaciones de un mismo producto (1:1, 4:5,
+  9:16) casi siempre traen el mismo error: van juntas, así se corrige una vez
+  y se exportan las tres. Si una tiene algo distinto a sus hermanas, va en su
+  propio bloque y lo avisa. Placa y fuente lado a lado, y al costado solo lo
+  que está mal: lo que dice (en rojo), lo que tiene que decir (en verde) y qué
+  hacer, en una frase.
+- «Como la pediste»: la tabla ancha que Ivan pidió primero, UNA FILA POR
+  PLACA con algo para corregir y una columna por cada cosa que CatTi lee de la
+  placa (descripción, precios, mecánica, textos del círculo, fecha, legales).
+  Cada celda dice lo que la PLACA dice; la que está mal va en rojo con marco,
+  y la última columna junta las correcciones. Esta hoja se había perdido: la
+  versión que la generaba nunca se commiteó (22/09/2026).
+- «Todas las placas»: una fila por placa, también las que están bien, con su
+  estado.
+- «La planilla» va CUARTA y solo cuando la fuente es una planilla: es el
+  archivo entero, con las filas que ninguna placa reclamó sin pintar.
 
-Diseño aprobado por Ivan el 2026-09-21 sobre la campaña del 17 al 20 de
-setiembre. Es CPU puro y sincrónico (decodifica y arma imágenes): el que lo llame
-desde una corrutina tiene que mandarlo a un hilo (ver hilos.py).
+Con una planilla la columna de la fuente se llama LA PLANILLA y en vez del
+recorte de la foto va la tira dibujada de la fila (ver planilla.tira).
+
+Es CPU puro y sincrónico (decodifica y arma imágenes): el que lo llame desde
+una corrutina tiene que mandarlo a un hilo (ver hilos.py).
 """
 import base64
 import io
+import re
 
 from openpyxl import Workbook
 from openpyxl.cell.rich_text import CellRichText, TextBlock
@@ -39,10 +54,13 @@ GRIS_OSC, GRIS, GRIS_TXT, GRIS_SUAVE = "44546A", "F2F4F7", "32404F", "6B7686"
 ROJO, ROJO_F = "C0392B", "FDECEA"
 VERDE, VERDE_F = "1E8449", "E8F6EC"
 AMBAR, AMBAR_F = "9A6400", "FFF4D6"
+VACIO = "8792A2"  # el gris de "(no está)" / "(no va nada)"
 
 _linea = Side(style="thin", color="D7DCE3")
 _grueso = Side(style="medium", color="9AA4B2")
+_marco_rojo = Side(style="medium", color=ROJO)
 _caja = Border(left=_linea, right=_linea, top=_linea, bottom=_linea)
+_caja_roja = Border(left=_marco_rojo, right=_marco_rojo, top=_marco_rojo, bottom=_marco_rojo)
 
 _ORDEN_FORMATO = {"1:1": 0, "4:5": 1, "9:16": 2}
 
@@ -72,6 +90,29 @@ def _jpeg(im: Image.Image) -> bytes:
     buf = io.BytesIO()
     im.save(buf, format="JPEG", quality=86)
     return buf.getvalue()
+
+
+# ── El orden de las placas ────────────────────────────────────────────────
+
+def _clave_natural(etiqueta: str) -> tuple:
+    """«10» antes que «10 copia», y las dos antes que «11».
+
+    El `orden` de subida es el alfabético del sistema de archivos, donde
+    "…_10 copia.jpg" va ANTES que "…_10.jpg" (el espacio ordena antes que el
+    punto): la hoja arrancaba con la copia y los bloques salían desordenados
+    (el Durazno de la 13 copia antes que el Carré de la 13). Se ordena como
+    los nombra el equipo: el número primero, como número, y después el resto."""
+    m = re.match(r"\s*(\d+)(.*)", etiqueta or "")
+    if m:
+        return (0, int(m.group(1)), m.group(2).strip().lower())
+    return (1, 0, (etiqueta or "").lower())
+
+
+def _en_orden(imagenes: list[dict], etiquetas: dict[str, str]) -> list[dict]:
+    return sorted(
+        imagenes,
+        key=lambda im: (_clave_natural(etiquetas.get(im["nombre_archivo"], im["nombre_archivo"])), im.get("orden", 0)),
+    )
 
 
 # ── Imágenes ancladas a celdas ────────────────────────────────────────────
@@ -132,17 +173,22 @@ def _tira_de_placas(placas: list[dict], etiquetas: dict[str, str], alto: int = 1
 def _rico(texto: str, contra: str, lado: str, tam: int = 14) -> CellRichText:
     """Del lado de la placa se resalta en rojo lo que está mal; del lado del
     mailing, en verde lo que tiene que ir. Por palabra entera (ver correccion)."""
+    return CellRichText(_tramos(texto, contra, lado, tam))
+
+
+def _tramos(texto: str, contra: str, lado: str, tam: int) -> list[TextBlock]:
+    """Los tramos de `_rico`, sueltos, para poder pegarlos con otros."""
     base = InlineFont(sz=tam, color=GRIS_TXT, rFont="Calibri")
     if not texto:
         vacio = "(no está)" if lado == "placa" else "(no va nada)"
-        return CellRichText([TextBlock(InlineFont(sz=tam - 1, i=True, color="8792A2", rFont="Calibri"), vacio)])
+        return [TextBlock(InlineFont(sz=tam - 1, i=True, color=VACIO, rFont="Calibri"), vacio)]
     color = ROJO if lado == "placa" else VERDE
     resalte = InlineFont(sz=tam, b=True, u="single", color=color, rFont="Calibri")
     if not contra:  # el otro lado está vacío: todo este texto es la diferencia
-        return CellRichText([TextBlock(resalte, texto)])
+        return [TextBlock(resalte, texto)]
     seg_p, seg_m = c.diferenciar_palabras(texto, contra) if lado == "placa" else c.diferenciar_palabras(contra, texto)
     segmentos = seg_p if lado == "placa" else seg_m
-    return CellRichText([TextBlock(resalte if distinto else base, t) for t, distinto in segmentos])
+    return [TextBlock(resalte if distinto else base, t) for t, distinto in segmentos]
 
 
 # ── Qué entra al Excel ────────────────────────────────────────────────────
@@ -157,12 +203,11 @@ def _problemas(im: dict, origen: str = "mailing") -> list[dict]:
     # "No encontré este producto" a secas es una acusación sin pruebas: el
     # diseñador no puede distinguir "esta placa no es de esta campaña" de "la
     # descripción está tan mal escrita que no la reconocí".
-    fuente = c.nombre_de_la_fuente(origen)
     cands = im.get("candidatos") or []
     if im.get("sin_pareja") == "ambiguo":
-        texto = f"Hay más de una fila de {fuente} que se le parece igual: no elijo yo cuál es"
+        texto = f"Hay más de una fila {c.de_la_fuente(origen)} que se le parece igual: no elijo yo cuál es"
     else:
-        texto = f"No encontré este producto en {fuente}"
+        texto = f"No encontré este producto en {c.nombre_de_la_fuente(origen)}"
     parecidas = "; ".join(f"{k['descripcion']} ({k['puntaje']:g})" for k in cands[:3])
     return [dict(campo="sin_match", estado="revisar", placa=texto,
                  mailing=(f"Lo que más se le pareció: {parecidas}" if parecidas else ""))]
@@ -174,9 +219,10 @@ def _producto(mailing: dict, im: dict) -> dict | None:
     return productos[idx] if idx is not None and 0 <= idx < len(productos) else None
 
 
-def _agrupar(placas: list[dict], origen: str = "mailing") -> list[dict]:
+def _agrupar(placas: list[dict], etiquetas: dict[str, str], origen: str = "mailing") -> list[dict]:
     """Las placas del MISMO producto con EXACTAMENTE los mismos errores van en un
-    solo bloque. Una placa sin producto en el mailing no se junta con nada."""
+    solo bloque. Una placa sin producto en el mailing no se junta con nada.
+    Los bloques quedan en el orden en que aparece su primera placa."""
     grupos: dict[tuple, dict] = {}
     for im in placas:
         probs = _problemas(im, origen)
@@ -187,11 +233,41 @@ def _agrupar(placas: list[dict], origen: str = "mailing") -> list[dict]:
         )
         grupos.setdefault(clave, {"placas": [], "problemas": probs})["placas"].append(im)
     for g in grupos.values():
-        g["placas"].sort(key=lambda im: (_ORDEN_FORMATO.get(im.get("formato"), 9), im.get("orden", 0)))
+        g["placas"].sort(key=lambda im: (
+            _ORDEN_FORMATO.get(im.get("formato"), 9),
+            _clave_natural(etiquetas.get(im["nombre_archivo"], im["nombre_archivo"])),
+        ))
     return list(grupos.values())
 
 
 # ── Hojas ─────────────────────────────────────────────────────────────────
+
+def _cuantas_placas(total: int, con_algo: int, arreglos: int | None) -> tuple[str, str]:
+    """(qué hay para corregir, qué queda bien), con singular y plural escritos
+    los dos. "1 cosas para corregir" y "Las otras 1 están bien" se leían en
+    cuanto una campaña tenía un solo arreglo o una sola placa sana."""
+    if not con_algo:
+        # Puede pasar y tiene que decirse bien: el Excel existe igual porque la
+        # campaña tiene filas sin placa o la planilla dejó avisos (ver
+        # `construir`). Decir "hay que corregir 0 de 4 placas" sería ruido.
+        que = ("La placa está bien" if total == 1 else f"Las {total} placas están bien") + \
+            ": no hay nada para corregir en ellas"
+        return que, ""
+    donde = "en la única placa" if total == 1 else f"en {con_algo} de las {total} placas"
+    if arreglos:
+        cosas = "1 cosa para corregir" if arreglos == 1 else f"{arreglos} cosas para corregir"
+        que = f"{cosas}, {donde}"
+    else:
+        que = "Hay que corregir la única placa" if total == 1 else f"Hay que corregir {con_algo} de las {total} placas"
+    resto = total - con_algo
+    if resto == 1:
+        otras = "  La otra está bien: no la toques."
+    elif resto > 1:
+        otras = f"  Las otras {resto} están bien: no las toques."
+    else:
+        otras = ""
+    return que, otras
+
 
 def _banner(ws, validacion: dict, hasta_col: str, arreglos: int | None = None) -> None:
     imagenes = validacion["imagenes"]
@@ -204,25 +280,15 @@ def _banner(ws, validacion: dict, hasta_col: str, arreglos: int | None = None) -
     ws["A1"].alignment = Alignment(vertical="center", indent=1)
     ws.row_dimensions[1].height = 36
     ws.merge_cells(f"A2:{hasta_col}2")
-    if not con_algo:
-        # Puede pasar y tiene que decirse bien: el Excel existe igual porque la
-        # campaña tiene filas sin placa o la planilla dejó avisos (ver
-        # `construir`). Decir "hay que corregir 0 de 4 placas" sería ruido.
-        que = ("La placa está bien" if total == 1 else f"Las {total} placas están bien") + \
-            ": no hay nada para corregir en ellas"
-    elif arreglos:
-        que = f"{arreglos} cosas para corregir, en {con_algo} de las {total} placas"
-    else:
-        que = f"Hay que corregir {con_algo} de las {total} placas"
+    que, otras = _cuantas_placas(total, con_algo, arreglos)
     mailing = validacion.get("mailing") or {}
     fecha = mailing.get("fecha") or ""
     campana = f"Campaña: {fecha}      " if fecha else ""
     # Lo que la fuente no dicta se DICE, no se esconde: si la planilla no trae
     # columna de mecánica, esa parte de la placa no la miró nadie y el diseñador
     # tiene que saberlo antes de dar la campaña por revisada.
-    afuera = pl.campos_que_no_dicta(mailing)
+    afuera = pl.campos_que_no_dicta(mailing, validacion.get("config"))
     sin_validar = f"      La planilla no dice esto, así que no se revisó: {', '.join(afuera)}." if afuera else ""
-    otras = f"  Las otras {total - con_algo} están bien: no las toques." if con_algo else ""
     # Lo que la lectura de la planilla tuvo para decir va acá y no en una fila
     # aparte: son justo los avisos que delatan que el motor entendió mal el
     # archivo (una hoja de más, una fila de pie contada como producto, una
@@ -248,9 +314,23 @@ def _encabezado(ws, fila: int, columnas: list[tuple[str, str, str]]) -> None:
     ws.row_dimensions[fila].height = 30
 
 
-def _hoja_correcciones(wb, validacion: dict, etiquetas: dict[str, str]) -> None:
+def _nada_para_corregir(ws, hasta_col: str, es_planilla: bool) -> None:
+    """Puede no haber ningún arreglo y existir el archivo igual: ver
+    `hay_algo_que_decir`. Una tabla vacía debajo de un encabezado que dice
+    "CORRECCIONES" se lee como un error del sistema."""
+    ws.merge_cells(f"A4:{hasta_col}4")
+    ws["A4"] = "Ninguna placa tiene algo para corregir." + (
+        " Mirá la hoja «La planilla»: ahí están las filas de la campaña que ninguna placa reclamó."
+        if es_planilla else ""
+    )
+    ws["A4"].font = Font(size=12, italic=True, color=GRIS_SUAVE)
+    ws["A4"].alignment = Alignment(vertical="center", indent=1)
+    ws.row_dimensions[4].height = 30
+
+
+def _hoja_recomendada(wb, validacion: dict, etiquetas: dict[str, str]) -> None:
     ws = wb.active
-    ws.title = "Correcciones"
+    ws.title = "Recomendada"
     mailing = validacion.get("mailing") or {}
     origen = mailing.get("origen") or "mailing"
     es_planilla = origen == "planilla"
@@ -261,8 +341,8 @@ def _hoja_correcciones(wb, validacion: dict, etiquetas: dict[str, str]) -> None:
     for col, a in anchos.items():
         ws.column_dimensions[col].width = a
 
-    placas = [i for i in sorted(validacion["imagenes"], key=lambda x: x.get("orden", 0)) if i["estado"] != "ok"]
-    grupos = _agrupar(placas, origen)
+    placas = [i for i in _en_orden(validacion["imagenes"], etiquetas) if i["estado"] != "ok"]
+    grupos = _agrupar(placas, etiquetas, origen)
     _banner(ws, validacion, "F", arreglos=len(grupos))
     _encabezado(ws, 3, [
         ("A", "LAS PLACAS", GRIS_OSC), ("B", "LA PLANILLA" if es_planilla else "EL MAILING", GRIS_OSC),
@@ -278,17 +358,7 @@ def _hoja_correcciones(wb, validacion: dict, etiquetas: dict[str, str]) -> None:
             bloques_por_producto[idx] = bloques_por_producto.get(idx, 0) + 1
 
     if not grupos:
-        # Puede no haber ningún arreglo y existir el archivo igual: ver
-        # `hay_algo_que_decir`. Una tabla vacía debajo de un encabezado que dice
-        # "CORRECCIONES" se lee como un error del sistema.
-        ws.merge_cells("A4:F4")
-        ws["A4"] = (
-            "Ninguna placa tiene algo para corregir. Mirá la hoja «La planilla»: ahí "
-            "están las filas de la campaña que ninguna placa reclamó."
-        )
-        ws["A4"].font = Font(size=12, italic=True, color=GRIS_SUAVE)
-        ws["A4"].alignment = Alignment(vertical="center", indent=1)
-        ws.row_dimensions[4].height = 30
+        _nada_para_corregir(ws, "F", es_planilla)
 
     alto_minimo = 236  # px por bloque, para que se vean las fotos
     alto_error = 74    # px mínimos por error
@@ -361,7 +431,7 @@ def _hoja_correcciones(wb, validacion: dict, etiquetas: dict[str, str]) -> None:
             ws[f"D{r}"].fill = _fill(ROJO_F)
             ws[f"E{r}"] = _rico(mailing_txt, placa_txt, "mailing")
             ws[f"E{r}"].fill = _fill(VERDE_F)
-            ws[f"F{r}"] = c.instruccion(f.get("estado", ""), placa_txt, mailing_txt, origen)
+            ws[f"F{r}"] = c.que_hacer(f, origen)
             ws[f"F{r}"].font = Font(size=13, bold=True, color=AMBAR)
             ws[f"F{r}"].fill = _fill(AMBAR_F)
             for letra in "CDEF":
@@ -381,11 +451,186 @@ def _hoja_correcciones(wb, validacion: dict, etiquetas: dict[str, str]) -> None:
     ws.print_title_rows = "3:3"
 
 
-# "Está bien" era una palabra que el motor no puede sostener: contra una
-# planilla que no trae columna de mecánica ni de encabezado ni de pie, una placa
-# con esos tres campos inventados salía en verde con 2 de 7 campos revisados. El
-# encabezado aclaraba qué quedó afuera, pero acá igual decía "Está bien". Lo que
-# el motor SÍ puede afirmar es que no encontró diferencias en lo que miró.
+# ── «Como la pediste»: una fila por placa, una columna por cosa ───────────
+
+# (columna, campo de la lectura). Las seis del producto salen de
+# lectura["producto"]; la fecha y las leyendas, de la lectura misma. El orden y
+# los títulos son los del molde.
+_COLUMNAS_ANCHAS: tuple[tuple[str, str, str, int], ...] = (
+    ("B", "descripcion", "DESCRIPCIÓN", 30),
+    ("C", "precio_anterior", "PRECIO ANTERIOR", 14),
+    ("D", "mecanica", "MECÁNICA", 12),
+    ("E", "oferta_encabezado", "ARRIBA DEL PRECIO", 13),
+    ("F", "oferta_precio", "PRECIO OFERTA", 12),
+    ("G", "oferta_pie", "ABAJO DEL PRECIO", 12),
+    ("H", "fecha", "FECHA", 22),
+    ("I", "legales", "LEGALES", 26),
+)
+_ALTO_FILA_ANCHA = 200  # px (150 puntos): entra la vista de la placa a 162 px de alto
+_SIN_REVISAR = "sin revisar: la planilla no lo dice"
+_SIN_REVISAR_ALCOHOL = "leyenda de alcohol sin revisar: la planilla no la dice"
+
+
+def _campos_sin_revisar(mailing: dict, config: dict, lectura: dict) -> set[str]:
+    """Qué columnas de la hoja ancha quedan SIN REVISAR para esta placa: las que
+    la planilla no dicta (comparador.reglas_de_la_fuente) y la fecha cuando ni
+    la planilla ni la pantalla de carga la dieron. Contra un mailing no hay
+    nada sin revisar: dicta todo.
+
+    Un guion suelto en esas celdas significaba dos cosas distintas --"la placa
+    no lo tiene y la fuente tampoco lo pide" y "esto no lo miró nadie"-- y la
+    segunda es justo la que el diseñador tiene que saber."""
+    if mailing.get("origen") != "planilla":
+        return set()
+    dicta = set(mailing.get("campos") or ())
+    afuera = {campo for campo in ("descripcion", "precio_anterior", "mecanica", "oferta_encabezado",
+                                  "oferta_precio", "oferta_pie") if campo not in dicta}
+    if not ((config.get("fecha") or "").strip() or mailing.get("fecha")):
+        afuera.add("fecha")
+    return afuera
+
+
+def _celda_plana(cel, valor: str) -> None:
+    cel.value = valor or "—"
+    cel.font = Font(size=11, color=GRIS_SUAVE)
+    cel.fill = PatternFill(fill_type=None)
+    cel.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    cel.border = _caja
+
+
+def _celda_sin_revisar(cel, texto: str = _SIN_REVISAR) -> None:
+    cel.value = texto
+    cel.font = Font(size=11, italic=True, color=GRIS_SUAVE)
+    cel.fill = _fill(GRIS)
+    cel.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    cel.border = _caja
+
+
+def _celda_con_problema(cel, rico: CellRichText) -> None:
+    cel.value = rico
+    cel.fill = _fill(ROJO_F)
+    cel.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    cel.border = _caja_roja
+
+
+def _legales(lectura: dict, probs: dict[str, dict], alcohol_sin_revisar: bool) -> CellRichText | str | None:
+    """La columna LEGALES: bases y leyenda de alcohol juntas, separadas por
+    «  /  ». Si alguna de las dos tiene problema, la celda entera va como
+    problema y solo esa parte se resalta. None = las dos vacías y sin problema."""
+    bases, alcohol = lectura.get("legal_bases") or "", lectura.get("legal_alcohol") or ""
+    prob_b, prob_a = probs.get("legal_bases"), probs.get("legal_alcohol")
+    if not prob_b and not prob_a:
+        partes = [t for t in (bases, alcohol) if t]
+        texto = "  /  ".join(partes)
+        if alcohol_sin_revisar:
+            texto = (texto + "  /  " if texto else "") + f"({_SIN_REVISAR_ALCOHOL})"
+        return texto or None
+    normal = InlineFont(sz=12, color=GRIS_TXT, rFont="Calibri")
+    tramos: list[TextBlock] = []
+    for prob, texto in ((prob_b, bases), (prob_a, alcohol)):
+        if prob:
+            parte = _tramos(prob.get("placa") or "", prob.get("mailing") or "", "placa", 12)
+        elif texto:
+            parte = [TextBlock(normal, texto)]
+        else:
+            continue
+        if tramos:
+            tramos.append(TextBlock(normal, "  /  "))
+        tramos.extend(parte)
+    return CellRichText(tramos)
+
+
+def _hoja_como_la_pediste(wb, validacion: dict, etiquetas: dict[str, str]) -> None:
+    ws = wb.create_sheet("Como la pediste")
+    mailing = validacion.get("mailing") or {}
+    config = validacion.get("config") or {}
+    origen = mailing.get("origen") or "mailing"
+    es_planilla = origen == "planilla"
+    ws.column_dimensions["A"].width = 27
+    for letra, _, _, ancho in _COLUMNAS_ANCHAS:
+        ws.column_dimensions[letra].width = ancho
+    ws.column_dimensions["J"].width = 40
+
+    _banner(ws, validacion, "J")
+    _encabezado(ws, 3, [("A", "LA PLACA", GRIS_OSC)]
+                + [(letra, titulo, GRIS_OSC) for letra, _, titulo, _ in _COLUMNAS_ANCHAS]
+                + [("J", "CORRECCIÓN", AMBAR)])
+
+    placas = [i for i in _en_orden(validacion["imagenes"], etiquetas) if i["estado"] != "ok"]
+    if not placas:
+        _nada_para_corregir(ws, "J", es_planilla)
+
+    ancho_a = _px_col(27)
+    for k, im in enumerate(placas):
+        r = 4 + k
+        ws.row_dimensions[r].height = _ALTO_FILA_ANCHA * 0.75
+        etiqueta = etiquetas.get(im["nombre_archivo"], im["nombre_archivo"])
+        cel = ws[f"A{r}"]
+        cel.value = f"Placa {etiqueta}  ·  {im.get('formato') or ''}".rstrip(" ·")
+        cel.font = Font(size=11, bold=True, color=GRIS_TXT)
+        cel.alignment = Alignment(horizontal="center", vertical="top")
+        cel.border = _caja
+        _centrada(ws, im.get("vista"), 0, r - 1, ancho_a, _ALTO_FILA_ANCHA, margen_arriba=22)
+
+        lectura = im.get("lectura") or {}
+        producto = lectura.get("producto") or {}
+        probs_lista = _problemas(im, origen)
+        # Una fila por campo: si un campo trajera dos, manda la primera.
+        probs: dict[str, dict] = {}
+        for f in probs_lista:
+            probs.setdefault(f["campo"], f)
+        sin_revisar = _campos_sin_revisar(mailing, config, lectura)
+        es_alcohol = bool(producto.get("es_alcohol"))
+        alcohol_sin_revisar = (
+            es_planilla and es_alcohol and "legal_alcohol" not in probs
+            and not ((config.get("legal_alcohol") or "").strip() or mailing.get("legal_alcohol"))
+        )
+
+        for letra, campo, _, _ in _COLUMNAS_ANCHAS:
+            cel = ws[f"{letra}{r}"]
+            if campo == "legales":
+                valor = _legales(lectura, probs, alcohol_sin_revisar)
+                if isinstance(valor, CellRichText):
+                    _celda_con_problema(cel, valor)
+                else:
+                    _celda_plana(cel, valor or "")
+                continue
+            texto = lectura.get(campo) if campo == "fecha" else producto.get(campo)
+            texto = texto or ""
+            if campo in probs:
+                f = probs[campo]
+                _celda_con_problema(cel, _rico(f.get("placa") or "", f.get("mailing") or "", "placa", tam=12))
+            elif campo in sin_revisar:
+                # La placa puede decir algo ahí: se muestra, y se dice que no se revisó.
+                _celda_sin_revisar(cel, f"{texto}\n({_SIN_REVISAR})" if texto else _SIN_REVISAR)
+            else:
+                _celda_plana(cel, texto)
+
+        cel = ws[f"J{r}"]
+        cel.value = "\n".join(
+            f"• {c.nombre_campo(f['campo'], origen)}: {c.que_hacer(f, origen, con_detalle=True)}".rstrip(": ")
+            for f in probs_lista
+        )
+        cel.font = Font(size=12, bold=True, color=AMBAR)
+        cel.fill = _fill(AMBAR_F)
+        cel.alignment = Alignment(vertical="center", wrap_text=True, indent=1)
+        cel.border = _caja
+
+    ws.freeze_panes = "B4"
+    ws.sheet_view.showGridLines = False
+    ws.sheet_view.zoomScale = 90
+    ws.page_setup.orientation = "landscape"
+
+
+# ── «Todas las placas» ────────────────────────────────────────────────────
+
+# "Está bien" es una palabra que el motor solo puede sostener si miró TODO:
+# contra un mailing sí (dicta los siete campos), y contra una planilla solo si
+# trae las seis columnas con algo escrito (ver planilla.dicta_todo). Contra una
+# planilla que no trae mecánica ni encabezado ni pie, una placa con esos tres
+# campos inventados salía en verde con 2 de 7 campos revisados: ahí lo que el
+# motor SÍ puede afirmar es que no encontró diferencias en lo que miró, y se
+# dice cuánto miró en la misma fila.
 _ETIQUETA_ESTADO = {
     "ok": "Sin diferencias", "diferencias": "Hay que corregirla", "avisos": "Para revisar",
     "sin_match": "Sin pareja", "error": "No se pudo leer",
@@ -409,7 +654,12 @@ def _hoja_todas(wb, validacion: dict, etiquetas: dict[str, str]) -> None:
                         ("D", "ESTADO", GRIS_OSC), ("E", "QUÉ TIENE", GRIS_OSC)])
     mailing = validacion.get("mailing") or {}
     origen = mailing.get("origen") or "mailing"
-    etiqueta_estado = {**_ETIQUETA_ESTADO, "sin_match": f"No está en {c.nombre_de_la_fuente(origen)}"}
+    completa = pl.dicta_todo(mailing)
+    etiqueta_estado = {
+        **_ETIQUETA_ESTADO,
+        "sin_match": f"No está en {c.nombre_de_la_fuente(origen)}",
+        **({"ok": "Está bien"} if completa else {}),
+    }
     color_estado = _COLOR_ESTADO
     # Cuántos de los campos del producto pudo mirar el motor. Con un mailing son
     # los siete; con una planilla, solo los que la planilla trae escritos. Una
@@ -418,17 +668,16 @@ def _hoja_todas(wb, validacion: dict, etiquetas: dict[str, str]) -> None:
     # encabezado.
     todos = len(comparador.CAMPOS_PRODUCTO)
     dictados = len(mailing.get("campos") or ()) if origen == "planilla" else todos
-    de_cuantos = f" ({dictados} de {todos} campos)" if origen == "planilla" else ""
     fila = 3
-    for im in sorted(validacion["imagenes"], key=lambda x: x.get("orden", 0)):
+    for im in _en_orden(validacion["imagenes"], etiquetas):
         prod = _producto(mailing, im)
         probs = [f for f in im.get("filas") or [] if f.get("severidad") in ("error", "aviso")]
         que_tiene = ", ".join(dict.fromkeys(c.nombre_campo(f["campo"], origen) for f in probs))
         if not que_tiene:
-            que_tiene = (
-                f"Coincide en lo que dicta {c.nombre_de_la_fuente(origen)}{de_cuantos}"
-                if im["estado"] == "ok" else "—"
-            )
+            if im["estado"] == "ok" and not completa:
+                que_tiene = f"Coincide en lo que dicta {c.nombre_de_la_fuente(origen)} ({dictados} de {todos} campos)"
+            else:
+                que_tiene = "—"
         valores = [
             etiquetas.get(im["nombre_archivo"], im["nombre_archivo"]),
             prod["descripcion"] if prod else "—",
@@ -451,6 +700,8 @@ def _hoja_todas(wb, validacion: dict, etiquetas: dict[str, str]) -> None:
     ws.freeze_panes = "A3"
     ws.sheet_view.showGridLines = False
 
+
+# ── «La planilla» (solo con planilla) ─────────────────────────────────────
 
 def _hoja_planilla(wb, validacion: dict) -> None:
     """La planilla entera, como celdas de verdad y no como imagen.
@@ -506,13 +757,25 @@ def _hoja_planilla(wb, validacion: dict) -> None:
     # igual que los otros dos, así que va al lado de ellos. 0 no se escribe: el
     # caso normal no junta nada y no tiene nada que decir.
     juntadas = info.get("filas_juntadas") or 0
+    con_producto = "1 fila con producto, leída" if len(productos) == 1 else f"{len(productos)} filas con producto, leídas"
+    if sin_placa == 0:
+        reclamadas = "Todas las filas tienen su placa: ninguna quedó sin color."
+    elif sin_placa == 1:
+        reclamadas = (
+            "La que quedó SIN COLOR es la única fila que ninguna placa reclamó: "
+            "o falta la placa, o la placa que le corresponde no se le parece lo suficiente."
+        )
+    else:
+        reclamadas = (
+            f"Las que quedaron SIN COLOR son las {sin_placa} que ninguna placa reclamó: "
+            "o falta la placa, o la placa que le corresponde no se le parece lo suficiente."
+        )
     ws["A2"] = (
-        f"{len(productos)} filas con producto, leídas a partir de la fila "
+        f"{con_producto} a partir de la fila "
         f"{info.get('fila_encabezado', 1) + 1}"
         + (f" ({cuantas_afuera})" if afuera else "")
         + (f", juntando {juntadas} filas del archivo" if juntadas else "")
-        + f". Las que quedaron SIN COLOR son las {sin_placa} que ninguna placa reclamó: "
-        f"o falta la placa, o la placa que le corresponde no se le parece lo suficiente."
+        + f". {reclamadas}"
     )
     ws["A2"].font = Font(size=11, color="FFFFFF")
     ws["A2"].fill = _fill(AZUL_2)
@@ -595,16 +858,18 @@ def construir(validacion: dict) -> bytes:
     """El .xlsx de una validación.
 
     `validacion` tiene la forma del detalle de la API: {"mailing": {...},
-    "imagenes": [{nombre_archivo, formato, estado, orden, filas, lectura, match,
-    error, vista}]}. La vista puede venir en bytes o como data URI.
-    NadaParaCorregir cuando no hay nada que decir (ver `hay_algo_que_decir`)."""
+    "config": {...}, "imagenes": [{nombre_archivo, formato, estado, orden,
+    filas, lectura, match, error, vista}]}. La vista puede venir en bytes o
+    como data URI. NadaParaCorregir cuando no hay nada que decir (ver
+    `hay_algo_que_decir`)."""
     if not hay_algo_que_decir(validacion):
         raise NadaParaCorregir(
             "No hay nada para corregir: todas las placas están bien y ninguna fila quedó sin placa"
         )
     etiquetas = c.etiquetas([i["nombre_archivo"] for i in validacion["imagenes"]])
     wb = Workbook()
-    _hoja_correcciones(wb, validacion, etiquetas)
+    _hoja_recomendada(wb, validacion, etiquetas)
+    _hoja_como_la_pediste(wb, validacion, etiquetas)
     _hoja_todas(wb, validacion, etiquetas)
     if (validacion.get("mailing") or {}).get("origen") == "planilla":
         _hoja_planilla(wb, validacion)
