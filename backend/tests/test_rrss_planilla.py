@@ -280,24 +280,41 @@ def test_solo_exige_las_columnas_que_trae(mailing):
 
 def test_lo_que_la_planilla_no_dice_no_se_marca_como_error(mailing):
     """Una placa con mecánica "2x$199" contra una planilla sin columna de
-    mecánica NO es un error: la planilla no dice nada de eso. Marcarlo sería
-    acusar a la placa con un dato que nadie escribió."""
-    p = placa_de(descripcion="Cerveza PATRICIA lata. 473 ml", precio_anterior="$99",
-                 oferta_precio="$74,50", mecanica="2x$199", oferta_pie="unidad")
+    mecánica: la mecánica en sí NO se compara, la planilla no dice nada de eso.
+    Marcarla sería acusar a la placa con un dato que nadie escribió.
+
+    Lo que SÍ vale es la regla fija del combo (22/09/2026, "constantes, tanto
+    para mailing como para Excel"): si la placa es un combo, el precio regular
+    va sin tachar y con "unidad", y abajo del precio va "unidad". Esta placa
+    cumple, así que queda ok."""
+    p = placa_de(descripcion="Cerveza PATRICIA lata. 473 ml", precio_anterior="$99 unidad",
+                 precio_anterior_tachado=False, oferta_precio="$74,50", mecanica="2x$199", oferta_pie="unidad")
     idx, _, filas = c.comparar_placa(p, mailing, CONFIG)
     campos = por_campo(filas)
     assert idx == 0
-    assert "mecanica" not in campos and "oferta_pie" not in campos
+    assert "mecanica" not in campos
     assert c.estado_de_la_placa(filas, idx) == "ok"
+
+
+def test_un_combo_contra_planilla_sin_mecanica_cumple_la_regla_fija(mailing):
+    """El mismo combo pero con el precio tachado y sin "unidad": la planilla no
+    dice nada de eso, y aun así se marca, porque es una regla fija."""
+    p = placa_de(descripcion="Cerveza PATRICIA lata. 473 ml", precio_anterior="$99",
+                 precio_anterior_tachado=True, oferta_precio="$74,50", mecanica="2x$199", oferta_pie="")
+    _, _, filas = c.comparar_placa(p, mailing, CONFIG)
+    marcados = {f["campo"] for f in filas if f["severidad"] == "error"}
+    assert {"precio_anterior_tachado", "precio_anterior", "oferta_pie"} <= marcados
+    assert "mecanica" not in marcados
 
 
 def test_se_dice_cuales_campos_quedaron_afuera(mailing):
     """No se resuelve en silencio: la pantalla y el Excel muestran esta lista."""
-    # La planilla de prueba no trae VIGENCIA ni LEYENDA ALCOHOL y la config no
-    # las escribe: la fecha y la leyenda tampoco se revisaron, y se dice.
+    # La planilla de prueba no trae VIGENCIA y la config no la escribe: la
+    # fecha tampoco se revisó, y se dice. La leyenda de alcohol NO está en la
+    # lista: desde el 22/09/2026 es una regla fija y se exige siempre.
     assert planilla.campos_que_no_dicta(mailing, CONFIG) == [
         "Mecánica", "Texto arriba del precio", "Texto abajo del precio",
-        "Si el precio anterior va tachado", "Fecha de la campaña", "Leyenda de alcohol",
+        "Si el precio anterior va tachado", "Fecha de la campaña",
     ]
 
 
@@ -1394,11 +1411,13 @@ def test_los_titulos_del_informe_entran_como_columnas():
     ]
 
 
-def test_campos_que_no_dicta_incluye_la_fecha_y_la_leyenda_solo_si_nadie_las_dio(mailing):
+def test_campos_que_no_dicta_incluye_la_fecha_solo_si_nadie_la_dio(mailing):
+    """La leyenda de alcohol ya no entra nunca: es una regla fija y se exige
+    siempre (app/data/rrss_reglas.json)."""
+    sin_fecha = planilla.campos_que_no_dicta(mailing, CONFIG)
+    assert "Fecha de la campaña" in sin_fecha and "Leyenda de alcohol" not in sin_fecha
     con_fecha = planilla.campos_que_no_dicta(mailing, {**CONFIG, "fecha": "DEL JUEVES 17 AL DOMINGO 20"})
-    assert "Fecha de la campaña" not in con_fecha and "Leyenda de alcohol" in con_fecha
-    con_todo = planilla.campos_que_no_dicta(mailing, {**CONFIG, "fecha": "x", "legal_alcohol": "Beber con moderación."})
-    assert con_todo == ["Mecánica", "Texto arriba del precio", "Texto abajo del precio", "Si el precio anterior va tachado"]
+    assert con_fecha == ["Mecánica", "Texto arriba del precio", "Texto abajo del precio", "Si el precio anterior va tachado"]
     assert planilla.campos_que_no_dicta({"origen": "mailing"}, {}) == []
 
 

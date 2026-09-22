@@ -1438,11 +1438,16 @@ def campos_que_no_dicta(mailing: dict, config: dict | None = None) -> list[str]:
     los conoce en pantalla. Se muestran siempre: "lo muestro distinto según el
     caso" solo vale si se ve POR QUÉ.
 
-    Además de los campos del producto entran la FECHA y la LEYENDA DE ALCOHOL:
-    se comparan solo si la planilla trae la columna (VIGENCIA, LEYENDA ALCOHOL)
-    o la persona las escribió en la pantalla de carga (`config`). Sin ninguna de
-    las dos no se comparan (comparador.comparar_elementos), y hasta el
-    22/09/2026 el informe no lo decía en ningún lado."""
+    Además de los campos del producto entra la FECHA: se compara solo si la
+    planilla trae la columna de vigencia o la persona la escribió en la
+    pantalla de carga (`config`). La LEYENDA DE ALCOHOL ya no entra: desde el
+    22/09/2026 es una regla fija (app/data/rrss_reglas.json) y se exige
+    siempre en las placas de alcohol, traiga lo que traiga la planilla.
+
+    "Si el precio anterior va tachado" sigue entrando cuando el producto no es
+    un combo: una planilla no lo dice. En un combo sí se revisa, por la regla
+    fija (comparador.reglas_del_combo), pero eso es por producto y esta lista
+    es de la planilla entera."""
     if mailing.get("origen") != "planilla":
         return []
     config = config or {}
@@ -1451,8 +1456,6 @@ def campos_que_no_dicta(mailing: dict, config: dict | None = None) -> list[str]:
     nombres = [_ETIQUETA_CAMPO[c] for c in afuera]
     if not ((config.get("fecha") or "").strip() or mailing.get("fecha")):
         nombres.append("Fecha de la campaña")
-    if not ((config.get("legal_alcohol") or "").strip() or mailing.get("legal_alcohol")):
-        nombres.append("Leyenda de alcohol")
     return nombres
 
 

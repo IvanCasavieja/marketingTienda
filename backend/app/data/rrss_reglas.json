@@ -1,0 +1,25 @@
+{
+  "_porque": [
+    "Las reglas FIJAS de la Validación de RRSS: las que se exigen siempre, contra un mailing o",
+    "contra una planilla, digan lo que digan las fuentes. Pedido de Ivan (22/09/2026):",
+    "'cuando son combos o dicen comprando 2 o comprando 3, el precio regular no debe ir tachado",
+    "y se debe agregar la palabra unidad. Para los Excel el mínimo legal que debe aparecer es",
+    "bases y condiciones en tiendainglesa.com.uy, y en el caso de cosas de alcohol el legal de",
+    "uso moderado. Esas reglas son constantes, tanto para mailing como para Excel.'",
+    "Viven en UN solo lugar por la regla de siempre ('el archivo de reglas tiene que ser uno",
+    "solo'): las lee app/services/rrss/reglas.py, y el navegador las recibe en GET /rrss/config",
+    "para mostrar los legales que se exigen."
+  ],
+  "legal_bases": {
+    "texto": "Bases y condiciones en tiendainglesa.com.uy",
+    "porque": "El mínimo legal de toda placa. Se exige siempre; la pantalla de carga puede poner otro texto para una corrida, pero no dejarlo vacío: vacío es este."
+  },
+  "legal_alcohol": {
+    "texto": "Beber con moderación. Prohibida la venta a menores de 18 años.",
+    "porque": "La leyenda de toda placa de bebida alcohólica, tal cual va en el mailing de la campaña. Una planilla no la trae escrita: por eso es una regla y no un dato de la fuente."
+  },
+  "combo": {
+    "unidad": "unidad",
+    "porque": "En un combo ('2x$75', '4x3', 'Comprando 2') el precio regular NO va tachado, y va 'unidad' al lado del precio regular ('$48 unidad') y abajo del precio de oferta. Así vienen los cuatro combos del mailing de los rompeprecios del 17-20/09/2026 y así están las placas correctas."
+  }
+}

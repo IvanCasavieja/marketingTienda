@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 import anthropic
 from PIL import Image
 
-from app.services.rrss import catti, comparador, imagenes, planilla
+from app.services.rrss import catti, comparador, imagenes, planilla, reglas
 from app.services.rrss.hilos import en_hilo
 
 logger = logging.getLogger(__name__)
@@ -35,9 +35,14 @@ logger = logging.getLogger(__name__)
 # vigencia ("DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE") y una planilla trae dos
 # fechas sueltas, que no es lo mismo. En vez de componer un texto que nadie
 # escribió, lo escribe la persona -- y si no lo escribe, la fecha no se valida.
+#
+# Los dos legales NO se escriben acá: son reglas fijas y viven en
+# app/data/rrss_reglas.json (ver reglas.py). Se ponen como valor por defecto
+# para que la pantalla de carga muestre el texto que se va a exigir; si la
+# persona los borra, igual se exige ese texto (comparador.comparar_elementos).
 CONFIG_DEFECTO = {
-    "legal_bases": "Bases y condiciones en tiendainglesa.com.uy",
-    "legal_alcohol": "",
+    "legal_bases": reglas.LEGAL_BASES,
+    "legal_alcohol": reglas.LEGAL_ALCOHOL,
     "fecha": "",
 }
 

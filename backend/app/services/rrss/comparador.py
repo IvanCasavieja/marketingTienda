@@ -24,7 +24,7 @@ import unicodedata
 
 from rapidfuzz import fuzz
 
-from app.services.rrss import imagenes
+from app.services.rrss import imagenes, reglas
 
 # CUÁNDO DOS DESCRIPCIONES SON EL MISMO PRODUCTO
 #
@@ -565,18 +565,21 @@ def comparar_elementos(placa: dict, mailing: dict, config: dict, es_alcohol: boo
             "revisar", "aviso", img["motivo"] or "CatTi duda de que la foto sea de este producto",
         ))
 
-    # Leyendas: bases y condiciones siempre; alcohol solo si el producto lo es.
-    bases = (config.get("legal_bases") or "").strip()
-    if bases:
-        fila = _comparar_texto("legal_bases", "Bases y condiciones", "placa", placa["legal_bases"], bases)
+    # Leyendas: bases y condiciones SIEMPRE; alcohol siempre que el producto lo
+    # sea. Son reglas fijas (app/data/rrss_reglas.json): la pantalla de carga
+    # puede poner otro texto para una corrida, pero vacío no apaga la regla --
+    # vacío es el texto de siempre. Hasta el 22/09/2026 un campo borrado dejaba
+    # de exigir bases, y con una planilla la leyenda de alcohol no se exigía
+    # nunca, porque una planilla no la trae escrita.
+    bases = (config.get("legal_bases") or "").strip() or reglas.LEGAL_BASES
+    fila = _comparar_texto("legal_bases", "Bases y condiciones", "placa", placa["legal_bases"], bases)
+    if fila:
+        filas.append(fila)
+    if es_alcohol:
+        esperado = (config.get("legal_alcohol") or "").strip() or reglas.LEGAL_ALCOHOL
+        fila = _comparar_texto("legal_alcohol", "Leyenda de alcohol", "placa", placa["legal_alcohol"], esperado)
         if fila:
             filas.append(fila)
-    if es_alcohol:
-        esperado = (config.get("legal_alcohol") or "").strip() or mailing.get("legal_alcohol", "")
-        if esperado:
-            fila = _comparar_texto("legal_alcohol", "Leyenda de alcohol", "placa", placa["legal_alcohol"], esperado)
-            if fila:
-                filas.append(fila)
     elif placa["legal_alcohol"]:
         filas.append(_fila(
             "legal_alcohol", "Leyenda de alcohol", "placa", placa["legal_alcohol"], "",
@@ -638,10 +641,94 @@ def comparar_placa(placa: dict, mailing: dict, config: dict,
         item = mailing["productos"][idx]
         if par["duda"]:
             filas.append(_fila_de_duda(par, item, placa["producto"]["descripcion"]))
-        filas += comparar_producto(placa["producto"], item, reglas_de_la_fuente(mailing))
+        de_la_fuente = reglas_de_la_fuente(mailing)
+        filas += comparar_producto(placa["producto"], item, de_la_fuente)
+        filas = _con_reglas_fijas(filas, reglas_del_combo(placa["producto"], item, de_la_fuente["campos"]))
         es_alcohol = es_alcohol or item["es_alcohol"]
     filas += comparar_elementos(placa, mailing, config, es_alcohol)
     return idx, puntaje, filas
+
+
+# --------------------------------------------------------------------------
+# Reglas fijas: se exigen siempre, contra un mailing o contra una planilla
+# --------------------------------------------------------------------------
+# Pedido de Ivan (22/09/2026): "esas reglas son constantes, tanto para mailing
+# como para Excel". Los textos viven en app/data/rrss_reglas.json (ver reglas.py).
+
+def _precio_sin_cola(texto: str) -> str:
+    """'$48 unidad' -> '$48'."""
+    m = _RE_NUMERO.search(texto or "")
+    return (texto or "")[:m.end()].strip() if m else (texto or "").strip()
+
+
+def reglas_del_combo(placa: dict, item: dict, campos_de_la_fuente) -> list[dict]:
+    """Las filas que exige la regla del combo: en un combo ('2x$75', '4x3',
+    'Comprando 2') el precio regular NO va tachado, y va 'unidad' al lado del
+    precio regular y abajo del precio de oferta.
+
+    Quién dice que es un combo: la FUENTE, si dicta la mecánica o el texto de
+    arriba del precio -- una placa que muestra una mecánica que la fuente no
+    tiene ya sale marcada por eso, y exigirle encima "unidad" sería acusarla
+    dos veces de lo mismo. Si la fuente no dice nada de eso (una planilla sin
+    columna de mecánica), lo dice la propia placa: si muestra '2x$75' o
+    'Comprando 2', es un combo y la regla vale igual. Es una regla fija."""
+    dicta = set(campos_de_la_fuente or ())
+    if "mecanica" in dicta or "oferta_encabezado" in dicta:
+        combo = reglas.es_combo(
+            item.get("mecanica", "") if "mecanica" in dicta else "",
+            item.get("oferta_encabezado", "") if "oferta_encabezado" in dicta else "",
+        )
+    else:
+        combo = reglas.es_combo(placa.get("mecanica", ""), placa.get("oferta_encabezado", ""))
+    if not combo:
+        return []
+
+    unidad = reglas.UNIDAD
+    etiquetas = dict(CAMPOS_PRODUCTO)
+    filas: list[dict] = []
+    if placa.get("precio_anterior"):
+        if placa.get("precio_anterior_tachado"):
+            filas.append(_fila(
+                "precio_anterior_tachado", etiquetas["precio_anterior_tachado"], "producto",
+                texto_tachado(True), texto_tachado(False), "diferente", "error",
+                "Es un combo: el precio regular no va tachado",
+            ))
+        if cola_del_precio(placa["precio_anterior"]).lower() != unidad.lower():
+            filas.append(_fila(
+                "precio_anterior", etiquetas["precio_anterior"], "producto",
+                placa["precio_anterior"], f"{_precio_sin_cola(placa['precio_anterior'])} {unidad}",
+                "diferente", "error", f"Es un combo: al lado del precio regular va «{unidad}»",
+            ))
+    pie = (placa.get("oferta_pie") or "").strip()
+    if pie.lower() != unidad.lower():
+        filas.append(_fila(
+            "oferta_pie", etiquetas["oferta_pie"], "producto", pie, unidad,
+            "diferente" if pie else "falta_en_placa", "error",
+            f"Es un combo: abajo del precio va «{unidad}»",
+        ))
+    return filas
+
+
+def _con_reglas_fijas(filas: list[dict], exigidas: list[dict]) -> list[dict]:
+    """Suma las filas de una regla fija sin duplicar las que ya salieron de
+    comparar contra la fuente.
+
+    - Si ese campo ya estaba marcado (un mailing que dice '$48 unidad' ya acusa
+      a la placa que dice '$48'), se deja esa fila y se le suma el motivo.
+    - Si ese campo había dado bien contra la fuente, la regla MANDA: una fuente
+      que se equivocó igual que la placa no convierte en correcto lo que la
+      regla prohíbe.
+    - Si la fuente no decía nada de ese campo (una planilla no dice si el
+      precio va tachado), la fila de la regla se agrega."""
+    for exigida in exigidas:
+        i = next((k for k, f in enumerate(filas) if f["campo"] == exigida["campo"]), None)
+        if i is None:
+            filas.append(exigida)
+        elif filas[i]["severidad"] is None:
+            filas[i] = exigida
+        elif exigida["nota"] not in (filas[i].get("nota") or ""):
+            filas[i]["nota"] = " · ".join(x for x in (filas[i].get("nota"), exigida["nota"]) if x)
+    return filas
 
 
 def confirmar_con_segunda_lectura(filas: list[dict], segunda: dict) -> list[dict]:

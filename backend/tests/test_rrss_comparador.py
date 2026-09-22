@@ -442,3 +442,119 @@ def test_un_precio_mal_sigue_mal_aunque_sea_de_100_g():
 def test_sin_gramos_no_se_convierte_nada():
     fila = c._comparar_precio("oferta_precio", "Precio", "$83", "$830")
     assert fila["estado"] == "diferente"
+
+
+# ---------------------------------------------------------------- reglas fijas
+# Pedido de Ivan (22/09/2026): "cuando son combos o dicen comprando 2 o
+# comprando 3, el precio regular no debe ir tachado y se debe agregar la palabra
+# unidad; para los Excel el mínimo legal es bases y condiciones; y en las cosas
+# de alcohol el legal de uso moderado. Esas reglas son constantes, tanto para
+# mailing como para Excel." Los textos viven en app/data/rrss_reglas.json.
+
+from app.services.rrss import reglas  # noqa: E402
+
+ARVEJAS_BIEN = dict(
+    descripcion="Arvejas TIENDA INGLESA. 300 g", precio_anterior="$48 unidad", precio_anterior_tachado=False,
+    mecanica="2x$75", oferta_encabezado="Comprando 2", oferta_precio="$37,50", oferta_pie="unidad",
+)
+
+# Una planilla como el listado real: números, con la mecánica en una columna.
+PLANILLA = {
+    "origen": "planilla", "fecha": "", "legal_alcohol": "",
+    "campos": ["descripcion", "precio_anterior", "oferta_precio", "mecanica"], "precios_con_cola": [],
+    "productos": [
+        prod(descripcion="Arvejas TIENDA INGLESA. 300 g", precio_anterior="$48", precio_anterior_tachado=False,
+             mecanica="2x$75", oferta_encabezado="", oferta_precio="$37,50", oferta_pie=""),
+        prod(descripcion="Bola de lomo. Kg", precio_anterior="$499", precio_anterior_tachado=False,
+             mecanica="", oferta_encabezado="", oferta_precio="$399", oferta_pie=""),
+        prod(descripcion="Cerveza STELLA ARTOIS. Lata 710 ml", precio_anterior="$171", precio_anterior_tachado=False,
+             mecanica="", oferta_encabezado="", oferta_precio="$125", oferta_pie=""),
+    ],
+}
+
+
+def test_el_combo_bien_hecho_pasa_contra_la_planilla():
+    _, _, filas = c.comparar_placa(placa(prod(**ARVEJAS_BIEN)), PLANILLA, CONFIG)
+    assert errores(filas) == set()
+
+
+def test_combo_contra_planilla_exige_sin_tachar_y_unidad():
+    """La planilla no dice nada del tachado ni de 'unidad': es la regla fija la
+    que los exige, porque la planilla dice que es un combo (2x$75)."""
+    mal = prod(**{**ARVEJAS_BIEN, "precio_anterior": "$48", "precio_anterior_tachado": True, "oferta_pie": ""})
+    _, _, filas = c.comparar_placa(placa(mal), PLANILLA, CONFIG)
+    f = filas_por_campo(filas)
+    assert errores(filas) == {"precio_anterior_tachado", "precio_anterior", "oferta_pie"}
+    assert f["precio_anterior"]["mailing"] == "$48 unidad"
+    assert "no va tachado" in f["precio_anterior_tachado"]["nota"]
+    assert f["oferta_pie"]["estado"] == "falta_en_placa" and f["oferta_pie"]["mailing"] == "unidad"
+
+
+def test_combo_contra_mailing_no_duplica_filas():
+    """Contra un mailing esas diferencias ya salen de comparar letra por letra:
+    la regla les suma el motivo, no agrega una segunda fila del mismo campo."""
+    mal = prod(**{**ARVEJAS_BIEN, "precio_anterior": "$48", "precio_anterior_tachado": True, "oferta_pie": ""})
+    _, _, filas = c.comparar_placa(placa(mal), MAILING, CONFIG)
+    campos = [f["campo"] for f in filas if f["severidad"] == "error"]
+    assert sorted(campos) == sorted(set(campos))  # ninguna repetida
+    assert "Es un combo" in filas_por_campo(filas)["precio_anterior"]["nota"]
+
+
+def test_la_regla_manda_aunque_la_fuente_se_equivoque_igual():
+    """Si el mailing tacha el precio de un combo y la placa lo copia, comparar
+    contra el mailing da 'ok' -- y la regla fija lo marca igual."""
+    mailing = {**MAILING, "productos": [prod(**{**ARVEJAS_BIEN, "precio_anterior_tachado": True})]}
+    p = placa(prod(**{**ARVEJAS_BIEN, "precio_anterior_tachado": True}))
+    _, _, filas = c.comparar_placa(p, mailing, CONFIG)
+    assert "precio_anterior_tachado" in errores(filas)
+
+
+def test_comprando_n_en_la_placa_es_combo_si_la_fuente_no_dice_la_mecanica():
+    planilla_sin_mecanica = {**PLANILLA, "campos": ["descripcion", "precio_anterior", "oferta_precio"]}
+    p = placa(prod(**{**ARVEJAS_BIEN, "mecanica": "", "precio_anterior": "$48", "precio_anterior_tachado": True}))
+    _, _, filas = c.comparar_placa(p, planilla_sin_mecanica, CONFIG)
+    assert {"precio_anterior_tachado", "precio_anterior"} <= errores(filas)
+
+
+def test_si_la_fuente_dice_que_no_es_combo_no_se_exige_unidad():
+    """Una placa que muestra una mecánica que la fuente no tiene ya sale marcada
+    por eso; exigirle además 'unidad' sería acusarla dos veces."""
+    p = placa(prod(mecanica="2x$799", oferta_encabezado="Comprando 2"))
+    _, _, filas = c.comparar_placa(p, PLANILLA, CONFIG)
+    assert "mecanica" in errores(filas)
+    assert "oferta_pie" not in errores(filas) and "precio_anterior_tachado" not in errores(filas)
+
+
+def test_un_producto_comun_no_tiene_regla_de_combo():
+    assert c.reglas_del_combo(prod(), prod(), c.CAMPOS_TODOS) == []
+
+
+def test_bases_se_exige_aunque_se_borre_de_la_pantalla():
+    _, _, filas = c.comparar_placa(placa(legal_bases=""), PLANILLA, {**CONFIG, "legal_bases": ""})
+    f = filas_por_campo(filas)["legal_bases"]
+    assert f["severidad"] == "error" and f["mailing"] == reglas.LEGAL_BASES
+
+
+def test_alcohol_contra_planilla_exige_la_leyenda_de_siempre():
+    """Una planilla no trae la leyenda escrita y antes no se exigía nunca."""
+    cerveza = prod(descripcion="Cerveza STELLA ARTOIS. Lata 710 ml", precio_anterior="$171",
+                   oferta_precio="$125", es_alcohol=True)
+    _, _, filas = c.comparar_placa(placa(cerveza, legal_alcohol=""), PLANILLA, CONFIG)
+    f = filas_por_campo(filas)["legal_alcohol"]
+    assert f["estado"] == "falta_en_placa" and f["mailing"] == reglas.LEGAL_ALCOHOL
+    _, _, bien = c.comparar_placa(placa(cerveza, legal_alcohol=reglas.LEGAL_ALCOHOL), PLANILLA, CONFIG)
+    assert "legal_alcohol" not in errores(bien)
+
+
+def test_las_reglas_fijas_viven_en_un_solo_archivo():
+    import pathlib
+    from app.services.rrss import validador
+    assert validador.CONFIG_DEFECTO["legal_bases"] == reglas.LEGAL_BASES
+    assert validador.CONFIG_DEFECTO["legal_alcohol"] == reglas.LEGAL_ALCOHOL
+    raiz = pathlib.Path(c.__file__).parent
+    for py in raiz.glob("*.py"):
+        if py.name == "reglas.py":
+            continue
+        texto = py.read_text(encoding="utf-8")
+        assert "Prohibida la venta a menores" not in texto, f"{py.name} escribe la leyenda de alcohol a mano"
+        assert "Bases y condiciones en tiendainglesa" not in texto, f"{py.name} escribe el legal de bases a mano"

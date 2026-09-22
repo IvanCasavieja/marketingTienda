@@ -392,7 +392,15 @@ export default function UploadStep({ placas, onPlacas, mailing, onMailing, confi
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <label className="block space-y-1">
             <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{t("rrss.legalBases")}</span>
-            <input className="input" value={config.legal_bases} onChange={(e) => onConfig({ ...config, legal_bases: e.target.value })} />
+            {/* Borrarlo no apaga la regla: vacío es el texto de siempre
+                (app/data/rrss_reglas.json). El placeholder lo dice para que
+                nadie crea que dejó de exigirse. */}
+            <input
+              className="input"
+              value={config.legal_bases}
+              placeholder={t("rrss.legalBasesVacio")}
+              onChange={(e) => onConfig({ ...config, legal_bases: e.target.value })}
+            />
           </label>
           <label className="block space-y-1">
             <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{t("rrss.legalAlcohol")}</span>
