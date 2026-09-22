@@ -439,7 +439,13 @@ export default function GenerarPage() {
                   }`}
                 >
                   <p className="text-sm font-semibold">{f.label}</p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500">{f.width_cm}×{f.height_cm}</p>
+                  {/* El PAPEL que sale de la impresora (ver CenefaFormat.papel_cm), no la celda. */}
+                  <p
+                    className="text-[10px] text-slate-400 dark:text-slate-500"
+                    title={`cada cenefa ocupa ${f.width_cm}×${f.height_cm} cm`}
+                  >
+                    {f.papel_cm ? `${f.papel_cm.ancho}×${f.papel_cm.alto} cm` : `celda ${f.width_cm}×${f.height_cm}`}
+                  </p>
                 </button>
               ))}
             </div>

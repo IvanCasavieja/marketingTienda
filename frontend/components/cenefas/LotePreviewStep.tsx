@@ -11,6 +11,7 @@ import Canvas from "@/components/cenefas/editor/Canvas";
 import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
 import RulesPanel from "@/components/cenefas/editor/RulesPanel";
 import AvisosSolape from "@/components/cenefas/AvisosSolape";
+import AvisosDesborde from "@/components/cenefas/AvisosDesborde";
 import TininRevision, { type TemaTinin } from "@/components/cenefas/convertidor/TininRevision";
 
 // Preview de un lote: se recorren de a una las cenefas que se van a generar,
@@ -411,7 +412,9 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
   const mostrarPanelDerecho = !!detalle?.template_def || (pendientes === 0 && listas > 0);
   // La columna de avisos solo ocupa lugar si tiene algo que decir: sin esto,
   // una corrida limpia perdía 288 px de ancho para mostrar un hueco.
-  const mostrarAvisos = revision.length > 0 || (detalle?.avisos_solape?.length ?? 0) > 0;
+  const mostrarAvisos = revision.length > 0
+    || (detalle?.avisos_solape?.length ?? 0) > 0
+    || (detalle?.avisos_desborde?.length ?? 0) > 0;
   const panelDerechoFondo = detalle?.template_def
     ? ""
     : todasVerificadas
@@ -535,6 +538,12 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
         <div className="flex gap-3 items-stretch">
           {mostrarAvisos && (
             <div className="w-72 shrink-0 h-[820px] overflow-y-auto space-y-2 pr-0.5">
+              {/* Primero lo que se imprime fuera de la hoja: un texto
+                  cortado por el borde no se recupera de ninguna forma. */}
+              <AvisosDesborde
+                avisos={detalle?.avisos_desborde}
+                template={detalle?.template_def ?? null}
+              />
               <AvisosSolape
                 avisos={detalle?.avisos_solape}
                 template={detalle?.template_def ?? null}

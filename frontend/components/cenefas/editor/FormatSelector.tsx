@@ -26,8 +26,14 @@ export default function FormatSelector({ formats }: Props) {
           }`}
         >
           {fmt.label}
-          <span className="ml-1.5 text-[10px] opacity-70">
-            {fmt.width_cm}×{fmt.height_cm}
+          {/* El PAPEL, no la celda: "6xA4 14.85×7" al lado de un preview que
+              dice "29.7×21 cm" son dos números para la misma hoja. La celda
+              queda en el title para quien la necesite. */}
+          <span
+            className="ml-1.5 text-[10px] opacity-70"
+            title={`Papel ${fmt.papel_cm?.ancho ?? "?"}×${fmt.papel_cm?.alto ?? "?"} cm · cada cenefa ocupa ${fmt.width_cm}×${fmt.height_cm} cm`}
+          >
+            {fmt.papel_cm ? `${fmt.papel_cm.ancho}×${fmt.papel_cm.alto}` : `celda ${fmt.width_cm}×${fmt.height_cm}`}
           </span>
         </button>
       ))}

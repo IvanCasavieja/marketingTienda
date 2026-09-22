@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaTemplate } from "@/types/cenefas";
+import { cargarFormatosDeHoja, type FormatoDeHoja } from "@/lib/cenefas/formatosDeHoja";
 
 interface BuiltinDef {
   slug: string;
@@ -17,12 +18,16 @@ interface Props {
   onDismiss: () => void;
 }
 
-const FORMAT_LABELS: Record<string, string> = {
-  a4:      "A4 · 21 × 29.7 cm",
-  pinchos: "Pinchos · 6 por A4",
-  "3xa4":  "3 × A4 · 3 franjas en A4 vertical",
-  a3:      "A3 · 29.7 × 42 cm",
-};
+// ACÁ HABÍA UNA TABLA DE ETIQUETAS ESCRITA A MANO ("A4 · 21 × 29.7 cm",
+// "Pinchos · 6 por A4") y era una de las cinco copias del tamaño de hoja. Se
+// desfasó como se desfasan todas: decía 6 pinchos y la tabla única dice 9.
+// Ahora la etiqueta se arma con lo que trae backend/app/data/formatos_de_hoja.json.
+function etiquetaDeFormato(tabla: Record<string, FormatoDeHoja> | null, id: string): string {
+  const f = tabla?.[id];
+  if (!f) return id;
+  const papel = `${f.papel.ancho} × ${f.papel.alto} cm`;
+  return f.slots > 1 ? `${f.label} · ${f.slots} por hoja de ${papel}` : `${f.label} · ${papel}`;
+}
 
 export default function ImportPanel({ onDismiss }: Props) {
   const { loadDefinition } = useEditorStore();
@@ -30,6 +35,15 @@ export default function ImportPanel({ onDismiss }: Props) {
   const [builtins, setBuiltins]   = useState<BuiltinDef[]>([]);
   const [loading, setLoading]     = useState(true);
   const [uploading, setUploading] = useState(false);
+  // La tabla de formatos, para etiquetas y miniaturas. Si no llega, se
+  // muestra el id pelado: peor que un cartel feo es uno con un número
+  // inventado.
+  const [hojas, setHojas] = useState<Record<string, FormatoDeHoja> | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    cargarFormatosDeHoja().then((t) => { if (vivo) setHojas(t); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -137,13 +151,13 @@ export default function ImportPanel({ onDismiss }: Props) {
                     className="group flex flex-col gap-2 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-all text-left"
                   >
                     {/* Miniatura del formato */}
-                    <FormatThumb formatId={b.format_id} />
+                    <FormatThumb formato={hojas?.[b.format_id]} />
                     <div>
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 group-hover:text-brand-700 dark:group-hover:text-brand-400">
                         {b.name}
                       </p>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                        {FORMAT_LABELS[b.format_id] ?? b.format_id}
+                        {etiquetaDeFormato(hojas, b.format_id)}
                       </p>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500">
                         {b.definition.components.length} componentes
@@ -215,15 +229,21 @@ export default function ImportPanel({ onDismiss }: Props) {
 }
 
 
-/* Miniatura visual del formato */
-function FormatThumb({ formatId }: { formatId: string }) {
-  const configs: Record<string, { w: number; h: number; rows?: number; cols?: number }> = {
-    a4:      { w: 32, h: 45 },
-    a3:      { w: 45, h: 64 },
-    "3xa4":  { w: 32, h: 45, rows: 3 },   // A4 portrait con 3 franjas horizontales apiladas
-    pinchos: { w: 32, h: 45, rows: 2, cols: 3 }, // A4 portrait grilla 3×2
-  };
-  const cfg = configs[formatId] ?? { w: 32, h: 45 };
+/* Miniatura visual del formato: la proporción del PAPEL y la grilla de
+   celdas, las dos sacadas de la tabla única. Sin tabla, un rectángulo. */
+function FormatThumb({ formato }: { formato?: FormatoDeHoja }) {
+  const ANCHO_PX = 32;
+  const cfg: { w: number; h: number; rows?: number; cols?: number } = formato
+    ? {
+        w: formato.papel.ancho >= formato.papel.alto ? Math.round(ANCHO_PX * 1.4) : ANCHO_PX,
+        h: Math.round(
+          (formato.papel.ancho >= formato.papel.alto ? Math.round(ANCHO_PX * 1.4) : ANCHO_PX)
+          * formato.papel.alto / formato.papel.ancho,
+        ),
+        rows: formato.slotRows > 1 ? formato.slotRows : undefined,
+        cols: formato.slotCols > 1 ? formato.slotCols : undefined,
+      }
+    : { w: ANCHO_PX, h: Math.round(ANCHO_PX * 1.41) };
 
   return (
     <div
@@ -231,7 +251,7 @@ function FormatThumb({ formatId }: { formatId: string }) {
       style={{ width: cfg.w, height: cfg.h }}
     >
       {cfg.rows && cfg.cols ? (
-        // Grilla 2D (pinchos: 3 cols × 2 filas)
+        // Grilla 2D (pinchos, 6xA4)
         <div className="w-full h-full flex flex-col">
           {Array.from({ length: cfg.rows }).map((_, r) => (
             <div key={r} className="flex flex-1 border-b border-slate-200 dark:border-slate-700 last:border-0">
@@ -249,7 +269,7 @@ function FormatThumb({ formatId }: { formatId: string }) {
           ))}
         </div>
       ) : cfg.cols ? (
-        // Columnas (no usado actualmente)
+        // Columnas (A5: dos cenefas una al lado de la otra)
         <div className="w-full h-full flex">
           {Array.from({ length: cfg.cols }).map((_, i) => (
             <div key={i} className="flex-1 h-full border-r border-slate-200 dark:border-slate-700 last:border-0 bg-white" />

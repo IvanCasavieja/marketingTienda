@@ -1,0 +1,137 @@
+{
+  "_lea_esto": [
+    "EL TAMANO DE HOJA DE LAS CENEFAS. Este archivo es el UNICO lugar donde vive.",
+    "",
+    "Pedido de Ivan (18/09/2026): 'el archivo de reglas tiene que ser uno solo, sino nos va",
+    "a pasar de poner una regla en algun lado y luego olvidarnos de cambiarla en el otro'.",
+    "Antes de este archivo el tamano de hoja estaba escrito a mano en CINCO tablas distintas",
+    "(layout_engine.FORMATS, component_renderer.FORMAT_SLIDES, pptx_importer._FORMATS_DIM,",
+    "Canvas.FORMAT_DIMS y las etiquetas del panel de importacion) y tres de los seis formatos",
+    "tenian numeros DISTINTOS segun a quien se le preguntara.",
+    "",
+    "LA DISTINCION QUE NADIE HABIA ESCRITO: PAPEL vs CELDA.",
+    "Un formato dice DOS cosas y hasta hoy las dos se llamaban igual:",
+    "  - PAPEL: la hoja que sale de la impresora. Es lo que mide el slide del PPTX final.",
+    "  - CELDA: el pedazo de esa hoja que ocupa UNA cenefa.",
+    "Por confundirlas, el preview de un '3xa4' dibujaba una franja de 21x9,9 cm mientras la",
+    "impresora sacaba una A4 entera, y _detect_format comparaba la hoja de un PPTX contra",
+    "medidas de CELDA.",
+    "",
+    "DE DONDE SALEN ESTOS NUMEROS (Ivan, 22/09/2026, y esto manda sobre cualquier tabla que",
+    "hubiera en el codigo):",
+    "  'No, los tamanos de las hojas te lo dicen directamente los nombres. Las que son A4 es",
+    "   en formato VERTICAL una hoja A4. Las que son 3xA4 es en formato VERTICAL una hoja A4",
+    "   tambien. Las que son 6xA4 es un formato HORIZONTAL y una hoja A4. Y el formato A5 es",
+    "   una hoja A5 en posicion HORIZONTAL con DOS cenefas una al lado de la otra.",
+    "   Si vos te imaginas que la 6xA4 esta en vertical, nunca van a salir bien las 6xA4,",
+    "   porque en realidad la orientacion de la 6xA4 es horizontal. Y lo mismo pasa con las",
+    "   A5, porque en realidad son 2xA5, no es una sola.'",
+    "",
+    "ESO EXPLICA EL BUG DE RAIZ. El PPTX de Preciazos 6xA4 mide 29,7 x 21 --una A4",
+    "HORIZONTAL, correcto-- y _detect_format lo confundio con 'a5' porque la tabla tenia",
+    "a5 = 14,85 x 21, o sea A5 VERTICAL y de UNA sola cenefa. Las dos cosas estaban mal:",
+    "la orientacion y la cantidad de cenefas por hoja. Y ese error se convertia en el tamano",
+    "de la hoja del preview, que despues se agrandaba solo para tapar la diferencia.",
+    "",
+    "Y LO MAS IMPORTANTE: ESTA TABLA NO DECIDE EL PAPEL DE UNA PLANTILLA IMPORTADA.",
+    "El papel de verdad es el que trae el PPTX (prs.slide_width/height) y desde el 22/09/2026",
+    "se guarda en definition.hoja al importar. Esta tabla es el papel de un formato cuando no",
+    "hay PPTX que preguntar (una plantilla armada a mano) y la medida de celda contra la que",
+    "se elige la ETIQUETA del formato. El tamano nunca mas se adivina a partir de una etiqueta.",
+    "",
+    "Lo leen: backend/app/services/cenefas/formatos_de_hoja.py (exportador, importer, layout)",
+    "y el navegador via GET /api/v1/tools/cenefas/v2/formatos-de-hoja ->",
+    "frontend/lib/cenefas/formatosDeHoja.ts (preview). NO copies un numero de aca a un .py",
+    "ni a un .ts: hay un barrido que falla si aparece (backend/tests/test_hoja_unica.py)."
+  ],
+
+  "formatos": {
+    "a4": {
+      "label": "A4",
+      "papel_cm": { "ancho": 21.0, "alto": 29.7 },
+      "celda_cm": { "ancho": 21.0, "alto": 29.7 },
+      "slots": 1,
+      "slot_cols": 1,
+      "slot_rows": 1,
+      "scale": 1.0,
+      "que_es": "Una cenefa sola, ocupando la hoja A4 VERTICAL entera.",
+      "porque": "Ivan (22/09/2026): 'las que son A4 es en formato vertical una hoja A4'. Verificado contra la realidad: las 19 plantillas de produccion con master_format a4 --las A4 y las 3xA4-- declaran todas 20,999 x 29,699 cm en su PPTX original, que es una A4 vertical con el redondeo de EMU. Papel y celda son lo mismo porque no se tilea nada."
+    },
+    "a3": {
+      "label": "A3",
+      "papel_cm": { "ancho": 29.7, "alto": 42.0 },
+      "celda_cm": { "ancho": 29.7, "alto": 42.0 },
+      "slots": 1,
+      "slot_cols": 1,
+      "slot_rows": 1,
+      "scale": 1.414,
+      "que_es": "Una cenefa sola en A3 VERTICAL, el doble de una A4.",
+      "porque": "Esta declarado desde el principio del modulo y sigue la misma logica que dijo Ivan para las demas: el nombre dice la hoja, y una A3 sin apellido es vertical. El escalado 1,414 es la raiz de 2, la razon entre dos tamanos consecutivos de la serie ISO A. NO HAY NINGUNA PLANTILLA A3 CARGADA (0 de 23) ni ningun PPTX de ejemplo, asi que estos numeros no se pudieron verificar contra nada real: si algun dia entra una A3 de verdad, hay que mirar su PPTX y corregir aca."
+    },
+    "3xa4": {
+      "label": "3xA4",
+      "papel_cm": { "ancho": 21.0, "alto": 29.7 },
+      "celda_cm": { "ancho": 21.0, "alto": 9.9 },
+      "slots": 3,
+      "slot_cols": 1,
+      "slot_rows": 3,
+      "scale": 1.0,
+      "que_es": "Tres cenefas apiladas en una A4 VERTICAL: cada una usa el ancho completo y un tercio del alto.",
+      "porque": "Ivan (22/09/2026): 'las que son 3xA4 es en formato vertical una hoja A4 tambien'. Verificado: las 8 plantillas 3xA4 de produccion declaran 20,999 x 29,699 en su PPTX. La celda mide 29,7/3 = 9,9 cm de alto. Que papel y celda no coincidan es exactamente lo que hacia mentir al preview, que dibujaba 21x9,9 y llamaba a eso 'la hoja'."
+    },
+    "pinchos": {
+      "label": "Pinchos",
+      "papel_cm": { "ancho": 21.0, "alto": 29.7 },
+      "celda_cm": { "ancho": 7.0, "alto": 9.9 },
+      "slots": 9,
+      "slot_cols": 3,
+      "slot_rows": 3,
+      "scale": 0.333,
+      "que_es": "Nueve carteles chicos en grilla de 3 columnas por 3 filas sobre una A4 VERTICAL.",
+      "porque": "Ivan no lo nombro el 22/09/2026, asi que se midio. El unico arte de pinchos que existe es app/static/cenefa_templates/'Base pinchos 1.pptx': su slide mide 20,999 x 29,699 (A4 vertical) y trae NUEVE cenefas --Descripcion1..9 y Precio1..9-- en tres columnas (x alrededor de 0, 7 y 14) por tres filas (y alrededor de 2,8, 12,2 y 22). O sea celda de 21/3 de ancho por 29,7/3 de alto. LA TABLA VIEJA DECIA 6 (grilla 3x2, celda de 7 x 14,85) Y ESTABA MAL: no hay ningun PPTX ni ninguna plantilla cargada que respalde ese 6. No hay plantillas de pinchos en produccion (0 de 23), asi que corregirlo no cambia ninguna corrida que exista hoy."
+    },
+    "a5": {
+      "label": "A5",
+      "papel_cm": { "ancho": 21.0, "alto": 14.85 },
+      "celda_cm": { "ancho": 10.5, "alto": 14.85 },
+      "slots": 2,
+      "slot_cols": 2,
+      "slot_rows": 1,
+      "scale": 0.707,
+      "que_es": "Una hoja A5 en posicion HORIZONTAL con DOS cenefas, una al lado de la otra.",
+      "porque": "Ivan (22/09/2026): 'el formato A5 es una hoja A5 en posicion horizontal con dos cenefas una al lado de la otra ... porque en realidad son 2xA5, no es una sola'. El codigo decia a5 = 14,85 x 21 y UNA cenefa: A5 vertical y sola. Las dos cosas estaban mal, y de ahi salia el bug -- una A4 apaisada de 29,7 x 21 se comparaba contra esos 14,85 x 21 y ganaba por descarte. OJO, Y ESTO HAY QUE MIRARLO: las 4 plantillas que hoy llevan master_format 'a5' (Preciazos A5 y 6xA4, Mega Rompe Precios A5 y 6xA4) NO son A5: su PPTX mide 29,699 x 20,999, que es una A4 apaisada, y sus dos cenefas ocupan 14,85 x 21 cada una. Esa etiqueta es justamente la que _detect_format puso mal, y no se les cambia porque cambiarsela les cambiaria el escalado de compute_layout y saldrian impresas distinto. El papel que dibuja el preview de esas cuatro NO sale de aca: sale de definition.hoja, medido de su propio PPTX."
+    },
+    "6xa4": {
+      "label": "6xA4",
+      "papel_cm": { "ancho": 29.7, "alto": 21.0 },
+      "celda_cm": { "ancho": 14.85, "alto": 7.0 },
+      "slots": 6,
+      "slot_cols": 2,
+      "slot_rows": 3,
+      "scale": 0.5,
+      "que_es": "Seis cenefas en grilla de 2 columnas por 3 filas sobre una hoja A4 HORIZONTAL.",
+      "porque": "Ivan (22/09/2026): 'las que son 6xA4 es un formato HORIZONTAL y una hoja A4. Si vos te imaginas que la 6xA4 esta en vertical, nunca van a salir bien las 6xA4'. El codigo la tenia como A4 vertical con grilla de 3 columnas por 2 filas y celda de 7 x 14,85: la hoja parada al reves y la grilla girada. Verificado contra los dos 6xA4 de produccion (Preciazos-202609-6xA4 y Mega Rompe Precios-202608-6xA4, hoy etiquetados 'a5'): su PPTX mide 29,699 x 20,999 y sus seis cenefas caen en DOS columnas por TRES filas. Celda = 29,7/2 de ancho por 21/3 de alto."
+    }
+  },
+
+  "tolerancia_deteccion_cm": {
+    "valor": 1.0,
+    "que_es": "Cuanto se puede apartar el slide de un PPTX de una medida de celda conocida para que el importador acepte esa etiqueta de formato.",
+    "porque": "_detect_format elegia SIEMPRE el vecino mas cercano, sin piso: una A4 apaisada de 29,699x20,999 caia en 'a5' (14,85x21) con 14,85 cm de error aceptados en silencio, y ese error se convertia despues en el tamano de hoja del preview. Un centimetro es cien veces el ruido de conversion de EMU (20,999 contra 21) y bastante menos que la diferencia entre dos formatos cualesquiera de la tabla, asi que separa 'es este formato' de 'no se parece a ninguno'. Cuando no llega, el formato queda como etiqueta por defecto y el import lo AVISA en vez de callarselo; el tamano no depende de eso porque sale del PPTX.",
+    "usa": "pptx_importer._detect_format"
+  },
+
+  "ruido_emu_cm": {
+    "valor": 0.005,
+    "que_es": "Diferencia de tamano por debajo de la cual dos hojas son la misma hoja.",
+    "porque": "PowerPoint guarda las medidas en EMU enteros (914400 por pulgada) y 21 cm no cae en un EMU redondo: las 23 plantillas de produccion declaran 20,999 y 29,699 en vez de 21 y 29,7. Sin este piso, comparar el papel del PPTX contra el de la tabla marcaria las 23 como 'distintas' y el aviso no serviria para nada. 0,005 cm son 50 micrones, diez veces el desvio de redondeo y cien veces menos que el milimetro mas fino que se puede imprimir.",
+    "usa": "formatos_de_hoja.misma_hoja, scripts/backfill_hoja_desde_pptx.py"
+  },
+
+  "tolerancia_desborde_cm": {
+    "valor": 0.1,
+    "que_es": "Cuanta TINTA se tiene que salir del papel para que se avise.",
+    "porque": "Es el gemelo de _SOLAPE_TEXTO_MIN_CM2 y esta por la misma razon: un aviso que salta siempre no lo lee nadie. Se mide la tinta (el rectangulo que el texto va a ocupar de verdad, _rect_texto_real) y no la caja declarada, porque los disenos reales usan cajas mucho mas anchas que la hoja a proposito -- una caja invisible centrada para que el precio no se corra segun cuantos digitos tenga -- y marcarlas daria un aviso por cartel. Un milimetro de tinta afuera ya se ve en el cartel colgado.",
+    "usa": "component_renderer.detectar_desbordes"
+  }
+}

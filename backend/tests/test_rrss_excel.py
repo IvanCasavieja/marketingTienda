@@ -148,7 +148,7 @@ def _bloques(ws):
 
 
 def test_un_bloque_por_arreglo_no_por_placa():
-    ws = _abrir(VALIDACION)["Correcciones"]
+    ws = _abrir(VALIDACION)["Recomendada"]
     # 6 placas con error -> 3 arreglos: el carré (3 placas), la Stella 16+18 y la Stella 17 sola
     assert len(_bloques(ws)) == 3
     assert "3 arreglos" not in str(ws["A2"].value)  # el texto dice "cosas para corregir"
@@ -156,19 +156,19 @@ def test_un_bloque_por_arreglo_no_por_placa():
 
 
 def test_las_placas_que_estan_bien_no_salen():
-    ws = _abrir(VALIDACION)["Correcciones"]
+    ws = _abrir(VALIDACION)["Recomendada"]
     textos = " ".join(str(ws[f"A{f}"].value) for f in _bloques(ws))
     assert "Bola de lomo" not in textos
 
 
 def test_la_adaptacion_distinta_de_sus_hermanas_lo_avisa():
-    ws = _abrir(VALIDACION)["Correcciones"]
+    ws = _abrir(VALIDACION)["Recomendada"]
     avisos = [str(ws[f"A{f}"].value) for f in _bloques(ws)]
     assert sum("distinta de sus otras adaptaciones" in a for a in avisos) == 1
 
 
 def test_lo_que_cambia_va_resaltado_y_la_instruccion_al_costado():
-    ws = _abrir(VALIDACION)["Correcciones"]
+    ws = _abrir(VALIDACION)["Recomendada"]
     fila = _bloques(ws)[0]
     dice, tiene = ws[f"D{fila}"].value, ws[f"E{fila}"].value
     resaltado = lambda rico: [t.text for t in rico if not isinstance(t, str) and t.font.b]  # noqa: E731
@@ -178,14 +178,16 @@ def test_lo_que_cambia_va_resaltado_y_la_instruccion_al_costado():
 
 def test_lleva_la_hoja_con_todas_las_placas():
     wb = _abrir(VALIDACION)
-    assert wb.sheetnames == ["Correcciones", "Todas las placas"]
+    # Las tres hojas del molde, en su orden; «La planilla» solo con planilla.
+    assert wb.sheetnames == ["Recomendada", "Como la pediste", "Todas las placas"]
     ws = wb["Todas las placas"]
     assert ws.max_row - 2 == len(VALIDACION["imagenes"])  # una fila por placa, también las que están bien
-    assert [ws[f"A{f}"].value for f in range(3, 6)] == ["13", "14", "15"]
+    # en orden natural de etiqueta (la 10 está bien y va primera igual), no en el orden de subida
+    assert [ws[f"A{f}"].value for f in range(3, 6)] == ["10", "13", "14"]
 
 
 def test_las_imagenes_van_adentro():
-    ws = _abrir(VALIDACION)["Correcciones"]
+    ws = _abrir(VALIDACION)["Recomendada"]
     # por bloque: la tira de placas + el recorte del mailing
     assert len(ws._images) == 6
 
@@ -240,10 +242,11 @@ def test_no_dice_esta_bien_cuando_no_miro_ni_la_mitad():
 
 
 def test_contra_un_mailing_no_se_habla_de_campos_que_quedaron_afuera():
-    """Un mailing dicta los siete campos: ahí no hay nada que aclarar."""
+    """Un mailing dicta los siete campos: ahí no hay nada que aclarar, y la placa
+    sana dice «Está bien» con un guion en QUÉ TIENE, como en el molde."""
     ws = _abrir(VALIDACION)["Todas las placas"]
-    ok = next(f for f in range(3, ws.max_row + 1) if ws[f"D{f}"].value == "Sin diferencias")
-    assert "campos" not in str(ws[f"E{ok}"].value)
+    ok = next(f for f in range(3, ws.max_row + 1) if ws[f"D{f}"].value == "Está bien")
+    assert ws[f"E{ok}"].value == "—"
 
 
 # ---------------------------------------------------------------- (11) el Excel que faltaba
@@ -260,7 +263,7 @@ def test_hay_excel_aunque_todas_las_placas_esten_bien_si_faltan_placas():
     estados = [ws.cell(row=r, column=ws.max_column).value for r in range(4, ws.max_row + 1)]
     assert estados.count("Sin placa") == 2
     # y la hoja de correcciones lo dice con todas las letras, no con una tabla vacía
-    correcciones = wb["Correcciones"]
+    correcciones = wb["Recomendada"]
     assert "La placa está bien" in str(correcciones["A2"].value)
     assert "La planilla" in str(correcciones["A4"].value)
 
@@ -281,7 +284,7 @@ def test_los_avisos_de_la_planilla_salen_en_el_excel():
     aviso = "No lo conté como producto, parece el pie del reporte: fila 7: «TOTAL: 5 artículos»"
     mala = _placa("11", "1:1", "diferencias", 1, [PUNTO], 2)
     wb = _abrir(_con_planilla([mala], avisos=[aviso]))
-    assert aviso in str(wb["Correcciones"]["A2"].value)
+    assert aviso in str(wb["Recomendada"]["A2"].value)
     planilla = wb["La planilla"]
     textos = [planilla.cell(row=r, column=1).value for r in range(1, 6)]
     assert aviso in textos
@@ -291,14 +294,14 @@ def test_los_avisos_de_la_planilla_salen_en_el_excel():
 
 def test_una_placa_que_no_se_pudo_leer_no_rompe_el_excel():
     rota = {**_placa("20", "", "error", None, [], 1, vista=False, lectura=False), "error": "No pude abrir el archivo"}
-    ws = _abrir({**VALIDACION, "imagenes": [rota]})["Correcciones"]
+    ws = _abrir({**VALIDACION, "imagenes": [rota]})["Recomendada"]
     assert ws["C4"].value == "No se pudo leer"
 
 
 def test_una_placa_sin_producto_en_el_mailing_va_sola():
     a = _placa("21", "1:1", "sin_match", None, [], 1)
     b = _placa("22", "1:1", "sin_match", None, [], 2)
-    ws = _abrir({**VALIDACION, "imagenes": [a, b]})["Correcciones"]
+    ws = _abrir({**VALIDACION, "imagenes": [a, b]})["Recomendada"]
     assert len(_bloques(ws)) == 2  # no se juntan: no hay nada que diga que son el mismo producto
     assert ws["B4"].value == "No está en el mailing"
 
@@ -311,7 +314,7 @@ def test_anda_en_un_servidor_sin_fuentes(monkeypatch):
     planilla (rrss/planilla.py): eran las mismas dos listas en dos módulos."""
     monkeypatch.setattr(imagenes, "_FUENTES", ("/no/existe.ttf",))
     monkeypatch.setattr(imagenes, "_FUENTES_NEGRITA", ("/no/existe-bold.ttf",))
-    ws = _abrir(VALIDACION)["Correcciones"]
+    ws = _abrir(VALIDACION)["Recomendada"]
     assert len(ws._images) == 6
 
 
@@ -347,3 +350,173 @@ def test_sin_formato_largo_no_se_habla_de_juntar():
     texto = _encabezado_de_la_planilla()
     assert "juntando" not in texto
     assert "quedaron afuera" not in texto
+
+
+# ---------------------------------------------------------------- (22/09) el Excel es el del molde
+
+def _fila_falta(campo, mailing):
+    return {"campo": campo, "estado": "falta_en_placa", "placa": "", "mailing": mailing, "severidad": "error"}
+
+
+LECTURA_COMPLETA = {
+    "producto": {"descripcion": "Cerveza STELLA ARTOIS. Lata 710 ml.", "precio_anterior": "$171", "mecanica": "",
+                 "oferta_encabezado": "Oferta", "oferta_precio": "$125", "oferta_pie": "", "es_alcohol": True},
+    "fecha": "DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE",
+    "legal_bases": "Bases y condiciones en tiendainglesa.com.uy",
+    "legal_alcohol": "Beber con moderación. Prohibida la venta a menores de 18 años.",
+}
+
+
+def _con_lectura(placa, lectura=LECTURA_COMPLETA):
+    return {**placa, "lectura": lectura}
+
+
+def test_las_hojas_son_las_del_molde_y_la_planilla_va_cuarta():
+    """'Recomendada', 'Como la pediste', 'Todas las placas'; con planilla se
+    agrega 'La planilla' al final. 'Como la pediste' se había perdido entera
+    (la versión que la generaba nunca se commiteó)."""
+    assert _abrir(VALIDACION).sheetnames == ["Recomendada", "Como la pediste", "Todas las placas"]
+    mala = _placa("11", "1:1", "diferencias", 1, [PUNTO], 2)
+    assert _abrir(_con_planilla([mala])).sheetnames == [
+        "Recomendada", "Como la pediste", "Todas las placas", "La planilla",
+    ]
+
+
+def test_las_placas_van_en_orden_natural_y_no_en_el_de_subida():
+    """El orden de subida es el alfabético del sistema: '…_10 copia.jpg' antes
+    que '…_10.jpg' (el espacio ordena antes que el punto). El molde ordena como
+    los nombra el equipo: 10, 10 copia, 11, 11 copia…"""
+    copia = _placa("10 copia", "1:1", "diferencias", 1, [PUNTO], 0)   # subida primera
+    diez = _placa("10", "1:1", "diferencias", 0, [KG], 1)             # subida segunda
+    once = _placa("9", "1:1", "ok", 2, [], 2)
+    wb = _abrir({**VALIDACION, "imagenes": [copia, diez, once]})
+    todas = wb["Todas las placas"]
+    assert [todas[f"A{f}"].value for f in range(3, 6)] == ["9", "10", "10 copia"]
+    ancha = wb["Como la pediste"]
+    assert ancha["A4"].value == "Placa 10  ·  1:1" and ancha["A5"].value == "Placa 10 copia  ·  1:1"
+    # y el primer bloque de la recomendada es el de la placa 10 (Carré), no el de la copia
+    assert "Carré de cerdo" in str(wb["Recomendada"]["A4"].value)
+
+
+def test_como_la_pediste_una_fila_por_placa_con_lo_que_dice_la_placa():
+    """La tabla ancha del molde: una fila por placa con algo para corregir, una
+    columna por cosa que CatTi lee; la celda con error va en rojo con marco y la
+    última columna junta las correcciones."""
+    stella = _con_lectura(_placa("16", "1:1", "diferencias", 1, [PUNTO, _fila_falta("oferta_pie", "unidad")], 1))
+    bien = _placa("10", "1:1", "ok", 2, [], 2)
+    ws = _abrir({**VALIDACION, "imagenes": [stella, bien]})["Como la pediste"]
+    assert [ws[f"{col}3"].value for col in "ABCDEFGHIJ"] == [
+        "LA PLACA", "DESCRIPCIÓN", "PRECIO ANTERIOR", "MECÁNICA", "ARRIBA DEL PRECIO", "PRECIO OFERTA",
+        "ABAJO DEL PRECIO", "FECHA", "LEGALES", "CORRECCIÓN",
+    ]
+    assert ws.max_row == 4  # la placa que está bien no sale
+    assert ws["A4"].value == "Placa 16  ·  1:1"
+    assert ws.row_dimensions[4].height == 150
+    # la descripción con error: rica, con lo que cambia en negrita, fondo rojo y marco rojo
+    rico = ws["B4"].value
+    assert [t.text for t in rico if not isinstance(t, str) and t.font.b] == ["ml."]
+    assert ws["B4"].fill.fgColor.rgb.endswith("FDECEA") and ws["B4"].border.left.style == "medium"
+    # lo que no tiene problema va plano y gris, y lo vacío con un guion
+    assert ws["C4"].value == "$171" and ws["C4"].font.color.rgb.endswith("6B7686")
+    assert ws["D4"].value == "—" and ws["D4"].border.left.style == "thin"
+    # el pie que falta: "(no está)" en cursiva, también marcado
+    assert [t.text for t in ws["G4"].value if not isinstance(t, str)] == ["(no está)"]
+    assert ws["G4"].border.left.style == "medium"
+    assert ws["I4"].value == (
+        "Bases y condiciones en tiendainglesa.com.uy  /  Beber con moderación. Prohibida la venta a menores de 18 años."
+    )
+    assert ws["J4"].value == "• Descripción: Sobra el punto: sacalo\n• Texto abajo del precio: Falta «unidad»: agregalo"
+    assert ws["J4"].font.color.rgb.endswith("9A6400") and ws["J4"].fill.fgColor.rgb.endswith("FFF4D6")
+    assert len(ws._images) == 1 and ws.freeze_panes == "B4"
+
+
+def test_como_la_pediste_dice_sin_revisar_en_vez_de_un_guion_con_planilla():
+    """Con una planilla sin columna MECÁNICA ni VIGENCIA, el guion decía dos
+    cosas distintas: "no lo tiene y no hace falta" y "esto no lo miró nadie".
+    Ahora la segunda se dice con palabras."""
+    mala = _con_lectura(_placa("11", "1:1", "diferencias", 1, [PUNTO], 2))
+    ws = _abrir(_con_planilla([mala]))["Como la pediste"]
+    assert ws["D4"].value == "sin revisar: la planilla no lo dice"
+    assert ws["D4"].fill.fgColor.rgb.endswith("F2F4F7") and ws["D4"].font.i
+    # la fecha tampoco: la planilla no trae VIGENCIA y la config no la escribió
+    assert ws["H4"].value == "DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE\n(sin revisar: la planilla no lo dice)"
+    # y la leyenda de alcohol de una placa de alcohol, ídem
+    assert "leyenda de alcohol sin revisar" in ws["I4"].value
+    # con la fecha escrita en la carga sí se revisó
+    v = _con_planilla([mala])
+    v["config"] = {"fecha": "DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE"}
+    assert _abrir(v)["Como la pediste"]["H4"].value == "DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE"
+    # contra un mailing el guion sigue siendo el del molde
+    ws = _abrir({**VALIDACION, "imagenes": [mala]})["Como la pediste"]
+    assert ws["D4"].value == "—"
+
+
+def test_una_planilla_que_dicta_todo_puede_decir_esta_bien():
+    """Contra una planilla con las seis columnas escritas se miró lo mismo que
+    contra un mailing: ahí sí vale 'Está bien' y el guion del molde."""
+    bien = _placa("10", "1:1", "ok", 0, [], 1)
+    mala = _placa("11", "1:1", "diferencias", 1, [PUNTO], 2)
+    todo = ("descripcion", "precio_anterior", "oferta_precio", "mecanica", "oferta_encabezado", "oferta_pie")
+    ws = _abrir(_con_planilla([bien, mala], campos=todo))["Todas las placas"]
+    assert ws["D3"].value == "Está bien" and ws["E3"].value == "—"
+
+
+def test_el_banner_habla_en_singular_cuando_es_uno():
+    """"1 cosas para corregir" y "Las otras 1 están bien" se leían en cuanto
+    había un solo arreglo o una sola placa sana."""
+    mala = _placa("11", "1:1", "diferencias", 1, [PUNTO], 2)
+    bien = _placa("10", "1:1", "ok", 0, [], 1)
+    wb = _abrir({**VALIDACION, "imagenes": [mala, bien]})
+    banner = str(wb["Recomendada"]["A2"].value)
+    assert "1 cosa para corregir, en 1 de las 2 placas.  La otra está bien: no la toques." in banner
+    assert "1 cosas" not in banner and "otras 1" not in banner
+    assert "Hay que corregir 1 de las 2 placas.  La otra está bien: no la toques." in str(wb["Como la pediste"]["A2"].value)
+    sola = _abrir({**VALIDACION, "imagenes": [mala]})
+    assert "1 cosa para corregir, en la única placa." in str(sola["Recomendada"]["A2"].value)
+    assert "Hay que corregir la única placa." in str(sola["Como la pediste"]["A2"].value)
+    assert "otras" not in str(sola["Recomendada"]["A2"].value)
+
+
+def test_nada_dice_de_el_mailing():
+    """"Hay más de una fila de el mailing": el artículo no se contraía al
+    interpolar el nombre de la fuente."""
+    ambigua = {**_placa("21", "1:1", "sin_match", None, [], 1), "sin_pareja": "ambiguo",
+               "candidatos": [{"descripcion": "Carré de cerdo. kg", "puntaje": 110.0}]}
+    duda = {"campo": "emparejamiento", "estado": "revisar", "placa": "x", "mailing": "y", "severidad": "aviso",
+            "nota": "Hay otra fila que se le parece casi igual (100.0 contra 99.0): confirmá que sea esta."}
+    dudosa = _placa("22", "1:1", "avisos", 0, [duda], 2)
+    wb = _abrir({**VALIDACION, "imagenes": [ambigua, dudosa]})
+    textos = " | ".join(
+        str(c.value) for ws in wb.worksheets for row in ws.iter_rows() for c in row if isinstance(c.value, str)
+    )
+    assert "de el " not in textos and "de El " not in textos
+    assert "Hay más de una fila del mailing" in textos
+    assert "Con qué fila del mailing la emparejé" in textos
+    assert c.nombre_campo("emparejamiento", "planilla") == "Con qué fila de la planilla la emparejé"
+    # y en la hoja ancha la duda lleva su nota, no solo "miralo a mano"
+    ancha = wb["Como la pediste"]
+    j = [str(ancha[f"J{r}"].value) for r in range(4, 6)]
+    assert any("Miralo a mano contra el mailing: Hay otra fila" in t for t in j)
+    assert any("No encontré este producto" in t or "Hay más de una fila del mailing" in t for t in j)
+
+
+def test_que_hacer_no_manda_a_agregar_debe_estar():
+    """Para un logo que falta, `instruccion` recibía placa="no está" y
+    mailing="debe estar" y decía «Falta «debe estar»: agregalo»."""
+    assert c.que_hacer({"campo": "logo_campana", "estado": "falta_en_placa", "placa": "no está", "mailing": "debe estar"}) \
+        == "Falta: agregalo"
+    assert c.que_hacer({"campo": "precio_anterior_tachado", "estado": "diferente", "placa": "sin tachar", "mailing": "tachado"}) \
+        == "Tiene que ir tachado"
+    assert c.que_hacer({"campo": "descripcion", "estado": "revisar", "placa": "a", "mailing": "b", "nota": "CatTi leyó distinto"}) \
+        == "Miralo a mano contra el mailing: CatTi leyó distinto"
+    assert c.que_hacer(KG) == "Va en minúscula: «kg»"
+
+
+def test_la_hoja_de_la_planilla_tambien_habla_en_singular():
+    """"1 filas con producto" y "las 1 que ninguna placa reclamó"."""
+    dos = [_placa("10", "1:1", "ok", 0, [], 1), _placa("11", "1:1", "diferencias", 1, [PUNTO], 2)]
+    texto = str(_abrir(_con_planilla(dos))["La planilla"]["A2"].value)
+    assert "La que quedó SIN COLOR es la única fila que ninguna placa reclamó" in texto
+    tres = dos + [_placa("12", "1:1", "ok", 2, [], 3)]
+    texto = str(_abrir(_con_planilla(tres, avisos=["un aviso"]))["La planilla"]["A2"].value)
+    assert "Todas las filas tienen su placa" in texto

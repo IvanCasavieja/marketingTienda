@@ -298,6 +298,28 @@ export const cenefasV2Api = {
   getReglasDeMedicion: () =>
     api.get<Record<string, { valor: number }>>("/tools/cenefas/v2/reglas-de-medicion"),
 
+  // El tamano de hoja, que vive en UN solo archivo del backend
+  // (app/data/formatos_de_hoja.json). Antes estaba escrito a mano en cinco
+  // tablas distintas --tres de los seis formatos tenian numeros DIFERENTES
+  // segun a cual se le preguntara, porque unas decian el PAPEL que sale de la
+  // impresora y otras la CELDA que ocupa una cenefa adentro-- y encima el
+  // preview tomaba una sexta decision al dibujar: agrandaba la hoja hasta que
+  // entrara el contenido. Ver lib/cenefas/formatosDeHoja.ts.
+  getFormatosDeHoja: () =>
+    api.get<{
+      formatos: Record<string, {
+        label: string;
+        papel_cm: { ancho: number; alto: number };
+        celda_cm: { ancho: number; alto: number };
+        slots: number;
+        slot_cols?: number;
+        slot_rows?: number;
+        scale: number;
+      }>;
+      tolerancia_desborde_cm: { valor: number };
+      ruido_emu_cm: { valor: number };
+    }>("/tools/cenefas/v2/formatos-de-hoja"),
+
   // Agrupa los componentes de una plantilla multi-banda (3xA4/6xA4/A5/
   // pinchos) en bandas -- una por cenefa de la hoja. Reusa la misma lógica
   // que ya corre en generación (_detect_slot_bands), para que el editor
@@ -1518,7 +1540,9 @@ export interface RrssTipoArchivo {
 
 export interface RrssTipos {
   placas: RrssTipoArchivo;
-  fuentes: { mailing: RrssTipoArchivo; planilla: RrssTipoArchivo };
+  /** La planilla además dice qué columnas OPCIONALES entiende (nombres para
+   *  mostrar, los mismos que usa el informe). */
+  fuentes: { mailing: RrssTipoArchivo; planilla: RrssTipoArchivo & { columnas?: string[] } };
 }
 
 export interface RrssConfigRespuesta extends RrssConfig {

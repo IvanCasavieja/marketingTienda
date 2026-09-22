@@ -8,6 +8,9 @@ from pptx import Presentation
 from pptx.enum.text import PP_ALIGN
 
 from app.services.cenefas.font_metrics import ancho_texto_cm
+from app.services.cenefas.formatos_de_hoja import (
+    FORMATOS, TOLERANCIA_DETECCION_CM, celda_cm, slots as _slots_del_formato,
+)
 from app.services.cenefas.reglas_medicion import REGLAS
 from app.services.cenefas.reglas_fijas import asegurar_reglas_fijas
 from app.services.cenefas.variables import resolver_alias, INTERNAL_SET, is_decimal, is_price, norm, resolve
@@ -117,19 +120,27 @@ _LEGACY_PLACEHOLDERS: dict[str, str | None] = {
 # sustituye nada; si el Excel no trae la columna, la variable queda vacía.
 _REQUIRED_VARS: set[str] = set()
 
+# LA MEDIDA DE UN SLIDE POR FORMATO: la CELDA, no el papel.
+#
+# Un PPTX que se importa trae UN slide, y ese slide es lo que el diseño llama
+# "una cenefa": para a4/a3 la hoja entera, para 3xa4 una franja, para a5 una
+# de las dos mitades y para pinchos/6xa4 una celda de la grilla. Por eso la
+# comparación de _detect_format va contra la celda y no contra el papel --
+# contra el papel no se podría distinguir a4 de 3xa4 de pinchos, que imprimen
+# los tres sobre una A4 vertical.
+#
+# slot_cols = en cuántas columnas se tilean los `slots` -- 3xa4 tilea 3
+# franjas VERTICALMENTE (1 sola columna, cada franja usa el ancho completo), a
+# diferencia de pinchos/6xa4 que tilean en grilla. Ver uso en import_pptx: el
+# filtro de "solo primera columna" solo tiene sentido cuando slot_cols > 1.
+#
+# LOS NÚMEROS NO ESTÁN ACÁ. Ésta era una de las cinco copias a mano del tamaño
+# de hoja; ahora se leen de app/data/formatos_de_hoja.json, que además deja
+# escrita la orientación de cada formato (Ivan, 22/09/2026).
 _FORMATS_DIM = {
     # (width_cm, height_cm, slots, slot_cols)
-    # slot_cols = en cuantas columnas se tilean los `slots` -- 3xa4 tilea 3
-    # franjas VERTICALMENTE (1 sola columna, cada franja usa el ancho
-    # completo), a diferencia de pinchos/6xa4 que tilean en grilla horizontal
-    # (3 columnas). Ver uso en import_pptx: el filtro de "solo primera
-    # columna" solo tiene sentido cuando slot_cols > 1.
-    "a4":      (21.0,  29.7,  1, 1),
-    "a3":      (29.7,  42.0,  1, 1),
-    "3xa4":    (21.0,  9.9,   3, 1),   # slide de una franja; 3 en A4 portrait
-    "pinchos": (7.0,   14.85, 6, 3),   # slide de un pincho; grilla 3×2 en A4
-    "a5":      (14.85, 21.0,  1, 1),
-    "6xa4":    (7.0,   14.85, 6, 3),   # slide de una celda; grilla 3×2 en A4 (arte propio)
+    fmt_id: (celda_cm(fmt_id)[0], celda_cm(fmt_id)[1], *_slots_del_formato(fmt_id)[:2])
+    for fmt_id in FORMATOS
 }
 
 
@@ -141,16 +152,62 @@ def _emu_to_cm(emu: int) -> float:
     return round(emu / _EMU_PER_CM, 3)
 
 
-def _detect_format(width_cm: float, height_cm: float) -> tuple[str, int, int]:
-    best = "a4"
+_FORMATO_POR_DEFECTO = "a4"
+
+
+def _detect_format(width_cm: float, height_cm: float) -> tuple[str, int, int, bool]:
+    """Qué ETIQUETA de formato le corresponde a un slide de estas medidas.
+
+    Devuelve (formato, slots, slot_cols, seguro). `seguro` en False significa
+    "ninguna medida conocida se le parece": la etiqueta que sale es la de por
+    defecto y hay que avisarlo, no darlo por bueno.
+
+    QUÉ HACÍA MAL Y POR QUÉ IMPORTABA. Esta función elegía el vecino más
+    cercano SIN PISO: siempre devolvía algo. Un PPTX de 29,699 x 20,999 --una
+    A4 apaisada, o sea una hoja ya armada con varias cenefas adentro-- daba
+    "a5" porque la tabla decía que una a5 medía 14,85 x 21 (A5 vertical, UNA
+    cenefa) y era la celda menos lejos, con 14,85 cm de error aceptados en
+    silencio. Le pasó a las 4 plantillas apaisadas que hay en producción
+    (Preciazos A5 y 6xA4, Mega Rompe Precios A5 y 6xA4), que son el 100% de
+    esa familia.
+
+    La tabla ya no dice eso: Ivan la corrigió el 22/09/2026 --la 6xA4 es una
+    A4 HORIZONTAL y la A5 son DOS cenefas-- y con las medidas buenas ese
+    slide no se parece a ninguna celda conocida, que es la verdad: es una hoja
+    armada, no una celda.
+
+    Y ESE ERROR SE CONVERTÍA EN EL TAMAÑO DE LA HOJA, porque el tamaño se
+    derivaba de la etiqueta. Ya no: el papel es el que trae el PPTX y se
+    guarda aparte, en definition["hoja"] (ver import_pptx). La etiqueta sigue
+    decidiendo cuántas cenefas entran y cómo se tilean, que es lo único que de
+    verdad le corresponde.
+
+    LO QUE SE ARREGLA ACÁ es lo que era de acá: aceptar un disparate en
+    silencio. Ahora hay un umbral --tolerancia_deteccion_cm en el JSON, con su
+    'porque'-- y cuando la mejor medida no llega, se dice en voz alta
+    (import_warnings) en vez de inventar una etiqueta.
+
+    POR QUÉ NO SE AGREGA UNA ENTRADA "A4 APAISADA" Y LISTO, que es la pregunta
+    obvia: porque no se puede saber cuál de las dos familias es. Un slide de
+    29,7 x 21 puede ser la hoja armada de un "6xa4" o la de un "a5"
+    pre-tileado, y las dos existen en producción con ese mismo tamaño. Y peor:
+    cambiarles hoy la etiqueta a esas 4 plantillas les cambiaría el escalado de
+    compute_layout --los jobs piden target_format "a5", hoy master == target y
+    no se escala nada-- y saldrían impresas distinto. La etiqueta se deja como
+    está, el tamaño deja de depender de ella, y el import avisa.
+    """
+    best = _FORMATO_POR_DEFECTO
     best_dist = float("inf")
-    for fmt_id, (w, h, _slots, _slot_cols) in _FORMATS_DIM.items():
+    for fmt_id, (w, h, _s, _sc) in _FORMATS_DIM.items():
         dist = abs(width_cm - w) + abs(height_cm - h)
         if dist < best_dist:
             best_dist = dist
             best = fmt_id
+    seguro = best_dist <= TOLERANCIA_DETECCION_CM
+    if not seguro:
+        best = _FORMATO_POR_DEFECTO
     _, _, slots, slot_cols = _FORMATS_DIM[best]
-    return best, slots, slot_cols
+    return best, slots, slot_cols, seguro
 
 
 _MAX_IMAGE_BYTES = 300_000  # ~300 KB antes de comprimir
@@ -1219,6 +1276,59 @@ def _autocorregir_geometria(
 # Entry point
 # ---------------------------------------------------------------------------
 
+def medir_hoja(pptx_bytes: bytes) -> dict | None:
+    """El papel de un PPTX, medido del archivo. ``None`` si no se pudo abrir.
+
+    Es lo mismo que hace import_pptx al importar, suelto, para poder
+    recuperarlo de las plantillas que se cargaron ANTES del 22/09/2026 -- que
+    son todas las de producción. El número no hay que pedírselo a nadie: el
+    PPTX original se guarda entero en ``cenefa_templates_v2.source_pptx``, así
+    que el backfill es exacto y no hace falta que nadie resuba un archivo.
+    """
+    try:
+        prs = Presentation(BytesIO(pptx_bytes))
+        return {
+            "ancho_cm": _emu_to_cm(prs.slide_width),
+            "alto_cm":  _emu_to_cm(prs.slide_height),
+            "origen":   "pptx",
+        }
+    except Exception:
+        return None
+
+
+def asegurar_hoja(definition: dict, source_pptx: bytes | None) -> bool:
+    """Le pone el papel medido a una definición que no lo tenga.
+
+    Devuelve True si la cambió. Sin source_pptx no hace nada: una plantilla
+    armada a mano en el editor no tiene de dónde sacar una medida, y ahí el
+    papel es el del formato declarado (ver formatos_de_hoja.hoja_de_definicion,
+    que lo dice con ``origen: "formato"`` en vez de hacerlo pasar por medido).
+
+    Se llama al leer una plantilla, así que una plantilla vieja se arregla
+    sola la primera vez que alguien la abre, sin depender de que alguien se
+    acuerde de correr un script. El script existe igual
+    (scripts/backfill_hoja_desde_pptx.py) para hacerlo de una para toda la
+    flota y para poder VER el resultado antes de que lo vea Ivan.
+    """
+    if not isinstance(definition, dict) or not source_pptx:
+        return False
+    hoja = definition.get("hoja")
+    if isinstance(hoja, dict) and hoja.get("ancho_cm") and hoja.get("alto_cm"):
+        return False
+    medida = medir_hoja(source_pptx)
+    if not medida:
+        return False
+    definition["hoja"] = {
+        **medida,
+        "formato_declarado": definition.get("master_format"),
+        # Se rellena a posteriori: no se puede saber si la detección original
+        # fue segura sin volver a correrla, y volver a correrla acá cambiaría
+        # la etiqueta de una plantilla que ya está en uso. Ver _detect_format.
+        "formato_reconocido": None,
+    }
+    return True
+
+
 def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: str | None = None) -> dict:
     """Parsea el primer slide de un PPTX y devuelve una definición v2.
 
@@ -1231,7 +1341,7 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
     slide = prs.slides[0]
     width_cm  = _emu_to_cm(prs.slide_width)
     height_cm = _emu_to_cm(prs.slide_height)
-    format_id, slots, slot_cols = _detect_format(width_cm, height_cm)
+    format_id, slots, slot_cols, formato_seguro = _detect_format(width_cm, height_cm)
     slot_width = width_cm / slot_cols if slot_cols > 1 else width_cm
 
     components: list[dict]          = []
@@ -1328,6 +1438,39 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
     # deja un componente reparado más ancho que la celda a la que pertenece.
     components, import_warnings = _autocorregir_geometria(components, slot_width, height_cm)
 
+    # EL PAPEL, MEDIDO. Hasta el 22/09/2026 estos dos números se calculaban
+    # arriba, se usaban para adivinar la etiqueta del formato y SE TIRABAN: el
+    # dict que sale de acá guardaba `master_format` y `formats`, que son
+    # etiquetas, no medidas. De ahí en adelante nadie en el sistema sabía
+    # cuánto medía la hoja -- el preview la sacaba de una tabla de formatos y,
+    # si no le entraba el contenido, la agrandaba hasta que entrara. El
+    # exportador acertaba de casualidad, porque reusa este mismo archivo y
+    # hereda su tamaño sin mirarlo.
+    #
+    # Ahora se guarda. `hoja` viaja adentro de `definition`, que es lo que ya
+    # le llega entero al navegador, así que el preview y el exportador leen EL
+    # MISMO número sin un endpoint más ni una tabla más. Se lee siempre por
+    # formatos_de_hoja.hoja_de_definicion(), que es la única puerta.
+    if not formato_seguro:
+        import_warnings.append({
+            "nivel":      "medio",
+            "tipo":       "formato_no_reconocido",
+            "titulo":     f"No reconocí el formato de una hoja de {width_cm:.1f} x {height_cm:.1f} cm",
+            "detalle":    (
+                f"El slide de este PPTX mide {width_cm:.1f} x {height_cm:.1f} cm y no se "
+                f"parece a ninguna de las medidas de cenefa conocidas "
+                f"({', '.join(FORMATOS)}). Se guardó con la etiqueta «{format_id}» para que "
+                f"la plantilla funcione, pero esa etiqueta decide cuántas cenefas entran en "
+                f"la hoja y cómo se acomodan, así que puede estar mal. El TAMAÑO de la hoja "
+                f"no depende de eso: se guardó el medido del archivo, y el preview va a "
+                f"dibujar exactamente esos {width_cm:.1f} x {height_cm:.1f} cm."
+            ),
+            "sugerencia": (
+                "Si esta hoja es de un formato que se va a repetir, conviene agregarlo a "
+                "backend/app/data/formatos_de_hoja.json con su papel y su celda."
+            ),
+        })
+
     # `rules: []` es a propósito: un PPTX no trae reglas, las escribe una
     # persona en el editor. Pero eso significa que resubir el archivo de una
     # plantilla BORRA las que tuviera, y hasta el 17/09/2026 recuperarlas
@@ -1339,6 +1482,20 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
         "name":            name,
         "master_format":   format_id,
         "formats":         [format_id],
+        # EL PAPEL MEDIDO DEL ARCHIVO, no derivado de la etiqueta de arriba.
+        # Se lee siempre con formatos_de_hoja.hoja_de_definicion().
+        "hoja": {
+            "ancho_cm": width_cm,
+            "alto_cm":  height_cm,
+            "origen":   "pptx",
+            # Que la etiqueta no coincida con el papel NO es un error: un
+            # "3xa4" imprime tres franjas en una A4 entera, así que la celda y
+            # el papel son distintos por diseño. Se guarda para que el preview
+            # pueda decir de dónde salió cada número y para que el barrido de
+            # backend/tests/test_hoja_unica.py tenga con qué comparar.
+            "formato_declarado":  format_id,
+            "formato_reconocido": formato_seguro,
+        },
         "variables":       variables,
         "components":      components,
         "rules":           [],

@@ -143,9 +143,11 @@ def test_lo_que_la_planilla_no_dice_no_se_marca_como_error(mailing):
 
 def test_se_dice_cuales_campos_quedaron_afuera(mailing):
     """No se resuelve en silencio: la pantalla y el Excel muestran esta lista."""
-    assert planilla.campos_que_no_dicta(mailing) == [
+    # La planilla de prueba no trae VIGENCIA ni LEYENDA ALCOHOL y la config no
+    # las escribe: la fecha y la leyenda tampoco se revisaron, y se dice.
+    assert planilla.campos_que_no_dicta(mailing, CONFIG) == [
         "Mecánica", "Texto arriba del precio", "Texto abajo del precio",
-        "Si el precio anterior va tachado",
+        "Si el precio anterior va tachado", "Fecha de la campaña", "Leyenda de alcohol",
     ]
 
 
@@ -306,7 +308,7 @@ def test_el_excel_habla_de_la_planilla_y_no_de_un_mailing_que_no_existe(mailing,
     ruta = tmp_path / "correcciones.xlsx"
     ruta.write_bytes(excel.construir(_validacion(mailing)))
     wb = load_workbook(ruta, rich_text=True)
-    ws = wb["Correcciones"]
+    ws = wb["Recomendada"]
     assert ws["B3"].value == "LA PLANILLA"
     textos = [str(ws[f"B{r}"].value or "") for r in range(4, 12)]
     assert any("Así está en la planilla" in t and "fila 4" in t for t in textos)
@@ -339,7 +341,7 @@ def test_el_sin_pareja_del_excel_muestra_contra_que_se_parecio(mailing, tmp_path
     """Sin esto, "no encontré este producto" es una acusación sin pruebas."""
     ruta = tmp_path / "correcciones.xlsx"
     ruta.write_bytes(excel.construir(_validacion(mailing)))
-    ws = load_workbook(ruta, rich_text=True)["Correcciones"]
+    ws = load_workbook(ruta, rich_text=True)["Recomendada"]
     todo = " ".join(str(ws.cell(row=r, column=col).value or "") for r in range(4, 12) for col in (3, 4, 5))
     assert "No está en la planilla" in todo
     assert "Lo que más se le pareció" in todo
@@ -954,7 +956,7 @@ def test_el_excel_dice_cuando_no_pudo_dibujar_la_fila(mailing, tmp_path):
     v["imagenes"][0]["recorte_fuente"] = None
     ruta = tmp_path / "correcciones.xlsx"
     ruta.write_bytes(excel.construir(v))
-    ws = load_workbook(ruta, rich_text=True)["Correcciones"]
+    ws = load_workbook(ruta, rich_text=True)["Recomendada"]
     textos = [str(ws[f"B{r}"].value or "") for r in range(4, 12)]
     assert any("No pude dibujar la fila" in t for t in textos)
 
@@ -1193,3 +1195,118 @@ def test_el_freno_barato_se_mide_en_el_peor_formato_largo():
     grande que eso es un catálogo con cualquier cuenta que se haga."""
     assert planilla.MAX_FILAS_CRUDAS == planilla.MAX_FILAS * planilla._SUCURSALES_TECHO
     assert planilla.MAX_FILAS_CRUDAS > planilla.MAX_FILAS
+
+
+# ---------------------------------------------------------------- (22/09) filas vacías, columnas del informe, la cola del precio
+
+def test_las_filas_vacias_no_son_filas_que_quedaron_afuera():
+    """Un renglón en blanco entre el título y los datos, o los que Excel deja al
+    final, hacían decir "Afuera: 3 filas sin descripción" en una planilla
+    perfecta. Una fila con código o precio y sin descripción SÍ se cuenta."""
+    limpia = planilla.leer(_xlsx([
+        ("CODIGO", "DESCRIPCION", "PRECIO"),
+        ("501233", "Cerveza PATRICIA lata. 473 ml", 74.5),
+        (None, None, None),
+        ("501235", "Mostaza Dijon MAILLE. 215 g", 199),
+        (None, None, None),
+        (None, None, None),
+    ]), "limpia.xlsx")
+    assert not any("sin descripción" in a for a in limpia.mailing["planilla"]["avisos"]), limpia.mailing["planilla"]["avisos"]
+    assert limpia.mailing["planilla"]["filas_ignoradas"] == 0
+    assert len(limpia.mailing["productos"]) == 2
+
+    con_hueco = planilla.leer(_xlsx([
+        ("CODIGO", "DESCRIPCION", "PRECIO"),
+        ("501233", "Cerveza PATRICIA lata. 473 ml", 74.5),
+        ("501299", None, 120),   # un producto al que le falta la descripción: eso sí se dice
+    ]), "hueco.xlsx")
+    assert "Afuera: 1 fila sin descripción" in con_hueco.mailing["planilla"]["avisos"]
+    assert con_hueco.mailing["planilla"]["filas_ignoradas"] == 1
+
+
+def test_los_titulos_del_informe_entran_como_columnas():
+    """"ARRIBA DEL PRECIO" y "ABAJO DEL PRECIO" son los títulos que el propio
+    Excel usa: si alguien los copia a su planilla tienen que entrar. Y FECHA /
+    LEYENDA DE ALCOHOL también."""
+    pl = planilla.leer(_xlsx([
+        ("DESCRIPCIÓN", "PRECIO", "MECÁNICA", "ARRIBA DEL PRECIO", "ABAJO DEL PRECIO", "FECHA", "LEYENDA DE ALCOHOL"),
+        ("Arvejas TIENDA INGLESA. 300 g", 37.5, "2x$75", "Comprando 2", "unidad",
+         "DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE", "Beber con moderación."),
+    ]), "informe.xlsx")
+    m = pl.mailing
+    assert set(m["campos"]) >= {"mecanica", "oferta_encabezado", "oferta_pie", "oferta_precio", "descripcion"}
+    assert m["fecha"] == "DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE"
+    assert m["legal_alcohol"] == "Beber con moderación."
+    assert planilla.campos_que_no_dicta(m, CONFIG) == ["Precio anterior", "Si el precio anterior va tachado"]
+    # y los nombres que la pantalla muestra son estos mismos
+    assert [n for _, n in planilla.COLUMNAS_OPCIONALES] == [
+        "MECÁNICA", "ARRIBA DEL PRECIO", "ABAJO DEL PRECIO", "VIGENCIA", "LEYENDA ALCOHOL",
+    ]
+
+
+def test_campos_que_no_dicta_incluye_la_fecha_y_la_leyenda_solo_si_nadie_las_dio(mailing):
+    con_fecha = planilla.campos_que_no_dicta(mailing, {**CONFIG, "fecha": "DEL JUEVES 17 AL DOMINGO 20"})
+    assert "Fecha de la campaña" not in con_fecha and "Leyenda de alcohol" in con_fecha
+    con_todo = planilla.campos_que_no_dicta(mailing, {**CONFIG, "fecha": "x", "legal_alcohol": "Beber con moderación."})
+    assert con_todo == ["Mecánica", "Texto arriba del precio", "Texto abajo del precio", "Si el precio anterior va tachado"]
+    assert planilla.campos_que_no_dicta({"origen": "mailing"}, {}) == []
+
+
+def test_dicta_todo(mailing):
+    assert planilla.dicta_todo({"origen": "mailing"}) is True
+    assert planilla.dicta_todo(mailing) is False
+    assert planilla.dicta_todo({"origen": "planilla", "campos": list(planilla._DE_LA_COLUMNA)}) is True
+
+
+def test_el_precio_conserva_lo_que_la_celda_trae_alrededor_del_numero():
+    """"$340 unidad" quedaba en "$340": se perdía justo la palabra que la
+    persona había escrito. Y sin columna MONEDA, el símbolo que la celda misma
+    trae ("U$S 149") tampoco se inventa ni se tira."""
+    assert planilla._precio("$340 unidad", "$") == "$340 unidad"
+    assert planilla._precio("U$S 149", "") == "U$S149"
+    assert planilla._precio(74.5, "$") == "$74,50"
+    assert planilla._precio(1090, "") == "1.090"
+    assert planilla._precio("Oferta", "$") == "Oferta"
+
+
+def _planilla_con_colas() -> dict:
+    return planilla.leer(_xlsx([
+        ("DESCRIPCION", "MONEDA", "PRECIO ANTERIOR", "PRECIO"),
+        ("Cerveza STELLA ARTOIS. Lata 710 ml", "$", "$171", "$125"),
+        ("Vino BRISAS DEL ESTE. 750 ml", "$", "$340 unidad", "$199"),
+    ]), "colas.xlsx").mailing
+
+
+def test_si_la_planilla_escribe_lo_que_acompana_al_precio_lo_dicta():
+    """La misma campaña validada contra el PDF y contra su planilla tiene que
+    dar lo mismo. En el PDF, "$171" contra la placa "$171 unidad" es un error
+    (sobra «unidad»). Con la planilla el precio se compara por importe y ese
+    error se perdía; ahora, si alguna fila de la columna escribió la cola
+    ("$340 unidad"), la columna dicta la cola en todas sus filas."""
+    m = _planilla_con_colas()
+    assert m["precios_con_cola"] == ["precio_anterior"]
+    stella = placa_de(descripcion="Cerveza STELLA ARTOIS. Lata 710 ml", precio_anterior="$171 unidad", oferta_precio="$125")
+    _, _, filas = c.comparar_placa(stella, m, CONFIG)
+    fila = por_campo(filas)["precio_anterior"]
+    assert fila["severidad"] == "error" and fila["estado"] == "diferente"
+    from app.services.rrss import correccion
+    assert correccion.instruccion(fila["estado"], fila["placa"], fila["mailing"], "planilla") == "Sobra «unidad»: sacalo"
+    vino = placa_de(descripcion="Vino BRISAS DEL ESTE. 750 ml", precio_anterior="$340", oferta_precio="$199")
+    _, _, filas = c.comparar_placa(vino, m, CONFIG)
+    fila = por_campo(filas)["precio_anterior"]
+    assert fila["severidad"] == "error"
+    assert correccion.instruccion(fila["estado"], fila["placa"], fila["mailing"], "planilla") == "Falta «unidad»: agregalo"
+    # el precio de oferta no escribió cola en ninguna fila: sigue siendo solo el importe
+    stella_pie = placa_de(descripcion="Cerveza STELLA ARTOIS. Lata 710 ml", precio_anterior="$171", oferta_precio="$125 c/u")
+    _, _, filas = c.comparar_placa(stella_pie, m, CONFIG)
+    assert por_campo(filas)["oferta_precio"]["estado"] == "ok"
+
+
+def test_una_planilla_de_numeros_sigue_comparando_solo_el_importe(mailing):
+    """El export de gestión trae números: ahí nadie escribió una cola y "$99
+    unidad" contra 99 sigue estando bien (es el test de arriba, de nuevo, para
+    que la regla nueva no lo pise)."""
+    assert mailing.get("precios_con_cola") == []
+    p = placa_de(descripcion="Cerveza PATRICIA lata. 473 ml", precio_anterior="$99 unidad", oferta_precio="$74,50")
+    _, _, filas = c.comparar_placa(p, mailing, CONFIG)
+    assert por_campo(filas)["precio_anterior"]["estado"] == "ok"

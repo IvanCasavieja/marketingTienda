@@ -18,6 +18,13 @@ import { mascaraNegrita, tieneMarca } from "@/lib/cenefas/smartBold";
 import { tramosConEstiloPropio } from "@/lib/cenefas/textoEnriquecido";
 import { nodoTextoEnriquecido } from "@/lib/cenefas/dibujarTextoEnriquecido";
 import { cargarReglasDeMedicion, reglas } from "@/lib/cenefas/reglasDeMedicion";
+import {
+  cargarFormatosDeHoja,
+  celdaDelFormato,
+  formatoConocido,
+  papelDeLaPlantilla,
+  ruidoEmuCm,
+} from "@/lib/cenefas/formatosDeHoja";
 
 // ---------------------------------------------------------------------------
 // Constantes de escala y dimensiones de formatos
@@ -25,14 +32,20 @@ import { cargarReglasDeMedicion, reglas } from "@/lib/cenefas/reglasDeMedicion";
 
 const PX_PER_CM = 28;
 
-const FORMAT_DIMS: Record<string, { w: number; h: number }> = {
-  a4:      { w: 21.0,  h: 29.7  },
-  a3:      { w: 29.7,  h: 42.0  },
-  "3xa4":  { w: 21.0,  h: 9.9   },  // franja horizontal única (1/3 A4)
-  pinchos: { w: 7.0,   h: 14.85 },  // pincho individual (grilla 3×2 en A4)
-  a5:      { w: 14.85, h: 21.0  },
-  "6xa4":  { w: 7.0,   h: 14.85 },  // celda individual (grilla 3×2 en A4)
-};
+// ACA HABIA UNA TABLA DE TAMAÑOS DE HOJA ESCRITA A MANO, y era una de cinco:
+// las otras estaban en layout_engine.FORMATS, component_renderer.FORMAT_SLIDES,
+// pptx_importer._FORMATS_DIM y las etiquetas del panel de importación. Tres de
+// los seis formatos tenían números DISTINTOS según a cuál se le preguntara,
+// porque unas decían el PAPEL que sale de la impresora y otras la CELDA que
+// ocupa una cenefa adentro de él, y las dos cosas se llamaban igual ("3xa4").
+// Esta copia tenía la semántica de celda, así que el preview de un "3xa4"
+// dibujaba una franja de 21×9,9 cm mientras la impresora sacaba una A4 entera.
+// Y encima la orientación estaba mal: la 6xA4 es una A4 HORIZONTAL y la A5 son
+// DOS cenefas una al lado de la otra (Ivan, 22/09/2026).
+//
+// Ahora el tamaño vive en backend/app/data/formatos_de_hoja.json y se lee con
+// lib/cenefas/formatosDeHoja.ts. Hay un barrido que falla si vuelve a
+// aparecer un número de hoja escrito a mano: backend/tests/test_hoja_unica.py.
 
 const COMP_COLORS: Record<string, string> = {
   text:  "#3B82F6",
@@ -93,6 +106,20 @@ function ptToPx(pt: number) {
   return (pt / 72) * 2.54 * PX_PER_CM;
 }
 
+// Dónde queda un cuadro que se soltó, en cm sobre un eje del papel.
+//
+// Un cuadro que ENTRA en la hoja se acomoda para no quedar afuera: es lo que
+// se espera al arrastrar. Pero un cuadro MÁS GRANDE que la hoja no puede
+// entrar, y la cuenta de siempre (`max(0, min(x, hoja - ancho))`) lo mandaba
+// a x = 0 en cada soltada: la caja invisible de 44 cm centrada en una A4 --el
+// truco para que el precio no se corra según cuántos dígitos tenga-- se
+// descentraba 11 cm con solo tocarla. Eso era acomodar el diseño sin que
+// nadie lo pidiera. Si no entra, queda donde se soltó, y se ve saliéndose.
+function dentroDelPapel(valor: number, tamano: number, hoja: number): number {
+  if (tamano > hoja) return valor;
+  return Math.max(0, Math.min(valor, hoja - tamano));
+}
+
 
 // ---------------------------------------------------------------------------
 // Aplicar layout del formato destino sobre los componentes
@@ -106,10 +133,13 @@ function applyFormatLayout(
 ): CenefaComponent[] {
   if (activeFormat === masterFormat) return components;
 
-  const master = FORMAT_DIMS[masterFormat] ?? FORMAT_DIMS.a4;
-  const target = FORMAT_DIMS[activeFormat] ?? FORMAT_DIMS.a4;
-  const scaleX = target.w / master.w;
-  const scaleY = target.h / master.h;
+  // La CELDA de cada formato --lo que ocupa UNA cenefa--, que es lo que
+  // compute_layout usa del otro lado para escalar el mismo diseño de un
+  // formato a otro. Sale de la tabla única, igual que allá.
+  const master = celdaDelFormato(masterFormat);
+  const target = celdaDelFormato(activeFormat);
+  const scaleX = target.ancho / master.ancho;
+  const scaleY = target.alto  / master.alto;
 
   return components.map((comp) => {
     const ov = comp.format_overrides[activeFormat] ?? {};
@@ -760,40 +790,176 @@ export default function Canvas({
 
   const getImage = useImageCache(template.components);
 
+  // LA PUERTA DE LA MEDICION. Canvas es el unico lugar por el que se dibuja
+  // una cenefa (lo importan v2/page.tsx, PreviewStep y LotePreviewStep, y
+  // nada mas dibuja), asi que con esperar aca alcanza para garantizar que
+  // ningun cuadro se mida con un numero adivinado.
+  //
+  // Son DOS archivos del backend y los dos se piden por HTTP:
+  //
+  //   - las REGLAS de medicion (app/data/reglas_de_medicion.json): el margen
+  //     interno, el alto de linea, la voladita, el tamano por defecto;
+  //   - el TAMANO DE HOJA (app/data/formatos_de_hoja.json): cuanto mide el
+  //     PAPEL que sale de la impresora, que hasta el 22/09/2026 este archivo
+  //     tenia copiado a mano --y ademas AGRANDABA hasta que le entrara el
+  //     contenido, por eso un cuadro fuera de la hoja se veia adentro.
+  //
+  // Van juntas en un Promise.all: se necesitan las dos al mismo tiempo, son
+  // dos requests en paralelo y una sola espera. (Son dos endpoints y no uno
+  // porque cada uno devuelve SU archivo tal cual; el porque completo esta en
+  // el docstring de get_formatos_de_hoja, en cenefas_v2.py.)
+  //
+  // Si no llegan, NO se dibuja: se muestra un cartel. Dibujar con valores
+  // propios es exactamente el bug que esto viene a matar, y ademas el editor
+  // ya no funciona sin backend (pide /formats al montar y /capacidad para el
+  // relleno del preview), asi que no se pierde nada que hoy funcione.
+  const [reglasListas, setReglasListas] = useState(false);
+  const [errorReglas, setErrorReglas] = useState<string | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    Promise.all([cargarReglasDeMedicion(), cargarFormatosDeHoja()]).then(
+      () => { if (vivo) { setErrorReglas(null); setReglasListas(true); } },
+      (err) => { if (vivo) setErrorReglas(err?.message ?? String(err)); },
+    );
+    return () => { vivo = false; };
+  }, []);
+
   const masterFormat = template.master_format;
   const isEditMode   = interactive || activeFormat === masterFormat;
 
-  const layoutComps = applyFormatLayout(
-    [...template.components].sort((a, b) => a.z_index - b.z_index),
-    activeFormat,
-    masterFormat,
-  );
+  // EL FORMATO QUE DE VERDAD DECIDE EL PAPEL Y LA ESCALA. Con BANDAS (3xA4,
+  // 6xA4, pinchos) el render ignora el formato destino: las celdas ya están
+  // en coordenadas absolutas de la hoja del master y se imprimen tal cual
+  // (`compute_layout(band, master, master)` en render_template_to_pptx, y
+  // `como_se_imprimen` en la ruta del preview hace lo mismo para medir).
+  // Hasta el 22/09/2026 acá se escalaba igual: una 3xA4 pedida como "a4" se
+  // dibujaba estirada tres veces en alto mientras la impresora la sacaba
+  // intacta. Sin bandas, el destino manda, como en el render.
+  const formatoQueManda = slotBands?.length ? masterFormat : activeFormat;
 
-  // FORMAT_DIMS describe la CELDA de formatos que el motor tilea por offset
-  // (pinchos, 6xa4 "arte propio"): una plantilla de una sola celda chica que
-  // se repite. Pero una plantilla de "hoja ya armada" (varios productos
-  // pre-tileados en el mismo slide -- ver slotBands/_detect_slot_bands en el
-  // backend) puede tener el contenido real más ancho/alto que esa celda: el
-  // caso real es Preciazos 6xA4/A5, cuyo PPTX fuente mide 29,7×21cm pero
-  // detectó master_format "a5" (14,85×21, la mitad) al importar -- ver
-  // pptx_importer._detect_format, que solo conoce dimensiones de celda.
-  // Créce el lienzo para que entre el contenido real; nunca lo achica, así
-  // que no cambia nada en los formatos de celda-única que ya andaban bien.
-  const tableDims = FORMAT_DIMS[activeFormat] ?? FORMAT_DIMS.a4;
-  const dims = slotBands
-    ? {
-        w: Math.max(tableDims.w, ...layoutComps.map((c) => c.base_bounds.x + c.base_bounds.width)),
-        h: Math.max(tableDims.h, ...layoutComps.map((c) => c.base_bounds.y + c.base_bounds.height)),
-      }
-    : tableDims;
+  // Sin las tablas no se escala nada: applyFormatLayout le pide la CELDA de
+  // cada formato a formatosDeHoja, que tira si todavía no llegó. Igual no se
+  // dibuja hasta `reglasListas` (ver LA PUERTA, más arriba).
+  const layoutComps = reglasListas
+    ? applyFormatLayout(
+        [...template.components].sort((a, b) => a.z_index - b.z_index),
+        formatoQueManda,
+        masterFormat,
+      )
+    : [];
+
+  // -------------------------------------------------------------------------
+  // EL PAPEL. No se deriva del contenido, NUNCA.
+  // -------------------------------------------------------------------------
+  //
+  // ACÁ ESTABA LA MENTIRA. Estas cinco líneas decían, para toda plantilla con
+  // varias bandas: `Math.max(ancho_de_la_hoja, ...borde_derecho_de_cada_cuadro)`.
+  // O sea: si un cuadro se salía del papel, en vez de mostrarlo saliendo, SE
+  // AGRANDABA EL PAPEL hasta que entrara. Por eso todo se veía adentro en
+  // pantalla y salía cortado de la impresora. Ivan lo encontró el 18/09/2026
+  // exportando una 3xA4 SOLO X 25: nueve de sus veinticuatro cuadros cruzan el
+  // borde derecho y el peor termina en 24,588 cm sobre un papel de 21 -- el
+  // mismo 24,588 que la etiqueta de abajo le mostraba como "el ancho de la
+  // hoja".
+  //
+  // POR QUÉ ESTABA PUESTO, que es la parte que no se podía borrar y listo: hay
+  // cuatro plantillas apaisadas (Preciazos A5 y 6xA4, Mega Rompe Precios A5 y
+  // 6xA4) cuyo PPTX mide 29,7×21 cm y al importar detectaron el formato "a5"
+  // (14,85×21, la mitad), porque _detect_format compara contra medidas de
+  // CELDA y la tabla tenía la A5 parada y de una sola cenefa. Sin agrandar,
+  // esas cuatro se dibujaban a media hoja. O sea que una sola línea tapaba DOS
+  // cosas distintas: "la hoja está mal detectada" (agrandar era un parche
+  // correcto en el lugar equivocado) y "el diseño se sale del papel" (había
+  // que mostrarlo).
+  //
+  // Se separaron. El tamaño ya no se deduce de la etiqueta del formato: el
+  // importador guarda la medida EXACTA del PPTX en `definition.hoja` --el
+  // número que antes se leía y se tiraba-- y eso es lo que se dibuja, venga
+  // la plantilla del formato que venga. Las cuatro apaisadas se dibujan enteras
+  // porque su hoja mide 29,7×21 de verdad, no porque el lienzo las persiga.
+  //
+  // `papelDeLaPlantilla` es la única puerta y es el espejo exacto de
+  // `hoja_de_definicion()` del backend, que es la que usa el aviso de desborde:
+  // los dos miden contra el mismo papel o volveríamos a tener dos verdades.
+  const papel = reglasListas ? papelDeLaPlantilla(template, formatoQueManda) : null;
+  const dims = { w: papel?.anchoCm ?? 0, h: papel?.altoCm ?? 0 };
 
   const pageW        = scalePx(dims.w);
   const pageH        = scalePx(dims.h);
   const margin       = 40;
-  const stageW       = pageW + margin * 2;
-  const stageH       = pageH + margin * 2;
-  const pageLeft     = margin;
-  const pageTop      = margin;
+
+  // -------------------------------------------------------------------------
+  // EL LIENZO ES OTRA COSA QUE EL PAPEL
+  // -------------------------------------------------------------------------
+  //
+  // El papel es el papel y no se mueve. El LIENZO --el rectángulo donde Konva
+  // puede dibujar-- sí crece, para que lo que se sale del papel se vea
+  // saliendo en vez de desaparecer. Son dos cosas distintas y antes eran una
+  // sola (`stageW = pageW + margin*2`), lo que daba la SEGUNDA cara del mismo
+  // problema: en las plantillas sin bandas --A4 HELVETICO, Gran Bretaña A4,
+  // Mega Rompe Precios A4-- el `Math.max` ni siquiera aplicaba, así que lo que
+  // se salía quedaba directamente fuera del stage: invisible, sin hoja
+  // inflada y sin aviso. A4 HELVETICO tiene dos cuadros que arrancan en
+  // x = -11,74 cm y nadie los vio nunca.
+  //
+  // Se mide contra la CAJA declarada y no contra la tinta a propósito: acá no
+  // se decide si algo está mal --eso lo dice el aviso del backend, que mide
+  // tinta con la fila de datos real-- sino cuánto lugar hay que dejar para
+  // poder MOSTRARLO. De lugar conviene pasarse, no quedarse corto.
+  const sobra = { izq: 0, der: 0, arr: 0, aba: 0 };
+  for (const c of layoutComps) {
+    const b = c.base_bounds;
+    sobra.izq = Math.max(sobra.izq, -b.x);
+    sobra.arr = Math.max(sobra.arr, -b.y);
+    sobra.der = Math.max(sobra.der, b.x + b.width  - dims.w);
+    sobra.aba = Math.max(sobra.aba, b.y + b.height - dims.h);
+  }
+  // Un cuadro puede ser muchísimo más alto que la hoja sin que eso signifique
+  // nada: PowerPoint deja cajas de texto enormes con el texto anclado arriba
+  // (Mega Rompe Precios A4 tiene un precioOferta de 61,8 cm de alto sobre una
+  // A4, o sea 52 cm por debajo del borde) y no se imprime nada cortado. Dejar
+  // lugar para 52 cm de caja vacía dibujaría el cartel del tamaño de una
+  // estampilla. Se muestra hasta media hoja de más por lado: alcanza para ver
+  // que algo se sale y de qué lado, que es para lo que está.
+  const TOPE_SOBRA = 0.5;
+  const sobraIzq = scalePx(Math.min(sobra.izq, dims.w * TOPE_SOBRA));
+  const sobraDer = scalePx(Math.min(sobra.der, dims.w * TOPE_SOBRA));
+  const sobraArr = scalePx(Math.min(sobra.arr, dims.h * TOPE_SOBRA));
+  const sobraAba = scalePx(Math.min(sobra.aba, dims.h * TOPE_SOBRA));
+  // Con el piso del ruido de EMU: el papel mide 20,999 y el fondo de
+  // Preciazos A5 llega a 21,0 -- eso no es salirse, es cómo redondea
+  // PowerPoint, y pintaba la mesa gris en una plantilla que está bien.
+  const ruido    = reglasListas ? ruidoEmuCm() : 0;
+  const seSale   = sobra.izq > ruido || sobra.der > ruido || sobra.arr > ruido || sobra.aba > ruido;
+
+  // QUIÉN se sale, POR DÓNDE y CUÁNTO, con nombre. El tope de arriba tiene
+  // una consecuencia que hay que decir: un cuadro que arranca a más de media
+  // hoja del borde queda ENTERO fuera del lienzo y no se ve -- ni sobre el
+  // gris ni en ningún lado. Un cuadro invisible del que nadie se entera es la
+  // misma mentira de siempre con otra forma, así que se lista acá, y a los
+  // que no se alcanzan a ver se les dice "fuera de vista". Se mide la CAJA,
+  // igual que el lienzo (el aviso de tinta con la fila real es el del
+  // backend); es la lista de lo que hay que ir a mirar, no un veredicto.
+  const fuera = layoutComps.flatMap((c) => {
+    const b = c.base_bounds;
+    const excesos: [string, number][] = [
+      ["izq", -b.x], ["der", b.x + b.width - dims.w],
+      ["arr", -b.y], ["aba", b.y + b.height - dims.h],
+    ];
+    const [lado, cm] = excesos.reduce((peor, e) => (e[1] > peor[1] ? e : peor));
+    if (cm <= 0) return [];
+    const topeW = dims.w * TOPE_SOBRA;
+    const topeH = dims.h * TOPE_SOBRA;
+    const visible =
+      b.x < dims.w + topeW && b.x + b.width > -topeW &&
+      b.y < dims.h + topeH && b.y + b.height > -topeH;
+    return [{ nombre: c.name || c.id, lado, cm, visible }];
+  }).sort((a, b) => b.cm - a.cm);
+
+  const stageW       = sobraIzq + pageW + sobraDer + margin * 2;
+  const stageH       = sobraArr + pageH + sobraAba + margin * 2;
+  const pageLeft     = margin + sobraIzq;
+  const pageTop      = margin + sobraArr;
 
   // Zoom automático: ajusta el dibujo al ANCHO disponible del contenedor en
   // vez de dibujar siempre al mismo tamaño fijo en píxeles (28px/cm) sin
@@ -829,17 +995,26 @@ export default function Canvas({
     ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, ajuste))
     : 1;
 
-  // Corregir cajas de texto más anchas que la propia hoja: es un truco de
-  // autoría de PowerPoint (caja invisible mucho más ancha que la diapositiva,
-  // con el texto centrado adentro, para que el centrado no dependa de la
-  // cantidad de dígitos) — no es un error de la plantilla ni algo que este
-  // código esté agrandando, pero acá se ve tal cual el shape crudo, sin el
-  // ajuste que el motor de export sí aplica al generar el archivo final. Solo
-  // afecta cómo se dibuja el preview — no toca los bounds guardados.
-  const displayComps = layoutComps.map((comp) => {
-    if (comp.type !== "text" || comp.base_bounds.width <= dims.w) return comp;
-    return { ...comp, base_bounds: { ...comp.base_bounds, x: 0, width: dims.w } };
-  });
+  // ACÁ HABÍA UNA SEGUNDA MENTIRA, y sobrevivía intacta a sacar el `Math.max`.
+  // Todo cuadro de texto más ancho que la hoja se redibujaba en x = 0 con el
+  // ancho de la hoja: o sea, se METÍA A LA FUERZA adentro del papel. El
+  // comentario que estaba acá decía que era para compensar "el ajuste que el
+  // motor de export sí aplica"; eso es falso, y se verificó: el exportador
+  // escribe `computed_bounds` tal cual en shape.left/shape.width
+  // (component_renderer, _place_component) y no recorta nada.
+  //
+  // Es cierto lo otro que decía: una caja invisible mucho más ancha que la
+  // hoja es un truco de autoría legítimo --así el precio queda centrado en el
+  // mismo lugar tenga 2 o 5 dígitos-- y hoy las dos cajas que lo usan (A4
+  // HELVETICO, x = -11,74 cm y 44,47 cm de ancho) son simétricas, así que
+  // meterlas a la fuerza dejaba el centro casi donde iba. Pero cambiaba el
+  // ANCHO de 44,47 a 21 cm, y el ancho es lo que decide dónde corta el
+  // renglón: el corte de línea del preview no era el del papel justo en los
+  // cuadros de precio. Y con una caja ancha NO centrada, el preview la
+  // mostraría adentro y saldría corrida varios centímetros.
+  //
+  // Ahora se dibuja lo que hay. Si una caja se sale, se ve saliendo.
+  const displayComps = layoutComps;
 
   // Montaje: crear Stage/Layers/Transformer una sola vez. Todo esto vive
   // adentro de un efecto (nunca corre en el servidor), asi que el contenedor
@@ -898,11 +1073,22 @@ export default function Canvas({
     stage.batchDraw();
   }, [stageW, stageH, zoom]);
 
-  // Fondo de pagina (sombra + rect blanco + etiqueta de formato)
+  // Fondo: la MESA DE TRABAJO gris, el PAPEL blanco encima, y la etiqueta.
+  //
+  // La mesa es todo el lienzo. Lo que cae sobre gris esta FUERA DEL PAPEL y no
+  // se va a imprimir: eso es lo que antes no se veia de ninguna forma, porque
+  // o se agrandaba el papel hasta tragarlo o quedaba fuera del stage.
   useEffect(() => {
     const layer = bgLayerRef.current;
     if (!layer) return;
     layer.destroyChildren();
+
+    const mesa = new Konva.Rect({
+      x: 0, y: 0, width: stageW, height: stageH,
+      fill: seSale ? "#e2e8f0" : "transparent",
+    });
+    mesa.on("click", () => selectComponent(null));
+    layer.add(mesa);
 
     layer.add(new Konva.Rect({
       x: pageLeft + 4, y: pageTop + 4, width: pageW, height: pageH,
@@ -916,14 +1102,53 @@ export default function Canvas({
     pageRect.on("click", () => selectComponent(null));
     layer.add(pageRect);
 
+    // La etiqueta dice EL PAPEL y de donde salio el numero. El "A4 24.588x29.7
+    // cm" que Ivan tenia en pantalla no era ningun papel: era el borde derecho
+    // del cuadro que se salia 3,6 cm. "medida del archivo" = sale del PPTX que
+    // se importo, o sea de lo que PowerPoint va a imprimir; "segun el formato"
+    // = la plantilla no trae medida y se esta usando la del formato declarado.
+    //
+    // Y si el formato no está en la tabla, se dice: `papelDeLaPlantilla` cae a
+    // A4 para no tumbar el dibujo, pero "XYZ 21×29,7 · según el formato" haría
+    // pasar esa caída por una medida del formato XYZ.
+    const conocido = formatoConocido(formatoQueManda);
+    const origen = papel?.origen === "pptx"
+      ? "medida del archivo"
+      : conocido ? "según el formato" : `formato «${formatoQueManda}» desconocido, se dibuja como A4`;
+    // Con bandas se dibuja el papel del master aunque se esté mirando otro
+    // formato, porque eso es lo que imprime el render (ver formatoQueManda).
+    const etiqueta = formatoQueManda === activeFormat
+      ? activeFormat.toUpperCase()
+      : `${activeFormat.toUpperCase()} → papel de ${formatoQueManda.toUpperCase()} (con bandas no se escala)`;
     layer.add(new Konva.Text({
       x: pageLeft, y: pageTop - 22,
-      text: `${activeFormat.toUpperCase()}  ${dims.w}×${dims.h} cm`,
-      fontSize: 10, fill: "#94a3b8", fontFamily: "Inter, system-ui, sans-serif",
+      text: `${etiqueta}  ${dims.w}×${dims.h} cm · ${origen}`,
+      fontSize: 10, fill: conocido ? "#94a3b8" : "#dc2626", fontFamily: "Inter, system-ui, sans-serif",
     }));
 
+    // La lista de lo que se sale, arriba de la etiqueta, en rojo. Cabe en la
+    // franja del margen superior (40 px) sin pisar nada.
+    if (fuera.length) {
+      const NOMBRE_LADO: Record<string, string> = { izq: "izquierda", der: "derecha", arr: "arriba", aba: "abajo" };
+      const MOSTRAR = 5;
+      const partes = fuera.slice(0, MOSTRAR).map((f) =>
+        `${f.nombre} (${NOMBRE_LADO[f.lado]} ${f.cm.toFixed(1).replace(".", ",")} cm${f.visible ? "" : ", FUERA DE VISTA"})`,
+      );
+      const demas = fuera.length - MOSTRAR;
+      const ocultos = fuera.filter((f) => !f.visible).length;
+      layer.add(new Konva.Text({
+        x: pageLeft, y: pageTop - 36,
+        width: stageW - pageLeft - 4, wrap: "none", ellipsis: true,
+        text:
+          `Fuera del papel (${fuera.length}${ocultos ? `, ${ocultos} sin verse` : ""}): `
+          + partes.join("; ") + (demas > 0 ? `; +${demas} más` : ""),
+        fontSize: 10, fill: "#dc2626", fontFamily: "Inter, system-ui, sans-serif",
+      }));
+    }
+
     layer.batchDraw();
-  }, [pageLeft, pageTop, pageW, pageH, activeFormat, dims.w, dims.h, selectComponent]);
+  }, [pageLeft, pageTop, pageW, pageH, stageW, stageH, seSale, activeFormat, formatoQueManda,
+      dims.w, dims.h, papel?.origen, fuera, selectComponent]);
 
   // Las tipografias del diseno se bajan de Google (ver globals.css) y tardan
   // un instante. Konva MIDE el texto con la fuente que haya en ese momento:
@@ -937,28 +1162,6 @@ export default function Canvas({
     if (typeof document === "undefined" || !document.fonts) { setFuentesListas(true); return; }
     let vivo = true;
     document.fonts.ready.then(() => { if (vivo) setFuentesListas(true); });
-    return () => { vivo = false; };
-  }, []);
-
-  // LA PUERTA DE LAS REGLAS DE MEDICION. Canvas es el unico lugar por el que
-  // se dibuja una cenefa (lo importan v2/page.tsx, PreviewStep y
-  // LotePreviewStep, y nada mas dibuja), asi que con esperar aca alcanza para
-  // garantizar que ningun cuadro se mida con un numero adivinado.
-  //
-  // Las reglas viven en UN solo archivo del backend
-  // (app/data/reglas_de_medicion.json) y se piden por HTTP. Si no llegan, NO
-  // se dibuja: se muestra un cartel. Dibujar con valores propios es
-  // exactamente el bug que esto viene a matar, y ademas el editor ya no
-  // funciona sin backend (pide /formats al montar y /capacidad para el
-  // relleno del preview), asi que no se pierde nada que hoy funcione.
-  const [reglasListas, setReglasListas] = useState(false);
-  const [errorReglas, setErrorReglas] = useState<string | null>(null);
-  useEffect(() => {
-    let vivo = true;
-    cargarReglasDeMedicion().then(
-      () => { if (vivo) { setErrorReglas(null); setReglasListas(true); } },
-      (err) => { if (vivo) setErrorReglas(err?.message ?? String(err)); },
-    );
     return () => { vivo = false; };
   }, []);
 
@@ -1004,8 +1207,8 @@ export default function Canvas({
           else selectComponent(comp.id);
         },
         onDragEnd: (x, y) => {
-          const newX = +Math.max(0, Math.min((x - pageLeft) / PX_PER_CM, dims.w - comp.base_bounds.width)).toFixed(2);
-          const newY = +Math.max(0, Math.min((y - pageTop)  / PX_PER_CM, dims.h - comp.base_bounds.height)).toFixed(2);
+          const newX = +dentroDelPapel((x - pageLeft) / PX_PER_CM, comp.base_bounds.width,  dims.w).toFixed(2);
+          const newY = +dentroDelPapel((y - pageTop)  / PX_PER_CM, comp.base_bounds.height, dims.h).toFixed(2);
           updateComponent(comp.id, {
             base_bounds: { ...comp.base_bounds, x: newX, y: newY },
           });
@@ -1060,11 +1263,27 @@ export default function Canvas({
         for (const sid of siblingStarts.keys()) {
           const sComp = template.components.find((c) => c.id === sid);
           if (!sComp) continue;
-          const newX = +Math.max(0, Math.min(sComp.base_bounds.x + dxCm, dims.w - sComp.base_bounds.width)).toFixed(2);
-          const newY = +Math.max(0, Math.min(sComp.base_bounds.y + dyCm, dims.h - sComp.base_bounds.height)).toFixed(2);
+          const newX = +dentroDelPapel(sComp.base_bounds.x + dxCm, sComp.base_bounds.width,  dims.w).toFixed(2);
+          const newY = +dentroDelPapel(sComp.base_bounds.y + dyCm, sComp.base_bounds.height, dims.h).toFixed(2);
           updateComponent(sid, { base_bounds: { ...sComp.base_bounds, x: newX, y: newY } });
         }
       });
+    }
+
+    // EL BORDE DEL PAPEL, MARCADO, cuando hay algo afuera. Va en la capa de
+    // componentes y no en la del fondo porque tiene que quedar ENCIMA del
+    // diseno: las plantillas traen una imagen de fondo que cubre la hoja
+    // entera, asi que un borde dibujado abajo no se veria. `listening: false`
+    // para que no se coma los clicks de seleccion.
+    if (seSale) {
+      const borde = new Konva.Rect({
+        name: CENEFA_COMP_NAME,
+        x: pageLeft, y: pageTop, width: pageW, height: pageH,
+        stroke: "#dc2626", strokeWidth: 1.5, dash: [8, 5],
+        listening: false,
+      });
+      layer.add(borde);
+      borde.moveToTop();
     }
 
     transformer.moveToTop();
@@ -1082,7 +1301,7 @@ export default function Canvas({
     // agregar o borrar una regla cambia ese memo y NO redibujaría la capa, así
     // que en pantalla seguiría sin pasar nada -- que es justo el problema que
     // vino a resolver.
-  }, [displayComps, selectedComponentId, selectedComponentIds, toggleComponentSelection, isEditMode, pageLeft, pageTop, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, capacidadSegmentos, bandIndexByCompId, siblingMap, reglasPorComp, template.components, selectComponent, updateComponent, fuentesListas, reglasListas]);
+  }, [displayComps, selectedComponentId, selectedComponentIds, toggleComponentSelection, isEditMode, pageLeft, pageTop, pageW, pageH, seSale, dims.w, dims.h, getImage, previewData, previewProducts, capacidad, capacidadSegmentos, bandIndexByCompId, siblingMap, reglasPorComp, template.components, selectComponent, updateComponent, fuentesListas, reglasListas]);
 
   // "Última versión conocida" de template/selectedComponentId/siblingMap —
   // evita closures viejas dentro de los handlers de abajo (registrados una
@@ -1224,24 +1443,26 @@ export default function Canvas({
   // de justify-start ni el recorte de justify-center a secas.
   return (
     <div ref={wrapperRef} className={`relative overflow-auto bg-slate-200 dark:bg-slate-950 rounded-lg flex ${className}`}>
-      {/* Mientras no lleguen las reglas de medicion no hay nada dibujado
-          debajo (ver LA PUERTA): este cartel es lo unico que se ve. */}
+      {/* Mientras no lleguen las reglas de medicion Y el tamano de hoja no
+          hay nada dibujado debajo (ver LA PUERTA): este cartel es lo unico
+          que se ve. */}
       {!reglasListas && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-200/90 dark:bg-slate-950/90 px-6 text-center">
           {errorReglas ? (
             <div className="max-w-md">
               <p className="text-sm font-semibold text-red-600 dark:text-red-400">
-                No se pudieron traer las reglas de medición
+                No se pudo traer la medición del backend
               </p>
               <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                Sin ellas la cenefa se dibujaría con medidas distintas de las que
-                usa el archivo que se imprime, así que no se dibuja nada. Probá
+                Faltan las reglas de medición o el tamaño de la hoja. Sin ellas
+                la cenefa se dibujaría con medidas distintas de las que usa el
+                archivo que se imprime, así que no se dibuja nada. Probá
                 recargar; si sigue, el backend no está respondiendo.
               </p>
               <p className="mt-2 text-[10px] font-mono text-slate-500 break-words">{errorReglas}</p>
             </div>
           ) : (
-            <p className="text-sm text-slate-600 dark:text-slate-400">Cargando las reglas de medición…</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">Cargando la medición (reglas y tamaño de hoja)…</p>
           )}
         </div>
       )}

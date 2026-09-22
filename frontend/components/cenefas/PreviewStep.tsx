@@ -11,6 +11,7 @@ import Canvas from "@/components/cenefas/editor/Canvas";
 import PropertiesPanel from "@/components/cenefas/editor/PropertiesPanel";
 import RulesPanel from "@/components/cenefas/editor/RulesPanel";
 import AvisosSolape from "@/components/cenefas/AvisosSolape";
+import AvisosDesborde from "@/components/cenefas/AvisosDesborde";
 
 // Paso compartido por Redexpres y Rompe Precios: el job se generó hasta
 // quedar en status="preview" (ver jobs.py) con la definición de componentes
@@ -306,8 +307,13 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
           empujada hacia abajo y corrida a un lado (pedido de Ivan, 14/09/2026).
           Esta pantalla ES el editor: no hay otra a la que la gente sepa llegar. */}
       <div className="flex gap-3 items-stretch">
-        {(job.avisos_solape?.length ?? 0) > 0 && (
+        {/* Los dos avisos comparten columna: las dos preguntas son la misma
+            --dónde va a caer la tinta de verdad-- y quien mira el cartel antes
+            de confirmar las necesita juntas. El de desborde va primero porque
+            un texto impreso fuera de la hoja no se recupera de ninguna forma. */}
+        {((job.avisos_solape?.length ?? 0) > 0 || (job.avisos_desborde?.length ?? 0) > 0) && (
           <div className="w-72 shrink-0 h-[70vh] overflow-y-auto pr-0.5">
+            <AvisosDesborde avisos={job.avisos_desborde} template={template} />
             <AvisosSolape avisos={job.avisos_solape} template={template} />
           </div>
         )}

@@ -1,59 +1,38 @@
 """Motor de layout — calcula posiciones y tamaños de componentes por formato destino."""
 import copy
 
+from app.services.cenefas.formatos_de_hoja import FORMATOS as _FORMATOS
+
 # ---------------------------------------------------------------------------
-# Registro de formatos (configuración del sistema, no por template)
+# Registro de formatos
 # ---------------------------------------------------------------------------
+#
+# ACA NO HAY NINGUN NUMERO, Y ES A PROPOSITO. Hasta el 22/09/2026 esta tabla
+# estaba escrita a mano, y habia otras cuatro iguales-pero-distintas
+# (component_renderer.FORMAT_SLIDES, pptx_importer._FORMATS_DIM,
+# Canvas.FORMAT_DIMS y las etiquetas del panel de importacion). Tres de los
+# seis formatos tenian medidas DISTINTAS segun a cual se le preguntara, porque
+# algunas decian el PAPEL y otras la CELDA y las dos cosas se llamaban igual.
+# Ahora el tamano vive en app/data/formatos_de_hoja.json y solo se lee.
+#
+# `width_cm`/`height_cm` de esta tabla son la CELDA: lo que ocupa UNA cenefa.
+# Es lo que compute_layout necesita para escalar un diseno de un formato a
+# otro, y lo que /formats le muestra a la persona. El PAPEL que sale de la
+# impresora se pide con formatos_de_hoja.papel_cm(), y el papel de una
+# plantilla IMPORTADA con formatos_de_hoja.hoja_de_definicion(), que lee la
+# medida exacta del PPTX original.
 
 FORMATS: dict[str, dict] = {
-    "a4": {
-        "label":     "A4",
-        "width_cm":  21.0,
-        "height_cm": 29.7,
-        "slots":     1,
-        "scale":     1.0,
-    },
-    "a3": {
-        "label":     "A3",
-        "width_cm":  29.7,
-        "height_cm": 42.0,
-        "slots":     1,
-        "scale":     1.414,
-    },
-    "3xa4": {
-        "label":     "3xA4",
-        "width_cm":  21.0,   # cada cenefa ocupa todo el ancho A4
-        "height_cm": 9.9,    # 29.7 / 3 — franja horizontal
-        "slots":     3,
-        "slot_cols": 1,
-        "slot_rows": 3,
-        "scale":     1.0,
-    },
-    "pinchos": {
-        "label":     "Pinchos",
-        "width_cm":  7.0,    # 21 / 3 columnas
-        "height_cm": 14.85,  # 29.7 / 2 filas
-        "slots":     6,
-        "slot_cols": 3,
-        "slot_rows": 2,
-        "scale":     0.5,
-    },
-    "a5": {
-        "label":     "A5",
-        "width_cm":  14.85,  # A4 / 2
-        "height_cm": 21.0,
-        "slots":     1,
-        "scale":     0.707,
-    },
-    "6xa4": {
-        "label":     "6xA4",
-        "width_cm":  7.0,    # 21 / 3 columnas — misma grilla que "pinchos",
-        "height_cm": 14.85,  # 29.7 / 2 filas   pero registrado aparte: el arte es distinto
-        "slots":     6,
-        "slot_cols": 3,
-        "slot_rows": 2,
-        "scale":     0.5,
-    },
+    fmt_id: {
+        "label":     fmt["label"],
+        "width_cm":  fmt["celda_cm"]["ancho"],
+        "height_cm": fmt["celda_cm"]["alto"],
+        "slots":     fmt["slots"],
+        "slot_cols": fmt.get("slot_cols", 1),
+        "slot_rows": fmt.get("slot_rows", 1),
+        "scale":     fmt["scale"],
+    }
+    for fmt_id, fmt in _FORMATOS.items()
 }
 
 

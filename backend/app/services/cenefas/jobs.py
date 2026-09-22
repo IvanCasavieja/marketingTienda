@@ -241,6 +241,18 @@ async def run_generation_job(
             # diseños de hoja completa (a4) como de celda única (pinchos/3xa4).
             resolved_format = target_format or template_def.get("master_format", "a4")
 
+            # EL PAPEL VIAJA CON EL TRABAJO. `template_def` es una foto de la
+            # plantilla al momento de encolar, y el preview y el aviso de
+            # desborde miden contra ella -- si la foto no trae la medida de la
+            # hoja, los dos caerían al papel del formato declarado, que en las
+            # cuatro plantillas apaisadas es la mitad del real y llenaría la
+            # pantalla de avisos de desborde falsos. Se mide una vez acá y ya
+            # queda adentro de la foto. Es una COPIA: no se le escribe encima a
+            # la definición de la plantilla.
+            from app.services.cenefas.pptx_importer import asegurar_hoja
+            template_def = {**template_def}
+            asegurar_hoja(template_def, source_pptx_bytes)
+
             await store_job_products(job_id, StagedJob(
                 template_def=template_def,
                 products=products,

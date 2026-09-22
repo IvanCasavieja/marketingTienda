@@ -24,6 +24,8 @@ from app.models.cenefa_destino import CenefaDestino
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
+from sqlalchemy.orm.attributes import flag_modified
+
 from app.services.cenefas.capacidad import capacidad_por_componente, segmentos_por_componente
 from app.services.cenefas.component_renderer import (
     _cobertura_vertical,
@@ -33,8 +35,14 @@ from app.services.cenefas.component_renderer import (
 from app.services.cenefas.data_engine import load_products_from_bytes
 from app.services.cenefas.reglas_fijas import asegurar_reglas_fijas
 from app.services.cenefas.reglas_medicion import CRUDO as _REGLAS_DE_MEDICION
+from app.services.cenefas.formatos_de_hoja import (
+    CRUDO as _FORMATOS_DE_HOJA,
+    hoja_de_definicion,
+    papel_cm,
+)
 from app.services.cenefas.component_renderer import (
-    _detect_slot_bands, detectar_solapes_del_lote, preparar_componentes,
+    _detect_slot_bands, como_se_imprimen, detectar_desbordes_del_lote,
+    detectar_solapes_del_lote, preparar_componentes,
 )
 from app.services.cenefas.jobs import (
     confirm_generation_job,
@@ -145,12 +153,18 @@ async def get_builtin_definitions(_: User = Depends(require_permission("cenefas.
 @router.get("/formats")
 async def list_formats(_: User = Depends(require_permission("cenefas.view"))):
     """Devuelve los formatos disponibles con sus dimensiones."""
+    # width_cm/height_cm son la CELDA (lo que ocupa una cenefa), que es lo que
+    # compute_layout escala. El PAPEL que sale de la impresora va aparte y con
+    # su nombre: la pantalla mostraba "6xA4 14.85×7" al lado de un preview que
+    # decía "6XA4 29.7×21 cm", dos números distintos para el mismo formato en
+    # la misma pantalla. Los dos salen del archivo único.
     return [
         {
             "id":        fmt_id,
             "label":     fmt["label"],
             "width_cm":  fmt["width_cm"],
             "height_cm": fmt["height_cm"],
+            "papel_cm":  {"ancho": papel_cm(fmt_id)[0], "alto": papel_cm(fmt_id)[1]},
             "slots":     fmt["slots"],
             "slot_cols": fmt.get("slot_cols", 1),
             "slot_rows": fmt.get("slot_rows", 1),
@@ -177,6 +191,36 @@ async def get_reglas_de_medicion(_: User = Depends(require_permission("cenefas.v
     forma pasaría a ser un segundo lugar donde se puede desfasar.
     """
     return _REGLAS_DE_MEDICION
+
+
+@router.get("/formatos-de-hoja")
+async def get_formatos_de_hoja(_: User = Depends(require_permission("cenefas.view"))):
+    """El tamaño de hoja, para que el preview dibuje EL PAPEL.
+
+    Segunda ventanita del mismo patrón, y por la misma razón que la de las
+    reglas de medición: el número vive en UN archivo del backend
+    --app/data/formatos_de_hoja.json-- y el navegador no puede importarlo
+    porque los dos despliegues están rooteados cada uno en su carpeta, así que
+    lo pide.
+
+    QUÉ ESTABA ROTO. El tamaño de hoja estaba escrito a mano en cinco tablas
+    distintas, y tres de los seis formatos tenían números DIFERENTES según a
+    cuál se le preguntara, porque unas decían el PAPEL que sale de la
+    impresora y otras la CELDA que ocupa una cenefa adentro de él, y las dos
+    cosas se llamaban igual ("3xa4"). Encima el preview tomaba una sexta
+    decisión al dibujar: agrandaba la hoja hasta que entrara el contenido, así
+    que un cuadro fuera del papel se veía adentro en pantalla y salía cortado
+    de la impresora (Ivan, 18/09/2026, una 3xA4 SOLO X 25). Ahora las dos
+    medidas viven acá, separadas por nombre y con la orientación de cada
+    formato escrita (Ivan, 22/09/2026), y el papel de una plantilla IMPORTADA
+    no sale ni de esta tabla: sale del PPTX original, guardado en
+    definition.hoja al importar.
+
+    Devuelve el JSON TAL CUAL, sin rearmar nada, por el mismo motivo que el
+    otro: si acá se reformateara, la forma sería un segundo lugar donde los
+    dos lados se pueden desfasar.
+    """
+    return _FORMATOS_DE_HOJA
 
 
 class _SlotBandsRequest(BaseModel):
@@ -374,6 +418,22 @@ async def get_template(
     db: AsyncSession = Depends(get_db),
 ):
     tmpl = await _get_template_o_404(template_id, db)
+    # EL PAPEL, PARA LAS PLANTILLAS DE ANTES. Hasta el 22/09/2026 el tamaño de
+    # la hoja se leía del PPTX al importar y se tiraba, así que ninguna de las
+    # plantillas cargadas lo tiene guardado. El número es recuperable exacto
+    # --el PPTX original está entero en `source_pptx`-- y se recupera acá, la
+    # primera vez que alguien abre la plantilla, para que nadie dependa de
+    # acordarse de correr un script. Después de eso ya está en la definición y
+    # esto no vuelve a hacer nada.
+    #
+    # Se hace en la LECTURA y no en un arranque porque el preview dibuja con
+    # lo que devuelve esta ruta: si la plantilla llegara sin hoja, el preview
+    # caería al papel del formato declarado -- y justo las 4 apaisadas tienen
+    # el formato mal detectado, así que dibujaría media hoja.
+    from app.services.cenefas.pptx_importer import asegurar_hoja
+    if asegurar_hoja(tmpl.definition, tmpl.source_pptx):
+        flag_modified(tmpl, "definition")
+        await db.flush()
     return {
         "id":         str(tmpl.id),
         "name":       tmpl.name,
@@ -1178,9 +1238,40 @@ async def _job_to_dict(
             avisos_solape = detectar_solapes_del_lote(
                 componentes, reglas, staged.products, slot_bands)
 
+            # EL PAPEL DE ESTA PLANTILLA. Lo mismo que dibuja el preview y lo
+            # mismo sobre lo que imprime PowerPoint: la medida del PPTX
+            # original, guardada al importar. Una sola puerta, la de
+            # formatos_de_hoja -- acá no se calcula ningún tamaño.
+            #
+            # Los trabajos encolados ANTES del 22/09/2026 tienen una foto de la
+            # plantilla sin la medida de la hoja. El PPTX original viaja en el
+            # mismo paquete, así que se mide de ahí en vez de caer al papel del
+            # formato -- que en las cuatro apaisadas es la mitad del real y
+            # llenaría la pantalla de avisos de desborde falsos.
+            from app.services.cenefas.pptx_importer import asegurar_hoja
+            asegurar_hoja(staged.template_def, getattr(staged, "source_pptx_bytes", None))
+            # Se mide LO QUE SE VA A IMPRIMIR, no la plantilla cruda: si la
+            # corrida pide otro formato que el master, el render escala el
+            # diseño a esa celda (y con bandas no escala nada y el destino no
+            # cambia el papel). como_se_imprimen reproduce exactamente esa
+            # decisión; medir los base_bounds del master contra el papel del
+            # destino era comparar centímetros de una hoja con el borde de otra.
+            medibles, formato_del_papel = como_se_imprimen(
+                componentes, staged.template_def.get("master_format"),
+                staged.target_format, slot_bands)
+            hoja = hoja_de_definicion(staged.template_def, formato_del_papel)
+            # Lo que se imprime FUERA del papel, mirando TODAS las filas por el
+            # mismo motivo que los solapes: el texto que se sale es el más
+            # largo del listado, y casi nunca es el primero.
+            avisos_desborde = detectar_desbordes_del_lote(
+                medibles, reglas, staged.products, hoja, slot_bands)
+
             # Ya no se achica solo para despejar un choque: se avisa y decide la
             # persona, poniéndole una regla de tamaño al cuadro que invade.
             d["avisos_solape"]    = avisos_solape
+            # Ver detectar_desbordes: se avisa, no se acomoda nada.
+            d["avisos_desborde"]  = avisos_desborde
+            d["hoja"]             = hoja
             d["template_def"]     = {**staged.template_def, "components": componentes}
             d["preview_product"]  = staged.products[0] if staged.products else {}
             if slot_bands:

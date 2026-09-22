@@ -263,6 +263,56 @@ export interface CenefaTemplate {
   formas_eliminadas?: number[];
   /** Solo presente en la respuesta de POST /import-pptx. */
   import_warnings?: CenefaImportWarning[];
+  /**
+   * EL PAPEL: cuánto mide la hoja de esta plantilla, medido del PPTX que se
+   * importó (`prs.slide_width/height`).
+   *
+   * Hasta el 22/09/2026 este número se leía al importar y se tiraba: se
+   * guardaba `master_format`, que es una ETIQUETA. El preview entonces sacaba
+   * el tamaño de una tabla de formatos y, si el contenido no le entraba,
+   * agrandaba la hoja hasta que entrara -- así un cuadro fuera del papel se
+   * veía adentro y salía cortado de la impresora.
+   *
+   * No lo leas directo: usá `papelDeLaPlantilla()` de lib/cenefas/formatosDeHoja.ts,
+   * que es la única puerta y el espejo de `hoja_de_definicion()` del backend.
+   */
+  hoja?: {
+    ancho_cm: number;
+    alto_cm: number;
+    origen?: string;
+    formato_declarado?: string | null;
+    /** Si el formato se pudo reconocer por el tamaño del slide, al importar. */
+    formato_reconocido?: boolean | null;
+  } | null;
+}
+
+/**
+ * Un cuadro cuya TINTA se imprime FUERA del papel. Ver `detectar_desbordes` en
+ * component_renderer.py.
+ *
+ * Se mide la tinta y no la caja declarada a propósito: los diseños usan cajas
+ * mucho más anchas que la hoja para que el precio quede centrado tenga 2 o 5
+ * dígitos, y marcarlas daría un aviso por cartel que nadie leería.
+ *
+ * Viene UNO por cuadro y lado, con su peor caso de toda la corrida: el backend
+ * mira TODAS las filas del Excel (`detectar_desbordes_del_lote`), así que el
+ * mismo cuadro saliéndose en 30 filas llega como un aviso con `filas: 30`.
+ */
+export interface AvisoDesborde {
+  component_id: string;
+  lado: "izquierda" | "derecha" | "arriba" | "abajo";
+  /** Cuántos centímetros se pasa del borde. */
+  cm: number;
+  /** El costado es el que CORTA el texto al imprimir. */
+  corta_texto: boolean;
+  font_size?: number;
+  texto?: string;
+  /** [ancho, alto] del papel contra el que se midió. */
+  hoja_cm?: [number, number];
+  /** En cuántas filas del Excel pasa. */
+  filas?: number;
+  /** La fila del peor caso; 1 es la primera del Excel. */
+  fila?: number;
 }
 
 /**
@@ -301,6 +351,8 @@ export interface CenefaLoteItem {
   preview_products?: Record<string, string>[];
   slot_bands?: string[][];
   avisos_solape?: AvisoSolape[];
+  avisos_desborde?: AvisoDesborde[];
+  hoja?: { ancho_cm: number; alto_cm: number; origen?: string };
   validation_report?: { error?: string } | null;
   /** Una persona confirmó que esta corrida salió bien (decide la retención del archivo). */
   verificado?: boolean;
@@ -357,8 +409,13 @@ export interface CenefaTemplateRecord {
 export interface CenefaFormat {
   id: string;
   label: string;
+  /** La CELDA: lo que ocupa UNA cenefa, en cm. Es lo que se escala entre formatos. */
   width_cm: number;
   height_cm: number;
+  /** El PAPEL que sale de la impresora, en cm. Para 3xA4 es una A4 entera
+   *  aunque la celda sea una franja de 9,9. Es lo que hay que mostrarle a la
+   *  persona como "el tamaño del formato". */
+  papel_cm?: { ancho: number; alto: number };
   slots: number;
   slot_cols: number;
   slot_rows: number;
@@ -414,6 +471,10 @@ export interface CenefaJob {
    * regla de tamaño al cuadro que invade. Ver `detectar_solapes`.
    */
   avisos_solape?: AvisoSolape[];
+  /** Cuadros cuya tinta se imprime FUERA del papel. Ver `detectar_desbordes`. */
+  avisos_desborde?: AvisoDesborde[];
+  /** El papel contra el que se midió el desborde, en cm. */
+  hoja?: { ancho_cm: number; alto_cm: number; origen?: string };
 }
 
 export interface ValidationReport {

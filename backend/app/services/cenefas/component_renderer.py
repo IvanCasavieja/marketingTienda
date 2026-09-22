@@ -20,6 +20,9 @@ from app.services.cenefas.reglas_medicion import REGLAS
 # Lo único que el motor genérico sabe del mundo de pruebas: una llamada al
 # final del render, que no hace NADA en los otros mundos. Ver pruebas.py.
 from app.services.cenefas.pruebas import aplicar_autofit as aplicar_autofit_de_pruebas
+from app.services.cenefas.formatos_de_hoja import (
+    FORMATOS, TOLERANCIA_DESBORDE_CM, papel_cm,
+)
 from app.services.cenefas.layout_engine import compute_layout, get_format
 from app.services.cenefas.rules_engine import (
     apply_font_sizes,
@@ -32,16 +35,27 @@ from app.services.cenefas.rules_engine import (
 from app.services.cenefas.variables import DECIMAL_OF, DECIMAL_VARS, PRICE_VARS
 
 # ---------------------------------------------------------------------------
-# Dimensiones de slide por formato
+# Dimensiones de slide por formato: EL PAPEL
 # ---------------------------------------------------------------------------
+#
+# Estos son los centímetros que va a tener la hoja que sale de la impresora,
+# que NO es lo mismo que la celda que ocupa una cenefa: un "3xa4" imprime una
+# A4 entera con tres franjas adentro. Las dos cosas se llamaban igual y
+# estaban escritas a mano en cinco tablas distintas; ahora las dos salen de
+# app/data/formatos_de_hoja.json, que las distingue por nombre y deja escrita
+# la orientación de cada formato (a4 y 3xa4 vertical, 6xa4 horizontal, a5
+# horizontal y de a dos cenefas — Ivan, 22/09/2026).
+#
+# OJO CON EL ALCANCE, porque es chico: esto solo se usa cuando se arma un PPTX
+# DESDE CERO. Las 23 plantillas de producción tienen `source_pptx` y entran por
+# `preserve_source` más abajo, o sea que el archivo de salida ES el original y
+# su papel es el que traiga ese archivo -- medido y guardado en
+# `definition["hoja"]` desde el 22/09/2026, que es la medida que el preview
+# dibuja. Ver formatos_de_hoja.hoja_de_definicion.
 
 FORMAT_SLIDES: dict[str, tuple] = {
-    "a4":      (Cm(21.0),  Cm(29.7)),
-    "a3":      (Cm(29.7),  Cm(42.0)),
-    "3xa4":    (Cm(21.0),  Cm(29.7)),   # A4 portrait completo, 3 franjas verticales
-    "pinchos": (Cm(21.0),  Cm(29.7)),   # A4 portrait completo, grilla 3×2
-    "a5":      (Cm(14.85), Cm(21.0)),
-    "6xa4":    (Cm(21.0),  Cm(29.7)),   # A4 portrait completo, grilla 3×2 (arte propio)
+    fmt_id: (Cm(papel_cm(fmt_id)[0]), Cm(papel_cm(fmt_id)[1]))
+    for fmt_id in FORMATOS
 }
 
 ALIGN_MAP = {
@@ -592,6 +606,15 @@ def _rect_texto_real(comp: dict, product: dict) -> dict | None:
     """
     if comp.get("type") != "text":
         return None
+    # Un cuadro que no se dibuja no tiene tinta: ni pisa a otro ni se sale del
+    # papel. Es la misma condición con la que _render_slide decide no
+    # escribirlo (el ojito del panel y la regla de ocultar evaluada contra
+    # ESTE producto, ver apply_visibility). Sin esto, el "$" que una regla
+    # esconde cuando promoOferta es un M x N seguía apareciendo en la lista
+    # de desbordes -- un aviso sobre algo que no se imprime (22/09/2026,
+    # medido sobre las 23 plantillas de producción).
+    if not comp.get("visible", True) or comp.get("_oculto_por_regla", False):
+        return None
     texto = _texto_resuelto(comp, product).strip()
     if not texto:
         return None
@@ -622,19 +645,32 @@ def _rect_texto_real(comp: dict, product: dict) -> dict | None:
         # 8% de más no es un renglón nuevo, es la duda de la medición. Ver
         # font_metrics.margen_de_error.
         tope = (b["width"] - _INSET_CM) * (1 + margen_de_error(fam))
-        if total <= tope or " " not in texto:
-            # Entra en un renglón, o no tiene por dónde cortarse (un precio no
-            # se parte): se dibuja de una sola línea, sobresaliendo a los
-            # costados si es más ancho que su caja.
+        if " " not in texto:
+            # No tiene por dónde cortarse (un precio no se parte): se dibuja
+            # de una sola línea, sobresaliendo a los costados si es más ancho
+            # que su caja.
             lineas, ancho = 1, total
+        elif total <= tope:
+            # Entra en un renglón, o está dentro de la duda de la medición. En
+            # los dos casos la tinta NO puede ser más ancha que la caja: el
+            # exportador escribe todo con word_wrap, así que si de verdad no
+            # entrara PowerPoint lo partiría, no lo sacaría por el costado.
+            # Sin este tope, un texto con espacios medido un 20% de más (una
+            # tipografía sin tabla) se dibujaba de una sola línea más ancha
+            # que su caja y, centrado, se "salía" 1,5 cm por cada lado de una
+            # hoja de la que en el papel no se sale (Fiesta Alemania A4,
+            # medido contra el PDF real el 22/09/2026).
+            lineas, ancho = 1, min(total, b["width"])
         else:
             lineas, mas_ancha = _renglones_de_piezas(piezas, b["width"], bold, fam)
             ancho = min(mas_ancha, b["width"])
         alto = _alto_texto_cm(lineas, mayor_pt, texto)
     else:
         lineas = _estimate_wrapped_lines(texto, b["width"], fs, bold, fam) if " " in texto else 1
-        ancho  = min(_ancho_medido_cm(texto, fs, fam, bold), b["width"]) if lineas > 1 \
-                 else _ancho_medido_cm(texto, fs, fam, bold)
+        medido = _ancho_medido_cm(texto, fs, fam, bold)
+        # Mismo criterio que arriba: solo lo que no tiene por dónde cortarse
+        # puede sobresalir de su caja.
+        ancho  = medido if " " not in texto else min(medido, b["width"])
         alto   = _alto_texto_cm(lineas, fs, texto)
 
     align = style.get("align", "center")
@@ -794,6 +830,171 @@ def detectar_solapes_del_lote(
             else:
                 anterior["filas"] = candidato["filas"]
     return sorted(peor.values(), key=lambda a: -a["area_cm2"])
+
+
+def detectar_desbordes(pares: list[tuple[dict, dict]], hoja: dict) -> list[dict]:
+    """Los cuadros cuya TINTA se va a imprimir fuera del papel. Solo AVISA.
+
+    Gemelo de ``detectar_solapes``, en el mismo archivo y a propósito: las dos
+    preguntas son la misma --dónde va a caer la tinta de verdad-- y separarlas
+    en dos módulos sería empezar a tener dos respuestas. Por eso las dos miden
+    con ``_rect_texto_real``, y por eso los arreglos de esa función (el corte
+    en renglones de un cuadro de varios segmentos, 21/09/2026) valen para las
+    dos sin tocar nada acá.
+
+    EL BUG QUE VIENE A CERRAR (Ivan, 18/09/2026, exportando una 3xA4 SOLO X
+    25): el texto salía impreso fuera de la hoja y el preview se lo mostraba
+    adentro. No era un error de medición: el preview AGRANDABA EL PAPEL hasta
+    que entrara el contenido (un ``Math.max`` sobre los bordes de los cuadros,
+    en Canvas.tsx). Un cuadro que se salía hacía crecer la hoja dibujada, así
+    que nunca se veía nada saliéndose. Eso se sacó; esto es el aviso que hace
+    falta ADEMÁS, porque el desborde no depende solo del diseño sino de la
+    FILA DE DATOS: la misma plantilla entra con "DETERGENTE LÍQUIDO" y se sale
+    con una descripción tres palabras más larga.
+
+    POR QUÉ SE MIDE LA TINTA Y NO LA CAJA, que es la parte que decide si el
+    aviso sirve o no lo lee nadie. Los diseños reales usan cajas mucho más
+    anchas que la hoja A PROPÓSITO: una caja invisible centrada para que el
+    precio quede en el mismo lugar tenga 2 o 5 dígitos. Con el criterio de
+    caja saltarían 13 de las 23 plantillas de producción --cuatro de ellas por
+    1,1 mm de sangrado de la imagen de fondo, que va así a propósito-- y sería
+    un aviso por cartel. Con el criterio de tinta saltan las que de verdad se
+    imprimen cortadas. Es el mismo razonamiento que ya está escrito en
+    detectar_solapes para los solapes de diseño.
+
+    QUÉ NO ENTRA:
+      - lo que no es texto. Una imagen de fondo que se pasa 1 mm es sangrado.
+      - el borde de ABAJO no se trata igual que los costados, y hay que
+        decirlo: PowerPoint deja cajas de texto altísimas con el texto anclado
+        arriba (Mega Rompe Precios A4 tiene un precioOferta de 61,8 cm de alto
+        sobre una A4) y eso no corta nada. Por eso se mide la tinta también
+        para arriba y abajo, no la caja: una caja de 61 cm con un "99" adentro
+        no desborda, y el "99" que de verdad se imprime por debajo del borde
+        sí.
+
+    Se reporta UN aviso por cuadro, el de su peor lado: dos renglones del
+    mismo cartel diciendo "se sale por la derecha 3,6 cm" y "se sale por abajo
+    0,2 cm" no le agregan nada a quien tiene que mover el cuadro.
+
+    NO BLOQUEA NADA. Se avisa y decide la persona, igual que con los solapes
+    desde el 14/09/2026: hay plantillas que desbordan a propósito, y el momento
+    de guardar el diseño no es el momento en que se sabe con qué datos va a
+    correr.
+    """
+    ancho = (hoja or {}).get("ancho_cm") or 0
+    alto  = (hoja or {}).get("alto_cm") or 0
+    if ancho <= 0 or alto <= 0:
+        return []
+
+    avisos: list[dict] = []
+    for comp, prod in pares:
+        r = _rect_texto_real(comp, prod)
+        if not r:
+            continue
+        # Los cuatro excesos, en cm. Un número <= 0 quiere decir que ese lado
+        # está adentro del papel.
+        excesos = {
+            "izquierda": -r["x"],
+            "derecha":   r["x"] + r["width"] - ancho,
+            "arriba":    -r["y"],
+            "abajo":     r["y"] + r["height"] - alto,
+        }
+        lado, cm = max(excesos.items(), key=lambda kv: kv[1])
+        if cm <= TOLERANCIA_DESBORDE_CM:
+            continue
+        avisos.append({
+            "component_id": comp.get("id"),
+            "lado":         lado,
+            "cm":           round(cm, 2),
+            # Un desborde por el costado CORTA el texto al imprimir; uno por
+            # arriba o por abajo casi siempre es una caja alta de PowerPoint
+            # con el texto anclado y no corta nada. Se ordena por esto en
+            # pantalla en vez de esconder los otros: esconder algo es como
+            # empezó este problema.
+            "corta_texto":  lado in ("izquierda", "derecha"),
+            "font_size":    comp.get("style", {}).get("font_size"),
+            "texto":        _texto_resuelto(comp, prod)[:40],
+            "hoja_cm":      [round(ancho, 2), round(alto, 2)],
+        })
+    return sorted(avisos, key=lambda a: (-int(a["corta_texto"]), -a["cm"]))
+
+
+def como_se_imprimen(
+    componentes: list[dict],
+    master_format: str | None,
+    target_format: str | None,
+    slot_bands: list[list[dict]] | None,
+) -> tuple[list[dict], str | None]:
+    """Los cuadros con las medidas que van a tener IMPRESOS, y sobre qué papel.
+
+    Devuelve ``(componentes, formato_del_papel)``. Es lo que hay que medir
+    cuando se busca un desborde, y tiene que reproducir lo que hace
+    ``render_template_to_pptx`` con el formato destino --si no, el aviso mide
+    una cosa y la impresora saca otra:
+
+      - con BANDAS (3xA4, 6xA4, pinchos) el render ignora el formato destino:
+        las celdas ya están en coordenadas absolutas de la hoja del master y se
+        dibujan tal cual (``compute_layout(band, master, master)``). El papel
+        es el del master.
+      - sin bandas y con destino distinto del master, el render escala el
+        diseño a la celda del destino (``compute_layout(comps, target,
+        master)``) y el papel es el del destino.
+
+    Hasta el 22/09/2026 el preview medía los ``base_bounds`` crudos del master
+    contra el papel del destino: para una corrida escalada, el aviso comparaba
+    centímetros de una hoja con el borde de otra.
+    """
+    master = master_format or "a4"
+    target = target_format or master
+    if slot_bands or target == master:
+        return componentes, master if slot_bands else target
+    return compute_layout(componentes, target, master), target
+
+
+def detectar_desbordes_del_lote(
+    componentes: list[dict],
+    rules: list[dict],
+    productos: list[dict],
+    hoja: dict,
+    slot_bands: list[list[dict]] | None = None,
+) -> list[dict]:
+    """Los desbordes de TODA la corrida, no solo de la primera fila.
+
+    Mismo criterio que ``detectar_solapes_del_lote`` y por la misma razón
+    (20/09/2026): quien mira la pantalla ve la fila 1, y el texto que se
+    imprime fuera de la hoja es justamente el más largo del listado -- que casi
+    nunca es el primero. Medir solo ``productos[0]`` era mirar para otro lado.
+
+    Se agrupa por CUADRO Y LADO: el mismo cuadro saliéndose en 30 filas es UN
+    aviso con su peor caso y la cuenta de filas, no 30 renglones repetidos. Se
+    agregan `filas` (en cuántas pasa) y `fila` (el número de fila del peor
+    caso, 1 = la primera del Excel), igual que en los solapes.
+    """
+    if not productos:
+        return []
+
+    peor: dict[tuple, dict] = {}
+    por_hoja = len(slot_bands) if slot_bands else 1
+    for inicio in range(0, len(productos), por_hoja):
+        filas_hoja = productos[inicio:inicio + por_hoja]
+        pares: list[tuple[dict, dict]] = []
+        fila_de: dict[str, int] = {}
+        for i, prod in enumerate(filas_hoja):
+            banda = slot_bands[i] if slot_bands else componentes
+            for c in preparar_componentes(banda, rules, prod):
+                pares.append((c, prod))
+                if c.get("id"):
+                    fila_de[c["id"]] = inicio + i + 1
+        for aviso in detectar_desbordes(pares, hoja):
+            clave = (aviso.get("component_id"), aviso.get("lado"))
+            anterior = peor.get(clave)
+            candidato = {**aviso, "fila": fila_de.get(aviso.get("component_id")),
+                         "filas": (anterior or {}).get("filas", 0) + 1}
+            if anterior is None or aviso["cm"] > anterior["cm"]:
+                peor[clave] = candidato
+            else:
+                anterior["filas"] = candidato["filas"]
+    return sorted(peor.values(), key=lambda a: (-int(a["corta_texto"]), -a["cm"]))
 
 
 def preparar_componentes(comps: list[dict], rules: list[dict], product: dict) -> list[dict]:
@@ -2242,7 +2443,12 @@ def render_template_to_pptx(
         ]
 
     if not preserve_source:
-        slide_w, slide_h = FORMAT_SLIDES.get(target_format, FORMAT_SLIDES["a4"])
+        # Con bandas el destino no escala nada (ver más abajo: las celdas se
+        # dibujan en coordenadas absolutas del master), así que el papel
+        # tiene que ser el del master también; si no, una 6xA4 pedida como
+        # "a4" caería en una hoja parada con las celdas de una acostada.
+        fmt_papel = master_format if slot_bands else target_format
+        slide_w, slide_h = FORMAT_SLIDES.get(fmt_papel, FORMAT_SLIDES["a4"])
         prs = Presentation()
         prs.slide_width  = slide_w
         prs.slide_height = slide_h
