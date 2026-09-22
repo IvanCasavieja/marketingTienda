@@ -115,11 +115,161 @@ def test_un_csv_entra_por_el_mismo_lector():
     assert m["productos"][0]["oferta_precio"] == "$74,50"
 
 
-def test_sin_columna_de_descripcion_no_se_valida_nada():
-    crudo = b"CODIGO;NOMBREARTICULO;PRECIO\n501233;CERVEZA PATRICIA;74,5\n"
+def test_nombre_articulo_es_la_descripcion_cuando_no_hay_otra():
+    """El listado real de los rompeprecios (22/09/2026) trae la descripción
+    impresa en NOMBRE ARTÍCULO y ninguna otra columna de texto. Hasta ese día
+    NOMBREARTICULO no contaba nunca y el archivo se rechazaba entero."""
+    crudo = (
+        "CODIGO;NOMBRE ARTÍCULO;MONEDA;PRECIOANT;PRECIO\n"
+        "478352;Arvejas TIENDA INGLESA. 300 g;$;48;37,5\n"
+    ).encode("utf-8")
+    m = planilla.leer(crudo, "listado.csv").mailing
+    assert m["productos"][0]["descripcion"] == "Arvejas TIENDA INGLESA. 300 g"
+
+
+def test_sin_ninguna_columna_de_descripcion_no_se_valida_nada():
+    crudo = b"CODIGO;PRECIO\n501233;74,5\n"
     with pytest.raises(planilla.PlanillaInvalida) as exc:
         planilla.leer(crudo, "listado.csv")
-    assert "DESCRIPCION" in str(exc.value)
+    assert "descripción" in str(exc.value)
+
+
+# ---------------------------------------------------------------- CatTi decide las columnas
+
+# El listado REAL que subió Ivan el 22/09/2026, con su forma: la descripción en
+# NOMBRE ARTÍCULO y la mecánica en una columna que se llama OFERTA.
+def _listado_real() -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "mbdelcerro_Mailing_13316"
+    ws.append(["CODIGO", "NOMBRE ARTÍCULO", "MONEDA", "PRECIOANT", "PRECIO", "OFERTA"])
+    ws.append([31026, "Agua mineral natural sin gas NATIVA. 1 L", "$", 80, 64, None])
+    ws.append([478352, "Arvejas TIENDA INGLESA. 300 g", "$", 48, 37.5, "2x$75"])
+    ws.append([14022, "Lomito canadiense TIENDA INGLESA. 100g", "$", 990, 830, None])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+# Lo que contestó CatTi de verdad sobre ese listado (corrida con la API del
+# 22/09/2026), para no depender del modelo en los tests.
+MAPEO_REAL = {
+    "hoja": "mbdelcerro_Mailing_13316",
+    "fila_encabezados": 1,
+    "columnas": {
+        "descripcion": "B", "precio_anterior": "D", "precio_oferta": "E", "moneda": "C",
+        "mecanica": "F", "arriba_del_precio": "", "abajo_del_precio": "", "vigencia": "",
+        "leyenda_alcohol": "", "sucursal": "", "stock": "", "codigo": "A",
+    },
+    "explicacion": "El nombre del producto está en B y la mecánica tipo 2x$75 en F.",
+    "dudas": "",
+}
+
+
+def test_con_lo_que_decidio_catti_se_lee_el_listado_real():
+    m = planilla.leer(_listado_real(), "LISTADO FINAL.xlsx", mapeo=MAPEO_REAL).mailing
+    arvejas = m["productos"][1]
+    assert arvejas["descripcion"] == "Arvejas TIENDA INGLESA. 300 g"
+    assert arvejas["mecanica"] == "2x$75"          # salió de la columna OFERTA
+    assert arvejas["precio_anterior"] == "$48"
+    assert arvejas["oferta_precio"] == "$37,50"
+    assert m["campos"] == ["descripcion", "precio_anterior", "oferta_precio", "mecanica"]
+    assert arvejas["fila"]["numero"] == 3
+
+
+def test_la_interpretacion_de_catti_queda_a_la_vista():
+    """La persona tiene que poder ver CÓMO se leyó su archivo antes de creerle
+    a una corrección: qué columna tomó para cada dato, con el título real."""
+    it = planilla.leer(_listado_real(), "x.xlsx", mapeo=MAPEO_REAL).mailing["planilla"]["interpretacion"]
+    assert it["explicacion"].startswith("El nombre del producto")
+    assert {"dato": "Descripción", "letra": "B", "titulo": "NOMBRE ARTÍCULO"} in it["columnas"]
+    assert {"dato": "Mecánica", "letra": "F", "titulo": "OFERTA"} in it["columnas"]
+
+
+def test_los_valores_salen_de_las_celdas_no_de_catti():
+    """CatTi decide COORDENADAS; el contenido se copia de la celda tal cual. Una
+    planilla es dato exacto y tiene que seguir siéndolo."""
+    m = planilla.leer(_listado_real(), "x.xlsx", mapeo=MAPEO_REAL).mailing
+    assert [p["descripcion"] for p in m["productos"]] == [
+        "Agua mineral natural sin gas NATIVA. 1 L", "Arvejas TIENDA INGLESA. 300 g",
+        "Lomito canadiense TIENDA INGLESA. 100g",
+    ]
+
+
+def test_sin_fila_de_titulos_tambien_se_lee():
+    """Una planilla sin títulos: CatTi contesta fila_encabezados=0 y los datos
+    arrancan en la fila 1. Los títulos que se muestran son "columna B"."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Arvejas TIENDA INGLESA. 300 g", 48, 37.5])
+    ws.append(["Bola de lomo. Kg", 499, 399])
+    buf = io.BytesIO()
+    wb.save(buf)
+    mapeo = {**MAPEO_REAL, "hoja": ws.title, "fila_encabezados": 0,
+             "columnas": {**{k: "" for k in MAPEO_REAL["columnas"]},
+                          "descripcion": "A", "precio_anterior": "B", "precio_oferta": "C"}}
+    m = planilla.leer(buf.getvalue(), "sin_titulos.xlsx", mapeo=mapeo).mailing
+    assert [p["descripcion"] for p in m["productos"]] == ["Arvejas TIENDA INGLESA. 300 g", "Bola de lomo. Kg"]
+    assert m["productos"][0]["fila"]["numero"] == 1
+    assert m["planilla"]["titulos"]["descripcion"] == "columna A"
+
+
+def test_si_catti_no_encuentra_la_descripcion_se_dice():
+    mapeo = {**MAPEO_REAL, "columnas": {**MAPEO_REAL["columnas"], "descripcion": ""}, "dudas": "No hay nombres."}
+    with pytest.raises(planilla.PlanillaInvalida) as exc:
+        planilla.leer(_listado_real(), "x.xlsx", mapeo=mapeo)
+    assert "descripción" in str(exc.value) and "No hay nombres." in str(exc.value)
+
+
+def test_una_columna_que_no_existe_o_repetida_no_se_cree():
+    mapeo = {**MAPEO_REAL, "columnas": {**MAPEO_REAL["columnas"], "vigencia": "Z", "codigo": "B"}}
+    m = planilla.leer(_listado_real(), "x.xlsx", mapeo=mapeo).mailing
+    avisos = " ".join(m["planilla"]["avisos"])
+    assert "columna Z, que no existe" in avisos
+    assert "misma columna (B)" in avisos
+    assert m["productos"][1]["descripcion"] == "Arvejas TIENDA INGLESA. 300 g"
+
+
+def test_letras_de_columna_ida_y_vuelta():
+    for i in (0, 5, 25, 26, 27, 51, 52, 701, 702):
+        assert planilla.indice_de_letra(planilla.letra(i)) == i
+    assert planilla.letra(0) == "A" and planilla.letra(26) == "AA"
+    assert planilla.indice_de_letra("") is None and planilla.indice_de_letra("3") is None
+
+
+def test_lo_que_ve_catti_tiene_fila_y_letra():
+    texto = planilla.muestra(_listado_real(), "x.xlsx")["texto"]
+    assert "Hoja «mbdelcerro_Mailing_13316»" in texto
+    assert "fila | A | B | C | D | E | F" in texto
+    assert "   3 | 478352 | Arvejas TIENDA INGLESA. 300 g | $ | 48 | 37,5 | 2x$75" in texto
+
+
+def test_preparar_planilla_usa_lo_que_decide_catti(monkeypatch):
+    import asyncio
+    from app.services.rrss import catti, validador
+
+    async def interpretar(texto):
+        assert "NOMBRE ARTÍCULO" in texto
+        return MAPEO_REAL, 5600, 400
+
+    monkeypatch.setattr(catti, "interpretar_planilla", interpretar)
+    prep = asyncio.run(validador.preparar_planilla(_listado_real(), "LISTADO FINAL.xlsx"))
+    assert prep.mailing["productos"][1]["mecanica"] == "2x$75"
+    assert (prep.tokens_in, prep.tokens_out) == (5600, 400)
+
+
+def test_si_catti_no_esta_se_lee_por_nombres_y_se_avisa(monkeypatch):
+    import asyncio
+    from app.services.rrss import catti, validador
+
+    async def caido(texto):
+        raise RuntimeError("ANTHROPIC_API_KEY no configurado")
+
+    monkeypatch.setattr(catti, "interpretar_planilla", caido)
+    prep = asyncio.run(validador.preparar_planilla(_listado_real(), "LISTADO FINAL.xlsx"))
+    assert prep.mailing["productos"][1]["descripcion"] == "Arvejas TIENDA INGLESA. 300 g"
+    assert "CatTi no pudo mirar la planilla" in prep.mailing["planilla"]["avisos"][0]
+    assert prep.mailing["planilla"]["interpretacion"] is None
 
 
 # ---------------------------------------------------------------- qué exige y qué no

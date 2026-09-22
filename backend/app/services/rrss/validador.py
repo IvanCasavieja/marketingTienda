@@ -18,6 +18,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+import anthropic
 from PIL import Image
 
 from app.services.rrss import catti, comparador, imagenes, planilla
@@ -121,7 +122,19 @@ async def preparar_mailing(datos: bytes, content_type: str, filename: str) -> Ma
 # --------------------------------------------------------------------------
 
 async def preparar_planilla(datos: bytes, filename: str, hoja: str | int | None = None) -> MailingPreparado:
-    """La misma fuente, leída de una planilla: sin IA, sin tokens y sin páginas.
+    """La misma fuente, leída de una planilla, en dos pasos.
+
+    1) CatTi mira la planilla y decide qué es cada columna (una llamada de
+       texto, ver catti.interpretar_planilla). La planilla puede venir de
+       cualquier forma -- pedido de Ivan del 22/09/2026, ver
+       planilla.CAMPOS_DE_LA_PLANILLA -- y un listado real con la descripción en
+       "NOMBRE ARTÍCULO" y la mecánica en "OFERTA" se rechazaba entero.
+    2) Los valores se leen de las celdas, tal cual, con lo que decidió CatTi.
+       Sin IA: la planilla es dato exacto y el modelo no reescribe contenido.
+
+    Si CatTi no está disponible (sin clave, o la API caída) la planilla se lee
+    por los NOMBRES de sus columnas, y se avisa: es peor que razonarla, pero
+    un listado con los nombres de siempre se sigue pudiendo validar.
 
     Va a un hilo entero (openpyxl es CPU puro y sincrónico) por lo mismo que el
     resto del trabajo de píxeles: un solo proceso de uvicorn, ver hilos.py. Lo
@@ -133,8 +146,24 @@ async def preparar_planilla(datos: bytes, filename: str, hoja: str | int | None 
     `mailing["planilla"]["avisos"]`, que es lo que se guarda en la base. Antes
     se armaba en un campo aparte del dataclass y acá se devolvía solo
     `pl.mailing`: los avisos no llegaban a ningún lado."""
-    pl = await en_hilo(planilla.leer, datos, filename, hoja)
-    return MailingPreparado(pl.mailing, [], 0, 0)
+    muestra = await en_hilo(planilla.muestra, datos, filename)
+    try:
+        mapeo, t_in, t_out = await catti.interpretar_planilla(muestra["texto"])
+    except (RuntimeError, anthropic.APIError) as exc:
+        # RuntimeError cubre "sin ANTHROPIC_API_KEY" y la LecturaFallida del
+        # modelo; APIError, la API caída o saturada. En los dos casos hay una
+        # forma peor pero útil de leer la planilla, y no hay por qué frenar la
+        # validación entera.
+        logger.warning("rrss: CatTi no pudo interpretar la planilla %s, leo por nombres de columna: %s", filename, exc)
+        pl = await en_hilo(planilla.leer, datos, filename, hoja)
+        pl.mailing["planilla"]["avisos"].insert(0, (
+            "CatTi no pudo mirar la planilla en este momento, así que la leí por los nombres "
+            "de las columnas. Revisá que la descripción y los precios hayan salido de la "
+            "columna correcta."
+        ))
+        return MailingPreparado(pl.mailing, [], 0, 0)
+    pl = await en_hilo(planilla.leer, datos, filename, hoja, mapeo)
+    return MailingPreparado(pl.mailing, [], t_in, t_out)
 
 
 # --------------------------------------------------------------------------

@@ -266,15 +266,23 @@ def test_la_fuente_se_contrae_adentro_de_las_frases():
     assert "fuente: fuenteEnFrase, dictados:" in src
 
 
-def test_la_pantalla_dice_que_columnas_entiende_la_planilla():
-    """Decía "se valida lo que la planilla trae" sin decir cómo llamar a las
-    columnas; los nombres vivían solo en planilla._ALIAS_RRSS."""
+def test_la_pantalla_dice_que_busca_catti_en_la_planilla():
+    """La planilla puede venir de cualquier forma (22/09/2026): la pantalla dice
+    QUÉ datos busca CatTi, sacados de la misma lista que usa él, no nombres de
+    columna que haya que respetar."""
     src = _texto(_UPLOAD)
     assert 't("rrss.planillaColumnasNombres"' in src and "tipos.fuentes.planilla.columnas" in src
     for idioma in _IDIOMAS:
         assert "{{columnas}}" in _rrss(idioma)["planillaColumnasNombres"]
     ruta = _RAIZ / "backend" / "app" / "api" / "routes" / "rrss.py"
-    assert "planilla.COLUMNAS_OPCIONALES" in _texto(ruta)
+    assert "planilla.DATOS_QUE_BUSCA" in _texto(ruta)
+
+
+def test_la_pantalla_muestra_como_leyo_catti_la_planilla():
+    src = _texto(_RAIZ / "frontend" / "components" / "rrss" / "ReviewStep.tsx")
+    assert "planilla.interpretacion" in src and 't("rrss.planillaEntendio")' in src
+    for idioma in _IDIOMAS:
+        assert _rrss(idioma)["planillaEntendio"]
 
 
 def test_la_pantalla_dice_que_la_fecha_y_la_leyenda_quedaron_sin_revisar():

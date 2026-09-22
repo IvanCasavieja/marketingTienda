@@ -21,6 +21,7 @@ import anthropic
 from app.core.config import settings
 from app.services.rrss import imagenes
 from app.services.rrss.hilos import en_hilo
+from app.services.rrss.planilla import CAMPOS_DE_LA_PLANILLA
 from app.services.tino_personas import CATTI_BASE
 
 _MODEL = settings.MODELO_IA  # el de toda la familia -- ver MODELO_IA en config.py
@@ -280,6 +281,158 @@ Para cada elemento de la lista devolvé, con la tool registrar_cajas, la caja
 La caja tiene que dejar TODO el elemento adentro — ni una letra cortada — y
 sobrar poco. Si un elemento no aparece en la imagen, omitilo de la respuesta.
 """.strip()
+
+# --------------------------------------------------------------------------
+# La planilla: CatTi decide qué es cada columna
+# --------------------------------------------------------------------------
+# Ver el comentario de CAMPOS_DE_LA_PLANILLA en planilla.py: la planilla puede
+# venir de cualquier forma, y qué columna es cada dato lo razona CatTi en el
+# momento, mirando los títulos Y los valores. Lo que devuelve son COORDENADAS
+# (hoja, fila de títulos, letra de columna), no datos: los valores se copian de
+# las celdas tal cual, así una planilla sigue siendo dato exacto.
+_COLUMNA = (
+    " Contestá con la LETRA de la columna como la muestra la tabla ('B', 'F'), o cadena vacía si "
+    "la planilla no trae ese dato. Nunca pongas una columna que en realidad trae otra cosa: un dato "
+    "que falta se reporta como que falta, uno equivocado acusa a una placa que está bien."
+)
+_DATOS_DE_LA_PLANILLA = {
+    "descripcion": (
+        "EL DATO QUE NO PUEDE FALTAR. La columna con el nombre del producto como va impreso en la placa: "
+        "tipo, marca y presentación ('Arvejas TIENDA INGLESA. 300 g', 'Cerveza BUDWEISER. 710 ml'). Puede "
+        "llamarse de cualquier forma: DESCRIPCIÓN, NOMBRE ARTÍCULO, PRODUCTO, ARTÍCULO, DETALLE, o no tener "
+        "título. Si hay dos candidatas --un nombre corto de sistema en MAYÚSCULAS y abreviado ('ARVEJAS TI "
+        "300G') y otra con minúsculas, puntos y espacios-- elegí la que se parece a lo que va impreso."
+    ),
+    "precio_anterior": (
+        "El precio de antes, el que en la placa aparece tachado: el MAYOR de los dos precios de la fila. "
+        "Puede llamarse PRECIOANT, PRECIO ANTERIOR, PVP REGULAR, PRECIO LISTA, ANTES, o de otra forma."
+    ),
+    "precio_oferta": (
+        "El precio de oferta, el grande del círculo: el MENOR de los dos. Si la fila trae una mecánica como "
+        "'2x$75', este es el precio POR UNIDAD de esa mecánica (37,5), no el del combo."
+    ),
+    "moneda": "La columna que dice la moneda ('$', 'U$S'), si viene aparte del precio.",
+    "mecanica": (
+        "La mecánica de la oferta, si la hay: '2x$75', '4x3', '2x1', '3x2 combinables'. Suele estar vacía en "
+        "la mayoría de las filas. Puede venir en una columna que se llama OFERTA, PROMO, MECÁNICA, "
+        "ACCIÓN... Mirá los VALORES, no solo el título: una columna OFERTA que trae '2x$75' es la "
+        "mecánica, no el precio."
+    ),
+    "arriba_del_precio": (
+        "El texto chico que va arriba del precio en el círculo ('Oferta', 'Comprando 2'), SOLO si una "
+        "columna lo trae escrito tal cual. No lo deduzcas de la mecánica."
+    ),
+    "abajo_del_precio": (
+        "El texto chico que va debajo del precio en el círculo ('unidad', 'c/u', 'el kg'), SOLO si una "
+        "columna lo trae escrito tal cual. No lo deduzcas."
+    ),
+    "vigencia": (
+        "La fecha de la campaña ESCRITA como va en la placa ('DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE'). "
+        "Una columna de fechas sueltas (FECHA INICIO, 17/09/2026) NO es esto: dejalo vacío."
+    ),
+    "leyenda_alcohol": "La leyenda de alcohol ('Beber con moderación...'), si una columna la trae.",
+    "sucursal": (
+        "Si la planilla repite cada producto una vez por sucursal (el mismo producto en varias filas, una "
+        "por local), la columna con el nombre de la sucursal. Vacío si cada producto aparece una vez."
+    ),
+    "stock": "El stock por sucursal, si lo hay.",
+    "codigo": "El código o SKU del artículo, si lo hay.",
+}
+# La lista de datos vive en planilla.py (CAMPOS_DE_LA_PLANILLA): si alguien
+# agrega uno allá y no le escribe acá cómo reconocerlo, esto no arranca.
+assert set(_DATOS_DE_LA_PLANILLA) == set(CAMPOS_DE_LA_PLANILLA), (
+    "catti._DATOS_DE_LA_PLANILLA y planilla.CAMPOS_DE_LA_PLANILLA tienen que traer los mismos datos"
+)
+
+_TOOL_COLUMNAS = {
+    "name": "registrar_columnas_de_la_planilla",
+    "description": "Registra en qué hoja, en qué fila de títulos y en qué columna de la planilla está cada dato del producto.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "hoja": {
+                "type": "string",
+                "description": (
+                    "El nombre EXACTO de la hoja que tiene los productos de la campaña, copiado de la tabla. "
+                    "Cadena vacía si es un CSV."
+                ),
+            },
+            "fila_encabezados": {
+                "type": "integer",
+                "description": (
+                    "El número de fila (el de la tabla, como lo muestra Excel) donde están los títulos de "
+                    "las columnas. 0 si la planilla no tiene títulos y los productos arrancan directo."
+                ),
+            },
+            "columnas": {
+                "type": "object",
+                "properties": {k: {"type": "string", "description": v + _COLUMNA} for k, v in _DATOS_DE_LA_PLANILLA.items()},
+                "required": list(_DATOS_DE_LA_PLANILLA),
+            },
+            "explicacion": {
+                "type": "string",
+                "description": (
+                    "En una o dos frases, en castellano rioplatense y sin tecnicismos, cómo leíste la planilla: "
+                    "dónde está cada cosa. Se le muestra a la persona que subió el archivo."
+                ),
+            },
+            "dudas": {
+                "type": "string",
+                "description": (
+                    "Si una columna podía ser dos cosas y tuviste que elegir, o si algo del archivo no lo "
+                    "entendiste, decilo acá en una frase. Cadena vacía si no hubo dudas."
+                ),
+            },
+        },
+        "required": ["hoja", "fila_encabezados", "columnas", "explicacion", "dudas"],
+    },
+}
+
+_INSTRUCCION_COLUMNAS = """
+Te paso una planilla con el listado de productos de una campaña de
+supermercado, en texto: cada hoja con su número de fila (como lo muestra Excel)
+y la letra de cada columna. De las planillas largas vas a ver el principio y el
+final.
+
+Con esa planilla se van a validar las placas de redes sociales de la campaña:
+cada placa muestra un producto (descripción, precio tachado, precio de oferta,
+a veces una mecánica como '2x$75') y se compara contra su fila. Tu trabajo es
+decir, con la tool registrar_columnas_de_la_planilla, en qué columna está cada
+dato. No copies valores: solo coordenadas. Los valores se toman después de las
+celdas, tal cual están.
+
+La planilla puede venir de cualquier forma: con títulos o sin ellos, con los
+títulos en cualquier fila, con nombres de columna que nunca viste, con hojas de
+más adelante o atrás, con filas de título, de totales o de pie de reporte.
+Razoná cada columna mirando el título Y los valores que trae. Si un dato no
+está en ninguna columna, dejalo vacío: mejor que falte a que salga de la
+columna equivocada.
+""".strip()
+
+
+async def interpretar_planilla(texto_planilla: str) -> tuple[dict, int, int]:
+    """Le muestra la planilla a CatTi y le pide qué es cada columna. Una sola
+    llamada de texto, sin imágenes, que cuesta lo mismo con 8 productos que
+    con 800 (ver planilla._MUESTRA_FILAS). Devuelve (mapeo, tokens_in,
+    tokens_out); el mapeo lo verifica `planilla._segun_catti` contra el archivo
+    antes de usarlo."""
+    raw, t_in, t_out = await _llamar(
+        _TOOL_COLUMNAS, _INSTRUCCION_COLUMNAS, [],
+        "Esta es la planilla:\n\n" + texto_planilla, max_tokens=2000,
+    )
+    columnas = raw.get("columnas") or {}
+    try:
+        fila = int(raw.get("fila_encabezados") or 0)
+    except (TypeError, ValueError):
+        fila = 0
+    return {
+        "hoja": str(raw.get("hoja") or "").strip(),
+        "fila_encabezados": fila,
+        "columnas": {k: str(columnas.get(k) or "").strip().upper() for k in _DATOS_DE_LA_PLANILLA},
+        "explicacion": limpiar_texto(raw.get("explicacion")),
+        "dudas": limpiar_texto(raw.get("dudas")),
+    }, t_in, t_out
+
 
 _SISTEMA = [{
     "type": "text",

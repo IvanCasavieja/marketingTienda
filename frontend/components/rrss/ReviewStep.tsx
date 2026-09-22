@@ -641,6 +641,26 @@ export default function ReviewStep({ validacion: v, pendientes, progreso, onRein
                 </span>
               )}
             </div>
+            {/* Qué entendió CatTi de la planilla. La planilla puede venir de
+                cualquier forma y qué columna es cada dato lo decide él: antes de
+                creerle a una sola corrección, la persona tiene que poder ver de
+                qué columna salió la descripción y de cuál los precios. */}
+            {v.mailing.planilla?.interpretacion && (
+              <div className="rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/30 px-3 py-2 text-xs text-violet-900 dark:text-violet-200 space-y-1.5">
+                <p className="font-semibold">{t("rrss.planillaEntendio")}</p>
+                {v.mailing.planilla.interpretacion.explicacion && (
+                  <p>{v.mailing.planilla.interpretacion.explicacion}</p>
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  {v.mailing.planilla.interpretacion.columnas.map((c) => (
+                    <span key={c.letra} className="rounded-md bg-white/70 dark:bg-slate-900/40 border border-violet-200 dark:border-violet-500/30 px-1.5 py-0.5">
+                      {c.dato} <span className="opacity-60">←</span> <span className="font-mono">{c.titulo}</span>{" "}
+                      <span className="opacity-60">({c.letra})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Lo que la lectura tuvo para decir. Se armaba y moría en un campo
                 que nadie leía; son los avisos que delatan que el motor entendió
                 mal el archivo, así que van arriba de todo y no escondidos. */}

@@ -98,11 +98,12 @@ async def get_config(_: User = Depends(require_permission("rrss.view"))):
     que usa el backend para aceptar o rechazar, y no de una lista escrita a mano
     en el navegador (ver app/data/rrss_archivos.json)."""
     tipos = json.loads(json.dumps(archivos.TIPOS))  # copia: no se toca el dict compartido
-    # Qué columnas OPCIONALES entiende la planilla, con el nombre que también usa
-    # el informe. Hasta el 22/09/2026 la pantalla decía "se valida lo que la
-    # planilla trae" sin decir cómo tenían que llamarse las columnas, y los
-    # nombres vivían solo en planilla._ALIAS_RRSS.
-    tipos["fuentes"]["planilla"]["columnas"] = [nombre for _, nombre in planilla.COLUMNAS_OPCIONALES]
+    # Qué datos busca CatTi en la planilla. Ya no son nombres de columna que
+    # haya que respetar: desde el 22/09/2026 la planilla puede venir de
+    # cualquier forma y qué columna es cada dato lo decide CatTi (ver
+    # planilla.CAMPOS_DE_LA_PLANILLA). La pantalla dice QUÉ busca, no cómo
+    # tiene que llamarse.
+    tipos["fuentes"]["planilla"]["columnas"] = planilla.DATOS_QUE_BUSCA
     return {**validador.CONFIG_DEFECTO, "tipos": tipos}
 
 
@@ -122,8 +123,10 @@ async def crear_validacion(
     Son dos caminos, y el archivo decide cuál (ver services/rrss/archivos.py):
     - un MAILING (PDF o imagen): se renderiza, CatTi lo lee y ubica cada
       producto. Tarda medio minuto y gasta tokens.
-    - una PLANILLA (.xlsx/.csv): se lee como datos, sin IA y sin tokens. Es lo
-      que pidió Ivan para las campañas que no tienen mailing físico.
+    - una PLANILLA (.xlsx/.csv): CatTi mira la planilla UNA vez para decidir
+      qué es cada columna (puede venir de cualquier forma), y los valores se
+      leen de las celdas tal cual. Unos segundos y unos pocos miles de tokens.
+      Es lo que pidió Ivan para las campañas que no tienen mailing físico.
     Los dos dejan el MISMO dict en `mailing`, que es contra lo que se comparan
     las placas después."""
     nombre_archivo = mailing.filename or ""

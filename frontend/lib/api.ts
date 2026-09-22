@@ -1411,6 +1411,15 @@ export interface RrssPlanilla {
    *  se contó como producto, una columna en el vocabulario de gestión. Se
    *  muestran: el motor avisa cuando no entendió, no adivina en silencio. */
   avisos?: string[];
+  /** Qué entendió CatTi de la planilla: la planilla puede venir de cualquier
+   *  forma y qué columna es cada dato lo razona él (ver
+   *  planilla.CAMPOS_DE_LA_PLANILLA en el backend). null si se leyó por los
+   *  nombres de las columnas porque CatTi no estaba disponible. */
+  interpretacion?: {
+    explicacion: string;
+    dudas: string;
+    columnas: { dato: string; letra: string; titulo: string }[];
+  } | null;
 }
 
 export interface RrssMailing {

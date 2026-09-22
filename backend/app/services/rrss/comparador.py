@@ -419,8 +419,32 @@ def cola_del_precio(texto: str) -> str:
     return (texto or "")[m.end():].strip() if m else ""
 
 
+# EL LISTADO TRAE EL PRECIO POR KILO; LA PLACA, POR LA PRESENTACIÓN. Con el
+# listado real de los rompeprecios (22/09/2026) salió en los cuatro productos de
+# 100 g: el sistema de gestión guarda el fiambre y el queso a precio por kilo
+# (Lomito canadiense 990 / 830) y la publicidad los anuncia por 100 g ($99 /
+# $83). Comparando importe contra importe, CatTi le decía al diseñador "pusiste
+# $99, tiene que decir $990" en cada fiambre de cada campaña.
+# No es una tolerancia: es una cuenta exacta. Si la descripción dice la
+# presentación en gramos y el precio por kilo, llevado a esa presentación, da
+# JUSTO el de la placa, la placa está bien. Solo con planilla: un mailing es
+# texto impreso y ahí $99 contra $990 es un error de verdad.
+_RE_GRAMOS = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:g|gr|grs|gramos)\b", re.IGNORECASE)
+
+
+def gramos_de_la_presentacion(descripcion: str) -> float | None:
+    """Los gramos de la presentación que dice la descripción ("100 g",
+    "Jamón cocido. 100g"), o None. Solo menos de un kilo: "1 Kg" no tiene nada
+    que convertir, y "1000 g" tampoco."""
+    encontrados = _RE_GRAMOS.findall(descripcion or "")
+    if not encontrados:
+        return None
+    g = float(encontrados[-1].replace(",", "."))  # la presentación va al final
+    return g if 0 < g < 1000 else None
+
+
 def _comparar_precio(campo: str, etiqueta: str, placa: str, esperado: str,
-                     cola_dictada: bool = False) -> dict | None:
+                     cola_dictada: bool = False, gramos: float | None = None) -> dict | None:
     """El precio contra una PLANILLA: vale lo que vale, no cómo está escrito.
 
     La planilla trae un número; el símbolo, el separador de miles y si los
@@ -451,6 +475,16 @@ def _comparar_precio(campo: str, etiqueta: str, placa: str, esperado: str,
             f"{nombre_moneda(moneda(placa))}",
         )
     if not mismo_importe(placa, esperado):
+        por_kilo, en_placa = importe(esperado), importe(placa)
+        if gramos and por_kilo is not None and en_placa is not None \
+                and abs(round(por_kilo * gramos / 1000, 2) - en_placa) < 0.005:
+            # Ver _RE_GRAMOS: el listado lo trae por kilo y la placa por la
+            # presentación. Está bien, y se dice por qué, para que nadie vea
+            # "$99 contra $990" en ok y crea que el motor se equivocó.
+            return _fila(
+                campo, etiqueta, "producto", placa, esperado, "ok", None,
+                f"La planilla trae el precio por kilo; la placa, por {gramos:g} g: {placa} está bien",
+            )
         return _fila(
             campo, etiqueta, "producto", placa, esperado, "diferente", "error",
             "La planilla trae un número, no un texto: lo que se compara es el importe",
@@ -493,7 +527,10 @@ def comparar_producto(placa: dict, item: dict, reglas: dict | None = None) -> li
                 ))
             continue
         if por_importe and campo in CAMPOS_DE_PRECIO:
-            fila = _comparar_precio(campo, etiqueta, placa[campo], item[campo], cola_dictada=campo in con_cola)
+            fila = _comparar_precio(
+                campo, etiqueta, placa[campo], item[campo], cola_dictada=campo in con_cola,
+                gramos=gramos_de_la_presentacion(item.get("descripcion", "")),
+            )
         else:
             fila = _comparar_texto(campo, etiqueta, "producto", placa[campo], item[campo])
         if fila:

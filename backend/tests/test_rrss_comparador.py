@@ -411,3 +411,34 @@ def test_el_tachado_tambien_se_confirma_con_la_segunda_lectura():
     assert filas[0]["severidad"] == "error"
     # del lado del mailing, el producto releído se aplana igual
     assert c.campos_del_producto(prod(precio_anterior_tachado=False))["precio_anterior_tachado"] == "sin tachar"
+
+
+# ---------------------------------------------------------------- precio por kilo
+# El listado real de los rompeprecios (22/09/2026) trae el fiambre y el queso a
+# precio por KILO (Lomito canadiense 990 / 830) y la placa los anuncia por 100 g
+# ($99 / $83). Sin esto, cada fiambre de cada campaña salía acusado.
+
+def test_gramos_de_la_presentacion():
+    assert c.gramos_de_la_presentacion("Lomito canadiense TIENDA INGLESA. 100g") == 100
+    assert c.gramos_de_la_presentacion("Jamón cocido SCHNECK. 100 g") == 100
+    assert c.gramos_de_la_presentacion("Arvejas TIENDA INGLESA. 300 g") == 300
+    assert c.gramos_de_la_presentacion("Bola de lomo. Kg") is None
+    assert c.gramos_de_la_presentacion("Naranja ombligo en malla. 2 Kg") is None
+    assert c.gramos_de_la_presentacion("Cerveza BUDWEISER. 710 ml") is None
+
+
+def test_precio_por_kilo_contra_placa_por_100_g_esta_bien():
+    fila = c._comparar_precio("oferta_precio", "Precio", "$83", "$830", gramos=100)
+    assert fila["estado"] == "ok"
+    assert "por kilo" in fila["nota"]
+
+
+def test_un_precio_mal_sigue_mal_aunque_sea_de_100_g():
+    """La cuenta es exacta, no una tolerancia: $85 no es 830 por kilo."""
+    fila = c._comparar_precio("oferta_precio", "Precio", "$85", "$830", gramos=100)
+    assert fila["estado"] == "diferente" and fila["severidad"] == "error"
+
+
+def test_sin_gramos_no_se_convierte_nada():
+    fila = c._comparar_precio("oferta_precio", "Precio", "$83", "$830")
+    assert fila["estado"] == "diferente"

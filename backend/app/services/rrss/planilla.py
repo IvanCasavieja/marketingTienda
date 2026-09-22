@@ -205,6 +205,82 @@ _TITULO_POR_DEFECTO = {
     "ofertaPie": "ABAJO DEL PRECIO",
 }
 
+# LA PLANILLA PUEDE VENIR DE CUALQUIER FORMA. Pedido de Ivan (22/09/2026), el día
+# que subió el listado real de la campaña y el motor lo rechazó:
+#   "La idea de esta validación es no esperar un formato de Excel. Puede venir un
+#    Excel de cualquier manera -- normalmente viene de la forma que está en
+#    descargas, pero puede venir de cualquier forma habida y por haber. Lo único
+#    que tenés que esperar es descripción, y el resto de las cosas
+#    lamentablemente el agente tiene que razonarlas en el momento."
+# El listado real decía CODIGO | NOMBRE ARTÍCULO | MONEDA | PRECIOANT | PRECIO |
+# OFERTA: la descripción estaba en NOMBRE ARTÍCULO --una columna que el lector
+# descartaba a propósito, suponiendo que ahí siempre viene el nombre corto de
+# gestión-- y la mecánica ("2x$75") en OFERTA, una columna que ni se miraba. Con
+# una tabla de nombres fija eso no se arregla agregando alias: el próximo listado
+# va a traer otros nombres.
+#
+# Así que qué es cada columna lo decide CatTi leyendo la planilla (ver
+# catti.interpretar_planilla), igual que decide qué es cada cosa en un PDF. Lo que
+# NO decide son los valores: esos se copian de las celdas tal cual, acá abajo.
+# Una planilla es dato exacto y tiene que seguir siéndolo -- el modelo elige la
+# columna, no reescribe el contenido.
+#
+# Estos son los datos que se le pide que ubique: la clave es el nombre con el que
+# CatTi los devuelve, el valor es el nombre interno de este módulo (el mismo que
+# usa el lector por nombres de columna, así el resto de `leer` no se entera de
+# quién decidió). catti.py arma su herramienta con ESTAS claves y se niega a
+# arrancar si alguna falta o sobra: la lista vive en un solo lugar.
+CAMPOS_DE_LA_PLANILLA: dict[str, str] = {
+    "descripcion": "descripcion",
+    "precio_anterior": "precioAnterior",
+    "precio_oferta": "precio",
+    "moneda": "moneda",
+    "mecanica": "mecanica",
+    "arriba_del_precio": "ofertaEncabezado",
+    "abajo_del_precio": "ofertaPie",
+    "vigencia": "vigencia",
+    "leyenda_alcohol": "legalAlcohol",
+    "sucursal": "sucursal",
+    "stock": "stock",
+    "codigo": "codigo",
+}
+
+# Cómo se le nombra cada dato a una persona cuando se le cuenta qué entendió
+# CatTi ("Descripción ← NOMBRE ARTÍCULO").
+_NOMBRE_DEL_DATO = {
+    "descripcion": "Descripción",
+    "precioAnterior": "Precio anterior",
+    "precio": "Precio de oferta",
+    "moneda": "Moneda",
+    "mecanica": "Mecánica",
+    "ofertaEncabezado": "Arriba del precio",
+    "ofertaPie": "Abajo del precio",
+    "vigencia": "Vigencia",
+    "legalAlcohol": "Leyenda de alcohol",
+    "sucursal": "Sucursal",
+    "stock": "Stock",
+    "codigo": "Código",
+}
+
+# Lo que la pantalla de carga dice que CatTi busca en una planilla. Sale de la
+# misma lista que usa CatTi (menos sucursal, stock y código, que no se comparan
+# contra la placa): así la ayuda nunca promete algo que el motor no mira.
+DATOS_QUE_BUSCA: list[str] = [
+    _NOMBRE_DEL_DATO[campo].lower()
+    for campo in CAMPOS_DE_LA_PLANILLA.values()
+    if campo not in ("sucursal", "stock", "codigo")
+]
+
+# Cuánto de la planilla se le muestra a CatTi para que decida. No hace falta el
+# archivo entero: con el principio (títulos y las primeras filas) y el final (el
+# pie del reporte, si lo hay) alcanza para saber qué es cada columna, y así una
+# campaña de 800 productos cuesta lo mismo que una de 8.
+_MUESTRA_FILAS = 25
+_MUESTRA_COLA = 5
+_MUESTRA_HOJAS = 8
+_MUESTRA_COLUMNAS = 30
+_MUESTRA_ANCHO_CELDA = 60
+
 
 @dataclass
 class Planilla:
@@ -493,15 +569,21 @@ def _juntar_si_viene_en_formato_largo(filas: list[dict]) -> tuple[list[dict], di
 
 
 def _columna_de_descripcion(col_map: dict[int, str]) -> str | None:
-    """Cuál de las columnas del archivo es la descripción que va en la placa.
+    """Cuál de las columnas del archivo es la descripción que va en la placa,
+    cuando la planilla se lee por los NOMBRES de sus columnas -- que es el
+    camino de repuesto: el de siempre es que lo decida CatTi (ver
+    CAMPOS_DE_LA_PLANILLA).
 
-    DESCRIPCION gana sobre DESCRIPCIONWEB, y NOMBREARTICULO no cuenta: es el
-    nombre corto de gestión, en mayúsculas y abreviado ("CERVEZA PATRICIA LATA
-    473ML"), y no se parece a lo que va impreso ("Cerveza PATRICIA lata. 473
-    ml"). Emparejar contra el nombre de gestión daría puntajes bajos en TODAS
-    las placas y haría creer que las descripciones están mal escritas."""
+    DESCRIPCION gana sobre DESCRIPCIONWEB, y las dos sobre NOMBREARTICULO. Hasta
+    el 22/09/2026 NOMBREARTICULO no contaba nunca, suponiendo que ahí siempre
+    viene el nombre corto de gestión en mayúsculas ("CERVEZA PATRICIA LATA
+    473ML"). El listado real de la campaña de los rompeprecios trae la
+    descripción impresa justo ahí ("Arvejas TIENDA INGLESA. 300 g") y ninguna
+    otra columna de texto, y el motor lo rechazaba entero. Ahora cuenta si es la
+    única; y si de verdad viene en mayúsculas de gestión, lo agarra
+    `_parece_vocabulario_de_gestion` y lo avisa, en vez de acusar placas."""
     campos = set(col_map.values())
-    for candidata in ("descripcionExcel", "descripcionWeb"):
+    for candidata in ("descripcionExcel", "descripcionWeb", "nombreArticulo"):
         if candidata in campos:
             return candidata
     return None
@@ -690,9 +772,196 @@ def _filas_de(datos: bytes, filename: str, hoja: str | int | None) -> list[tuple
         raise PlanillaInvalida("No pude abrir la planilla; ¿es un .xlsx o un .csv?") from exc
 
 
-def leer(datos: bytes, filename: str = "", hoja: str | int | None = None) -> Planilla:
+def letra(indice: int) -> str:
+    """La letra de columna como la muestra Excel: 0 -> A, 25 -> Z, 26 -> AA."""
+    s = ""
+    n = indice + 1
+    while n:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+
+def indice_de_letra(texto: str) -> int | None:
+    """La inversa de `letra`: 'A' -> 0, 'AA' -> 26. None si no es una letra de
+    columna (CatTi devuelve cadena vacía para "esta planilla no trae ese dato")."""
+    t = (texto or "").strip().upper()
+    if not t or not t.isalpha() or not t.isascii():
+        return None
+    n = 0
+    for ch in t:
+        n = n * 26 + (ord(ch) - 64)
+    return n - 1
+
+
+def _celda_para_catti(valor) -> str:
+    t = _texto(valor)
+    return t if len(t) <= _MUESTRA_ANCHO_CELDA else t[:_MUESTRA_ANCHO_CELDA - 1] + "…"
+
+
+def _tabla_para_catti(nombre: str, filas: list[tuple]) -> str:
+    """Una hoja como la ve una persona al abrirla: número de fila de Excel y
+    letra de columna. CatTi contesta con esas mismas coordenadas, así lo que
+    decide se puede verificar contra el archivo y mostrarle a la persona."""
+    ancho = 0
+    for f in filas:
+        for i, v in enumerate(f[:_MUESTRA_COLUMNAS]):
+            if _texto(v):
+                ancho = max(ancho, i + 1)
+    total = len(filas)
+    titulo = "Hoja «%s» — %d filas" % (nombre, total) if nombre else "Archivo CSV — %d filas" % total
+    if not ancho:
+        return titulo + " (vacía)"
+    lineas = [titulo, "fila | " + " | ".join(letra(i) for i in range(ancho))]
+    mostrar = list(range(min(total, _MUESTRA_FILAS)))
+    if total > _MUESTRA_FILAS:
+        cola = list(range(max(_MUESTRA_FILAS, total - _MUESTRA_COLA), total))
+        if cola and cola[0] > _MUESTRA_FILAS:
+            lineas_cortadas = (cola[0] - _MUESTRA_FILAS)
+            mostrar.append(-lineas_cortadas)  # marca de "no se muestran N filas"
+        mostrar.extend(cola)
+    for i in mostrar:
+        if i < 0:
+            lineas.append("  (… %d filas más con el mismo formato, no se muestran …)" % -i)
+            continue
+        celdas = [_celda_para_catti(v) for v in filas[i][:ancho]]
+        if not any(celdas):
+            continue  # un renglón vacío no aporta, y su número de fila igual se ve en el salto
+        lineas.append("%4d | " % (i + 1) + " | ".join(celdas + [""] * (ancho - len(celdas))))
+    return "\n".join(lineas)
+
+
+def muestra(datos: bytes, filename: str = "") -> dict:
+    """SINCRÓNICO (va en un hilo). Lo que se le muestra a CatTi para que decida
+    qué es cada columna: cada hoja (hasta ocho) con sus primeras filas y las
+    últimas, en texto. Devuelve {"texto", "hojas": [nombres]}.
+
+    El freno barato del catálogo corre ANTES, igual que en `leer`: mandarle un
+    catálogo de 200.000 filas al modelo para que después lo rechace el tope
+    sería gastar tokens y tiempo en decir que no."""
+    if _cuantas_filas(datos, filename, None, MAX_FILAS_CRUDAS) > MAX_FILAS_CRUDAS:
+        raise _demasiadas_filas_crudas()
+    nombres = _hojas(datos, filename)
+    partes: list[str] = []
+    if nombres:
+        for n, nombre in enumerate(nombres[:_MUESTRA_HOJAS]):
+            partes.append(_tabla_para_catti(nombre, _filas_de(datos, filename, n)))
+        if len(nombres) > _MUESTRA_HOJAS:
+            partes.append("(El archivo tiene %d hojas más que no se muestran: %s)" % (
+                len(nombres) - _MUESTRA_HOJAS, ", ".join(nombres[_MUESTRA_HOJAS:])))
+    else:
+        partes.append(_tabla_para_catti("", _filas_de(datos, filename, None)))
+    return {"texto": "\n\n".join(partes), "hojas": nombres}
+
+
+def _segun_catti(
+    datos: bytes, filename: str, hoja: str | int | None, mapeo: dict,
+) -> tuple[list[tuple], str, list[str], int, dict[int, str], dict]:
+    """Lo que decidió CatTi (catti.interpretar_planilla), verificado contra el
+    archivo antes de creerle: la hoja tiene que existir, las columnas tienen que
+    estar dentro de la tabla, y la de la descripción tiene que traer texto. Lo
+    que no cierra se descarta y se dice; lo único sin lo cual no se puede
+    seguir es la descripción, porque es lo que amarra cada placa con su fila.
+
+    Devuelve (filas, hoja, avisos, índice de la fila de títulos o -1 si no hay,
+    {índice de columna: campo}, interpretación para mostrarle a la persona)."""
+    avisos: list[str] = []
+    nombres = _hojas(datos, filename)
+
+    if hoja is not None:
+        # La hoja que eligió la persona manda sobre la que eligió CatTi.
+        nombre_hoja = _nombre_de_hoja(nombres, hoja)
+        filas = _filas_de(datos, filename, hoja)
+    elif nombres:
+        pedida = (mapeo.get("hoja") or "").strip()
+        if pedida in nombres:
+            nombre_hoja = pedida
+        else:
+            nombre_hoja = nombres[0]
+            if pedida:
+                avisos.append("CatTi nombró una hoja que no está en el archivo («%s»): leí «%s»." % (pedida, nombre_hoja))
+        filas = _filas_de(datos, filename, nombres.index(nombre_hoja))
+        if nombre_hoja != nombres[0]:
+            saltadas = ", ".join("«%s»" % n for n in nombres[:nombres.index(nombre_hoja)])
+            avisos.append("Leí la hoja «%s»: CatTi vio que ahí están los productos (las de adelante son %s)." % (nombre_hoja, saltadas))
+    else:
+        nombre_hoja = ""
+        filas = _filas_de(datos, filename, None)
+
+    fila = mapeo.get("fila_encabezados") or 0
+    idx_headers = fila - 1 if isinstance(fila, int) and 1 <= fila <= len(filas) else -1
+    ancho = max((len(f) for f in filas), default=0)
+
+    col_map: dict[int, str] = {}
+    usados: dict[int, str] = {}
+    for clave, campo in CAMPOS_DE_LA_PLANILLA.items():
+        texto = (mapeo.get("columnas") or {}).get(clave) or ""
+        i = indice_de_letra(texto)
+        if i is None:
+            continue
+        if i >= ancho:
+            avisos.append("CatTi ubicó %s en la columna %s, que no existe en la planilla: no lo tuve en cuenta." % (
+                _NOMBRE_DEL_DATO[campo].lower(), texto))
+            continue
+        if i in usados:
+            # Una columna es UN dato. Si CatTi pone dos en la misma, se queda el
+            # primero (el orden de CAMPOS_DE_LA_PLANILLA va de lo que importa a
+            # lo accesorio) y se dice.
+            avisos.append("CatTi puso %s y %s en la misma columna (%s): me quedé con %s." % (
+                _NOMBRE_DEL_DATO[usados[i]].lower(), _NOMBRE_DEL_DATO[campo].lower(), letra(i),
+                _NOMBRE_DEL_DATO[usados[i]].lower()))
+            continue
+        col_map[i] = campo
+        usados[i] = campo
+
+    encabezados = filas[idx_headers] if idx_headers >= 0 else ()
+    desc = next((i for i, c in col_map.items() if c == "descripcion"), None)
+    con_texto = desc is not None and any(
+        _texto(f[desc]) for f in filas[idx_headers + 1:] if desc < len(f)
+    )
+    if not con_texto:
+        titulos_vistos = ", ".join(_texto(c) for c in encabezados if _texto(c))[:200]
+        raise PlanillaInvalida(
+            "CatTi no encontró en la planilla ninguna columna con la descripción del producto, "
+            "que es lo que amarra cada placa con su fila."
+            + (" Los títulos que vio son: %s." % titulos_vistos if titulos_vistos else "")
+            + ((" " + mapeo["dudas"]) if mapeo.get("dudas") else "")
+        )
+
+    interpretacion = {
+        "explicacion": mapeo.get("explicacion") or "",
+        "dudas": mapeo.get("dudas") or "",
+        "columnas": [
+            {
+                "dato": _NOMBRE_DEL_DATO[campo],
+                "letra": letra(i),
+                "titulo": _titulo_de_columna(encabezados, i),
+            }
+            for i, campo in sorted(col_map.items(), key=lambda kv: list(CAMPOS_DE_LA_PLANILLA.values()).index(kv[1]))
+        ],
+    }
+    if interpretacion["dudas"]:
+        avisos.append("CatTi tuvo una duda al leer la planilla: " + interpretacion["dudas"])
+    return filas, nombre_hoja, avisos, idx_headers, col_map, interpretacion
+
+
+def _titulo_de_columna(encabezados, i: int) -> str:
+    """El título de la columna como está en el archivo, o "columna F" si la
+    planilla no tiene fila de títulos."""
+    t = _texto(encabezados[i]) if i < len(encabezados) else ""
+    return t or "columna %s" % letra(i)
+
+
+def leer(
+    datos: bytes, filename: str = "", hoja: str | int | None = None, mapeo: dict | None = None,
+) -> Planilla:
     """SINCRÓNICO (va en un hilo, ver hilos.py): la planilla entera convertida
     en el mismo dict que devuelve la lectura de un mailing.
+
+    `mapeo` es lo que decidió CatTi sobre qué es cada columna (ver
+    CAMPOS_DE_LA_PLANILLA y catti.interpretar_planilla); es el camino de
+    siempre. Sin `mapeo` las columnas se reconocen por su NOMBRE, que es el
+    repuesto para cuando no se puede consultar al modelo.
 
     openpyxl es CPU puro y bloqueante. Lo que acá NO se hace es dibujar: la tira
     de evidencia de cada fila se dibuja cuando se pide (ver `evidencia`)."""
@@ -702,32 +971,42 @@ def leer(datos: bytes, filename: str = "", hoja: str | int | None = None) -> Pla
     if _cuantas_filas(datos, filename, hoja, MAX_FILAS_CRUDAS) > MAX_FILAS_CRUDAS:
         raise _demasiadas_filas_crudas()
 
-    filas, nombre_hoja, avisos = _elegir_hoja(datos, filename, hoja)
-    if len(filas) > MAX_FILAS_CRUDAS:  # el atajo no pudo contar: se chequea igual
-        raise _demasiadas_filas_crudas()
-
-    idx_headers = _fila_de_encabezados(filas)
-    if idx_headers is None:
-        primeras = ", ".join(str(c) for c in (filas[0] if filas else ()) if c is not None)[:200]
-        raise PlanillaInvalida(
-            "No encontré la fila de encabezados de la planilla: tiene que tener una "
-            "columna DESCRIPCION, que es la que se compara contra la placa."
-            + (" La primera fila dice: %s" % primeras if primeras else "")
+    interpretacion = None
+    if mapeo is not None:
+        filas, nombre_hoja, avisos, idx_headers, col_map, interpretacion = _segun_catti(
+            datos, filename, hoja, mapeo,
         )
-    encabezados = filas[idx_headers]
-    col_map = _columnas_de(encabezados)
+        if len(filas) > MAX_FILAS_CRUDAS:  # el atajo no pudo contar: se chequea igual
+            raise _demasiadas_filas_crudas()
+    else:
+        filas, nombre_hoja, avisos = _elegir_hoja(datos, filename, hoja)
+        if len(filas) > MAX_FILAS_CRUDAS:  # el atajo no pudo contar: se chequea igual
+            raise _demasiadas_filas_crudas()
 
-    col_desc = _columna_de_descripcion(col_map)
-    if col_desc is None:  # pragma: no cover - _fila_de_encabezados ya lo garantiza
-        raise PlanillaInvalida("La planilla no trae una columna DESCRIPCION")
-    # De acá en adelante la descripción elegida se llama "descripcion" y punto:
-    # así el resto del módulo no tiene que preguntarse cuál de las dos era.
-    col_map = {i: ("descripcion" if c == col_desc else c) for i, c in col_map.items()}
-    # La otra columna de descripción no se usa ni se muestra: dos descripciones
-    # en la evidencia es una invitación a corregir la placa contra la que no era.
-    col_map = {i: c for i, c in col_map.items() if c not in ("descripcionExcel", "descripcionWeb")}
+        idx_headers = _fila_de_encabezados(filas)
+        if idx_headers is None:
+            primeras = ", ".join(str(c) for c in (filas[0] if filas else ()) if c is not None)[:200]
+            raise PlanillaInvalida(
+                "No encontré la fila de encabezados de la planilla: tiene que tener una "
+                "columna con la descripción del producto (DESCRIPCION o NOMBRE ARTÍCULO)."
+                + (" La primera fila dice: %s" % primeras if primeras else "")
+            )
+        col_map = _columnas_de(filas[idx_headers])
 
-    titulos = {campo: _una_linea(str(encabezados[i])) for i, campo in col_map.items()}
+        col_desc = _columna_de_descripcion(col_map)
+        if col_desc is None:  # pragma: no cover - _fila_de_encabezados ya lo garantiza
+            raise PlanillaInvalida("La planilla no trae una columna con la descripción del producto")
+        # De acá en adelante la descripción elegida se llama "descripcion" y punto:
+        # así el resto del módulo no tiene que preguntarse cuál de las dos era.
+        col_map = {i: ("descripcion" if c == col_desc else c) for i, c in col_map.items()}
+        # La otra columna de descripción no se usa ni se muestra: dos descripciones
+        # en la evidencia es una invitación a corregir la placa contra la que no era.
+        col_map = {
+            i: c for i, c in col_map.items() if c not in ("descripcionExcel", "descripcionWeb", "nombreArticulo")
+        }
+
+    encabezados = filas[idx_headers] if idx_headers >= 0 else ()
+    titulos = {campo: _titulo_de_columna(encabezados, i) for i, campo in col_map.items()}
 
     crudas: list[tuple[int, dict]] = []
     sin_descripcion = 0
@@ -885,6 +1164,11 @@ def leer(datos: bytes, filename: str = "", hoja: str | int | None = None) -> Pla
             # entendió el archivo de otra manera que la persona.
             "filas_juntadas": largo["filas"],
             "descripcion_de_gestion": de_gestion,
+            # Qué entendió CatTi de la planilla: qué columna es cada dato, en
+            # sus palabras. Va a la pantalla y al Excel para que la persona vea
+            # CÓMO se leyó su archivo antes de creerle a una sola corrección.
+            # None cuando la planilla se leyó por los nombres de las columnas.
+            "interpretacion": interpretacion,
             # Los avisos viven ACÁ y no solo en el dataclass: esto es lo que se
             # guarda en la base y lo que llega a la pantalla y al Excel.
             # `Planilla.avisos` los armaba y se perdían en el camino
