@@ -472,6 +472,28 @@ def _mapear_columnas(row) -> tuple[dict[int, str], bool]:
     return candidate, found_codigo
 
 
+def mapear_columnas(header_row) -> dict[int, str]:
+    """{índice de columna -> campo} de una fila de encabezados, con los alias
+    fijos de _INPUT_ALIASES.
+
+    Es la cara pública de _mapear_columnas, para los que no son el Convertidor.
+    La usa la Validación de RRSS (services/rrss/planilla.py), que lee las
+    planillas de campaña con este mismo lector: _INPUT_ALIASES son cien líneas
+    de nombres de columna aprendidos a los golpes de los exports reales
+    ("NOMBREARTICULO" y "NOMBRE DE ARTICULO", "PRECIOANT" y "PVPREGULAR"), y
+    tenerlos escritos dos veces es la forma segura de que un día una herramienta
+    lea un archivo que la otra rechaza."""
+    col_map, _ = _mapear_columnas(header_row)
+    return col_map
+
+
+def normalizar_header(nombre) -> str:
+    """Un nombre de columna llevado a su forma comparable: sin tildes, sin
+    espacios ni guiones, en minúscula. Pública por lo mismo que
+    `mapear_columnas`: quien agregue alias propios tiene que normalizar igual."""
+    return _norm(nombre)
+
+
 async def campos_reconocidos(header_row, db: AsyncSession | None = None) -> set[str]:
     """Qué campos de entrada resuelve el Convertidor SOLO en esta fila de headers.
 
@@ -659,7 +681,7 @@ def _sin_dato(valor) -> bool:
     return False
 
 
-def juntar_filas_por_producto(parsed: list[dict]) -> tuple[list[dict], dict]:
+def juntar_filas_por_producto(parsed: list[dict], clave: str = "codigo") -> tuple[list[dict], dict]:
     """Formato largo -> una fila por producto, con el stock de cada sucursal.
 
     Por qué existe: el Convertidor hace UNA cenefa por producto. Sin juntar, el
@@ -677,9 +699,9 @@ def juntar_filas_por_producto(parsed: list[dict]) -> tuple[list[dict], dict]:
     siempre, que son la enorme mayoría, se convierten exactamente igual que
     antes de que esto existiera.
 
-    Se agrupa por `codigo` respetando el orden de aparición, y la fila que queda
-    es la PRIMERA del grupo (así el orden de la grilla sigue siendo el del
-    archivo), más:
+    Se agrupa por `clave` --`codigo` para el Convertidor-- respetando el orden de
+    aparición, y la fila que queda es la PRIMERA del grupo (así el orden de la
+    grilla sigue siendo el del archivo), más:
 
     - `"_stock"` = {sucursal: unidades}, hermana de "_mapeado", con las filas del
       grupo cuyo stock es legible. Una celda vacía no deja rastro, porque "no
@@ -706,6 +728,13 @@ def juntar_filas_por_producto(parsed: list[dict]) -> tuple[list[dict], dict]:
     cuántos productos traían dos valores distintos no vacíos en algún campo entre
     sus filas; es un dato para mostrar y no frena nada: lo normal es 0, y si da
     alto quiere decir que el archivo no es lo que creemos que es.
+
+    `clave` existe porque la Validación de RRSS junta el MISMO archivo por la
+    DESCRIPCIÓN (services/rrss/planilla.py): ahí la identidad del producto es la
+    descripción --es lo que amarra la placa con su fila-- y una planilla de
+    campaña puede no traer columna CODIGO. Es un parámetro y no un segundo
+    juntador copiado en el otro módulo, que es como terminan dos herramientas
+    juntando distinto el mismo export de la misma empresa.
     """
     if all(_sin_dato(r.get("sucursal")) for r in parsed):
         return parsed, {"filas": 0, "productos": 0, "sucursales": [], "con_diferencias": 0}
@@ -715,7 +744,7 @@ def juntar_filas_por_producto(parsed: list[dict]) -> tuple[list[dict], dict]:
     grupos: dict[str, list[dict]] = {}
     sucursales: list[str] = []
     for r in parsed:
-        grupos.setdefault(r.get("codigo") or "", []).append(r)
+        grupos.setdefault(r.get(clave) or "", []).append(r)
         sucursal = _clean_str(r.get("sucursal"))
         if sucursal and sucursal not in sucursales:
             sucursales.append(sucursal)
@@ -727,12 +756,18 @@ def juntar_filas_por_producto(parsed: list[dict]) -> tuple[list[dict], dict]:
         stock: dict[str, int] = {}
         difiere = False
         for r in grupo:
-            for clave, valor in r.items():
-                if clave in ("sucursal", "stock"):
+            # `campo` y no `clave`: `clave` es el PARÁMETRO de esta función (por
+            # qué columna se agrupa), y este for lo pisaba con el nombre de la
+            # última columna de la última fila. Hoy no rompe nada de casualidad
+            # --el agrupado de arriba ya terminó cuando se llega acá-- pero es
+            # una mina: basta que alguien vuelva a leer `clave` de este lado para
+            # que agrupe por la columna equivocada, sin un error a la vista.
+            for campo, valor in r.items():
+                if campo in ("sucursal", "stock"):
                     continue
-                if _sin_dato(fila.get(clave)):
-                    fila[clave] = valor
-                elif not _sin_dato(valor) and valor != fila[clave]:
+                if _sin_dato(fila.get(campo)):
+                    fila[campo] = valor
+                elif not _sin_dato(valor) and valor != fila[campo]:
                     # Se cuenta el PRODUCTO una sola vez, no el campo ni la
                     # fila: lo que hay que poder decir en pantalla es "3
                     # productos vienen con datos distintos entre sus filas", no

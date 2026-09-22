@@ -40,7 +40,7 @@ export default function Historial({ puedeBorrar, onAbrir, abriendoId }: Props) {
         <thead className="text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/50">
           <tr>
             <th className="text-left font-medium px-4 py-3">{t("rrss.hFecha")}</th>
-            <th className="text-left font-medium px-4 py-3">{t("rrss.mailing")}</th>
+            <th className="text-left font-medium px-4 py-3">{t("rrss.hArchivo")}</th>
             <th className="text-left font-medium px-4 py-3 hidden md:table-cell">{t("rrss.hUsuario")}</th>
             <th className="text-left font-medium px-4 py-3">{t("rrss.hResultado")}</th>
             <th />

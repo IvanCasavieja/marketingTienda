@@ -1,6 +1,10 @@
-"""Orquesta la validación de redes sociales: leer el mailing una vez, y por
+"""Orquesta la validación de redes sociales: leer la fuente una vez, y por
 cada placa leerla, emparejarla con su producto, compararla y armar los
 recortes que dejan ver cada diferencia sin abrir nada aparte.
+
+La fuente puede ser un MAILING (un PDF que CatTi mira y transcribe) o una
+PLANILLA (un .xlsx/.csv que se lee como datos, sin IA -- ver planilla.py). Las
+dos producen el MISMO dict, y de ahí para abajo el motor es uno solo.
 
 No toca la base (el llamador guarda lo que devuelve) y no sabe de HTTP.
 
@@ -16,17 +20,24 @@ from dataclasses import dataclass, field
 
 from PIL import Image
 
-from app.services.rrss import catti, comparador, imagenes
+from app.services.rrss import catti, comparador, imagenes, planilla
 from app.services.rrss.hilos import en_hilo
 
 logger = logging.getLogger(__name__)
 
-# Legales que se exigen en cada placa. `legal_alcohol` vacío = el que trae el
-# propio mailing (ver comparador.comparar_elementos). Se pueden cambiar por
-# corrida desde la pantalla de carga.
+# Lo que se exige en cada placa y no sale del producto. `legal_alcohol` y
+# `fecha` vacíos = lo que traiga la propia fuente (ver
+# comparador.comparar_elementos). Se pueden cambiar por corrida desde la
+# pantalla de carga.
+#
+# `fecha` existe por las planillas: un mailing trae impreso el texto de
+# vigencia ("DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE") y una planilla trae dos
+# fechas sueltas, que no es lo mismo. En vez de componer un texto que nadie
+# escribió, lo escribe la persona -- y si no lo escribe, la fecha no se valida.
 CONFIG_DEFECTO = {
     "legal_bases": "Bases y condiciones en tiendainglesa.com.uy",
     "legal_alcohol": "",
+    "fecha": "",
 }
 
 _ANCHO_RECORTE = 640
@@ -91,8 +102,30 @@ async def preparar_mailing(datos: bytes, content_type: str, filename: str) -> Ma
     except Exception:
         # Sin cajas el mailing igual sirve para validar: solo se pierden los recortes.
         logger.warning("rrss: no se pudieron ubicar los productos del mailing", exc_info=True)
+    mailing["origen"] = "mailing"
     await en_hilo(_recortes_de_productos, paginas, mailing)
     return MailingPreparado(mailing, paginas, t_in, t_out)
+
+
+# --------------------------------------------------------------------------
+# Planilla
+# --------------------------------------------------------------------------
+
+async def preparar_planilla(datos: bytes, filename: str, hoja: str | int | None = None) -> MailingPreparado:
+    """La misma fuente, leída de una planilla: sin IA, sin tokens y sin páginas.
+
+    Va a un hilo entero (openpyxl es CPU puro y sincrónico) por lo mismo que el
+    resto del trabajo de píxeles: un solo proceso de uvicorn, ver hilos.py. Lo
+    que ya NO hace es dibujar una tira por fila: eso se dibuja al emparejar cada
+    placa, que es cuando se sabe qué fila hace falta (ver `validar_placa`).
+
+    Lo que la lectura tuvo para decir (una hoja de más, una fila de pie, una
+    columna en el vocabulario de gestión) viaja adentro del propio dict, en
+    `mailing["planilla"]["avisos"]`, que es lo que se guarda en la base. Antes
+    se armaba en un campo aparte del dataclass y acá se devolvía solo
+    `pl.mailing`: los avisos no llegaban a ningún lado."""
+    pl = await en_hilo(planilla.leer, datos, filename, hoja)
+    return MailingPreparado(pl.mailing, [], 0, 0)
 
 
 # --------------------------------------------------------------------------
@@ -121,6 +154,13 @@ def _recortes_de_las_filas(
         # producto entero: mejor eso que nada.
         caja_placa = cajas_placa.get(clave_caja) or (cajas_placa.get("producto") if fila["grupo"] == "producto" else None)
         fila["recorte_placa"] = _uri(imagenes.recortar(im, caja_placa, margen=_MARGEN_CAMPO, ancho_max=_ANCHO_RECORTE))
+
+        if mailing.get("origen") == "planilla":
+            # No hay página de la que recortar: la evidencia es la fila de la
+            # planilla dibujada, con la celda de ESTE campo encuadrada.
+            if idx is not None and fila["grupo"] == "producto":
+                fila["recorte_mailing"] = planilla.recorte_de_campo(mailing, idx, fila["campo"])
+            continue
 
         pagina = caja = None
         if item is not None and fila["grupo"] == "producto":
@@ -170,7 +210,21 @@ async def validar_placa(
         t_in, t_out = t_in + ti, t_out + to
         tiempos["lectura"] = _ms(t)
 
-        idx, puntaje, filas = comparador.comparar_placa(lectura, mailing, config)
+        par = comparador.emparejamiento(lectura["producto"], mailing["productos"])
+        idx, puntaje, filas = comparador.comparar_placa(lectura, mailing, config, par)
+
+        # La evidencia del lado de la fuente. Con un mailing es el recorte del
+        # producto, que ya quedó dibujado al leerlo; con una planilla es la tira
+        # de la fila, y se dibuja ACÁ, cuando se sabe QUÉ fila hace falta: una
+        # por placa emparejada en vez de una por fila del archivo (ver
+        # planilla.evidencia). Va en el resultado de la placa porque es la
+        # prueba de ESTE emparejamiento, y así viaja igual en vivo y al abrir la
+        # validación del historial.
+        recorte_fuente = None
+        if idx is not None and mailing.get("origen") == "planilla":
+            t = time.perf_counter()
+            recorte_fuente = await en_hilo(planilla.evidencia, mailing, idx)
+            tiempos["tira"] = _ms(t)
 
         # Un error de texto solo se sostiene si una segunda lectura lo repite:
         # acusar a una placa de un error que fue de lectura es peor que no ver nada.
@@ -191,9 +245,13 @@ async def validar_placa(
                 cajas = {}
             tiempos["ubicar"] = _ms(t)
 
-            t = time.perf_counter()
-            paginas = await cargar_paginas()
-            tiempos["paginas"] = _ms(t)
+            # Con una planilla no hay páginas que traer de la base: el lado de
+            # la fuente se dibuja, no se recorta.
+            paginas: list[Image.Image] = []
+            if mailing.get("origen") != "planilla":
+                t = time.perf_counter()
+                paginas = await cargar_paginas()
+                tiempos["paginas"] = _ms(t)
 
             t = time.perf_counter()
             await en_hilo(_armar_recortes, datos, filas, cajas, mailing, idx, paginas)
@@ -218,8 +276,29 @@ async def validar_placa(
     logger.info("rrss placa %s: %s ms=%s", nombre_archivo, comparador.estado_de_la_placa(filas, idx), tiempos)
 
     estado = comparador.estado_de_la_placa(filas, idx)
+    # Las filas que MÁS se parecieron, con su puntaje. Van cuando no hubo pareja
+    # --sin esto, "no encontré este producto" es una acusación sin pruebas: la
+    # persona no puede distinguir "esta placa no es de esta campaña" de "la
+    # descripción está tan mal escrita que no la reconoció"-- y también cuando
+    # SÍ hubo pero con duda: ahí son la prueba de que hay una segunda candidata
+    # y por cuánto perdió.
+    candidatas = (
+        comparador.candidatos(lectura["producto"], mailing["productos"])
+        if idx is None or par["duda"] else []
+    )
     resultado = {
-        "match": {"indice": idx, "puntaje": round(puntaje, 1)} if idx is not None else None,
+        "match": {
+            "indice": idx, "puntaje": round(puntaje, 1),
+            "segundo": round(par["segundo"], 1) if par["segundo"] is not None else None,
+            "parecido": round(par["parecido"], 1),
+            "duda": par["duda"], "motivo_duda": par["motivo_duda"],
+        } if idx is not None else None,
+        "candidatos": candidatas,
+        # La tira de la fila de la planilla, o None si no se pudo dibujar. None
+        # NO se esconde: la pantalla y el Excel dicen que la tira falta y
+        # muestran la cita (archivo · hoja · fila) para ir a mirarla a mano.
+        "recorte_fuente": recorte_fuente,
+        "sin_pareja": par["motivo_sin_pareja"] if idx is None else None,
         "filas": filas,
         "lectura": lectura,
         "error": None,
@@ -242,7 +321,8 @@ async def _con_error(motivo: str, tiempos: dict, inicio: float, datos: bytes | N
             vista = None
     tiempos["total"] = _ms(inicio)
     return ResultadoPlaca(
-        resultado={"match": None, "filas": [], "lectura": None, "error": motivo, "tiempos_ms": tiempos},
+        resultado={"match": None, "candidatos": [], "recorte_fuente": None, "sin_pareja": None,
+                   "filas": [], "lectura": None, "error": motivo, "tiempos_ms": tiempos},
         vista=vista,
         ancho=prep.ancho if prep else 0, alto=prep.alto if prep else 0,
         formato=formato, estado="error", tokens_in=t_in, tokens_out=t_out,

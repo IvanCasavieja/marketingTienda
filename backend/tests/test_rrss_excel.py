@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 from PIL import Image
 
 from app.services.rrss import correccion as c
-from app.services.rrss import excel
+from app.services.rrss import excel, imagenes
 
 
 # ---------------------------------------------------------------- instrucciones
@@ -190,10 +190,103 @@ def test_las_imagenes_van_adentro():
     assert len(ws._images) == 6
 
 
-def test_todas_bien_no_hay_excel():
+def test_todas_bien_y_nada_mas_que_decir_no_hay_excel():
+    """Con un mailing y todas las placas bien no hay nada que mandar. Ojo: con
+    una planilla puede haber (ver los dos tests de más abajo)."""
     todas_bien = {**VALIDACION, "imagenes": [VALIDACION["imagenes"][-1]]}
     with pytest.raises(excel.NadaParaCorregir):
         excel.construir(todas_bien)
+
+
+# ---------------------------------------------------------------- (10) una palabra que se pueda sostener
+
+def _con_planilla(imagenes, campos=("descripcion", "oferta_precio"), avisos=(), **info):
+    """Una validación contra una planilla de 3 filas.
+
+    `info` pisa lo que haga falta del bloque "planilla" (los contadores de la
+    lectura, por ejemplo)."""
+    productos = [
+        {"descripcion": "Carré de cerdo. kg", "recorte": None, "fila": {"numero": 4, "valores": {"descripcion": "Carré de cerdo. kg"}}},
+        {"descripcion": "Cerveza STELLA ARTOIS. Lata 710 ml", "recorte": None, "fila": {"numero": 5, "valores": {"descripcion": "Cerveza STELLA ARTOIS. Lata 710 ml"}}},
+        {"descripcion": "Bola de lomo. Kg", "recorte": None, "fila": {"numero": 6, "valores": {"descripcion": "Bola de lomo. Kg"}}},
+    ]
+    return {
+        "mailing": {
+            "origen": "planilla", "fecha": "", "campos": list(campos), "productos": productos,
+            "planilla": {
+                "archivo": "LISTADO.xlsx", "hoja": "Campaña", "titulos": {"descripcion": "DESCRIPCION"},
+                "fila_encabezado": 1, "filas_leidas": 3, "filas_ignoradas": 0,
+                "filas_juntadas": 0,
+                "descripcion_de_gestion": False, "avisos": list(avisos),
+                **info,
+            },
+        },
+        "imagenes": imagenes,
+    }
+
+
+def test_no_dice_esta_bien_cuando_no_miro_ni_la_mitad():
+    """Una placa con mecánica, encabezado y pie inventados contra una planilla
+    que no trae esas columnas daba "Está bien", en verde, con 2 de 7 campos
+    revisados. El encabezado lo aclaraba; la hoja "Todas las placas" no."""
+    bien = _placa("10", "1:1", "ok", 0, [], 1)
+    mala = _placa("11", "1:1", "diferencias", 1, [PUNTO], 2)
+    ws = _abrir(_con_planilla([bien, mala]))["Todas las placas"]
+    estados = [ws[f"D{f}"].value for f in range(3, 5)]
+    assert "Está bien" not in estados
+    assert estados[0] == "Sin diferencias"
+    # y en la misma fila dice CUÁNTO se miró, no solo en el encabezado
+    assert ws["E3"].value == "Coincide en lo que dicta la planilla (2 de 7 campos)"
+
+
+def test_contra_un_mailing_no_se_habla_de_campos_que_quedaron_afuera():
+    """Un mailing dicta los siete campos: ahí no hay nada que aclarar."""
+    ws = _abrir(VALIDACION)["Todas las placas"]
+    ok = next(f for f in range(3, ws.max_row + 1) if ws[f"D{f}"].value == "Sin diferencias")
+    assert "campos" not in str(ws[f"E{ok}"].value)
+
+
+# ---------------------------------------------------------------- (11) el Excel que faltaba
+
+def test_hay_excel_aunque_todas_las_placas_esten_bien_si_faltan_placas():
+    """Una campaña de 3 productos con UNA sola placa, y esa placa perfecta: no
+    hay ninguna placa mal, así que el Excel cortaba antes de armarse y no había
+    NADA para mandarle al diseñador. Y es justo la que más lo necesita: la hoja
+    "La planilla" muestra las dos filas que ninguna placa reclamó."""
+    sola = _placa("10", "1:1", "ok", 0, [], 1)
+    wb = _abrir(_con_planilla([sola]))
+    assert "La planilla" in wb.sheetnames
+    ws = wb["La planilla"]
+    estados = [ws.cell(row=r, column=ws.max_column).value for r in range(4, ws.max_row + 1)]
+    assert estados.count("Sin placa") == 2
+    # y la hoja de correcciones lo dice con todas las letras, no con una tabla vacía
+    correcciones = wb["Correcciones"]
+    assert "La placa está bien" in str(correcciones["A2"].value)
+    assert "La planilla" in str(correcciones["A4"].value)
+
+
+def test_sin_placas_que_falten_y_sin_avisos_no_hay_excel_tampoco_con_planilla():
+    """El corte no se fue: si están todas las filas cubiertas y todas las placas
+    bien, no hay nada que decir."""
+    placas = [_placa(str(10 + n), "1:1", "ok", n, [], n) for n in range(3)]
+    with pytest.raises(excel.NadaParaCorregir):
+        excel.construir(_con_planilla(placas))
+
+
+# ---------------------------------------------------------------- (9) los avisos llegan al Excel
+
+def test_los_avisos_de_la_planilla_salen_en_el_excel():
+    """Se armaban y morían en un campo que nadie leía. Son los que delatan que
+    el motor entendió mal el archivo, así que van en las dos hojas."""
+    aviso = "No lo conté como producto, parece el pie del reporte: fila 7: «TOTAL: 5 artículos»"
+    mala = _placa("11", "1:1", "diferencias", 1, [PUNTO], 2)
+    wb = _abrir(_con_planilla([mala], avisos=[aviso]))
+    assert aviso in str(wb["Correcciones"]["A2"].value)
+    planilla = wb["La planilla"]
+    textos = [planilla.cell(row=r, column=1).value for r in range(1, 6)]
+    assert aviso in textos
+    # y los contadores de la lectura, que estaban tipados y no se mostraban
+    assert "leídas a partir de la fila 2" in str(planilla["A2"].value)
 
 
 def test_una_placa_que_no_se_pudo_leer_no_rompe_el_excel():
@@ -212,8 +305,45 @@ def test_una_placa_sin_producto_en_el_mailing_va_sola():
 
 def test_anda_en_un_servidor_sin_fuentes(monkeypatch):
     """Render es Linux sin fuentes instaladas: el pie de las miniaturas tiene que
-    salir igual, con la fuente que trae Pillow."""
-    monkeypatch.setattr(excel, "_FUENTES", ("/no/existe.ttf",))
-    monkeypatch.setattr(excel, "_FUENTES_NEGRITA", ("/no/existe-bold.ttf",))
+    salir igual, con la fuente que trae Pillow.
+
+    Las rutas viven en imagenes.py desde que también las usa la tira de la
+    planilla (rrss/planilla.py): eran las mismas dos listas en dos módulos."""
+    monkeypatch.setattr(imagenes, "_FUENTES", ("/no/existe.ttf",))
+    monkeypatch.setattr(imagenes, "_FUENTES_NEGRITA", ("/no/existe-bold.ttf",))
     ws = _abrir(VALIDACION)["Correcciones"]
     assert len(ws._images) == 6
+
+
+# ---------------------------------------------------------------- los contadores de la lectura
+
+def _encabezado_de_la_planilla(**info) -> str:
+    mala = _placa("11", "1:1", "diferencias", 1, [PUNTO], 2)
+    return str(_abrir(_con_planilla([mala], **info))["La planilla"]["A2"].value)
+
+
+def test_un_solo_pie_no_dice_1_filas_quedaron_afuera():
+    """Se leía "(1 filas quedaron afuera)", y se ve en cuanto una planilla trae
+    UN solo pie de reporte, que desde que el pie se reconoce es el caso normal.
+    Es una línea que el diseñador lee en cada Excel."""
+    texto = _encabezado_de_la_planilla(filas_ignoradas=1)
+    assert "(1 fila quedó afuera)" in texto
+    assert "1 filas" not in texto
+
+
+def test_con_mas_de_una_fila_afuera_sigue_en_plural():
+    assert "(2 filas quedaron afuera)" in _encabezado_de_la_planilla(filas_ignoradas=2)
+
+
+def test_las_filas_juntadas_tambien_se_imprimen():
+    """El tercer contador de la lectura: viajaba en la API (filas_juntadas) y no
+    se imprimía ni en la pantalla ni acá. Es el que delata que el motor entendió
+    el archivo de otra manera que la persona: 3 productos salidos de 90 filas."""
+    assert "juntando 90 filas del archivo" in _encabezado_de_la_planilla(filas_juntadas=90)
+
+
+def test_sin_formato_largo_no_se_habla_de_juntar():
+    """El caso normal no junta nada y no tiene nada que decir."""
+    texto = _encabezado_de_la_planilla()
+    assert "juntando" not in texto
+    assert "quedaron afuera" not in texto

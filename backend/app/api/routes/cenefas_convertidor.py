@@ -95,7 +95,7 @@ async def preview(
     current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    excel_bytes = await read_limited(excel, "Excel")
+    excel_bytes = await read_limited(excel, "El Excel")
     try:
         mapeo = {str(k): str(v) for k, v in (json.loads(mapeo_json or "{}") or {}).items()}
         valores = {str(k): str(v) for k, v in (json.loads(valores_json or "{}") or {}).items()}
@@ -677,7 +677,7 @@ async def columnas(
     Una hoja que no se puede leer no rompe el pedido: viaja con su `error` y
     las demás se devuelven igual. Solo se falla si NINGUNA sirve.
     """
-    excel_bytes = await read_limited(excel, "Excel")
+    excel_bytes = await read_limited(excel, "El Excel")
     try:
         nombres = listar_hojas(excel_bytes, excel.filename or "")
     except Exception as e:
@@ -1363,7 +1363,7 @@ async def sugerir_columnas_ia(
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="La sugerencia con IA no está configurada en este ambiente")
 
-    excel_bytes = await read_limited(excel, "Excel")
+    excel_bytes = await read_limited(excel, "El Excel")
     try:
         filas = leer_filas(excel_bytes, excel.filename or "", hoja)
     except Exception as e:

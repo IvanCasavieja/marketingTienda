@@ -119,7 +119,7 @@ async def upload_documentos(
         filename = file.filename or "factura.pdf"
         if not filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail=f"'{filename}' no es un PDF")
-        file_bytes = await read_limited(file, "PDF")
+        file_bytes = await read_limited(file, "El PDF")
         archivos.append((filename, file.content_type or "application/pdf", file_bytes))
 
     documentos = await documentos_service.crear_documentos_y_extraer(db, archivos, current_user.id)

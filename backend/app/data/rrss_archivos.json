@@ -1,0 +1,53 @@
+{
+  "_porque": [
+    "Los tipos de archivo que acepta la Validación de RRSS, en UN solo lugar.",
+    "Antes estaban escritos tres veces: _TIPOS_PLACA en routes/rrss.py, TIPOS_PLACA en",
+    "UploadStep.tsx y el accept del input del mailing, también en UploadStep.tsx. El",
+    "backend además ni miraba el content_type del mailing: lo olfateaba por '%PDF-'.",
+    "Agregar planillas multiplicaba eso por dos, que es justo lo que Ivan prohibió el",
+    "18/09/2026: 'el archivo de reglas tiene que ser uno solo, sino nos va a pasar de",
+    "poner una regla en algún lado y luego olvidarnos de cambiarla en el otro'.",
+    "Mismo precedente que app/data/reglas_de_medicion.json: el archivo vive adentro del",
+    "backend (el contexto de Docker es backend/, el root de Vercel es frontend/, así que",
+    "un archivo compartido en la raíz no llegaría a ninguno de los dos) y el navegador lo",
+    "pide por HTTP, en GET /rrss/config, que ya se llama al abrir la pantalla.",
+    "La 'etiqueta' es el texto que se muestra en pantalla: también vive acá para que no",
+    "diga 'JPG, PNG o WebP' mientras la lista real acepta otra cosa.",
+    "'max_mb' es el tamaño máximo de cada archivo, y vive acá por lo mismo: estaba escrito",
+    "a mano en routes/rrss.py (_MAX_BYTES_PLACA, _MAX_BYTES_MAILING) y en ningún lado del",
+    "navegador, así que la pantalla dejaba empezar a subir 30 MB para que el backend los",
+    "rechazara al final. El de la planilla es MUCHO más chico a propósito: un listado de",
+    "campaña de 1.000 filas pesa menos de 1 MB, y un archivo de 17 MB es el catálogo",
+    "entero — el que congelaba el servicio 149 segundos antes de rechazarlo.",
+    "'max_filas' es cuántas filas puede traer una planilla, y estaba escrito a mano en",
+    "services/rrss/planilla.py (MAX_FILAS), o sea en ningún lado que el navegador pueda",
+    "leer. No es un límite técnico: leer 900 filas son 0,12 s. Es que una validación es",
+    "UNA campaña y una planilla de miles de filas es casi seguro el catálogo entero."
+  ],
+  "placas": {
+    "etiqueta": "JPG, PNG o WebP",
+    "extensiones": [".jpg", ".jpeg", ".png", ".webp"],
+    "content_types": ["image/jpeg", "image/png", "image/webp"],
+    "max_mb": 25
+  },
+  "fuentes": {
+    "mailing": {
+      "etiqueta": "PDF, JPG o PNG",
+      "extensiones": [".pdf", ".jpg", ".jpeg", ".png"],
+      "content_types": ["application/pdf", "image/jpeg", "image/png"],
+      "max_mb": 30
+    },
+    "planilla": {
+      "etiqueta": "XLSX, XLSM o CSV",
+      "max_mb": 8,
+      "max_filas": 1000,
+      "extensiones": [".xlsx", ".xlsm", ".csv"],
+      "content_types": [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel.sheet.macroEnabled.12",
+        "application/vnd.ms-excel",
+        "text/csv"
+      ]
+    }
+  }
+}

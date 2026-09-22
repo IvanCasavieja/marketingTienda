@@ -167,15 +167,19 @@ def _espacios_faltantes(placa: str, mailing: str) -> list[str]:
     return [f"{a} {b}" for a, b in zip(palabras, palabras[1:]) if a and b and (a + b) in placa]
 
 
-def instruccion(estado: str, placa: str, mailing: str) -> str:
-    """Qué hacer, en una frase que se pueda decir en voz alta en dos segundos."""
+def instruccion(estado: str, placa: str, mailing: str, origen: str = "mailing") -> str:
+    """Qué hacer, en una frase que se pueda decir en voz alta en dos segundos.
+
+    `origen` es solo para nombrar la fuente: mandar a alguien a mirar "el
+    mailing" cuando se validó contra una planilla es mandarlo a buscar un
+    archivo que no existe."""
     placa, mailing = placa or "", mailing or ""
     if estado == "falta_en_placa":
         return f"Falta {_describir([mailing])}: agregalo"
     if estado == "sobra_en_placa":
         return f"Sobra {_describir([placa])}: sacalo"
     if estado == "revisar":
-        return "Miralo a mano contra el mailing"
+        return f"Miralo a mano contra {nombre_de_la_fuente(origen)}"
     if estado != "diferente" or placa == mailing:
         return ""
 
@@ -241,12 +245,26 @@ _CAMPOS = {
     "imagen_producto": "Foto del producto",
     "imagen_coincide": "La foto no parece del producto",
     "cta": "CTA",
-    "sin_match": "No está en el mailing",
+    # `sin_match` y `emparejamiento` nombran la fuente, así que los resuelve
+    # `nombre_campo` con el origen: escrito acá diría "el mailing" en una
+    # validación por planilla, que es mandar a buscar un archivo que no existe.
     "lectura": "No se pudo leer",
 }
 
 
-def nombre_campo(campo: str) -> str:
+def nombre_de_la_fuente(origen: str) -> str:
+    """Cómo se llama en pantalla la fuente contra la que se validó. Vive acá
+    para no tener "el mailing" escrito a mano en cada texto que lo nombra: una
+    validación por planilla que dijera "no está en el mailing" haría buscar un
+    archivo que no existe."""
+    return "la planilla" if origen == "planilla" else "el mailing"
+
+
+def nombre_campo(campo: str, origen: str = "mailing") -> str:
+    if campo == "sin_match":
+        return f"No está en {nombre_de_la_fuente(origen)}"
+    if campo == "emparejamiento":
+        return f"Con qué fila de {nombre_de_la_fuente(origen)} la emparejé"
     return _CAMPOS.get(campo, campo.replace("_", " ").capitalize())
 
 

@@ -93,7 +93,7 @@ async def import_pptx(
     if not file.filename or not file.filename.lower().endswith(".pptx"):
         raise HTTPException(status_code=400, detail="El archivo debe ser .pptx")
 
-    pptx_bytes = await read_limited(file, "PPTX")
+    pptx_bytes = await read_limited(file, "El PPTX")
 
     from app.services.cenefas.pptx_importer import import_pptx as _import
     try:
@@ -480,7 +480,7 @@ async def validate_csv(
     tmpl = await _get_template_o_404(template_id, db)
     definition = tmpl.definition
 
-    excel_bytes = await read_limited(excel, "Excel")
+    excel_bytes = await read_limited(excel, "El Excel")
     try:
         products = load_products_from_bytes(excel_bytes, vigencia, legales, usar_legales)
     except KeyError as e:
@@ -639,8 +639,8 @@ async def create_job(
     if not excel.filename or not excel.filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="El Excel debe ser .xlsx o .xlsm")
 
-    excel_bytes = await read_limited(excel, "Excel")
-    template_upload_bytes = await read_limited(template_upload, "PPTX") if template_upload else None
+    excel_bytes = await read_limited(excel, "El Excel")
+    template_upload_bytes = await read_limited(template_upload, "El PPTX") if template_upload else None
 
     image_overrides = _parse_image_overrides(image_overrides_json)
 
@@ -1408,7 +1408,7 @@ async def create_lote(
     for archivo in excels:
         if not archivo.filename or not archivo.filename.lower().endswith((".xlsx", ".xlsm")):
             raise HTTPException(status_code=400, detail=f"{archivo.filename!r} no es un .xlsx/.xlsm")
-        contenidos[archivo.filename] = await read_limited(archivo, "Excel")
+        contenidos[archivo.filename] = await read_limited(archivo, "El Excel")
 
     image_overrides = _parse_image_overrides(image_overrides_json)
 

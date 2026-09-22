@@ -4,13 +4,15 @@ import { useTranslation } from "react-i18next";
 import { ArrowLeft, Loader2, Plus } from "lucide-react";
 import { clsx } from "clsx";
 import { toast } from "sonner";
-import { rrssApi, type RrssConfig, type RrssImagen, type RrssValidacion } from "@/lib/api";
+import { rrssApi, type RrssConfig, type RrssImagen, type RrssTipos, type RrssValidacion } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
 import CatTiBadge from "@/components/rrss/CatTiBadge";
+import { CatTiMascota } from "@/components/rrss/CatTiMascota";
+import { FraseCatTi } from "@/components/rrss/CatTiProgreso";
 import Historial from "@/components/rrss/Historial";
 import ReviewStep, { type ItemPendiente, type Progreso } from "@/components/rrss/ReviewStep";
-import UploadStep, { type PlacaLocal } from "@/components/rrss/UploadStep";
+import UploadStep, { esPlanilla, type PlacaLocal } from "@/components/rrss/UploadStep";
 import { conReintentos, esTransitorio } from "@/components/rrss/reintentos";
 
 const PARALELO = 3; // placas validándose a la vez
@@ -35,7 +37,12 @@ export default function ValidacionRrssPage() {
 
   const [placas, setPlacas] = useState<PlacaLocal[]>([]);
   const [mailing, setMailing] = useState<File | null>(null);
-  const [config, setConfig] = useState<RrssConfig>({ legal_bases: "", legal_alcohol: "" });
+  const [config, setConfig] = useState<RrssConfig>({ legal_bases: "", legal_alcohol: "", fecha: "" });
+  // Qué archivos se aceptan lo declara el backend (ver app/data/rrss_archivos.json).
+  // Si no llegaron, la pantalla de carga NO se dibuja: aceptaría lo que se le
+  // ocurra a este lado, que es el bug que esa lista única viene a matar. Mismo
+  // criterio que las reglas de medición de las cenefas.
+  const [tipos, setTipos] = useState<RrssTipos | null>(null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [creando, setCreando] = useState(false);
 
@@ -47,8 +54,13 @@ export default function ValidacionRrssPage() {
   useEffect(() => { placasRef.current = placas; }, [placas]);
 
   useEffect(() => {
-    rrssApi.config().then(({ data }) => setConfig(data)).catch(() => {});
-  }, []);
+    rrssApi.config()
+      .then(({ data }) => {
+        setConfig({ legal_bases: data.legal_bases, legal_alcohol: data.legal_alcohol, fecha: data.fecha });
+        setTipos(data.tipos);
+      })
+      .catch(() => setErrorCarga(t("rrss.errorConfig")));
+  }, [t]);
   // Las URLs de las miniaturas viven mientras viva la página.
   useEffect(() => () => placasRef.current.forEach((p) => URL.revokeObjectURL(p.url)), []);
 
@@ -119,7 +131,10 @@ export default function ValidacionRrssPage() {
     try {
       v = (await rrssApi.crear(mailing, config)).data;
     } catch (e) {
-      setErrorCarga(sinRespuesta(e) ? t("rrss.errorServidor") : mensajeDeError(e, t("rrss.errorMailing")));
+      // El mensaje por defecto nombra a la FUENTE y no al mailing: acá puede
+      // haber fallado la lectura de una planilla, y mandar a mirar un mailing
+      // que no existe es mandar a buscar un archivo inexistente.
+      setErrorCarga(sinRespuesta(e) ? t("rrss.errorServidor") : mensajeDeError(e, t("rrss.errorFuente")));
       setCreando(false);
       return;
     }
@@ -177,6 +192,8 @@ export default function ValidacionRrssPage() {
     setTab("nueva");
   }
 
+  const esPlanillaCargada = !!(tipos && mailing && esPlanilla(tipos, mailing));
+
   // "pausada" (el servidor no respondió) no cuenta como corriendo: no hay nada en marcha
   // y hay que poder empezar otra validación o reintentar.
   const corriendo = progreso !== null && (progreso.fase === "validando" || progreso.fase === "cerrando");
@@ -224,22 +241,36 @@ export default function ValidacionRrssPage() {
       </div>
 
       {creando && (
-        <div className="card p-6 flex items-center gap-4">
-          <CatTiBadge trabajando />
+        <div className="card p-6 flex items-center gap-5">
+          {/* Acá no hay progreso que contar (es una sola lectura del mailing),
+              así que va la gata grande con la lupa y una frase que rota — la
+              barra con CatTi caminando aparece recién en ReviewStep, cuando
+              empiezan las placas y hay un "X de Y" de verdad. */}
+          <CatTiMascota size={72} trabajando />
           <div>
             <p className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <Loader2 size={14} className="animate-spin text-brand-500" /> {t("rrss.leyendoMailing")}
+              <Loader2 size={14} className="animate-spin text-brand-500" />
+              {esPlanillaCargada ? t("rrss.leyendoPlanilla") : t("rrss.leyendoMailing")}
             </p>
-            <p className="text-xs text-slate-500 mt-0.5">{t("rrss.leyendoMailingHint")}</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {esPlanillaCargada ? t("rrss.leyendoPlanillaHint") : t("rrss.leyendoMailingHint")}
+            </p>
+            <FraseCatTi className="text-xs text-slate-400 dark:text-slate-500 mt-1.5" />
           </div>
         </div>
       )}
 
       {!creando && fase === "cargar" && tab === "nueva" && puedeValidar && (
-        <UploadStep
-          placas={placas} onPlacas={setPlacas} mailing={mailing} onMailing={setMailing}
-          config={config} onConfig={setConfig} onValidar={iniciar} error={errorCarga}
-        />
+        tipos ? (
+          <UploadStep
+            placas={placas} onPlacas={setPlacas} mailing={mailing} onMailing={setMailing}
+            config={config} onConfig={setConfig} onValidar={iniciar} error={errorCarga} tipos={tipos}
+          />
+        ) : (
+          <div className="card p-10 text-center text-sm text-slate-500 flex items-center justify-center gap-2">
+            {errorCarga ? errorCarga : <><Loader2 size={16} className="animate-spin" /> {t("rrss.cargandoConfig")}</>}
+          </div>
+        )
       )}
 
       {!creando && fase === "cargar" && tab === "historial" && (

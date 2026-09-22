@@ -20,9 +20,31 @@ _TOLERANCIA_FORMATO = 0.03
 MAX_PAGINAS_MAILING = 12
 _ANCHO_PAGINA_PX = 1600  # ancho al que se renderiza cada página del mailing
 
+# Fuentes para lo que se dibuja con PIL (el pie de las miniaturas del Excel, la
+# tira de la planilla). El servidor es Linux sin fuentes instaladas: ahí queda
+# la que trae Pillow adentro, sin negrita. NO se simula la negrita con un trazo:
+# con esa fuente el trazo rellena el hueco del 9 y "9:16" se leía "8:16".
+_FUENTES = ("C:/Windows/Fonts/segoeui.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+_FUENTES_NEGRITA = ("C:/Windows/Fonts/segoeuib.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+
 
 class ArchivoInvalido(ValueError):
     """El archivo no se pudo abrir como imagen o PDF -- mensaje apto para el usuario."""
+
+
+def fuente(tam: int, negrita: bool = False) -> ImageFont.ImageFont:
+    """La fuente para dibujar texto con PIL, en el tamaño pedido. Vive acá y no
+    en quien dibuja porque la dibujan dos módulos (excel.py y planilla.py) y la
+    lista de rutas es distinta en Windows que en el servidor."""
+    for ruta in (_FUENTES_NEGRITA if negrita else _FUENTES):
+        try:
+            return ImageFont.truetype(ruta, tam)
+        except OSError:
+            continue
+    try:
+        return ImageFont.load_default(size=tam)
+    except TypeError:  # Pillow viejo, sin tamaño de fuente
+        return ImageFont.load_default()
 
 
 def clasificar_formato(ancho: int, alto: int) -> str:

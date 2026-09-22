@@ -1,10 +1,12 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, Loader2, Radio, SkipForward } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, FileSpreadsheet, Loader2, Radio, SkipForward } from "lucide-react";
 import { clsx } from "clsx";
 import type { RrssFila, RrssGrupo, RrssImagen, RrssPagina, RrssValidacion } from "@/lib/api";
 import CatTiBadge from "./CatTiBadge";
+import { CatTiMascota } from "./CatTiMascota";
+import { BarraCatTi, FraseCatTi } from "./CatTiProgreso";
 import DescargarExcel from "./DescargarExcel";
 import { diferenciar, ESTILO_ESTADO, etiquetaImagen, filasConProblema, ordenFormato } from "./rrssUtils";
 
@@ -92,31 +94,139 @@ function PaginaMarcada({ pagina, caja }: { pagina: RrssPagina; caja?: [number, n
   );
 }
 
+/** ¿La fuente de esta validación es una planilla? Las validaciones viejas no
+ *  traen `origen`: son mailings. (UploadStep tiene una `esPlanilla` que mira un
+ *  File, que es otra pregunta: acá el archivo ya está subido y leído.) */
+function fuenteEsPlanilla(v: RrssValidacion): boolean {
+  return v.mailing.origen === "planilla";
+}
+
+/** "LISTADO.xlsx · hoja «Alemania 2026» · fila 24": la coordenada que permite
+ *  ir a chequearlo a mano, que es la diferencia entre creerle al sistema y
+ *  poder auditarlo. */
+function citaDeLaFila(v: RrssValidacion, indice: number): string {
+  const pl = v.mailing.planilla;
+  const prod = v.mailing.productos[indice];
+  if (!pl || !prod?.fila) return "";
+  return [pl.archivo, pl.hoja ? `hoja «${pl.hoja}»` : "", `fila ${prod.fila.numero}`]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * Placa que no encontró su fila. Los dos casos que pidió Ivan que se vieran
+ * --que no se parezca NINGUNA y que se parezcan DOS-- se veían igual hasta
+ * ahora. Acá se dicen por separado y se muestra contra qué se pareció, con el
+ * puntaje: un "sin pareja" sin pruebas no le sirve a nadie.
+ */
+function SinPareja({ v, img }: { v: RrssValidacion; img: RrssImagen }) {
+  const { t } = useTranslation();
+  const [navegar, setNavegar] = useState(0);
+  const candidatos = img.candidatos ?? [];
+  const pagina = v.paginas[navegar];
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/20 rounded-xl px-3 py-2">
+        {img.sin_pareja === "ambiguo"
+          ? t("rrss.sinParejaAmbiguo", { fuente: t(fuenteEsPlanilla(v) ? "rrss.laPlanilla" : "rrss.elMailing") })
+          : t("rrss.sinParejaNinguna", { fuente: t(fuenteEsPlanilla(v) ? "rrss.laPlanilla" : "rrss.elMailing") })}
+      </p>
+      {candidatos.length > 0 && (
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 px-3 py-2">
+            {t("rrss.loQueMasSeParecio")}
+          </p>
+          {candidatos.map((k) => (
+            <div key={k.indice} className="px-3 py-2 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm text-slate-700 dark:text-slate-200 break-words">{k.descripcion}</p>
+                {fuenteEsPlanilla(v) && <p className="text-xs text-slate-400 mt-0.5">{citaDeLaFila(v, k.indice)}</p>}
+              </div>
+              <span className="badge-slate shrink-0">{k.puntaje}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {!fuenteEsPlanilla(v) && v.paginas.length > 1 && (
+        <div className="flex gap-1.5">
+          {v.paginas.map((p, i) => (
+            <button key={p.numero} onClick={() => setNavegar(i)}
+              className={clsx("badge", i === navegar ? "badge-blue" : "badge-slate")}>
+              {t("rrss.pagina", { n: p.numero + 1 })}
+            </button>
+          ))}
+        </div>
+      )}
+      {!fuenteEsPlanilla(v) && pagina && <PaginaMarcada pagina={pagina} />}
+    </div>
+  );
+}
+
+/**
+ * La emparejó, pero no está segura. Es la otra mitad de la decisión de
+ * emparejar igual en vez de encogerse de hombros: con el margen único de antes,
+ * una placa de la botella que decía "lata" se quedaba SIN PAREJA y el
+ * diagnóstico ("tiene que decir botella") se perdía justo en el caso en que la
+ * descripción es lo que está mal. Ahora se empareja y la duda se ve, con la
+ * segunda candidata y su puntaje.
+ */
+function Duda({ v, img }: { v: RrssValidacion; img: RrssImagen }) {
+  const { t } = useTranslation();
+  const candidatos = img.candidatos ?? [];
+  if (!img.match?.duda) return null;
+  return (
+    <div className="rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/5 px-3 py-2 space-y-1.5">
+      <p className="text-xs text-amber-900 dark:text-amber-200">
+        {img.match.motivo_duda === "otra_parecida"
+          ? t("rrss.dudaOtraParecida", { puntaje: img.match.puntaje, segundo: img.match.segundo ?? 0 })
+          : t("rrss.dudaNoLaCalza", { puntaje: img.match.puntaje })}
+      </p>
+      {candidatos.length > 1 && (
+        <ul className="space-y-0.5">
+          {candidatos.map((k) => (
+            <li key={k.indice} className="flex items-start justify-between gap-2 text-xs text-slate-600 dark:text-slate-300">
+              <span className="break-words">
+                {k.indice === img.match?.indice && <span className="font-semibold">→ </span>}
+                {k.descripcion}
+                {fuenteEsPlanilla(v) && <span className="text-slate-400"> · {citaDeLaFila(v, k.indice)}</span>}
+              </span>
+              <span className="badge-slate shrink-0">{k.puntaje}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function LadoMailing({ v, img }: { v: RrssValidacion; img: RrssImagen }) {
   const { t } = useTranslation();
   const [paginaCompleta, setPaginaCompleta] = useState(false);
-  const [navegar, setNavegar] = useState(0);
   const item = img.match ? v.mailing.productos[img.match.indice] : null;
 
-  // Placa sin producto en el mailing: no hay recorte, pero igual se puede mirar el mailing.
-  if (!item) {
-    const pagina = v.paginas[navegar];
+  if (!item) return <SinPareja v={v} img={img} />;
+
+  // Con planilla la evidencia es la fila dibujada (la misma imagen que se pega
+  // en el Excel): la fila con una vecina arriba y otra abajo, para que se vea
+  // que el emparejamiento no salió de la nada. No hay página que abrir.
+  // La tira viaja con la PLACA (`recorte_fuente`): se dibuja al emparejar, no
+  // al leer el archivo. `item.recorte` es el camino de las validaciones viejas,
+  // que la traían guardada en cada fila de la planilla.
+  if (fuenteEsPlanilla(v)) {
+    const tira = img.recorte_fuente ?? item.recorte;
     return (
-      <div className="space-y-3">
-        <p className="text-sm text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/20 rounded-xl px-3 py-2">
-          {t("rrss.sinProducto")}
-        </p>
-        {v.paginas.length > 1 && (
-          <div className="flex gap-1.5">
-            {v.paginas.map((p, i) => (
-              <button key={p.numero} onClick={() => setNavegar(i)}
-                className={clsx("badge", i === navegar ? "badge-blue" : "badge-slate")}>
-                {t("rrss.pagina", { n: p.numero + 1 })}
-              </button>
-            ))}
-          </div>
+      <div className="space-y-2">
+        {tira ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={tira} alt={item.descripcion}
+            className="max-w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white" />
+        ) : (
+          // Que no se haya podido dibujar no se esconde: la cita de abajo es la
+          // coordenada para ir a mirar la fila a mano.
+          <p className="text-xs text-slate-400 italic">{t("rrss.sinTira")}</p>
         )}
-        {pagina && <PaginaMarcada pagina={pagina} />}
+        <p className="text-xs text-slate-500 dark:text-slate-400 font-mono break-all">{citaDeLaFila(v, img.match!.indice)}</p>
+        <Duda v={v} img={img} />
       </div>
     );
   }
@@ -124,6 +234,7 @@ function LadoMailing({ v, img }: { v: RrssValidacion; img: RrssImagen }) {
   const pagina = v.paginas.find((p) => p.numero === item.pagina);
   return (
     <div className="space-y-3">
+      <Duda v={v} img={img} />
       {paginaCompleta && pagina ? (
         <PaginaMarcada pagina={pagina} caja={item.cajas.producto} />
       ) : item.recorte ? (
@@ -134,7 +245,7 @@ function LadoMailing({ v, img }: { v: RrssValidacion; img: RrssImagen }) {
       )}
       {pagina && (
         <button onClick={() => setPaginaCompleta((x) => !x)} className="text-xs text-brand-600 dark:text-brand-400 hover:underline">
-          {paginaCompleta ? t("rrss.verRecorte") : t("rrss.verPaginaCompleta", { n: item.pagina + 1 })}
+          {paginaCompleta ? t("rrss.verRecorte") : t("rrss.verPaginaCompleta", { n: pagina.numero + 1 })}
         </button>
       )}
     </div>
@@ -142,6 +253,18 @@ function LadoMailing({ v, img }: { v: RrssValidacion; img: RrssImagen }) {
 }
 
 // ── Una diferencia: placa a la izquierda, mailing a la derecha ─────────────
+
+/** Los campos del producto que una fuente puede exigir, en el orden en que se
+ *  muestran. Mismo orden y mismos nombres que comparador.CAMPOS_PRODUCTO. */
+const ETIQUETA_CAMPO_PRODUCTO = new Map<string, string>([
+  ["descripcion", "rrss.campoDescripcion"],
+  ["precio_anterior", "rrss.campoPrecioAnterior"],
+  ["precio_anterior_tachado", "rrss.campoTachado"],
+  ["mecanica", "rrss.campoMecanica"],
+  ["oferta_encabezado", "rrss.campoArriba"],
+  ["oferta_precio", "rrss.campoPrecioOferta"],
+  ["oferta_pie", "rrss.campoAbajo"],
+]);
 
 const ETIQUETA_ESTADO: Record<RrssFila["estado"], string> = {
   ok: "rrss.coincide",
@@ -152,7 +275,7 @@ const ETIQUETA_ESTADO: Record<RrssFila["estado"], string> = {
   info: "rrss.info",
 };
 
-function FilaProblema({ fila }: { fila: RrssFila }) {
+function FilaProblema({ fila, fuente }: { fila: RrssFila; fuente: string }) {
   const { t } = useTranslation();
   const esAviso = fila.severidad === "aviso";
   const placa = fila.placa ?? "";
@@ -179,7 +302,7 @@ function FilaProblema({ fila }: { fila: RrssFila }) {
           </p>
         </div>
         <div className="space-y-2 min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("rrss.elMailing")}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{fuente}</p>
           {fila.recorte_mailing && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={fila.recorte_mailing} alt="" className="max-h-64 max-w-full rounded-lg border border-slate-200 dark:border-slate-700" />
@@ -206,6 +329,7 @@ function PanelPlaca({
 }) {
   const { t } = useTranslation();
   const [verOk, setVerOk] = useState(false);
+  const fuente = t(fuenteEsPlanilla(v) ? "rrss.laPlanilla" : "rrss.elMailing");
   const problemas = filasConProblema(img);
   const ok = img.filas.filter((f) => f.estado === "ok");
   const info = img.filas.filter((f) => f.estado === "info" && f.placa && f.placa !== "sin CTA");
@@ -249,21 +373,29 @@ function PanelPlaca({
           )}
         </div>
         <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("rrss.elMailing")}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{fuente}</p>
           <LadoMailing key={img.id} v={v} img={img} />
         </div>
       </div>
 
       {!img.error && problemas.length === 0 && img.estado === "ok" && (
+        // "Todo coincide" es una palabra que el motor no siempre puede
+        // sostener: contra una planilla que no trae mecánica ni encabezado ni
+        // pie, "todo" son 2 de 7 campos. Se dice lo que se miró.
         <p className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl px-4 py-3">
-          <Check size={16} /> {t("rrss.todoCoincide")}
+          <Check size={16} />
+          {fuenteEsPlanilla(v)
+            ? t("rrss.coincideLoQueDicta", {
+                fuente, dictados: (v.mailing.campos ?? []).length, total: ETIQUETA_CAMPO_PRODUCTO.size,
+              })
+            : t("rrss.todoCoincide", { fuente })}
         </p>
       )}
 
       {problemas.length > 0 && (
         <div className="space-y-3">
           <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t("rrss.loEncontrado", { count: problemas.length })}</h4>
-          {problemas.map((f) => <FilaProblema key={f.campo} fila={f} />)}
+          {problemas.map((f) => <FilaProblema key={f.campo} fila={f} fuente={fuente} />)}
         </div>
       )}
 
@@ -357,6 +489,15 @@ export default function ReviewStep({ validacion: v, pendientes, progreso, onRein
 
   const enVivo = progreso !== null && (progreso.fase === "validando" || progreso.fase === "cerrando");
   const pausada = progreso?.fase === "pausada";
+  // Cuántas placas están efectivamente en el aire ahora mismo (el pool de
+  // page.tsx corre PARALELO a la vez).
+  const enVuelo = pendientes.filter((p) => p.analizando).length;
+  // El lote tiene un paso MÁS que las placas: el cierre, que es el que revisa
+  // las adaptaciones y el CTA del conjunto. Contarlo evita que la barra marque
+  // 100% mientras /cerrar todavía no contestó — decir que terminó algo que
+  // todavía puede fallar es la clase de mentira que hace desconfiar del resto.
+  const pasosTotales = progreso ? progreso.total + 1 : 1;
+  const pasosHechos = progreso ? progreso.hechas : 0;
   const porOrden = useMemo(() => [...v.imagenes].sort((a, b) => a.orden - b.orden), [v.imagenes]);
   const grupos = useMemo(() => armarGrupos(v), [v]);
   const conProblema = (i: RrssImagen) => i.estado !== "ok";
@@ -373,9 +514,25 @@ export default function ReviewStep({ validacion: v, pendientes, progreso, onRein
   const siguienteProblema = pos >= 0 ? porOrden.slice(pos + 1).find(conProblema) ?? porOrden.find((i, k) => k < pos && conProblema(i)) : undefined;
 
   const cuenta = (e: RrssImagen["estado"]) => v.imagenes.filter((i) => i.estado === e).length;
-  // Solo las que quedaron guardadas (id > 0): una placa que falló en el navegador no está en el servidor.
-  const hayParaCorregir = v.imagenes.some((i) => i.estado !== "ok" && i.id > 0);
   const resumen = v.resumen;
+  const sinPlaca = resumen?.productos_sin_placa ?? [];
+  // Cuándo hay Excel. No alcanza con "hay placas para corregir": a una campaña
+  // a la que le faltan 3 de 4 placas no hay NINGUNA placa mal, y es la que más
+  // necesita el archivo (la hoja "La planilla" muestra las filas que nadie
+  // reclamó). Mismo criterio que excel.hay_algo_que_decir, del otro lado.
+  // Solo las que quedaron guardadas (id > 0): una placa que falló en el navegador no está en el servidor.
+  const hayParaCorregir =
+    v.imagenes.some((i) => i.estado !== "ok" && i.id > 0) ||
+    (fuenteEsPlanilla(v) && (sinPlaca.length > 0 || (v.mailing.planilla?.avisos ?? []).length > 0));
+  // Los campos del producto que la planilla NO trae, y que por lo tanto NO se
+  // validaron. Se calcula acá, del mismo `campos` que usó el backend para
+  // comparar: si se escribiera una lista a mano, un día diría que se validó
+  // algo que no se miró.
+  const camposSinValidar = fuenteEsPlanilla(v)
+    ? [...ETIQUETA_CAMPO_PRODUCTO.entries()]
+        .filter(([campo]) => !(v.mailing.campos ?? []).includes(campo))
+        .map(([, clave]) => t(clave))
+    : [];
   const alertas = resumen
     ? [
         ...resumen.grupos.flatMap((g) => g.avisos.map((a) => ({ g, a }))),
@@ -400,11 +557,20 @@ export default function ReviewStep({ validacion: v, pendientes, progreso, onRein
               <>
                 <p className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
                   <Loader2 size={14} className="animate-spin text-brand-500" />
-                  {progreso.fase === "cerrando" ? t("rrss.cerrando") : t("rrss.revisando", { hechas: Math.min(progreso.hechas + 1, progreso.total), total: progreso.total })}
+                  {/* El número que se dice es el MISMO que marca la barra: las
+                      que YA terminaron. Antes decía "revisando la placa 4 de 10"
+                      con la barra en 3/10, y encima con PARALELO=3 estaba
+                      revisando la 4, la 5 y la 6 al mismo tiempo. Cuántas hay en
+                      vuelo ahora se dice aparte, y sale del dato real. */}
+                  {progreso.fase === "cerrando"
+                    ? t("rrss.cerrando")
+                    : t("rrss.revisando", { hechas: progreso.hechas, total: progreso.total })}
+                  {progreso.fase === "validando" && enVuelo > 0 && (
+                    <span className="font-normal text-slate-500">{t("rrss.revisandoAhora", { count: enVuelo })}</span>
+                  )}
                 </p>
-                <div className="mt-2 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                  <div className="h-full bg-brand-500 transition-all" style={{ width: `${(progreso.hechas / Math.max(1, progreso.total)) * 100}%` }} />
-                </div>
+                <BarraCatTi hechas={pasosHechos} total={pasosTotales} enVivo={enVivo} />
+                <FraseCatTi paso={progreso.hechas} className="text-xs text-slate-500 dark:text-slate-400 mt-1.5" />
               </>
             ) : (
               <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{t("rrss.terminado", { count: v.imagenes.length })}</p>
@@ -423,6 +589,69 @@ export default function ReviewStep({ validacion: v, pendientes, progreso, onRein
             )}
           </div>
         </div>
+
+        {fuenteEsPlanilla(v) && (
+          <div className="space-y-2 pt-1">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span className="badge-blue flex items-center gap-1"><FileSpreadsheet size={12} /> {t("rrss.validadoConPlanilla")}</span>
+              <span className="font-mono break-all">{v.mailing.planilla?.archivo}{v.mailing.planilla?.hoja ? ` · ${v.mailing.planilla.hoja}` : ""}</span>
+              {/* Qué se leyó, en números. Estaba tipado en api.ts y no se
+                  mostraba en ningún lado, y es justo el dato que delata que el
+                  motor contó de más: "6 filas" en un archivo de 5 productos. */}
+              {v.mailing.planilla && (
+                <span>
+                  {t("rrss.planillaLeidas", {
+                    leidas: v.mailing.planilla.filas_leidas,
+                    encabezado: v.mailing.planilla.fila_encabezado,
+                  })}
+                  {v.mailing.planilla.filas_ignoradas > 0 &&
+                    ` · ${t("rrss.planillaIgnoradas", { count: v.mailing.planilla.filas_ignoradas })}`}
+                  {/* El tercer contador: cuántas filas del archivo se juntaron
+                      en esos productos. Viajaba en la API y no se mostraba, y es
+                      el que delata que el motor entendió el archivo de otra
+                      manera que la persona ("30 filas" en un archivo de 90). */}
+                  {(v.mailing.planilla.filas_juntadas ?? 0) > 0 &&
+                    ` · ${t("rrss.planillaJuntadas", { count: v.mailing.planilla.filas_juntadas })}`}
+                </span>
+              )}
+              {camposSinValidar.length > 0 && (
+                <span className="text-amber-700 dark:text-amber-400">
+                  {t("rrss.planillaNoDice", { campos: camposSinValidar.join(", ") })}
+                </span>
+              )}
+            </div>
+            {/* Lo que la lectura tuvo para decir. Se armaba y moría en un campo
+                que nadie leía; son los avisos que delatan que el motor entendió
+                mal el archivo, así que van arriba de todo y no escondidos. */}
+            {(v.mailing.planilla?.avisos ?? []).length > 0 && (
+              <ul className="rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                {(v.mailing.planilla?.avisos ?? []).map((a, k) => (
+                  <li key={k} className="flex items-start gap-1.5">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                    <span>{a}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {sinPlaca.length > 0 && (
+          // El tercer caso que pidió Ivan: las filas que ninguna placa reclamó.
+          // Se venían contando y no se decía nunca cuáles.
+          <div className="rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/30 px-3 py-2 text-xs text-violet-900 dark:text-violet-200 space-y-1">
+            <p className="font-semibold">{t("rrss.sinPlaca", { count: sinPlaca.length })}</p>
+            <ul className="space-y-0.5">
+              {sinPlaca.slice(0, 20).map((k) => (
+                <li key={k.indice}>
+                  {k.fila !== null && k.fila !== undefined && <span className="font-mono mr-1">fila {k.fila}</span>}
+                  {k.descripcion}
+                </li>
+              ))}
+            </ul>
+            {sinPlaca.length > 20 && <p className="italic">{t("rrss.sinPlacaMas", { count: sinPlaca.length - 20 })}</p>}
+          </div>
+        )}
 
         {(resumen?.cta.hay_mezcla || alertas.length > 0) && (
           <div className="space-y-2 pt-1">
@@ -524,16 +753,31 @@ export default function ReviewStep({ validacion: v, pendientes, progreso, onRein
                 <img src={pendienteActual.url} alt="" className="max-h-[52vh] max-w-full rounded-lg border border-slate-200 dark:border-slate-700" />
               </div>
               <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("rrss.elMailing")}</p>
-                <p className="text-sm text-slate-500 flex items-center gap-2">
-                  {pendienteActual.analizando && <Loader2 size={14} className="animate-spin" />}
-                  {pendienteActual.analizando ? t("rrss.estado.analizando") : t("rrss.enEspera")}
+                {/* La columna se llama como la fuente de ESTA validación: decir
+                    "El mailing" cuando se validó con una planilla es mandar a
+                    buscar un archivo que no existe. */}
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  {t(fuenteEsPlanilla(v) ? "rrss.laPlanilla" : "rrss.elMailing")}
                 </p>
+                {/* Mientras esta placa se está revisando no hay nada de la
+                    fuente que mostrar todavía, así que el lugar lo ocupa CatTi
+                    con la lupa: es el momento exacto en el que está trabajando. */}
+                {pendienteActual.analizando ? (
+                  <div className="flex flex-col items-center gap-2 py-6">
+                    <CatTiMascota size={72} trabajando />
+                    <p className="text-sm text-slate-500">{t("rrss.estado.analizando")}</p>
+                    <FraseCatTi className="text-xs text-slate-400 text-center" />
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">{t("rrss.enEspera")}</p>
+                )}
               </div>
             </div>
           ) : (
-            <div className="card p-10 text-center text-sm text-slate-500 flex items-center justify-center gap-2">
-              <Loader2 size={16} className="animate-spin" /> {t("rrss.esperandoPrimera")}
+            <div className="card p-10 flex flex-col items-center justify-center gap-2 text-center">
+              <CatTiMascota size={88} trabajando />
+              <p className="text-sm text-slate-500">{t("rrss.esperandoPrimera")}</p>
+              <FraseCatTi className="text-xs text-slate-400" />
             </div>
           )}
         </main>

@@ -1346,6 +1346,12 @@ export type RrssEstado = "ok" | "avisos" | "diferencias" | "sin_match" | "error"
 /** [x0, y0, x1, y1] como fracción (0..1) de la imagen. */
 export type RrssCaja = [number, number, number, number];
 
+/** Una fila de la planilla: el número REAL del archivo y los valores de sus columnas. */
+export interface RrssFilaPlanilla {
+  numero: number;
+  valores: Record<string, string>;
+}
+
 export interface RrssProductoMailing {
   descripcion: string;
   precio_anterior: string;
@@ -1356,9 +1362,33 @@ export interface RrssProductoMailing {
   oferta_pie: string;
   es_alcohol: boolean;
   cajas: Record<string, RrssCaja>;
-  pagina: number;
-  /** Recorte del producto en la página del mailing (data URI). */
+  /** null cuando la fuente es una planilla: no hay páginas. */
+  pagina: number | null;
+  /** Recorte del producto en la página del mailing, o la tira de la fila de la
+   *  planilla dibujada (data URI). Va en el mismo lugar en los dos casos. */
   recorte: string | null;
+  /** Solo con planilla: de qué fila del archivo salió. */
+  fila?: RrssFilaPlanilla;
+}
+
+export interface RrssPlanilla {
+  archivo: string;
+  hoja: string;
+  titulos: Record<string, string>;
+  /** Número de fila REAL del archivo donde estaban los encabezados. */
+  fila_encabezado: number;
+  filas_leidas: number;
+  filas_ignoradas: number;
+  /** Cuántas filas del archivo se juntaron en esos productos: un listado en
+   *  formato largo trae una fila por producto Y POR SUCURSAL. 0 = no era largo. */
+  filas_juntadas?: number;
+  /** La columna de descripción venía con el nombre corto de gestión, en
+   *  MAYÚSCULAS: se usa para emparejar pero no dicta el texto de la placa. */
+  descripcion_de_gestion?: boolean;
+  /** Lo que la lectura tuvo para decir: una hoja de más, una fila de pie que no
+   *  se contó como producto, una columna en el vocabulario de gestión. Se
+   *  muestran: el motor avisa cuando no entendió, no adivina en silencio. */
+  avisos?: string[];
 }
 
 export interface RrssMailing {
@@ -1366,6 +1396,11 @@ export interface RrssMailing {
   fecha_pagina: number | null;
   legal_alcohol: string;
   productos: RrssProductoMailing[];
+  /** Contra qué se validó. Las validaciones viejas no lo traen: son "mailing". */
+  origen?: "mailing" | "planilla";
+  /** Solo con planilla: qué campos puede exigir (los demás no se validan). */
+  campos?: string[];
+  planilla?: RrssPlanilla;
 }
 
 export interface RrssFila {
@@ -1390,7 +1425,29 @@ export interface RrssImagen {
   alto: number;
   formato: string;
   estado: RrssEstado;
-  match: { indice: number; puntaje: number } | null;
+  /** Con qué fila se emparejó. `duda` = se emparejó igual, pero el motor no
+   *  está seguro: o había otra casi igual (`otra_parecida`) o ninguna la calza
+   *  del todo (`no_la_calza`). Emparejar con duda y mostrarla es mejor que no
+   *  emparejar: sin pareja se pierde el diagnóstico de qué hay que corregir. */
+  match: {
+    indice: number;
+    puntaje: number;
+    segundo?: number | null;
+    parecido?: number;
+    duda?: boolean;
+    motivo_duda?: "otra_parecida" | "no_la_calza" | null;
+  } | null;
+  /** Las filas que más se parecieron, con su puntaje. Van cuando no hubo pareja
+   *  y también cuando la hubo con duda. */
+  candidatos?: { indice: number; descripcion: string; puntaje: number }[];
+  /** La tira de la fila de la planilla con la que se emparejó esta placa (data
+   *  URI). Se dibuja al emparejar y no al leer el archivo —una por placa y no
+   *  una por fila—, así que viaja con la placa y no con el producto. `null` =
+   *  no se pudo dibujar, y eso se dice: no se deja el hueco mudo. Las
+   *  validaciones viejas no lo traen y usan `producto.recorte`. */
+  recorte_fuente?: string | null;
+  /** "ambiguo" (dos filas EMPATAN) o "ninguna" (no se parece ninguna). */
+  sin_pareja?: "ambiguo" | "ninguna" | null;
   filas: RrssFila[];
   error: string | null;
   /** Vista de la placa (data URI). */
@@ -1426,6 +1483,8 @@ export interface RrssResumen {
   cta: { hay_mezcla: boolean; variantes: { cta: string | null; cantidad: number; imagenes: number[] }[] };
   productos_mailing: number;
   productos_con_placa: number;
+  /** Las filas de la fuente que ninguna placa reclamó. */
+  productos_sin_placa?: { indice: number; descripcion: string; fila: number | null }[];
 }
 
 export interface RrssPagina {
@@ -1438,6 +1497,32 @@ export interface RrssPagina {
 export interface RrssConfig {
   legal_bases: string;
   legal_alcohol: string;
+  /** El texto de vigencia como va impreso. Vacío = el que traiga la fuente. */
+  fecha: string;
+}
+
+/** Qué archivos se aceptan. NO se escribe acá: viene del backend, que lo lee de
+ *  app/data/rrss_archivos.json — el mismo archivo con el que acepta o rechaza.
+ *  Tenerlo escrito de los dos lados fue el bug que esto viene a matar. */
+export interface RrssTipoArchivo {
+  etiqueta: string;
+  extensiones: string[];
+  content_types: string[];
+  /** Tamaño máximo, del mismo archivo que usa el backend para rechazarlo: así
+   *  la pantalla no deja empezar a subir algo que el servidor va a tirar. */
+  max_mb: number;
+  /** Cuántas filas puede traer (solo la planilla). Mismo criterio que max_mb:
+   *  el número vive en app/data/rrss_archivos.json y lo leen los dos lados. */
+  max_filas?: number;
+}
+
+export interface RrssTipos {
+  placas: RrssTipoArchivo;
+  fuentes: { mailing: RrssTipoArchivo; planilla: RrssTipoArchivo };
+}
+
+export interface RrssConfigRespuesta extends RrssConfig {
+  tipos: RrssTipos;
 }
 
 export interface RrssValidacion {
@@ -1469,13 +1554,16 @@ export interface RrssValidacionResumen {
 const _MULTIPART = { headers: { "Content-Type": "multipart/form-data" } };
 
 export const rrssApi = {
-  config: () => api.get<RrssConfig>("/rrss/config"),
-  // Leer el mailing con CatTi tarda: se lee y se ubica cada producto.
+  config: () => api.get<RrssConfigRespuesta>("/rrss/config"),
+  // La fuente puede ser un mailing (PDF: CatTi lo lee y ubica cada producto,
+  // tarda medio minuto) o una planilla (.xlsx/.csv: se lee como datos, es
+  // instantáneo). El backend decide cuál por el archivo.
   crear: (mailing: File, config: RrssConfig) => {
     const fd = new FormData();
     fd.append("mailing", mailing);
     fd.append("legal_bases", config.legal_bases);
     fd.append("legal_alcohol", config.legal_alcohol);
+    fd.append("fecha", config.fecha);
     return api.post<RrssValidacion>("/rrss/validaciones", fd, { ..._MULTIPART, timeout: 300_000 });
   },
   validarImagen: (validacionId: number, archivo: File, orden: number) => {

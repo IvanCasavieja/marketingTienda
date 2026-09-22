@@ -24,7 +24,7 @@ from app.core.uploads import read_limited
 from app.models.rrss_validacion import RrssValidacion, RrssValidacionImagen, RrssValidacionPagina
 from app.models.user import User
 from app.services.ai_usage_service import log_ai_usage
-from app.services.rrss import catti, comparador, excel, imagenes, validador
+from app.services.rrss import archivos, catti, comparador, correccion, excel, imagenes, planilla, validador
 from app.services.rrss.hilos import en_hilo
 
 logger = logging.getLogger(__name__)
@@ -32,9 +32,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rrss", tags=["rrss"])
 
 _MAX_IMAGENES_POR_VALIDACION = 150
-_MAX_BYTES_PLACA = 25 * 1024 * 1024
-_MAX_BYTES_MAILING = 30 * 1024 * 1024
-_TIPOS_PLACA = {"image/jpeg", "image/png", "image/webp"}
+# Ni los tipos de archivo ni los tamaños máximos se escriben acá: viven en
+# app/data/rrss_archivos.json y los lee tanto este módulo como la pantalla
+# (GET /rrss/config). Ver archivos.py.
 
 
 async def _get_validacion_or_404(db: AsyncSession, validacion_id: int) -> RrssValidacion:
@@ -90,8 +90,13 @@ async def _detalle(db: AsyncSession, v: RrssValidacion) -> dict:
 
 @router.get("/config")
 async def get_config(_: User = Depends(require_permission("rrss.view"))):
-    """Los legales que se exigen por defecto en cada placa."""
-    return validador.CONFIG_DEFECTO
+    """Lo que se exige por defecto en cada placa, y qué archivos se aceptan.
+
+    Los tipos van en la misma respuesta que ya se pedía al abrir la pantalla:
+    así el `accept` de los inputs y los textos de ayuda salen del MISMO archivo
+    que usa el backend para aceptar o rechazar, y no de una lista escrita a mano
+    en el navegador (ver app/data/rrss_archivos.json)."""
+    return {**validador.CONFIG_DEFECTO, "tipos": archivos.TIPOS}
 
 
 @router.post("/validaciones")
@@ -101,21 +106,74 @@ async def crear_validacion(
     mailing: UploadFile = File(...),
     legal_bases: str | None = Form(None),
     legal_alcohol: str = Form(""),
+    fecha: str = Form(""),
     current_user: User = Depends(require_permission("rrss.validate")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Sube el mailing original: lo renderiza, CatTi lo lee y ubica cada
-    producto, y queda abierta una validación a la que después se suman placas."""
-    datos = await read_limited(mailing, "mailing")
-    if len(datos) > _MAX_BYTES_MAILING:
-        raise HTTPException(status_code=400, detail="El mailing supera los 30 MB")
+    """Sube la fuente contra la que se validan las placas y abre la validación.
+
+    Son dos caminos, y el archivo decide cuál (ver services/rrss/archivos.py):
+    - un MAILING (PDF o imagen): se renderiza, CatTi lo lee y ubica cada
+      producto. Tarda medio minuto y gasta tokens.
+    - una PLANILLA (.xlsx/.csv): se lee como datos, sin IA y sin tokens. Es lo
+      que pidió Ivan para las campañas que no tienen mailing físico.
+    Los dos dejan el MISMO dict en `mailing`, que es contra lo que se comparan
+    las placas después."""
+    nombre_archivo = mailing.filename or ""
+    origen = archivos.origen_de(nombre_archivo, mailing.content_type or "")
+    # El tope global de subida (50 MB) se nombra como lo que se subió: "El
+    # mailing supera el límite" para alguien que subió una planilla lo manda a
+    # buscar un archivo que no existe. El nombre sale del mismo lugar que usan
+    # la pantalla y el Excel para nombrar la fuente (correccion), y no de un
+    # texto escrito acá.
+    datos = await read_limited(mailing, correccion.nombre_de_la_fuente(origen).capitalize())
+    # Lo que no es ni mailing ni planilla se rechaza NOMBRANDO los dos, en vez
+    # de mandarlo al camino del mailing para que reviente con "No pude abrir el
+    # archivo como imagen" -- un mensaje sobre imágenes, para un Word. El
+    # `%PDF-` es el olfateo por bytes que ya estaba: un PDF con un content_type
+    # raro y sin extensión sigue entrando, como entraba antes.
+    if not archivos.acepta_fuente(nombre_archivo, mailing.content_type or "") \
+            and not datos.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"'{nombre_archivo}' no se puede usar como fuente: tiene que ser el mailing "
+                f"({archivos.etiqueta_fuente('mailing')}) o la planilla de la campaña "
+                f"({archivos.etiqueta_fuente('planilla')})"
+            ),
+        )
+    # El tope es distinto según el camino, y el de la planilla es chico a
+    # propósito: un catálogo de 17 MB congelaba el único hilo de CPU del
+    # servicio dos minutos y medio antes de rechazarlo. Acá se rechaza sin
+    # abrir el archivo. Ver app/data/rrss_archivos.json.
+    if len(datos) > archivos.max_bytes(origen):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"El archivo pesa {len(datos) // (1024 * 1024)} MB y el máximo para una "
+                f"{'planilla' if origen == 'planilla' else 'fuente de este tipo'} es "
+                f"{archivos.max_mb(origen)} MB."
+                + (" Subí el listado de esta campaña, no el catálogo entero." if origen == "planilla" else "")
+            ),
+        )
     config = {
         "legal_bases": (validador.CONFIG_DEFECTO["legal_bases"] if legal_bases is None else legal_bases).strip()[:300],
         "legal_alcohol": legal_alcohol.strip()[:300],
+        "fecha": fecha.strip()[:300],
     }
 
     try:
-        preparado = await validador.preparar_mailing(datos, mailing.content_type or "", mailing.filename or "")
+        if origen == "planilla":
+            # Sin elegir hoja: la primera, que es lo que hace el Convertidor
+            # desde siempre. Cuál se leyó queda guardado y se muestra en
+            # pantalla, así que si fuera la equivocada se ve, no se descubre
+            # después. Elegirla hace falta el día que una planilla de RRSS venga
+            # con varias hojas de verdad; hoy no pasó.
+            preparado = await validador.preparar_planilla(datos, mailing.filename or "")
+        else:
+            preparado = await validador.preparar_mailing(datos, mailing.content_type or "", mailing.filename or "")
+    except planilla.PlanillaInvalida as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except imagenes.ArchivoInvalido as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except catti.LecturaFallida as exc:
@@ -125,6 +183,19 @@ async def crear_validacion(
     except anthropic.APIError as exc:
         logger.error("rrss: error de la API leyendo el mailing — %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="No pude leer el mailing en este momento")
+    except Exception as exc:
+        # Cualquier otra cosa que salga de leer el archivo es un bug nuestro, no
+        # una culpa de quien subió: un ValueError pelado de PIL por un salto de
+        # línea adentro de una celda salía como un HTTP 500 sin ninguna pista
+        # (ver planilla.py). Queda el stack en el log y la persona ve un motivo.
+        logger.error("rrss: error leyendo la fuente %s — %s", nombre_archivo, exc, exc_info=True)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No pude leer este archivo. Si es una planilla, fijate que tenga una fila "
+                "de encabezados con una columna DESCRIPCION y una de precio."
+            ),
+        )
 
     v = RrssValidacion(
         nombre_mailing=(mailing.filename or "mailing")[:255], estado="en_proceso",
@@ -137,9 +208,13 @@ async def crear_validacion(
         db.add(RrssValidacionPagina(
             validacion_id=v.id, numero=numero, ancho=pagina.width, alto=pagina.height, imagen=jpg,
         ))
-    await log_ai_usage(
-        db, current_user.id, catti.FEATURE, catti.PROVEEDOR, catti._MODEL, preparado.tokens_in, preparado.tokens_out,
-    )
+    # Con una planilla no se llamó a la IA: loguear cero consumo ensuciaría el
+    # informe con llamadas que no existieron.
+    if preparado.tokens_in or preparado.tokens_out:
+        await log_ai_usage(
+            db, current_user.id, catti.FEATURE, catti.PROVEEDOR, catti._MODEL,
+            preparado.tokens_in, preparado.tokens_out,
+        )
     await db.commit()
     await db.refresh(v)
     return await _detalle(db, v)
@@ -167,11 +242,17 @@ async def validar_imagen(
     )
     if (total or 0) >= _MAX_IMAGENES_POR_VALIDACION:
         raise HTTPException(status_code=400, detail=f"Máximo {_MAX_IMAGENES_POR_VALIDACION} placas por validación")
-    if archivo.content_type not in _TIPOS_PLACA:
-        raise HTTPException(status_code=400, detail=f"'{archivo.filename}' no es una imagen JPG, PNG o WebP")
-    datos = await read_limited(archivo, "archivo")
-    if len(datos) > _MAX_BYTES_PLACA:
-        raise HTTPException(status_code=400, detail=f"'{archivo.filename}' supera los 25 MB")
+    if not archivos.acepta_placa(archivo.filename or "", archivo.content_type or ""):
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{archivo.filename}' no es una imagen {archivos.etiqueta_placas()}",
+        )
+    datos = await read_limited(archivo, "La placa")
+    if len(datos) > archivos.max_bytes("placas"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{archivo.filename}' supera los {archivos.max_mb('placas')} MB",
+        )
 
     async def cargar_paginas():
         # Las páginas del mailing (ya renderizadas) sirven para recortar el lado del

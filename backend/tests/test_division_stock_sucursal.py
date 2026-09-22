@@ -45,13 +45,16 @@ Los tres agujeros que estos tests tapan, en orden de qué tan caro sale cada uno
    un archivo. Un "/" o un punto final ahí adentro es un ZIP que no se puede
    descomprimir en Windows, y eso se descubre en la góndola.
 """
+import ast
 import asyncio
 import io
+import pathlib
 import zipfile
 
 import openpyxl
 import pytest
 
+from app.services.cenefas import convertidor
 from app.services.cenefas.convertidor import (
     _STOCK_MINIMO,
     _mapear_columnas,
@@ -1125,3 +1128,38 @@ def test_punta_a_punta_el_export_largo_sale_como_una_carpeta_por_sucursal():
     assert _todos_los_codigos(zip_bytes) == {"503996", "610220"}
     # Ninguna sucursal vacía y ningún "Sin categoría": el export las trae todas.
     assert resumen["filas_sin_categoria"] == 0
+
+
+def test_el_juntador_no_pisa_sus_propios_parametros():
+    """`for clave, valor in r.items()` PISABA el parámetro `clave`, que es por
+    qué columna se agrupa (`codigo` para el Convertidor, `descripcion` para la
+    Validación de RRSS). Hoy no rompe de casualidad --cuando el bucle corre, el
+    agrupado ya terminó-- pero es una mina: el día que alguien vuelva a leer
+    `clave` de ese lado, el juntador agrupa por la última columna de la última
+    fila y no hay un solo error a la vista.
+
+    Se mira el FUENTE y no el comportamiento a propósito: el comportamiento hoy
+    es correcto, y lo que hay que impedir es que el nombre vuelva a estar
+    pisado."""
+    arbol = ast.parse(pathlib.Path(convertidor.__file__).read_text(encoding="utf-8"))
+    fn = next(n for n in ast.walk(arbol)
+              if isinstance(n, ast.FunctionDef) and n.name == "juntar_filas_por_producto")
+    parametros = {a.arg for a in fn.args.args}
+    assert parametros == {"parsed", "clave"}
+    pisados = sorted({
+        n.id for n in ast.walk(fn)
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store) and n.id in parametros
+    })
+    assert pisados == [], "juntar_filas_por_producto le escribe encima a sus parámetros: %s" % pisados
+
+
+def test_el_juntador_agrupa_por_la_clave_que_se_le_pide():
+    """Y el comportamiento que el nombre pisado ponía en riesgo: con
+    clave="descripcion" --como lo llama la Validación de RRSS-- las filas se
+    juntan por la DESCRIPCIÓN aunque los códigos sean distintos."""
+    juntadas, resumen = juntar_filas_por_producto([
+        {"codigo": "1", "descripcion": "Auricular JBL", "sucursal": "Central", "stock": 5, "precio": "990"},
+        {"codigo": "2", "descripcion": "Auricular JBL", "sucursal": "Pocitos", "stock": 3, "precio": "990"},
+    ], clave="descripcion")
+    assert len(juntadas) == 1 and resumen["productos"] == 1
+    assert juntadas[0]["descripcion"] == "Auricular JBL"
