@@ -11,8 +11,8 @@ Lo pidió Ivan el 23/09/2026, por grupos. Esta es la tabla, literal:
   - Materiales completo + facturación: belen, anita, valentina.
   - Planilla de Redexpres: las sucursales (ya la tienen por asignación) y
     valentina.
-  - Materiales completo: jenniffer duran, sebastian bastarrica, jenifer
-    furtado.
+  - Materiales completo, ademas del buscador: jenniffer duran, sebastian
+    bastarrica, jenifer furtado y camila alvarez.
   - Buscador de precios: todo el resto, menos las sucursales de Redex.
 
 Tres cosas quedaron decididas acá y hay que mirarlas:
@@ -109,6 +109,7 @@ SOLO_MATERIALES = {
     "jduran@tiendainglesa.com.uy",      # jenniffer duran
     "sbastarrica@tiendainglesa.com.uy", # sebastian bastarrica
     "jfurtado@tiendainglesa.com.uy",    # jenifer furtado
+    "adm.k53@expres.uy",                # camila alvarez
 }
 
 # Valentina además carga la planilla de Redexpres.
