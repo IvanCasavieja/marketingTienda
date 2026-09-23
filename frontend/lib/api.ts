@@ -1909,3 +1909,21 @@ export const redexpresApi = {
     api.post("/redexpres/asignaciones", { user_id, local_nombre }),
   deleteAsignacion: (id: number) => api.delete(`/redexpres/asignaciones/${id}`),
 };
+
+// ---------------------------------------------------------------------------
+// Calendario
+// ---------------------------------------------------------------------------
+// El calendario guardaba en localStorage: cada navegador tenía su copia y el
+// servidor no sabía que existiera ninguna acción. Con esto el mes vive en la
+// base, lo ve todo el mundo igual y el aviso de los 10 días tiene de dónde
+// leer.
+
+export const calendarioApi = {
+  /** Todos los meses guardados, como { 'YYYY-MM': mes }. */
+  traerMeses: () => api.get<Record<string, any>>("/calendario/meses"),
+  guardarMes: (clave: string, datos: unknown) =>
+    api.put<{ clave: string; guardado: boolean }>(`/calendario/meses/${clave}`, { datos }),
+  /** Avisa a quien lleva Retail Media que le movieron las posiciones. */
+  avisarRetail: (clave: string, antes: number[], ahora: number[]) =>
+    api.post<{ avisados: number }>("/calendario/aviso-retail", { clave, antes, ahora }),
+};

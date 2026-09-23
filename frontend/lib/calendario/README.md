@@ -87,15 +87,37 @@ mueven juntas; la columna de etiquetas y la fila de días quedan fijas.
 
 ## Guardado
 
-**Todavía es `localStorage`** (clave `calendario-mktg`), o sea del navegador de
-cada uno y no se comparte. Es el paso intermedio para poder usarlo ya:
-`store.ts` está armado para que cambiar `localStorage` por la API sea tocar un
-solo lugar.
+**En el servidor**, desde el 23/09/2026. Cada cambio sube el mes entero a
+`PUT /calendario/meses/{clave}` (con 800 ms de respiro, para no mandar un PUT
+por cada píxel al arrastrar una barra) y al abrir la página se trae lo guardado
+con `GET /calendario/meses`, que pisa la copia local. El mes viaja tal cual:
+en la base es un documento, no cinco tablas — ver `backend/app/models/calendario_mes.py`.
+
+`localStorage` (clave `calendario-mktg`) **queda como caché**: pinta la
+pantalla al instante mientras llega la respuesta, y si el servidor no contesta
+se puede seguir trabajando. Lo que no sube se reintenta con el cambio
+siguiente, porque siempre se manda el mes completo.
+
+Guardar es un reemplazo, no un merge: **dos personas editando el mismo mes a la
+vez se pisan**. Queda registrado quién lo tocó último (`actualizado_por_id`).
 
 Mientras los datos salgan de `seed.ts`, los meses que **nadie tocó** se rehacen
 solos cuando se reimportan los Excel, y los que tienen ediciones a mano quedan
 como están. Lo resuelve la firma `SEED_VERSION` más el flag `tocado` de cada
-mes. Con datos del servidor ese mecanismo deja de tener sentido.
+mes.
+
+## Avisos
+
+**No hay bandeja propia del calendario**: los avisos entran en las
+notificaciones de la plataforma, la campanita del menú, que ya es por persona.
+
+- **10 días antes de cada acción del calendario comercial**, a todos los que
+  tengan `calendario.view`. Lo hace `backend/app/services/calendario_avisos.py`,
+  que revisa dos veces por día. La ventana es "faltan 10 días o menos y todavía
+  no arrancó", así que un servidor caído un par de días no se come el aviso.
+  Una sola vez por acción y por persona (`origen_ref`).
+- **Cuando alguien mueve las posiciones de Retail Media**, a quien tenga
+  `calendario.retail_media`, menos el que las movió.
 
 ## Los colores
 
@@ -123,7 +145,7 @@ Ese script es referencia de cómo se parsean esos Excel, no parte del producto.
 lib/calendario/derivar.ts     LA LÓGICA: construir el mes, derivar el header, contar
 lib/calendario/tipos.ts       el modelo, el catálogo de piezas y las reglas (7/8/10)
 lib/calendario/rejilla.ts     medidas y zoom
-lib/calendario/store.ts       estado, notificaciones, guardado
+lib/calendario/store.ts       estado y guardado contra el servidor
 lib/calendario/permisos.ts    quién puede qué, contra el usuario de la plataforma
 lib/calendario/seed.ts        datos de ejemplo generados desde los Excel + su firma
 lib/calendario/colores.ts     paleta y contraste
@@ -148,8 +170,8 @@ runner.
 
 ## Lo que falta
 
-- **Persistencia real** contra el backend, en vez de `localStorage`. Es lo
-  primero, y está aislado en `store.ts`.
+- **Que dos personas editando el mismo mes no se pisen.** Hoy gana el último
+  que guarda.
 - **Subtareas por pieza** (arte desktop, arte mobile, aprobación comercial) y
   responsable con vencimiento. Hoy el modelo llega hasta acción → pieza.
 - **`Pieza.enSharePoint`** existe en el modelo pero no se usa en ninguna

@@ -2,24 +2,41 @@
 
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { calendarioApi } from '@/lib/api'
 import { construirMes, derivarHeader, nuevoId } from './derivar'
 import { SEED_VERSION } from './seed'
 import { ZOOM_POR_DEFECTO, limitarZoom } from './rejilla'
 
 export { ZOOMS, ZOOM_POR_DEFECTO } from './rejilla'
 import type {
-  AreaPieza, Barra, EstadoPieza, Mes, Notificacion, Pieza, Seccion,
+  AreaPieza, Barra, EstadoPieza, Mes, Pieza, Seccion,
 } from './tipos'
 
 export { construirMes, derivarHeader, accionesDe, ocupacionHeader } from './derivar'
 export type { EstadoDia, OcupacionDia } from './derivar'
 
 // ---------------------------------------------------------------------------
-// Quien lleva Retail Media: se le avisa cuando le mueven las posiciones.
-// Es un nombre fijo porque la notificacion todavia vive en memoria; cuando
-// pase a ser un POST va a ser el id del usuario que tenga ese rol.
+// Guardado contra el servidor
 // ---------------------------------------------------------------------------
-export const DUENO_RETAIL = 'Macarena'
+// El calendario vivia en localStorage: cada navegador tenia su copia y el
+// servidor no sabia que existiera ninguna accion, asi que no podia avisar nada
+// con anticipacion. Ahora cada cambio sube, con un respiro para no mandar un
+// PUT por cada tecla al arrastrar una barra. localStorage queda como caché
+// para que la pantalla no arranque en blanco.
+const ESPERA_ANTES_DE_GUARDAR = 800
+
+const pendientes = new Map<string, ReturnType<typeof setTimeout>>()
+
+function subirMes(clave: string, mes: Mes) {
+  clearTimeout(pendientes.get(clave))
+  pendientes.set(clave, setTimeout(() => {
+    pendientes.delete(clave)
+    calendarioApi.guardarMes(clave, mes).catch(() => {
+      // Si falla, lo guardado en el navegador sigue estando: no se pierde el
+      // trabajo, y el proximo cambio reintenta con el mes entero.
+    })
+  }, ESPERA_ANTES_DE_GUARDAR))
+}
 
 // ---------------------------------------------------------------------------
 // Store
@@ -42,7 +59,6 @@ export type Ubicacion = { bandaId: string; filaIdx: number; barraId: string }
 type Estado = {
   meses: Record<string, Mes>
   mesActivo: string
-  notificaciones: Notificacion[]
   edicion: Edicion | null
   abierta: Ubicacion | null
   /** Ancho de cada día en px. Sube y baja con el control de zoom. */
@@ -54,6 +70,8 @@ type Estado = {
   accionAbierta: () => Barra | null
   irAMes: (clave: string) => void
   setZoom: (px: number) => void
+  /** Trae del servidor lo guardado y pisa la copia local. */
+  traerDelServidor: () => Promise<void>
 
   abrirEditor: (e: Edicion) => void
   cerrarEditor: () => void
@@ -62,13 +80,18 @@ type Estado = {
 
   guardarBarra: (datos: Pick<Barra, 'nombre' | 'desde' | 'hasta' | 'color'>) => void
   borrarBarra: () => void
-  /** `autor` es el nombre del usuario logueado: firma la notificacion. */
-  moverPosicionesRM: (posiciones: number[], autor: string) => void
-  marcarLeidas: () => void
+  /** Avisa por las notificaciones de la plataforma a quien lleva Retail Media. */
+  moverPosicionesRM: (posiciones: number[]) => void
 
   agregarPieza: (area: AreaPieza, formato: string) => void
   quitarPieza: (piezaId: string) => void
   actualizarPieza: (piezaId: string, cambios: Partial<Pieza>) => void
+}
+
+/** Deja el mes listo para guardar y lo sube. Todo cambio pasa por aca. */
+function guardado(clave: string, mes: Mes): Mes {
+  subirMes(clave, mes)
+  return mes
 }
 
 /** Marca el mes como editado a mano: deja de rehacerse cuando cambia el Excel. */
@@ -93,7 +116,6 @@ export const useCalendario = create<Estado>()(
     (set, get) => ({
       meses: { '2026-09': construirMes('2026-09'), '2026-10': construirMes('2026-10') },
       mesActivo: '2026-09',
-      notificaciones: [],
       edicion: null,
       abierta: null,
       zoom: ZOOM_POR_DEFECTO,
@@ -111,15 +133,32 @@ export const useCalendario = create<Estado>()(
       irAMes: clave => set(s => ({
         mesActivo: clave,
         abierta: null,
-        meses: s.meses[clave] ? s.meses : { ...s.meses, [clave]: construirMes(clave) },
+        // Un mes que se abre por primera vez se sube armado: asi el aviso de
+        // los 10 dias lo ve sin que nadie tenga que editarlo.
+        meses: s.meses[clave] ? s.meses : { ...s.meses, [clave]: guardado(clave, construirMes(clave)) },
       })),
 
       setZoom: px => set({ zoom: limitarZoom(px) }),
+
+      traerDelServidor: async () => {
+        try {
+          const { data } = await calendarioApi.traerMeses()
+          if (!data || Object.keys(data).length === 0) {
+            // Primera vez: todavia no hay nada guardado. Se sube lo que hay en
+            // esta maquina para que el servidor arranque con algo real.
+            for (const [clave, mes] of Object.entries(get().meses)) subirMes(clave, mes)
+            return
+          }
+          // Lo del servidor manda: es lo que ve el resto del equipo.
+          set(s => ({ meses: { ...s.meses, ...(data as Record<string, Mes>) } }))
+        } catch {
+          // Sin servidor se sigue trabajando con la copia local.
+        }
+      },
       abrirEditor: e => set({ edicion: e }),
       cerrarEditor: () => set({ edicion: null }),
       abrirAccion: u => set({ abierta: u }),
       cerrarAccion: () => set({ abierta: null }),
-      marcarLeidas: () => set(s => ({ notificaciones: s.notificaciones.map(n => ({ ...n, leida: true })) })),
 
       guardarBarra: datos => {
         const { edicion, mesActivo } = get()
@@ -142,7 +181,7 @@ export const useCalendario = create<Estado>()(
             }
           })
           return {
-            meses: { ...s.meses, [mesActivo]: derivarHeader(tocado({ ...mes, [edicion.seccion]: bandas })) },
+            meses: { ...s.meses, [mesActivo]: guardado(mesActivo, derivarHeader(tocado({ ...mes, [edicion.seccion]: bandas }))) },
             edicion: null,
           }
         })
@@ -160,34 +199,27 @@ export const useCalendario = create<Estado>()(
                 i === edicion.filaIdx ? fila.filter(b => b.id !== edicion.barra!.id) : fila),
             })
           return {
-            meses: { ...s.meses, [mesActivo]: derivarHeader(tocado({ ...mes, [edicion.seccion]: bandas })) },
+            meses: { ...s.meses, [mesActivo]: guardado(mesActivo, derivarHeader(tocado({ ...mes, [edicion.seccion]: bandas }))) },
             edicion: null,
             abierta: s.abierta?.barraId === edicion.barra!.id ? null : s.abierta,
           }
         })
       },
 
-      moverPosicionesRM: (posiciones, autor) => {
+      moverPosicionesRM: posiciones => {
         const { mesActivo, meses } = get()
         const antes = meses[mesActivo].posicionesRM
         if (antes.join() === posiciones.join()) return
 
-        set(s => ({
-          meses: {
-            ...s.meses,
-            [mesActivo]: derivarHeader(tocado({ ...s.meses[mesActivo], posicionesRM: posiciones })),
-          },
-          notificaciones: [{
-            id: nuevoId('ntf'),
-            tipo: 'calendario_header',
-            mensaje: `${autor} movió las posiciones de Retail Media en ${mesActivo}: ${antes.join(', ')} → ${posiciones.join(', ')}`,
-            leida: false,
-            origen_tipo: 'header_posiciones_rm',
-            origen_ref: `${mesActivo}:${posiciones.join('-')}`,
-            destinatario: DUENO_RETAIL,
-            created_at: new Date().toISOString(),
-          }, ...s.notificaciones],
-        }))
+        set(s => {
+          const mes = derivarHeader(tocado({ ...s.meses[mesActivo], posicionesRM: posiciones }))
+          subirMes(mesActivo, mes)
+          return { meses: { ...s.meses, [mesActivo]: mes } }
+        })
+        // El aviso va a las notificaciones de la plataforma, no a una bandeja
+        // propia del calendario: la campanita del menu ya existe y es por
+        // persona. Le llega a quien tenga calendario.retail_media.
+        calendarioApi.avisarRetail(mesActivo, antes, posiciones).catch(() => {})
       },
 
       agregarPieza: (area, formato) => {
@@ -196,10 +228,10 @@ export const useCalendario = create<Estado>()(
         set(s => ({
           meses: {
             ...s.meses,
-            [mesActivo]: conPiezas(s.meses[mesActivo], abierta, piezas =>
+            [mesActivo]: guardado(mesActivo, conPiezas(s.meses[mesActivo], abierta, piezas =>
               piezas.some(p => p.area === area && p.formato === formato)
                 ? piezas
-                : [...piezas, { id: nuevoId('pz'), area, formato, estado: 'pendiente' as EstadoPieza }]),
+                : [...piezas, { id: nuevoId('pz'), area, formato, estado: 'pendiente' as EstadoPieza }])),
           },
         }))
       },
@@ -210,7 +242,7 @@ export const useCalendario = create<Estado>()(
         set(s => ({
           meses: {
             ...s.meses,
-            [mesActivo]: conPiezas(s.meses[mesActivo], abierta, p => p.filter(x => x.id !== piezaId)),
+            [mesActivo]: guardado(mesActivo, conPiezas(s.meses[mesActivo], abierta, p => p.filter(x => x.id !== piezaId))),
           },
         }))
       },
@@ -221,8 +253,8 @@ export const useCalendario = create<Estado>()(
         set(s => ({
           meses: {
             ...s.meses,
-            [mesActivo]: conPiezas(s.meses[mesActivo], abierta, p =>
-              p.map(x => (x.id === piezaId ? { ...x, ...cambios } : x))),
+            [mesActivo]: guardado(mesActivo, conPiezas(s.meses[mesActivo], abierta, p =>
+              p.map(x => (x.id === piezaId ? { ...x, ...cambios } : x)))),
           },
         }))
       },
@@ -254,7 +286,6 @@ export const useCalendario = create<Estado>()(
         seedVersion: SEED_VERSION,
         mesActivo: s.mesActivo,
         zoom: s.zoom,
-        notificaciones: s.notificaciones,
       }),
     },
   ),

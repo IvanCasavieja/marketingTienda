@@ -297,6 +297,17 @@ async def list_users(
         for user_id, count, last_login in login_stats_result.all()
     }
 
+    # Los logins de sucursal conviven en la misma tabla que las personas, pero
+    # el panel los muestra en pestañas aparte: sin esto no hay forma de
+    # distinguirlos, porque un login de sucursal es un User igual que los demás.
+    sucursales: dict[int, list[str]] = {}
+    tipo_sucursal: dict[int, str] = {}
+    for user_id, nombre, tipo in (await db.execute(
+        select(LocalAsignacion.user_id, LocalAsignacion.local_nombre, LocalAsignacion.tipo)
+    )).all():
+        sucursales.setdefault(user_id, []).append(nombre)
+        tipo_sucursal[user_id] = tipo
+
     return [
         {
             "id":           u.id,
@@ -308,6 +319,8 @@ async def list_users(
             "is_active":    u.is_active,
             "is_superuser": u.is_superuser,
             "created_at":   u.created_at.isoformat() if u.created_at else None,
+            "sucursales":   sorted(sucursales.get(u.id, [])),
+            "sucursal_tipo": tipo_sucursal.get(u.id),
             "login_count":  login_stats.get(u.id, {}).get("login_count", 0),
             "last_login_at": (
                 login_stats[u.id]["last_login_at"].isoformat()

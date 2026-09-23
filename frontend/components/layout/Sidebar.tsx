@@ -90,32 +90,38 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   // perm: undefined = visible para cualquier usuario logueado.
   // Cada valor corresponde 1:1 a un permiso realmente exigido por el backend
   // (ver require_permission en las rutas) — si no lo tiene, ni se muestra el link.
+  // El orden de esta lista ES el orden del menú (las secciones salen en el
+  // orden en que aparece su primer link). Calendario arriba de todo y
+  // Materiales segundo: pedido de Ivan el 23/09/2026.
+  // El orden de esta lista ES el orden del menú (cada sección sale donde
+  // aparece su primer link). Lo fijó Ivan el 23/09/2026: calendario, cenefas,
+  // validación de RRSS, medios, redexpres, facturación y después el resto.
   const navAll = [
-    { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: t("sidebar.medios"),         perm: "analytics.view" },
-    { href: "/canales",                 label: t("sidebar.analyticsGa4"), icon: Activity,      section: t("sidebar.medios"),         perm: "analytics.view" },
-    { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,        section: t("sidebar.medios"),         perm: "analytics.view" },
-    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,            section: t("sidebar.medios"),         perm: "ai.triada" },
-    { href: "/settings",                label: t("common.connections"),icon: Settings,         section: t("sidebar.medios"),         perm: "connections.view" },
     { href: "/calendario",              label: t("sidebar.calendario"), icon: CalendarDays, section: t("sidebar.calendarioSeccion"), perm: "calendario.view" },
+    { href: "/materiales/cenefas",      label: t("sidebar.cenefas"),   icon: Presentation,    section: t("sidebar.materiales"),     perm: "cenefas.view" },
+    { href: "/materiales/convertidor",  label: t("sidebar.convertidor"), icon: FileSpreadsheet, section: t("sidebar.materiales"),   perm: "cenefas.view" },
+    { href: "/materiales/diccionario",  label: t("sidebar.diccionario"), icon: BookOpen,      section: t("sidebar.materiales"),     perm: "cenefas.diccionario" },
     { href: "/redes-sociales/validacion", label: t("sidebar.validacionRrss"), icon: ScanSearch, section: t("sidebar.redesSociales"), perm: "rrss.view" },
-    { href: "/materiales/cenefas",    label: t("sidebar.cenefas"),  icon: Presentation, section: t("sidebar.materiales"), perm: "cenefas.view" },
-    { href: "/materiales/convertidor", label: t("sidebar.convertidor"), icon: FileSpreadsheet, section: t("sidebar.materiales"), perm: "cenefas.view" },
-    { href: "/materiales/diccionario", label: t("sidebar.diccionario"), icon: BookOpen, section: t("sidebar.materiales"), perm: "cenefas.view" },
-    { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,           section: t("sidebar.comercial"),     perm: "precios.search" },
-    { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,        section: t("sidebar.comercial"),     perm: "precios.search" },
-    { href: "/facturacion",             label: t("sidebar.facturacionDashboard"), icon: Receipt, section: t("sidebar.facturacion"),  perm: "facturacion.view" },
-    { href: "/facturacion/cuentas",     label: t("sidebar.facturacionCuentas"), icon: Landmark, section: t("sidebar.facturacion"),  perm: "facturacion.manage" },
-    { href: "/redexpres/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpres"), perm: "redexpres.view" },
+    { href: "/dashboard",               label: t("common.dashboard"),  icon: LayoutDashboard, section: t("sidebar.medios"),         perm: "analytics.view" },
+    { href: "/canales",                 label: t("sidebar.analyticsGa4"), icon: Activity,     section: t("sidebar.medios"),         perm: "analytics.view" },
+    { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,       section: t("sidebar.medios"),         perm: "analytics.view" },
+    { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,           section: t("sidebar.medios"),         perm: "ai.triada" },
+    { href: "/settings",                label: t("common.connections"),icon: Settings,        section: t("sidebar.medios"),         perm: "connections.view" },
+    { href: "/redexpres/planilla",      label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpres"),  perm: "redexpres.view" },
     // Sin perm: el acceso no es por permiso sino por tener una sucursal
     // asignada (LocalAsignacion) — por eso se filtra acá, no vía hasPerm().
     // Los superadmins también entran (ven un selector de sucursal en la página).
     ...((currentUser?.assigned_locales?.length ?? 0) > 0 || currentUser?.is_superuser
       ? [{ href: "/redexpres/mi-pedido", label: t("sidebar.miPedido"), icon: ClipboardList, section: t("sidebar.redexpres") }]
       : []),
+    { href: "/facturacion",             label: t("sidebar.facturacionDashboard"), icon: Receipt, section: t("sidebar.facturacion"), perm: "facturacion.view" },
+    { href: "/facturacion/cuentas",     label: t("sidebar.facturacionCuentas"), icon: Landmark, section: t("sidebar.facturacion"),  perm: "facturacion.manage" },
+    { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,          section: t("sidebar.comercial"),     perm: "precios.search" },
+    { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,       section: t("sidebar.comercial"),     perm: "precios.search" },
     ...(hasPermission(currentUser, "platform.admin")
       ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]
       : []),
-    { href: "/ayuda",                   label: t("sidebar.guiaUso"),   icon: HelpCircle,       section: t("sidebar.guia") },
+    { href: "/ayuda",                   label: t("sidebar.guiaUso"),   icon: HelpCircle,      section: t("sidebar.guia") },
   ];
 
   const nav = navAll.filter((item) => !item.perm || hasPerm(item.perm));

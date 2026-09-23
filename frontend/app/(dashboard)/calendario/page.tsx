@@ -17,13 +17,15 @@ export default function CalendarioPage() {
   const { t } = useTranslation();
   const { allowed, checked } = usePermissionGuard({ permission: PERMISOS_CALENDARIO.ver });
 
-  // Lo guardado vive en localStorage, que no existe hasta que monta el
-  // cliente: el store se rehidrata a mano (persist va con skipHydration).
-  // Cuando el calendario guarde contra el backend, este gate sobra.
+  // Primero la copia del navegador, para no arrancar en blanco (localStorage
+  // no existe hasta que monta el cliente, por eso persist va con
+  // skipHydration); enseguida lo del servidor, que es lo que ve el resto del
+  // equipo, y pisa lo local.
   const [listo, setListo] = useState(false);
   useEffect(() => {
     useCalendario.persist.rehydrate();
     setListo(true);
+    useCalendario.getState().traerDelServidor();
   }, []);
 
   if (checked && !allowed) {
@@ -44,7 +46,13 @@ export default function CalendarioPage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    // El id y el fondo son para la pantalla completa: al pedirla, el navegador
+    // saca este nodo del flujo y lo pinta contra negro, así que el fondo y el
+    // scroll tienen que estar puestos acá y no heredarse del dashboard.
+    <div
+      id="calendario-pantalla"
+      className="animate-fade-in"
+    >
       <BarraSuperior />
       {/* El id lo usa el boton "que entre el mes entero": mide la caja real
           de una seccion para calcular el zoom. */}

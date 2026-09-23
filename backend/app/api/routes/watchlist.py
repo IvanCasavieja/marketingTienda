@@ -440,6 +440,8 @@ def _notif_visible(user: User, n: Notificacion) -> bool:
     perms = user.permissions or []
     if n.origen_tipo == "campaign_alert":
         return "analytics.view" in perms
+    if n.origen_tipo in ("calendario_accion", "calendario_header"):
+        return "calendario.view" in perms
     return "precios.search" in perms
 
 

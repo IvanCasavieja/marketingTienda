@@ -142,3 +142,23 @@ def require_permission(permission: str):
             )
         return user
     return _check
+
+
+def require_any_permission(*permissions: str):
+    """Como require_permission, pero alcanza con tener UNO de los permisos.
+
+    Existe para los endpoints que comparten dos pantallas con permisos
+    distintos: el PATCH de descripciones, por ejemplo, lo usan el Convertidor
+    (cenefas.view) y el Diccionario (cenefas.diccionario), que desde el
+    2026-09-23 se pueden dar por separado."""
+    async def _check(user: User = Depends(get_current_user)) -> User:
+        if user.is_superuser:
+            return user
+        user_perms = set(user.permissions or [])
+        if not user_perms.intersection(permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permiso requerido: {' o '.join(permissions)}",
+            )
+        return user
+    return _check

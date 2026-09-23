@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Bell, ChevronLeft, ChevronRight, Maximize2, Minus, Plus } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Minus, MoveHorizontal, Plus } from 'lucide-react'
 import { mesSiguiente } from '@/lib/calendario/fechas'
 import { useCalendario } from '@/lib/calendario/store'
 import {
@@ -20,30 +20,56 @@ const ANIOS = Array.from({ length: 8 }, (_, i) => 2025 + i)
 export function BarraSuperior() {
   const mesActivo = useCalendario(s => s.mesActivo)
   const irAMes = useCalendario(s => s.irAMes)
-  const notificaciones = useCalendario(s => s.notificaciones)
-  const marcarLeidas = useCalendario(s => s.marcarLeidas)
   const zoom = useCalendario(s => s.zoom)
   const setZoom = useCalendario(s => s.setZoom)
   const dias = useCalendario(s => s.meses[s.mesActivo].dias)
-  const [abierto, setAbierto] = useState(false)
+  const [pantallaCompleta, setPantallaCompleta] = useState(false)
 
-  const sinLeer = notificaciones.filter(n => !n.leida).length
   const [anio, mesNum] = mesActivo.split('-').map(Number)
   const anios = ANIOS.includes(anio) ? ANIOS : [...ANIOS, anio].sort((a, b) => a - b)
 
   const ir = (a: number, m: number) => irAMes(`${a}-${String(m).padStart(2, '0')}`)
 
   /**
-   * Achica hasta que el mes entero entre, midiendo la caja real de una sección.
-   * Antes se calculaba desde `window.innerWidth`, que ignora el `max-w` del
-   * contenedor y el padding, así que en pantallas anchas se pasaba y seguía
-   * habiendo scroll.
+   * Achica o agranda hasta que el mes entero entre, midiendo la caja real de
+   * una sección. Antes se calculaba desde `window.innerWidth`, que ignora el
+   * `max-w` del contenedor y el padding, así que en pantallas anchas se
+   * pasaba y seguía habiendo scroll.
    */
   function ajustarAlAncho() {
     const seccion = document.querySelector('#calendario section')
     const disponible = seccion?.clientWidth ?? window.innerWidth - 32
     setZoom(zoomParaAncho(disponible, dias))
   }
+
+  /**
+   * Pantalla completa de verdad: el calendario se queda con toda la ventana,
+   * sin el menú ni el resto del dashboard. Antes este botón solo ajustaba el
+   * zoom, y en una pantalla donde el mes ya entraba no pasaba nada visible.
+   * Al entrar y al salir se reajusta el zoom al ancho nuevo.
+   */
+  async function alternarPantallaCompleta() {
+    const caja = document.getElementById('calendario-pantalla')
+    if (!caja) return
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await caja.requestFullscreen()
+    } catch {
+      // Si el navegador la bloquea, al menos que el mes entre entero.
+      ajustarAlAncho()
+    }
+  }
+
+  useEffect(() => {
+    function alCambiar() {
+      setPantallaCompleta(Boolean(document.fullscreenElement))
+      // El ancho recién es el nuevo después de que el navegador repinta.
+      requestAnimationFrame(ajustarAlAncho)
+    }
+    document.addEventListener('fullscreenchange', alCambiar)
+    return () => document.removeEventListener('fullscreenchange', alCambiar)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dias])
 
   return (
     <header className="mb-5 rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -123,54 +149,23 @@ export function BarraSuperior() {
           <button
             type="button"
             onClick={ajustarAlAncho}
-            title="Que entre el mes entero en la pantalla"
+            title="Que entre el mes entero a lo ancho"
             className="rounded-md p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
           >
-            <Maximize2 className="h-3.5 w-3.5" />
+            <MoveHorizontal className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => { setAbierto(v => !v); if (!abierto) marcarLeidas() }}
-            className="relative rounded-lg border border-slate-200 dark:border-slate-700 p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
-            aria-label="Notificaciones"
-          >
-            <Bell className="h-4 w-4" />
-            {sinLeer > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-                {sinLeer}
-              </span>
-            )}
-          </button>
+        <button
+          type="button"
+          onClick={alternarPantallaCompleta}
+          title={pantallaCompleta ? 'Salir de pantalla completa' : 'Pantalla completa'}
+          aria-label={pantallaCompleta ? 'Salir de pantalla completa' : 'Pantalla completa'}
+          className="rounded-lg border border-slate-200 dark:border-slate-700 p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+        >
+          {pantallaCompleta ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </button>
 
-          {abierto && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl">
-              <div className="border-b border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Notificaciones
-              </div>
-              {notificaciones.length === 0 ? (
-                <p className="px-3 py-6 text-center text-xs text-slate-400 dark:text-slate-500">
-                  Nada por ahora. Cuando alguien mueva las posiciones de Retail Media,
-                  le llega el aviso a Macarena y aparece acá.
-                </p>
-              ) : (
-                <ul className="max-h-80 divide-y divide-slate-100 dark:divide-slate-800 overflow-y-auto">
-                  {notificaciones.map(n => (
-                    <li key={n.id} className="px-3 py-2.5">
-                      <p className="text-xs leading-snug text-slate-700 dark:text-slate-300">{n.mensaje}</p>
-                      <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
-                        para {n.destinatario}
-                        {' · '}{n.tipo}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </header>
   )

@@ -686,6 +686,12 @@
       "lastLogin": "Último ingreso",
       "cenefasGenerated": "Cenefas generadas",
       "aiCost30d": "Costo de IA (30 días)"
+    },
+    "listas": {
+      "personas": "Usuarios",
+      "redex": "Sucursales Redex",
+      "tienda": "Sucursales Tienda",
+      "vacia": "Todavía no hay ninguna en esta lista."
     }
   },
   "redexpres": {

@@ -38,7 +38,7 @@ export function HeaderHome() {
   const ancho = useAnchoTotal(mes.dias)
   const franjaPie = useFranjaDias(mes.dias)
   const hoy = diaDeHoy(mes.clave)
-  const { editable, moverRM: puedeMover, autor } = usePermisosCalendario()
+  const { editable, moverRM: puedeMover } = usePermisosCalendario()
   const ocupacion = ocupacionHeader(mes)
   const pico = Math.max(...ocupacion.map(o => o.cantidad), 0)
 
@@ -49,7 +49,7 @@ export function HeaderHome() {
     const yaEstaEn = siguiente.indexOf(valor)
     if (yaEstaEn !== -1) siguiente[yaEstaEn] = siguiente[indice]  // intercambio, nunca duplica
     siguiente[indice] = valor
-    moverPosicionesRM(siguiente, autor)
+    moverPosicionesRM(siguiente)
   }
 
   return (

@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import client_ip as _client_ip, require_permission
+from app.core.deps import client_ip as _client_ip, require_any_permission, require_permission
 from app.core.rate_limit import limiter
 from app.core.uploads import read_limited
 from app.models.audit_log import AuditLog
@@ -175,7 +175,7 @@ async def listar_descripciones(
     q: str | None = Query(None, description="Busca por SKU o descripción"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    current_user: User = Depends(require_permission("cenefas.view")),
+    current_user: User = Depends(require_any_permission("cenefas.view", "cenefas.diccionario")),
     db: AsyncSession = Depends(get_db),
 ):
     """Diccionario — vista de consulta/búsqueda sobre el catálogo compartido
@@ -217,7 +217,7 @@ class DescripcionUpdate(BaseModel):
 async def update_descripcion(
     sku: str,
     payload: DescripcionUpdate,
-    current_user: User = Depends(require_permission("cenefas.view")),
+    current_user: User = Depends(require_any_permission("cenefas.view", "cenefas.diccionario")),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -1145,7 +1145,7 @@ async def buscar_grupos_unificados(
 @router.get("/grupos-unificados/export")
 async def export_grupos_unificados(
     request: Request,
-    current_user: User = Depends(require_permission("cenefas.view")),
+    current_user: User = Depends(require_any_permission("cenefas.view", "cenefas.diccionario")),
     db: AsyncSession = Depends(get_db),
 ):
     """Excel con TODOS los grupos unificados — la solapa Plurales del
@@ -1184,7 +1184,7 @@ async def listar_grupos_unificados(
     q: str | None = Query(None, description="Busca por nombre, descripción o SKU"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    _: User = Depends(require_permission("cenefas.view")),
+    _: User = Depends(require_any_permission("cenefas.view", "cenefas.diccionario")),
     db: AsyncSession = Depends(get_db),
 ):
     """La solapa Plurales del Diccionario: los grupos de varios SKU que
@@ -1230,7 +1230,7 @@ class GrupoUnificadoUpdate(BaseModel):
 async def update_grupo_unificado(
     grupo_id: uuid.UUID,
     payload: GrupoUnificadoUpdate,
-    current_user: User = Depends(require_permission("cenefas.edit")),
+    current_user: User = Depends(require_any_permission("cenefas.edit", "cenefas.diccionario")),
     db: AsyncSession = Depends(get_db),
 ):
     grupo = await db.get(CenefaGrupoUnificado, grupo_id)
@@ -1248,7 +1248,7 @@ async def update_grupo_unificado(
 async def borrar_grupo_unificado(
     grupo_id: uuid.UUID,
     request: Request,
-    current_user: User = Depends(require_permission("cenefas.edit")),
+    current_user: User = Depends(require_any_permission("cenefas.edit", "cenefas.diccionario")),
     db: AsyncSession = Depends(get_db),
 ):
     grupo = await db.get(CenefaGrupoUnificado, grupo_id)
@@ -1296,7 +1296,7 @@ def _diccionario_xlsx(titulo: str, headers: list[str], filas: list[tuple], ancho
 @router.get("/descripciones/export")
 async def export_descripciones(
     request: Request,
-    current_user: User = Depends(require_permission("cenefas.view")),
+    current_user: User = Depends(require_any_permission("cenefas.view", "cenefas.diccionario")),
     db: AsyncSession = Depends(get_db),
 ):
     """Excel con TODO el catálogo singular — un SKU, una descripción de ESE

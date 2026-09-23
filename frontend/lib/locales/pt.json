@@ -686,6 +686,12 @@
       "lastLogin": "Último acesso",
       "cenefasGenerated": "Cenefas geradas",
       "aiCost30d": "Custo de IA (30 dias)"
+    },
+    "listas": {
+      "personas": "Usuários",
+      "redex": "Filiais Redex",
+      "tienda": "Filiais Tienda",
+      "vacia": "Ainda não há nada nesta lista."
     }
   },
   "redexpres": {

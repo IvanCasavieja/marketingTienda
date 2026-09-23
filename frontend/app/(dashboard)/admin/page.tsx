@@ -5,7 +5,7 @@ import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import {
   Users, UserPlus, KeyRound, ShieldAlert, ShieldCheck,
   Loader2, CheckCircle2, XCircle, ChevronDown,
-  Plus, Trash2, Pencil, X, Shield, History, Cpu,
+  Plus, Trash2, Pencil, X, Shield, History, Cpu, Store,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -14,6 +14,11 @@ import AiUsageTab from "./AiUsageTab";
 import UserActivityModal from "./UserActivityModal";
 
 type AdminTab = "usuarios" | "auditoria" | "ia";
+
+// Dentro de la pestaña de usuarios: las personas y los logins de sucursal se
+// listaban mezclados (29 personas perdidas entre 60 sucursales). Se separan en
+// tres listas; la de Tienda todavía no tiene ninguna, llegan más adelante.
+type ListaDeUsuarios = "personas" | "redex" | "tienda";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,6 +36,10 @@ interface AdminUser {
   created_at: string | null;
   login_count: number;
   last_login_at: string | null;
+  /** Sucursales asignadas. Vacío = es una persona, no un login de sucursal. */
+  sucursales: string[];
+  /** "redex" | "tienda" — null si no tiene sucursales. */
+  sucursal_tipo: string | null;
 }
 
 interface RoleItem {
@@ -367,6 +376,7 @@ export default function AdminPage() {
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [tempPwd,     setTempPwd]     = useState<{ userId: number; pwd: string } | null>(null);
   const [activeTab,   setActiveTab]   = useState<AdminTab>("usuarios");
+  const [lista,       setLista]       = useState<ListaDeUsuarios>("personas");
   const [activityUser, setActivityUser] = useState<AdminUser | null>(null);
 
   const [form, setForm] = useState({
@@ -377,6 +387,17 @@ export default function AdminPage() {
   // Superadmin no se ofrece como rol asignable desde el panel — es un flag
   // reservado para la cuenta principal, no algo que se elija en un select.
   const assignableRoles = roles.filter((r) => r.name !== "Superadmin");
+
+  // Un login de sucursal es un User igual que los demás: lo único que lo
+  // distingue es tener una asignación (LocalAsignacion), que el backend
+  // devuelve en `sucursales` junto con su tipo.
+  const esSucursal = (u: AdminUser) => u.sucursales.length > 0;
+  const usuariosPorLista: Record<ListaDeUsuarios, AdminUser[]> = {
+    personas: users.filter((u) => !esSucursal(u)),
+    redex:    users.filter((u) => esSucursal(u) && u.sucursal_tipo !== "tienda"),
+    tienda:   users.filter((u) => esSucursal(u) && u.sucursal_tipo === "tienda"),
+  };
+  const usuariosVisibles = usuariosPorLista[lista];
 
   // No disparamos /admin/* hasta confirmar que el usuario tiene acceso al
   // panel (superuser o permiso platform.admin) — evita requests innecesarios
@@ -491,7 +512,7 @@ export default function AdminPage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("admin.title")}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("admin.subtitle")}</p>
         </div>
-        {activeTab === "usuarios" && (
+        {activeTab === "usuarios" && lista === "personas" && (
           <button
             onClick={() => setShowForm((v) => !v)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-all"
@@ -538,7 +559,7 @@ export default function AdminPage() {
             setActivityUser(known ?? {
               id: u.user_id, full_name: u.user_email ?? "?", email: u.user_email ?? "",
               role_id: null, role_name: null, permissions: [], is_active: true, is_superuser: false,
-              created_at: null, login_count: 0, last_login_at: null,
+              created_at: null, login_count: 0, last_login_at: null, sucursales: [], sucursal_tipo: null,
             });
           }}
         />
@@ -647,15 +668,39 @@ export default function AdminPage() {
 
       {/* Users */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-50 dark:border-slate-800 flex items-center gap-2">
-          <Users size={15} className="text-slate-400" />
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t("admin.usersTitle", { count: users.length })}</p>
+        <div className="px-5 py-3 border-b border-slate-50 dark:border-slate-800 flex items-center gap-3 flex-wrap">
+          <Users size={15} className="text-slate-400 shrink-0" />
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+            {t("admin.usersTitle", { count: usuariosVisibles.length })}
+          </p>
+          <div className="ml-auto flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
+            {([
+              ["personas", t("admin.listas.personas"), Users],
+              ["redex",    t("admin.listas.redex"),    Store],
+              ["tienda",   t("admin.listas.tienda"),   Store],
+            ] as const).map(([clave, etiqueta, Icono]) => (
+              <button key={clave} onClick={() => setLista(clave)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all duration-150 ${
+                  lista === clave
+                    ? "bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                }`}>
+                <Icono size={12} /> {etiqueta}
+                <span className="text-[10px] font-normal text-slate-400">{usuariosPorLista[clave].length}</span>
+              </button>
+            ))}
+          </div>
         </div>
         {loading ? (
           <div className="flex items-center justify-center p-10"><Loader2 size={20} className="animate-spin text-slate-400" /></div>
         ) : (
           <div className="divide-y divide-slate-50 dark:divide-slate-800">
-            {users.map((u) => (
+            {usuariosVisibles.length === 0 && (
+              <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-10">
+                {t("admin.listas.vacia")}
+              </p>
+            )}
+            {usuariosVisibles.map((u) => (
               <div key={u.id} className="flex items-center gap-4 px-5 py-3">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
                   u.is_active ? "bg-brand-100 text-brand-600" : "bg-slate-100 text-slate-400"

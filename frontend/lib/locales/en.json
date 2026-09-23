@@ -686,6 +686,12 @@
       "lastLogin": "Last login",
       "cenefasGenerated": "Cenefas generated",
       "aiCost30d": "AI cost (30 days)"
+    },
+    "listas": {
+      "personas": "Users",
+      "redex": "Redex branches",
+      "tienda": "Tienda branches",
+      "vacia": "Nothing in this list yet."
     }
   },
   "redexpres": {
