@@ -187,9 +187,14 @@ def test_la_placa_del_finde_contra_la_carilla_equivocada_si_marca():
     assert _hay_error_de_fecha(filas)
 
 
-def test_sin_carilla_conocida_cae_a_la_fecha_del_mailing():
+def test_sin_carilla_conocida_y_con_varias_fechas_no_se_compara_se_avisa():
+    """Antes caía a la primera fecha del mailing, que podía ser la de OTRA
+    promoción, y acusaba placas que estaban bien (23/09/2026). Si no se sabe a
+    qué promo pertenece y hay más de una fecha, no hay contra qué comparar."""
     filas = comparar_elementos(_placa("Del 23 al 30 de setiembre"), _MAILING, {}, False)
-    assert not _hay_error_de_fecha(filas)
+    fila = next(f for f in filas if f["campo"] == "fecha")
+    assert fila["estado"] == "info"
+    assert "no se compar" in fila["nota"]
 
 
 def test_la_fecha_escrita_a_mano_le_gana_a_la_carilla():

@@ -255,6 +255,23 @@ class Carillas:
         self._cajon: dict[int, Image.Image] = {}
         self._orden: list[int] = []
 
+    @classmethod
+    def desde_jpegs(cls, jpegs: list[bytes], tamanos: list[tuple[int, int]], abiertas: int = 4) -> "Carillas":
+        """Las carillas que ya están guardadas en JPEG (la base), sin abrir ninguna.
+
+        Es el camino de cada placa: antes, validar una placa decodificaba las
+        cuatro carillas del mailing enteras (44 MB) aunque solo fuera a
+        recortar una, y con tres placas a la vez eran 130 MB de golpe, justo
+        después de haber preparado el mailing. Ahí se cayó el servidor por
+        segunda vez el 23/09/2026."""
+        self = cls.__new__(cls)
+        self._jpegs = list(jpegs)
+        self._tamanos = [tuple(t) for t in tamanos]
+        self._tope = max(1, abiertas)
+        self._cajon = {}
+        self._orden = []
+        return self
+
     @property
     def jpegs(self) -> list[bytes]:
         """Los JPEG tal cual, para guardarlos sin volver a comprimir."""

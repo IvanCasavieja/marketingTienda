@@ -538,6 +538,27 @@ def comparar_producto(placa: dict, item: dict, reglas: dict | None = None) -> li
     return filas
 
 
+def _vigencia_de_la_carilla(mailing: dict, pagina) -> str:
+    """La vigencia que rige donde está el producto, o "" si no se sabe.
+
+    Primero la de la promoción a la que pertenece la carilla
+    (vigencia_por_pagina, ver catti.vigencias_por_carilla); si esa pasada no
+    corrió, la fecha leída en la carilla. Las claves pueden venir como int o
+    como str: al guardarse en la base (JSONB) los int se vuelven str, y por eso
+    la fecha por carilla no se aplicó NUNCA en producción hasta el 23/09/2026 --
+    todo caía al mailing entero."""
+    if pagina is None:
+        return ""
+
+    def de(d) -> str:
+        d = d or {}
+        return d.get(pagina) or d.get(str(pagina)) or ""
+
+    if mailing.get("vigencia_por_pagina") is not None:
+        return de(mailing["vigencia_por_pagina"])
+    return de(mailing.get("fechas_por_pagina"))
+
+
 def comparar_elementos(placa: dict, mailing: dict, config: dict, es_alcohol: bool,
                        pagina: int | None = None) -> list[dict]:
     """Lo que no es el producto: fecha, logo, isotipo, foto, leyendas y CTA."""
@@ -549,15 +570,26 @@ def comparar_elementos(placa: dict, mailing: dict, config: dict, es_alcohol: boo
     # como va impreso ("DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE"), trae dos
     # fechas sueltas, y componerlo sería inventarle una forma. Sin ninguna de
     # las dos no hay contra qué comparar y no se marca nada.
-    # La vigencia sale de la carilla donde está ESTE producto, no de la primera
-    # del mailing: un pliego puede traer dos campañas con dos vigencias (ver
-    # fechas_por_pagina en catti.leer_mailing).
-    de_su_pagina = (mailing.get("fechas_por_pagina") or {}).get(pagina, "")
-    esperada = (config.get("fecha") or "").strip() or de_su_pagina or mailing.get("fecha", "")
+    # La vigencia es de la PROMOCION a la que pertenece el producto, no de la
+    # primera página del mailing. Un mailing junta varias promos con fechas
+    # distintas y las carillas interiores no la repiten (ver
+    # vigencias_por_carilla en catti). Si no se puede saber a cuál pertenece y
+    # el mailing tiene más de una fecha, NO se compara: contra la equivocada
+    # salía "Distinto" en placas que estaban perfectas.
+    esperada = (config.get("fecha") or "").strip() or _vigencia_de_la_carilla(mailing, pagina)
+    distintas = {v for v in (mailing.get("fechas_por_pagina") or {}).values() if v}
+    if not esperada and len(distintas) <= 1:
+        esperada = next(iter(distintas), "") or mailing.get("fecha", "")
     if esperada:
         fila = _comparar_texto("fecha", "Fecha de la campaña", "placa", placa["fecha"], esperada)
         if fila:
             filas.append(fila)
+    elif placa["fecha"] and len(distintas) > 1:
+        filas.append(_fila(
+            "fecha", "Fecha de la campaña", "placa", placa["fecha"], None, "info", None,
+            "El mailing tiene varias promociones con fechas distintas y no pude determinar a cuál "
+            "pertenece este producto: la fecha no se comparó.",
+        ))
 
     filas.append(_presencia("logo_campana", "Logo de la campaña", placa["logo_campana_presente"]))
     filas.append(_presencia("isotipo", "Isotipo de la tienda", placa["isotipo_presente"]))

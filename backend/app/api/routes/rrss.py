@@ -269,8 +269,12 @@ async def validar_imagen(
     async def cargar_paginas():
         # Las páginas del mailing (ya renderizadas) sirven para recortar el lado del
         # mailing de cada diferencia: solo se traen si la placa tiene alguna.
+        # Se entregan en JPEG y se abre solo la que se recorta: decodificar las
+        # cuatro enteras por placa, con tres placas a la vez, tiraba el servidor
+        # (ver imagenes.Carillas.desde_jpegs).
         paginas_db = await _paginas(db, v.id)
-        return await en_hilo(lambda: [Image.open(io.BytesIO(p.imagen)).convert("RGB") for p in paginas_db])
+        return imagenes.Carillas.desde_jpegs(
+            [p.imagen for p in paginas_db], [(p.ancho, p.alto) for p in paginas_db])
 
     r = await validador.validar_placa(datos, archivo.filename or "placa", v.mailing, cargar_paginas, v.config)
     r.resultado["tiempos_ms"]["hasta_guardar"] = round((time.perf_counter() - inicio) * 1000)

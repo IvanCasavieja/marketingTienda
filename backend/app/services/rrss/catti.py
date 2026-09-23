@@ -683,6 +683,153 @@ async def leer_pagina_mailing(pagina_img, indice: int) -> tuple[dict, int, int]:
     return normalizar_pagina_mailing(raw, indice), t_in, t_out
 
 
+# --------------------------------------------------------------------------
+# Las promociones: a qué campaña pertenece cada carilla, y con qué vigencia
+# --------------------------------------------------------------------------
+# La fecha no es de la página: es de la PROMOCION. Un mailing junta varias --
+# la principal ocupa tapa e interior, y se le pegan otras en la contratapa
+# con otras fechas-- y las carillas interiores no repiten ni el nombre ni la
+# vigencia: se reconocen porque continúan el diseño de la tapa. Leída página
+# por página, una carilla interior no tiene fecha y heredaba la primera del
+# mailing, que podía ser la de la promo de al lado: la placa del aceite del
+# Rompe del Finde (24 al 27) salía marcada contra "Del 23 al 30", que es Rompe
+# Precios, la promo de la contratapa. Visto el 23/09/2026.
+_TOOL_PROMOCIONES = {
+    "name": "registrar_promociones",
+    "description": "Registra qué promociones hay en el mailing, la vigencia de cada una y qué carillas ocupa.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "promociones": {
+                "type": "array",
+                "description": "Una entrada por promoción. Toda carilla tiene que quedar en al menos una.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "nombre": {
+                            "type": "string",
+                            "description": (
+                                "El nombre de la promoción como aparece en su encabezado ('Los Rompe del "
+                                "Finde', 'Rompe Precios Congelados'). Si una carilla no tiene encabezado y "
+                                "no continúa el diseño de ninguna otra, describí su diseño en pocas palabras."
+                            ),
+                        },
+                        "vigencia": {
+                            "type": "string",
+                            "description": (
+                                "El texto de vigencia de ESTA promoción, si aparece en alguna de sus carillas. "
+                                "Vacío si no aparece en ninguna: no lo inventes ni lo copies de otra promoción. "
+                                + _LITERAL
+                            ),
+                        },
+                        "carillas": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "description": "Los números de las carillas de esta promoción, como están numeradas en las imágenes (desde 1).",
+                        },
+                    },
+                    "required": ["nombre", "vigencia", "carillas"],
+                },
+            },
+        },
+        "required": ["promociones"],
+    },
+}
+
+_INSTRUCCION_PROMOCIONES = """
+Te paso TODAS las carillas de un mailing de supermercado, numeradas desde 1 en
+el orden en que vienen. Un mailing puede juntar varias promociones, cada una
+con su propia vigencia: la principal ocupa varias carillas (la tapa y el
+interior) y a veces se le pegan otras --en la contratapa, por ejemplo-- con
+otras fechas.
+
+Cómo reconocer una promoción: su TAPA tiene el logo o encabezado con el nombre
+('Los Rompe del Finde') y el texto de vigencia ('Del jueves 24 al domingo 27
+de setiembre'). Las carillas interiores muchas veces NO repiten ni el nombre
+ni la fecha: se reconocen porque CONTINÚAN el diseño de la tapa -- mismo color
+de fondo, mismo estilo del círculo del precio, misma tipografía, mismo marco.
+
+Una carilla puede tener dos promociones si tiene dos encabezados con sus
+fechas (ej. 'Rompe Precios Congelados' y 'Rompe Precios Limpieza' en la misma
+carilla): en ese caso listá las dos y ponele a cada una esa carilla.
+
+Devolvé con la tool registrar_promociones una entrada por promoción. Toda
+carilla tiene que quedar en al menos una. La vigencia se copia tal cual está
+impresa; si una promoción no tiene fecha en ninguna de sus carillas, dejala
+vacía.
+""".strip()
+
+# Alcanza para reconocer un encabezado y el diseño; no hay que leer productos.
+_LADO_MINIATURA_PROMO = 720
+
+
+async def promociones_del_mailing(paginas) -> tuple[list[dict], int, int]:
+    """Una sola llamada con todas las carillas en chico. Devuelve
+    [{"nombre", "vigencia", "carillas": [índices 0-based]}]."""
+    def preparar() -> list[dict]:
+        bloques: list[dict] = []
+        for i in range(len(paginas)):
+            bloques.append({"type": "text", "text": f"Carilla {i + 1}:"})
+            bloques.append(_bloque_imagen(imagenes.reducir(paginas[i], _LADO_MINIATURA_PROMO)))
+        return bloques
+
+    bloques = await en_hilo(preparar)
+    raw, t_in, t_out = await _llamar(
+        _TOOL_PROMOCIONES, _INSTRUCCION_PROMOCIONES, bloques,
+        f"Son {len(paginas)} carillas. Decime qué promociones hay y a cuál pertenece cada una.",
+        max_tokens=1500,
+    )
+    promos: list[dict] = []
+    for p in raw.get("promociones") or []:
+        carillas: set[int] = set()
+        for c in p.get("carillas") or []:
+            try:
+                n = int(c)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= n <= len(paginas):
+                carillas.add(n - 1)
+        promos.append({
+            "nombre": limpiar_texto(p.get("nombre")),
+            "vigencia": limpiar_texto(p.get("vigencia")),
+            "carillas": sorted(carillas),
+        })
+    return promos, t_in, t_out
+
+
+def vigencias_por_carilla(promociones: list[dict], fechas_por_pagina: dict, cuantas: int) -> dict[int, str | None]:
+    """La vigencia que rige en cada carilla, o None si no se puede saber.
+
+    De cada promoción, su vigencia es la que trae escrita o, si no, la fecha
+    que se leyó en alguna de sus carillas. Una carilla con una sola promoción
+    (o con varias que coinciden) hereda esa vigencia; con promociones de
+    vigencias distintas queda en None -- ambigua, y es mejor no comparar que
+    comparar contra la equivocada. Una carilla que no cayó en ninguna
+    promoción se queda con su propia fecha leída, si la tiene.
+
+    `fechas_por_pagina` puede venir con claves int o str: al pasar por la base
+    (JSONB) los int se vuelven str, y eso fue un bug real.
+    """
+    def fecha_de(i: int) -> str:
+        return (fechas_por_pagina or {}).get(i) or (fechas_por_pagina or {}).get(str(i)) or ""
+
+    vigencia_de_promo: list[str] = []
+    for p in promociones:
+        v = p.get("vigencia") or next((fecha_de(c) for c in p.get("carillas", []) if fecha_de(c)), "")
+        vigencia_de_promo.append(v)
+
+    salida: dict[int, str | None] = {}
+    for i in range(cuantas):
+        candidatas = {vigencia_de_promo[k] for k, p in enumerate(promociones) if i in p.get("carillas", []) and vigencia_de_promo[k]}
+        if len(candidatas) == 1:
+            salida[i] = next(iter(candidatas))
+        elif len(candidatas) > 1:
+            salida[i] = None
+        else:
+            salida[i] = fecha_de(i) or None
+    return salida
+
+
 # Cuántas páginas del mailing se preparan a la vez. Preparar una arma tres
 # imágenes (la página y sus dos mitades ampliadas) y sus JPEG, así que con un
 # gather sin tope un mailing de 12 carillas tenía 36 imágenes en vuelo y se
@@ -728,6 +875,20 @@ async def leer_mailing(paginas: list) -> tuple[dict, int, int]:
         mailing["productos"].extend(lectura["productos"])
     if not mailing["productos"]:
         raise LecturaFallida("No encontré ningún producto con precio en el mailing")
+
+    # Qué promoción rige en cada carilla. Sin esto, una carilla interior sin
+    # fecha heredaba la primera del mailing, que podía ser de otra promo.
+    mailing["promociones"] = []
+    try:
+        promos, ti, to = await promociones_del_mailing(paginas)
+        t_in += ti
+        t_out += to
+        mailing["promociones"] = promos
+        mailing["vigencia_por_pagina"] = vigencias_por_carilla(
+            promos, mailing["fechas_por_pagina"], len(paginas))
+    except Exception as exc:  # noqa: BLE001 -- sin la pasada, se sigue por carilla
+        logger.warning("promociones: no se pudieron leer, la fecha sale por carilla -- %s", exc)
+        mailing["vigencia_por_pagina"] = vigencias_por_carilla([], mailing["fechas_por_pagina"], len(paginas))
     return mailing, t_in, t_out
 
 
