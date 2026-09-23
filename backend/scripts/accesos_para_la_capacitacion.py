@@ -4,7 +4,8 @@ Lo pidió Ivan el 23/09/2026, por grupos. Esta es la tabla, literal:
 
   - Rol Admin: lucia, maria belen, anita, ivan, nathie, nati, fernanda, pablo,
     macarena, mia, mariana. Son los que van al calendario.
-  - Toda la plataforma: Ivan (Superadmin), lucia, fernanda, pablo.
+  - Toda la plataforma: Ivan (Superadmin), lucia, fernanda, pablo, y genesis,
+    que se sumó después para poder ver todo lo que se hizo.
   - Calendario + validación de RRSS + guía de uso + el Diccionario + medios:
     nathie, nati, mia, mariana (y macarena, ver ABIERTO abajo).
   - Materiales completo + facturación: belen, anita, valentina.
@@ -86,6 +87,8 @@ TODA_LA_PLATAFORMA = {
     "lvignotti@tiendainglesa.com.uy",   # lucia
     "fgomez@tiendainglesa.com.uy",      # fernanda
     "prego@tiendainglesa.com.uy",       # pablo
+    "gerodriguez@tiendainglesa.com.uy", # genesis — "acceso a todo para que
+                                        # pueda ver todo lo que hicimos"
 }
 
 CALENDARIO_Y_MEDIOS = {
@@ -128,6 +131,7 @@ A_CREAR = [
     {"email": "prego@tiendainglesa.com.uy",      "full_name": "Pablo Rego"},
     {"email": "msegade@tiendainglesa.com.uy",    "full_name": "Macarena Segade"},
     {"email": "macastillo@tiendainglesa.com.uy", "full_name": "Mariana Castillo"},
+    {"email": "gerodriguez@tiendainglesa.com.uy", "full_name": "Genesis Rodriguez"},
 ]
 
 
