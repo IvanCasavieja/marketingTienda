@@ -101,10 +101,13 @@ type FilaProps = {
   onDiaVacio?: (dia: number) => void
   /** Barras que no se editan acá (derivadas de otra sección). */
   esDerivada?: (b: Barra) => boolean
+  /** Tooltip propio. Sin esto se arma uno con el nombre y el rango de días,
+   *  que en una barra de un solo día (un envío) no dice nada. */
+  tituloDe?: (b: Barra) => string
 }
 
 export function FilaRejilla({
-  mes, fila, hoy, alto = 30, editable, onBarra, onDiaVacio, esDerivada,
+  mes, fila, hoy, alto = 30, editable, onBarra, onDiaVacio, esDerivada, tituloDe,
 }: FilaProps) {
   const franja = useFranja(mes.dias)
   const ocupado = new Set<number>()
@@ -141,7 +144,9 @@ export function FilaRejilla({
           <button
             key={b.id}
             type="button"
-            title={`${b.nombre} · ${b.desde} al ${b.hasta}${derivada ? ' · se edita en su origen' : ''}`}
+            title={tituloDe
+              ? tituloDe(b)
+              : `${b.nombre} · ${b.desde} al ${b.hasta}${derivada ? ' · se edita en su origen' : ''}`}
             onClick={clicable ? () => onBarra!(b) : undefined}
             disabled={!clicable}
             style={{

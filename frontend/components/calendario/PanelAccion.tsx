@@ -7,7 +7,7 @@ import { nombreMes } from '@/lib/calendario/fechas'
 import { useCalendario } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import {
-  CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaHeader,
+  CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader,
   type AreaPieza, type Barra, type EstadoPieza, type Pieza,
 } from '@/lib/calendario/tipos'
 
@@ -163,9 +163,12 @@ export function PanelAccion() {
                     formatos={area.formatos}
                     piezas={piezas.filter(p => p.area === area.area)}
                     editable={editable}
+                    dias={mes.dias}
+                    inicioAccion={datos.accion.desde}
                     onAgregar={formato => agregarPieza(area.area, formato)}
                     onQuitar={quitarPieza}
                     onEstado={(id, estado) => actualizarPieza(id, { estado })}
+                    onEnvio={(id, cambios) => actualizarPieza(id, cambios)}
                   />
                 ))}
               </div>
@@ -186,16 +189,22 @@ export function PanelAccion() {
 // ---------------------------------------------------------------------------
 
 function BloqueArea({
-  area, titulo, formatos, piezas, editable, onAgregar, onQuitar, onEstado,
+  area, titulo, formatos, piezas, editable, dias, inicioAccion,
+  onAgregar, onQuitar, onEstado, onEnvio,
 }: {
   area: AreaPieza
   titulo: string
   formatos: string[]
   piezas: Pieza[]
   editable: boolean
+  /** Días que tiene el mes: acota el selector de fecha de envío. */
+  dias: number
+  /** Día en que arranca la acción: es lo que usa un envío sin fecha propia. */
+  inicioAccion: number
   onAgregar: (formato: string) => void
   onQuitar: (id: string) => void
   onEstado: (id: string, estado: EstadoPieza) => void
+  onEnvio: (id: string, cambios: Partial<Pieza>) => void
 }) {
   const [agregando, setAgregando] = useState(false)
   const disponibles = formatos.filter(f => !piezas.some(p => p.formato === f))
@@ -240,7 +249,8 @@ function BloqueArea({
       ) : (
         <ul className="space-y-1">
           {piezas.map(p => (
-            <li key={p.id} className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5">
+            <li key={p.id} className="rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5">
+            <div className="flex items-center gap-2">
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-800 dark:text-slate-200">
                 {p.formato}
                 {esPiezaHeader(p) && (
@@ -271,6 +281,41 @@ function BloqueArea({
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
+            </div>
+
+            {/* Los envíos salen un día y a una hora: eso es lo que arma el
+                cronograma. Sin fecha propia caen el día que arranca la acción. */}
+            {esPiezaDeEnvio(p) && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 border-t border-slate-100 dark:border-slate-800 pt-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Sale</span>
+                <select
+                  value={p.desde ?? ''}
+                  disabled={!editable}
+                  aria-label={`Día de envío de ${p.formato}`}
+                  onChange={e => onEnvio(p.id, {
+                    desde: e.target.value === '' ? undefined : Number(e.target.value),
+                    hasta: e.target.value === '' ? undefined : Number(e.target.value),
+                  })}
+                  className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 disabled:opacity-60"
+                >
+                  <option value="">el día {inicioAccion} (con la acción)</option>
+                  {Array.from({ length: dias }, (_, i) => i + 1).map(d => (
+                    <option key={d} value={d}>día {d}</option>
+                  ))}
+                </select>
+                <input
+                  type="time"
+                  value={p.hora ?? ''}
+                  disabled={!editable}
+                  aria-label={`Hora de envío de ${p.formato}`}
+                  onChange={e => onEnvio(p.id, { hora: e.target.value || undefined })}
+                  className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 disabled:opacity-60"
+                />
+                {p.desde == null && (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400">sin fecha propia</span>
+                )}
+              </div>
+            )}
             </li>
           ))}
         </ul>

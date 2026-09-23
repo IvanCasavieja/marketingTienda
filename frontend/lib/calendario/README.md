@@ -17,8 +17,19 @@ que el Excel. Tocar una acción abre su ficha lateral.
 eComm y Express, con un carril por slot de cada formato. `HOME SLIDER (Retail
 Media)` está marcado aparte porque es el que alimenta al header.
 
-**3. Headers de la home.** Las 10 posiciones, y abajo el conteo día por día:
-verde hasta 7, ámbar en 8, rojo arriba de 8.
+**3. Cronograma de envíos.** Cuándo sale cada mailing, cada WhatsApp y cada
+push, un carril por canal. No se carga acá: sale de las piezas de Email,
+WhatsApp y Push que ya tiene cada acción en su ficha, y ahí se les pone el día
+y la hora. Una pieza sin fecha propia cae el día que arranca su acción y queda
+avisada arriba, para que se note que falta ponérsela. Tocar un envío lleva a la
+ficha de su acción, que es donde se edita.
+
+**4. Headers de la home.** El conteo día por día —verde hasta 7, ámbar en 8,
+rojo arriba de 8— y, detrás del botón **Ver headers activos por fecha**, un
+panel que entra desde la derecha con las 10 posiciones de UN día, una abajo de
+la otra. Era una rejilla de 10 por 31: para saber qué se ve un día había que
+leer una columna entre treinta, y ocupaba un tercio de la pantalla. El conteo
+queda a la vista porque es la alarma; tocar un día abre el panel en ese día.
 
 ## La regla que no se toca
 
@@ -142,7 +153,7 @@ Ese script es referencia de cómo se parsean esos Excel, no parte del producto.
 ## Estructura
 
 ```
-lib/calendario/derivar.ts     LA LÓGICA: construir el mes, derivar el header, contar
+lib/calendario/derivar.ts     LA LÓGICA: construir el mes, derivar el header y los envíos, contar
 lib/calendario/tipos.ts       el modelo, el catálogo de piezas y las reglas (7/8/10)
 lib/calendario/rejilla.ts     medidas y zoom
 lib/calendario/store.ts       estado y guardado contra el servidor
@@ -164,9 +175,9 @@ nada.
 cd frontend && npm run test:calendario
 ```
 
-52 comprobaciones, sin framework: se compilan con `tsc` y corren con node.
-Fijan las reglas del header y el zoom. No borrarlas al reescribirlas con otro
-runner.
+79 comprobaciones, sin framework: se compilan con `tsc` y corren con node.
+Fijan las reglas del header, el zoom, el cronograma de envíos y el header
+mirado por fecha. No borrarlas al reescribirlas con otro runner.
 
 ## Lo que falta
 
@@ -174,6 +185,8 @@ runner.
   que guarda.
 - **Subtareas por pieza** (arte desktop, arte mobile, aprobación comercial) y
   responsable con vencimiento. Hoy el modelo llega hasta acción → pieza.
+- **Que el cronograma de envíos avise**, como el calendario comercial: hoy el
+  aviso de los 10 días mira la acción, no la fecha de cada envío.
 - **`Pieza.enSharePoint`** existe en el modelo pero no se usa en ninguna
   pantalla y no sube nada. Está puesto a futuro.
 - **Los textos están solo en español.** El link del menú sí está en los tres

@@ -12,8 +12,11 @@ import type {
   AreaPieza, Barra, EstadoPieza, Mes, Pieza, Seccion,
 } from './tipos'
 
-export { construirMes, derivarHeader, accionesDe, ocupacionHeader } from './derivar'
-export type { EstadoDia, OcupacionDia } from './derivar'
+export {
+  construirMes, derivarHeader, accionesDe, ocupacionHeader,
+  enviosDelMes, filasDeEnvios, headerEnFecha,
+} from './derivar'
+export type { EstadoDia, OcupacionDia, Envio, PosicionEnFecha } from './derivar'
 
 // ---------------------------------------------------------------------------
 // Guardado contra el servidor

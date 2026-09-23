@@ -7,6 +7,7 @@ import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import { BarraSuperior } from "@/components/calendario/BarraSuperior";
 import { CalendarioComercial } from "@/components/calendario/CalendarioComercial";
 import { CalendarioRetail } from "@/components/calendario/CalendarioRetail";
+import { CalendarioEnvios } from "@/components/calendario/CalendarioEnvios";
 import { HeaderHome } from "@/components/calendario/HeaderHome";
 import { EditorBarra } from "@/components/calendario/EditorBarra";
 import { PanelAccion } from "@/components/calendario/PanelAccion";
@@ -58,6 +59,7 @@ export default function CalendarioPage() {
           de una seccion para calcular el zoom. */}
       <div id="calendario" className="space-y-5">
         <CalendarioComercial />
+        <CalendarioEnvios />
         <CalendarioRetail />
         <HeaderHome />
       </div>

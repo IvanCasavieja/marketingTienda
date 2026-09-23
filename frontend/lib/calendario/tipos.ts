@@ -33,9 +33,13 @@ export type Pieza = {
   id: string
   area: AreaPieza
   formato: string
-  /** Vigencia propia. Si falta, la pieza dura lo mismo que la accion. */
+  /** Vigencia propia. Si falta, la pieza dura lo mismo que la accion.
+   *  En las piezas de envio (email, whatsapp, push) `desde` ES la fecha de
+   *  envio: salen un dia, no duran un rango. */
   desde?: number
   hasta?: number
+  /** 'HH:MM'. Solo en las piezas de envio: a que hora sale. */
+  hora?: string
   estado: EstadoPieza
   /** Marca de que la pieza quedo cargada en SharePoint. */
   enSharePoint?: boolean
@@ -66,6 +70,24 @@ export const CATALOGO_PIEZAS: { area: AreaPieza; titulo: string; formatos: strin
   { area: 'whatsapp', titulo: 'WhatsApp', formatos: ['Envío masivo'] },
   { area: 'push', titulo: 'Push', formatos: ['Push app'] },
 ]
+
+/**
+ * Los canales que se envian en una fecha y una hora, no que duran un rango:
+ * el mailing, el WhatsApp y el push. Con esto se arma el cronograma de envios,
+ * que es una vista de las piezas que ya estan cargadas en cada accion -- no se
+ * cargan dos veces.
+ */
+export const CANALES_DE_ENVIO: { area: AreaPieza; titulo: string }[] = [
+  { area: 'email', titulo: 'Email' },
+  { area: 'whatsapp', titulo: 'WhatsApp' },
+  { area: 'push', titulo: 'Push' },
+]
+
+const AREAS_DE_ENVIO = new Set<AreaPieza>(CANALES_DE_ENVIO.map(c => c.area))
+
+export function esPiezaDeEnvio(p: Pieza): boolean {
+  return AREAS_DE_ENVIO.has(p.area)
+}
 
 /** La pieza que ocupa una posicion del header de la home. */
 export const PIEZA_HEADER = { area: 'web-home' as AreaPieza, formato: 'Header' }
