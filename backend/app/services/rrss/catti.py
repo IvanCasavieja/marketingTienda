@@ -18,6 +18,7 @@ import unicodedata
 from dataclasses import dataclass
 
 import anthropic
+from rapidfuzz import fuzz
 
 from app.core.config import settings
 from app.services.rrss import imagenes
@@ -126,8 +127,24 @@ _TOOL_MAILING = {
                 "description": "Cada producto de la página, UNA sola vez, con su precio. No incluyas el encabezado ni los banners sin precio de producto.",
                 "items": {
                     "type": "object",
-                    "properties": _PROPIEDADES_PRODUCTO,
-                    "required": _REQUERIDOS_PRODUCTO,
+                    "properties": {
+                        **_PROPIEDADES_PRODUCTO,
+                        # Una página puede traer DOS promociones con dos vigencias
+                        # ("Rompe Precios Congelados" arriba, "Rompe Precios
+                        # Limpieza" abajo). La fecha que se le exige a la placa es
+                        # la del bloque donde está el producto, así que el lector
+                        # dice bajo qué encabezado lo vio.
+                        "promocion": {
+                            "type": "string",
+                            "description": (
+                                "El nombre del bloque o promoción bajo cuyo encabezado está este producto, "
+                                "tal como está escrito ('Rompe Precios Congelados'). Solo si la página tiene "
+                                "MÁS de un bloque con encabezado propio; si toda la página es de una sola "
+                                "promoción, o el producto no está bajo ningún encabezado, dejalo vacío."
+                            ),
+                        },
+                    },
+                    "required": [*_REQUERIDOS_PRODUCTO, "promocion"],
                 },
             },
         },
@@ -220,10 +237,43 @@ hay una mecánica (2x$75, 4x3, 2x1) aparece en un rótulo aparte y el círculo
 dice 'Comprando N' arriba y 'unidad' abajo. Cada campo de la tool explica qué
 va en él.
 
+Una página puede juntar DOS o más bloques de promoción, cada uno con su propio
+encabezado y su propia vigencia ('Rompe Precios Congelados' arriba, 'Rompe
+Precios Limpieza' abajo). Si es así, en `promocion` de cada producto poné el
+nombre del encabezado bajo el que está, tal como está escrito. Si toda la
+página es de una sola promoción, dejalo vacío en todos.
+
 Lo que importa acá es la EXACTITUD de cada carácter: lo que registres se va a
 comparar contra la placa de una red social, y una diferencia de una coma o de
 una mayúscula tiene que salir a la luz, no quedar corregida por vos. No
 registres banners que no son un producto con precio.
+""".strip()
+
+# La misma lectura, para MEDIA página. Se usa cuando la página entera no entra
+# en una respuesta (más de ~50 productos): se lee de a mitades y se juntan.
+_INSTRUCCION_MITAD = """
+Te paso la MITAD de una página del mailing original de una campaña de
+supermercado (la de arriba o la de abajo, se te dice cuál), para que registres
+cada producto con la tool registrar_pagina_del_mailing.
+
+Vas a recibir tres imágenes: primero esa mitad completa; después sus dos
+cuartos, ampliados para leer la letra chica. Un producto puede verse en el
+solape de los dos cuartos: registralo UNA sola vez.
+
+Registrá cada producto que se vea COMPLETO o casi completo en esta mitad. Uno
+cortado por el borde de arriba o de abajo, del que no se ve la descripción o
+el precio, no lo registres: lo registra la otra mitad. La fecha de la campaña
+y la leyenda de alcohol, solo si están en esta mitad.
+
+Cómo está armado un producto: una foto, un texto de descripción al costado
+(con un precio tachado abajo), y un círculo rojo con 'Oferta' y el precio. Si
+hay una mecánica (2x$75, 4x3, 2x1) aparece en un rótulo aparte y el círculo
+dice 'Comprando N' arriba y 'unidad' abajo. Si esta mitad tiene más de un
+bloque de promoción con encabezado propio, poné en `promocion` el del bloque
+donde está cada producto; si no, vacío.
+
+Lo que importa acá es la EXACTITUD de cada carácter: no corrijas ni completes
+nada. No registres banners que no son un producto con precio.
 """.strip()
 
 _INSTRUCCION_PLACA = """
@@ -546,6 +596,11 @@ class LecturaFallida(RuntimeError):
     """El modelo no devolvió una lectura utilizable -- mensaje apto para el usuario."""
 
 
+class LecturaCortada(LecturaFallida):
+    """La respuesta no entró en el tope de tokens: había demasiado para leer de
+    una vez. Quien lee una página del mailing la reintenta por mitades."""
+
+
 # Adornos gráficos que el modelo a veces transcribe como si fueran texto: los
 # puntos rojos de "• DE SETIEMBRE •" están en la placa Y en el mailing, pero un
 # día los lee y otro no, y eso aparecía como una diferencia de fecha en casi
@@ -575,6 +630,9 @@ def _producto(raw: dict) -> dict:
         "oferta_precio": limpiar_texto(raw.get("oferta_precio")),
         "oferta_pie": limpiar_texto(raw.get("oferta_pie")),
         "es_alcohol": bool(raw.get("es_alcohol")),
+        # Bajo qué encabezado de promoción está el producto, si la página tiene
+        # varios. Vacío casi siempre; decide la fecha que se le exige a la placa.
+        "promocion": limpiar_texto(raw.get("promocion")),
         "cajas": {},  # las llena localizar_*: la lectura no mide coordenadas
     }
 
@@ -642,7 +700,7 @@ async def _llamar(tool: dict, instruccion: str, bloques: list[dict], texto: str,
         }],
     )
     if response.stop_reason == "max_tokens":
-        raise LecturaFallida("La lectura quedó cortada: hay demasiado contenido para leer de una vez")
+        raise LecturaCortada("La lectura quedó cortada: hay demasiado contenido para leer de una vez")
     bloque = next((b for b in response.content if b.type == "tool_use"), None)
     if bloque is None:
         raise LecturaFallida("CatTi no pudo leer la imagen")
@@ -674,13 +732,82 @@ def _preparar_pagina(pagina_img) -> list[dict]:
 
 
 async def leer_pagina_mailing(pagina_img, indice: int) -> tuple[dict, int, int]:
-    """Lee UNA página del mailing. Devuelve (lectura normalizada, tokens_in, tokens_out)."""
+    """Lee UNA página del mailing. Devuelve (lectura normalizada, tokens_in, tokens_out).
+
+    Si la página no entra en una respuesta (un catálogo denso, más de ~50
+    productos), se lee por mitades y se juntan: antes salía "hay demasiado
+    contenido para leer de una vez" y había que partir el mailing a mano."""
     bloques = await en_hilo(_preparar_pagina, pagina_img)
-    raw, t_in, t_out = await _llamar(
-        _TOOL_MAILING, _INSTRUCCION_MAILING, bloques,
-        f"Registrá la página {indice + 1} del mailing.", max_tokens=8000,
-    )
+    try:
+        raw, t_in, t_out = await _llamar(
+            _TOOL_MAILING, _INSTRUCCION_MAILING, bloques,
+            f"Registrá la página {indice + 1} del mailing.", max_tokens=8000,
+        )
+    except LecturaCortada:
+        logger.info("mailing: la página %d no entró en una lectura, se lee por mitades", indice + 1)
+        return await _leer_pagina_por_mitades(pagina_img, indice)
     return normalizar_pagina_mailing(raw, indice), t_in, t_out
+
+
+# Solape entre las dos mitades cuando se lee de a mitades. Más que el 4% de la
+# lectura normal: acá cada mitad se lee por separado y un producto justo en el
+# corte tiene que verse entero en alguna de las dos.
+_SOLAPE_MITADES = 0.08
+
+
+def _preparar_mitad(mitad_img) -> list[dict]:
+    """La mitad completa y sus dos cuartos ampliados: la misma forma que una página."""
+    completa = imagenes.reducir(mitad_img, _LADO_LARGO_MODELO)
+    cuartos = [imagenes.ajustar_ancho(c, _ANCHO_TIRA) for c, _, _ in imagenes.mitades_con_solape(mitad_img)]
+    return [_bloque_imagen(i) for i in (completa, *cuartos)]
+
+
+async def _leer_pagina_por_mitades(pagina_img, indice: int) -> tuple[dict, int, int]:
+    mitades = await en_hilo(lambda: [
+        _preparar_mitad(m) for m, _, _ in imagenes.mitades_con_solape(pagina_img, _SOLAPE_MITADES)
+    ])
+    lecturas = []
+    t_in = t_out = 0
+    for k, bloques in enumerate(mitades):
+        cual = "de arriba" if k == 0 else "de abajo"
+        # Si una mitad tampoco entra, LecturaCortada sube tal cual: el mensaje
+        # de "demasiado contenido" sigue siendo el honesto.
+        raw, ti, to = await _llamar(
+            _TOOL_MAILING, _INSTRUCCION_MITAD, bloques,
+            f"Registrá la mitad {cual} de la página {indice + 1} del mailing.", max_tokens=8000,
+        )
+        t_in += ti
+        t_out += to
+        lecturas.append(normalizar_pagina_mailing(raw, indice))
+    return _fusionar_lecturas(lecturas), t_in, t_out
+
+
+def _mismo_producto(a: dict, b: dict) -> bool:
+    """Para no contar dos veces lo que cayó en el solape: misma descripción
+    (con tolerancia a una letra) y mismo precio de oferta."""
+    if (a.get("oferta_precio") or "") != (b.get("oferta_precio") or ""):
+        return False
+    da, db = (a.get("descripcion") or "").lower(), (b.get("descripcion") or "").lower()
+    return da == db or fuzz.ratio(da, db) >= 95
+
+
+def _fusionar_lecturas(lecturas: list[dict]) -> dict:
+    """Junta las lecturas de las mitades de UNA página en una sola. Los datos
+    de campaña (fecha, alcohol) salen de la primera mitad que los traiga; un
+    producto que aparece en las dos (el solape) queda una vez."""
+    if not lecturas:
+        raise LecturaFallida("No hubo nada que leer")
+    salida = dict(lecturas[0])
+    salida["productos"] = list(lecturas[0]["productos"])
+    for lectura in lecturas[1:]:
+        if lectura.get("fecha") and not salida.get("fecha"):
+            salida["fecha"] = lectura["fecha"]
+        if lectura.get("legal_alcohol") and not salida.get("legal_alcohol"):
+            salida["legal_alcohol"] = lectura["legal_alcohol"]
+        for p in lectura["productos"]:
+            if not any(_mismo_producto(p, q) for q in salida["productos"]):
+                salida["productos"].append(p)
+    return salida
 
 
 # --------------------------------------------------------------------------
@@ -797,6 +924,28 @@ async def promociones_del_mailing(paginas) -> tuple[list[dict], int, int]:
     return promos, t_in, t_out
 
 
+def vigencias_por_promocion(promociones: list[dict], fechas_por_pagina: dict) -> dict[str, str]:
+    """{nombre de la promoción: su vigencia}. La vigencia es la que trae
+    escrita o, si no, la fecha leída en alguna de sus carillas. Las que
+    quedan sin fecha no entran: no hay contra qué comparar.
+
+    Es lo que resuelve una página con DOS bloques de fechas distintas: el
+    lector dice bajo qué encabezado está cada producto (`promocion`), y acá
+    está qué vigencia tiene ese encabezado."""
+    def fecha_de(i: int) -> str:
+        return (fechas_por_pagina or {}).get(i) or (fechas_por_pagina or {}).get(str(i)) or ""
+
+    salida: dict[str, str] = {}
+    for p in promociones:
+        nombre = (p.get("nombre") or "").strip()
+        if not nombre:
+            continue
+        v = p.get("vigencia") or next((fecha_de(c) for c in p.get("carillas", []) if fecha_de(c)), "")
+        if v:
+            salida[nombre] = v
+    return salida
+
+
 def vigencias_por_carilla(promociones: list[dict], fechas_por_pagina: dict, cuantas: int) -> dict[int, str | None]:
     """La vigencia que rige en cada carilla, o None si no se puede saber.
 
@@ -886,9 +1035,14 @@ async def leer_mailing(paginas: list) -> tuple[dict, int, int]:
         mailing["promociones"] = promos
         mailing["vigencia_por_pagina"] = vigencias_por_carilla(
             promos, mailing["fechas_por_pagina"], len(paginas))
+        # Por nombre de bloque, para las páginas con más de una promoción: el
+        # lector dice bajo qué encabezado está cada producto, y esto dice qué
+        # vigencia tiene ese encabezado (ver comparador._vigencia_del_producto).
+        mailing["vigencia_por_promocion"] = vigencias_por_promocion(promos, mailing["fechas_por_pagina"])
     except Exception as exc:  # noqa: BLE001 -- sin la pasada, se sigue por carilla
         logger.warning("promociones: no se pudieron leer, la fecha sale por carilla -- %s", exc)
         mailing["vigencia_por_pagina"] = vigencias_por_carilla([], mailing["fechas_por_pagina"], len(paginas))
+        mailing["vigencia_por_promocion"] = {}
     return mailing, t_in, t_out
 
 

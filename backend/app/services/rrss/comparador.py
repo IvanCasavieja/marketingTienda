@@ -559,8 +559,40 @@ def _vigencia_de_la_carilla(mailing: dict, pagina) -> str:
     return de(mailing.get("fechas_por_pagina"))
 
 
+def _vigencia_por_nombre(tabla: dict, nombre: str) -> str:
+    """La vigencia del bloque cuyo nombre más se parece a `nombre`. El lector
+    lo escribe como lo ve ('Rompe Precios Congelados') y la pasada de
+    promociones puede haberlo escrito con otra mayúscula o sin una palabra:
+    se compara con la misma tolerancia que las descripciones."""
+    objetivo = clave(nombre)
+    if not objetivo:
+        return ""
+    mejor, puntaje = "", 0
+    for candidato, vigencia in (tabla or {}).items():
+        if not vigencia:
+            continue
+        p = fuzz.token_set_ratio(objetivo, clave(candidato))
+        if p > puntaje:
+            mejor, puntaje = vigencia, p
+    return mejor if puntaje >= 85 else ""
+
+
+def _vigencia_del_producto(mailing: dict, item: dict | None, pagina) -> str:
+    """La vigencia que rige para ESTE producto.
+
+    1) La del bloque bajo cuyo encabezado lo vio el lector (`promocion`):
+       resuelve una página con dos promociones de fechas distintas.
+    2) Si no, la de su carilla, o la de la carilla si la pasada de promociones
+       no corrió (ver _vigencia_de_la_carilla)."""
+    if item and item.get("promocion"):
+        de_su_bloque = _vigencia_por_nombre(mailing.get("vigencia_por_promocion") or {}, item["promocion"])
+        if de_su_bloque:
+            return de_su_bloque
+    return _vigencia_de_la_carilla(mailing, pagina)
+
+
 def comparar_elementos(placa: dict, mailing: dict, config: dict, es_alcohol: bool,
-                       pagina: int | None = None) -> list[dict]:
+                       pagina: int | None = None, item: dict | None = None) -> list[dict]:
     """Lo que no es el producto: fecha, logo, isotipo, foto, leyendas y CTA."""
     filas: list[dict] = []
 
@@ -576,8 +608,15 @@ def comparar_elementos(placa: dict, mailing: dict, config: dict, es_alcohol: boo
     # vigencias_por_carilla en catti). Si no se puede saber a cuál pertenece y
     # el mailing tiene más de una fecha, NO se compara: contra la equivocada
     # salía "Distinto" en placas que estaban perfectas.
-    esperada = (config.get("fecha") or "").strip() or _vigencia_de_la_carilla(mailing, pagina)
-    distintas = {v for v in (mailing.get("fechas_por_pagina") or {}).values() if v}
+    esperada = (config.get("fecha") or "").strip() or _vigencia_del_producto(mailing, item, pagina)
+    # Cuántas vigencias distintas hay en el mailing. Cuentan las leídas por
+    # carilla Y las de los bloques: una carilla con dos promociones de fechas
+    # distintas registra UNA fecha por carilla, y sin las de los bloques
+    # parecía un mailing de una sola fecha y se comparaba contra la equivocada.
+    distintas = (
+        {v for v in (mailing.get("fechas_por_pagina") or {}).values() if v}
+        | {v for v in (mailing.get("vigencia_por_promocion") or {}).values() if v}
+    )
     if not esperada and len(distintas) <= 1:
         esperada = next(iter(distintas), "") or mailing.get("fecha", "")
     if esperada:
@@ -675,16 +714,18 @@ def comparar_placa(placa: dict, mailing: dict, config: dict,
     filas: list[dict] = []
     es_alcohol = placa["producto"]["es_alcohol"]
     pagina_del_item: int | None = None
+    item_del_producto: dict | None = None
     if idx is not None:
         item = mailing["productos"][idx]
         pagina_del_item = item.get("pagina")
+        item_del_producto = item
         if par["duda"]:
             filas.append(_fila_de_duda(par, item, placa["producto"]["descripcion"]))
         de_la_fuente = reglas_de_la_fuente(mailing)
         filas += comparar_producto(placa["producto"], item, de_la_fuente)
         filas = _con_reglas_fijas(filas, reglas_del_combo(placa["producto"], item, de_la_fuente["campos"]))
         es_alcohol = es_alcohol or item["es_alcohol"]
-    filas += comparar_elementos(placa, mailing, config, es_alcohol, pagina=pagina_del_item)
+    filas += comparar_elementos(placa, mailing, config, es_alcohol, pagina=pagina_del_item, item=item_del_producto)
     return idx, puntaje, filas
 
 
