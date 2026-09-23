@@ -858,6 +858,30 @@ def campos_leidos(placa: dict) -> dict:
     return salida
 
 
+def con_comparacion_de_fotos(filas: list[dict], fotos: dict) -> list[dict]:
+    """Reemplaza la opinión de la lectura sola ("¿la foto parece del
+    producto?") por el resultado de comparar la foto de la placa con la del
+    mismo producto en el mailing (ver catti.comparar_fotos).
+
+    Si NO es el mismo producto, es un ERROR de la placa: la foto es de otra
+    cosa. Hasta el 23/09/2026 quedaba como aviso y se pescaba al azar; las
+    placas de la freidora con foto de una jarra pasaron limpias en una corrida.
+    Si SÍ es el mismo, se retira el aviso que pudiera haber dejado la lectura
+    sola: la comparación directa es la prueba más fuerte de las dos."""
+    otras = [f for f in filas if f["campo"] != "imagen_coincide"]
+    if fotos.get("mismo_producto", True):
+        return otras
+    placa = fotos.get("que_hay_en_la_placa") or "otro producto"
+    mailing = fotos.get("que_hay_en_el_mailing") or "el producto del mailing"
+    nota = f"La foto de la placa muestra {placa}; en el mailing este producto es {mailing}."
+    if fotos.get("motivo"):
+        nota += f" {fotos['motivo']}"
+    otras.append(_fila(
+        "imagen_coincide", "La foto es del producto", "placa", placa, mailing, "distinto", "error", nota,
+    ))
+    return otras
+
+
 def estado_de_la_placa(filas: list[dict], idx: int | None) -> str:
     """'sin_match' | 'diferencias' | 'avisos' | 'ok'."""
     if idx is None:

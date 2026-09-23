@@ -299,6 +299,26 @@ async def validar_placa(
         par = comparador.emparejamiento(lectura["producto"], mailing["productos"])
         idx, puntaje, filas = comparador.comparar_placa(lectura, mailing, config, par)
 
+        # La foto, imagen contra imagen: la de la placa contra el recorte del
+        # MISMO producto en el mailing. La pregunta a la lectura sola ("¿la foto
+        # parece del producto?") fallaba al azar y dejaba un aviso; una foto de
+        # otro producto es un error, y esta comparación lo dice estable (ver
+        # catti.comparar_fotos). Solo contra un mailing: una planilla no tiene
+        # fotos. Cuesta una llamada chica por placa.
+        if (
+            idx is not None and mailing.get("origen") != "planilla"
+            and mailing["productos"][idx].get("recorte")
+            and lectura["imagen_producto"]["presente"]
+        ):
+            t = time.perf_counter()
+            try:
+                fotos, ti, to = await catti.comparar_fotos(prep, mailing["productos"][idx]["recorte"])
+                t_in, t_out = t_in + ti, t_out + to
+                filas = comparador.con_comparacion_de_fotos(filas, fotos)
+            except Exception:
+                logger.warning("rrss: no se pudieron comparar las fotos de %s", nombre_archivo, exc_info=True)
+            tiempos["fotos"] = _ms(t)
+
         # La evidencia del lado de la fuente. Con un mailing es el recorte del
         # producto, que ya quedó dibujado al leerlo; con una planilla es la tira
         # de la fila, y se dibuja ACÁ, cuando se sabe QUÉ fila hace falta: una

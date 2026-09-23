@@ -929,6 +929,76 @@ def preparar_placa(datos: bytes) -> PlacaPreparada:
     return PlacaPreparada([_bloque_imagen(completa), _bloque_imagen(tira)], im.width, im.height)
 
 
+# --------------------------------------------------------------------------
+# La foto: placa contra mailing, imagen contra imagen
+# --------------------------------------------------------------------------
+# Hasta el 23/09/2026 la foto se chequeaba con una pregunta a la lectura de
+# la placa sola: "¿la foto parece del producto que dice el texto?". Es una
+# opinión de una sola pasada, y fallaba al azar: las placas de la freidora con
+# foto de una jarra salieron marcadas en una corrida y limpias en la
+# siguiente. Comparar la foto de la placa con la foto del MISMO producto en el
+# mailing es una pregunta concreta --"¿son el mismo objeto?"-- y estable. Y
+# una foto de otro producto es un ERROR de la placa, no un aviso.
+_TOOL_FOTOS = {
+    "name": "comparar_fotos",
+    "description": "Dice si la foto del producto en la placa y la del producto en el mailing muestran el MISMO producto.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "que_hay_en_la_placa": {
+                "type": "string",
+                "description": "Qué producto muestra la FOTO de la placa, en pocas palabras ('jarra eléctrica de acero', 'freidora de aire negra'). Vacío si la placa no tiene foto de producto.",
+            },
+            "que_hay_en_el_mailing": {
+                "type": "string",
+                "description": "Qué producto muestra el recorte del mailing, en pocas palabras.",
+            },
+            "mismo_producto": {
+                "type": "boolean",
+                "description": (
+                    "true solo si las dos fotos muestran el mismo tipo de producto. Otro ángulo, otro "
+                    "tamaño, otro fondo o un envase de otro color NO cuentan como distinto. Un producto "
+                    "distinto sí: una jarra no es una freidora aunque sean de la misma marca."
+                ),
+            },
+            "motivo": {"type": "string", "description": "Una frase: por qué sí o por qué no."},
+        },
+        "required": ["que_hay_en_la_placa", "que_hay_en_el_mailing", "mismo_producto", "motivo"],
+    },
+}
+
+_INSTRUCCION_FOTOS = """
+Te paso dos imágenes: primero UNA placa de redes sociales completa, después el
+RECORTE del producto que le corresponde en el mailing original.
+
+Mirá solo la FOTO del producto en cada una --no los textos ni los precios-- y
+decime si muestran el mismo producto. Un cambio de ángulo, de tamaño, de fondo
+o del color del envase no cuenta como distinto. Un producto distinto sí: una
+jarra eléctrica no es una freidora aunque sean de la misma marca; un queso en
+horma no es un queso en fetas del mismo nombre.
+
+Si la placa no tiene foto de producto, o el recorte del mailing no se ve bien,
+decilo en el motivo y contestá mismo_producto = true: no se acusa sin ver.
+""".strip()
+
+
+async def comparar_fotos(prep: PlacaPreparada, recorte_mailing_uri: str) -> tuple[dict, int, int]:
+    """La placa completa (ya en base64) contra el recorte del producto del
+    mailing (un data URI JPEG, el que se muestra en pantalla)."""
+    b64 = recorte_mailing_uri.split(",", 1)[1] if "," in recorte_mailing_uri else recorte_mailing_uri
+    bloque_mailing = {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}
+    raw, t_in, t_out = await _llamar(
+        _TOOL_FOTOS, _INSTRUCCION_FOTOS, [prep.bloques[0], bloque_mailing],
+        "¿La foto de la placa y la del mailing son del mismo producto?", max_tokens=400,
+    )
+    return {
+        "mismo_producto": bool(raw.get("mismo_producto", True)),
+        "que_hay_en_la_placa": limpiar_texto(raw.get("que_hay_en_la_placa")),
+        "que_hay_en_el_mailing": limpiar_texto(raw.get("que_hay_en_el_mailing")),
+        "motivo": limpiar_texto(raw.get("motivo")),
+    }, t_in, t_out
+
+
 async def leer_placa(prep: PlacaPreparada) -> tuple[dict, int, int]:
     """Lee UNA placa. Devuelve (lectura normalizada, tokens_in, tokens_out)."""
     raw, t_in, t_out = await _llamar(
