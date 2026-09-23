@@ -282,3 +282,42 @@ def test_sin_corte_de_catti_se_usan_las_proporciones():
     paginas = imagenes.paginas_del_mailing(
         _pdf_de_una_hoja(1257, 908), "application/pdf", "mailing.pdf", cortes=None)
     assert len(paginas) == 2
+
+
+# ---------------------------------------------------------------------------
+# Un mailing que llega como IMAGEN, no como PDF
+# ---------------------------------------------------------------------------
+# Hasta el 23/09/2026 una imagen se tomaba siempre como una sola página: un JPG
+# de un díptico tenía exactamente el problema del PDF.
+
+def _jpg(ancho: int, alto: int) -> bytes:
+    import io as _io
+    buf = _io.BytesIO()
+    Image.new("RGB", (ancho, alto), "white").save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def test_una_imagen_de_un_pliego_se_parte_en_dos_carillas():
+    paginas = imagenes.paginas_del_mailing(_jpg(2600, 1900), "image/jpeg", "mailing.jpg")
+    assert len(paginas) == 2
+
+
+def test_una_imagen_vertical_sigue_siendo_una_pagina():
+    paginas = imagenes.paginas_del_mailing(_jpg(1400, 2000), "image/jpeg", "mailing.jpg")
+    assert len(paginas) == 1
+
+
+def test_una_imagen_se_parte_por_donde_dijo_catti():
+    tres = [[0.0, 0.0, 1 / 3, 1.0], [1 / 3, 0.0, 2 / 3, 1.0], [2 / 3, 0.0, 1.0, 1.0]]
+    paginas = imagenes.paginas_del_mailing(_jpg(2600, 1900), "image/jpeg", "mailing.jpg", cortes=[tres])
+    assert len(paginas) == 3
+
+
+def test_la_imagen_para_mirar_viene_entera():
+    hojas = imagenes.hojas_para_mirar(_jpg(2600, 1900), "image/jpeg", "mailing.jpg")
+    assert len(hojas) == 1 and hojas[0].width > hojas[0].height
+
+
+def test_las_carillas_de_una_imagen_no_pasan_del_ancho_de_pagina():
+    for p in imagenes.paginas_del_mailing(_jpg(5000, 3500), "image/jpeg", "mailing.jpg"):
+        assert p.width <= imagenes._ANCHO_PAGINA_PX

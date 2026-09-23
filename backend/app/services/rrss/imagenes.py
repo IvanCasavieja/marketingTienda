@@ -366,7 +366,18 @@ def _render(data: bytes, content_type: str, filename: str,
     nombre = (filename or "").lower()
     es_pdf = content_type == "application/pdf" or nombre.endswith(".pdf") or data[:5] == b"%PDF-"
     if not es_pdf:
-        return [reducir(abrir_imagen(data), 2400)]
+        # Un mailing que llega como imagen (una foto o un JPG del pliego) se
+        # parte igual que un PDF: por lo que dijo CatTi si lo miró, y si no por
+        # proporciones. Hasta el 23/09/2026 se tomaba siempre como UNA página,
+        # y un JPG de un díptico tenía exactamente el problema del PDF.
+        im = abrir_imagen(data)
+        if not partir:
+            return [reducir(im, 2400)]
+        cajas = cortes[0] if cortes else None
+        cuantas = len(cajas) if cajas else carillas_en(im.width, im.height)
+        im = reducir(im, ancho * max(cuantas, 1) * 3 // 2)   # detalle para cortar, sin exagerar
+        partes = recortar_carillas(im, cajas) if cajas else carillas_de(im, cuantas)
+        return [ajustar_ancho(p, ancho) if p.width > ancho else p for p in partes]
 
     import pymupdf  # import tardío: es una dependencia pesada que solo usa esta función
 
