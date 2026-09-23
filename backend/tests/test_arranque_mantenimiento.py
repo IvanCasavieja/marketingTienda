@@ -113,6 +113,18 @@ def test_el_lifespan_gatea_todas_las_tareas():
         "la purga tiene que arrancar despues de migrar y de recuperar los jobs huerfanos"
     )
 
+    # Los avisos del calendario son el otro caso igual: revisan apenas
+    # arrancan, y en una base nueva calendario_meses todavia no existe. Puestos
+    # en el cuerpo del lifespan, el primer arranque desde cero dejaba
+    # 'relation "calendario_meses" does not exist' en el log y CI lo marcaba
+    # como fallado (visto el 23/09/2026).
+    lanzar_avisos = "asyncio.create_task(run_calendario_avisos_loop())"
+    assert fuente.count(lanzar_avisos) == 1, "los avisos se lanzan en mas de un lugar, o en ninguno"
+    donde_avisos = fuente.index(lanzar_avisos)
+    assert inicio < donde_avisos < fin, (
+        "los avisos del calendario tienen que arrancar adentro de _run_migrations"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Una migracion rota tiene que dejar rastro en el log

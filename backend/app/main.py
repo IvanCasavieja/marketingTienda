@@ -101,6 +101,14 @@ async def lifespan(app: FastAPI):
             logger.info("purga_cenefas: loop iniciado (diario, retencion %dd)",
                         settings.CENEFAS_RETENCION_DIAS)
 
+        # Los avisos del calendario, por lo mismo: revisan apenas arrancan, y en
+        # una base nueva la tabla calendario_meses todavia no existe. Visto en
+        # CI el 23/09/2026 -- el backend levantaba bien igual, pero dejaba un
+        # error en el log del primer arranque.
+        from app.services.calendario_avisos import run_calendario_avisos_loop
+        tareas_post_migracion.append(asyncio.create_task(run_calendario_avisos_loop()))
+        logger.info("calendario_avisos: loop iniciado (2 veces por dia)")
+
     # Lo que _run_migrations arranca al terminar, para poder cancelarlo al apagar.
     tareas_post_migracion: list[asyncio.Task] = []
     if mantenimiento:
@@ -142,14 +150,6 @@ async def lifespan(app: FastAPI):
         curaduria_task = asyncio.create_task(run_curaduria_loop())
         logger.info("cenefas_curaduria: loop iniciado (diario)")
 
-    # Aviso de las acciones del calendario 10 días antes de que arranquen. Va a
-    # las notificaciones de la plataforma, las mismas de la campanita.
-    calendario_task = None
-    if mantenimiento:
-        from app.services.calendario_avisos import run_calendario_avisos_loop
-        calendario_task = asyncio.create_task(run_calendario_avisos_loop())
-        logger.info("calendario_avisos: loop iniciado (2 veces por día)")
-
     # La retención de archivos de cenefas (purga) NO arranca acá: la lanza
     # _run_migrations cuando la base ya está migrada. Ver el comentario ahí.
 
@@ -173,13 +173,6 @@ async def lifespan(app: FastAPI):
         campaign_alerts_task.cancel()
         try:
             await campaign_alerts_task
-        except asyncio.CancelledError:
-            pass
-
-    if calendario_task:
-        calendario_task.cancel()
-        try:
-            await calendario_task
         except asyncio.CancelledError:
             pass
 
