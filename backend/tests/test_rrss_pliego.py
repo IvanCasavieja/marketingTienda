@@ -197,3 +197,83 @@ def test_la_fecha_escrita_a_mano_le_gana_a_la_carilla():
     filas = comparar_elementos(
         _placa("Del jueves 24 al domingo 27 de setiembre"), _MAILING, config, False, pagina=0)
     assert not _hay_error_de_fecha(filas)
+
+
+# ---------------------------------------------------------------------------
+# Cuando el corte lo dice CatTi
+# ---------------------------------------------------------------------------
+# Las proporciones aciertan en lo que se usa, pero dan por sentado que las
+# columnas son iguales y que el corte es vertical. CatTi mira la hoja y lo dice,
+# así también entra una imposición despareja o en dos hileras. Si falla, se
+# vuelve a las proporciones: el corte nunca depende de la red.
+
+def test_la_hoja_para_mirar_viene_entera():
+    """Si se le pasara ya cortada, se le estaría preguntando por media hoja."""
+    hojas = imagenes.hojas_para_mirar(
+        _pdf_de_una_hoja(1257, 908), "application/pdf", "mailing.pdf")
+    assert len(hojas) == 1
+    assert hojas[0].width > hojas[0].height   # el pliego, sin partir
+
+
+def test_recortar_por_las_cajas_que_dijo_catti():
+    hoja = Image.new("RGB", (1000, 400), "white")
+    partes = imagenes.recortar_carillas(hoja, [[0.0, 0.0, 0.4, 1.0], [0.4, 0.0, 1.0, 1.0]])
+    assert [p.size for p in partes] == [(400, 400), (600, 400)]
+
+
+def test_una_imposicion_despareja_es_justamente_lo_que_la_geometria_no_ve():
+    hoja = Image.new("RGB", (1200, 400), "white")
+    partes = imagenes.recortar_carillas(hoja, [[0.0, 0.0, 0.25, 1.0], [0.25, 0.0, 1.0, 1.0]])
+    assert [p.width for p in partes] == [300, 900]
+
+
+def test_dos_hileras_tambien():
+    hoja = Image.new("RGB", (800, 800), "white")
+    partes = imagenes.recortar_carillas(hoja, [
+        [0.0, 0.0, 0.5, 0.5], [0.5, 0.0, 1.0, 0.5],
+        [0.0, 0.5, 0.5, 1.0], [0.5, 0.5, 1.0, 1.0],
+    ])
+    assert [p.size for p in partes] == [(400, 400)] * 4
+
+
+def test_una_caja_dada_vuelta_se_endereza():
+    hoja = Image.new("RGB", (1000, 400), "white")
+    partes = imagenes.recortar_carillas(hoja, [[0.6, 1.0, 0.2, 0.0]])
+    assert partes[0].size == (400, 400)
+
+
+def test_una_caja_que_se_sale_de_la_hoja_se_recorta():
+    hoja = Image.new("RGB", (1000, 400), "white")
+    partes = imagenes.recortar_carillas(hoja, [[-0.5, -0.5, 1.5, 1.5]])
+    assert partes[0].size == (1000, 400)
+
+
+@pytest.mark.parametrize("caja", [
+    [0.5, 0.0, 0.5, 1.0],        # ancho cero
+    [0.0, 0.0, 0.01, 1.0],       # una franja de 10 px: no es una carilla
+    ["a", "b", "c", "d"],        # basura
+    [0.0, 0.0, 1.0],             # incompleta
+])
+def test_una_caja_que_no_sirve_se_descarta(caja):
+    hoja = Image.new("RGB", (1000, 400), "white")
+    partes = imagenes.recortar_carillas(hoja, [caja])
+    assert partes == [hoja]      # sin cajas utilizables, la hoja entera
+
+
+def test_sin_cajas_devuelve_la_hoja_entera():
+    hoja = Image.new("RGB", (1000, 400), "white")
+    assert imagenes.recortar_carillas(hoja, []) == [hoja]
+
+
+def test_el_corte_de_catti_manda_sobre_las_proporciones():
+    # Proporciones diría 2; CatTi dice 3 y eso es lo que sale.
+    tres = [[0.0, 0.0, 1 / 3, 1.0], [1 / 3, 0.0, 2 / 3, 1.0], [2 / 3, 0.0, 1.0, 1.0]]
+    paginas = imagenes.paginas_del_mailing(
+        _pdf_de_una_hoja(1257, 908), "application/pdf", "mailing.pdf", cortes=[tres])
+    assert len(paginas) == 3
+
+
+def test_sin_corte_de_catti_se_usan_las_proporciones():
+    paginas = imagenes.paginas_del_mailing(
+        _pdf_de_una_hoja(1257, 908), "application/pdf", "mailing.pdf", cortes=None)
+    assert len(paginas) == 2

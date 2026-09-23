@@ -214,12 +214,56 @@ def carillas_de(hoja: Image.Image, cuantas: int = 2) -> list[Image.Image]:
     ]
 
 
-def paginas_del_mailing(data: bytes, content_type: str, filename: str) -> list[Image.Image]:
+# Ancho al que se renderiza una hoja SOLO para preguntarle a CatTi cómo está
+# armada. Es una pregunta de estructura, no de lectura: alcanza con ver los
+# bloques, y a este tamaño la hoja pesa poco.
+_ANCHO_PARA_MIRAR = 1100
+
+
+def hojas_para_mirar(data: bytes, content_type: str, filename: str) -> list[Image.Image]:
+    """Las hojas del mailing en chico y ENTERAS, para preguntarle a CatTi cómo
+    están impuestas antes de renderizarlas de verdad.
+
+    Sin partir: si se le pasara la hoja ya cortada por proporciones, se le
+    estaría preguntando por media hoja y la respuesta no podría corregir nada.
+    """
+    return _render(data, content_type, filename, ancho=_ANCHO_PARA_MIRAR, cortes=None, partir=False)
+
+
+def recortar_carillas(hoja: Image.Image, cajas: list) -> list[Image.Image]:
+    """Corta una hoja por las cajas que devolvió CatTi, en fracciones."""
+    salida = []
+    for caja in cajas:
+        try:
+            x0, y0, x1, y1 = (float(v) for v in caja)
+        except (TypeError, ValueError):
+            continue
+        izq, der = sorted((max(0.0, min(1.0, x0)), max(0.0, min(1.0, x1))))
+        arr, aba = sorted((max(0.0, min(1.0, y0)), max(0.0, min(1.0, y1))))
+        caja_px = (round(izq * hoja.width), round(arr * hoja.height),
+                   round(der * hoja.width), round(aba * hoja.height))
+        if caja_px[2] - caja_px[0] < 40 or caja_px[3] - caja_px[1] < 40:
+            continue  # una caja degenerada no es una carilla
+        salida.append(hoja.crop(caja_px))
+    return salida or [hoja]
+
+
+def paginas_del_mailing(data: bytes, content_type: str, filename: str,
+                        cortes: list[list] | None = None) -> list[Image.Image]:
     """Las páginas del mailing como imágenes de ~1600 px de ancho.
 
     Un PDF se renderiza con PyMuPDF (los textos del mailing van en curvas, así
     que no hay capa de texto que leer: hay que mirarlo). Una imagen suelta se
-    toma como un mailing de una sola página."""
+    toma como un mailing de una sola página.
+
+    `cortes` es, por hoja, la lista de cajas donde CatTi vio cada carilla (ver
+    catti.imposicion_de_la_hoja). Sin eso se parte por proporciones, que es la
+    cuenta de siempre y el plan B cuando la lectura falla."""
+    return _render(data, content_type, filename, ancho=_ANCHO_PAGINA_PX, cortes=cortes)
+
+
+def _render(data: bytes, content_type: str, filename: str,
+            ancho: int, cortes: list[list] | None, partir: bool = True) -> list[Image.Image]:
     nombre = (filename or "").lower()
     es_pdf = content_type == "application/pdf" or nombre.endswith(".pdf") or data[:5] == b"%PDF-"
     if not es_pdf:
@@ -242,15 +286,26 @@ def paginas_del_mailing(data: bytes, content_type: str, filename: str) -> list[I
                 f"El mailing tiene {carillas_totales} páginas; el máximo es {MAX_PAGINAS_MAILING}"
             )
         paginas = []
-        for pagina in doc:
+        for i, pagina in enumerate(doc):
             # El ancho se aplica por CARILLA, no por hoja: con un ancho fijo por
             # hoja, un pliego de dos quedaba a la mitad de resolución que un
             # mailing normal y la letra chica no se leía.
-            cuantas = carillas_en(pagina.rect.width, pagina.rect.height)
-            zoom = (_ANCHO_PAGINA_PX * cuantas) / pagina.rect.width
+            cajas = cortes[i] if cortes and i < len(cortes) else None
+            if not partir:
+                cuantas = 1
+            elif cajas:
+                cuantas = len(cajas)
+            else:
+                cuantas = carillas_en(pagina.rect.width, pagina.rect.height)
+            zoom = (ancho * max(cuantas, 1)) / pagina.rect.width
             pix = pagina.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
             hoja = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            paginas.extend(carillas_de(hoja, cuantas))
+            if not partir:
+                paginas.append(hoja)
+            elif cajas:
+                paginas.extend(recortar_carillas(hoja, cajas))
+            else:
+                paginas.extend(carillas_de(hoja, cuantas))
         return paginas
     finally:
         doc.close()

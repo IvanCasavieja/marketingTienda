@@ -13,6 +13,7 @@ estructurada, nunca texto libre) y las funciones no tocan la base; devuelven
 los tokens para que el llamador decida cuándo y cómo loguear el uso.
 """
 import asyncio
+import logging
 import unicodedata
 from dataclasses import dataclass
 
@@ -23,6 +24,8 @@ from app.services.rrss import imagenes
 from app.services.rrss.hilos import en_hilo
 from app.services.rrss.planilla import CAMPOS_DE_LA_PLANILLA
 from app.services.tino_personas import CATTI_BASE
+
+logger = logging.getLogger(__name__)
 
 _MODEL = settings.MODELO_IA  # el de toda la familia -- ver MODELO_IA en config.py
 FEATURE = "rrss_catti"
@@ -281,6 +284,104 @@ Para cada elemento de la lista devolvé, con la tool registrar_cajas, la caja
 La caja tiene que dejar TODO el elemento adentro — ni una letra cortada — y
 sobrar poco. Si un elemento no aparece en la imagen, omitilo de la respuesta.
 """.strip()
+
+# --------------------------------------------------------------------------
+# La imposición: CatTi mira la hoja y dice cómo está armada
+# --------------------------------------------------------------------------
+# Un mailing se disena en carillas verticales pero se entrega IMPUESTO: una
+# hoja del PDF puede traer una carilla, dos al lado, tres... Mirarlo por
+# proporciones (imagenes.carillas_en) acierta en lo que se usa, pero da por
+# sentado que las columnas son iguales y que el corte es vertical. Preguntarle
+# a CatTi saca esa suposicion: ve la hoja y dice donde empieza y termina cada
+# carilla. Si la lectura falla, se vuelve a las proporciones.
+_TOOL_IMPOSICION = {
+    "name": "registrar_imposicion",
+    "description": "Registra en cuántas carillas está dividida la hoja y dónde está cada una.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "carillas": {
+                "type": "array",
+                "description": (
+                    "Una entrada por carilla, en orden de lectura: de izquierda a derecha y, "
+                    "si hubiera dos hileras, después de arriba a abajo. Si la hoja es UNA sola "
+                    "carilla, devolvé una entrada que cubra la hoja entera."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "caja": {
+                            **_CAJA,
+                            "description": (
+                                "[x0, y0, x1, y1] como fracción (0 a 1) del ancho y del alto de la hoja. "
+                                "Leelas contra la grilla. La caja tiene que dejar la carilla ENTERA adentro "
+                                "-- ni un producto cortado -- y no invadir la de al lado."
+                            ),
+                        },
+                    },
+                    "required": ["caja"],
+                },
+            },
+        },
+        "required": ["carillas"],
+    },
+}
+
+_INSTRUCCION_IMPOSICION = """
+Te paso UNA hoja de un mailing de supermercado, con una GRILLA magenta
+superpuesta para que puedas leer coordenadas en vez de estimarlas: líneas cada
+0.1, las finas cada 0.05, con su valor escrito en los bordes y en el medio. El
+contenido de la hoja es lo que está debajo de la grilla.
+
+Los mailings se diseñan en CARILLAS (páginas verticales) pero se imprimen
+impuestos: una hoja puede traer una carilla sola, dos al lado, tres, o dos
+arriba y dos abajo. Cada carilla es una página completa y se reconoce porque
+tiene sus propios elementos de página: el logo de la tienda, el encabezado de
+su campaña, su vigencia ("Del 23 al 30 de setiembre"), y a veces su pie. Dos
+carillas están separadas por un pliegue, un margen blanco o un corte de fondo.
+
+Lo que NO es una carilla: un bloque de productos dentro de una misma página
+(aunque tenga su propio título de sección), una columna de la grilla de
+productos, ni una franja de legales.
+
+Devolvé con la tool registrar_imposicion una caja por carilla. Si la hoja es
+una sola página, devolvé UNA caja que la cubra entera: preferí una de menos
+antes que partir una página por el medio.
+""".strip()
+
+
+async def imposicion_de_la_hoja(hoja) -> tuple[list[list[float]], int, int]:
+    """Las cajas de cada carilla de una hoja. Lista vacía si no pudo."""
+    bloques = await en_hilo(
+        lambda: [_bloque_imagen(imagenes.reducir(imagenes.con_grilla(hoja), _LADO_LARGO_MODELO))])
+    raw, t_in, t_out = await _llamar(
+        _TOOL_IMPOSICION, _INSTRUCCION_IMPOSICION, bloques,
+        "Decime cómo está armada esta hoja.", max_tokens=1000,
+    )
+    cajas = []
+    for c in (raw.get("carillas") or []):
+        caja = c.get("caja")
+        if isinstance(caja, (list, tuple)) and len(caja) == 4:
+            cajas.append([float(v) for v in caja])
+    return cajas, t_in, t_out
+
+
+async def imposicion_del_mailing(hojas: list) -> tuple[list[list[list[float]]], int, int]:
+    """Una lista de cajas por hoja. Devuelve [] si alguna falla: el llamador
+    vuelve al corte por proporciones, que nunca depende de la red."""
+    try:
+        lecturas = await asyncio.gather(*(imposicion_de_la_hoja(h) for h in hojas))
+    except Exception as exc:  # noqa: BLE001 -- cualquier falla cae al plan B
+        logger.warning("imposicion: no se pudo leer, se corta por proporciones -- %s", exc)
+        return [], 0, 0
+    cortes = [c for c, _, _ in lecturas]
+    t_in = sum(ti for _, ti, _ in lecturas)
+    t_out = sum(to for _, _, to in lecturas)
+    if any(not c for c in cortes):
+        logger.warning("imposicion: una hoja quedó sin carillas, se corta por proporciones")
+        return [], t_in, t_out
+    return cortes, t_in, t_out
+
 
 # --------------------------------------------------------------------------
 # La planilla: CatTi decide qué es cada columna

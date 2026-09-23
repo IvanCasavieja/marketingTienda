@@ -107,9 +107,30 @@ def _recortes_de_productos(paginas: list[Image.Image], mailing: dict) -> None:
 
 async def preparar_mailing(datos: bytes, content_type: str, filename: str) -> MailingPreparado:
     """Renderiza el mailing, lo lee, ubica cada producto y deja el recorte de
-    cada uno (el que se muestra al lado de la placa que le corresponde)."""
-    paginas = await en_hilo(imagenes.paginas_del_mailing, datos, content_type, filename)
-    mailing, t_in, t_out = await catti.leer_mailing(paginas)
+    cada uno (el que se muestra al lado de la placa que le corresponde).
+
+    Antes de renderizarlo en serio se mira en chico CÓMO está armado: una hoja
+    del PDF puede traer varias carillas impuestas, y cada carilla es una página
+    con su campaña y su vigencia. Leerlas juntas hacía que el modelo se quedara
+    con una y descartara el resto. Si esa lectura falla, se corta por
+    proporciones, que no depende de la red."""
+    t_in = t_out = 0
+    cortes: list[list[list[float]]] = []
+    try:
+        hojas = await en_hilo(imagenes.hojas_para_mirar, datos, content_type, filename)
+        cortes, ti, to = await catti.imposicion_del_mailing(hojas)
+        t_in += ti
+        t_out += to
+    except imagenes.ArchivoInvalido:
+        raise
+    except Exception:
+        logger.warning("rrss: no se pudo mirar la imposición del mailing", exc_info=True)
+
+    paginas = await en_hilo(
+        imagenes.paginas_del_mailing, datos, content_type, filename, cortes or None)
+    mailing, ti, to = await catti.leer_mailing(paginas)
+    t_in += ti
+    t_out += to
     try:
         ti, to = await catti.localizar_mailing(paginas, mailing)
         t_in += ti
