@@ -61,7 +61,9 @@
     "facturacionDashboard": "Dashboard",
     "facturacionCuentas": "Accounts",
     "redesSociales": "SOCIAL MEDIA",
-    "validacionRrss": "Social media check"
+    "validacionRrss": "Social media check",
+    "calendarioSeccion": "CALENDAR",
+    "calendario": "Calendar"
   },
   "login": {
     "welcome": "Welcome",
@@ -1570,5 +1572,9 @@
         "desc": "Starts with no permissions and can only have \"view\" permissions checked — never generate, edit, delete or manage."
       }
     }
+  },
+  "calendario": {
+    "accessDenied": "You don't have access to the calendar",
+    "loading": "Loading the calendar…"
   }
 }

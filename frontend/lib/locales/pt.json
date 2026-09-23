@@ -61,7 +61,9 @@
     "facturacionDashboard": "Painel",
     "facturacionCuentas": "Contas",
     "redesSociales": "REDES SOCIAIS",
-    "validacionRrss": "Validação de redes"
+    "validacionRrss": "Validação de redes",
+    "calendarioSeccion": "CALENDÁRIO",
+    "calendario": "Calendário"
   },
   "login": {
     "welcome": "Bem-vindo",
@@ -1570,5 +1572,9 @@
         "desc": "Começa sem permissões e só pode ter marcadas permissões de \"visualizar\" — nunca de gerar, editar, excluir ou gerenciar."
       }
     }
+  },
+  "calendario": {
+    "accessDenied": "Você não tem acesso ao calendário",
+    "loading": "Carregando o calendário…"
   }
 }

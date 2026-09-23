@@ -44,6 +44,11 @@ ALL_PERMISSIONS: dict[str, str] = {
     "rrss.view":               "Ver la Validación de RRSS y su historial de validaciones",
     "rrss.validate":           "Validar placas de redes sociales contra el mailing con CatTi y borrar las validaciones propias",
 
+    # Calendario
+    "calendario.view":         "Ver el calendario comercial, el de Retail Media y los headers de la home",
+    "calendario.edit":         "Crear, editar y borrar acciones, campañas y banners del calendario, y mover el estado de las piezas",
+    "calendario.retail_media": "Mover las posiciones del header que Retail Media tiene reservadas (avisa a quien lleva Retail Media)",
+
     # IA — un permiso por agente de la familia "Tino" + La Triada
     "ai.don_tino":             "Usar el chat de Don Tino, la guía general de la plataforma",
     "ai.dona_tina":            "Usar a Doña Tina — consultas y reportes de precios con IA",
@@ -89,6 +94,7 @@ DEFAULT_ROLES: list[dict] = [
             "analytics.view", "analytics.export",
             "connections.view",
             "precios.search",
+            "calendario.view", "calendario.edit",
             "ai.don_tino", "ai.dona_tina", "ai.tinin", "ai.triada",
         ],
         "is_system":   True,

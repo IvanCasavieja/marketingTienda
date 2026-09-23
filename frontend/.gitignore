@@ -2,3 +2,6 @@
 .next/
 node_modules/
 dist/
+
+# Compilado de las pruebas del calendario (npm run test:calendario)
+.test-build/

@@ -61,7 +61,9 @@
     "facturacionDashboard": "Dashboard",
     "facturacionCuentas": "Cuentas",
     "redesSociales": "REDES SOCIALES",
-    "validacionRrss": "Validación de RRSS"
+    "validacionRrss": "Validación de RRSS",
+    "calendarioSeccion": "CALENDARIO",
+    "calendario": "Calendario"
   },
   "login": {
     "welcome": "Bienvenido",
@@ -1643,5 +1645,9 @@
         "desc": "Arranca sin permisos y solo puede tener tildados permisos de \"ver\" — nunca uno de generar, editar, eliminar o gestionar."
       }
     }
+  },
+  "calendario": {
+    "accessDenied": "No tenés acceso al calendario",
+    "loading": "Cargando el calendario…"
   }
 }
