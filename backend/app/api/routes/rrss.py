@@ -323,6 +323,28 @@ async def cerrar_validacion(
         for i in filas if i.estado != "error" and i.resultado.get("lectura")
     ]
     chequeos = comparador.chequeos_del_lote(leidas, v.mailing["productos"])
+
+    # Lo que solo se ve mirando el conjunto --cuántas adaptaciones tiene cada
+    # producto-- se escribe sobre cada placa del grupo, en sus filas, y se
+    # recalcula su estado. Así la pantalla y el Excel lo muestran donde
+    # muestran todo lo demás, y una placa "ok" de un producto al que le falta
+    # una adaptación deja de estar "ok". Regla fija, ver rrss_reglas.json.
+    por_id = {i.id: i for i in filas}
+    for grupo in chequeos.get("grupos", []):
+        de_placa = [a for a in grupo.get("avisos", []) if a.get("tipo") in comparador._AVISOS_DEL_LOTE_EN_LA_PLACA]
+        if not de_placa:
+            continue
+        for img_id in grupo.get("imagenes", []):
+            img = por_id.get(img_id)
+            if img is None or img.estado == "error":
+                continue
+            nuevas = comparador.aplicar_avisos_del_lote(img.resultado.get("filas") or [], de_placa)
+            idx = (img.resultado.get("match") or {}).get("indice")
+            # Reasignar el dict entero: una mutación adentro del JSONB no se
+            # detecta como cambio y no se guardaría.
+            img.resultado = {**img.resultado, "filas": nuevas}
+            img.estado = comparador.estado_de_la_placa(nuevas, idx)
+
     v.resumen = validador.resumir_lote([i.estado for i in filas], chequeos)
     v.estado = "completada"
     await db.commit()

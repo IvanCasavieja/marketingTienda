@@ -26,7 +26,10 @@ def _cargar() -> dict:
             f"no está {_RUTA}. Ese archivo es la ÚNICA fuente de las reglas fijas de la "
             f"Validación de RRSS (legales y combos)."
         ) from exc
-    for clave, campo in (("legal_bases", "texto"), ("legal_alcohol", "texto"), ("combo", "unidad")):
+    for clave, campo in (
+        ("legal_bases", "texto"), ("legal_alcohol", "texto"), ("combo", "unidad"),
+        ("adaptaciones", "cantidad"),
+    ):
         if not (crudo.get(clave) or {}).get(campo):
             raise RuntimeError(f"{_RUTA}: falta {clave}.{campo}")
     return crudo
@@ -37,6 +40,9 @@ REGLAS = _cargar()
 LEGAL_BASES: str = REGLAS["legal_bases"]["texto"]
 LEGAL_ALCOHOL: str = REGLAS["legal_alcohol"]["texto"]
 UNIDAD: str = REGLAS["combo"]["unidad"]
+# Cuántas adaptaciones tiene que tener cada producto destacado. Menos es un
+# error; más, una advertencia (ver el "porque" en el JSON).
+ADAPTACIONES: int = int(REGLAS["adaptaciones"]["cantidad"])
 
 # "Comprando 2", "comprando 3": el texto de arriba del precio de un combo.
 _RE_COMPRANDO = re.compile(r"^\s*comprando\s+\d+", re.IGNORECASE)

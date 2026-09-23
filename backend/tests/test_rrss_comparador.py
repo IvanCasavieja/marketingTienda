@@ -278,14 +278,20 @@ def test_adaptaciones_completas_y_una_que_falta():
     assert r["productos_con_placa"] == 2 and r["productos_mailing"] == 4
 
 
+# La cantidad de adaptaciones es una regla aparte (test_rrss_adaptaciones.py):
+# con una o dos placas SIEMPRE salta, y no es lo que miran estos dos tests.
+def _sin_los_de_cantidad(avisos):
+    return [a for a in avisos if a["tipo"] not in ("faltan_adaptaciones", "sobran_adaptaciones")]
+
+
 def test_un_solo_producto_no_marca_formatos_faltantes():
     r = c.chequeos_del_lote([img(1, "1:1", 0)], MAILING["productos"])
-    assert r["grupos"][0]["avisos"] == []
+    assert _sin_los_de_cantidad(r["grupos"][0]["avisos"]) == []
 
 
 def test_placa_repetida_en_el_mismo_formato():
     r = c.chequeos_del_lote([img(1, "1:1", 0), img(2, "1:1", 0)], MAILING["productos"])
-    assert [a["tipo"] for a in r["grupos"][0]["avisos"]] == ["repetida"]
+    assert [a["tipo"] for a in _sin_los_de_cantidad(r["grupos"][0]["avisos"])] == ["repetida"]
 
 
 def test_adaptaciones_sin_mailing_se_juntan_y_se_comparan_entre_si():

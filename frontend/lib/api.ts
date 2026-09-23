@@ -1486,7 +1486,13 @@ export interface RrssImagen {
 }
 
 export interface RrssAvisoGrupo {
-  tipo: "repetida" | "formato_raro" | "falta_formato" | "inconsistente";
+  tipo: "repetida" | "formato_raro" | "falta_formato" | "inconsistente"
+    // Regla fija (rrss_reglas.json): cada producto sale en 3 adaptaciones.
+    // Menos es error, más es advertencia. El backend además lo escribe como
+    // fila en cada placa del grupo al cerrar el lote, así se ve donde todo.
+    | "faltan_adaptaciones" | "sobran_adaptaciones";
+  /** "error" | "aviso". Lo pone el backend; sin esto, todo aviso del lote era una advertencia. */
+  severidad?: "error" | "aviso";
   formato: string | null;
   imagenes: number[];
   texto: string;

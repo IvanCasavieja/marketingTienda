@@ -21,5 +21,9 @@
   "combo": {
     "unidad": "unidad",
     "porque": "En un combo ('2x$75', '4x3', 'Comprando 2') el precio regular NO va tachado, y va 'unidad' al lado del precio regular ('$48 unidad') y abajo del precio de oferta. Así vienen los cuatro combos del mailing de los rompeprecios del 17-20/09/2026 y así están las placas correctas."
+  },
+  "adaptaciones": {
+    "cantidad": 3,
+    "porque": "Cada producto destacado sale en TRES adaptaciones (1:1, 4:5 y 9:16). Pedido de Ivan (23/09/2026): 'cada placa debe tener 3 adaptaciones, si tiene menos está mal, si tiene más hay que marcarlo como advertencia'. Menos es un error: falta una pieza. Más es una advertencia: hay que mirar por qué hay de más (una repetida, una vieja que quedó en la carpeta)."
   }
 }

@@ -858,6 +858,31 @@ def campos_leidos(placa: dict) -> dict:
     return salida
 
 
+# Los avisos del lote que se escriben sobre cada placa del grupo, para que la
+# pantalla y el Excel los muestren donde muestran todo lo demás: en las filas
+# de la placa. Los otros avisos del lote (formato que falta, repetida) ya
+# tienen su lugar en el resumen y no se duplican.
+_AVISOS_DEL_LOTE_EN_LA_PLACA = {"faltan_adaptaciones", "sobran_adaptaciones"}
+
+
+def aplicar_avisos_del_lote(filas: list[dict], avisos: list[dict]) -> list[dict]:
+    """Devuelve las filas de una placa con los avisos de su grupo que van en
+    la placa (hoy, los de cantidad de adaptaciones). Se reemplazan los que ya
+    hubiera del mismo tipo: cerrar el lote dos veces no los duplica."""
+    salida = [f for f in filas if f["campo"] != "adaptaciones"]
+    for a in avisos:
+        if a.get("tipo") not in _AVISOS_DEL_LOTE_EN_LA_PLACA:
+            continue
+        severidad = a.get("severidad") or "aviso"
+        salida.append(_fila(
+            "adaptaciones", "Adaptaciones del producto", "lote",
+            a.get("texto") or "", None,
+            "distinto" if severidad == "error" else "revisar", severidad,
+            "Regla fija: cada producto destacado sale en las adaptaciones que marca app/data/rrss_reglas.json.",
+        ))
+    return salida
+
+
 def con_comparacion_de_fotos(filas: list[dict], fotos: dict) -> list[dict]:
     """Reemplaza la opinión de la lectura sola ("¿la foto parece del
     producto?") por el resultado de comparar la foto de la placa con la del
@@ -960,6 +985,37 @@ def chequeos_del_lote(imgs: list[dict], productos_mailing: list[dict]) -> dict:
         for f in faltan:
             avisos.append({"tipo": "falta_formato", "formato": f, "imagenes": [],
                            "texto": f"Le falta la adaptación {f}"})
+
+        # Regla fija (app/data/rrss_reglas.json): cada producto destacado sale
+        # en TRES adaptaciones. Menos es un ERROR --falta una pieza--; más es
+        # una advertencia: no está mal de por sí, pero hay que mirar por qué
+        # hay de más (una repetida, una vieja que quedó en la carpeta). Pedido
+        # de Ivan, 23/09/2026.
+        cuantas = len(imgs_g)
+        if cuantas < reglas.ADAPTACIONES:
+            avisos.append({
+                "tipo": "faltan_adaptaciones", "severidad": "error", "formato": None,
+                "imagenes": [i["id"] for i in imgs_g],
+                "texto": (
+                    f"Tiene {cuantas} {'adaptación' if cuantas == 1 else 'adaptaciones'} y tienen que ser "
+                    f"{reglas.ADAPTACIONES}: falta{'n' if reglas.ADAPTACIONES - cuantas != 1 else ''} "
+                    f"{reglas.ADAPTACIONES - cuantas}"
+                ),
+            })
+        elif cuantas > reglas.ADAPTACIONES:
+            avisos.append({
+                "tipo": "sobran_adaptaciones", "severidad": "aviso", "formato": None,
+                "imagenes": [i["id"] for i in imgs_g],
+                "texto": (
+                    f"Tiene {cuantas} adaptaciones y lo normal son {reglas.ADAPTACIONES}: "
+                    f"fijate si hay una repetida o una vieja"
+                ),
+            })
+        # Los demás avisos del grupo son advertencias. Se marca acá, en un
+        # solo lugar, para que la pantalla y el Excel no tengan que saber
+        # qué tipo es grave y cuál no.
+        for a in avisos:
+            a.setdefault("severidad", "aviso")
 
         inconsistencias = []
         if g["match_indice"] is None and len(imgs_g) > 1:
