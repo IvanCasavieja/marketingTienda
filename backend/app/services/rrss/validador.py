@@ -13,6 +13,7 @@ el servidor corre un solo proceso, así que hecho directo congelaba a todos.
 Y la placa no se mantiene decodificada mientras se espera al modelo: se guardan
 sus bytes y cada etapa que la necesita la reabre.
 """
+import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -81,7 +82,7 @@ class ResultadoPlaca:
 @dataclass
 class MailingPreparado:
     mailing: dict
-    paginas: list[Image.Image] = field(default_factory=list)
+    paginas: "imagenes.Carillas | list[Image.Image]" = field(default_factory=list)
     tokens_in: int = 0
     tokens_out: int = 0
 
@@ -98,11 +99,20 @@ def _ms(desde: float) -> int:
 # Mailing
 # --------------------------------------------------------------------------
 
-def _recortes_de_productos(paginas: list[Image.Image], mailing: dict) -> None:
+def _recortes_de_productos(paginas, mailing: dict) -> None:
+    """Los productos vienen agrupados por carilla, así que pedirlas por índice
+    abre cada una una sola vez (ver imagenes.Carillas)."""
     for prod in mailing["productos"]:
         prod["recorte"] = _uri(
             imagenes.recortar(paginas[prod["pagina"]], prod["cajas"].get("producto"), margen=_MARGEN_PRODUCTO, ancho_max=520)
         )
+
+
+# Una sola preparación de mailing a la vez. Cada una levanta las carillas en
+# memoria (200 MB medidos sobre un pliego de 2 hojas), y dos personas subiendo
+# un mailing al mismo tiempo duplicaban ese pico: el servicio tiene 512 MB y se
+# reiniciaba solo. Esperar unos segundos es mejor que caerse.
+_UN_MAILING_A_LA_VEZ = asyncio.Semaphore(1)
 
 
 async def preparar_mailing(datos: bytes, content_type: str, filename: str) -> MailingPreparado:
@@ -114,6 +124,11 @@ async def preparar_mailing(datos: bytes, content_type: str, filename: str) -> Ma
     con su campaña y su vigencia. Leerlas juntas hacía que el modelo se quedara
     con una y descartara el resto. Si esa lectura falla, se corta por
     proporciones, que no depende de la red."""
+    async with _UN_MAILING_A_LA_VEZ:
+        return await _preparar_mailing(datos, content_type, filename)
+
+
+async def _preparar_mailing(datos: bytes, content_type: str, filename: str) -> MailingPreparado:
     t_in = t_out = 0
     cortes: list[list[list[float]]] = []
     try:
@@ -126,8 +141,12 @@ async def preparar_mailing(datos: bytes, content_type: str, filename: str) -> Ma
     except Exception:
         logger.warning("rrss: no se pudo mirar la imposición del mailing", exc_info=True)
 
+    # Se renderizan y enseguida pasan a JPEG: lo que queda en memoria son unos
+    # cientos de KB por carilla en vez de 11 MB, y se abren de a pocas cuando
+    # hacen falta (ver imagenes.Carillas).
     paginas = await en_hilo(
-        imagenes.paginas_del_mailing, datos, content_type, filename, cortes or None)
+        lambda: imagenes.Carillas(
+            imagenes.paginas_del_mailing(datos, content_type, filename, cortes or None)))
     mailing, ti, to = await catti.leer_mailing(paginas)
     t_in += ti
     t_out += to
@@ -140,6 +159,8 @@ async def preparar_mailing(datos: bytes, content_type: str, filename: str) -> Ma
         logger.warning("rrss: no se pudieron ubicar los productos del mailing", exc_info=True)
     mailing["origen"] = "mailing"
     await en_hilo(_recortes_de_productos, paginas, mailing)
+    if isinstance(paginas, imagenes.Carillas):
+        paginas.liberar()
     return MailingPreparado(mailing, paginas, t_in, t_out)
 
 

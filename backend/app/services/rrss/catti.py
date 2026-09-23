@@ -683,12 +683,27 @@ async def leer_pagina_mailing(pagina_img, indice: int) -> tuple[dict, int, int]:
     return normalizar_pagina_mailing(raw, indice), t_in, t_out
 
 
+# Cuántas páginas del mailing se preparan a la vez. Preparar una arma tres
+# imágenes (la página y sus dos mitades ampliadas) y sus JPEG, así que con un
+# gather sin tope un mailing de 12 carillas tenía 36 imágenes en vuelo y se
+# comía el servidor. Con 4 en paralelo un mailing normal (2 a 4 carillas) no
+# pierde nada de velocidad y uno grande deja de ser un pico.
+_A_LA_VEZ = asyncio.Semaphore(4)
+
+
+async def _leer_pagina_acotada(paginas, indice: int):
+    """Pide la página DENTRO del semáforo: fuera de él, armar la lista de
+    tareas abriría todas las carillas a la vez y el tope no serviría de nada."""
+    async with _A_LA_VEZ:
+        return await leer_pagina_mailing(paginas[indice], indice)
+
+
 async def leer_mailing(paginas: list) -> tuple[dict, int, int]:
     """Lee todas las páginas en paralelo y las junta en un solo mailing:
     {"fecha", "fecha_pagina", "legal_alcohol", "legal_alcohol_pagina", "productos": [...]}.
     Los datos de campaña (fecha, leyenda de alcohol) los toma de la primera
     página que los traiga."""
-    lecturas = await asyncio.gather(*(leer_pagina_mailing(p, i) for i, p in enumerate(paginas)))
+    lecturas = await asyncio.gather(*(_leer_pagina_acotada(paginas, i) for i in range(len(paginas))))
     mailing = {
         "fecha": "", "fecha_pagina": None, "fecha_caja": None,
         "legal_alcohol": "", "legal_alcohol_pagina": None, "legal_alcohol_caja": None,
@@ -870,7 +885,7 @@ def _pedidos_producto(prefijo: str, prod: dict) -> list[tuple[str, str]]:
 async def localizar_mailing(paginas: list, mailing: dict) -> tuple[int, int]:
     """Completa `cajas` de cada producto (y de la fecha y la leyenda de alcohol)
     con una llamada por página. Modifica `mailing` en el lugar."""
-    async def por_pagina(indice: int, pagina_img):
+    async def por_pagina(indice: int):
         pedidos: list[tuple[str, str]] = []
         for i, prod in enumerate(mailing["productos"]):
             if prod["pagina"] == indice:
@@ -879,9 +894,12 @@ async def localizar_mailing(paginas: list, mailing: dict) -> tuple[int, int]:
             pedidos.append(("fecha", f"el texto de vigencia «{mailing['fecha']}»"))
         if mailing["legal_alcohol_pagina"] == indice:
             pedidos.append(("legal_alcohol", f"la leyenda «{mailing['legal_alcohol']}»"))
-        return await localizar(pagina_img, pedidos)
+        # El mismo tope que la lectura, y por el mismo motivo: acá se arma una
+        # copia de la página con la grilla encima y sus franjas.
+        async with _A_LA_VEZ:
+            return await localizar(paginas[indice], pedidos)
 
-    resultados = await asyncio.gather(*(por_pagina(i, p) for i, p in enumerate(paginas)))
+    resultados = await asyncio.gather(*(por_pagina(i) for i in range(len(paginas))))
     t_in = t_out = 0
     for cajas, ti, to in resultados:
         t_in += ti

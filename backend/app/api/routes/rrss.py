@@ -213,10 +213,12 @@ async def crear_validacion(
     )
     db.add(v)
     await db.flush()
-    jpegs = await en_hilo(lambda: [imagenes.jpeg(p, 80) for p in preparado.paginas])
-    for numero, (pagina, jpg) in enumerate(zip(preparado.paginas, jpegs)):
+    # Las carillas ya viven en JPEG (imagenes.Carillas): se guardan tal cual, sin
+    # abrirlas de nuevo ni volver a comprimirlas.
+    for numero, (jpg, (ancho, alto)) in enumerate(
+            zip(preparado.paginas.jpegs, preparado.paginas.tamanos)):
         db.add(RrssValidacionPagina(
-            validacion_id=v.id, numero=numero, ancho=pagina.width, alto=pagina.height, imagen=jpg,
+            validacion_id=v.id, numero=numero, ancho=ancho, alto=alto, imagen=jpg,
         ))
     # Con una planilla no se llamó a la IA: loguear cero consumo ensuciaría el
     # informe con llamadas que no existieron.

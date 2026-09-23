@@ -230,21 +230,103 @@ def hojas_para_mirar(data: bytes, content_type: str, filename: str) -> list[Imag
     return _render(data, content_type, filename, ancho=_ANCHO_PARA_MIRAR, cortes=None, partir=False)
 
 
+class Carillas:
+    """Las páginas del mailing, guardadas en JPEG y abiertas de a pocas.
+
+    Tenerlas todas crudas en memoria era el motivo por el que el servicio se
+    quedaba sin: una carilla de 1600 px son 11 MB en crudo y unos 450 KB en
+    JPEG, 25 veces menos. Con 4 carillas la diferencia no mata, pero el pico
+    crecía con el mailing y un PDF de 12 carillas se llevaba el servidor puesto.
+
+    Guardadas así, lo que ocupa memoria es solo lo que se está mirando: se
+    abren cuando alguien las pide y quedan en un cajón de `abiertas` como
+    mucho, que es el mismo tope que tiene la lectura en paralelo. El pico deja
+    de depender del tamaño del mailing.
+
+    Se comporta como la lista de imágenes que había antes -- `len`, `[i]`,
+    recorrerla -- para no tocar a quien la usa. Ojo con recorrerla entera de
+    golpe: eso sí abre todas. Quien lee en paralelo pide por índice.
+    """
+
+    def __init__(self, paginas: list[Image.Image], calidad: int = 88, abiertas: int = 4):
+        self._jpegs = [jpeg(p, calidad) for p in paginas]
+        self._tamanos = [p.size for p in paginas]
+        self._tope = max(1, abiertas)
+        self._cajon: dict[int, Image.Image] = {}
+        self._orden: list[int] = []
+
+    @property
+    def jpegs(self) -> list[bytes]:
+        """Los JPEG tal cual, para guardarlos sin volver a comprimir."""
+        return self._jpegs
+
+    @property
+    def tamanos(self) -> list[tuple[int, int]]:
+        return self._tamanos
+
+    def __len__(self) -> int:
+        return len(self._jpegs)
+
+    def __getitem__(self, i: int) -> Image.Image:
+        if i < 0:
+            i += len(self._jpegs)
+        if i in self._cajon:
+            self._orden.remove(i)
+            self._orden.append(i)
+            return self._cajon[i]
+        im = Image.open(io.BytesIO(self._jpegs[i]))
+        im.load()
+        im = im.convert("RGB")
+        self._cajon[i] = im
+        self._orden.append(i)
+        while len(self._orden) > self._tope:
+            self._cajon.pop(self._orden.pop(0), None)
+        return im
+
+    def __iter__(self):
+        for i in range(len(self._jpegs)):
+            yield self[i]
+
+    def liberar(self) -> None:
+        """Cierra las carillas abiertas y deja solo los JPEG.
+
+        Se llama al terminar de preparar el mailing: a partir de ahí el pedido
+        sigue con los recortes ya hechos, y dejar cuatro carillas abiertas eran
+        44 MB colgados hasta el final del request. Si alguien las vuelve a
+        pedir, se abren de nuevo."""
+        self._cajon.clear()
+        self._orden.clear()
+
+
+def _caja_sana(caja) -> tuple[float, float, float, float] | None:
+    """Una caja de CatTi como fracciones ordenadas y dentro de la hoja, o None
+    si no sirve (degenerada, incompleta o con basura)."""
+    try:
+        x0, y0, x1, y1 = (float(v) for v in caja)
+    except (TypeError, ValueError):
+        return None
+    izq, der = sorted((max(0.0, min(1.0, x0)), max(0.0, min(1.0, x1))))
+    arr, aba = sorted((max(0.0, min(1.0, y0)), max(0.0, min(1.0, y1))))
+    if der - izq < 0.02 or aba - arr < 0.02:
+        return None
+    return izq, arr, der, aba
+
+
+def _columnas(cuantas: int) -> list[tuple[float, float, float, float]]:
+    """Las carillas como columnas iguales, que es el corte por proporciones."""
+    return [(i / cuantas, 0.0, (i + 1) / cuantas, 1.0) for i in range(max(cuantas, 1))]
+
+
 def recortar_carillas(hoja: Image.Image, cajas: list) -> list[Image.Image]:
     """Corta una hoja por las cajas que devolvió CatTi, en fracciones."""
     salida = []
     for caja in cajas:
-        try:
-            x0, y0, x1, y1 = (float(v) for v in caja)
-        except (TypeError, ValueError):
+        sana = _caja_sana(caja)
+        if not sana:
             continue
-        izq, der = sorted((max(0.0, min(1.0, x0)), max(0.0, min(1.0, x1))))
-        arr, aba = sorted((max(0.0, min(1.0, y0)), max(0.0, min(1.0, y1))))
-        caja_px = (round(izq * hoja.width), round(arr * hoja.height),
-                   round(der * hoja.width), round(aba * hoja.height))
-        if caja_px[2] - caja_px[0] < 40 or caja_px[3] - caja_px[1] < 40:
-            continue  # una caja degenerada no es una carilla
-        salida.append(hoja.crop(caja_px))
+        izq, arr, der, aba = sana
+        salida.append(hoja.crop((round(izq * hoja.width), round(arr * hoja.height),
+                                 round(der * hoja.width), round(aba * hoja.height))))
     return salida or [hoja]
 
 
@@ -287,28 +369,40 @@ def _render(data: bytes, content_type: str, filename: str,
             )
         paginas = []
         for i, pagina in enumerate(doc):
-            # El ancho se aplica por CARILLA, no por hoja: con un ancho fijo por
-            # hoja, un pliego de dos quedaba a la mitad de resolución que un
-            # mailing normal y la letra chica no se leía.
             cajas = cortes[i] if cortes and i < len(cortes) else None
             if not partir:
-                cuantas = 1
+                recortes = [(0.0, 0.0, 1.0, 1.0)]
             elif cajas:
-                cuantas = len(cajas)
+                recortes = [c for c in (_caja_sana(c) for c in cajas) if c] or [(0.0, 0.0, 1.0, 1.0)]
             else:
-                cuantas = carillas_en(pagina.rect.width, pagina.rect.height)
-            zoom = (ancho * max(cuantas, 1)) / pagina.rect.width
-            pix = pagina.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
-            hoja = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            if not partir:
-                paginas.append(hoja)
-            elif cajas:
-                paginas.extend(recortar_carillas(hoja, cajas))
-            else:
-                paginas.extend(carillas_de(hoja, cuantas))
+                recortes = _columnas(carillas_en(pagina.rect.width, pagina.rect.height))
+            # Cada carilla se renderiza DIRECTO, con su recorte, y al ancho de
+            # una página. Materializar la hoja entera y después cortarla costaba
+            # el triple de memoria (el pixmap grande + la copia + los recortes):
+            # un pliego de 2 hojas llegaba a +180 MB y en un servidor de 512 se
+            # quedaba sin. Ver `clip` de get_pixmap.
+            for x0, y0, x1, y1 in recortes:
+                r = pagina.rect
+                caja = pymupdf.Rect(
+                    r.x0 + x0 * r.width, r.y0 + y0 * r.height,
+                    r.x0 + x1 * r.width, r.y0 + y1 * r.height,
+                )
+                zoom = ancho / max(caja.width, 1)
+                pix = pagina.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=caja, alpha=False)
+                paginas.append(Image.frombytes("RGB", (pix.width, pix.height), pix.samples))
+                pix = None  # el pixmap pesa lo mismo que la imagen: no esperar al GC
         return paginas
     finally:
         doc.close()
+        # MuPDF guarda en un "store" propio todo lo que decodifica --las fotos
+        # del mailing en alta, sobre todo-- y cerrar el documento NO lo vacía:
+        # medido sobre el mailing del 24/09, quedaban 132 MB retenidos después
+        # de soltar todas las imágenes, y el servidor (512 MB) se quedaba sin
+        # memoria y se reiniciaba solo. Vaciarlo devuelve unos 100.
+        try:
+            pymupdf.TOOLS.store_shrink(100)
+        except Exception:  # noqa: BLE001 -- es una optimización, nunca un error
+            pass
 
 
 def mitades_con_solape(im: Image.Image, solape: float = 0.04) -> list[tuple[Image.Image, float, float]]:
