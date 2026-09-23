@@ -538,7 +538,8 @@ def comparar_producto(placa: dict, item: dict, reglas: dict | None = None) -> li
     return filas
 
 
-def comparar_elementos(placa: dict, mailing: dict, config: dict, es_alcohol: bool) -> list[dict]:
+def comparar_elementos(placa: dict, mailing: dict, config: dict, es_alcohol: bool,
+                       pagina: int | None = None) -> list[dict]:
     """Lo que no es el producto: fecha, logo, isotipo, foto, leyendas y CTA."""
     filas: list[dict] = []
 
@@ -548,7 +549,11 @@ def comparar_elementos(placa: dict, mailing: dict, config: dict, es_alcohol: boo
     # como va impreso ("DEL JUEVES 17 AL DOMINGO 20 DE SETIEMBRE"), trae dos
     # fechas sueltas, y componerlo sería inventarle una forma. Sin ninguna de
     # las dos no hay contra qué comparar y no se marca nada.
-    esperada = (config.get("fecha") or "").strip() or mailing.get("fecha", "")
+    # La vigencia sale de la carilla donde está ESTE producto, no de la primera
+    # del mailing: un pliego puede traer dos campañas con dos vigencias (ver
+    # fechas_por_pagina en catti.leer_mailing).
+    de_su_pagina = (mailing.get("fechas_por_pagina") or {}).get(pagina, "")
+    esperada = (config.get("fecha") or "").strip() or de_su_pagina or mailing.get("fecha", "")
     if esperada:
         fila = _comparar_texto("fecha", "Fecha de la campaña", "placa", placa["fecha"], esperada)
         if fila:
@@ -637,15 +642,17 @@ def comparar_placa(placa: dict, mailing: dict, config: dict,
     idx, puntaje = par["indice"], par["puntaje"]
     filas: list[dict] = []
     es_alcohol = placa["producto"]["es_alcohol"]
+    pagina_del_item: int | None = None
     if idx is not None:
         item = mailing["productos"][idx]
+        pagina_del_item = item.get("pagina")
         if par["duda"]:
             filas.append(_fila_de_duda(par, item, placa["producto"]["descripcion"]))
         de_la_fuente = reglas_de_la_fuente(mailing)
         filas += comparar_producto(placa["producto"], item, de_la_fuente)
         filas = _con_reglas_fijas(filas, reglas_del_combo(placa["producto"], item, de_la_fuente["campos"]))
         es_alcohol = es_alcohol or item["es_alcohol"]
-    filas += comparar_elementos(placa, mailing, config, es_alcohol)
+    filas += comparar_elementos(placa, mailing, config, es_alcohol, pagina=pagina_del_item)
     return idx, puntaje, filas
 
 

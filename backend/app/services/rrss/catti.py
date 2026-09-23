@@ -591,14 +591,22 @@ async def leer_mailing(paginas: list) -> tuple[dict, int, int]:
     mailing = {
         "fecha": "", "fecha_pagina": None, "fecha_caja": None,
         "legal_alcohol": "", "legal_alcohol_pagina": None, "legal_alcohol_caja": None,
+        # La vigencia de CADA carilla. Un pliego puede traer dos campañas con
+        # dos vigencias distintas ("Rompe Precios del 23 al 30" a la izquierda
+        # y "Rompe del Finde del 24 al 27" a la derecha): con una sola fecha
+        # para todo el mailing, las placas de la segunda salían todas marcadas
+        # con la fecha de la primera.
+        "fechas_por_pagina": {},
         "productos": [],
     }
     t_in = t_out = 0
     for lectura, ti, to in lecturas:
         t_in += ti
         t_out += to
-        if lectura["fecha"] and not mailing["fecha"]:
-            mailing.update(fecha=lectura["fecha"], fecha_pagina=lectura["pagina"])
+        if lectura["fecha"]:
+            mailing["fechas_por_pagina"][lectura["pagina"]] = lectura["fecha"]
+            if not mailing["fecha"]:
+                mailing.update(fecha=lectura["fecha"], fecha_pagina=lectura["pagina"])
         if lectura["legal_alcohol"] and not mailing["legal_alcohol"]:
             mailing.update(legal_alcohol=lectura["legal_alcohol"], legal_alcohol_pagina=lectura["pagina"])
         mailing["productos"].extend(lectura["productos"])

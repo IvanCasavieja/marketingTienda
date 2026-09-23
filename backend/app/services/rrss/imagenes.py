@@ -165,6 +165,55 @@ def marcar_caja(im: Image.Image, caja, color=(255, 45, 85), grosor: int = 6) -> 
 # Mailing
 # --------------------------------------------------------------------------
 
+# Proporción de una carilla vertical suelta: A4, A5, carta y oficio andan todas
+# entre 0,64 y 0,77, así que 0,71 sirve de patrón para cualquiera.
+_PROPORCION_CARILLA = 0.707
+# Cuántas carillas se aceptan en una hoja. Más que esto y lo que hay no es un
+# pliego: es un banner largo o algo que no sabemos leer, y se deja entero.
+_MAX_CARILLAS = 4
+
+
+def carillas_en(ancho: float, alto: float) -> int:
+    """Cuántas carillas verticales entran, a lo ancho, en una hoja.
+
+    Un mailing se diseña en carillas verticales, pero se entrega impuesto: dos,
+    tres o cuatro juntas en una misma hoja. En vez de preguntarse "¿es
+    apaisada?", se mide cuántas carillas de proporción normal entran a lo
+    ancho. Así funciona igual con un díptico, un tríptico o lo que venga, sin
+    una regla por cada mailing.
+
+    Una hoja vertical da 1 y no se toca nunca.
+    """
+    if alto <= 0 or ancho <= 0:
+        return 1
+    cuantas = round((ancho / alto) / _PROPORCION_CARILLA)
+    return min(max(cuantas, 1), _MAX_CARILLAS)
+
+
+def carillas_de(hoja: Image.Image, cuantas: int = 2) -> list[Image.Image]:
+    """Parte una hoja impuesta en sus carillas, de izquierda a derecha.
+
+    SIN solape, a propósito: entre dos carillas hay un pliegue y nada lo cruza,
+    y un solape acá duplicaría productos -- cada carilla se lee por separado y
+    sus productos se suman, no se deduplican (a diferencia de las mitades de
+    una misma carilla, que las junta el propio modelo en una sola lectura).
+
+    El caso que lo motivó: el mailing del 24 al 27 de setiembre de 2026 vino en
+    hojas de 44 x 32 cm con DOS carillas al lado -- la izquierda "Rompe
+    Precios" del 23 al 30 y la derecha "Los Rompe del Finde" del 24 al 27.
+    Leídas como una sola página, con una sola campaña y una sola fecha, el
+    modelo se quedaba con una y descartaba la otra: ninguna placa del finde
+    encontraba su fila.
+    """
+    if cuantas <= 1:
+        return [hoja]
+    paso = hoja.width / cuantas
+    return [
+        hoja.crop((round(i * paso), 0, round((i + 1) * paso) if i < cuantas - 1 else hoja.width, hoja.height))
+        for i in range(cuantas)
+    ]
+
+
 def paginas_del_mailing(data: bytes, content_type: str, filename: str) -> list[Image.Image]:
     """Las páginas del mailing como imágenes de ~1600 px de ancho.
 
@@ -185,15 +234,23 @@ def paginas_del_mailing(data: bytes, content_type: str, filename: str) -> list[I
     try:
         if doc.page_count == 0:
             raise ArchivoInvalido("El PDF del mailing no tiene páginas")
-        if doc.page_count > MAX_PAGINAS_MAILING:
+        # Se cuentan CARILLAS, no hojas: una hoja impuesta rinde varias, y cada
+        # una es una lectura aparte.
+        carillas_totales = sum(carillas_en(p.rect.width, p.rect.height) for p in doc)
+        if carillas_totales > MAX_PAGINAS_MAILING:
             raise ArchivoInvalido(
-                f"El mailing tiene {doc.page_count} páginas; el máximo es {MAX_PAGINAS_MAILING}"
+                f"El mailing tiene {carillas_totales} páginas; el máximo es {MAX_PAGINAS_MAILING}"
             )
         paginas = []
         for pagina in doc:
-            zoom = _ANCHO_PAGINA_PX / pagina.rect.width
+            # El ancho se aplica por CARILLA, no por hoja: con un ancho fijo por
+            # hoja, un pliego de dos quedaba a la mitad de resolución que un
+            # mailing normal y la letra chica no se leía.
+            cuantas = carillas_en(pagina.rect.width, pagina.rect.height)
+            zoom = (_ANCHO_PAGINA_PX * cuantas) / pagina.rect.width
             pix = pagina.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
-            paginas.append(Image.frombytes("RGB", (pix.width, pix.height), pix.samples))
+            hoja = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+            paginas.extend(carillas_de(hoja, cuantas))
         return paginas
     finally:
         doc.close()
