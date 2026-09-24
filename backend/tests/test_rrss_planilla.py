@@ -272,6 +272,34 @@ def test_si_catti_no_esta_se_lee_por_nombres_y_se_avisa(monkeypatch):
     assert prep.mailing["planilla"]["interpretacion"] is None
 
 
+def test_la_planilla_deja_las_carillas_con_la_misma_forma_que_el_mailing(monkeypatch):
+    """La ruta que crea la validación guarda las carillas con
+    `preparado.paginas.jpegs` sin preguntar de dónde vino la fuente
+    (routes/rrss.py). Con una planilla `paginas` era una lista vacía, que no
+    tiene `.jpegs`: toda validación por planilla salía como "Internal server
+    error" desde el 23/09/2026, y CI seguía verde porque los tests prueban el
+    servicio y no la ruta. Acá se fija que las dos fuentes dejen un Carillas,
+    aunque el de la planilla esté vacío, por los dos caminos: con CatTi y sin."""
+    import asyncio
+    from app.services.rrss import catti, imagenes, validador
+
+    async def interpretar(texto):
+        return MAPEO_REAL, 5600, 400
+
+    async def caido(texto):
+        raise RuntimeError("ANTHROPIC_API_KEY no configurado")
+
+    for lector in (interpretar, caido):
+        monkeypatch.setattr(catti, "interpretar_planilla", lector)
+        prep = asyncio.run(validador.preparar_planilla(_listado_real(), "LISTADO FINAL.xlsx"))
+        assert isinstance(prep.paginas, imagenes.Carillas)
+        assert len(prep.paginas) == 0
+        # exactamente lo que hace la ruta al guardar (routes/rrss.py)
+        assert list(zip(prep.paginas.jpegs, prep.paginas.tamanos)) == []
+    # y el valor por defecto del dataclass tampoco es una lista
+    assert isinstance(validador.MailingPreparado(mailing={}).paginas, imagenes.Carillas)
+
+
 # ---------------------------------------------------------------- qué exige y qué no
 
 def test_solo_exige_las_columnas_que_trae(mailing):

@@ -82,7 +82,11 @@ class ResultadoPlaca:
 @dataclass
 class MailingPreparado:
     mailing: dict
-    paginas: "imagenes.Carillas | list[Image.Image]" = field(default_factory=list)
+    # SIEMPRE un Carillas, también con una planilla (vacío): la ruta guarda las
+    # carillas con `paginas.jpegs` sin preguntar de dónde vino la fuente
+    # (routes/rrss.py). Una lista vacía no tiene `.jpegs`, y toda validación
+    # por planilla salía como "Internal server error" (23 y 24/09/2026).
+    paginas: "imagenes.Carillas" = field(default_factory=lambda: imagenes.Carillas([]))
     tokens_in: int = 0
     tokens_out: int = 0
 
@@ -159,8 +163,7 @@ async def _preparar_mailing(datos: bytes, content_type: str, filename: str) -> M
         logger.warning("rrss: no se pudieron ubicar los productos del mailing", exc_info=True)
     mailing["origen"] = "mailing"
     await en_hilo(_recortes_de_productos, paginas, mailing)
-    if isinstance(paginas, imagenes.Carillas):
-        paginas.liberar()
+    paginas.liberar()
     return MailingPreparado(mailing, paginas, t_in, t_out)
 
 
@@ -208,9 +211,9 @@ async def preparar_planilla(datos: bytes, filename: str, hoja: str | int | None 
             "de las columnas. Revisá que la descripción y los precios hayan salido de la "
             "columna correcta."
         ))
-        return MailingPreparado(pl.mailing, [], 0, 0)
+        return MailingPreparado(pl.mailing, imagenes.Carillas([]), 0, 0)
     pl = await en_hilo(planilla.leer, datos, filename, hoja, mapeo)
-    return MailingPreparado(pl.mailing, [], t_in, t_out)
+    return MailingPreparado(pl.mailing, imagenes.Carillas([]), t_in, t_out)
 
 
 # --------------------------------------------------------------------------
