@@ -418,6 +418,36 @@ _TOOLS = [
 ]
 
 
+# Don Tino consulta CON los permisos de quien le pregunta: cada herramienta
+# exige el permiso de su módulo. Sin él, la herramienta ni se le ofrece al
+# modelo (y si igual la pidiera, _ejecutar_tool la corta). Sin esto, alguien
+# sin el buscador de precios podía buscar precios igual, preguntándole a él.
+_PERMISO_POR_TOOL = {
+    "buscar_precio": "precios.search",
+    "consultar_estado_cenefa": "cenefas.view",
+    "resumen_ultimo_debate": "ai.triada",
+}
+
+_SIN_PERMISO = {
+    "buscar_precio": "Esta persona no tiene el permiso del buscador de precios (precios.search): "
+                     "no le busques precios; decile que se lo puede pedir a un administrador.",
+    "consultar_estado_cenefa": "Esta persona no tiene el permiso de Cenefas (cenefas.view).",
+    "resumen_ultimo_debate": "Esta persona no tiene el permiso de La Triada (ai.triada).",
+}
+
+
+def _puede_usar_tool(user: User, name: str) -> bool:
+    permiso = _PERMISO_POR_TOOL.get(name)
+    if permiso is None:
+        return False
+    return bool(user.is_superuser) or permiso in (user.permissions or [])
+
+
+def _tools_para(user: User) -> list[dict]:
+    """Las herramientas que se le ofrecen al modelo para ESTE usuario."""
+    return [t for t in _TOOLS if _puede_usar_tool(user, t["name"])]
+
+
 async def _tool_buscar_precio(termino: str) -> str:
     termino = (termino or "").strip()
     if len(termino) < 2:
@@ -503,6 +533,10 @@ async def _tool_resumen_debate(current_user: User, db: AsyncSession) -> str:
 
 
 async def _ejecutar_tool(name: str, args: dict, current_user: User, db: AsyncSession) -> str:
+    if not _puede_usar_tool(current_user, name):
+        return json.dumps({
+            "error": _SIN_PERMISO.get(name, f"Herramienta desconocida: {name}"),
+        }, ensure_ascii=False)
     if name == "buscar_precio":
         return await _tool_buscar_precio(args.get("termino", ""))
     if name == "consultar_estado_cenefa":
@@ -548,6 +582,8 @@ async def chat_message(
         messages.append({"role": "user", "content": body.message})
 
         usage_items: list[dict] = []
+        # Solo las herramientas que los permisos de esta persona habilitan.
+        tools_usuario = _tools_para(current_user) or anthropic.NOT_GIVEN
 
         for _ in range(_MAX_TOOL_ITERS):
             respuesta = await llm_call_with_retry(
@@ -556,7 +592,7 @@ async def chat_message(
                     max_tokens=_MAX_RESPUESTA_TOKENS,
                     system=system,
                     messages=messages,
-                    tools=_TOOLS,
+                    tools=tools_usuario,
                     # Un chat de soporte se lee mientras se escribe: `medium`
                     # deja al modelo razonar lo suficiente para elegir bien la
                     # herramienta sin que la persona espere de más. Nada de
