@@ -1924,12 +1924,39 @@ export const redexpresApi = {
 // base, lo ve todo el mundo igual y el aviso de los 10 días tiene de dónde
 // leer.
 
+/** Lo que contesta cada escritura del calendario: la revisión en que quedó. */
+type CalendarioEscrito = { id?: string; rev?: number; yaExistia?: boolean };
+
+/**
+ * El calendario, una barra por vez. Hasta el 28/09/2026 se subía el mes entero
+ * y dos personas editando el mismo mes se pisaban; ahora cada llamada toca solo
+ * lo que cambió. Ver backend/app/api/routes/calendario.py.
+ */
 export const calendarioApi = {
-  /** Todos los meses guardados, como { 'YYYY-MM': mes }. */
-  traerMeses: () => api.get<Record<string, any>>("/calendario/meses"),
-  guardarMes: (clave: string, datos: unknown) =>
-    api.put<{ clave: string; guardado: boolean }>(`/calendario/meses/${clave}`, { datos }),
-  /** Avisa a quien lleva Retail Media que le movieron las posiciones. */
-  avisarRetail: (clave: string, antes: number[], ahora: number[]) =>
-    api.post<{ avisados: number }>("/calendario/aviso-retail", { clave, antes, ahora }),
+  /** Todo el calendario, o `sinCambios` si sigue en la revisión `rev`. */
+  traerDatos: (rev?: number | null) =>
+    api.get<{ rev: number; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]> }>(
+      "/calendario/datos", { params: rev == null ? {} : { rev } }),
+  /** A quién se le puede mandar un aviso. */
+  personas: () => api.get<{ id: number; nombre: string }[]>("/calendario/personas"),
+
+  crearBarra: (barra: unknown) => api.post<CalendarioEscrito>("/calendario/barras", barra),
+  cambiarBarra: (id: string, cambios: unknown) =>
+    api.patch<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`, cambios),
+  borrarBarra: (id: string) => api.delete<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`),
+
+  agregarPieza: (barraId: string, pieza: unknown) =>
+    api.post<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(barraId)}/piezas`, pieza),
+  cambiarPieza: (id: string, cambios: unknown) =>
+    api.patch<CalendarioEscrito>(`/calendario/piezas/${encodeURIComponent(id)}`, cambios),
+  quitarPieza: (id: string) => api.delete<CalendarioEscrito>(`/calendario/piezas/${encodeURIComponent(id)}`),
+
+  configurarAviso: (barraId: string, aviso: { id: string; diasAntes: number; destinatarios: number[] }) =>
+    api.post<CalendarioEscrito & { enviadosAhora?: number }>(
+      `/calendario/barras/${encodeURIComponent(barraId)}/avisos`, aviso),
+  quitarAviso: (id: string) => api.delete<CalendarioEscrito>(`/calendario/avisos/${encodeURIComponent(id)}`),
+
+  /** Guarda las posiciones de RM de un mes y avisa a quien lleva Retail Media. */
+  moverPosicionesRM: (clave: string, posiciones: number[]) =>
+    api.put<CalendarioEscrito & { avisados: number }>(`/calendario/posiciones-rm/${clave}`, { posiciones }),
 };

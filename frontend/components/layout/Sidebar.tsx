@@ -71,6 +71,17 @@ function notifIcon(tipo: string) {
 function resolverDestino(n: Notificacion): string | null {
   if (n.watchlist_item_id != null) return "/precios/listas";
   if (n.origen_tipo === "campaign_alert") return "/campaigns";
+  // Los avisos del calendario abren la ficha de su acción. Los configurados a
+  // mano llevan la acción primero ("br-xxx:av-yyy:2026-10-09"); los
+  // automáticos de antes del 28/09/2026, en el medio ("2026-09:br-xxx:t-10").
+  if (n.origen_tipo === "calendario_aviso" && n.origen_ref) {
+    return `/calendario?accion=${encodeURIComponent(n.origen_ref.split(":")[0])}`;
+  }
+  if (n.origen_tipo === "calendario_accion" && n.origen_ref) {
+    const accion = n.origen_ref.split(":")[1];
+    return accion ? `/calendario?accion=${encodeURIComponent(accion)}` : "/calendario";
+  }
+  if (n.origen_tipo === "calendario_header") return "/calendario";
   return null;
 }
 

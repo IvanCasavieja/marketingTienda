@@ -63,9 +63,39 @@ estructura por áreas — **Web · Home**, **Web · Landing de la acción**,
 **Físico**, **Email**, **WhatsApp**, **Push** — donde se agregan y se sacan
 piezas y se les mueve el estado (pendiente → en proceso → aprobado →
 publicado). Si la acción lleva header, dice en qué posición quedó, o avisa que
-no entró.
+no entró. Arriba de todo están sus **avisos** (ver Avisos).
 
 Se cierra con Escape, con la X o tocando afuera.
+
+## Una acción que cruza de mes es UNA sola
+
+Desde el 28/09/2026 cada barra va de una fecha a otra (`'YYYY-MM-DD'`), no "del
+día X al Y de su mes". Algo del 25/09 al 05/10 es una sola acción: se ve en
+setiembre (del 25 al 30, con una flecha a la derecha) y en octubre (del 1 al 5,
+con una flecha a la izquierda), con las mismas piezas y avisos, y lo que se le
+cambia en un mes cambia en el otro. Antes quedaba recortada a fin de mes y había
+que cargarla dos veces.
+
+Para que eso funcione, el mes ya no se guarda: se **arma** cada vez con las
+barras que lo tocan (`construirMes` / `vistaDelMes` en `derivar.ts`). Cada
+barra guarda su renglón (`carril`), así una acción que cruza queda a la misma
+altura en los dos meses; al crearla o moverle las fechas, si el renglón está
+ocupado en algún día de su rango, va al primero libre.
+
+El header también se calcula sobre todas las fechas: una acción que cruza de
+mes queda en la misma posición en los dos, y una campaña de Retail Media que
+cruza sigue a RM si RM cambia de posición de un mes al otro.
+
+**Las bandas son las mismas todos los meses** (`catalogo.ts`): todos los tipos
+de acción y formatos de RM que aparecen en los Excel importados. Antes cada mes
+traía las suyas del Excel, y de noviembre en adelante no había ni un renglón
+donde cargar nada. Cada banda tiene además un **+** para crear aunque todos sus
+renglones estén ocupados ese día.
+
+Lo que el Excel traía partido en dos meses (por ejemplo "(OI) ELECTRO SALE" del
+25 al 30/09 y "ELECTRO SALE OI" del 1 al 7/10, o "Conaprole" en HOME SLIDER)
+quedó como estaba: dos barras. No se juntaron solas porque los nombres no
+siempre coinciden y juntar dos datos es decisión de una persona.
 
 ## Permisos
 
@@ -76,13 +106,13 @@ administración:
 | Permiso | Qué habilita |
 |---|---|
 | `calendario.view` | Entrar. Es el que decide si aparece el link en el menú. |
-| `calendario.edit` | Crear, editar y borrar barras, y mover el estado de las piezas. |
+| `calendario.edit` | Crear, editar y borrar barras, mover el estado de las piezas y configurar avisos. |
 | `calendario.retail_media` | Mover las posiciones que Retail Media tiene reservadas en el header. |
 
-Mover las posiciones de Retail Media genera una notificación para quien lleva
-Retail Media, con la misma forma que el modelo `Notificacion` del backend
-(`tipo`, `mensaje`, `origen_tipo`, `origen_ref`). Hoy vive en memoria y se ve
-en la campanita de la barra del calendario; cuando se persista es un POST.
+Mover las posiciones de Retail Media las guarda y le avisa a quien lleva Retail
+Media en la misma llamada (`PUT /calendario/posiciones-rm/{clave}`). Antes eran
+dos, y la de guardar pedía `calendario.edit`: alguien con solo el permiso de RM
+las movía y no se guardaban.
 
 ## Zoom
 
@@ -98,37 +128,69 @@ mueven juntas; la columna de etiquetas y la fila de días quedan fijas.
 
 ## Guardado
 
-**En el servidor**, desde el 23/09/2026. Cada cambio sube el mes entero a
-`PUT /calendario/meses/{clave}` (con 800 ms de respiro, para no mandar un PUT
-por cada píxel al arrastrar una barra) y al abrir la página se trae lo guardado
-con `GET /calendario/meses`, que pisa la copia local. El mes viaja tal cual:
-en la base es un documento, no cinco tablas — ver `backend/app/models/calendario_mes.py`.
+**En el servidor, una fila por barra**, desde el 28/09/2026 (migración 0057,
+modelos en `backend/app/models/calendario.py`). Hasta ahí se subía el mes entero
+en cada cambio y **dos personas editando el mismo mes se pisaban**: ganaba la
+última que guardaba y el cambio de la otra se perdía sin aviso.
 
-`localStorage` (clave `calendario-mktg`) **queda como caché**: pinta la
-pantalla al instante mientras llega la respuesta, y si el servidor no contesta
-se puede seguir trabajando. Lo que no sube se reintenta con el cambio
-siguiente, porque siempre se manda el mes completo.
+Ahora cada cambio viaja solo y el servidor escribe solo eso:
 
-Guardar es un reemplazo, no un merge: **dos personas editando el mismo mes a la
-vez se pisan**. Queda registrado quién lo tocó último (`actualizado_por_id`).
+- una barra: `POST /calendario/barras`, `PATCH` y `DELETE /calendario/barras/{id}`.
+  El `PATCH` lleva **solo los campos que cambiaron**: si una persona le cambia
+  el nombre a una acción mientras otra le mueve las fechas, quedan las dos cosas.
+- una pieza: `POST /calendario/barras/{id}/piezas`, `PATCH` y `DELETE /calendario/piezas/{id}`.
+  Dos personas moviendo el estado de dos piezas de la misma acción no se pisan,
+  y dos agregando la misma pieza a la vez no la duplican.
+- un aviso: `POST /calendario/barras/{id}/avisos`, `DELETE /calendario/avisos/{id}`.
 
-Mientras los datos salgan de `seed.ts`, los meses que **nadie tocó** se rehacen
-solos cuando se reimportan los Excel, y los que tienen ediciones a mano quedan
-como están. Lo resuelve la firma `SEED_VERSION` más el flag `tocado` de cada
-mes.
+Lo local cambia antes de que conteste el servidor, así la pantalla no espera.
+Si el servidor dice que no (la acción la borró otra persona, se cortó la
+conexión), sale un aviso y se trae lo que hay de verdad.
+
+**Lo que hacen los demás aparece solo**, sin recargar: cada 15 segundos (y al
+volver a la pestaña) se pregunta `GET /calendario/datos?rev=N`. Cada escritura
+sube `calendario_revision` en la misma transacción, así que si nadie cambió
+nada la respuesta es una línea; si cambió, viene todo y reemplaza lo local.
+Mientras haya un cambio propio en viaje no se reemplaza nada, para que la
+respuesta vieja no lo haga "desaparecer".
+
+Si se edita algo que otra persona acaba de borrar, el servidor contesta 404 con
+"la borró otra persona" y se recarga. Borrar queda en el registro de auditoría
+(`calendario.borrar`), con qué era.
+
+`localStorage` (clave `calendario-mktg-v2`) queda solo como caché para pintar al
+instante. La revisión no se guarda ahí a propósito: al abrir siempre se trae
+todo, así un cambio que quedó a medio subir al cerrar la pestaña no queda como
+si existiera. Sin conexión la barra de arriba lo dice, y los cambios no se
+guardan.
+
+`calendario_meses` (el documento por mes de antes) quedó en la base sin tocar,
+como respaldo de cómo estaba todo el 28/09/2026. Nada lo lee ni lo escribe.
 
 ## Avisos
 
 **No hay bandeja propia del calendario**: los avisos entran en las
 notificaciones de la plataforma, la campanita del menú, que ya es por persona.
 
-- **10 días antes de cada acción del calendario comercial**, a todos los que
-  tengan `calendario.view`. Lo hace `backend/app/services/calendario_avisos.py`,
-  que revisa dos veces por día. La ventana es "faltan 10 días o menos y todavía
-  no arrancó", así que un servidor caído un par de días no se come el aviso.
-  Una sola vez por acción y por persona (`origen_ref`).
+- **Los que alguien configuró en la ficha de una acción.** No hay ninguno por
+  defecto: el aviso automático de 10 días antes de cada acción a todo el mundo
+  se apagó el 28/09/2026, a pedido de Ivan ("cuando realmente nos llegue una
+  notificación, es porque alguien la configuró y porque realmente vale la
+  pena"). En la ficha se elige cuántos días antes (60, 50, 40, 30, 20 o 10) y
+  a quién (cualquiera que pueda abrir el calendario); una acción puede tener
+  varios. Se guarda la anticipación, no la fecha: si la acción se corre, el
+  aviso se corre con ella. Lo hace `backend/app/services/calendario_avisos.py`,
+  que revisa cada 6 horas. La ventana es "faltan N días o menos y todavía no
+  arrancó": un servidor caído un par de días no se come el aviso, y un aviso
+  cuya fecha ya pasó al configurarlo sale en el momento. Sale una sola vez por
+  persona dentro de su ventana: correr la acción un día no lo repite, correrla
+  a otro mes lo vuelve a armar. Tocarlo en la campanita abre la ficha de la
+  acción (`/calendario?accion=...`).
 - **Cuando alguien mueve las posiciones de Retail Media**, a quien tenga
   `calendario.retail_media`, menos el que las movió.
+
+Los 308 avisos automáticos que ya habían salido quedaron en la campanita de
+cada uno; no se borraron.
 
 ## Los colores
 
@@ -138,9 +200,11 @@ claro y en oscuro. Es a propósito.
 
 ## Los datos
 
-`seed.ts` es un **muestreo** —setiembre y octubre 2026— sacado de los dos Excel
-reales, para que el calendario arranque con algo que se parezca al laburo. No
-es la fuente de verdad: eso va a ser el backend.
+La fuente de verdad es la base. `seed.ts` es el **muestreo** de setiembre y
+octubre 2026 sacado de los dos Excel reales; esas barras ya están en la base
+(las copió la 0057 desde lo que se había guardado) y de `seed.ts` hoy solo se
+usan los **nombres de las bandas**, para armar el catálogo. Una base nueva
+arranca con el calendario vacío y todas las bandas.
 
 Para regenerarlo, con los dos Excel en Descargas:
 
@@ -153,14 +217,15 @@ Ese script es referencia de cómo se parsean esos Excel, no parte del producto.
 ## Estructura
 
 ```
-lib/calendario/derivar.ts     LA LÓGICA: construir el mes, derivar el header y los envíos, contar
+lib/calendario/derivar.ts     LA LÓGICA: armar el mes con las barras que lo tocan, derivar el header y los envíos, contar
 lib/calendario/tipos.ts       el modelo, el catálogo de piezas y las reglas (7/8/10)
+lib/calendario/catalogo.ts    las bandas, iguales para todos los meses
 lib/calendario/rejilla.ts     medidas y zoom
-lib/calendario/store.ts       estado y guardado contra el servidor
+lib/calendario/store.ts       estado, guardado cambio por cambio y la revisión cada 15 s
 lib/calendario/permisos.ts    quién puede qué, contra el usuario de la plataforma
-lib/calendario/seed.ts        datos de ejemplo generados desde los Excel + su firma
+lib/calendario/seed.ts        el muestreo de los Excel (hoy solo se usan los nombres de las bandas)
 lib/calendario/colores.ts     paleta y contraste
-lib/calendario/fechas.ts      meses, días de la semana, findes
+lib/calendario/fechas.ts      meses, días de la semana, findes, y las cuentas con fechas reales
 components/calendario/        las 9 pantallas
 app/(dashboard)/calendario/   la página
 ```
@@ -175,18 +240,25 @@ nada.
 cd frontend && npm run test:calendario
 ```
 
-79 comprobaciones, sin framework: se compilan con `tsc` y corren con node.
-Fijan las reglas del header, el zoom, el cronograma de envíos y el header
-mirado por fecha. No borrarlas al reescribirlas con otro runner.
+113 comprobaciones, sin framework: se compilan con `tsc` y corren con node.
+Fijan las reglas del header, el zoom, el cronograma de envíos, el header
+mirado por fecha y las acciones que cruzan de mes. No borrarlas al
+reescribirlas con otro runner. Del lado del backend,
+`tests/test_calendario_avisos.py` y `tests/test_calendario_migracion.py`.
 
 ## Lo que falta
 
-- **Que dos personas editando el mismo mes no se pisen.** Hoy gana el último
-  que guarda.
 - **Subtareas por pieza** (arte desktop, arte mobile, aprobación comercial) y
   responsable con vencimiento. Hoy el modelo llega hasta acción → pieza.
-- **Que el cronograma de envíos avise**, como el calendario comercial: hoy el
-  aviso de los 10 días mira la acción, no la fecha de cada envío.
+- **Envíos y headers sueltos**, sin una acción detrás. Hoy un envío sale
+  siempre de la pieza de una acción.
+- **Avisos por mail.** Hoy llegan solo a la campanita.
+- **Que un aviso pueda mirar la fecha de un envío** y no solo el arranque de la
+  acción.
+- **Traer una ventana de meses y no todo.** Hoy, cuando otra persona cambia
+  algo, cada pestaña abierta se baja el calendario entero y recalcula el
+  header de todas las fechas. Con 170 barras no se nota; con años de historia
+  va a convenir pedir solo los meses alrededor del que se mira.
 - **`Pieza.enSharePoint`** existe en el modelo pero no se usa en ninguna
   pantalla y no sube nada. Está puesto a futuro.
 - **Los textos están solo en español.** El link del menú sí está en los tres

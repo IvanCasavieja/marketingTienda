@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Minus, MoveHorizontal, Plus } from 'lucide-react'
-import { mesSiguiente } from '@/lib/calendario/fechas'
+import { diasDelMes, mesSiguiente } from '@/lib/calendario/fechas'
 import { useCalendario } from '@/lib/calendario/store'
 import {
   ZOOM_POR_DEFECTO, porcentajeZoom, sePuedeAcercar, sePuedeAlejar,
@@ -22,7 +22,8 @@ export function BarraSuperior() {
   const irAMes = useCalendario(s => s.irAMes)
   const zoom = useCalendario(s => s.zoom)
   const setZoom = useCalendario(s => s.setZoom)
-  const dias = useCalendario(s => s.meses[s.mesActivo].dias)
+  const dias = diasDelMes(mesActivo)
+  const conexion = useCalendario(s => s.conexion)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
 
   const [anio, mesNum] = mesActivo.split('-').map(Number)
@@ -167,6 +168,12 @@ export function BarraSuperior() {
         </button>
 
       </div>
+      {conexion === 'sin-conexion' && (
+        <p className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          No hay conexión con el servidor: lo que ves puede no estar al día y los cambios no se guardan. Se vuelve a
+          intentar solo.
+        </p>
+      )}
     </header>
   )
 }

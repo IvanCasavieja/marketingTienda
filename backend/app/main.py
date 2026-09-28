@@ -102,12 +102,12 @@ async def lifespan(app: FastAPI):
                         settings.CENEFAS_RETENCION_DIAS)
 
         # Los avisos del calendario, por lo mismo: revisan apenas arrancan, y en
-        # una base nueva la tabla calendario_meses todavia no existe. Visto en
+        # una base nueva la tabla calendario_avisos todavia no existe. Visto en
         # CI el 23/09/2026 -- el backend levantaba bien igual, pero dejaba un
         # error en el log del primer arranque.
         from app.services.calendario_avisos import run_calendario_avisos_loop
         tareas_post_migracion.append(asyncio.create_task(run_calendario_avisos_loop()))
-        logger.info("calendario_avisos: loop iniciado (2 veces por dia)")
+        logger.info("calendario_avisos: loop iniciado (cada 6 horas, solo avisos configurados)")
 
     # Lo que _run_migrations arranca al terminar, para poder cancelarlo al apagar.
     tareas_post_migracion: list[asyncio.Task] = []

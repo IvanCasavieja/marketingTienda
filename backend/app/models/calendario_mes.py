@@ -10,6 +10,10 @@ from app.core.database import Base
 class CalendarioMes(Base):
     """Un mes del calendario, guardado entero como documento.
 
+    **Desde la 0057 no se lee ni se escribe.** El calendario pasó a una fila
+    por barra (`app/models/calendario.py`) y todo lo de acá se copió allá. La
+    tabla queda como estaba, de respaldo: es lo que había hasta el 28/09/2026.
+
     El calendario nació guardando en localStorage: cada navegador tenía su
     copia y el servidor no sabía que existía ninguna acción. Así no se podía
     avisar nada con anticipación, que es justamente lo que se pidió (aviso 10

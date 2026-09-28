@@ -5,7 +5,7 @@ import { CabeceraDias, EtiquetaBanda, FilaRejilla, useAnchoTotal } from './Rejil
 import { MarcoScroll } from './MarcoScroll'
 import { Seccion } from './Seccion'
 import { diaDeHoy } from '@/lib/calendario/fechas'
-import { enviosDelMes, filasDeEnvios, useCalendario } from '@/lib/calendario/store'
+import { enviosDelMes, filasDeEnvios, useCalendario, useMesActivo } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 
 const ICONO: Record<string, React.ReactNode> = {
@@ -23,7 +23,7 @@ const ICONO: Record<string, React.ReactNode> = {
  * es donde se edita.
  */
 export function CalendarioEnvios() {
-  const mes = useCalendario(s => s.meses[s.mesActivo])
+  const mes = useMesActivo()
   const abrirAccion = useCalendario(s => s.abrirAccion)
   const ancho = useAnchoTotal(mes.dias)
   const hoy = diaDeHoy(mes.clave)
@@ -34,16 +34,7 @@ export function CalendarioEnvios() {
   const sinFecha = canales.flatMap(c => c.envios.filter(e => e.heredaLaFecha))
 
   /** Un envío lleva a la ficha de su acción, que es donde se le pone la fecha. */
-  function irAAccion(accionId: string) {
-    for (const banda of mes.comercial) {
-      for (let i = 0; i < banda.filas.length; i++) {
-        if (banda.filas[i].some(b => b.id === accionId)) {
-          abrirAccion({ bandaId: banda.id, filaIdx: i, barraId: accionId })
-          return
-        }
-      }
-    }
-  }
+  const irAAccion = (accionId: string) => abrirAccion(accionId)
 
   return (
     <Seccion
@@ -80,7 +71,7 @@ export function CalendarioEnvios() {
         <CabeceraDias mes={mes} hoy={hoy} titulo="Canal" />
 
         {canales.map(canal => {
-          const filas = filasDeEnvios(canal.envios)
+          const filas = filasDeEnvios(canal.envios, mes.clave)
           return (
             <div key={canal.area} className="flex">
               <EtiquetaBanda

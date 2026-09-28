@@ -1,121 +1,112 @@
-"""El aviso de las acciones del calendario, 10 días antes de que arranquen.
+"""Los avisos del calendario: solo los que alguien configuró.
 
-Pedido de Ivan (23/09/2026): "10 días antes de cada acción del calendario
-promocional nos llegue a nuestras notificaciones". Lo que se fija acá:
+Pedido de Ivan (28/09/2026): se apaga el aviso automático de 10 días. "Cuando
+realmente nos llegue una notificación, es porque alguien la configuró y porque
+realmente vale la pena". Lo que se fija acá:
 
-  - se lee SOLO el calendario comercial (retail y header no avisan: el header
-    se deriva de los otros dos y avisaría tres veces de lo mismo);
-  - la ventana es "faltan 10 días o menos y todavía no arrancó", no "faltan
-    exactamente 10": si el servidor estuvo caído un par de días, el aviso sale
+  - la ventana es "faltan N días o menos y todavía no arrancó", no "faltan
+    exactamente N": si el servidor estuvo caído un par de días, el aviso sale
     igual en vez de perderse;
-  - un día que no existe en el mes (un 31 en un mes de 30) no rompe nada.
+  - un aviso sale una vez por persona dentro de su ventana: correr la acción un
+    día no lo repite, correrla a otro mes lo vuelve a armar;
+  - la referencia empieza por el id de la acción, que es lo que usa la
+    campanita para llevar a su ficha;
+  - no queda ningún rastro del aviso automático.
 """
-from datetime import date
+import inspect
+from datetime import date, datetime, timezone
 
-from app.services.calendario_avisos import DIAS_DE_AVISO, _mensaje, acciones_del_mes
-
-
-def _mes(*barras_comerciales, retail=(), header=()):
-    """Un mes con la forma que guarda el front: bandas -> filas -> barras."""
-    def banda(nombre, barras):
-        return {"id": f"bn-{nombre}", "nombre": nombre, "filas": [list(barras)]}
-    return {
-        "comercial": [banda("Mailing GRAL", barras_comerciales)] if barras_comerciales else [],
-        "retail": [banda("HOME SLIDER (Retail Media)", retail)] if retail else [],
-        "header": [banda("Posicion 1", header)] if header else [],
-    }
-
-
-def _barra(id_, nombre, desde, hasta=None):
-    return {"id": id_, "nombre": nombre, "desde": desde, "hasta": hasta or desde, "color": None}
+from app.services import calendario_avisos
+from app.services.calendario_avisos import inicio_de_ventana, mensaje, referencia, toca_avisar
 
 
 # ---------------------------------------------------------------------------
-# Qué se lee
+# La ventana
 # ---------------------------------------------------------------------------
 
-def test_solo_lee_el_calendario_comercial():
-    datos = _mes(
-        _barra("br-1", "Aniversario", 12),
-        retail=[_barra("br-rm", "Marca X", 3)],
-        header=[_barra("br-hd", "Banner", 5)],
-    )
-    acciones = acciones_del_mes("2026-10", datos)
-    assert [a["nombre"] for a in acciones] == ["Aniversario"]
-
-
-def test_la_fecha_sale_del_mes_y_del_dia_de_la_barra():
-    acciones = acciones_del_mes("2026-10", _mes(_barra("br-1", "Aniversario", 12, 20)))
-    assert acciones[0]["inicio"] == date(2026, 10, 12)
-    assert acciones[0]["fin"] == date(2026, 10, 20)
-
-
-def test_un_dia_que_no_existe_en_ese_mes_se_acomoda_al_ultimo():
-    # Un 31 en un mes de 30 puede quedar de un import; antes reventaba.
-    acciones = acciones_del_mes("2026-11", _mes(_barra("br-1", "Cierre", 31)))
-    assert acciones[0]["inicio"] == date(2026, 11, 30)
-
-
-def test_una_barra_sin_id_no_se_avisa():
-    # Sin id no hay forma de deduplicar: avisaría todos los días.
-    datos = _mes()
-    datos["comercial"] = [{"id": "bn", "nombre": "X", "filas": [[{"nombre": "Sin id", "desde": 3}]]}]
-    assert acciones_del_mes("2026-10", datos) == []
-
-
-def test_una_accion_sin_nombre_igual_avisa():
-    acciones = acciones_del_mes("2026-10", _mes(_barra("br-1", "   ", 4)))
-    assert acciones[0]["nombre"] == "Sin nombre"
-
-
-def test_un_mes_vacio_no_devuelve_nada():
-    assert acciones_del_mes("2026-10", {}) == []
-
-
-# ---------------------------------------------------------------------------
-# La ventana de aviso
-# ---------------------------------------------------------------------------
-
-def _entra(inicio: date, hoy: date) -> bool:
-    """La misma condición que usa revisar_avisos."""
-    from datetime import timedelta
-    return hoy <= inicio <= hoy + timedelta(days=DIAS_DE_AVISO)
-
-
-def test_avisa_faltando_exactamente_diez_dias():
-    assert _entra(date(2026, 10, 12), hoy=date(2026, 10, 2))
+def test_avisa_el_dia_que_toca():
+    assert toca_avisar(date(2026, 10, 12), 10, hoy=date(2026, 10, 2))
 
 
 def test_avisa_tambien_si_el_servidor_estuvo_caido_y_faltan_menos():
-    assert _entra(date(2026, 10, 12), hoy=date(2026, 10, 9))
+    assert toca_avisar(date(2026, 10, 12), 10, hoy=date(2026, 10, 9))
 
 
-def test_no_avisa_todavia_si_faltan_once():
-    assert not _entra(date(2026, 10, 12), hoy=date(2026, 10, 1))
+def test_no_avisa_antes_de_tiempo():
+    assert not toca_avisar(date(2026, 10, 12), 10, hoy=date(2026, 10, 1))
 
 
 def test_no_avisa_una_accion_que_ya_arranco():
-    assert not _entra(date(2026, 10, 12), hoy=date(2026, 10, 13))
+    assert not toca_avisar(date(2026, 10, 12), 10, hoy=date(2026, 10, 13))
 
 
 def test_el_dia_que_arranca_todavia_entra():
-    assert _entra(date(2026, 10, 12), hoy=date(2026, 10, 12))
+    assert toca_avisar(date(2026, 10, 12), 10, hoy=date(2026, 10, 12))
+
+
+def test_sesenta_dias_antes_cruza_de_mes():
+    assert toca_avisar(date(2026, 12, 1), 60, hoy=date(2026, 10, 2))
+    assert not toca_avisar(date(2026, 12, 1), 60, hoy=date(2026, 10, 1))
+
+
+# ---------------------------------------------------------------------------
+# La referencia
+# ---------------------------------------------------------------------------
+
+def test_la_referencia_empieza_por_la_accion():
+    ref = referencia("br-abc-1", "av-xyz-2")
+    assert ref.split(":")[0] == "br-abc-1"
+
+
+def test_la_ventana_arranca_a_las_cero_horas_de_uruguay_del_dia_del_aviso():
+    ventana = inicio_de_ventana(date(2026, 10, 12), 10)
+    assert ventana == datetime(2026, 10, 2, 3, 0, tzinfo=timezone.utc)
+
+
+def test_correr_la_accion_un_dia_no_vuelve_a_mandar_el_aviso():
+    # Salió el 03/10 para una acción del 12/10. Si la acción pasa al 13/10, la
+    # ventana nueva arranca el 03/10: el aviso ya salió adentro, no se repite.
+    salio = datetime(2026, 10, 3, 15, 0, tzinfo=timezone.utc)
+    assert salio >= inicio_de_ventana(date(2026, 10, 13), 10)
+
+
+def test_correr_la_accion_lejos_vuelve_a_armar_el_aviso():
+    # La misma acción pasa a diciembre: la ventana nueva arranca el 22/11,
+    # después del aviso viejo, así que vuelve a salir para la fecha nueva.
+    salio = datetime(2026, 10, 3, 15, 0, tzinfo=timezone.utc)
+    assert salio < inicio_de_ventana(date(2026, 12, 2), 10)
 
 
 # ---------------------------------------------------------------------------
 # El texto
 # ---------------------------------------------------------------------------
 
-def test_el_mensaje_dice_cuanto_falta_y_la_fecha():
-    accion = {"nombre": "Aniversario", "banda": "Mailing GRAL", "inicio": date(2026, 10, 12)}
-    texto = _mensaje(accion, faltan=10)
-    assert "Aniversario" in texto
-    assert "Mailing GRAL" in texto
+def test_el_mensaje_dice_cuanto_falta_la_fecha_y_quien_lo_configuro():
+    texto = mensaje("Fiesta de Italia", "MEGA EVENTO", date(2026, 10, 12), date(2026, 10, 2), "Ivan")
+    assert "Fiesta de Italia" in texto
+    assert "MEGA EVENTO" in texto
     assert "en 10 días" in texto
     assert "12/10" in texto
+    assert "Ivan" in texto
 
 
 def test_el_mensaje_no_dice_en_1_dias():
-    accion = {"nombre": "Aniversario", "banda": "", "inicio": date(2026, 10, 12)}
-    assert "arranca mañana" in _mensaje(accion, faltan=1)
-    assert "arranca hoy" in _mensaje(accion, faltan=0)
+    assert "arranca mañana" in mensaje("X", "", date(2026, 10, 12), date(2026, 10, 11), None)
+    assert "arranca hoy" in mensaje("X", "", date(2026, 10, 12), date(2026, 10, 12), None)
+
+
+def test_una_accion_sin_nombre_igual_se_entiende():
+    assert mensaje("", "", date(2026, 10, 12), date(2026, 10, 2), None).startswith("Sin nombre")
+
+
+# ---------------------------------------------------------------------------
+# El automático no vuelve
+# ---------------------------------------------------------------------------
+
+def test_no_queda_el_aviso_automatico_de_diez_dias():
+    fuente = inspect.getsource(calendario_avisos)
+    assert "DIAS_DE_AVISO" not in fuente
+    assert "calendario_accion" not in fuente, (
+        "el aviso automático escribía con origen 'calendario_accion': si vuelve a "
+        "aparecer, vuelven a llegar avisos que nadie configuró"
+    )

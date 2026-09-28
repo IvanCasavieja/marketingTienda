@@ -6,8 +6,8 @@ import { PanelHeaders } from './PanelHeaders'
 import { Seccion } from './Seccion'
 import { MarcoScroll } from './MarcoScroll'
 import { useAnchoTotal, useFranjaDias, ANCHO_ETIQUETA } from './Rejilla'
-import { diaDeHoy, esFinde } from '@/lib/calendario/fechas'
-import { ocupacionHeader, useCalendario, type OcupacionDia } from '@/lib/calendario/store'
+import { diaDeHoy, esFinde, fechaCorta, rangoLargo } from '@/lib/calendario/fechas'
+import { ocupacionHeader, useCalendario, useMesActivo, type OcupacionDia } from '@/lib/calendario/store'
 import { REGLAS_HEADER } from '@/lib/calendario/tipos'
 
 const TONO_ESTADO: Record<OcupacionDia['estado'], string> = {
@@ -25,7 +25,7 @@ const TONO_ESTADO: Record<OcupacionDia['estado'], string> = {
  * alarma, y lo que no entró-- y el detalle pasa al panel que se abre por fecha.
  */
 export function HeaderHome() {
-  const mes = useCalendario(s => s.meses[s.mesActivo])
+  const mes = useMesActivo()
   const abrirAccion = useCalendario(s => s.abrirAccion)
   const [panelAbierto, setPanelAbierto] = useState(false)
 
@@ -35,16 +35,7 @@ export function HeaderHome() {
   const ocupacion = ocupacionHeader(mes)
   const pico = Math.max(...ocupacion.map(o => o.cantidad), 0)
 
-  function irAAccion(accionId: string) {
-    for (const banda of mes.comercial) {
-      for (let i = 0; i < banda.filas.length; i++) {
-        if (banda.filas[i].some(b => b.id === accionId)) {
-          abrirAccion({ bandaId: banda.id, filaIdx: i, barraId: accionId })
-          return
-        }
-      }
-    }
-  }
+  const irAAccion = (accionId: string) => abrirAccion(accionId)
 
   return (
     <>
@@ -78,8 +69,8 @@ export function HeaderHome() {
                   <button onClick={() => irAAccion(s.accionId)} className="font-medium underline underline-offset-2">
                     {s.nombre}
                   </button>
-                  {' '}· del {s.desde} al {s.hasta}
-                  {s.diasLlenos.length > 0 && ` · header completo los días ${s.diasLlenos.join(', ')}`}
+                  {' '}· {rangoLargo(s.inicio, s.fin)}
+                  {s.diasLlenos.length > 0 && ` · header completo los días ${s.diasLlenos.map(fechaCorta).join(', ')}`}
                 </li>
               ))}
             </ul>

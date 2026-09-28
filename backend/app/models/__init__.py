@@ -31,6 +31,9 @@ from app.models.facturacion_canje import FacturacionCanje
 from app.models.facturacion_proveedor_cuenta import FacturacionProveedorCuenta
 from app.models.rrss_validacion import RrssValidacion, RrssValidacionPagina, RrssValidacionImagen
 from app.models.calendario_mes import CalendarioMes
+from app.models.calendario import (
+    CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPosicionesRM, CalendarioRevision,
+)
 
 __all__ = [
     "User", "Role", "PlatformConnection", "Platform",
@@ -45,4 +48,5 @@ __all__ = [
     "FacturacionProveedorCuenta",
     "RrssValidacion", "RrssValidacionPagina", "RrssValidacionImagen",
     "CalendarioMes",
+    "CalendarioBarra", "CalendarioPieza", "CalendarioAviso", "CalendarioPosicionesRM", "CalendarioRevision",
 ]

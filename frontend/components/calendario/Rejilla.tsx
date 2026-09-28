@@ -1,7 +1,8 @@
 'use client'
 
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { textoSobre } from '@/lib/calendario/colores'
-import { esFinde } from '@/lib/calendario/fechas'
+import { esFinde, nombreMes, rangoLargo } from '@/lib/calendario/fechas'
 import {
   ANCHO_ETIQUETA, MINIMO_CON_DOW, MINIMO_CON_NUMERO,
   anchoDias, anchoTotal, columnasDe,
@@ -106,6 +107,15 @@ type FilaProps = {
   tituloDe?: (b: Barra) => string
 }
 
+/** "Fiesta · del 25 de setiembre al 5 de octubre · sigue en octubre" */
+function tituloPorDefecto(b: Barra, derivada: boolean): string {
+  const partes = [b.nombre, rangoLargo(b.inicio, b.fin)]
+  if (b.vieneDeAntes) partes.push(`viene de ${nombreMes(b.inicio.slice(0, 7))}`)
+  if (b.sigueDespues) partes.push(`sigue en ${nombreMes(b.fin.slice(0, 7))}`)
+  if (derivada) partes.push('se edita en su origen')
+  return partes.join(' · ')
+}
+
 export function FilaRejilla({
   mes, fila, hoy, alto = 30, editable, onBarra, onDiaVacio, esDerivada, tituloDe,
 }: FilaProps) {
@@ -144,9 +154,7 @@ export function FilaRejilla({
           <button
             key={b.id}
             type="button"
-            title={tituloDe
-              ? tituloDe(b)
-              : `${b.nombre} · ${b.desde} al ${b.hasta}${derivada ? ' · se edita en su origen' : ''}`}
+            title={tituloDe ? tituloDe(b) : tituloPorDefecto(b, derivada)}
             onClick={clicable ? () => onBarra!(b) : undefined}
             disabled={!clicable}
             style={{
@@ -156,13 +164,20 @@ export function FilaRejilla({
               color: textoSobre(b.color),
             }}
             className={[
-              'relative z-10 m-[2px] overflow-hidden truncate rounded px-1.5 text-left text-[11px] font-medium leading-[26px]',
+              'relative z-10 my-[2px] flex items-center gap-0.5 overflow-hidden rounded px-1.5 text-left text-[11px] font-medium leading-[26px]',
               'ring-1 ring-black/5',
+              // Una barra que viene del mes anterior o sigue en el próximo
+              // llega al borde sin redondear y con una flecha: se ve que no
+              // termina acá.
+              b.vieneDeAntes ? 'ml-0 rounded-l-none pl-0.5' : 'ml-[2px]',
+              b.sigueDespues ? 'mr-0 rounded-r-none pr-0.5' : 'mr-[2px]',
               clicable ? 'cursor-pointer hover:ring-2 hover:ring-slate-900/30' : 'cursor-default',
               derivada ? 'border-l-[3px] border-l-slate-900/40' : '',
             ].join(' ')}
           >
-            {b.nombre}
+            {b.vieneDeAntes && <ChevronLeft className="h-3 w-3 shrink-0 opacity-60" aria-hidden />}
+            <span className="min-w-0 flex-1 truncate">{b.nombre}</span>
+            {b.sigueDespues && <ChevronRight className="h-3 w-3 shrink-0 opacity-60" aria-hidden />}
           </button>
         )
       })}
@@ -175,12 +190,16 @@ export function FilaRejilla({
 // ---------------------------------------------------------------------------
 
 export function EtiquetaBanda({
-  children, filas = 1, tono = 'normal', extra,
+  children, filas = 1, tono = 'normal', extra, onAgregar, tituloAgregar,
 }: {
   children: React.ReactNode
   filas?: number
   tono?: 'normal' | 'rm' | 'grupo'
   extra?: React.ReactNode
+  /** Botón + para crear algo en esta banda aunque todos sus renglones estén
+   *  ocupados ese día: va al primer renglón libre, o a uno nuevo. */
+  onAgregar?: () => void
+  tituloAgregar?: string
 }) {
   const fondo =
     tono === 'rm' ? 'bg-violet-50 text-violet-900 dark:bg-violet-950/40 dark:text-violet-200'
@@ -191,7 +210,20 @@ export function EtiquetaBanda({
       className={`sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-0.5 border-b border-r border-slate-200 px-3 py-1 dark:border-slate-700 ${fondo}`}
       style={{ width: ANCHO_ETIQUETA, minHeight: filas * 30 }}
     >
-      <div className="text-[11px] font-semibold leading-tight">{children}</div>
+      <div className="flex items-start gap-1">
+        <div className="min-w-0 flex-1 text-[11px] font-semibold leading-tight">{children}</div>
+        {onAgregar && (
+          <button
+            type="button"
+            onClick={onAgregar}
+            title={tituloAgregar}
+            aria-label={tituloAgregar}
+            className="shrink-0 rounded p-0.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-800 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        )}
+      </div>
       {extra}
     </div>
   )

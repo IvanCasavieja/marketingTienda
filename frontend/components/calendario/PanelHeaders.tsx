@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, ChevronLeft, ChevronRight, LayoutPanelTop, Lock, Settings2, X } from 'lucide-react'
 import { textoSobre } from '@/lib/calendario/colores'
-import { diaDeHoy, nombreMes } from '@/lib/calendario/fechas'
-import { headerEnFecha, ocupacionHeader, useCalendario } from '@/lib/calendario/store'
+import { diaDeHoy, isoDe, nombreMes, rangoLargo } from '@/lib/calendario/fechas'
+import { headerEnFecha, ocupacionHeader, useCalendario, useMesActivo } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { REGLAS_HEADER } from '@/lib/calendario/tipos'
 
@@ -23,7 +23,8 @@ const TONO_ESTADO = {
  * fecha y muestra las diez posiciones una abajo de la otra.
  */
 export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => void }) {
-  const mes = useCalendario(s => s.meses[s.mesActivo])
+  const mes = useMesActivo()
+  const barras = useCalendario(s => s.barras)
   const abrirEditor = useCalendario(s => s.abrirEditor)
   const abrirAccion = useCalendario(s => s.abrirAccion)
   const moverPosicionesRM = useCalendario(s => s.moverPosicionesRM)
@@ -52,15 +53,16 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
   const noEntran = mes.sinLugar.filter(s => s.desde <= dia && dia <= s.hasta)
 
   function irAAccion(accionId: string) {
-    for (const banda of mes.comercial) {
-      for (let i = 0; i < banda.filas.length; i++) {
-        if (banda.filas[i].some(b => b.id === accionId)) {
-          abrirAccion({ bandaId: banda.id, filaIdx: i, barraId: accionId })
-          onCerrar()
-          return
-        }
-      }
-    }
+    abrirAccion(accionId)
+    onCerrar()
+  }
+
+  /** Una barra guardada (la de Retail Media o la cargada a mano) abre su editor. */
+  function editarGuardada(id: string) {
+    const b = barras[id]
+    if (!b) return
+    abrirEditor({ seccion: b.seccion, banda: b.banda, carril: b.carril, barra: b })
+    onCerrar()
   }
 
   function cambiarPosicionRM(indice: number, valor: number) {
@@ -191,7 +193,7 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
                     <button onClick={() => irAAccion(s.accionId)} className="font-medium underline underline-offset-2">
                       {s.nombre}
                     </button>
-                    {' · del '}{s.desde} al {s.hasta}
+                    {' · '}{rangoLargo(s.inicio, s.fin)}
                   </li>
                 ))}
               </ul>
@@ -228,9 +230,9 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
                       type="button"
                       onClick={() => {
                         if (b.origen?.tipo === 'accion') return irAAccion(b.origen.accionId)
-                        if (b.origen?.tipo === 'retail') return
-                        abrirEditor({ seccion: 'header', bandaId: mes.header[pos.numero - 1].id, filaIdx: 0, barra: b })
-                        onCerrar()
+                        if (!editable) return
+                        // La de Retail Media se edita en su campaña; la manual, acá.
+                        editarGuardada(b.origen?.tipo === 'retail' ? b.origen.barraId : b.id)
                       }}
                       className="min-w-0 flex-1 text-left"
                     >
@@ -243,7 +245,7 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
                         {b.nombre}
                       </span>
                       <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
-                        del {b.desde} al {b.hasta}
+                        {rangoLargo(b.inicio, b.fin)}
                         {b.origen?.tipo === 'accion' && ' · viene de su acción'}
                         {b.origen?.tipo === 'retail' && ' · viene de Retail Media'}
                         {(!b.origen || b.origen.tipo === 'manual') && ' · cargado a mano'}
@@ -253,7 +255,7 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
                     <button
                       type="button"
                       onClick={() => {
-                        abrirEditor({ seccion: 'header', bandaId: mes.header[pos.numero - 1].id, filaIdx: 0, barra: null, diaInicial: dia })
+                        abrirEditor({ seccion: 'header', banda: mes.header[pos.numero - 1].id, carril: 0, barra: null, fechaInicial: isoDe(mes.clave, dia) })
                         onCerrar()
                       }}
                       className="flex flex-1 items-center rounded-md border border-dashed border-slate-300 dark:border-slate-600 px-2 py-1.5 text-left text-xs text-slate-400 dark:text-slate-500 transition hover:border-emerald-400 hover:text-emerald-600"

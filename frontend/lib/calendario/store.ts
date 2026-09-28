@@ -2,44 +2,44 @@
 
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { toast } from 'sonner'
 import { calendarioApi } from '@/lib/api'
-import { construirMes, derivarHeader, nuevoId } from './derivar'
-import { SEED_VERSION } from './seed'
+import { carrilLibre, headerDerivado, nuevoId, vistaDelMes } from './derivar'
+import { claveDe, hoyIso } from './fechas'
 import { ZOOM_POR_DEFECTO, limitarZoom } from './rejilla'
 
 export { ZOOMS, ZOOM_POR_DEFECTO } from './rejilla'
 import type {
-  AreaPieza, Barra, EstadoPieza, Mes, Pieza, Seccion,
+  AreaPieza, Aviso, BarraGuardada, EstadoPieza, Mes, Persona, Pieza, Seccion,
 } from './tipos'
 
 export {
-  construirMes, derivarHeader, accionesDe, ocupacionHeader,
+  construirMes, derivarHeaders, accionesDe, ocupacionHeader,
   enviosDelMes, filasDeEnvios, headerEnFecha,
 } from './derivar'
-export type { EstadoDia, OcupacionDia, Envio, PosicionEnFecha } from './derivar'
+export type { EstadoDia, OcupacionDia, Envio, PosicionEnFecha, HeaderDerivado } from './derivar'
 
 // ---------------------------------------------------------------------------
 // Guardado contra el servidor
 // ---------------------------------------------------------------------------
-// El calendario vivia en localStorage: cada navegador tenia su copia y el
-// servidor no sabia que existiera ninguna accion, asi que no podia avisar nada
-// con anticipacion. Ahora cada cambio sube, con un respiro para no mandar un
-// PUT por cada tecla al arrastrar una barra. localStorage queda como caché
-// para que la pantalla no arranque en blanco.
-const ESPERA_ANTES_DE_GUARDAR = 800
+// Hasta el 28/09/2026 cada cambio subia el MES ENTERO: dos personas editando
+// el mismo mes se pisaban y ganaba la ultima que guardaba. Ahora cada cambio
+// viaja solo (una barra, una pieza, un aviso) y el servidor escribe solo eso.
+//
+// Para ver lo que hacen los demas, cada tanto se le pregunta al servidor si la
+// revision cambio (ver sincronizar). Si cambio, se trae todo y se reemplaza lo
+// local. Mientras haya un cambio propio en viaje no se reemplaza nada: la
+// respuesta podria ser de antes de ese cambio y lo haria "desaparecer".
 
-const pendientes = new Map<string, ReturnType<typeof setTimeout>>()
+/** Cuantos cambios propios estan en viaje. */
+let enVuelo = 0
+/** La revision mas alta que devolvio un cambio propio: nada mas viejo se aplica. */
+let revMinima = 0
 
-function subirMes(clave: string, mes: Mes) {
-  clearTimeout(pendientes.get(clave))
-  pendientes.set(clave, setTimeout(() => {
-    pendientes.delete(clave)
-    calendarioApi.guardarMes(clave, mes).catch(() => {
-      // Si falla, lo guardado en el navegador sigue estando: no se pierde el
-      // trabajo, y el proximo cambio reintenta con el mes entero.
-    })
-  }, ESPERA_ANTES_DE_GUARDAR))
-}
+/** Cada cuanto se pregunta si alguien cambio algo. */
+export const SEGUNDOS_ENTRE_REVISIONES = 15
+
+type Escrito = { rev?: number; enviadosAhora?: number; yaExistia?: boolean }
 
 // ---------------------------------------------------------------------------
 // Store
@@ -47,249 +47,333 @@ function subirMes(clave: string, mes: Mes) {
 
 export type Edicion = {
   seccion: Seccion
-  bandaId: string
-  filaIdx: number
+  /** A que banda va (o esta) la barra. */
+  banda: string
+  /** El renglon donde se hizo clic. Si esta ocupado en las fechas elegidas,
+   *  la barra va al primero libre. */
+  carril: number
   /** null = alta de una barra nueva */
-  barra: Barra | null
-  diaInicial?: number
+  barra: BarraGuardada | null
+  /** 'YYYY-MM-DD' del dia donde se hizo clic, para el alta. */
+  fechaInicial?: string
 }
 
-/** Dónde vive una acción dentro del calendario comercial. */
-export type Ubicacion = { bandaId: string; filaIdx: number; barraId: string }
-
-
+export type DatosBarra = Pick<BarraGuardada, 'nombre' | 'desde' | 'hasta' | 'color'>
 
 type Estado = {
-  meses: Record<string, Mes>
+  barras: Record<string, BarraGuardada>
+  posicionesRM: Record<string, number[]>
+  /** La revision del servidor que tenemos. null = hay que traer todo. */
+  rev: number | null
+  conexion: 'cargando' | 'ok' | 'sin-conexion'
+  /** A quien se le puede mandar un aviso. */
+  personas: Persona[]
   mesActivo: string
   edicion: Edicion | null
-  abierta: Ubicacion | null
+  /** El id de la accion con la ficha abierta. */
+  abierta: string | null
   /** Ancho de cada día en px. Sube y baja con el control de zoom. */
   zoom: number
-  /** Firma del Excel con el que se armaron los meses guardados. */
-  seedVersion: string
 
-  mes: () => Mes
-  accionAbierta: () => Barra | null
+  accionAbierta: () => BarraGuardada | null
   irAMes: (clave: string) => void
   setZoom: (px: number) => void
-  /** Trae del servidor lo guardado y pisa la copia local. */
-  traerDelServidor: () => Promise<void>
+  /** Trae del servidor lo que haya cambiado y pisa la copia local. */
+  sincronizar: () => Promise<void>
+  traerPersonas: () => Promise<void>
 
   abrirEditor: (e: Edicion) => void
   cerrarEditor: () => void
-  abrirAccion: (u: Ubicacion) => void
+  abrirAccion: (id: string) => void
   cerrarAccion: () => void
 
-  guardarBarra: (datos: Pick<Barra, 'nombre' | 'desde' | 'hasta' | 'color'>) => void
+  guardarBarra: (datos: DatosBarra) => void
   borrarBarra: () => void
-  /** Avisa por las notificaciones de la plataforma a quien lleva Retail Media. */
+  /** Guarda las posiciones y avisa a quien lleva Retail Media. */
   moverPosicionesRM: (posiciones: number[]) => void
 
   agregarPieza: (area: AreaPieza, formato: string) => void
   quitarPieza: (piezaId: string) => void
-  actualizarPieza: (piezaId: string, cambios: Partial<Pieza>) => void
+  actualizarPieza: (piezaId: string, cambios: Partial<Pick<Pieza, 'estado' | 'desde' | 'hasta' | 'hora'>>) => void
+
+  agregarAviso: (diasAntes: number, destinatarios: number[]) => void
+  quitarAviso: (avisoId: string) => void
 }
 
-/** Deja el mes listo para guardar y lo sube. Todo cambio pasa por aca. */
-function guardado(clave: string, mes: Mes): Mes {
-  subirMes(clave, mes)
-  return mes
+/** Lo que llega del servidor, con las listas que el front da por sentadas. */
+function normalizar(b: BarraGuardada): BarraGuardada {
+  return b.seccion === 'comercial'
+    ? { ...b, piezas: b.piezas ?? [], avisos: b.avisos ?? [] }
+    : b
 }
 
-/** Marca el mes como editado a mano: deja de rehacerse cuando cambia el Excel. */
-function tocado(mes: Mes): Mes {
-  return mes.tocado ? mes : { ...mes, tocado: true }
-}
-
-/** Aplica un cambio sobre las piezas de la acción abierta y re-deriva. */
-function conPiezas(mes: Mes, u: Ubicacion, fn: (piezas: Pieza[]) => Pieza[]): Mes {
-  const comercial = mes.comercial.map(banda =>
-    banda.id !== u.bandaId ? banda : {
-      ...banda,
-      filas: banda.filas.map((fila, i) =>
-        i !== u.filaIdx ? fila : fila.map(b =>
-          b.id !== u.barraId ? b : { ...b, piezas: fn(b.piezas ?? []) })),
-    })
-  return derivarHeader(tocado({ ...mes, comercial }))
+/** La accion que tiene una pieza o un aviso. */
+function duenaDe(barras: Record<string, BarraGuardada>, pred: (b: BarraGuardada) => boolean) {
+  return Object.values(barras).find(pred) ?? null
 }
 
 export const useCalendario = create<Estado>()(
   persist(
-    (set, get) => ({
-      meses: { '2026-09': construirMes('2026-09'), '2026-10': construirMes('2026-10') },
-      mesActivo: '2026-09',
-      edicion: null,
-      abierta: null,
-      zoom: ZOOM_POR_DEFECTO,
-      seedVersion: SEED_VERSION,
-
-      mes: () => get().meses[get().mesActivo],
-
-      accionAbierta: () => {
-        const { abierta, meses, mesActivo } = get()
-        if (!abierta) return null
-        const banda = meses[mesActivo]?.comercial.find(b => b.id === abierta.bandaId)
-        return banda?.filas[abierta.filaIdx]?.find(b => b.id === abierta.barraId) ?? null
-      },
-
-      irAMes: clave => set(s => ({
-        mesActivo: clave,
-        abierta: null,
-        // Un mes que se abre por primera vez se sube armado: asi el aviso de
-        // los 10 dias lo ve sin que nadie tenga que editarlo.
-        meses: s.meses[clave] ? s.meses : { ...s.meses, [clave]: guardado(clave, construirMes(clave)) },
-      })),
-
-      setZoom: px => set({ zoom: limitarZoom(px) }),
-
-      traerDelServidor: async () => {
+    (set, get) => {
+      /**
+       * Manda un cambio. Lo local ya se cambio antes de llamar a esto, asi la
+       * pantalla no espera al servidor. Si el servidor dice que no (la accion
+       * la borro otra persona, se cayo la conexion), se avisa y se trae lo que
+       * haya de verdad.
+       */
+      async function escribir(llamada: () => Promise<{ data: Escrito }>): Promise<Escrito | null> {
+        enVuelo++
         try {
-          const { data } = await calendarioApi.traerMeses()
-          if (!data || Object.keys(data).length === 0) {
-            // Primera vez: todavia no hay nada guardado. Se sube lo que hay en
-            // esta maquina para que el servidor arranque con algo real.
-            for (const [clave, mes] of Object.entries(get().meses)) subirMes(clave, mes)
+          const { data } = await llamada()
+          if (data?.yaExistia) {
+            // El servidor no escribió nada (otra persona ya había agregado lo
+            // mismo, o era un reintento): lo local puede tener un id que allá
+            // no existe. Se trae todo.
+            set({ rev: null })
+          } else if (data?.rev != null) {
+            revMinima = Math.max(revMinima, data.rev)
+            // Si nadie escribio en el medio, lo local ya ES esa revision: no
+            // hace falta volver a bajarse todo.
+            const { rev } = get()
+            if (rev != null && data.rev === rev + 1) set({ rev: data.rev })
+          }
+          return data
+        } catch (e) {
+          const detalle = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+          toast.error(typeof detalle === 'string'
+            ? detalle
+            : 'No se pudo guardar el cambio. Se recargó el calendario con lo último guardado.')
+          set({ rev: null })
+          return null
+        } finally {
+          enVuelo--
+          if (get().rev === null) void get().sincronizar()
+        }
+      }
+
+      function cambiarBarraLocal(id: string, fn: (b: BarraGuardada) => BarraGuardada) {
+        set(s => {
+          const b = s.barras[id]
+          return b ? { barras: { ...s.barras, [id]: fn(b) } } : {}
+        })
+      }
+
+      return {
+        barras: {},
+        posicionesRM: {},
+        rev: null,
+        conexion: 'cargando',
+        personas: [],
+        mesActivo: claveDe(hoyIso()),
+        edicion: null,
+        abierta: null,
+        zoom: ZOOM_POR_DEFECTO,
+
+        accionAbierta: () => {
+          const { abierta, barras } = get()
+          const b = abierta ? barras[abierta] : undefined
+          return b && b.seccion === 'comercial' ? b : null
+        },
+
+        irAMes: clave => set({ mesActivo: clave, abierta: null }),
+
+        setZoom: px => set({ zoom: limitarZoom(px) }),
+
+        sincronizar: async () => {
+          if (enVuelo > 0) return
+          try {
+            const { data } = await calendarioApi.traerDatos(get().rev)
+            // Alguien de acá escribio mientras tanto: esto puede ser de antes.
+            if (enVuelo > 0) return
+            if (data.sinCambios) {
+              if (get().conexion !== 'ok') set({ conexion: 'ok' })
+              return
+            }
+            const actual = get().rev
+            if (data.rev < revMinima || (actual != null && data.rev < actual)) return
+            const barras: Record<string, BarraGuardada> = {}
+            for (const b of data.barras ?? []) barras[b.id] = normalizar(b as BarraGuardada)
+            set({ barras, posicionesRM: data.posicionesRM ?? {}, rev: data.rev, conexion: 'ok' })
+          } catch {
+            set({ conexion: 'sin-conexion' })
+          }
+        },
+
+        traerPersonas: async () => {
+          try {
+            const { data } = await calendarioApi.personas()
+            set({ personas: data })
+          } catch {
+            // Sin la lista no se pueden elegir destinatarios; lo demas anda.
+          }
+        },
+
+        abrirEditor: e => set({ edicion: e }),
+        cerrarEditor: () => set({ edicion: null }),
+        abrirAccion: id => set({ abierta: id }),
+        cerrarAccion: () => set({ abierta: null }),
+
+        guardarBarra: datos => {
+          const { edicion, barras } = get()
+          if (!edicion) return
+          const lista = Object.values(barras)
+
+          if (!edicion.barra) {
+            const id = nuevoId('br')
+            const carril = carrilLibre(lista, edicion.seccion, edicion.banda, datos.desde, datos.hasta, edicion.carril)
+            const nueva: BarraGuardada = normalizar({
+              id, seccion: edicion.seccion, banda: edicion.banda, carril, ...datos,
+            })
+            set(s => ({ barras: { ...s.barras, [id]: nueva }, edicion: null }))
+            void escribir(() => calendarioApi.crearBarra({
+              id, seccion: nueva.seccion, banda: nueva.banda, carril,
+              nombre: datos.nombre, color: datos.color, desde: datos.desde, hasta: datos.hasta,
+            }))
             return
           }
-          // Lo del servidor manda: es lo que ve el resto del equipo.
-          set(s => ({ meses: { ...s.meses, ...(data as Record<string, Mes>) } }))
-        } catch {
-          // Sin servidor se sigue trabajando con la copia local.
-        }
-      },
-      abrirEditor: e => set({ edicion: e }),
-      cerrarEditor: () => set({ edicion: null }),
-      abrirAccion: u => set({ abierta: u }),
-      cerrarAccion: () => set({ abierta: null }),
 
-      guardarBarra: datos => {
-        const { edicion, mesActivo } = get()
-        if (!edicion) return
-        set(s => {
-          const mes = s.meses[mesActivo]
-          const bandas = mes[edicion.seccion].map(banda => {
-            if (banda.id !== edicion.bandaId) return banda
-            return {
-              ...banda,
-              filas: banda.filas.map((fila, i) => {
-                if (i !== edicion.filaIdx) return fila
-                if (edicion.barra) {
-                  return fila.map(b => (b.id === edicion.barra!.id ? { ...b, ...datos } : b))
-                }
-                const nueva: Barra = { id: nuevoId('br'), ...datos, piezas: [] }
-                if (edicion.seccion === 'header') nueva.origen = { tipo: 'manual' }
-                return [...fila, nueva].sort((a, b) => a.desde - b.desde)
-              }),
+          const original = barras[edicion.barra.id]
+          if (!original) {
+            set({ edicion: null })
+            toast.error('Esta barra ya no existe: la borró otra persona.')
+            return
+          }
+          // Solo viaja lo que la persona tocó en el editor. Se compara contra
+          // la barra COMO ESTABA AL ABRIR el editor, no contra la de ahora: si
+          // mientras tanto otro le cambió el nombre y acá solo se movió la
+          // fecha, el nombre del otro queda.
+          const abierta = edicion.barra
+          const cambios: Partial<BarraGuardada> = {}
+          if (datos.nombre !== abierta.nombre) cambios.nombre = datos.nombre
+          if (datos.color !== abierta.color) cambios.color = datos.color
+          if (datos.desde !== abierta.desde) cambios.desde = datos.desde
+          if (datos.hasta !== abierta.hasta) cambios.hasta = datos.hasta
+          if (cambios.desde || cambios.hasta) {
+            const desde = cambios.desde ?? original.desde
+            const hasta = cambios.hasta ?? original.hasta
+            const carril = carrilLibre(lista, original.seccion, original.banda, desde, hasta, original.carril, original.id)
+            if (carril !== original.carril) cambios.carril = carril
+          }
+          set({ edicion: null })
+          if (Object.keys(cambios).length === 0) return
+          cambiarBarraLocal(original.id, b => ({ ...b, ...cambios }))
+          void escribir(() => calendarioApi.cambiarBarra(original.id, cambios))
+        },
+
+        borrarBarra: () => {
+          const { edicion } = get()
+          if (!edicion?.barra) return
+          const id = edicion.barra.id
+          set(s => {
+            const barras = { ...s.barras }
+            delete barras[id]
+            return { barras, edicion: null, abierta: s.abierta === id ? null : s.abierta }
+          })
+          void escribir(() => calendarioApi.borrarBarra(id))
+        },
+
+        moverPosicionesRM: posiciones => {
+          const { mesActivo, posicionesRM } = get()
+          const antes = vistaDelMes(mesActivo, get().barras, posicionesRM).posicionesRM
+          if (antes.join() === posiciones.join()) return
+          set(s => ({ posicionesRM: { ...s.posicionesRM, [mesActivo]: posiciones } }))
+          void escribir(() => calendarioApi.moverPosicionesRM(mesActivo, posiciones))
+        },
+
+        agregarPieza: (area, formato) => {
+          const accion = get().accionAbierta()
+          if (!accion) return
+          if ((accion.piezas ?? []).some(p => p.area === area && p.formato === formato)) return
+          const pieza: Pieza = { id: nuevoId('pz'), area, formato, estado: 'pendiente' as EstadoPieza }
+          cambiarBarraLocal(accion.id, b => ({ ...b, piezas: [...(b.piezas ?? []), pieza] }))
+          void escribir(() => calendarioApi.agregarPieza(accion.id, pieza))
+        },
+
+        quitarPieza: piezaId => {
+          const duena = duenaDe(get().barras, b => (b.piezas ?? []).some(p => p.id === piezaId))
+          if (!duena) return
+          cambiarBarraLocal(duena.id, b => ({ ...b, piezas: (b.piezas ?? []).filter(p => p.id !== piezaId) }))
+          void escribir(() => calendarioApi.quitarPieza(piezaId))
+        },
+
+        actualizarPieza: (piezaId, cambios) => {
+          const duena = duenaDe(get().barras, b => (b.piezas ?? []).some(p => p.id === piezaId))
+          if (!duena) return
+          cambiarBarraLocal(duena.id, b => ({
+            ...b,
+            piezas: (b.piezas ?? []).map(p => {
+              if (p.id !== piezaId) return p
+              const nueva = { ...p, ...cambios }
+              // undefined = "sin fecha propia": se saca la clave, no se guarda vacía
+              for (const k of ['desde', 'hasta', 'hora'] as const) if (nueva[k] === undefined) delete nueva[k]
+              return nueva
+            }),
+          }))
+          // Para el servidor, borrar la fecha es mandarla en null: un undefined
+          // ni siquiera viaja en el JSON.
+          const payload: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(cambios)) payload[k] = v === undefined ? null : v
+          void escribir(() => calendarioApi.cambiarPieza(piezaId, payload))
+        },
+
+        agregarAviso: (diasAntes, destinatarios) => {
+          const accion = get().accionAbierta()
+          if (!accion || destinatarios.length === 0) return
+          const aviso: Aviso = { id: nuevoId('av'), diasAntes, destinatarios, creadoPor: null }
+          cambiarBarraLocal(accion.id, b => ({
+            ...b,
+            avisos: [...(b.avisos ?? []), aviso].sort((x, y) => y.diasAntes - x.diasAntes),
+          }))
+          void escribir(() => calendarioApi.configurarAviso(accion.id, {
+            id: aviso.id, diasAntes, destinatarios,
+          })).then(r => {
+            if (r?.enviadosAhora) {
+              toast.success('La fecha de ese aviso ya pasó, así que salió ahora.')
             }
           })
-          return {
-            meses: { ...s.meses, [mesActivo]: guardado(mesActivo, derivarHeader(tocado({ ...mes, [edicion.seccion]: bandas }))) },
-            edicion: null,
-          }
-        })
-      },
+        },
 
-      borrarBarra: () => {
-        const { edicion, mesActivo } = get()
-        if (!edicion?.barra) return
-        set(s => {
-          const mes = s.meses[mesActivo]
-          const bandas = mes[edicion.seccion].map(banda =>
-            banda.id !== edicion.bandaId ? banda : {
-              ...banda,
-              filas: banda.filas.map((fila, i) =>
-                i === edicion.filaIdx ? fila.filter(b => b.id !== edicion.barra!.id) : fila),
-            })
-          return {
-            meses: { ...s.meses, [mesActivo]: guardado(mesActivo, derivarHeader(tocado({ ...mes, [edicion.seccion]: bandas }))) },
-            edicion: null,
-            abierta: s.abierta?.barraId === edicion.barra!.id ? null : s.abierta,
-          }
-        })
-      },
-
-      moverPosicionesRM: posiciones => {
-        const { mesActivo, meses } = get()
-        const antes = meses[mesActivo].posicionesRM
-        if (antes.join() === posiciones.join()) return
-
-        set(s => {
-          const mes = derivarHeader(tocado({ ...s.meses[mesActivo], posicionesRM: posiciones }))
-          subirMes(mesActivo, mes)
-          return { meses: { ...s.meses, [mesActivo]: mes } }
-        })
-        // El aviso va a las notificaciones de la plataforma, no a una bandeja
-        // propia del calendario: la campanita del menu ya existe y es por
-        // persona. Le llega a quien tenga calendario.retail_media.
-        calendarioApi.avisarRetail(mesActivo, antes, posiciones).catch(() => {})
-      },
-
-      agregarPieza: (area, formato) => {
-        const { abierta, mesActivo } = get()
-        if (!abierta) return
-        set(s => ({
-          meses: {
-            ...s.meses,
-            [mesActivo]: guardado(mesActivo, conPiezas(s.meses[mesActivo], abierta, piezas =>
-              piezas.some(p => p.area === area && p.formato === formato)
-                ? piezas
-                : [...piezas, { id: nuevoId('pz'), area, formato, estado: 'pendiente' as EstadoPieza }])),
-          },
-        }))
-      },
-
-      quitarPieza: piezaId => {
-        const { abierta, mesActivo } = get()
-        if (!abierta) return
-        set(s => ({
-          meses: {
-            ...s.meses,
-            [mesActivo]: guardado(mesActivo, conPiezas(s.meses[mesActivo], abierta, p => p.filter(x => x.id !== piezaId))),
-          },
-        }))
-      },
-
-      actualizarPieza: (piezaId, cambios) => {
-        const { abierta, mesActivo } = get()
-        if (!abierta) return
-        set(s => ({
-          meses: {
-            ...s.meses,
-            [mesActivo]: guardado(mesActivo, conPiezas(s.meses[mesActivo], abierta, p =>
-              p.map(x => (x.id === piezaId ? { ...x, ...cambios } : x)))),
-          },
-        }))
-      },
-    }),
+        quitarAviso: avisoId => {
+          const duena = duenaDe(get().barras, b => (b.avisos ?? []).some(a => a.id === avisoId))
+          if (!duena) return
+          cambiarBarraLocal(duena.id, b => ({ ...b, avisos: (b.avisos ?? []).filter(a => a.id !== avisoId) }))
+          void escribir(() => calendarioApi.quitarAviso(avisoId))
+        },
+      }
+    },
     {
-      name: 'calendario-mktg',
+      // Clave nueva a proposito: lo guardado con la anterior ('calendario-mktg')
+      // era el mes entero, con otra forma. Se deja como estaba, no se borra.
+      name: 'calendario-mktg-v2',
       version: 1,
       storage: createJSONStorage(() => localStorage),
       // El servidor no tiene localStorage: se rehidrata a mano al montar,
       // asi no hay diferencia entre lo que pinta el server y lo que pinta el cliente.
       skipHydration: true,
-      /**
-       * Al volver del guardado: si los Excel se reimportaron desde la última
-       * vez, se rehacen los meses que nadie tocó, para que el dato nuevo
-       * aparezca solo. Los meses con ediciones a mano se respetan.
-       */
-      merge: (guardado, actual) => {
-        const g = guardado as Partial<Estado> | undefined
-        if (!g) return actual
-        const mismosDatos = g.seedVersion === SEED_VERSION
-        const meses = Object.fromEntries(
-          Object.entries(g.meses ?? {}).map(([clave, mes]) =>
-            [clave, mismosDatos || mes.tocado ? mes : construirMes(clave)]),
-        )
-        return { ...actual, ...g, meses, seedVersion: SEED_VERSION }
-      },
+      // La copia local es solo para pintar al instante: la revision NO se
+      // guarda, asi al abrir siempre se trae todo del servidor y un cambio que
+      // quedo a medio subir al cerrar la pestaña no queda como si existiera.
       partialize: s => ({
-        meses: s.meses,
-        seedVersion: SEED_VERSION,
+        barras: s.barras,
+        posicionesRM: s.posicionesRM,
         mesActivo: s.mesActivo,
         zoom: s.zoom,
       }),
     },
   ),
 )
+
+/** El mes que se esta mirando. Todas las secciones reciben el mismo objeto. */
+export function useMesActivo(): Mes {
+  const barras = useCalendario(s => s.barras)
+  const posicionesRM = useCalendario(s => s.posicionesRM)
+  const clave = useCalendario(s => s.mesActivo)
+  return vistaDelMes(clave, barras, posicionesRM)
+}
+
+/** El header de todas las fechas (para saber en qué posición quedó una acción). */
+export function useHeaderDerivado() {
+  const barras = useCalendario(s => s.barras)
+  const posicionesRM = useCalendario(s => s.posicionesRM)
+  return headerDerivado(barras, posicionesRM)
+}

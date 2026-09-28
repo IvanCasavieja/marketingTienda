@@ -1,30 +1,41 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Trash2, X } from 'lucide-react'
 import { PALETA, colorPorDefecto, textoSobre } from '@/lib/calendario/colores'
-import { nombreMes } from '@/lib/calendario/fechas'
+import {
+  claveDe, diasEntre, mesSiguiente, nombreMes, primerDiaDe, rangoLargo, sumarDias, ultimoDiaDe,
+} from '@/lib/calendario/fechas'
 import { useCalendario } from '@/lib/calendario/store'
 
-const TITULO: Record<string, string> = {
-  comercial: 'acción',
-  retail: 'campaña',
-  header: 'banner',
+const TEXTOS: Record<string, { nueva: string; editar: string; unaSola: string }> = {
+  comercial: { nueva: 'Nueva acción', editar: 'Editar acción', unaSola: 'Es una sola acción' },
+  retail: { nueva: 'Nueva campaña', editar: 'Editar campaña', unaSola: 'Es una sola campaña' },
+  header: { nueva: 'Nuevo banner', editar: 'Editar banner', unaSola: 'Es un solo banner' },
+}
+
+/** Los meses que toca un rango, para decir "se ve en setiembre y octubre". */
+function mesesQueToca(desde: string, hasta: string): string[] {
+  const out: string[] = []
+  for (let c = claveDe(desde); c <= claveDe(hasta) && out.length < 40; c = mesSiguiente(c, 1)) {
+    out.push(nombreMes(c).split(' ')[0])
+  }
+  return out
 }
 
 export function EditorBarra() {
   const edicion = useCalendario(s => s.edicion)
-  const mes = useCalendario(s => s.meses[s.mesActivo])
+  const mesActivo = useCalendario(s => s.mesActivo)
   const cerrar = useCalendario(s => s.cerrarEditor)
   const guardar = useCalendario(s => s.guardarBarra)
   const borrar = useCalendario(s => s.borrarBarra)
 
   const esAlta = !edicion?.barra
-  const etiqueta = TITULO[edicion?.seccion ?? 'comercial']
+  const textos = TEXTOS[edicion?.seccion ?? 'comercial']
 
   const [nombre, setNombre] = useState('')
-  const [desde, setDesde] = useState(1)
-  const [duracion, setDuracion] = useState(7)
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
   const [color, setColor] = useState<string>(PALETA[0])
 
   useEffect(() => {
@@ -32,25 +43,27 @@ export function EditorBarra() {
     if (edicion.barra) {
       setNombre(edicion.barra.nombre)
       setDesde(edicion.barra.desde)
-      setDuracion(edicion.barra.hasta - edicion.barra.desde + 1)
+      setHasta(edicion.barra.hasta)
       setColor(edicion.barra.color ?? colorPorDefecto(edicion.barra.nombre))
     } else {
-      const inicio = edicion.diaInicial ?? 1
+      // Por defecto una semana, sin pasarse del mes donde se hizo clic. Para
+      // que cruce de mes alcanza con correr la fecha de fin.
+      const inicio = edicion.fechaInicial ?? primerDiaDe(mesActivo)
+      const finDeMes = ultimoDiaDe(claveDe(inicio))
+      const semana = sumarDias(inicio, 6)
       setNombre('')
       setDesde(inicio)
-      setDuracion(Math.min(7, mes.dias - inicio + 1))
+      setHasta(semana < finDeMes ? semana : finDeMes)
       setColor(PALETA[Math.floor(Math.random() * PALETA.length)])
     }
-  }, [edicion, mes.dias])
-
-  const hasta = useMemo(
-    () => Math.min(mes.dias, desde + Math.max(1, duracion) - 1),
-    [desde, duracion, mes.dias],
-  )
+  }, [edicion, mesActivo])
 
   if (!edicion) return null
 
-  const valido = nombre.trim().length > 0
+  const fechasOk = Boolean(desde) && Boolean(hasta) && hasta >= desde
+  const valido = nombre.trim().length > 0 && fechasOk
+  const dias = fechasOk ? diasEntre(desde, hasta) + 1 : 0
+  const meses = fechasOk ? mesesQueToca(desde, hasta) : []
 
   function enviar(e: React.FormEvent) {
     e.preventDefault()
@@ -71,9 +84,11 @@ export function EditorBarra() {
         <header className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3">
           <div>
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              {esAlta ? `Nueva ${etiqueta}` : `Editar ${etiqueta}`}
+              {esAlta ? textos.nueva : textos.editar}
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{nombreMes(mes.clave)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {edicion.seccion === 'header' ? `Posición ${edicion.banda.replace('pos-', '')} del header` : edicion.banda}
+            </p>
           </div>
           <button type="button" onClick={cerrar} className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300">
             <X className="h-4 w-4" />
@@ -94,33 +109,45 @@ export function EditorBarra() {
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Arranca el día</span>
-              <select
+              <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Arranca</span>
+              <input
+                type="date"
                 value={desde}
-                onChange={e => setDesde(Number(e.target.value))}
+                onChange={e => {
+                  const v = e.target.value
+                  setDesde(v)
+                  // Si el inicio pasa al fin, el fin lo acompaña: nunca queda al revés.
+                  if (v && hasta && hasta < v) setHasta(v)
+                }}
                 className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
-              >
-                {Array.from({ length: mes.dias }, (_, i) => i + 1).map(d => (
-                  <option key={d} value={d}>{d} · {mes.dow[String(d)]}</option>
-                ))}
-              </select>
+              />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Duración (días)</span>
+              <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Termina</span>
               <input
-                type="number"
-                min={1}
-                max={mes.dias - desde + 1}
-                value={duracion}
-                onChange={e => setDuracion(Number(e.target.value))}
+                type="date"
+                value={hasta}
+                min={desde || undefined}
+                onChange={e => setHasta(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
               />
             </label>
           </div>
 
           <p className="rounded-lg bg-slate-50 dark:bg-slate-800/40 px-3 py-2 text-xs text-slate-600 dark:text-slate-400">
-            Ocupa del <strong>{desde}</strong> al <strong>{hasta}</strong> de {nombreMes(mes.clave)}
-            {hasta === mes.dias && desde + duracion - 1 > mes.dias && ' (recortado al fin de mes)'}
+            {fechasOk ? (
+              <>
+                Va <strong>{rangoLargo(desde, hasta)}</strong> · {dias === 1 ? '1 día' : `${dias} días`}
+                {meses.length > 1 && (
+                  <span className="mt-1 block">
+                    {textos.unaSola}: se ve en {meses.slice(0, -1).join(', ')} y {meses[meses.length - 1]}, y
+                    lo que le cambies en un mes cambia en todos.
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-rose-600 dark:text-rose-400">La fecha de fin no puede ser anterior a la de inicio.</span>
+            )}
           </p>
 
           <div>
@@ -146,17 +173,6 @@ export function EditorBarra() {
           >
             {nombre.trim() || 'Así se va a ver en el calendario'}
           </div>
-
-          {edicion.seccion === 'comercial' && !esAlta && (
-            <button
-              type="button"
-              disabled
-              title="La ficha con tareas, piezas y estructura web todavía no está construida"
-              className="w-full rounded-lg border border-dashed border-slate-300 dark:border-slate-600 px-3 py-2 text-xs text-slate-400 dark:text-slate-500"
-            >
-              Abrir ficha de la acción · próximamente
-            </button>
-          )}
         </div>
 
         <footer className="flex items-center justify-between gap-2 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-4 py-3">

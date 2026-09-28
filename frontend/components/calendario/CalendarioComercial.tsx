@@ -4,12 +4,12 @@ import { CalendarDays } from 'lucide-react'
 import { CabeceraDias, EtiquetaBanda, FilaRejilla, useAnchoTotal } from './Rejilla'
 import { MarcoScroll } from './MarcoScroll'
 import { Seccion } from './Seccion'
-import { diaDeHoy } from '@/lib/calendario/fechas'
-import { useCalendario } from '@/lib/calendario/store'
+import { diaDeHoy, isoDe } from '@/lib/calendario/fechas'
+import { useCalendario, useMesActivo } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 
 export function CalendarioComercial() {
-  const mes = useCalendario(s => s.meses[s.mesActivo])
+  const mes = useMesActivo()
   const abrirEditor = useCalendario(s => s.abrirEditor)
   const abrirAccion = useCalendario(s => s.abrirAccion)
   const ancho = useAnchoTotal(mes.dias)
@@ -30,7 +30,15 @@ export function CalendarioComercial() {
 
           {mes.comercial.map(banda => (
             <div key={banda.id} className="flex">
-              <EtiquetaBanda filas={banda.filas.length}>{banda.nombre}</EtiquetaBanda>
+              <EtiquetaBanda
+                filas={banda.filas.length}
+                onAgregar={editable
+                  ? () => abrirEditor({ seccion: 'comercial', banda: banda.id, carril: 0, barra: null, fechaInicial: isoDe(mes.clave, hoy ?? 1) })
+                  : undefined}
+                tituloAgregar={`Nueva acción en ${banda.nombre}`}
+              >
+                {banda.nombre}
+              </EtiquetaBanda>
               <div className="flex-1">
                 {banda.filas.map((fila, i) => (
                   <FilaRejilla
@@ -39,21 +47,15 @@ export function CalendarioComercial() {
                     fila={fila}
                     hoy={hoy}
                     editable
-                    onBarra={b => abrirAccion({ bandaId: banda.id, filaIdx: i, barraId: b.id })}
+                    onBarra={b => abrirAccion(b.id)}
                     onDiaVacio={editable
-                      ? d => abrirEditor({ seccion: 'comercial', bandaId: banda.id, filaIdx: i, barra: null, diaInicial: d })
+                      ? d => abrirEditor({ seccion: 'comercial', banda: banda.id, carril: i, barra: null, fechaInicial: isoDe(mes.clave, d) })
                       : undefined}
                   />
                 ))}
               </div>
             </div>
           ))}
-
-          {mes.comercial.length === 0 && (
-            <div className="px-4 py-10 text-center text-sm text-slate-400 dark:text-slate-500">
-              No hay datos comerciales cargados para este mes.
-            </div>
-          )}
       </MarcoScroll>
     </Seccion>
   )

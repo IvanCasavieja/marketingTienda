@@ -1,165 +1,196 @@
-"""Avisos del calendario: 10 días antes de cada acción del comercial.
+"""Avisos del calendario: los que alguien configuró en la ficha de una acción.
 
-Pedido de Ivan (23/09/2026): "tenemos fechas para las acciones, tenemos que
-configurar que 10 días antes de cada acción del calendario promocional nos
-llegue a nuestras notificaciones para estar al tanto".
+Hasta el 28/09/2026 había un aviso automático, 10 días antes de CADA acción y
+a TODOS los que veían el calendario (salieron 308 así, a 14 personas). Ivan lo
+pidió apagar: "tomarlo de manera automática genera errores, nos van a llegar
+notificaciones de cosas que no valen la pena y la gente le va a dejar de dar
+bolilla. Cuando realmente nos llegue una notificación, es porque alguien la
+configuró". Ahora no sale nada que no esté en `calendario_avisos`.
 
-No hay una bandeja aparte: el aviso entra en las notificaciones de la
-plataforma, las mismas de la campanita del menú ("ya tenemos notificaciones
-por personas"). Por eso escribe en `notificaciones` y nada más.
+Cada aviso dice cuántos días antes de que arranque su acción y a quién. Se
+guarda la anticipación y no la fecha, así que si la acción se corre el aviso
+se corre con ella.
 
-Quién lo recibe: todo usuario con `calendario.view`. Es el mismo criterio con
-el que se decide si ve el calendario, así que nadie se entera de una acción
-que no podría abrir.
+La ventana sigue siendo "faltan N días o menos y todavía no arrancó", no
+"faltan exactamente N": si el servidor estuvo caído un par de días, el aviso
+sale igual en vez de perderse. Y si alguien configura un aviso cuya fecha ya
+pasó (10 días antes de algo que arranca en 5), sale en el momento.
 
-Una vez por acción: `origen_ref` lleva el mes, el id de la barra y el hito, y
-antes de crear nada se consulta qué referencias ya existen. Si el servidor
-estuvo caído tres días, al volver igual avisa (la ventana es "faltan 10 días o
-menos y todavía no arrancó"), en vez de perderse el aviso por no haber corrido
-el día exacto.
+Una sola vez por aviso y por persona DENTRO DE SU VENTANA. Si la acción se
+corre un día y el aviso ya había salido en esta ventana, no vuelve a salir
+(sería ruido). Si se corre lejos —de octubre a diciembre— la ventana nueva
+arranca después del aviso viejo, y el aviso vuelve a valer para la fecha nueva.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from calendar import monthrange
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
-from app.models.calendario_mes import CalendarioMes
+from app.models.calendario import CalendarioAviso, CalendarioBarra
 from app.models.notificacion import Notificacion
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-# Cuántos días antes se avisa.
-DIAS_DE_AVISO = 10
+TIPO = "calendario_aviso"
+ORIGEN = "calendario_aviso"
 
-TIPO = "calendario_accion"
-ORIGEN = "calendario_accion"
-HITO = "t-10"
+# Uruguay no tiene horario de verano desde 2015: siempre UTC-3. Se usa para que
+# "hoy" sea el día de acá y no el de Greenwich, que entre las 21 y las 24 ya es
+# mañana.
+_URUGUAY = timezone(timedelta(hours=-3))
 
-# Cada cuánto se revisa. Una vez por día alcanza: el hito es un día entero, no
-# una hora. Se revisa igual al arrancar, por si el proceso estuvo caído.
-_HORAS_ENTRE_REVISIONES = 12
+# El hito es un día entero, no una hora: revisar cada 6 horas alcanza y sobra.
+# Se revisa también al arrancar, por si el proceso estuvo caído.
+_HORAS_ENTRE_REVISIONES = 6
 
-
-def _fecha(clave: str, dia: int) -> date | None:
-    """La fecha real de un día del mes. Devuelve None si el día no existe en
-    ese mes (un 31 en un mes de 30, que puede quedar de un import)."""
-    try:
-        anio, mes = (int(p) for p in clave.split("-"))
-        tope = monthrange(anio, mes)[1]
-        return date(anio, mes, min(max(dia, 1), tope))
-    except (ValueError, TypeError):
-        return None
+# Un número cualquiera, siempre el mismo, para el candado de Postgres que
+# ordena a dos revisiones que corren a la vez (el loop y alguien configurando
+# un aviso): sin él, las dos ven que falta el aviso y lo mandan dos veces.
+_CANDADO = 2026_09_28
 
 
-def acciones_del_mes(clave: str, datos: dict) -> list[dict]:
-    """Las acciones del calendario comercial de un mes, con su fecha de inicio.
-
-    Solo el comercial: el de Retail Media son espacios vendidos y el header se
-    deriva de los otros dos, así que avisar por esos sería avisar tres veces de
-    lo mismo."""
-    acciones: list[dict] = []
-    for banda in datos.get("comercial") or []:
-        for fila in banda.get("filas") or []:
-            for barra in fila or []:
-                inicio = _fecha(clave, barra.get("desde"))
-                if inicio is None or not barra.get("id"):
-                    continue
-                acciones.append({
-                    "id": barra["id"],
-                    "nombre": (barra.get("nombre") or "").strip() or "Sin nombre",
-                    "banda": banda.get("nombre") or "",
-                    "inicio": inicio,
-                    "fin": _fecha(clave, barra.get("hasta")) or inicio,
-                })
-    return acciones
+def hoy_en_uruguay() -> date:
+    return datetime.now(_URUGUAY).date()
 
 
-def _mensaje(accion: dict, faltan: int) -> str:
+def toca_avisar(inicio: date, dias_antes: int, hoy: date) -> bool:
+    """Si hoy cae entre el día del aviso y el día en que arranca la acción."""
+    return inicio - timedelta(days=dias_antes) <= hoy <= inicio
+
+
+def inicio_de_ventana(inicio: date, dias_antes: int) -> datetime:
+    """El momento desde el que un aviso cuenta como "ya salió": las 0 horas
+    (de Uruguay) del día del aviso."""
+    return datetime.combine(inicio - timedelta(days=dias_antes), time(0), tzinfo=_URUGUAY)
+
+
+def referencia(barra_id: str, aviso_id: str) -> str:
+    """Empieza por el id de la acción: es lo que usa la campanita para llevar
+    a su ficha (ver `resolverDestino` en el Sidebar)."""
+    return f"{barra_id}:{aviso_id}"
+
+
+def mensaje(nombre: str, banda: str, inicio: date, hoy: date, quien: str | None) -> str:
+    faltan = (inicio - hoy).days
     cuando = (
-        "arranca mañana" if faltan == 1
-        else "arranca hoy" if faltan == 0
+        "arranca hoy" if faltan <= 0
+        else "arranca mañana" if faltan == 1
         else f"arranca en {faltan} días"
     )
-    tipo = f" ({accion['banda']})" if accion["banda"] else ""
-    return (
-        f"{accion['nombre']}{tipo} {cuando}, el "
-        f"{accion['inicio'].strftime('%d/%m')}. Revisá que estén todas las piezas."
+    tipo = f" ({banda})" if banda else ""
+    firma = f" Aviso configurado por {quien}." if quien else ""
+    return f"{nombre or 'Sin nombre'}{tipo} {cuando}, el {inicio.strftime('%d/%m')}.{firma}"
+
+
+def puede_ver_el_calendario(usuario: User) -> bool:
+    return bool(usuario.is_active) and (
+        usuario.is_superuser or "calendario.view" in (usuario.permissions or [])
     )
 
 
-async def _destinatarios(db: AsyncSession) -> list[User]:
-    usuarios = (await db.execute(select(User).where(User.is_active == True))).scalars()  # noqa: E712
-    return [
-        u for u in usuarios
-        if u.is_superuser or "calendario.view" in (u.permissions or [])
+def _ids(destinatarios) -> list[int]:
+    """Los ids de un aviso, sin repetir y sin lo que no sea un número."""
+    out: list[int] = []
+    for u in destinatarios or []:
+        try:
+            n = int(u)
+        except (TypeError, ValueError):
+            continue
+        if n not in out:
+            out.append(n)
+    return out
+
+
+async def revisar_avisos(
+    db: AsyncSession,
+    hoy: date | None = None,
+    barra_id: str | None = None,
+) -> int:
+    """Crea las notificaciones de los avisos que tocan hoy. Devuelve cuántas.
+
+    Con `barra_id` mira solo los de esa acción: es lo que se corre apenas
+    alguien configura un aviso o le cambia la fecha a una acción, para no
+    esperar a la próxima vuelta del loop."""
+    hoy = hoy or hoy_en_uruguay()
+    # El candado dura hasta el commit (o el rollback) de esta transacción, así
+    # que la transacción se cierra siempre, haya o no avisos.
+    await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _CANDADO})
+    try:
+        creadas = await _revisar(db, hoy, barra_id)
+    except Exception:
+        await db.rollback()
+        raise
+    await db.commit()
+    if creadas:
+        logger.info("calendario_avisos: %d avisos nuevos", creadas)
+    return creadas
+
+
+async def _revisar(db: AsyncSession, hoy: date, barra_id: str | None) -> int:
+    """Lo de adentro del candado: qué avisos tocan y a quién le faltan."""
+    consulta = (
+        select(CalendarioAviso, CalendarioBarra)
+        .join(CalendarioBarra, CalendarioBarra.id == CalendarioAviso.barra_id)
+        .where(CalendarioBarra.desde >= hoy)
+    )
+    if barra_id is not None:
+        consulta = consulta.where(CalendarioBarra.id == barra_id)
+    pares = [
+        (aviso, barra) for aviso, barra in (await db.execute(consulta)).all()
+        if toca_avisar(barra.desde, aviso.dias_antes, hoy)
     ]
-
-
-async def revisar_avisos(db: AsyncSession, hoy: date | None = None) -> int:
-    """Crea los avisos que correspondan. Devuelve cuántos creó."""
-    hoy = hoy or datetime.now(timezone.utc).date()
-    limite = hoy + timedelta(days=DIAS_DE_AVISO)
-
-    # Los meses que ya pasaron no se miran.
-    meses = [
-        m for m in (await db.execute(select(CalendarioMes))).scalars()
-        if (_fecha(m.clave, 28) or hoy) >= hoy - timedelta(days=31)
-    ]
-    if not meses:
+    if not pares:
         return 0
 
-    por_avisar: list[dict] = []
-    for mes in meses:
-        for accion in acciones_del_mes(mes.clave, mes.datos or {}):
-            if hoy <= accion["inicio"] <= limite:
-                accion["ref"] = f"{mes.clave}:{accion['id']}:{HITO}"
-                por_avisar.append(accion)
-    if not por_avisar:
-        return 0
+    ids = {u for aviso, _ in pares for u in _ids(aviso.destinatarios)}
+    ids |= {aviso.creado_por_id for aviso, _ in pares if aviso.creado_por_id}
+    usuarios = {
+        u.id: u for u in (await db.execute(select(User).where(User.id.in_(ids)))).scalars()
+    } if ids else {}
 
-    destinatarios = await _destinatarios(db)
-    if not destinatarios:
-        return 0
-
-    # Una sola consulta por todas las referencias en juego: sin esto serían
-    # N acciones x M personas selects cada vez que corre.
-    refs = [a["ref"] for a in por_avisar]
-    ya_avisado = {
-        (n.user_id, n.origen_ref)
-        for n in (await db.execute(
-            select(Notificacion).where(
-                Notificacion.origen_tipo == ORIGEN,
-                Notificacion.origen_ref.in_(refs),
-            )
-        )).scalars()
-    }
+    # Cuándo le salió a cada uno cada aviso, para saber si ya salió en
+    # esta ventana.
+    refs = [referencia(barra.id, aviso.id) for aviso, barra in pares]
+    salidos: dict[tuple[int, str], datetime] = {}
+    for n in (await db.execute(
+        select(Notificacion).where(
+            Notificacion.origen_tipo == ORIGEN,
+            Notificacion.origen_ref.in_(refs),
+        )
+    )).scalars():
+        clave = (n.user_id, n.origen_ref)
+        if n.created_at and (clave not in salidos or n.created_at > salidos[clave]):
+            salidos[clave] = n.created_at
 
     creadas = 0
-    for accion in por_avisar:
-        faltan = (accion["inicio"] - hoy).days
-        mensaje = _mensaje(accion, faltan)
-        for usuario in destinatarios:
-            if (usuario.id, accion["ref"]) in ya_avisado:
+    for aviso, barra in pares:
+        ref = referencia(barra.id, aviso.id)
+        desde_cuando = inicio_de_ventana(barra.desde, aviso.dias_antes)
+        creador = usuarios.get(aviso.creado_por_id) if aviso.creado_por_id else None
+        texto = mensaje(barra.nombre, barra.banda, barra.desde, hoy, creador.full_name if creador else None)
+        for uid in _ids(aviso.destinatarios):
+            usuario = usuarios.get(uid)
+            # Alguien a quien le sacaron el calendario después de que se
+            # configuró el aviso no recibe avisos de algo que no puede abrir.
+            if usuario is None or not puede_ver_el_calendario(usuario):
+                continue
+            ultimo = salidos.get((uid, ref))
+            if ultimo is not None and ultimo >= desde_cuando:
                 continue
             db.add(Notificacion(
-                user_id=usuario.id,
+                user_id=uid,
                 tipo=TIPO,
-                mensaje=mensaje,
+                mensaje=texto,
                 origen_tipo=ORIGEN,
-                origen_ref=accion["ref"],
+                origen_ref=ref,
             ))
             creadas += 1
-
-    if creadas:
-        await db.commit()
-        logger.info("calendario_avisos: %d avisos nuevos", creadas)
     return creadas
 
 

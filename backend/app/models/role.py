@@ -47,7 +47,7 @@ ALL_PERMISSIONS: dict[str, str] = {
 
     # Calendario
     "calendario.view":         "Ver el calendario comercial, el de Retail Media y los headers de la home",
-    "calendario.edit":         "Crear, editar y borrar acciones, campañas y banners del calendario, y mover el estado de las piezas",
+    "calendario.edit":         "Crear, editar y borrar acciones, campañas y banners del calendario, mover el estado de las piezas y configurar los avisos de cada acción",
     "calendario.retail_media": "Mover las posiciones del header que Retail Media tiene reservadas (avisa a quien lleva Retail Media)",
 
     # IA — un permiso por agente de la familia "Tino" + La Triada

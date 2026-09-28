@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Check, LayoutPanelTop, Pencil, Plus, X } from 'lucide-react'
+import { AlertTriangle, Bell, Check, LayoutPanelTop, Pencil, Plus, X } from 'lucide-react'
 import { textoSobre } from '@/lib/calendario/colores'
-import { nombreMes } from '@/lib/calendario/fechas'
-import { useCalendario } from '@/lib/calendario/store'
+import { diasEntre, fechaCorta, hoyIso, rangoLargo, sumarDias } from '@/lib/calendario/fechas'
+import { useCalendario, useHeaderDerivado } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import {
-  CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader,
-  type AreaPieza, type Barra, type EstadoPieza, type Pieza,
+  ANTICIPACIONES_DE_AVISO, CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader,
+  type AreaPieza, type Aviso, type BarraGuardada, type EstadoPieza, type Persona, type Pieza,
 } from '@/lib/calendario/tipos'
 
 const ESTADOS: EstadoPieza[] = ['pendiente', 'en-proceso', 'aprobado', 'publicado']
@@ -22,22 +22,21 @@ const TONO_ESTADO: Record<EstadoPieza, string> = {
 
 export function PanelAccion() {
   const abierta = useCalendario(s => s.abierta)
-  const mes = useCalendario(s => s.meses[s.mesActivo])
   const cerrar = useCalendario(s => s.cerrarAccion)
   const abrirEditor = useCalendario(s => s.abrirEditor)
   const agregarPieza = useCalendario(s => s.agregarPieza)
   const quitarPieza = useCalendario(s => s.quitarPieza)
   const actualizarPieza = useCalendario(s => s.actualizarPieza)
+  const personas = useCalendario(s => s.personas)
+  const header = useHeaderDerivado()
 
   const accionViva = useCalendario(s => s.accionAbierta())
 
   // Se guarda la última acción para que el panel tenga qué pintar mientras sale
-  const [ultima, setUltima] = useState<{ accion: Barra; tipo: string } | null>(null)
+  const [ultima, setUltima] = useState<BarraGuardada | null>(null)
   useEffect(() => {
-    if (!abierta || !accionViva) return
-    const banda = mes.comercial.find(b => b.id === abierta.bandaId)
-    setUltima({ accion: accionViva, tipo: banda?.nombre ?? '' })
-  }, [abierta, accionViva, mes.comercial])
+    if (accionViva) setUltima(accionViva)
+  }, [accionViva])
 
   useEffect(() => {
     if (!abierta) return
@@ -47,18 +46,18 @@ export function PanelAccion() {
   }, [abierta, cerrar])
 
   const visible = Boolean(abierta && accionViva)
-  const datos = visible ? { accion: accionViva!, tipo: ultima?.tipo ?? '' } : ultima
-  const { editable } = usePermisosCalendario()
+  const accion = visible ? accionViva : ultima
+  const { editable, user } = usePermisosCalendario()
 
-  const piezas = datos?.accion.piezas ?? []
+  const piezas = accion?.piezas ?? []
   const publicadas = piezas.filter(p => p.estado === 'publicado').length
 
-  // ¿En qué posición del header quedó esta acción? ¿O no entró?
-  const posicionHeader = datos
-    ? mes.header.findIndex(pos =>
-        pos.filas[0].some(b => b.origen?.tipo === 'accion' && b.origen.accionId === datos.accion.id))
-    : -1
-  const noEntro = datos ? mes.sinLugar.find(s => s.accionId === datos.accion.id) : undefined
+  // ¿En qué posición del header quedó esta acción? ¿O no entró? Se mira el
+  // header de todas las fechas, no el del mes: la acción puede cruzar de mes.
+  const tramo = accion
+    ? header.tramos.find(t => t.origen.tipo === 'accion' && t.origen.accionId === accion.id)
+    : undefined
+  const noEntro = accion ? header.sinLugar.find(s => s.accionId === accion.id) : undefined
 
   return (
     <>
@@ -73,19 +72,19 @@ export function PanelAccion() {
           visible ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        {datos && (
+        {accion && (
           <>
             <header
               className="shrink-0 px-5 py-4"
-              style={{ backgroundColor: datos.accion.color ?? '#e2e8f0', color: textoSobre(datos.accion.color) }}
+              style={{ backgroundColor: accion.color ?? '#e2e8f0', color: textoSobre(accion.color) }}
             >
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium uppercase tracking-wide opacity-70">{datos.tipo}</p>
-                  <h2 className="mt-0.5 text-lg font-semibold leading-tight">{datos.accion.nombre}</h2>
+                  <p className="text-[11px] font-medium uppercase tracking-wide opacity-70">{accion.banda}</p>
+                  <h2 className="mt-0.5 text-lg font-semibold leading-tight">{accion.nombre}</h2>
                   <p className="mt-1 text-xs opacity-80">
-                    {datos.accion.desde} al {datos.accion.hasta} de {nombreMes(mes.clave)}
-                    {' · '}{datos.accion.hasta - datos.accion.desde + 1} días
+                    {rangoLargo(accion.desde, accion.hasta).replace(/^./, c => c.toUpperCase())}
+                    {' · '}{diasEntre(accion.desde, accion.hasta) + 1} días
                   </p>
                 </div>
                 <button
@@ -97,13 +96,13 @@ export function PanelAccion() {
                 </button>
               </div>
 
-              {editable && abierta && (
+              {editable && (
                 <button
                   onClick={() => abrirEditor({
                     seccion: 'comercial',
-                    bandaId: abierta.bandaId,
-                    filaIdx: abierta.filaIdx,
-                    barra: datos.accion,
+                    banda: accion.banda,
+                    carril: accion.carril,
+                    barra: accion,
                   })}
                   className="mt-3 flex items-center gap-1.5 rounded-lg bg-white/80 px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-white"
                 >
@@ -140,21 +139,28 @@ export function PanelAccion() {
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     <span>
                       Pide header pero <strong>no entró</strong>: el header ya está completo
-                      {noEntro.diasLlenos.length > 0 && ` los días ${noEntro.diasLlenos.join(', ')}`}.
+                      {noEntro.diasLlenos.length > 0 && ` los días ${noEntro.diasLlenos.map(fechaCorta).join(', ')}`}.
                       Hay que bajar algo, y eso lo decidís vos.
                     </span>
                   </p>
-                ) : (
+                ) : tramo ? (
                   <p className="flex items-center gap-2">
                     <LayoutPanelTop className="h-3.5 w-3.5 shrink-0" />
-                    <span>Ocupa la <strong>posición {posicionHeader + 1}</strong> del header de la home.</span>
+                    <span>Ocupa la <strong>posición {tramo.posicion}</strong> del header de la home.</span>
                   </p>
-                )}
+                ) : null}
               </div>
             )}
 
             <div className="flex-1 overflow-y-auto px-5 py-4">
-              <div className="space-y-5">
+              <BloqueAvisos
+                accion={accion}
+                editable={editable}
+                personas={personas}
+                usuarioId={user?.id ?? null}
+              />
+
+              <div className="mt-6 space-y-5">
                 {CATALOGO_PIEZAS.map(area => (
                   <BloqueArea
                     key={area.area}
@@ -163,8 +169,7 @@ export function PanelAccion() {
                     formatos={area.formatos}
                     piezas={piezas.filter(p => p.area === area.area)}
                     editable={editable}
-                    dias={mes.dias}
-                    inicioAccion={datos.accion.desde}
+                    inicioAccion={accion.desde}
                     onAgregar={formato => agregarPieza(area.area, formato)}
                     onQuitar={quitarPieza}
                     onEstado={(id, estado) => actualizarPieza(id, { estado })}
@@ -187,9 +192,137 @@ export function PanelAccion() {
 }
 
 // ---------------------------------------------------------------------------
+// Avisos
+// ---------------------------------------------------------------------------
+
+/**
+ * Los avisos de la acción. No hay ninguno por defecto (pedido de Ivan,
+ * 28/09/2026): los configura a mano quien carga la acción, eligiendo cuántos
+ * días antes y a quién, para que cuando llegue uno sea porque vale la pena.
+ */
+function BloqueAvisos({
+  accion, editable, personas, usuarioId,
+}: {
+  accion: BarraGuardada
+  editable: boolean
+  personas: Persona[]
+  usuarioId: number | null
+}) {
+  const agregarAviso = useCalendario(s => s.agregarAviso)
+  const quitarAviso = useCalendario(s => s.quitarAviso)
+  const avisos = accion.avisos ?? []
+  const hoy = hoyIso()
+  const yaArranco = hoy > accion.desde
+
+  const [dias, setDias] = useState<number>(10)
+  const [elegidos, setElegidos] = useState<number[]>([])
+
+  // Al abrir otra acción, arranca elegido quien la está mirando.
+  useEffect(() => {
+    setElegidos(usuarioId != null && personas.some(p => p.id === usuarioId) ? [usuarioId] : [])
+  }, [accion.id, usuarioId, personas])
+
+  const nombreDe = (id: number) => personas.find(p => p.id === id)?.nombre ?? 'alguien que ya no ve el calendario'
+
+  function estadoDe(a: Aviso): string {
+    if (yaArranco) return 'la acción ya arrancó'
+    const fecha = sumarDias(accion.desde, -a.diasAntes)
+    return hoy >= fecha ? 'ya salió' : `sale el ${fechaCorta(fecha)}`
+  }
+
+  function alternar(id: number) {
+    setElegidos(v => (v.includes(id) ? v.filter(x => x !== id) : [...v, id]))
+  }
+
+  return (
+    <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+      <div className="mb-1 flex items-center gap-2">
+        <Bell className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+        <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Avisos</h3>
+        <span className="text-[10px] text-slate-400 dark:text-slate-500">{avisos.length || '—'}</span>
+      </div>
+      <p className="mb-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+        Solo salen los avisos que se configuran acá. Le llegan a la campanita de cada persona elegida,
+        los días antes de que arranque la acción que se elijan.
+      </p>
+
+      {avisos.length === 0 ? (
+        <p className="text-xs text-slate-400 dark:text-slate-500">Esta acción no tiene avisos.</p>
+      ) : (
+        <ul className="space-y-1">
+          {avisos.map(a => (
+            <li key={a.id} className="flex items-start gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5">
+              <div className="min-w-0 flex-1 text-xs">
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{a.diasAntes} días antes</span>
+                <span className="text-slate-500 dark:text-slate-400"> · {estadoDe(a)}</span>
+                <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">
+                  A {a.destinatarios.map(nombreDe).join(', ')}
+                </span>
+              </div>
+              {editable && (
+                <button
+                  onClick={() => quitarAviso(a.id)}
+                  className="shrink-0 rounded p-0.5 text-slate-300 dark:text-slate-600 transition hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-500"
+                  aria-label={`Quitar el aviso de ${a.diasAntes} días antes`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {editable && !yaArranco && (
+        <div className="mt-3 space-y-2 rounded-lg bg-slate-50 dark:bg-slate-800/40 p-2.5">
+          <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+            Avisar
+            <select
+              value={dias}
+              onChange={e => setDias(Number(e.target.value))}
+              className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-xs font-semibold"
+            >
+              {ANTICIPACIONES_DE_AVISO.map(n => <option key={n} value={n}>{n} días antes</option>)}
+            </select>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              ({hoy >= sumarDias(accion.desde, -dias) ? 'sale ahora' : `el ${fechaCorta(sumarDias(accion.desde, -dias))}`})
+            </span>
+          </label>
+
+          <div>
+            <p className="mb-1 text-[11px] font-medium text-slate-600 dark:text-slate-400">A quién</p>
+            {personas.length === 0 ? (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">Cargando las personas…</p>
+            ) : (
+              <div className="max-h-36 space-y-0.5 overflow-y-auto">
+                {personas.map(p => (
+                  <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs text-slate-700 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-900">
+                    <input type="checkbox" checked={elegidos.includes(p.id)} onChange={() => alternar(p.id)} />
+                    {p.nombre}{p.id === usuarioId ? ' (vos)' : ''}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            disabled={elegidos.length === 0}
+            onClick={() => agregarAviso(dias, elegidos)}
+            className="flex items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+          >
+            <Plus className="h-3 w-3" /> Agregar aviso
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 
 function BloqueArea({
-  area, titulo, formatos, piezas, editable, dias, inicioAccion,
+  area, titulo, formatos, piezas, editable, inicioAccion,
   onAgregar, onQuitar, onEstado, onEnvio,
 }: {
   area: AreaPieza
@@ -197,10 +330,8 @@ function BloqueArea({
   formatos: string[]
   piezas: Pieza[]
   editable: boolean
-  /** Días que tiene el mes: acota el selector de fecha de envío. */
-  dias: number
-  /** Día en que arranca la acción: es lo que usa un envío sin fecha propia. */
-  inicioAccion: number
+  /** Fecha en que arranca la acción: es lo que usa un envío sin fecha propia. */
+  inicioAccion: string
   onAgregar: (formato: string) => void
   onQuitar: (id: string) => void
   onEstado: (id: string, estado: EstadoPieza) => void
@@ -284,25 +415,21 @@ function BloqueArea({
             </div>
 
             {/* Los envíos salen un día y a una hora: eso es lo que arma el
-                cronograma. Sin fecha propia caen el día que arranca la acción. */}
+                cronograma. Sin fecha propia caen el día que arranca la acción.
+                La fecha puede ser de otro mes que el del arranque. */}
             {esPiezaDeEnvio(p) && (
               <div className="mt-1.5 flex flex-wrap items-center gap-2 border-t border-slate-100 dark:border-slate-800 pt-1.5">
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Sale</span>
-                <select
+                <input
+                  type="date"
                   value={p.desde ?? ''}
                   disabled={!editable}
                   aria-label={`Día de envío de ${p.formato}`}
-                  onChange={e => onEnvio(p.id, {
-                    desde: e.target.value === '' ? undefined : Number(e.target.value),
-                    hasta: e.target.value === '' ? undefined : Number(e.target.value),
-                  })}
+                  onChange={e => onEnvio(p.id, e.target.value
+                    ? { desde: e.target.value, hasta: e.target.value }
+                    : { desde: undefined, hasta: undefined })}
                   className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 disabled:opacity-60"
-                >
-                  <option value="">el día {inicioAccion} (con la acción)</option>
-                  {Array.from({ length: dias }, (_, i) => i + 1).map(d => (
-                    <option key={d} value={d}>día {d}</option>
-                  ))}
-                </select>
+                />
                 <input
                   type="time"
                   value={p.hora ?? ''}
@@ -311,9 +438,19 @@ function BloqueArea({
                   onChange={e => onEnvio(p.id, { hora: e.target.value || undefined })}
                   className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 disabled:opacity-60"
                 />
-                {p.desde == null && (
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400">sin fecha propia</span>
-                )}
+                {p.desde == null ? (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                    sin fecha propia: sale el {fechaCorta(inicioAccion)}, con la acción
+                  </span>
+                ) : editable ? (
+                  <button
+                    type="button"
+                    onClick={() => onEnvio(p.id, { desde: undefined, hasta: undefined })}
+                    className="text-[10px] text-slate-500 underline underline-offset-2 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                  >
+                    que salga con la acción
+                  </button>
+                ) : null}
               </div>
             )}
             </li>

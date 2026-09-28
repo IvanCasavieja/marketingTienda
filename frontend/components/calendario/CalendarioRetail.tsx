@@ -4,13 +4,13 @@ import { ShoppingBag } from 'lucide-react'
 import { CabeceraDias, EtiquetaBanda, FilaRejilla, useAnchoTotal, ANCHO_ETIQUETA } from './Rejilla'
 import { MarcoScroll } from './MarcoScroll'
 import { Seccion } from './Seccion'
-import { diaDeHoy } from '@/lib/calendario/fechas'
-import { useCalendario } from '@/lib/calendario/store'
+import { diaDeHoy, isoDe } from '@/lib/calendario/fechas'
+import { useCalendario, useMesActivo } from '@/lib/calendario/store'
 import { REGLAS_HEADER, type Banda } from '@/lib/calendario/tipos'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 
 export function CalendarioRetail() {
-  const mes = useCalendario(s => s.meses[s.mesActivo])
+  const mes = useMesActivo()
   const abrirEditor = useCalendario(s => s.abrirEditor)
   const ancho = useAnchoTotal(mes.dias)
   const hoy = diaDeHoy(mes.clave)
@@ -60,6 +60,10 @@ export function CalendarioRetail() {
                             baja al header
                           </span>
                         : undefined}
+                      onAgregar={editable
+                        ? () => abrirEditor({ seccion: 'retail', banda: banda.id, carril: 0, barra: null, fechaInicial: isoDe(mes.clave, hoy ?? 1) })
+                        : undefined}
+                      tituloAgregar={`Nueva campaña en ${banda.nombre}`}
                     >
                       {banda.nombre}
                     </EtiquetaBanda>
@@ -71,8 +75,11 @@ export function CalendarioRetail() {
                           fila={fila}
                           hoy={hoy}
                           editable={editable}
-                          onBarra={b => abrirEditor({ seccion: 'retail', bandaId: banda.id, filaIdx: i, barra: b })}
-                          onDiaVacio={d => abrirEditor({ seccion: 'retail', bandaId: banda.id, filaIdx: i, barra: null, diaInicial: d })}
+                          onBarra={b => {
+                            const guardada = useCalendario.getState().barras[b.id]
+                            if (guardada) abrirEditor({ seccion: 'retail', banda: banda.id, carril: guardada.carril, barra: guardada })
+                          }}
+                          onDiaVacio={d => abrirEditor({ seccion: 'retail', banda: banda.id, carril: i, barra: null, fechaInicial: isoDe(mes.clave, d) })}
                         />
                       ))}
                     </div>
@@ -81,12 +88,6 @@ export function CalendarioRetail() {
               })}
             </div>
           ))}
-
-          {mes.retail.length === 0 && (
-            <div className="px-4 py-10 text-center text-sm text-slate-400 dark:text-slate-500">
-              No hay campañas de Retail Media cargadas para este mes.
-            </div>
-          )}
       </MarcoScroll>
     </Seccion>
   )
