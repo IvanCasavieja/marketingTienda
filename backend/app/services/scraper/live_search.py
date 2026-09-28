@@ -847,14 +847,63 @@ def buscar_estacionhogar(term: str) -> list[ProductRecord]:
 # con descuento aplicado (nunca hace falta el ajuste ×1.22 que sí requería
 # el feed público).
 #
-# Riesgo conocido: esta key no es una API pública documentada — si LOi la
-# rota (redeploy del frontend con una key nueva), esta cadena empieza a fallar
-# hasta que se recapture una key vigente de la misma forma (Network tab del
-# navegador mientras se busca algo en loi.com.uy).
+# Riesgo conocido: esta key no es una API pública documentada — LOi la rota
+# cada tanto. Pasó el 28/09/2026: la key capturada del tráfico en su momento
+# ("004b9115...") empezó a dar 403, y la vigente resultó ser la del HTML
+# estático del sitio (input oculto `algolia_key`), al revés que cuando se
+# escribió el comentario de arriba. Por eso ante un 403 la key se relee del
+# HTML de loi.com.uy y se reintenta sola (_loi_post), en vez de quedar rota
+# hasta que alguien la recapture a mano.
 _LOI_ALGOLIA_APP_ID  = "90I0MRELM2"
-_LOI_ALGOLIA_API_KEY = "004b911528dce8b9f9543d1461c60347"
+# La key con la que arranca: la del sitio al 28/09/2026. Si dejó de servir,
+# _loi_post la repone sola desde el HTML.
+_LOI_ALGOLIA_API_KEY = "d85010fc1b48ca21fcbb3bb8d5771014"
 _LOI_ALGOLIA_INDEX   = "uy_products"
 _LOI_ALGOLIA_URL     = f"https://{_LOI_ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/*/queries"
+
+# La última key que funcionó en este proceso (la leída del sitio, si hizo falta).
+_loi_key_viva: str | None = None
+_LOI_KEY_RE = re.compile(r'id="algolia_key"[^>]*value="([A-Za-z0-9]{16,64})"')
+
+
+def _extraer_algolia_key(html_del_sitio: str) -> str | None:
+    """La search key que loi.com.uy le entrega a cualquier visitante, tal como
+    viene en su HTML (input oculto `algolia_key`)."""
+    m = _LOI_KEY_RE.search(html_del_sitio or "")
+    return m.group(1) if m else None
+
+
+def _loi_key_del_sitio() -> str | None:
+    try:
+        r = _requests.get("https://loi.com.uy", headers=_UA_HEADERS, timeout=8)
+        r.raise_for_status()
+        return _extraer_algolia_key(r.text)
+    except Exception as exc:
+        log.warning("LOi: no se pudo leer la key del sitio — %s", exc)
+        return None
+
+
+def _loi_post(body: dict, timeout: int = 8) -> "_requests.Response":
+    """Consulta a Algolia con la key vigente. Ante un 403 (key rotada), relee
+    la key del HTML del sitio y reintenta UNA vez; si funciona, queda para las
+    próximas consultas del proceso."""
+    global _loi_key_viva
+    key = _loi_key_viva or _LOI_ALGOLIA_API_KEY
+    headers = {
+        "x-algolia-api-key": key,
+        "x-algolia-application-id": _LOI_ALGOLIA_APP_ID,
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    r = _requests.post(_LOI_ALGOLIA_URL, headers=headers, json=body, timeout=timeout)
+    if r.status_code == 403:
+        nueva = _loi_key_del_sitio()
+        if nueva and nueva != key:
+            log.info("LOi: la key de Algolia rotó, usando la del sitio")
+            headers["x-algolia-api-key"] = nueva
+            r = _requests.post(_LOI_ALGOLIA_URL, headers=headers, json=body, timeout=timeout)
+            if r.ok:
+                _loi_key_viva = nueva
+    return r
 
 
 def buscar_loi(term: str) -> list[ProductRecord]:
@@ -863,22 +912,13 @@ def buscar_loi(term: str) -> list[ProductRecord]:
 
     records: list[ProductRecord] = []
     try:
-        r = _requests.post(
-            _LOI_ALGOLIA_URL,
-            headers={
-                "x-algolia-api-key": _LOI_ALGOLIA_API_KEY,
-                "x-algolia-application-id": _LOI_ALGOLIA_APP_ID,
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            json={"requests": [{
-                "indexName": _LOI_ALGOLIA_INDEX,
-                "query": term,
-                # product_enabled:1 -- mismo facet que ya aplica el buscador real del
-                # sitio, para no traer productos deshabilitados/de baja.
-                "params": "hitsPerPage=30&facetFilters=%5B%22product_enabled%3A1%22%5D",
-            }]},
-            timeout=8,
-        )
+        r = _loi_post({"requests": [{
+            "indexName": _LOI_ALGOLIA_INDEX,
+            "query": term,
+            # product_enabled:1 -- mismo facet que ya aplica el buscador real del
+            # sitio, para no traer productos deshabilitados/de baja.
+            "params": "hitsPerPage=30&facetFilters=%5B%22product_enabled%3A1%22%5D",
+        }]})
         r.raise_for_status()
         hits = r.json()["results"][0].get("hits") or []
     except Exception as exc:
