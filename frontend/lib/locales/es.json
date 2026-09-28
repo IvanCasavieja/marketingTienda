@@ -57,7 +57,7 @@
     "marcarLeida": "Marcar como leída",
     "notificacionesError": "No se pudieron marcar como leídas",
     "miPedido": "Mi pedido",
-    "facturacion": "FACTURACIÓN",
+    "facturacion": "FINANZAS",
     "facturacionDashboard": "Dashboard",
     "facturacionCuentas": "Cuentas",
     "redesSociales": "REDES SOCIALES",
@@ -640,7 +640,7 @@
       "cenefas": "Cenefas",
       "analytics": "Analytics",
       "connections": "Conexiones",
-      "facturacion": "Facturación",
+      "facturacion": "Finanzas",
       "rrss": "Redes sociales",
       "ai": "Inteligencia Artificial"
     },
@@ -1189,7 +1189,7 @@
     "revisandoAhora": "(está con {{count}} al mismo tiempo)"
   },
   "facturacion": {
-    "title": "Facturación",
+    "title": "Finanzas",
     "subtitle": "Presupuesto y canjes con marcas y proveedores.",
     "uploadButton": "Subir factura",
     "noData": "Todavía no hay datos cargados — subí tu primera factura.",

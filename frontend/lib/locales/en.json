@@ -57,7 +57,7 @@
     "marcarLeida": "Mark as read",
     "notificacionesError": "Couldn't mark as read",
     "miPedido": "My order",
-    "facturacion": "BILLING",
+    "facturacion": "FINANCE",
     "facturacionDashboard": "Dashboard",
     "facturacionCuentas": "Accounts",
     "redesSociales": "SOCIAL MEDIA",
@@ -640,7 +640,7 @@
       "cenefas": "Banners",
       "analytics": "Analytics",
       "connections": "Connections",
-      "facturacion": "Billing",
+      "facturacion": "Finance",
       "rrss": "Social media",
       "ai": "Artificial Intelligence"
     },
@@ -1116,7 +1116,7 @@
     "revisandoAhora": "(working on {{count}} at once)"
   },
   "facturacion": {
-    "title": "Billing",
+    "title": "Finance",
     "subtitle": "Budget and trade deals with brands and suppliers.",
     "uploadButton": "Upload invoice",
     "noData": "No data loaded yet — upload your first invoice.",

@@ -24,7 +24,7 @@ _META = ("anthropic", _MODEL)
 _MAX_TOOL_ITERATIONS = 4  # tope duro contra un loop de tool-use que no converge
 
 _CONOCIMIENTO = """
-Facturación tiene una o más cuentas de presupuesto (ver la lista de cuentas
+Finanzas (el módulo antes llamado Facturación) tiene una o más cuentas de presupuesto (ver la lista de cuentas
 si hace falta distinguirlas). Los movimientos (entradas/salidas) y los
 canjes con marcas/proveedores nacen de facturas en PDF: la persona las sube
 desde el botón "Subir factura" del dashboard, vos (DogTi) proponés los

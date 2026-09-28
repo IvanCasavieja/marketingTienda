@@ -37,9 +37,9 @@ ALL_PERMISSIONS: dict[str, str] = {
     "redexpres.manage":        "Administrar Redexpres: crear meses, gestionar asignaciones de sucursales y desconfirmar pedidos",
 
     # Facturación
-    "facturacion.view":        "Ver el dashboard de Facturación (presupuesto y canjes)",
+    "facturacion.view":        "Ver el dashboard de Finanzas (presupuesto y canjes)",
     "facturacion.upload":      "Subir facturas PDF, revisar la extracción de DogTi y confirmar o descartar movimientos y canjes",
-    "facturacion.manage":      "Administrar las cuentas de Facturación (crear, renombrar, desactivar)",
+    "facturacion.manage":      "Administrar las cuentas de Finanzas (crear, renombrar, desactivar)",
 
     # Redes sociales
     "rrss.view":               "Ver la Validación de RRSS y su historial de validaciones",

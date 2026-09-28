@@ -57,7 +57,7 @@
     "marcarLeida": "Marcar como lida",
     "notificacionesError": "Não foi possível marcar como lidas",
     "miPedido": "Meu pedido",
-    "facturacion": "FATURAMENTO",
+    "facturacion": "FINANÇAS",
     "facturacionDashboard": "Painel",
     "facturacionCuentas": "Contas",
     "redesSociales": "REDES SOCIAIS",
@@ -640,7 +640,7 @@
       "cenefas": "Faixas",
       "analytics": "Analytics",
       "connections": "Conexões",
-      "facturacion": "Faturamento",
+      "facturacion": "Finanças",
       "rrss": "Redes sociais",
       "ai": "Inteligência Artificial"
     },
@@ -1116,7 +1116,7 @@
     "revisandoAhora": "(está com {{count}} ao mesmo tempo)"
   },
   "facturacion": {
-    "title": "Faturamento",
+    "title": "Finanças",
     "subtitle": "Orçamento e permutas com marcas e fornecedores.",
     "uploadButton": "Enviar fatura",
     "noData": "Ainda não há dados carregados — envie sua primeira fatura.",
