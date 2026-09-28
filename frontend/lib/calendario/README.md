@@ -18,11 +18,20 @@ eComm y Express, con un carril por slot de cada formato. `HOME SLIDER (Retail
 Media)` está marcado aparte porque es el que alimenta al header.
 
 **3. Cronograma de envíos.** Cuándo sale cada mailing, cada WhatsApp y cada
-push, un carril por canal. No se carga acá: sale de las piezas de Email,
-WhatsApp y Push que ya tiene cada acción en su ficha, y ahí se les pone el día
-y la hora. Una pieza sin fecha propia cae el día que arranca su acción y queda
-avisada arriba, para que se note que falta ponérsela. Tocar un envío lleva a la
-ficha de su acción, que es donde se edita.
+push, un carril por canal. La mayoría no se carga acá: sale de las piezas de
+Email, WhatsApp y Push que ya tiene cada acción en su ficha, y ahí se les pone
+el día y la hora. Una pieza sin fecha propia cae el día que arranca su acción y
+queda avisada arriba, para que se note que falta ponérsela. Tocar un envío de
+una acción lleva a la ficha de su acción, que es donde se edita.
+
+**Envíos sueltos** (desde el 28/09/2026, migración 0058): un mailing, un
+WhatsApp o una push SIN una acción detrás ("de repente no hay una promoción y
+tenemos que salir con un email marketing, con una push, con un WhatsApp"). Se
+crean acá, con el **+** de cada canal o tocando un día libre. Son barras de la
+sección `envio`, con el canal en `banda`, un solo día (`desde` = `hasta`) y lo
+que en un envío de acción lleva la pieza: formato, hora y estado. Tienen su
+propia ficha (estado y avisos) y en el cronograma se ven sin el borde de los
+que salen de una acción. El aviso de un envío dice "sale", no "arranca".
 
 **4. Headers de la home.** El conteo día por día —verde hasta 7, ámbar en 8,
 rojo arriba de 8— y, detrás del botón **Ver headers activos por fecha**, un
@@ -240,18 +249,21 @@ nada.
 cd frontend && npm run test:calendario
 ```
 
-113 comprobaciones, sin framework: se compilan con `tsc` y corren con node.
+120 comprobaciones, sin framework: se compilan con `tsc` y corren con node.
 Fijan las reglas del header, el zoom, el cronograma de envíos, el header
 mirado por fecha y las acciones que cruzan de mes. No borrarlas al
 reescribirlas con otro runner. Del lado del backend,
-`tests/test_calendario_avisos.py` y `tests/test_calendario_migracion.py`.
+`tests/test_calendario_avisos.py`, `tests/test_calendario_migracion.py` y
+`tests/test_calendario_envios_sueltos.py`.
 
 ## Lo que falta
 
 - **Subtareas por pieza** (arte desktop, arte mobile, aprobación comercial) y
   responsable con vencimiento. Hoy el modelo llega hasta acción → pieza.
-- **Envíos y headers sueltos**, sin una acción detrás. Hoy un envío sale
-  siempre de la pieza de una acción.
+- **Permisos por calendario.** Hoy hay tres permisos que valen para los cuatro
+  calendarios juntos (`calendario.view`, `calendario.edit`,
+  `calendario.retail_media`): quien puede ver, ve los cuatro. Lo pedido es ver,
+  crear, editar y borrar por separado en cada uno.
 - **Avisos por mail.** Hoy llegan solo a la campanita.
 - **Que un aviso pueda mirar la fecha de un envío** y no solo el arranque de la
   acción.

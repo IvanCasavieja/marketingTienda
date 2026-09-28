@@ -103,6 +103,25 @@ igual('un recordatorio del 30/09 de una acción de octubre se ve en setiembre',
   enviosDelMes(mesConUnaAccion(antesDeLaAccion, '2026-09'))[0].envios.map(e => e.dia), [30])
 igual('y no en octubre', enviosDelMes(mesConUnaAccion(antesDeLaAccion, '2026-10'))[0].envios.length, 0)
 
+// --- envíos sueltos, sin una acción detrás ----------------------------------
+
+const suelto: BarraGuardada = {
+  id: 'env-suelto-1', seccion: 'envio', banda: 'push', carril: 0, nombre: 'Push Día de la Madre',
+  color: '#F4CCCC', desde: '2026-10-12', hasta: '2026-10-12', formato: 'Push app', hora: '11:00',
+  estado: 'pendiente', avisos: [],
+}
+const conSuelto = construirMes('2026-10', [suelto])
+const pushes = enviosDelMes(conSuelto)[2].envios
+igual('un envío suelto aparece en su canal', pushes.map(e => e.accion), ['Push Día de la Madre'])
+igual('el día y la hora que se le pusieron', [pushes[0].dia, pushes[0].hora], [12, '11:00'])
+ok('queda marcado como suelto', pushes[0].suelto === true && pushes[0].heredaLaFecha === false)
+igual('tocarlo abre SU ficha, no la de una acción', pushes[0].accionId, 'env-suelto-1')
+ok('no aparece como acción del calendario comercial', !conSuelto.comercial.some(b => b.filas.flat().length > 0))
+igual('no aparece en otro mes', enviosDelMes(construirMes('2026-09', [suelto]))[2].envios.length, 0)
+igual('sin formato, toma el primero de su canal',
+  enviosDelMes(construirMes('2026-10', [{ ...suelto, banda: 'email', formato: null }]))[0].envios[0].formato,
+  'Mailing digital')
+
 // --- orden y filas ----------------------------------------------------------
 
 const desordenados = enviosDelMes(mesConUnaAccion({

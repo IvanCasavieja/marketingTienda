@@ -38,10 +38,10 @@ class CalendarioBarra(Base):
     # conteste el servidor. Los de antes de la 0057 se conservaron tal cual, y
     # con ellos los avisos viejos siguen apuntando a su acción.
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    # 'comercial' | 'retail' | 'header'
+    # 'comercial' | 'retail' | 'header' | 'envio'
     seccion: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
-    # El tipo de acción ("MEGA EVENTO"), el formato de Retail Media ("CARRUSEL")
-    # o la posición del header ("pos-3").
+    # El tipo de acción ("MEGA EVENTO"), el formato de Retail Media ("CARRUSEL"),
+    # la posición del header ("pos-3") o el canal de un envío suelto ("email").
     banda: Mapped[str] = mapped_column(Text, nullable=False)
     # En qué renglón de su banda va. Se conserva para que una acción que cruza
     # de mes quede a la misma altura en los dos.
@@ -50,6 +50,13 @@ class CalendarioBarra(Base):
     color: Mapped[str | None] = mapped_column(String(32), nullable=True)
     desde: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     hasta: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+
+    # Solo en los envíos sueltos (0058): lo que en un envío de una acción lleva
+    # su pieza. "Mailing digital" / "Recordatorio" / "Envío masivo" / "Push app",
+    # la hora 'HH:MM' en que sale, y el estado (pendiente → publicado).
+    formato: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    hora: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    estado: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     creado_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

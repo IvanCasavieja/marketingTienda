@@ -11,14 +11,15 @@
 // las barras que lo tocan (ver construirMes en derivar.ts).
 // ---------------------------------------------------------------------------
 
-export type Seccion = 'comercial' | 'retail' | 'header'
+/** 'envio' = un envio suelto: un mailing, WhatsApp o push sin accion detras. */
+export type Seccion = 'comercial' | 'retail' | 'header' | 'envio'
 
 /** Una barra tal como la guarda el servidor. */
 export type BarraGuardada = {
   id: string
   seccion: Seccion
-  /** El tipo de accion ("MEGA EVENTO"), el formato de RM ("CARRUSEL") o la
-   *  posicion del header ("pos-3"). */
+  /** El tipo de accion ("MEGA EVENTO"), el formato de RM ("CARRUSEL"), la
+   *  posicion del header ("pos-3") o el canal de un envio suelto ("email"). */
   banda: string
   /** En que renglon de su banda va. Se conserva para que una accion que cruza
    *  de mes quede a la misma altura en los dos. */
@@ -31,9 +32,17 @@ export type BarraGuardada = {
   hasta: string
   /** Solo en la seccion comercial. */
   piezas?: Pieza[]
-  /** Solo en la seccion comercial. */
+  /** En las acciones y en los envios sueltos. */
   avisos?: Aviso[]
+  /** Solo en los envios sueltos: lo que en un envio de una accion lleva su
+   *  pieza. "Mailing digital", la hora 'HH:MM' en que sale y el estado. */
+  formato?: string | null
+  hora?: string
+  estado?: EstadoPieza
 }
+
+/** Las secciones que tienen ficha (se abre al tocarlas) y avisos. */
+export const SECCIONES_CON_FICHA: Seccion[] = ['comercial', 'envio']
 
 /** Una barra vista dentro de un mes: lo que dibuja la rejilla. */
 export type Barra = {
@@ -146,6 +155,17 @@ export const CANALES_DE_ENVIO: { area: AreaPieza; titulo: string }[] = [
   { area: 'push', titulo: 'Push' },
 ]
 
+/** Los formatos de un canal ("Mailing digital", "Recordatorio"...), los mismos
+ *  que ofrece la ficha de una accion. */
+export function formatosDeCanal(area: string): string[] {
+  return CATALOGO_PIEZAS.find(a => a.area === area)?.formatos ?? []
+}
+
+/** "Email", "WhatsApp", "Push". */
+export function tituloDeCanal(area: string): string {
+  return CANALES_DE_ENVIO.find(c => c.area === area)?.titulo ?? area
+}
+
 const AREAS_DE_ENVIO = new Set<AreaPieza>(CANALES_DE_ENVIO.map(c => c.area))
 
 export function esPiezaDeEnvio(p: Pieza): boolean {
@@ -237,6 +257,9 @@ export type Envio = {
   color: string | null
   /** true si la pieza no trae fecha propia y toma el arranque de la accion */
   heredaLaFecha: boolean
+  /** true si es un envio suelto: no sale de ninguna accion. `accionId` es
+   *  entonces el id del propio envio, que tiene su ficha. */
+  suelto: boolean
 }
 
 // --- Datos crudos que vienen del import de Excel -------------------------

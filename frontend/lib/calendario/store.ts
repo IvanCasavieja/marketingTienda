@@ -9,6 +9,7 @@ import { claveDe, hoyIso } from './fechas'
 import { ZOOM_POR_DEFECTO, limitarZoom } from './rejilla'
 
 export { ZOOMS, ZOOM_POR_DEFECTO } from './rejilla'
+import { SECCIONES_CON_FICHA, formatosDeCanal } from './tipos'
 import type {
   AreaPieza, Aviso, BarraGuardada, EstadoPieza, Mes, Persona, Pieza, Seccion,
 } from './tipos'
@@ -58,7 +59,9 @@ export type Edicion = {
   fechaInicial?: string
 }
 
-export type DatosBarra = Pick<BarraGuardada, 'nombre' | 'desde' | 'hasta' | 'color'>
+/** Lo que se carga en el editor. Formato y hora solo en los envíos sueltos. */
+export type DatosBarra = Pick<BarraGuardada, 'nombre' | 'desde' | 'hasta' | 'color'> &
+  Partial<Pick<BarraGuardada, 'formato' | 'hora'>>
 
 type Estado = {
   barras: Record<string, BarraGuardada>
@@ -98,13 +101,16 @@ type Estado = {
 
   agregarAviso: (diasAntes: number, destinatarios: number[]) => void
   quitarAviso: (avisoId: string) => void
+
+  /** El estado de un envío suelto (pendiente → publicado), desde su ficha. */
+  cambiarEstadoEnvio: (id: string, estado: EstadoPieza) => void
 }
 
 /** Lo que llega del servidor, con las listas que el front da por sentadas. */
 function normalizar(b: BarraGuardada): BarraGuardada {
-  return b.seccion === 'comercial'
-    ? { ...b, piezas: b.piezas ?? [], avisos: b.avisos ?? [] }
-    : b
+  if (b.seccion === 'comercial') return { ...b, piezas: b.piezas ?? [], avisos: b.avisos ?? [] }
+  if (b.seccion === 'envio') return { ...b, avisos: b.avisos ?? [], estado: b.estado ?? 'pendiente' }
+  return b
 }
 
 /** La accion que tiene una pieza o un aviso. */
@@ -172,7 +178,7 @@ export const useCalendario = create<Estado>()(
         accionAbierta: () => {
           const { abierta, barras } = get()
           const b = abierta ? barras[abierta] : undefined
-          return b && b.seccion === 'comercial' ? b : null
+          return b && SECCIONES_CON_FICHA.includes(b.seccion) ? b : null
         },
 
         irAMes: clave => set({ mesActivo: clave, abierta: null }),
@@ -218,16 +224,23 @@ export const useCalendario = create<Estado>()(
           if (!edicion) return
           const lista = Object.values(barras)
 
+          const esEnvio = edicion.seccion === 'envio'
+
           if (!edicion.barra) {
             const id = nuevoId('br')
-            const carril = carrilLibre(lista, edicion.seccion, edicion.banda, datos.desde, datos.hasta, edicion.carril)
+            // Un envío suelto no tiene renglón propio: el cronograma los
+            // acomoda por día, así que siempre va en el 0.
+            const carril = esEnvio ? 0 : carrilLibre(lista, edicion.seccion, edicion.banda, datos.desde, datos.hasta, edicion.carril)
             const nueva: BarraGuardada = normalizar({
-              id, seccion: edicion.seccion, banda: edicion.banda, carril, ...datos,
+              id, seccion: edicion.seccion, banda: edicion.banda, carril,
+              nombre: datos.nombre, color: datos.color, desde: datos.desde, hasta: datos.hasta,
+              ...(esEnvio ? { formato: datos.formato ?? null, hora: datos.hora, estado: 'pendiente' as EstadoPieza } : {}),
             })
             set(s => ({ barras: { ...s.barras, [id]: nueva }, edicion: null }))
             void escribir(() => calendarioApi.crearBarra({
               id, seccion: nueva.seccion, banda: nueva.banda, carril,
               nombre: datos.nombre, color: datos.color, desde: datos.desde, hasta: datos.hasta,
+              ...(esEnvio ? { formato: datos.formato ?? null, hora: datos.hora ?? null } : {}),
             }))
             return
           }
@@ -248,7 +261,13 @@ export const useCalendario = create<Estado>()(
           if (datos.color !== abierta.color) cambios.color = datos.color
           if (datos.desde !== abierta.desde) cambios.desde = datos.desde
           if (datos.hasta !== abierta.hasta) cambios.hasta = datos.hasta
-          if (cambios.desde || cambios.hasta) {
+          if (esEnvio) {
+            // Un envío sin formato se ve con el primero de su canal, y el editor
+            // arranca con ese mismo: si la persona no lo tocó, no es un cambio.
+            const formatoAntes = abierta.formato || formatosDeCanal(abierta.banda)[0] || null
+            if ((datos.formato ?? null) !== formatoAntes) cambios.formato = datos.formato ?? null
+            if ((datos.hora ?? undefined) !== (abierta.hora ?? undefined)) cambios.hora = datos.hora
+          } else if (cambios.desde || cambios.hasta) {
             const desde = cambios.desde ?? original.desde
             const hasta = cambios.hasta ?? original.hasta
             const carril = carrilLibre(lista, original.seccion, original.banda, desde, hasta, original.carril, original.id)
@@ -256,8 +275,15 @@ export const useCalendario = create<Estado>()(
           }
           set({ edicion: null })
           if (Object.keys(cambios).length === 0) return
-          cambiarBarraLocal(original.id, b => ({ ...b, ...cambios }))
-          void escribir(() => calendarioApi.cambiarBarra(original.id, cambios))
+          cambiarBarraLocal(original.id, b => {
+            const nueva = { ...b, ...cambios }
+            if (nueva.hora === undefined) delete nueva.hora
+            return nueva
+          })
+          // Sacar la hora es mandarla en null: un undefined ni siquiera viaja.
+          const payload: Record<string, unknown> = { ...cambios }
+          if ('hora' in cambios && cambios.hora === undefined) payload.hora = null
+          void escribir(() => calendarioApi.cambiarBarra(original.id, payload))
         },
 
         borrarBarra: () => {
@@ -338,6 +364,13 @@ export const useCalendario = create<Estado>()(
           if (!duena) return
           cambiarBarraLocal(duena.id, b => ({ ...b, avisos: (b.avisos ?? []).filter(a => a.id !== avisoId) }))
           void escribir(() => calendarioApi.quitarAviso(avisoId))
+        },
+
+        cambiarEstadoEnvio: (id, estado) => {
+          const envio = get().barras[id]
+          if (!envio || envio.seccion !== 'envio' || envio.estado === estado) return
+          cambiarBarraLocal(id, b => ({ ...b, estado }))
+          void escribir(() => calendarioApi.cambiarBarra(id, { estado }))
         },
       }
     },

@@ -7,7 +7,7 @@ import { diasEntre, fechaCorta, hoyIso, rangoLargo, sumarDias } from '@/lib/cale
 import { useCalendario, useHeaderDerivado } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import {
-  ANTICIPACIONES_DE_AVISO, CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader,
+  ANTICIPACIONES_DE_AVISO, CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader, tituloDeCanal,
   type AreaPieza, type Aviso, type BarraGuardada, type EstadoPieza, type Persona, type Pieza,
 } from '@/lib/calendario/tipos'
 
@@ -72,7 +72,16 @@ export function PanelAccion() {
           visible ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        {accion && (
+        {accion && accion.seccion === 'envio' && (
+          <FichaEnvio
+            envio={accion}
+            editable={editable}
+            personas={personas}
+            usuarioId={user?.id ?? null}
+            onCerrar={cerrar}
+          />
+        )}
+        {accion && accion.seccion !== 'envio' && (
           <>
             <header
               className="shrink-0 px-5 py-4"
@@ -192,6 +201,86 @@ export function PanelAccion() {
 }
 
 // ---------------------------------------------------------------------------
+// La ficha de un envío suelto
+// ---------------------------------------------------------------------------
+
+/**
+ * Un mailing, un WhatsApp o una push sin una acción detrás. Su ficha es más
+ * corta que la de una acción: qué es, cuándo sale, en qué estado está y sus
+ * avisos. No tiene áreas ni piezas: el envío ES la pieza.
+ */
+function FichaEnvio({
+  envio, editable, personas, usuarioId, onCerrar,
+}: {
+  envio: BarraGuardada
+  editable: boolean
+  personas: Persona[]
+  usuarioId: number | null
+  onCerrar: () => void
+}) {
+  const abrirEditor = useCalendario(s => s.abrirEditor)
+  const cambiarEstado = useCalendario(s => s.cambiarEstadoEnvio)
+  const estado: EstadoPieza = envio.estado ?? 'pendiente'
+  const canal = tituloDeCanal(envio.banda)
+
+  return (
+    <>
+      <header
+        className="shrink-0 px-5 py-4"
+        style={{ backgroundColor: envio.color ?? '#e2e8f0', color: textoSobre(envio.color) }}
+      >
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium uppercase tracking-wide opacity-70">
+              {canal} · envío suelto
+            </p>
+            <h2 className="mt-0.5 text-lg font-semibold leading-tight">{envio.nombre}</h2>
+            <p className="mt-1 text-xs opacity-80">
+              {envio.formato ? `${envio.formato} · ` : ''}
+              Sale {rangoLargo(envio.desde, envio.desde)}{envio.hora ? ` a las ${envio.hora}` : ', sin hora todavía'}
+            </p>
+          </div>
+          <button onClick={onCerrar} className="rounded-lg p-1.5 transition hover:bg-black/10" aria-label="Cerrar">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {editable && (
+          <button
+            onClick={() => abrirEditor({ seccion: 'envio', banda: envio.banda, carril: 0, barra: envio })}
+            className="mt-3 flex items-center gap-1.5 rounded-lg bg-white/80 px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-white"
+          >
+            <Pencil className="h-3 w-3" /> Editar nombre, fecha, hora y color
+          </button>
+        )}
+      </header>
+
+      <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-5 py-2.5 text-xs">
+        <span className="font-medium text-slate-700 dark:text-slate-300">Estado</span>
+        <select
+          value={estado}
+          disabled={!editable}
+          aria-label="Estado del envío"
+          onChange={e => cambiarEstado(envio.id, e.target.value as EstadoPieza)}
+          className={`appearance-none rounded-md border-0 px-1.5 py-0.5 text-[10px] font-semibold outline-none ${TONO_ESTADO[estado]} disabled:opacity-60`}
+        >
+          {ESTADOS.map(e => <option key={e} value={e}>{ETIQUETA_ESTADO[e]}</option>)}
+        </select>
+        {estado === 'publicado' && <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        <BloqueAvisos accion={envio} editable={editable} personas={personas} usuarioId={usuarioId} />
+        <p className="mt-6 rounded-lg bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+          Es un envío que no sale de ninguna acción. Los que sí son parte de una acción se cargan en
+          la ficha de esa acción, en Email, WhatsApp o Push, y aparecen solos en el cronograma.
+        </p>
+      </div>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Avisos
 // ---------------------------------------------------------------------------
 
@@ -213,6 +302,8 @@ function BloqueAvisos({
   const avisos = accion.avisos ?? []
   const hoy = hoyIso()
   const yaArranco = hoy > accion.desde
+  // Una acción "arranca"; un envío suelto "sale".
+  const esEnvio = accion.seccion === 'envio'
 
   const [dias, setDias] = useState<number>(10)
   const [elegidos, setElegidos] = useState<number[]>([])
@@ -225,7 +316,7 @@ function BloqueAvisos({
   const nombreDe = (id: number) => personas.find(p => p.id === id)?.nombre ?? 'alguien que ya no ve el calendario'
 
   function estadoDe(a: Aviso): string {
-    if (yaArranco) return 'la acción ya arrancó'
+    if (yaArranco) return esEnvio ? 'el envío ya salió' : 'la acción ya arrancó'
     const fecha = sumarDias(accion.desde, -a.diasAntes)
     return hoy >= fecha ? 'ya salió' : `sale el ${fechaCorta(fecha)}`
   }
@@ -243,11 +334,13 @@ function BloqueAvisos({
       </div>
       <p className="mb-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
         Solo salen los avisos que se configuran acá. Le llegan a la campanita de cada persona elegida,
-        los días antes de que arranque la acción que se elijan.
+        los días antes de que {esEnvio ? 'salga el envío' : 'arranque la acción'} que se elijan.
       </p>
 
       {avisos.length === 0 ? (
-        <p className="text-xs text-slate-400 dark:text-slate-500">Esta acción no tiene avisos.</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          {esEnvio ? 'Este envío no tiene avisos.' : 'Esta acción no tiene avisos.'}
+        </p>
       ) : (
         <ul className="space-y-1">
           {avisos.map(a => (

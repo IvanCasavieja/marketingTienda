@@ -14,7 +14,7 @@ import {
   claveDe, diaDe, diasDelMes, dowDelMes, fechasDe, isoDe, primerDiaDe, ultimoDiaDe,
 } from './fechas'
 import {
-  CANALES_DE_ENVIO, REGLAS_HEADER, esPiezaDeEnvio, esPiezaHeader,
+  CANALES_DE_ENVIO, REGLAS_HEADER, esPiezaDeEnvio, esPiezaHeader, formatosDeCanal,
   type Banda, type Barra, type BarraGuardada, type Envio, type HeaderSinLugar, type Mes,
   type OrigenHeader, type Pieza, type Seccion,
 } from './tipos'
@@ -308,11 +308,28 @@ export function construirMes(
 /**
  * Los envíos que salen en el mes `clave`, mirando TODAS las acciones y no solo
  * las que tocan el mes: una acción del 5 al 10/10 con un recordatorio el 30/09
- * tiene que mostrar ese recordatorio en setiembre.
+ * tiene que mostrar ese recordatorio en setiembre. Y los envíos sueltos, que
+ * no salen de ninguna acción.
  */
 function enviosQueSalen(clave: string, barras: BarraGuardada[]): Envio[] {
   const out: Envio[] = []
   for (const accion of barras) {
+    if (accion.seccion === 'envio') {
+      if (claveDe(accion.desde) !== clave) continue
+      out.push({
+        id: `env-${accion.id}`,
+        accionId: accion.id,
+        accion: accion.nombre,
+        formato: accion.formato || formatosDeCanal(accion.banda)[0] || accion.banda,
+        area: accion.banda as Envio['area'],
+        dia: diaDe(accion.desde),
+        hora: accion.hora,
+        color: accion.color,
+        heredaLaFecha: false,
+        suelto: true,
+      })
+      continue
+    }
     if (accion.seccion !== 'comercial') continue
     for (const pieza of accion.piezas ?? []) {
       if (!esPiezaDeEnvio(pieza)) continue
@@ -328,6 +345,7 @@ function enviosQueSalen(clave: string, barras: BarraGuardada[]): Envio[] {
         hora: pieza.hora,
         color: accion.color,
         heredaLaFecha: pieza.desde == null,
+        suelto: false,
       })
     }
   }

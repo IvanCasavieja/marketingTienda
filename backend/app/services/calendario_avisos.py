@@ -76,14 +76,23 @@ def referencia(barra_id: str, aviso_id: str) -> str:
     return f"{barra_id}:{aviso_id}"
 
 
-def mensaje(nombre: str, banda: str, inicio: date, hoy: date, quien: str | None) -> str:
+# Cómo se nombra el canal de un envío suelto en el aviso.
+_CANAL = {"email": "Email", "whatsapp": "WhatsApp", "push": "Push"}
+
+
+def mensaje(
+    nombre: str, banda: str, inicio: date, hoy: date, quien: str | None, es_envio: bool = False,
+) -> str:
+    """El texto del aviso. Una acción "arranca"; un envío suelto "sale"."""
     faltan = (inicio - hoy).days
+    verbo = "sale" if es_envio else "arranca"
     cuando = (
-        "arranca hoy" if faltan <= 0
-        else "arranca mañana" if faltan == 1
-        else f"arranca en {faltan} días"
+        f"{verbo} hoy" if faltan <= 0
+        else f"{verbo} mañana" if faltan == 1
+        else f"{verbo} en {faltan} días"
     )
-    tipo = f" ({banda})" if banda else ""
+    etiqueta = _CANAL.get(banda, banda) if es_envio else banda
+    tipo = f" ({etiqueta})" if etiqueta else ""
     firma = f" Aviso configurado por {quien}." if quien else ""
     return f"{nombre or 'Sin nombre'}{tipo} {cuando}, el {inicio.strftime('%d/%m')}.{firma}"
 
@@ -173,7 +182,10 @@ async def _revisar(db: AsyncSession, hoy: date, barra_id: str | None) -> int:
         ref = referencia(barra.id, aviso.id)
         desde_cuando = inicio_de_ventana(barra.desde, aviso.dias_antes)
         creador = usuarios.get(aviso.creado_por_id) if aviso.creado_por_id else None
-        texto = mensaje(barra.nombre, barra.banda, barra.desde, hoy, creador.full_name if creador else None)
+        texto = mensaje(
+            barra.nombre, barra.banda, barra.desde, hoy, creador.full_name if creador else None,
+            es_envio=barra.seccion == "envio",
+        )
         for uid in _ids(aviso.destinatarios):
             usuario = usuarios.get(uid)
             # Alguien a quien le sacaron el calendario después de que se

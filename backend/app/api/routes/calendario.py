@@ -21,6 +21,11 @@ cosas; si dos mueven el estado de dos piezas distintas, también.
 Cada escritura sube `calendario_revision` en la misma transacción. El front
 pregunta cada tanto si la revisión cambió y, si cambió, trae todo: así ve lo
 que hicieron los demás sin recargar la página.
+
+Los envíos sueltos (0058) son barras de la sección 'envio': un mailing, un
+WhatsApp o una push sin una acción detrás. Van por las mismas rutas de barras,
+con el canal en `banda`, un solo día (`desde` = `hasta`) y su formato, hora y
+estado; y aceptan avisos, como una acción.
 """
 import logging
 import re
@@ -28,7 +33,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,9 +57,13 @@ _HORA = r"^([01]\d|2[0-3]):[0-5]\d$"
 _DURACION_MAXIMA = timedelta(days=3 * 366)
 _RM_POR_DEFECTO = [4, 5, 6]
 
-Seccion = Literal["comercial", "retail", "header"]
+Seccion = Literal["comercial", "retail", "header", "envio"]
 Area = Literal["web-home", "web-landing", "fisico", "email", "whatsapp", "push"]
 Estado = Literal["pendiente", "en-proceso", "aprobado", "publicado"]
+# Los canales de un envío suelto: lo que va en `banda`.
+_CANALES = ("email", "whatsapp", "push")
+# Las secciones cuya ficha lleva avisos.
+_CON_AVISOS = ("comercial", "envio")
 
 _YA_NO_EXISTE = "Esta acción ya no existe: la borró otra persona. Se recargó el calendario."
 
@@ -154,6 +163,12 @@ def _barra_json(b: CalendarioBarra, piezas: list[CalendarioPieza], avisos: list[
     }
     if b.seccion == "comercial":
         out["piezas"] = [_pieza_json(p) for p in piezas]
+    if b.seccion == "envio":
+        out["formato"] = b.formato
+        out["estado"] = b.estado or "pendiente"
+        if b.hora:
+            out["hora"] = b.hora
+    if b.seccion in _CON_AVISOS:
         out["avisos"] = [_aviso_json(a) for a in avisos]
     return out
 
@@ -231,6 +246,10 @@ class BarraNueva(BaseModel):
     color: str | None = Field(None, max_length=32)
     desde: date
     hasta: date
+    # Solo los envíos sueltos: en las demás secciones se ignoran.
+    formato: str | None = Field(None, max_length=100)
+    hora: str | None = Field(None, pattern=_HORA)
+    estado: Estado | None = None
 
     @field_validator("nombre")
     @classmethod
@@ -239,6 +258,18 @@ class BarraNueva(BaseModel):
         if not v:
             raise ValueError("El nombre no puede quedar vacío")
         return v
+
+    @model_validator(mode="after")
+    def _envio_suelto(self):
+        if self.seccion == "envio":
+            if self.banda not in _CANALES:
+                raise ValueError("Un envío va por email, whatsapp o push")
+            if self.hasta != self.desde:
+                raise ValueError("Un envío sale un solo día: la fecha de fin es la misma que la de inicio")
+            self.estado = self.estado or "pendiente"
+        else:
+            self.formato = self.hora = self.estado = None
+        return self
 
 
 class BarraCambios(BaseModel):
@@ -249,6 +280,10 @@ class BarraCambios(BaseModel):
     color: str | None = Field(None, max_length=32)
     desde: date | None = None
     hasta: date | None = None
+    # Solo los envíos sueltos. La hora puede venir en null (se saca la hora).
+    formato: str | None = Field(None, max_length=100)
+    hora: str | None = Field(None, pattern=_HORA)
+    estado: Estado | None = None
 
     @field_validator("nombre")
     @classmethod
@@ -259,6 +294,42 @@ class BarraCambios(BaseModel):
         if not v:
             raise ValueError("El nombre no puede quedar vacío")
         return v
+
+
+def cambios_de_barra(seccion: str, payload: BarraCambios, desde_actual: date, hasta_actual: date) -> dict:
+    """Qué se escribe de un PATCH: solo lo que vino, y solo lo que esa sección
+    admite. Pura a propósito, para probarla sin base. Un ValueError trae el
+    mensaje para la persona."""
+    cambios = {k: getattr(payload, k) for k in payload.model_fields_set}
+    if "nombre" in cambios and cambios["nombre"] is None:
+        raise ValueError("El nombre no puede quedar vacío")
+    # Lo que no se puede vaciar: si viene en null, es como si no hubiera venido.
+    # La hora y el formato de un envío SÍ se pueden vaciar.
+    for campo in ("banda", "carril", "desde", "hasta", "estado"):
+        if campo in cambios and cambios[campo] is None:
+            del cambios[campo]
+    if seccion == "envio":
+        if "banda" in cambios and cambios["banda"] not in _CANALES:
+            raise ValueError("Un envío va por email, whatsapp o push")
+        # Otro canal tiene otros formatos ("Mailing digital" no es una push):
+        # si cambia el canal y no se dice el formato, se vacía, y se muestra el
+        # primero del canal nuevo.
+        if "banda" in cambios and "formato" not in cambios:
+            cambios["formato"] = None
+    else:
+        # Formato, hora y estado son de los envíos sueltos: en una acción esas
+        # cosas las lleva cada pieza.
+        for campo in ("formato", "hora", "estado"):
+            cambios.pop(campo, None)
+    desde = cambios.get("desde", desde_actual)
+    hasta = cambios.get("hasta", hasta_actual)
+    if hasta < desde:
+        raise ValueError("La fecha de fin no puede ser anterior a la de inicio")
+    if hasta - desde > _DURACION_MAXIMA:
+        raise ValueError("Dura más de tres años: revisá el año de las fechas")
+    if seccion == "envio" and hasta != desde:
+        raise ValueError("Un envío sale un solo día: la fecha de fin es la misma que la de inicio")
+    return cambios
 
 
 @router.post("/barras", status_code=201)
@@ -293,16 +364,11 @@ async def cambiar_barra(
     db: AsyncSession = Depends(get_db),
 ):
     barra = await _barra_o_404(db, barra_id, bloquear=True)
-    cambios = {k: getattr(payload, k) for k in payload.model_fields_set}
-    if "nombre" in cambios and cambios["nombre"] is None:
-        raise HTTPException(status_code=422, detail="El nombre no puede quedar vacío")
-    for campo in ("banda", "carril", "desde", "hasta"):
-        if campo in cambios and cambios[campo] is None:
-            del cambios[campo]
-    desde = cambios.get("desde", barra.desde)
-    hasta = cambios.get("hasta", barra.hasta)
-    _validar_rango(desde, hasta)
-    cambio_la_fecha = desde != barra.desde
+    try:
+        cambios = cambios_de_barra(barra.seccion, payload, barra.desde, barra.hasta)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    cambio_la_fecha = cambios.get("desde", barra.desde) != barra.desde
     for campo, valor in cambios.items():
         setattr(barra, campo, valor)
     barra.actualizado_por_id = current_user.id
@@ -458,8 +524,11 @@ async def configurar_aviso(
     """Un aviso configurado a mano. No hay ninguno por defecto: "cuando nos
     llegue una notificación, es porque alguien la configuró"."""
     barra = await _barra_o_404(db, barra_id)
-    if barra.seccion != "comercial":
-        raise HTTPException(status_code=422, detail="Los avisos se configuran en las acciones del calendario comercial")
+    if barra.seccion not in _CON_AVISOS:
+        raise HTTPException(
+            status_code=422,
+            detail="Los avisos se configuran en las acciones del calendario comercial y en los envíos",
+        )
 
     pedidos = list(dict.fromkeys(payload.destinatarios))
     usuarios = (await db.execute(select(User).where(User.id.in_(pedidos)))).scalars().all()

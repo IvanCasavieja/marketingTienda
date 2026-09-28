@@ -7,11 +7,13 @@ import {
   claveDe, diasEntre, mesSiguiente, nombreMes, primerDiaDe, rangoLargo, sumarDias, ultimoDiaDe,
 } from '@/lib/calendario/fechas'
 import { useCalendario } from '@/lib/calendario/store'
+import { formatosDeCanal, tituloDeCanal } from '@/lib/calendario/tipos'
 
 const TEXTOS: Record<string, { nueva: string; editar: string; unaSola: string }> = {
   comercial: { nueva: 'Nueva acción', editar: 'Editar acción', unaSola: 'Es una sola acción' },
   retail: { nueva: 'Nueva campaña', editar: 'Editar campaña', unaSola: 'Es una sola campaña' },
   header: { nueva: 'Nuevo banner', editar: 'Editar banner', unaSola: 'Es un solo banner' },
+  envio: { nueva: 'Nuevo envío', editar: 'Editar envío', unaSola: 'Es un solo envío' },
 }
 
 /** Los meses que toca un rango, para decir "se ve en setiembre y octubre". */
@@ -32,19 +34,27 @@ export function EditorBarra() {
 
   const esAlta = !edicion?.barra
   const textos = TEXTOS[edicion?.seccion ?? 'comercial']
+  // Un envío suelto sale un día y a una hora: no tiene fecha de fin.
+  const esEnvio = edicion?.seccion === 'envio'
+  const formatos = esEnvio && edicion ? formatosDeCanal(edicion.banda) : []
 
   const [nombre, setNombre] = useState('')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [color, setColor] = useState<string>(PALETA[0])
+  const [formato, setFormato] = useState('')
+  const [hora, setHora] = useState('')
 
   useEffect(() => {
     if (!edicion) return
+    const formatosDelCanal = edicion.seccion === 'envio' ? formatosDeCanal(edicion.banda) : []
     if (edicion.barra) {
       setNombre(edicion.barra.nombre)
       setDesde(edicion.barra.desde)
       setHasta(edicion.barra.hasta)
       setColor(edicion.barra.color ?? colorPorDefecto(edicion.barra.nombre))
+      setFormato(edicion.barra.formato || formatosDelCanal[0] || '')
+      setHora(edicion.barra.hora ?? '')
     } else {
       // Por defecto una semana, sin pasarse del mes donde se hizo clic. Para
       // que cruce de mes alcanza con correr la fecha de fin.
@@ -55,20 +65,26 @@ export function EditorBarra() {
       setDesde(inicio)
       setHasta(semana < finDeMes ? semana : finDeMes)
       setColor(PALETA[Math.floor(Math.random() * PALETA.length)])
+      setFormato(formatosDelCanal[0] ?? '')
+      setHora('')
     }
   }, [edicion, mesActivo])
 
   if (!edicion) return null
 
-  const fechasOk = Boolean(desde) && Boolean(hasta) && hasta >= desde
+  const hastaReal = esEnvio ? desde : hasta
+  const fechasOk = Boolean(desde) && Boolean(hastaReal) && hastaReal >= desde
   const valido = nombre.trim().length > 0 && fechasOk
-  const dias = fechasOk ? diasEntre(desde, hasta) + 1 : 0
-  const meses = fechasOk ? mesesQueToca(desde, hasta) : []
+  const dias = fechasOk ? diasEntre(desde, hastaReal) + 1 : 0
+  const meses = fechasOk ? mesesQueToca(desde, hastaReal) : []
 
   function enviar(e: React.FormEvent) {
     e.preventDefault()
     if (!valido) return
-    guardar({ nombre: nombre.trim(), desde, hasta, color })
+    guardar({
+      nombre: nombre.trim(), desde, hasta: hastaReal, color,
+      ...(esEnvio ? { formato: formato || null, hora: hora || undefined } : {}),
+    })
   }
 
   return (
@@ -87,7 +103,11 @@ export function EditorBarra() {
               {esAlta ? textos.nueva : textos.editar}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {edicion.seccion === 'header' ? `Posición ${edicion.banda.replace('pos-', '')} del header` : edicion.banda}
+              {edicion.seccion === 'header'
+                ? `Posición ${edicion.banda.replace('pos-', '')} del header`
+                : esEnvio
+                  ? `${tituloDeCanal(edicion.banda)} · envío suelto, sin una acción detrás`
+                  : edicion.banda}
             </p>
           </div>
           <button type="button" onClick={cerrar} className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300">
@@ -102,11 +122,53 @@ export function EditorBarra() {
               autoFocus
               value={nombre}
               onChange={e => setNombre(e.target.value)}
-              placeholder={esAlta ? 'Ej: Fiesta de Italia' : ''}
+              placeholder={esAlta ? (esEnvio ? 'Ej: Mailing Día de la Madre' : 'Ej: Fiesta de Italia') : ''}
               className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300 dark:focus:ring-slate-300"
             />
           </label>
 
+          {esEnvio ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Sale el</span>
+                  <input
+                    type="date"
+                    value={desde}
+                    onChange={e => setDesde(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">A las</span>
+                  <input
+                    type="time"
+                    value={hora}
+                    onChange={e => setHora(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
+                  />
+                </label>
+              </div>
+              {formatos.length > 1 && (
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Qué es</span>
+                  <select
+                    value={formato}
+                    onChange={e => setFormato(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
+                  >
+                    {formatos.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </label>
+              )}
+              <p className="rounded-lg bg-slate-50 dark:bg-slate-800/40 px-3 py-2 text-xs text-slate-600 dark:text-slate-400">
+                {desde
+                  ? <>Sale <strong>{rangoLargo(desde, desde)}</strong>{hora ? ` a las ${hora}` : ', sin hora todavía'}.</>
+                  : <span className="text-rose-600 dark:text-rose-400">Falta la fecha en que sale.</span>}
+              </p>
+            </>
+          ) : (
+          <>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Arranca</span>
@@ -149,6 +211,8 @@ export function EditorBarra() {
               <span className="text-rose-600 dark:text-rose-400">La fecha de fin no puede ser anterior a la de inicio.</span>
             )}
           </p>
+          </>
+          )}
 
           <div>
             <span className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">Color</span>
