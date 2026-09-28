@@ -86,6 +86,10 @@ function UserEditorModal({
 
   const role     = allRoles.find((r) => r.id === user.role_id) ?? null;
   const viewOnly = role?.view_only ?? false;
+  // Un login de sucursal entra con el nombre del local, no con un mail. Mandar
+  // ese "mail" al guardar hacía que el servidor rechazara TODO el guardado
+  // (nombre y permisos incluidos): para las sucursales el campo no viaja.
+  const esSucursal = user.sucursal_tipo != null || user.sucursales.length > 0;
   const visiblePerms = viewOnly ? allPerms.filter((p) => p.key.endsWith(".view")) : allPerms;
   const grouped  = groupPermissions(visiblePerms);
 
@@ -109,10 +113,10 @@ function UserEditorModal({
 
   async function save() {
     if (!fullName.trim()) { toast.error(t("admin.userEditor.nameRequired")); return; }
-    if (!email.trim())    { toast.error(t("admin.userEditor.emailRequired"));  return; }
+    if (!esSucursal && !email.trim()) { toast.error(t("admin.userEditor.emailRequired")); return; }
     setSaving(true);
     try {
-      await api.patch(`/admin/users/${user.id}`, { full_name: fullName, email });
+      await api.patch(`/admin/users/${user.id}`, esSucursal ? { full_name: fullName } : { full_name: fullName, email });
       try {
         await api.patch(`/admin/users/${user.id}/permissions`, { permissions: [...selected] });
       } catch (err: any) {
@@ -152,14 +156,20 @@ function UserEditorModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{t("admin.userEditor.email")}</label>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                {esSucursal ? t("admin.userEditor.usuarioLocal") : t("admin.userEditor.email")}
+              </label>
               <input
-                type="email"
-                className="input text-sm w-full"
+                type={esSucursal ? "text" : "email"}
+                className="input text-sm w-full disabled:opacity-60"
                 value={email}
+                disabled={esSucursal}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={t("admin.userEditor.emailPlaceholder")}
               />
+              {esSucursal && (
+                <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">{t("admin.userEditor.sucursalSinMail")}</p>
+              )}
             </div>
           </div>
 

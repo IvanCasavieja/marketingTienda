@@ -610,6 +610,8 @@
       "fullName": "Nombre completo",
       "email": "Email",
       "emailPlaceholder": "email@empresa.com",
+      "usuarioLocal": "Usuario del local",
+      "sucursalSinMail": "Las sucursales entran con el nombre del local, no con un mail. El nombre y los permisos sí se pueden cambiar.",
       "nameRequired": "El nombre es obligatorio",
       "emailRequired": "El email es obligatorio",
       "updated": "Usuario actualizado",

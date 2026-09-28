@@ -610,6 +610,8 @@
       "fullName": "Full name",
       "email": "Email",
       "emailPlaceholder": "email@company.com",
+      "usuarioLocal": "Store username",
+      "sucursalSinMail": "Store accounts sign in with the store name, not an email. Name and permissions can still be changed.",
       "nameRequired": "Name is required",
       "emailRequired": "Email is required",
       "updated": "User updated",

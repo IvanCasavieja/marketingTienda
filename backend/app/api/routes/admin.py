@@ -388,6 +388,15 @@ async def update_user(
     await _check_not_protected_admin(current_user, user, db)
 
     if payload.email is not None and payload.email != user.email:
+        # Un login de sucursal no tiene mail: entra con el nombre del local.
+        es_sucursal = (await db.execute(
+            select(LocalAsignacion.id).where(LocalAsignacion.user_id == user.id).limit(1)
+        )).scalar_one_or_none()
+        if es_sucursal is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Una sucursal entra con el nombre del local, no con un mail: ese usuario no se cambia desde acá",
+            )
         existing = await db.execute(select(User).where(User.email == payload.email))
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=409, detail="El email ya está en uso por otro usuario")
