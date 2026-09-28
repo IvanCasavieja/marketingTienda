@@ -440,7 +440,10 @@ def _notif_visible(user: User, n: Notificacion) -> bool:
     perms = user.permissions or []
     if n.origen_tipo == "campaign_alert":
         return "analytics.view" in perms
-    if n.origen_tipo in ("calendario_accion", "calendario_header"):
+    # Todo lo del calendario, incluidos los recordatorios configurados a mano
+    # (calendario_aviso, desde el 28/09/2026). Sin "calendario_aviso" acá caían
+    # en la regla de abajo y solo los veía quien además tenía precios.search.
+    if n.origen_tipo in ("calendario_accion", "calendario_header", "calendario_aviso"):
         return "calendario.view" in perms
     return "precios.search" in perms
 
