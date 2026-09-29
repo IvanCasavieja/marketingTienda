@@ -1094,15 +1094,28 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
 
     tf.word_wrap = True
 
-    # Vertical anchor (preserved from original PPTX)
+    # Anclaje vertical: SIEMPRE explícito, obedeciendo a la definición.
+    #
+    # La definición habla en coordenadas "desde arriba": el import convierte
+    # los cuadros anclados abajo a su posición visual y les BORRA el
+    # vertical_align a propósito (pptx_importer, bloque "Recompute bounds":
+    # desde ahí la definición dice "el texto ARRANCA en esta y"). Pero con
+    # preserve_source el shape FUENTE trae su anchor="b" nativo, y hasta hoy
+    # ese resto quedaba vivo cuando el componente no declaraba nada: al mover
+    # el shape a las coordenadas convertidas, PowerPoint volvía a leer esa y
+    # como PISO en vez de techo. Caso real (29/09/2026, regla de platino
+    # violada): el precio de Platos del Día (dígitos de 140 pt, caja original
+    # de 1.6 cm convertida a 4.4 visuales) salía ~1.2 cm más ARRIBA en el
+    # export que en el preview. El export le cree a la definición — la misma
+    # verdad que dibuja el preview — o las dos pantallas no pueden coincidir
+    # nunca.
     vertical_align = style.get("vertical_align")
-    if vertical_align:
-        try:
-            body_pr = tf._txBody.find(qn("a:bodyPr"))
-            if body_pr is not None:
-                body_pr.set("anchor", vertical_align)
-        except Exception:
-            pass
+    try:
+        body_pr = tf._txBody.find(qn("a:bodyPr"))
+        if body_pr is not None:
+            body_pr.set("anchor", vertical_align or "t")
+    except Exception:
+        pass
 
     # SIEMPRE, no solo cuando el diseño lo pedía: el cuerpo lo decide una regla
     # y nadie más. Ver _forzar_sin_autoajuste.
