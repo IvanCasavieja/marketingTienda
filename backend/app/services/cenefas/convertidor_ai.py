@@ -140,8 +140,15 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
     for chunk in _chunks(procesables, _CHUNK_SIZE):
         prompt = _build_prompt(chunk)
         try:
+            # effort="low" por lo mismo que en el unificador (ver el comentario
+            # largo en _analizar): el razonamiento sale del MISMO presupuesto que
+            # max_tokens. Medido en produccion el 28/09/2026: tres chunks de 20
+            # gastaron los 4000 tokens ENTEROS (stop=max_tokens), el JSON llego
+            # cortado y las 53 filas salieron como "completalas a mano"; el mismo
+            # pedido 3 minutos despues salio bien con 1814-2574. Sin acotar el
+            # razonamiento, que un chunk entre bien o mal es una moneda al aire.
             content, in_tok, out_tok = await _ask_claude(
-                _SYSTEM_PROMPT, prompt, max_tokens=_MAX_TOKENS_POR_CHUNK)
+                _SYSTEM_PROMPT, prompt, max_tokens=_MAX_TOKENS_POR_CHUNK, effort="low")
             await log_ai_usage(db, user_id, "convertidor_descripciones", *_ASK_CLAUDE_META, in_tok, out_tok)
             parsed = json.loads(_strip_json_fence(content))
             descripciones = parsed.get("descripciones", {})

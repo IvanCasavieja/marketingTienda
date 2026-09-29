@@ -943,6 +943,11 @@ export interface DescripcionSugerencia {
 export interface GenerarDescripcionesIAResponse {
   suggestions: DescripcionSugerencia[];
   failed_row_ids: number[];
+  /** El MOTIVO de cada fallo, sin repetir — el backend lo manda desde 09/2026
+   * (ver generar_descripciones en convertidor_ai.py) pero la pantalla lo
+   * tiraba: el 29/09 un tope de uso de la API dejó 448 filas en "completalos
+   * a mano" sin decir por qué. */
+  errores: string[];
   requested_count: number;
   processed_count: number;
   truncated: boolean;

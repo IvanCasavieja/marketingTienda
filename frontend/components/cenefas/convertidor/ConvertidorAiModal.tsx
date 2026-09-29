@@ -68,7 +68,12 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<"not_configured" | "generic" | null>(null);
-  const [meta, setMeta] = useState<{ failedRowIds: number[] } | null>(null);
+  // `errores` es el POR QUÉ de cada fallo, ya redactado por el backend (una
+  // key vencida, un tope de uso, un Excel sin columna de nombre...). Se venía
+  // descartando y "completalos a mano" salía sin causa: el 29/09 un tope de
+  // uso de la API dejó 448 filas fallidas y hubo que ir a los logs del
+  // servidor para saber por qué.
+  const [meta, setMeta] = useState<{ failedRowIds: number[]; errores: string[] } | null>(null);
   const [state, setState] = useState<Map<number, RowState>>(new Map());
   // Tandas 2+ (por encima de ROWS_CHUNK_SIZE) se piden solas en segundo
   // plano, sin bloquear la pantalla -- las filas de la primera tanda ya son
@@ -124,7 +129,8 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
   async function requestChunk(chunkRows: ConvertidorRow[], attemptedRetry = false) {
     try {
       const { data } = await convertidorApi.generarDescripcionesIA(chunkRows.map(buildRequestItem));
-      return { suggestions: data.suggestions, failedRowIds: data.failed_row_ids };
+      // `?? []` por si el backend desplegado todavía no manda el campo.
+      return { suggestions: data.suggestions, failedRowIds: data.failed_row_ids, errores: data.errores ?? [] };
     } catch (err: any) {
       if (err?.response?.status === 429 && !attemptedRetry) {
         const retryAfterHeader = err.response.headers?.["retry-after"];
@@ -171,7 +177,7 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
       }
       if (!mountedRef.current) return;
       applySuggestions(chunks[0], first.suggestions);
-      setMeta({ failedRowIds: first.failedRowIds });
+      setMeta({ failedRowIds: first.failedRowIds, errores: first.errores });
       finishInitialLoading();
 
       // El resto de las tandas (si el archivo trae más de ROWS_CHUNK_SIZE
@@ -187,13 +193,20 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
           try {
             result = await requestChunk(chunks[i]);
           } catch {
-            result = { suggestions: [] as DescripcionSugerencia[], failedRowIds: chunks[i].map((r) => r.row_id) };
+            result = { suggestions: [] as DescripcionSugerencia[], failedRowIds: chunks[i].map((r) => r.row_id), errores: [] as string[] };
           }
           if (!mountedRef.current) return;
           applySuggestions(chunks[i], result.suggestions);
-          setMeta((prev) => ({
-            failedRowIds: [...(prev?.failedRowIds ?? []), ...result.failedRowIds],
-          }));
+          setMeta((prev) => {
+            // Mismo criterio que _sumar_error en el backend: si las 6 tandas
+            // fallan por lo mismo, el motivo se muestra una sola vez.
+            const errores = [...(prev?.errores ?? [])];
+            for (const e of result.errores) if (!errores.includes(e)) errores.push(e);
+            return {
+              failedRowIds: [...(prev?.failedRowIds ?? []), ...result.failedRowIds],
+              errores,
+            };
+          });
         }
         if (mountedRef.current) {
           setLoadingMore(false);
@@ -297,9 +310,19 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
             </p>
           )}
           {!loading && !loadError && meta && meta.failedRowIds.length > 0 && (
-            <p className="text-xs text-slate-400">
-              {t("convertidor.ai.failedCount", { count: meta.failedRowIds.length })}
-            </p>
+            <div className="space-y-0.5">
+              <p className="text-xs text-slate-400">
+                {t("convertidor.ai.failedCount", { count: meta.failedRowIds.length })}
+              </p>
+              {/* El motivo, tal como lo redactó el backend. Sin esto, un tope
+                  de uso de la API y un Excel sin columna de nombre se ven
+                  idénticos: "completalos a mano". */}
+              {meta.errores.map((e) => (
+                <p key={e} className="text-xs text-amber-600 dark:text-amber-400">
+                  {e}
+                </p>
+              ))}
+            </div>
           )}
 
           {!loading &&
