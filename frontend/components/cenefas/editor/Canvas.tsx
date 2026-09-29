@@ -1081,6 +1081,12 @@ export default function Canvas({
   useEffect(() => {
     const layer = bgLayerRef.current;
     if (!layer) return;
+    // LA PUERTA, también acá: la etiqueta del papel llama a formatoConocido(),
+    // que TIRA si la tabla de formatos todavía no llegó del backend. Este era
+    // el único efecto que dibujaba sin esperar: en una recarga directa sobre
+    // el paso del preview, con el backend lento, le ganaba la carrera a la
+    // tabla y volteaba la página entera ("Algo salió mal", 29/09/2026).
+    if (!reglasListas) return;
     layer.destroyChildren();
 
     const mesa = new Konva.Rect({
@@ -1148,7 +1154,7 @@ export default function Canvas({
 
     layer.batchDraw();
   }, [pageLeft, pageTop, pageW, pageH, stageW, stageH, seSale, activeFormat, formatoQueManda,
-      dims.w, dims.h, papel?.origen, fuera, selectComponent]);
+      dims.w, dims.h, papel?.origen, fuera, selectComponent, reglasListas]);
 
   // Las tipografias del diseno se bajan de Google (ver globals.css) y tardan
   // un instante. Konva MIDE el texto con la fuente que haya en ese momento:

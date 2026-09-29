@@ -33,6 +33,21 @@ logger = logging.getLogger(__name__)
 # margen generoso para ese volumen real en hardware más lento.
 _RENDER_TIMEOUT_SECONDS = 600
 
+# UN trabajo pesado de cenefas a la vez EN TODO el proceso -- preparar un
+# preview o renderizar un lote, no importa cual. Dentro de un mismo request
+# los BackgroundTasks ya corren en fila (Starlette los awaitea uno a uno, por
+# eso un lote de 5 cenefas siempre salio bien), pero entre DOS requests nunca
+# hubo limite: dos lotes confirmados a la vez renderizaban en paralelo, cada
+# uno con su plantilla parseada + PPTX entero + salida en RAM, y el proceso
+# (512 MB en Render, ~190 en reposo) murio por oomKilled dos veces el
+# 29/09/2026 (12:09 y 12:37, eventos de Render) exactamente en ese escenario.
+# El semaforo restaura el comportamiento que el equipo recuerda ("se
+# encolaban uno a uno"): N clicks = N resultados, en fila. Se adquiere ANTES
+# de abrir la sesion de base, asi la espera no deja una conexion ociosa que
+# el pooler pueda cortar (mismo criterio que el docstring de
+# confirm_generation_job).
+_UN_TRABAJO_A_LA_VEZ = asyncio.Semaphore(1)
+
 _STATIC_DIR = pathlib.Path(__file__).parent.parent.parent / "static" / "cenefa_templates"
 
 _BUILTIN_FILES = {
@@ -163,6 +178,30 @@ async def pop_job_products(job_id: uuid.UUID) -> StagedJob | None:
 
 
 async def run_generation_job(
+    job_id:          uuid.UUID,
+    excel_bytes:     bytes,
+    builtin_slug:    str | None,
+    template_v2_id:  uuid.UUID | None,
+    target_format:   str | None,
+    vigencia:        str,
+    legales:         str,
+    usar_legales:    bool,
+    image_overrides:       dict | None = None,
+    template_upload_bytes: bytes | None = None,
+) -> None:
+    """Etapa A, en cola de a uno (ver _UN_TRABAJO_A_LA_VEZ). Mientras espera
+    su turno el job sigue en "pending", que la pantalla ya muestra como
+    cargando -- el estado no miente: todavía no empezó."""
+    async with _UN_TRABAJO_A_LA_VEZ:
+        await _run_generation_job(
+            job_id=job_id, excel_bytes=excel_bytes, builtin_slug=builtin_slug,
+            template_v2_id=template_v2_id, target_format=target_format,
+            vigencia=vigencia, legales=legales, usar_legales=usar_legales,
+            image_overrides=image_overrides, template_upload_bytes=template_upload_bytes,
+        )
+
+
+async def _run_generation_job(
     job_id:          uuid.UUID,
     excel_bytes:     bytes,
     builtin_slug:    str | None,
@@ -426,6 +465,20 @@ def aplicar_overrides(template_def: dict, position_overrides: list[dict]) -> dic
 
 
 async def confirm_generation_job(
+    job_id: uuid.UUID,
+    position_overrides: list[dict] | None = None,
+    rules_override: list[dict] | None = None,
+) -> None:
+    """Etapa B, en cola de a uno (ver _UN_TRABAJO_A_LA_VEZ): dos lotes
+    confirmados juntos se renderizan uno atrás del otro en vez de pelearse
+    los 512 MB del proceso. La ruta ya dejó el job en "running"."""
+    async with _UN_TRABAJO_A_LA_VEZ:
+        await _confirm_generation_job(
+            job_id=job_id, position_overrides=position_overrides, rules_override=rules_override,
+        )
+
+
+async def _confirm_generation_job(
     job_id: uuid.UUID,
     position_overrides: list[dict] | None = None,
     rules_override: list[dict] | None = None,

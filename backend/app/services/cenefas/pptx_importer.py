@@ -232,7 +232,17 @@ def _extract_image_b64(shape) -> tuple[str, str] | None:
             converted = _to_web_image(raw)
             if converted is not None:
                 raw, ext = converted
-            # Si PIL falla (Linux): guardar raw con ext original.
+            elif len(raw) > _MAX_IMAGE_BYTES:
+                # Si PIL no puede rasterizarlo (Linux no abre WMF/EMF) y el
+                # crudo es grande, NO se guarda: un WMF vectorial chico en el
+                # ZIP del PPTX se descomprime enorme -- la cocarda de Platos
+                # del Dia media 8.3 MB y entro TRES veces en una definition
+                # (33 MB de base64 por job), el corazon de los dos oomKilled
+                # del 29/09/2026. El export no pierde nada: el shape original
+                # viaja entero en source_pptx y el render lo preserva tal
+                # cual; solo el preview muestra el cuadro sin miniatura.
+                return None
+            # Si PIL falla y el crudo es chico: guardar raw con ext original.
             # El renderer lo embebe en el PPTX directamente sin PIL.
         elif len(raw) > _MAX_IMAGE_BYTES:
             raw, ext = _compress_image(raw, ext)
