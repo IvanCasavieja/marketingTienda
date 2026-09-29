@@ -229,7 +229,7 @@ def _extract_image_b64(shape) -> tuple[str, str] | None:
 
         if ext not in _WEB_EXTS:
             # Intentar convertir a PNG (funciona en Windows/GDI+)
-            converted = _to_web_image(raw)
+            converted = _to_web_image(raw, transparentar_bordes=ext in ("wmf", "emf"))
             if converted is not None:
                 raw, ext = converted
             elif len(raw) > _MAX_IMAGE_BYTES:
@@ -252,11 +252,20 @@ def _extract_image_b64(shape) -> tuple[str, str] | None:
         return None
 
 
-def _to_web_image(raw: bytes) -> tuple[bytes, str] | None:
+def _to_web_image(raw: bytes, transparentar_bordes: bool = False) -> tuple[bytes, str] | None:
     """Intenta convertir WMF/EMF/BMP/TIFF → PNG usando PIL.
-    Funciona en Windows (GDI+). En Linux devuelve None → el renderer embebe raw."""
+    Funciona en Windows (GDI+). En Linux devuelve None → el renderer embebe raw.
+
+    `transparentar_bordes` (solo para metafiles WMF/EMF): GDI+ rasteriza el
+    vector sobre un lienzo BLANCO que el original no tiene — la cocarda "30%
+    OFF" de Platos del Día salía con un cuadrado blanco atrás (29/09/2026).
+    Se rellena desde las 4 ESQUINAS (nunca desde los puntos medios de los
+    bordes: un círculo tangente a los bordes tiene arte justo ahí, y el
+    relleno se lo comía entero) y solo si la esquina es realmente blanca; el
+    blanco DE ADENTRO del diseño (el "30", el "% OFF") queda encerrado por el
+    arte y no se toca."""
     try:
-        from PIL import Image as PILImage
+        from PIL import Image as PILImage, ImageDraw as PILImageDraw
         import io as _io
 
         img = PILImage.open(_io.BytesIO(raw))
@@ -275,6 +284,19 @@ def _to_web_image(raw: bytes) -> tuple[bytes, str] | None:
         has_alpha = img.mode in ("RGBA", "LA") or (
             img.mode == "P" and "transparency" in img.info
         )
+
+        if transparentar_bordes and not has_alpha:
+            img = img.convert("RGBA")
+            centinela = (255, 0, 255, 255)
+            w, h = img.size
+            for xy in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
+                p = img.getpixel(xy)
+                if p[:3] != centinela[:3] and all(c >= 215 for c in p[:3]):
+                    PILImageDraw.floodfill(img, xy, centinela, thresh=40)
+            img.putdata([(0, 0, 0, 0) if p[:3] == centinela[:3] else p
+                         for p in img.getdata()])
+            has_alpha = True
+
         buf = _io.BytesIO()
         img.convert("RGBA" if has_alpha else "RGB").save(buf, format="PNG", optimize=True)
         return buf.getvalue(), "png"
