@@ -145,8 +145,14 @@ export interface Pieza {
 export interface OpcionesDiagrama {
   anchoPx: number;
   align: "left" | "center" | "right";
-  /** Alto de línea forzado por el run espaciador del diseño (style.line_height_pt). */
+  /**
+   * Cuerpo del run espaciador (style.line_height_pt). El export lo escribe
+   * como un espacio AL FINAL del párrafo, así que en el papel agranda el
+   * ÚLTIMO renglón (ver _populate_text_frame en component_renderer.py).
+   */
   lineHeightPt?: number;
+  /** Tipografía del espaciador: la de la caja, que es con la que lo escribe el export. */
+  fuenteEspaciador?: { weight: number; stack: string };
   ptToPx: (pt: number) => number;
   /** Ancho en px de un texto dibujado con esa cadena `font`. */
   medir: (texto: string, font: string) => number;
@@ -180,6 +186,61 @@ export function ptEfectivo(tramo: { pt: number; voladita: number }): number {
   return tramo.voladita ? tramo.pt * reglas().factorVoladita : tramo.pt;
 }
 
+const CUERPO_DE_REFERENCIA_PX = 1000;
+
+/**
+ * A qué altura de su renglón apoya PowerPoint la línea de base: reparte el
+ * alto del renglón en la MISMA proporción que la fuente reparte ascendente y
+ * descendente.
+ *
+ * Medido con PowerPoint de verdad (PPTX -> PDF con POWERPNT.EXE, leído con
+ * PyMuPDF, 30/09/2026): da con el papel a una décima de punto en Impact, Arial
+ * Black y Franklin Gothic, de 10 a 180 pt. La cuenta de Konva.Text que se usaba
+ * antes --medio renglón más la mitad de ascendente menos descendente-- coincide
+ * solo en fuentes cuyo ascendente + descendente ronda el alto de línea: a
+ * 100 pt, en Impact apoyaba el texto 0,6 pt más abajo que el papel y en Arial
+ * Black 5,8 pt más abajo.
+ *
+ * La proporción se mide con la fuente a CUERPO_DE_REFERENCIA_PX y no al cuerpo
+ * del texto: Chrome redondea ascendente y descendente a píxeles enteros, y a
+ * cuerpo chico ese redondeo corría la base hasta medio punto.
+ */
+export function baseEnElRenglon(
+  altoRenglonPx: number,
+  fuente: { weight: number; stack: string },
+  metricas: OpcionesDiagrama["metricas"],
+): number {
+  const { ascent, descent } = metricas(cadenaFont(fuente.weight, CUERPO_DE_REFERENCIA_PX, fuente.stack));
+  return ascent + descent > 0 ? (altoRenglonPx * ascent) / (ascent + descent) : altoRenglonPx;
+}
+
+/**
+ * El cuadro entero como tramos con el estilo de la CAJA, para los cuadros de un
+ * solo estilo que igual tienen que dibujarse pedazo por pedazo: los que tienen
+ * espaciador (Konva.Text no puede hacer un último renglón más alto que los
+ * demás) o voladita en la caja (Konva.Text no la dibuja, y el export sí se la
+ * pone al run). Espejo de la rama sin segmentos de _populate_text_frame.
+ */
+export function tramosDeCaja(comp: CenefaComponent, texto: string, smartBold: boolean): Tramo[] {
+  const caja = comp.style ?? {};
+  const partes: [string, boolean][] = smartBold ? tramosSmartBold(texto) : [[texto, !!caja.font_bold]];
+  const tramos: Tramo[] = [];
+  for (const [parte, negrita] of partes) {
+    if (!parte) continue;
+    const fuente = resolverFuente(caja.font_family, negrita);
+    tramos.push({
+      texto: parte,
+      pt: caja.font_size ?? reglas().ptPorDefecto,
+      weight: fuente.weight,
+      stack: fuente.stack,
+      color: caja.color ?? COLOR_POR_DEFECTO,
+      tachado: !!caja.strikethrough,
+      voladita: caja.baseline ?? 0,
+    });
+  }
+  return tramos;
+}
+
 interface Atomo {
   texto: string;
   tramo: number;
@@ -197,8 +258,15 @@ interface Atomo {
  * - Una palabra más ancha que la caja se corta por carácter ("1.91" + "9"),
  *   como hacen los dos: el desborde tiene que verse.
  * - Todos los pedazos de un renglón se apoyan en la MISMA línea de base, la
- *   del pedazo más grande. En el primer renglón cuenta también el alto del
+ *   del pedazo más grande. En el ÚLTIMO renglón cuenta también el alto del
  *   run espaciador, que es lo que baja al "$" chico hasta el precio grande.
+ *   El último y no el primero porque el export lo escribe al final del
+ *   párrafo: medido con PowerPoint, un espaciador al final de un texto de
+ *   tres renglones agranda solo el tercero. En un renglón solo --los
+ *   precios-- es el mismo.
+ *
+ * `alto` y las `y` salen medidas desde donde arranca el texto, o sea ya
+ * adentro del margen de arriba de la caja: ese margen lo pone quien dibuja.
  */
 export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas: Pieza[]; alto: number } {
   const fontDe = (i: number) => cadenaFont(tramos[i].weight, op.ptToPx(ptEfectivo(tramos[i])), tramos[i].stack);
@@ -285,7 +353,11 @@ export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas
     // chico que uno de 160 sin volar.
     for (const g of grupos) if (ptEfectivo(tramos[g.tramo]) > ptEfectivo(tramos[mayor])) mayor = g.tramo;
     let ptLinea = mayor >= 0 ? ptEfectivo(tramos[mayor]) : ptAnterior;
-    if (n === 0 && op.lineHeightPt && op.lineHeightPt > ptLinea) ptLinea = op.lineHeightPt;
+    let fuenteLinea: { weight: number; stack: string } | null = mayor >= 0 ? tramos[mayor] : null;
+    if (n === lineas.length - 1 && op.lineHeightPt && op.lineHeightPt > ptLinea) {
+      ptLinea = op.lineHeightPt;
+      fuenteLinea = op.fuenteEspaciador ?? fuenteLinea;
+    }
     ptAnterior = ptLinea;
     const sizeLinea = op.ptToPx(ptLinea);
 
@@ -293,12 +365,8 @@ export function diagramarTramos(tramos: Tramo[], op: OpcionesDiagrama): { piezas
     const total = anchos.reduce((s, a) => s + a, 0);
     let x = op.align === "center" ? (op.anchoPx - total) / 2 : op.align === "right" ? op.anchoPx - total : 0;
 
-    if (mayor >= 0) {
-      // Misma cuenta que Konva.Text (_sceneFunc, sin legacyTextRendering):
-      // la base queda a medio renglón más la mitad de ascendente - descendente.
-      const t = tramos[mayor];
-      const { ascent, descent } = op.metricas(cadenaFont(t.weight, sizeLinea, t.stack));
-      const base = arriba + (ascent - descent) / 2 + (sizeLinea * reglas().altoDeLinea) / 2;
+    if (mayor >= 0 && fuenteLinea) {
+      const base = arriba + baseEnElRenglon(sizeLinea * reglas().altoDeLinea, fuenteLinea, op.metricas);
       grupos.forEach((g, k) => {
         const tramo = tramos[g.tramo];
         const sizePx = op.ptToPx(ptEfectivo(tramo));

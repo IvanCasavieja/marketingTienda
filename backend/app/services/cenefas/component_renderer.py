@@ -1191,13 +1191,38 @@ def _populate_text_frame(tf, comp: dict, value: str) -> None:
         run.text = value
         _apply_run_style(run, run_style)
 
-    # Replicate empty spacer run used in original PPTX to set a larger line height.
-    # Without this, anchor=b positions text much lower than the original.
+    # El run espaciador: el pedazo invisible con el que el diseño fija el alto
+    # del renglón (`line_height_pt`), para que el precio no se mueva de lugar
+    # cuando su cuerpo cambia -- una regla que lo achica, o una voladita, que
+    # PowerPoint dibuja a dos tercios.
+    #
+    # TIENE QUE LLEVAR UN ESPACIO DE VERDAD. Hasta el 30/09/2026 se escribía
+    # con texto "" y PowerPoint ignora un run vacío al calcular el renglón:
+    # medido con POWERPNT.EXE, el archivo con ese run y el archivo sin él dan
+    # la línea de base en el mismo lugar al centésimo de punto. O sea que el
+    # espaciador no existía en el papel, y el preview --que sí lo dibuja-- lo
+    # mostraba más abajo de lo que salía impreso. Caso real: precio banco de
+    # "Fiesta de Alemania", "$501,84" con el 501 volado, 0,16 cm más arriba en
+    # el archivo que en pantalla.
+    #
+    # Va AL FINAL y es un espacio común (no uno duro): PowerPoint cuelga los
+    # espacios del final del renglón, así que no corre el centrado ni la
+    # alineación a derecha o izquierda (medido: 0,00 pt de diferencia en los
+    # tres casos). Un espacio duro al final, o uno común al principio, sí lo
+    # corren ~2 pt. Por ir al final agranda el ÚLTIMO renglón, que es el que
+    # el preview agranda también (diagramarTramos en textoEnriquecido.ts).
+    #
+    # Lleva la tipografía de la caja y nada más: sin ella heredaría la del
+    # tema (Calibri) y el alto del renglón dependería de una fuente que el
+    # preview no conoce. Sin voladita, porque volado se achicaría a dos tercios
+    # y dejaría de sostener el renglón.
     line_height_pt = style.get("line_height_pt")
     if line_height_pt and line_height_pt != style.get("font_size"):
         spacer = p.add_run()
-        spacer.text = ""
+        spacer.text = " "
         spacer.font.size = Pt(line_height_pt)
+        if style.get("font_family"):
+            spacer.font.name = style["font_family"]
 
 
 def add_text_component(slide, comp: dict, value: str) -> None:

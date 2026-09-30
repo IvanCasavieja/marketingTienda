@@ -102,6 +102,9 @@ _CONSECUENCIA = {
     "inset_cm":
         "el texto corta una palabra más tarde (o más temprano) que en el "
         "papel, en todos los cuadros de texto de todas las plantillas",
+    "inset_arriba_cm":
+        "todos los cuadros de texto se ven más arriba (o más abajo) en "
+        "pantalla que en el papel, en todas las plantillas",
     "pt_por_defecto":
         "un cuadro sin tamaño declarado se mide con un cuerpo y se imprime con "
         "otro, así que los avisos de choque entre cuadros no saltan",
@@ -165,6 +168,7 @@ def test_el_endpoint_devuelve_el_archivo_tal_cual() -> None:
 _PROHIBIDO_PY = [
     (r"=\s*0\.667\b",          "factor_voladita"),
     (r"=\s*0\.508\b",          "inset_cm"),
+    (r"=\s*0\.127\b",          "inset_arriba_cm"),
     (r"=\s*1\.08\b",           "factor_negrita"),
     (r"=\s*0\.52\b",           "em_fallback"),
     (r"=\s*1\.2\b",            "alto_de_linea"),
@@ -187,6 +191,7 @@ _PROHIBIDO_TS = [
     (r"=\s*0\.667\b",              "factorVoladita"),
     (r"\*\s*0\.667\b",             "factorVoladita"),
     (r"=\s*0\.508\b",              "insetCm"),
+    (r"(?:=|:|\*)\s*0\.127\b",     "insetArribaCm"),
     (r"(?:=|:)\s*1\.2\b",          "altoDeLinea"),
     (r"\*\s*1\.2\b",               "altoDeLinea"),
     (r"\?\?\s*12\b",               "ptPorDefecto"),

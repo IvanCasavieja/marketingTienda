@@ -41,10 +41,15 @@ _RUTA = pathlib.Path(__file__).parent.parent.parent / "data" / "reglas_de_medici
 # Las reglas que el código de acá consume. Si agregás una al JSON y la usás en
 # Python, sumala a esta lista: así el arranque falla con un nombre concreto en
 # vez de un AttributeError en medio de una generación.
+#
+# `inset_arriba_cm` la usa solo el preview, pero va igual: si faltara, el
+# preview no podría dibujar ninguna cenefa, y es mejor que eso reviente en el
+# arranque del backend que en la pantalla de alguien.
 _OBLIGATORIAS = (
     "factor_voladita",
     "alto_de_linea",
     "inset_cm",
+    "inset_arriba_cm",
     "pt_por_defecto",
     "factor_negrita",
     "em_fallback",

@@ -33,7 +33,9 @@ export interface ComponentStyle {
    * Alto de linea del parrafo en puntos, cuando el diseno lo fuerza con un
    * "run espaciador": un espacio en un cuerpo mucho mayor que el texto. Se usa
    * para apoyar un texto chico en la linea de uno grande (el "$" al lado del
-   * precio). Ver _populate_text_frame en component_renderer.py.
+   * precio). El export lo escribe como un espacio AL FINAL del parrafo, asi
+   * que agranda el ultimo renglon. Ver _populate_text_frame en
+   * component_renderer.py.
    */
   line_height_pt?: number;
   /**

@@ -25,7 +25,7 @@ function medir(texto: string, font: string): number {
 
 // Igual que Konva.Text: ascendente y descendente de la caja de la fuente sobre
 // una "M", y si el navegador no los informa, los de la letra.
-function metricas(font: string): { ascent: number; descent: number } {
+export function metricas(font: string): { ascent: number; descent: number } {
   const ctx = contexto();
   if (!ctx) return { ascent: 0, descent: 0 };
   ctx.font = font;
@@ -38,12 +38,16 @@ function metricas(font: string): { ascent: number; descent: number } {
 
 export function nodoTextoEnriquecido(
   tramos: Tramo[],
-  opciones: Omit<OpcionesDiagrama, "medir" | "metricas">,
+  opciones: Omit<OpcionesDiagrama, "medir" | "metricas"> & {
+    /** Dónde arranca el texto adentro de la caja: los márgenes internos de PowerPoint. */
+    x: number;
+    y: number;
+  },
 ): Konva.Shape {
   const { piezas, alto } = diagramarTramos(tramos, { ...opciones, medir, metricas });
   return new Konva.Shape({
-    x: 0,
-    y: 0,
+    x: opciones.x,
+    y: opciones.y,
     width: opciones.anchoPx,
     height: alto,
     // Sin alto fijo ni recorte A PROPÓSITO, igual que el Konva.Text del

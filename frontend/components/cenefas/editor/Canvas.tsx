@@ -15,8 +15,8 @@ import {
 } from "@/lib/cenefas/reglas";
 import { resolverFuente } from "@/lib/cenefas/fuentes";
 import { mascaraNegrita, tieneMarca } from "@/lib/cenefas/smartBold";
-import { tramosConEstiloPropio } from "@/lib/cenefas/textoEnriquecido";
-import { nodoTextoEnriquecido } from "@/lib/cenefas/dibujarTextoEnriquecido";
+import { baseEnElRenglon, cadenaFont, tramosConEstiloPropio, tramosDeCaja } from "@/lib/cenefas/textoEnriquecido";
+import { metricas, nodoTextoEnriquecido } from "@/lib/cenefas/dibujarTextoEnriquecido";
 import { cargarReglasDeMedicion, reglas } from "@/lib/cenefas/reglasDeMedicion";
 import {
   cargarFormatosDeHoja,
@@ -75,11 +75,6 @@ function buildRulerTicks(lengthCm: number, offset: number): RegleTick[] {
   }
   return ticks;
 }
-
-// Proporcion del cuerpo que ocupa el ascendente en las tipografias de titular
-// que usan estas plantillas (Impact y condensadas). Aproximado a proposito:
-// esto es el preview, no el render final.
-const ASCENDENTE_EM = 0.9;
 
 // Los cuerpos de fuente viajan en puntos (1 pt = 1/72 pulgada) y el canvas
 // trabaja en px a razon de PX_PER_CM.
@@ -485,39 +480,70 @@ function buildComponentGroup({
     // El número sale del archivo único de reglas, nunca escrito acá.
     const insetPx = reglas().insetCm * PX_PER_CM;
     const anchoUtilPx = Math.max(1, w - insetPx);
-
-    if (tramos) {
-      group.add(nodoTextoEnriquecido(tramos, {
-        anchoPx: anchoUtilPx,
-        align: comp.style?.align ?? "center",
-        lineHeightPt: comp.style?.line_height_pt,
-        ptToPx,
-      }));
-      return group;
-    }
+    // EL MARGEN DE ARRIBA. Igual que a los costados, PowerPoint reserva
+    // 0,127 cm arriba (tIns) y el primer renglón arranca ahí, no en el techo de
+    // la caja. Hasta el 30/09/2026 el preview dibujaba en y = 0, así que TODOS
+    // los cuadros de texto se veían 0,127 cm más arriba que en el papel.
+    const insetArribaPx = reglas().insetArribaCm * PX_PER_CM;
 
     // El cuerpo viaja en puntos; el canvas trabaja en px a PX_PER_CM. El
     // tamaño que se asume cuando el cuadro no declara ninguno sale del archivo
     // único de reglas: es el mismo con el que el exportador mide.
     const pt = comp.style?.font_size ?? reglas().ptPorDefecto;
     const fontSizePx = ptToPx(pt);
-    // PowerPoint apoya la primera linea en el ASCENDENTE del run mas grande
-    // del parrafo. Cuando el diseno mete un "run espaciador" --un espacio en
-    // un cuerpo mucho mayor-- para levantar el alto de linea, el texto chico
-    // queda apoyado en esa linea alta, no pegado al techo de la caja. Es como
-    // el diseñador alinea el "$" con el precio gigante de al lado.
+
+    // EL RUN ESPACIADOR. Cuando el diseño trae un pedazo invisible más grande
+    // que el texto (`line_height_pt`), el export lo escribe como un espacio al
+    // final del párrafo y PowerPoint agranda el ÚLTIMO renglón hasta su
+    // cuerpo: es lo que apoya el "$" chico en la línea del precio grande y lo
+    // que deja al precio en su lugar si una regla o una voladita lo achican.
+    // Konva.Text no puede hacer un renglón más alto que los otros, así que
+    // estos cuadros --y los que tienen voladita en la caja, que Konva.Text
+    // tampoco dibuja-- van pedazo por pedazo aunque sean de un solo estilo.
     //
-    // Sin esto el "$" de 80pt junto a un espaciador de 180pt se dibujaba 3,2 cm
-    // mas arriba de donde sale en el PPTX.
-    const lineHeightPt = comp.style?.line_height_pt ?? pt;
-    const offsetY = lineHeightPt > pt ? ptToPx(lineHeightPt - pt) * ASCENDENTE_EM : 0;
+    // Hasta el 30/09/2026 esto era un corrimiento a ojo (0,9 del cuerpo
+    // sobrante, a todo el bloque) contra un espaciador que el export escribía
+    // VACÍO y PowerPoint ignoraba: la pantalla mostraba el precio más abajo
+    // de lo que salía impreso.
+    const conEspaciador = (comp.style?.line_height_pt ?? 0) > pt;
+    const tramosDibujo = tramos ?? (conEspaciador || comp.style?.baseline
+      ? tramosDeCaja(comp, text, aplicaSmartBold(comp))
+      : null);
+
+    if (tramosDibujo) {
+      const espaciador = resolverFuente(comp.style?.font_family, false);
+      group.add(nodoTextoEnriquecido(tramosDibujo, {
+        // `x: insetPx / 2` y no 0, igual que el Konva.Text de abajo: PowerPoint
+        // mete la mitad del margen de cada lado. Hasta el 30/09/2026 este
+        // camino arrancaba en 0 y centraba el texto 0,254 cm corrido a la
+        // izquierda (el "$501,84" del precio banco, por ejemplo).
+        x: insetPx / 2,
+        y: insetArribaPx,
+        anchoPx: anchoUtilPx,
+        align: comp.style?.align ?? "center",
+        lineHeightPt: comp.style?.line_height_pt,
+        fuenteEspaciador: { weight: espaciador.weight, stack: espaciador.stack },
+        ptToPx,
+      }));
+      return group;
+    }
+
     const fuente = resolverFuente(comp.style?.font_family, comp.style?.font_bold);
+    // Konva.Text apoya cada renglón a medio alto de línea más la mitad de
+    // (ascendente - descendente); PowerPoint lo apoya repartiendo el alto de
+    // línea en la proporción ascendente:descendente (ver baseEnElRenglon). La
+    // diferencia es la misma en todos los renglones, así que alcanza con
+    // correr el bloque entero. `ascent` y `descent` son los que usa Konva.Text,
+    // medidos a ESTE cuerpo, para restar exactamente lo que Konva suma.
+    const { ascent, descent } = metricas(cadenaFont(fuente.weight, fontSizePx, fuente.stack));
+    const altoRenglonPx = fontSizePx * reglas().altoDeLinea;
+    const correccionBase = baseEnElRenglon(altoRenglonPx, fuente, metricas) - ((ascent - descent) / 2 + altoRenglonPx / 2);
     const nodoTexto = new Konva.Text({
       // `x: insetPx / 2` y no 0: PowerPoint mete la mitad del margen de cada
       // lado, así que el texto queda centrado igual que en el PPTX. Este es el
       // camino por el que va la MAYORÍA de los cuadros (los de un solo
       // estilo); arreglar solo el del texto enriquecido los dejaba mintiendo.
-      x: insetPx / 2, y: offsetY, width: anchoUtilPx,
+      x: insetPx / 2, y: insetArribaPx + correccionBase, width: anchoUtilPx,
       text,
       fontSize: fontSizePx,
       // PowerPoint mete el peso adentro del nombre ("Libre Franklin Black"

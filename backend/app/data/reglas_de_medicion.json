@@ -45,6 +45,13 @@
     "porque": "Es el default de PowerPoint, no una estimacion. Antes el exportador descontaba 0,4 cm y el corte simulado partia una palabra mas tarde que el real. Y hasta el 18/09/2026 el PREVIEW no lo descontaba EN ABSOLUTO: dibujaba con el ancho entero de la caja, asi que en pantalla el texto cortaba una palabra mas tarde que en el papel, en todos los cuadros de texto de todas las plantillas. Esa era la mentira mas vieja y la mas invisible, porque del lado del navegador el numero ni siquiera existia: no habia dos valores que comparar."
   },
 
+  "inset_arriba_cm": {
+    "valor": 0.127,
+    "usa": ["preview"],
+    "que_es": "El margen interno que PowerPoint reserva ARRIBA adentro de todo cuadro de texto (tIns = 45720 EMU = 0,127 cm). El primer renglon no arranca en el techo de la caja: arranca 0,127 cm mas abajo.",
+    "porque": "Es el default de PowerPoint, y esta MEDIDO: exportando a PDF con POWERPNT.EXE (COM/pywin32) y leyendo el PDF con PyMuPDF, la linea de base de cada cuadro cae exactamente 3,6 pt (0,127 cm) mas abajo de lo que daria sin margen, en Impact, Arial Black y Franklin Gothic, de 10 a 180 pt (30/09/2026). Hasta esa fecha el preview dibujaba el texto pegado al techo de la caja (y = 0), asi que TODOS los cuadros de texto de todas las plantillas se veian 0,127 cm mas arriba de lo que salian impresos. El exportador no lo usa porque no calcula alturas: el cuadro va al PPTX con su margen por defecto y PowerPoint lo aplica solo."
+  },
+
   "pt_por_defecto": {
     "valor": 18,
     "usa": ["exportador", "preview"],

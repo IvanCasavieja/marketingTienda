@@ -33,6 +33,8 @@ export interface Reglas {
   altoDeLinea: number;
   /** Margen interno de la caja de texto, en cm, sumando los dos lados. */
   insetCm: number;
+  /** Margen interno de ARRIBA de la caja de texto, en cm. */
+  insetArribaCm: number;
   /** Tamaño de letra que se asume cuando el cuadro no declara ninguno. */
   ptPorDefecto: number;
 }
@@ -42,6 +44,7 @@ const CLAVES: Record<keyof Reglas, string> = {
   factorVoladita: "factor_voladita",
   altoDeLinea: "alto_de_linea",
   insetCm: "inset_cm",
+  insetArribaCm: "inset_arriba_cm",
   ptPorDefecto: "pt_por_defecto",
 };
 
