@@ -449,3 +449,98 @@ def test_lo_que_se_prepara_para_un_producto_no_se_le_pega_al_siguiente():
     # vuelven a 3 no volvés al original".
     otro = preparar_componentes([caja], reglas, {"precioOferta": "39"})
     assert otro[0]["style"]["font_size"] == 20.0
+
+
+# ---------------------------------------------------------------------------
+# El fondo heredado: master Y layout (02/10/2026)
+# ---------------------------------------------------------------------------
+#
+# Cenefas_A5_FIESTA DE ALEMANIA_Frescos tenía el arte entero en el slide
+# layout y nada en el master. El importer miraba solo el master, así que la
+# plantilla quedaba sin fondo en el preview mientras el export, que preserva
+# el archivo, lo imprimía bien. Estos tests fijan que el fondo se importa
+# venga de donde venga, y que una imagen del slide sigue siendo una imagen
+# común (editable, con su shape real), no un fondo.
+
+def _png_de_prueba():
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 30), (200, 30, 30)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _pptx_con_imagen_en(donde):
+    """Un A4 con un cuadro <<descripcion>> y una imagen a toda hoja que vive
+    en el `slide`, en el `layout` o en el `master`. python-pptx solo sabe
+    agregar imágenes a un slide, así que para las otras dos se agrega ahí y
+    se muda el <p:pic> con su relación, que es exactamente lo que deja
+    PowerPoint cuando alguien pega el arte en la vista de patrón."""
+    from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+
+    prs = Presentation()
+    prs.slide_width = Cm(21.0)
+    prs.slide_height = Cm(29.7)
+    layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(layout)
+    box = slide.shapes.add_textbox(Cm(2), Cm(3), Cm(17), Cm(4))
+    box.text_frame.paragraphs[0].add_run().text = "<<descripcion>>"
+    pic = slide.shapes.add_picture(io.BytesIO(_png_de_prueba()), Cm(0), Cm(0), Cm(21.0), Cm(29.7))
+    if donde != "slide":
+        destino = layout if donde == "layout" else layout.slide_master
+        imagen = slide.part.related_part(pic._element.blip_rId)
+        rid = destino.part.relate_to(imagen, RT.IMAGE)
+        el = pic._element
+        el.getparent().remove(el)
+        destino.shapes._spTree.append(el)
+        el.blipFill.blip.rEmbed = rid
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
+def _fondos(defin):
+    return [c for c in defin["components"] if c["type"] == "image" and c.get("name") == "fondo"]
+
+
+def test_el_fondo_del_layout_se_importa_como_fondo():
+    d = import_pptx(_pptx_con_imagen_en("layout"))
+    fondos = _fondos(d)
+    assert len(fondos) == 1, "la imagen del layout no llegó al preview"
+    fondo = fondos[0]
+    assert fondo["locked"] is True
+    assert fondo["_source_shape_id"] is None
+    assert fondo["image_data"] and fondo["image_ext"] == "png"
+    assert abs(fondo["base_bounds"]["width"] - 21.0) < 0.05
+    assert fondo["z_index"] == 0, "el fondo va debajo de todo"
+    assert _componente(d, "descripcion") is not None
+
+
+def test_el_fondo_del_master_se_sigue_importando():
+    d = import_pptx(_pptx_con_imagen_en("master"))
+    assert len(_fondos(d)) == 1
+    assert _fondos(d)[0]["_source_shape_id"] is None
+
+
+def test_una_imagen_del_slide_no_es_fondo():
+    d = import_pptx(_pptx_con_imagen_en("slide"))
+    assert _fondos(d) == []
+    imagenes = [c for c in d["components"] if c["type"] == "image"]
+    assert len(imagenes) == 1
+    assert imagenes[0]["locked"] is False
+    assert imagenes[0]["_source_shape_id"] is not None, "una imagen del slide se muta en su lugar al exportar"
+
+
+def test_el_export_conserva_el_fondo_del_layout_sin_duplicarlo():
+    src = _pptx_con_imagen_en("layout")
+    d = import_pptx(src)
+    pptx, _ = render_template_to_pptx(
+        d, [{"descripcion": "Queso brie"}, {"descripcion": "Salchichas"}], "a4", None, src)
+    z = zipfile.ZipFile(io.BytesIO(pptx))
+    layouts_con_pic = [n for n in z.namelist()
+                       if re.match(r"ppt/slideLayouts/slideLayout\d+\.xml$", n) and b"<p:pic>" in z.read(n)]
+    assert layouts_con_pic, "el layout del export perdió el fondo"
+    # Las hojas no dibujan el fondo de nuevo: lo heredan del layout.
+    for n in z.namelist():
+        if re.match(r"ppt/slides/slide\d+\.xml$", n):
+            assert b"<p:pic>" not in z.read(n), f"{n} trae el fondo duplicado encima del heredado"
+

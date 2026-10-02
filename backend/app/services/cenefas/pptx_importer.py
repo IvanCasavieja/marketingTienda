@@ -1361,6 +1361,45 @@ def asegurar_hoja(definition: dict, source_pptx: bytes | None) -> bool:
     return True
 
 
+def _imagenes_heredadas(slide) -> list:
+    """Las imágenes que el slide muestra sin tenerlas: las del slide master y
+    las del slide layout, en el orden en que PowerPoint las pinta (el master
+    abajo, el layout encima, el slide arriba de todo).
+
+    Hasta el 02/10/2026 se miraba SOLO el master. Un diseño cuya imagen de
+    fondo vive en el layout --que es donde la deja PowerPoint cuando alguien
+    la pega en la vista "Patrón de diapositivas" sobre un diseño y no sobre el
+    patrón-- se importaba sin fondo: la plantilla quedaba con los cuadros de
+    texto y las cocardas flotando sobre una hoja blanca, y la persona no tenía
+    forma de saber por qué. Caso real: Cenefas_A5_FIESTA DE ALEMANIA_Frescos,
+    con el arte entero (474 KB) en slideLayout1 y nada en el master. El export
+    nunca lo perdió, porque preserva el archivo original con su layout; era el
+    preview el que mentía, y la regla es que el preview muestre lo que sale.
+
+    Se recorren con _flatten_shapes por si el arte viene agrupado. Un
+    placeholder de imagen vacío no es PICTURE y queda afuera solo.
+    """
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    encontradas: list = []
+    try:
+        layout = slide.slide_layout
+        contenedores = (layout.slide_master, layout)
+    except Exception:
+        return encontradas
+    for contenedor in contenedores:
+        try:
+            shapes = _flatten_shapes(contenedor.shapes)
+        except Exception:
+            continue
+        for shape in shapes:
+            try:
+                if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                    encontradas.append(shape)
+            except Exception:
+                continue
+    return encontradas
+
+
 def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: str | None = None) -> dict:
     """Parsea el primer slide de un PPTX y devuelve una definición v2.
 
@@ -1381,42 +1420,37 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
     z_index = 0
     theme_colors = _resolve_scheme_colors(slide)
 
-    # ── 1. Imágenes del slide master (fondo visual del template) ──────────
-    try:
-        from pptx.enum.shapes import MSO_SHAPE_TYPE
-        master = slide.slide_layout.slide_master
-        for shape in master.shapes:
-            if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
-                continue
-            common = _make_common(shape, z_index)
-            if common is None:
-                continue
-            result = _extract_image_b64(shape)
-            if not result:
-                continue
-            b64, ext = result
-            components.append({
-                **common,
-                "type":       "image",
-                "name":       "fondo",
-                "variable":   None,
-                # None a propósito (pisa lo que puso _make_common): este
-                # shape_id es del MASTER, un namespace de ids totalmente
-                # aparte del slide — nunca va a matchear un shape real ahí, y
-                # si coincidiera por casualidad con el id de otro shape del
-                # slide sería peor (mutaría el shape equivocado). El render
-                # (component_renderer.py) usa este None como señal explícita
-                # de "fondo heredado del master, no hay nada que dibujar de
-                # nuevo cuando se preserva el diseño original".
-                "_source_shape_id": None,
-                "image_data": b64,
-                "image_ext":  ext,
-                "style":      {},
-                "locked":     True,
-            })
-            z_index += 1
-    except Exception:
-        pass
+    # ── 1. Imágenes heredadas: slide master y slide layout (fondo visual) ──
+    # Ver _imagenes_heredadas: el arte de un diseño puede estar en cualquiera
+    # de los dos, y hasta el 02/10/2026 el layout no se miraba.
+    for shape in _imagenes_heredadas(slide):
+        common = _make_common(shape, z_index)
+        if common is None:
+            continue
+        result = _extract_image_b64(shape)
+        if not result:
+            continue
+        b64, ext = result
+        components.append({
+            **common,
+            "type":       "image",
+            "name":       "fondo",
+            "variable":   None,
+            # None a propósito (pisa lo que puso _make_common): este
+            # shape_id es del MASTER o del LAYOUT, un namespace de ids
+            # totalmente aparte del slide — nunca va a matchear un shape real
+            # ahí, y si coincidiera por casualidad con el id de otro shape
+            # del slide sería peor (mutaría el shape equivocado). El render
+            # (component_renderer.py) usa este None como señal explícita de
+            # "fondo heredado, no hay nada que dibujar de nuevo cuando se
+            # preserva el diseño original".
+            "_source_shape_id": None,
+            "image_data": b64,
+            "image_ext":  ext,
+            "style":      {},
+            "locked":     True,
+        })
+        z_index += 1
 
     # ── 2. Shapes del slide (datos variables + imágenes embebidas) ────────
     for shape in _flatten_shapes(slide.shapes):
