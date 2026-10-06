@@ -24,18 +24,28 @@ log = logging.getLogger(__name__)
 # de grupos unificados (_UNIFY_SYSTEM_PROMPT).
 #
 # 2026-10-06 (Ivan): el orden de las partes es FIJO — producto, marca,
-# variedad, gramaje: "Vino TIENDA INGLESA blanco. 500ml". Hasta entonces la
+# variedad, gramaje: "Vino TIENDA INGLESA blanco. 500 ml". Hasta entonces la
 # regla no decía nada del orden y los ejemplos traían la variedad delante de
 # la marca ("Aceite alto oleico CAÑUELAS", "Morcilla dulce DON JOAQUIN"); se
 # reescribieron para no contradecirla. La mayúscula de la marca no cambió.
+#
+# 2026-10-06 (más tarde, Ivan): "no veo que esté saliendo el gramaje ni el
+# punto". La referencia son las 448 descripciones que aprobó el 29/09 en el
+# artifact "Fiesta Alemania Fase 2" (cargadas al Diccionario el 30/09): ahí
+# 413 llevan el punto y todo lo cuantificable va después, con espacio entre
+# número y unidad ("500 ml", "x 12", "Lata 500 ml"), y los nombres de
+# línea conservan su mayúscula ("Naturals Classic"). Probado contra
+# producción ese día: el modelo escribía "473ml", dejaba una cantidad antes
+# del punto ("TIENDA INGLESA 30m. x4") y bajaba "Hop House" a minúscula.
+# Las reglas de abajo fijan esas tres cosas con los ejemplos del documento.
 # ---------------------------------------------------------------------------
 _STYLE_RULES = f"""\
-- EL ORDEN DE LAS PARTES ES SIEMPRE EL MISMO: primero el PRODUCTO (qué es), después la MARCA, después la VARIEDAD (sabor, tipo, color, versión) y al final el GRAMAJE o la cantidad. Ejemplo: "Vino TIENDA INGLESA blanco. 500ml" — producto "Vino", marca "TIENDA INGLESA", variedad "blanco", gramaje "500ml". Nunca la variedad antes de la marca ("Vino blanco TIENDA INGLESA" está MAL) ni el gramaje antes de la variedad. Si una parte no existe o no se conoce, se la saltea y las demás conservan ese orden: "Vino TIENDA INGLESA. 500ml", "Vino TIENDA INGLESA blanco".
+- EL ORDEN DE LAS PARTES ES SIEMPRE EL MISMO: primero el PRODUCTO (qué es), después la MARCA, después la VARIEDAD (sabor, tipo, color, línea o modelo) y al final, después de un punto, el GRAMAJE o la cantidad. Ejemplo: "Vino TIENDA INGLESA blanco. 500 ml" — producto "Vino", marca "TIENDA INGLESA", variedad "blanco", gramaje "500 ml". Nunca la variedad antes de la marca ("Vino blanco TIENDA INGLESA" está MAL) ni el gramaje antes del punto. Si una parte no existe, se la saltea y las demás conservan ese orden ("Vino TIENDA INGLESA. 500 ml").
 - La marca del producto va SIEMPRE en MAYÚSCULA COMPLETA, la palabra entera (no solo la primera letra).
-- Después de la variedad (o de la marca, si no hay variedad) va SIEMPRE un punto que la separa del gramaje o de lo que venga después, como si fuera el inicio de una nueva oración corta: "Vino TIENDA INGLESA blanco. 500ml", "Aceite CAÑUELAS alto oleico. 900 ml", "Yogur YOGURISIMO natural. 460g".
-  Si la descripción termina en la marca o en la variedad y no hay nada más después, NO pongas un punto colgado ahí — el punto separa dos partes, no es un cierre de oración.
-- El resto del texto va en minúscula, con reglas normales de oración en español: mayúscula SOLO en la primera letra de toda la descripción y en la primera letra de la palabra que sigue a cada punto (incluido el punto después de la marca) — ninguna otra palabra lleva mayúscula inicial (ej. "sin piel", "con azúcar", "de cerdo", nunca "Sin Piel" ni "Con Azúcar"). Dos excepciones que no cambian nunca, sea cual sea su posición en el texto: la marca (siempre mayúscula completa, ver arriba) y las unidades de medida (ml, g, kg, L, un, etc.), siempre en minúscula incluso si quedaran al principio de una oración.
-- Incluí cantidad/tamaño si se puede inferir de la fuente (ml, g, kg, L, unidades, etc.).
+- EL PUNTO Y EL GRAMAJE NO SON OPCIONALES. Todo lo que sea cantidad, tamaño, peso, volumen, envase o unidades (ml, g, kg, L, cm, oz, W, "x 4", "Lata 500 ml", "10 sobres", "12 tazas") va SIEMPRE al final, después de un punto que lo separa del resto: "Cerveza GUINNESS Extra Stout. 473 ml", "Cerveza CLAUSTHALER pomelo. Lata 500 ml", "Papel higiénico TIENDA INGLESA doble hoja. 30 m x 4", "Lápices de colores STABILO. x 12", "Harina 0000 TIENDA INGLESA. 1 kg". El nombre del sistema de gestión casi siempre trae esa cantidad ("473ML.", "30M X4", "1K.", "X12"): si está, se escribe, siempre después del punto y nunca pegada a la variedad ("TIENDA INGLESA 30m. x4" está MAL). Solo queda sin punto ni gramaje un producto cuya fuente no trae NINGUNA cantidad (un libro, un electrodoméstico con su modelo: "Aspiradora KARCHER VC4 My Home"); ahí no se inventa.
+- El gramaje se escribe con un espacio entre el número y la unidad ("500 ml", "150 g", "1.2 kg", "1.7 L", "16 oz") y las cantidades como "x 4", "3 x 200 ml", "400 ml x 2". El envase, si importa, va antes de la cantidad y después del punto ("Lata 500 ml", "Botella 330 ml"). Lo que se vende por peso va "Kg"; lo que se vende por pieza, "Unidad".
+- Después de la variedad (o de la marca, si no hay variedad) va SIEMPRE ese punto, como si fuera el inicio de una nueva oración corta. Si la descripción termina en la marca o en la variedad y no hay nada más después, NO pongas un punto colgado ahí — el punto separa dos partes, no es un cierre de oración.
+- El resto del texto va en minúscula, con reglas normales de oración en español: mayúscula SOLO en la primera letra de toda la descripción y en la primera letra de la palabra que sigue a cada punto — ninguna otra palabra lleva mayúscula inicial (ej. "sin piel", "con azúcar", "de cerdo", nunca "Sin Piel" ni "Con Azúcar"). Tres excepciones que no cambian nunca, sea cual sea su posición en el texto: la marca (siempre mayúscula completa, ver arriba); los nombres propios de una línea o modelo de la marca, que conservan la mayúscula inicial tal como los escribe el fabricante ("Hop House", "Naturals Classic", "Crunchy Duo", "Point 88", "VC4 My Home") — pero un descriptor genérico no es nombre propio ("pomelo", "vainilla", "sin alcohol", "extra virgen" van en minúscula); y las unidades de medida (ml, g, kg, L, un, etc.), siempre en minúscula incluso si quedaran al principio de una oración.
 - Es para un cartel de precio: tiene que ser CORTA. Apuntá a menos de {DESCRIPTION_WARN_CHARS} caracteres, nunca más de {DESCRIPTION_MAX_CHARS}.
 - No inventes datos (sabor, variedad, tamaño) que no estén sugeridos por el nombre o la descripción de origen.
 - Si un producto viene marcado "[FIAMBRE POR KG]", la unidad en la descripción tiene que decir "100g", nunca "kg" — el precio de ese producto ya se va a recalcular aparte para esa unidad, así que el texto tiene que ser consistente con eso.
