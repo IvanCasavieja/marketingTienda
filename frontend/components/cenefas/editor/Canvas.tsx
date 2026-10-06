@@ -101,6 +101,11 @@ function ptToPx(pt: number) {
   return (pt / 72) * 2.54 * PX_PER_CM;
 }
 
+/** Línea suelta del diseño (ver ComponentStyle.geometry). */
+function esLinea(comp: CenefaComponent): boolean {
+  return comp.type === "shape" && comp.style?.geometry === "line";
+}
+
 // Dónde queda un cuadro que se soltó, en cm sobre un eje del papel.
 //
 // Un cuadro que ENTRA en la hoja se acomoda para no quedar afuera: es lo que
@@ -427,6 +432,28 @@ function buildComponentGroup({
     cornerRadius: 3,
     dash: comp.locked ? [4, 3] : (fiel ? [3, 3] : undefined),
   }));
+
+  // Línea suelta del diseño: el tachado diagonal del precio regular de las
+  // plantillas de Exclusivos TI (ver _es_linea en pptx_importer.py). Hasta el
+  // 06/10/2026 el importer ni la traía, así que el editor no la mostraba y no
+  // había forma de correrla cuando el precio salía más corto o más largo que
+  // el de muestra. Se dibuja de esquina a esquina de su caja, en el sentido
+  // que guarda el PPTX, con su grosor y su color reales: lo que se ve acá es
+  // lo que va a cruzar el precio en el papel. La caja punteada de arriba
+  // queda como área para seleccionarla y arrastrarla.
+  if (esLinea(comp)) {
+    const wReal = scalePx(b.width);
+    const hReal = scalePx(b.height);
+    const [x0, x1] = comp.style?.flip_h ? [wReal, 0] : [0, wReal];
+    const [y0, y1] = comp.style?.flip_v ? [hReal, 0] : [0, hReal];
+    group.add(new Konva.Line({
+      points: [x0, y0, x1, y1],
+      stroke: comp.style?.line_color ?? "#000000",
+      strokeWidth: Math.max(1, ptToPx(comp.style?.line_width_pt ?? 0.75)),
+      lineCap: "round",
+      listening: false,
+    }));
+  }
 
   const text =
     imgInvalid

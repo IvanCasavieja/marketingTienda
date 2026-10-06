@@ -1265,8 +1265,40 @@ def _apply_run_style(run, style: dict, bold_override: bool | None = None) -> Non
         run._r.get_or_add_rPr().set("baseline", str(style["baseline"]))
 
 
+def _es_comp_linea(comp: dict) -> bool:
+    """Componente `shape` que es una línea suelta del diseño (importada por
+    _es_linea en pptx_importer): se dibuja de esquina a esquina de su caja."""
+    return comp.get("type") == "shape" and (comp.get("style") or {}).get("geometry") == "line"
+
+
+def _add_linea(slide, comp: dict) -> None:
+    """Crea una línea suelta desde cero (componente sin shape fuente, p. ej.
+    duplicado en el editor): un conector recto de esquina a esquina de la
+    caja, en el sentido que indican flip_h/flip_v, con su grosor y color."""
+    from pptx.enum.shapes import MSO_CONNECTOR
+
+    bounds = comp["computed_bounds"]
+    style  = comp.get("style", {})
+    x0, y0 = Cm(bounds["x"]), Cm(bounds["y"])
+    x1, y1 = Cm(bounds["x"] + bounds["width"]), Cm(bounds["y"] + bounds["height"])
+    if style.get("flip_h"):
+        x0, x1 = x1, x0
+    if style.get("flip_v"):
+        y0, y1 = y1, y0
+    conector = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, x0, y0, x1, y1)
+    conector.line.width = Pt(float(style.get("line_width_pt") or 0.75))
+    try:
+        conector.line.color.rgb = hex_to_rgb(style.get("line_color") or "#000000")
+    except Exception:
+        pass
+
+
 def add_shape_component(slide, comp: dict) -> None:
     from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
+
+    if _es_comp_linea(comp):
+        _add_linea(slide, comp)
+        return
 
     bounds = comp["computed_bounds"]
     style  = comp.get("style", {})
@@ -1575,11 +1607,15 @@ def _place_component(slide, comp: dict, value: str, shape_map: dict[int, object]
             # `computed_bounds` está SIEMPRE en coordenadas de hoja. Si el
             # shape vive adentro de un grupo hay que pasarlo a las internas
             # del grupo antes de escribirlo (ver _a_coordenadas_internas).
+            # Una línea suelta (el tachado del precio regular, ver _es_linea
+            # en pptx_importer) puede medir 0 en un eje si es horizontal o
+            # vertical: forzarle el mínimo de 0,1 cm la inclinaría.
+            minimo = 0.0 if _es_comp_linea(comp) else 0.1
             x, y, w, h = _a_coordenadas_internas(
                 shape,
                 float(Cm(bounds["x"])), float(Cm(bounds["y"])),
-                float(Cm(max(bounds["width"],  0.1))),
-                float(Cm(max(bounds["height"], 0.1))),
+                float(Cm(max(bounds["width"],  minimo))),
+                float(Cm(max(bounds["height"], minimo))),
             )
             shape.left   = int(round(x))
             shape.top    = int(round(y))

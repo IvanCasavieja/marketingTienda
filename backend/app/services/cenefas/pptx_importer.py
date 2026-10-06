@@ -4,8 +4,10 @@ import re
 import uuid
 from io import BytesIO
 
+from lxml import etree
 from pptx import Presentation
 from pptx.enum.text import PP_ALIGN
+from pptx.oxml.ns import qn as _qn
 
 from app.services.cenefas.font_metrics import ancho_texto_cm
 from app.services.cenefas.formatos_de_hoja import (
@@ -947,7 +949,7 @@ def _flatten_shapes(shapes) -> list:
     return result
 
 
-def _make_common(shape, z_index: int) -> dict | None:
+def _make_common(shape, z_index: int, permitir_fina: bool = False) -> dict | None:
     try:
         left   = _emu_to_cm(shape.left   or 0)
         top    = _emu_to_cm(shape.top    or 0)
@@ -955,7 +957,14 @@ def _make_common(shape, z_index: int) -> dict | None:
         height = _emu_to_cm(shape.height or 0)
     except Exception:
         return None
-    if width < 0.1 or height < 0.1:
+    # `permitir_fina`: una línea suelta (ver _es_linea) mide 0 cm en uno de
+    # sus ejes si es perfectamente horizontal o vertical, y el filtro de
+    # "forma demasiado chica" la descartaba. Para una línea alcanza con que
+    # tenga largo.
+    if permitir_fina:
+        if width < 0.1 and height < 0.1:
+            return None
+    elif width < 0.1 or height < 0.1:
         return None
     return {
         "id":               str(uuid.uuid4()),
@@ -992,15 +1001,104 @@ def _make_common(shape, z_index: int) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
+# Líneas sueltas del diseño
+# ---------------------------------------------------------------------------
+#
+# El tachado del precio regular en las plantillas de Exclusivos TI (y los 3
+# de la 3xA4) no es un tachado de caracter: es un "Conector recto" diagonal
+# dibujado ENCIMA del cuadro. Hasta el 06/10/2026 el importer lo descartaba
+# --no tiene texto ni relleno, caía en el `return None` del final de
+# _parse_shape-- así que el editor no lo mostraba. Se exportaba igual, porque
+# el render deja intacto lo que no es componente, pero clavado donde lo puso
+# el diseñador sobre el precio de muestra: con "$160 unidad" la línea salía
+# cruzando el "60 uni" y no había forma de correrla. Ivan, 06/10/2026: "quiero
+# que la plataforma me muestre esa línea para yo poder moverla, nada más".
+#
+# Se importa como componente `shape` con `style.geometry = "line"`, su grosor,
+# su color y el sentido (flipH/flipV: de qué esquina a qué esquina va). El
+# canvas la dibuja así y el render, al mover el cuadro, mueve el conector.
+
+def _es_linea(shape) -> bool:
+    """Un conector (p:cxnSp) o un autoshape con geometría de línea."""
+    try:
+        el = shape._element
+    except Exception:
+        return False
+    if etree.QName(el).localname == "cxnSp":
+        return True
+    prst = el.find(_qn("p:spPr") + "/" + _qn("a:prstGeom"))
+    return prst is not None and prst.get("prst") in ("line", "lineInv")
+
+
+# tx1/bg1/tx2/bg2 son alias del mapa de colores por defecto del master
+# (clrMap) que _resolve_theme_color no conoce: se traducen al slot del tema.
+_ALIAS_CLRMAP = {"tx1": "dk1", "bg1": "lt1", "tx2": "dk2", "bg2": "lt2"}
+
+
+def _color_de_linea(contenedor, shape) -> str | None:
+    """Hex del color declarado dentro de `contenedor` (un a:solidFill o un
+    a:lnRef), explícito o del tema."""
+    if contenedor is None:
+        return None
+    srgb = contenedor.find(_qn("a:srgbClr"))
+    if srgb is not None and srgb.get("val"):
+        return f"#{srgb.get('val').upper()}"
+    scheme = contenedor.find(_qn("a:schemeClr"))
+    if scheme is None:
+        return None
+    val = scheme.get("val", "")
+    if val in _ALIAS_CLRMAP:
+        from copy import deepcopy
+        scheme = deepcopy(scheme)   # sin tocar el XML del archivo fuente
+        scheme.set("val", _ALIAS_CLRMAP[val])
+    return _resolve_theme_color(shape, scheme)
+
+
+def _estilo_de_linea(shape) -> dict:
+    """Grosor (pt), color y sentido de una línea suelta."""
+    style: dict = {"geometry": "line"}
+    el = shape._element
+    spPr = el.find(_qn("p:spPr"))
+    xfrm = spPr.find(_qn("a:xfrm")) if spPr is not None else None
+    if xfrm is not None:
+        if xfrm.get("flipH") in ("1", "true"):
+            style["flip_h"] = True
+        if xfrm.get("flipV") in ("1", "true"):
+            style["flip_v"] = True
+    ancho_pt = 0.75   # lo que dibuja PowerPoint cuando la línea no declara grosor
+    color = None
+    ln = spPr.find(_qn("a:ln")) if spPr is not None else None
+    if ln is not None:
+        w = ln.get("w")
+        if w:
+            ancho_pt = round(int(w) / 12700, 2)
+        color = _color_de_linea(ln.find(_qn("a:solidFill")), shape)
+    if color is None:
+        # Sin color propio, lo hereda del estilo de la forma (p:style/a:lnRef).
+        color = _color_de_linea(el.find(_qn("p:style") + "/" + _qn("a:lnRef")), shape)
+    style["line_width_pt"] = ancho_pt
+    style["line_color"] = color or "#000000"
+    return style
+
+
+# ---------------------------------------------------------------------------
 # Parseo de shapes individuales
 # ---------------------------------------------------------------------------
 
 def _parse_shape(
     shape, z_index: int, theme_colors: dict[str, str] | None = None,
 ) -> dict | None:
-    common = _make_common(shape, z_index)
+    es_linea = _es_linea(shape)
+    common = _make_common(shape, z_index, permitir_fina=es_linea)
     if common is None:
         return None
+
+    # Línea suelta del diseño (el tachado del precio regular): ver arriba.
+    # Va antes que el resto porque un conector no tiene texto ni relleno y
+    # caía en el `return None` del final.
+    if es_linea:
+        return {**common, "type": "shape", "name": f"linea_{z_index}",
+                "style": _estilo_de_linea(shape)}
 
     # Imagen embebida (foto, cocarde, logo)
     try:

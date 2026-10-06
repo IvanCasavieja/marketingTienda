@@ -544,3 +544,152 @@ def test_el_export_conserva_el_fondo_del_layout_sin_duplicarlo():
         if re.match(r"ppt/slides/slide\d+\.xml$", n):
             assert b"<p:pic>" not in z.read(n), f"{n} trae el fondo duplicado encima del heredado"
 
+
+# ---------------------------------------------------------------------------
+# La línea del tachado (Exclusivos TI, 06/10/2026)
+# ---------------------------------------------------------------------------
+
+def _pptx_con_linea(*, caja, linea, flip_v=True, ancho_pt=3.0):
+    """Un A4 con el cuadro del precio regular y, encima, una línea suelta como
+    el "Conector recto" con el que el diseño de Exclusivos TI tacha el precio.
+    `linea` es la CAJA de la línea (x, y, w, h); con flip_v va de
+    abajo-izquierda a arriba-derecha, que es como la dibuja el diseño."""
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_CONNECTOR
+
+    prs = Presentation()
+    prs.slide_width = Cm(21.0)
+    prs.slide_height = Cm(29.7)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    x, y, w, h = caja
+    box = slide.shapes.add_textbox(Cm(x), Cm(y), Cm(w), Cm(h))
+    run = box.text_frame.paragraphs[0].add_run()
+    run.text = "<<unidadMoneda>><<precioRegular>> unidad"
+    run.font.size = Pt(28)
+    lx, ly, lw, lh = linea
+    if flip_v:
+        conector = slide.shapes.add_connector(
+            MSO_CONNECTOR.STRAIGHT, Cm(lx), Cm(ly + lh), Cm(lx + lw), Cm(ly))
+    else:
+        conector = slide.shapes.add_connector(
+            MSO_CONNECTOR.STRAIGHT, Cm(lx), Cm(ly), Cm(lx + lw), Cm(ly + lh))
+    conector.line.width = Pt(ancho_pt)
+    conector.line.color.rgb = RGBColor(0, 0, 0)
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
+def _lineas(defin):
+    return [c for c in defin["components"]
+            if c.get("type") == "shape" and (c.get("style") or {}).get("geometry") == "line"]
+
+
+def _conectores_del_pptx(pptx_bytes):
+    """(x, y, w, h) en cm, flipV y grosor en pt de cada conector del slide."""
+    from lxml import etree
+    ns = {"p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+          "a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+    with zipfile.ZipFile(io.BytesIO(pptx_bytes)) as z:
+        root = etree.fromstring(z.read("ppt/slides/slide1.xml"))
+    out = []
+    for cxn in root.iter("{%s}cxnSp" % ns["p"]):
+        xfrm = cxn.find("p:spPr/a:xfrm", ns)
+        off, ext = xfrm.find("a:off", ns), xfrm.find("a:ext", ns)
+        ln = cxn.find("p:spPr/a:ln", ns)
+        out.append((
+            int(off.get("x")) / 360000, int(off.get("y")) / 360000,
+            int(ext.get("cx")) / 360000, int(ext.get("cy")) / 360000,
+            xfrm.get("flipV") in ("1", "true"),
+            (int(ln.get("w")) / 12700) if ln is not None and ln.get("w") else None,
+        ))
+    return out
+
+
+_CAJA_PRECIO   = (6.21, 17.90, 9.51, 3.51)   # CuadroTexto 9 de la A4 de Exclusivos TI
+_LINEA_TACHADO = (9.27, 18.19, 2.46, 1.13)   # Conector recto 5, tal cual viene
+_PRODUCTO      = {"unidadMoneda": "$", "precioRegular": "160"}
+
+
+def test_la_linea_del_tachado_se_importa_como_componente():
+    # Caso real (A4 Exclusivos TI, 06/10/2026): el tachado del precio regular
+    # es un "Conector recto" suelto. El importer lo descartaba --sin texto ni
+    # relleno-- y el editor no lo mostraba, así que no había forma de moverlo
+    # cuando el precio salía más corto que el de muestra.
+    d = import_pptx(_pptx_con_linea(caja=_CAJA_PRECIO, linea=_LINEA_TACHADO))
+    lineas = _lineas(d)
+    assert len(lineas) == 1, "la línea del tachado tiene que ser un componente"
+    linea = lineas[0]
+    b = linea["base_bounds"]
+    assert abs(b["x"] - 9.27) < 0.02 and abs(b["y"] - 18.19) < 0.02
+    assert abs(b["width"] - 2.46) < 0.02 and abs(b["height"] - 1.13) < 0.02
+    assert linea["style"]["flip_v"] is True, "va de abajo-izquierda a arriba-derecha"
+    assert linea["style"].get("flip_h") is not True
+    assert linea["style"]["line_width_pt"] == 3.0
+    assert linea["style"]["line_color"] == "#000000"
+    assert linea.get("_source_shape_id") is not None, (
+        "sin el id del shape fuente no hay forma de mover el conector al exportar")
+    # El cuadro del precio se sigue importando como siempre.
+    assert _componente(d, "precioRegular")["type"] == "text"
+
+
+def test_una_linea_horizontal_tambien_se_importa():
+    # Un tachado horizontal mide 0 cm de alto, y el filtro de "forma demasiado
+    # chica" de _make_common la tiraba junto con las formas finas.
+    d = import_pptx(_pptx_con_linea(caja=_CAJA_PRECIO, linea=(9.27, 18.8, 2.46, 0.0), flip_v=False))
+    lineas = _lineas(d)
+    assert len(lineas) == 1
+    assert abs(lineas[0]["base_bounds"]["width"] - 2.46) < 0.02
+    assert lineas[0]["base_bounds"]["height"] < 0.01
+
+
+def test_la_linea_sin_tocar_sale_donde_estaba():
+    src = _pptx_con_linea(caja=_CAJA_PRECIO, linea=_LINEA_TACHADO)
+    d = import_pptx(src)
+    pptx, _ = render_template_to_pptx(d, [_PRODUCTO], "a4", None, src)
+    conectores = _conectores_del_pptx(pptx)
+    assert len(conectores) == 1, "tiene que salir UNA línea, ni duplicada ni borrada"
+    x, y, w, h, flip_v, grosor = conectores[0]
+    assert abs(x - 9.27) < 0.02 and abs(y - 18.19) < 0.02
+    assert abs(w - 2.46) < 0.02 and abs(h - 1.13) < 0.02
+    assert flip_v and grosor == 3.0
+
+
+def test_la_linea_movida_en_el_editor_se_exporta_movida():
+    # Lo que pidió Ivan: ver la línea para correrla él. Corrida y estirada en
+    # el editor, el papel la tiene que traer ahí, con el mismo sentido y grosor.
+    src = _pptx_con_linea(caja=_CAJA_PRECIO, linea=_LINEA_TACHADO)
+    d = import_pptx(src)
+    linea = _lineas(d)[0]
+    linea["base_bounds"]["x"] = 7.0
+    linea["base_bounds"]["width"] = 3.2
+    pptx, _ = render_template_to_pptx(d, [_PRODUCTO], "a4", None, src)
+    conectores = _conectores_del_pptx(pptx)
+    assert len(conectores) == 1
+    x, y, w, h, flip_v, grosor = conectores[0]
+    assert abs(x - 7.0) < 0.05, f"salió en x={x:.2f} en vez de 7,00"
+    assert abs(w - 3.2) < 0.05, f"salió con ancho {w:.2f} en vez de 3,20"
+    assert abs(y - 18.19) < 0.05 and abs(h - 1.13) < 0.05
+    assert flip_v and grosor == 3.0, "mover la línea no le cambia el sentido ni el grosor"
+
+
+def test_una_linea_horizontal_movida_sigue_horizontal():
+    # _place_component forzaba 0,1 cm de alto mínimo a todo lo que mutaba: a
+    # una línea horizontal eso la inclina.
+    src = _pptx_con_linea(caja=_CAJA_PRECIO, linea=(9.27, 18.8, 2.46, 0.0), flip_v=False)
+    d = import_pptx(src)
+    _lineas(d)[0]["base_bounds"]["x"] = 8.0
+    pptx, _ = render_template_to_pptx(d, [_PRODUCTO], "a4", None, src)
+    x, y, w, h, _, _ = _conectores_del_pptx(pptx)[0]
+    assert abs(x - 8.0) < 0.05
+    assert h < 0.01, f"la línea horizontal salió con {h:.3f} cm de alto: inclinada"
+
+
+def test_la_linea_eliminada_no_sale_en_el_papel():
+    src = _pptx_con_linea(caja=_CAJA_PRECIO, linea=_LINEA_TACHADO)
+    d = import_pptx(src)
+    linea = _lineas(d)[0]
+    d["formas_eliminadas"] = [linea["_source_shape_id"]]
+    d["components"] = [c for c in d["components"] if c["id"] != linea["id"]]
+    pptx, _ = render_template_to_pptx(d, [_PRODUCTO], "a4", None, src)
+    assert _conectores_del_pptx(pptx) == []

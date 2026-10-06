@@ -26,6 +26,19 @@ export interface ComponentStyle {
   strikethrough?: boolean;
   color?: string;
   background_color?: string;
+  /**
+   * Línea suelta del diseño: el tachado diagonal del precio regular de las
+   * plantillas de Exclusivos TI. El importer la trae como `shape` con esta
+   * geometría (ver _es_linea en pptx_importer.py) y se dibuja de esquina a
+   * esquina de su caja, en el sentido que guarda el PPTX (flip_v: de
+   * abajo-izquierda a arriba-derecha), con su grosor y su color. Hasta el
+   * 06/10/2026 el importer la descartaba y el editor no la mostraba.
+   */
+  geometry?: "line";
+  line_color?: string;
+  line_width_pt?: number;
+  flip_h?: boolean;
+  flip_v?: boolean;
   align?: "left" | "center" | "right";
   auto_fit?: boolean;
   vertical_align?: string;
