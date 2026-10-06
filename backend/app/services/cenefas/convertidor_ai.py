@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 # de grupos unificados (_UNIFY_SYSTEM_PROMPT).
 #
 # 2026-10-06 (Ivan): el orden de las partes es FIJO — producto, marca,
-# variedad, gramaje: "Vino TIENDA INGLESA blanco. 500 ml". Hasta entonces la
+# variedad, gramaje: "Vino TIENDA INGLESA. Blanco. 500 ml". Hasta entonces la
 # regla no decía nada del orden y los ejemplos traían la variedad delante de
 # la marca ("Aceite alto oleico CAÑUELAS", "Morcilla dulce DON JOAQUIN"); se
 # reescribieron para no contradecirla. La mayúscula de la marca no cambió.
@@ -38,18 +38,25 @@ log = logging.getLogger(__name__)
 # producción ese día: el modelo escribía "473ml", dejaba una cantidad antes
 # del punto ("TIENDA INGLESA 30m. x4") y bajaba "Hop House" a minúscula.
 # Las reglas de abajo fijan esas tres cosas con los ejemplos del documento.
+#
+# 2026-10-06 (tercera vuelta, Ivan): después de la marca TAMBIÉN va punto,
+# espacio, y la variedad arranca con mayúscula, "como sería gramaticalmente
+# correcto": "Vino TIENDA INGLESA. Blanco. 500 ml". Cada parte es una
+# oración corta. Los ejemplos del documento del 29/09 llevaban la variedad
+# pegada a la marca ("Cerveza CLAUSTHALER pomelo. Lata 500 ml"); desde esta
+# vuelta mandan estas reglas, no esos ejemplos.
 # ---------------------------------------------------------------------------
 _STYLE_RULES = f"""\
-- EL ORDEN DE LAS PARTES ES SIEMPRE EL MISMO: primero el PRODUCTO (qué es), después la MARCA, después la VARIEDAD (sabor, tipo, color, línea o modelo) y al final, después de un punto, el GRAMAJE o la cantidad. Ejemplo: "Vino TIENDA INGLESA blanco. 500 ml" — producto "Vino", marca "TIENDA INGLESA", variedad "blanco", gramaje "500 ml". Nunca la variedad antes de la marca ("Vino blanco TIENDA INGLESA" está MAL) ni el gramaje antes del punto. Si una parte no existe, se la saltea y las demás conservan ese orden ("Vino TIENDA INGLESA. 500 ml").
+- EL ORDEN DE LAS PARTES ES SIEMPRE EL MISMO: primero el PRODUCTO (qué es), después la MARCA, después la VARIEDAD (sabor, tipo, color, línea o modelo) y al final el GRAMAJE o la cantidad. Cada parte se separa de la siguiente con un punto y un espacio, y la que sigue arranca con mayúscula, como una oración nueva: "Vino TIENDA INGLESA. Blanco. 500 ml" — producto "Vino", marca "TIENDA INGLESA", variedad "Blanco", gramaje "500 ml". Nunca la variedad antes de la marca ("Vino blanco TIENDA INGLESA" está MAL) ni pegada a la marca sin el punto ("Vino TIENDA INGLESA blanco. 500 ml" está MAL). Si una parte no existe, se la saltea y las demás conservan ese orden ("Vino TIENDA INGLESA. 500 ml").
 - La marca del producto va SIEMPRE en MAYÚSCULA COMPLETA, la palabra entera (no solo la primera letra).
-- EL PUNTO Y EL GRAMAJE NO SON OPCIONALES. Todo lo que sea cantidad, tamaño, peso, volumen, envase o unidades (ml, g, kg, L, cm, oz, W, "x 4", "Lata 500 ml", "10 sobres", "12 tazas") va SIEMPRE al final, después de un punto que lo separa del resto: "Cerveza GUINNESS Extra Stout. 473 ml", "Cerveza CLAUSTHALER pomelo. Lata 500 ml", "Papel higiénico TIENDA INGLESA doble hoja. 30 m x 4", "Lápices de colores STABILO. x 12", "Harina 0000 TIENDA INGLESA. 1 kg". El nombre del sistema de gestión casi siempre trae esa cantidad ("473ML.", "30M X4", "1K.", "X12"): si está, se escribe, siempre después del punto y nunca pegada a la variedad ("TIENDA INGLESA 30m. x4" está MAL). Solo queda sin punto ni gramaje un producto cuya fuente no trae NINGUNA cantidad (un libro, un electrodoméstico con su modelo: "Aspiradora KARCHER VC4 My Home"); ahí no se inventa.
+- DESPUÉS DE LA MARCA VA SIEMPRE UN PUNTO, y después de la variedad otro: "Cerveza GUINNESS. Extra Stout. 473 ml", "Cerveza CLAUSTHALER. Pomelo. Lata 500 ml", "Aceite de oliva TIENDA INGLESA. Extra virgen. 500 ml". Si no hay variedad, el punto de la marca separa directo del gramaje ("Cerveza GUINNESS. 473 ml"). Si la descripción termina en la marca o en la variedad y no hay nada más después, NO pongas un punto colgado ahí — el punto separa dos partes, no es un cierre de oración.
+- EL PUNTO Y EL GRAMAJE NO SON OPCIONALES. Todo lo que sea cantidad, tamaño, peso, volumen, envase o unidades (ml, g, kg, L, cm, oz, W, "x 4", "Lata 500 ml", "10 sobres", "12 tazas") va SIEMPRE al final, después de un punto que lo separa del resto: "Papel higiénico TIENDA INGLESA. Doble hoja. 30 m x 4", "Lápices de colores STABILO. x 12", "Harina 0000 TIENDA INGLESA. 1 kg". El nombre del sistema de gestión casi siempre trae esa cantidad ("473ML.", "30M X4", "1K.", "X12"): si está, se escribe, siempre al final y nunca pegada a la variedad ("TIENDA INGLESA 30m. x4" está MAL). Solo queda sin gramaje un producto cuya fuente no trae NINGUNA cantidad (un libro, un electrodoméstico con su modelo: "Aspiradora KARCHER. VC4 My Home"); ahí no se inventa.
 - El gramaje se escribe con un espacio entre el número y la unidad ("500 ml", "150 g", "1.2 kg", "1.7 L", "16 oz") y las cantidades como "x 4", "3 x 200 ml", "400 ml x 2". El envase, si importa, va antes de la cantidad y después del punto ("Lata 500 ml", "Botella 330 ml"). Lo que se vende por peso va "Kg"; lo que se vende por pieza, "Unidad".
-- Después de la variedad (o de la marca, si no hay variedad) va SIEMPRE ese punto, como si fuera el inicio de una nueva oración corta. Si la descripción termina en la marca o en la variedad y no hay nada más después, NO pongas un punto colgado ahí — el punto separa dos partes, no es un cierre de oración.
-- El resto del texto va en minúscula, con reglas normales de oración en español: mayúscula SOLO en la primera letra de toda la descripción y en la primera letra de la palabra que sigue a cada punto — ninguna otra palabra lleva mayúscula inicial (ej. "sin piel", "con azúcar", "de cerdo", nunca "Sin Piel" ni "Con Azúcar"). Tres excepciones que no cambian nunca, sea cual sea su posición en el texto: la marca (siempre mayúscula completa, ver arriba); los nombres propios de una línea o modelo de la marca, que conservan la mayúscula inicial tal como los escribe el fabricante ("Hop House", "Naturals Classic", "Crunchy Duo", "Point 88", "VC4 My Home") — pero un descriptor genérico no es nombre propio ("pomelo", "vainilla", "sin alcohol", "extra virgen" van en minúscula); y las unidades de medida (ml, g, kg, L, un, etc.), siempre en minúscula incluso si quedaran al principio de una oración.
+- El resto del texto va en minúscula, con reglas normales de oración en español: mayúscula SOLO en la primera letra de toda la descripción y en la primera letra de la palabra que sigue a cada punto — por eso la variedad arranca con mayúscula ("Pomelo", "Extra virgen", "Sin alcohol") y ninguna otra palabra la lleva (dentro de una parte van "sin piel", "con azúcar", "de cerdo", nunca "Extra Virgen" ni "Sin Alcohol"). Tres excepciones que no cambian nunca, sea cual sea su posición en el texto: la marca (siempre mayúscula completa, ver arriba); los nombres propios de una línea o modelo de la marca, que conservan sus mayúsculas tal como los escribe el fabricante ("Hop House", "Naturals Classic", "Crunchy Duo", "Point 88", "VC4 My Home"); y las unidades de medida (ml, g, kg, L, un, etc.), siempre en minúscula incluso si quedaran al principio de una oración.
 - Es para un cartel de precio: tiene que ser CORTA. Apuntá a menos de {DESCRIPTION_WARN_CHARS} caracteres, nunca más de {DESCRIPTION_MAX_CHARS}.
 - No inventes datos (sabor, variedad, tamaño) que no estén sugeridos por el nombre o la descripción de origen.
 - Si un producto viene marcado "[FIAMBRE POR KG]", la unidad en la descripción tiene que decir "100g", nunca "kg" — el precio de ese producto ya se va a recalcular aparte para esa unidad, así que el texto tiene que ser consistente con eso.
-- Si un producto viene marcado "[SE COBRA POR 100 G]" o "[SE COBRA POR KILO]", la descripción TIENE QUE terminar con esa unidad, escrita exactamente "100g" o "Kg", después del punto que cierra la marca o la variedad: "Muzzarella NATURALACT. 100g", "Panceta VILLA MARGARITA ahumada. 100g", "Morcilla DON JOAQUIN dulce. Kg". Esa marca la pone la plataforma, que sabe con qué unidad se cobra ese producto en la góndola, así que NO cae en "no inventes datos": el nombre del sistema de gestión no la trae y sin ella el cartel no dice por cuánto se está cobrando. "Kg" es la única unidad que va con mayúscula, justamente porque ahí va sola después del punto y no pegada a un número.
+- Si un producto viene marcado "[SE COBRA POR 100 G]" o "[SE COBRA POR KILO]", la descripción TIENE QUE terminar con esa unidad, escrita exactamente "100g" o "Kg", después del punto que cierra la marca o la variedad: "Muzzarella NATURALACT. 100g", "Panceta VILLA MARGARITA. Ahumada. 100g", "Morcilla DON JOAQUIN. Dulce. Kg". Esa marca la pone la plataforma, que sabe con qué unidad se cobra ese producto en la góndola, así que NO cae en "no inventes datos": el nombre del sistema de gestión no la trae y sin ella el cartel no dice por cuánto se está cobrando. "Kg" es la única unidad que va con mayúscula, justamente porque ahí va sola después del punto y no pegada a un número.
 - Con una de esas dos marcas, la unidad de cobro es la ÚNICA que va: no le agregues además un peso de envase ("500g", "1 kg") ni lo cambies por otra unidad."""
 
 _SYSTEM_PROMPT = f"""{TININ_BASE}
@@ -366,10 +373,10 @@ se cumple, y eso es lo peor que puede pasar en góndola. Por eso las opciones va
 la más segura a la más riesgosa, así:
 
 1. ENUMERANDO lo que realmente vino, cuando entra en el largo permitido: "Cappuccino SAINT \
-CAFÉ chocolate, tradicional y vainilla. 6 sobres". Nunca miente, porque nombra exactamente lo \
+CAFÉ. Chocolate, tradicional y vainilla. 6 sobres". Nunca miente, porque nombra exactamente lo \
 que está en oferta. Es la primera opción SIEMPRE que los nombres de las variantes quepan.
 2. SIN prometer que están todas, mencionando la cantidad o dejándolo neutro: "Cappuccino SAINT \
-CAFÉ en 3 variedades. 6 sobres", "Acondicionador ELVIVE variedades surtidas. 370 ml". Es la \
+CAFÉ. En 3 variedades. 6 sobres", "Acondicionador ELVIVE. Variedades surtidas. 370 ml". Es la \
 que sirve cuando son demasiadas para enumerar (7, 11, 20 productos) y el texto no entra.
 3. "Todas las variedades" / "todas las presentaciones", como en "Acondicionador ELVIVE. Todas \
 las variedades. 370 ml". Va SIEMPRE ÚLTIMA y solo como opción, porque es la única que afirma \

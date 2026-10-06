@@ -102,7 +102,9 @@ def test_los_ejemplos_del_conocimiento_dan_lo_que_dice(ofertadet, oferta, precio
 def test_el_orden_de_la_descripcion_es_producto_marca_variedad_gramaje():
     """Ivan fijó el orden el 2026-10-06 con un ejemplo: "Vino Tienda inglesa
     blanco. 500ml" (el gramaje se escribe "500 ml", con espacio, como en las
-    448 descripciones que aprobó el 29/09 para la Fiesta Alemania fase 2). Tiene que estar escrito, con el orden enunciado y no solo
+    448 descripciones que aprobó el 29/09 para la Fiesta Alemania fase 2), y
+    esa misma tarde sumó el punto después de la marca, con la variedad
+    arrancando en mayúscula: "Vino TIENDA INGLESA. Blanco. 500 ml". Tiene que estar escrito, con el orden enunciado y no solo
     ejemplificado, en las reglas que ve el modelo cuando genera (_STYLE_RULES,
     que comparten las descripciones sueltas y las de grupos unificados) y en
     lo que Tinín explica. Y los ejemplos viejos con la variedad delante de la
@@ -113,7 +115,7 @@ def test_el_orden_de_la_descripcion_es_producto_marca_variedad_gramaje():
         "las reglas de estilo tienen que llegar a los dos generadores"
     )
 
-    ejemplo = "Vino TIENDA INGLESA blanco. 500 ml"
+    ejemplo = "Vino TIENDA INGLESA. Blanco. 500 ml"
     orden = re.compile(r"producto.*marca.*variedad.*gramaje", re.IGNORECASE)
     for texto, donde in ((_STYLE_RULES, "_STYLE_RULES"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
         assert ejemplo in texto, f"{donde} no trae el ejemplo del orden"
@@ -122,6 +124,11 @@ def test_el_orden_de_la_descripcion_es_producto_marca_variedad_gramaje():
         # espacio entre número y unidad, el envase después del punto.
         assert "Lata 500 ml" in texto and "x 12" in texto, (
             f"{donde} perdió las formas del documento aprobado (\"Lata 500 ml\", \"x 12\")")
+        # Después de la marca va punto y la variedad arranca con mayúscula
+        # (Ivan, 06/10/2026, tercera vuelta): ningún ejemplo vigente puede
+        # traer la variedad pegada a la marca.
+        assert "CLAUSTHALER. Pomelo." in texto, f"{donde} no trae el punto después de la marca"
+        assert "CLAUSTHALER pomelo" not in texto, f"{donde} sigue con la variedad pegada a la marca"
         assert any(orden.search(linea) for linea in texto.splitlines()), (
             f"{donde} no enuncia el orden producto, marca, variedad, gramaje en una misma línea"
         )
