@@ -93,3 +93,36 @@ def test_los_ejemplos_del_conocimiento_dan_lo_que_dice(ofertadet, oferta, precio
     m, _ = resolver_mecanica(ofertadet, oferta, precio=precio)
     for campo, valor in esperado.items():
         assert m[campo] == valor, f"{ofertadet}/{oferta}: {campo} dio {m[campo]!r}, se esperaba {valor!r}"
+
+
+# ---------------------------------------------------------------------------
+# El orden de la descripción: producto, marca, variedad, gramaje (Ivan, 2026-10-06)
+# ---------------------------------------------------------------------------
+
+def test_el_orden_de_la_descripcion_es_producto_marca_variedad_gramaje():
+    """Ivan fijó el orden el 2026-10-06 con un ejemplo: "Vino Tienda inglesa
+    blanco. 500ml". Tiene que estar escrito, con el orden enunciado y no solo
+    ejemplificado, en las reglas que ve el modelo cuando genera (_STYLE_RULES,
+    que comparten las descripciones sueltas y las de grupos unificados) y en
+    lo que Tinín explica. Y los ejemplos viejos con la variedad delante de la
+    marca no pueden seguir ahí, porque contradicen la regla."""
+    from app.services.cenefas.convertidor_ai import _STYLE_RULES, _SYSTEM_PROMPT, _UNIFY_SYSTEM_PROMPT
+
+    assert _STYLE_RULES in _SYSTEM_PROMPT and _STYLE_RULES in _UNIFY_SYSTEM_PROMPT, (
+        "las reglas de estilo tienen que llegar a los dos generadores"
+    )
+
+    ejemplo = "Vino TIENDA INGLESA blanco. 500ml"
+    orden = re.compile(r"producto.*marca.*variedad.*gramaje", re.IGNORECASE)
+    for texto, donde in ((_STYLE_RULES, "_STYLE_RULES"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
+        assert ejemplo in texto, f"{donde} no trae el ejemplo del orden"
+        assert any(orden.search(linea) for linea in texto.splitlines()), (
+            f"{donde} no enuncia el orden producto, marca, variedad, gramaje en una misma línea"
+        )
+        for viejo in (
+            "Aceite alto oleico CAÑUELAS",
+            "Yogur natural YOGURISIMO",
+            "Panceta ahumada VILLA MARGARITA",
+            "Morcilla dulce DON JOAQUIN",
+        ):
+            assert viejo not in texto, f"{donde} sigue con la variedad delante de la marca: {viejo!r}"
