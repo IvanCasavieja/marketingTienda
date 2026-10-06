@@ -446,6 +446,41 @@ async def get_template(
     }
 
 
+@router.get("/templates/{template_id}/pptx")
+async def download_template_pptx(
+    template_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(require_permission("cenefas.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """El PPTX original con el que se importó la plantilla, con sus
+    <<placeholders>>: es el archivo que hay que editar para tocar el diseño y
+    volver a importar.
+
+    Hasta el 06/10/2026 estaba guardado entero en `source_pptx` (el render lo
+    usa de base) pero no había forma de bajarlo: el único PPTX a mano era el
+    del diseñador, con "xxx" en vez de variables (Ivan: "descargame la
+    plantilla con variables de la 3xA4"). Una plantilla armada en el editor
+    no tiene archivo: 404 con el motivo.
+    """
+    tmpl = await _get_template_o_404(template_id, db)
+    if not tmpl.source_pptx:
+        raise HTTPException(
+            status_code=404,
+            detail="Esta plantilla no tiene PPTX original guardado: se armó en el editor, no vino de un archivo",
+        )
+    db.add(AuditLog(
+        user_id=current_user.id, action="cenefas.template.download", resource="cenefa_template_v2",
+        resource_id=str(template_id), ip_address=_client_ip(request),
+    ))
+    nombre = re.sub(r"[^A-Za-z0-9 _.-]+", "_", tmpl.name or "").strip(" ._") or "plantilla"
+    return Response(
+        content=tmpl.source_pptx,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}.pptx"'},
+    )
+
+
 @router.put("/templates/{template_id}")
 async def update_template(
     template_id: uuid.UUID,
