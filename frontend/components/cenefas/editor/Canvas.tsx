@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Konva from "konva";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent, CenefaRule, CenefaTemplate, TextSegment } from "@/types/cenefas";
+import { ordenDeApilado } from "@/lib/cenefas/apilado";
 import { buildSiblingMap } from "@/lib/cenefas/siblingMap";
 // Con alias: `segmentosOcultos` es además el nombre de la prop que recibe
 // buildComponentGroup más abajo, y ahí la prop tapa a la función.
@@ -1241,7 +1242,13 @@ export default function Canvas({
 
     let selectedNode: Konva.Group | null = null;
 
-    for (const comp of displayComps) {
+    // EL ORDEN DE APILADO. Konva le da el click y el arrastre al grupo que
+    // está más arriba bajo el mouse, y los grupos se apilan en el orden en
+    // que se agregan. Por `z_index` a secas, la línea del tachado del precio
+    // regular (Exclusivos TI) quedaba DEBAJO del cuadro del precio, con su
+    // caja entera adentro de él: se veía pero no se podía agarrar ni mover.
+    // ordenDeApilado la manda arriba de todo (ver lib/cenefas/apilado.ts).
+    for (const comp of ordenDeApilado(displayComps)) {
       // Marcado = está en la selección, sea el primario o uno sumado con
       // Ctrl. El Transformer (los 4 puntos de resize) es aparte: se engancha
       // más abajo y solo cuando hay UN cuadro seleccionado.
