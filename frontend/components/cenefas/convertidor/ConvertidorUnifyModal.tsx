@@ -4,6 +4,7 @@ import { Check, Layers, Loader2, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { convertidorApi, type ConvertidorRow, type UnificarGrupoItem } from "@/lib/api";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { preciosDeFila as preciosDe } from "@/lib/cenefas/preciosDeFila";
 import { DonTinoTrabajando } from "@/components/DonTinoTrabajando";
 
 interface Props {
@@ -143,21 +144,11 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
   // poder corroborarlos SIN salir del modal: un grupo unificado imprime UNA
   // descripción y UN precio para varios SKU, así que si dos miembros no están
   // al mismo precio el grupo está mal armado y hay que verlo acá, antes de
-  // aprobar -- después las filas ya se combinaron.
-  //
-  // `precioRegular` es el anterior (el tachado) y `precioOferta` el vigente;
-  // el símbolo sale de `unidadMoneda`, nunca escrito a mano, porque una fila
-  // en dólares tiene que mostrar U$S.
+  // aprobar -- después las filas ya se combinaron. El armado vive en
+  // lib/cenefas/preciosDeFila.ts, compartido con las sugerencias de Tinín.
   function preciosDeFila(rowId: number): { anterior: string; oferta: string } | null {
     const r = rows.find((x) => x.row_id === rowId);
-    if (!r) return null;
-    const simbolo = r.unidadMoneda || "$";
-    const armar = (entero: string, decimal: string) =>
-      entero ? `${simbolo}${entero}${decimal || ""}` : "";
-    return {
-      anterior: armar(r.precioRegular, r.decimalPrecioRegular),
-      oferta:   armar(r.precioOferta,  r.decimalPrecioOferta),
-    };
+    return r ? preciosDe(r) : null;
   }
 
   // Un producto no puede estar en dos grupos: al combinar, cada fila se funde

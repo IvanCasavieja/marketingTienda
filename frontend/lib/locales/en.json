@@ -873,6 +873,8 @@
       "approve": "Approve",
       "retry": "Retry",
       "tooLong": "A bit long for the price tag",
+      "precioRegular": "precioRegular (previous)",
+      "precioOferta": "precioOferta",
       "rowError": "Couldn't save — try again",
       "approveAll": "Approve all",
       "approving": "Approving…",

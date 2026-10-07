@@ -873,6 +873,8 @@
       "approve": "Aprobar",
       "retry": "Reintentar",
       "tooLong": "Un poco larga para el cartel",
+      "precioRegular": "precioRegular (anterior)",
+      "precioOferta": "precioOferta",
       "rowError": "No se pudo guardar — reintentá",
       "approveAll": "Aprobar todas",
       "approving": "Aprobando…",

@@ -4,6 +4,7 @@ import { Check, Loader2, Sparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { convertidorApi, type ConvertidorRow, type DescripcionSugerencia } from "@/lib/api";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { preciosDeFila } from "@/lib/cenefas/preciosDeFila";
 import { DonTinoTrabajando } from "@/components/DonTinoTrabajando";
 
 interface PrecioOverride {
@@ -329,13 +330,20 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
             !loadError &&
             visibleRows.map((row) => {
               const s = state.get(row.row_id)!;
+              // Los dos precios de la fila, para confirmarlos junto con la
+              // descripción sin salir del modal (Ivan, 07/10/2026: "en todas las
+              // sugerencias ... tenés que traer el precio regular y el precio
+              // oferta para confirmar"). Son los de la fila tal como vino: en
+              // un fiambre por kg, los campos editables de abajo siguen siendo
+              // el precio dividido por 10, aparte de esto.
+              const precios = preciosDeFila(row);
               return (
                 <div
                   key={row.row_id}
                   className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-2"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-slate-400 truncate flex items-center gap-1.5">
+                    <p className="text-[10px] text-slate-400 flex items-center gap-1.5">
                       {row.esFiambreKg && (
                         <span className="badge badge-yellow text-[9px] px-1.5 py-0 shrink-0">
                           {t("convertidor.ai.fiambreKgBadge")}
@@ -350,7 +358,27 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                           })}
                         </span>
                       )}
-                      {row.codigo} · {row.nombreArticulo}
+                      <span className="truncate flex-1 min-w-0">{row.codigo} · {row.nombreArticulo}</span>
+                      {(precios.anterior || precios.oferta) && (
+                        <span className="shrink-0 tabular-nums flex items-center gap-1.5">
+                          {precios.anterior && (
+                            <span
+                              title={t("convertidor.ai.precioRegular")}
+                              className="line-through text-slate-300 dark:text-slate-600"
+                            >
+                              {precios.anterior}
+                            </span>
+                          )}
+                          {precios.oferta && (
+                            <span
+                              title={t("convertidor.ai.precioOferta")}
+                              className="font-semibold text-slate-600 dark:text-slate-300"
+                            >
+                              {precios.oferta}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </p>
                     <input
                       value={s.value}
