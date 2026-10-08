@@ -3,10 +3,17 @@ lo mismo que se imprime.
 
 El contrato, decidido por Ivan el 20/09/2026: **el número de la regla es el
 número que sale, en todos los pedazos del cuadro.** "Si yo pongo 90 en el cuadro
-entero, todo tiene que medir 90 y punto". Y si eso aplasta la proporción que el
-diseño le daba al símbolo de moneda, es una decisión de quien escribió la regla:
-para tocar un solo pedazo está la regla por segmento, que pone el número exacto
-donde se lo pide.
+entero, todo tiene que medir 90 y punto". Para tocar un solo pedazo está la
+regla por segmento, que pone el número exacto donde se lo pide.
+
+Con una excepción, pedida por Ivan el 08/10/2026 con las cenefas de Non Food en
+la mano: los pedazos VOLADOS (el símbolo de moneda y los centavos, con
+`baseline`) y el aire entre ellos NO toman el número, conservan la proporción
+del diseño respecto del pedazo que manda. Con el contrato a secas, el "U$S" de
+120 volado junto al precio de 228 pasaba a 164 cuando la regla bajaba el precio
+a 164 --más grande que en el diseño-- y como la voladita es un porcentaje de su
+propio cuerpo, subía y dejaba de estar centrado con el número. Ver
+_cuerpo_del_pedazo en rules_engine.py.
 
 Lo que había antes y por qué se fue: el motor calculaba una escala --el pt de la
 regla dividido el font_size de la CAJA-- y multiplicaba cada pedazo por ella,
@@ -103,7 +110,7 @@ def test_la_regla_de_un_pedazo_manda_sobre_la_del_cuadro():
 # ----------------------------------------- el preview, leyendo el .ts como texto
 
 
-def test_el_preview_no_calcula_ninguna_escala():
+def test_el_preview_no_calcula_ninguna_escala_contra_la_caja():
     fuente = _fuente()
     bloque = re.search(r"export function aplicarTamanos.*?\n}", fuente, re.S)
     assert bloque, "no se encontró aplicarTamanos en reglas.ts"
@@ -111,9 +118,22 @@ def test_el_preview_no_calcula_ninguna_escala():
     assert "escala" not in cuerpo, (
         "volvió la escala a aplicarTamanos: el preview vuelve a mostrar un "
         "cuerpo distinto del que pide la regla. Ver apply_font_sizes en "
-        "rules_engine.py: el pt va tal cual a cada pedazo.")
-    assert re.search(r"font_size:\s*pt", cuerpo), (
-        "aplicarTamanos dejó de poner el pt de la regla en los segmentos.")
+        "rules_engine.py: el pt va tal cual a cada pedazo que manda.")
+    assert re.search(r"font_size:\s*cuerpoDelPedazo\(seg, comp\.style, pt, principal\)", cuerpo), (
+        "aplicarTamanos dejó de resolver el cuerpo de cada pedazo con cuerpoDelPedazo.")
+    assert re.search(r"cuerpoPrincipal\(nuevo\.segments, comp\.style\)", cuerpo), (
+        "el divisor de la proporción tiene que ser el pedazo que manda, no la caja.")
+    # Las dos funciones del espejo, con la misma cuenta que el backend.
+    pedazo = re.search(r"function cuerpoDelPedazo.*?\n}", fuente, re.S)
+    assert pedazo and "return pt;" in pedazo.group(0), "cuerpoDelPedazo no devuelve pt al pedazo que manda"
+    assert re.search(r"Math\.floor\(\(propio \* pt\) / principal \* 10 \+ 0\.5\) / 10", pedazo.group(0)), (
+        "el redondeo del espejo dejó de ser floor(x*10+0.5)/10, el mismo del backend")
+    principal = re.search(r"function cuerpoPrincipal.*?\n}", fuente, re.S)
+    assert principal and "esVolado(seg, caja) || esAire(seg)" in principal.group(0), (
+        "cuerpoPrincipal tiene que saltear los volados y el aire, como _cuerpo_principal")
+    volado = re.search(r"function esVolado.*?\n}", fuente, re.S)
+    assert volado and "seg.style?.baseline ?? caja?.baseline" in volado.group(0), (
+        "esVolado tiene que heredar la voladita de la caja, como _es_volado")
 
 
 def test_el_preview_no_toca_el_alto_del_renglon():
@@ -122,3 +142,92 @@ def test_el_preview_no_toca_el_alto_del_renglon():
     assert "line_height_pt" not in bloque.group(0), (
         "aplicarTamanos volvió a tocar line_height_pt, y el backend no lo toca: "
         "el renglón queda a una altura en pantalla y a otra en el papel.")
+
+
+# ------------------------------- la excepción: los volados siguen al que manda
+
+
+def _exclusivos_a4():
+    # La geometría real del precio de Exclusivos TI A4 (08/10/2026): símbolo
+    # 120 volado, dos espacios volados, precio 228, centavos 132 volados.
+    return {"id": "c", "type": "text", "style": {"font_size": 120.0, "line_height_pt": 228.0}, "segments": [
+        {"type": "variable", "value": "unidadMoneda", "style": {"font_size": 120.0, "baseline": 30000}},
+        {"type": "static", "value": "  ", "style": {"font_size": 120.0, "baseline": 30000, "font_bold": True}},
+        {"type": "variable", "value": "precioOferta", "style": {"font_size": 228.0}},
+        {"type": "variable", "value": "decimalPrecioOferta", "style": {"font_size": 132.0, "baseline": 30000}},
+    ]}
+
+
+def test_los_pedazos_volados_conservan_la_proporcion_con_el_precio():
+    salida = apply_font_sizes([_exclusivos_a4()], {"c": 164.0})[0]
+    assert salida["style"]["font_size"] == 164.0
+    assert [s["style"]["font_size"] for s in salida["segments"]] == [86.3, 86.3, 164.0, 94.9], (
+        "el símbolo y los centavos volados tienen que achicarse en la misma "
+        "proporción que el precio (164/228); con el número a secas el U$S "
+        "quedaba a 164, más grande que en el diseño, y se subía")
+    assert salida["style"]["line_height_pt"] == 228.0
+
+
+def test_la_voladita_no_cambia_con_la_regla():
+    # La posición del volado la da su baseline, que sigue siendo del diseño.
+    salida = apply_font_sizes([_exclusivos_a4()], {"c": 164.0})[0]
+    assert [s["style"].get("baseline") for s in salida["segments"]] == [30000, 30000, None, 30000]
+
+
+def test_exclusivos_3xa4_simbolo_con_espacios_en_el_mismo_pedazo():
+    # "<<UM>>   " en un solo run de 60 volado, precio 100, centavos 66 volados.
+    cuadro = {"id": "c", "type": "text", "style": {"font_size": 60.0}, "segments": [
+        {"type": "variable", "value": "unidadMoneda", "style": {"font_size": 60.0, "baseline": 30000}},
+        {"type": "static", "value": "   ", "style": {"font_size": 60.0, "baseline": 30000}},
+        {"type": "variable", "value": "precioOferta", "style": {"font_size": 100.0}},
+        {"type": "variable", "value": "decimalPrecioOferta", "style": {"font_size": 66.0, "baseline": 30000}},
+    ]}
+    salida = apply_font_sizes([cuadro], {"c": 68.0})[0]
+    assert [s["style"]["font_size"] for s in salida["segments"]] == [40.8, 40.8, 68.0, 44.9]
+
+
+def test_sin_voladita_sigue_valiendo_el_numero_en_todos_los_pedazos():
+    # El contrato del 20/09 intacto para lo que no va volado: el "$" chico que
+    # comparte la línea de base con el precio toma el número de la regla.
+    cuadro = {"id": "c", "type": "text", "style": {"font_size": 24.0}, "segments": [
+        {"type": "variable", "value": "unidadMoneda", "style": {"font_size": 24.0}},
+        {"type": "variable", "value": "precioRegular", "style": {"font_size": 28.0}},
+        {"type": "static", "value": " unidad", "style": {"font_size": 20.0}},
+    ]}
+    salida = apply_font_sizes([cuadro], {"c": 20.0})[0]
+    assert [s["style"]["font_size"] for s in salida["segments"]] == [20.0, 20.0, 20.0]
+
+
+def test_si_todos_los_pedazos_van_volados_no_hay_quien_mande_y_vale_el_numero():
+    cuadro = {"id": "c", "type": "text", "style": {"font_size": 100.0, "baseline": 30000}, "segments": [
+        {"type": "variable", "value": "unidadMoneda", "style": {"font_size": 60.0}},
+        {"type": "variable", "value": "precioOferta", "style": {"font_size": 100.0}},
+    ]}
+    salida = apply_font_sizes([cuadro], {"c": 80.0})[0]
+    assert [s["style"]["font_size"] for s in salida["segments"]] == [80.0, 80.0]
+
+
+def test_el_volado_hereda_la_voladita_de_la_caja():
+    # Igual que al medir (_segmentos_medibles) y al dibujar: baseline en la
+    # caja y un pedazo sin la suya es un pedazo volado.
+    cuadro = {"id": "c", "type": "text", "style": {"font_size": 100.0, "baseline": 30000}, "segments": [
+        {"type": "variable", "value": "unidadMoneda", "style": {"font_size": 60.0}},
+        {"type": "variable", "value": "precioOferta", "style": {"font_size": 100.0, "baseline": 0}},
+    ]}
+    salida = apply_font_sizes([cuadro], {"c": 50.0})[0]
+    assert [s["style"]["font_size"] for s in salida["segments"]] == [30.0, 50.0]
+
+
+def test_la_regla_por_segmento_sigue_mandando_sobre_el_volado():
+    # Quien quiere el símbolo en un número exacto lo dice con la regla del pedazo.
+    salida = apply_font_sizes([_exclusivos_a4()], {"c": 164.0}, {"c": {0: 100.0}})[0]
+    assert [s["style"]["font_size"] for s in salida["segments"]] == [100.0, 86.3, 164.0, 94.9]
+
+
+def test_el_mismo_redondeo_en_las_dos_puntas():
+    # floor(x*10+0.5)/10 en Python y en el .ts: Math.round y round() no empatan
+    # en los .x5 (round() de Python va al par).
+    from app.services.cenefas.rules_engine import _cuerpo_del_pedazo
+    seg = {"type": "static", "value": "$", "style": {"font_size": 85.0, "baseline": 30000}}
+    assert _cuerpo_del_pedazo(seg, {}, 50.0, 100.0) == 42.5
+    assert _cuerpo_del_pedazo(seg, {}, 55.0, 100.0) == 46.8   # 46.75 -> 46.8, no 46.7

@@ -1,4 +1,5 @@
 """Motor de reglas — evalúa condiciones por fila y determina visibilidad de componentes."""
+import math
 from typing import Any
 
 from app.services.cenefas.variables import resolve
@@ -354,6 +355,53 @@ def apply_widths(components: list[dict], widths: dict[str, float]) -> list[dict]
     return salida
 
 
+def _es_volado(seg: dict, estilo_caja: dict) -> bool:
+    """Un pedazo con voladita (superíndice/subíndice): el "$" o los centavos
+    que el diseño deja arriba de la línea de base. La voladita se hereda de la
+    caja si el pedazo no declara la suya, igual que al medir y al dibujar."""
+    baseline = (seg.get("style") or {}).get("baseline", (estilo_caja or {}).get("baseline"))
+    try:
+        return bool(baseline) and int(baseline) != 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _es_aire(seg: dict) -> bool:
+    """Un pedazo fijo de solo espacios: separa, no dice nada."""
+    return seg.get("type") != "variable" and not str(seg.get("value", "") or "").strip()
+
+
+def _cuerpo_principal(segs: list[dict], estilo_caja: dict) -> float | None:
+    """El cuerpo del pedazo que MANDA en el cuadro: el mayor entre los que no
+    van volados ni son aire (en un precio, el número grande). Es el divisor de
+    la proporción con que lo acompañan los volados. None si no hay ninguno."""
+    cuerpos = []
+    for seg in segs:
+        if _es_volado(seg, estilo_caja) or _es_aire(seg):
+            continue
+        tam = (seg.get("style") or {}).get("font_size") or (estilo_caja or {}).get("font_size")
+        if tam:
+            cuerpos.append(float(tam))
+    return max(cuerpos) if cuerpos else None
+
+
+def _cuerpo_del_pedazo(seg: dict, estilo_caja: dict, pt: float, principal: float | None) -> float:
+    """Qué cuerpo le toca a un pedazo cuando la regla pone `pt` en el cuadro.
+
+    El que manda y los demás pedazos de contenido: `pt` tal cual. Los volados y
+    el aire: su cuerpo de diseño, escalado por lo que la regla le hizo al
+    principal (120 con el precio de 228 a 164 -> 86,3). Redondeo a un decimal
+    con floor(x*10+0.5): la misma cuenta, con el mismo resultado, en el espejo
+    de TypeScript (Math.round y round() de Python no empatan en los .x5).
+    """
+    if not principal or not (_es_volado(seg, estilo_caja) or _es_aire(seg)):
+        return pt
+    propio = (seg.get("style") or {}).get("font_size") or (estilo_caja or {}).get("font_size")
+    if not propio:
+        return pt
+    return math.floor(float(propio) * float(pt) / float(principal) * 10 + 0.5) / 10
+
+
 def apply_font_sizes(
     components: list[dict],
     sizes: dict[str, float],
@@ -402,6 +450,23 @@ def apply_font_sizes(
     `line_height_pt` NO se toca: no es una letra, es el pedazo invisible con el
     que el diseño fuerza la altura del renglón. Si una regla achica el precio,
     el renglón queda donde el diseño lo puso y el precio no se mueve de lugar.
+
+    LA EXCEPCIÓN: los pedazos VOLADOS (con `baseline`, el "$" o "U$S" y los
+    centavos que el diseño deja arriba de la línea de base) no toman el número
+    de la regla: conservan la PROPORCIÓN que el diseño les dio respecto del
+    pedazo que manda (el mayor de los que no van volados). Pedido de Ivan
+    (08/10/2026) con las cenefas de Non Food en la mano: el cuadro
+    "<<UM>>  <<PO>>" de Exclusivos TI A4 trae el símbolo a 120 volado y el
+    precio a 228; con una regla de 164 el símbolo pasaba a 164 (MÁS grande
+    que en el diseño) mientras el precio bajaba, y como la voladita es un
+    porcentaje de su propio cuerpo, el "U$S" subía y dejaba de estar centrado
+    con el número. Con la proporción, símbolo y precio se achican juntos
+    alrededor de la misma línea de base: la misma figura, más chica, y el
+    símbolo queda centrado donde el diseño lo centró. Los pedazos de solo
+    espacios (el aire entre el símbolo y el número) van con la proporción por
+    el mismo motivo: son separación, no contenido. Si el cuadro no tiene
+    ningún pedazo que mande (todos volados), vale lo de siempre: el número de
+    la regla en todos. El espejo es `aplicarTamanos` en reglas.ts.
     """
     segment_sizes = segment_sizes or {}
     salida = []
@@ -412,11 +477,15 @@ def apply_font_sizes(
 
         pt = sizes.get(c.get("id"))
         if pt:
-            # El número de la regla, tal cual, en la caja y en cada pedazo.
+            # El número de la regla, tal cual, en la caja y en cada pedazo que
+            # manda; los volados y el aire, en proporción.
+            estilo_caja = c.get("style") if isinstance(c.get("style"), dict) else {}
             nueva["style"] = {**nueva.get("style", {}), "font_size": pt}
             if nueva.get("segments"):
+                principal = _cuerpo_principal(nueva["segments"], estilo_caja)
                 nueva["segments"] = [
-                    {**seg, "style": {**(seg.get("style") or {}), "font_size": pt}}
+                    {**seg, "style": {**(seg.get("style") or {}),
+                                      "font_size": _cuerpo_del_pedazo(seg, estilo_caja, pt, principal)}}
                     for seg in nueva["segments"]
                 ]
 

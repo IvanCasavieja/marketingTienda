@@ -1,5 +1,5 @@
 import { resolverNombreVariable } from "@/lib/cenefaVariables";
-import type { CenefaComponent, CenefaRule, RuleCondition } from "@/types/cenefas";
+import type { CenefaComponent, CenefaRule, RuleCondition, TextSegment } from "@/types/cenefas";
 
 // ---------------------------------------------------------------------------
 // Evaluación de reglas de visibilidad EN EL NAVEGADOR.
@@ -254,12 +254,62 @@ export function tamanosDeSegmento(
  * porqué completo está en apply_font_sizes (rules_engine.py), que es de donde
  * este archivo es espejo.
  *
+ * La excepción (Ivan, 08/10/2026): los pedazos VOLADOS --el "$" o "U$S" y los
+ * centavos con `baseline`-- y el aire (pedazos fijos de solo espacios) no
+ * toman el número: conservan la proporción del diseño respecto del pedazo que
+ * manda, el mayor de los que no van volados. Si no, el símbolo de 120 volado
+ * junto a un precio de 228 pasaba a 164 cuando la regla bajaba el precio a
+ * 164, y como la voladita es un porcentaje de su propio cuerpo, subía y dejaba
+ * de estar centrado con el número. Ver cuerpoPrincipal / cuerpoDelPedazo.
+ *
  * `line_height_pt` no se toca: no es una letra, es el pedazo invisible con el
  * que el diseño fuerza la altura del renglón.
  *
  * Devuelve el MISMO objeto si no hay nada que aplicar: el Canvas lo llama en
  * cada render y una copia nueva por cuadro invalidaría memos río abajo.
  */
+/** Un pedazo con voladita (superíndice): hereda la de la caja si no trae la suya. Espejo de `_es_volado`. */
+function esVolado(seg: TextSegment, caja: CenefaComponent["style"] | undefined): boolean {
+  const baseline = seg.style?.baseline ?? caja?.baseline;
+  return !!baseline && Number(baseline) !== 0;
+}
+
+/** Un pedazo fijo de solo espacios: separa, no dice nada. Espejo de `_es_aire`. */
+function esAire(seg: TextSegment): boolean {
+  return seg.type !== "variable" && !String(seg.value ?? "").trim();
+}
+
+/**
+ * El cuerpo del pedazo que MANDA: el mayor entre los que no van volados ni son
+ * aire. Espejo de `_cuerpo_principal`; undefined si no hay ninguno.
+ */
+function cuerpoPrincipal(segs: TextSegment[], caja: CenefaComponent["style"] | undefined): number | undefined {
+  let mayor: number | undefined;
+  for (const seg of segs) {
+    if (esVolado(seg, caja) || esAire(seg)) continue;
+    const tam = seg.style?.font_size ?? caja?.font_size;
+    if (tam && (mayor === undefined || tam > mayor)) mayor = tam;
+  }
+  return mayor;
+}
+
+/**
+ * Qué cuerpo le toca a un pedazo cuando la regla pone `pt` en el cuadro: el
+ * número tal cual, salvo los volados y el aire, que siguen al principal en
+ * proporción. Mismo redondeo que `_cuerpo_del_pedazo` (floor(x*10+0.5)/10).
+ */
+function cuerpoDelPedazo(
+  seg: TextSegment,
+  caja: CenefaComponent["style"] | undefined,
+  pt: number,
+  principal: number | undefined,
+): number {
+  if (!principal || !(esVolado(seg, caja) || esAire(seg))) return pt;
+  const propio = seg.style?.font_size ?? caja?.font_size;
+  if (!propio) return pt;
+  return Math.floor((propio * pt) / principal * 10 + 0.5) / 10;
+}
+
 export function aplicarTamanos(
   comp: CenefaComponent,
   pt?: number,
@@ -271,8 +321,9 @@ export function aplicarTamanos(
   if (pt !== undefined) {
     nuevo = { ...nuevo, style: { ...nuevo.style, font_size: pt } };
     if (nuevo.segments) {
+      const principal = cuerpoPrincipal(nuevo.segments, comp.style);
       nuevo = { ...nuevo, segments: nuevo.segments.map((seg) =>
-        ({ ...seg, style: { ...seg.style, font_size: pt } })) };
+        ({ ...seg, style: { ...seg.style, font_size: cuerpoDelPedazo(seg, comp.style, pt, principal) } })) };
     }
   }
   if (porSegmento?.size && nuevo.segments) {
