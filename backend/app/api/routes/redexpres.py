@@ -136,6 +136,14 @@ def _row_to_dict(row: PlanillaPedido, can_edit: bool) -> dict:
     }
 
 
+def _es_gestor(user: User) -> bool:
+    """Perfil completo de Redexpres (Ivan, 08/10/2026): ver y editar el pedido
+    de CUALQUIER sucursal. Lo tienen los superusuarios y quien tenga el permiso
+    redexpres.manage (Lucía y Valentina). Antes solo los superusuarios, y ellas
+    dos, que no lo son, no podían tocar el pedido de ninguna sucursal."""
+    return bool(user.is_superuser) or "redexpres.manage" in (user.permissions or [])
+
+
 async def _get_user_locals(db: AsyncSession, user_id: int) -> set[str]:
     result = await db.execute(
         select(LocalAsignacion.local_nombre).where(LocalAsignacion.user_id == user_id)
@@ -212,11 +220,11 @@ async def get_planilla(
     )
     rows = result.scalars().all()
 
-    assigned = set() if current_user.is_superuser else await _get_user_locals(db, current_user.id)
+    assigned = set() if _es_gestor(current_user) else await _get_user_locals(db, current_user.id)
 
     row_map = {r.local_nombre: r for r in rows}
     return [
-        _row_to_dict(row_map[loc], current_user.is_superuser or loc in assigned)
+        _row_to_dict(row_map[loc], _es_gestor(current_user) or loc in assigned)
         for loc in LOCALES
         if loc in row_map
     ]
@@ -239,7 +247,7 @@ async def get_mi_planilla(
     Los superadmins no tienen LocalAsignacion propia: pueden pasar ?local=X
     para inspeccionar cualquier sucursal (misma pantalla "Mi pedido", con un
     selector). Sin ese query param, ven la pantalla vacía por defecto."""
-    if current_user.is_superuser:
+    if _es_gestor(current_user):
         if not local:
             return []
         if local not in LOCALES_SET:
@@ -271,7 +279,7 @@ async def update_row(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not current_user.is_superuser:
+    if not _es_gestor(current_user):
         assigned = await _get_user_locals(db, current_user.id)
         if local_nombre not in assigned:
             raise HTTPException(status_code=403, detail="Sin permiso para editar este local")
@@ -304,7 +312,7 @@ async def confirmar_pedido(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not current_user.is_superuser:
+    if not _es_gestor(current_user):
         assigned = await _get_user_locals(db, current_user.id)
         if local_nombre not in assigned:
             raise HTTPException(status_code=403, detail="Sin permiso para confirmar este pedido")

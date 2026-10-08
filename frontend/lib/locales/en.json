@@ -697,6 +697,9 @@
     }
   },
   "redexpres": {
+    "anio": "Year",
+    "crearMesAqui": "Create this month (blank)",
+    "mesNoHabilitado": "This month is not enabled yet",
     "title": "Order sheet",
     "subtitle": "Redexpres · monthly signage",
     "confirmadosCount": "{{count}}/{{total}} confirmed",

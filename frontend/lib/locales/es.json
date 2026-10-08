@@ -697,6 +697,9 @@
     }
   },
   "redexpres": {
+    "anio": "Año",
+    "crearMesAqui": "Crear este mes en blanco",
+    "mesNoHabilitado": "Este mes todavía no está habilitado",
     "title": "Planilla de pedidos",
     "subtitle": "Redexpres · cartelería mensual",
     "confirmadosCount": "{{count}}/{{total}} confirmados",

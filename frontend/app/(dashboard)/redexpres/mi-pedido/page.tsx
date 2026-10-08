@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { hasPermission } from "@/lib/permissions";
+import SelectorMes from "@/components/redexpres/SelectorMes";
 
 // Misma lógica de datos/guardado que planilla/page.tsx (la de Valentina),
 // pero con una sola fila — la del local asignado al usuario logueado — en
@@ -74,10 +76,10 @@ export default function MiPedidoPage() {
     [GROUPS]
   );
 
-  const MONTH_NAMES = t("redexpres.months", { returnObjects: true }) as string[];
-
   const { user: currentUser, loading: loadingUser } = useCurrentUser();
-  const isSuperuser = currentUser?.is_superuser ?? false;
+  // Perfil completo (ver y editar cualquier sucursal, crear meses): superusuarios y
+  // quien tenga redexpres.manage (Lucía y Valentina). Ver _es_gestor en el backend.
+  const isSuperuser = !!currentUser && (currentUser.is_superuser || hasPermission(currentUser, "redexpres.manage"));
   // undefined = todavía no sabemos (usuario sin resolver todavía)
   const assignedLocal = loadingUser ? undefined : (currentUser?.assigned_locales?.[0] ?? null);
   const [locales, setLocales]       = useState<string[]>([]); // solo para superadmin (selector)
@@ -97,12 +99,12 @@ export default function MiPedidoPage() {
   const activeLocal = isSuperuser ? selectedLocal : (assignedLocal ?? null);
 
   useEffect(() => {
-    if (currentUser?.is_superuser) {
+    if (isSuperuser) {
       redexpresApi.getLocales()
         .then(({ data: locs }) => setLocales(locs.map((l) => l.local_nombre)))
         .catch(() => setLocales([]));
     }
-  }, [currentUser]);
+  }, [currentUser, isSuperuser]);
 
   useEffect(() => {
     loadMeses();
@@ -115,6 +117,16 @@ export default function MiPedidoPage() {
       if (data.length > 0) setSelected(data[data.length - 1]);
     } catch {
       toast.error(t("redexpres.errorCargarMeses"));
+    }
+  }
+
+  async function crearMesVacio(m: { year: number; month: number }) {
+    try {
+      await redexpresApi.crearMes(m.year, m.month);
+      setMeses((prev) => [...prev, m].sort((a, b) => a.year - b.year || a.month - b.month));
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || t("redexpres.errorCrearMes"));
+      throw e;
     }
   }
 
@@ -215,7 +227,7 @@ export default function MiPedidoPage() {
   const isEditable = !!miRow?.can_edit && !miRow?.confirmado;
 
   return (
-    <div className="space-y-4 animate-fade-in max-w-3xl">
+    <div className="space-y-4 animate-fade-in max-w-6xl">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
           {t("redexpres.miPedido.title")}
@@ -276,26 +288,13 @@ export default function MiPedidoPage() {
 
           {activeLocal && (
           <>
-          {/* Month tabs */}
-          <div className="flex gap-1.5 flex-wrap">
-            {meses.map((m) => (
-              <button
-                key={`${m.year}-${m.month}`}
-                onClick={() => setSelected(m)}
-                className={clsx(
-                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                  selectedMes?.year === m.year && selectedMes?.month === m.month
-                    ? "bg-brand-600 text-white shadow-sm"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-                )}
-              >
-                {MONTH_NAMES[m.month]} {m.year}
-              </button>
-            ))}
-            {meses.length === 0 && !loading && (
-              <p className="text-sm text-slate-400">{t("redexpres.noMeses")}</p>
-            )}
-          </div>
+          {/* Año + 12 meses fijos (Ivan, 08/10/2026) */}
+          <SelectorMes
+            meses={meses}
+            seleccionado={selectedMes}
+            onSeleccionar={setSelected}
+            onCrear={isSuperuser ? crearMesVacio : undefined}
+          />
 
           {loading ? (
             <div className="card p-10 flex items-center justify-center">

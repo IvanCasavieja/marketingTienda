@@ -3,10 +3,12 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { redexpresApi, PlanillaRow } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { hasPermission } from "@/lib/permissions";
 import { CheckCircle2, Clock, Plus, RefreshCw, Download } from "lucide-react";
 import { toast } from "sonner";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
+import SelectorMes from "@/components/redexpres/SelectorMes";
 
 type ColKey = string;
 
@@ -85,7 +87,9 @@ export default function PlanillaPedidosPage() {
   const [rows, setRows]           = useState<PlanillaRow[]>([]);
   const [loading, setLoading]     = useState(false);
   const { user: currentUser } = useCurrentUser();
-  const isSuperuser = currentUser?.is_superuser ?? false;
+  // Perfil completo (ver y editar cualquier sucursal, crear meses): superusuarios y
+  // quien tenga redexpres.manage (Lucía y Valentina). Ver _es_gestor en el backend.
+  const isSuperuser = !!currentUser && (currentUser.is_superuser || hasPermission(currentUser, "redexpres.manage"));
   const [savingRow, setSavingRow] = useState<string | null>(null);
   const [confirmingRow, setConfirmingRow] = useState<string | null>(null);
   const [showNewMes, setShowNewMes] = useState(false);
@@ -238,6 +242,16 @@ export default function PlanillaPedidosPage() {
     }
   }
 
+  async function crearMesVacio(m: { year: number; month: number }) {
+    try {
+      await redexpresApi.crearMes(m.year, m.month);
+      setMeses((prev) => [...prev, m].sort((a, b) => a.year - b.year || a.month - b.month));
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || t("redexpres.errorCrearMes"));
+      throw e;
+    }
+  }
+
   const visibleRows = filterOnly && !isSuperuser
     ? rows.filter((r) => r.can_edit)
     : rows;
@@ -269,7 +283,7 @@ export default function PlanillaPedidosPage() {
     ws["!cols"] = [{ wch: 24 }, ...ALL_COLS.map(() => ({ wch: 14 })), { wch: 20 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Planilla");
-    const mesNombre = MONTH_NAMES[selectedMes.month - 1] ?? String(selectedMes.month);
+    const mesNombre = MONTH_NAMES[selectedMes.month] ?? String(selectedMes.month);
     XLSX.writeFile(wb, `planilla_${mesNombre}_${selectedMes.year}.xlsx`);
   }
 
@@ -352,26 +366,13 @@ export default function PlanillaPedidosPage() {
         </div>
       )}
 
-      {/* Month tabs */}
-      <div className="flex gap-1.5 flex-wrap">
-        {meses.map((m) => (
-          <button
-            key={`${m.year}-${m.month}`}
-            onClick={() => setSelected(m)}
-            className={clsx(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
-              selectedMes?.year === m.year && selectedMes?.month === m.month
-                ? "bg-brand-600 text-white shadow-sm"
-                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-            )}
-          >
-            {MONTH_NAMES[m.month]} {m.year}
-          </button>
-        ))}
-        {meses.length === 0 && !loading && (
-          <p className="text-sm text-slate-400 dark:text-slate-500">{t("redexpres.noMeses")}</p>
-        )}
-      </div>
+      {/* Año + 12 meses fijos (Ivan, 08/10/2026) */}
+      <SelectorMes
+        meses={meses}
+        seleccionado={selectedMes}
+        onSeleccionar={setSelected}
+        onCrear={isSuperuser ? crearMesVacio : undefined}
+      />
 
       {/* Table */}
       {loading ? (
