@@ -830,12 +830,29 @@ async def columnas(
                 None,
             )
             if idx_oferta is not None:
-                muestras = [
-                    str(f[idx_oferta]).strip()
-                    for f in filas[header_idx + 1: header_idx + 1 + _MUESTRAS_PARA_IA]
+                # OFERTADET y PRECIO de las mismas filas, para no avisar por el
+                # formato normal de gestión (ver oferta_trae_precios).
+                def _idx_de(campo):
+                    return next(
+                        (i for i, celda in enumerate(filas[header_idx])
+                         if celda is not None and _INPUT_ALIASES.get(_norm(celda)) == campo),
+                        None,
+                    )
+                idx_det, idx_precio = _idx_de("ofertaDet"), _idx_de("precio")
+                def _celda(f, idx):
+                    if idx is None:
+                        return None
+                    return str(f[idx]).strip() if idx < len(f) and f[idx] is not None else ""
+                ventana = [
+                    f for f in filas[header_idx + 1: header_idx + 1 + _MUESTRAS_PARA_IA]
                     if idx_oferta < len(f) and f[idx_oferta] is not None and str(f[idx_oferta]).strip()
                 ]
-                if oferta_trae_precios(muestras):
+                muestras = [str(f[idx_oferta]).strip() for f in ventana]
+                if oferta_trae_precios(
+                    muestras,
+                    [_celda(f, idx_det) for f in ventana],
+                    [_celda(f, idx_precio) for f in ventana],
+                ):
                     aviso = {
                         "columna": str(filas[header_idx][idx_oferta]).strip(),
                         "campo_actual": "oferta",

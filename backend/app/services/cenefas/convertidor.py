@@ -27,7 +27,7 @@ from app.models.convertidor_header_alias import ConvertidorHeaderAlias
 from app.models.cenefa_grupo_unificado import CenefaGrupoUnificado
 from app.models.sku_descripcion import SkuDescripcion
 from app.services.cenefas.convertidor_ai import resolve_date_columns_with_ai
-from app.services.cenefas.convertidor_variables import construir_variables
+from app.services.cenefas.convertidor_variables import construir_variables, familia_de_ofertadet
 from app.services.cenefas.variables import (
     DECIMAL_OF,
     ORDEN_EXPORT,
@@ -598,17 +598,86 @@ def _es_precio_pelado(valor: str) -> bool:
 _PROPORCION_PRECIOS_PELADOS = 0.8
 
 
-def oferta_trae_precios(valores: list[str]) -> bool:
+def oferta_trae_precios(
+    valores: list[str],
+    ofertadet: list[str | None] | None = None,
+    precios: list[str | None] | None = None,
+) -> bool:
     """La columna OFERTA parece traer precios en vez de titulares de mecánica.
 
     `valores` son los de muestra de esa columna (los mismos que la pantalla de
-    mapeo ya muestra). Se piden al menos 3 no vacíos: con uno o dos, un número
-    suelto es tan probablemente una casualidad como un patrón."""
-    no_vacios = [v for v in (valores or []) if (v or "").strip()]
-    if len(no_vacios) < 3:
+    mapeo ya muestra). Se piden al menos 3 candidatos: con uno o dos, un número
+    suelto es tan probablemente una casualidad como un patrón.
+
+    `ofertadet` y `precios` son las columnas OFERTADET y PRECIO de las MISMAS
+    filas (alineadas con `valores`; None en la lista cuando el archivo no trae
+    esa columna). Con ellas se descartan las filas donde un número en OFERTA
+    NO delata nada, porque es el formato normal del export de gestión:
+
+    - OFERTADET dice "Precio fijo" o "% Descuento": ahí OFERTA repite el
+      precio o trae el porcentaje. No es un Excel editado a mano, es gestión.
+    - OFERTA repite exactamente PRECIO: leerla como precio no cambiaría nada.
+
+    Sin esto, el aviso saltaba con el listado crudo del mailing (Ivan,
+    08/10/2026, hoja "Otros productos" del 13318: 285 filas, 92% de OFERTA con
+    números por esas dos razones). Se aceptó "Sí, es el precio de oferta" y
+    la colita de cuadril salió a "$20" --su 20% de descuento-- en vez de $639,
+    y los combos ("2x199") quedaron sin precio. El caso que SÍ tiene que
+    seguir avisando (27/08/2026) es el Excel editado a mano: OFERTADET dice
+    "Combo" y en OFERTA hay un precio pelado distinto de PRECIO."""
+    valores = list(valores or [])
+    dets = list(ofertadet) if ofertadet is not None else [None] * len(valores)
+    pres = list(precios) if precios is not None else [None] * len(valores)
+    candidatos = []
+    for v, det, precio in zip(valores, dets, pres):
+        v = (v or "").strip()
+        if not v:
+            continue
+        if det is not None and familia_de_ofertadet(str(det)) == "sin_mecanica":
+            continue
+        if precio is not None and _mismo_numero(v, str(precio)):
+            continue
+        # Un número en OFERTA mucho más chico que PRECIO no es un precio: es el
+        # porcentaje de un "% Descuento" (20 junto a un PRECIO de 639). Hace
+        # falta mirarlo aparte de OFERTADET porque en el export de gestión esas
+        # filas vienen corridas una celda (OFERTADET trae un número y el tipo
+        # queda en la columna siguiente): 700 de las 834 filas de "Limpieza y
+        # CP" del mailing 13318 están así.
+        if _es_porcentaje_junto_a_precio(v, precio):
+            continue
+        candidatos.append(v)
+    if len(candidatos) < 3:
         return False
-    pelados = sum(1 for v in no_vacios if _es_precio_pelado(v))
-    return pelados / len(no_vacios) >= _PROPORCION_PRECIOS_PELADOS
+    pelados = sum(1 for v in candidatos if _es_precio_pelado(v))
+    return pelados / len(candidatos) >= _PROPORCION_PRECIOS_PELADOS
+
+
+def _numero_de_celda(v) -> float | None:
+    """El número que dice una celda de precio ("199", "$ 1.100", "199.0"), o None."""
+    limpio = re.sub(r"^\s*(?:\$u?|u\$s?|usd|\$)\s*", "", str(v if v is not None else "").strip(), flags=re.IGNORECASE).strip()
+    if not limpio:
+        return None
+    if _RE_SEPARADOR_MILES.match(limpio):
+        return float(limpio.replace(".", ""))
+    return _parse_price_or_none(limpio)
+
+
+def _mismo_numero(a: str, b: str) -> bool:
+    """Las dos celdas dicen el mismo precio ("199" y "199.0", "1.100" y "1100")."""
+    na, nb = _numero_de_celda(a), _numero_de_celda(b)
+    return na is not None and nb is not None and abs(na - nb) < 0.005
+
+
+# Por debajo de qué fracción de PRECIO un número en OFERTA deja de poder ser
+# un precio. El precio de oferta es PRECIO o el total de un combo (más), nunca
+# una quinta parte: eso es un porcentaje de descuento.
+_FRACCION_MINIMA_DE_PRECIO = 1 / 5
+
+
+def _es_porcentaje_junto_a_precio(oferta: str, precio) -> bool:
+    no, np_ = _numero_de_celda(oferta), _numero_de_celda(precio)
+    return (no is not None and np_ is not None and np_ > 0
+            and no < np_ * _FRACCION_MINIMA_DE_PRECIO)
 
 
 # ---------------------------------------------------------------------------

@@ -956,7 +956,7 @@
     },
     "ofertaPrecios": {
       "titulo": "La columna “{{columna}}” trae precios, no mecánicas",
-      "detalle": "Esa columna tiene que traer el titular de la oferta (“2x$299”, “6x4”, “2da unidad al 50%”), pero vino con precios. Así como está, la mecánica no se va a poder armar y ese precio no lo va a usar nadie. ¿La leo como el precio de oferta?",
+      "detalle": "Esa columna tiene que traer el titular de la oferta (“2x$299”, “6x4”, “2da unidad al 50%”), pero vino con precios. Así como está, la mecánica no se va a poder armar y ese precio no lo va a usar nadie. ¿La leo como el precio de oferta? Si es el export normal de gestión (OFERTA repite el precio en “Precio fijo” y trae el porcentaje en “% Descuento”), no la pases: el precio ya sale de la columna PRECIO.",
       "pasarAPrecio": "Sí, es el precio de oferta",
       "ignorar": "No es ninguno — ignorala",
       "otroCampo": "Es otra cosa…",

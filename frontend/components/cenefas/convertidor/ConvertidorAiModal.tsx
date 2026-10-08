@@ -359,12 +359,16 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                         </span>
                       )}
                       <span className="truncate flex-1 min-w-0">{row.codigo} · {row.nombreArticulo}</span>
+                      {/* Grandes y con contraste, a propósito: están para
+                          confirmar el precio antes de aprobar, y a 10 px en
+                          gris claro no se leían (Ivan, 08/10/2026: "bien
+                          legibles y en todos"). */}
                       {(precios.anterior || precios.oferta) && (
-                        <span className="shrink-0 tabular-nums flex items-center gap-1.5">
+                        <span className="shrink-0 tabular-nums flex items-baseline gap-2">
                           {precios.anterior && (
                             <span
                               title={t("convertidor.ai.precioRegular")}
-                              className="line-through text-slate-300 dark:text-slate-600"
+                              className="text-xs line-through text-slate-400 dark:text-slate-500"
                             >
                               {precios.anterior}
                             </span>
@@ -372,7 +376,7 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
                           {precios.oferta && (
                             <span
                               title={t("convertidor.ai.precioOferta")}
-                              className="font-semibold text-slate-600 dark:text-slate-300"
+                              className="text-sm font-bold text-slate-800 dark:text-slate-100"
                             >
                               {precios.oferta}
                             </span>

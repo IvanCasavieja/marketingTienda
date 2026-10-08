@@ -956,7 +956,7 @@
     },
     "ofertaPrecios": {
       "titulo": "Column “{{columna}}” has prices, not offer mechanics",
-      "detalle": "That column should carry the offer headline (“2x$299”, “6x4”, “2nd unit at 50%”), but it came with prices. As is, the mechanic can't be built and that price won't be used by anything. Read it as the offer price?",
+      "detalle": "That column should carry the offer headline (“2x$299”, “6x4”, “2nd unit at 50%”), but it came with prices. As is, the mechanic can't be built and that price won't be used by anything. Read it as the offer price? If this is the regular export (OFERTA repeats the price on “Precio fijo” rows and carries the percentage on “% Descuento” rows), leave it: the price already comes from the PRECIO column.",
       "pasarAPrecio": "Yes, it's the offer price",
       "ignorar": "None of these — ignore it",
       "otroCampo": "It's something else…",
