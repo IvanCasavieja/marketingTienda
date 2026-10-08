@@ -200,3 +200,23 @@ def test_marca_tienda_inglesa_tienda_casa_gramaje_sin_cantidad_y_unidad_con_espa
         assert "NATURALACT. 100g" not in texto, f"{donde} sigue con el ejemplo de 100g pegado"
     assert 'exactamente "100 g" o "Kg"' in _STYLE_RULES
     assert '"150g", "100g" o "1kg" están MAL' in _STYLE_RULES
+
+
+# ---------------------------------------------------------------------------
+# MH = MEAT HOUSE (Ivan, 2026-10-08)
+# ---------------------------------------------------------------------------
+
+def test_mh_es_la_marca_meat_house_y_se_escribe_entera():
+    """Tercera tanda del 08/10/2026, mirando las sugerencias de "Otros
+    productos": "Asado corte inglés MH. Kg". "MH" de gestión es MEAT HOUSE, la
+    marca exclusiva de carnes de Tienda Inglesa (y a la vez propia); va entera
+    como cualquier marca y esos productos llevan sus propias cenefas."""
+    from app.services.cenefas.convertidor_ai import _STYLE_RULES
+
+    for texto, donde in ((_STYLE_RULES, "_STYLE_RULES"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
+        assert re.search(r'"MH".{0,80}MEAT HOUSE', texto), f"{donde} no dice que MH es MEAT HOUSE"
+        assert "Colita de cuadril MEAT HOUSE. Kg" in texto, f"{donde} no trae el ejemplo escrito entero"
+        assert "Lomo MH. Kg" in texto, f"{donde} no muestra la sigla como el caso malo"
+        assert "exclusiva" in texto.split("MEAT HOUSE", 1)[1][:200], f"{donde} no dice que es marca exclusiva"
+    assert "propias cenefas" in _CONOCIMIENTO
+
