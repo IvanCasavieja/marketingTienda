@@ -19,7 +19,8 @@ import {
 import { resolverFuente } from "@/lib/cenefas/fuentes";
 import { mascaraNegrita, tieneMarca } from "@/lib/cenefas/smartBold";
 import { baseEnElRenglon, cadenaFont, tramosConEstiloPropio, tramosDeCaja } from "@/lib/cenefas/textoEnriquecido";
-import { metricas, nodoTextoEnriquecido } from "@/lib/cenefas/dibujarTextoEnriquecido";
+import { esDescripcionPura, ptSinHuerfanos } from "@/lib/cenefas/huerfanos";
+import { medirTexto, metricas, nodoTextoEnriquecido } from "@/lib/cenefas/dibujarTextoEnriquecido";
 import { cargarReglasDeMedicion, reglas } from "@/lib/cenefas/reglasDeMedicion";
 import {
   cargarFormatosDeHoja,
@@ -470,6 +471,24 @@ function buildComponentGroup({
             : comp.static_value
               ? `"${comp.static_value.length > 24 ? comp.static_value.slice(0, 22) + "…" : comp.static_value}"`
               : comp.name;
+
+  // LA REGLA DE LOS HUÉRFANOS (Ivan, 08/10/2026), última de la cadena y solo
+  // en la descripción: si con el cuerpo que dejaron las reglas algún renglón
+  // queda con una, dos o tres letras solas ("100" arriba y "g" abajo), se baja
+  // el cuerpo de a un paso hasta que se junten. Espejo de apply_sin_huerfanos
+  // (component_renderer.py); acá se mide con el canvas, que es con lo que se
+  // dibuja. No corre en la vista de capacidad (la tira de X no es un texto).
+  if (previewData && !imgInvalid && !capacidad?.[comp.id] && esDescripcionPura(comp)) {
+    const fuenteH = resolverFuente(comp.style?.font_family, comp.style?.font_bold);
+    const ptActual = comp.style?.font_size ?? reglas().ptPorDefecto;
+    const anchoUtilH = Math.max(1, w - reglas().insetCm * PX_PER_CM);
+    const ptNuevo = ptSinHuerfanos(
+      text, anchoUtilH, ptActual,
+      (t, p) => medirTexto(t, cadenaFont(fuenteH.weight, ptToPx(p), fuenteH.stack)),
+      { maxCaracteres: reglas().huerfanoMaxCaracteres, pasoPt: reglas().huerfanoPasoPt, bajadaMaxPt: reglas().huerfanoBajadaMaxPt },
+    );
+    if (ptNuevo !== ptActual) comp = aplicarTamanos(comp, ptNuevo);
+  }
 
   if (fiel) {
     // Cuadro compuesto cuyos pedazos NO comparten el estilo de la caja: el

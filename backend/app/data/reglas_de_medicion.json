@@ -71,5 +71,26 @@
     "usa": ["exportador"],
     "que_es": "Ancho de reserva por caracter, en fracciones del tamano de la letra, para una tipografia que no esta en la tabla de anchos.",
     "porque": "Promedio de las nueve tipografias medidas. Un diseno con una fuente desconocida queda aproximado --como estaba todo antes de la tabla-- en vez de romper. El preview no lo necesita: el navegador siempre puede medir la fuente que efectivamente dibuja."
+  },
+
+  "huerfano_max_caracteres": {
+    "valor": 3,
+    "usa": ["exportador", "preview"],
+    "que_es": "Hasta cuantos caracteres (sin contar espacios) puede tener un renglon de la DESCRIPCION para que cuente como huerfano: una letra, dos o tres solas en un renglon ('g', 'ml', 'kg', 'x 4' partido). Solo la descripcion: ningun otro bloque ni variable.",
+    "porque": "Pedido de Ivan (08/10/2026): 'nos pasa muchas veces que en las descripciones queda un renglon con una letra unicamente, o dos letras, o tres letras... las dos letras de gramos quedan en el renglon de abajo del todo, solitas. Queda feo'. Gramaticalmente el corte esta bien (hay un espacio), pero visualmente el gramaje tiene que quedar al lado del numero. Es la ultima regla de la cadena: se aplica despues de todas las reglas de tamano y de ancho, sobre el cuerpo que ellas dejaron."
+  },
+
+  "huerfano_paso_pt": {
+    "valor": 1,
+    "usa": ["exportador", "preview"],
+    "que_es": "De a cuantos puntos se baja el cuerpo de la descripcion cuando hay un renglon huerfano, hasta que el pedazo suelto se junte con el renglon anterior.",
+    "porque": "Ivan (08/10/2026): 'achiquemos todavia un poquito mas, un puntito, dos puntitos... creo que con un puntito deberia de funcionar, hace la prueba'. Se baja de a uno y se vuelve a medir: casi siempre alcanza con uno o dos."
+  },
+
+  "huerfano_bajada_max_pt": {
+    "valor": 6,
+    "usa": ["exportador", "preview"],
+    "que_es": "Cuanto se puede bajar como maximo el cuerpo de la descripcion por esta regla, en puntos, sumando todos los pasos. Si con esa bajada el huerfano no se junta, se deja el ultimo cuerpo probado y listo.",
+    "porque": "La regla es cosmetica: no puede terminar achicando una descripcion a la mitad porque una palabra de dos letras no entra de ninguna forma. Seis puntos sobre un cuerpo de 25 a 50 es el 'poquito mas' que pidio Ivan, no una escalera nueva."
   }
 }

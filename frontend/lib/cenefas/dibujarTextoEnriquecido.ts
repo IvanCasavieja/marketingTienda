@@ -16,6 +16,11 @@ function contexto(): CanvasRenderingContext2D | null {
   return contextoDeMedida;
 }
 
+/** Ancho en px de un texto con esa cadena `font` del canvas. Lo usa también la regla de los huérfanos. */
+export function medirTexto(texto: string, font: string): number {
+  return medir(texto, font);
+}
+
 function medir(texto: string, font: string): number {
   const ctx = contexto();
   if (!ctx) return 0;

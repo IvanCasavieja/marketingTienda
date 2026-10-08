@@ -53,6 +53,9 @@ _OBLIGATORIAS = (
     "pt_por_defecto",
     "factor_negrita",
     "em_fallback",
+    "huerfano_max_caracteres",
+    "huerfano_paso_pt",
+    "huerfano_bajada_max_pt",
 )
 
 

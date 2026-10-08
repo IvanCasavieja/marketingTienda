@@ -999,6 +999,89 @@ def detectar_desbordes_del_lote(
     return sorted(peor.values(), key=lambda a: (-int(a["corta_texto"]), -a["cm"]))
 
 
+def _renglones_de_texto(
+    text: str, box_width_cm: float | None, font_size: float | None,
+    bold: bool = False, font_family: str | None = None,
+) -> list[str]:
+    """Los renglones en que se parte el texto, con el MISMO criterio voraz de
+    `_estimate_wrapped_lines` (agregar palabras hasta que no entran más): esa
+    función cuenta, esta devuelve el texto de cada renglón, que es lo que hace
+    falta para ver si alguno quedó con dos letras solas."""
+    if not text or not box_width_cm or not font_size:
+        return [text or ""]
+    usable_cm = max(0.1, box_width_cm - _INSET_CM)
+    renglones: list[str] = []
+    actual = ""
+    for palabra in text.split():
+        tentativa = palabra if not actual else actual + " " + palabra
+        if _ancho_medido_cm(tentativa, font_size, font_family, bold) > usable_cm and actual:
+            renglones.append(actual)
+            actual = palabra
+        else:
+            actual = tentativa
+    renglones.append(actual)
+    return renglones
+
+
+def _tiene_renglon_huerfano(renglones: list[str]) -> bool:
+    """Un renglón con 1 a 3 caracteres solos ("g", "ml", "kg"), en un texto de
+    más de un renglón. El tope sale de reglas_de_medicion.json."""
+    if len(renglones) < 2:
+        return False
+    return any(0 < len(r.replace(" ", "")) <= REGLAS.huerfano_max_caracteres for r in renglones)
+
+
+def _es_descripcion_pura(comp: dict) -> bool:
+    """El cuadro imprime la descripción y ninguna otra variable."""
+    return comp.get("type", "text") == "text" and _variables_del_componente(comp) == {"descripcion"}
+
+
+def apply_sin_huerfanos(components: list[dict], product: dict) -> list[dict]:
+    """La ÚLTIMA regla de la cadena, solo sobre la descripción (Ivan,
+    08/10/2026): si con el cuerpo que dejaron las reglas de tamaño y de ancho
+    algún renglón queda con una, dos o tres letras solas --"Queso colonia
+    PEPITO. 100" y abajo "g"--, se baja el cuerpo de a `huerfano_paso_pt`
+    hasta que el pedazo se junte con el renglón anterior, con un tope de
+    `huerfano_bajada_max_pt`. Ningún otro bloque ni variable: "no quiero esto
+    en ningún otro bloque, solamente en la descripción".
+
+    Se mide con las mismas métricas y el mismo corte voraz que los avisos de
+    solape (_estimate_wrapped_lines), y el cuerpo nuevo se aplica por
+    apply_font_sizes, así que los pedazos de un cuadro compuesto siguen la
+    misma regla que con una regla de tamaño. Devuelve copias, como todo lo
+    demás de preparar_componentes. El espejo del preview es
+    lib/cenefas/huerfanos.ts (ptSinHuerfanos), que mide con el canvas.
+    """
+    salida = []
+    for c in components:
+        if not _es_descripcion_pura(c) or not c.get("visible", True) or c.get("_oculto_por_regla", False):
+            salida.append(c)
+            continue
+        texto = _texto_resuelto(c, product).strip()
+        if " " not in texto:
+            salida.append(c)
+            continue
+        b = c.get("computed_bounds") or c.get("base_bounds") or {}
+        style = c.get("style", {}) or {}
+        pt = float(style.get("font_size") or REGLAS.pt_por_defecto)
+        fam = style.get("font_family")
+        bold = bool(style.get("font_bold"))
+        bajada = 0.0
+        nuevo_pt = pt
+        while _tiene_renglon_huerfano(_renglones_de_texto(texto, b.get("width"), nuevo_pt, bold, fam)):
+            if bajada >= REGLAS.huerfano_bajada_max_pt:
+                break
+            nuevo_pt -= REGLAS.huerfano_paso_pt
+            bajada += REGLAS.huerfano_paso_pt
+        if nuevo_pt == pt:
+            salida.append(c)
+            continue
+        ajustado = apply_font_sizes([c], {c["id"]: nuevo_pt})[0]
+        ajustado["_huerfano_bajada_pt"] = bajada
+        salida.append(ajustado)
+    return salida
+
+
 def preparar_componentes(comps: list[dict], rules: list[dict], product: dict) -> list[dict]:
     """Los componentes listos para dibujar, para ESTE producto.
 
@@ -1014,6 +1097,8 @@ def preparar_componentes(comps: list[dict], rules: list[dict], product: dict) ->
     Tres cosas deciden las reglas, en este orden: qué se ve, con qué cuerpo y
     de qué ancho (apply_widths, 08/10/2026: el cuadro del código con un grupo
     unificado adentro crece desde el centro para no partirse hacia abajo).
+    Y al final, solo sobre la descripción, la regla de los huérfanos
+    (apply_sin_huerfanos): ningún renglón con dos letras solas.
     """
     visibles = apply_visibility(
         comps,
@@ -1025,7 +1110,8 @@ def preparar_componentes(comps: list[dict], rules: list[dict], product: dict) ->
         evaluate_font_size_rules(rules, product),
         evaluate_segment_font_size_rules(rules, product),
     )
-    return apply_widths(con_cuerpo, evaluate_width_rules(rules, product))
+    con_ancho = apply_widths(con_cuerpo, evaluate_width_rules(rules, product))
+    return apply_sin_huerfanos(con_ancho, product)
 
 
 def hex_to_rgb(hex_color: str | None) -> RGBColor:

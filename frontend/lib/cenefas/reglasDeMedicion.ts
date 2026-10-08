@@ -37,6 +37,12 @@ export interface Reglas {
   insetArribaCm: number;
   /** Tamaño de letra que se asume cuando el cuadro no declara ninguno. */
   ptPorDefecto: number;
+  /** Hasta cuántos caracteres solos en un renglón de la descripción son un huérfano. */
+  huerfanoMaxCaracteres: number;
+  /** De a cuántos pt se baja la descripción para juntar el huérfano. */
+  huerfanoPasoPt: number;
+  /** Cuánto se puede bajar como máximo por esa regla, en pt. */
+  huerfanoBajadaMaxPt: number;
 }
 
 /** Cómo se llama cada regla en el JSON del backend. */
@@ -46,6 +52,9 @@ const CLAVES: Record<keyof Reglas, string> = {
   insetCm: "inset_cm",
   insetArribaCm: "inset_arriba_cm",
   ptPorDefecto: "pt_por_defecto",
+  huerfanoMaxCaracteres: "huerfano_max_caracteres",
+  huerfanoPasoPt: "huerfano_paso_pt",
+  huerfanoBajadaMaxPt: "huerfano_bajada_max_pt",
 };
 
 let _reglas: Reglas | null = null;
