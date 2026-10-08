@@ -27,10 +27,12 @@ from app.services.cenefas.layout_engine import compute_layout, get_format
 from app.services.cenefas.rules_engine import (
     apply_font_sizes,
     apply_visibility,
+    apply_widths,
     evaluate_font_size_rules,
     evaluate_rules,
     evaluate_segment_font_size_rules,
     evaluate_segment_rules,
+    evaluate_width_rules,
 )
 from app.services.cenefas.variables import DECIMAL_OF, DECIMAL_VARS, PRICE_VARS
 
@@ -1008,17 +1010,22 @@ def preparar_componentes(comps: list[dict], rules: list[dict], product: dict) ->
 
     Devuelve copias (ver apply_font_sizes): el layout se arma una vez y se
     reusa para todos los productos de la corrida.
+
+    Tres cosas deciden las reglas, en este orden: qué se ve, con qué cuerpo y
+    de qué ancho (apply_widths, 08/10/2026: el cuadro del código con un grupo
+    unificado adentro crece desde el centro para no partirse hacia abajo).
     """
     visibles = apply_visibility(
         comps,
         evaluate_rules(rules, product),
         evaluate_segment_rules(rules, product),
     )
-    return apply_font_sizes(
+    con_cuerpo = apply_font_sizes(
         visibles,
         evaluate_font_size_rules(rules, product),
         evaluate_segment_font_size_rules(rules, product),
     )
+    return apply_widths(con_cuerpo, evaluate_width_rules(rules, product))
 
 
 def hex_to_rgb(hex_color: str | None) -> RGBColor:

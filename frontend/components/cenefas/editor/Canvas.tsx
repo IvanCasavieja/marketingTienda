@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Konva from "konva";
 import { useEditorStore } from "@/store/editor";
 import type { CenefaComponent, CenefaRule, CenefaTemplate, TextSegment } from "@/types/cenefas";
@@ -13,6 +13,8 @@ import {
   tamanosDeCuadro,
   tamanosDeSegmento,
   aplicarTamanos,
+  anchosDeCuadro,
+  aplicarAncho,
 } from "@/lib/cenefas/reglas";
 import { resolverFuente } from "@/lib/cenefas/fuentes";
 import { mascaraNegrita, tieneMarca } from "@/lib/cenefas/smartBold";
@@ -763,6 +765,7 @@ export default function Canvas({
     const vacio = {
       ocultos: new Set<string>(), segmentos: new Map<string, Set<number>>(),
       tamanos: new Map<string, number>(), tamanosSeg: new Map<string, Map<number, number>>(),
+      anchos: new Map<string, number>(),
     };
     if (!previewData || rules.length === 0) return vacio;
     const ocultos = new Set<string>();
@@ -772,6 +775,10 @@ export default function Canvas({
     // que lo que se ve acá es exactamente lo que sale impreso.
     const tamanos = new Map<string, number>();
     const tamanosSeg = new Map<string, Map<number, number>>();
+    // El ancho que declaran las reglas (08/10/2026): el cuadro del código con
+    // un grupo unificado adentro crece desde el centro. Igual que el cuerpo,
+    // lo que se ve acá es lo que sale impreso (ver anchosDeCuadro).
+    const anchos = new Map<string, number>();
 
     // Se recorren las BANDAS, no los productos: la banda es la que dice qué
     // cuadros se evalúan contra qué fila. Al revés, un `previewProducts` más
@@ -796,6 +803,9 @@ export default function Canvas({
       for (const [id, porSeg] of tamanosDeSegmento(rules, fila)) {
         if (deEstaBanda.has(id)) tamanosSeg.set(id, porSeg);
       }
+      for (const [id, cm] of anchosDeCuadro(rules, fila)) {
+        if (deEstaBanda.has(id)) anchos.set(id, cm);
+      }
     };
 
     if (slotBands?.length) {
@@ -803,8 +813,20 @@ export default function Canvas({
     } else {
       evaluar(template.components.map((c) => c.id), previewData);
     }
-    return { ocultos, segmentos, tamanos, tamanosSeg };
+    return { ocultos, segmentos, tamanos, tamanosSeg, anchos };
   }, [rules, previewData, previewProducts, slotBands, template.components]);
+
+  // Cuánto corrió una regla de ancho el borde izquierdo de un cuadro, en cm.
+  // El nodo dibujado lleva la caja ensanchada; lo que se guarda en la
+  // plantilla es la caja del DISEÑO. Arrastrar o redimensionar lee del nodo, así
+  // que hay que descontar este corrimiento antes de escribir base_bounds: si no,
+  // el ancho derivado por la regla quedaba horneado en la plantilla, que es
+  // exactamente el agujero por el que ya se filtraron el cuerpo (10/09) y
+  // `visible` (14/09).
+  const corrimientoPorAncho = useCallback((comp: CenefaComponent): number => {
+    const cm = reglasPorComp.anchos.get(comp.id);
+    return cm === undefined ? 0 : (cm - comp.base_bounds.width) / 2;
+  }, [reglasPorComp.anchos]);
 
   const wrapperRef       = useRef<HTMLDivElement>(null);
   const [wrapperWidth,  setWrapperWidth]  = useState<number | null>(null);
@@ -1257,8 +1279,9 @@ export default function Canvas({
       const compPreviewData =
         bandIdx !== undefined && previewProducts ? previewProducts[bandIdx] ?? previewData : previewData;
       const group = buildComponentGroup({
-        comp: aplicarTamanos(
-          comp, reglasPorComp.tamanos.get(comp.id), reglasPorComp.tamanosSeg.get(comp.id)),
+        comp: aplicarAncho(
+          aplicarTamanos(comp, reglasPorComp.tamanos.get(comp.id), reglasPorComp.tamanosSeg.get(comp.id)),
+          reglasPorComp.anchos.get(comp.id)),
         pageLeft, pageTop, isSelected,
         draggable: isEditMode && !comp.locked,
         image: getImage(comp),
@@ -1273,7 +1296,9 @@ export default function Canvas({
           else selectComponent(comp.id);
         },
         onDragEnd: (x, y) => {
-          const newX = +dentroDelPapel((x - pageLeft) / PX_PER_CM, comp.base_bounds.width,  dims.w).toFixed(2);
+          // El nodo puede estar ensanchado por una regla de ancho: se vuelve a
+          // la caja del diseño antes de guardar (ver corrimientoPorAncho).
+          const newX = +dentroDelPapel((x - pageLeft) / PX_PER_CM + corrimientoPorAncho(comp), comp.base_bounds.width,  dims.w).toFixed(2);
           const newY = +dentroDelPapel((y - pageTop)  / PX_PER_CM, comp.base_bounds.height, dims.h).toFixed(2);
           updateComponent(comp.id, {
             base_bounds: { ...comp.base_bounds, x: newX, y: newY },
@@ -1373,10 +1398,10 @@ export default function Canvas({
   // evita closures viejas dentro de los handlers de abajo (registrados una
   // sola vez con [] o pocas deps) sin depender de useEditorStore.getState(),
   // que no existe cuando estas props vienen de afuera (ej. PreviewStep).
-  const latestRef = useRef({ template, selectedComponentId, siblingMap });
+  const latestRef = useRef({ template, selectedComponentId, siblingMap, corrimientoPorAncho });
   useEffect(() => {
-    latestRef.current = { template, selectedComponentId, siblingMap };
-  }, [template, selectedComponentId, siblingMap]);
+    latestRef.current = { template, selectedComponentId, siblingMap, corrimientoPorAncho };
+  }, [template, selectedComponentId, siblingMap, corrimientoPorAncho]);
 
   // Handler de fin de transformacion (resize con los 4 puntos), registrado
   // una sola vez. SOLO cambia la caja -- desde 09/2026 (pedido explícito de
@@ -1401,14 +1426,18 @@ export default function Canvas({
       node.scaleX(1);
       node.scaleY(1);
 
-      const { template: t, selectedComponentId: selId, siblingMap: siblings } = latestRef.current;
+      const { template: t, selectedComponentId: selId, siblingMap: siblings, corrimientoPorAncho: corrimiento } = latestRef.current;
       const comp = t.components.find((c) => c.id === selId);
       if (!comp) return;
 
+      // Si una regla de ancho ensanchó el nodo, lo que se guarda es la caja
+      // del DISEÑO: se descuenta el ensanche (mitad por lado) y así el cambio
+      // de la persona se suma al diseño, no al ancho derivado.
+      const ensanche = corrimiento(comp) * 2;
       const nuevoBounds = {
-        x:      +((node.x() - pageLeft) / PX_PER_CM).toFixed(2),
+        x:      +((node.x() - pageLeft) / PX_PER_CM + ensanche / 2).toFixed(2),
         y:      +((node.y() - pageTop)  / PX_PER_CM).toFixed(2),
-        width:  +((node.width()  * scaleX) / PX_PER_CM).toFixed(2),
+        width:  +((node.width()  * scaleX) / PX_PER_CM - ensanche).toFixed(2),
         height: +((node.height() * scaleY) / PX_PER_CM).toFixed(2),
       };
 

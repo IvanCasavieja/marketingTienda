@@ -283,3 +283,52 @@ export function aplicarTamanos(
   }
   return nuevo;
 }
+
+// ---------------------------------------------------------------------------
+// Ancho declarado por regla
+// ---------------------------------------------------------------------------
+//
+// Espejo de `_resolver_anchos` / `apply_widths` en rules_engine.py (Ivan,
+// 08/10/2026). Nació por el cuadro del código: con un grupo unificado adentro
+// ("504891 - 504893 - 504894 - 514453") el texto se partía hacia abajo y pisaba
+// la descripción. Igual que el cuerpo, acá no se mide nada: se cuenta `len()`
+// y se compara un número, así que no hay forma de que difiera del PPTX.
+
+/**
+ * {id de cuadro -> ancho en cm} para los cuadros con regla de ancho.
+ *
+ * Si matchean varias gana la MÁS ANCHA (el espejo de "gana la más chica" del
+ * cuerpo: en los dos casos gana la que más lugar le deja al texto). El orden
+ * de las reglas no importa. Solo cuadros enteros: una regla con
+ * `target_segment_index` no cuenta.
+ */
+export function anchosDeCuadro(rules: CenefaRule[], values: Valores): Map<string, number> {
+  const salida = new Map<string, number>();
+  for (const rule of rules) {
+    if (rule.target_segment_index !== undefined || !rule.target_component_id) continue;
+    if (rule.action?.type !== "set_width") continue;
+    const cm = Number(rule.action?.value);
+    if (!Number.isFinite(cm) || cm <= 0) continue;
+    if (!evaluarCondicion(rule.condition, values)) continue;
+    const previo = salida.get(rule.target_component_id);
+    if (previo === undefined || cm > previo) salida.set(rule.target_component_id, cm);
+  }
+  return salida;
+}
+
+/**
+ * El cuadro con el ancho que dicta la regla, conservando su CENTRO: crece la
+ * mitad hacia cada lado, como pidió Ivan, para que el contenido quede centrado
+ * donde el diseño lo centró. Espejo de `apply_widths`.
+ *
+ * Devuelve el MISMO objeto si no hay nada que aplicar, por lo mismo que
+ * `aplicarTamanos`: el Canvas lo llama en cada render.
+ */
+export function aplicarAncho(comp: CenefaComponent, cm?: number): CenefaComponent {
+  if (cm === undefined || !comp.base_bounds?.width) return comp;
+  const b = comp.base_bounds;
+  return {
+    ...comp,
+    base_bounds: { ...b, x: +(b.x + (b.width - cm) / 2).toFixed(3), width: +cm.toFixed(3) },
+  };
+}

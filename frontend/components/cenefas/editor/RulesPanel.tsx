@@ -305,16 +305,19 @@ export function RuleChip({
     <div className="flex items-center gap-2 px-4 py-2 group hover:bg-white/60 dark:hover:bg-white/5 transition-colors">
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
         action === "show" ? "bg-emerald-400"
-          : action === "hide" ? "bg-rose-400" : "bg-sky-400"
+          : action === "hide" ? "bg-rose-400"
+          : action === "set_width" ? "bg-amber-400" : "bg-sky-400"
       }`} />
       <div className="flex-1 min-w-0">
         <span className={`text-[10px] font-semibold ${
           action === "show" ? "text-emerald-600 dark:text-emerald-400"
             : action === "hide" ? "text-rose-600 dark:text-rose-400"
+            : action === "set_width" ? "text-amber-600 dark:text-amber-400"
             : "text-sky-600 dark:text-sky-400"
         }`}>
           {action === "show" ? "Mostrar"
             : action === "hide" ? "Ocultar"
+            : action === "set_width" ? `${rule.action.value ?? "?"} cm de ancho`
             : `${rule.action.value ?? "?"} pt`}
         </span>
         {segLabel && (
@@ -391,25 +394,32 @@ export function RuleForm({
   // ("$111" y "$666" se llevan 2,37 cm a 140 pt), así que el pt hay que
   // elegirlo para el peor caso.
   const [pt,         setPt]         = useState("");
+  // Ancho en cm para la acción "Ancho" (08/10/2026): el cuadro del código con
+  // un grupo unificado adentro. El cuadro crece desde su centro.
+  const [cm,         setCm]         = useState("");
   // -1 = todo el cuadro (el caso de siempre).
   const [segmentIdx, setSegmentIdx] = useState(-1);
 
   const effectiveField  = fieldSrc === "custom" ? customCol.trim().toUpperCase() : field;
   const actionLabel     = action === "show" ? "Mostrar"
                         : action === "hide" ? "Ocultar"
+                        : action === "set_width" ? `Ensanchar a ${cm || "…"} cm`
                         : `Poner en ${pt || "…"} pt`;
   const operatorLabel   = OPERATORS.find((o) => o.value === operator)?.label ?? "";
-  // Solo tiene sentido elegir si hay más de un pedazo.
-  const puedeElegirSegmento = (segments?.length ?? 0) > 1;
+  // Solo tiene sentido elegir si hay más de un pedazo, y un ancho es siempre
+  // del cuadro entero.
+  const puedeElegirSegmento = (segments?.length ?? 0) > 1 && action !== "set_width";
   const alcance = puedeElegirSegmento && segmentIdx >= 0 && segments
     ? ` ${etiquetaDeSegmento(segments[segmentIdx])}`
     : "";
   const autoName        = `${actionLabel}${alcance} si ${effectiveField} ${operatorLabel}`;
 
-  // Una regla de tamaño sin pt no hace nada: el motor la descarta en silencio
-  // (ver _resolver_tamanos). Mejor no dejar guardarla.
+  // Una regla de tamaño sin pt (o de ancho sin cm) no hace nada: el motor la
+  // descarta en silencio (ver _resolver_tamanos / _resolver_anchos). Mejor no
+  // dejar guardarla.
   const puedeGuardar = !!effectiveField
-    && (action !== "set_font_size" || Number(pt) > 0);
+    && (action !== "set_font_size" || Number(pt) > 0)
+    && (action !== "set_width" || Number(cm) > 0);
 
   function handleSave() {
     if (!puedeGuardar) return;
@@ -427,6 +437,8 @@ export function RuleForm({
       condition:           condition as CenefaRule["condition"],
       action:              action === "set_font_size"
                              ? { type: action, value: Number(pt) }
+                             : action === "set_width"
+                             ? { type: action, value: Number(cm) }
                              : { type: action },
     });
   }
@@ -457,7 +469,7 @@ export function RuleForm({
       <div>
         <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase mb-1.5">¿Qué hace?</p>
         <div className="flex gap-2">
-          {(["show", "hide", "set_font_size"] as RuleAction[]).map((a) => (
+          {(["show", "hide", "set_font_size", "set_width"] as RuleAction[]).map((a) => (
             <button
               key={a}
               onClick={() => setAction(a)}
@@ -467,14 +479,40 @@ export function RuleForm({
                     ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 ring-1 ring-emerald-300 dark:ring-emerald-800"
                     : a === "hide"
                     ? "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 ring-1 ring-rose-300 dark:ring-rose-800"
+                    : a === "set_width"
+                    ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-800"
                     : "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400 ring-1 ring-sky-300 dark:ring-sky-800"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
               }`}
             >
-              {a === "show" ? "Mostrar" : a === "hide" ? "Ocultar" : "Tamaño"}
+              {a === "show" ? "Mostrar" : a === "hide" ? "Ocultar" : a === "set_width" ? "Ancho" : "Tamaño"}
             </button>
           ))}
         </div>
+        {action === "set_width" && (
+          <div className="mt-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0.1}
+                step={0.1}
+                className="input text-xs w-24"
+                placeholder="cm"
+                value={cm}
+                onChange={(e) => setCm(e.target.value)}
+              />
+              <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                ancho del cuadro, en centímetros
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+              El cuadro crece desde su centro, la mitad hacia cada lado. Si
+              matchean varias reglas de ancho, gana la más ancha. Pensado para
+              el código de un grupo unificado: &quot;codigo tiene más de 12
+              caracteres&quot; son dos SKU, más de 21 son tres, más de 30 cuatro.
+            </p>
+          </div>
+        )}
         {action === "set_font_size" && (
           <div className="mt-2">
             <div className="flex items-center gap-2">

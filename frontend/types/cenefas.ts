@@ -198,8 +198,15 @@ export type RuleOperator =
  * había que replicar idénticas acá para que el preview no mintiera -- y no se
  * replicaban. Una condición sobre el largo del texto da lo mismo en Python que
  * en TypeScript, así que la divergencia deja de ser posible.
+ *
+ * `set_width` (08/10/2026) es lo mismo para el ANCHO de la caja, en cm: nació
+ * por el cuadro del código, que con un grupo unificado adentro ("504891 -
+ * 504893 - 514453") se partía hacia abajo y pisaba la descripción. La caja
+ * crece desde su centro (pedido de Ivan) y, si matchean varias, gana la más
+ * ancha -- el espejo de "gana la más chica" en el cuerpo. Solo para el cuadro
+ * entero, nunca para un pedazo.
  */
-export type RuleAction = "show" | "hide" | "set_font_size";
+export type RuleAction = "show" | "hide" | "set_font_size" | "set_width";
 
 export interface RuleCondition {
   field?: string;
@@ -225,7 +232,7 @@ export interface CenefaRule {
    */
   target_segment_index?: number;
   condition: RuleCondition;
-  /** `value` solo lo usa `set_font_size`: el cuerpo en pt. */
+  /** `value`: el cuerpo en pt para `set_font_size`, el ancho en cm para `set_width`. */
   action: { type: RuleAction; value?: number };
   /**
    * Regla que impone el sistema, no una persona. El backend la vuelve a

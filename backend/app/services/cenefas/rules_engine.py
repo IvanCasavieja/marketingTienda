@@ -258,6 +258,102 @@ def evaluate_segment_font_size_rules(
     return salida
 
 
+# ---------------------------------------------------------------------------
+# Ancho declarado por regla (Ivan, 08/10/2026)
+# ---------------------------------------------------------------------------
+#
+# Nació por el cuadro del código. Un grupo unificado imprime los SKU de todos
+# sus productos ("504891 - 504893 - 504894 - 514453") en un cuadro que el
+# diseñador dibujó para UNO: el texto se parte en renglones hacia abajo y pisa
+# la descripción. Medido en la 3xA4 de marca propia: el cuadro mide 4,25 cm y
+# ya dos códigos (4,36 cm con los insets) no entran; seis necesitan 10,96.
+#
+# Mismo criterio que el cuerpo: lo declara una persona con una condición sobre
+# el largo del texto, y el motor no mide nada. Y la misma razón de fondo:
+# `len()` da lo mismo en Python que en TypeScript, así que el preview no puede
+# mentir. La cantidad de códigos ES el largo: dos códigos son ~13 caracteres,
+# tres ~22, cuatro ~31, cinco ~40.
+#
+# El cuadro conserva su CENTRO: crece la mitad hacia cada lado, para que el
+# contenido quede centrado donde el diseño lo centró y no se corra hacia un
+# costado (pedido explícito de Ivan).
+
+
+def _resolver_anchos(rules, values) -> dict:
+    """{component_id: ancho en cm} para los cuadros con regla de ancho.
+
+    Si matchean varias **gana la más ancha**: es el espejo exacto de "gana la
+    más chica" en el cuerpo. En los dos casos gana la que más lugar le deja al
+    texto, así que una escalera "más de 12 caracteres -> 4,6 cm, más de 21 ->
+    6,2 cm" hace lo obvio con un código de 40 caracteres (matchean las dos,
+    sale 6,2) sin importar en qué orden quedaron guardadas.
+
+    Solo cuadros enteros: un ancho no tiene sentido para un pedazo.
+    """
+    salida: dict = {}
+    for rule in rules:
+        clave = _clave_componente(rule)
+        if clave is None:
+            continue
+        accion = rule.get("action", {}) or {}
+        if accion.get("type") != "set_width":
+            continue
+        try:
+            cm = float(accion.get("value"))
+        except (TypeError, ValueError):
+            continue
+        if cm <= 0:
+            continue
+        if not _evaluate_condition(rule.get("condition", {}), values):
+            continue
+        anterior = salida.get(clave)
+        salida[clave] = cm if anterior is None else max(anterior, cm)
+    return salida
+
+
+def evaluate_width_rules(rules: list[dict], values: dict[str, Any]) -> dict[str, float]:
+    """Devuelve {component_id: ancho en cm} para los cuadros con regla de ancho."""
+    return _resolver_anchos(rules, values)
+
+
+def _ensanchar(bounds: dict, cm: float) -> dict:
+    """La misma caja con `cm` de ancho y el mismo centro."""
+    ancho = float(bounds.get("width") or 0)
+    x = float(bounds.get("x") or 0)
+    return {**bounds, "x": round(x + (ancho - cm) / 2, 3), "width": round(cm, 3)}
+
+
+def apply_widths(components: list[dict], widths: dict[str, float]) -> list[dict]:
+    """Aplica los anchos declarados por regla. SIEMPRE devuelve copias, por lo
+    mismo que apply_font_sizes: el layout se arma una vez y se reusa para toda
+    la corrida.
+
+    El número de la regla está en centímetros DEL DISEÑO (`base_bounds`). Si
+    el componente ya pasó por compute_layout trae además `computed_bounds`, que
+    es lo que el render escribe en el shape (_place_component) y sobre lo que
+    miden los avisos de solape (_rect_texto_real): se ensancha también, con la
+    misma escala que ya tenga respecto del diseño, para que las dos cajas
+    cuenten la misma historia.
+    """
+    if not widths:
+        return list(components)
+    salida = []
+    for c in components:
+        cm = widths.get(c.get("id"))
+        base = c.get("base_bounds") if isinstance(c.get("base_bounds"), dict) else None
+        if not cm or not base or not base.get("width"):
+            salida.append(c)
+            continue
+        nueva = dict(c)
+        nueva["base_bounds"] = _ensanchar(base, cm)
+        computada = c.get("computed_bounds")
+        if isinstance(computada, dict) and computada.get("width"):
+            escala = float(computada["width"]) / float(base["width"])
+            nueva["computed_bounds"] = _ensanchar(computada, cm * escala)
+        salida.append(nueva)
+    return salida
+
+
 def apply_font_sizes(
     components: list[dict],
     sizes: dict[str, float],
