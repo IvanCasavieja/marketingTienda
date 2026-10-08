@@ -220,3 +220,17 @@ def test_mh_es_la_marca_meat_house_y_se_escribe_entera():
         assert "exclusiva" in texto.split("MEAT HOUSE", 1)[1][:200], f"{donde} no dice que es marca exclusiva"
     assert "propias cenefas" in _CONOCIMIENTO
 
+
+def test_la_sigla_mh_se_expande_en_codigo_no_solo_en_el_prompt():
+    """La regla escrita es probabilística; la expansión es determinística: en el
+    nombre que ve el modelo y en lo que devuelve."""
+    from app.services.cenefas.convertidor_ai import _build_prompt, expandir_siglas_de_marca
+
+    assert expandir_siglas_de_marca("COLITA DE CUADRIL  MH") == "COLITA DE CUADRIL  MEAT HOUSE"
+    assert expandir_siglas_de_marca("Lomo MH. Kg") == "Lomo MEAT HOUSE. Kg"
+    assert expandir_siglas_de_marca("MH ENTRAÑA") == "MEAT HOUSE ENTRAÑA"
+    assert expandir_siglas_de_marca("PARLANTE 40 MHZ") == "PARLANTE 40 MHZ"   # pegada a otras letras, no es la sigla
+    assert expandir_siglas_de_marca("") == ""
+    prompt = _build_prompt([{"row_id": 1, "codigo": "22145", "nombreArticulo": "LOMO MH", "descripcionWeb": ""}])
+    assert 'nombre ERP: "LOMO MEAT HOUSE"' in prompt and " MH" not in prompt
+

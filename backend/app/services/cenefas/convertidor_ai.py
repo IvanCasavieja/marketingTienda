@@ -125,6 +125,28 @@ def _strip_json_fence(text: str) -> str:
     return _JSON_FENCE_RE.sub("", text).strip()
 
 
+# Siglas de marca que gestión escribe en el nombre y que en el cartel van
+# enteras. Se expanden ACÁ, en código, además de estar en _STYLE_RULES: una
+# instrucción al modelo es probabilística y Ivan necesita que "MH" salga
+# siempre como MEAT HOUSE (08/10/2026: "tenés que hacer que Tinín mapee el MH
+# como MEAT HOUSE así puedo generar las descripciones"). Se aplica al nombre
+# que se le muestra al modelo y a lo que devuelve. Solo siglas inequívocas
+# como palabra entera: "TI" no entra porque el modelo necesita el contexto
+# ("TI CASA" es TIENDA CASA) y la regla escrita ya lo resuelve.
+_SIGLAS_DE_MARCA = {"MH": "MEAT HOUSE"}
+_RE_SIGLA_DE_MARCA = re.compile(
+    r"(?<![A-Za-z0-9])(" + "|".join(re.escape(s) for s in _SIGLAS_DE_MARCA) + r")(?![A-Za-z0-9])"
+)
+
+
+def expandir_siglas_de_marca(texto: str) -> str:
+    """"COLITA DE CUADRIL  MH" -> "COLITA DE CUADRIL  MEAT HOUSE"; "Lomo MH. Kg"
+    -> "Lomo MEAT HOUSE. Kg". Una sigla pegada a otras letras ("MHZ") no se toca."""
+    if not texto:
+        return texto
+    return _RE_SIGLA_DE_MARCA.sub(lambda m: _SIGLAS_DE_MARCA[m.group(1)], texto)
+
+
 def _build_prompt(items: list[dict]) -> str:
     lineas = []
     for n, it in enumerate(items, start=1):
@@ -140,9 +162,9 @@ def _build_prompt(items: list[dict]) -> str:
         elif it.get("unidadVenta") == "kg":
             partes.append("[SE COBRA POR KILO]")
         if it["nombreArticulo"]:
-            partes.append(f'nombre ERP: "{it["nombreArticulo"]}"')
+            partes.append(f'nombre ERP: "{expandir_siglas_de_marca(it["nombreArticulo"])}"')
         if it["descripcionWeb"]:
-            partes.append(f'descripción web: "{it["descripcionWeb"]}"')
+            partes.append(f'descripción web: "{expandir_siglas_de_marca(it["descripcionWeb"])}"')
         lineas.append(f"{n}. " + " | ".join(partes))
     listado = "\n".join(lineas)
     return (
@@ -209,7 +231,9 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
             for n, it in enumerate(chunk, start=1):
                 texto = descripciones.get(str(n))
                 if isinstance(texto, str) and texto.strip():
-                    texto = texto.strip()
+                    # Red de seguridad: aunque el modelo copie la sigla, al
+                    # cartel llega la marca entera.
+                    texto = expandir_siglas_de_marca(texto.strip())
                     suggestions.append({
                         "row_id": it["row_id"],
                         "codigo": it["codigo"],
