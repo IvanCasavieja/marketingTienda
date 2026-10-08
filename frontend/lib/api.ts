@@ -1104,6 +1104,8 @@ export const convertidorApi = {
       descripcionWeb: string;
       esFiambreKg: boolean;
       unidadVenta: string;
+      /** COMPRADOR de gestión: decide si la marca propia es TIENDA CASA. */
+      comprador?: string;
     }[]
   ) =>
     api.post<GenerarDescripcionesIAResponse>("/tools/cenefas/convertidor/descripciones/generar-ia", { rows }),

@@ -103,6 +103,10 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
       // Tinín escribe la descripción sin gramaje, porque tiene prohibido
       // inventar lo que no está en la fuente.
       unidadVenta: r.unidadVenta ?? "",
+      // La familia (COMPRADOR) decide la marca propia: en bazar, decoración y
+      // textiles "TI" es TIENDA CASA y no TIENDA INGLESA (Ivan y Ana,
+      // 08/10/2026). Sin esto Tinín solo veía "PAPELERA TI 12L".
+      comprador: r.comprador ?? "",
     };
   }
 

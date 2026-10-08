@@ -81,8 +81,8 @@ _STYLE_RULES = f"""\
 - CUANDO HAY VARIAS VARIEDADES, VAN SEPARADAS POR COMA Y LA ÚLTIMA UNIDA CON "O", NUNCA CON "Y": "Chocolate TIENDA INGLESA. Naranja, frutilla o coco. 100 g", "Leche TIENDA INGLESA. Entera o descremada. 1 L", "Cappuccino SAINT CAFÉ. Chocolate, tradicional o vainilla. 6 sobres". La oferta es por UNA u otra; con "y" el cliente entiende que la promo es por llevarse las tres juntas ("Naranja, frutilla y coco" está MAL). Delante de una palabra que empieza con o-/ho- la "o" se escribe "u" ("Hippo u Oso"). La "y" que forma parte del NOMBRE de una variedad sí queda ("Jamón y muzzarella", "Maní y almendras"): lo que no puede unir dos variedades es la "y".
 - HASTA TRES VARIEDADES SE NOMBRAN; CON MÁS DE TRES NO SE ENUMERA NINGUNA. En su lugar va, como una parte más, exactamente "Distintas variedades": "Helado TIENDA INGLESA. Distintas variedades. 1.9 L", "Fideos TIENDA INGLESA. Distintas variedades. 500 g". Cuatro sabores ya son "Distintas variedades"; con tres o menos se nombran, unidas con "o".
 - SI EL GRAMAJE YA DICE LO QUE SE LLEVA, LA CANTIDAD DE UNIDADES NO VA. Un pack de 485 g de frankfurters es "Frankfurters TIENDA INGLESA. 485 g", nunca "485 g x 8": escrito así se lee como ocho paquetes de 485 g por ese precio. La cantidad acompaña al gramaje solo cuando el gramaje es POR UNIDAD y la cantidad cambia lo que se lleva ("30 m x 4 rollos", "3 x 200 ml"); si el gramaje es el del pack entero, va solo el gramaje.
-- "TI", "IT", "T.I." o "T.INGLESA" EN EL NOMBRE DE GESTIÓN ES LA MARCA TIENDA INGLESA: se escribe siempre "TIENDA INGLESA" completa, nunca la abreviatura ("Alfombra TIENDA INGLESA. Arcoiris, Hippo u Oso", no "Alfombra TI."; "Papelera TIENDA INGLESA. 12 L", no "Papelera TI."). "TI CASA" o "T CASA" es TIENDA CASA.
-- TIENDA CASA ES MARCA PROPIA DE TIENDA INGLESA (bazar, textil, decoración). Cuando la fuente dice TIENDA CASA, la marca se escribe "TIENDA CASA": no se cambia por TIENDA INGLESA ni se reemplaza por el nombre o el código de un proveedor ("Bowl TIENDA CASA. Blanco. 18 cm", no "Bowls RAYLON"). Si la descripción web dice TIENDA CASA y gestión trae "TI" o un código de proveedor, manda la web.
+- "TI", "IT", "T.I." o "T.INGLESA" EN EL NOMBRE DE GESTIÓN ES LA MARCA PROPIA DE TIENDA INGLESA, y se escribe entera, nunca la abreviatura. CUÁL de las dos marcas propias es lo decide la FAMILIA del producto, porque gestión escribe "TI" para las dos: en alimentos, bebidas, limpieza, congelados, fiambrería, carnicería, lácteos, ferretería y papelería es "TIENDA INGLESA" ("Harina 0000 TIENDA INGLESA. 1 kg", "Cuadernola tapa dura TIENDA INGLESA. 100 hojas", no "Harina TI."); en BAZAR, DECORACIÓN y TEXTIL (vajilla, cocina, alfombras, felpudos, papeleras, lámparas, portarretratos, velas, perchas, sábanas, toallas) es "TIENDA CASA" ("Papelera TIENDA CASA. 12 L", "Alfombra TIENDA CASA. Arcoiris, Hippo u Oso", no "Papelera TIENDA INGLESA"). Cuando la fila viene marcada [BAZAR, DECORACIÓN O TEXTIL], la marca propia es TIENDA CASA sin excepción. "TI CASA" o "T CASA" es TIENDA CASA siempre.
+- TIENDA CASA ES LA MARCA PROPIA DE TIENDA INGLESA PARA BAZAR, TEXTIL Y DECORACIÓN. Cuando la fuente dice TIENDA CASA, o el producto es de esas familias, la marca se escribe "TIENDA CASA": no se cambia por TIENDA INGLESA ni se reemplaza por el nombre o el código de un proveedor ("Bowl TIENDA CASA. Blanco. 18 cm", no "Bowls RAYLON"). Si la descripción web dice TIENDA CASA y gestión trae "TI" o un código de proveedor, manda la web.
 - "MH" EN EL NOMBRE DE GESTIÓN ES LA MARCA MEAT HOUSE: la marca exclusiva de carnes y frescos de carnicería de Tienda Inglesa (a la vez marca propia). Se escribe siempre "MEAT HOUSE" completa, en el lugar de la marca, nunca la sigla: "Colita de cuadril MEAT HOUSE. Kg", "Asado 4 costillas MEAT HOUSE. Kg", "Entraña fina MEAT HOUSE. Kg" ("Lomo MH. Kg" está MAL). Como se vende por peso, termina en "Kg".
 - Si un producto viene marcado "[FIAMBRE POR KG]", la unidad en la descripción tiene que decir "100 g", nunca "kg" — el precio de ese producto ya se va a recalcular aparte para esa unidad, así que el texto tiene que ser consistente con eso.
 - Si un producto viene marcado "[SE COBRA POR 100 G]" o "[SE COBRA POR KILO]", la descripción TIENE QUE terminar con esa unidad, escrita exactamente "100 g" o "Kg", después del punto que cierra la marca o la variedad: "Muzzarella NATURALACT. 100 g", "Panceta VILLA MARGARITA. Ahumada. 100 g", "Morcilla DON JOAQUIN. Dulce. Kg". Esa marca la pone la plataforma, que sabe con qué unidad se cobra ese producto en la góndola, así que NO cae en "no inventes datos": el nombre del sistema de gestión no la trae y sin ella el cartel no dice por cuánto se está cobrando. "Kg" es la única unidad que va con mayúscula, justamente porque ahí va sola después del punto y no pegada a un número.
@@ -134,6 +134,31 @@ def _strip_json_fence(text: str) -> str:
 # como palabra entera: "TI" no entra porque el modelo necesita el contexto
 # ("TI CASA" es TIENDA CASA) y la regla escrita ya lo resuelve.
 _SIGLAS_DE_MARCA = {"MH": "MEAT HOUSE"}
+
+# Familias (columna COMPRADOR de gestión) cuya marca propia es TIENDA CASA y
+# no TIENDA INGLESA. Gestión escribe "TI" en las dos, así que el texto del
+# nombre no alcanza para distinguirlas: lo decide la familia. Caso real (Ivan y
+# Ana, 08/10/2026): 15 papeleras, alfombras, felpudos, lámparas y portarretratos
+# de marca propia salieron impresos como TIENDA INGLESA porque gestión decía
+# "PAPELERA TI 12L" y la descripción web venía vacía. Se normaliza sin tildes
+# y en mayúsculas porque el export las trae así ("DECORACION", "TEXTILES").
+_FAMILIAS_TIENDA_CASA = ("BAZAR", "DECORACION", "TEXTIL")
+_ETIQUETA_TIENDA_CASA = "[BAZAR, DECORACIÓN O TEXTIL: la marca propia TI es TIENDA CASA]"
+
+
+def es_familia_tienda_casa(comprador: str | None) -> bool:
+    """True si el COMPRADOR de gestión es de bazar, decoración o textiles."""
+    base = unicodedata.normalize("NFKD", str(comprador or "")).encode("ascii", "ignore").decode().upper()
+    return any(f in base for f in _FAMILIAS_TIENDA_CASA)
+
+
+def marca_propia_por_familia(texto: str, comprador: str | None) -> str:
+    """En una fila de bazar / decoración / textiles, TIENDA INGLESA pasa a
+    TIENDA CASA. Red de seguridad determinística sobre lo que devuelve el
+    modelo; en las otras familias no toca nada."""
+    if not texto or not es_familia_tienda_casa(comprador):
+        return texto
+    return re.sub(r"\bTIENDA INGLESA\b", "TIENDA CASA", texto)
 _RE_SIGLA_DE_MARCA = re.compile(
     r"(?<![A-Za-z0-9])(" + "|".join(re.escape(s) for s in _SIGLAS_DE_MARCA) + r")(?![A-Za-z0-9])"
 )
@@ -161,6 +186,8 @@ def _build_prompt(items: list[dict]) -> str:
             partes.append("[SE COBRA POR 100 G]")
         elif it.get("unidadVenta") == "kg":
             partes.append("[SE COBRA POR KILO]")
+        if es_familia_tienda_casa(it.get("comprador")):
+            partes.append(_ETIQUETA_TIENDA_CASA)
         if it["nombreArticulo"]:
             partes.append(f'nombre ERP: "{expandir_siglas_de_marca(it["nombreArticulo"])}"')
         if it["descripcionWeb"]:
@@ -232,8 +259,9 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
                 texto = descripciones.get(str(n))
                 if isinstance(texto, str) and texto.strip():
                     # Red de seguridad: aunque el modelo copie la sigla, al
-                    # cartel llega la marca entera.
-                    texto = expandir_siglas_de_marca(texto.strip())
+                    # cartel llega la marca entera; y en bazar, decoración y
+                    # textiles la marca propia es TIENDA CASA, diga lo que diga.
+                    texto = marca_propia_por_familia(expandir_siglas_de_marca(texto.strip()), it.get("comprador"))
                     suggestions.append({
                         "row_id": it["row_id"],
                         "codigo": it["codigo"],

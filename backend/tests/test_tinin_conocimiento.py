@@ -192,7 +192,7 @@ def test_marca_tienda_inglesa_tienda_casa_gramaje_sin_cantidad_y_unidad_con_espa
     from app.services.cenefas.convertidor_ai import _STYLE_RULES
 
     for texto, donde in ((_STYLE_RULES, "_STYLE_RULES"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
-        assert re.search(r'"TI".{0,120}TIENDA INGLESA', texto), f"{donde} no dice que TI es TIENDA INGLESA"
+        assert re.search(r'"TI".{0,400}TIENDA INGLESA', texto), f"{donde} no dice que TI es TIENDA INGLESA"
         assert "TIENDA CASA" in texto and "RAYLON" in texto, f"{donde} no explica TIENDA CASA (ni el caso RAYLON)"
         assert "485 g x 8" in texto and "Frankfurters TIENDA INGLESA. 485 g" in texto, (
             f"{donde} no trae el ejemplo del pack sin cantidad")
@@ -233,4 +233,32 @@ def test_la_sigla_mh_se_expande_en_codigo_no_solo_en_el_prompt():
     assert expandir_siglas_de_marca("") == ""
     prompt = _build_prompt([{"row_id": 1, "codigo": "22145", "nombreArticulo": "LOMO MH", "descripcionWeb": ""}])
     assert 'nombre ERP: "LOMO MEAT HOUSE"' in prompt and " MH" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# TIENDA CASA por familia (Ivan y Ana, 2026-10-08)
+# ---------------------------------------------------------------------------
+
+def test_la_familia_decide_entre_tienda_inglesa_y_tienda_casa():
+    """Gestión escribe "TI" para las dos marcas propias; 15 papeleras, alfombras,
+    felpudos y lámparas salieron como TIENDA INGLESA por aplicar "TI = TIENDA
+    INGLESA" sin mirar la familia. Ahora el comprador viaja con la fila, el
+    prompt lo marca y la salida se corrige en código."""
+    from app.services.cenefas.convertidor_ai import (
+        _STYLE_RULES, _build_prompt, es_familia_tienda_casa, marca_propia_por_familia,
+    )
+
+    for texto, donde in ((_STYLE_RULES, "_STYLE_RULES"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
+        assert "Papelera TIENDA CASA. 12 L" in texto, f"{donde} sigue con la papelera como TIENDA INGLESA"
+        assert "Papelera TIENDA INGLESA. 12 L" not in texto.replace('no "Papelera TIENDA INGLESA"', ""), f"{donde} muestra la papelera como TIENDA INGLESA"
+        assert "Cuadernola tapa dura TIENDA INGLESA" in texto, f"{donde} no deja la papelería como TIENDA INGLESA"
+    assert es_familia_tienda_casa("DECORACION") and es_familia_tienda_casa("BAZAR") and es_familia_tienda_casa("TEXTILES")
+    assert es_familia_tienda_casa("Decoración") and not es_familia_tienda_casa("LIBROS Y PAPELERIA") and not es_familia_tienda_casa("")
+    assert marca_propia_por_familia("Papelera TIENDA INGLESA. 12 L", "DECORACION") == "Papelera TIENDA CASA. 12 L"
+    assert marca_propia_por_familia("Cuadernola TIENDA INGLESA. 100 hojas", "LIBROS Y PAPELERIA") == "Cuadernola TIENDA INGLESA. 100 hojas"
+    assert marca_propia_por_familia("Bowl TIENDA CASA. 18 cm", "BAZAR") == "Bowl TIENDA CASA. 18 cm"
+    prompt = _build_prompt([{"row_id": 1, "codigo": "597792", "nombreArticulo": "PAPELERA TI 12L", "descripcionWeb": "", "comprador": "DECORACION"}])
+    assert "[BAZAR, DECORACIÓN O TEXTIL" in prompt
+    prompt = _build_prompt([{"row_id": 1, "codigo": "598729", "nombreArticulo": "CUADERNOLA TI", "descripcionWeb": "", "comprador": "LIBROS Y PAPELERIA"}])
+    assert "[BAZAR" not in prompt
 

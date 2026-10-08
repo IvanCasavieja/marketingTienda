@@ -122,6 +122,39 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
     }
   }
 
+  // Aprueba de corrido todo lo que esté pendiente y completo, uno atrás del
+  // otro (el PATCH de cada grupo es un upsert y el orden no importa, pero en
+  // paralelo se pisarían los estados de la grilla). Pedido de Ivan
+  // (08/10/2026): "una vez que ya estemos confiando, le vamos a querer dar
+  // directamente a aprobar todo". Un grupo que falle queda en error y los
+  // demás siguen.
+  const [aprobandoTodas, setAprobandoTodas] = useState(false);
+  const pendientes = grupos.filter(
+    (g) => g.status !== "approved" && g.status !== "approving" && g.grupo.trim() && g.descripcion.trim(),
+  ).length;
+
+  async function approveTodas() {
+    if (aprobandoTodas) return;
+    setAprobandoTodas(true);
+    try {
+      for (let idx = 0; idx < grupos.length; idx++) {
+        if (!mountedRef.current) return;
+        const g = grupos[idx];
+        if (g.status === "approved" || g.status === "approving") continue;
+        if (!g.grupo.trim() || !g.descripcion.trim()) continue;
+        updateGrupo(idx, { status: "approving" });
+        try {
+          await onApprove(g);
+          if (mountedRef.current) updateGrupo(idx, { status: "approved", yaAprobado: true });
+        } catch {
+          if (mountedRef.current) updateGrupo(idx, { status: "error" });
+        }
+      }
+    } finally {
+      if (mountedRef.current) setAprobandoTodas(false);
+    }
+  }
+
   // Vuelve un grupo ya aprobado a editable, sin salir del Convertidor. Aprobar
   // de nuevo es seguro: las filas ya combinadas no se vuelven a combinar (las
   // sobrantes ya no están en la grilla), el PATCH de la descripción es un upsert
@@ -225,9 +258,22 @@ export default function ConvertidorUnifyModal({ rows, onApprove, onClose }: Prop
           <p className="text-sm font-semibold flex items-center gap-1.5 text-slate-800 dark:text-slate-100">
             <Layers size={15} className="text-brand-500" /> {t("convertidor.unificar.modalTitle")}
           </p>
-          <button onClick={onClose} aria-label={t("common.close")} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-3">
+            {!loading && !loadError && !analysisError && grupos.length > 0 && (
+              <button
+                onClick={approveTodas}
+                disabled={aprobandoTodas || pendientes === 0}
+                className="btn-primary text-xs disabled:opacity-50 flex items-center gap-1.5"
+                title={t("convertidor.unificar.approveAllHelp")}
+              >
+                {aprobandoTodas ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                {t("convertidor.unificar.approveAll", { count: pendientes })}
+              </button>
+            )}
+            <button onClick={onClose} aria-label={t("common.close")} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">

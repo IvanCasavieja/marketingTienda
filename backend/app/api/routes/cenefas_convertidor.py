@@ -480,6 +480,10 @@ class GenerarDescripcionItem(BaseModel):
     # de gestión no lo dice (ver _unidad_de_venta en convertidor.py). Es lo que
     # le permite a Tinín escribir el gramaje sin inventarlo.
     unidadVenta: str = ""
+    # COMPRADOR de gestión (la familia). Decide la marca propia: en bazar,
+    # decoración y textiles "TI" es TIENDA CASA, en el resto TIENDA INGLESA
+    # (ver es_familia_tienda_casa en convertidor_ai.py).
+    comprador: str = ""
 
 
 class GenerarDescripcionesRequest(BaseModel):
