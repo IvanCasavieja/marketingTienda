@@ -142,3 +142,35 @@ def test_el_orden_de_la_descripcion_es_producto_marca_variedad_gramaje():
     assert "NO SON OPCIONALES" in _STYLE_RULES, "el punto y el gramaje tienen que estar declarados obligatorios"
     assert '"Vino TIENDA INGLESA blanco"' not in _STYLE_RULES, (
         "un ejemplo sin gramaje ni punto le enseña al modelo a omitirlos (pasó el 06/10/2026)")
+
+
+# ---------------------------------------------------------------------------
+# Las variedades: con "o", y más de tres son "Distintas variedades" (Ivan, 2026-10-08)
+# ---------------------------------------------------------------------------
+
+def test_las_variedades_van_con_o_y_mas_de_tres_son_distintas_variedades():
+    """Dos reglas que Ivan fijó el 08/10/2026 mirando el PPTX de marca propia.
+
+    Entre variedades va "o", nunca "y": "Naranja, frutilla o coco". Con "y" la
+    gente entiende que la promo es por llevarse las tres juntas, cuando la
+    oferta es por una U otra. Y hasta tres variedades se nombran; con más de
+    tres no se enumera ninguna: va "Distintas variedades" en su lugar.
+
+    Tienen que estar en las reglas que ve el modelo (_STYLE_RULES, que llegan
+    a las descripciones sueltas y a los grupos) y en lo que Tinín explica. Y
+    el ejemplo del unificador no puede seguir enseñando lo contrario: hasta
+    ese día decía "Chocolate, tradicional y vainilla"."""
+    from app.services.cenefas.convertidor_ai import _STYLE_RULES, _UNIFY_SYSTEM_PROMPT
+
+    for texto, donde in ((_STYLE_RULES, "_STYLE_RULES"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
+        assert "Naranja, frutilla o coco" in texto, f"{donde} no trae el ejemplo con \"o\""
+        assert re.search(r'nunca con "y"', texto, re.IGNORECASE), f"{donde} no prohíbe la \"y\" entre variedades"
+        assert "Distintas variedades" in texto, f"{donde} no trae \"Distintas variedades\""
+        assert re.search(r"m[áa]s de tres", texto, re.IGNORECASE), f"{donde} no dice desde cuántas se deja de enumerar"
+
+    for texto, donde in ((_UNIFY_SYSTEM_PROMPT, "_UNIFY_SYSTEM_PROMPT"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
+        assert "tradicional y vainilla" not in texto, f"{donde} sigue con el ejemplo que une variedades con \"y\""
+        assert "tradicional o vainilla" in texto, f"{donde} perdió el ejemplo del unificador con \"o\""
+    assert "Distintas variedades" in _UNIFY_SYSTEM_PROMPT, "la opción neutra del unificador tiene que decir exactamente eso"
+    assert "En 3 variedades" not in _UNIFY_SYSTEM_PROMPT and "Variedades surtidas" not in _UNIFY_SYSTEM_PROMPT, (
+        "la frase neutra la fijó Ivan: \"Distintas variedades\", no otras formas")

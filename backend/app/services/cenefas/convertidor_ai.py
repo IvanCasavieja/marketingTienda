@@ -45,6 +45,16 @@ log = logging.getLogger(__name__)
 # oración corta. Los ejemplos del documento del 29/09 llevaban la variedad
 # pegada a la marca ("Cerveza CLAUSTHALER pomelo. Lata 500 ml"); desde esta
 # vuelta mandan estas reglas, no esos ejemplos.
+#
+# 2026-10-08 (Ivan): dos reglas más, sobre las VARIEDADES. Entre variedades va
+# "o", nunca "y": "Naranja, frutilla o coco". La oferta es por una U otra, y
+# con "y" la gente entiende que la promo es por llevarse las tres juntas. Y
+# hasta tres variedades se nombran; con más de tres no se enumera ninguna, va
+# "Distintas variedades" en su lugar (como en el PPTX de marca propia del
+# 08/10: "Helado TIENDA INGLESA. Distintas variedades. 1.9 L"). El ejemplo del
+# unificador ("Chocolate, tradicional y vainilla") contradecía la primera y se
+# reescribió con "o"; la opción neutra del unificador pasó a decir exactamente
+# "Distintas variedades" y a ir PRIMERA cuando son más de tres.
 # ---------------------------------------------------------------------------
 _STYLE_RULES = f"""\
 - EL ORDEN DE LAS PARTES ES SIEMPRE EL MISMO: primero el PRODUCTO (qué es), después la MARCA, después la VARIEDAD (sabor, tipo, color, línea o modelo) y al final el GRAMAJE o la cantidad. Cada parte se separa de la siguiente con un punto y un espacio, y la que sigue arranca con mayúscula, como una oración nueva: "Vino TIENDA INGLESA. Blanco. 500 ml" — producto "Vino", marca "TIENDA INGLESA", variedad "Blanco", gramaje "500 ml". Nunca la variedad antes de la marca ("Vino blanco TIENDA INGLESA" está MAL) ni pegada a la marca sin el punto ("Vino TIENDA INGLESA blanco. 500 ml" está MAL). Si una parte no existe, se la saltea y las demás conservan ese orden ("Vino TIENDA INGLESA. 500 ml").
@@ -55,6 +65,8 @@ _STYLE_RULES = f"""\
 - El resto del texto va en minúscula, con reglas normales de oración en español: mayúscula SOLO en la primera letra de toda la descripción y en la primera letra de la palabra que sigue a cada punto — por eso la variedad arranca con mayúscula ("Pomelo", "Extra virgen", "Sin alcohol") y ninguna otra palabra la lleva (dentro de una parte van "sin piel", "con azúcar", "de cerdo", nunca "Extra Virgen" ni "Sin Alcohol"). Tres excepciones que no cambian nunca, sea cual sea su posición en el texto: la marca (siempre mayúscula completa, ver arriba); los nombres propios de una línea o modelo de la marca, que conservan sus mayúsculas tal como los escribe el fabricante ("Hop House", "Naturals Classic", "Crunchy Duo", "Point 88", "VC4 My Home"); y las unidades de medida (ml, g, kg, L, un, etc.), siempre en minúscula incluso si quedaran al principio de una oración.
 - Es para un cartel de precio: tiene que ser CORTA. Apuntá a menos de {DESCRIPTION_WARN_CHARS} caracteres, nunca más de {DESCRIPTION_MAX_CHARS}.
 - No inventes datos (sabor, variedad, tamaño) que no estén sugeridos por el nombre o la descripción de origen.
+- CUANDO HAY VARIAS VARIEDADES, VAN SEPARADAS POR COMA Y LA ÚLTIMA UNIDA CON "O", NUNCA CON "Y": "Chocolate TIENDA INGLESA. Naranja, frutilla o coco. 100 g", "Leche TIENDA INGLESA. Entera o descremada. 1 L", "Cappuccino SAINT CAFÉ. Chocolate, tradicional o vainilla. 6 sobres". La oferta es por UNA u otra; con "y" el cliente entiende que la promo es por llevarse las tres juntas ("Naranja, frutilla y coco" está MAL). Delante de una palabra que empieza con o-/ho- la "o" se escribe "u" ("Hippo u Oso"). La "y" que forma parte del NOMBRE de una variedad sí queda ("Jamón y muzzarella", "Maní y almendras"): lo que no puede unir dos variedades es la "y".
+- HASTA TRES VARIEDADES SE NOMBRAN; CON MÁS DE TRES NO SE ENUMERA NINGUNA. En su lugar va, como una parte más, exactamente "Distintas variedades": "Helado TIENDA INGLESA. Distintas variedades. 1.9 L", "Fideos TIENDA INGLESA. Distintas variedades. 500 g". Cuatro sabores ya son "Distintas variedades"; con tres o menos se nombran, unidas con "o".
 - Si un producto viene marcado "[FIAMBRE POR KG]", la unidad en la descripción tiene que decir "100g", nunca "kg" — el precio de ese producto ya se va a recalcular aparte para esa unidad, así que el texto tiene que ser consistente con eso.
 - Si un producto viene marcado "[SE COBRA POR 100 G]" o "[SE COBRA POR KILO]", la descripción TIENE QUE terminar con esa unidad, escrita exactamente "100g" o "Kg", después del punto que cierra la marca o la variedad: "Muzzarella NATURALACT. 100g", "Panceta VILLA MARGARITA. Ahumada. 100g", "Morcilla DON JOAQUIN. Dulce. Kg". Esa marca la pone la plataforma, que sabe con qué unidad se cobra ese producto en la góndola, así que NO cae en "no inventes datos": el nombre del sistema de gestión no la trae y sin ella el cartel no dice por cuánto se está cobrando. "Kg" es la única unidad que va con mayúscula, justamente porque ahí va sola después del punto y no pegada a un número.
 - Con una de esas dos marcas, la unidad de cobro es la ÚNICA que va: no le agregues además un peso de envase ("500g", "1 kg") ni lo cambies por otra unidad."""
@@ -372,22 +384,25 @@ R20 hay dos en oferta y el cartel dice "todas las variedades", el cartel promete
 se cumple, y eso es lo peor que puede pasar en góndola. Por eso las opciones van ORDENADAS de \
 la más segura a la más riesgosa, así:
 
-1. ENUMERANDO lo que realmente vino, cuando entra en el largo permitido: "Cappuccino SAINT \
-CAFÉ. Chocolate, tradicional y vainilla. 6 sobres". Nunca miente, porque nombra exactamente lo \
-que está en oferta. Es la primera opción SIEMPRE que los nombres de las variantes quepan.
-2. SIN prometer que están todas, mencionando la cantidad o dejándolo neutro: "Cappuccino SAINT \
-CAFÉ. En 3 variedades. 6 sobres", "Acondicionador ELVIVE. Variedades surtidas. 370 ml". Es la \
-que sirve cuando son demasiadas para enumerar (7, 11, 20 productos) y el texto no entra.
+1. ENUMERANDO lo que realmente vino, SOLO si el grupo tiene hasta TRES variantes, unidas con \
+"o" y nunca con "y": "Cappuccino SAINT CAFÉ. Chocolate, tradicional o vainilla. 6 sobres". Nunca \
+miente, porque nombra exactamente lo que está en oferta, y la "o" dice que la oferta es por una \
+u otra (con "y" se entiende que hay que llevarse las tres). Es la primera opción siempre que \
+sean tres o menos y los nombres quepan.
+2. "Distintas variedades", sin prometer que están todas ni nombrarlas: "Cappuccino SAINT CAFÉ. \
+Distintas variedades. 6 sobres", "Acondicionador ELVIVE. Distintas variedades. 370 ml". Con MÁS \
+DE TRES variantes es la PRIMERA opción y la enumeración directamente no se ofrece: cuatro \
+sabores ya no se nombran.
 3. "Todas las variedades" / "todas las presentaciones", como en "Acondicionador ELVIVE. Todas \
 las variedades. 370 ml". Va SIEMPRE ÚLTIMA y solo como opción, porque es la única que afirma \
 que el surtido está completo.
 
-Si el grupo son 2 o 3 productos con nombres cortos, la opción 1 casi siempre entra y es la que \
-va primera. Si son muchos, arrancá por la 2. Devolvé 2 o 3 opciones, nunca una sola.
+Si el grupo son 2 o 3 productos, la opción 1 va primera. Si son 4 o más, arrancá por la 2 y no \
+enumeres. Devolvé 2 o 3 opciones, nunca una sola.
 
 Cada opción lleva además una `etiqueta` de 2 a 5 palabras que diga en qué se diferencia, para \
-mostrarla en el desplegable donde se elige: "Nombra los 3 sabores", "Sin decir cuántas", "Dice \
-que están todas".
+mostrarla en el desplegable donde se elige: "Nombra los 3 sabores", "Distintas variedades", \
+"Dice que están todas".
 
 Las tres siguen estas mismas reglas de estilo, y en las tres va el gramaje o la cantidad de \
 unidades si se puede inferir (los "6 sobres", los "370 ml"):
