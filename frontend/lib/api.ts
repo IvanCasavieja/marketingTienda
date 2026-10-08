@@ -1894,6 +1894,8 @@ export interface PlanillaRow {
   pinchos_dias_expres: number | null;
   hojas_amarillas: string | null;
   otros: string | null;
+  /** Valores de las columnas que agregó quien arma la planilla del mes (clave -> valor). */
+  extras?: Record<string, number | string | null>;
   confirmado: boolean;
   confirmed_at: string | null;
   updated_at: string | null;
@@ -1911,6 +1913,10 @@ export const redexpresApi = {
     }),
   getLocales: () =>
     api.get<{ local_nombre: string; user_ids: number[] }[]>("/redexpres/locales"),
+  getEstructura: (year: number, month: number) =>
+    api.get<{ estructura: { grupos: any[] }; puede_editar: boolean }>(`/redexpres/estructura/${year}/${month}`),
+  putEstructura: (year: number, month: number, estructura: { grupos: any[] }) =>
+    api.put(`/redexpres/estructura/${year}/${month}`, { estructura }),
   updateRow: (year: number, month: number, local_nombre: string, data: Partial<PlanillaRow>) =>
     api.patch<PlanillaRow>(`/redexpres/planilla/${year}/${month}/${encodeURIComponent(local_nombre)}`, data),
   confirmar: (year: number, month: number, local_nombre: string) =>

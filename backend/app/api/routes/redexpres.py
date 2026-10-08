@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 from app.core.deps import get_current_user, require_permission
 from app.core.database import get_db
 from app.models.user import User
-from app.models.planilla_pedido import PlanillaPedido
+from app.models.planilla_pedido import PlanillaPedido, RedexpresEstructura
+from app.services import redexpres_estructura as est
 from app.models.local_asignacion import LocalAsignacion
 
 router = APIRouter(prefix="/redexpres", tags=["redexpres"])
@@ -83,25 +84,27 @@ class PlanillaRowUpdate(BaseModel):
     # Topes por sucursal (no es un pool compartido entre locales) según la
     # lista de máximos por ítem que definió el negocio. Rechaza con 422 si
     # se supera — el frontend además clampea antes de llegar a guardar.
-    a4_oferta_vertical: Optional[int] = Field(default=None, ge=0, le=200)
-    cenefa_oferta_x3: Optional[int] = Field(default=None, ge=0, le=300)
-    pinchos: Optional[int] = Field(default=None, ge=0, le=100)
-    afiche_54x74: Optional[int] = Field(default=None, ge=0, le=20)
-    cenefa_valle_del_sol: Optional[int] = Field(default=None, ge=0, le=100)
-    cenefa_supremo_hogar: Optional[int] = Field(default=None, ge=0, le=100)
-    bombas_3xa4: Optional[int] = Field(default=None, ge=0, le=200)
-    bombas_a4: Optional[int] = Field(default=None, ge=0, le=200)
-    bombas_74x54: Optional[int] = Field(default=None, ge=0, le=20)
-    pinchos_bombas: Optional[int] = Field(default=None, ge=0, le=100)
-    sticker_valle_del_sol: Optional[int] = Field(default=None, ge=0, le=100)
-    sticker_carne: Optional[int] = Field(default=None, ge=0, le=100)
-    cenefas_preciazos: Optional[int] = Field(default=None, ge=0, le=100)        # Cenefas 3xA4 Preciazos
-    cenefas_a4_preciazos: Optional[int] = Field(default=None, ge=0, le=100)
-    afiche_super_ahorro: Optional[int] = Field(default=None, ge=0, le=10)       # Afiche A4 Super Ahorro
-    afiche_grande_preciazos: Optional[int] = Field(default=None, ge=0, le=10)
-    pinchos_dias_expres: Optional[int] = Field(default=None, ge=0, le=100)
+    a4_oferta_vertical: Optional[int] = Field(default=None, ge=0)
+    cenefa_oferta_x3: Optional[int] = Field(default=None, ge=0)
+    pinchos: Optional[int] = Field(default=None, ge=0)
+    afiche_54x74: Optional[int] = Field(default=None, ge=0)
+    cenefa_valle_del_sol: Optional[int] = Field(default=None, ge=0)
+    cenefa_supremo_hogar: Optional[int] = Field(default=None, ge=0)
+    bombas_3xa4: Optional[int] = Field(default=None, ge=0)
+    bombas_a4: Optional[int] = Field(default=None, ge=0)
+    bombas_74x54: Optional[int] = Field(default=None, ge=0)
+    pinchos_bombas: Optional[int] = Field(default=None, ge=0)
+    sticker_valle_del_sol: Optional[int] = Field(default=None, ge=0)
+    sticker_carne: Optional[int] = Field(default=None, ge=0)
+    cenefas_preciazos: Optional[int] = Field(default=None, ge=0)        # Cenefas 3xA4 Preciazos
+    cenefas_a4_preciazos: Optional[int] = Field(default=None, ge=0)
+    afiche_super_ahorro: Optional[int] = Field(default=None, ge=0)       # Afiche A4 Super Ahorro
+    afiche_grande_preciazos: Optional[int] = Field(default=None, ge=0)
+    pinchos_dias_expres: Optional[int] = Field(default=None, ge=0)
     hojas_amarillas: Optional[str] = None
     otros: Optional[str] = None
+    # Columnas que agregó quien arma la planilla del mes (clave -> valor).
+    extras: Optional[dict[str, Optional[int | str]]] = None
 
 
 def _row_to_dict(row: PlanillaPedido, can_edit: bool) -> dict:
@@ -129,11 +132,19 @@ def _row_to_dict(row: PlanillaPedido, can_edit: bool) -> dict:
         "pinchos_dias_expres": row.pinchos_dias_expres,
         "hojas_amarillas": row.hojas_amarillas,
         "otros": row.otros,
+        "extras": row.extras or {},
         "confirmado": row.confirmado,
         "confirmed_at": row.confirmed_at.isoformat() if row.confirmed_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         "can_edit": can_edit,
     }
+
+
+async def _estructura_de(db: AsyncSession, year: int, month: int) -> dict:
+    fila = (await db.execute(
+        select(RedexpresEstructura).where(RedexpresEstructura.year == year, RedexpresEstructura.month == month)
+    )).scalar_one_or_none()
+    return fila.estructura if fila else est.por_defecto()
 
 
 def _es_gestor(user: User) -> bool:
@@ -201,8 +212,64 @@ async def crear_mes(
     for local in LOCALES:
         db.add(PlanillaPedido(local_nombre=local, year=year, month=month))
 
+    # La planilla nueva arranca igual a la del mes anterior más cercano (Ivan,
+    # 08/10/2026: "es la misma planilla todos los meses"); después se edita.
+    tiene = (await db.execute(
+        select(RedexpresEstructura.id).where(RedexpresEstructura.year == year, RedexpresEstructura.month == month)
+    )).first()
+    if not tiene:
+        previa = (await db.execute(
+            select(RedexpresEstructura)
+            .where((RedexpresEstructura.year * 12 + RedexpresEstructura.month) < (year * 12 + month))
+            .order_by((RedexpresEstructura.year * 12 + RedexpresEstructura.month).desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if previa:
+            db.add(RedexpresEstructura(year=year, month=month, estructura=previa.estructura, updated_by_id=current_user.id))
+
     await db.commit()
     return {"ok": True, "locales_created": len(LOCALES)}
+
+
+@router.get("/estructura/{year}/{month}")
+async def get_estructura(
+    year: int,
+    month: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Grupos y columnas de la planilla de ese mes. Los ven todos (las
+    sucursales la necesitan para dibujar su pedido); solo la edita un gestor."""
+    return {"estructura": await _estructura_de(db, year, month), "puede_editar": _es_gestor(current_user)}
+
+
+@router.put("/estructura/{year}/{month}")
+async def put_estructura(
+    year: int,
+    month: int,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("redexpres.manage")),
+):
+    """Guarda la planilla del mes: agregar, renombrar, mover o sacar grupos y
+    columnas, y cambiar los topes. Sacar una columna NO borra lo que las
+    sucursales ya cargaron en ella: solo deja de mostrarse."""
+    if not (1 <= month <= 12) or year < 2024:
+        raise HTTPException(status_code=400, detail="year y month inválidos")
+    try:
+        nueva = est.validar(data.get("estructura") if "estructura" in data else data)
+    except est.EstructuraInvalida as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    fila = (await db.execute(
+        select(RedexpresEstructura).where(RedexpresEstructura.year == year, RedexpresEstructura.month == month)
+    )).scalar_one_or_none()
+    if fila:
+        fila.estructura = nueva
+        fila.updated_by_id = current_user.id
+    else:
+        db.add(RedexpresEstructura(year=year, month=month, estructura=nueva, updated_by_id=current_user.id))
+    await db.commit()
+    return {"estructura": nueva}
 
 
 @router.get("/planilla/{year}/{month}")
@@ -295,8 +362,36 @@ async def update_row(
     if not row:
         raise HTTPException(status_code=404, detail="Fila no encontrada")
 
-    for field, value in update.model_dump(exclude_unset=True).items():
+    cambios = update.model_dump(exclude_unset=True)
+    extras_nuevos = cambios.pop("extras", None) or {}
+    cols = est.columnas(await _estructura_de(db, year, month))
+
+    def _chequear(key: str, value):
+        """El tope y el tipo salen de la planilla del mes, no de código fijo."""
+        col = cols.get(key)
+        if col is None:
+            raise HTTPException(status_code=422, detail=f"La columna {key!r} no está en la planilla de este mes")
+        if value is None:
+            return None
+        if col.get("texto"):
+            return str(value)[:200]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise HTTPException(status_code=422, detail=f"«{col['label']}» tiene que ser un número entero desde 0")
+        if col.get("max") is not None and value > col["max"]:
+            raise HTTPException(status_code=422, detail=f"«{col['label']}» no puede pasar de {col['max']}")
+        return value
+
+    for field, value in cambios.items():
+        if field in est.BUILTIN and value is not None:
+            _chequear(field, value)
         setattr(row, field, value)
+    if extras_nuevos:
+        actuales = dict(row.extras or {})
+        for key, value in extras_nuevos.items():
+            if key in est.BUILTIN:
+                raise HTTPException(status_code=422, detail=f"{key!r} es una columna fija, no va en extras")
+            actuales[key] = _chequear(key, value)
+        row.extras = actuales  # reasignado: el JSONB no detecta cambios internos
     row.updated_by_id = current_user.id
 
     await db.commit()

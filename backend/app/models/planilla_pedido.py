@@ -1,4 +1,5 @@
 from sqlalchemy import String, Boolean, DateTime, Integer, Text, UniqueConstraint, ForeignKey, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
 from app.core.database import Base
@@ -45,6 +46,10 @@ class PlanillaPedido(Base):
     hojas_amarillas: Mapped[str | None] = mapped_column(String(50), nullable=True)
     otros: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Valores de las columnas que no son las 17 históricas, por clave (ver
+    # services/redexpres_estructura.py). Nunca se borra una clave.
+    extras: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+
     # Estado
     confirmado: Mapped[bool] = mapped_column(Boolean, default=False)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -58,3 +63,22 @@ class PlanillaPedido(Base):
     __table_args__ = (
         UniqueConstraint("local_nombre", "year", "month", name="uq_planilla_local_periodo"),
     )
+
+
+class RedexpresEstructura(Base):
+    """Grupos y columnas de la planilla de UN mes. Sin fila rige la estructura
+    por defecto (services/redexpres_estructura.py)."""
+    __tablename__ = "redexpres_estructuras"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    estructura: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True
+    )
+    updated_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    __table_args__ = (UniqueConstraint("year", "month", name="uq_redexpres_estructura_periodo"),)

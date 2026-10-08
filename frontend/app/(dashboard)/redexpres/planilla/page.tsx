@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import SelectorMes from "@/components/redexpres/SelectorMes";
+import EditorPlanilla from "@/components/redexpres/EditorPlanilla";
+import { useEstructura, valorDeColumna, payloadDeEdicion } from "@/lib/redexpres/estructura";
 
 type ColKey = string;
 
@@ -19,71 +21,23 @@ export default function PlanillaPedidosPage() {
 
   // Grupos/columnas y nombres de mes salen de i18n para que la planilla se vea
   // en el idioma elegido (antes estaban hardcodeados en español).
-  const GROUPS = useMemo(() => [
-    {
-      label: t("redexpres.groups.ofertas"),
-      color: "bg-blue-100 dark:bg-blue-500/20 text-blue-800 dark:text-blue-300",
-      cols: [
-        { key: "a4_oferta_vertical",  label: t("redexpres.cols.a4OfertaVertical"), max: 200 },
-        { key: "cenefa_oferta_x3",    label: t("redexpres.cols.cenefaOfertaX3"),   max: 300 },
-        { key: "pinchos",             label: t("redexpres.cols.pinchos"),          max: 100 },
-        { key: "afiche_54x74",        label: t("redexpres.cols.afiche54x74"),      max: 20 },
-      ],
-    },
-    {
-      label: t("redexpres.groups.vdsSupremo"),
-      color: "bg-purple-100 dark:bg-purple-500/20 text-purple-800 dark:text-purple-300",
-      cols: [
-        { key: "cenefa_valle_del_sol",  label: t("redexpres.cols.cenefaValleDelSol"),  max: 100 },
-        { key: "cenefa_supremo_hogar",  label: t("redexpres.cols.cenefaSupremoHogar"), max: 100 },
-      ],
-    },
-    {
-      label: t("redexpres.groups.bombas"),
-      color: "bg-orange-100 dark:bg-orange-500/20 text-orange-800 dark:text-orange-300",
-      cols: [
-        { key: "bombas_3xa4",    label: t("redexpres.cols.bombas3xa4"),    max: 200 },
-        { key: "bombas_a4",      label: t("redexpres.cols.bombasA4"),      max: 200 },
-        { key: "bombas_74x54",   label: t("redexpres.cols.bombas74x54"),   max: 20 },
-        { key: "pinchos_bombas", label: t("redexpres.cols.pinchosBombas"), max: 100 },
-      ],
-    },
-    {
-      label: t("redexpres.groups.stickers"),
-      color: "bg-pink-100 dark:bg-pink-500/20 text-pink-800 dark:text-pink-300",
-      cols: [
-        { key: "sticker_valle_del_sol", label: t("redexpres.cols.stickerValleDelSol"), max: 100 },
-        { key: "sticker_carne",         label: t("redexpres.cols.stickerCarne"),       max: 100 },
-      ],
-    },
-    {
-      label: t("redexpres.groups.otrosItems"),
-      color: "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300",
-      cols: [
-        { key: "cenefas_preciazos",       label: t("redexpres.cols.cenefasPreciazos"),       max: 100 },
-        { key: "cenefas_a4_preciazos",    label: t("redexpres.cols.cenefasA4Preciazos"),     max: 100 },
-        { key: "afiche_super_ahorro",     label: t("redexpres.cols.aficheSuperAhorro"),      max: 10 },
-        { key: "afiche_grande_preciazos", label: t("redexpres.cols.aficheGrandePreciazos"),  max: 10 },
-        { key: "pinchos_dias_expres",     label: t("redexpres.cols.pinchosDiasExpres"),      max: 100 },
-        { key: "hojas_amarillas",         label: t("redexpres.cols.hojasAmarillas"), isText: true },
-      ],
-    },
-  ], [t]);
-
-  const ALL_COLS: { key: ColKey; label: string; isText?: boolean; max?: number; group: string }[] = useMemo(
-    () => GROUPS.flatMap((g) => g.cols.map((c) => ({ ...c, group: g.label }))),
-    [GROUPS]
-  );
-
-  const COL_MAX: Record<string, number> = useMemo(
-    () => Object.fromEntries(ALL_COLS.filter((c) => c.max !== undefined).map((c) => [c.key, c.max as number])),
-    [ALL_COLS]
-  );
-
   const MONTH_NAMES = t("redexpres.months", { returnObjects: true }) as string[];
 
   const [meses, setMeses]         = useState<{ year: number; month: number }[]>([]);
   const [selectedMes, setSelected] = useState<{ year: number; month: number } | null>(null);
+  // La planilla del mes (grupos, columnas y topes) viene de la base y la edita quien gestiona.
+  const { estructura, grupos: GROUPS, puedeEditar, recargar: recargarEstructura } = useEstructura(selectedMes);
+  const [editando, setEditando] = useState(false);
+  const ALL_COLS: { key: string; label: string; isText?: boolean; max?: number; group: string }[] = useMemo(
+    () => GROUPS.flatMap((g) => g.cols.map((c) => ({ ...c, group: g.label }))),
+    [GROUPS]
+  );
+  const COL_MAX: Record<string, number> = useMemo(
+    () => Object.fromEntries(ALL_COLS.filter((c) => c.max !== undefined).map((c) => [c.key, c.max as number])),
+    [ALL_COLS]
+  );
+  const esTexto = (key: string) => !!ALL_COLS.find((c) => c.key === key)?.isText;
+
   const [rows, setRows]           = useState<PlanillaRow[]>([]);
   const [loading, setLoading]     = useState(false);
   const { user: currentUser } = useCurrentUser();
@@ -152,19 +106,9 @@ export default function PlanillaPedidosPage() {
 
     setSavingRow(localNombre);
     try {
-      const payload: Record<string, number | string | null> = {};
-      for (const [key, val] of Object.entries(rowEdits)) {
-        if (key === "hojas_amarillas" || key === "otros") {
-          payload[key] = val === "" ? null : val;
-        } else {
-          payload[key] = val === "" ? null : parseInt(val, 10);
-          if (typeof payload[key] === "number" && isNaN(payload[key] as number)) {
-            payload[key] = null;
-          }
-        }
-      }
+      const payload = payloadDeEdicion(rowEdits, esTexto);
       const { data: updated } = await redexpresApi.updateRow(
-        selectedMes.year, selectedMes.month, localNombre, payload
+        selectedMes.year, selectedMes.month, localNombre, payload as any
       );
       setRows((prev) => prev.map((r) => r.local_nombre === localNombre ? updated : r));
       setEdits((prev) => {
@@ -261,8 +205,7 @@ export default function PlanillaPedidosPage() {
   function getCellValue(row: PlanillaRow, colKey: string): string {
     const editVal = edits[row.local_nombre]?.[colKey];
     if (editVal !== undefined) return editVal;
-    const v = (row as any)[colKey];
-    return v !== null && v !== undefined ? String(v) : "";
+    return valorDeColumna(row, colKey);
   }
 
   function handleExportExcel() {
@@ -373,6 +316,18 @@ export default function PlanillaPedidosPage() {
         onSeleccionar={setSelected}
         onCrear={isSuperuser ? crearMesVacio : undefined}
       />
+
+      {puedeEditar && selectedMes && estructura && (
+        <button onClick={() => setEditando(true)} className="btn-secondary text-xs">
+          Editar planilla de este mes
+        </button>
+      )}
+      {editando && selectedMes && estructura && (
+        <EditorPlanilla
+          year={selectedMes.year} month={selectedMes.month} inicial={estructura}
+          onGuardado={recargarEstructura} onCerrar={() => setEditando(false)}
+        />
+      )}
 
       {/* Table */}
       {loading ? (

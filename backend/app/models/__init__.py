@@ -9,7 +9,7 @@ from app.models.cenefa_template import CenefaTemplate
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_conocimiento import CenefaConocimiento
-from app.models.planilla_pedido import PlanillaPedido
+from app.models.planilla_pedido import PlanillaPedido, RedexpresEstructura
 from app.models.local_asignacion import LocalAsignacion
 from app.models.watchlist import Watchlist
 from app.models.watchlist_item import WatchlistItem
@@ -40,7 +40,7 @@ __all__ = [
     "CampaignMetric", "AuditLog", "AIAnalysis",
     "CenefaTemplate", "CenefaTemplateV2", "CenefaJob",
     "CenefaConocimiento", "CenefaDestino",
-    "PlanillaPedido", "LocalAsignacion",
+    "PlanillaPedido", "RedexpresEstructura", "LocalAsignacion",
     "Watchlist", "WatchlistItem", "WatchlistPrecioHistorial", "WatchlistShare", "Notificacion",
     "CotizacionDolar", "AIUsageLog", "SkuDescripcion", "MeridianChannelSummary", "PasswordResetToken",
     "ConvertidorHeaderAlias", "ConvertidorMapeo", "ConvertidorBancoPreset",
