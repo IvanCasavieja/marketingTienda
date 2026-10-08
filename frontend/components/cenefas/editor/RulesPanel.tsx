@@ -277,6 +277,25 @@ export default function RulesPanel(props: RulesPanelProps = {}) {
 // Chip de regla individual
 // ---------------------------------------------------------------------------
 
+/**
+ * La condición en una frase. Una compuesta ("and" / "or", como las del
+ * estándar por formato: "unidadMoneda es U$S y precioOferta de más de 4
+ * caracteres") se lee pedazo por pedazo; antes el chip mostraba " and" y nada
+ * más, porque leía `field` de una condición que no tiene.
+ */
+export function resumenDeCondicion(condicion: CenefaRule["condition"]): string {
+  const cond = condicion as {
+    field?: string; operator?: string; value?: string | number; conditions?: CenefaRule["condition"][];
+  };
+  if ((cond.operator === "and" || cond.operator === "or") && cond.conditions?.length) {
+    const nexo = cond.operator === "and" ? " y " : " o ";
+    return cond.conditions.map(resumenDeCondicion).join(nexo);
+  }
+  const operatorLabel = OPERATORS.find((o) => o.value === cond.operator)?.label ?? cond.operator ?? "";
+  const valueStr      = NEEDS_VALUE.includes(cond.operator as RuleOperator) ? ` "${cond.value}"` : "";
+  return `${cond.field ?? ""} ${operatorLabel}${valueStr}`;
+}
+
 export function RuleChip({
   rule,
   segments,
@@ -287,13 +306,8 @@ export function RuleChip({
   segments?: TextSegment[];
   onDelete: () => void;
 }) {
-  const cond = rule.condition as {
-    field?: string; operator?: string; value?: string | number;
-  };
-  const action        = rule.action.type;
-  const operatorLabel = OPERATORS.find((o) => o.value === cond.operator)?.label ?? cond.operator ?? "";
-  const valueStr      = NEEDS_VALUE.includes(cond.operator as RuleOperator) ? ` "${cond.value}"` : "";
-  const summary       = `${cond.field ?? ""} ${operatorLabel}${valueStr}`;
+  const action  = rule.action.type;
+  const summary = resumenDeCondicion(rule.condition);
   // Sin esto, dos reglas del mismo cuadro que apuntan a pedazos distintos se
   // ven idénticas en la lista.
   const seg = rule.target_segment_index;

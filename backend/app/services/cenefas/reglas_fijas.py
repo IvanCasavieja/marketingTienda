@@ -53,9 +53,24 @@ Se generan DOS reglas por símbolo, las dos de ocultar:
     2. si promoOferta CONTIENE "x"  -> el M x N.
 
 Juntas dicen: el símbolo aparece solo cuando lo que sigue es plata.
+
+-----------------------------------------------------------------------------
+Y desde el 08/10/2026: el ESTÁNDAR POR FORMATO de las cenefas TI
+-----------------------------------------------------------------------------
+
+Por el mismo mecanismo entran las reglas del estándar por formato (A4, 3xA4,
+A5, 6xA4): cuerpo base y escalera por caracteres de la descripción, cuerpo
+base y escalera por moneda del precio, ancho del código por cantidad de
+códigos. Son iguales para todas las plantillas del formato en los mundos TI,
+viven en app/data/escalones_por_formato.json y las arma
+estandar_por_formato.reglas_del_estandar. Pedido de Ivan: "los formatos
+deberían compartir los mismos tamaños... reglas preestablecidas en los
+bloques de cada variable, dentro de la plataforma".
 """
 import uuid
 from typing import Any
+
+from app.services.cenefas.estandar_por_formato import reglas_del_estandar
 
 # Namespace propio para los ids de las reglas fijas. Derivarlos (uuid5) en vez
 # de sortearlos (uuid4) es lo que hace que aplicar esto dos veces no duplique
@@ -190,11 +205,19 @@ def reglas_del_simbolo(comp_id: str, idx: int) -> list[dict]:
     ]
 
 
-def asegurar_reglas_fijas(definition: dict[str, Any] | None) -> dict[str, Any] | None:
+def asegurar_reglas_fijas(definition: dict[str, Any] | None, categoria: str | None = None) -> dict[str, Any] | None:
     """Garantiza las reglas fijas de una definición. Idempotente.
 
     Devuelve una copia nueva; no muta la que recibe. Una definición sin
-    cuadros de promoOferta vuelve igual (salvo por la copia).
+    cuadros de promoOferta ni estándar que le toque vuelve igual (salvo por
+    la copia).
+
+    `categoria` es el mundo de la plantilla (slug de cenefa_destinos), que
+    decide si le toca el estándar por formato. Las rutas la pasan desde la
+    fila de la tabla; si no viene, vale la que la definición traiga guardada
+    en "category" (las rutas la dejan ahí al guardar, para que el camino de
+    los jobs --que recalcula las fijas a partir de la definición guardada--
+    también la conozca).
 
     Las reglas fijas se REEMPLAZAN, no se acumulan: si ya había una con el
     mismo id --porque esta función ya corrió antes-- se descarta la vieja y
@@ -216,6 +239,8 @@ def asegurar_reglas_fijas(definition: dict[str, Any] | None) -> dict[str, Any] |
         componentes.append(comp)
         if idx >= 0:
             fijas.extend(reglas_del_simbolo(comp["id"], idx))
+
+    fijas.extend(reglas_del_estandar({**definition, "components": componentes}, categoria))
 
     if not fijas:
         return {**definition, "components": componentes}

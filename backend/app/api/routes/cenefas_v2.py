@@ -383,7 +383,12 @@ async def create_template(
     # Las reglas que el sistema garantiza se ponen acá, no en el navegador:
     # una plantilla guardada NUNCA queda sin ellas, venga de donde venga el
     # payload (editor, import, o un POST a mano). Ver reglas_fijas.py.
-    payload = asegurar_reglas_fijas(payload)
+    # El mundo queda guardado adentro de la definición: el estándar por
+    # formato depende de él, y el camino de los jobs lo recalcula a partir de
+    # la definición guardada (ver estandar_por_formato.mundo_de).
+    if payload.get("category"):
+        payload = {**payload, "category": payload["category"]}
+    payload = asegurar_reglas_fijas(payload, categoria=payload.get("category"))
 
     # source_pptx_b64: bytes del PPTX original en base64 (si el template vino
     # de importar un archivo, no de armarlo desde cero en el editor) — se
@@ -494,8 +499,13 @@ async def update_template(
 
     _validate_template_payload(payload)
     # Idem create_template: borrar una regla fija desde la UI y guardar no la
-    # borra, vuelve acá mismo. Es lo que la hace fija.
-    payload = asegurar_reglas_fijas(payload)
+    # borra, vuelve acá mismo. Es lo que la hace fija. El mundo sale del
+    # payload si lo trae y si no de la fila, y se deja adentro de la
+    # definición (ver create_template); `cambia_categoria` conserva la regla
+    # de más abajo: la fila solo cambia de mundo si el payload lo pidió.
+    cambia_categoria = "category" in payload
+    mundo = payload.get("category") if cambia_categoria else tmpl.category
+    payload = asegurar_reglas_fijas({**payload, "category": mundo}, categoria=mundo)
 
     # source_pptx_b64 opcional: mismo criterio que create_template (ver línea
     # ~183) — se popea del payload ANTES de guardarlo como definition, para
@@ -512,7 +522,7 @@ async def update_template(
     tmpl.name       = payload["name"].strip()
     tmpl.definition = payload
     tmpl.formats    = payload.get("formats", tmpl.formats)
-    if "category" in payload:
+    if cambia_categoria:
         tmpl.category = payload.get("category")
     return {"id": str(tmpl.id), "name": tmpl.name}
 

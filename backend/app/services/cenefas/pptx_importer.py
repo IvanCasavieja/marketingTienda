@@ -1644,6 +1644,9 @@ def import_pptx(pptx_bytes: bytes, name: str = "Template importado", category: s
     return asegurar_reglas_fijas({
         "version":         "2.0",
         "name":            name,
+        # El mundo, si el caller lo sabe: decide si entran las reglas del
+        # estándar por formato (estandar_por_formato.py). Vacío = sin mundo.
+        "category":        category,
         "master_format":   format_id,
         "formats":         [format_id],
         # EL PAPEL MEDIDO DEL ARCHIVO, no derivado de la etiqueta de arriba.

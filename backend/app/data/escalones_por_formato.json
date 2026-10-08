@@ -1,0 +1,421 @@
+{
+  "_doc": "Estandar por formato de las cenefas TI (Ivan, 08/10/2026): un cuerpo base por bloque, una escalera de descripcion por caracteres, una escalera de precio por moneda y por centavos (con/sin decimal) y los anchos del codigo por cantidad de codigos, iguales para TODAS las plantillas del formato en los mundos listados. Se inyectan como reglas fijas (bloqueadas) en cada guardado: ver estandar_por_formato.py. Medido con el motor real sobre la union de los listados de octubre 2026 (747 productos: marca propia, Non Food exclusivas, Limpieza y CP, Otros productos, bebidas) contra las plantillas de PRODUCTOS TI, EXCLUSIVOS TI y TEMPORADA DE LYCP, que comparten geometria; las OFERTA GENERICA (General) tienen cajas distintas y se evaluaron contra el estandar (ver scratchpad medir_estandar.py de la sesion 2e675fb3). Umbrales: 'mas de N caracteres'. Las escaleras son monotonas: gana la mas chica (cuerpo) o la mas ancha (codigo), asi que el orden no importa.",
+  "mundos": [
+    "marca_propia",
+    "marcas_exclusivas"
+  ],
+  "formatos": {
+    "a4": {
+      "referencia": "Marca Propia-202610-A4",
+      "descripcion": {
+        "base_pt": 50.0,
+        "escalera": [
+          [
+            40,
+            48.0
+          ],
+          [
+            44,
+            46.0
+          ],
+          [
+            45,
+            44.0
+          ],
+          [
+            48,
+            43.0
+          ],
+          [
+            50,
+            42.0
+          ],
+          [
+            53,
+            39.0
+          ],
+          [
+            56,
+            37.0
+          ],
+          [
+            85,
+            33.0
+          ],
+          [
+            128,
+            30.0
+          ]
+        ]
+      },
+      "precioOferta": {
+        "base_pt": 228.0,
+        "escaleras": [
+          {
+            "moneda": "$",
+            "con_decimal": false,
+            "escalera": [
+              [
+                4,
+                180.0
+              ],
+              [
+                5,
+                156.0
+              ]
+            ]
+          },
+          {
+            "moneda": "$",
+            "con_decimal": true,
+            "escalera": [
+              [
+                2,
+                196.0
+              ],
+              [
+                4,
+                156.0
+              ]
+            ]
+          },
+          {
+            "moneda": "U$S",
+            "con_decimal": false,
+            "escalera": [
+              [
+                2,
+                204.0
+              ],
+              [
+                4,
+                156.0
+              ]
+            ]
+          }
+        ]
+      },
+      "codigo": {
+        "anchos_cm": [
+          [
+            12,
+            9.5
+          ],
+          [
+            21,
+            13.5
+          ],
+          [
+            30,
+            17.4
+          ],
+          [
+            39,
+            20.5
+          ]
+        ]
+      }
+    },
+    "3xa4": {
+      "referencia": "Marca Propia-202610-3xA4",
+      "descripcion": {
+        "base_pt": 25.0,
+        "escalera": [
+          [
+            37,
+            24.0
+          ],
+          [
+            39,
+            23.0
+          ],
+          [
+            40,
+            22.0
+          ],
+          [
+            43,
+            20.0
+          ],
+          [
+            50,
+            19.0
+          ],
+          [
+            54,
+            18.0
+          ],
+          [
+            98,
+            16.0
+          ],
+          [
+            128,
+            13.0
+          ]
+        ]
+      },
+      "precioOferta": {
+        "base_pt": 100.0,
+        "escaleras": [
+          {
+            "moneda": "$",
+            "con_decimal": false,
+            "escalera": [
+              [
+                4,
+                92.0
+              ],
+              [
+                5,
+                84.0
+              ]
+            ]
+          },
+          {
+            "moneda": "$",
+            "con_decimal": true,
+            "escalera": [
+              [
+                4,
+                84.0
+              ]
+            ]
+          },
+          {
+            "moneda": "U$S",
+            "con_decimal": false,
+            "escalera": [
+              [
+                4,
+                84.0
+              ]
+            ]
+          }
+        ]
+      },
+      "codigo": {
+        "anchos_cm": [
+          [
+            12,
+            4.8
+          ],
+          [
+            21,
+            6.5
+          ],
+          [
+            30,
+            8.2
+          ],
+          [
+            39,
+            10.0
+          ],
+          [
+            48,
+            11.7
+          ],
+          [
+            57,
+            13.4
+          ],
+          [
+            66,
+            13.8
+          ]
+        ]
+      }
+    },
+    "a5": {
+      "referencia": "Marca Propia-202610-A5",
+      "descripcion": {
+        "base_pt": 35.0,
+        "escalera": [
+          [
+            44,
+            34.0
+          ],
+          [
+            45,
+            32.0
+          ],
+          [
+            48,
+            31.0
+          ],
+          [
+            53,
+            30.0
+          ],
+          [
+            76,
+            29.0
+          ],
+          [
+            85,
+            24.0
+          ]
+        ]
+      },
+      "precioOferta": {
+        "base_pt": 144.0,
+        "escaleras": [
+          {
+            "moneda": "$",
+            "con_decimal": false,
+            "escalera": [
+              [
+                4,
+                112.0
+              ],
+              [
+                5,
+                96.0
+              ]
+            ]
+          },
+          {
+            "moneda": "$",
+            "con_decimal": true,
+            "escalera": [
+              [
+                2,
+                120.0
+              ],
+              [
+                4,
+                96.0
+              ]
+            ]
+          },
+          {
+            "moneda": "U$S",
+            "con_decimal": false,
+            "escalera": [
+              [
+                2,
+                128.0
+              ],
+              [
+                4,
+                96.0
+              ]
+            ]
+          }
+        ]
+      },
+      "codigo": {
+        "anchos_cm": [
+          [
+            21,
+            8.2
+          ],
+          [
+            30,
+            10.5
+          ],
+          [
+            39,
+            12.8
+          ],
+          [
+            48,
+            14.3
+          ]
+        ]
+      }
+    },
+    "6xa4": {
+      "referencia": "Marca Propia-202610-6xA4",
+      "descripcion": {
+        "base_pt": 17.0,
+        "escalera": [
+          [
+            128,
+            15.0
+          ]
+        ]
+      },
+      "precioOferta": {
+        "base_pt": 70.0,
+        "escaleras": [
+          {
+            "moneda": "$",
+            "con_decimal": false,
+            "escalera": [
+              [
+                2,
+                62.0
+              ],
+              [
+                4,
+                46.0
+              ]
+            ]
+          },
+          {
+            "moneda": "$",
+            "con_decimal": true,
+            "escalera": [
+              [
+                1,
+                62.0
+              ],
+              [
+                2,
+                46.0
+              ]
+            ]
+          },
+          {
+            "moneda": "U$S",
+            "con_decimal": false,
+            "escalera": [
+              [
+                2,
+                54.0
+              ],
+              [
+                4,
+                46.0
+              ]
+            ]
+          }
+        ]
+      },
+      "codigo": {
+        "anchos_cm": [
+          [
+            12,
+            4.4
+          ],
+          [
+            21,
+            6.0
+          ],
+          [
+            30,
+            7.7
+          ],
+          [
+            39,
+            9.3
+          ],
+          [
+            48,
+            11.0
+          ],
+          [
+            57,
+            12.6
+          ],
+          [
+            66,
+            13.0
+          ]
+        ]
+      }
+    }
+  }
+}
