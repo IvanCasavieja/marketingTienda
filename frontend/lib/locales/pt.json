@@ -880,7 +880,7 @@
       "approving": "Aprovando…",
       "failedCount": "Não conseguimos gerar sugestão para {{count}} produto(s) — complete manualmente.",
       "loadingMore": "Gerando o restante em segundo plano… ({{done}}/{{total}})",
-      "fiambreKgBadge": "Frios por kg → 100g",
+      "fiambreKgBadge": "Frios por kg → 100 g",
       "unidadVentaBadge": "Cobrado por {{unidad}}"
     },
     "merge": {

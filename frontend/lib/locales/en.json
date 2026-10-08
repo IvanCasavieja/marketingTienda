@@ -880,7 +880,7 @@
       "approving": "Approving…",
       "failedCount": "We couldn't generate a suggestion for {{count}} product(s) — fill them in by hand.",
       "loadingMore": "Generating the rest in the background… ({{done}}/{{total}})",
-      "fiambreKgBadge": "Deli item by kg → 100g",
+      "fiambreKgBadge": "Deli item by kg → 100 g",
       "unidadVentaBadge": "Charged by {{unidad}}"
     },
     "merge": {

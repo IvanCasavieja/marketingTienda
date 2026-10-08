@@ -174,3 +174,29 @@ def test_las_variedades_van_con_o_y_mas_de_tres_son_distintas_variedades():
     assert "Distintas variedades" in _UNIFY_SYSTEM_PROMPT, "la opción neutra del unificador tiene que decir exactamente eso"
     assert "En 3 variedades" not in _UNIFY_SYSTEM_PROMPT and "Variedades surtidas" not in _UNIFY_SYSTEM_PROMPT, (
         "la frase neutra la fijó Ivan: \"Distintas variedades\", no otras formas")
+
+
+# ---------------------------------------------------------------------------
+# Marca TIENDA INGLESA / TIENDA CASA, gramaje sin cantidad y unidad con espacio (Ivan, 2026-10-08)
+# ---------------------------------------------------------------------------
+
+def test_marca_tienda_inglesa_tienda_casa_gramaje_sin_cantidad_y_unidad_con_espacio():
+    """Segunda tanda del 08/10/2026, mirando el PPTX de marca propia:
+
+    - "TI"/"IT" en el nombre de gestión es la marca TIENDA INGLESA, escrita entera.
+    - TIENDA CASA es marca propia de Tienda Inglesa y se escribe TIENDA CASA; en
+      bowls, platos y tazas había quedado el código del proveedor ("RAYLON").
+    - Con el gramaje del pack no va la cantidad: "485 g", no "485 g x 8".
+    - La unidad va SIEMPRE con espacio, también en los de corte: "100 g". Hasta
+      ese día la regla pedía "100g" pegado."""
+    from app.services.cenefas.convertidor_ai import _STYLE_RULES
+
+    for texto, donde in ((_STYLE_RULES, "_STYLE_RULES"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
+        assert re.search(r'"TI".{0,120}TIENDA INGLESA', texto), f"{donde} no dice que TI es TIENDA INGLESA"
+        assert "TIENDA CASA" in texto and "RAYLON" in texto, f"{donde} no explica TIENDA CASA (ni el caso RAYLON)"
+        assert "485 g x 8" in texto and "Frankfurters TIENDA INGLESA. 485 g" in texto, (
+            f"{donde} no trae el ejemplo del pack sin cantidad")
+        assert '"100 g"' in texto, f"{donde} no escribe la unidad de corte con espacio"
+        assert "NATURALACT. 100g" not in texto, f"{donde} sigue con el ejemplo de 100g pegado"
+    assert 'exactamente "100 g" o "Kg"' in _STYLE_RULES
+    assert '"150g", "100g" o "1kg" están MAL' in _STYLE_RULES

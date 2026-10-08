@@ -880,7 +880,7 @@
       "approving": "Aprobando…",
       "failedCount": "No pudimos generar sugerencia para {{count}} producto(s) — completalos a mano.",
       "loadingMore": "Generando el resto en segundo plano… ({{done}}/{{total}})",
-      "fiambreKgBadge": "Fiambre por kg → 100g",
+      "fiambreKgBadge": "Fiambre por kg → 100 g",
       "unidadVentaBadge": "Se cobra por {{unidad}}"
     },
     "merge": {
