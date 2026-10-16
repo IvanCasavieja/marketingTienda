@@ -491,7 +491,13 @@ class GenerarDescripcionesRequest(BaseModel):
 
 
 @router.post("/descripciones/generar-ia")
-@limiter.limit("5/minute")
+# 30 y no 5 (16/10/2026): la clave del limiter es la IP (ver rate_limit.py) y
+# en la oficina todos salen por la misma, así que el balde se comparte entre
+# personas. Con los chunks en paralelo una tanda de 80 tarda ~6 s y una sola
+# pantalla manda hasta 10 pedidos por minuto; con 5, al sexto el modal pegaba
+# 429 y se quedaba 60 s "cargando" en silencio (RATE_LIMIT_RETRY_MS). El gasto
+# sigue acotado por _ROWS_MAX_PER_REQUEST y por el permiso ai.tinin.
+@limiter.limit("30/minute")
 async def generar_descripciones_ia(
     request: Request,
     payload: GenerarDescripcionesRequest,

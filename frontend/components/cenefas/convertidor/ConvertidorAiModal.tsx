@@ -59,7 +59,7 @@ const DESCRIPTION_WARN_CHARS = 60;
 // (ver el efecto de carga más abajo), en vez de que el usuario tenga que
 // cerrar y reabrir el modal para las filas que quedan afuera de la primera.
 const ROWS_CHUNK_SIZE = 80;
-// slowapi limita /descripciones/generar-ia a 5 pedidos por minuto (ver
+// slowapi limita /descripciones/generar-ia a 30 pedidos por minuto POR IP (ver
 // @limiter.limit en cenefas_convertidor.py) -- si una tanda pega 429, se
 // espera este piso (o el Retry-After real si vino en la respuesta) antes de
 // reintentarla una vez, en vez de darla por perdida de una.

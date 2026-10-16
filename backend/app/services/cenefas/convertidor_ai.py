@@ -112,6 +112,13 @@ _CHUNK_SIZE = 20               # productos por llamada a Claude — lotes chicos
 _ROWS_MAX_PER_REQUEST = 80      # tope duro por request síncrona — por encima, se trunca y se
                                 # avisa "truncated" en la respuesta en vez de encadenar
                                 # decenas de chunks y arriesgar timeout del navegador/proxy.
+_DESCRIPCIONES_CONCURRENCIA = 4 # chunks de un mismo pedido en vuelo a la vez. Medido en
+                                # producción el 16/10/2026: 20 productos tardan ~5 s y una
+                                # tanda de 80 (4 chunks, uno atrás de otro) 20,4 s; en
+                                # paralelo la tanda tarda lo que su chunk más lento. 4 son
+                                # justo los chunks de un pedido de _ROWS_MAX_PER_REQUEST,
+                                # así que una persona nunca tiene más de 4 llamadas
+                                # abiertas contra Anthropic.
 
 
 def _chunks(items: list, size: int):
@@ -239,10 +246,14 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
         )
 
     suggestions: list[dict] = []
+    chunks = list(_chunks(procesables, _CHUNK_SIZE))
+    limite = asyncio.Semaphore(_DESCRIPCIONES_CONCURRENCIA)
 
-    for chunk in _chunks(procesables, _CHUNK_SIZE):
-        prompt = _build_prompt(chunk)
-        try:
+    async def _pedir(chunk: list[dict]):
+        # Acá adentro SOLO la llamada a Claude: la sesión de base (log_ai_usage)
+        # se toca después y en orden, porque una AsyncSession no se comparte
+        # entre tareas que corren a la vez.
+        async with limite:
             # effort="low" por lo mismo que en el unificador (ver el comentario
             # largo en _analizar): el razonamiento sale del MISMO presupuesto que
             # max_tokens. Medido en produccion el 28/09/2026: tres chunks de 20
@@ -250,9 +261,27 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
             # cortado y las 53 filas salieron como "completalas a mano"; el mismo
             # pedido 3 minutos despues salio bien con 1814-2574. Sin acotar el
             # razonamiento, que un chunk entre bien o mal es una moneda al aire.
-            content, in_tok, out_tok = await _ask_claude(
-                _SYSTEM_PROMPT, prompt, max_tokens=_MAX_TOKENS_POR_CHUNK, effort="low")
-            await log_ai_usage(db, user_id, "convertidor_descripciones", *_ASK_CLAUDE_META, in_tok, out_tok)
+            return await _ask_claude(
+                _SYSTEM_PROMPT, _build_prompt(chunk), max_tokens=_MAX_TOKENS_POR_CHUNK, effort="low")
+
+    # Hasta el 16/10/2026 los chunks iban uno atrás de otro y una tanda de 80
+    # tardaba 20 s con Tinín "picando piedra" en pantalla (Ivan: "demora
+    # mucho"). gather devuelve en el orden de los chunks, así que las
+    # sugerencias salen en el mismo orden que antes.
+    resultados = await asyncio.gather(*(_pedir(c) for c in chunks), return_exceptions=True)
+
+    for chunk, res in zip(chunks, resultados):
+        if isinstance(res, BaseException):
+            if not isinstance(res, Exception):
+                raise res  # cancelación o similar: no es un fallo del chunk
+            log.warning("convertidor_ai.generar_descripciones: chunk de %d falló — %s",
+                        len(chunk), res, exc_info=res)
+            failed_row_ids.extend(it["row_id"] for it in chunk)
+            _sumar_error(errores, f"{type(res).__name__}: {res}")
+            continue
+        content, in_tok, out_tok = res
+        await log_ai_usage(db, user_id, "convertidor_descripciones", *_ASK_CLAUDE_META, in_tok, out_tok)
+        try:
             parsed = json.loads(_strip_json_fence(content))
             descripciones = parsed.get("descripciones", {})
             for n, it in enumerate(chunk, start=1):
