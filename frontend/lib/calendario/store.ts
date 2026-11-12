@@ -9,10 +9,12 @@ import { claveDe, hoyIso } from './fechas'
 import { ZOOM_POR_DEFECTO, limitarZoom } from './rejilla'
 
 export { ZOOMS, ZOOM_POR_DEFECTO } from './rejilla'
-import { SECCIONES_CON_FICHA, formatosDeCanal } from './tipos'
+import { SECCIONES_CON_FICHA, conDescendientes, formatosDeCanal } from './tipos'
 import type {
-  AreaPieza, Aviso, BarraGuardada, EstadoPieza, Mes, Persona, Pieza, Seccion,
+  AreaPieza, Aviso, BarraGuardada, EstadoPieza, EstadoTarea, Mes, Persona, Pieza, Seccion, Tarea,
 } from './tipos'
+import { BANDAS_COMERCIAL, BANDAS_RETAIL, type BandaCatalogo } from './catalogo'
+import { MUNDO_POR_DEFECTO, mundoDe } from '@/lib/mundos'
 
 export {
   construirMes, derivarHeaders, accionesDe, ocupacionHeader,
@@ -40,7 +42,21 @@ let revMinima = 0
 /** Cada cuanto se pregunta si alguien cambio algo. */
 export const SEGUNDOS_ENTRE_REVISIONES = 15
 
-type Escrito = { rev?: number; enviadosAhora?: number; yaExistia?: boolean }
+type Escrito = { rev?: number; enviadosAhora?: number; yaExistia?: boolean; avisados?: number }
+
+/** Como se mira el mes: la linea de tiempo de siempre, o una lista de tarjetas. */
+export type Vista = 'tiempo' | 'lista'
+/** Que parte del calendario se ve. 'todo' = las cuatro, una abajo de la otra. */
+export type Filtro = 'todo' | 'comercial' | 'envios' | 'retail' | 'header'
+
+/** Lo que se carga de una tarea nueva. */
+export type DatosTarea = {
+  titulo: string
+  parentId?: string | null
+  asignadoA?: number | null
+  vence?: string | null
+  descripcion?: string | null
+}
 
 // ---------------------------------------------------------------------------
 // Store
@@ -64,6 +80,8 @@ export type DatosBarra = Pick<BarraGuardada, 'nombre' | 'desde' | 'hasta' | 'col
   Partial<Pick<BarraGuardada, 'formato' | 'hora'>>
 
 type Estado = {
+  /** El mundo cuyas barras estan cargadas. Cada mundo es un calendario aparte. */
+  mundo: string
   barras: Record<string, BarraGuardada>
   posicionesRM: Record<string, number[]>
   /** La revision del servidor que tenemos. null = hay que traer todo. */
@@ -77,10 +95,19 @@ type Estado = {
   abierta: string | null
   /** Ancho de cada día en px. Sube y baja con el control de zoom. */
   zoom: number
+  /** false = nadie toco el zoom: el mes se ajusta solo al ancho de la pantalla. */
+  zoomElegido: boolean
+  vista: Vista
+  filtro: Filtro
 
   accionAbierta: () => BarraGuardada | null
   irAMes: (clave: string) => void
-  setZoom: (px: number) => void
+  /** `elegido` = lo pidio la persona (y entonces ya no se ajusta solo). */
+  setZoom: (px: number, elegido?: boolean) => void
+  setVista: (v: Vista) => void
+  setFiltro: (f: Filtro) => void
+  /** Pasa a otro mundo: tira lo cargado y trae lo de ese. */
+  usarMundo: (clave: string) => void
   /** Trae del servidor lo que haya cambiado y pisa la copia local. */
   sincronizar: () => Promise<void>
   traerPersonas: () => Promise<void>
@@ -104,12 +131,18 @@ type Estado = {
 
   /** El estado de un envío suelto (pendiente → publicado), desde su ficha. */
   cambiarEstadoEnvio: (id: string, estado: EstadoPieza) => void
+
+  /** Una tarea (o subtarea) en la accion `barraId`. */
+  crearTarea: (barraId: string, datos: DatosTarea) => void
+  cambiarTarea: (tareaId: string, cambios: Partial<Pick<Tarea, 'titulo' | 'descripcion' | 'estado' | 'asignadoA' | 'vence'>>) => void
+  /** Borra la tarea y todo lo que cuelga de ella. */
+  borrarTarea: (tareaId: string) => void
 }
 
 /** Lo que llega del servidor, con las listas que el front da por sentadas. */
 function normalizar(b: BarraGuardada): BarraGuardada {
-  if (b.seccion === 'comercial') return { ...b, piezas: b.piezas ?? [], avisos: b.avisos ?? [] }
-  if (b.seccion === 'envio') return { ...b, avisos: b.avisos ?? [], estado: b.estado ?? 'pendiente' }
+  if (b.seccion === 'comercial') return { ...b, piezas: b.piezas ?? [], avisos: b.avisos ?? [], tareas: b.tareas ?? [] }
+  if (b.seccion === 'envio') return { ...b, avisos: b.avisos ?? [], tareas: b.tareas ?? [], estado: b.estado ?? 'pendiente' }
   return b
 }
 
@@ -165,6 +198,7 @@ export const useCalendario = create<Estado>()(
       }
 
       return {
+        mundo: MUNDO_POR_DEFECTO,
         barras: {},
         posicionesRM: {},
         rev: null,
@@ -174,6 +208,9 @@ export const useCalendario = create<Estado>()(
         edicion: null,
         abierta: null,
         zoom: ZOOM_POR_DEFECTO,
+        zoomElegido: false,
+        vista: 'tiempo',
+        filtro: 'todo',
 
         accionAbierta: () => {
           const { abierta, barras } = get()
@@ -183,12 +220,33 @@ export const useCalendario = create<Estado>()(
 
         irAMes: clave => set({ mesActivo: clave, abierta: null }),
 
-        setZoom: px => set({ zoom: limitarZoom(px) }),
+        setZoom: (px, elegido = true) => set(s => ({ zoom: limitarZoom(px), zoomElegido: elegido || s.zoomElegido })),
+        setVista: vista => set({ vista }),
+        setFiltro: filtro => set({ filtro }),
+
+        usarMundo: clave => {
+          if (get().mundo === clave) return
+          // Lo de otro mundo no se mezcla ni un instante: se tira todo y se
+          // trae lo de este. La revision es de todos los mundos juntos, asi
+          // que tambien se olvida.
+          revMinima = 0
+          set({
+            mundo: clave, barras: {}, posicionesRM: {}, rev: null, personas: [],
+            abierta: null, edicion: null, conexion: 'cargando',
+            // Un mundo sin Retail Media ni headers no puede quedar filtrado en ellos.
+            filtro: 'todo',
+          })
+          void get().sincronizar()
+          void get().traerPersonas()
+        },
 
         sincronizar: async () => {
           if (enVuelo > 0) return
+          const mundo = get().mundo
           try {
-            const { data } = await calendarioApi.traerDatos(get().rev)
+            const { data } = await calendarioApi.traerDatos(mundo, get().rev)
+            // Mientras viajaba se paso a otro mundo: esto ya no es lo que se mira.
+            if (get().mundo !== mundo) return
             // Alguien de acá escribio mientras tanto: esto puede ser de antes.
             if (enVuelo > 0) return
             if (data.sinCambios) {
@@ -206,9 +264,10 @@ export const useCalendario = create<Estado>()(
         },
 
         traerPersonas: async () => {
+          const mundo = get().mundo
           try {
-            const { data } = await calendarioApi.personas()
-            set({ personas: data })
+            const { data } = await calendarioApi.personas(mundo)
+            if (get().mundo === mundo) set({ personas: data })
           } catch {
             // Sin la lista no se pueden elegir destinatarios; lo demas anda.
           }
@@ -232,13 +291,13 @@ export const useCalendario = create<Estado>()(
             // acomoda por día, así que siempre va en el 0.
             const carril = esEnvio ? 0 : carrilLibre(lista, edicion.seccion, edicion.banda, datos.desde, datos.hasta, edicion.carril)
             const nueva: BarraGuardada = normalizar({
-              id, seccion: edicion.seccion, banda: edicion.banda, carril,
+              id, mundo: get().mundo, seccion: edicion.seccion, banda: edicion.banda, carril,
               nombre: datos.nombre, color: datos.color, desde: datos.desde, hasta: datos.hasta,
               ...(esEnvio ? { formato: datos.formato ?? null, hora: datos.hora, estado: 'pendiente' as EstadoPieza } : {}),
             })
             set(s => ({ barras: { ...s.barras, [id]: nueva }, edicion: null }))
             void escribir(() => calendarioApi.crearBarra({
-              id, seccion: nueva.seccion, banda: nueva.banda, carril,
+              id, mundo: nueva.mundo, seccion: nueva.seccion, banda: nueva.banda, carril,
               nombre: datos.nombre, color: datos.color, desde: datos.desde, hasta: datos.hasta,
               ...(esEnvio ? { formato: datos.formato ?? null, hora: datos.hora ?? null } : {}),
             }))
@@ -372,12 +431,48 @@ export const useCalendario = create<Estado>()(
           cambiarBarraLocal(id, b => ({ ...b, estado }))
           void escribir(() => calendarioApi.cambiarBarra(id, { estado }))
         },
+
+        crearTarea: (barraId, datos) => {
+          const titulo = datos.titulo.trim()
+          if (!titulo || !get().barras[barraId]) return
+          const tarea: Tarea = {
+            id: nuevoId('ta'), parentId: datos.parentId ?? null, titulo,
+            descripcion: datos.descripcion?.trim() || null, estado: 'pendiente' as EstadoTarea,
+            asignadoA: datos.asignadoA ?? null, vence: datos.vence || null, creadoPor: null,
+          }
+          cambiarBarraLocal(barraId, b => ({ ...b, tareas: [...(b.tareas ?? []), tarea] }))
+          void escribir(() => calendarioApi.crearTarea(barraId, {
+            id: tarea.id, parentId: tarea.parentId, titulo, descripcion: tarea.descripcion,
+            asignadoA: tarea.asignadoA, vence: tarea.vence,
+          })).then(r => {
+            if (r?.avisados) toast.success('Tarea creada. Le llegó el aviso a quien la tiene asignada.')
+          })
+        },
+
+        cambiarTarea: (tareaId, cambios) => {
+          const duena = duenaDe(get().barras, b => (b.tareas ?? []).some(t => t.id === tareaId))
+          if (!duena) return
+          cambiarBarraLocal(duena.id, b => ({
+            ...b, tareas: (b.tareas ?? []).map(t => (t.id === tareaId ? { ...t, ...cambios } : t)),
+          }))
+          void escribir(() => calendarioApi.cambiarTarea(tareaId, cambios))
+        },
+
+        borrarTarea: tareaId => {
+          const duena = duenaDe(get().barras, b => (b.tareas ?? []).some(t => t.id === tareaId))
+          if (!duena) return
+          const fuera = conDescendientes(tareaId, duena.tareas ?? [])
+          cambiarBarraLocal(duena.id, b => ({ ...b, tareas: (b.tareas ?? []).filter(t => !fuera.has(t.id)) }))
+          void escribir(() => calendarioApi.borrarTarea(tareaId))
+        },
       }
     },
     {
       // Clave nueva a proposito: lo guardado con la anterior ('calendario-mktg')
       // era el mes entero, con otra forma. Se deja como estaba, no se borra.
-      name: 'calendario-mktg-v2',
+      // v3: lo guardado ahora es de UN mundo (y dice de cual). La v2 era el
+      // unico calendario que habia; se deja como estaba, no se borra.
+      name: 'calendario-mktg-v3',
       version: 1,
       storage: createJSONStorage(() => localStorage),
       // El servidor no tiene localStorage: se rehidrata a mano al montar,
@@ -387,21 +482,41 @@ export const useCalendario = create<Estado>()(
       // guarda, asi al abrir siempre se trae todo del servidor y un cambio que
       // quedo a medio subir al cerrar la pestaña no queda como si existiera.
       partialize: s => ({
+        mundo: s.mundo,
         barras: s.barras,
         posicionesRM: s.posicionesRM,
         mesActivo: s.mesActivo,
         zoom: s.zoom,
+        zoomElegido: s.zoomElegido,
+        vista: s.vista,
+        filtro: s.filtro,
       }),
     },
   ),
 )
+
+const CATALOGOS_TI = { comercial: BANDAS_COMERCIAL, retail: BANDAS_RETAIL }
+const catalogosPorMundo = new Map<string, { comercial: BandaCatalogo[]; retail: BandaCatalogo[] }>()
+
+/** Los tipos de accion con los que arranca cada mundo (ver lib/mundos.ts). */
+export function catalogosDe(mundo: string) {
+  const bandas = mundoDe(mundo)?.bandas
+  if (!bandas) return CATALOGOS_TI
+  let hecho = catalogosPorMundo.get(mundo)
+  if (!hecho) {
+    hecho = { comercial: bandas.map(nombre => ({ nombre })), retail: [] }
+    catalogosPorMundo.set(mundo, hecho)
+  }
+  return hecho
+}
 
 /** El mes que se esta mirando. Todas las secciones reciben el mismo objeto. */
 export function useMesActivo(): Mes {
   const barras = useCalendario(s => s.barras)
   const posicionesRM = useCalendario(s => s.posicionesRM)
   const clave = useCalendario(s => s.mesActivo)
-  return vistaDelMes(clave, barras, posicionesRM)
+  const mundo = useCalendario(s => s.mundo)
+  return vistaDelMes(clave, barras, posicionesRM, catalogosDe(mundo))
 }
 
 /** El header de todas las fechas (para saber en qué posición quedó una acción). */

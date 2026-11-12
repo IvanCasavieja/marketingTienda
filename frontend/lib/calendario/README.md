@@ -7,6 +7,61 @@ frenar lo que ya estaba andando acá, y se armó desde el principio con el mismo
 stack que la plataforma — Next 16, React 18, Tailwind, zustand, lucide — así
 que al entrar no hubo que agregar ni una dependencia.
 
+## Mundos: un calendario por negocio
+
+Desde el 12/11/2026 (migración 0060) hay un calendario por **mundo**: Tienda
+Inglesa, Tienda Express, Redexpres, Tienda Viajes y Tienda Farma. Cada barra es
+de uno (`calendario_barras.mundo`) y cada persona tiene la lista de los que
+puede abrir (`users.mundos`, se tilda en el panel de administración; un Super
+Admin abre todos).
+
+- Quien tiene **un solo mundo** entra derecho a su calendario. Quien tiene
+  **varios** pasa por `/mundos` a elegir, y cambia cuando quiere desde el menú.
+- El servidor no deja leer ni escribir en un mundo ajeno, aunque se tenga
+  `calendario.edit` (`app/core/mundos.py`, `exigir_mundo`).
+- El header de la home y Retail Media son de la web de Tienda Inglesa: los
+  otros mundos tienen solo calendario comercial y cronograma de envíos.
+- Los tipos de acción de Tienda Inglesa siguen saliendo de los Excel
+  (`catalogo.ts`). Los otros mundos arrancan con una lista genérica
+  (`lib/mundos.ts`, `BANDAS_GENERICAS`): **hay que reemplazarla por los tipos
+  reales de cada negocio** cuando se pasen sus calendarios.
+- Todo lo cargado antes de la 0060 quedó en Tienda Inglesa.
+
+El catálogo de mundos está en dos lugares que tienen que coincidir:
+`backend/app/core/mundos.py` y `frontend/lib/mundos.ts`.
+
+## Tareas: quién hace qué en cada acción
+
+Pedido de Ivan (12/11/2026): quien lidera abre una acción, le crea tareas y
+subtareas y se las asigna a cada persona. Tabla `calendario_tareas`, una fila
+por tarea, hasta tres niveles (tarea → subtarea → sub-subtarea).
+
+| Quién | Qué puede |
+|---|---|
+| Con `calendario.tareas` | Crear, asignar, poner vencimiento y borrar tareas. |
+| A quien se le asignó | Mover el estado de SUS tareas (pendiente → en proceso → hecha), aunque no tenga `calendario.edit`. |
+| Los demás | Ver. |
+
+- Asignar una tarea le manda un aviso a la campanita de esa persona; cuando la
+  termina, le llega a quien la creó. Tocar el aviso abre la ficha de la acción,
+  aunque sea de otro mundo (`GET /calendario/ubicar/{id}`).
+- Solo se le puede asignar a alguien que pueda abrir ese mundo.
+- **Mis tareas** (`/mis-tareas`) junta lo que cada uno tiene asignado en todos
+  sus mundos, ordenado por vencimiento.
+- `calendario.tareas` lo recibieron Superadmin y Admin en la 0060. A quien
+  lidere el equipo sin ser Admin hay que tildárselo a mano.
+
+## Cómo se mira
+
+- **Filtro por parte** (Todo · Comercial · Envíos · Retail Media · Headers):
+  las cuatro juntas marean a quien entra por primera vez.
+- **Mes o Lista.** La lista muestra las mismas acciones como tarjetas (en
+  curso, lo que viene, ya terminaron), con el avance de piezas y tareas. Es lo
+  que se usa en un teléfono, y ahí arranca sola la primera vez.
+- **El mes se ajusta solo al ancho de la pantalla** mientras nadie toque el
+  zoom: en una notebook entra entero. Tocar el zoom lo deja fijo.
+- **Ocultar tipos vacíos** en el calendario comercial.
+
 ## Las tres secciones
 
 **1. Calendario comercial.** Las acciones de marketing por tipo (Mega evento,
@@ -232,11 +287,14 @@ lib/calendario/catalogo.ts    las bandas, iguales para todos los meses
 lib/calendario/rejilla.ts     medidas y zoom
 lib/calendario/store.ts       estado, guardado cambio por cambio y la revisión cada 15 s
 lib/calendario/permisos.ts    quién puede qué, contra el usuario de la plataforma
+lib/mundos.ts                 los mundos: nombre, color, qué partes tiene cada uno y el nombre de la plataforma
 lib/calendario/seed.ts        el muestreo de los Excel (hoy solo se usan los nombres de las bandas)
 lib/calendario/colores.ts     paleta y contraste
 lib/calendario/fechas.ts      meses, días de la semana, findes, y las cuentas con fechas reales
-components/calendario/        las 9 pantallas
+components/calendario/        las pantallas (VistaLista y BloqueTareas son del 12/11/2026)
 app/(dashboard)/calendario/   la página
+app/(dashboard)/mundos/       el selector de mundos
+app/(dashboard)/mis-tareas/   lo que cada uno tiene asignado
 ```
 
 `derivar.ts` y `rejilla.ts` no dependen de React ni de zustand a propósito: son
@@ -258,8 +316,16 @@ reescribirlas con otro runner. Del lado del backend,
 
 ## Lo que falta
 
-- **Subtareas por pieza** (arte desktop, arte mobile, aprobación comercial) y
-  responsable con vencimiento. Hoy el modelo llega hasta acción → pieza.
+- **Los tipos de acción reales de Redexpres, Tienda Express, Tienda Viajes y
+  Tienda Farma.** Hoy arrancan con una lista genérica.
+- **Cargar los calendarios en Excel de los otros mundos.** El de Tienda Inglesa
+  ya está; el de Redexpres y el cronograma de push, mails y WhatsApp (que
+  incluye Tienda Viajes) siguen en sus planillas.
+- **Ligar una tarea a una pieza.** Las tareas cuelgan de la acción; todavía no
+  se puede decir "esta tarea es el arte de este header".
+- **Editar el título de una tarea ya creada** y arrastrarlas para ordenarlas.
+- **Los avisos configurados no miran el mundo**: se le puede avisar solo a
+  quien abre ese mundo, pero si después se lo sacan, el aviso le llega igual.
 - **Permisos por calendario.** Hoy hay tres permisos que valen para los cuatro
   calendarios juntos (`calendario.view`, `calendario.edit`,
   `calendario.retail_media`): quien puede ver, ve los cuatro. Lo pedido es ver,

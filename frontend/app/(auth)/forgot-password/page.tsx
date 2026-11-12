@@ -32,7 +32,7 @@ export default function ForgotPasswordPage() {
           <div className="w-8 h-8 rounded-xl bg-brand-500 flex items-center justify-center">
             <BarChart3 size={16} className="text-white" />
           </div>
-          <span className="font-bold text-slate-800">MKTG Platform</span>
+          <span className="font-bold text-slate-800">Core Tienda</span>
         </div>
 
         {sent ? (

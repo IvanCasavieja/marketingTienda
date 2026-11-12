@@ -1947,11 +1947,24 @@ type CalendarioEscrito = { id?: string; rev?: number; yaExistia?: boolean };
  */
 export const calendarioApi = {
   /** Todo el calendario, o `sinCambios` si sigue en la revisión `rev`. */
-  traerDatos: (rev?: number | null) =>
-    api.get<{ rev: number; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]> }>(
-      "/calendario/datos", { params: rev == null ? {} : { rev } }),
-  /** A quién se le puede mandar un aviso. */
-  personas: () => api.get<{ id: number; nombre: string }[]>("/calendario/personas"),
+  traerDatos: (mundo: string, rev?: number | null) =>
+    api.get<{ rev: number; mundo?: string; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]> }>(
+      "/calendario/datos", { params: rev == null ? { mundo } : { mundo, rev } }),
+  /** A quién se le puede mandar un aviso o asignar una tarea en ese mundo. */
+  personas: (mundo: string) =>
+    api.get<{ id: number; nombre: string }[]>("/calendario/personas", { params: { mundo } }),
+
+  crearTarea: (barraId: string, tarea: unknown) =>
+    api.post<CalendarioEscrito & { avisados?: number }>(
+      `/calendario/barras/${encodeURIComponent(barraId)}/tareas`, tarea),
+  cambiarTarea: (id: string, cambios: unknown) =>
+    api.patch<CalendarioEscrito & { avisados?: number }>(`/calendario/tareas/${encodeURIComponent(id)}`, cambios),
+  borrarTarea: (id: string) => api.delete<CalendarioEscrito>(`/calendario/tareas/${encodeURIComponent(id)}`),
+  /** Lo que tengo asignado, en todos mis mundos, con la acción de cada tarea. */
+  misTareas: () => api.get<any[]>("/calendario/mis-tareas"),
+  /** En qué mundo está una acción (para abrir su ficha desde un aviso). */
+  ubicar: (barraId: string) =>
+    api.get<{ id: string; mundo: string; desde: string }>(`/calendario/ubicar/${encodeURIComponent(barraId)}`),
 
   crearBarra: (barra: unknown) => api.post<CalendarioEscrito>("/calendario/barras", barra),
   cambiarBarra: (id: string, cambios: unknown) =>

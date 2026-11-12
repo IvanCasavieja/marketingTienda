@@ -12,6 +12,14 @@ import type { Barra, Mes } from '@/lib/calendario/tipos'
 
 export { ANCHO_ETIQUETA }
 
+/**
+ * Alto de cada renglón. Era 30, con la letra en 11px: en una notebook había
+ * que acercarse a la pantalla para leer el nombre de una acción (pedido de
+ * Ivan, 12/11/2026: "tarjetas más grandes", pensadas para las notebooks y no
+ * para un monitor de 27 pulgadas).
+ */
+export const ALTO_FILA = 38
+
 /** Ancho total de la rejilla al zoom actual. */
 export function useAnchoTotal(dias: number) {
   const zoom = useCalendario(s => s.zoom)
@@ -42,9 +50,9 @@ export function CabeceraDias({ mes, hoy, titulo }: { mes: Mes; hoy: number | nul
   const conNumero = zoom >= MINIMO_CON_NUMERO
 
   return (
-    <div className="sticky top-0 z-30 flex border-b border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900">
+    <div className="sticky top-0 z-30 flex border-b border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-900">
       <div
-        className="sticky left-0 z-40 flex shrink-0 items-end border-r border-slate-300 bg-white px-3 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400"
+        className="sticky left-0 z-40 flex shrink-0 items-end border-r border-slate-200 bg-white px-4 pb-2 pt-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400"
         style={{ width: ANCHO_ETIQUETA }}
       >
         {titulo}
@@ -59,21 +67,21 @@ export function CabeceraDias({ mes, hoy, titulo }: { mes: Mes; hoy: number | nul
               style={{ gridColumn: d, gridRow: 1 }}
               title={`${mes.dow[String(d)]} ${d}`}
               className={[
-                'overflow-hidden border-r border-slate-200 px-0.5 pb-1 pt-2 text-center dark:border-slate-700',
-                finde ? 'bg-slate-100 dark:bg-slate-800' : '',
-                esHoy ? 'bg-sky-100 dark:bg-sky-900/40' : '',
+                'overflow-hidden border-r border-slate-100 px-0.5 pb-1.5 pt-2.5 text-center dark:border-slate-700',
+                finde ? 'bg-slate-50 dark:bg-slate-800' : '',
+                esHoy ? 'bg-brand-100 dark:bg-sky-900/40' : '',
               ].join(' ')}
             >
               {conDow && (
-                <div className="text-[10px] uppercase leading-none text-slate-400 dark:text-slate-500">
+                <div className="text-[11px] uppercase leading-none text-slate-400 dark:text-slate-500">
                   {mes.dow[String(d)]}
                 </div>
               )}
               <div
                 className={[
                   conDow ? 'mt-0.5' : '',
-                  'text-xs font-semibold leading-none',
-                  esHoy ? 'text-sky-700 dark:text-sky-300'
+                  'text-[13px] font-semibold leading-none',
+                  esHoy ? 'text-brand-700 dark:text-sky-300'
                     : finde ? 'text-slate-500 dark:text-slate-400'
                       : 'text-slate-700 dark:text-slate-300',
                 ].join(' ')}
@@ -105,6 +113,8 @@ type FilaProps = {
   /** Tooltip propio. Sin esto se arma uno con el nombre y el rango de días,
    *  que en una barra de un solo día (un envío) no dice nada. */
   tituloDe?: (b: Barra) => string
+  /** Un dato corto pegado a la derecha de la barra: "2/5" tareas hechas. */
+  detalleDe?: (b: Barra) => string | null
 }
 
 /** "Fiesta · del 25 de setiembre al 5 de octubre · sigue en octubre" */
@@ -117,9 +127,10 @@ function tituloPorDefecto(b: Barra, derivada: boolean): string {
 }
 
 export function FilaRejilla({
-  mes, fila, hoy, alto = 30, editable, onBarra, onDiaVacio, esDerivada, tituloDe,
+  mes, fila, hoy, alto = ALTO_FILA, editable, onBarra, onDiaVacio, esDerivada, tituloDe, detalleDe,
 }: FilaProps) {
   const franja = useFranja(mes.dias)
+  const zoom = useCalendario(s => s.zoom)
   const ocupado = new Set<number>()
   fila.forEach(b => { for (let d = b.desde; d <= b.hasta; d++) ocupado.add(d) })
 
@@ -138,7 +149,7 @@ export function FilaRejilla({
             className={[
               'border-r border-slate-100 dark:border-slate-800',
               esFinde(mes.clave, d) ? 'bg-slate-50 dark:bg-slate-800/40' : '',
-              d === hoy ? 'bg-sky-50 dark:bg-sky-950/40' : '',
+              d === hoy ? 'bg-brand-50 dark:bg-sky-950/40' : '',
               libre && editable && onDiaVacio ? 'cursor-cell hover:bg-emerald-50 dark:hover:bg-emerald-950/40' : '',
             ].join(' ')}
           />
@@ -150,6 +161,9 @@ export function FilaRejilla({
         // Una barra derivada no se edita acá, pero sigue siendo clicable: lleva
         // a donde sí se edita (el calendario de retail o la ficha de la acción).
         const clicable = !!onBarra && (editable || derivada)
+        // El dato extra solo entra en una barra con lugar: en una angosta le
+        // comía el nombre ("Ci… 0/1").
+        const detalle = (b.hasta - b.desde + 1) * zoom >= 130 ? detalleDe?.(b) : null
         return (
           <button
             key={b.id}
@@ -164,19 +178,22 @@ export function FilaRejilla({
               color: textoSobre(b.color),
             }}
             className={[
-              'relative z-10 my-[2px] flex items-center gap-0.5 overflow-hidden rounded px-1.5 text-left text-[11px] font-medium leading-[26px]',
-              'ring-1 ring-black/5',
+              'relative z-10 my-[3px] flex items-center gap-1 overflow-hidden rounded-md px-2 text-left text-[13px] font-semibold leading-8',
+              'shadow-sm ring-1 ring-black/5 transition',
               // Una barra que viene del mes anterior o sigue en el próximo
               // llega al borde sin redondear y con una flecha: se ve que no
               // termina acá.
               b.vieneDeAntes ? 'ml-0 rounded-l-none pl-0.5' : 'ml-[2px]',
               b.sigueDespues ? 'mr-0 rounded-r-none pr-0.5' : 'mr-[2px]',
-              clicable ? 'cursor-pointer hover:ring-2 hover:ring-slate-900/30' : 'cursor-default',
+              clicable ? 'cursor-pointer hover:brightness-95 hover:ring-2 hover:ring-slate-900/25' : 'cursor-default',
               derivada ? 'border-l-[3px] border-l-slate-900/40' : '',
             ].join(' ')}
           >
             {b.vieneDeAntes && <ChevronLeft className="h-3 w-3 shrink-0 opacity-60" aria-hidden />}
             <span className="min-w-0 flex-1 truncate">{b.nombre}</span>
+            {detalle && (
+              <span className="shrink-0 rounded bg-black/10 px-1 text-[10px] font-bold leading-4 tabular-nums">{detalle}</span>
+            )}
             {b.sigueDespues && <ChevronRight className="h-3 w-3 shrink-0 opacity-60" aria-hidden />}
           </button>
         )
@@ -204,23 +221,28 @@ export function EtiquetaBanda({
   const fondo =
     tono === 'rm' ? 'bg-violet-50 text-violet-900 dark:bg-violet-950/40 dark:text-violet-200'
       : tono === 'grupo' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-        : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-300'
+        : 'bg-white text-slate-800 dark:bg-slate-900 dark:text-slate-300'
   return (
     <div
-      className={`sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-0.5 border-b border-r border-slate-200 px-3 py-1 dark:border-slate-700 ${fondo}`}
-      style={{ width: ANCHO_ETIQUETA, minHeight: filas * 30 }}
+      className={`sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-0.5 border-b border-r border-slate-200 px-4 py-1 dark:border-slate-700 ${fondo}`}
+      style={{ width: ANCHO_ETIQUETA, minHeight: filas * ALTO_FILA }}
     >
       <div className="flex items-start gap-1">
-        <div className="min-w-0 flex-1 text-[11px] font-semibold leading-tight">{children}</div>
+        <div
+          className="line-clamp-2 min-w-0 flex-1 text-[12.5px] font-semibold leading-tight"
+          title={typeof children === 'string' ? children : undefined}
+        >
+          {children}
+        </div>
         {onAgregar && (
           <button
             type="button"
             onClick={onAgregar}
             title={tituloAgregar}
             aria-label={tituloAgregar}
-            className="shrink-0 rounded p-0.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-800 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+            className="shrink-0 rounded-md p-1 text-slate-400 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-100"
           >
-            <Plus className="h-3 w-3" />
+            <Plus className="h-4 w-4" />
           </button>
         )}
       </div>

@@ -95,7 +95,7 @@ export default function HomePage() {
 
           <div>
             <p className="text-xs font-semibold text-brand-500 uppercase tracking-widest mb-1">
-              {"MKTG Platform"}
+              {"Core Tienda"}
             </p>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
               {firstName ? t("home.greeting", { name: firstName }) : t("home.greetingNoName")} {t("home.waveEmoji")}

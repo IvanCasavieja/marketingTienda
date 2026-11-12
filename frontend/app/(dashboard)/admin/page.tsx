@@ -1,4 +1,5 @@
 "use client";
+import { MUNDOS } from "@/lib/mundos";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
@@ -31,6 +32,8 @@ interface AdminUser {
   role_id: number | null;
   role_name: string | null;
   permissions: string[];
+  /** Los calendarios que puede abrir: claves de lib/mundos.ts. */
+  mundos?: string[];
   is_active: boolean;
   is_superuser: boolean;
   created_at: string | null;
@@ -82,7 +85,16 @@ function UserEditorModal({
   const [fullName, setFullName] = useState(user.full_name);
   const [email,    setEmail]    = useState(user.email);
   const [selected, setSelected] = useState<Set<string>>(new Set(user.permissions));
+  const [mundos,   setMundos]   = useState<Set<string>>(new Set(user.mundos ?? []));
   const [saving,   setSaving]   = useState(false);
+
+  function toggleMundo(clave: string) {
+    setMundos((prev) => {
+      const next = new Set(prev);
+      next.has(clave) ? next.delete(clave) : next.add(clave);
+      return next;
+    });
+  }
 
   const role     = allRoles.find((r) => r.id === user.role_id) ?? null;
   const viewOnly = role?.view_only ?? false;
@@ -117,6 +129,12 @@ function UserEditorModal({
     setSaving(true);
     try {
       await api.patch(`/admin/users/${user.id}`, esSucursal ? { full_name: fullName } : { full_name: fullName, email });
+      // Los mundos van antes que los permisos: uno se los puede cambiar a sí
+      // mismo, y los permisos propios no (el servidor lo rechaza y corta acá).
+      const mundosAntes = new Set(user.mundos ?? []);
+      if (mundos.size !== mundosAntes.size || [...mundos].some((m) => !mundosAntes.has(m))) {
+        await api.patch(`/admin/users/${user.id}/mundos`, { mundos: [...mundos] });
+      }
       try {
         await api.patch(`/admin/users/${user.id}/permissions`, { permissions: [...selected] });
       } catch (err: any) {
@@ -170,6 +188,38 @@ function UserEditorModal({
               {esSucursal && (
                 <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">{t("admin.userEditor.sucursalSinMail")}</p>
               )}
+            </div>
+          </div>
+
+          {/* Mundos: qué calendarios puede abrir. Con uno solo entra derecho a
+              ese; con varios, elige al entrar. */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Mundos</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
+              {user.is_superuser
+                ? "Un Super Admin abre todos los mundos, estén tildados o no."
+                : "Los calendarios que puede abrir. Con uno solo entra directo; con varios, elige al entrar. Además necesita el permiso de ver el calendario."}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {MUNDOS.map((m) => {
+                const activo = mundos.has(m.clave);
+                return (
+                  <button
+                    key={m.clave}
+                    type="button"
+                    onClick={() => toggleMundo(m.clave)}
+                    aria-pressed={activo}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                      activo
+                        ? "border-brand-500 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
+                        : "border-slate-200 text-slate-500 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400"
+                    }`}
+                  >
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: m.color, opacity: activo ? 1 : 0.35 }} />
+                    {m.nombre}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

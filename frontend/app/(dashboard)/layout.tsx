@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useCurrentUserStore } from "@/store/currentUser";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
-import { Menu, BarChart3, ShieldAlert } from "lucide-react";
+import { Menu, CalendarDays, ShieldAlert } from "lucide-react";
+import { MARCA } from "@/lib/mundos";
 import { useTranslation } from "react-i18next";
 
 const Sidebar = dynamic(() => import("@/components/layout/Sidebar"), { ssr: false });
@@ -16,6 +17,7 @@ const ClientOnly = dynamic(() => import("@/components/ClientOnly"), { ssr: false
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { t } = useTranslation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // No hay middleware server-side posible acá: el token vive en localStorage
@@ -76,29 +78,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
+  // Elegir el mundo es una pantalla entera, sin menú: todavía no se está en
+  // ningún lado.
+  if (pathname === "/mundos") {
+    return (
+      <div className="min-h-screen bg-slate-50 px-4 dark:bg-slate-950 sm:px-8">
+        <ErrorBoundary>
+          <ClientOnly>{children}</ClientOnly>
+        </ErrorBoundary>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile top bar */}
-        <header className="md:hidden flex items-center gap-3 px-4 py-3 bg-navy-900 border-b border-white/5 shrink-0">
+        <header className="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 dark:bg-navy-900 dark:border-white/5 shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-1.5 text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
             aria-label={t("common.openMenu")}
           >
             <Menu size={20} />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-brand-500 flex items-center justify-center shrink-0">
-              <BarChart3 size={14} className="text-white" />
+            <div className="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center shrink-0">
+              <CalendarDays size={14} className="text-white" />
             </div>
-            <p className="text-white font-bold text-sm">MKTG Platform</p>
+            <p className="text-slate-900 dark:text-white font-bold text-sm">{MARCA}</p>
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto">
+        <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-auto">
           <ErrorBoundary>
             <ClientOnly>{children}</ClientOnly>
           </ErrorBoundary>

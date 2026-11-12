@@ -8,7 +8,7 @@ import ThemeProvider from "@/components/ThemeProvider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "MKTG Platform",
+  title: "Core Tienda",
   description: "Marketing Intelligence Platform",
 };
 

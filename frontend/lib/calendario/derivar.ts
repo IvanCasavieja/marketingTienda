@@ -268,6 +268,9 @@ export function construirMes(
   barras: BarraGuardada[],
   posicionesRM: Record<string, number[]> = {},
   header: HeaderDerivado = derivarHeaders(barras, posicionesRM),
+  /** Los tipos de accion del mundo que se mira. Sin esto, los de Tienda Inglesa. */
+  catalogos: { comercial: BandaCatalogo[]; retail: BandaCatalogo[] } =
+    { comercial: BANDAS_COMERCIAL, retail: BANDAS_RETAIL },
 ): Mes {
   const ini = primerDiaDe(clave)
   const fin = ultimoDiaDe(clave)
@@ -296,8 +299,8 @@ export function construirMes(
     clave,
     dias: diasDelMes(clave),
     dow: dowDelMes(clave),
-    comercial: bandasDe(clave, BANDAS_COMERCIAL, delMes.filter(b => b.seccion === 'comercial')),
-    retail: bandasDe(clave, BANDAS_RETAIL, delMes.filter(b => b.seccion === 'retail')),
+    comercial: bandasDe(clave, catalogos.comercial, delMes.filter(b => b.seccion === 'comercial')),
+    retail: bandasDe(clave, catalogos.retail, delMes.filter(b => b.seccion === 'retail')),
     header: posiciones,
     posicionesRM: posicionesDe(posicionesRM, clave),
     sinLugar,
@@ -381,11 +384,14 @@ export function vistaDelMes(
   clave: string,
   barras: Record<string, BarraGuardada>,
   posicionesRM: Record<string, number[]>,
+  /** Los tipos de accion del mundo. Cambiar de mundo cambia `barras`, y
+   *  con eso se olvida lo armado: no hace falta guardarlos en la memoria. */
+  catalogos?: { comercial: BandaCatalogo[]; retail: BandaCatalogo[] },
 ): Mes {
   const header = alDia(barras, posicionesRM)
   const hecho = memoria.meses.get(clave)
   if (hecho) return hecho
-  const mes = construirMes(clave, memoria.lista, posicionesRM, header)
+  const mes = construirMes(clave, memoria.lista, posicionesRM, header, catalogos)
   memoria.meses.set(clave, mes)
   return mes
 }

@@ -7,6 +7,7 @@ import {
   BarChart3, ChevronRight, Presentation, Globe, ShieldCheck, HelpCircle, X, Tag,
   Sun, Moon, ClipboardList, Bell, Star, Activity, TrendingUp, TrendingDown, AlertTriangle, Check,
   FileSpreadsheet, BookOpen, Receipt, Landmark, ScanSearch, CalendarDays,
+  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
@@ -17,6 +18,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
 import { toast } from "sonner";
+import { MARCA, MARCA_BAJADA, mundoEfectivo, mundosDe, useMundoElegido } from "@/lib/mundos";
 
 // Los flags de country-flag-icons devuelven emoji de bandera regional, que
 // Windows no renderiza como imagen (muestra el codigo de pais en texto) —
@@ -82,6 +84,11 @@ function resolverDestino(n: Notificacion): string | null {
     return accion ? `/calendario?accion=${encodeURIComponent(accion)}` : "/calendario";
   }
   if (n.origen_tipo === "calendario_header") return "/calendario";
+  // Una tarea asignada (o terminada) abre la ficha de su acción, que puede
+  // ser de otro mundo: la página del calendario se encarga de pasar a ese.
+  if (n.origen_tipo === "calendario_tarea" && n.origen_ref) {
+    return `/calendario?accion=${encodeURIComponent(n.origen_ref.split(":")[0])}`;
+  }
   return null;
 }
 
@@ -98,17 +105,24 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   const hasPerm = (p: string) => hasPermission(currentUser, p);
 
-  // perm: undefined = visible para cualquier usuario logueado.
-  // Cada valor corresponde 1:1 a un permiso realmente exigido por el backend
-  // (ver require_permission en las rutas) — si no lo tiene, ni se muestra el link.
-  // El orden de esta lista ES el orden del menú (las secciones salen en el
-  // orden en que aparece su primer link). Calendario arriba de todo y
-  // Materiales segundo: pedido de Ivan el 23/09/2026.
-  // El orden de esta lista ES el orden del menú (cada sección sale donde
-  // aparece su primer link). Lo fijó Ivan el 23/09/2026: calendario, cenefas,
+  // El núcleo de la plataforma es el calendario y las tareas (pedido de Ivan,
+  // 12/11/2026: "nuestro core va a ser la calendarización", y todo lo demás
+  // "van a pasar a ser herramientas secundarias"). Por eso el menú tiene dos
+  // partes: arriba el núcleo, siempre a la vista, y abajo las herramientas,
+  // que se pliegan.
+  //
+  // perm: undefined = visible para cualquier usuario logueado. Cada valor
+  // corresponde 1:1 a un permiso realmente exigido por el backend (ver
+  // require_permission en las rutas) — si no lo tiene, ni se muestra el link.
+  const nucleo = [
+    { href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" },
+    { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
+  ].filter((item) => hasPerm(item.perm));
+
+  // El orden de esta lista ES el orden de las herramientas (cada sección sale
+  // donde aparece su primer link). Lo fijó Ivan el 23/09/2026: cenefas,
   // validación de RRSS, medios, redexpres, facturación y después el resto.
-  const navAll = [
-    { href: "/calendario",              label: t("sidebar.calendario"), icon: CalendarDays, section: t("sidebar.calendarioSeccion"), perm: "calendario.view" },
+  const herramientasAll = [
     { href: "/materiales/cenefas",      label: t("sidebar.cenefas"),   icon: Presentation,    section: t("sidebar.materiales"),     perm: "cenefas.view" },
     { href: "/materiales/convertidor",  label: t("sidebar.convertidor"), icon: FileSpreadsheet, section: t("sidebar.materiales"),   perm: "cenefas.view" },
     { href: "/materiales/diccionario",  label: t("sidebar.diccionario"), icon: BookOpen,      section: t("sidebar.materiales"),     perm: "cenefas.diccionario" },
@@ -132,10 +146,30 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     ...(hasPermission(currentUser, "platform.admin")
       ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]
       : []),
+    { href: "/home",                    label: t("sidebar.asistente", "Don Tino, el asistente"), icon: MessageCircle, section: t("sidebar.guia"), perm: "ai.don_tino" },
     { href: "/ayuda",                   label: t("sidebar.guiaUso"),   icon: HelpCircle,      section: t("sidebar.guia") },
   ];
 
-  const nav = navAll.filter((item) => !item.perm || hasPerm(item.perm));
+  const nav = herramientasAll.filter((item) => !item.perm || hasPerm(item.perm));
+
+  // Las herramientas arrancan plegadas, salvo que se esté parado en una. Lo
+  // que la persona elija se recuerda en este navegador.
+  const enHerramienta = nav.some((n) => pathname === n.href || pathname.startsWith(n.href + "/"));
+  const [herramientasAbiertas, setHerramientasAbiertas] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const guardado = localStorage.getItem("core-tienda-herramientas");
+    return guardado === null ? nucleo.length === 0 : guardado === "1";
+  });
+  const verHerramientas = herramientasAbiertas || enHerramienta || nucleo.length === 0;
+  function alternarHerramientas() {
+    const abiertas = !verHerramientas;
+    setHerramientasAbiertas(abiertas);
+    localStorage.setItem("core-tienda-herramientas", abiertas ? "1" : "0");
+  }
+
+  const elegido = useMundoElegido((st) => st.elegido);
+  const mundo = mundoEfectivo(currentUser, elegido);
+  const variosMundos = mundosDe(currentUser).length > 1;
 
   useEffect(() => {
     watchlistApi.notificacionesNoLeidasCount()
@@ -205,7 +239,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   }
 
   const { theme, toggle: toggleTheme } = useTheme();
-  const tenantLabel = "MKTG Platform";
   const currentLang = LANGUAGES.find((l) => l.code === i18n.language) ?? LANGUAGES[0];
   const CurrentFlag = FLAG_ICONS[currentLang.country];
 
@@ -220,7 +253,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       )}
 
       <aside className={clsx(
-        "w-64 bg-navy-900 flex flex-col shrink-0 z-50",
+        // Claro en tema claro (pedido de Ivan, 12/11/2026: "necesitamos
+        // aclarar. No oscurecer más"); el navy de antes queda para el oscuro.
+        "w-64 flex flex-col shrink-0 z-50 border-r border-slate-200 bg-white dark:border-white/5 dark:bg-navy-900",
         // Desktop: always visible, relative positioning
         "md:relative md:translate-x-0 md:min-h-screen",
         // Mobile: fixed overlay, slides in/out
@@ -228,58 +263,118 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
         {/* Logo */}
-        <Link href="/home" onClick={handleNavClick} className="px-5 pt-6 pb-5 flex items-center gap-3 group">
-          <div className="w-8 h-8 rounded-xl bg-brand-500 flex items-center justify-center shrink-0 group-hover:bg-brand-400 transition-colors">
-            <BarChart3 size={16} className="text-white" />
+        <Link href={nucleo.length ? "/calendario" : "/home"} onClick={handleNavClick} className="px-5 pt-5 pb-4 flex items-center gap-3 group">
+          <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center shrink-0 group-hover:bg-brand-500 transition-colors">
+            <CalendarDays size={18} className="text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white font-bold text-sm leading-none">MKTG Platform</p>
-            <p className="text-slate-500 text-[11px] mt-0.5 truncate" title={tenantLabel}>
-              {tenantLabel}
-            </p>
+            <p className="text-slate-900 dark:text-white font-bold text-[15px] leading-none">{MARCA}</p>
+            <p className="text-slate-500 text-xs mt-1 truncate">{MARCA_BAJADA}</p>
           </div>
           {/* Close button — mobile only */}
           <button
             onClick={(e) => { e.preventDefault(); onClose?.(); }}
-            className="md:hidden p-1 text-slate-500 hover:text-slate-300 transition-colors"
+            className="md:hidden p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 transition-colors"
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </Link>
 
-        <div className="mx-4 h-px bg-white/5 mb-3" />
+        {/* En qué mundo se está. Con más de uno, es también el botón para cambiar. */}
+        {mundo && nucleo.length > 0 && (
+          variosMundos ? (
+            <Link
+              href="/mundos"
+              onClick={handleNavClick}
+              title="Cambiar de mundo"
+              className="mx-3 mb-2 flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 transition hover:border-brand-300 hover:bg-brand-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            >
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: mundo.color }} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Mundo</span>
+                <span className="block truncate text-sm font-bold text-slate-900 dark:text-slate-100">{mundo.nombre}</span>
+              </span>
+              <ArrowLeftRight size={15} className="shrink-0 text-slate-400" />
+            </Link>
+          ) : (
+            <div className="mx-3 mb-2 flex items-center gap-2.5 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-white/5">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: mundo.color }} />
+              <span className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{mundo.nombre}</span>
+            </div>
+          )
+        )}
 
         {/* Main nav */}
-        <nav className="px-3 flex-1 space-y-0.5 overflow-y-auto">
-          {nav.map(({ href, label, icon: Icon, section }, i) => {
-            const active = pathname === href ||
-              (pathname.startsWith(href + "/") && !nav.some(n => n.href !== href && pathname.startsWith(n.href)));
-            const prevSection = i > 0 ? nav[i - 1].section : undefined;
-            const showLabel = section !== prevSection;
-            return (
-              <div key={href}>
-                {showLabel && (
-                  <p className="px-3 pt-4 pb-1.5 text-[10px] font-semibold text-slate-600 uppercase tracking-widest">
-                    {section}
-                  </p>
-                )}
-                <Link href={href} onClick={handleNavClick}
+        <nav className="px-3 flex-1 overflow-y-auto pb-2">
+          {/* El núcleo: calendario y tareas */}
+          <div className="space-y-1 pt-1">
+            {nucleo.map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || pathname.startsWith(href + "/");
+              return (
+                <Link key={href} href={href} onClick={handleNavClick}
                   className={clsx(
-                    "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
+                    "group flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-semibold transition-all duration-150",
                     active
                       ? "bg-brand-600 text-white shadow-glow"
-                      : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                      : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5"
                   )}>
-                  <Icon size={17} className={active ? "text-white" : "text-slate-500 group-hover:text-slate-300"} />
+                  <Icon size={19} className={active ? "text-white" : "text-brand-600 dark:text-brand-400"} />
                   <span className="flex-1 truncate">{label}</span>
-                  {active && <ChevronRight size={14} className="text-white/60 shrink-0" />}
                 </Link>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+
+          {/* Las herramientas: todo lo demás, plegable */}
+          {nav.length > 0 && (
+            <>
+              {nucleo.length > 0 && (
+                <button
+                  type="button"
+                  onClick={alternarHerramientas}
+                  aria-expanded={verHerramientas}
+                  className="mt-4 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/5 dark:hover:text-slate-200"
+                >
+                  <Wrench size={14} />
+                  <span className="flex-1 text-left">{t("sidebar.herramientas", "Herramientas")}</span>
+                  <ChevronDown size={15} className={clsx("transition-transform", verHerramientas ? "" : "-rotate-90")} />
+                </button>
+              )}
+              {verHerramientas && (
+                <div className="space-y-0.5">
+                  {nav.map(({ href, label, icon: Icon, section }, i) => {
+                    const active = pathname === href ||
+                      (pathname.startsWith(href + "/") && !nav.some(n => n.href !== href && pathname.startsWith(n.href)));
+                    const prevSection = i > 0 ? nav[i - 1].section : undefined;
+                    const showLabel = section !== prevSection;
+                    return (
+                      <div key={href}>
+                        {showLabel && (
+                          <p className="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-400 dark:text-slate-600 uppercase tracking-widest">
+                            {section}
+                          </p>
+                        )}
+                        <Link href={href} onClick={handleNavClick}
+                          className={clsx(
+                            "group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150",
+                            active
+                              ? "bg-brand-50 text-brand-700 dark:bg-brand-600 dark:text-white"
+                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200"
+                          )}>
+                          <Icon size={16} className={active ? "text-brand-600 dark:text-white" : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300"} />
+                          <span className="flex-1 truncate">{label}</span>
+                          {active && <ChevronRight size={14} className="text-brand-400 dark:text-white/60 shrink-0" />}
+                        </Link>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
         </nav>
 
-        <div className="mx-4 h-px bg-white/5 mb-3" />
+        <div className="mx-4 h-px bg-slate-200 dark:bg-white/5 mb-3" />
 
         {/* Perfil + notificaciones */}
         <div className="px-3 pb-2 flex items-center gap-1.5 relative">
@@ -287,9 +382,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             href="/perfil"
             onClick={handleNavClick}
             className="group flex items-center gap-2.5 flex-1 min-w-0 px-3 py-2 rounded-xl
-                       text-slate-400 hover:bg-white/5 hover:text-slate-200 transition-all duration-150"
+                       text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200 transition-all duration-150"
           >
-            <div className="w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 flex items-center justify-center text-[11px] font-bold shrink-0 group-hover:bg-brand-600/50">
+            <div className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 dark:bg-brand-600/30 dark:text-brand-300 flex items-center justify-center text-[11px] font-bold shrink-0 dark:group-hover:bg-brand-600/50">
               {currentUser?.full_name?.charAt(0).toUpperCase() ?? "?"}
             </div>
             <span className="flex-1 min-w-0 truncate text-xs font-medium">
@@ -301,7 +396,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             onClick={abrirNotificaciones}
             aria-label={t("sidebar.notificaciones")}
             title={t("sidebar.notificaciones")}
-            className="relative p-2 rounded-xl text-slate-500 hover:bg-white/5 hover:text-slate-300 transition-all duration-150 shrink-0"
+            className="relative p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/5 dark:hover:text-slate-300 transition-all duration-150 shrink-0"
           >
             <Bell size={16} />
             {notifCount > 0 && (
@@ -374,7 +469,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           <button
             onClick={() => setShowLangMenu((v) => !v)}
             className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-sm text-slate-500
-                       hover:bg-white/5 hover:text-slate-300 transition-all duration-150">
+                       hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/5 dark:hover:text-slate-300 transition-all duration-150">
             <Globe size={15} className="shrink-0" />
             <span className="flex-1 flex items-center gap-1.5 text-left text-xs">
               <CurrentFlag className="w-4 h-auto rounded-[2px] shrink-0" />
@@ -382,7 +477,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             </span>
           </button>
           {showLangMenu && (
-            <div className="absolute bottom-full left-3 right-3 mb-1 bg-slate-800 border border-white/10 rounded-xl overflow-hidden shadow-lg z-50">
+            <div className="absolute bottom-full left-3 right-3 mb-1 bg-white border border-slate-200 dark:bg-slate-800 dark:border-white/10 rounded-xl overflow-hidden shadow-lg z-50">
               {LANGUAGES.map((lang) => {
                 const Flag = FLAG_ICONS[lang.country];
                 return (
@@ -393,7 +488,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                     "w-full flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors",
                     i18n.language === lang.code
                       ? "bg-brand-600 text-white"
-                      : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200"
                   )}>
                   <Flag className="w-4 h-auto rounded-[2px] shrink-0" />
                   <span className="text-xs font-medium">{lang.label}</span>
@@ -409,7 +504,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           <button
             onClick={toggleTheme}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-slate-500
-                       hover:bg-white/5 hover:text-slate-300 transition-all duration-150"
+                       hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/5 dark:hover:text-slate-300 transition-all duration-150"
             aria-label={theme === "dark" ? t("sidebar.toggleToLight") : t("sidebar.toggleToDark")}
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
@@ -422,7 +517,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           <button
             onClick={() => authApi.logout().finally(() => { window.location.href = "/login"; })}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-slate-500
-                       hover:bg-white/5 hover:text-slate-300 transition-all duration-150">
+                       hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/5 dark:hover:text-slate-300 transition-all duration-150">
             <LogOut size={16} />
             {t("common.logout")}
           </button>

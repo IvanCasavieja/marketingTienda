@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Bell, Check, LayoutPanelTop, Pencil, Plus, X } from 'lucide-react'
+import { BloqueTareas } from './BloqueTareas'
 import { textoSobre } from '@/lib/calendario/colores'
 import { diasEntre, fechaCorta, hoyIso, rangoLargo, sumarDias } from '@/lib/calendario/fechas'
 import { useCalendario, useHeaderDerivado } from '@/lib/calendario/store'
@@ -47,9 +48,15 @@ export function PanelAccion() {
 
   const visible = Boolean(abierta && accionViva)
   const accion = visible ? accionViva : ultima
-  const { editable, user } = usePermisosCalendario()
+  const { editable, user, gestionaTareas } = usePermisosCalendario()
+
+  // Qué se mira de la ficha. Arranca en las tareas: es a lo que viene la
+  // mayoría (a ver qué le toca), y las piezas y los avisos quedan a un toque.
+  const [pestana, setPestana] = useState<'tareas' | 'piezas' | 'avisos'>('tareas')
+  useEffect(() => { setPestana('tareas') }, [abierta])
 
   const piezas = accion?.piezas ?? []
+  const tareas = accion?.tareas ?? []
   const publicadas = piezas.filter(p => p.estado === 'publicado').length
 
   // ¿En qué posición del header quedó esta acción? ¿O no entró? Se mira el
@@ -68,7 +75,7 @@ export function PanelAccion() {
         }`}
       />
       <aside
-        className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-[560px] flex-col bg-white dark:bg-slate-900 shadow-2xl transition-transform duration-300 ease-out ${
+        className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-[600px] flex-col bg-white dark:bg-slate-900 shadow-2xl transition-transform duration-300 ease-out ${
           visible ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -78,6 +85,7 @@ export function PanelAccion() {
             editable={editable}
             personas={personas}
             usuarioId={user?.id ?? null}
+            gestionaTareas={gestionaTareas}
             onCerrar={cerrar}
           />
         )}
@@ -89,9 +97,9 @@ export function PanelAccion() {
             >
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium uppercase tracking-wide opacity-70">{accion.banda}</p>
-                  <h2 className="mt-0.5 text-lg font-semibold leading-tight">{accion.nombre}</h2>
-                  <p className="mt-1 text-xs opacity-80">
+                  <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{accion.banda}</p>
+                  <h2 className="mt-1 text-2xl font-bold leading-tight">{accion.nombre}</h2>
+                  <p className="mt-1.5 text-sm opacity-80">
                     {rangoLargo(accion.desde, accion.hasta).replace(/^./, c => c.toUpperCase())}
                     {' · '}{diasEntre(accion.desde, accion.hasta) + 1} días
                   </p>
@@ -113,9 +121,9 @@ export function PanelAccion() {
                     carril: accion.carril,
                     barra: accion,
                   })}
-                  className="mt-3 flex items-center gap-1.5 rounded-lg bg-white/80 px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-white"
+                  className="mt-3 flex items-center gap-1.5 rounded-lg bg-white/85 px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-white"
                 >
-                  <Pencil className="h-3 w-3" /> Editar nombre, fechas y color
+                  <Pencil className="h-4 w-4" /> Editar nombre, fechas y color
                 </button>
               )}
             </header>
@@ -161,15 +169,53 @@ export function PanelAccion() {
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="flex shrink-0 gap-1 border-b border-slate-200 px-3 dark:border-slate-700" role="tablist">
+              {([
+                { id: 'tareas', nombre: 'Tareas', n: tareas.length },
+                { id: 'piezas', nombre: 'Piezas', n: piezas.length },
+                { id: 'avisos', nombre: 'Avisos', n: (accion.avisos ?? []).length },
+              ] as const).map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={pestana === t.id}
+                  onClick={() => setPestana(t.id)}
+                  className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-semibold transition ${
+                    pestana === t.id
+                      ? 'border-brand-600 text-brand-700 dark:text-brand-300'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {t.nombre}
+                  <span className={`rounded-full px-1.5 text-xs font-bold ${
+                    pestana === t.id ? 'bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-200' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'
+                  }`}>{t.n}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              {pestana === 'tareas' && (
+                <BloqueTareas
+                  accion={accion}
+                  personas={personas}
+                  usuarioId={user?.id ?? null}
+                  gestiona={gestionaTareas}
+                />
+              )}
+
+              {pestana === 'avisos' && (
               <BloqueAvisos
                 accion={accion}
                 editable={editable}
                 personas={personas}
                 usuarioId={user?.id ?? null}
               />
+              )}
 
-              <div className="mt-6 space-y-5">
+              {pestana === 'piezas' && (<>
+              <div className="space-y-5">
                 {CATALOGO_PIEZAS.map(area => (
                   <BloqueArea
                     key={area.area}
@@ -187,11 +233,11 @@ export function PanelAccion() {
                 ))}
               </div>
 
-              <p className="mt-6 rounded-lg bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+              <p className="mt-6 rounded-lg bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
                 Agregar <strong>Web · Home → Header</strong> baja la acción sola al calendario de
-                headers, igual que hace Retail Media con sus tres posiciones. Las subtareas por
-                pieza (arte desktop, arte mobile, aprobación comercial) vienen después.
+                headers, igual que hace Retail Media con sus tres posiciones.
               </p>
+              </>)}
             </div>
           </>
         )}
@@ -210,12 +256,13 @@ export function PanelAccion() {
  * avisos. No tiene áreas ni piezas: el envío ES la pieza.
  */
 function FichaEnvio({
-  envio, editable, personas, usuarioId, onCerrar,
+  envio, editable, personas, usuarioId, gestionaTareas, onCerrar,
 }: {
   envio: BarraGuardada
   editable: boolean
   personas: Persona[]
   usuarioId: number | null
+  gestionaTareas: boolean
   onCerrar: () => void
 }) {
   const abrirEditor = useCalendario(s => s.abrirEditor)
@@ -234,8 +281,8 @@ function FichaEnvio({
             <p className="text-[11px] font-medium uppercase tracking-wide opacity-70">
               {canal} · envío suelto
             </p>
-            <h2 className="mt-0.5 text-lg font-semibold leading-tight">{envio.nombre}</h2>
-            <p className="mt-1 text-xs opacity-80">
+            <h2 className="mt-1 text-2xl font-bold leading-tight">{envio.nombre}</h2>
+            <p className="mt-1.5 text-sm opacity-80">
               {envio.formato ? `${envio.formato} · ` : ''}
               Sale {rangoLargo(envio.desde, envio.desde)}{envio.hora ? ` a las ${envio.hora}` : ', sin hora todavía'}
             </p>
@@ -262,16 +309,17 @@ function FichaEnvio({
           disabled={!editable}
           aria-label="Estado del envío"
           onChange={e => cambiarEstado(envio.id, e.target.value as EstadoPieza)}
-          className={`appearance-none rounded-md border-0 px-1.5 py-0.5 text-[10px] font-semibold outline-none ${TONO_ESTADO[estado]} disabled:opacity-60`}
+          className={`appearance-none rounded-md border-0 px-2 py-1 text-xs font-semibold outline-none ${TONO_ESTADO[estado]} disabled:opacity-60`}
         >
           {ESTADOS.map(e => <option key={e} value={e}>{ETIQUETA_ESTADO[e]}</option>)}
         </select>
         {estado === 'publicado' && <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+        <BloqueTareas accion={envio} personas={personas} usuarioId={usuarioId} gestiona={gestionaTareas} />
         <BloqueAvisos accion={envio} editable={editable} personas={personas} usuarioId={usuarioId} />
-        <p className="mt-6 rounded-lg bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+        <p className="mt-6 rounded-lg bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
           Es un envío que no sale de ninguna acción. Los que sí son parte de una acción se cargan en
           la ficha de esa acción, en Email, WhatsApp o Push, y aparecen solos en el cronograma.
         </p>
@@ -329,16 +377,16 @@ function BloqueAvisos({
     <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
       <div className="mb-1 flex items-center gap-2">
         <Bell className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
-        <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Avisos</h3>
-        <span className="text-[10px] text-slate-400 dark:text-slate-500">{avisos.length || '—'}</span>
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Avisos</h3>
+        <span className="text-sm text-slate-400 dark:text-slate-500">{avisos.length || '—'}</span>
       </div>
-      <p className="mb-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+      <p className="mb-2 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
         Solo salen los avisos que se configuran acá. Le llegan a la campanita de cada persona elegida,
         los días antes de que {esEnvio ? 'salga el envío' : 'arranque la acción'} que se elijan.
       </p>
 
       {avisos.length === 0 ? (
-        <p className="text-xs text-slate-400 dark:text-slate-500">
+        <p className="text-sm text-slate-400 dark:text-slate-500">
           {esEnvio ? 'Este envío no tiene avisos.' : 'Esta acción no tiene avisos.'}
         </p>
       ) : (
@@ -436,13 +484,13 @@ function BloqueArea({
   return (
     <section>
       <div className="mb-2 flex items-center gap-2">
-        <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{titulo}</h3>
-        <span className="text-[10px] text-slate-400 dark:text-slate-500">{piezas.length || '—'}</span>
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">{titulo}</h3>
+        <span className="text-sm text-slate-400 dark:text-slate-500">{piezas.length || '—'}</span>
         <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
         {editable && disponibles.length > 0 && (
           <button
             onClick={() => setAgregando(v => !v)}
-            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
           >
             <Plus className="h-3 w-3" /> agregar
           </button>
@@ -455,7 +503,7 @@ function BloqueArea({
             <button
               key={f}
               onClick={() => { onAgregar(f); setAgregando(false) }}
-              className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+              className={`rounded-lg border px-2.5 py-1.5 text-sm font-medium transition ${
                 area === 'web-home' && f === 'Header'
                   ? 'border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/40 text-violet-800 dark:text-violet-200 hover:bg-violet-100 dark:hover:bg-violet-900/40'
                   : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -469,13 +517,13 @@ function BloqueArea({
       )}
 
       {piezas.length === 0 ? (
-        <p className="text-xs text-slate-400 dark:text-slate-500">Sin piezas en esta área.</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500">Sin piezas en esta área.</p>
       ) : (
         <ul className="space-y-1">
           {piezas.map(p => (
-            <li key={p.id} className="rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5">
+            <li key={p.id} className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5">
             <div className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-800 dark:text-slate-200">
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800 dark:text-slate-200">
                 {p.formato}
                 {esPiezaHeader(p) && (
                   <span className="ml-1.5 rounded bg-violet-100 dark:bg-violet-900/50 px-1 py-0.5 text-[9px] font-semibold uppercase text-violet-700 dark:text-violet-300">
@@ -490,7 +538,7 @@ function BloqueArea({
                 value={p.estado}
                 disabled={!editable}
                 onChange={e => onEstado(p.id, e.target.value as EstadoPieza)}
-                className={`appearance-none rounded-md border-0 px-1.5 py-0.5 text-[10px] font-semibold outline-none ${TONO_ESTADO[p.estado]} disabled:opacity-60`}
+                className={`appearance-none rounded-md border-0 px-2 py-1 text-xs font-semibold outline-none ${TONO_ESTADO[p.estado]} disabled:opacity-60`}
               >
                 {ESTADOS.map(e => (
                   <option key={e} value={e}>{ETIQUETA_ESTADO[e]}</option>

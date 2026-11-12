@@ -28,7 +28,7 @@
     "metaFixtureTooltip": "Sample data — the Meta Ads integration is paused, these aren't real numbers"
   },
   "sidebar": {
-    "mktgPlatform": "MKTG Platform",
+    "mktgPlatform": "Core Tienda",
     "medios": "MEDIA",
     "analyticsGa4": "Analytics GA4",
     "materiales": "MATERIALS",
@@ -142,7 +142,7 @@
     "assistantSubtitle": "Ask me about the platform",
     "inputPlaceholder": "Type your question...",
     "comingSoon": "Assistant with real AI · Powered by Claude Sonnet 5",
-    "assistantWelcome": "I'm Don Tino, your MKTG Platform assistant. I can guide you through the platform, explain features, and help you get the most out of it. How can I help you today?",
+    "assistantWelcome": "I'm Don Tino, your Core Tienda assistant. I can guide you through the platform, explain features, and help you get the most out of it. How can I help you today?",
     "suggestions": {
       "s1": "How do I sync Google Ads?",
       "s2": "How do I generate banners?",
@@ -1381,7 +1381,7 @@
   },
   "ayuda": {
     "title": "How does the platform work?",
-    "subtitle": "Everything you need to know to use MKTG Platform, based on what your account can see and do.",
+    "subtitle": "Everything you need to know to use Core Tienda, based on what your account can see and do.",
     "chips": {
       "analytics": "Analytics",
       "ia": "Built-in AI",
