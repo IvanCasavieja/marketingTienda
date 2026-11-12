@@ -32,14 +32,16 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await authApi.login(emailVal, passwordVal);
-      // El calendario es el centro de la plataforma: quien lo puede ver entra
-      // ahí (o al selector, si tiene más de un mundo). El resto —los logins de
-      // sucursal, por ejemplo— sigue entrando por donde entraba.
+      // Quien entra a más de un mundo primero elige en cuál va a trabajar.
+      // Quien entra a uno solo va derecho: al calendario, que es el centro de
+      // la plataforma, o a donde entraba antes si no lo puede ver (los logins
+      // de sucursal, por ejemplo).
       let destino = "/home";
       try {
         const { data } = await authApi.me();
         const ve = data?.is_superuser || (data?.permissions ?? []).includes("calendario.view");
-        if (ve) destino = (data?.mundos ?? []).length > 1 ? "/mundos" : "/calendario";
+        if ((data?.mundos ?? []).length > 1) destino = "/mundos";
+        else if (ve) destino = "/calendario";
       } catch {
         // Si /me falla, el layout del dashboard decide qué hacer.
       }

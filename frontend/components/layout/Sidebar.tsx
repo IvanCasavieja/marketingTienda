@@ -18,7 +18,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
 import { toast } from "sonner";
-import { MARCA, MARCA_BAJADA, mundoEfectivo, mundosDe, useMundoElegido } from "@/lib/mundos";
+import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 
 // Los flags de country-flag-icons devuelven emoji de bandera regional, que
 // Windows no renderiza como imagen (muestra el codigo de pais en texto) —
@@ -150,7 +150,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/ayuda",                   label: t("sidebar.guiaUso"),   icon: HelpCircle,      section: t("sidebar.guia") },
   ];
 
-  const nav = herramientasAll.filter((item) => !item.perm || hasPerm(item.perm));
+  // El mundo va primero: decide qué herramientas existen. Después el permiso
+  // decide cuáles de esas puede usar la persona.
+  const elegido = useMundoElegido((st) => st.elegido);
+  const mundo = mundoEfectivo(currentUser, elegido);
+  const variosMundos = mundosDe(currentUser).length > 1;
+
+  const nav = herramientasAll.filter((item) =>
+    (!item.perm || hasPerm(item.perm)) && (!mundo || rutaEnMundo(item.href, mundo.clave)));
 
   // Las herramientas arrancan plegadas, salvo que se esté parado en una. Lo
   // que la persona elija se recuerda en este navegador.
@@ -167,9 +174,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     localStorage.setItem("core-tienda-herramientas", abiertas ? "1" : "0");
   }
 
-  const elegido = useMundoElegido((st) => st.elegido);
-  const mundo = mundoEfectivo(currentUser, elegido);
-  const variosMundos = mundosDe(currentUser).length > 1;
 
   useEffect(() => {
     watchlistApi.notificacionesNoLeidasCount()
@@ -263,7 +267,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
         {/* Logo */}
-        <Link href={nucleo.length ? "/calendario" : "/home"} onClick={handleNavClick} className="px-5 pt-5 pb-4 flex items-center gap-3 group">
+        <Link href={inicioDe(currentUser)} onClick={handleNavClick} className="px-5 pt-5 pb-4 flex items-center gap-3 group">
           <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center shrink-0 group-hover:bg-brand-500 transition-colors">
             <CalendarDays size={18} className="text-white" />
           </div>
@@ -281,7 +285,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </Link>
 
         {/* En qué mundo se está. Con más de uno, es también el botón para cambiar. */}
-        {mundo && nucleo.length > 0 && (
+        {mundo && (
           variosMundos ? (
             <Link
               href="/mundos"

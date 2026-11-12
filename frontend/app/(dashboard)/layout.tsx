@@ -6,7 +6,8 @@ import { useCurrentUserStore } from "@/store/currentUser";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
 import { Menu, CalendarDays, ShieldAlert } from "lucide-react";
-import { MARCA } from "@/lib/mundos";
+import { MARCA, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
+import FueraDeMundo from "@/components/layout/FueraDeMundo";
 import { useTranslation } from "react-i18next";
 
 const Sidebar = dynamic(() => import("@/components/layout/Sidebar"), { ssr: false });
@@ -29,6 +30,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const fetchCurrentUser = useCurrentUserStore((s) => s.fetch);
 
+  // El mundo es toda la plataforma vista para un negocio (lib/mundos.ts). Quien
+  // entra a varios tiene que elegir uno antes de ver nada; quien entra a uno
+  // solo ya está en él.
+  const user = useCurrentUserStore((s) => s.user);
+  const elegido = useMundoElegido((s) => s.elegido);
+  const mundo = mundoEfectivo(user, elegido);
+  const faltaElegir = authChecked && !mustChangePassword && !!user && !mundo
+    && mundosDe(user).length > 1 && pathname !== "/mundos";
+  useEffect(() => {
+    if (faltaElegir) router.replace("/mundos");
+  }, [faltaElegir, router]);
+
   // Este es el fetch que dispara el store compartido de currentUser (ver
   // hooks/useCurrentUser.ts) — cualquier página/componente que lo consuma
   // después reusa este resultado en vez de pedir /auth/me de nuevo.
@@ -50,7 +63,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!authChecked) {
+  if (!authChecked || faltaElegir) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
@@ -114,7 +127,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-auto">
           <ErrorBoundary>
-            <ClientOnly>{children}</ClientOnly>
+            {/* Una herramienta que no es de este mundo no se muestra: se dice
+                dónde está y se ofrece pasar. */}
+            <ClientOnly>
+              {mundo && !rutaEnMundo(pathname, mundo.clave)
+                ? <FueraDeMundo pathname={pathname} mundo={mundo} />
+                : children}
+            </ClientOnly>
           </ErrorBoundary>
         </main>
       </div>

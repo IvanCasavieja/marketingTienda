@@ -32,7 +32,7 @@ interface AdminUser {
   role_id: number | null;
   role_name: string | null;
   permissions: string[];
-  /** Los calendarios que puede abrir: claves de lib/mundos.ts. */
+  /** Los mundos a los que entra: claves de lib/mundos.ts. Siempre hay al menos uno. */
   mundos?: string[];
   is_active: boolean;
   is_superuser: boolean;
@@ -91,7 +91,14 @@ function UserEditorModal({
   function toggleMundo(clave: string) {
     setMundos((prev) => {
       const next = new Set(prev);
-      next.has(clave) ? next.delete(clave) : next.add(clave);
+      if (next.has(clave)) {
+        // Sin ningún mundo no se puede entrar a la plataforma: el último no se
+        // destilda. Para sacarle el acceso a alguien se desactiva la cuenta.
+        if (next.size === 1) { toast.error("Tiene que quedar al menos un mundo."); return prev; }
+        next.delete(clave);
+      } else {
+        next.add(clave);
+      }
       return next;
     });
   }
@@ -191,14 +198,14 @@ function UserEditorModal({
             </div>
           </div>
 
-          {/* Mundos: qué calendarios puede abrir. Con uno solo entra derecho a
-              ese; con varios, elige al entrar. */}
+          {/* Mundos: a qué negocios entra. Cada mundo es la plataforma entera
+              para ese negocio. Con uno solo entra derecho; con varios, elige. */}
           <div>
             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Mundos</p>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
               {user.is_superuser
-                ? "Un Super Admin abre todos los mundos, estén tildados o no."
-                : "Los calendarios que puede abrir. Con uno solo entra directo; con varios, elige al entrar. Además necesita el permiso de ver el calendario."}
+                ? "Un Super Admin entra a todos los mundos, estén tildados o no."
+                : "A qué negocios entra. En cada mundo ve solo lo de ese negocio: su calendario, sus tareas, sus cenefas y sus herramientas. Con uno solo entra directo; con varios, elige al entrar. Qué puede hacer adentro lo siguen diciendo los permisos de abajo."}
             </p>
             <div className="flex flex-wrap gap-2">
               {MUNDOS.map((m) => {

@@ -34,6 +34,13 @@ class CenefaDestino(Base):
     # (ej. "emerald", "rose"). Mismo criterio que el ícono.
     color: Mapped[str] = mapped_column(String(30), nullable=False, default="emerald")
     orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # De qué mundo de la plataforma es (0060): clave de app/core/mundos.py.
+    # Antes Redexpres era un destino más del selector de cenefas, al lado de
+    # los de Tienda Inglesa. Ahora las cenefas de Redexpres se ven solo
+    # entrando a Redexpres, y las de Tienda Inglesa solo en Tienda Inglesa.
+    mundo: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="tienda_inglesa", server_default="tienda_inglesa", index=True
+    )
 
     # Si el trabajo de este mundo se valoriza en el informe de produccion.
     # Redexpres no tiene costo, y un mundo de pruebas tampoco. Es del mundo y

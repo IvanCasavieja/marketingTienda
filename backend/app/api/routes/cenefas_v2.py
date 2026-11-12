@@ -21,6 +21,7 @@ from app.core.deps import require_permission, client_ip as _client_ip
 from app.core.uploads import read_limited
 from app.models.audit_log import AuditLog
 from app.models.cenefa_destino import CenefaDestino
+from app.core.mundos import MUNDO_POR_DEFECTO, exigir_mundo
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.models.user import User
@@ -1362,15 +1363,22 @@ def _slugify(nombre: str) -> str:
 
 @router.get("/destinos")
 async def list_destinos(
-    _: User = Depends(require_permission("cenefas.view")),
+    mundo: str | None = None,
+    current_user: User = Depends(require_permission("cenefas.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(CenefaDestino).order_by(CenefaDestino.orden, CenefaDestino.nombre)
-    )
+    """Los destinos de cenefas. Con `mundo` vienen solo los de ese mundo de la
+    plataforma (y hay que poder entrar a él): es lo que usa la pantalla de
+    cenefas, que ya no mezcla Redexpres con Tienda Inglesa. Sin `mundo` vienen
+    todos, que es lo que necesita el informe de producción."""
+    consulta = select(CenefaDestino).order_by(CenefaDestino.orden, CenefaDestino.nombre)
+    if mundo is not None:
+        consulta = consulta.where(CenefaDestino.mundo == exigir_mundo(current_user, mundo))
+    result = await db.execute(consulta)
     return [
         {
             "slug":        d.slug,
+            "mundo":       d.mundo,
             "nombre":      d.nombre,
             "descripcion": d.descripcion,
             "icono":       d.icono,
@@ -1404,6 +1412,9 @@ async def create_destino(
             detail="El nombre tiene que tener al menos dos caracteres alfanuméricos",
         )
 
+    # El destino nace en el mundo de la plataforma desde el que se lo crea.
+    mundo = exigir_mundo(current_user, str(payload.get("mundo") or MUNDO_POR_DEFECTO))
+
     existente = await db.get(CenefaDestino, slug)
     if existente is not None:
         raise HTTPException(status_code=409, detail=f"Ya existe un mundo llamado {existente.nombre!r}")
@@ -1426,6 +1437,7 @@ async def create_destino(
         icono=icono,
         color=color,
         orden=max_orden + 10,
+        mundo=mundo,
         # Un mundo nace cobrable salvo que se diga lo contrario: es lo normal.
         # Se marca en false para Redexpres y para el mundo de pruebas, que
         # pasan por el motor pero no son trabajo facturable.
@@ -1435,11 +1447,11 @@ async def create_destino(
     db.add(destino)
     db.add(AuditLog(
         user_id=current_user.id, action="cenefas.destino.create", resource="cenefa_destino",
-        resource_id=slug, details={"nombre": nombre}, ip_address=_client_ip(request),
+        resource_id=slug, details={"nombre": nombre, "mundo": mundo}, ip_address=_client_ip(request),
     ))
     await db.commit()
     return {
-        "slug": slug, "nombre": nombre, "descripcion": destino.descripcion,
+        "slug": slug, "mundo": mundo, "nombre": nombre, "descripcion": destino.descripcion,
         "icono": icono, "color": color, "cobrable": destino.cobrable,
         "cenefas_previas": destino.cenefas_previas,
     }
@@ -1455,6 +1467,7 @@ async def delete_destino(
     destino = await db.get(CenefaDestino, slug)
     if destino is None:
         raise HTTPException(status_code=404, detail="Mundo no encontrado")
+    exigir_mundo(current_user, destino.mundo)
 
     # Un mundo con plantillas no se borra: las plantillas quedarían
     # inalcanzables (el picker filtra por category) sin ningún aviso, y

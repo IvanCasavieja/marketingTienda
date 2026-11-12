@@ -40,6 +40,8 @@ const ICONO_KEYS = Object.keys(ICONOS);
 interface DestinoModalProps {
   destinos: CenefaDestino[];
   loading: boolean;
+  /** El mundo de la plataforma en el que se está: ahí nace un tipo nuevo. */
+  mundo?: string;
   puedeEditar: boolean;
   onSelect: (slug: string) => void;
   onCreated: (destino: CenefaDestino) => void;
@@ -47,7 +49,7 @@ interface DestinoModalProps {
 }
 
 export default function DestinoModal({
-  destinos, loading, puedeEditar, onSelect, onCreated, onDeleted,
+  destinos, loading, mundo, puedeEditar, onSelect, onCreated, onDeleted,
 }: DestinoModalProps) {
   const { t } = useTranslation();
   const [creando, setCreando] = useState(false);
@@ -72,7 +74,7 @@ export default function DestinoModal({
     setGuardando(true);
     try {
       const { data } = await cenefasV2Api.createDestino({
-        nombre: nombre.trim(), descripcion: descripcion.trim(), icono, color, cobrable,
+        nombre: nombre.trim(), descripcion: descripcion.trim(), icono, color, cobrable, mundo,
       });
       onCreated(data);
       resetForm();

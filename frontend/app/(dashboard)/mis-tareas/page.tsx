@@ -9,10 +9,12 @@ import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import { fechaCorta, hoyIso, sumarDias } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { ETIQUETA_ESTADO_TAREA, type EstadoTarea, type Tarea } from "@/lib/calendario/tipos";
-import { mundoDe, mundosDe } from "@/lib/mundos";
+import { mundoEfectivo, mundosDe, useMundoElegido } from "@/lib/mundos";
 
 /**
- * Mis tareas: lo que la persona tiene asignado, en todos sus mundos.
+ * Mis tareas: lo que la persona tiene asignado en el mundo en el que está.
+ * Si tiene pendientes en otro mundo se le avisa, con el botón para pasar: no
+ * se mezclan, pero tampoco se le esconden.
  *
  * Es la otra mitad del pedido de Ivan (12/11/2026): quien lidera asigna las
  * tareas en la ficha de cada acción, y cada uno necesita "poder ver qué tarea
@@ -34,6 +36,9 @@ export default function MisTareasPage() {
   const { allowed, checked, user } = usePermissionGuard({ permission: PERMISOS_CALENDARIO.ver });
   const [tareas, setTareas] = useState<MiTarea[] | null>(null);
   const [verHechas, setVerHechas] = useState(false);
+  const elegido = useMundoElegido(s => s.elegido);
+  const elegir = useMundoElegido(s => s.elegir);
+  const mundo = mundoEfectivo(user, elegido);
 
   const cargar = useCallback(async () => {
     try {
@@ -71,15 +76,20 @@ export default function MisTareasPage() {
 
   const hoy = hoyIso();
   const enUnaSemana = sumarDias(hoy, 7);
-  const abiertas = tareas.filter(t => t.estado !== "hecha");
-  const hechas = tareas.filter(t => t.estado === "hecha");
+  const deEsteMundo = tareas.filter(t => !mundo || t.accion.mundo === mundo.clave);
+  const abiertas = deEsteMundo.filter(t => t.estado !== "hecha");
+  const hechas = deEsteMundo.filter(t => t.estado === "hecha");
+  // Lo pendiente en los otros mundos a los que entra, contado por mundo.
+  const enOtros = mundosDe(user)
+    .filter(m => m.clave !== mundo?.clave)
+    .map(m => ({ mundo: m, pendientes: tareas.filter(t => t.accion.mundo === m.clave && t.estado !== "hecha").length }))
+    .filter(x => x.pendientes > 0);
   const grupos = [
     { titulo: "Vencidas", tono: "text-rose-600 dark:text-rose-400", lista: abiertas.filter(t => t.vence && t.vence < hoy) },
     { titulo: "Para esta semana", tono: "text-slate-900 dark:text-slate-100", lista: abiertas.filter(t => t.vence && t.vence >= hoy && t.vence <= enUnaSemana) },
     { titulo: "Más adelante", tono: "text-slate-900 dark:text-slate-100", lista: abiertas.filter(t => t.vence && t.vence > enUnaSemana) },
     { titulo: "Sin fecha", tono: "text-slate-900 dark:text-slate-100", lista: abiertas.filter(t => !t.vence) },
   ].filter(g => g.lista.length > 0);
-  const variosMundos = mundosDe(user).length > 1;
 
   return (
     <div className="mx-auto max-w-3xl animate-fade-in">
@@ -91,13 +101,30 @@ export default function MisTareasPage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Mis tareas</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             {abiertas.length === 0
-              ? "No tenés nada pendiente."
-              : abiertas.length === 1 ? "Tenés 1 tarea pendiente." : `Tenés ${abiertas.length} tareas pendientes.`}
+              ? `No tenés nada pendiente${mundo ? ` en ${mundo.nombre}` : ""}.`
+              : `Tenés ${abiertas.length === 1 ? "1 tarea pendiente" : `${abiertas.length} tareas pendientes`}${mundo ? ` en ${mundo.nombre}` : ""}.`}
           </p>
         </div>
       </header>
 
-      {tareas.length === 0 && (
+      {enOtros.length > 0 && (
+        <div className="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <span className="font-semibold">También tenés pendientes en:</span>
+          {enOtros.map(({ mundo: m, pendientes }) => (
+            <button
+              key={m.clave}
+              type="button"
+              onClick={() => elegir(m.clave)}
+              className="flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100"
+            >
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: m.color }} />
+              {m.nombre} · {pendientes}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {deEsteMundo.length === 0 && (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900">
           <p className="text-base font-semibold text-slate-700 dark:text-slate-200">Todavía no te asignaron ninguna tarea</p>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -113,7 +140,7 @@ export default function MisTareasPage() {
               {g.titulo} <span className="font-semibold text-slate-400">· {g.lista.length}</span>
             </h2>
             <ul className="space-y-2.5">
-              {g.lista.map(t => <Fila key={t.id} tarea={t} hoy={hoy} conMundo={variosMundos} onEstado={cambiarEstado} />)}
+              {g.lista.map(t => <Fila key={t.id} tarea={t} hoy={hoy} onEstado={cambiarEstado} />)}
             </ul>
           </section>
         ))}
@@ -130,7 +157,7 @@ export default function MisTareasPage() {
             </button>
             {verHechas && (
               <ul className="space-y-2.5">
-                {hechas.map(t => <Fila key={t.id} tarea={t} hoy={hoy} conMundo={variosMundos} onEstado={cambiarEstado} />)}
+                {hechas.map(t => <Fila key={t.id} tarea={t} hoy={hoy} onEstado={cambiarEstado} />)}
               </ul>
             )}
           </section>
@@ -140,15 +167,13 @@ export default function MisTareasPage() {
   );
 }
 
-function Fila({ tarea, hoy, conMundo, onEstado }: {
+function Fila({ tarea, hoy, onEstado }: {
   tarea: MiTarea;
   hoy: string;
-  conMundo: boolean;
   onEstado: (t: MiTarea, estado: EstadoTarea) => void;
 }) {
   const hecha = tarea.estado === "hecha";
   const vencida = !hecha && !!tarea.vence && tarea.vence < hoy;
-  const mundo = mundoDe(tarea.accion.mundo);
 
   return (
     <li className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-700 dark:bg-slate-900">
@@ -179,11 +204,6 @@ function Fila({ tarea, hoy, conMundo, onEstado }: {
             <span className="truncate">{tarea.accion.nombre}</span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
           </Link>
-          {conMundo && mundo && (
-            <span className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: mundo.color }} /> {mundo.nombre}
-            </span>
-          )}
           {tarea.vence && (
             <span className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium ${
               vencida ? "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300" : "text-slate-600 dark:text-slate-400"

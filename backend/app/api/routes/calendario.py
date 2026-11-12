@@ -17,9 +17,10 @@
   GET    /calendario/mis-tareas               — lo que tengo asignado, de todos mis mundos
   GET    /calendario/ubicar/{id}              — en qué mundo está una acción
 
-Desde la 0060 hay un calendario por MUNDO (Tienda Inglesa, Redexpres...): cada
-barra es de uno, `GET /datos?mundo=` trae solo ese, y nadie lee ni escribe en
-un mundo que no tiene en `users.mundos` (ver app/core/mundos.py).
+Desde la 0060 la plataforma entera se divide en MUNDOS (Tienda Inglesa,
+Redexpres...) y cada uno tiene su calendario: cada barra es de un mundo,
+`GET /datos?mundo=` trae solo ese, y nadie lee ni escribe en un mundo al que no
+entra (`users.mundos`, ver app/core/mundos.py).
 
 Hasta el 28/09/2026 había un solo PUT que subía el mes entero: una acción no
 podía cruzar de mes, y dos personas editando el mismo mes se pisaban (ganaba

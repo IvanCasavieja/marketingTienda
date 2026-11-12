@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Check } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { MARCA, mundosDe, useMundoElegido, type Mundo } from "@/lib/mundos";
+import { MARCA, inicioDe, mundosDe, useMundoElegido, type Mundo } from "@/lib/mundos";
 
 /**
  * El selector de mundos.
@@ -14,8 +14,8 @@ import { MARCA, mundosDe, useMundoElegido, type Mundo } from "@/lib/mundos";
  * tenga solo acceso a un mundo no va a pasar por esa selección".
  *
  * Por eso quien tiene un solo mundo nunca ve esta pantalla: se lo manda derecho
- * a su calendario. Y quien no tiene ninguno, también: el calendario le explica
- * que le falta el acceso.
+ * a su inicio. Lo que se elige acá vale para toda la plataforma, no solo para
+ * el calendario: el menú, las cenefas y las tareas pasan a ser las de ese mundo.
  */
 export default function MundosPage() {
   const router = useRouter();
@@ -26,14 +26,14 @@ export default function MundosPage() {
 
   useEffect(() => {
     if (loading || !user) return;
-    if (mundos.length <= 1) router.replace("/calendario");
+    if (mundos.length <= 1) router.replace(inicioDe(user));
   }, [loading, user, mundos.length, router]);
 
   if (loading || mundos.length <= 1) return null;
 
   function entrar(m: Mundo) {
     elegir(m.clave);
-    router.push("/calendario");
+    router.push(inicioDe(user));
   }
 
   const nombre = user?.full_name?.split(" ")[0];
@@ -45,7 +45,8 @@ export default function MundosPage() {
         {nombre ? `Hola, ${nombre}.` : "Hola."} ¿En qué mundo vas a trabajar?
       </h1>
       <p className="mt-2 text-base text-slate-600 dark:text-slate-400">
-        Cada mundo tiene su propio calendario y sus propias tareas. Podés cambiar cuando quieras desde el menú.
+        Cada mundo es la plataforma entera para ese negocio: su calendario, sus tareas y sus herramientas.
+        Podés cambiar cuando quieras desde el menú.
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">

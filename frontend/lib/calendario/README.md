@@ -7,25 +7,39 @@ frenar lo que ya estaba andando acá, y se armó desde el principio con el mismo
 stack que la plataforma — Next 16, React 18, Tailwind, zustand, lucide — así
 que al entrar no hubo que agregar ni una dependencia.
 
-## Mundos: un calendario por negocio
+## Mundos: la plataforma entera, separada por negocio
 
-Desde el 12/11/2026 (migración 0060) hay un calendario por **mundo**: Tienda
-Inglesa, Tienda Express, Redexpres, Tienda Viajes y Tienda Farma. Cada barra es
-de uno (`calendario_barras.mundo`) y cada persona tiene la lista de los que
-puede abrir (`users.mundos`, se tilda en el panel de administración; un Super
-Admin abre todos).
+Desde el 12/11/2026 (migración 0060) la plataforma se divide en **mundos**:
+Tienda Inglesa, Tienda Express, Redexpres, Tienda Viajes y Tienda Farma. Pedido
+de Ivan: "Los mundos tienen que ser de toda la plataforma. La persona que entra
+a ese mundo va a ver todo hecho para ese mundo".
 
-- Quien tiene **un solo mundo** entra derecho a su calendario. Quien tiene
-  **varios** pasa por `/mundos` a elegir, y cambia cuando quiere desde el menú.
-- El servidor no deja leer ni escribir en un mundo ajeno, aunque se tenga
-  `calendario.edit` (`app/core/mundos.py`, `exigir_mundo`).
+- Cada persona tiene la lista de los mundos a los que entra (`users.mundos`, se
+  tilda en el panel de administración; un Super Admin entra a todos). Nadie
+  queda sin mundo.
+- Quien tiene **un solo mundo** entra derecho. Quien tiene **varios** pasa por
+  `/mundos` a elegir antes de ver nada, y cambia cuando quiere desde el menú.
+- **El menú es el del mundo**: cada herramienta aparece solo donde tiene sentido
+  (`RUTAS_DE_MUNDO` en `lib/mundos.ts`). La planilla de pedidos es de Redexpres;
+  los medios, los precios, finanzas, la validación de redes y el diccionario
+  son de Tienda Inglesa; las cenefas están en los dos. Abrir una herramienta de
+  otro mundo (un link guardado, un aviso) muestra dónde está y ofrece pasar.
+- **Lo que se guarda por mundo**, y que el servidor no deja leer ni escribir
+  desde otro (`app/core/mundos.py`, `exigir_mundo`): el calendario con sus
+  tareas (`calendario_barras.mundo`) y los tipos de cenefa
+  (`cenefa_destinos.mundo`). Redexpres dejó de ser una opción más del selector
+  de cenefas: sus cenefas se ven entrando a Redexpres, y como es un solo tipo,
+  se entra derecho.
+- **Los permisos valen igual que siempre.** El mundo dice de qué negocio; el
+  permiso, qué se puede hacer.
 - El header de la home y Retail Media son de la web de Tienda Inglesa: los
-  otros mundos tienen solo calendario comercial y cronograma de envíos.
+  otros mundos tienen calendario comercial y cronograma de envíos.
 - Los tipos de acción de Tienda Inglesa siguen saliendo de los Excel
   (`catalogo.ts`). Los otros mundos arrancan con una lista genérica
-  (`lib/mundos.ts`, `BANDAS_GENERICAS`): **hay que reemplazarla por los tipos
-  reales de cada negocio** cuando se pasen sus calendarios.
-- Todo lo cargado antes de la 0060 quedó en Tienda Inglesa.
+  (`lib/mundos.ts`, `BANDAS_GENERICAS`).
+- Al migrar: lo cargado quedó en Tienda Inglesa; los logins de sucursal y
+  quien tenía permisos de Redexpres entran a Redexpres; el resto, a Tienda
+  Inglesa. Los otros tres mundos se tildan a mano.
 
 El catálogo de mundos está en dos lugares que tienen que coincidir:
 `backend/app/core/mundos.py` y `frontend/lib/mundos.ts`.
@@ -46,8 +60,9 @@ por tarea, hasta tres niveles (tarea → subtarea → sub-subtarea).
   termina, le llega a quien la creó. Tocar el aviso abre la ficha de la acción,
   aunque sea de otro mundo (`GET /calendario/ubicar/{id}`).
 - Solo se le puede asignar a alguien que pueda abrir ese mundo.
-- **Mis tareas** (`/mis-tareas`) junta lo que cada uno tiene asignado en todos
-  sus mundos, ordenado por vencimiento.
+- **Mis tareas** (`/mis-tareas`) muestra lo que cada uno tiene asignado en el
+  mundo en el que está, ordenado por vencimiento, y avisa si le queda algo
+  pendiente en otro.
 - `calendario.tareas` lo recibieron Superadmin y Admin en la 0060. A quien
   lidere el equipo sin ser Admin hay que tildárselo a mano.
 
@@ -318,6 +333,11 @@ reescribirlas con otro runner. Del lado del backend,
 
 - **Los tipos de acción reales de Redexpres, Tienda Express, Tienda Viajes y
   Tienda Farma.** Hoy arrancan con una lista genérica.
+- **Lo que todavía no está separado por mundo.** Los medios, finanzas, los
+  precios y la planilla de pedidos se muestran en un solo mundo, pero sus
+  datos no llevan mundo: si un día Redexpres tiene sus propios medios, hay
+  que agregárselo. Las plantillas de cenefas se separan por su tipo
+  (`cenefa_destinos.mundo`); el diccionario y el convertidor son compartidos.
 - **Cargar los calendarios en Excel de los otros mundos.** El de Tienda Inglesa
   ya está; el de Redexpres y el cronograma de push, mails y WhatsApp (que
   incluye Tienda Viajes) siguen en sus planillas.

@@ -1,16 +1,30 @@
-"""los mundos (un calendario por negocio) y las tareas asignadas de cada accion
+"""los mundos (la plataforma entera, separada por negocio) y las tareas asignadas de cada accion
 
 Pedido de Ivan (12/11/2026). Dos cosas que van juntas porque las dos cambian
-quien ve que en el calendario:
+quien ve que:
 
-1. **Mundos.** Cada barra pasa a ser de un negocio (`calendario_barras.mundo`)
-   y cada persona tiene la lista de los que puede abrir (`users.mundos`). Todo
-   lo que ya estaba cargado es de Tienda Inglesa, que era el unico calendario.
+1. **Mundos.** "Los mundos tienen que ser de toda la plataforma. La persona que
+   entra a ese mundo va a ver todo hecho para ese mundo". Cada persona tiene la
+   lista de los mundos a los que entra (`users.mundos`), y lo que se guarda por
+   negocio dice de cual es:
 
-   Quien ya podia ver el calendario queda con Tienda Inglesa: no pierde nada.
-   Quien ademas administra Redexpres (`redexpres.manage`) queda tambien con el
-   mundo Redexpres. Los demas mundos se dan a mano desde el panel de
-   administracion; nadie los recibe solo.
+   - `calendario_barras.mundo`: todo lo cargado es de Tienda Inglesa, que era
+     el unico calendario.
+   - `cenefa_destinos.mundo`: el destino `redexpres` pasa al mundo Redexpres y
+     los demas (Rompe Precios, Parrilla y Vinos, Pruebas...) quedan en Tienda
+     Inglesa. El selector de cenefas ya no los mezcla.
+
+   **Nadie pierde nada de lo que usaba** (la misma regla que
+   `app/core/mundos.py::mundos_iniciales`, copiada aca para que la migracion no
+   cambie si un dia cambia la regla):
+
+   - un login de sucursal de Redexpres queda solo en Redexpres;
+   - quien tiene algun permiso de Redexpres queda en Redexpres, porque la
+     planilla de pedidos pasa a verse solo ahi;
+   - todos los demas quedan en Tienda Inglesa, que es donde estaba todo.
+
+   Tienda Express, Tienda Viajes y Tienda Farma no se le dan a nadie solos: se
+   tildan a mano desde el panel de administracion.
 
 2. **Tareas.** `calendario_tareas`: lo que quien lidera le asigna a cada
    persona dentro de una accion, con subtareas. El permiso nuevo
@@ -35,12 +49,32 @@ depends_on = None
 _PERMISO = "calendario.tareas"
 
 
+def _mundos_iniciales(permissions, es_sucursal_de_redexpres: bool) -> list[str]:
+    if es_sucursal_de_redexpres:
+        return ["redexpres"]
+    permisos = set(permissions or [])
+    de_redexpres = {p for p in permisos if p.startswith("redexpres.")}
+    mundos = []
+    if not permisos or permisos - de_redexpres:
+        mundos.append("tienda_inglesa")
+    if de_redexpres:
+        mundos.append("redexpres")
+    return mundos
+
+
 def upgrade() -> None:
     op.add_column(
         "calendario_barras",
         sa.Column("mundo", sa.String(32), nullable=False, server_default="tienda_inglesa"),
     )
     op.create_index("ix_calendario_barras_mundo", "calendario_barras", ["mundo"])
+
+    op.add_column(
+        "cenefa_destinos",
+        sa.Column("mundo", sa.String(32), nullable=False, server_default="tienda_inglesa"),
+    )
+    op.create_index("ix_cenefa_destinos_mundo", "cenefa_destinos", ["mundo"])
+    op.execute("UPDATE cenefa_destinos SET mundo = 'redexpres' WHERE slug = 'redexpres'")
 
     op.add_column("users", sa.Column("mundos", sa.JSON(), nullable=False, server_default="[]"))
 
@@ -69,37 +103,39 @@ def upgrade() -> None:
 
     conn = op.get_bind()
 
-    # Los mundos de quien ya usaba el calendario.
-    for user_id, permissions in conn.execute(text("SELECT id, permissions FROM users")).fetchall():
-        permisos = set(permissions or [])
-        mundos = []
-        if "calendario.view" in permisos:
-            mundos.append("tienda_inglesa")
-            if "redexpres.manage" in permisos:
-                mundos.append("redexpres")
-        if mundos:
-            conn.execute(
-                text("UPDATE users SET mundos = CAST(:m AS json) WHERE id = :id"),
-                {"m": json.dumps(mundos), "id": user_id},
-            )
-
-    # El permiso de tareas, a los roles de administracion y a quienes los tienen.
+    # El permiso de tareas, a los roles de administracion y a quienes los
+    # tienen. Va ANTES de repartir los mundos: no cambia a que mundo entra
+    # nadie (no es un permiso de Redexpres), pero asi los permisos que se leen
+    # abajo ya son los definitivos.
     ids = [r[0] for r in conn.execute(
         text("SELECT id FROM roles WHERE name IN ('Superadmin', 'Admin')")
     ).fetchall()]
-    if not ids:
-        return
-    for tabla, columna in (("roles", "id"), ("users", "role_id")):
-        for row_id, permissions in conn.execute(
-            text(f"SELECT id, permissions FROM {tabla} WHERE {columna} = ANY(:ids)"), {"ids": ids},
-        ).fetchall():
-            permisos = list(permissions or [])
-            if _PERMISO not in permisos:
-                permisos.append(_PERMISO)
-                conn.execute(
-                    text(f"UPDATE {tabla} SET permissions = CAST(:p AS json) WHERE id = :id"),
-                    {"p": json.dumps(permisos), "id": row_id},
-                )
+    if ids:
+        for tabla, columna in (("roles", "id"), ("users", "role_id")):
+            for row_id, permissions in conn.execute(
+                text(f"SELECT id, permissions FROM {tabla} WHERE {columna} = ANY(:ids)"), {"ids": ids},
+            ).fetchall():
+                permisos = list(permissions or [])
+                if _PERMISO not in permisos:
+                    permisos.append(_PERMISO)
+                    conn.execute(
+                        text(f"UPDATE {tabla} SET permissions = CAST(:p AS json) WHERE id = :id"),
+                        {"p": json.dumps(permisos), "id": row_id},
+                    )
+
+    # A que mundos entra cada persona que ya estaba. TODOS quedan con al menos
+    # uno: sin mundo no se puede entrar a la plataforma.
+    sucursales_de_redexpres = {
+        r[0] for r in conn.execute(
+            text("SELECT DISTINCT user_id FROM local_asignaciones WHERE tipo = 'redex'")
+        ).fetchall()
+    }
+    for user_id, permissions in conn.execute(text("SELECT id, permissions FROM users")).fetchall():
+        mundos = _mundos_iniciales(permissions, user_id in sucursales_de_redexpres)
+        conn.execute(
+            text("UPDATE users SET mundos = CAST(:m AS json) WHERE id = :id"),
+            {"m": json.dumps(mundos), "id": user_id},
+        )
 
 
 def downgrade() -> None:
@@ -109,5 +145,7 @@ def downgrade() -> None:
     # se hace con ellas. Los permisos no se sacan (se pudieron tocar a mano).
     op.drop_table("calendario_tareas")
     op.drop_column("users", "mundos")
+    op.drop_index("ix_cenefa_destinos_mundo", table_name="cenefa_destinos")
+    op.drop_column("cenefa_destinos", "mundo")
     op.drop_index("ix_calendario_barras_mundo", table_name="calendario_barras")
     op.drop_column("calendario_barras", "mundo")

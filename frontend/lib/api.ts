@@ -374,9 +374,10 @@ export const cenefasV2Api = {
     api.delete(`/tools/cenefas/v2/templates/${id}`),
 
   // Destinos ("mundos")
-  listDestinos: () =>
-    api.get<CenefaDestino[]>("/tools/cenefas/v2/destinos"),
-  createDestino: (payload: { nombre: string; descripcion?: string; icono?: string; color?: string; cobrable?: boolean }) =>
+  /** Los tipos de cenefa. Con `mundo`, solo los de ese mundo de la plataforma. */
+  listDestinos: (mundo?: string) =>
+    api.get<CenefaDestino[]>("/tools/cenefas/v2/destinos", { params: mundo ? { mundo } : {} }),
+  createDestino: (payload: { nombre: string; descripcion?: string; icono?: string; color?: string; cobrable?: boolean; mundo?: string }) =>
     api.post<CenefaDestino>("/tools/cenefas/v2/destinos", payload),
   deleteDestino: (slug: string) =>
     api.delete(`/tools/cenefas/v2/destinos/${slug}`),

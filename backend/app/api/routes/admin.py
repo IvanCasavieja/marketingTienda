@@ -17,7 +17,7 @@ from app.models.audit_log import AuditLog
 from app.models.cenefa_job import CenefaJob
 from app.models.local_asignacion import LocalAsignacion
 from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
-from app.core.mundos import MUNDOS
+from app.core.mundos import MUNDOS, mundos_de, mundos_iniciales
 from app.models.user import User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -321,7 +321,7 @@ async def list_users(
             "role_id":      u.role_id,
             "role_name":    roles_map[u.role_id].name if u.role_id and u.role_id in roles_map else None,
             "permissions":  u.permissions or [],
-            "mundos":       [m for m in MUNDOS if m in (u.mundos or [])],
+            "mundos":       mundos_de(u),
             "is_active":    u.is_active,
             "is_superuser": u.is_superuser,
             "created_at":   u.created_at.isoformat() if u.created_at else None,
@@ -363,9 +363,9 @@ async def create_user(
         hashed_password=hash_password(payload.password),
         role_id=payload.role_id,
         permissions=_seed_permissions_for_role(role),
-        # Quien arranca pudiendo ver el calendario arranca con el de Tienda
-        # Inglesa; los demás mundos se tildan después, uno por uno.
-        mundos=["tienda_inglesa"] if "calendario.view" in _seed_permissions_for_role(role) else [],
+        # Arranca en Tienda Inglesa (y en Redexpres, si el rol trae permisos de
+        # Redexpres); los demás mundos se tildan después, uno por uno.
+        mundos=mundos_iniciales(_seed_permissions_for_role(role)),
         is_superuser=False,
         # La contraseña la eligió quien está creando la cuenta, no su dueño —
         # se lo obliga a poner una propia en el primer login.
@@ -557,9 +557,10 @@ async def update_mundos(
     current_user: User = Depends(_require_user_management),
     db: AsyncSession = Depends(get_db),
 ):
-    """Qué calendarios puede abrir una persona. A diferencia de los permisos,
-    uno se los puede cambiar a sí mismo: no abre nada que `calendario.view`
-    no abra ya, solo dice de qué negocio."""
+    """A qué mundos entra una persona. A diferencia de los permisos, uno se
+    los puede cambiar a sí mismo: el mundo no habilita nada que un permiso no
+    habilite ya, solo dice de qué negocio. Tiene que quedar al menos uno: sin
+    mundo no se puede entrar a la plataforma (para eso se desactiva la cuenta)."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -570,6 +571,11 @@ async def update_mundos(
     desconocidos = [m for m in payload.mundos if m not in MUNDOS]
     if desconocidos:
         raise HTTPException(status_code=422, detail=f"Mundos desconocidos: {desconocidos}")
+    if not payload.mundos:
+        raise HTTPException(
+            status_code=422,
+            detail="Tiene que quedar al menos un mundo. Para sacarle el acceso a alguien, desactivá su cuenta.",
+        )
 
     antes = list(user.mundos or [])
     user.mundos = [m for m in MUNDOS if m in set(payload.mundos)]

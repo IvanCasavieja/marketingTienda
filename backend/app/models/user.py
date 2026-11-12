@@ -15,8 +15,9 @@ class User(Base):
     # Fuente de verdad para autorización — se siembra desde role.permissions al
     # asignar un rol, pero después se puede afinar por usuario individualmente.
     permissions: Mapped[list] = mapped_column(JSON, default=list)
-    # Qué calendarios puede abrir: claves de app/core/mundos.py. Un superadmin
-    # abre todos sin estar en ninguna lista.
+    # A qué mundos entra (Tienda Inglesa, Redexpres...): claves de
+    # app/core/mundos.py. El mundo es toda la plataforma vista para un negocio.
+    # Un superadmin entra a todos sin estar en ninguna lista.
     mundos: Mapped[list] = mapped_column(JSON, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
