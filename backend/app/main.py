@@ -9,7 +9,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 import structlog
-from app.core.config import settings
+from app.core.config import commit_desplegado, settings
 from app.core.database import engine, Base
 from app.core.logging_config import configure_logging
 from app.core.rate_limit import limiter
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     if not mantenimiento:
         logger.warning(
             "mantenimiento de arranque SALTEADO — este proceso no es el servidor "
-            "desplegado (falta RENDER_GIT_COMMIT). NO corren: migraciones, "
+            "desplegado (falta RENDER_GIT_COMMIT o CONTAINER_APP_NAME). NO corren: migraciones, "
             "recuperacion de jobs huerfanos, purga de archivos ni los loops "
             "periodicos. Si trabajas con una base LOCAL y las necesitas, corre "
             "alembic a mano o pone MANTENIMIENTO_AL_ARRANCAR=true."
@@ -296,12 +296,13 @@ async def health():
     except Exception:
         db_ok = False
 
-    # El commit desplegado. Render lo expone en RENDER_GIT_COMMIT; sin esa
-    # variable (local) queda en "dev". Sirve para saber si un arreglo YA esta
-    # arriba en vez de deducirlo probando la app: mas de una vez se reporto
-    # como bug algo que ya estaba corregido pero todavia no desplegado.
-    import os
-    commit = (os.environ.get("RENDER_GIT_COMMIT") or "dev")[:7]
+    # El commit desplegado. Render lo expone en RENDER_GIT_COMMIT y en Azure lo
+    # pasa el deploy en GIT_COMMIT (ver commit_desplegado en core/config.py);
+    # sin ninguna de las dos (local) queda en "dev". Sirve para saber si un
+    # arreglo YA esta arriba en vez de deducirlo probando la app: mas de una
+    # vez se reporto como bug algo que ya estaba corregido pero todavia no
+    # desplegado.
+    commit = commit_desplegado()
 
     if not db_ok:
         return JSONResponse(
