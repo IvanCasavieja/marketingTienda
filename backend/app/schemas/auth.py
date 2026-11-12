@@ -74,6 +74,9 @@ class UserResponse(BaseModel):
     role_name: str | None = None
     permissions: list[str] = []
     assigned_locales: list[str] = []
+    # Los calendarios que puede abrir (claves de app/core/mundos.py). Para un
+    # superadmin vienen todos.
+    mundos: list[str] = []
     must_change_password: bool = False
 
     class Config:

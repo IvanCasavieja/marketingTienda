@@ -17,6 +17,7 @@ from app.models.audit_log import AuditLog
 from app.models.cenefa_job import CenefaJob
 from app.models.local_asignacion import LocalAsignacion
 from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
+from app.core.mundos import MUNDOS
 from app.models.user import User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -256,6 +257,10 @@ class UpdatePermissionsRequest(BaseModel):
     permissions: list[str]
 
 
+class UpdateMundosRequest(BaseModel):
+    mundos: list[str]
+
+
 class UpdateUserRequest(BaseModel):
     full_name: str | None = None
     email: EmailStr | None = None
@@ -316,6 +321,7 @@ async def list_users(
             "role_id":      u.role_id,
             "role_name":    roles_map[u.role_id].name if u.role_id and u.role_id in roles_map else None,
             "permissions":  u.permissions or [],
+            "mundos":       [m for m in MUNDOS if m in (u.mundos or [])],
             "is_active":    u.is_active,
             "is_superuser": u.is_superuser,
             "created_at":   u.created_at.isoformat() if u.created_at else None,
@@ -357,6 +363,9 @@ async def create_user(
         hashed_password=hash_password(payload.password),
         role_id=payload.role_id,
         permissions=_seed_permissions_for_role(role),
+        # Quien arranca pudiendo ver el calendario arranca con el de Tienda
+        # Inglesa; los demás mundos se tildan después, uno por uno.
+        mundos=["tienda_inglesa"] if "calendario.view" in _seed_permissions_for_role(role) else [],
         is_superuser=False,
         # La contraseña la eligió quien está creando la cuenta, no su dueño —
         # se lo obliga a poner una propia en el primer login.
@@ -531,6 +540,45 @@ async def update_permissions(
         details={"permissions_antes": permisos_antes, "permissions_despues": payload.permissions}, ip_address=_client_ip(request),
     ))
     return {"permissions": user.permissions}
+
+
+@router.get("/mundos")
+async def list_mundos(_: User = Depends(_require_admin_panel)):
+    """El catálogo de mundos, para tildarlos por usuario."""
+    return [{"key": clave, "nombre": nombre} for clave, nombre in MUNDOS.items()]
+
+
+@router.patch("/users/{user_id}/mundos")
+@limiter.limit("20/minute")
+async def update_mundos(
+    user_id: int,
+    payload: UpdateMundosRequest,
+    request: Request,
+    current_user: User = Depends(_require_user_management),
+    db: AsyncSession = Depends(get_db),
+):
+    """Qué calendarios puede abrir una persona. A diferencia de los permisos,
+    uno se los puede cambiar a sí mismo: no abre nada que `calendario.view`
+    no abra ya, solo dice de qué negocio."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user.id != current_user.id:
+        await _check_not_protected_admin(current_user, user, db)
+
+    desconocidos = [m for m in payload.mundos if m not in MUNDOS]
+    if desconocidos:
+        raise HTTPException(status_code=422, detail=f"Mundos desconocidos: {desconocidos}")
+
+    antes = list(user.mundos or [])
+    user.mundos = [m for m in MUNDOS if m in set(payload.mundos)]
+    db.add(user)
+    db.add(AuditLog(
+        user_id=current_user.id, action="admin.user.update_mundos", resource="user", resource_id=str(user.id),
+        details={"mundos_antes": antes, "mundos_despues": user.mundos}, ip_address=_client_ip(request),
+    ))
+    return {"mundos": user.mundos}
 
 
 @router.patch("/users/{user_id}/activate")

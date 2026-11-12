@@ -49,4 +49,5 @@ __all__ = [
     "RrssValidacion", "RrssValidacionPagina", "RrssValidacionImagen",
     "CalendarioMes",
     "CalendarioBarra", "CalendarioPieza", "CalendarioAviso", "CalendarioPosicionesRM", "CalendarioRevision",
+    "CalendarioTarea",
 ]
