@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
+from app.schemas.auth import _validate_password_strength
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -356,6 +357,14 @@ async def create_user(
             raise HTTPException(status_code=404, detail="Rol no encontrado")
         if role.name == "Superadmin" and not current_user.is_superuser:
             raise HTTPException(status_code=403, detail="Solo el Super Admin puede asignar ese rol")
+    # Igual que assign_role: nadie crea una cuenta con permisos que no tiene.
+    # Sin esto, un gestor de usuarios se creaba una cuenta "títere" con el rol
+    # Admin y entraba con más permisos que los propios (auditoría 15/11/2026).
+    _ensure_can_grant(current_user, _seed_permissions_for_role(role))
+    try:
+        _validate_password_strength(payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
     user = User(
         email=payload.email,

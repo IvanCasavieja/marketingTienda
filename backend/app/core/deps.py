@@ -4,6 +4,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import decode_token
 from app.models.user import User
@@ -16,9 +17,10 @@ def client_ip(request: Request) -> str:
     """IP real del cliente para AuditLog -- detrás del proxy de Render,
     request.client.host es la IP del proxy, no la del usuario. X-Forwarded-For
     trae la real primero en la cadena."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    from app.core.rate_limit import ip_de_la_cadena  # la misma regla que el límite de pedidos
+    ip = ip_de_la_cadena(request.headers.get("X-Forwarded-For"), settings.PROXY_SALTOS_DE_CONFIANZA)
+    if ip:
+        return ip
     return request.client.host if request.client else "unknown"
 
 

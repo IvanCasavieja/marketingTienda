@@ -1,10 +1,11 @@
+import hashlib
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 
@@ -29,6 +30,18 @@ from app.schemas.auth import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _logger = logging.getLogger(__name__)
+
+# El mismo para contraseña equivocada, email inexistente y cuenta bloqueada.
+_CREDENCIALES_INVALIDAS = (
+    "Email o contraseña incorrectos. Después de varios intentos fallidos la cuenta "
+    "se bloquea unos minutos."
+)
+_RESETS_POR_HORA = 3
+
+
+def hash_de_token(token: str) -> str:
+    """Lo que se guarda de un link de recuperación: su sha256 (64 caracteres)."""
+    return hashlib.sha256(token.encode()).hexdigest()
 _RESET_TOKEN_TTL = 3600  # 1 hora
 
 _COOKIE_MAX_AGE_ACCESS  = settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
@@ -88,10 +101,10 @@ async def login(payload: UserLogin, request: Request, response: Response, db: As
     now = datetime.now(timezone.utc)
 
     if user and user.locked_until and user.locked_until > now:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Cuenta bloqueada por intentos fallidos — probá de nuevo después de las {user.locked_until.strftime('%H:%M')} UTC",
-        )
+        # Mismo mensaje que una contraseña equivocada: decir "cuenta bloqueada"
+        # confirmaba que el email existe (auditoría 15/11/2026). El mensaje
+        # genérico ya avisa del bloqueo.
+        raise HTTPException(status_code=401, detail=_CREDENCIALES_INVALIDAS)
 
     if not user or not verify_password(payload.password, user.hashed_password):
         if user:
@@ -105,7 +118,7 @@ async def login(payload: UserLogin, request: Request, response: Response, db: As
             # bloqueo nunca se activaba (comprobado en vivo: sin esto, una
             # cuenta "bloqueada" seguía aceptando la contraseña correcta).
             await db.commit()
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail=_CREDENCIALES_INVALIDAS)
 
     user.failed_login_attempts = 0
     user.locked_until = None
@@ -206,9 +219,22 @@ async def forgot_password(
         # un cron aparte, alcanza de sobra para el volumen de este endpoint.
         await db.execute(delete(PasswordResetToken).where(PasswordResetToken.expires_at < now))
 
+        # Tope por persona: sin esto se le podían mandar mails de recuperación
+        # sin límite a cualquiera (y gastar la cuota de envío). Por encima del
+        # tope, la respuesta es la misma pero no sale ningún mail.
+        pedidos_recientes = (await db.execute(
+            select(func.count()).select_from(PasswordResetToken)
+            .where(PasswordResetToken.user_id == user.id, PasswordResetToken.expires_at > now)
+        )).scalar_one()
+        if pedidos_recientes >= _RESETS_POR_HORA:
+            _logger.warning("Recuperación de contraseña: tope por hora alcanzado para el usuario %s", user.id)
+            return {"message": "Si el email está registrado, vas a recibir el link en los próximos minutos."}
+
         token = secrets.token_urlsafe(32)
         db.add(PasswordResetToken(
-            token=token,
+            # En la base va el hash, no el link: quien lea la tabla no puede
+            # usarlo para cambiar contraseñas.
+            token=hash_de_token(token),
             user_id=user.id,
             expires_at=now + timedelta(seconds=_RESET_TOKEN_TTL),
         ))
@@ -239,7 +265,7 @@ async def reset_password(
         select(PasswordResetToken, User)
         .join(User, User.id == PasswordResetToken.user_id)
         .where(
-            PasswordResetToken.token == payload.token,
+            PasswordResetToken.token == hash_de_token(payload.token),
             PasswordResetToken.expires_at > now,
             User.is_active == True,
         )
