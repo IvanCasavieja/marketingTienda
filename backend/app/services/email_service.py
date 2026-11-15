@@ -1,15 +1,21 @@
 """Los mails que manda la plataforma (hoy, el de recuperar la contraseña).
 
-Dos formas de mandarlos, según lo que esté configurado:
+Tres formas de mandarlos, según lo que esté configurado:
 
+- **Resend** (`RESEND_API_KEY`), por su API web (HTTPS). Es lo que usa Tuki
+  y lo recomendado mientras el backend esté en el plan gratis de Render: ese
+  plan no deja salir conexiones SMTP (visto el 15/11/2026: Zoho por SMTP
+  respondía desde una PC y desde Render se colgaba), y una API web no tiene
+  ese problema. Gratis hasta 3.000 mails por mes. El remitente tiene que ser
+  de un dominio verificado en Resend.
 - **SMTP** (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
   `SMTP_SEGURIDAD`). Sirve una casilla de Zoho Mail (la que se usa desde el
   15/11/2026) y es también como se manda desde el tenant de la empresa con
   Azure Communication Services Email. Ver docs/AZURE.md, "Mails".
 - **SendGrid** (`SENDGRID_API_KEY`), lo que se usaba hasta ahora.
 
-`EMAIL_PROVIDER` fuerza uno ("smtp" o "sendgrid"); vacío, se usa SMTP si hay
-`SMTP_HOST` y si no SendGrid si hay clave. Sin ninguno, no hay mails: la
+`EMAIL_PROVIDER` fuerza uno ("resend", "smtp" o "sendgrid"); vacío, se usa
+Resend si hay clave, si no SMTP si hay `SMTP_HOST`, y si no SendGrid. Sin ninguno, no hay mails: la
 pantalla de "Olvidé mi contraseña" lo dice y hay que pedirle a quien
 administra que genere una contraseña nueva.
 """
@@ -33,17 +39,22 @@ ASUNTO_RECUPERACION = "Recuperá tu contraseña de Core Tienda"
 
 
 def proveedor() -> str | None:
-    """Con qué se mandan los mails: "smtp", "sendgrid" o None si no hay nada
+    """Con qué se mandan los mails: "resend", "smtp", "sendgrid" o None si no hay nada
     configurado (o se pidió uno que no tiene sus datos)."""
     pedido = (settings.EMAIL_PROVIDER or "").strip().lower()
     hay_smtp = bool(settings.SMTP_HOST.strip())
     hay_sendgrid = bool(settings.SENDGRID_API_KEY.strip())
+    hay_resend = bool(settings.RESEND_API_KEY.strip())
+    if pedido == "resend":
+        return "resend" if hay_resend else None
     if pedido == "smtp":
         return "smtp" if hay_smtp else None
     if pedido == "sendgrid":
         return "sendgrid" if hay_sendgrid else None
     if pedido:
         return None
+    if hay_resend:
+        return "resend"
     if hay_smtp:
         return "smtp"
     if hay_sendgrid:
@@ -125,9 +136,23 @@ async def _enviar_por_sendgrid(to: str, subject: str, html: str, plain: str) -> 
         raise RuntimeError(f"SendGrid error {resp.status_code}: {resp.text}")
 
 
+async def _enviar_por_resend(to: str, subject: str, html: str, plain: str) -> None:
+    payload = {"from": remitente(), "to": [to], "subject": subject, "html": html, "text": plain}
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            "https://api.resend.com/emails",
+            json=payload,
+            headers={"Authorization": f"Bearer {settings.RESEND_API_KEY.strip()}", "User-Agent": "core-tienda"},
+        )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Resend error {resp.status_code}: {resp.text}")
+
+
 async def send_email(to: str, subject: str, html: str, plain: str) -> None:
     cual = proveedor()
-    if cual == "smtp":
+    if cual == "resend":
+        await _enviar_por_resend(to, subject, html, plain)
+    elif cual == "smtp":
         # smtplib bloquea: va en un hilo para no frenar al resto del backend.
         await asyncio.to_thread(_enviar_por_smtp, armar_mensaje(to, subject, html, plain))
     elif cual == "sendgrid":

@@ -131,9 +131,12 @@ class Settings(BaseSettings):
     SFMC_ACCOUNT_ID: str = ""
 
     # Mails (hoy: recuperar la contraseña). Ver app/services/email_service.py
-    # y docs/AZURE.md, "Mails". EMAIL_PROVIDER: "smtp", "sendgrid" o vacío
-    # (SMTP si hay SMTP_HOST; si no, SendGrid si hay clave).
+    # y docs/AZURE.md, "Mails". EMAIL_PROVIDER: "resend", "smtp", "sendgrid" o vacío
+    # (Resend si hay clave; si no SMTP si hay SMTP_HOST; si no SendGrid).
     EMAIL_PROVIDER: str = ""
+    # Resend (API web, la que usa Tuki): la recomendada en Render gratis, que
+    # no deja salir SMTP. Remitente de un dominio verificado en Resend.
+    RESEND_API_KEY: str = ""
     # SMTP: Zoho Mail (smtppro.zoho.com, 465 con "ssl"), Azure Communication
     # Services Email o Microsoft 365.
     # SMTP_SEGURIDAD: "starttls" (puerto 587), "ssl" (465) o "ninguna".
