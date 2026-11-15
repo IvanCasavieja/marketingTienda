@@ -49,7 +49,15 @@ configurado (`backend/app/services/email_service.py`). Sin ninguno, la pantalla
 avisa que la recuperación por mail no está activada y que hay que pedirle a
 quien administra una contraseña nueva.
 
-**Hoy (15/11/2026) se usa una casilla de Zoho Mail**, por SMTP. Datos de
+**En Render, por Resend.** El plan gratis de Render no deja salir conexiones
+SMTP (15/11/2026: Zoho respondía desde una PC y desde Render se colgaba) y la
+cuenta de SendGrid se quedó sin crédito. Resend manda por su API web, igual
+que Tuki: `EMAIL_PROVIDER=resend`, `RESEND_API_KEY` (secreto) y `EMAIL_FROM`
+con una dirección de un dominio verificado en Resend. Gratis hasta 3.000
+mails por mes.
+
+**La casilla de Zoho Mail** también está configurada, por SMTP, para cuando el
+backend esté donde se pueda usar SMTP (Azure o un plan pago de Render). Datos de
 Zoho para una casilla con dominio propio (a confirmar en la configuración de
 Zoho; las cuentas del centro de datos europeo usan `smtppro.zoho.eu`):
 

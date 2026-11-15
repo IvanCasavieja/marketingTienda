@@ -64,6 +64,7 @@ def config(monkeypatch):
         "EMAIL_PROVIDER": "", "SMTP_HOST": "", "SMTP_PORT": 587, "SMTP_USER": "",
         "SMTP_PASSWORD": "", "SMTP_SEGURIDAD": "starttls", "SENDGRID_API_KEY": "",
         "EMAIL_FROM": "Core Tienda <DoNotReply@ejemplo.uy>",
+        "RESEND_API_KEY": "",
     }.items():
         monkeypatch.setattr(settings, clave, valor)
     return monkeypatch
@@ -193,3 +194,67 @@ def test_un_usuario_smtp_que_no_es_casilla_no_se_usa_de_remitente(config):
 def test_el_mensaje_tiene_remitente_destino_y_asunto(config):
     msg = armar_mensaje("ana@ejemplo.uy", "Asunto", "<p>hola</p>", "hola")
     assert msg["From"] == "Core Tienda <DoNotReply@ejemplo.uy>" and msg["Subject"] == "Asunto"
+
+
+# --- Por Resend (la API web que usa Tuki) -----------------------------------------
+# 15/11/2026: el plan gratis de Render no deja salir SMTP (Zoho se colgaba) y la
+# cuenta de SendGrid se quedó sin crédito. Resend va por HTTPS y no tiene ese problema.
+
+def test_con_clave_de_resend_va_por_resend_aunque_haya_smtp(config):
+    config.setattr(settings, "RESEND_API_KEY", "re_x")
+    config.setattr(settings, "SMTP_HOST", "smtppro.zoho.com")
+    config.setattr(settings, "SENDGRID_API_KEY", "SG.x")
+    assert proveedor() == "resend"
+    config.setattr(settings, "EMAIL_PROVIDER", "smtp")
+    assert proveedor() == "smtp"
+    config.setattr(settings, "EMAIL_PROVIDER", "resend")
+    assert proveedor() == "resend"
+
+
+def test_pedir_resend_sin_clave_es_no_tener_mails(config):
+    config.setattr(settings, "EMAIL_PROVIDER", "resend")
+    config.setattr(settings, "SMTP_HOST", "smtppro.zoho.com")
+    assert proveedor() is None
+
+
+class _ClienteFalso:
+    """Hace de httpx.AsyncClient: anota el pedido y contesta lo que se le diga."""
+    ultimo = None
+    responde = (200, '{"id": "abc"}')
+
+    def __init__(self, timeout=None):
+        _ClienteFalso.ultimo = self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def post(self, url, json=None, headers=None):
+        self.url, self.json, self.headers = url, json, headers
+        codigo, texto = _ClienteFalso.responde
+        return type("R", (), {"status_code": codigo, "text": texto})()
+
+
+def test_por_resend_manda_remitente_destino_y_las_dos_versiones(config):
+    config.setattr(settings, "RESEND_API_KEY", "re_clave")
+    config.setattr(email_service.httpx, "AsyncClient", _ClienteFalso)
+    _ClienteFalso.responde = (200, '{"id": "abc"}')
+    html, texto = build_reset_email(LINK, "Ana")
+    asyncio.run(send_email("ana@ejemplo.uy", ASUNTO_RECUPERACION, html, texto))
+    c = _ClienteFalso.ultimo
+    assert c.url == "https://api.resend.com/emails"
+    assert c.headers["Authorization"] == "Bearer re_clave"
+    assert c.json["from"] == "Core Tienda <DoNotReply@ejemplo.uy>"
+    assert c.json["to"] == ["ana@ejemplo.uy"]
+    assert c.json["subject"] == ASUNTO_RECUPERACION
+    assert c.json["html"] == html and c.json["text"] == texto
+
+
+def test_si_resend_rechaza_no_se_hace_como_que_salio(config):
+    config.setattr(settings, "RESEND_API_KEY", "re_clave")
+    config.setattr(email_service.httpx, "AsyncClient", _ClienteFalso)
+    _ClienteFalso.responde = (403, '{"message": "The tenovastudio.com domain is not verified"}')
+    with pytest.raises(RuntimeError, match="Resend error 403"):
+        asyncio.run(send_email("ana@ejemplo.uy", "x", "<p>x</p>", "x"))
