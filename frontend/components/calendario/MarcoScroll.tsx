@@ -79,7 +79,16 @@ export function MarcoScroll({ ancho, children }: { ancho: number | string; child
   }
 
   return (
-    <div ref={ref} onScroll={sincronizar} className="overflow-x-auto overscroll-x-contain">
+    // Con alto tope, la rejilla se desplaza adentro de su marco y la fila de
+    // los días (sticky arriba) queda a la vista al bajar, como en un Excel.
+    // Sin tope, el marco era el contenedor del sticky pero nunca se movía
+    // para abajo, y la fila se iba con la página. El tope deja lugar a la
+    // barra de arriba y a la de abajo del teléfono.
+    <div
+      ref={ref}
+      onScroll={sincronizar}
+      className="max-h-[calc(100dvh-9rem)] overflow-auto overscroll-x-contain md:max-h-[calc(100dvh-3rem)]"
+    >
       <div style={{ width: ancho }}>{children}</div>
     </div>
   )

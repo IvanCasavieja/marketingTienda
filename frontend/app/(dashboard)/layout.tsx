@@ -10,6 +10,7 @@ import { Menu, CalendarDays, ShieldAlert, ArrowLeftRight } from "lucide-react";
 import { MARCA, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import FueraDeMundo from "@/components/layout/FueraDeMundo";
 import NavegacionInferior from "@/components/layout/NavegacionInferior";
+import { useAvisos } from "@/store/avisos";
 import { useTranslation } from "react-i18next";
 
 const Sidebar = dynamic(() => import("@/components/layout/Sidebar"), { ssr: false });
@@ -166,7 +167,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
 
-      <NavegacionInferior onMenu={() => setSidebarOpen(true)} />
+      <NavegacionInferior
+        onMenu={() => setSidebarOpen(true)}
+        onAvisos={() => { setSidebarOpen(true); useAvisos.getState().pedirAbrir(); }}
+      />
     </div>
   );
 }

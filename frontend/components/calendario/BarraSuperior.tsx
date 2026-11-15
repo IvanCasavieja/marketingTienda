@@ -6,7 +6,9 @@ import {
   ArrowLeftRight, CalendarRange, ChevronLeft, ChevronRight, LayoutList, Maximize2, Minimize2, Minus,
   MoveHorizontal, Plus, WifiOff,
 } from 'lucide-react'
-import { claveDe, diasDelMes, hoyIso, mesSiguiente } from '@/lib/calendario/fechas'
+import { claveDe, diaDeHoy, diasDelMes, hoyIso, isoDe, mesSiguiente } from '@/lib/calendario/fechas'
+import { SIN_CATEGORIA } from '@/lib/calendario/categorias'
+import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { useCalendario, type Filtro } from '@/lib/calendario/store'
 import {
   ANCHO_ETIQUETA, ZOOM_POR_DEFECTO, ZOOM_TELEFONO, porcentajeZoom, sePuedeAcercar, sePuedeAlejar,
@@ -70,6 +72,31 @@ export function BarraSuperior() {
   const [anio, mesNum] = mesActivo.split('-').map(Number)
   const anios = ANIOS.includes(anio) ? ANIOS : [...ANIOS, anio].sort((a, b) => a - b)
   const esteMes = claveDe(hoyIso())
+  const abrirEditor = useCalendario(s => s.abrirEditor)
+  const { editable } = usePermisosCalendario()
+
+  // Atajos de teclado (propuesta de diseño del 15/11/2026): ← y → cambian
+  // de mes, T vuelve a hoy y N crea una acción, como el botón. No se activan
+  // mientras se escribe, con una ficha o el editor abiertos, ni con
+  // Ctrl/Alt/Cmd (no pisan los del navegador).
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t?.closest('input, textarea, select, [contenteditable="true"], [role="tablist"], [role="radiogroup"], [role="listbox"], [role="menu"], [role="dialog"]')) return
+      const { abierta, edicion, mesActivo: mes } = useCalendario.getState()
+      if (abierta || edicion) return
+      if (e.key === 'ArrowLeft') irAMes(mesSiguiente(mes, -1))
+      else if (e.key === 'ArrowRight') irAMes(mesSiguiente(mes, 1))
+      else if (e.key === 't' || e.key === 'T') irAMes(claveDe(hoyIso()))
+      else if ((e.key === 'n' || e.key === 'N') && editable) {
+        abrirEditor({ seccion: 'comercial', banda: SIN_CATEGORIA, carril: 0, barra: null, fechaInicial: isoDe(mes, diaDeHoy(mes) ?? 1) })
+      } else return
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', tecla)
+    return () => window.removeEventListener('keydown', tecla)
+  }, [irAMes, abrirEditor, editable])
 
   const ir = (a: number, m: number) => irAMes(`${a}-${String(m).padStart(2, '0')}`)
 
@@ -179,7 +206,7 @@ export function BarraSuperior() {
 
         {/* El mes. En el teléfono ocupa la línea entera, con el mes al medio. */}
         <div className="flex w-full items-center gap-1 sm:ml-auto sm:w-auto">
-          <button type="button" onClick={() => irAMes(mesSiguiente(mesActivo, -1))} className="boton-icono" aria-label="Mes anterior" title="Mes anterior">
+          <button type="button" onClick={() => irAMes(mesSiguiente(mesActivo, -1))} className="boton-icono" aria-label="Mes anterior" title="Mes anterior (←)" aria-keyshortcuts="ArrowLeft">
             <ChevronLeft className="h-5 w-5" />
           </button>
           <div className="flex flex-1 items-center justify-center sm:flex-none">
@@ -202,7 +229,7 @@ export function BarraSuperior() {
               {anios.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
-          <button type="button" onClick={() => irAMes(mesSiguiente(mesActivo, 1))} className="boton-icono" aria-label="Mes siguiente" title="Mes siguiente">
+          <button type="button" onClick={() => irAMes(mesSiguiente(mesActivo, 1))} className="boton-icono" aria-label="Mes siguiente" title="Mes siguiente (→)" aria-keyshortcuts="ArrowRight">
             <ChevronRight className="h-5 w-5" />
           </button>
           {/* Fuera de este mes, "Hoy" se ofrece con el color de la marca: es
@@ -211,7 +238,8 @@ export function BarraSuperior() {
             type="button"
             onClick={() => irAMes(esteMes)}
             disabled={mesActivo === esteMes}
-            title={mesActivo === esteMes ? 'Ya estás en este mes' : 'Volver a este mes'}
+            title={mesActivo === esteMes ? 'Ya estás en este mes' : 'Volver a este mes (T)'}
+            aria-keyshortcuts="T"
             className="h-11 shrink-0 rounded-xl border border-brand-200 bg-brand-50 px-3 text-sm font-semibold text-brand-700 transition hover:border-brand-300 hover:bg-brand-100 active:scale-95 disabled:border-slate-200 disabled:bg-transparent disabled:text-slate-400 disabled:active:scale-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200 dark:hover:bg-brand-500/20 dark:disabled:border-slate-700 dark:disabled:bg-transparent dark:disabled:text-slate-500 sm:ml-1 sm:h-9 sm:px-3.5"
           >
             Hoy

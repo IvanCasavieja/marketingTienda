@@ -20,6 +20,7 @@ import { hasPermission } from "@/lib/permissions";
 import { toast } from "sonner";
 import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import { useCalendario } from "@/lib/calendario/store";
+import { useAvisos } from "@/store/avisos";
 
 /** Al cerrar sesión, lo de esta persona no queda en el navegador: la copia del
  *  calendario (con sus tareas) y el mundo que eligió. Antes quien entraba
@@ -133,7 +134,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { t, i18n } = useTranslation();
   const { user: currentUser } = useCurrentUser();
   const [showLangMenu, setShowLangMenu] = useState(false);
-  const [notifCount, setNotifCount] = useState(0);
+  // El número vive en un lugar compartido: la barra de abajo del teléfono también lo muestra.
+  const notifCount = useAvisos((s) => s.noLeidos);
+  const setNotifCount = useAvisos((s) => s.setNoLeidos);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
   const [notificaciones, setNotificaciones] = useState<Notificacion[] | null>(null);
   const notifWrapRef = useRef<HTMLDivElement>(null);
@@ -231,7 +234,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       document.removeEventListener("visibilitychange", contar);
       window.removeEventListener("focus", contar);
     };
-  }, []);
+  }, [setNotifCount]);
 
   // Cerrar el dropdown de notificaciones al hacer clic fuera, y con Escape
   // (que además devuelve el foco a la campanita, para seguir con el teclado).
@@ -293,6 +296,16 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       setNotificaciones([]);
     }
   }
+
+  // La barra de abajo del teléfono pide abrir la lista (el menú ya se abrió
+  // desde el layout): se escucha el pedido y se abre con lo último.
+  useEffect(() => useAvisos.subscribe((ahora, antes) => {
+    if (ahora.pedidoDeAbrir === antes.pedidoDeAbrir) return;
+    setShowNotifMenu(true);
+    watchlistApi.notificaciones()
+      .then(({ data }) => setNotificaciones(data))
+      .catch(() => setNotificaciones([]));
+  }), []);
 
   async function marcarTodasLeidas() {
     try {

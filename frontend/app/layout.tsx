@@ -15,7 +15,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // Sin maximumScale: en el teléfono se puede pellizcar para agrandar
+  // (accesibilidad). Los campos del núcleo usan letra de 16px, así el
+  // iPhone no agranda solo al tocarlos.
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

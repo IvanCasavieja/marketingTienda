@@ -8,6 +8,7 @@ import { headerEnFecha, ocupacionHeader, useCalendario, useMesActivo } from '@/l
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { REGLAS_HEADER } from '@/lib/calendario/tipos'
 import { useDialogo } from './useDialogo'
+import { CLASE_MANIJA, useDeslizarParaCerrar } from './useDeslizarParaCerrar'
 
 const TONO_ESTADO = {
   ok: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200',
@@ -55,6 +56,7 @@ export function PanelHeaders({ abierto, onCerrar, diaInicial = null }: {
   const cajaRef = useRef<HTMLElement>(null)
   const cerrarRef = useRef<HTMLButtonElement>(null)
   useDialogo(abierto, cajaRef, cerrarRef)
+  useDeslizarParaCerrar(cajaRef, abierto, onCerrar)
 
   useEffect(() => {
     if (!abierto) return
@@ -115,6 +117,7 @@ export function PanelHeaders({ abierto, onCerrar, diaInicial = null }: {
           abierto ? 'hoja-abierta translate-y-0 sm:translate-x-0' : 'hoja-cerrada translate-y-full sm:translate-x-full sm:translate-y-0'
         }`}
       >
+        <div aria-hidden className={`${CLASE_MANIJA} !bg-white/40`} />
         <header className="shrink-0 border-b border-slate-200 bg-slate-900 px-5 py-4 text-white dark:border-slate-800 dark:bg-slate-950">
           <div className="flex items-start gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10">

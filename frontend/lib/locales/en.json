@@ -28,6 +28,7 @@
     "metaFixtureTooltip": "Sample data — the Meta Ads integration is paused, these aren't real numbers"
   },
   "sidebar": {
+    "avisos": "Notifications",
     "mktgPlatform": "Core Tienda",
     "medios": "MEDIA",
     "analyticsGa4": "Analytics GA4",
