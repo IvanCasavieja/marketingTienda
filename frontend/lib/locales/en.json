@@ -63,7 +63,12 @@
     "redesSociales": "SOCIAL MEDIA",
     "validacionRrss": "Social media check",
     "calendarioSeccion": "CALENDAR",
-    "calendario": "Calendar"
+    "calendario": "Calendar",
+    "mundo": "World",
+    "cambiarMundo": "Switch world",
+    "cerrarMenu": "Close menu",
+    "mas": "More",
+    "navegacion": "Main navigation"
   },
   "login": {
     "welcome": "Welcome",
