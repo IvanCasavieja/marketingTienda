@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Toaster } from "sonner";
 
 /**
@@ -9,9 +10,14 @@ import { Toaster } from "sonner";
  * El tema no sale del sistema sino de la clase `dark` del <html>, que pone
  * ThemeProvider y cambia el botón del menú. Sonner por su cuenta seguía al
  * sistema, así que en modo oscuro elegido a mano los avisos salían blancos.
+ *
+ * En pantalla completa (el calendario la usa) el navegador muestra solo ese
+ * elemento: los avisos se dibujan adentro de él, si no "No se pudo guardar"
+ * o "Sin conexión" no se veían (pruebas del 15/11/2026).
  */
 export default function ToasterConTema() {
   const [tema, setTema] = useState<"light" | "dark">("light");
+  const [pantallaCompleta, setPantallaCompleta] = useState<Element | null>(null);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -22,5 +28,12 @@ export default function ToasterConTema() {
     return () => observador.disconnect();
   }, []);
 
-  return <Toaster richColors position="top-right" theme={tema} />;
+  useEffect(() => {
+    const alCambiar = () => setPantallaCompleta(document.fullscreenElement);
+    document.addEventListener("fullscreenchange", alCambiar);
+    return () => document.removeEventListener("fullscreenchange", alCambiar);
+  }, []);
+
+  const avisos = <Toaster richColors position="top-right" theme={tema} />;
+  return pantallaCompleta ? createPortal(avisos, pantallaCompleta) : avisos;
 }

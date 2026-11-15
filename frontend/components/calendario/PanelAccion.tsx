@@ -7,6 +7,7 @@ import {
 import { BloqueTareas } from './BloqueTareas'
 import { Cocarda, SelectorDeCategoria } from './Cocarda'
 import { useDialogo } from './useDialogo'
+import { CampoFecha } from './CampoFecha'
 import { categoriasParaElegir } from '@/lib/calendario/categorias'
 import { textoSobre } from '@/lib/calendario/colores'
 import { diasEntre, fechaCorta, hoyIso, rangoLargo, sumarDias } from '@/lib/calendario/fechas'
@@ -483,6 +484,7 @@ function BloqueAvisos({
 }) {
   const agregarAviso = useCalendario(s => s.agregarAviso)
   const quitarAviso = useCalendario(s => s.quitarAviso)
+  const personasEstado = useCalendario(s => s.personasEstado)
   const avisos = accion.avisos ?? []
   const hoy = hoyIso()
   const yaArranco = hoy > accion.desde
@@ -497,7 +499,8 @@ function BloqueAvisos({
     setElegidos(usuarioId != null && personas.some(p => p.id === usuarioId) ? [usuarioId] : [])
   }, [accion.id, usuarioId, personas])
 
-  const nombreDe = (id: number) => personas.find(p => p.id === id)?.nombre ?? 'alguien que ya no ve el calendario'
+  const nombreDe = (id: number) => personas.find(p => p.id === id)?.nombre
+    ?? (personasEstado === 'ok' ? 'alguien que ya no ve el calendario' : 'una persona')
 
   function estadoDe(a: Aviso): string {
     if (yaArranco) return esEnvio ? 'el envío ya salió' : 'la acción ya arrancó'
@@ -581,7 +584,11 @@ function BloqueAvisos({
 
           <div>
             <p className="etiqueta-campo">A quién</p>
-            {personas.length === 0 ? (
+            {personas.length === 0 && personasEstado === 'error' ? (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                No se pudo traer la lista de personas. Se vuelve a intentar sola en unos segundos.
+              </p>
+            ) : personas.length === 0 ? (
               <div className="space-y-2" aria-label="Cargando las personas…">
                 {[0, 1, 2].map(i => <div key={i} className="skeleton h-9 rounded-lg" />)}
               </div>
@@ -736,13 +743,12 @@ function BloqueArea({
             {esPiezaDeEnvio(p) && (
               <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sale</span>
-                <input
-                  type="date"
-                  value={p.desde ?? ''}
+                <CampoFecha
+                  valor={p.desde}
                   disabled={!editable}
                   aria-label={`Día de envío de ${p.formato}`}
-                  onChange={e => onEnvio(p.id, e.target.value
-                    ? { desde: e.target.value, hasta: e.target.value }
+                  onGuardar={dia => onEnvio(p.id, dia
+                    ? { desde: dia, hasta: dia }
                     : { desde: undefined, hasta: undefined })}
                   className="campo !h-9 !w-auto !px-2 !text-sm"
                 />

@@ -23,7 +23,12 @@ const TONO_ESTADO = {
  * pregunta real es "¿qué hay puesto tal día?", así que el panel arranca por la
  * fecha y muestra las diez posiciones una abajo de la otra.
  */
-export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => void }) {
+export function PanelHeaders({ abierto, onCerrar, diaInicial = null }: {
+  abierto: boolean
+  onCerrar: () => void
+  /** El día que se tocó en la fila del header: el panel abre en ese, no en hoy. */
+  diaInicial?: number | null
+}) {
   const mes = useMesActivo()
   const barras = useCalendario(s => s.barras)
   const abrirEditor = useCalendario(s => s.abrirEditor)
@@ -33,6 +38,14 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
 
   const [dia, setDia] = useState(() => diaDeHoy(mes.clave) ?? 1)
   const [ajustandoRM, setAjustandoRM] = useState(false)
+
+  // Se abre en el día que se tocó (antes abría siempre en hoy: pruebas del
+  // 15/11/2026). Se ajusta al cambiar la apertura, durante el render.
+  const [apertura, setApertura] = useState({ abierto, diaInicial })
+  if (apertura.abierto !== abierto || apertura.diaInicial !== diaInicial) {
+    setApertura({ abierto, diaInicial })
+    if (abierto && diaInicial) setDia(diaInicial)
+  }
 
   // Al cambiar de mes, la fecha elegida puede no existir (un 31 en un mes de 30)
   useEffect(() => {

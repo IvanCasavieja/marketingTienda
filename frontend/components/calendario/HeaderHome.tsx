@@ -28,6 +28,7 @@ export function HeaderHome() {
   const mes = useMesActivo()
   const abrirAccion = useCalendario(s => s.abrirAccion)
   const [panelAbierto, setPanelAbierto] = useState(false)
+  const [diaDelPanel, setDiaDelPanel] = useState<number | null>(null)
 
   const ancho = useAnchoTotal(mes.dias)
   const franjaPie = useFranjaDias(mes.dias)
@@ -47,7 +48,7 @@ export function HeaderHome() {
         acciones={
           <button
             type="button"
-            onClick={() => setPanelAbierto(true)}
+            onClick={() => { setDiaDelPanel(null); setPanelAbierto(true) }}
             className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-700 active:scale-[.98] dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 sm:min-h-[40px] sm:w-auto"
           >
             <CalendarSearch className="h-4 w-4" />
@@ -99,7 +100,7 @@ export function HeaderHome() {
                 <button
                   key={o.dia}
                   type="button"
-                  onClick={() => setPanelAbierto(true)}
+                  onClick={() => { setDiaDelPanel(o.dia); setPanelAbierto(true) }}
                   style={{ gridColumn: o.dia, gridRow: 1 }}
                   title={`Día ${o.dia}: ${o.cantidad} banners en el header. Tocá para ver cuáles.`}
                   className={[
@@ -135,7 +136,7 @@ export function HeaderHome() {
         </footer>
       </Seccion>
 
-      <PanelHeaders abierto={panelAbierto} onCerrar={() => setPanelAbierto(false)} />
+      <PanelHeaders abierto={panelAbierto} diaInicial={diaDelPanel} onCerrar={() => setPanelAbierto(false)} />
     </>
   )
 }

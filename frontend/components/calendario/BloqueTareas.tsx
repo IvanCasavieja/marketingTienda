@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { CalendarClock, Check, CornerDownRight, ListChecks, Plus, Trash2, UserRound } from 'lucide-react'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
+import { CampoFecha, esFechaGuardable } from './CampoFecha'
 import { useCalendario } from '@/lib/calendario/store'
 import {
   ETIQUETA_ESTADO_TAREA, NIVELES_DE_TAREA, nivelDeTarea,
@@ -104,6 +105,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
 }) {
   const cambiar = useCalendario(s => s.cambiarTarea)
   const borrar = useCalendario(s => s.borrarTarea)
+  const personasEstado = useCalendario(s => s.personasEstado)
   const [agregando, setAgregando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
 
@@ -173,7 +175,10 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                   >
                     <option value="">Sin asignar</option>
                     {/* Alguien que ya no abre este mundo igual se muestra: no se pierde de quién era. */}
-                    {tarea.asignadoA != null && !asignado && <option value={tarea.asignadoA}>Alguien que ya no ve este calendario</option>}
+                    {/* Sin la lista de personas todavía no se sabe quién es: no se dice que ya no está. */}
+                    {tarea.asignadoA != null && !asignado && (
+                      <option value={tarea.asignadoA}>{personasEstado === 'ok' ? 'Alguien que ya no ve este calendario' : 'Asignada'}</option>
+                    )}
                     {personas.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.id === usuarioId ? ' (vos)' : ''}</option>)}
                   </select>
                 </label>
@@ -189,10 +194,9 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
               {gestiona ? (
                 <label className="relative flex items-center">
                   <CalendarClock className={`pointer-events-none absolute left-2.5 h-4 w-4 ${vencida ? 'text-rose-600 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'}`} aria-hidden />
-                  <input
-                    type="date"
-                    value={tarea.vence ?? ''}
-                    onChange={e => cambiar(tarea.id, { vence: e.target.value || null })}
+                  <CampoFecha
+                    valor={tarea.vence}
+                    onGuardar={vence => cambiar(tarea.id, { vence })}
                     aria-label={`Cuándo vence ${tarea.titulo}`}
                     className={`${PASTILLA} pl-8 pr-2 ${
                       vencida
@@ -291,6 +295,7 @@ function NuevaTarea({ accionId, parentId, personas, etiqueta, abierta = false, o
   onListo?: () => void
 }) {
   const crear = useCalendario(s => s.crearTarea)
+  const personasEstado = useCalendario(s => s.personasEstado)
   const [abierto, setAbierto] = useState(abierta)
   const [titulo, setTitulo] = useState('')
   const [asignadoA, setAsignadoA] = useState('')
@@ -302,14 +307,26 @@ function NuevaTarea({ accionId, parentId, personas, etiqueta, abierta = false, o
     onListo?.()
   }
 
-  function enviar(e: React.FormEvent) {
-    e.preventDefault()
+  function crearLaEscrita() {
     if (!titulo.trim()) return
     crear(accionId, {
-      titulo, parentId, asignadoA: asignadoA ? Number(asignadoA) : null, vence: vence || null,
+      titulo, parentId, asignadoA: asignadoA ? Number(asignadoA) : null,
+      vence: esFechaGuardable(vence) ? vence : null,
     })
+  }
+
+  function enviar(e: React.FormEvent) {
+    e.preventDefault()
+    crearLaEscrita()
     // Se queda abierto para cargar la siguiente: las tareas se cargan de a varias.
     setTitulo('')
+  }
+
+  /** "Listo" con algo escrito se lee como "guardá esto y cerrá": antes la
+   *  tiraba sin avisar (pruebas del 15/11/2026). */
+  function listo() {
+    crearLaEscrita()
+    cerrar()
   }
 
   if (!abierto) {
@@ -349,14 +366,19 @@ function NuevaTarea({ accionId, parentId, personas, etiqueta, abierta = false, o
             <option value="">Sin asignar por ahora</option>
             {personas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
+          {personasEstado === 'error' && (
+            <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">
+              No se pudo traer la lista de personas. Se vuelve a intentar sola en unos segundos.
+            </span>
+          )}
         </label>
         <label className="block">
           <span className="etiqueta-campo">Vence el (opcional)</span>
-          <input type="date" value={vence} onChange={e => setVence(e.target.value)} className="campo" />
+          <input type="date" min="2000-01-01" max="2100-12-31" value={vence} onChange={e => setVence(e.target.value)} className="campo" />
         </label>
       </div>
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={cerrar} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[40px]">
+        <button type="button" onClick={listo} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[40px]">
           Listo
         </button>
         <button

@@ -8,8 +8,9 @@ import {
   claveDe, diasEntre, mesSiguiente, nombreMes, primerDiaDe, rangoLargo, sumarDias, ultimoDiaDe,
 } from '@/lib/calendario/fechas'
 import { useCalendario } from '@/lib/calendario/store'
-import { formatosDeCanal, tituloDeCanal } from '@/lib/calendario/tipos'
+import { formatosDeCanal, tituloDeCanal, type BarraGuardada } from '@/lib/calendario/tipos'
 import { useDialogo } from './useDialogo'
+import { esFechaGuardable } from './CampoFecha'
 
 const TEXTOS: Record<string, { nueva: string; editar: string; unaSola: string }> = {
   comercial: { nueva: 'Nueva acción', editar: 'Editar acción', unaSola: 'Es una sola acción' },
@@ -46,6 +47,11 @@ export function EditorBarra() {
   const [color, setColor] = useState<string>(PALETA[0])
   const [formato, setFormato] = useState('')
   const [hora, setHora] = useState('')
+  // Eliminar pide confirmación: se lleva las tareas, piezas y avisos, y no
+  // se puede deshacer (pruebas del 15/11/2026: un clic borraba todo).
+  // Atada a la edición abierta: al abrir otra, vuelve a no estar confirmando.
+  const [confirmandoEn, setConfirmandoEn] = useState<object | null>(null)
+  const confirmandoBorrar = edicion !== null && confirmandoEn === edicion
 
   useEffect(() => {
     if (!edicion) return
@@ -91,7 +97,9 @@ export function EditorBarra() {
   if (!edicion) return null
 
   const hastaReal = esEnvio ? desde : hasta
-  const fechasOk = Boolean(desde) && Boolean(hastaReal) && hastaReal >= desde
+  // Completas y con un año real: el campo de fecha deja escribir 0202.
+  const fechasCompletas = esFechaGuardable(desde) && esFechaGuardable(hastaReal)
+  const fechasOk = fechasCompletas && hastaReal >= desde
   const valido = nombre.trim().length > 0 && fechasOk
   const dias = fechasOk ? diasEntre(desde, hastaReal) + 1 : 0
   const meses = fechasOk ? mesesQueToca(desde, hastaReal) : []
@@ -162,6 +170,7 @@ export function EditorBarra() {
               autoFocus
               value={nombre}
               onChange={e => setNombre(e.target.value)}
+              maxLength={1000}
               placeholder={esAlta ? (esEnvio ? 'Ej: Mailing Día de la Madre' : 'Ej: Fiesta de Italia') : ''}
               className="campo"
             />
@@ -172,7 +181,7 @@ export function EditorBarra() {
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="etiqueta-campo">Sale el</span>
-                  <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="campo" />
+                  <input type="date" min="2000-01-01" max="2100-12-31" value={desde} onChange={e => setDesde(e.target.value)} className="campo" />
                 </label>
                 <label className="block">
                   <span className="etiqueta-campo">A las</span>
@@ -200,6 +209,8 @@ export function EditorBarra() {
               <span className="etiqueta-campo">Arranca</span>
               <input
                 type="date"
+                min="2000-01-01"
+                max="2100-12-31"
                 value={desde}
                 onChange={e => {
                   const v = e.target.value
@@ -215,7 +226,8 @@ export function EditorBarra() {
               <input
                 type="date"
                 value={hasta}
-                min={desde || undefined}
+                min={desde || '2000-01-01'}
+                max="2100-12-31"
                 onChange={e => setHasta(e.target.value)}
                 aria-invalid={!fechasOk || undefined}
                 className={`campo ${!fechasOk ? '!border-rose-400 focus:!ring-rose-500/25' : ''}`}
@@ -235,7 +247,9 @@ export function EditorBarra() {
                 )}
               </>
             ) : (
-              <span className="font-medium text-rose-700 dark:text-rose-300">La fecha de fin no puede ser anterior a la de inicio.</span>
+              <span className="font-medium text-rose-700 dark:text-rose-300">
+                {fechasCompletas ? 'La fecha de fin no puede ser anterior a la de inicio.' : 'Revisá las fechas: tienen que estar completas y con un año real.'}
+              </span>
             )}
           </p>
           </>
@@ -283,11 +297,18 @@ export function EditorBarra() {
           </div>
         </div>
 
+        {confirmandoBorrar && edicion.barra ? (
+          <ConfirmarBorrado
+            barra={edicion.barra}
+            onSi={() => { setConfirmandoEn(null); borrar() }}
+            onNo={() => setConfirmandoEn(null)}
+          />
+        ) : (
         <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-800/40">
           {!esAlta ? (
             <button
               type="button"
-              onClick={borrar}
+              onClick={() => setConfirmandoEn(edicion)}
               className="flex min-h-[44px] items-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 active:scale-95 dark:text-rose-400 dark:hover:bg-rose-500/10 sm:min-h-[40px]"
             >
               <Trash2 className="h-4 w-4" /> Eliminar
@@ -310,7 +331,50 @@ export function EditorBarra() {
             </button>
           </div>
         </footer>
+        )}
       </form>
     </div>
+  )
+}
+
+/** "¿Seguro?" antes de eliminar, diciendo qué se va con la acción. */
+function ConfirmarBorrado({ barra, onSi, onNo }: { barra: BarraGuardada; onSi: () => void; onNo: () => void }) {
+  const cosas = [
+    [barra.tareas?.length ?? 0, 'tarea', 'tareas'],
+    [barra.piezas?.length ?? 0, 'pieza', 'piezas'],
+    [barra.avisos?.length ?? 0, 'aviso', 'avisos'],
+  ] as const
+  const lista = cosas.filter(([n]) => n > 0).map(([n, una, varias]) => `${n} ${n === 1 ? una : varias}`)
+  const queSeVa = lista.length === 0
+    ? ''
+    : ` Se ${lista.length === 1 && cosas.find(([n]) => n > 0)?.[0] === 1 ? 'va' : 'van'} con ella ${
+      lista.length === 1 ? lista[0] : `${lista.slice(0, -1).join(', ')} y ${lista[lista.length - 1]}`}.`
+  return (
+    <footer
+      role="alertdialog"
+      aria-labelledby="confirmar-borrado"
+      className="shrink-0 animate-fade-in space-y-3 border-t border-rose-200 bg-rose-50 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-rose-500/30 dark:bg-rose-500/10"
+    >
+      <p id="confirmar-borrado" className="text-sm text-rose-900 dark:text-rose-100">
+        ¿Eliminar <strong>{barra.nombre}</strong>?{queSeVa} No se puede deshacer.
+      </p>
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          autoFocus
+          onClick={onNo}
+          className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-700 transition hover:bg-white/70 active:scale-95 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-h-[40px]"
+        >
+          No, dejarla
+        </button>
+        <button
+          type="button"
+          onClick={onSi}
+          className="flex min-h-[44px] items-center gap-1.5 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 active:scale-[.98] sm:min-h-[40px]"
+        >
+          <Trash2 className="h-4 w-4" /> Sí, eliminar
+        </button>
+      </div>
+    </footer>
   )
 }

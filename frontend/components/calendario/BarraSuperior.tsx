@@ -46,6 +46,7 @@ export function BarraSuperior() {
   const claveMundo = useCalendario(s => s.mundo)
   const dias = diasDelMes(mesActivo)
   const conexion = useCalendario(s => s.conexion)
+  const sinGuardar = useCalendario(s => s.sinGuardar)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
   const filtrosRef = useRef<HTMLDivElement>(null)
 
@@ -302,8 +303,10 @@ export function BarraSuperior() {
         <p role="status" className="flex items-start gap-2 rounded-b-2xl border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 sm:px-5">
           <WifiOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
-            No hay conexión con el servidor: lo que ves puede no estar al día y los cambios no se guardan. Se vuelve a
-            intentar solo.
+            No hay conexión con el servidor: lo que ves puede no estar al día.{' '}
+            {sinGuardar > 0
+              ? <><strong>{sinGuardar === 1 ? '1 cambio tuyo espera' : `${sinGuardar} cambios tuyos esperan`}</strong> para guardarse: se guardan solos cuando vuelva. No cierres esta pestaña.</>
+              : 'Se vuelve a intentar solo.'}
           </span>
         </p>
       )}

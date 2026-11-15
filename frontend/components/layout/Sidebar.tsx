@@ -19,6 +19,19 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
 import { toast } from "sonner";
 import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
+import { useCalendario } from "@/lib/calendario/store";
+
+/** Al cerrar sesión, lo de esta persona no queda en el navegador: la copia del
+ *  calendario (con sus tareas) y el mundo que eligió. Antes quien entraba
+ *  después en la misma computadora veía "el último que usaste" de otro. */
+function olvidarDatosDelNavegador() {
+  try {
+    void useCalendario.persist.clearStorage();
+    void useMundoElegido.persist.clearStorage();
+  } catch {
+    // Sin acceso al almacenamiento no hay nada guardado que borrar.
+  }
+}
 
 // Los flags de country-flag-icons devuelven emoji de bandera regional, que
 // Windows no renderiza como imagen (muestra el codigo de pais en texto) —
@@ -199,10 +212,25 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   }
 
 
+  // El número de la campanita se pregunta al entrar, cada minuto con la
+  // pestaña a la vista y al volver a ella. Antes solo al entrar: una tarea
+  // asignada no aparecía hasta recargar la página (pruebas del 15/11/2026).
   useEffect(() => {
-    watchlistApi.notificacionesNoLeidasCount()
-      .then(({ data }) => setNotifCount(data.count))
-      .catch(() => {});
+    const contar = () => {
+      if (document.visibilityState !== "visible") return;
+      watchlistApi.notificacionesNoLeidasCount()
+        .then(({ data }) => setNotifCount(data.count))
+        .catch(() => {});
+    };
+    contar();
+    const intervalo = window.setInterval(contar, 60_000);
+    document.addEventListener("visibilitychange", contar);
+    window.addEventListener("focus", contar);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", contar);
+      window.removeEventListener("focus", contar);
+    };
   }, []);
 
   // Cerrar el dropdown de notificaciones al hacer clic fuera, y con Escape
@@ -295,6 +323,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     marcarUnaLeida(n);
     const destino = resolverDestino(n);
     setShowNotifMenu(false);
+    // En el teléfono el menú es un cajón: si no se cierra, queda abierto
+    // debajo de la ficha que abre el aviso y aparece al cerrarla.
+    if (destino) onClose?.();
     if (destino) router.push(destino);
   }
 
@@ -659,7 +690,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
           <button
             type="button"
-            onClick={() => authApi.logout().finally(() => { window.location.href = "/login"; })}
+            onClick={() => authApi.logout().finally(() => { olvidarDatosDelNavegador(); window.location.href = "/login"; })}
             aria-label={t("common.logout")}
             title={t("common.logout")}
             className={clsx(BOTON_PIE, "hover:!bg-rose-50 hover:!text-rose-600 dark:hover:!bg-rose-500/10 dark:hover:!text-rose-300")}
