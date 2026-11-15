@@ -1,12 +1,12 @@
 'use client'
 
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware'
 import { toast } from 'sonner'
 import { calendarioApi } from '@/lib/api'
 import { esSinCategoria } from './categorias'
 import { carrilLibre, headerDerivado, nuevoId, vistaDelMes } from './derivar'
-import { claveDe, hoyIso, primerDiaDe, ultimoDiaDe } from './fechas'
+import { claveDe, hoyIso, mesSiguiente, primerDiaDe, ultimoDiaDe } from './fechas'
 import { ZOOM_POR_DEFECTO, limitarZoom } from './rejilla'
 
 export { ZOOMS, ZOOM_POR_DEFECTO } from './rejilla'
@@ -42,6 +42,40 @@ let revMinima = 0
 /** La última escritura en viaje de cada acción: la siguiente de esa misma
  *  acción espera a que termine (ver escribir). */
 const colas = new Map<string, Promise<void>>()
+
+type Llamada = () => Promise<{ data: Escrito }>
+/**
+ * Los cambios que no llegaron al servidor por un problema de conexión (sin
+ * red, servidor caído, una demora de más de 15 s). Antes se daban por
+ * perdidos sin decirlo: la pantalla los mostraba guardados y al volver la
+ * conexión desaparecían. Ahora se reintentan en orden en cada revisión (cada
+ * 15 s, o al volver a la pestaña), y mientras quede alguno lo de la pantalla
+ * no se pisa con lo del servidor. Viven en memoria: si se cierra la pestaña
+ * se pierden, y por eso el navegador pregunta antes de cerrarla.
+ */
+const pendientes: { llamada: Llamada; de?: string }[] = []
+let reintentando: Promise<void> | null = null
+/** La revisión que está en viaje, para no pedir dos veces lo mismo. */
+let sincronizando: { mundo: string; promesa: Promise<void> } | null = null
+
+/** Si el error es de conexión (se reintenta) y no un "no" del servidor. */
+function esDeConexion(e: unknown): boolean {
+  const r = (e as { response?: { status?: number } })?.response
+  return !r || (r.status ?? 0) >= 500 || r.status === 408 || r.status === 429
+}
+
+function detalleDe(e: unknown): string | null {
+  const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  return typeof d === 'string' ? d : null
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', ev => {
+    if (pendientes.length === 0) return
+    ev.preventDefault()
+    ev.returnValue = ''
+  })
+}
 
 /** Cada cuanto se pregunta si alguien cambio algo. */
 export const SEGUNDOS_ENTRE_REVISIONES = 15
@@ -91,8 +125,12 @@ type Estado = {
   /** La revision del servidor que tenemos. null = hay que traer todo. */
   rev: number | null
   conexion: 'cargando' | 'ok' | 'sin-conexion'
+  /** Cuántos cambios propios esperan a que vuelva la conexión (ver pendientes). */
+  sinGuardar: number
   /** A quien se le puede mandar un aviso. */
   personas: Persona[]
+  /** Si la lista de personas llegó. Con 'error' se reintenta en cada revisión. */
+  personasEstado: 'cargando' | 'ok' | 'error'
   mesActivo: string
   edicion: Edicion | null
   /** El id de la accion con la ficha abierta. */
@@ -157,6 +195,63 @@ function duenaDe(barras: Record<string, BarraGuardada>, pred: (b: BarraGuardada)
   return Object.values(barras).find(pred) ?? null
 }
 
+/** Las acciones que tocan el mes `clave` o los dos de cada lado. */
+function cercaDe(barras: Record<string, BarraGuardada>, clave: string): Record<string, BarraGuardada> {
+  const desde = primerDiaDe(mesSiguiente(clave, -2))
+  const hasta = ultimoDiaDe(mesSiguiente(clave, 2))
+  const out: Record<string, BarraGuardada> = {}
+  for (const [id, b] of Object.entries(barras)) {
+    if (b.desde <= hasta && b.hasta >= desde) out[id] = b
+  }
+  return out
+}
+
+/**
+ * La copia del calendario en el navegador (localStorage). Dos cosas que la
+ * de zustand por defecto no hace:
+ * - escribe un rato después del último cambio, no en cada uno (abrir y cerrar
+ *   la ficha o hacer zoom reescribía todo), y antes de cerrar la pestaña;
+ * - si el navegador no deja guardar (almacenamiento lleno, modo privado), no
+ *   pasa nada: la copia es solo para pintar rápido. Antes ese error cortaba
+ *   la escritura al servidor.
+ */
+const copiaDelNavegador: PersistStorage<unknown> = (() => {
+  let porGuardar: { nombre: string; valor: StorageValue<unknown> } | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const guardarYa = () => {
+    if (timer) { clearTimeout(timer); timer = null }
+    if (!porGuardar) return
+    const { nombre, valor } = porGuardar
+    porGuardar = null
+    try {
+      localStorage.setItem(nombre, JSON.stringify(valor))
+    } catch {
+      // Sin lugar: se borra la copia vieja para que no quede desactualizada.
+      try { localStorage.removeItem(nombre) } catch { /* nada que hacer */ }
+    }
+  }
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', guardarYa)
+  return {
+    getItem: nombre => {
+      try {
+        const texto = localStorage.getItem(nombre)
+        return texto ? (JSON.parse(texto) as StorageValue<unknown>) : null
+      } catch {
+        return null
+      }
+    },
+    setItem: (nombre, valor) => {
+      porGuardar = { nombre, valor }
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(guardarYa, 800)
+    },
+    removeItem: nombre => {
+      porGuardar = null
+      try { localStorage.removeItem(nombre) } catch { /* nada que hacer */ }
+    },
+  }
+})()
+
 export const useCalendario = create<Estado>()(
   persist(
     (set, get) => {
@@ -166,7 +261,76 @@ export const useCalendario = create<Estado>()(
        * la borro otra persona, se cayo la conexion), se avisa y se trae lo que
        * haya de verdad.
        */
-      async function escribir(llamada: () => Promise<{ data: Escrito }>, de?: string): Promise<Escrito | null> {
+      /** Lo que hace falta después de que una escritura salió bien. */
+      function registrar(data: Escrito | undefined) {
+        if (data?.yaExistia) {
+          // El servidor no escribió nada (otra persona ya había agregado lo
+          // mismo, o era un reintento): lo local puede tener un id que allá
+          // no existe. Se trae todo.
+          set({ rev: null })
+        } else if (data?.rev != null) {
+          revMinima = Math.max(revMinima, data.rev)
+          // Si nadie escribio en el medio, lo local ya ES esa revision: no
+          // hace falta volver a bajarse todo.
+          const { rev } = get()
+          if (rev != null && data.rev === rev + 1) set({ rev: data.rev })
+        }
+      }
+
+      function dejarPendiente(llamada: Llamada, de?: string) {
+        pendientes.push({ llamada, de })
+        set({ sinGuardar: pendientes.length, conexion: 'sin-conexion' })
+        toast.error(
+          pendientes.length === 1
+            ? 'Sin conexión con el servidor: el cambio quedó pendiente y se guarda solo cuando vuelva. No cierres esta pestaña.'
+            : `Sin conexión con el servidor: ${pendientes.length} cambios pendientes. Se guardan solos cuando vuelva.`,
+          { id: 'calendario-sin-guardar', duration: 10_000 },
+        )
+      }
+
+      /** Manda los pendientes, en orden. Corta en el primero que sigue sin conexión. */
+      function reintentar(): Promise<void> {
+        if (reintentando) return reintentando
+        if (pendientes.length === 0) return Promise.resolve()
+        const promesa = (async () => {
+          let guardados = 0
+          while (pendientes.length > 0) {
+            try {
+              const { data } = await pendientes[0].llamada()
+              pendientes.shift()
+              guardados++
+              if (data?.rev != null) revMinima = Math.max(revMinima, data.rev)
+            } catch (e) {
+              if (esDeConexion(e)) break
+              // El servidor dijo que no (por ejemplo, otra persona borró esa
+              // acción): ese cambio no se puede guardar y se descarta.
+              pendientes.shift()
+              toast.error(detalleDe(e) ?? 'Un cambio pendiente no se pudo guardar.')
+            }
+          }
+          set({ sinGuardar: pendientes.length })
+          if (pendientes.length === 0) {
+            if (guardados > 0) {
+              toast.success(guardados === 1 ? 'Volvió la conexión: se guardó el cambio pendiente.' : `Volvió la conexión: se guardaron ${guardados} cambios pendientes.`,
+                { id: 'calendario-sin-guardar' })
+            }
+            // Lo de la pantalla puede no ser exactamente lo del servidor: se trae todo.
+            set({ rev: null })
+          }
+        })()
+        reintentando = promesa.finally(() => { reintentando = null })
+        return reintentando
+      }
+
+      async function escribir(llamada: Llamada, de?: string): Promise<Escrito | null> {
+        // Con cambios esperando a la conexión, este va detrás de ellos: si
+        // saliera antes, un "ponerle categoría" podría llegar antes que el alta
+        // de la acción.
+        if (pendientes.length > 0) {
+          dejarPendiente(llamada, de)
+          void reintentar()
+          return null
+        }
         enVuelo++
         // Los cambios de una misma acción salen de a uno y en orden. Sin esto,
         // crear una acción y enseguida ponerle la categoría o cargarle una
@@ -178,32 +342,30 @@ export const useCalendario = create<Estado>()(
         if (de) colas.set(de, turno)
         try {
           if (anterior) await anterior
-          const { data } = await llamada()
-          if (data?.yaExistia) {
-            // El servidor no escribió nada (otra persona ya había agregado lo
-            // mismo, o era un reintento): lo local puede tener un id que allá
-            // no existe. Se trae todo.
-            set({ rev: null })
-          } else if (data?.rev != null) {
-            revMinima = Math.max(revMinima, data.rev)
-            // Si nadie escribio en el medio, lo local ya ES esa revision: no
-            // hace falta volver a bajarse todo.
-            const { rev } = get()
-            if (rev != null && data.rev === rev + 1) set({ rev: data.rev })
+          // Si mientras esperaba su turno otro cambio quedó sin conexión, este
+          // va detrás.
+          if (pendientes.length > 0) {
+            dejarPendiente(llamada, de)
+            return null
           }
+          const { data } = await llamada()
+          registrar(data)
           return data
         } catch (e) {
-          const detalle = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-          toast.error(typeof detalle === 'string'
-            ? detalle
-            : 'No se pudo guardar el cambio. Se recargó el calendario con lo último guardado.')
+          if (esDeConexion(e)) {
+            // Lo de la pantalla queda como está: es lo que se quiso guardar.
+            dejarPendiente(llamada, de)
+            return null
+          }
+          // El servidor dijo que no: se avisa por qué y se vuelve a lo guardado.
+          toast.error(detalleDe(e) ?? 'No se pudo guardar el cambio. Se vuelve a mostrar lo último guardado.')
           set({ rev: null })
           return null
         } finally {
           soltar()
           if (de && colas.get(de) === turno) colas.delete(de)
           enVuelo--
-          if (get().rev === null) void get().sincronizar()
+          if (get().rev === null && pendientes.length === 0) void get().sincronizar()
         }
       }
 
@@ -220,7 +382,9 @@ export const useCalendario = create<Estado>()(
         posicionesRM: {},
         rev: null,
         conexion: 'cargando',
+        sinGuardar: 0,
         personas: [],
+        personasEstado: 'cargando',
         mesActivo: claveDe(hoyIso()),
         edicion: null,
         abierta: null,
@@ -248,7 +412,7 @@ export const useCalendario = create<Estado>()(
           // que tambien se olvida.
           revMinima = 0
           set({
-            mundo: clave, barras: {}, posicionesRM: {}, rev: null, personas: [],
+            mundo: clave, barras: {}, posicionesRM: {}, rev: null, personas: [], personasEstado: 'cargando',
             abierta: null, edicion: null, conexion: 'cargando',
             // Un mundo sin Retail Media ni headers no puede quedar filtrado en ellos.
             filtro: 'todo',
@@ -257,36 +421,58 @@ export const useCalendario = create<Estado>()(
           void get().traerPersonas()
         },
 
-        sincronizar: async () => {
-          if (enVuelo > 0) return
+        sincronizar: () => {
+          if (enVuelo > 0) return Promise.resolve()
           const mundo = get().mundo
-          try {
-            const { data } = await calendarioApi.traerDatos(mundo, get().rev)
-            // Mientras viajaba se paso a otro mundo: esto ya no es lo que se mira.
-            if (get().mundo !== mundo) return
-            // Alguien de acá escribio mientras tanto: esto puede ser de antes.
-            if (enVuelo > 0) return
-            if (data.sinCambios) {
-              if (get().conexion !== 'ok') set({ conexion: 'ok' })
-              return
+          // Si ya hay una revisión en viaje para este mundo, es la misma
+          // pregunta: se espera esa (al cambiar de mundo o al volver a la
+          // pestaña salían dos juntas).
+          if (sincronizando?.mundo === mundo) return sincronizando.promesa
+          const promesa = (async () => {
+            // Primero lo que quedó sin guardar. Si sigue sin conexión, no se
+            // trae nada: pisaría en pantalla lo que todavía no se guardó.
+            if (pendientes.length > 0) {
+              await reintentar()
+              if (pendientes.length > 0) {
+                set({ conexion: 'sin-conexion' })
+                return
+              }
             }
-            const actual = get().rev
-            if (data.rev < revMinima || (actual != null && data.rev < actual)) return
-            const barras: Record<string, BarraGuardada> = {}
-            for (const b of data.barras ?? []) barras[b.id] = normalizar(b as BarraGuardada)
-            set({ barras, posicionesRM: data.posicionesRM ?? {}, rev: data.rev, conexion: 'ok' })
-          } catch {
-            set({ conexion: 'sin-conexion' })
-          }
+            try {
+              const { data } = await calendarioApi.traerDatos(mundo, get().rev)
+              // Mientras viajaba se paso a otro mundo: esto ya no es lo que se mira.
+              if (get().mundo !== mundo) return
+              // Alguien de acá escribio mientras tanto: esto puede ser de antes.
+              if (enVuelo > 0 || pendientes.length > 0) return
+              if (get().personasEstado === 'error') void get().traerPersonas()
+              if (data.sinCambios) {
+                if (get().conexion !== 'ok') set({ conexion: 'ok' })
+                return
+              }
+              const actual = get().rev
+              if (data.rev < revMinima || (actual != null && data.rev < actual)) return
+              const barras: Record<string, BarraGuardada> = {}
+              for (const b of data.barras ?? []) barras[b.id] = normalizar(b as BarraGuardada)
+              set({ barras, posicionesRM: data.posicionesRM ?? {}, rev: data.rev, conexion: 'ok' })
+            } catch {
+              set({ conexion: 'sin-conexion' })
+            }
+          })()
+          const enCurso = { mundo, promesa: promesa.finally(() => { if (sincronizando === enCurso) sincronizando = null }) }
+          sincronizando = enCurso
+          return enCurso.promesa
         },
 
         traerPersonas: async () => {
           const mundo = get().mundo
           try {
             const { data } = await calendarioApi.personas(mundo)
-            if (get().mundo === mundo) set({ personas: data })
+            if (get().mundo === mundo) set({ personas: data, personasEstado: 'ok' })
           } catch {
-            // Sin la lista no se pueden elegir destinatarios; lo demas anda.
+            // Sin la lista no se pueden elegir destinatarios ni ver a quién
+            // está asignada cada tarea: se dice, y se reintenta en la próxima
+            // revisión (ver sincronizar).
+            if (get().mundo === mundo) set({ personasEstado: 'error' })
           }
         },
 
@@ -516,16 +702,20 @@ export const useCalendario = create<Estado>()(
       // unico calendario que habia; se deja como estaba, no se borra.
       name: 'calendario-mktg-v3',
       version: 1,
-      storage: createJSONStorage(() => localStorage),
+      storage: copiaDelNavegador,
       // El servidor no tiene localStorage: se rehidrata a mano al montar,
       // asi no hay diferencia entre lo que pinta el server y lo que pinta el cliente.
       skipHydration: true,
       // La copia local es solo para pintar al instante: la revision NO se
       // guarda, asi al abrir siempre se trae todo del servidor y un cambio que
       // quedo a medio subir al cerrar la pestaña no queda como si existiera.
+      //
+      // Solo las acciones de los meses cerca del que se mira: es para pintar
+      // al instante, y con el mundo entero (1,4 KB por acción) un calendario
+      // grande llenaba el almacenamiento del navegador.
       partialize: s => ({
         mundo: s.mundo,
-        barras: s.barras,
+        barras: cercaDe(s.barras, s.mesActivo),
         posicionesRM: s.posicionesRM,
         mesActivo: s.mesActivo,
         zoom: s.zoom,

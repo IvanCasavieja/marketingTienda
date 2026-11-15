@@ -87,6 +87,9 @@ function UserEditorModal({
   const [email,    setEmail]    = useState(user.email);
   const [selected, setSelected] = useState<Set<string>>(new Set(user.permissions));
   const [mundos,   setMundos]   = useState<Set<string>>(new Set(user.mundos ?? []));
+  // Los mundos que quien edita puede dar: los suyos (un Super Admin, todos).
+  const yo = useCurrentUserStore((s) => s.user);
+  const puedoDar = new Set(yo?.is_superuser ? MUNDOS.map((m) => m.clave) : (yo?.mundos ?? []));
   const [saving,   setSaving]   = useState(false);
 
   function toggleMundo(clave: string) {
@@ -219,13 +222,18 @@ function UserEditorModal({
             <div className="flex flex-wrap gap-2">
               {MUNDOS.map((m) => {
                 const activo = mundos.has(m.clave);
+                // Nadie da un mundo al que no entra (el servidor lo rechaza):
+                // se ve, pero no se puede tildar. Sacarlo sí, si ya lo tenía.
+                const ajeno = !activo && !(user.mundos ?? []).includes(m.clave) && !puedoDar.has(m.clave);
                 return (
                   <button
                     key={m.clave}
                     type="button"
                     onClick={() => toggleMundo(m.clave)}
+                    disabled={ajeno}
                     aria-pressed={activo}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                    title={ajeno ? "No entrás a este mundo: no lo podés dar" : undefined}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
                       activo
                         ? "border-brand-500 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
                         : "border-slate-200 text-slate-500 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400"
@@ -237,6 +245,11 @@ function UserEditorModal({
                 );
               })}
             </div>
+            {MUNDOS.some((m) => !puedoDar.has(m.clave)) && (
+              <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                Los apagados son mundos a los que vos no entrás: solo los puede dar quien entra a ellos.
+              </p>
+            )}
           </div>
 
           {/* Permisos individuales — se prenden/apagan por usuario, no por rol */}
