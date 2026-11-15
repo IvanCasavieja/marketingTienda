@@ -39,6 +39,36 @@ Tres cosas más, en una línea cada una:
 | Deploy automático de Vercel y Render | **GitHub Actions** + **Azure Container Registry** | `.github/workflows/deploy-azure.yml` |
 | Logs en los paneles de Render y Vercel | **Log Analytics** | Los contenedores escriben a stdout y Azure lo recoge |
 | Variables de entorno en Render | **Secretos de la Container App** | Se cargan una vez con el Bicep |
+| Mail de recuperar la contraseña por SendGrid | **Azure Communication Services Email** (por SMTP) | Opcional: SendGrid sigue andando igual. Ver "Mails" abajo |
+
+### Mails
+
+La plataforma manda un solo mail: el de **recuperar la contraseña** ("Olvidé
+mi contraseña" en el login). Sale por SMTP o por SendGrid, según lo que esté
+configurado (`backend/app/services/email_service.py`). Sin ninguno, la pantalla
+avisa que la recuperación por mail no está activada y que hay que pedirle a
+quien administra una contraseña nueva.
+
+Para mandarlo desde el tenant de la empresa, lo natural es **Azure
+Communication Services Email**, que tiene un SMTP propio. Datos a confirmar con
+la guía de Microsoft al configurarlo:
+
+| Variable | Valor |
+| --- | --- |
+| `EMAIL_PROVIDER` | `smtp` |
+| `SMTP_HOST` | `smtp.azurecomm.net` |
+| `SMTP_PORT` | `587` |
+| `SMTP_SEGURIDAD` | `starttls` |
+| `SMTP_USER` | el usuario SMTP que da Communication Services (va atado a un app registration de Entra ID) |
+| `SMTP_PASSWORD` | el secreto de ese app registration (**secreto**: va con los secretos de la Container App) |
+| `EMAIL_FROM` | `Core Tienda <DoNotReply@<dominio verificado>>`: el remitente tiene que ser de un dominio conectado al recurso (el que da Azure o uno propio de la empresa) |
+
+Microsoft 365 también tiene SMTP (`smtp.office365.com`), pero Microsoft viene
+retirando el login con usuario y contraseña para SMTP en Exchange Online: no
+conviene depender de eso.
+
+Hasta que eso exista, si en Render está `SENDGRID_API_KEY`, se sigue usando
+SendGrid sin tocar nada.
 
 ### Por qué Container Apps también para el frontend (y no Static Web Apps)
 
@@ -120,7 +150,11 @@ Para copiar y pegar en el mail:
    quién maneja ese DNS.
 9. **Acceso de lectura** para quien mantiene la plataforma (`Reader` y
    `Log Analytics Reader` sobre el resource group) para poder ver los logs.
-10. **Una definición sobre el repositorio.** Hoy está en una cuenta personal de
+10. **Mails (opcional).** Un recurso de **Azure Communication Services Email**
+    con un dominio conectado (el que da Azure o uno de la empresa) y el usuario
+    y secreto SMTP para la plataforma. Es para el mail de recuperar la
+    contraseña; ver "Mails" en la sección 2.
+11. **Una definición sobre el repositorio.** Hoy está en una cuenta personal de
     GitHub (`IvanCasavieja/marketingTienda`). Si IT quiere pasarlo a una
     organización de la empresa, conviene hacerlo **antes**: la credencial
     federada del punto 4 lleva el nombre del repositorio.
@@ -481,6 +515,10 @@ Mínimos, y sin cambiar nada en Render ni en una PC:
 - `backend/app/main.py`: `/health` usa esa función, y se actualizó el mensaje
   del log.
 - `backend/tests/test_senal_azure.py`: tests nuevos para esas dos cosas.
+- `backend/app/services/email_service.py` (15/11/2026): el mail de recuperar la
+  contraseña sale por SMTP (Azure Communication Services) o por SendGrid, según
+  lo configurado. Variables nuevas `EMAIL_PROVIDER` y `SMTP_*` en
+  `backend/app/core/config.py`; tests en `backend/tests/test_mail_recuperacion.py`.
 
 `GIT_COMMIT` sola **no** hace que una máquina se crea el servidor, a propósito:
 ese freno es el que evita que una PC apuntada a la base de producción corra

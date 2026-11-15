@@ -97,7 +97,8 @@
     "backToLogin": "Back to login",
     "sentTitle": "Email sent",
     "sentSub": "If the email is registered, you'll receive the link in the next few minutes. Check your spam folder too.",
-    "errorToast": "Error sending the email. Please try again."
+    "errorToast": "Error sending the email. Please try again.",
+    "notConfigured": "Password recovery by email is not enabled yet. Ask the platform administrator to generate a new password for you."
   },
   "resetPassword": {
     "title": "New password",

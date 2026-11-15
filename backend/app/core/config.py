@@ -130,10 +130,21 @@ class Settings(BaseSettings):
     SFMC_SUBDOMAIN: str = ""
     SFMC_ACCOUNT_ID: str = ""
 
-    # SendGrid (password reset emails) — Single Sender Verification en
-    # sendgrid.com, sin necesitar dominio propio (ver EMAIL_FROM)
+    # Mails (hoy: recuperar la contraseña). Ver app/services/email_service.py
+    # y docs/AZURE.md, "Mails". EMAIL_PROVIDER: "smtp", "sendgrid" o vacío
+    # (SMTP si hay SMTP_HOST; si no, SendGrid si hay clave).
+    EMAIL_PROVIDER: str = ""
+    # SMTP: Azure Communication Services Email o Microsoft 365.
+    # SMTP_SEGURIDAD: "starttls" (puerto 587), "ssl" (465) o "ninguna".
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_SEGURIDAD: str = "starttls"
+    # SendGrid — Single Sender Verification en sendgrid.com, sin necesitar
+    # dominio propio (ver EMAIL_FROM)
     SENDGRID_API_KEY: str = ""
-    EMAIL_FROM: str = "MKTG Platform <onboarding@example.com>"
+    EMAIL_FROM: str = "Core Tienda <onboarding@example.com>"
 
     @field_validator("ENCRYPTION_KEY", mode="after")
     @classmethod

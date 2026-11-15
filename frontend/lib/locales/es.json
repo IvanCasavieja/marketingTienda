@@ -97,7 +97,8 @@
     "backToLogin": "Volver al login",
     "sentTitle": "Email enviado",
     "sentSub": "Si el email está registrado, vas a recibir el link en los próximos minutos. Revisá también la carpeta de spam.",
-    "errorToast": "Error al enviar el email. Intentá de nuevo."
+    "errorToast": "Error al enviar el email. Intentá de nuevo.",
+    "notConfigured": "La recuperación por mail todavía no está activada. Pedile a quien administra la plataforma que te genere una contraseña nueva."
   },
   "resetPassword": {
     "title": "Nueva contraseña",

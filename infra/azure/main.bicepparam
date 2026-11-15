@@ -42,6 +42,7 @@ param secretosBackend = {
   DV360_CLIENT_SECRET: readEnvironmentVariable('MKTG_DV360_CLIENT_SECRET', '')
   SFMC_CLIENT_SECRET: readEnvironmentVariable('MKTG_SFMC_CLIENT_SECRET', '')
   SENDGRID_API_KEY: readEnvironmentVariable('MKTG_SENDGRID_API_KEY', '')
+  SMTP_PASSWORD: readEnvironmentVariable('MKTG_SMTP_PASSWORD', '')
 }
 
 // true = producción. false = ensayo (sin migraciones ni loops periódicos).
@@ -58,7 +59,12 @@ param envBackend = {
   // SFMC_CLIENT_ID: ''
   // SFMC_SUBDOMAIN: ''
   // SFMC_ACCOUNT_ID: ''
-  // EMAIL_FROM: 'MKTG Platform <alguien@dominio>'
+  // EMAIL_FROM: 'Core Tienda <DoNotReply@dominio-verificado>'
+  // Mails por Azure Communication Services (ver docs/AZURE.md, "Mails"):
+  // EMAIL_PROVIDER: 'smtp'
+  // SMTP_HOST: 'smtp.azurecomm.net'
+  // SMTP_PORT: '587'
+  // SMTP_USER: ''
 }
 
 // Vacío = la URL por defecto de la app del frontend. Con dominio propio:
