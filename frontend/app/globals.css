@@ -186,6 +186,15 @@
 .prose-analysis li::before { content: "•"; @apply text-brand-500 font-bold shrink-0; }
 .prose-analysis strong { @apply text-slate-800 dark:text-slate-200 font-semibold; }
 
+/* La columna de las categorías, fija a la izquierda de la rejilla. En el
+   teléfono es más angosta: con la de la notebook no quedaba lugar para los
+   días. Los números son ANCHO_ETIQUETA y ANCHO_ETIQUETA_TELEFONO de
+   lib/calendario/rejilla.ts. */
+#calendario-pantalla { --ancho-etiqueta: 232px; }
+@media (max-width: 639px) {
+  #calendario-pantalla { --ancho-etiqueta: 136px; }
+}
+
 /* Pantalla completa del calendario. El navegador saca el nodo del flujo y lo
    pinta contra negro, así que el fondo, el padding y el scroll se ponen acá:
    heredados del dashboard no llegan. */

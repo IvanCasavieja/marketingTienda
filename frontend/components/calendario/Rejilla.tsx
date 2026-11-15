@@ -5,12 +5,19 @@ import { textoSobre } from '@/lib/calendario/colores'
 import { esFinde, nombreMes, rangoLargo } from '@/lib/calendario/fechas'
 import {
   ANCHO_ETIQUETA, MINIMO_CON_DOW, MINIMO_CON_NUMERO,
-  anchoDias, anchoTotal, columnasDe,
+  anchoDias, columnasDe,
 } from '@/lib/calendario/rejilla'
 import { useCalendario } from '@/lib/calendario/store'
 import type { Barra, Mes } from '@/lib/calendario/tipos'
 
 export { ANCHO_ETIQUETA }
+
+/**
+ * El ancho de la columna de etiquetas, como lo usa la pantalla: la variable
+ * CSS --ancho-etiqueta (232px en la notebook, 136px en el teléfono; ver
+ * globals.css). El número de rejilla.ts queda de respaldo.
+ */
+export const ESTILO_ETIQUETA = `var(--ancho-etiqueta, ${ANCHO_ETIQUETA}px)`
 
 /**
  * Alto de cada renglón. Era 30, con la letra en 11px: en una notebook había
@@ -20,10 +27,10 @@ export { ANCHO_ETIQUETA }
  */
 export const ALTO_FILA = 38
 
-/** Ancho total de la rejilla al zoom actual. */
-export function useAnchoTotal(dias: number) {
+/** Ancho total de la rejilla al zoom actual: etiquetas + días. */
+export function useAnchoTotal(dias: number): string {
   const zoom = useCalendario(s => s.zoom)
-  return anchoTotal(dias, zoom)
+  return `calc(${ESTILO_ETIQUETA} + ${anchoDias(dias, zoom)}px)`
 }
 
 /**
@@ -50,10 +57,11 @@ export function CabeceraDias({ mes, hoy, titulo }: { mes: Mes; hoy: number | nul
   const conNumero = zoom >= MINIMO_CON_NUMERO
 
   return (
-    <div className="sticky top-0 z-30 flex border-b border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-900">
+    <div className="sticky top-0 z-30 flex border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       <div
-        className="sticky left-0 z-40 flex shrink-0 items-end border-r border-slate-200 bg-white px-4 pb-2 pt-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400"
-        style={{ width: ANCHO_ETIQUETA }}
+        className="sticky left-0 z-40 flex shrink-0 items-end border-r border-slate-200 bg-white px-3 pb-2 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 sm:px-4"
+        style={{ width: ESTILO_ETIQUETA }}
+        data-etiqueta
       >
         {titulo}
       </div>
@@ -65,28 +73,33 @@ export function CabeceraDias({ mes, hoy, titulo }: { mes: Mes; hoy: number | nul
             <div
               key={d}
               style={{ gridColumn: d, gridRow: 1 }}
-              title={`${mes.dow[String(d)]} ${d}`}
+              title={esHoy ? `Hoy, ${mes.dow[String(d)]} ${d}` : `${mes.dow[String(d)]} ${d}`}
+              data-hoy={esHoy || undefined}
               className={[
-                'overflow-hidden border-r border-slate-100 px-0.5 pb-1.5 pt-2.5 text-center dark:border-slate-700',
-                finde ? 'bg-slate-50 dark:bg-slate-800' : '',
-                esHoy ? 'bg-brand-100 dark:bg-sky-900/40' : '',
+                'flex flex-col items-center overflow-hidden border-r border-slate-100 px-0.5 pb-1.5 pt-2 dark:border-slate-800',
+                finde ? 'bg-slate-50 dark:bg-slate-800/50' : '',
+                esHoy ? 'bg-brand-50 dark:bg-brand-500/10' : '',
               ].join(' ')}
             >
               {conDow && (
-                <div className="text-[11px] uppercase leading-none text-slate-400 dark:text-slate-500">
+                <div className={[
+                  'text-[10px] font-semibold uppercase leading-none',
+                  esHoy ? 'text-brand-600 dark:text-brand-300' : 'text-slate-400 dark:text-slate-500',
+                ].join(' ')}>
                   {mes.dow[String(d)]}
                 </div>
               )}
+              {/* Hoy va en un círculo lleno: es lo primero que se busca */}
               <div
                 className={[
-                  conDow ? 'mt-0.5' : '',
-                  'text-[13px] font-semibold leading-none',
-                  esHoy ? 'text-brand-700 dark:text-sky-300'
-                    : finde ? 'text-slate-500 dark:text-slate-400'
+                  conDow ? 'mt-1' : '',
+                  'flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-0.5 text-[13px] font-semibold leading-none tabular-nums',
+                  esHoy ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/40'
+                    : finde ? 'text-slate-400 dark:text-slate-500'
                       : 'text-slate-700 dark:text-slate-300',
                 ].join(' ')}
               >
-                {conNumero || d === 1 || d % 5 === 0 ? d : ''}
+                {conNumero || esHoy || d === 1 || d % 5 === 0 ? d : ''}
               </div>
             </div>
           )
@@ -126,6 +139,15 @@ function tituloPorDefecto(b: Barra, derivada: boolean): string {
   return partes.join(' · ')
 }
 
+// Las clases de cada celda de día se arman una vez por tipo de día, no una
+// vez por celda: en un mes con todas las categorías son más de mil celdas.
+const CELDA = 'relative border-r border-slate-100 dark:border-slate-800'
+const CELDA_FINDE = 'bg-slate-50/80 dark:bg-slate-800/30'
+// Hoy: un tinte y una línea de la marca que cruza todas las filas.
+const CELDA_HOY = "bg-brand-50/70 dark:bg-brand-500/[.07] before:absolute before:inset-y-0 before:left-1/2 before:w-0.5 before:-translate-x-1/2 before:bg-brand-500/50 before:content-['']"
+// Un día libre donde se puede cargar algo muestra un + al pasar.
+const CELDA_LIBRE = "cursor-cell transition-colors hover:bg-brand-50 dark:hover:bg-brand-500/10 after:absolute after:inset-0 after:flex after:items-center after:justify-center after:text-base after:font-semibold after:text-brand-500 after:opacity-0 after:transition-opacity after:content-['+'] hover:after:opacity-100"
+
 export function FilaRejilla({
   mes, fila, hoy, alto = ALTO_FILA, editable, onBarra, onDiaVacio, esDerivada, tituloDe, detalleDe,
 }: FilaProps) {
@@ -136,21 +158,22 @@ export function FilaRejilla({
 
   return (
     <div
-      className="grid shrink-0 border-b border-slate-200 dark:border-slate-700"
+      className="grid shrink-0 border-b border-slate-200 dark:border-slate-800"
       style={{ ...franja, minHeight: alto }}
     >
       {Array.from({ length: mes.dias }, (_, i) => i + 1).map(d => {
         const libre = !ocupado.has(d)
+        const seCarga = libre && editable && !!onDiaVacio
         return (
           <div
             key={d}
             style={{ gridColumn: d, gridRow: 1 }}
-            onClick={libre && editable && onDiaVacio ? () => onDiaVacio(d) : undefined}
+            onClick={seCarga ? () => onDiaVacio!(d) : undefined}
             className={[
-              'border-r border-slate-100 dark:border-slate-800',
-              esFinde(mes.clave, d) ? 'bg-slate-50 dark:bg-slate-800/40' : '',
-              d === hoy ? 'bg-brand-50 dark:bg-sky-950/40' : '',
-              libre && editable && onDiaVacio ? 'cursor-cell hover:bg-emerald-50 dark:hover:bg-emerald-950/40' : '',
+              CELDA,
+              esFinde(mes.clave, d) ? CELDA_FINDE : '',
+              d === hoy ? CELDA_HOY : '',
+              seCarga ? CELDA_LIBRE : '',
             ].join(' ')}
           />
         )
@@ -178,21 +201,23 @@ export function FilaRejilla({
               color: textoSobre(b.color),
             }}
             className={[
-              'relative z-10 my-[3px] flex items-center gap-1 overflow-hidden rounded-md px-2 text-left text-[13px] font-semibold leading-8',
-              'shadow-sm ring-1 ring-black/5 transition',
+              'relative z-10 my-[3px] flex items-center gap-1 overflow-hidden rounded-lg px-2 text-left text-[13px] font-semibold leading-8',
+              'shadow-sm ring-1 ring-inset ring-black/[.06] transition duration-150 ease-suave',
               // Una barra que viene del mes anterior o sigue en el próximo
               // llega al borde sin redondear y con una flecha: se ve que no
               // termina acá.
               b.vieneDeAntes ? 'ml-0 rounded-l-none pl-0.5' : 'ml-[2px]',
               b.sigueDespues ? 'mr-0 rounded-r-none pr-0.5' : 'mr-[2px]',
-              clicable ? 'cursor-pointer hover:brightness-95 hover:ring-2 hover:ring-slate-900/25' : 'cursor-default',
+              clicable
+                ? 'cursor-pointer hover:z-20 hover:-translate-y-px hover:shadow-md hover:ring-black/15 active:translate-y-0 active:shadow-sm focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-900'
+                : 'cursor-default',
               derivada ? 'border-l-[3px] border-l-slate-900/40' : '',
             ].join(' ')}
           >
             {b.vieneDeAntes && <ChevronLeft className="h-3 w-3 shrink-0 opacity-60" aria-hidden />}
             <span className="min-w-0 flex-1 truncate">{b.nombre}</span>
             {detalle && (
-              <span className="shrink-0 rounded bg-black/10 px-1 text-[10px] font-bold leading-4 tabular-nums">{detalle}</span>
+              <span className="shrink-0 rounded-md bg-black/10 px-1.5 text-[10px] font-bold leading-[18px] tabular-nums">{detalle}</span>
             )}
             {b.sigueDespues && <ChevronRight className="h-3 w-3 shrink-0 opacity-60" aria-hidden />}
           </button>
@@ -207,30 +232,33 @@ export function FilaRejilla({
 // ---------------------------------------------------------------------------
 
 export function EtiquetaBanda({
-  children, filas = 1, tono = 'normal', extra, onAgregar, tituloAgregar,
+  children, filas = 1, tono = 'normal', extra, onAgregar, tituloAgregar, titulo,
 }: {
   children: React.ReactNode
   filas?: number
-  tono?: 'normal' | 'rm' | 'grupo'
+  tono?: 'normal' | 'rm' | 'grupo' | 'destacada'
   extra?: React.ReactNode
   /** Botón + para crear algo en esta banda aunque todos sus renglones estén
    *  ocupados ese día: va al primer renglón libre, o a uno nuevo. */
   onAgregar?: () => void
   tituloAgregar?: string
+  /** El nombre entero, para el tooltip, cuando `children` no es un texto. */
+  titulo?: string
 }) {
   const fondo =
-    tono === 'rm' ? 'bg-violet-50 text-violet-900 dark:bg-violet-950/40 dark:text-violet-200'
+    tono === 'rm' ? 'bg-violet-50 text-violet-900 dark:bg-[#1e1638] dark:text-violet-200'
       : tono === 'grupo' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-        : 'bg-white text-slate-800 dark:bg-slate-900 dark:text-slate-300'
+        : tono === 'destacada' ? 'bg-white text-slate-900 dark:bg-slate-900 dark:text-white'
+          : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-300'
   return (
     <div
-      className={`sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-0.5 border-b border-r border-slate-200 px-4 py-1 dark:border-slate-700 ${fondo}`}
-      style={{ width: ANCHO_ETIQUETA, minHeight: filas * ALTO_FILA }}
+      className={`group/etiqueta sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-0.5 border-b border-r border-slate-200 py-1 pl-2.5 pr-1 dark:border-slate-800 sm:pl-4 sm:pr-1.5 ${fondo}`}
+      style={{ width: ESTILO_ETIQUETA, minHeight: filas * ALTO_FILA }}
     >
-      <div className="flex items-start gap-1">
+      <div className="flex items-center gap-0.5 sm:gap-1">
         <div
-          className="line-clamp-2 min-w-0 flex-1 text-[12.5px] font-semibold leading-tight"
-          title={typeof children === 'string' ? children : undefined}
+          className={`line-clamp-2 min-w-0 flex-1 break-words text-xs leading-tight sm:text-[12.5px] ${tono === 'destacada' ? 'font-bold' : 'font-semibold'}`}
+          title={titulo ?? (typeof children === 'string' ? children : undefined)}
         >
           {children}
         </div>
@@ -240,7 +268,7 @@ export function EtiquetaBanda({
             onClick={onAgregar}
             title={tituloAgregar}
             aria-label={tituloAgregar}
-            className="shrink-0 rounded-md p-1 text-slate-400 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+            className="flex h-8 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 sm:w-8 transition hover:bg-brand-50 hover:text-brand-700 active:scale-90 group-hover/etiqueta:text-slate-600 dark:text-slate-500 dark:hover:bg-brand-500/15 dark:hover:text-brand-200 dark:group-hover/etiqueta:text-slate-300"
           >
             <Plus className="h-4 w-4" />
           </button>

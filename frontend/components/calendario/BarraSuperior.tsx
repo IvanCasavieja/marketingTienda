@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeftRight, CalendarRange, ChevronLeft, ChevronRight, LayoutList, Maximize2, Minimize2, Minus,
-  MoveHorizontal, Plus,
+  MoveHorizontal, Plus, WifiOff,
 } from 'lucide-react'
 import { claveDe, diasDelMes, hoyIso, mesSiguiente } from '@/lib/calendario/fechas'
 import { useCalendario, type Filtro } from '@/lib/calendario/store'
 import {
-  ZOOM_POR_DEFECTO, porcentajeZoom, sePuedeAcercar, sePuedeAlejar,
+  ANCHO_ETIQUETA, ZOOM_POR_DEFECTO, ZOOM_TELEFONO, porcentajeZoom, sePuedeAcercar, sePuedeAlejar,
   siguienteZoom, zoomParaAncho,
 } from '@/lib/calendario/rejilla'
 import { mundoDe, mundosDe, type SeccionDeMundo } from '@/lib/mundos'
@@ -30,7 +30,8 @@ const NOMBRE_FILTRO: Record<SeccionDeMundo, string> = {
   header: 'Headers',
 }
 
-const BOTON = 'rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100'
+/** El select del mes y el del año: se leen como un título y se tocan como un botón. */
+const SELECT_FECHA = 'h-11 cursor-pointer rounded-xl border-0 bg-transparent py-0 text-base font-bold text-slate-900 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-transparent dark:text-slate-100 dark:hover:bg-slate-800 sm:h-10'
 
 export function BarraSuperior() {
   const mesActivo = useCalendario(s => s.mesActivo)
@@ -67,7 +68,14 @@ export function BarraSuperior() {
   function ajustarAlAncho(elegido = true) {
     const seccion = document.querySelector('#calendario section')
     if (!seccion) return
-    setZoom(zoomParaAncho(seccion.clientWidth, dias), elegido)
+    // La columna de las categorías es más angosta en el teléfono: se mide la
+    // de verdad, la que pone la variable CSS.
+    const etiqueta = seccion.querySelector<HTMLElement>('[data-etiqueta]')?.offsetWidth || ANCHO_ETIQUETA
+    const zoomJusto = zoomParaAncho(seccion.clientWidth, dias, etiqueta)
+    // En una pantalla angosta el mes no entra a un tamaño legible: una semana
+    // cómoda, y el resto con el dedo (ver ZOOM_TELEFONO).
+    const angosta = seccion.clientWidth < 640
+    setZoom(angosta && !elegido ? Math.max(zoomJusto, ZOOM_TELEFONO) : zoomJusto, elegido)
   }
 
   /**
@@ -118,16 +126,23 @@ export function BarraSuperior() {
     ...secciones.map(s => ({ id: s as Filtro, nombre: NOMBRE_FILTRO[s] })),
   ]
 
+  const vistas = [
+    { id: 'tiempo', nombre: 'Calendario', titulo: 'El mes entero, como en el Excel', Icono: CalendarRange },
+    { id: 'lista', nombre: 'Lista', titulo: 'Las acciones como tarjetas', Icono: LayoutList },
+  ] as const
+
   return (
-    <header className="mb-4 rounded-2xl border border-slate-200 bg-white shadow-card dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3.5 sm:px-5">
-        {/* En qué mundo se está parado: lo primero que tiene que quedar claro. */}
-        <div className="flex min-w-0 items-center gap-3">
+    <header className="mb-4 rounded-2xl border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-2 py-2 sm:px-5 sm:py-3.5">
+        {/* En qué mundo se está parado: lo primero que tiene que quedar claro.
+            En el teléfono ya lo dice la barra de arriba, con su color. */}
+        <div className="hidden min-w-0 items-center gap-3 sm:flex">
           <span
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white"
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl text-white shadow-sm"
             style={{ backgroundColor: mundo?.color ?? '#475569' }}
           >
-            <CalendarRange className="h-5 w-5" />
+            <span className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" aria-hidden />
+            <CalendarRange className="relative h-5 w-5" />
           </span>
           <div className="min-w-0">
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Calendario</p>
@@ -139,55 +154,85 @@ export function BarraSuperior() {
             <Link
               href="/mundos"
               title="Cambiar de mundo"
-              className="ml-1 flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="ml-1 flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 active:scale-95 dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500/40 dark:hover:bg-brand-500/10 dark:hover:text-brand-200"
             >
               <ArrowLeftRight className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Cambiar</span>
+              Cambiar
             </Link>
           )}
         </div>
+        <h1 className="sr-only sm:hidden">Calendario de {mundo?.nombre ?? 'este mundo'}</h1>
 
-        {/* El mes */}
-        <div className="flex items-center gap-1 sm:ml-auto">
-          <button type="button" onClick={() => irAMes(mesSiguiente(mesActivo, -1))} className={BOTON} aria-label="Mes anterior">
+        {/* El mes. En el teléfono ocupa la línea entera, con el mes al medio. */}
+        <div className="flex w-full items-center gap-1 sm:ml-auto sm:w-auto">
+          <button type="button" onClick={() => irAMes(mesSiguiente(mesActivo, -1))} className="boton-icono" aria-label="Mes anterior" title="Mes anterior">
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <select
-            value={mesNum}
-            onChange={e => ir(anio, Number(e.target.value))}
-            className="cursor-pointer rounded-lg border-0 bg-transparent py-1.5 pl-1 pr-0 text-base font-bold capitalize text-slate-900 outline-none hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-            aria-label="Mes"
-          >
-            {MESES.map((m, i) => (
-              <option key={m} value={i + 1} className="capitalize">{m}</option>
-            ))}
-          </select>
-          <select
-            value={anio}
-            onChange={e => ir(Number(e.target.value), mesNum)}
-            className="cursor-pointer rounded-lg border-0 bg-transparent py-1.5 text-base font-bold text-slate-900 outline-none hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-            aria-label="Año"
-          >
-            {anios.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
-          <button type="button" onClick={() => irAMes(mesSiguiente(mesActivo, 1))} className={BOTON} aria-label="Mes siguiente">
+          <div className="flex flex-1 items-center justify-center sm:flex-none">
+            <select
+              value={mesNum}
+              onChange={e => ir(anio, Number(e.target.value))}
+              className={`${SELECT_FECHA} pl-2 pr-1 capitalize`}
+              aria-label="Mes"
+            >
+              {MESES.map((m, i) => (
+                <option key={m} value={i + 1} className="capitalize">{m}</option>
+              ))}
+            </select>
+            <select
+              value={anio}
+              onChange={e => ir(Number(e.target.value), mesNum)}
+              className={`${SELECT_FECHA} pl-1 pr-1 tabular-nums`}
+              aria-label="Año"
+            >
+              {anios.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <button type="button" onClick={() => irAMes(mesSiguiente(mesActivo, 1))} className="boton-icono" aria-label="Mes siguiente" title="Mes siguiente">
             <ChevronRight className="h-5 w-5" />
           </button>
+          {/* Fuera de este mes, "Hoy" se ofrece con el color de la marca: es
+              la forma de volver. En este mes se apaga. */}
           <button
             type="button"
             onClick={() => irAMes(esteMes)}
             disabled={mesActivo === esteMes}
-            className="ml-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            title={mesActivo === esteMes ? 'Ya estás en este mes' : 'Volver a este mes'}
+            className="h-11 shrink-0 rounded-xl border border-brand-200 bg-brand-50 px-3 text-sm font-semibold text-brand-700 transition hover:border-brand-300 hover:bg-brand-100 active:scale-95 disabled:border-slate-200 disabled:bg-transparent disabled:text-slate-400 disabled:active:scale-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200 dark:hover:bg-brand-500/20 dark:disabled:border-slate-700 dark:disabled:bg-transparent dark:disabled:text-slate-500 sm:ml-1 sm:h-9 sm:px-3.5"
           >
             Hoy
           </button>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 border-t border-slate-100 px-4 py-2.5 dark:border-slate-800 sm:px-5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 px-2 py-2 dark:border-slate-800 sm:px-5 sm:py-2.5">
+        {/* Cómo se mira. La primera opción decía "Mes" y, al lado del selector
+            de mes, se leía como "este mes": Ivan buscó "el calendario general
+            de todo" y no lo encontró (12/11/2026). En el teléfono va primero y
+            ocupa todo el ancho de su línea, para que no quede un control chico
+            a la derecha. */}
+        <div className="segmentado order-first w-full sm:order-last sm:ml-auto sm:w-auto">
+          {vistas.map(({ id, nombre, titulo, Icono }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setVista(id)}
+              aria-pressed={vista === id}
+              title={titulo}
+              className="segmento"
+            >
+              <Icono className="h-4 w-4" /> {nombre}
+            </button>
+          ))}
+        </div>
+
         {/* Qué parte se mira. Las cuatro juntas marean a quien entra por
             primera vez; de a una se entiende. */}
-        <div className="-mx-1 flex max-w-full items-center gap-1 overflow-x-auto px-1" role="tablist" aria-label="Qué parte del calendario se ve">
+        <div
+          className="-mx-1 flex max-w-full items-center gap-1 overflow-x-auto px-1 py-0.5 [scrollbar-width:none] max-sm:[mask-image:linear-gradient(to_right,black_85%,transparent)] [&::-webkit-scrollbar]:hidden"
+          role="tablist"
+          aria-label="Qué parte del calendario se ve"
+        >
           {chips.map(c => (
             <button
               key={c.id}
@@ -195,10 +240,10 @@ export function BarraSuperior() {
               role="tab"
               aria-selected={filtro === c.id}
               onClick={() => setFiltro(c.id)}
-              className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
+              className={`min-h-[40px] shrink-0 rounded-full px-4 text-sm font-semibold transition active:scale-95 sm:min-h-[36px] sm:px-3.5 ${
                 filtro === c.id
-                  ? 'bg-brand-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                  ? 'bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-900'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
               }`}
             >
               {c.nombre}
@@ -206,71 +251,46 @@ export function BarraSuperior() {
           ))}
         </div>
 
-        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
-          {/* Cómo se mira. La primera opción decía "Mes" y, al lado del selector
-              de mes, se leía como "este mes": Ivan buscó "el calendario general
-              de todo" y no lo encontró (12/11/2026). En el teléfono ocupa todo
-              el ancho de su línea, para que no quede un control chico a la
-              derecha. */}
-          <div className="flex flex-1 items-center rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800 sm:flex-none">
-            {([
-              { id: 'tiempo', nombre: 'Calendario', titulo: 'El mes entero, como en el Excel', Icono: CalendarRange },
-              { id: 'lista', nombre: 'Lista', titulo: 'Las acciones como tarjetas', Icono: LayoutList },
-            ] as const).map(({ id, nombre, titulo, Icono }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setVista(id)}
-                aria-pressed={vista === id}
-                title={titulo}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold transition sm:flex-none ${
-                  vista === id
-                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-slate-100'
-                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                }`}
-              >
-                <Icono className="h-4 w-4" /> {nombre}
-              </button>
-            ))}
+        {vista === 'tiempo' && (
+          <div className="hidden items-center gap-0.5 rounded-xl border border-slate-200 p-0.5 dark:border-slate-700 md:order-last md:flex" role="group" aria-label="Tamaño del calendario">
+            <button type="button" onClick={() => setZoom(siguienteZoom(zoom, -1))} disabled={!sePuedeAlejar(zoom)} title="Alejar" aria-label="Alejar" className="boton-icono">
+              <Minus className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoom(ZOOM_POR_DEFECTO)}
+              title="Volver al tamaño normal"
+              className="h-9 w-12 rounded-lg text-center text-xs font-semibold tabular-nums text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+            >
+              {porcentajeZoom(zoom)}%
+            </button>
+            <button type="button" onClick={() => setZoom(siguienteZoom(zoom, 1))} disabled={!sePuedeAcercar(zoom)} title="Acercar" aria-label="Acercar" className="boton-icono">
+              <Plus className="h-4 w-4" />
+            </button>
+            <span className="mx-0.5 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden />
+            <button type="button" onClick={() => ajustarAlAncho()} title="Que entre el mes entero a lo ancho" aria-label="Que entre el mes entero a lo ancho" className="boton-icono">
+              <MoveHorizontal className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={alternarPantallaCompleta}
+              title={pantallaCompleta ? 'Salir de pantalla completa' : 'Pantalla completa'}
+              aria-label={pantallaCompleta ? 'Salir de pantalla completa' : 'Pantalla completa'}
+              className="boton-icono"
+            >
+              {pantallaCompleta ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
           </div>
-
-          {vista === 'tiempo' && (
-            <div className="hidden items-center md:flex">
-              <button type="button" onClick={() => setZoom(siguienteZoom(zoom, -1))} disabled={!sePuedeAlejar(zoom)} title="Alejar" className={BOTON}>
-                <Minus className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoom(ZOOM_POR_DEFECTO)}
-                title="Volver al tamaño normal"
-                className="w-12 rounded-lg py-1.5 text-center text-xs font-semibold tabular-nums text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              >
-                {porcentajeZoom(zoom)}%
-              </button>
-              <button type="button" onClick={() => setZoom(siguienteZoom(zoom, 1))} disabled={!sePuedeAcercar(zoom)} title="Acercar" className={BOTON}>
-                <Plus className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={() => ajustarAlAncho()} title="Que entre el mes entero a lo ancho" className={BOTON}>
-                <MoveHorizontal className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={alternarPantallaCompleta}
-                title={pantallaCompleta ? 'Salir de pantalla completa' : 'Pantalla completa'}
-                aria-label={pantallaCompleta ? 'Salir de pantalla completa' : 'Pantalla completa'}
-                className={BOTON}
-              >
-                {pantallaCompleta ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {conexion === 'sin-conexion' && (
-        <p className="rounded-b-2xl border-t border-amber-200 bg-amber-50 px-5 py-2.5 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-          No hay conexión con el servidor: lo que ves puede no estar al día y los cambios no se guardan. Se vuelve a
-          intentar solo.
+        <p role="status" className="flex items-start gap-2 rounded-b-2xl border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 sm:px-5">
+          <WifiOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            No hay conexión con el servidor: lo que ves puede no estar al día y los cambios no se guardan. Se vuelve a
+            intentar solo.
+          </span>
         </p>
       )}
     </header>
