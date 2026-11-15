@@ -28,6 +28,21 @@ from fastapi import HTTPException, status
 
 MUNDO_POR_DEFECTO = "tienda_inglesa"
 
+# Permisos de algo que está en todos los mundos (el chat de Don Tino): no dicen
+# de qué negocio es la persona. Los 60 logins de sucursal de Redexpres tienen
+# solo este (visto en una copia de producción el 15/11/2026): sin esto la
+# 0060 los dejaba también en Tienda Inglesa.
+PERMISOS_DE_TODOS_LOS_MUNDOS = frozenset({"ai.don_tino"})
+
+
+def es_del_equipo_de_tienda_inglesa(permisos) -> bool:
+    """Si tiene algún permiso de Tienda Inglesa: ni de Redexpres ni de algo
+    que está en todos los mundos."""
+    return any(
+        not p.startswith("redexpres.") and p not in PERMISOS_DE_TODOS_LOS_MUNDOS
+        for p in (permisos or [])
+    )
+
 # clave -> nombre. El orden es el del selector.
 MUNDOS: dict[str, str] = {
     "tienda_inglesa": "Tienda Inglesa",
@@ -94,17 +109,25 @@ def mundos_iniciales(permisos, es_sucursal_de_redexpres: bool = False) -> list[s
       Redexpres, entra a Redexpres: "Mi pedido" y la planilla viven ahí, y sin
       el mundo dejaría de verlos.
     - Quien tiene algún permiso que no es de Redexpres entra a Tienda Inglesa,
-      que es donde estaba todo, aunque además tenga un local asignado (alguien
-      del equipo que se asignó uno para probar no pierde Tienda Inglesa).
-    - Un login de sucursal (un local asignado y ningún permiso, o solo de
-      Redexpres) entra solo a Redexpres.
+      que es donde estaba todo.
+    - Un login de sucursal (un local asignado y, de permisos, nada más que
+      Redexpres o lo que está en todos los mundos, como Don Tino) entra solo
+      a Redexpres. Alguien del equipo de Tienda Inglesa que además tiene un
+      local (se asignó uno para probar) entra a los dos.
     - Quien no tiene nada entra a Tienda Inglesa.
     """
     permisos = set(permisos or [])
     de_redexpres = {p for p in permisos if p.startswith("redexpres.")}
     mundos = []
-    if permisos - de_redexpres or (not permisos and not es_sucursal_de_redexpres):
+    if es_sucursal_de_redexpres:
+        # Del equipo de Tienda Inglesa solo si tiene algo más que lo que está
+        # en todos los mundos (Don Tino): los logins de sucursal tienen eso.
+        if permisos - de_redexpres - PERMISOS_DE_TODOS_LOS_MUNDOS:
+            mundos.append("tienda_inglesa")
+        mundos.append("redexpres")
+        return mundos
+    if permisos - de_redexpres or not permisos:
         mundos.append("tienda_inglesa")
-    if de_redexpres or es_sucursal_de_redexpres:
+    if de_redexpres:
         mundos.append("redexpres")
     return mundos
