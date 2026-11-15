@@ -136,3 +136,47 @@ def test_el_aviso_de_un_envio_dice_sale_y_el_canal():
 
 def test_el_aviso_de_una_accion_sigue_diciendo_arranca():
     assert "arranca en 10 días" in mensaje("Fiesta", "MEGA EVENTO", date(2026, 10, 12), date(2026, 10, 2), None)
+
+
+# ---------------------------------------------------------------------------
+# La categoría de una acción: su banda
+# ---------------------------------------------------------------------------
+# Pedido de Ivan (12/11/2026): una acción se crea "y punto", sin preguntar de
+# qué tipo es, y la categoría se elige y se cambia desde adentro. La categoría
+# ES la banda. Para cambiarla la pantalla manda la banda y el carril juntos, y
+# el servidor escribe lo que le mandan: ni recalcula el carril ni compara la
+# banda contra una lista (el cargador del Excel crea bandas que la pantalla no
+# tiene en su catálogo).
+
+def _accion(**extra):
+    base = {
+        "id": "br-1", "seccion": "comercial", "banda": "MEGA EVENTO", "nombre": "Fiesta",
+        "desde": date(2026, 10, 1), "hasta": date(2026, 10, 9),
+    }
+    return BarraNueva(**{**base, **extra})
+
+
+def test_cambiar_la_categoria_de_una_accion_escribe_la_banda_y_el_carril():
+    assert _cambios("comercial", banda="MEGA EVENTO", carril=2) == {"banda": "MEGA EVENTO", "carril": 2}
+
+
+def test_una_accion_puede_volver_a_quedar_sin_categoria():
+    # El carril 0 es un carril, no un "no vino": se escribe.
+    assert _cambios("comercial", banda="Sin categoría", carril=0) == {"banda": "Sin categoría", "carril": 0}
+
+
+def test_una_categoria_en_null_es_como_si_no_hubiera_venido():
+    assert _cambios("comercial", banda=None) == {}
+
+
+def test_a_la_categoria_se_le_sacan_los_espacios_de_las_puntas():
+    assert BarraCambios(banda="  Especiales  ").banda == "Especiales"
+    assert _accion(banda="  Especiales  ").banda == "Especiales"
+
+
+def test_una_categoria_de_puros_espacios_no_se_guarda():
+    # `min_length=1` la dejaba pasar, y armaba una fila sin nombre en el mes.
+    with pytest.raises(ValidationError):
+        BarraCambios(banda="   ")
+    with pytest.raises(ValidationError):
+        _accion(banda="   ")

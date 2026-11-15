@@ -28,7 +28,7 @@
     "metaFixtureTooltip": "Dados de exemplo — a integração com o Meta Ads está pausada, não são números reais"
   },
   "sidebar": {
-    "mktgPlatform": "MKTG Platform",
+    "mktgPlatform": "Core Tienda",
     "medios": "MÍDIA",
     "analyticsGa4": "Analytics GA4",
     "materiales": "MATERIAIS",
@@ -63,7 +63,12 @@
     "redesSociales": "REDES SOCIAIS",
     "validacionRrss": "Validação de redes",
     "calendarioSeccion": "CALENDÁRIO",
-    "calendario": "Calendário"
+    "calendario": "Calendário",
+    "mundo": "Mundo",
+    "cambiarMundo": "Trocar de mundo",
+    "cerrarMenu": "Fechar menu",
+    "mas": "Mais",
+    "navegacion": "Navegação principal"
   },
   "login": {
     "welcome": "Bem-vindo",
@@ -97,7 +102,8 @@
     "backToLogin": "Voltar ao login",
     "sentTitle": "E-mail enviado",
     "sentSub": "Se o e-mail estiver cadastrado, você receberá o link em alguns minutos. Verifique também a pasta de spam.",
-    "errorToast": "Erro ao enviar o e-mail. Tente novamente."
+    "errorToast": "Erro ao enviar o e-mail. Tente novamente.",
+    "notConfigured": "A recuperação por e-mail ainda não está ativada. Peça a quem administra a plataforma para gerar uma nova senha."
   },
   "resetPassword": {
     "title": "Nova senha",
@@ -142,7 +148,7 @@
     "assistantSubtitle": "Pergunte-me sobre a plataforma",
     "inputPlaceholder": "Digite sua pergunta...",
     "comingSoon": "Assistente com IA real · Powered by Claude Sonnet 5",
-    "assistantWelcome": "Sou o Don Tino, seu assistente MKTG Platform. Posso guiá-lo pelo uso da plataforma, explicar funcionalidades e ajudá-lo a aproveitar ao máximo. Como posso ajudá-lo hoje?",
+    "assistantWelcome": "Sou o Don Tino, seu assistente Core Tienda. Posso guiá-lo pelo uso da plataforma, explicar funcionalidades e ajudá-lo a aproveitar ao máximo. Como posso ajudá-lo hoje?",
     "suggestions": {
       "s1": "Como sincronizo o Google Ads?",
       "s2": "Como gero faixas?",
@@ -395,18 +401,18 @@
     "downloadTemplate": "Baixar planilha modelo",
     "builtinTemplates": "Predefinidos",
     "destino": {
-      "title": "Para onde vamos?",
-      "subtitle": "Escolha que tipo de faixa você quer gerar.",
-      "change": "Trocar destino",
-      "nuevo": "Novo mundo",
-      "crear": "Criar mundo",
-      "creado": "Mundo criado",
-      "borrar": "Excluir mundo",
-      "borrarConfirm": "Excluir o mundo \"{{nombre}}\"?",
-      "borrado": "Mundo excluído",
-      "vacio": "Ainda não há nenhum mundo criado.",
-      "errorCargar": "Não foi possível carregar os mundos",
-      "nombrePlaceholder": "Nome do mundo (ex. Mega Rompe Precios)",
+      "title": "Quais cenefas você vai fazer?",
+      "subtitle": "Escolha o tipo de cenefa que quer gerar.",
+      "change": "Trocar tipo de cenefa",
+      "nuevo": "Novo tipo de cenefa",
+      "crear": "Criar tipo de cenefa",
+      "creado": "Tipo de cenefa criado",
+      "borrar": "Excluir tipo de cenefa",
+      "borrarConfirm": "Excluir o tipo de cenefa \"{{nombre}}\"?",
+      "borrado": "Tipo de cenefa excluído",
+      "vacio": "Ainda não há nenhum tipo de cenefa neste mundo.",
+      "errorCargar": "Não foi possível carregar os tipos de cenefa",
+      "nombrePlaceholder": "Nome (ex. Mega Rompe Precios)",
       "descripcionPlaceholder": "Descrição curta (opcional)"
     },
     "rompePrecios": {
@@ -1381,7 +1387,7 @@
   },
   "ayuda": {
     "title": "Como funciona a plataforma?",
-    "subtitle": "Tudo o que você precisa saber para usar a MKTG Platform, de acordo com o que sua conta pode ver e fazer.",
+    "subtitle": "Tudo o que você precisa saber para usar a Core Tienda, de acordo com o que sua conta pode ver e fazer.",
     "chips": {
       "analytics": "Analytics",
       "ia": "IA integrada",

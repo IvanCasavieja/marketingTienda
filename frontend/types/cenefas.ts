@@ -403,6 +403,8 @@ export interface CenefaLote {
 /** Un "mundo" de cenefas. Son datos, no código: se crean desde la UI. */
 export interface CenefaDestino {
   slug: string;
+  /** De qué mundo de la plataforma es (lib/mundos.ts). */
+  mundo?: string;
   nombre: string;
   descripcion: string;
   icono: string;

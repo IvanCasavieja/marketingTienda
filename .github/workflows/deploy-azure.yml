@@ -1,0 +1,184 @@
+name: Deploy a Azure
+
+# Despliega backend y frontend en Azure Container Apps en cada push a main: lo
+# mismo que hoy hacen Render y Vercel solos, pero adentro del tenant de la
+# empresa. La guía completa está en docs/AZURE.md.
+#
+# APAGADO POR DEFECTO. Los dos jobs se saltean mientras la variable del
+# repositorio AZURE_DEPLOY_ENABLED no valga 'true', así que hasta que Azure
+# exista este workflow no hace nada y no puede romper los deploys de hoy
+# (Vercel y Render no dependen de GitHub Actions: miran el repositorio solos).
+#
+# No guarda ninguna contraseña de Azure: entra con OIDC (credencial federada
+# del app registration para este repositorio y la rama main).
+#
+# Variables del repositorio (Settings → Secrets and variables → Actions →
+# Variables). Ninguna es secreta:
+#   AZURE_DEPLOY_ENABLED    'true' para prender el deploy
+#   AZURE_CLIENT_ID         Application (client) ID del app registration
+#   AZURE_TENANT_ID         Directory (tenant) ID
+#   AZURE_SUBSCRIPTION_ID   ID de la suscripción
+#   AZURE_RESOURCE_GROUP    resource group donde está todo
+#   AZURE_ACR_NAME          nombre del registro (salida acrName del Bicep)
+#   AZURE_BACKEND_APP       nombre de la Container App del backend
+#   AZURE_FRONTEND_APP      nombre de la Container App del frontend
+#   AZURE_API_URL           URL pública de la API, terminada en /api/v1. Queda
+#                           INCRUSTADA en la imagen del frontend al construirla.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      solo_imagenes:
+        description: "Solo construir y subir las imágenes, sin desplegar (para el primer arranque, cuando las apps todavía no existen)"
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write # para el login con OIDC
+  contents: read
+
+# Un deploy a la vez y en orden: si entran dos pushes seguidos, el segundo
+# espera al primero en vez de pisarlo a mitad de camino.
+concurrency:
+  group: deploy-azure
+  cancel-in-progress: false
+
+env:
+  IMAGEN_BACKEND: mktg-backend
+  IMAGEN_FRONTEND: mktg-frontend
+
+jobs:
+  backend:
+    name: Backend
+    if: vars.AZURE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Entrar a Azure (OIDC, sin contraseña)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Construir y subir la imagen del backend
+        env:
+          ACR: ${{ vars.AZURE_ACR_NAME }}
+        run: |
+          az acr login --name "$ACR"
+          imagen="$ACR.azurecr.io/$IMAGEN_BACKEND:$GITHUB_SHA"
+          docker build -t "$imagen" backend
+          docker push "$imagen"
+
+      - name: Desplegar el backend
+        if: ${{ !inputs.solo_imagenes }}
+        env:
+          ACR: ${{ vars.AZURE_ACR_NAME }}
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          APP: ${{ vars.AZURE_BACKEND_APP }}
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt
+          # GIT_COMMIT es lo que /health devuelve en "commit"
+          # (backend/app/core/config.py, commit_desplegado).
+          az containerapp update \
+            --name "$APP" \
+            --resource-group "$RG" \
+            --image "$ACR.azurecr.io/$IMAGEN_BACKEND:$GITHUB_SHA" \
+            --set-env-vars "GIT_COMMIT=$GITHUB_SHA" \
+            --output none
+
+      - name: Verificar /health (base OK y commit nuevo arriba)
+        if: ${{ !inputs.solo_imagenes }}
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          APP: ${{ vars.AZURE_BACKEND_APP }}
+        run: |
+          fqdn=$(az containerapp show --name "$APP" --resource-group "$RG" \
+            --query properties.configuration.ingress.fqdn --output tsv)
+          esperado="${GITHUB_SHA::7}"
+          echo "Esperando commit $esperado en https://$fqdn/health"
+          for i in $(seq 1 60); do
+            cuerpo=$(curl -sS --max-time 10 "https://$fqdn/health" || true)
+            estado=$(echo "$cuerpo" | jq -r '.status // empty' 2>/dev/null || true)
+            commit=$(echo "$cuerpo" | jq -r '.commit // empty' 2>/dev/null || true)
+            if [ "$estado" = "ok" ] && [ "$commit" = "$esperado" ]; then
+              echo "Backend arriba: $cuerpo"
+              exit 0
+            fi
+            echo "intento $i: ${cuerpo:-sin respuesta}"
+            sleep 5
+          done
+          echo "::error::El backend no quedó sano con el commit $esperado. El frontend NO se despliega."
+          exit 1
+
+  frontend:
+    name: Frontend
+    # Después del backend, y solo si quedó sano: un frontend nuevo contra un
+    # backend viejo (o caído) es peor que los dos viejos.
+    needs: backend
+    if: vars.AZURE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Entrar a Azure (OIDC, sin contraseña)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Construir y subir la imagen del frontend
+        env:
+          ACR: ${{ vars.AZURE_ACR_NAME }}
+          API_URL: ${{ vars.AZURE_API_URL }}
+        run: |
+          # Sin esta URL la imagen saldría apuntando a localhost y el navegador
+          # bloquearía todos los pedidos por CSP, sin un solo error de servidor
+          # (frontend/next.config.mjs:2 y frontend/Dockerfile:33).
+          if [ -z "$API_URL" ]; then
+            echo "::error::Falta la variable del repositorio AZURE_API_URL"
+            exit 1
+          fi
+          az acr login --name "$ACR"
+          imagen="$ACR.azurecr.io/$IMAGEN_FRONTEND:$GITHUB_SHA"
+          docker build -t "$imagen" --build-arg "NEXT_PUBLIC_API_URL=$API_URL" frontend
+          docker push "$imagen"
+
+      - name: Desplegar el frontend
+        if: ${{ !inputs.solo_imagenes }}
+        env:
+          ACR: ${{ vars.AZURE_ACR_NAME }}
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          APP: ${{ vars.AZURE_FRONTEND_APP }}
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt
+          az containerapp update \
+            --name "$APP" \
+            --resource-group "$RG" \
+            --image "$ACR.azurecr.io/$IMAGEN_FRONTEND:$GITHUB_SHA" \
+            --set-env-vars "GIT_COMMIT=$GITHUB_SHA" \
+            --output none
+
+      - name: Verificar que el frontend responde
+        if: ${{ !inputs.solo_imagenes }}
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          APP: ${{ vars.AZURE_FRONTEND_APP }}
+        run: |
+          fqdn=$(az containerapp show --name "$APP" --resource-group "$RG" \
+            --query properties.configuration.ingress.fqdn --output tsv)
+          for i in $(seq 1 30); do
+            codigo=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://$fqdn/login" || true)
+            if [ "$codigo" = "200" ]; then
+              echo "Frontend arriba: https://$fqdn"
+              exit 0
+            fi
+            echo "intento $i: HTTP ${codigo:-sin respuesta}"
+            sleep 5
+          done
+          echo "::error::El frontend no respondió 200 en /login"
+          exit 1

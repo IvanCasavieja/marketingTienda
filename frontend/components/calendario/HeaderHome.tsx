@@ -5,7 +5,7 @@ import { AlertTriangle, CalendarSearch, LayoutPanelTop } from 'lucide-react'
 import { PanelHeaders } from './PanelHeaders'
 import { Seccion } from './Seccion'
 import { MarcoScroll } from './MarcoScroll'
-import { useAnchoTotal, useFranjaDias, ANCHO_ETIQUETA } from './Rejilla'
+import { CabeceraDias, useAnchoTotal, useFranjaDias, ESTILO_ETIQUETA } from './Rejilla'
 import { diaDeHoy, esFinde, fechaCorta, rangoLargo } from '@/lib/calendario/fechas'
 import { ocupacionHeader, useCalendario, useMesActivo, type OcupacionDia } from '@/lib/calendario/store'
 import { REGLAS_HEADER } from '@/lib/calendario/tipos'
@@ -28,6 +28,7 @@ export function HeaderHome() {
   const mes = useMesActivo()
   const abrirAccion = useCalendario(s => s.abrirAccion)
   const [panelAbierto, setPanelAbierto] = useState(false)
+  const [diaDelPanel, setDiaDelPanel] = useState<number | null>(null)
 
   const ancho = useAnchoTotal(mes.dias)
   const franjaPie = useFranjaDias(mes.dias)
@@ -47,10 +48,10 @@ export function HeaderHome() {
         acciones={
           <button
             type="button"
-            onClick={() => setPanelAbierto(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-900 dark:bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-white dark:text-slate-900 transition hover:bg-slate-700 dark:hover:bg-white"
+            onClick={() => { setDiaDelPanel(null); setPanelAbierto(true) }}
+            className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-700 active:scale-[.98] dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 sm:min-h-[40px] sm:w-auto"
           >
-            <CalendarSearch className="h-3.5 w-3.5" />
+            <CalendarSearch className="h-4 w-4" />
             Ver headers activos por fecha
           </button>
         }
@@ -80,15 +81,17 @@ export function HeaderHome() {
           </div>
         )}
 
-        {/* El conteo día por día: es la alarma, y por eso queda a la vista */}
+        {/* El conteo día por día: es la alarma, y por eso queda a la vista.
+            Arriba, los días: sin ellos había que contar columnas. */}
         <MarcoScroll ancho={ancho}>
+          <CabeceraDias mes={mes} hoy={hoy} titulo="Día" />
           <div className="flex bg-slate-50 dark:bg-slate-800/40">
             <div
-              className="sticky left-0 z-20 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-3 py-2"
-              style={{ width: ANCHO_ETIQUETA }}
+              className="sticky left-0 z-20 shrink-0 border-r border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-[#151e31]"
+              style={{ width: ESTILO_ETIQUETA }}
             >
               <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Banners ese día</div>
-              <div className="text-[9px] text-slate-500 dark:text-slate-400">
+              <div className="text-[10px] text-slate-500 dark:text-slate-400">
                 ideal {REGLAS_HEADER.ideal} · tolerable {REGLAS_HEADER.tolerable} · tope {REGLAS_HEADER.tope}
               </div>
             </div>
@@ -97,14 +100,14 @@ export function HeaderHome() {
                 <button
                   key={o.dia}
                   type="button"
-                  onClick={() => setPanelAbierto(true)}
+                  onClick={() => { setDiaDelPanel(o.dia); setPanelAbierto(true) }}
                   style={{ gridColumn: o.dia, gridRow: 1 }}
                   title={`Día ${o.dia}: ${o.cantidad} banners en el header. Tocá para ver cuáles.`}
                   className={[
-                    'flex items-center justify-center border-r border-white/60 py-2.5 text-xs font-bold transition hover:brightness-95',
+                    'flex items-center justify-center border-r border-white/60 py-2.5 text-xs font-bold tabular-nums transition hover:brightness-95 focus-visible:z-10 dark:border-slate-900/60',
                     TONO_ESTADO[o.estado],
-                    esFinde(mes.clave, o.dia) && o.estado === 'ok' ? 'bg-emerald-50' : '',
-                    o.dia === hoy ? 'ring-2 ring-inset ring-sky-500' : '',
+                    esFinde(mes.clave, o.dia) && o.estado === 'ok' ? 'bg-emerald-50 dark:bg-emerald-900/30' : '',
+                    o.dia === hoy ? 'ring-2 ring-inset ring-brand-500' : '',
                   ].join(' ')}
                 >
                   {o.cantidad}
@@ -133,7 +136,7 @@ export function HeaderHome() {
         </footer>
       </Seccion>
 
-      <PanelHeaders abierto={panelAbierto} onCerrar={() => setPanelAbierto(false)} />
+      <PanelHeaders abierto={panelAbierto} diaInicial={diaDelPanel} onCerrar={() => setPanelAbierto(false)} />
     </>
   )
 }

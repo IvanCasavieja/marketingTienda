@@ -13,6 +13,7 @@ from app.core.rate_limit import limiter
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
 from app.core.deps import get_current_user, _needs_password_change, client_ip as _client_ip
 from app.models.user import User
+from app.core.mundos import mundos_de
 from app.models.audit_log import AuditLog
 from app.models.local_asignacion import LocalAsignacion
 from app.schemas.auth import (
@@ -63,6 +64,7 @@ def _user_response(
         role_name=role.name if role else None,
         permissions=user.permissions or [],
         assigned_locales=assigned_locales or [],
+        mundos=mundos_de(user),
         must_change_password=must_change_password,
     )
 
@@ -183,15 +185,21 @@ async def forgot_password(
     payload: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    if not settings.SENDGRID_API_KEY:
-        raise HTTPException(status_code=503, detail="Email service not configured")
+    from app.services.email_service import ASUNTO_RECUPERACION, build_reset_email, email_configurado, send_email
+
+    if not email_configurado():
+        # El front muestra este caso con su propio texto (pedirle a quien
+        # administra una contraseña nueva): no es un error de la persona.
+        raise HTTPException(
+            status_code=503,
+            detail="La recuperación por mail todavía no está activada. Pedile a quien administra la plataforma que te genere una contraseña nueva.",
+        )
 
     result = await db.execute(select(User).where(User.email == payload.email, User.is_active == True))
     user = result.scalar_one_or_none()
 
     if user:
         from app.models.password_reset_token import PasswordResetToken
-        from app.services.email_service import send_email, build_reset_email
 
         now = datetime.now(timezone.utc)
         # Sin TTL nativo como tenía Redis — barremos vencidos acá en vez de
@@ -206,9 +214,9 @@ async def forgot_password(
         ))
 
         reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
-        html, plain = build_reset_email(reset_url)
+        html, plain = build_reset_email(reset_url, user.full_name, minutos=_RESET_TOKEN_TTL // 60)
         try:
-            await send_email(user.email, "Recuperá tu contraseña — MKTG Platform", html, plain)
+            await send_email(user.email, ASUNTO_RECUPERACION, html, plain)
         except Exception as exc:
             _logger.error("Failed to send password reset email to %s: %s", user.email, exc)
             raise HTTPException(status_code=502, detail="Error al enviar el email. Intentá de nuevo.")

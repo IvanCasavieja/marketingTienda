@@ -28,7 +28,7 @@
     "metaFixtureTooltip": "Sample data — the Meta Ads integration is paused, these aren't real numbers"
   },
   "sidebar": {
-    "mktgPlatform": "MKTG Platform",
+    "mktgPlatform": "Core Tienda",
     "medios": "MEDIA",
     "analyticsGa4": "Analytics GA4",
     "materiales": "MATERIALS",
@@ -63,7 +63,12 @@
     "redesSociales": "SOCIAL MEDIA",
     "validacionRrss": "Social media check",
     "calendarioSeccion": "CALENDAR",
-    "calendario": "Calendar"
+    "calendario": "Calendar",
+    "mundo": "World",
+    "cambiarMundo": "Switch world",
+    "cerrarMenu": "Close menu",
+    "mas": "More",
+    "navegacion": "Main navigation"
   },
   "login": {
     "welcome": "Welcome",
@@ -97,7 +102,8 @@
     "backToLogin": "Back to login",
     "sentTitle": "Email sent",
     "sentSub": "If the email is registered, you'll receive the link in the next few minutes. Check your spam folder too.",
-    "errorToast": "Error sending the email. Please try again."
+    "errorToast": "Error sending the email. Please try again.",
+    "notConfigured": "Password recovery by email is not enabled yet. Ask the platform administrator to generate a new password for you."
   },
   "resetPassword": {
     "title": "New password",
@@ -142,7 +148,7 @@
     "assistantSubtitle": "Ask me about the platform",
     "inputPlaceholder": "Type your question...",
     "comingSoon": "Assistant with real AI · Powered by Claude Sonnet 5",
-    "assistantWelcome": "I'm Don Tino, your MKTG Platform assistant. I can guide you through the platform, explain features, and help you get the most out of it. How can I help you today?",
+    "assistantWelcome": "I'm Don Tino, your Core Tienda assistant. I can guide you through the platform, explain features, and help you get the most out of it. How can I help you today?",
     "suggestions": {
       "s1": "How do I sync Google Ads?",
       "s2": "How do I generate banners?",
@@ -395,18 +401,18 @@
     "downloadTemplate": "Download Excel template",
     "builtinTemplates": "Built-in",
     "destino": {
-      "title": "Where to?",
-      "subtitle": "Choose which kind of banner you want to generate.",
-      "change": "Change destination",
-      "nuevo": "New world",
-      "crear": "Create world",
-      "creado": "World created",
-      "borrar": "Delete world",
-      "borrarConfirm": "Delete the world \"{{nombre}}\"?",
-      "borrado": "World deleted",
-      "vacio": "No worlds created yet.",
-      "errorCargar": "Could not load worlds",
-      "nombrePlaceholder": "World name (e.g. Mega Rompe Precios)",
+      "title": "Which shelf tags are you making?",
+      "subtitle": "Pick the type of shelf tag you want to generate.",
+      "change": "Change tag type",
+      "nuevo": "New tag type",
+      "crear": "Create tag type",
+      "creado": "Tag type created",
+      "borrar": "Delete tag type",
+      "borrarConfirm": "Delete the tag type \"{{nombre}}\"?",
+      "borrado": "Tag type deleted",
+      "vacio": "There are no tag types in this world yet.",
+      "errorCargar": "Could not load the tag types",
+      "nombrePlaceholder": "Name (e.g. Mega Rompe Precios)",
       "descripcionPlaceholder": "Short description (optional)"
     },
     "rompePrecios": {
@@ -1381,7 +1387,7 @@
   },
   "ayuda": {
     "title": "How does the platform work?",
-    "subtitle": "Everything you need to know to use MKTG Platform, based on what your account can see and do.",
+    "subtitle": "Everything you need to know to use Core Tienda, based on what your account can see and do.",
     "chips": {
       "analytics": "Analytics",
       "ia": "Built-in AI",

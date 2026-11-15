@@ -52,6 +52,8 @@ async def main():
                 is_active=True,
                 is_superuser=False,
                 permissions=[],
+                # Un login de sucursal entra solo al mundo Redexpres.
+                mundos=["redexpres"],
             )
             db.add(user)
             await db.flush()  # necesito user.id antes de crear la asignación

@@ -58,10 +58,44 @@ api.interceptors.request.use((config) => {
 // que tira el toast de error antes de que el usuario llegue a verlo.
 const _NO_REFRESH_RETRY = ["/auth/login", "/auth/register", "/auth/forgot-password", "/auth/reset-password"];
 
+const _PROBLEMA_POR_TIPO: Record<string, string> = {
+  missing: "falta completarlo",
+  string_too_short: "es demasiado corto",
+  too_short: "es demasiado corto",
+  string_too_long: "es demasiado largo",
+  too_long: "es demasiado largo",
+};
+
+/** Un error de validación de FastAPI (422) como una frase para la persona. */
+export function textoDeErroresDeValidacion(errores: { loc?: unknown[]; msg?: string; type?: string }[]): string {
+  const partes = errores.map((e) => {
+    const campo = [...(e.loc ?? [])].reverse().find((x) => typeof x === "string" && x !== "body") as string | undefined;
+    const msg = String(e.msg ?? "").replace(/^Value error,\s*/, "");
+    // Los validadores propios del backend ya escriben para la persona, en
+    // castellano ("La contraseña necesita: ..."): van tal cual.
+    if (e.type === "value_error" && !/email/i.test(msg)) return msg;
+    const problema = _PROBLEMA_POR_TIPO[e.type ?? ""] ?? (/email/i.test(msg) ? "no es un email válido" : msg);
+    return campo ? `${campo}: ${problema}` : problema;
+  });
+  return partes.length === 1 ? partes[0] : `Revisá los datos: ${partes.join(". ")}`;
+}
+
 // Response interceptor: auto-refresh on 401
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
+    // FastAPI contesta los datos mal formados (422) con una LISTA de errores en
+    // `detail`, no con un texto. Casi todas las pantallas hacen
+    // toast.error(err.response.data.detail): con una lista React se cae entero
+    // ("This page couldn't load", visto el 15/11/2026 editando un usuario). Se
+    // convierte en texto acá, una sola vez para toda la app.
+    const datos = error.response?.data;
+    if (
+      datos && Array.isArray(datos.detail) &&
+      datos.detail.every((d: unknown) => d && typeof d === "object" && "msg" in (d as object))
+    ) {
+      datos.detail = textoDeErroresDeValidacion(datos.detail);
+    }
     const original = error.config;
     const isAuthEndpoint = _NO_REFRESH_RETRY.some((p) => original?.url?.includes(p));
     if (error.response?.status === 401 && !original._retry && !isAuthEndpoint) {
@@ -374,9 +408,10 @@ export const cenefasV2Api = {
     api.delete(`/tools/cenefas/v2/templates/${id}`),
 
   // Destinos ("mundos")
-  listDestinos: () =>
-    api.get<CenefaDestino[]>("/tools/cenefas/v2/destinos"),
-  createDestino: (payload: { nombre: string; descripcion?: string; icono?: string; color?: string; cobrable?: boolean }) =>
+  /** Los tipos de cenefa. Con `mundo`, solo los de ese mundo de la plataforma. */
+  listDestinos: (mundo?: string) =>
+    api.get<CenefaDestino[]>("/tools/cenefas/v2/destinos", { params: mundo ? { mundo } : {} }),
+  createDestino: (payload: { nombre: string; descripcion?: string; icono?: string; color?: string; cobrable?: boolean; mundo?: string }) =>
     api.post<CenefaDestino>("/tools/cenefas/v2/destinos", payload),
   deleteDestino: (slug: string) =>
     api.delete(`/tools/cenefas/v2/destinos/${slug}`),
@@ -1945,31 +1980,51 @@ type CalendarioEscrito = { id?: string; rev?: number; yaExistia?: boolean };
  * y dos personas editando el mismo mes se pisaban; ahora cada llamada toca solo
  * lo que cambió. Ver backend/app/api/routes/calendario.py.
  */
+/** Cuánto se espera al servidor en cada llamada del calendario. Sin tope, un
+ *  pedido colgado congelaba la sincronización (nada más se actualizaba) sin
+ *  ningún aviso. Pasado el tope cuenta como "sin conexión" y el cambio queda
+ *  pendiente (ver escribir en lib/calendario/store.ts). Solo el calendario:
+ *  cenefas o el análisis con IA tardan más a propósito. */
+const ESPERA = { timeout: 15_000 };
+
 export const calendarioApi = {
   /** Todo el calendario, o `sinCambios` si sigue en la revisión `rev`. */
-  traerDatos: (rev?: number | null) =>
-    api.get<{ rev: number; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]> }>(
-      "/calendario/datos", { params: rev == null ? {} : { rev } }),
-  /** A quién se le puede mandar un aviso. */
-  personas: () => api.get<{ id: number; nombre: string }[]>("/calendario/personas"),
+  traerDatos: (mundo: string, rev?: number | null) =>
+    api.get<{ rev: number; mundo?: string; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]> }>(
+      "/calendario/datos", { ...ESPERA, params: rev == null ? { mundo } : { mundo, rev } }),
+  /** A quién se le puede mandar un aviso o asignar una tarea en ese mundo. */
+  personas: (mundo: string) =>
+    api.get<{ id: number; nombre: string }[]>("/calendario/personas", { ...ESPERA, params: { mundo } }),
 
-  crearBarra: (barra: unknown) => api.post<CalendarioEscrito>("/calendario/barras", barra),
+  crearTarea: (barraId: string, tarea: unknown) =>
+    api.post<CalendarioEscrito & { avisados?: number }>(
+      `/calendario/barras/${encodeURIComponent(barraId)}/tareas`, tarea, ESPERA),
+  cambiarTarea: (id: string, cambios: unknown) =>
+    api.patch<CalendarioEscrito & { avisados?: number }>(`/calendario/tareas/${encodeURIComponent(id)}`, cambios, ESPERA),
+  borrarTarea: (id: string) => api.delete<CalendarioEscrito>(`/calendario/tareas/${encodeURIComponent(id)}`, ESPERA),
+  /** Lo que tengo asignado, en todos mis mundos, con la acción de cada tarea. */
+  misTareas: () => api.get<any[]>("/calendario/mis-tareas", ESPERA),
+  /** En qué mundo está una acción (para abrir su ficha desde un aviso). */
+  ubicar: (barraId: string) =>
+    api.get<{ id: string; mundo: string; desde: string }>(`/calendario/ubicar/${encodeURIComponent(barraId)}`, ESPERA),
+
+  crearBarra: (barra: unknown) => api.post<CalendarioEscrito>("/calendario/barras", barra, ESPERA),
   cambiarBarra: (id: string, cambios: unknown) =>
-    api.patch<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`, cambios),
-  borrarBarra: (id: string) => api.delete<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`),
+    api.patch<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`, cambios, ESPERA),
+  borrarBarra: (id: string) => api.delete<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`, ESPERA),
 
   agregarPieza: (barraId: string, pieza: unknown) =>
-    api.post<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(barraId)}/piezas`, pieza),
+    api.post<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(barraId)}/piezas`, pieza, ESPERA),
   cambiarPieza: (id: string, cambios: unknown) =>
-    api.patch<CalendarioEscrito>(`/calendario/piezas/${encodeURIComponent(id)}`, cambios),
-  quitarPieza: (id: string) => api.delete<CalendarioEscrito>(`/calendario/piezas/${encodeURIComponent(id)}`),
+    api.patch<CalendarioEscrito>(`/calendario/piezas/${encodeURIComponent(id)}`, cambios, ESPERA),
+  quitarPieza: (id: string) => api.delete<CalendarioEscrito>(`/calendario/piezas/${encodeURIComponent(id)}`, ESPERA),
 
   configurarAviso: (barraId: string, aviso: { id: string; diasAntes: number; destinatarios: number[] }) =>
     api.post<CalendarioEscrito & { enviadosAhora?: number }>(
-      `/calendario/barras/${encodeURIComponent(barraId)}/avisos`, aviso),
-  quitarAviso: (id: string) => api.delete<CalendarioEscrito>(`/calendario/avisos/${encodeURIComponent(id)}`),
+      `/calendario/barras/${encodeURIComponent(barraId)}/avisos`, aviso, ESPERA),
+  quitarAviso: (id: string) => api.delete<CalendarioEscrito>(`/calendario/avisos/${encodeURIComponent(id)}`, ESPERA),
 
   /** Guarda las posiciones de RM de un mes y avisa a quien lleva Retail Media. */
   moverPosicionesRM: (clave: string, posiciones: number[]) =>
-    api.put<CalendarioEscrito & { avisados: number }>(`/calendario/posiciones-rm/${clave}`, { posiciones }),
+    api.put<CalendarioEscrito & { avisados: number }>(`/calendario/posiciones-rm/${clave}`, { posiciones }, ESPERA),
 };

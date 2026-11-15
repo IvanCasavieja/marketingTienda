@@ -18,8 +18,14 @@ export default function ForgotPasswordPage() {
     try {
       await authApi.forgotPassword(email);
       setSent(true);
-    } catch {
-      toast.error(t("forgotPassword.errorToast"));
+    } catch (err: any) {
+      // 503: el servidor no tiene con qué mandar mails. No es un error de la
+      // persona ni se arregla reintentando: se le dice a quién pedirle ayuda.
+      if (err?.response?.status === 503) {
+        toast.error(t("forgotPassword.notConfigured"), { duration: 10000 });
+      } else {
+        toast.error(t("forgotPassword.errorToast"));
+      }
     } finally {
       setLoading(false);
     }
@@ -32,7 +38,7 @@ export default function ForgotPasswordPage() {
           <div className="w-8 h-8 rounded-xl bg-brand-500 flex items-center justify-center">
             <BarChart3 size={16} className="text-white" />
           </div>
-          <span className="font-bold text-slate-800">MKTG Platform</span>
+          <span className="font-bold text-slate-800">Core Tienda</span>
         </div>
 
         {sent ? (

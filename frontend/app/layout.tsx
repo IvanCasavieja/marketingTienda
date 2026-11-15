@@ -1,14 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "sonner";
 import I18nProvider from "@/components/I18nProvider";
 import ThemeProvider from "@/components/ThemeProvider";
+import ToasterConTema from "@/components/ToasterConTema";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "MKTG Platform",
+  title: "Core Tienda",
   description: "Marketing Intelligence Platform",
 };
 
@@ -25,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <I18nProvider>
             {children}
-            <Toaster richColors position="top-right" />
+            <ToasterConTema />
           </I18nProvider>
         </ThemeProvider>
       </body>

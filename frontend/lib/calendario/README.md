@@ -7,11 +7,132 @@ frenar lo que ya estaba andando acá, y se armó desde el principio con el mismo
 stack que la plataforma — Next 16, React 18, Tailwind, zustand, lucide — así
 que al entrar no hubo que agregar ni una dependencia.
 
+## Mundos: la plataforma entera, separada por negocio
+
+Desde el 12/11/2026 (migración 0060) la plataforma se divide en **mundos**:
+Tienda Inglesa, Tienda Express, Redexpres, Tienda Viajes y Tienda Farma. Pedido
+de Ivan: "Los mundos tienen que ser de toda la plataforma. La persona que entra
+a ese mundo va a ver todo hecho para ese mundo".
+
+- Cada persona tiene la lista de los mundos a los que entra (`users.mundos`, se
+  tilda en el panel de administración; un Super Admin entra a todos). Nadie
+  queda sin mundo.
+- Quien tiene **un solo mundo** entra derecho. Quien tiene **varios** pasa por
+  `/mundos` a elegir antes de ver nada, y cambia cuando quiere desde el menú.
+- **El menú es el del mundo**: cada herramienta aparece solo donde tiene sentido
+  (`RUTAS_DE_MUNDO` en `lib/mundos.ts`). La planilla de pedidos es de Redexpres;
+  los medios, los precios, finanzas, la validación de redes y el diccionario
+  son de Tienda Inglesa; las cenefas están en los dos. Abrir una herramienta de
+  otro mundo (un link guardado, un aviso) muestra dónde está y ofrece pasar.
+- **Lo que se guarda por mundo**, y que el servidor no deja leer ni escribir
+  desde otro (`app/core/mundos.py`, `exigir_mundo`): el calendario con sus
+  tareas (`calendario_barras.mundo`) y los tipos de cenefa
+  (`cenefa_destinos.mundo`). Redexpres dejó de ser una opción más del selector
+  de cenefas: sus cenefas se ven entrando a Redexpres, y como es un solo tipo,
+  se entra derecho.
+- **Los permisos valen igual que siempre.** El mundo dice de qué negocio; el
+  permiso, qué se puede hacer.
+- El header de la home y Retail Media son de la web de Tienda Inglesa: los
+  otros mundos tienen calendario comercial y cronograma de envíos.
+- Las categorías de Tienda Inglesa siguen saliendo de los Excel
+  (`catalogo.ts`). Los otros mundos arrancan con una lista genérica
+  (`lib/mundos.ts`, `BANDAS_GENERICAS`).
+- Al migrar: lo cargado quedó en Tienda Inglesa; los logins de sucursal y
+  quien tenía permisos de Redexpres entran a Redexpres; el resto, a Tienda
+  Inglesa. Los otros tres mundos se tildan a mano.
+
+El catálogo de mundos está en dos lugares que tienen que coincidir:
+`backend/app/core/mundos.py` y `frontend/lib/mundos.ts`.
+
+## Tareas: quién hace qué en cada acción
+
+Pedido de Ivan (12/11/2026): quien lidera abre una acción, le crea tareas y
+subtareas y se las asigna a cada persona. Tabla `calendario_tareas`, una fila
+por tarea, hasta tres niveles (tarea → subtarea → sub-subtarea).
+
+| Quién | Qué puede |
+|---|---|
+| Con `calendario.tareas` | Crear, asignar, poner vencimiento y borrar tareas. |
+| A quien se le asignó | Mover el estado de SUS tareas (pendiente → en proceso → hecha), aunque no tenga `calendario.edit`. |
+| Los demás | Ver. |
+
+- Asignar una tarea le manda un aviso a la campanita de esa persona; cuando la
+  termina, le llega a quien la creó. Tocar el aviso abre la ficha de la acción,
+  aunque sea de otro mundo (`GET /calendario/ubicar/{id}`).
+- Solo se le puede asignar a alguien que pueda abrir ese mundo.
+- **Mis tareas** (`/mis-tareas`) muestra lo que cada uno tiene asignado en el
+  mundo en el que está, ordenado por vencimiento, y avisa si le queda algo
+  pendiente en otro.
+- `calendario.tareas` lo recibieron Superadmin y Admin en la 0060. A quien
+  lidere el equipo sin ser Admin hay que tildárselo a mano.
+
+## Categorías: la fila, la cocarda y 'Sin categoría'
+
+Pedido de Ivan (12/11/2026): "Para mí debería de ser nueva acción y punto.
+Nueva acción, y esa nueva acción adentro tener la categoría de mega evento,
+evento general, especial". Y que en los listados tenga "esa cocarda visible...
+para saber también lo que es la importancia".
+
+- **La categoría es la fila.** No es un dato nuevo: es lo que la pantalla
+  llamaba "tipo de acción", la fila del calendario comercial donde va la acción
+  (`banda`). Un solo campo, sin cambios en la base ni en la API: cambiarla es
+  un `PATCH /calendario/barras/{id}` con `{ banda, carril }`.
+- **Nueva acción y punto.** El botón **Nueva acción** (`NuevaAccion.tsx`, el
+  mismo en la lista y en el encabezado del calendario comercial) no pregunta
+  de qué tipo es: pide nombre, fechas y color, la acción nace con
+  `banda = 'Sin categoría'` (`SIN_CATEGORIA` en `categorias.ts`) y se abre su
+  ficha. La categoría se pone ahí, tocando la cocarda del encabezado, que es el
+  único lugar donde se elige y se cambia; también puede quedar sin poner. Al
+  cambiarla, la acción pasa a esa fila, al primer renglón libre en sus fechas.
+  Crear desde una fila del calendario (el **+** o un día vacío) sigue dejando
+  la acción en esa fila, y no abre la ficha: ahí se suelen cargar varias
+  seguidas.
+- **La fila "Sin categoría"** va primera en el calendario comercial y existe
+  solo el mes en que hay alguna acción así (`bandasDe` en `derivar.ts`).
+- **La cocarda** es la categoría dibujada siempre igual, con más o menos peso
+  según cuánto importa, y no con el color de la acción (`Cocarda.tsx`). Tiene
+  cuatro aspectos: **mega** (MEGA EVENTO: fondo negro y una estrella),
+  **general** (Mailing GRAL: fondo índigo claro), **especial** (Especiales:
+  solo el borde) y **común** (todas las demás: gris). La importancia es
+  cantidad de tinta y no un color nuevo, porque ámbar, rojo y verde ya quieren
+  decir "falta poco", "vencida" y "hecha". Dice el mismo texto que la fila.
+  Está en las tarjetas de la lista, en el encabezado de la ficha y, solo las
+  tres destacadas, en Mis tareas; en las barras del calendario no, que ya están
+  en su fila. Una acción sin categoría no lleva cocarda. El peso no se guarda:
+  para destacar una categoría nueva alcanza con sumarla a `DESTACADAS` en
+  `categorias.ts`.
+- **"TIENDA FARMA" se retiró** del calendario de Tienda Inglesa
+  (`BANDAS_RETIRADAS` en `categorias.ts`): "Tienda Farma debería de tener su
+  propio calendario", y lo tiene, es un mundo. Ya no figura entre las
+  categorías ni se le carga nada nuevo. Las acciones viejas que siguen en esa
+  fila no se movieron ni se borraron: se ven en su mes, en una fila al final
+  que dice **Ya no se usa**. Pasarlas al mundo Tienda Farma es una decisión de
+  Ivan que está pendiente.
+- **Pendiente con Fernanda:** si Carpas, Pasillos Laterales y Galería y/o
+  Estacionamiento se usan ("no se usan, pero mantengámosla por ahora hasta
+  confirmar con Fernanda"), y qué quieren decir Mailing NF y Evento NF. Hasta
+  entonces esas filas quedan como están.
+
+## Cómo se mira
+
+- **Filtro por parte** (Todo · Comercial · Envíos · Retail Media · Headers):
+  las cuatro juntas marean a quien entra por primera vez.
+- **Calendario o Lista.** El calendario es el mes entero, como en el Excel. La
+  lista muestra las mismas acciones como tarjetas (en curso, lo que viene, ya
+  terminaron), con su cocarda y el avance de piezas y tareas. Es lo que se usa
+  en un teléfono, y ahí arranca sola la primera vez. El botón del calendario
+  decía "Mes": al lado del selector de mes se leía como "este mes", e Ivan
+  buscó "el calendario general de todo" sin encontrarlo (12/11/2026). En un
+  teléfono los dos botones ocupan todo el ancho.
+- **El mes se ajusta solo al ancho de la pantalla** mientras nadie toque el
+  zoom: en una notebook entra entero. Tocar el zoom lo deja fijo.
+- **Ocultar categorías vacías** en el calendario comercial.
+
 ## Las tres secciones
 
-**1. Calendario comercial.** Las acciones de marketing por tipo (Mega evento,
-Mailing GRAL, Especiales, Sin mailing, Actividades tácticas, Seasonal…), igual
-que el Excel. Tocar una acción abre su ficha lateral.
+**1. Calendario comercial.** Las acciones de marketing por categoría (Mega
+evento, Mailing GRAL, Especiales, Sin mailing, Actividades tácticas,
+Seasonal…), igual que el Excel. Tocar una acción abre su ficha lateral.
 
 **2. Calendario Retail Media.** Los espacios vendidos a marcas, agrupados en
 eComm y Express, con un carril por slot de cada formato. `HOME SLIDER (Retail
@@ -67,12 +188,26 @@ retail o la ficha de la acción). Ese contrato vive en `OrigenHeader`, que es
 ## La ficha de la acción
 
 Clic en una acción abre un panel lateral que entra desde la derecha. Adentro:
-nombre, tipo, fechas y duración; el progreso de piezas publicadas; y la
+categoría, nombre, fechas y duración; el progreso de piezas publicadas; y la
 estructura por áreas — **Web · Home**, **Web · Landing de la acción**,
 **Físico**, **Email**, **WhatsApp**, **Push** — donde se agregan y se sacan
 piezas y se les mueve el estado (pendiente → en proceso → aprobado →
 publicado). Si la acción lleva header, dice en qué posición quedó, o avisa que
 no entró. Arriba de todo están sus **avisos** (ver Avisos).
+
+**La categoría se elige en el encabezado**, arriba del nombre, y en ningún
+otro lado. Quien puede editar ve la cocarda con una flechita (o "Sin
+categoría" en punteado, si todavía no tiene): la toca y elige otra de la lista
+del mundo. Lo que se toca es un `select` de verdad, invisible, así en un
+teléfono se abre la lista del sistema. Si la acción está en una fila que ya no
+figura (una retirada, una que vino del Excel con otro nombre), esa también
+aparece en la lista: si faltara, parecería que la categoría cambió sola. Los
+demás ven la cocarda, sin poder tocarla.
+
+**Editar nombre, fechas y color** abre el editor por encima de la ficha (antes
+la ficha lo tapaba, y en un teléfono lo cubría entero). El editor no pregunta
+la categoría: dice cuál tiene la acción, o que se le pone después. En un
+teléfono sube desde abajo y tiene scroll propio.
 
 Se cierra con Escape, con la X o tocando afuera.
 
@@ -95,11 +230,12 @@ El header también se calcula sobre todas las fechas: una acción que cruza de
 mes queda en la misma posición en los dos, y una campaña de Retail Media que
 cruza sigue a RM si RM cambia de posición de un mes al otro.
 
-**Las bandas son las mismas todos los meses** (`catalogo.ts`): todos los tipos
-de acción y formatos de RM que aparecen en los Excel importados. Antes cada mes
-traía las suyas del Excel, y de noviembre en adelante no había ni un renglón
-donde cargar nada. Cada banda tiene además un **+** para crear aunque todos sus
-renglones estén ocupados ese día.
+**Las bandas son las mismas todos los meses** (`catalogo.ts`): todas las
+categorías y formatos de RM que aparecen en los Excel importados, menos las
+filas retiradas (ver Categorías). Antes cada mes traía las suyas del Excel, y
+de noviembre en adelante no había ni un renglón donde cargar nada. Cada banda
+tiene además un **+** para crear aunque todos sus renglones estén ocupados ese
+día.
 
 Lo que el Excel traía partido en dos meses (por ejemplo "(OI) ELECTRO SALE" del
 25 al 30/09 y "ELECTRO SALE OI" del 1 al 7/10, o "Conaprole" en HOME SLIDER)
@@ -155,6 +291,14 @@ Ahora cada cambio viaja solo y el servidor escribe solo eso:
 Lo local cambia antes de que conteste el servidor, así la pantalla no espera.
 Si el servidor dice que no (la acción la borró otra persona, se cortó la
 conexión), sale un aviso y se trae lo que hay de verdad.
+
+**Los cambios de una misma acción salen de a uno y en orden** (desde el
+12/11/2026; `escribir` y `colas` en `store.ts`). Ahora la ficha se abre apenas
+se crea la acción, y la persona le pone la categoría o le carga una tarea en
+el mismo segundo. Antes cada cambio viajaba por su cuenta: el segundo podía
+llegar al servidor antes que el alta, el servidor contestaba que la acción no
+existía y ese cambio se perdía. Cada cambio espera a que termine el anterior
+de su misma acción; los de acciones distintas siguen saliendo a la vez.
 
 **Lo que hacen los demás aparece solo**, sin recargar: cada 15 segundos (y al
 volver a la pestaña) se pregunta `GET /calendario/datos?rev=N`. Cada escritura
@@ -229,19 +373,23 @@ Ese script es referencia de cómo se parsean esos Excel, no parte del producto.
 lib/calendario/derivar.ts     LA LÓGICA: armar el mes con las barras que lo tocan, derivar el header y los envíos, contar
 lib/calendario/tipos.ts       el modelo, el catálogo de piezas y las reglas (7/8/10)
 lib/calendario/catalogo.ts    las bandas, iguales para todos los meses
+lib/calendario/categorias.ts  la categoría de una acción: "Sin categoría", cuánto pesa cada una y las filas retiradas
 lib/calendario/rejilla.ts     medidas y zoom
 lib/calendario/store.ts       estado, guardado cambio por cambio y la revisión cada 15 s
 lib/calendario/permisos.ts    quién puede qué, contra el usuario de la plataforma
+lib/mundos.ts                 los mundos: nombre, color, qué partes tiene cada uno y el nombre de la plataforma
 lib/calendario/seed.ts        el muestreo de los Excel (hoy solo se usan los nombres de las bandas)
 lib/calendario/colores.ts     paleta y contraste
 lib/calendario/fechas.ts      meses, días de la semana, findes, y las cuentas con fechas reales
-components/calendario/        las 9 pantallas
+components/calendario/        las pantallas (VistaLista, BloqueTareas y Cocarda son del 12/11/2026)
 app/(dashboard)/calendario/   la página
+app/(dashboard)/mundos/       el selector de mundos
+app/(dashboard)/mis-tareas/   lo que cada uno tiene asignado
 ```
 
-`derivar.ts` y `rejilla.ts` no dependen de React ni de zustand a propósito: son
-lo único que hay que portar con cuidado, y así se pueden probar sin levantar
-nada.
+`derivar.ts`, `rejilla.ts` y `categorias.ts` no dependen de React ni de zustand
+a propósito: son lo único que hay que portar con cuidado, y así se pueden
+probar sin levantar nada.
 
 ## Pruebas
 
@@ -249,17 +397,33 @@ nada.
 cd frontend && npm run test:calendario
 ```
 
-120 comprobaciones, sin framework: se compilan con `tsc` y corren con node.
+156 comprobaciones, sin framework: se compilan con `tsc` y corren con node.
 Fijan las reglas del header, el zoom, el cronograma de envíos, el header
-mirado por fecha y las acciones que cruzan de mes. No borrarlas al
-reescribirlas con otro runner. Del lado del backend,
+mirado por fecha, las acciones que cruzan de mes y las categorías
+(`categorias.test.ts`: qué cuenta como "Sin categoría", cuánto pesa cada una,
+las filas retiradas y qué ofrece el selector; en `derivar.test.ts`, dónde va
+cada fila y a qué renglón pasa una acción al cambiarle la categoría). No
+borrarlas al reescribirlas con otro runner. Del lado del backend,
 `tests/test_calendario_avisos.py`, `tests/test_calendario_migracion.py` y
 `tests/test_calendario_envios_sueltos.py`.
 
 ## Lo que falta
 
-- **Subtareas por pieza** (arte desktop, arte mobile, aprobación comercial) y
-  responsable con vencimiento. Hoy el modelo llega hasta acción → pieza.
+- **Las categorías reales de Redexpres, Tienda Express, Tienda Viajes y
+  Tienda Farma.** Hoy arrancan con una lista genérica.
+- **Lo que todavía no está separado por mundo.** Los medios, finanzas, los
+  precios y la planilla de pedidos se muestran en un solo mundo, pero sus
+  datos no llevan mundo: si un día Redexpres tiene sus propios medios, hay
+  que agregárselo. Las plantillas de cenefas se separan por su tipo
+  (`cenefa_destinos.mundo`); el diccionario y el convertidor son compartidos.
+- **Cargar los calendarios en Excel de los otros mundos.** El de Tienda Inglesa
+  ya está; el de Redexpres y el cronograma de push, mails y WhatsApp (que
+  incluye Tienda Viajes) siguen en sus planillas.
+- **Ligar una tarea a una pieza.** Las tareas cuelgan de la acción; todavía no
+  se puede decir "esta tarea es el arte de este header".
+- **Editar el título de una tarea ya creada** y arrastrarlas para ordenarlas.
+- **Los avisos configurados no miran el mundo**: se le puede avisar solo a
+  quien abre ese mundo, pero si después se lo sacan, el aviso le llega igual.
 - **Permisos por calendario.** Hoy hay tres permisos que valen para los cuatro
   calendarios juntos (`calendario.view`, `calendario.edit`,
   `calendario.retail_media`): quien puede ver, ve los cuatro. Lo pedido es ver,

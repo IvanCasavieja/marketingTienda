@@ -34,7 +34,19 @@ def test_sin_el_calendario_no_se_ve_el_recordatorio():
     assert not _notif_visible(_usuario("precios.search"), _aviso("calendario_aviso"))
 
 
-@pytest.mark.parametrize("origen", ["calendario_accion", "calendario_header", "calendario_aviso"])
+def test_la_tarea_asignada_le_llega_a_quien_solo_ve_el_calendario():
+    """15/11/2026: el aviso de una tarea (asignada o terminada) caía en la
+    regla de precios.search, igual que pasó con los recordatorios. A quien
+    diseña, que solo tiene el calendario, no le llegaba que le asignaron algo."""
+    assert _notif_visible(_usuario("calendario.view"), _aviso("calendario_tarea"))
+
+
+def test_el_origen_de_las_tareas_es_el_que_escribe_el_calendario():
+    from app.api.routes.calendario import TIPO_TAREA
+    assert _notif_visible(_usuario("calendario.view"), _aviso(TIPO_TAREA))
+
+
+@pytest.mark.parametrize("origen", ["calendario_accion", "calendario_header", "calendario_aviso", "calendario_tarea"])
 def test_todo_lo_del_calendario_pide_el_calendario(origen):
     assert _notif_visible(_usuario("calendario.view"), _aviso(origen))
     assert not _notif_visible(_usuario("precios.search"), _aviso(origen))

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.core.deps import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.mundos import es_del_equipo_de_tienda_inglesa
 from app.models.user import User
 from app.models.planilla_pedido import PlanillaPedido, RedexpresEstructura
 from app.services import redexpres_estructura as est
@@ -502,6 +503,16 @@ async def create_asignacion(
 
     asig = LocalAsignacion(user_id=user_id, local_nombre=local_nombre)
     db.add(asig)
+    # "Mi pedido" vive en el mundo Redexpres: quien recibe un local tiene que
+    # poder entrar. Un login de sucursal (sin permisos, o solo de Redexpres)
+    # queda solo en Redexpres, aunque al crearlo haya nacido en Tienda Inglesa;
+    # a una persona del equipo se le suma Redexpres a lo que ya tenía.
+    asignado = await db.get(User, user_id)
+    if asignado is not None:
+        if not es_del_equipo_de_tienda_inglesa(asignado.permissions):
+            asignado.mundos = ["redexpres"]
+        elif "redexpres" not in (asignado.mundos or []):
+            asignado.mundos = [*(asignado.mundos or []), "redexpres"]
     await db.commit()
     await db.refresh(asig)
     return {"id": asig.id, "user_id": asig.user_id, "local_nombre": asig.local_nombre}

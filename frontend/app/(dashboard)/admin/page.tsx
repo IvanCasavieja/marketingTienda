@@ -1,7 +1,9 @@
 "use client";
+import { MUNDOS } from "@/lib/mundos";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
+import { useCurrentUserStore } from "@/store/currentUser";
 import {
   Users, UserPlus, KeyRound, ShieldAlert, ShieldCheck,
   Loader2, CheckCircle2, XCircle, ChevronDown,
@@ -31,6 +33,8 @@ interface AdminUser {
   role_id: number | null;
   role_name: string | null;
   permissions: string[];
+  /** Los mundos a los que entra: claves de lib/mundos.ts. Siempre hay al menos uno. */
+  mundos?: string[];
   is_active: boolean;
   is_superuser: boolean;
   created_at: string | null;
@@ -82,7 +86,26 @@ function UserEditorModal({
   const [fullName, setFullName] = useState(user.full_name);
   const [email,    setEmail]    = useState(user.email);
   const [selected, setSelected] = useState<Set<string>>(new Set(user.permissions));
+  const [mundos,   setMundos]   = useState<Set<string>>(new Set(user.mundos ?? []));
+  // Los mundos que quien edita puede dar: los suyos (un Super Admin, todos).
+  const yo = useCurrentUserStore((s) => s.user);
+  const puedoDar = new Set(yo?.is_superuser ? MUNDOS.map((m) => m.clave) : (yo?.mundos ?? []));
   const [saving,   setSaving]   = useState(false);
+
+  function toggleMundo(clave: string) {
+    setMundos((prev) => {
+      const next = new Set(prev);
+      if (next.has(clave)) {
+        // Sin ningún mundo no se puede entrar a la plataforma: el último no se
+        // destilda. Para sacarle el acceso a alguien se desactiva la cuenta.
+        if (next.size === 1) { toast.error("Tiene que quedar al menos un mundo."); return prev; }
+        next.delete(clave);
+      } else {
+        next.add(clave);
+      }
+      return next;
+    });
+  }
 
   const role     = allRoles.find((r) => r.id === user.role_id) ?? null;
   const viewOnly = role?.view_only ?? false;
@@ -117,11 +140,25 @@ function UserEditorModal({
     setSaving(true);
     try {
       await api.patch(`/admin/users/${user.id}`, esSucursal ? { full_name: fullName } : { full_name: fullName, email });
-      try {
-        await api.patch(`/admin/users/${user.id}/permissions`, { permissions: [...selected] });
-      } catch (err: any) {
-        toast.error(err?.response?.data?.detail ?? t("admin.userEditor.permissionsSaveError"));
-        return;
+      // Los mundos van antes que los permisos: uno se los puede cambiar a sí
+      // mismo, y los permisos propios no (el servidor lo rechaza y corta acá).
+      const distintos = (a: Set<string>, b: Set<string>) => a.size !== b.size || [...a].some((x) => !b.has(x));
+      const cambiaronMundos = distintos(mundos, new Set(user.mundos ?? []));
+      if (cambiaronMundos) {
+        await api.patch(`/admin/users/${user.id}/mundos`, { mundos: [...mundos] });
+        // Si se editó a sí misma, el menú y el mundo en el que está tienen que
+        // enterarse ya, no en la próxima recarga.
+        if (useCurrentUserStore.getState().user?.id === user.id) void useCurrentUserStore.getState().refetch();
+      }
+      // Los permisos viajan solo si cambiaron: los propios el servidor no deja
+      // tocarlos, y mandarlos igual daba error aunque nadie los hubiera tocado.
+      if (distintos(selected, new Set(user.permissions))) {
+        try {
+          await api.patch(`/admin/users/${user.id}/permissions`, { permissions: [...selected] });
+        } catch (err: any) {
+          toast.error(err?.response?.data?.detail ?? t("admin.userEditor.permissionsSaveError"));
+          return;
+        }
       }
       toast.success(t("admin.userEditor.updated"));
       onSaved();
@@ -171,6 +208,48 @@ function UserEditorModal({
                 <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">{t("admin.userEditor.sucursalSinMail")}</p>
               )}
             </div>
+          </div>
+
+          {/* Mundos: a qué negocios entra. Cada mundo es la plataforma entera
+              para ese negocio. Con uno solo entra derecho; con varios, elige. */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Mundos</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
+              {user.is_superuser
+                ? "Un Super Admin entra a todos los mundos, estén tildados o no."
+                : "A qué negocios entra. En cada mundo ve solo lo de ese negocio: su calendario, sus tareas, sus cenefas y sus herramientas. Con uno solo entra directo; con varios, elige al entrar. Qué puede hacer adentro lo siguen diciendo los permisos de abajo."}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {MUNDOS.map((m) => {
+                const activo = mundos.has(m.clave);
+                // Nadie da un mundo al que no entra (el servidor lo rechaza):
+                // se ve, pero no se puede tildar. Sacarlo sí, si ya lo tenía.
+                const ajeno = !activo && !(user.mundos ?? []).includes(m.clave) && !puedoDar.has(m.clave);
+                return (
+                  <button
+                    key={m.clave}
+                    type="button"
+                    onClick={() => toggleMundo(m.clave)}
+                    disabled={ajeno}
+                    aria-pressed={activo}
+                    title={ajeno ? "No entrás a este mundo: no lo podés dar" : undefined}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      activo
+                        ? "border-brand-500 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
+                        : "border-slate-200 text-slate-500 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400"
+                    }`}
+                  >
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: m.color, opacity: activo ? 1 : 0.35 }} />
+                    {m.nombre}
+                  </button>
+                );
+              })}
+            </div>
+            {MUNDOS.some((m) => !puedoDar.has(m.clave)) && (
+              <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                Los apagados son mundos a los que vos no entrás: solo los puede dar quien entra a ellos.
+              </p>
+            )}
           </div>
 
           {/* Permisos individuales — se prenden/apagan por usuario, no por rol */}

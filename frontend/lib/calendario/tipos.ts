@@ -17,6 +17,8 @@ export type Seccion = 'comercial' | 'retail' | 'header' | 'envio'
 /** Una barra tal como la guarda el servidor. */
 export type BarraGuardada = {
   id: string
+  /** De qué negocio es: clave de lib/mundos.ts. */
+  mundo?: string
   seccion: Seccion
   /** El tipo de accion ("MEGA EVENTO"), el formato de RM ("CARRUSEL"), la
    *  posicion del header ("pos-3") o el canal de un envio suelto ("email"). */
@@ -34,6 +36,8 @@ export type BarraGuardada = {
   piezas?: Pieza[]
   /** En las acciones y en los envios sueltos. */
   avisos?: Aviso[]
+  /** En las acciones y en los envios sueltos: lo que se le asigno a cada persona. */
+  tareas?: Tarea[]
   /** Solo en los envios sueltos: lo que en un envio de una accion lleva su
    *  pieza. "Mailing digital", la hora 'HH:MM' en que sale y el estado. */
   formato?: string | null
@@ -88,6 +92,62 @@ export type Pieza = {
   estado: EstadoPieza
   /** Marca de que la pieza quedo cargada en SharePoint. */
   enSharePoint?: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Tareas
+// ---------------------------------------------------------------------------
+
+export type EstadoTarea = 'pendiente' | 'en-proceso' | 'hecha'
+
+/**
+ * Lo que quien lidera le asigna a una persona dentro de una accion (pedido de
+ * Ivan, 12/11/2026). Una tarea puede colgar de otra: tarea, subtarea y
+ * sub-subtarea, y no mas hondo.
+ */
+export type Tarea = {
+  id: string
+  parentId: string | null
+  titulo: string
+  descripcion: string | null
+  estado: EstadoTarea
+  /** Id de usuario de la plataforma, o null si todavia no es de nadie. */
+  asignadoA: number | null
+  /** 'YYYY-MM-DD' */
+  vence: string | null
+  creadoPor: number | null
+}
+
+export const NIVELES_DE_TAREA = 3
+
+export const ETIQUETA_ESTADO_TAREA: Record<EstadoTarea, string> = {
+  pendiente: 'Pendiente',
+  'en-proceso': 'En proceso',
+  hecha: 'Hecha',
+}
+
+/** A que profundidad esta una tarea: 1 si no cuelga de nada. */
+export function nivelDeTarea(tarea: Tarea, todas: Tarea[]): number {
+  let nivel = 1
+  let padre = tarea.parentId
+  while (padre && nivel <= NIVELES_DE_TAREA) {
+    nivel++
+    padre = todas.find(t => t.id === padre)?.parentId ?? null
+  }
+  return nivel
+}
+
+/** La tarea y todo lo que cuelga de ella. */
+export function conDescendientes(id: string, todas: Tarea[]): Set<string> {
+  const ids = new Set([id])
+  let crecio = true
+  while (crecio) {
+    crecio = false
+    for (const t of todas) {
+      if (t.parentId && ids.has(t.parentId) && !ids.has(t.id)) { ids.add(t.id); crecio = true }
+    }
+  }
+  return ids
 }
 
 // ---------------------------------------------------------------------------

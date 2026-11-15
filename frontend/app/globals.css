@@ -24,13 +24,37 @@
 
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
-  html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  html {
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    /* El toque del teléfono lo dibuja cada botón (active:), no el gris del sistema. */
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Los controles del sistema (la lista de un select, el calendario de un
+     input de fecha, el ícono del reloj) se pintan con el tema. Sin esto, en
+     modo oscuro el ícono del calendario quedaba negro sobre fondo negro. */
+  :root { color-scheme: light; }
+  html.dark { color-scheme: dark; }
   body { @apply bg-slate-50 text-slate-900 font-sans dark:bg-slate-950 dark:text-slate-100; }
 
+  /* Foco visible para quien usa el teclado, en todo lo que no tenga uno
+     propio. Con el mouse no aparece (es :focus-visible, no :focus). */
+  :focus-visible { outline: 2px solid theme("colors.brand.500"); outline-offset: 2px; }
+
   ::-webkit-scrollbar       { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { @apply bg-transparent dark:bg-slate-800; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full dark:bg-slate-700; }
   ::-webkit-scrollbar-thumb:hover { @apply bg-slate-300 dark:bg-slate-600; }
+}
+
+/* Quien pidió menos movimiento en su sistema no ve animaciones: los cambios
+   pasan igual, pero de golpe. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer components {
@@ -111,6 +135,52 @@
   /* ── Page section wrappers ──────────────────── */
   .page-header { @apply text-2xl font-bold text-slate-900 dark:text-slate-100; }
   .page-sub    { @apply text-sm text-slate-500 dark:text-slate-400 mt-0.5; }
+
+  /* ── El núcleo: calendario, tareas y mundos ─────
+     Pocas piezas, usadas igual en todas las pantallas del núcleo:
+       - radios: rounded-2xl lo que contiene, rounded-xl los controles,
+         rounded-full las pastillas;
+       - alto de control: 40px en la notebook y 44px en el teléfono (lo que
+         se puede tocar con el dedo sin errarle);
+       - bordes slate-200 / slate-800, superficies white / slate-900. */
+  .boton-icono {
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 transition
+           hover:bg-slate-100 hover:text-slate-900 active:scale-95
+           disabled:pointer-events-none disabled:opacity-30
+           dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100
+           sm:h-9 sm:w-9;
+  }
+  /* Un control de varias opciones donde se elige una (Calendario / Lista). */
+  .segmentado {
+    @apply flex items-center gap-0.5 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80;
+  }
+  .segmento {
+    @apply flex min-h-[36px] flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold
+           text-slate-500 transition hover:text-slate-900
+           dark:text-slate-400 dark:hover:text-slate-100 sm:flex-none;
+  }
+  .segmento[aria-pressed="true"], .segmento[aria-selected="true"] {
+    @apply bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-white;
+  }
+  .etiqueta-campo { @apply mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400; }
+  /* Texto, fecha, hora o select de un formulario. En el teléfono la letra va
+     en 16px: con menos, el iPhone agranda la página al tocar el campo. */
+  .campo {
+    @apply h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 transition
+           placeholder:text-slate-400 hover:border-slate-400
+           focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25
+           disabled:cursor-not-allowed disabled:opacity-60
+           dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-600
+           dark:focus:border-brand-400 sm:h-10 sm:text-sm;
+  }
+  /* El velo detrás de lo que tapa la pantalla (la ficha, el editor, el menú). */
+  .velo { @apply fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] dark:bg-black/60; }
+  /* Lo que entra y sale deslizándose (la ficha, el menú del teléfono).
+     Abierto se ve al instante, así el foco puede entrar enseguida; cerrado
+     se esconde recién cuando terminó de salir, y así el teclado no recorre
+     lo que no se ve. */
+  .hoja-abierta { visibility: visible; transition: transform .3s cubic-bezier(.2,.8,.2,1), visibility 0s; }
+  .hoja-cerrada { visibility: hidden; transition: transform .3s cubic-bezier(.2,.8,.2,1), visibility 0s linear .3s; }
 }
 
 /* ── Prose override for Claude output ────────── */
@@ -121,6 +191,15 @@
 .prose-analysis li { @apply text-sm text-slate-600 dark:text-slate-400 flex gap-2; }
 .prose-analysis li::before { content: "•"; @apply text-brand-500 font-bold shrink-0; }
 .prose-analysis strong { @apply text-slate-800 dark:text-slate-200 font-semibold; }
+
+/* La columna de las categorías, fija a la izquierda de la rejilla. En el
+   teléfono es más angosta: con la de la notebook no quedaba lugar para los
+   días. Los números son ANCHO_ETIQUETA y ANCHO_ETIQUETA_TELEFONO de
+   lib/calendario/rejilla.ts. */
+#calendario-pantalla { --ancho-etiqueta: 232px; }
+@media (max-width: 639px) {
+  #calendario-pantalla { --ancho-etiqueta: 136px; }
+}
 
 /* Pantalla completa del calendario. El navegador saca el nodo del flujo y lo
    pinta contra negro, así que el fondo, el padding y el scroll se ponen acá:

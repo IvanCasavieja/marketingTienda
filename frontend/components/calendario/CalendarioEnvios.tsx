@@ -87,7 +87,7 @@ export function CalendarioEnvios() {
               <EtiquetaBanda
                 filas={filas.length}
                 extra={
-                  <span className="text-[9px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     {canal.envios.length === 0
                       ? 'sin envíos'
                       : canal.envios.length === 1 ? '1 envío' : `${canal.envios.length} envíos`}
@@ -129,12 +129,14 @@ export function CalendarioEnvios() {
       </MarcoScroll>
 
       {total === 0 && (
-        <div className="px-4 py-8 text-center text-sm text-slate-400 dark:text-slate-500">
-          Todavía no hay envíos cargados este mes.
-          <br />
-          <span className="text-xs">
-            Salen de la ficha de cada acción, en Email, WhatsApp o Push, o se cargan sueltos con el + de cada canal.
+        <div className="flex flex-col items-center gap-1 px-4 py-7 text-center">
+          <span className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+            <Send className="h-4 w-4" />
           </span>
+          <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Todavía no hay envíos cargados este mes.</p>
+          <p className="max-w-md text-xs text-slate-500 dark:text-slate-400">
+            Salen de la ficha de cada acción, en Email, WhatsApp o Push, o se cargan sueltos con el + de cada canal.
+          </p>
         </div>
       )}
 

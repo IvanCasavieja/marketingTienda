@@ -38,6 +38,11 @@ class CalendarioBarra(Base):
     # conteste el servidor. Los de antes de la 0057 se conservaron tal cual, y
     # con ellos los avisos viejos siguen apuntando a su acción.
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # De qué negocio es (0060): 'tienda_inglesa', 'redexpres'... Las claves
+    # están en app/core/mundos.py. Cada mundo es un calendario aparte.
+    mundo: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="tienda_inglesa", server_default="tienda_inglesa", index=True
+    )
     # 'comercial' | 'retail' | 'header' | 'envio'
     seccion: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     # El tipo de acción ("MEGA EVENTO"), el formato de Retail Media ("CARRUSEL"),
@@ -125,6 +130,44 @@ class CalendarioAviso(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CalendarioTarea(Base):
+    """Una tarea de una acción, asignada a una persona (0060).
+
+    Pedido de Ivan (12/11/2026): quien lidera el equipo abre una acción y
+    "crea subtareas, y esas subtareas van a estar asignadas a determinadas
+    personas", que se enteran por la campanita. Una tarea puede colgar de otra
+    (`parent_id`): tarea → subtarea → sub-subtarea, y no más hondo.
+
+    Es una fila aparte por lo mismo que las piezas: dos personas tildando dos
+    tareas de la misma acción no se pisan."""
+
+    __tablename__ = "calendario_tareas"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    barra_id: Mapped[str] = mapped_column(
+        ForeignKey("calendario_barras.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    parent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("calendario_tareas.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    titulo: Mapped[str] = mapped_column(Text, nullable=False)
+    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 'pendiente' | 'en-proceso' | 'hecha'
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="pendiente")
+    asignado_a_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    vence: Mapped[date | None] = mapped_column(Date, nullable=True)
+    orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    creado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
+    )
 
 
 class CalendarioPosicionesRM(Base):

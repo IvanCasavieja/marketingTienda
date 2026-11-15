@@ -5,6 +5,20 @@
 /** Ancho de la columna de etiquetas, la que queda fija a la izquierda. */
 export const ANCHO_ETIQUETA = 232
 
+/**
+ * La misma columna en el teléfono. Con 232px no quedaba lugar para los días
+ * (en una pantalla de 390 se veían tres). La pantalla la toma de la variable
+ * CSS --ancho-etiqueta, que cambia con el ancho (ver globals.css).
+ */
+export const ANCHO_ETIQUETA_TELEFONO = 136
+
+/**
+ * En el teléfono el mes no entra entero a un tamaño que se pueda leer. En vez
+ * de achicarlo al mínimo (los días quedaban de 20px, sin número), se muestra
+ * una semana a un tamaño cómodo y se corre con el dedo.
+ */
+export const ZOOM_TELEFONO = 32
+
 /** Anchos de columna disponibles, en px por día. El 38 es el natural. */
 export const ZOOMS = [20, 26, 32, 38, 48, 60, 76]
 export const ZOOM_MIN = ZOOMS[0]
@@ -61,9 +75,9 @@ export function sePuedeAlejar(zoom: number): boolean { return zoom > ZOOM_MIN }
  * de la caja de una sección — medido del DOM, no calculado a ojo desde
  * `window.innerWidth`, que ignoraba el `max-w` del contenedor y se pasaba.
  */
-export function zoomParaAncho(anchoDisponible: number, dias: number): number {
+export function zoomParaAncho(anchoDisponible: number, dias: number, anchoEtiqueta = ANCHO_ETIQUETA): number {
   if (dias <= 0) return ZOOM_POR_DEFECTO
-  return limitarZoom(Math.floor((anchoDisponible - ANCHO_ETIQUETA) / dias))
+  return limitarZoom(Math.floor((anchoDisponible - anchoEtiqueta) / dias))
 }
 
 /** El porcentaje que muestra el control, relativo al tamaño natural. */

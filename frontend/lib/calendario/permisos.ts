@@ -18,6 +18,8 @@ export const PERMISOS_CALENDARIO = {
   editar: "calendario.edit",
   /** Mover las posiciones que Retail Media tiene reservadas en el header. */
   retailMedia: "calendario.retail_media",
+  /** Crear, asignar y borrar las tareas de cada acción. */
+  tareas: "calendario.tareas",
 } as const;
 
 export function puedeVer(user: CurrentUser | null | undefined): boolean {
@@ -43,6 +45,8 @@ export function usePermisosCalendario() {
     user,
     editable: puedeEditar(user),
     moverRM: puedeMoverRM(user),
+    /** Crea, asigna y borra tareas. Los demás solo mueven el estado de las suyas. */
+    gestionaTareas: hasPermission(user, PERMISOS_CALENDARIO.tareas),
     autor: user?.full_name || user?.email || "Alguien",
   };
 }

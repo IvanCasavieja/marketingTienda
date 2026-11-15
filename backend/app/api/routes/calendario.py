@@ -11,6 +11,16 @@
   POST   /calendario/barras/{id}/avisos       — configura un aviso en una acción
   DELETE /calendario/avisos/{id}
   PUT    /calendario/posiciones-rm/{clave}    — mueve las posiciones de RM de un mes
+  POST   /calendario/barras/{id}/tareas       — una tarea (o subtarea) de una acción
+  PATCH  /calendario/tareas/{id}              — título, estado, a quién, cuándo vence
+  DELETE /calendario/tareas/{id}
+  GET    /calendario/mis-tareas               — lo que tengo asignado, de todos mis mundos
+  GET    /calendario/ubicar/{id}              — en qué mundo está una acción
+
+Desde la 0060 la plataforma entera se divide en MUNDOS (Tienda Inglesa,
+Redexpres...) y cada uno tiene su calendario: cada barra es de un mundo,
+`GET /datos?mundo=` trae solo ese, y nadie lee ni escribe en un mundo al que no
+entra (`users.mundos`, ver app/core/mundos.py).
 
 Hasta el 28/09/2026 había un solo PUT que subía el mes entero: una acción no
 podía cruzar de mes, y dos personas editando el mismo mes se pisaban (ganaba
@@ -30,18 +40,20 @@ estado; y aceptan avisos, como una acción.
 import logging
 import re
 from datetime import date, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import client_ip as _client_ip, require_permission
+from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, puede_abrir
 from app.models.audit_log import AuditLog
 from app.models.calendario import (
     CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPosicionesRM, CalendarioRevision,
+    CalendarioTarea,
 )
 from app.models.notificacion import Notificacion
 from app.models.user import User
@@ -56,6 +68,19 @@ _HORA = r"^([01]\d|2[0-3]):[0-5]\d$"
 # Una barra de más de esto es casi seguro un error de tipeo en el año.
 _DURACION_MAXIMA = timedelta(days=3 * 366)
 _RM_POR_DEFECTO = [4, 5, 6]
+# Una fecha fuera de esto es un error de tipeo: el campo de fecha del
+# navegador manda el año a medida que se escribe (0002, 0020, 0202...).
+_ANIO_MINIMO, _ANIO_MAXIMO = 2000, 2100
+
+
+def _fecha_razonable(v: date) -> date:
+    if not (_ANIO_MINIMO <= v.year <= _ANIO_MAXIMO):
+        raise ValueError(f"La fecha {v.strftime('%d/%m/%Y')} no parece real: revisá el año")
+    return v
+
+
+# Toda fecha que llega del front pasa por acá.
+Fecha = Annotated[date, AfterValidator(_fecha_razonable)]
 
 Seccion = Literal["comercial", "retail", "header", "envio"]
 Area = Literal["web-home", "web-landing", "fisico", "email", "whatsapp", "push"]
@@ -64,6 +89,10 @@ Estado = Literal["pendiente", "en-proceso", "aprobado", "publicado"]
 _CANALES = ("email", "whatsapp", "push")
 # Las secciones cuya ficha lleva avisos.
 _CON_AVISOS = ("comercial", "envio")
+EstadoTarea = Literal["pendiente", "en-proceso", "hecha"]
+# Tarea → subtarea → sub-subtarea, y no más hondo.
+_NIVELES_DE_TAREA = 3
+PERMISO_TAREAS = "calendario.tareas"
 
 _YA_NO_EXISTE = "Esta acción ya no existe: la borró otra persona. Se recargó el calendario."
 
@@ -114,14 +143,35 @@ async def _avisar_sin_romper(db: AsyncSession, barra_id: str) -> int:
         return 0
 
 
-async def _barra_o_404(db: AsyncSession, barra_id: str, *, bloquear: bool = False) -> CalendarioBarra:
+async def _barra_o_404(
+    db: AsyncSession, barra_id: str, usuario: User, *, bloquear: bool = False,
+) -> CalendarioBarra:
+    """La barra, si existe y es de un mundo que la persona puede abrir."""
     consulta = select(CalendarioBarra).where(CalendarioBarra.id == barra_id)
     if bloquear:
         consulta = consulta.with_for_update()
     barra = (await db.execute(consulta)).scalar_one_or_none()
     if barra is None:
         raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
+    exigir_mundo(usuario, barra.mundo)
     return barra
+
+
+async def _exigir_mundo_de(db: AsyncSession, barra_id: str | None, usuario: User) -> None:
+    """Para lo que se toca por su propio id (una pieza, un aviso): que la
+    acción de la que cuelga sea de un mundo de la persona. Si la acción ya no
+    está, no hay nada que cuidar."""
+    if barra_id is None:
+        return
+    mundo = (await db.execute(
+        select(CalendarioBarra.mundo).where(CalendarioBarra.id == barra_id)
+    )).scalar_one_or_none()
+    if mundo is not None:
+        exigir_mundo(usuario, mundo)
+
+
+def _puede_ver_el_mundo(usuario: User, mundo: str) -> bool:
+    return puede_ver_el_calendario(usuario) and puede_abrir(usuario, mundo)
 
 
 # ---------------------------------------------------------------------------
@@ -150,9 +200,26 @@ def _aviso_json(a: CalendarioAviso) -> dict:
     }
 
 
-def _barra_json(b: CalendarioBarra, piezas: list[CalendarioPieza], avisos: list[CalendarioAviso]) -> dict:
+def _tarea_json(t: CalendarioTarea) -> dict:
+    return {
+        "id": t.id,
+        "parentId": t.parent_id,
+        "titulo": t.titulo,
+        "descripcion": t.descripcion,
+        "estado": t.estado,
+        "asignadoA": t.asignado_a_id,
+        "vence": t.vence.isoformat() if t.vence else None,
+        "creadoPor": t.creado_por_id,
+    }
+
+
+def _barra_json(
+    b: CalendarioBarra, piezas: list[CalendarioPieza], avisos: list[CalendarioAviso],
+    tareas: list[CalendarioTarea] | None = None,
+) -> dict:
     out = {
         "id": b.id,
+        "mundo": b.mundo,
         "seccion": b.seccion,
         "banda": b.banda,
         "carril": b.carril,
@@ -170,6 +237,7 @@ def _barra_json(b: CalendarioBarra, piezas: list[CalendarioPieza], avisos: list[
             out["hora"] = b.hora
     if b.seccion in _CON_AVISOS:
         out["avisos"] = [_aviso_json(a) for a in avisos]
+        out["tareas"] = [_tarea_json(t) for t in (tareas or [])]
     return out
 
 
@@ -180,56 +248,80 @@ def _barra_json(b: CalendarioBarra, piezas: list[CalendarioPieza], avisos: list[
 @router.get("/datos")
 async def traer_datos(
     rev: int | None = None,
-    _: User = Depends(require_permission("calendario.view")),
+    mundo: str = MUNDO_POR_DEFECTO,
+    current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Todo el calendario. Si el front ya tiene la revisión actual, contesta
-    solo eso y no viaja nada más.
+    """Todo el calendario de UN mundo. Si el front ya tiene la revisión actual,
+    contesta solo eso y no viaja nada más.
+
+    La revisión es una sola para todos los mundos: un cambio en Redexpres hace
+    que quien mira Tienda Inglesa vuelva a traer lo suyo, que no cambió. Es un
+    viaje de más cada tanto a cambio de no llevar un contador por mundo.
 
     La revisión se lee ANTES que los datos: si alguien guarda en el medio, los
     datos pueden venir un poco más nuevos que la revisión (y la próxima
     pregunta los vuelve a traer), pero nunca más viejos."""
+    exigir_mundo(current_user, mundo)
     actual = await _revision_actual(db)
     if rev is not None and rev == actual:
         return {"rev": actual, "sinCambios": True}
 
     barras = (await db.execute(
-        select(CalendarioBarra).order_by(CalendarioBarra.desde, CalendarioBarra.id)
+        select(CalendarioBarra).where(CalendarioBarra.mundo == mundo)
+        .order_by(CalendarioBarra.desde, CalendarioBarra.id)
     )).scalars().all()
+    del_mundo = select(CalendarioBarra.id).where(CalendarioBarra.mundo == mundo)
     piezas: dict[str, list[CalendarioPieza]] = {}
     for p in (await db.execute(
-        select(CalendarioPieza).order_by(CalendarioPieza.orden, CalendarioPieza.id)
+        select(CalendarioPieza).where(CalendarioPieza.barra_id.in_(del_mundo))
+        .order_by(CalendarioPieza.orden, CalendarioPieza.id)
     )).scalars():
         piezas.setdefault(p.barra_id, []).append(p)
     avisos: dict[str, list[CalendarioAviso]] = {}
     for a in (await db.execute(
-        select(CalendarioAviso).order_by(CalendarioAviso.dias_antes.desc(), CalendarioAviso.id)
+        select(CalendarioAviso).where(CalendarioAviso.barra_id.in_(del_mundo))
+        .order_by(CalendarioAviso.dias_antes.desc(), CalendarioAviso.id)
     )).scalars():
         avisos.setdefault(a.barra_id, []).append(a)
+    tareas: dict[str, list[CalendarioTarea]] = {}
+    for t in (await db.execute(
+        select(CalendarioTarea).where(CalendarioTarea.barra_id.in_(del_mundo))
+        .order_by(CalendarioTarea.orden, CalendarioTarea.created_at, CalendarioTarea.id)
+    )).scalars():
+        tareas.setdefault(t.barra_id, []).append(t)
+    # Retail Media es de la web de Tienda Inglesa: los otros mundos no tienen
+    # esa parte del calendario y no tienen por qué bajar sus posiciones.
     posiciones = {
         p.clave: list(p.posiciones)
         for p in (await db.execute(select(CalendarioPosicionesRM))).scalars()
-    }
+    } if mundo == MUNDO_POR_DEFECTO else {}
     return {
         "rev": actual,
-        "barras": [_barra_json(b, piezas.get(b.id, []), avisos.get(b.id, [])) for b in barras],
+        "mundo": mundo,
+        "barras": [
+            _barra_json(b, piezas.get(b.id, []), avisos.get(b.id, []), tareas.get(b.id, []))
+            for b in barras
+        ],
         "posicionesRM": posiciones,
     }
 
 
 @router.get("/personas")
 async def listar_personas(
-    _: User = Depends(require_permission("calendario.view")),
+    mundo: str = MUNDO_POR_DEFECTO,
+    current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Quiénes pueden recibir un aviso: los que pueden abrir el calendario.
-    Solo id y nombre."""
+    """Quiénes pueden recibir un aviso o una tarea: los que pueden abrir el
+    calendario de ese mundo. Solo id y nombre."""
+    exigir_mundo(current_user, mundo)
     usuarios = (await db.execute(
         select(User).where(User.is_active == True).order_by(User.full_name)  # noqa: E712
     )).scalars()
     return [
         {"id": u.id, "nombre": u.full_name or u.email}
-        for u in usuarios if puede_ver_el_calendario(u)
+        for u in usuarios if _puede_ver_el_mundo(u, mundo)
     ]
 
 
@@ -239,13 +331,14 @@ async def listar_personas(
 
 class BarraNueva(BaseModel):
     id: str = Field(..., pattern=_ID)
+    mundo: str = Field(MUNDO_POR_DEFECTO, max_length=32)
     seccion: Seccion
     banda: str = Field(..., min_length=1, max_length=200)
     carril: int = Field(0, ge=0, le=500)
     nombre: str = Field(..., min_length=1, max_length=1000)
     color: str | None = Field(None, max_length=32)
-    desde: date
-    hasta: date
+    desde: Fecha
+    hasta: Fecha
     # Solo los envíos sueltos: en las demás secciones se ignoran.
     formato: str | None = Field(None, max_length=100)
     hora: str | None = Field(None, pattern=_HORA)
@@ -257,6 +350,17 @@ class BarraNueva(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("El nombre no puede quedar vacío")
+        return v
+
+    # `min_length=1` deja pasar un espacio solo. En una acción la banda es la
+    # categoría, que es además la fila del mes: un " " armaría una fila
+    # fantasma, sin nombre.
+    @field_validator("banda")
+    @classmethod
+    def _banda_sin_espacios(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("La categoría no puede quedar vacía")
         return v
 
     @model_validator(mode="after")
@@ -278,8 +382,8 @@ class BarraCambios(BaseModel):
     carril: int | None = Field(None, ge=0, le=500)
     nombre: str | None = Field(None, min_length=1, max_length=1000)
     color: str | None = Field(None, max_length=32)
-    desde: date | None = None
-    hasta: date | None = None
+    desde: Fecha | None = None
+    hasta: Fecha | None = None
     # Solo los envíos sueltos. La hora puede venir en null (se saca la hora).
     formato: str | None = Field(None, max_length=100)
     hora: str | None = Field(None, pattern=_HORA)
@@ -293,6 +397,18 @@ class BarraCambios(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("El nombre no puede quedar vacío")
+        return v
+
+    # Igual que al crear: un " " no es una categoría. El null pasa como vino,
+    # que `cambios_de_barra` lo toma como "no vino".
+    @field_validator("banda")
+    @classmethod
+    def _banda_sin_espacios(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("La categoría no puede quedar vacía")
         return v
 
 
@@ -339,6 +455,7 @@ async def crear_barra(
     db: AsyncSession = Depends(get_db),
 ):
     _validar_rango(payload.desde, payload.hasta)
+    exigir_mundo(current_user, payload.mundo)
     existente = (await db.execute(
         select(CalendarioBarra.id).where(CalendarioBarra.id == payload.id)
     )).scalar_one_or_none()
@@ -363,7 +480,7 @@ async def cambiar_barra(
     current_user: User = Depends(require_permission("calendario.edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    barra = await _barra_o_404(db, barra_id, bloquear=True)
+    barra = await _barra_o_404(db, barra_id, current_user, bloquear=True)
     try:
         cambios = cambios_de_barra(barra.seccion, payload, barra.desde, barra.hasta)
     except ValueError as exc:
@@ -393,13 +510,14 @@ async def borrar_barra(
     if barra is None:
         # Ya la había borrado otro: el resultado es el mismo.
         return {"id": barra_id, "borrada": True}
+    exigir_mundo(current_user, barra.mundo)
     # Queda quién la borró y qué era: con varias personas en el mismo
     # calendario, "¿quién sacó tal acción?" es la pregunta que va a aparecer.
     db.add(AuditLog(
         user_id=current_user.id, action="calendario.borrar", resource="calendario_barra",
         resource_id=barra_id, ip_address=_client_ip(request),
         details={
-            "seccion": barra.seccion, "banda": barra.banda, "nombre": barra.nombre,
+            "mundo": barra.mundo, "seccion": barra.seccion, "banda": barra.banda, "nombre": barra.nombre,
             "desde": barra.desde.isoformat(), "hasta": barra.hasta.isoformat(),
         },
     ))
@@ -418,15 +536,15 @@ class PiezaNueva(BaseModel):
     area: Area
     formato: str = Field(..., min_length=1, max_length=100)
     estado: Estado = "pendiente"
-    desde: date | None = None
-    hasta: date | None = None
+    desde: Fecha | None = None
+    hasta: Fecha | None = None
     hora: str | None = Field(None, pattern=_HORA)
 
 
 class PiezaCambios(BaseModel):
     estado: Estado | None = None
-    desde: date | None = None
-    hasta: date | None = None
+    desde: Fecha | None = None
+    hasta: Fecha | None = None
     hora: str | None = Field(None, pattern=_HORA)
     enSharePoint: bool | None = None
 
@@ -435,12 +553,12 @@ class PiezaCambios(BaseModel):
 async def agregar_pieza(
     barra_id: str,
     payload: PiezaNueva,
-    _: User = Depends(require_permission("calendario.edit")),
+    current_user: User = Depends(require_permission("calendario.edit")),
     db: AsyncSession = Depends(get_db),
 ):
     # Bloquear la acción ordena a dos personas agregando piezas a la vez: la
     # segunda ve la pieza de la primera y no la duplica.
-    barra = await _barra_o_404(db, barra_id, bloquear=True)
+    barra = await _barra_o_404(db, barra_id, current_user, bloquear=True)
     if barra.seccion != "comercial":
         raise HTTPException(status_code=422, detail="Solo las acciones del calendario comercial llevan piezas")
     piezas = (await db.execute(
@@ -466,7 +584,7 @@ async def agregar_pieza(
 async def cambiar_pieza(
     pieza_id: str,
     payload: PiezaCambios,
-    _: User = Depends(require_permission("calendario.edit")),
+    current_user: User = Depends(require_permission("calendario.edit")),
     db: AsyncSession = Depends(get_db),
 ):
     pieza = (await db.execute(
@@ -474,6 +592,7 @@ async def cambiar_pieza(
     )).scalar_one_or_none()
     if pieza is None:
         raise HTTPException(status_code=404, detail="Esta pieza ya no existe: la sacó otra persona.")
+    await _exigir_mundo_de(db, pieza.barra_id, current_user)
     # `desde`, `hasta` y `hora` pueden venir en null a propósito (volver a "con
     # la acción"), por eso se mira qué campos vinieron y no si son None.
     campos = payload.model_fields_set
@@ -495,9 +614,12 @@ async def cambiar_pieza(
 @router.delete("/piezas/{pieza_id}")
 async def quitar_pieza(
     pieza_id: str,
-    _: User = Depends(require_permission("calendario.edit")),
+    current_user: User = Depends(require_permission("calendario.edit")),
     db: AsyncSession = Depends(get_db),
 ):
+    await _exigir_mundo_de(db, (await db.execute(
+        select(CalendarioPieza.barra_id).where(CalendarioPieza.id == pieza_id)
+    )).scalar_one_or_none(), current_user)
     await db.execute(delete(CalendarioPieza).where(CalendarioPieza.id == pieza_id))
     rev = await _nueva_revision(db)
     await db.commit()
@@ -523,7 +645,7 @@ async def configurar_aviso(
 ):
     """Un aviso configurado a mano. No hay ninguno por defecto: "cuando nos
     llegue una notificación, es porque alguien la configuró"."""
-    barra = await _barra_o_404(db, barra_id)
+    barra = await _barra_o_404(db, barra_id, current_user)
     if barra.seccion not in _CON_AVISOS:
         raise HTTPException(
             status_code=422,
@@ -532,7 +654,7 @@ async def configurar_aviso(
 
     pedidos = list(dict.fromkeys(payload.destinatarios))
     usuarios = (await db.execute(select(User).where(User.id.in_(pedidos)))).scalars().all()
-    validos = {u.id for u in usuarios if puede_ver_el_calendario(u)}
+    validos = {u.id for u in usuarios if _puede_ver_el_mundo(u, barra.mundo)}
     faltan = [uid for uid in pedidos if uid not in validos]
     if faltan:
         raise HTTPException(
@@ -559,9 +681,12 @@ async def configurar_aviso(
 @router.delete("/avisos/{aviso_id}")
 async def quitar_aviso(
     aviso_id: str,
-    _: User = Depends(require_permission("calendario.edit")),
+    current_user: User = Depends(require_permission("calendario.edit")),
     db: AsyncSession = Depends(get_db),
 ):
+    await _exigir_mundo_de(db, (await db.execute(
+        select(CalendarioAviso.barra_id).where(CalendarioAviso.id == aviso_id)
+    )).scalar_one_or_none(), current_user)
     await db.execute(delete(CalendarioAviso).where(CalendarioAviso.id == aviso_id))
     rev = await _nueva_revision(db)
     await db.commit()
@@ -601,6 +726,8 @@ async def mover_posiciones_rm(
     que alguien con solo el permiso de RM movía las posiciones y no se
     guardaban."""
     _validar_clave(clave)
+    # El header de la home es de Tienda Inglesa: los otros mundos no tienen.
+    exigir_mundo(current_user, MUNDO_POR_DEFECTO)
     fila = (await db.execute(
         select(CalendarioPosicionesRM).where(CalendarioPosicionesRM.clave == clave).with_for_update()
     )).scalar_one_or_none()
@@ -641,3 +768,257 @@ async def mover_posiciones_rm(
     rev = await _nueva_revision(db)
     await db.commit()
     return {"clave": clave, "avisados": len(destinatarios), "rev": rev}
+
+
+# ---------------------------------------------------------------------------
+# Tareas
+# ---------------------------------------------------------------------------
+# Pedido de Ivan (12/11/2026): quien lidera abre una acción, le crea tareas y
+# subtareas y se las asigna a cada persona, que se entera por la campanita.
+#
+# Crear, editar, asignar y borrar pide `calendario.tareas`. Mover el ESTADO de
+# una tarea lo puede hacer además la persona que la tiene asignada, aunque no
+# tenga ese permiso ni `calendario.edit`: es su tarea.
+
+TIPO_TAREA = "calendario_tarea"
+
+
+def _puede_gestionar_tareas(usuario: User) -> bool:
+    return bool(usuario.is_superuser) or PERMISO_TAREAS in (usuario.permissions or [])
+
+
+def _exigir_gestion_de_tareas(usuario: User) -> None:
+    if not _puede_gestionar_tareas(usuario):
+        raise HTTPException(status_code=403, detail=f"Permiso requerido: {PERMISO_TAREAS}")
+
+
+def referencia_de_tarea(barra_id: str, tarea_id: str) -> str:
+    """Empieza por el id de la acción, igual que la de un aviso: es lo que usa
+    la campanita para llevar a su ficha."""
+    return f"{barra_id}:{tarea_id}"
+
+
+def mensaje_de_asignacion(quien: str, titulo: str, accion: str, vence: date | None) -> str:
+    cuando = f" Vence el {vence.strftime('%d/%m')}." if vence else ""
+    return f"{quien} te asignó una tarea en {accion or 'una acción'}: {titulo}.{cuando}"
+
+
+def mensaje_de_tarea_hecha(quien: str, titulo: str, accion: str) -> str:
+    return f"{quien} terminó la tarea «{titulo}» de {accion or 'una acción'}."
+
+
+def nivel_de(tarea_id: str | None, padres: dict[str, str | None]) -> int:
+    """A qué profundidad queda algo que cuelga de `tarea_id`: 1 si no cuelga
+    de nada. Pura, para probarla sin base. El tope corta un ciclo."""
+    nivel = 1
+    while tarea_id is not None and nivel <= _NIVELES_DE_TAREA + 1:
+        nivel += 1
+        tarea_id = padres.get(tarea_id)
+    return nivel
+
+
+def _avisar(db: AsyncSession, user_id: int, mensaje: str, barra_id: str, tarea_id: str) -> None:
+    db.add(Notificacion(
+        user_id=user_id, tipo=TIPO_TAREA, mensaje=mensaje,
+        origen_tipo=TIPO_TAREA, origen_ref=referencia_de_tarea(barra_id, tarea_id),
+    ))
+
+
+async def _asignable_o_422(db: AsyncSession, user_id: int, mundo: str) -> User:
+    usuario = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if usuario is None or not _puede_ver_el_mundo(usuario, mundo):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Esa persona no puede abrir el calendario de {MUNDOS.get(mundo, mundo)}: no vería la tarea",
+        )
+    return usuario
+
+
+class TareaNueva(BaseModel):
+    id: str = Field(..., pattern=_ID)
+    parentId: str | None = Field(None, pattern=_ID)
+    titulo: str = Field(..., min_length=1, max_length=500)
+    descripcion: str | None = Field(None, max_length=5000)
+    asignadoA: int | None = None
+    vence: Fecha | None = None
+
+    @field_validator("titulo")
+    @classmethod
+    def _sin_espacios(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("La tarea necesita un título")
+        return v
+
+
+class TareaCambios(BaseModel):
+    """Solo viaja lo que cambió. `asignadoA`, `vence` y `descripcion` pueden
+    venir en null a propósito: es sacarle la persona, la fecha o el detalle."""
+    titulo: str | None = Field(None, min_length=1, max_length=500)
+    descripcion: str | None = Field(None, max_length=5000)
+    estado: EstadoTarea | None = None
+    asignadoA: int | None = None
+    vence: Fecha | None = None
+
+
+@router.post("/barras/{barra_id}/tareas", status_code=201)
+async def crear_tarea(
+    barra_id: str,
+    payload: TareaNueva,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    _exigir_gestion_de_tareas(current_user)
+    barra = await _barra_o_404(db, barra_id, current_user, bloquear=True)
+    if barra.seccion not in _CON_AVISOS:
+        raise HTTPException(
+            status_code=422,
+            detail="Las tareas se cargan en las acciones del calendario comercial y en los envíos",
+        )
+    existentes = (await db.execute(
+        select(CalendarioTarea).where(CalendarioTarea.barra_id == barra_id)
+    )).scalars().all()
+    if any(t.id == payload.id for t in existentes):
+        return {"id": payload.id, "rev": await _revision_actual(db), "yaExistia": True}
+    # El id lo genera el front; si ya lo usa una tarea de OTRA acción, la
+    # clave primaria lo frenaría con un 500 sin explicación.
+    if await db.get(CalendarioTarea, payload.id) is not None:
+        raise HTTPException(status_code=409, detail="Esa tarea ya existe en otra acción")
+    padres = {t.id: t.parent_id for t in existentes}
+    if payload.parentId is not None:
+        if payload.parentId not in padres:
+            raise HTTPException(status_code=404, detail="La tarea de la que cuelga ya no existe: la borraron.")
+        if nivel_de(payload.parentId, padres) > _NIVELES_DE_TAREA:
+            raise HTTPException(status_code=422, detail="Una sub-subtarea no puede tener más tareas adentro")
+    if payload.asignadoA is not None:
+        await _asignable_o_422(db, payload.asignadoA, barra.mundo)
+    db.add(CalendarioTarea(
+        id=payload.id, barra_id=barra_id, parent_id=payload.parentId, titulo=payload.titulo,
+        descripcion=(payload.descripcion or "").strip() or None,
+        asignado_a_id=payload.asignadoA, vence=payload.vence,
+        orden=max((t.orden for t in existentes), default=-1) + 1,
+        creado_por_id=current_user.id,
+    ))
+    avisados = 0
+    if payload.asignadoA is not None and payload.asignadoA != current_user.id:
+        _avisar(db, payload.asignadoA, mensaje_de_asignacion(
+            current_user.full_name, payload.titulo, barra.nombre, payload.vence,
+        ), barra_id, payload.id)
+        avisados = 1
+    rev = await _nueva_revision(db)
+    await db.commit()
+    return {"id": payload.id, "rev": rev, "avisados": avisados}
+
+
+@router.patch("/tareas/{tarea_id}")
+async def cambiar_tarea(
+    tarea_id: str,
+    payload: TareaCambios,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    tarea = (await db.execute(
+        select(CalendarioTarea).where(CalendarioTarea.id == tarea_id).with_for_update()
+    )).scalar_one_or_none()
+    if tarea is None:
+        raise HTTPException(status_code=404, detail="Esta tarea ya no existe: la borró otra persona.")
+    barra = await _barra_o_404(db, tarea.barra_id, current_user)
+
+    campos = payload.model_fields_set
+    solo_estado = campos <= {"estado"}
+    es_suya = tarea.asignado_a_id == current_user.id
+    if not _puede_gestionar_tareas(current_user) and not (solo_estado and es_suya):
+        raise HTTPException(
+            status_code=403,
+            detail="Solo podés cambiar el estado de las tareas que tenés asignadas",
+        )
+
+    avisados = 0
+    if "titulo" in campos and payload.titulo is not None:
+        titulo = payload.titulo.strip()
+        if not titulo:
+            raise HTTPException(status_code=422, detail="La tarea necesita un título")
+        tarea.titulo = titulo
+    if "descripcion" in campos:
+        tarea.descripcion = (payload.descripcion or "").strip() or None
+    if "vence" in campos:
+        tarea.vence = payload.vence
+    if "asignadoA" in campos and payload.asignadoA != tarea.asignado_a_id:
+        if payload.asignadoA is not None:
+            await _asignable_o_422(db, payload.asignadoA, barra.mundo)
+            if payload.asignadoA != current_user.id:
+                _avisar(db, payload.asignadoA, mensaje_de_asignacion(
+                    current_user.full_name, tarea.titulo, barra.nombre, tarea.vence,
+                ), barra.id, tarea.id)
+                avisados += 1
+        tarea.asignado_a_id = payload.asignadoA
+    if "estado" in campos and payload.estado is not None and payload.estado != tarea.estado:
+        tarea.estado = payload.estado
+        # A quien la creó le interesa saber que se terminó, salvo que la haya
+        # terminado esa misma persona.
+        if payload.estado == "hecha" and tarea.creado_por_id and tarea.creado_por_id != current_user.id:
+            _avisar(db, tarea.creado_por_id, mensaje_de_tarea_hecha(
+                current_user.full_name, tarea.titulo, barra.nombre,
+            ), barra.id, tarea.id)
+            avisados += 1
+    rev = await _nueva_revision(db)
+    await db.commit()
+    return {"id": tarea_id, "rev": rev, "avisados": avisados}
+
+
+@router.delete("/tareas/{tarea_id}")
+async def borrar_tarea(
+    tarea_id: str,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Borra la tarea y todo lo que cuelga de ella."""
+    _exigir_gestion_de_tareas(current_user)
+    await _exigir_mundo_de(db, (await db.execute(
+        select(CalendarioTarea.barra_id).where(CalendarioTarea.id == tarea_id)
+    )).scalar_one_or_none(), current_user)
+    await db.execute(delete(CalendarioTarea).where(CalendarioTarea.id == tarea_id))
+    rev = await _nueva_revision(db)
+    await db.commit()
+    return {"id": tarea_id, "borrada": True, "rev": rev}
+
+
+@router.get("/mis-tareas")
+async def mis_tareas(
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lo que la persona tiene asignado, en todos los mundos que puede abrir,
+    con la acción de cada tarea. Es lo que muestra el inicio."""
+    mundos = mundos_de(current_user)
+    if not mundos:
+        return []
+    filas = (await db.execute(
+        select(CalendarioTarea, CalendarioBarra)
+        .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
+        .where(CalendarioTarea.asignado_a_id == current_user.id, CalendarioBarra.mundo.in_(mundos))
+        .order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
+    )).all()
+    return [
+        {
+            **_tarea_json(t),
+            "accion": {
+                "id": b.id, "mundo": b.mundo, "nombre": b.nombre, "banda": b.banda,
+                "seccion": b.seccion, "color": b.color,
+                "desde": b.desde.isoformat(), "hasta": b.hasta.isoformat(),
+            },
+        }
+        for t, b in filas
+    ]
+
+
+@router.get("/ubicar/{barra_id}")
+async def ubicar_barra(
+    barra_id: str,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """En qué mundo y en qué fecha está una acción: lo necesita un aviso de la
+    campanita para abrir su ficha aunque se esté mirando otro mundo."""
+    barra = await _barra_o_404(db, barra_id, current_user)
+    return {"id": barra.id, "mundo": barra.mundo, "desde": barra.desde.isoformat()}

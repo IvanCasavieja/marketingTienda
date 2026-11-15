@@ -32,7 +32,20 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await authApi.login(emailVal, passwordVal);
-      router.push("/home");
+      // Quien entra a más de un mundo primero elige en cuál va a trabajar.
+      // Quien entra a uno solo va derecho: al calendario, que es el centro de
+      // la plataforma, o a donde entraba antes si no lo puede ver (los logins
+      // de sucursal, por ejemplo).
+      let destino = "/home";
+      try {
+        const { data } = await authApi.me();
+        const ve = data?.is_superuser || (data?.permissions ?? []).includes("calendario.view");
+        if ((data?.mundos ?? []).length > 1) destino = "/mundos";
+        else if (ve) destino = "/calendario";
+      } catch {
+        // Si /me falla, el layout del dashboard decide qué hacer.
+      }
+      router.push(destino);
     } catch {
       toast.error(t("login.wrongCredentials"));
     } finally {
@@ -56,7 +69,7 @@ export default function LoginPage() {
             <div className="w-9 h-9 rounded-xl bg-brand-500 flex items-center justify-center">
               <BarChart3 size={18} className="text-white" />
             </div>
-            <span className="text-white font-bold text-lg tracking-tight">MKTG Platform</span>
+            <span className="text-white font-bold text-lg tracking-tight">Core Tienda</span>
           </div>
 
           {/* Don Tino + saludo */}
@@ -100,7 +113,7 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-8 lg:hidden">
             <RobotMini />
-            <span className="font-bold text-slate-800 dark:text-slate-100">MKTG Platform</span>
+            <span className="font-bold text-slate-800 dark:text-slate-100">Core Tienda</span>
           </div>
 
           <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">{t("login.welcome")}</h2>

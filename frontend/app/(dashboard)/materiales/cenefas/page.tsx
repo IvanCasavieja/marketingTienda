@@ -13,8 +13,16 @@ import DestinoModal from "@/components/cenefas/DestinoModal";
 import CenefaPanel from "@/components/cenefas/CenefaPanel";
 import { tomarExcelConvertido } from "@/lib/cenefaHandoff";
 import TininFloating from "@/components/cenefas/TininFloating";
+import { mundoEfectivo, useMundoElegido } from "@/lib/mundos";
 
-// Host: primero pregunta a qué mundo se va, después renderiza el panel.
+// Host: primero pregunta qué tipo de cenefa se va a hacer, después renderiza
+// el panel.
+//
+// Desde el 12/11/2026 los tipos de cenefa son de un mundo de la plataforma:
+// entrando a Redexpres se ven solo las de Redexpres, y en Tienda Inglesa solo
+// las de Tienda Inglesa (Rompe Precios, Parrilla y Vinos...). Antes Redexpres
+// era una opción más de este selector. Si el mundo tiene un solo tipo —es el
+// caso de Redexpres— no se pregunta nada: se entra derecho.
 //
 // Antes había un panel por destino (RedExpresPanel / RompePreciosPanel), con
 // dos sistemas de plantillas y dos motores de render. Desde 08/2026 hay uno
@@ -32,13 +40,24 @@ function CenefasHost() {
   const [excelConvertido, setExcelConvertido] = useState<File | null>(null);
 
   const puedeEditar = !!user && hasPermission(user, "cenefas.edit");
+  const elegido = useMundoElegido((s) => s.elegido);
+  const mundo = mundoEfectivo(user, elegido)?.clave;
+  // true = la persona pidió ver el selector: no se la vuelve a meter sola.
+  const [eligiendo, setEligiendo] = useState(false);
 
   useEffect(() => {
-    cenefasV2Api.listDestinos()
+    if (!mundo) return;
+    setLoading(true);
+    cenefasV2Api.listDestinos(mundo)
       .then(({ data }) => setDestinos(data))
       .catch(() => toast.error(t("cenefas.destino.errorCargar")))
       .finally(() => setLoading(false));
-  }, [t]);
+  }, [t, mundo]);
+
+  // Un mundo con un solo tipo de cenefa no tiene nada que elegir.
+  useEffect(() => {
+    if (!loading && !eligiendo && destino === null && destinos.length === 1) setDestino(destinos[0].slug);
+  }, [loading, eligiendo, destino, destinos]);
 
   useEffect(() => {
     setExcelConvertido(tomarExcelConvertido());
@@ -60,6 +79,7 @@ function CenefasHost() {
   }
 
   function changeDestino() {
+    setEligiendo(true);
     setDestino(null);
     router.replace("/materiales/cenefas");
   }
@@ -99,7 +119,9 @@ function CenefasHost() {
           >
             <Brain size={13} /> {t("cenefas.conocimiento.link")}
           </Link>
-          {destinoValido && (
+          {/* Con un solo tipo no hay a dónde cambiar; quien puede editar igual
+              llega al selector, que es donde se crea uno nuevo. */}
+          {destinoValido && (destinos.length > 1 || puedeEditar) && (
             <button
               onClick={changeDestino}
               className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
@@ -121,6 +143,7 @@ function CenefasHost() {
         <DestinoModal
           destinos={destinos}
           loading={loading}
+          mundo={mundo}
           puedeEditar={puedeEditar}
           onSelect={selectDestino}
           onCreated={(d) => { setDestinos((prev) => [...prev, d]); }}

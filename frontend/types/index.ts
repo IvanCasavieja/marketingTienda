@@ -90,6 +90,8 @@ export interface CurrentUser {
   role_name: string | null;
   permissions: string[];
   assigned_locales: string[];
+  /** Los calendarios que puede abrir: claves de lib/mundos.ts. */
+  mundos: string[];
   must_change_password: boolean;
 }
 

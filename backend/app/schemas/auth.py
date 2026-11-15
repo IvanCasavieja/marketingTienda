@@ -74,6 +74,9 @@ class UserResponse(BaseModel):
     role_name: str | None = None
     permissions: list[str] = []
     assigned_locales: list[str] = []
+    # Los mundos a los que entra (claves de app/core/mundos.py). Siempre viene
+    # al menos uno; para un superadmin vienen todos.
+    mundos: list[str] = []
     must_change_password: bool = False
 
     class Config:

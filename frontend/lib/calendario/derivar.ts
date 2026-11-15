@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import { BANDAS_COMERCIAL, BANDAS_RETAIL, idPosicion, type BandaCatalogo } from './catalogo'
+import { esSinCategoria } from './categorias'
 import {
   claveDe, diaDe, diasDelMes, dowDelMes, fechasDe, isoDe, primerDiaDe, ultimoDiaDe,
 } from './fechas'
@@ -246,14 +247,18 @@ function bandasDe(clave: string, catalogo: BandaCatalogo[], barras: BarraGuardad
   }
   // Una barra de una banda que no está en el catálogo igual se muestra: nunca
   // se esconde un dato porque el catálogo quedó corto.
-  const nombres = [
+  const fuera = [...porBanda.keys()].filter(n => !catalogo.some(c => c.nombre === n))
+  const nombres: BandaCatalogo[] = [
+    // Lo que todavía no tiene categoría va arriba de todo: es lo primero que
+    // hay que mirar. La fila existe solo el mes en que hay alguna.
+    ...fuera.filter(esSinCategoria).map(nombre => ({ nombre })),
     ...catalogo,
-    ...[...porBanda.keys()].filter(n => !catalogo.some(c => c.nombre === n)).map(nombre => ({ nombre })),
+    ...fuera.filter(n => !esSinCategoria(n)).map(nombre => ({ nombre })),
   ]
   return nombres.map(c => ({
     id: c.nombre,
     nombre: c.nombre,
-    grupo: (c as BandaCatalogo).grupo,
+    grupo: c.grupo,
     filas: acomodar(clave, porBanda.get(c.nombre) ?? []),
   }))
 }
@@ -268,6 +273,9 @@ export function construirMes(
   barras: BarraGuardada[],
   posicionesRM: Record<string, number[]> = {},
   header: HeaderDerivado = derivarHeaders(barras, posicionesRM),
+  /** Los tipos de accion del mundo que se mira. Sin esto, los de Tienda Inglesa. */
+  catalogos: { comercial: BandaCatalogo[]; retail: BandaCatalogo[] } =
+    { comercial: BANDAS_COMERCIAL, retail: BANDAS_RETAIL },
 ): Mes {
   const ini = primerDiaDe(clave)
   const fin = ultimoDiaDe(clave)
@@ -296,8 +304,8 @@ export function construirMes(
     clave,
     dias: diasDelMes(clave),
     dow: dowDelMes(clave),
-    comercial: bandasDe(clave, BANDAS_COMERCIAL, delMes.filter(b => b.seccion === 'comercial')),
-    retail: bandasDe(clave, BANDAS_RETAIL, delMes.filter(b => b.seccion === 'retail')),
+    comercial: bandasDe(clave, catalogos.comercial, delMes.filter(b => b.seccion === 'comercial')),
+    retail: bandasDe(clave, catalogos.retail, delMes.filter(b => b.seccion === 'retail')),
     header: posiciones,
     posicionesRM: posicionesDe(posicionesRM, clave),
     sinLugar,
@@ -381,11 +389,14 @@ export function vistaDelMes(
   clave: string,
   barras: Record<string, BarraGuardada>,
   posicionesRM: Record<string, number[]>,
+  /** Los tipos de accion del mundo. Cambiar de mundo cambia `barras`, y
+   *  con eso se olvida lo armado: no hace falta guardarlos en la memoria. */
+  catalogos?: { comercial: BandaCatalogo[]; retail: BandaCatalogo[] },
 ): Mes {
   const header = alDia(barras, posicionesRM)
   const hecho = memoria.meses.get(clave)
   if (hecho) return hecho
-  const mes = construirMes(clave, memoria.lista, posicionesRM, header)
+  const mes = construirMes(clave, memoria.lista, posicionesRM, header, catalogos)
   memoria.meses.set(clave, mes)
   return mes
 }

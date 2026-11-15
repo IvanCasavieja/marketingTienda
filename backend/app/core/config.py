@@ -65,7 +65,9 @@ class Settings(BaseSettings):
     # recuperación de jobs huérfanos, purga de archivos) y los loops periódicos?
     #
     # None = automático: SOLO si es el servidor desplegado (ver es_servidor_desplegado).
-    # True/False = forzar, para el caso raro que lo necesite.
+    # True/False = forzar, para el caso raro que lo necesite. En Azure se
+    # declara en true a propósito (infra/azure/main.bicep), además de la
+    # detección automática.
     #
     # El problema que resuelve: backend/.env de una PC de trabajo apunta a la
     # MISMA base de producción (ONBOARDING/PENDIENTES lo indican así), y varias
@@ -128,10 +130,22 @@ class Settings(BaseSettings):
     SFMC_SUBDOMAIN: str = ""
     SFMC_ACCOUNT_ID: str = ""
 
-    # SendGrid (password reset emails) — Single Sender Verification en
-    # sendgrid.com, sin necesitar dominio propio (ver EMAIL_FROM)
+    # Mails (hoy: recuperar la contraseña). Ver app/services/email_service.py
+    # y docs/AZURE.md, "Mails". EMAIL_PROVIDER: "smtp", "sendgrid" o vacío
+    # (SMTP si hay SMTP_HOST; si no, SendGrid si hay clave).
+    EMAIL_PROVIDER: str = ""
+    # SMTP: Zoho Mail (smtppro.zoho.com, 465 con "ssl"), Azure Communication
+    # Services Email o Microsoft 365.
+    # SMTP_SEGURIDAD: "starttls" (puerto 587), "ssl" (465) o "ninguna".
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_SEGURIDAD: str = "starttls"
+    # SendGrid — Single Sender Verification en sendgrid.com, sin necesitar
+    # dominio propio (ver EMAIL_FROM)
     SENDGRID_API_KEY: str = ""
-    EMAIL_FROM: str = "MKTG Platform <onboarding@example.com>"
+    EMAIL_FROM: str = "Core Tienda <onboarding@example.com>"
 
     @field_validator("ENCRYPTION_KEY", mode="after")
     @classmethod
@@ -148,15 +162,27 @@ class Settings(BaseSettings):
 
     @property
     def es_servidor_desplegado(self) -> bool:
-        """¿Somos la instancia de Render, o una copia corriendo en una PC?
+        """¿Somos el servidor desplegado, o una copia corriendo en una PC?
 
-        RENDER_GIT_COMMIT la inyecta Render en cada deploy; en una PC no
-        existe. Es la misma señal que /health ya usa para reportar el commit
-        desplegado ("dev" cuando falta), verificada contra los dos entornos:
-        producción devuelve el hash, local devuelve "dev". No hay que
-        configurar nada en Render para que esto funcione.
+        Dos señales, una por plataforma, y las dos las pone la plataforma sola
+        (no hay que configurar nada para que esto funcione):
+
+        - RENDER_GIT_COMMIT la inyecta Render en cada deploy. Es la misma que
+          /health usa para reportar el commit desplegado, verificada contra
+          los dos entornos: producción devuelve el hash, local devuelve "dev".
+        - CONTAINER_APP_NAME la inyecta Azure Container Apps en todo contenedor
+          que corre ahí (ver docs/AZURE.md).
+
+        En una PC no existe ninguna de las dos. GIT_COMMIT (ver
+        commit_desplegado) NO cuenta como señal a propósito: es un nombre
+        genérico que cualquier herramienta puede dejar definido en una máquina
+        de trabajo, y esta propiedad es el freno que evita que esa máquina
+        toque la base de producción.
         """
-        return bool(os.environ.get("RENDER_GIT_COMMIT"))
+        return bool(
+            os.environ.get("RENDER_GIT_COMMIT")
+            or os.environ.get("CONTAINER_APP_NAME")
+        )
 
     @property
     def corre_mantenimiento(self) -> bool:
@@ -171,6 +197,21 @@ class Settings(BaseSettings):
         if self.FRONTEND_URL and self.FRONTEND_URL not in origins:
             origins.append(self.FRONTEND_URL)
         return origins
+
+
+def commit_desplegado() -> str:
+    """El commit que está corriendo, recortado a 7 caracteres ("dev" en una PC).
+
+    Render lo expone solo en RENDER_GIT_COMMIT. Azure Container Apps no tiene
+    un equivalente, así que ahí lo pasa el deploy en GIT_COMMIT
+    (.github/workflows/deploy-azure.yml). Gana RENDER_GIT_COMMIT para que en
+    Render nada cambie.
+    """
+    return (
+        os.environ.get("RENDER_GIT_COMMIT")
+        or os.environ.get("GIT_COMMIT")
+        or "dev"
+    )[:7]
 
 
 settings = Settings()

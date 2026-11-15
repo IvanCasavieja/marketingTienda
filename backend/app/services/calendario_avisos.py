@@ -31,6 +31,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
+from app.core.mundos import puede_abrir
 from app.models.calendario import CalendarioAviso, CalendarioBarra
 from app.models.notificacion import Notificacion
 from app.models.user import User
@@ -79,6 +80,12 @@ def referencia(barra_id: str, aviso_id: str) -> str:
 # Cómo se nombra el canal de un envío suelto en el aviso.
 _CANAL = {"email": "Email", "whatsapp": "WhatsApp", "push": "Push"}
 
+# Lo que lleva en `banda` una acción a la que todavía no se le eligió
+# categoría (desde el 12/11/2026 una acción se crea sin preguntar de qué tipo
+# es). El texto lo pone el front: es SIN_CATEGORIA en
+# frontend/lib/calendario/categorias.ts. Si cambia, cambia en los dos.
+SIN_CATEGORIA = "Sin categoría"
+
 
 def mensaje(
     nombre: str, banda: str, inicio: date, hoy: date, quien: str | None, es_envio: bool = False,
@@ -92,6 +99,10 @@ def mensaje(
         else f"{verbo} en {faltan} días"
     )
     etiqueta = _CANAL.get(banda, banda) if es_envio else banda
+    # "Fiesta de Italia (Sin categoría) arranca..." no le dice nada a nadie: una
+    # acción sin categoría va sin paréntesis, igual que una con la banda vacía.
+    if not es_envio and (banda or "").strip().casefold() == SIN_CATEGORIA.casefold():
+        etiqueta = ""
     tipo = f" ({etiqueta})" if etiqueta else ""
     firma = f" Aviso configurado por {quien}." if quien else ""
     return f"{nombre or 'Sin nombre'}{tipo} {cuando}, el {inicio.strftime('%d/%m')}.{firma}"
@@ -101,6 +112,13 @@ def puede_ver_el_calendario(usuario: User) -> bool:
     return bool(usuario.is_active) and (
         usuario.is_superuser or "calendario.view" in (usuario.permissions or [])
     )
+
+
+def puede_recibir_el_aviso(usuario: User | None, mundo: str) -> bool:
+    """Si a esa persona le sale hoy un aviso de una acción de ese mundo. A
+    quien le sacaron el calendario, o el mundo de la acción, después de que se
+    configuró el aviso no le llegan avisos de algo que no puede abrir."""
+    return usuario is not None and puede_ver_el_calendario(usuario) and puede_abrir(usuario, mundo)
 
 
 def _ids(destinatarios) -> list[int]:
@@ -188,9 +206,7 @@ async def _revisar(db: AsyncSession, hoy: date, barra_id: str | None) -> int:
         )
         for uid in _ids(aviso.destinatarios):
             usuario = usuarios.get(uid)
-            # Alguien a quien le sacaron el calendario después de que se
-            # configuró el aviso no recibe avisos de algo que no puede abrir.
-            if usuario is None or not puede_ver_el_calendario(usuario):
+            if not puede_recibir_el_aviso(usuario, barra.mundo):
                 continue
             ultimo = salidos.get((uid, ref))
             if ultimo is not None and ultimo >= desde_cuando:
