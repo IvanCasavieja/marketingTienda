@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeftRight, CalendarRange, ChevronLeft, ChevronRight, LayoutList, Maximize2, Minimize2, Minus,
@@ -47,6 +47,19 @@ export function BarraSuperior() {
   const dias = diasDelMes(mesActivo)
   const conexion = useCalendario(s => s.conexion)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
+  const filtrosRef = useRef<HTMLDivElement>(null)
+
+  // En el teléfono los filtros se deslizan: el elegido siempre a la vista
+  // (entrar con "Headers" elegido lo dejaba escondido a la derecha).
+  useEffect(() => {
+    const caja = filtrosRef.current
+    const chip = caja?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!caja || !chip) return
+    const c = caja.getBoundingClientRect()
+    const b = chip.getBoundingClientRect()
+    if (b.right > c.right) caja.scrollLeft += b.right - c.right + 24
+    else if (b.left < c.left) caja.scrollLeft -= c.left - b.left + 24
+  }, [filtro])
   const { user } = useCurrentUser()
 
   const mundo = mundoDe(claveMundo)
@@ -229,7 +242,8 @@ export function BarraSuperior() {
         {/* Qué parte se mira. Las cuatro juntas marean a quien entra por
             primera vez; de a una se entiende. */}
         <div
-          className="-mx-1 flex max-w-full items-center gap-1 overflow-x-auto px-1 py-0.5 [scrollbar-width:none] max-sm:[mask-image:linear-gradient(to_right,black_85%,transparent)] [&::-webkit-scrollbar]:hidden"
+          ref={filtrosRef}
+          className="-mx-1 flex max-w-full items-center gap-1 overflow-x-auto px-1 py-0.5 [scrollbar-width:none] max-sm:pr-8 max-sm:[mask-image:linear-gradient(to_right,black_calc(100%_-_28px),transparent)] [&::-webkit-scrollbar]:hidden"
           role="tablist"
           aria-label="Qué parte del calendario se ve"
         >

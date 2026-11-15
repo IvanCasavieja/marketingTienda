@@ -14,41 +14,62 @@ const marcos = new Set<HTMLDivElement>()
 /**
  * Si el mes no entra a lo ancho (en el teléfono, o con zoom), arranca con hoy
  * a la vista, un día después del borde: abrir el calendario el 20 y ver del 1
- * al 7 obligaba a correrlo cada vez.
+ * al 7 obligaba a correrlo cada vez. Devuelve dónde lo dejó, o null.
  */
-function llevarAHoy(el: HTMLDivElement) {
-  if (el.scrollWidth <= el.clientWidth) return
+function llevarAHoy(el: HTMLDivElement): number | null {
+  if (el.scrollWidth <= el.clientWidth) return null
   const hoy = el.querySelector<HTMLElement>('[data-hoy]')
   const etiqueta = el.querySelector<HTMLElement>('[data-etiqueta]')
-  if (!hoy) return
+  if (!hoy) return null
   const caja = el.getBoundingClientRect()
   const dia = hoy.getBoundingClientRect()
-  const destino = el.scrollLeft + (dia.left - caja.left) - (etiqueta?.offsetWidth ?? 0) - dia.width
-  if (destino > 0) el.scrollLeft = destino
+  const destino = Math.max(0, Math.round(el.scrollLeft + (dia.left - caja.left) - (etiqueta?.offsetWidth ?? 0) - dia.width))
+  el.scrollLeft = destino
+  return el.scrollLeft
 }
 
 export function MarcoScroll({ ancho, children }: { ancho: number | string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
+  /** Mientras la persona no lo corra a mano, se acomoda solo para mostrar hoy. */
+  const solo = useRef(true)
+  /** Dónde lo dejó el acomodo automático, para no confundirlo con un scroll a mano. */
+  const puesto = useRef<number | null>(null)
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
     marcos.add(el)
     // Al cambiar el zoom, el que ya estaba scrolleado arrastra a los demás
-    let arrastrado = false
     for (const otro of marcos) {
-      if (otro !== el && otro.scrollLeft > 0) { el.scrollLeft = otro.scrollLeft; arrastrado = true; break }
+      if (otro !== el && otro.scrollLeft > 0) { el.scrollLeft = otro.scrollLeft; solo.current = false; break }
     }
-    // El primero en aparecer lleva a hoy; los demás lo siguen al scrollear.
-    // Se espera un cuadro: el zoom del teléfono se pone recién al montar.
-    const cuadro = arrastrado ? 0 : requestAnimationFrame(() => requestAnimationFrame(() => {
-      if ([...marcos].every(m => m.scrollLeft === 0)) llevarAHoy(el)
-    }))
-    return () => { cancelAnimationFrame(cuadro); marcos.delete(el) }
+    return () => { marcos.delete(el) }
   }, [])
+
+  // Cada vez que cambia el ancho (el zoom del teléfono se pone recién al
+  // montar, o se pasa de mes) se vuelve a acomodar en hoy, si nadie lo tocó.
+  useEffect(() => {
+    const el = ref.current
+    if (!el || !solo.current) return
+    // Se mide durante unos cuadros: las columnas y el ancho total pueden
+    // terminar de acomodarse en cuadros distintos, y una medida a mitad de
+    // camino dejaba hoy fuera de la vista.
+    let cuadro = 0
+    let vueltas = 0
+    const acomodar = () => {
+      if (!solo.current) return
+      puesto.current = llevarAHoy(el)
+      if (++vueltas < 6) cuadro = requestAnimationFrame(acomodar)
+    }
+    cuadro = requestAnimationFrame(acomodar)
+    return () => cancelAnimationFrame(cuadro)
+  }, [ancho])
 
   function sincronizar(e: React.UIEvent<HTMLDivElement>) {
     const origen = e.currentTarget
+    // Un scroll que no es el que puso el acomodo automático es de la persona
+    // (o de otro marco que ella corrió): desde ahí se respeta.
+    if (puesto.current == null || Math.abs(origen.scrollLeft - puesto.current) > 1) solo.current = false
     for (const otro of marcos) {
       // La comparación corta la cadena: al igualarse, el scroll del otro no rebota
       if (otro !== origen && otro.scrollLeft !== origen.scrollLeft) {
