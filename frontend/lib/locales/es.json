@@ -63,7 +63,12 @@
     "redesSociales": "REDES SOCIALES",
     "validacionRrss": "Validación de RRSS",
     "calendarioSeccion": "CALENDARIO",
-    "calendario": "Calendario"
+    "calendario": "Calendario",
+    "mundo": "Mundo",
+    "cambiarMundo": "Cambiar de mundo",
+    "cerrarMenu": "Cerrar menú",
+    "mas": "Más",
+    "navegacion": "Navegación principal"
   },
   "login": {
     "welcome": "Bienvenido",

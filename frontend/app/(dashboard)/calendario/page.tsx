@@ -71,6 +71,44 @@ function AbrirAccionDeLaUrl() {
   return null;
 }
 
+/**
+ * Mientras llega el calendario: la forma de la barra de arriba y de la
+ * rejilla, en gris. Se ve dónde va a estar cada cosa en vez de un texto solo.
+ */
+function EsqueletoCalendario({ texto }: { texto: string }) {
+  return (
+    <div role="status" aria-label={texto} className="animate-fade-in">
+      <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:px-5">
+        <div className="flex items-center gap-3">
+          <div className="skeleton hidden h-10 w-10 rounded-xl sm:block" />
+          <div className="hidden space-y-2 sm:block">
+            <div className="skeleton h-3 w-20 rounded-md" />
+            <div className="skeleton h-4 w-32 rounded-md" />
+          </div>
+          <div className="skeleton mx-auto h-9 w-56 rounded-xl sm:mr-0" />
+        </div>
+        <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+          {[14, 24, 18, 24].map((w, i) => <div key={i} className="skeleton h-8 rounded-full" style={{ width: `${w * 4}px` }} />)}
+          <div className="skeleton ml-auto hidden h-9 w-48 rounded-xl sm:block" />
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center gap-3 border-b border-slate-200 p-4 dark:border-slate-800">
+          <div className="skeleton h-9 w-9 rounded-xl" />
+          <div className="skeleton h-4 w-44 rounded-md" />
+        </div>
+        {[0, 1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="flex h-[38px] items-center gap-4 border-b border-slate-100 px-4 last:border-0 dark:border-slate-800">
+            <div className="skeleton h-3 w-24 shrink-0 rounded-md sm:w-40" />
+            <div className="skeleton h-6 rounded-lg" style={{ width: `${[38, 22, 55, 30, 44, 18][i]}%`, marginLeft: `${[4, 30, 12, 40, 8, 50][i]}%` }} />
+          </div>
+        ))}
+      </div>
+      <span className="sr-only">{texto}</span>
+    </div>
+  );
+}
+
 export default function CalendarioPage() {
   const { t } = useTranslation();
   const { allowed, checked, user } = usePermissionGuard({ permission: PERMISOS_CALENDARIO.ver });
@@ -153,11 +191,7 @@ export default function CalendarioPage() {
   }
 
   if (!allowed || !listo || !mundo || mundoCargado !== mundo.clave) {
-    return (
-      <div className="flex h-64 items-center justify-center text-sm text-slate-400 dark:text-slate-500">
-        {t("calendario.loading")}
-      </div>
-    );
+    return <EsqueletoCalendario texto={t("calendario.loading")} />;
   }
 
   /** Si esa parte del calendario existe en este mundo y no está filtrada. */

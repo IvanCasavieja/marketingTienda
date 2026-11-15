@@ -38,11 +38,22 @@ const config: Config = {
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
       },
+      // Elevación: tres escalones y nada más. `card` para lo que está apoyado
+      // en la página, `pop` para lo que flota cerca de donde se tocó (menús,
+      // la campanita) y `panel` para lo que tapa la pantalla (la ficha, el
+      // editor). Una sombra nueva tiene que ser uno de estos tres.
       boxShadow: {
         card:  "0 1px 4px 0 rgb(0 0 0 / .08), 0 1px 2px -1px rgb(0 0 0 / .06)",
         "card-hover": "0 6px 16px 0 rgb(0 0 0 / .10), 0 2px 4px -2px rgb(0 0 0 / .06)",
+        pop:   "0 16px 40px -12px rgb(15 23 42 / .28), 0 4px 10px -4px rgb(15 23 42 / .10)",
+        panel: "0 24px 64px -16px rgb(15 23 42 / .40), 0 0 0 1px rgb(15 23 42 / .04)",
         glow:  "0 0 20px rgb(99 102 241 / .25)",
         brand: "0 0 0 3px rgb(99 102 241 / .15)",
+      },
+      // Una sola curva para todo lo que entra: arranca rápido y se apoya
+      // suave. Lo que sale usa la de siempre (ease-in), más corta.
+      transitionTimingFunction: {
+        suave: "cubic-bezier(.2,.8,.2,1)",
       },
       animation: {
         "fade-in":       "fadeIn .25s ease-out",
@@ -51,6 +62,16 @@ const config: Config = {
         shimmer:         "shimmer 1.5s infinite",
         "slide-in-left": "slideInLeft .28s ease-out",
         "slide-in-right":"slideInRight .28s ease-out",
+        // Menús y la campanita: aparecen desde donde se tocaron.
+        "scale-in":      "scaleIn .16s cubic-bezier(.2,.8,.2,1)",
+        // El editor en el teléfono: sube desde abajo, como una hoja.
+        "sheet-up":      "sheetUp .3s cubic-bezier(.2,.8,.2,1)",
+        // Tildar una tarea: el tilde late una vez.
+        tilde:           "tilde .34s cubic-bezier(.2,.8,.2,1)",
+        // Listas que llegan: cada tarjeta sube un poquito.
+        // "backwards" y no "both": al terminar, la tarjeta vuelve a sus estilos
+        // (si no, el hover que la levanta quedaba tapado por la animación).
+        rise:            "rise .32s cubic-bezier(.2,.8,.2,1) backwards",
       },
       keyframes: {
         fadeIn:       { from: { opacity: "0" },               to: { opacity: "1" } },
@@ -58,6 +79,10 @@ const config: Config = {
         shimmer:      { "0%": { backgroundPosition: "-200% 0" }, "100%": { backgroundPosition: "200% 0" } },
         slideInLeft:  { from: { opacity: "0", transform: "translateX(-14px)" }, to: { opacity: "1", transform: "translateX(0)" } },
         slideInRight: { from: { opacity: "0", transform: "translateX(14px)"  }, to: { opacity: "1", transform: "translateX(0)" } },
+        scaleIn:      { from: { opacity: "0", transform: "scale(.96) translateY(4px)" }, to: { opacity: "1", transform: "none" } },
+        sheetUp:      { from: { transform: "translateY(100%)" }, to: { transform: "translateY(0)" } },
+        tilde:        { "0%": { transform: "scale(.55)" }, "60%": { transform: "scale(1.18)" }, "100%": { transform: "scale(1)" } },
+        rise:         { from: { opacity: "0", transform: "translateY(6px)" }, to: { opacity: "1", transform: "none" } },
       },
     },
   },

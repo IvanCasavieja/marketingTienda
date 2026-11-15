@@ -1,7 +1,7 @@
 'use client'
 
 import { ShoppingBag } from 'lucide-react'
-import { CabeceraDias, EtiquetaBanda, FilaRejilla, useAnchoTotal, ANCHO_ETIQUETA } from './Rejilla'
+import { CabeceraDias, EtiquetaBanda, FilaRejilla, useAnchoTotal, ESTILO_ETIQUETA } from './Rejilla'
 import { MarcoScroll } from './MarcoScroll'
 import { Seccion } from './Seccion'
 import { diaDeHoy, isoDe } from '@/lib/calendario/fechas'
@@ -41,7 +41,7 @@ export function CalendarioRetail() {
               <div className="flex border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800">
                 <div
                   className="sticky left-0 z-20 shrink-0 bg-slate-100 dark:bg-slate-800 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
-                  style={{ width: ANCHO_ETIQUETA }}
+                  style={{ width: ESTILO_ETIQUETA }}
                 >
                   {grupo.nombre}
                 </div>
@@ -56,7 +56,7 @@ export function CalendarioRetail() {
                       filas={banda.filas.length}
                       tono={esHeader ? 'rm' : 'normal'}
                       extra={esHeader
-                        ? <span className="text-[9px] font-medium uppercase tracking-wide text-violet-500 dark:text-violet-400">
+                        ? <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
                             baja al header
                           </span>
                         : undefined}

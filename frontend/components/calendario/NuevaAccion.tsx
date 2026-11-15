@@ -16,9 +16,9 @@ export function NuevaAccion({ diaInicial }: { diaInicial: string }) {
     <button
       type="button"
       onClick={() => abrirEditor({ seccion: 'comercial', banda: SIN_CATEGORIA, carril: 0, barra: null, fechaInicial: diaInicial })}
-      className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 sm:w-auto"
+      className="group flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm shadow-brand-600/25 transition hover:bg-brand-700 hover:shadow-md hover:shadow-brand-600/25 active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 sm:min-h-[40px] sm:w-auto"
     >
-      <Plus className="h-4 w-4" /> Nueva acción
+      <Plus className="h-4 w-4 transition-transform duration-200 group-hover:rotate-90" /> Nueva acción
     </button>
   )
 }
