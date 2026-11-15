@@ -241,3 +241,22 @@ def test_el_permiso_de_tareas_existe_y_no_lo_trae_el_rol_usuario():
     assert "calendario.tareas" in ALL_PERMISSIONS
     usuario = next(r for r in DEFAULT_ROLES if r["name"] == "Usuario")
     assert "calendario.tareas" not in usuario["permissions"]
+
+
+# --- Fechas con el año a medio escribir (15/11/2026) ----------------------------
+# El campo de fecha del navegador manda el año mientras se tipea: 0002, 0020,
+# 0202, 2026. Ninguna de las intermedias tiene que quedar guardada.
+
+@pytest.mark.parametrize("anio", [2, 20, 202, 1999, 2101])
+def test_una_fecha_con_el_anio_a_medio_escribir_no_entra(anio):
+    with pytest.raises(ValidationError):
+        TareaCambios(vence=date(anio, 12, 20))
+    with pytest.raises(ValidationError):
+        BarraNueva(id="br-1", seccion="comercial", banda="X", nombre="Y",
+                   desde=date(anio, 1, 1), hasta=date(2026, 1, 2))
+
+
+def test_una_fecha_de_verdad_entra_y_sacar_el_vencimiento_tambien():
+    assert TareaCambios(vence=date(2026, 12, 20)).vence == date(2026, 12, 20)
+    assert TareaCambios(vence=None).vence is None
+    assert TareaNueva(id="t-1", titulo="x", vence=date(2000, 1, 1)).vence.year == 2000

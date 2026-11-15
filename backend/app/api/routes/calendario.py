@@ -40,10 +40,10 @@ estado; y aceptan avisos, como una acción.
 import logging
 import re
 from datetime import date, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,6 +68,19 @@ _HORA = r"^([01]\d|2[0-3]):[0-5]\d$"
 # Una barra de más de esto es casi seguro un error de tipeo en el año.
 _DURACION_MAXIMA = timedelta(days=3 * 366)
 _RM_POR_DEFECTO = [4, 5, 6]
+# Una fecha fuera de esto es un error de tipeo: el campo de fecha del
+# navegador manda el año a medida que se escribe (0002, 0020, 0202...).
+_ANIO_MINIMO, _ANIO_MAXIMO = 2000, 2100
+
+
+def _fecha_razonable(v: date) -> date:
+    if not (_ANIO_MINIMO <= v.year <= _ANIO_MAXIMO):
+        raise ValueError(f"La fecha {v.strftime('%d/%m/%Y')} no parece real: revisá el año")
+    return v
+
+
+# Toda fecha que llega del front pasa por acá.
+Fecha = Annotated[date, AfterValidator(_fecha_razonable)]
 
 Seccion = Literal["comercial", "retail", "header", "envio"]
 Area = Literal["web-home", "web-landing", "fisico", "email", "whatsapp", "push"]
@@ -324,8 +337,8 @@ class BarraNueva(BaseModel):
     carril: int = Field(0, ge=0, le=500)
     nombre: str = Field(..., min_length=1, max_length=1000)
     color: str | None = Field(None, max_length=32)
-    desde: date
-    hasta: date
+    desde: Fecha
+    hasta: Fecha
     # Solo los envíos sueltos: en las demás secciones se ignoran.
     formato: str | None = Field(None, max_length=100)
     hora: str | None = Field(None, pattern=_HORA)
@@ -369,8 +382,8 @@ class BarraCambios(BaseModel):
     carril: int | None = Field(None, ge=0, le=500)
     nombre: str | None = Field(None, min_length=1, max_length=1000)
     color: str | None = Field(None, max_length=32)
-    desde: date | None = None
-    hasta: date | None = None
+    desde: Fecha | None = None
+    hasta: Fecha | None = None
     # Solo los envíos sueltos. La hora puede venir en null (se saca la hora).
     formato: str | None = Field(None, max_length=100)
     hora: str | None = Field(None, pattern=_HORA)
@@ -523,15 +536,15 @@ class PiezaNueva(BaseModel):
     area: Area
     formato: str = Field(..., min_length=1, max_length=100)
     estado: Estado = "pendiente"
-    desde: date | None = None
-    hasta: date | None = None
+    desde: Fecha | None = None
+    hasta: Fecha | None = None
     hora: str | None = Field(None, pattern=_HORA)
 
 
 class PiezaCambios(BaseModel):
     estado: Estado | None = None
-    desde: date | None = None
-    hasta: date | None = None
+    desde: Fecha | None = None
+    hasta: Fecha | None = None
     hora: str | None = Field(None, pattern=_HORA)
     enSharePoint: bool | None = None
 
@@ -827,7 +840,7 @@ class TareaNueva(BaseModel):
     titulo: str = Field(..., min_length=1, max_length=500)
     descripcion: str | None = Field(None, max_length=5000)
     asignadoA: int | None = None
-    vence: date | None = None
+    vence: Fecha | None = None
 
     @field_validator("titulo")
     @classmethod
@@ -845,7 +858,7 @@ class TareaCambios(BaseModel):
     descripcion: str | None = Field(None, max_length=5000)
     estado: EstadoTarea | None = None
     asignadoA: int | None = None
-    vence: date | None = None
+    vence: Fecha | None = None
 
 
 @router.post("/barras/{barra_id}/tareas", status_code=201)
