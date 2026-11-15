@@ -503,11 +503,16 @@ async def create_asignacion(
     asig = LocalAsignacion(user_id=user_id, local_nombre=local_nombre)
     db.add(asig)
     # "Mi pedido" vive en el mundo Redexpres: quien recibe un local tiene que
-    # poder entrar. Un login de sucursal recién creado (sin ningún mundo
-    # todavía) queda solo en Redexpres; a una persona se le suma.
+    # poder entrar. Un login de sucursal (sin permisos, o solo de Redexpres)
+    # queda solo en Redexpres, aunque al crearlo haya nacido en Tienda Inglesa;
+    # a una persona del equipo se le suma Redexpres a lo que ya tenía.
     asignado = await db.get(User, user_id)
-    if asignado is not None and "redexpres" not in (asignado.mundos or []):
-        asignado.mundos = [*(asignado.mundos or []), "redexpres"]
+    if asignado is not None:
+        es_del_equipo = any(not p.startswith("redexpres.") for p in (asignado.permissions or []))
+        if not es_del_equipo:
+            asignado.mundos = ["redexpres"]
+        elif "redexpres" not in (asignado.mundos or []):
+            asignado.mundos = [*(asignado.mundos or []), "redexpres"]
     await db.commit()
     await db.refresh(asig)
     return {"id": asig.id, "user_id": asig.user_id, "local_nombre": asig.local_nombre}

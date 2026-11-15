@@ -3,6 +3,7 @@ import { MUNDOS } from "@/lib/mundos";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
+import { useCurrentUserStore } from "@/store/currentUser";
 import {
   Users, UserPlus, KeyRound, ShieldAlert, ShieldCheck,
   Loader2, CheckCircle2, XCircle, ChevronDown,
@@ -138,15 +139,23 @@ function UserEditorModal({
       await api.patch(`/admin/users/${user.id}`, esSucursal ? { full_name: fullName } : { full_name: fullName, email });
       // Los mundos van antes que los permisos: uno se los puede cambiar a sí
       // mismo, y los permisos propios no (el servidor lo rechaza y corta acá).
-      const mundosAntes = new Set(user.mundos ?? []);
-      if (mundos.size !== mundosAntes.size || [...mundos].some((m) => !mundosAntes.has(m))) {
+      const distintos = (a: Set<string>, b: Set<string>) => a.size !== b.size || [...a].some((x) => !b.has(x));
+      const cambiaronMundos = distintos(mundos, new Set(user.mundos ?? []));
+      if (cambiaronMundos) {
         await api.patch(`/admin/users/${user.id}/mundos`, { mundos: [...mundos] });
+        // Si se editó a sí misma, el menú y el mundo en el que está tienen que
+        // enterarse ya, no en la próxima recarga.
+        if (useCurrentUserStore.getState().user?.id === user.id) void useCurrentUserStore.getState().refetch();
       }
-      try {
-        await api.patch(`/admin/users/${user.id}/permissions`, { permissions: [...selected] });
-      } catch (err: any) {
-        toast.error(err?.response?.data?.detail ?? t("admin.userEditor.permissionsSaveError"));
-        return;
+      // Los permisos viajan solo si cambiaron: los propios el servidor no deja
+      // tocarlos, y mandarlos igual daba error aunque nadie los hubiera tocado.
+      if (distintos(selected, new Set(user.permissions))) {
+        try {
+          await api.patch(`/admin/users/${user.id}/permissions`, { permissions: [...selected] });
+        } catch (err: any) {
+          toast.error(err?.response?.data?.detail ?? t("admin.userEditor.permissionsSaveError"));
+          return;
+        }
       }
       toast.success(t("admin.userEditor.updated"));
       onSaved();

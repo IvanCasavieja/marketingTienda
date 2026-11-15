@@ -865,6 +865,10 @@ async def crear_tarea(
     )).scalars().all()
     if any(t.id == payload.id for t in existentes):
         return {"id": payload.id, "rev": await _revision_actual(db), "yaExistia": True}
+    # El id lo genera el front; si ya lo usa una tarea de OTRA acción, la
+    # clave primaria lo frenaría con un 500 sin explicación.
+    if await db.get(CalendarioTarea, payload.id) is not None:
+        raise HTTPException(status_code=409, detail="Esa tarea ya existe en otra acción")
     padres = {t.id: t.parent_id for t in existentes}
     if payload.parentId is not None:
         if payload.parentId not in padres:

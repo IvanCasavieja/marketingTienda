@@ -443,7 +443,8 @@ def _notif_visible(user: User, n: Notificacion) -> bool:
     # Todo lo del calendario, incluidos los recordatorios configurados a mano
     # (calendario_aviso, desde el 28/09/2026). Sin "calendario_aviso" acá caían
     # en la regla de abajo y solo los veía quien además tenía precios.search.
-    if n.origen_tipo in ("calendario_accion", "calendario_header", "calendario_aviso"):
+    # Lo mismo las tareas asignadas (calendario_tarea, desde el 12/11/2026).
+    if n.origen_tipo in ("calendario_accion", "calendario_header", "calendario_aviso", "calendario_tarea"):
         return "calendario.view" in perms
     return "precios.search" in perms
 

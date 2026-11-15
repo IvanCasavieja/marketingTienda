@@ -85,7 +85,14 @@ export function mundoDe(clave: string | null | undefined): Mundo | null {
 
 /** Los mundos a los que entra la persona, en el orden del selector. */
 export function mundosDe(user: CurrentUser | null | undefined): Mundo[] {
-  const propios = new Set(user?.mundos ?? [])
+  if (!user) return []
+  // Un servidor de antes de los mundos no manda la lista. Vercel y Render
+  // despliegan cada uno por su lado: si este front sale primero, todos
+  // quedarían "sin ningún calendario asignado" hasta que llegue el backend.
+  // Mientras tanto, lo de siempre: Tienda Inglesa (lo mismo que hace el
+  // servidor con quien no tiene ninguno).
+  if (!Array.isArray(user.mundos)) return MUNDOS.filter(m => m.clave === MUNDO_POR_DEFECTO)
+  const propios = new Set(user.mundos)
   return MUNDOS.filter(m => propios.has(m.clave))
 }
 

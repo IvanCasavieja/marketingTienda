@@ -73,25 +73,38 @@ def exigir_mundo(usuario, mundo: str) -> str:
     return mundo
 
 
+def mundos_que_no_puede_dar(quien, antes, pedidos) -> list[str]:
+    """Los mundos de `pedidos` que `quien` estaría dando y no puede: los que
+    la persona no tenía (`antes`) y a los que `quien` mismo no entra. Igual
+    que con los permisos, nadie da lo que no tiene. Sacar siempre se puede."""
+    if getattr(quien, "is_superuser", False):
+        return []
+    propios = set(mundos_de(quien))
+    ya_tenia = set(antes or [])
+    return [m for m in MUNDOS if m in set(pedidos or []) and m not in ya_tenia and m not in propios]
+
+
 def mundos_iniciales(permisos, es_sucursal_de_redexpres: bool = False) -> list[str]:
     """Con qué mundos arranca una cuenta, según lo que puede hacer.
 
     Es la regla con la que la 0060 repartió a quienes ya estaban, y la que se
     usa al crear una cuenta nueva. Pura, para probarla sin base.
 
-    - Un login de sucursal de Redexpres entra solo a Redexpres.
-    - Quien tiene algún permiso de Redexpres entra a Redexpres: la planilla de
-      pedidos vive ahí, y sin el mundo dejaría de verla.
-    - Todos los demás entran a Tienda Inglesa, que es donde estaba todo. Solo
-      queda afuera quien no tiene NADA más que permisos de Redexpres.
+    - Quien tiene un local de Redexpres asignado, o algún permiso de
+      Redexpres, entra a Redexpres: "Mi pedido" y la planilla viven ahí, y sin
+      el mundo dejaría de verlos.
+    - Quien tiene algún permiso que no es de Redexpres entra a Tienda Inglesa,
+      que es donde estaba todo, aunque además tenga un local asignado (alguien
+      del equipo que se asignó uno para probar no pierde Tienda Inglesa).
+    - Un login de sucursal (un local asignado y ningún permiso, o solo de
+      Redexpres) entra solo a Redexpres.
+    - Quien no tiene nada entra a Tienda Inglesa.
     """
-    if es_sucursal_de_redexpres:
-        return ["redexpres"]
     permisos = set(permisos or [])
     de_redexpres = {p for p in permisos if p.startswith("redexpres.")}
     mundos = []
-    if not permisos or permisos - de_redexpres:
+    if permisos - de_redexpres or (not permisos and not es_sucursal_de_redexpres):
         mundos.append("tienda_inglesa")
-    if de_redexpres:
+    if de_redexpres or es_sucursal_de_redexpres:
         mundos.append("redexpres")
     return mundos

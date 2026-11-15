@@ -18,10 +18,14 @@ quien ve que:
    `app/core/mundos.py::mundos_iniciales`, copiada aca para que la migracion no
    cambie si un dia cambia la regla):
 
-   - un login de sucursal de Redexpres queda solo en Redexpres;
-   - quien tiene algun permiso de Redexpres queda en Redexpres, porque la
-     planilla de pedidos pasa a verse solo ahi;
-   - todos los demas quedan en Tienda Inglesa, que es donde estaba todo.
+   - quien tiene un local de Redexpres asignado o algun permiso de Redexpres
+     queda en Redexpres, porque "Mi pedido" y la planilla pasan a verse solo
+     ahi;
+   - quien tiene algun permiso que no es de Redexpres queda en Tienda Inglesa,
+     aunque ademas tenga un local asignado;
+   - un login de sucursal (local asignado y ningun permiso, o solo de
+     Redexpres) queda solo en Redexpres; quien no tiene nada, en Tienda
+     Inglesa.
 
    Tienda Express, Tienda Viajes y Tienda Farma no se le dan a nadie solos: se
    tildan a mano desde el panel de administracion.
@@ -50,14 +54,12 @@ _PERMISO = "calendario.tareas"
 
 
 def _mundos_iniciales(permissions, es_sucursal_de_redexpres: bool) -> list[str]:
-    if es_sucursal_de_redexpres:
-        return ["redexpres"]
     permisos = set(permissions or [])
     de_redexpres = {p for p in permisos if p.startswith("redexpres.")}
     mundos = []
-    if not permisos or permisos - de_redexpres:
+    if permisos - de_redexpres or (not permisos and not es_sucursal_de_redexpres):
         mundos.append("tienda_inglesa")
-    if de_redexpres:
+    if de_redexpres or es_sucursal_de_redexpres:
         mundos.append("redexpres")
     return mundos
 

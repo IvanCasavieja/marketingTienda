@@ -17,7 +17,7 @@ from app.models.audit_log import AuditLog
 from app.models.cenefa_job import CenefaJob
 from app.models.local_asignacion import LocalAsignacion
 from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
-from app.core.mundos import MUNDOS, mundos_de, mundos_iniciales
+from app.core.mundos import MUNDOS, mundos_de, mundos_iniciales, mundos_que_no_puede_dar
 from app.models.user import User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -558,9 +558,11 @@ async def update_mundos(
     db: AsyncSession = Depends(get_db),
 ):
     """A qué mundos entra una persona. A diferencia de los permisos, uno se
-    los puede cambiar a sí mismo: el mundo no habilita nada que un permiso no
-    habilite ya, solo dice de qué negocio. Tiene que quedar al menos uno: sin
-    mundo no se puede entrar a la plataforma (para eso se desactiva la cuenta)."""
+    los puede cambiar a sí mismo, pero igual que con los permisos nadie da
+    acceso a un mundo al que él mismo no entra: el mundo es lo único que
+    separa los datos de un negocio de los de otro. Tiene que quedar al menos
+    uno: sin mundo no se puede entrar a la plataforma (para eso se desactiva
+    la cuenta)."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -578,6 +580,12 @@ async def update_mundos(
         )
 
     antes = list(user.mundos or [])
+    ajenos = mundos_que_no_puede_dar(current_user, antes, payload.mundos)
+    if ajenos:
+        raise HTTPException(
+            status_code=403,
+            detail="No podés dar acceso a un mundo al que vos no entrás: " + ", ".join(MUNDOS[m] for m in ajenos),
+        )
     user.mundos = [m for m in MUNDOS if m in set(payload.mundos)]
     db.add(user)
     db.add(AuditLog(

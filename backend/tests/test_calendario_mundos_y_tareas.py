@@ -22,8 +22,10 @@ from app.api.routes.calendario import (
     mensaje_de_asignacion, mensaje_de_tarea_hecha, nivel_de, referencia_de_tarea,
 )
 from app.core.mundos import (
-    MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, mundos_iniciales, puede_abrir,
+    MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, mundos_iniciales, mundos_que_no_puede_dar,
+    puede_abrir,
 )
+from app.services.calendario_avisos import puede_recibir_el_aviso
 from app.models.role import ALL_PERMISSIONS, DEFAULT_ROLES
 
 
@@ -99,6 +101,19 @@ def test_un_login_de_sucursal_entra_solo_a_redexpres():
     assert mundos_iniciales([], es_sucursal_de_redexpres=True) == ["redexpres"]
 
 
+def test_un_login_de_sucursal_con_permisos_de_redexpres_tambien():
+    assert mundos_iniciales(["redexpres.view"], es_sucursal_de_redexpres=True) == ["redexpres"]
+
+
+def test_alguien_del_equipo_con_un_local_asignado_no_pierde_tienda_inglesa():
+    """Quien trabaja en Tienda Inglesa y se asignó un local (para probar "Mi
+    pedido", por ejemplo) suma Redexpres; no se queda solo con Redexpres."""
+    assert mundos_iniciales(["calendario.view", "cenefas.view"], es_sucursal_de_redexpres=True) == [
+        "tienda_inglesa", "redexpres",
+    ]
+    assert mundos_iniciales(list(ALL_PERMISSIONS), es_sucursal_de_redexpres=True) == ["tienda_inglesa", "redexpres"]
+
+
 def test_los_otros_mundos_no_se_le_dan_a_nadie_solos():
     todos = list(ALL_PERMISSIONS)
     assert mundos_iniciales(todos) == ["tienda_inglesa", "redexpres"]
@@ -117,6 +132,55 @@ def test_la_migracion_reparte_con_la_misma_regla():
     for permisos in ([], ["calendario.view"], ["redexpres.view"], ["cenefas.view", "redexpres.manage"], list(ALL_PERMISSIONS)):
         for sucursal in (False, True):
             assert modulo._mundos_iniciales(permisos, sucursal) == mundos_iniciales(permisos, sucursal)
+
+
+# --- Quién puede dar qué mundo (panel de administración) -------------------
+
+def test_nadie_da_un_mundo_al_que_no_entra():
+    admin_de_ti = _persona(["tienda_inglesa"])
+    assert mundos_que_no_puede_dar(admin_de_ti, ["tienda_inglesa"], ["tienda_inglesa", "tienda_farma"]) == ["tienda_farma"]
+
+
+def test_tampoco_a_si_mismo():
+    yo = _persona(["tienda_inglesa"])
+    assert mundos_que_no_puede_dar(yo, yo.mundos, ["tienda_inglesa", "redexpres"]) == ["redexpres"]
+
+
+def test_dar_uno_propio_o_sacar_siempre_se_puede():
+    admin = _persona(["tienda_inglesa", "redexpres"])
+    assert mundos_que_no_puede_dar(admin, ["tienda_inglesa"], ["tienda_inglesa", "redexpres"]) == []
+    assert mundos_que_no_puede_dar(admin, ["tienda_inglesa", "tienda_farma"], ["tienda_inglesa"]) == []
+
+
+def test_lo_que_la_persona_ya_tenia_no_cuenta_como_darlo():
+    """Editar a alguien que ya entra a Farma no exige entrar a Farma."""
+    admin_de_ti = _persona(["tienda_inglesa"])
+    assert mundos_que_no_puede_dar(admin_de_ti, ["tienda_inglesa", "tienda_farma"], ["tienda_inglesa", "tienda_farma"]) == []
+
+
+def test_el_superadmin_da_cualquiera():
+    assert mundos_que_no_puede_dar(_persona([], superuser=True), [], list(MUNDOS)) == []
+
+
+# --- A quién le sale un recordatorio --------------------------------------------
+
+def _con_calendario(mundos, activo=True):
+    return SimpleNamespace(mundos=mundos, is_superuser=False, is_active=activo, permissions=["calendario.view"])
+
+
+def test_el_recordatorio_sale_a_quien_entra_al_mundo_de_la_accion():
+    assert puede_recibir_el_aviso(_con_calendario(["redexpres"]), "redexpres")
+
+
+def test_no_sale_a_quien_le_sacaron_ese_mundo():
+    assert not puede_recibir_el_aviso(_con_calendario(["tienda_inglesa"]), "redexpres")
+
+
+def test_ni_a_quien_le_sacaron_el_calendario_o_la_cuenta():
+    sin_calendario = SimpleNamespace(mundos=["redexpres"], is_superuser=False, is_active=True, permissions=[])
+    assert not puede_recibir_el_aviso(sin_calendario, "redexpres")
+    assert not puede_recibir_el_aviso(_con_calendario(["redexpres"], activo=False), "redexpres")
+    assert not puede_recibir_el_aviso(None, "redexpres")
 
 
 def test_una_barra_sin_mundo_es_de_tienda_inglesa():

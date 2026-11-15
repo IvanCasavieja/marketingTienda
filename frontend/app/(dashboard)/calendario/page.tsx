@@ -80,6 +80,12 @@ export default function CalendarioPage() {
   const cantidadDeMundos = mundosDe(user).length;
   const vista = useCalendario(s => s.vista);
   const filtro = useCalendario(s => s.filtro);
+  // De qué mundo es lo cargado en el store (la copia del navegador puede ser
+  // de otro). Hasta que coincide con el elegido no se muestra nada: ni un
+  // instante de lo de otro mundo, y una acción pedida por la URL (la
+  // campanita, "Mis tareas") no se abre desde la copia vieja para cerrarse
+  // enseguida cuando el store pasa al mundo elegido.
+  const mundoCargado = useCalendario(s => s.mundo);
 
   // Primero la copia del navegador, para no arrancar en blanco (localStorage
   // no existe hasta que monta el cliente, por eso persist va con
@@ -146,7 +152,7 @@ export default function CalendarioPage() {
     );
   }
 
-  if (!allowed || !listo || !mundo) {
+  if (!allowed || !listo || !mundo || mundoCargado !== mundo.clave) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-slate-400 dark:text-slate-500">
         {t("calendario.loading")}
