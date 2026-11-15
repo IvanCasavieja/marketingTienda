@@ -15,6 +15,7 @@ import { diasEntre, fechaCorta, hoyIso, rangoLargo, sumarDias } from '@/lib/cale
 import { useCalendario, useCategoriasDelMundo, useHeaderDerivado } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { CLASE_SEMAFORO, semaforoDe } from '@/lib/calendario/semaforo'
+import { choquesDe } from '@/lib/calendario/choques'
 import {
   ANTICIPACIONES_DE_AVISO, CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader, tituloDeCanal,
   type AreaPieza, type Aviso, type BarraGuardada, type EstadoPieza, type Persona, type Pieza,
@@ -239,6 +240,7 @@ export function PanelAccion() {
                 </BotonEditar>
               )}
             </header>
+            <ChoquesDeLaFicha accion={accion} />
 
             <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-slate-50 px-5 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/40 sm:px-6">
               <span className="font-medium tabular-nums text-slate-700 dark:text-slate-300">
@@ -443,6 +445,7 @@ function FichaEnvio({
           </BotonEditar>
         )}
       </header>
+      <ChoquesDeLaFicha accion={envio} />
 
       <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-slate-50 px-5 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/40 sm:px-6">
         <span className="font-medium text-slate-700 dark:text-slate-300">Estado</span>
@@ -803,5 +806,32 @@ function SemaforoDeLaFicha({ accion }: { accion: BarraGuardada }) {
       <span className={`h-2 w-2 shrink-0 rounded-full ${CLASE_SEMAFORO[semaforo.color]}`} aria-hidden />
       {queFalta.replace(/^./, c => c.toUpperCase())}
     </span>
+  )
+}
+
+/** Aviso de choques: otro mega evento esos días, u otro envío por el mismo
+ *  canal el mismo día. Solo avisa; tocar el nombre abre la otra acción. */
+function ChoquesDeLaFicha({ accion }: { accion: BarraGuardada }) {
+  const barras = useCalendario(s => s.barras)
+  const abrirAccion = useCalendario(s => s.abrirAccion)
+  const choques = choquesDe(accion, Object.values(barras))
+  if (choques.length === 0) return null
+  return (
+    <div className="flex shrink-0 gap-2.5 border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 sm:px-6">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+      <ul className="min-w-0 flex-1 space-y-1">
+        {choques.map(c => (
+          <li key={`${c.tipo}-${c.otraId}-${c.texto}`}>
+            <button
+              type="button"
+              onClick={() => abrirAccion(c.otraId)}
+              className="text-left underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+            >
+              {c.texto}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
