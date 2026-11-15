@@ -23,9 +23,9 @@ quien ve que:
      ahi;
    - quien tiene algun permiso que no es de Redexpres queda en Tienda Inglesa,
      aunque ademas tenga un local asignado;
-   - un login de sucursal (local asignado y ningun permiso, o solo de
-     Redexpres) queda solo en Redexpres; quien no tiene nada, en Tienda
-     Inglesa.
+   - un login de sucursal (local asignado y, de permisos, nada mas que
+     Redexpres o Don Tino, que esta en todos los mundos) queda solo en
+     Redexpres; quien no tiene nada, en Tienda Inglesa.
 
    Tienda Express, Tienda Viajes y Tienda Farma no se le dan a nadie solos: se
    tildan a mano desde el panel de administracion.
@@ -51,15 +51,25 @@ branch_labels = None
 depends_on = None
 
 _PERMISO = "calendario.tareas"
+# Lo que está en todos los mundos (Don Tino): no hace a nadie de Tienda Inglesa.
+# Copia de app/core/mundos.py::PERMISOS_DE_TODOS_LOS_MUNDOS.
+_DE_TODOS_LOS_MUNDOS = frozenset({"ai.don_tino"})
 
 
 def _mundos_iniciales(permissions, es_sucursal_de_redexpres: bool) -> list[str]:
     permisos = set(permissions or [])
     de_redexpres = {p for p in permisos if p.startswith("redexpres.")}
     mundos = []
-    if permisos - de_redexpres or (not permisos and not es_sucursal_de_redexpres):
+    if es_sucursal_de_redexpres:
+        # Del equipo de Tienda Inglesa solo si tiene algo más que lo que está
+        # en todos los mundos (Don Tino): los logins de sucursal tienen eso.
+        if permisos - de_redexpres - _DE_TODOS_LOS_MUNDOS:
+            mundos.append("tienda_inglesa")
+        mundos.append("redexpres")
+        return mundos
+    if permisos - de_redexpres or not permisos:
         mundos.append("tienda_inglesa")
-    if de_redexpres or es_sucursal_de_redexpres:
+    if de_redexpres:
         mundos.append("redexpres")
     return mundos
 

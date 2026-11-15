@@ -114,6 +114,17 @@ def test_alguien_del_equipo_con_un_local_asignado_no_pierde_tienda_inglesa():
     assert mundos_iniciales(list(ALL_PERMISSIONS), es_sucursal_de_redexpres=True) == ["tienda_inglesa", "redexpres"]
 
 
+def test_un_login_de_sucursal_con_don_tino_queda_solo_en_redexpres():
+    """Así son los 60 de producción (copia del 15/11/2026): solo ai.don_tino.
+    Don Tino está en todos los mundos: no los hace de Tienda Inglesa."""
+    assert mundos_iniciales(["ai.don_tino"], es_sucursal_de_redexpres=True) == ["redexpres"]
+    assert mundos_iniciales(["ai.don_tino", "redexpres.view"], es_sucursal_de_redexpres=True) == ["redexpres"]
+
+
+def test_sin_local_don_tino_solo_es_tienda_inglesa_como_siempre():
+    assert mundos_iniciales(["ai.don_tino"]) == ["tienda_inglesa"]
+
+
 def test_los_otros_mundos_no_se_le_dan_a_nadie_solos():
     todos = list(ALL_PERMISSIONS)
     assert mundos_iniciales(todos) == ["tienda_inglesa", "redexpres"]
@@ -129,7 +140,9 @@ def test_la_migracion_reparte_con_la_misma_regla():
     spec = importlib.util.spec_from_file_location("m0060", ruta)
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
-    for permisos in ([], ["calendario.view"], ["redexpres.view"], ["cenefas.view", "redexpres.manage"], list(ALL_PERMISSIONS)):
+    for permisos in ([], ["calendario.view"], ["redexpres.view"], ["cenefas.view", "redexpres.manage"],
+                     ["ai.don_tino"], ["ai.don_tino", "redexpres.view"], ["ai.don_tino", "calendario.view"],
+                     list(ALL_PERMISSIONS)):
         for sucursal in (False, True):
             assert modulo._mundos_iniciales(permisos, sucursal) == mundos_iniciales(permisos, sucursal)
 

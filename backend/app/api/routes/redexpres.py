@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.core.deps import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.mundos import es_del_equipo_de_tienda_inglesa
 from app.models.user import User
 from app.models.planilla_pedido import PlanillaPedido, RedexpresEstructura
 from app.services import redexpres_estructura as est
@@ -508,8 +509,7 @@ async def create_asignacion(
     # a una persona del equipo se le suma Redexpres a lo que ya tenía.
     asignado = await db.get(User, user_id)
     if asignado is not None:
-        es_del_equipo = any(not p.startswith("redexpres.") for p in (asignado.permissions or []))
-        if not es_del_equipo:
+        if not es_del_equipo_de_tienda_inglesa(asignado.permissions):
             asignado.mundos = ["redexpres"]
         elif "redexpres" not in (asignado.mundos or []):
             asignado.mundos = [*(asignado.mundos or []), "redexpres"]
