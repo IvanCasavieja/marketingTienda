@@ -180,10 +180,10 @@ export function PanelAccion() {
         aria-modal="true"
         aria-labelledby="ficha-titulo"
         tabIndex={-1}
-        className={`fixed z-50 flex flex-col overflow-hidden bg-white shadow-panel outline-none transition-[transform,visibility] duration-300 ease-suave dark:bg-slate-900
+        className={`fixed z-50 flex flex-col overflow-hidden bg-white shadow-panel outline-none dark:bg-slate-900
           inset-x-0 bottom-0 top-3 rounded-t-3xl
           sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-full sm:w-full sm:max-w-[600px] sm:rounded-none sm:border-l sm:border-slate-200 sm:dark:border-slate-800 ${
-          visible ? 'translate-y-0 sm:translate-x-0' : 'invisible translate-y-full sm:translate-x-full sm:translate-y-0'
+          visible ? 'hoja-abierta translate-y-0 sm:translate-x-0' : 'hoja-cerrada translate-y-full sm:translate-x-full sm:translate-y-0'
         }`}
       >
         {accion && accion.seccion === 'envio' && (

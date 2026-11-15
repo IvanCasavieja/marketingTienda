@@ -338,8 +338,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         "md:relative md:translate-x-0 md:min-h-screen md:visible",
         // Mobile: fixed overlay, slides in/out. Cerrado queda invisible, así
         // el teclado no recorre links que no se ven.
-        "fixed inset-y-0 left-0 transition-[transform,visibility] duration-300 ease-suave",
-        isOpen ? "translate-x-0 shadow-panel md:shadow-none" : "-translate-x-full invisible md:translate-x-0"
+        "fixed inset-y-0 left-0",
+        isOpen ? "hoja-abierta translate-x-0 shadow-panel md:shadow-none" : "hoja-cerrada -translate-x-full md:translate-x-0"
       )}>
         {/* Logo. La X del teléfono va al lado, no adentro del link. */}
         <div className="flex items-center gap-1 px-3 pb-3 pt-4 md:pb-4 md:pt-5">

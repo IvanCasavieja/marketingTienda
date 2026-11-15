@@ -175,6 +175,12 @@
   }
   /* El velo detrás de lo que tapa la pantalla (la ficha, el editor, el menú). */
   .velo { @apply fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] dark:bg-black/60; }
+  /* Lo que entra y sale deslizándose (la ficha, el menú del teléfono).
+     Abierto se ve al instante, así el foco puede entrar enseguida; cerrado
+     se esconde recién cuando terminó de salir, y así el teclado no recorre
+     lo que no se ve. */
+  .hoja-abierta { visibility: visible; transition: transform .3s cubic-bezier(.2,.8,.2,1), visibility 0s; }
+  .hoja-cerrada { visibility: hidden; transition: transform .3s cubic-bezier(.2,.8,.2,1), visibility 0s linear .3s; }
 }
 
 /* ── Prose override for Claude output ────────── */

@@ -31,10 +31,18 @@ export function useDialogo(
     const antes = document.activeElement as HTMLElement | null
     pila.push(el)
 
-    const cuadro = requestAnimationFrame(() => {
+    // Se intenta en los cuadros siguientes hasta que se pueda: mientras la
+    // caja todavía figura escondida (con "menos movimiento" la visibilidad
+    // tarda un instante en cambiar) el navegador ignora el foco.
+    let cuadro = 0
+    let intentos = 0
+    const enfocar = () => {
       if (el.contains(document.activeElement)) return
-      ;(inicial?.current ?? el).focus({ preventScroll: true })
-    })
+      const destino = inicial?.current ?? el
+      destino.focus({ preventScroll: true })
+      if (document.activeElement !== destino && ++intentos < 20) cuadro = requestAnimationFrame(enfocar)
+    }
+    cuadro = requestAnimationFrame(enfocar)
 
     function tab(e: KeyboardEvent) {
       if (e.key !== 'Tab' || pila[pila.length - 1] !== el) return
