@@ -408,8 +408,8 @@ export const useCalendario = create<Estado>()(
         usarMundo: clave => {
           if (get().mundo === clave) return
           // Lo de otro mundo no se mezcla ni un instante: se tira todo y se
-          // trae lo de este. La revision es de todos los mundos juntos, asi
-          // que tambien se olvida.
+          // trae lo de este. La revision que se tenia era de ese otro mundo,
+          // asi que tambien se olvida.
           revMinima = 0
           set({
             mundo: clave, barras: {}, posicionesRM: {}, rev: null, personas: [], personasEstado: 'cargando',
@@ -446,6 +446,12 @@ export const useCalendario = create<Estado>()(
               if (enVuelo > 0 || pendientes.length > 0) return
               if (get().personasEstado === 'error') void get().traerPersonas()
               if (data.sinCambios) {
+                // "Sin cambios" ahora es por mundo: el contador pudo subir por
+                // cambios en OTRO mundo y lo de acá sigue siendo eso. Ponerse al
+                // día evita bajarse todo después de un guardado propio (que
+                // compara con rev + 1).
+                const actual = get().rev
+                if (actual != null && data.rev > actual) set({ rev: data.rev })
                 if (get().conexion !== 'ok') set({ conexion: 'ok' })
                 return
               }

@@ -32,7 +32,7 @@ from app.models.facturacion_proveedor_cuenta import FacturacionProveedorCuenta
 from app.models.rrss_validacion import RrssValidacion, RrssValidacionPagina, RrssValidacionImagen
 from app.models.calendario_mes import CalendarioMes
 from app.models.calendario import (
-    CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPosicionesRM, CalendarioRevision,
+    CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPosicionesRM, CalendarioRevision, CalendarioRevisionMundo,
 )
 
 __all__ = [
@@ -48,6 +48,6 @@ __all__ = [
     "FacturacionProveedorCuenta",
     "RrssValidacion", "RrssValidacionPagina", "RrssValidacionImagen",
     "CalendarioMes",
-    "CalendarioBarra", "CalendarioPieza", "CalendarioAviso", "CalendarioPosicionesRM", "CalendarioRevision",
+    "CalendarioBarra", "CalendarioPieza", "CalendarioAviso", "CalendarioPosicionesRM", "CalendarioRevision", "CalendarioRevisionMundo",
     "CalendarioTarea",
 ]

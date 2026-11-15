@@ -2,18 +2,17 @@ import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 import structlog
 from app.core.config import commit_desplegado, settings
 from app.core.database import engine, Base
 from app.core.logging_config import configure_logging
-from app.core.rate_limit import limiter
+from app.core.rate_limit import limite_general, limiter
 from app.core.tenant_migration import migrate_roles
 from app.models import User, PlatformConnection, CampaignMetric, AuditLog, AIAnalysis, CenefaTemplate, CenefaTemplateV2, CenefaJob, CenefaConocimiento, PlanillaPedido, LocalAsignacion, Watchlist, WatchlistItem, WatchlistPrecioHistorial, Notificacion, CotizacionDolar, AIUsageLog  # noqa: F401
 from app.models.role import Role  # noqa: F401 — registers with Base.metadata
@@ -21,6 +20,13 @@ from app.api import router
 
 configure_logging()
 logger = logging.getLogger(__name__)
+
+# Cómo terminaron las migraciones de este arranque. /health lo informa: si
+# fallaron, el código nuevo corre contra una base vieja y casi todo da 500
+# aunque la base conteste (así se vio el 15/11/2026 con la base pausada).
+# Con 503 Render no da por bueno el deploy (sigue el anterior) y el monitor
+# de .github/workflows/monitor.yml avisa.
+migraciones: dict[str, str] = {"estado": "sin-correr"}
 
 
 @asynccontextmanager
@@ -71,9 +77,12 @@ async def lifespan(app: FastAPI):
 
     async def _run_migrations():
         loop = asyncio.get_event_loop()
+        migraciones["estado"] = "corriendo"
         try:
             await loop.run_in_executor(None, _run_alembic)
+            migraciones["estado"] = "ok"
         except Exception as e:
+            migraciones["estado"] = "error"
             logger.error("Alembic migration failed: %s", e)
         try:
             async with engine.begin() as conn:
@@ -211,12 +220,12 @@ app = FastAPI(
 # Rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
+# El límite general NO va como middleware: ver limite_general en rate_limit.py.
 
 # Security headers middleware — must be registered BEFORE CORSMiddleware so that
 # CORS ends up as the outermost middleware. In Starlette, the last middleware
 # registered via add_middleware becomes the outermost one. Using the decorator here
-# and then calling add_middleware(CORS) below achieves: CORS → security_headers → SlowAPI → app.
+# and then calling add_middleware(CORS) below achieves: CORS → security_headers → app.
 # This ensures CORS headers are always injected even for 5xx responses.
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -289,7 +298,7 @@ app.add_middleware(
 )
 
 
-app.include_router(router, prefix=settings.API_V1_PREFIX)
+app.include_router(router, prefix=settings.API_V1_PREFIX, dependencies=[Depends(limite_general)])
 
 
 @app.get("/health")
@@ -314,6 +323,11 @@ async def health():
     if not db_ok:
         return JSONResponse(
             status_code=503,
-            content={"status": "degraded", "db": "error", "commit": commit},
+            content={"status": "degraded", "db": "error", "migraciones": migraciones["estado"], "commit": commit},
         )
-    return {"status": "ok", "db": "ok", "commit": commit}
+    if migraciones["estado"] == "error":
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "db": "ok", "migraciones": "error", "commit": commit},
+        )
+    return {"status": "ok", "db": "ok", "migraciones": migraciones["estado"], "commit": commit}

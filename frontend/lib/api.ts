@@ -9,9 +9,18 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v
 // We store the access token in localStorage as fallback so auth works on all
 // platforms. The backend accepts both cookie AND Authorization header.
 const TOKEN_KEY = "mktg_at";
+// La de renovación, por lo mismo. Sin ella, en Safari (y en el iPhone) la
+// sesión se cortaba a los 30 minutos: la cookie de renovación es de otro sitio
+// (la API no está en el dominio del front), Safari no la manda, /auth/refresh
+// fallaba y te echaba al login, perdiendo lo que estabas editando. El backend
+// ya la aceptaba en el cuerpo del pedido.
+const REFRESH_KEY = "mktg_rt";
 
-export function saveAccessToken(token: string): void {
-  if (typeof window !== "undefined") localStorage.setItem(TOKEN_KEY, token);
+/** Guarda lo que devuelve el login, la renovación o el cambio de contraseña. */
+function guardarSesion(datos: { access_token?: string; refresh_token?: string } | undefined): void {
+  if (typeof window === "undefined" || !datos) return;
+  if (datos.access_token) localStorage.setItem(TOKEN_KEY, datos.access_token);
+  if (datos.refresh_token) localStorage.setItem(REFRESH_KEY, datos.refresh_token);
 }
 
 export function getAccessToken(): string | null {
@@ -20,7 +29,29 @@ export function getAccessToken(): string | null {
 }
 
 export function clearAccessToken(): void {
-  if (typeof window !== "undefined") localStorage.removeItem(TOKEN_KEY);
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_KEY);
+}
+
+/**
+ * Una sola renovación en viaje: si vencen a la vez la pregunta del calendario,
+ * la campanita y un guardado, los tres esperan la misma en vez de pedir tres.
+ * Devuelve el token nuevo (o null si el backend lo puso solo en la cookie).
+ */
+let renovando: Promise<string | null> | null = null;
+function renovarSesion(): Promise<string | null> {
+  if (!renovando) {
+    const guardado = typeof window !== "undefined" ? localStorage.getItem(REFRESH_KEY) : null;
+    renovando = axios
+      .post(`${BASE_URL}/auth/refresh`, guardado ? { refresh_token: guardado } : {}, { withCredentials: true })
+      .then((res) => {
+        guardarSesion(res.data);
+        return (res.data?.access_token as string | undefined) ?? null;
+      })
+      .finally(() => { renovando = null; });
+  }
+  return renovando;
 }
 
 // El backend exige este header en cualquier request que escriba/borre datos
@@ -100,16 +131,18 @@ api.interceptors.response.use(
     const isAuthEndpoint = _NO_REFRESH_RETRY.some((p) => original?.url?.includes(p));
     if (error.response?.status === 401 && !original._retry && !isAuthEndpoint) {
       original._retry = true;
+      // Salió con un token que ya se renovó mientras viajaba (otro pedido
+      // vencido llegó antes y renovó): se reintenta con el actual, sin pedir
+      // otra renovación.
+      const actual = getAccessToken();
+      const usado = String(original.headers?.["Authorization"] ?? "");
+      if (actual && usado && usado !== `Bearer ${actual}`) {
+        original.headers["Authorization"] = `Bearer ${actual}`;
+        return api(original);
+      }
       try {
-        const refreshRes = await axios.post(
-          `${BASE_URL}/auth/refresh`,
-          {},
-          { withCredentials: true },
-        );
-        // Save new token from refresh response if present (mobile path)
-        const newToken = refreshRes.data?.access_token;
+        const newToken = await renovarSesion();
         if (newToken) {
-          saveAccessToken(newToken);
           // `original` ya trae el header Authorization con el token VIEJO,
           // puesto por el request interceptor en el intento original — ese
           // interceptor solo lo agrega si todavía no está seteado, así que
@@ -121,7 +154,13 @@ api.interceptors.response.use(
           original.headers["Authorization"] = `Bearer ${newToken}`;
         }
         return api(original);
-      } catch {
+      } catch (errorAlRenovar) {
+        // Solo un "no" del servidor cierra la sesión. Si la renovación no
+        // llegó (sin conexión, el servidor despertándose), echar al login
+        // tiraba lo que se estaba editando: se devuelve ese error, que el
+        // calendario trata como "sin conexión" y deja el cambio pendiente.
+        const estado = (errorAlRenovar as { response?: { status?: number } })?.response?.status;
+        if (estado !== 401 && estado !== 403) return Promise.reject(errorAlRenovar);
         clearAccessToken();
         if (typeof window !== "undefined") window.location.href = "/login";
       }
@@ -133,8 +172,8 @@ api.interceptors.response.use(
 export const authApi = {
   login: async (email: string, password: string) => {
     const res = await api.post("/auth/login", { email, password });
-    // Save access_token from body — works even when cookies are blocked (mobile)
-    if (res.data?.access_token) saveAccessToken(res.data.access_token);
+    // Los tokens del cuerpo: andan aunque el navegador bloquee las cookies (Safari, celular).
+    guardarSesion(res.data);
     return res;
   },
   register: (email: string, full_name: string, password: string) =>
@@ -153,7 +192,7 @@ export const authApi = {
     // seguridad) y emite uno nuevo en la misma respuesta — sin guardarlo acá,
     // la siguiente request se cae con 401 y el interceptor manda a /login,
     // como si cambiar la contraseña te hubiera desconectado.
-    if (res.data?.access_token) saveAccessToken(res.data.access_token);
+    guardarSesion(res.data);
     return res;
   },
 };
@@ -1724,17 +1763,15 @@ export const preciosApi = {
     let response = await doFetch();
     if (response.status === 401) {
       try {
-        const refreshRes = await axios.post(
-          `${BASE_URL}/auth/refresh`,
-          {},
-          { withCredentials: true },
-        );
-        const newToken = refreshRes.data?.access_token;
-        if (newToken) saveAccessToken(newToken);
+        // La misma renovación que el resto (anda en Safari, una sola a la vez).
+        await renovarSesion();
         response = await doFetch();
-      } catch {
-        clearAccessToken();
-        if (typeof window !== "undefined") window.location.href = "/login";
+      } catch (errorAlRenovar) {
+        const estado = (errorAlRenovar as { response?: { status?: number } })?.response?.status;
+        if (estado === 401 || estado === 403) {
+          clearAccessToken();
+          if (typeof window !== "undefined") window.location.href = "/login";
+        }
       }
     }
     return response;
