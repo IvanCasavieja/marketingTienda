@@ -69,7 +69,9 @@ const config: Config = {
         // Tildar una tarea: el tilde late una vez.
         tilde:           "tilde .34s cubic-bezier(.2,.8,.2,1)",
         // Listas que llegan: cada tarjeta sube un poquito.
-        rise:            "rise .32s cubic-bezier(.2,.8,.2,1) both",
+        // "backwards" y no "both": al terminar, la tarjeta vuelve a sus estilos
+        // (si no, el hover que la levanta quedaba tapado por la animación).
+        rise:            "rise .32s cubic-bezier(.2,.8,.2,1) backwards",
       },
       keyframes: {
         fadeIn:       { from: { opacity: "0" },               to: { opacity: "1" } },
