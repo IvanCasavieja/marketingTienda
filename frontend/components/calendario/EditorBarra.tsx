@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Trash2, X } from 'lucide-react'
+import { SIN_CATEGORIA, esSinCategoria } from '@/lib/calendario/categorias'
 import { PALETA, colorPorDefecto, textoSobre } from '@/lib/calendario/colores'
 import {
   claveDe, diasEntre, mesSiguiente, nombreMes, primerDiaDe, rangoLargo, sumarDias, ultimoDiaDe,
@@ -87,19 +88,29 @@ export function EditorBarra() {
     })
   }
 
+  // En una acción la categoría no se elige acá sino en su ficha: acá solo se
+  // dice cuál tiene, o que se le pone después.
+  const categoria = edicion.barra?.banda ?? edicion.banda
+  const bajadaDeAccion = !esSinCategoria(categoria)
+    ? `Categoría: ${categoria}`
+    : esAlta
+      ? 'La categoría y las tareas se cargan después, adentro de la acción.'
+      : SIN_CATEGORIA
+
+  // z-[60]: por encima de la ficha (z-50), desde donde también se abre; si no, quedaba tapado.
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4"
       onClick={cerrar}
     >
       <form
         onSubmit={enviar}
         onClick={e => e.stopPropagation()}
-        className="w-full max-w-md overflow-hidden rounded-xl bg-white dark:bg-slate-900 shadow-2xl"
+        className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white shadow-2xl dark:bg-slate-900 sm:rounded-xl"
       >
         <header className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3">
           <div>
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <h3 className="text-base sm:text-sm font-semibold text-slate-900 dark:text-slate-100">
               {esAlta ? textos.nueva : textos.editar}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -107,7 +118,9 @@ export function EditorBarra() {
                 ? `Posición ${edicion.banda.replace('pos-', '')} del header`
                 : esEnvio
                   ? `${tituloDeCanal(edicion.banda)} · envío suelto, sin una acción detrás`
-                  : edicion.banda}
+                  : edicion.seccion === 'comercial'
+                    ? bajadaDeAccion
+                    : edicion.banda}
             </p>
           </div>
           <button type="button" onClick={cerrar} className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300">
@@ -123,7 +136,7 @@ export function EditorBarra() {
               value={nombre}
               onChange={e => setNombre(e.target.value)}
               placeholder={esAlta ? (esEnvio ? 'Ej: Mailing Día de la Madre' : 'Ej: Fiesta de Italia') : ''}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300 dark:focus:ring-slate-300"
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300 dark:focus:ring-slate-300"
             />
           </label>
 
@@ -136,7 +149,7 @@ export function EditorBarra() {
                     type="date"
                     value={desde}
                     onChange={e => setDesde(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
                   />
                 </label>
                 <label className="block">
@@ -145,7 +158,7 @@ export function EditorBarra() {
                     type="time"
                     value={hora}
                     onChange={e => setHora(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
                   />
                 </label>
               </div>
@@ -155,7 +168,7 @@ export function EditorBarra() {
                   <select
                     value={formato}
                     onChange={e => setFormato(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
                   >
                     {formatos.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
@@ -181,7 +194,7 @@ export function EditorBarra() {
                   // Si el inicio pasa al fin, el fin lo acompaña: nunca queda al revés.
                   if (v && hasta && hasta < v) setHasta(v)
                 }}
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
               />
             </label>
             <label className="block">
@@ -191,7 +204,7 @@ export function EditorBarra() {
                 value={hasta}
                 min={desde || undefined}
                 onChange={e => setHasta(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:border-slate-900 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-300"
               />
             </label>
           </div>
@@ -244,19 +257,19 @@ export function EditorBarra() {
             <button
               type="button"
               onClick={borrar}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-2.5 text-sm sm:px-2.5 sm:py-1.5 sm:text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
             >
               <Trash2 className="h-3.5 w-3.5" /> Eliminar
             </button>
           ) : <span />}
           <div className="flex gap-2">
-            <button type="button" onClick={cerrar} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700">
+            <button type="button" onClick={cerrar} className="rounded-lg px-3.5 py-2.5 text-sm sm:px-3 sm:py-1.5 sm:text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700">
               Cancelar
             </button>
             <button
               type="submit"
               disabled={!valido}
-              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg bg-slate-900 px-3.5 py-2.5 text-sm sm:px-3 sm:py-1.5 sm:text-xs font-semibold text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {esAlta ? 'Crear' : 'Guardar'}
             </button>

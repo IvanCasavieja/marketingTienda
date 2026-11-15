@@ -337,6 +337,17 @@ class BarraNueva(BaseModel):
             raise ValueError("El nombre no puede quedar vacío")
         return v
 
+    # `min_length=1` deja pasar un espacio solo. En una acción la banda es la
+    # categoría, que es además la fila del mes: un " " armaría una fila
+    # fantasma, sin nombre.
+    @field_validator("banda")
+    @classmethod
+    def _banda_sin_espacios(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("La categoría no puede quedar vacía")
+        return v
+
     @model_validator(mode="after")
     def _envio_suelto(self):
         if self.seccion == "envio":
@@ -371,6 +382,18 @@ class BarraCambios(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("El nombre no puede quedar vacío")
+        return v
+
+    # Igual que al crear: un " " no es una categoría. El null pasa como vino,
+    # que `cambios_de_barra` lo toma como "no vino".
+    @field_validator("banda")
+    @classmethod
+    def _banda_sin_espacios(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("La categoría no puede quedar vacía")
         return v
 
 

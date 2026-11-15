@@ -4,8 +4,9 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { toast } from 'sonner'
 import { calendarioApi } from '@/lib/api'
+import { esSinCategoria } from './categorias'
 import { carrilLibre, headerDerivado, nuevoId, vistaDelMes } from './derivar'
-import { claveDe, hoyIso } from './fechas'
+import { claveDe, hoyIso, primerDiaDe, ultimoDiaDe } from './fechas'
 import { ZOOM_POR_DEFECTO, limitarZoom } from './rejilla'
 
 export { ZOOMS, ZOOM_POR_DEFECTO } from './rejilla'
@@ -38,6 +39,9 @@ export type { EstadoDia, OcupacionDia, Envio, PosicionEnFecha, HeaderDerivado } 
 let enVuelo = 0
 /** La revision mas alta que devolvio un cambio propio: nada mas viejo se aplica. */
 let revMinima = 0
+/** La última escritura en viaje de cada acción: la siguiente de esa misma
+ *  acción espera a que termine (ver escribir). */
+const colas = new Map<string, Promise<void>>()
 
 /** Cada cuanto se pregunta si alguien cambio algo. */
 export const SEGUNDOS_ENTRE_REVISIONES = 15
@@ -119,6 +123,8 @@ type Estado = {
 
   guardarBarra: (datos: DatosBarra) => void
   borrarBarra: () => void
+  /** Le pone o le cambia la categoría a una acción: pasa a esa fila del calendario. */
+  cambiarCategoria: (id: string, banda: string) => void
   /** Guarda las posiciones y avisa a quien lleva Retail Media. */
   moverPosicionesRM: (posiciones: number[]) => void
 
@@ -160,9 +166,18 @@ export const useCalendario = create<Estado>()(
        * la borro otra persona, se cayo la conexion), se avisa y se trae lo que
        * haya de verdad.
        */
-      async function escribir(llamada: () => Promise<{ data: Escrito }>): Promise<Escrito | null> {
+      async function escribir(llamada: () => Promise<{ data: Escrito }>, de?: string): Promise<Escrito | null> {
         enVuelo++
+        // Los cambios de una misma acción salen de a uno y en orden. Sin esto,
+        // crear una acción y enseguida ponerle la categoría o cargarle una
+        // tarea podía llegar al servidor antes que el alta, y el servidor
+        // contestaba que la acción no existía.
+        const anterior = de ? colas.get(de) : undefined
+        let soltar: () => void = () => {}
+        const turno = new Promise<void>(resolver => { soltar = resolver })
+        if (de) colas.set(de, turno)
         try {
+          if (anterior) await anterior
           const { data } = await llamada()
           if (data?.yaExistia) {
             // El servidor no escribió nada (otra persona ya había agregado lo
@@ -185,6 +200,8 @@ export const useCalendario = create<Estado>()(
           set({ rev: null })
           return null
         } finally {
+          soltar()
+          if (de && colas.get(de) === turno) colas.delete(de)
           enVuelo--
           if (get().rev === null) void get().sincronizar()
         }
@@ -295,12 +312,26 @@ export const useCalendario = create<Estado>()(
               nombre: datos.nombre, color: datos.color, desde: datos.desde, hasta: datos.hasta,
               ...(esEnvio ? { formato: datos.formato ?? null, hora: datos.hora, estado: 'pendiente' as EstadoPieza } : {}),
             })
-            set(s => ({ barras: { ...s.barras, [id]: nueva }, edicion: null }))
+            // Una acción creada "y punto", sin categoría, se abre sola: lo que
+            // sigue es ponerle adentro la categoría y las tareas (pedido de
+            // Ivan, 12/11/2026). Si se creó en la fila de una categoría ya
+            // quedó donde va, y no se abre: ahí se suelen cargar varias seguidas.
+            const abrirla = edicion.seccion === 'comercial' && esSinCategoria(edicion.banda)
+            set(s => {
+              // Si sus fechas no tocan el mes que se mira, se pasa al suyo: al
+              // cerrar la ficha tiene que estar a la vista.
+              const seVe = nueva.desde <= ultimoDiaDe(s.mesActivo) && nueva.hasta >= primerDiaDe(s.mesActivo)
+              return {
+                barras: { ...s.barras, [id]: nueva },
+                edicion: null,
+                ...(abrirla ? { abierta: id, mesActivo: seVe ? s.mesActivo : claveDe(nueva.desde) } : {}),
+              }
+            })
             void escribir(() => calendarioApi.crearBarra({
               id, mundo: nueva.mundo, seccion: nueva.seccion, banda: nueva.banda, carril,
               nombre: datos.nombre, color: datos.color, desde: datos.desde, hasta: datos.hasta,
               ...(esEnvio ? { formato: datos.formato ?? null, hora: datos.hora ?? null } : {}),
-            }))
+            }), id)
             return
           }
 
@@ -342,7 +373,7 @@ export const useCalendario = create<Estado>()(
           // Sacar la hora es mandarla en null: un undefined ni siquiera viaja.
           const payload: Record<string, unknown> = { ...cambios }
           if ('hora' in cambios && cambios.hora === undefined) payload.hora = null
-          void escribir(() => calendarioApi.cambiarBarra(original.id, payload))
+          void escribir(() => calendarioApi.cambiarBarra(original.id, payload), original.id)
         },
 
         borrarBarra: () => {
@@ -354,7 +385,18 @@ export const useCalendario = create<Estado>()(
             delete barras[id]
             return { barras, edicion: null, abierta: s.abierta === id ? null : s.abierta }
           })
-          void escribir(() => calendarioApi.borrarBarra(id))
+          void escribir(() => calendarioApi.borrarBarra(id), id)
+        },
+
+        cambiarCategoria: (id, banda) => {
+          const accion = get().barras[id]
+          if (!accion || accion.seccion !== 'comercial' || !banda || accion.banda === banda) return
+          // El renglón que tenía no significa nada en la fila nueva: va al
+          // primero que esté libre en todas sus fechas. La fila y el renglón
+          // viajan juntos, en un solo cambio.
+          const carril = carrilLibre(Object.values(get().barras), 'comercial', banda, accion.desde, accion.hasta, 0, id)
+          cambiarBarraLocal(id, b => ({ ...b, banda, carril }))
+          void escribir(() => calendarioApi.cambiarBarra(id, { banda, carril }), id)
         },
 
         moverPosicionesRM: posiciones => {
@@ -371,14 +413,14 @@ export const useCalendario = create<Estado>()(
           if ((accion.piezas ?? []).some(p => p.area === area && p.formato === formato)) return
           const pieza: Pieza = { id: nuevoId('pz'), area, formato, estado: 'pendiente' as EstadoPieza }
           cambiarBarraLocal(accion.id, b => ({ ...b, piezas: [...(b.piezas ?? []), pieza] }))
-          void escribir(() => calendarioApi.agregarPieza(accion.id, pieza))
+          void escribir(() => calendarioApi.agregarPieza(accion.id, pieza), accion.id)
         },
 
         quitarPieza: piezaId => {
           const duena = duenaDe(get().barras, b => (b.piezas ?? []).some(p => p.id === piezaId))
           if (!duena) return
           cambiarBarraLocal(duena.id, b => ({ ...b, piezas: (b.piezas ?? []).filter(p => p.id !== piezaId) }))
-          void escribir(() => calendarioApi.quitarPieza(piezaId))
+          void escribir(() => calendarioApi.quitarPieza(piezaId), duena.id)
         },
 
         actualizarPieza: (piezaId, cambios) => {
@@ -398,7 +440,7 @@ export const useCalendario = create<Estado>()(
           // ni siquiera viaja en el JSON.
           const payload: Record<string, unknown> = {}
           for (const [k, v] of Object.entries(cambios)) payload[k] = v === undefined ? null : v
-          void escribir(() => calendarioApi.cambiarPieza(piezaId, payload))
+          void escribir(() => calendarioApi.cambiarPieza(piezaId, payload), duena.id)
         },
 
         agregarAviso: (diasAntes, destinatarios) => {
@@ -411,7 +453,7 @@ export const useCalendario = create<Estado>()(
           }))
           void escribir(() => calendarioApi.configurarAviso(accion.id, {
             id: aviso.id, diasAntes, destinatarios,
-          })).then(r => {
+          }), accion.id).then(r => {
             if (r?.enviadosAhora) {
               toast.success('La fecha de ese aviso ya pasó, así que salió ahora.')
             }
@@ -422,14 +464,14 @@ export const useCalendario = create<Estado>()(
           const duena = duenaDe(get().barras, b => (b.avisos ?? []).some(a => a.id === avisoId))
           if (!duena) return
           cambiarBarraLocal(duena.id, b => ({ ...b, avisos: (b.avisos ?? []).filter(a => a.id !== avisoId) }))
-          void escribir(() => calendarioApi.quitarAviso(avisoId))
+          void escribir(() => calendarioApi.quitarAviso(avisoId), duena.id)
         },
 
         cambiarEstadoEnvio: (id, estado) => {
           const envio = get().barras[id]
           if (!envio || envio.seccion !== 'envio' || envio.estado === estado) return
           cambiarBarraLocal(id, b => ({ ...b, estado }))
-          void escribir(() => calendarioApi.cambiarBarra(id, { estado }))
+          void escribir(() => calendarioApi.cambiarBarra(id, { estado }), id)
         },
 
         crearTarea: (barraId, datos) => {
@@ -444,7 +486,7 @@ export const useCalendario = create<Estado>()(
           void escribir(() => calendarioApi.crearTarea(barraId, {
             id: tarea.id, parentId: tarea.parentId, titulo, descripcion: tarea.descripcion,
             asignadoA: tarea.asignadoA, vence: tarea.vence,
-          })).then(r => {
+          }), barraId).then(r => {
             if (r?.avisados) toast.success('Tarea creada. Le llegó el aviso a quien la tiene asignada.')
           })
         },
@@ -455,7 +497,7 @@ export const useCalendario = create<Estado>()(
           cambiarBarraLocal(duena.id, b => ({
             ...b, tareas: (b.tareas ?? []).map(t => (t.id === tareaId ? { ...t, ...cambios } : t)),
           }))
-          void escribir(() => calendarioApi.cambiarTarea(tareaId, cambios))
+          void escribir(() => calendarioApi.cambiarTarea(tareaId, cambios), duena.id)
         },
 
         borrarTarea: tareaId => {
@@ -463,7 +505,7 @@ export const useCalendario = create<Estado>()(
           if (!duena) return
           const fuera = conDescendientes(tareaId, duena.tareas ?? [])
           cambiarBarraLocal(duena.id, b => ({ ...b, tareas: (b.tareas ?? []).filter(t => !fuera.has(t.id)) }))
-          void escribir(() => calendarioApi.borrarTarea(tareaId))
+          void escribir(() => calendarioApi.borrarTarea(tareaId), duena.id)
         },
       }
     },
@@ -498,7 +540,7 @@ export const useCalendario = create<Estado>()(
 const CATALOGOS_TI = { comercial: BANDAS_COMERCIAL, retail: BANDAS_RETAIL }
 const catalogosPorMundo = new Map<string, { comercial: BandaCatalogo[]; retail: BandaCatalogo[] }>()
 
-/** Los tipos de accion con los que arranca cada mundo (ver lib/mundos.ts). */
+/** Las categorías con las que arranca cada mundo (ver lib/mundos.ts). */
 export function catalogosDe(mundo: string) {
   const bandas = mundoDe(mundo)?.bandas
   if (!bandas) return CATALOGOS_TI
@@ -508,6 +550,12 @@ export function catalogosDe(mundo: string) {
     catalogosPorMundo.set(mundo, hecho)
   }
   return hecho
+}
+
+/** Las categorías del mundo que se mira, en el orden del calendario. */
+export function useCategoriasDelMundo(): string[] {
+  const mundo = useCalendario(s => s.mundo)
+  return catalogosDe(mundo).comercial.map(c => c.nombre)
 }
 
 /** El mes que se esta mirando. Todas las secciones reciben el mismo objeto. */

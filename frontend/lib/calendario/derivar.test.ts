@@ -12,6 +12,7 @@
  */
 import { SEED } from './seed'
 import { BANDAS_COMERCIAL, BANDAS_RETAIL, unirBandas } from './catalogo'
+import { SIN_CATEGORIA } from './categorias'
 import {
   accionesDe, carrilLibre, construirMes, derivarHeaders, ocupacionHeader, vistaDelMes,
 } from './derivar'
@@ -189,13 +190,30 @@ igual('y todos los formatos de Retail Media', nov.retail.map(b => b.nombre), BAN
 ok('cada banda arranca con un renglón para hacer clic', nov.comercial.every(b => b.filas.length === 1))
 const iGral = BANDAS_COMERCIAL.findIndex(b => b.nombre === 'Mailing GRAL')
 igual('"Especiales" (solo en octubre) entra después de "Mailing GRAL"', BANDAS_COMERCIAL[iGral + 1]?.nombre, 'Especiales')
-ok('"TIENDA FARMA" (solo en setiembre) también está', BANDAS_COMERCIAL.some(b => b.nombre === 'TIENDA FARMA'))
+ok('"TIENDA FARMA" ya no está en el catálogo: tiene su propio mundo', !BANDAS_COMERCIAL.some(b => b.nombre === 'TIENDA FARMA'))
+igual('pero la acción vieja que quedó en esa fila se sigue viendo en su mes: un dato nunca se esconde',
+  sep.comercial.find(b => b.nombre === 'TIENDA FARMA')?.filas.flat().map(b => b.nombre), ['TIENDA FARMA PRIMAVERA'])
+igual('y esa fila va después de todas las del catálogo',
+  sep.comercial.map(b => b.nombre), [...BANDAS_COMERCIAL.map(b => b.nombre), 'TIENDA FARMA'])
+ok('noviembre no tiene la fila "TIENDA FARMA" ni la de "Sin categoría": nada las usa',
+  !nov.comercial.some(b => b.nombre === 'TIENDA FARMA' || b.nombre === SIN_CATEGORIA))
 igual('unir no repite y respeta el orden',
   unirBandas([[{ nombre: 'A', filas: [] }, { nombre: 'C', filas: [] }], [{ nombre: 'A', filas: [] }, { nombre: 'B', filas: [] }, { nombre: 'C', filas: [] }]]).map(b => b.nombre),
   ['A', 'B', 'C'])
 const rara = accion({ id: 'ac-rara', banda: 'Una banda nueva' })
 ok('una barra de una banda que no está en el catálogo igual se ve',
   construirMes('2026-09', [rara]).comercial.some(b => b.nombre === 'Una banda nueva' && b.filas[0].length === 1))
+// Una acción creada "y punto" todavía no tiene categoría: no es de ninguna
+// fila del catálogo, y va en una propia, arriba de todo.
+const suelta = accion({ id: 'ac-suelta', banda: SIN_CATEGORIA })
+const conSuelta = construirMes('2026-09', [suelta])
+igual('una acción sin categoría va en la fila "Sin categoría", que es la primera',
+  [conSuelta.comercial[0].nombre, conSuelta.comercial[0].filas.flat().map(b => b.id)], [SIN_CATEGORIA, ['ac-suelta']])
+igual('y debajo siguen las del catálogo, en su orden',
+  conSuelta.comercial.slice(1).map(b => b.nombre), BANDAS_COMERCIAL.map(b => b.nombre))
+igual('las otras de fuera del catálogo siguen yendo al final',
+  construirMes('2026-09', [rara, suelta]).comercial.map(b => b.nombre),
+  [SIN_CATEGORIA, ...BANDAS_COMERCIAL.map(b => b.nombre), 'Una banda nueva'])
 
 console.log('\nrenglones')
 const ocupa = accion({ id: 'ac-ocupa', carril: 0, desde: '2026-10-01', hasta: '2026-10-10' })
@@ -205,6 +223,12 @@ igual('si está ocupado en el mes siguiente, va a otro',
   carrilLibre([ocupa], 'comercial', 'MEGA EVENTO', '2026-09-25', '2026-10-03', 0), 1)
 igual('una barra no choca consigo misma al cambiarle la fecha',
   carrilLibre([ocupa], 'comercial', 'MEGA EVENTO', '2026-10-01', '2026-10-15', 0, 'ac-ocupa'), 0)
+// Cambiarle la categoría a una acción es pasarla a otra fila: el renglón que
+// tenía no vale ahí, y se busca el primero libre en sus fechas.
+igual('al cambiar de categoría, si el primer renglón de la fila nueva está ocupado en sus fechas, va al siguiente',
+  carrilLibre([ocupa], 'comercial', 'MEGA EVENTO', '2026-10-05', '2026-10-12', 0, 'ac-otra'), 1)
+igual('y si está libre, va al primero',
+  carrilLibre([ocupa], 'comercial', 'MEGA EVENTO', '2026-10-11', '2026-10-20', 0, 'ac-otra'), 0)
 const pisadas = construirMes('2026-09', [
   accion({ id: 'ac-a', carril: 0, desde: '2026-09-10', hasta: '2026-09-15' }),
   accion({ id: 'ac-b', carril: 0, desde: '2026-09-12', hasta: '2026-09-18' }),

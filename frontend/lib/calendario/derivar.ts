@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import { BANDAS_COMERCIAL, BANDAS_RETAIL, idPosicion, type BandaCatalogo } from './catalogo'
+import { esSinCategoria } from './categorias'
 import {
   claveDe, diaDe, diasDelMes, dowDelMes, fechasDe, isoDe, primerDiaDe, ultimoDiaDe,
 } from './fechas'
@@ -246,14 +247,18 @@ function bandasDe(clave: string, catalogo: BandaCatalogo[], barras: BarraGuardad
   }
   // Una barra de una banda que no está en el catálogo igual se muestra: nunca
   // se esconde un dato porque el catálogo quedó corto.
-  const nombres = [
+  const fuera = [...porBanda.keys()].filter(n => !catalogo.some(c => c.nombre === n))
+  const nombres: BandaCatalogo[] = [
+    // Lo que todavía no tiene categoría va arriba de todo: es lo primero que
+    // hay que mirar. La fila existe solo el mes en que hay alguna.
+    ...fuera.filter(esSinCategoria).map(nombre => ({ nombre })),
     ...catalogo,
-    ...[...porBanda.keys()].filter(n => !catalogo.some(c => c.nombre === n)).map(nombre => ({ nombre })),
+    ...fuera.filter(n => !esSinCategoria(n)).map(nombre => ({ nombre })),
   ]
   return nombres.map(c => ({
     id: c.nombre,
     nombre: c.nombre,
-    grupo: (c as BandaCatalogo).grupo,
+    grupo: c.grupo,
     filas: acomodar(clave, porBanda.get(c.nombre) ?? []),
   }))
 }

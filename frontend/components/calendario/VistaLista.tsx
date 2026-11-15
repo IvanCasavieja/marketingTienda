@@ -1,6 +1,7 @@
 'use client'
 
-import { CalendarDays, CheckCircle2, ListChecks, Mail, MessageCircle, Plus, Smartphone } from 'lucide-react'
+import { CalendarDays, CheckCircle2, ListChecks, Mail, MessageCircle, Smartphone } from 'lucide-react'
+import { esSinCategoria } from '@/lib/calendario/categorias'
 import { textoSobre } from '@/lib/calendario/colores'
 import {
   claveDe, diaDe, diasEntre, fechaCorta, hoyIso, isoDe, nombreMes, primerDiaDe, ultimoDiaDe,
@@ -8,7 +9,9 @@ import {
 import { useCalendario, useMesActivo, type Filtro } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { tituloDeCanal, type BarraGuardada, type Persona } from '@/lib/calendario/tipos'
+import { Cocarda } from './Cocarda'
 import { HeaderHome } from './HeaderHome'
+import { NuevaAccion } from './NuevaAccion'
 
 /**
  * El mes como una lista de tarjetas.
@@ -69,6 +72,12 @@ function Tarjeta({ barra, personas, hoy, onAbrir }: {
   const asignados = [...new Set(tareas.map(t => t.asignadoA).filter((x): x is number => x != null))]
   const dias = diasEntre(barra.desde, barra.hasta) + 1
   const faltan = diasEntre(hoy, barra.desde)
+  const porArrancar = barra.desde > hoy && faltan <= 14
+  // Arriba del nombre van la cocarda y el "faltan N días". Una acción sin
+  // categoría que no está por arrancar no tiene ninguna de las dos, y la línea
+  // no se dibuja: vacía dejaría un hueco.
+  const esAccion = barra.seccion === 'comercial'
+  const conPrimeraLinea = !esAccion || !esSinCategoria(barra.banda) || porArrancar
 
   return (
     <button
@@ -78,20 +87,26 @@ function Tarjeta({ barra, personas, hoy, onAbrir }: {
     >
       <span className="w-2 shrink-0" style={{ backgroundColor: barra.color ?? '#cbd5e1' }} />
       <span className="flex min-w-0 flex-1 flex-col gap-2.5 p-4">
-        <span className="flex flex-wrap items-center gap-2">
-          <span
-            className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full px-2.5 py-1 text-xs font-semibold"
-            style={{ backgroundColor: barra.color ?? '#e2e8f0', color: textoSobre(barra.color) }}
-          >
-            {esEnvio && ICONO_CANAL[barra.banda]}
-            {esEnvio ? `${tituloDeCanal(barra.banda)} · envío` : barra.banda}
+        {conPrimeraLinea && (
+          <span className="flex flex-wrap items-center gap-2">
+            {esAccion ? (
+              <Cocarda banda={barra.banda} />
+            ) : (
+              <span
+                className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full px-2.5 py-1 text-xs font-semibold"
+                style={{ backgroundColor: barra.color ?? '#e2e8f0', color: textoSobre(barra.color) }}
+              >
+                {esEnvio && ICONO_CANAL[barra.banda]}
+                {esEnvio ? `${tituloDeCanal(barra.banda)} · envío` : barra.banda}
+              </span>
+            )}
+            {porArrancar && (
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                {faltan === 1 ? 'Arranca mañana' : `Faltan ${faltan} días`}
+              </span>
+            )}
           </span>
-          {barra.desde > hoy && faltan <= 14 && (
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-              {faltan === 1 ? 'Arranca mañana' : `Faltan ${faltan} días`}
-            </span>
-          )}
-        </span>
+        )}
 
         <span className="text-[17px] font-bold leading-snug text-slate-900 group-hover:text-brand-700 dark:text-slate-100">
           {barra.nombre}
@@ -190,15 +205,11 @@ export function VistaLista() {
     abrirAccion(b.id)
   }
 
-  const primeraBanda = mes.comercial[0]?.id
-
   return (
     <div className="space-y-6">
       {editable && filtro !== 'retail' && (
         <div className="flex flex-wrap gap-2">
-          {filtro !== 'envios' && primeraBanda && (
-            <NuevaAccion bandas={mes.comercial.map(b => b.id)} diaInicial={diaInicial} />
-          )}
+          {filtro !== 'envios' && <NuevaAccion diaInicial={diaInicial} />}
           {filtro !== 'comercial' && (['email', 'whatsapp', 'push'] as const).map(canal => (
             <button
               key={canal}
@@ -240,26 +251,5 @@ export function VistaLista() {
         </section>
       ))}
     </div>
-  )
-}
-
-/** Crear una acción desde la lista: primero se elige de qué tipo es. */
-function NuevaAccion({ bandas, diaInicial }: { bandas: string[]; diaInicial: string }) {
-  const abrirEditor = useCalendario(s => s.abrirEditor)
-  return (
-    <label className="flex items-center gap-2 rounded-xl bg-brand-600 py-1 pl-3.5 pr-1 text-sm font-semibold text-white shadow-sm">
-      <Plus className="h-4 w-4" /> Nueva acción
-      <select
-        value=""
-        onChange={e => {
-          if (e.target.value) abrirEditor({ seccion: 'comercial', banda: e.target.value, carril: 0, barra: null, fechaInicial: diaInicial })
-        }}
-        className="max-w-[12rem] cursor-pointer rounded-lg border-0 bg-white/15 py-1.5 pl-2 pr-7 text-sm font-semibold text-white outline-none [&>option]:text-slate-900"
-        aria-label="Tipo de la acción nueva"
-      >
-        <option value="">de qué tipo…</option>
-        {bandas.map(b => <option key={b} value={b}>{b}</option>)}
-      </select>
-    </label>
   )
 }

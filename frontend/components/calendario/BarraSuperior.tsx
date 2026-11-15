@@ -206,19 +206,24 @@ export function BarraSuperior() {
           ))}
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          {/* Cómo se mira */}
-          <div className="flex items-center rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800">
+        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+          {/* Cómo se mira. La primera opción decía "Mes" y, al lado del selector
+              de mes, se leía como "este mes": Ivan buscó "el calendario general
+              de todo" y no lo encontró (12/11/2026). En el teléfono ocupa todo
+              el ancho de su línea, para que no quede un control chico a la
+              derecha. */}
+          <div className="flex flex-1 items-center rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800 sm:flex-none">
             {([
-              { id: 'tiempo', nombre: 'Mes', Icono: CalendarRange },
-              { id: 'lista', nombre: 'Lista', Icono: LayoutList },
-            ] as const).map(({ id, nombre, Icono }) => (
+              { id: 'tiempo', nombre: 'Calendario', titulo: 'El mes entero, como en el Excel', Icono: CalendarRange },
+              { id: 'lista', nombre: 'Lista', titulo: 'Las acciones como tarjetas', Icono: LayoutList },
+            ] as const).map(({ id, nombre, titulo, Icono }) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => setVista(id)}
                 aria-pressed={vista === id}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold transition ${
+                title={titulo}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold transition sm:flex-none ${
                   vista === id
                     ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-slate-100'
                     : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'

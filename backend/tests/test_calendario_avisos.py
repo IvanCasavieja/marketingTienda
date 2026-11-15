@@ -99,6 +99,32 @@ def test_una_accion_sin_nombre_igual_se_entiende():
     assert mensaje("", "", date(2026, 10, 12), date(2026, 10, 2), None).startswith("Sin nombre")
 
 
+def test_una_accion_con_categoria_la_lleva_entre_parentesis():
+    texto = mensaje("Fiesta de Italia", "MEGA EVENTO", date(2026, 10, 12), date(2026, 10, 2), None)
+    assert texto == "Fiesta de Italia (MEGA EVENTO) arranca en 10 días, el 12/10."
+
+
+def test_una_accion_sin_categoria_va_sin_parentesis():
+    # Desde el 12/11/2026 una acción se crea sin preguntar de qué tipo es y
+    # guarda 'Sin categoría' en la banda: "Fiesta de Italia (Sin categoría)
+    # arranca..." no le dice nada a quien recibe el aviso.
+    texto = mensaje("Fiesta de Italia", "Sin categoría", date(2026, 10, 12), date(2026, 10, 2), "Ivan")
+    assert "(" not in texto and ")" not in texto
+    assert "Sin categoría" not in texto
+    assert texto == "Fiesta de Italia arranca en 10 días, el 12/10. Aviso configurado por Ivan."
+
+
+def test_sin_categoria_es_la_misma_con_mayusculas_o_espacios_de_mas():
+    for banda in ("SIN CATEGORÍA", "sin categoría", "  Sin categoría "):
+        texto = mensaje("Fiesta de Italia", banda, date(2026, 10, 12), date(2026, 10, 2), None)
+        assert texto == "Fiesta de Italia arranca en 10 días, el 12/10.", banda
+
+
+def test_el_aviso_de_un_envio_no_cambia():
+    texto = mensaje("Mailing Día de la Madre", "email", date(2026, 10, 12), date(2026, 10, 2), None, es_envio=True)
+    assert texto == "Mailing Día de la Madre (Email) sale en 10 días, el 12/10."
+
+
 # ---------------------------------------------------------------------------
 # El automático no vuelve
 # ---------------------------------------------------------------------------

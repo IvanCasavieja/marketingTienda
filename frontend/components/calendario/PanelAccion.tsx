@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Bell, Check, LayoutPanelTop, Pencil, Plus, X } from 'lucide-react'
 import { BloqueTareas } from './BloqueTareas'
+import { Cocarda, SelectorDeCategoria } from './Cocarda'
+import { categoriasParaElegir } from '@/lib/calendario/categorias'
 import { textoSobre } from '@/lib/calendario/colores'
 import { diasEntre, fechaCorta, hoyIso, rangoLargo, sumarDias } from '@/lib/calendario/fechas'
-import { useCalendario, useHeaderDerivado } from '@/lib/calendario/store'
+import { useCalendario, useCategoriasDelMundo, useHeaderDerivado } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import {
   ANTICIPACIONES_DE_AVISO, CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader, tituloDeCanal,
@@ -97,7 +99,7 @@ export function PanelAccion() {
             >
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{accion.banda}</p>
+                  <CategoriaDeLaFicha accion={accion} editable={editable} />
                   <h2 className="mt-1 text-2xl font-bold leading-tight">{accion.nombre}</h2>
                   <p className="mt-1.5 text-sm opacity-80">
                     {rangoLargo(accion.desde, accion.hasta).replace(/^./, c => c.toUpperCase())}
@@ -243,6 +245,21 @@ export function PanelAccion() {
         )}
       </aside>
     </>
+  )
+}
+
+/** La categoría en el encabezado de la ficha. Quien edita la toca y la cambia;
+ *  los demás la ven. Es el único lugar donde se elige. */
+function CategoriaDeLaFicha({ accion, editable }: { accion: BarraGuardada; editable: boolean }) {
+  const cambiarCategoria = useCalendario(s => s.cambiarCategoria)
+  const delMundo = useCategoriasDelMundo()
+  if (!editable) return <Cocarda banda={accion.banda} sobreColor />
+  return (
+    <SelectorDeCategoria
+      banda={accion.banda}
+      opciones={categoriasParaElegir(delMundo, accion.banda)}
+      onCambiar={banda => cambiarCategoria(accion.id, banda)}
+    />
   )
 }
 

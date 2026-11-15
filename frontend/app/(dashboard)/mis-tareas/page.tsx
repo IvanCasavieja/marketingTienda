@@ -6,6 +6,8 @@ import { CalendarClock, Check, ChevronRight, ListChecks, ShieldAlert } from "luc
 import { toast } from "sonner";
 import { calendarioApi } from "@/lib/api";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
+import { Cocarda } from "@/components/calendario/Cocarda";
+import { nivelDeCategoria } from "@/lib/calendario/categorias";
 import { fechaCorta, hoyIso, sumarDias } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { ETIQUETA_ESTADO_TAREA, type EstadoTarea, type Tarea } from "@/lib/calendario/tipos";
@@ -204,6 +206,12 @@ function Fila({ tarea, hoy, onEstado }: {
             <span className="truncate">{tarea.accion.nombre}</span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
           </Link>
+          {/* La cocarda solo en las tres categorías destacadas: acá lo que se
+              mira es la tarea, y una cocarda gris en cada fila sería ruido. En
+              un envío suelto `banda` es el canal, que nunca es una de esas. */}
+          {["mega", "general", "especial"].includes(nivelDeCategoria(tarea.accion.banda)) && (
+            <Cocarda banda={tarea.accion.banda} compacta />
+          )}
           {tarea.vence && (
             <span className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium ${
               vencida ? "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300" : "text-slate-600 dark:text-slate-400"

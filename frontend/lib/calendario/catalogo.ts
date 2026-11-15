@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------------------
-// Las bandas del calendario: los tipos de accion y los formatos de Retail Media.
+// Las bandas del calendario: las categorías de las acciones y los formatos de
+// Retail Media.
 //
 // Antes cada mes traia sus bandas del Excel, y un mes que no estaba en el
 // Excel no tenia NINGUNA: de noviembre en adelante no habia un solo renglon
@@ -7,6 +8,7 @@
 // meses: todas las que aparecen en los Excel importados, en su orden.
 // ---------------------------------------------------------------------------
 
+import { esBandaRetirada } from './categorias'
 import { SEED } from './seed'
 import type { SeedBanda } from './tipos'
 
@@ -33,7 +35,10 @@ export function unirBandas(meses: SeedBanda[][]): BandaCatalogo[] {
 
 const MESES = Object.keys(SEED).sort().map(k => SEED[k])
 
-export const BANDAS_COMERCIAL: BandaCatalogo[] = unirBandas(MESES.map(m => m.comercial))
+// Las filas retiradas (Tienda Farma, que tiene su propio mundo) se sacan acá y
+// no de seed.ts: ese archivo lo genera el import del Excel, no se edita a mano.
+export const BANDAS_COMERCIAL: BandaCatalogo[] =
+  unirBandas(MESES.map(m => m.comercial)).filter(b => !esBandaRetirada(b.nombre))
 export const BANDAS_RETAIL: BandaCatalogo[] = unirBandas(MESES.map(m => m.retail))
 
 /** El id de la banda de cada posicion del header. */

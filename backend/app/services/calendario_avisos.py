@@ -79,6 +79,12 @@ def referencia(barra_id: str, aviso_id: str) -> str:
 # Cómo se nombra el canal de un envío suelto en el aviso.
 _CANAL = {"email": "Email", "whatsapp": "WhatsApp", "push": "Push"}
 
+# Lo que lleva en `banda` una acción a la que todavía no se le eligió
+# categoría (desde el 12/11/2026 una acción se crea sin preguntar de qué tipo
+# es). El texto lo pone el front: es SIN_CATEGORIA en
+# frontend/lib/calendario/categorias.ts. Si cambia, cambia en los dos.
+SIN_CATEGORIA = "Sin categoría"
+
 
 def mensaje(
     nombre: str, banda: str, inicio: date, hoy: date, quien: str | None, es_envio: bool = False,
@@ -92,6 +98,10 @@ def mensaje(
         else f"{verbo} en {faltan} días"
     )
     etiqueta = _CANAL.get(banda, banda) if es_envio else banda
+    # "Fiesta de Italia (Sin categoría) arranca..." no le dice nada a nadie: una
+    # acción sin categoría va sin paréntesis, igual que una con la banda vacía.
+    if not es_envio and (banda or "").strip().casefold() == SIN_CATEGORIA.casefold():
+        etiqueta = ""
     tipo = f" ({etiqueta})" if etiqueta else ""
     firma = f" Aviso configurado por {quien}." if quien else ""
     return f"{nombre or 'Sin nombre'}{tipo} {cuando}, el {inicio.strftime('%d/%m')}.{firma}"

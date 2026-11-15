@@ -18,17 +18,36 @@ entera como si fueran acciones de este año (139 barras en vez de 36).
 Que hace con cada barra del Excel, por banda y mes:
   - si ya hay una igual (banda, nombre, fechas) en la plataforma, nada;
   - si hay una con el mismo nombre pero otras fechas o color, la actualiza;
+  - si en su banda no esta pero en OTRA hay una con el mismo nombre y las
+    mismas fechas, es la misma accion y alguien le cambio la categoria en la
+    pantalla: no la crea de nuevo ni la devuelve a la banda del Excel;
   - si hay una sin pareja con fechas que se tocan y un nombre parecido (la
     renombraron en el Excel), la actualiza conservando su id, sus piezas y sus
     avisos;
+  - si en otra banda hay una con el mismo nombre y fechas que se tocan (le
+    cambiaron la categoria en la pantalla y las fechas en el Excel), le
+    actualiza las fechas y el color y la deja en la banda donde esta;
   - si no hay ninguna, la crea con un id determinista (br-xl-<mes>-<hash>):
     correrlo dos veces no duplica nada.
 Lo que esta en la plataforma y no en el Excel se LISTA y no se borra: puede
 ser algo que alguien creo en la pantalla, y borrar es decision de una persona.
 
+Lo de "otra banda" es del 12/11/2026: la banda de una accion es su categoria,
+y desde ese dia se cambia en la pantalla. Antes, a una accion que alguien
+habia pasado de 'Sin mailing' a 'Especiales' este script no la encontraba en
+la banda del Excel y la creaba otra vez. El plan lista las recategorizadas, y
+a ninguna le cambia la banda.
+
 Las bandas se unifican solo por mayusculas y espacios ('Container' y
-'CONTAINER' son la misma); 'FARMA' y 'TIENDA FARMA' se dejan distintas porque
-no es seguro que sean lo mismo.
+'CONTAINER' son la misma). El renglon 'TIENDA FARMA' ya no se carga
+(BANDAS_QUE_NO_SE_CARGAN): Tienda Farma tiene su propio mundo. El plan dice
+cuantas barras del Excel quedaron afuera por eso. Las que ya estan en la
+plataforma en ese renglon no se tocan ni se toman por pareja de nada: salen en
+la lista de lo que esta en la plataforma y no en el Excel. 'FARMA' a secas se
+sigue cargando, porque no es seguro que sea lo mismo.
+
+Carga el calendario de un solo mundo, Tienda Inglesa (MUNDO): es el que pide
+al leer la plataforma y el que manda con cada barra que crea.
 
 Uso:
   MKTG_EMAIL=... MKTG_PASSWORD=... python backend/scripts/cargar_calendario_desde_excel.py
@@ -72,6 +91,18 @@ MESES = {"ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4, "MAYO": 5, "JUNIO": 6
 PARECIDO_MINIMO = 80     # token_set_ratio para dar dos nombres por el mismo
 DIAS_DE_TOLERANCIA = 3   # cuanto pueden separarse las fechas de una renombrada
 PAUSA = 0.35             # el limite de la API es 200 pedidos por minuto
+
+# El mundo cuyo calendario se carga: este Excel es el de Tienda Inglesa. Es el
+# que el servidor toma si no se le dice ninguno, pero se manda igual: que este
+# script escriba en el calendario correcto no puede depender de ese valor por
+# defecto. Un servidor de antes de los mundos lo ignora.
+MUNDO = "tienda_inglesa"
+
+# Renglones del Excel que ya no son del calendario de Tienda Inglesa. Tienda
+# Farma tiene su propio mundo desde el 12/11/2026 (pedido de Ivan: "ahí no
+# debería aparecer... debería de tener su propio calendario"). 'FARMA' a secas
+# NO está acá: no es seguro que sea lo mismo.
+BANDAS_QUE_NO_SE_CARGAN = {"tienda farma"}   # ya pasadas por norm()
 
 
 def clave_de_hoja(ws) -> str:
@@ -150,6 +181,23 @@ def leer_excel(meses_filtro: set[str] | None) -> dict[str, list[dict]]:
     return por_mes
 
 
+def quitar_retiradas(excel: dict[str, list[dict]]) -> collections.Counter:
+    """Saca del Excel ya leído las barras de los renglones que no se cargan.
+    Devuelve cuántas sacó de cada uno, para mostrarlo en el plan."""
+    sacadas: collections.Counter = collections.Counter()
+    escritos: dict[str, str] = {}   # el nombre de cada uno, tal cual aparece la primera vez
+    for barras in excel.values():
+        quedan = []
+        for b in barras:
+            clave = norm(b["banda"])
+            if clave in BANDAS_QUE_NO_SE_CARGAN:
+                sacadas[escritos.setdefault(clave, b["banda"])] += 1
+            else:
+                quedan.append(b)
+        barras[:] = quedan
+    return sacadas
+
+
 def id_de(mes: str, b: dict) -> str:
     crudo = "|".join([norm(b["banda"]), str(b["carril"]), norm(b["nombre"]), b["desde"], b["hasta"]])
     return f"br-xl-{mes}-{hashlib.sha1(crudo.encode('utf-8')).hexdigest()[:10]}"
@@ -185,10 +233,22 @@ def cambios_entre(c: dict, x: dict, existentes: list[dict], con_nombre: bool) ->
     return cambios
 
 
+def en_otra_banda(x: dict, del_mes: list[dict], usadas: set[str], mismas_fechas: bool) -> dict | None:
+    """La barra de la plataforma que es la accion `x` del Excel pero esta en OTRA banda, porque
+    alguien le cambio la categoria en la pantalla: mismo nombre y, segun `mismas_fechas`, las mismas
+    fechas o fechas que se tocan. De varias, la que arranca mas cerca. Las de un renglon que ya no
+    se carga no cuentan: esas no se tocan."""
+    candidatas = [c for c in del_mes
+                  if c["id"] not in usadas and norm(c["nombre"]) == norm(x["nombre"])
+                  and norm(c["banda"]) != norm(x["banda"]) and norm(c["banda"]) not in BANDAS_QUE_NO_SE_CARGAN
+                  and ((c["desde"], c["hasta"]) == (x["desde"], x["hasta"]) if mismas_fechas else se_tocan(c, x))]
+    return min(candidatas, key=lambda c: abs((d(c["desde"]) - d(x["desde"])).days), default=None)
+
+
 def armar_plan(excel: dict[str, list[dict]], existentes: list[dict]) -> dict:
     comerciales = [b for b in existentes if b["seccion"] == "comercial"]
     bandas_plataforma = {norm(b["banda"]): b["banda"] for b in comerciales}
-    plan = {"crear": [], "cambiar": [], "iguales": 0, "solo_plataforma": [], "bandas_nuevas": []}
+    plan = {"crear": [], "cambiar": [], "iguales": 0, "recategorizadas": [], "solo_plataforma": [], "bandas_nuevas": []}
     bandas_vistas = dict(bandas_plataforma)
     for mes in sorted(excel):
         del_mes = [b for b in comerciales if b["desde"][:7] == mes or b["hasta"][:7] == mes]
@@ -222,6 +282,22 @@ def armar_plan(excel: dict[str, list[dict]], existentes: list[dict]) -> dict:
                 continue
             pendientes.append(x)
 
+        # Recategorizadas: sin pareja en su banda, pero en OTRA hay una con el mismo nombre y las mismas
+        # fechas. Es la misma accion y alguien le cambio la categoria en la pantalla: se queda donde
+        # esta. Se miran todas antes de buscar renombradas, asi un nombre parecido en esta banda no se
+        # roba la pareja de una que en otra banda tiene el mismo nombre y las mismas fechas.
+        siguen = []
+        for x in pendientes:
+            pareja = en_otra_banda(x, del_mes, usadas, mismas_fechas=True)
+            if pareja:
+                usadas.add(pareja["id"])
+                plan["iguales"] += 1
+                plan["recategorizadas"].append({"id": pareja["id"], "mes": mes, "nombre": x["nombre"],
+                                                "banda_excel": x["banda"], "banda_plataforma": pareja["banda"]})
+                continue
+            siguen.append(x)
+        pendientes = siguen
+
         # Renombradas: sin pareja por nombre, pero misma banda, fechas que se tocan y nombre parecido.
         sobrantes = [b for b in del_mes if b["id"] not in usadas]
         for x in pendientes:
@@ -233,6 +309,19 @@ def armar_plan(excel: dict[str, list[dict]], existentes: list[dict]) -> dict:
                                         "antes": {k2: pareja.get(k2) for k2 in ("nombre", "desde", "hasta", "color")},
                                         "cambios": cambios_entre(pareja, x, existentes, con_nombre=True),
                                         "motivo": "renombrada en el Excel"})
+                continue
+            # Recategorizada y ademas con otras fechas en el Excel: mismo nombre en otra banda y fechas
+            # que se tocan. Se le actualizan las fechas y el color y se queda en la banda donde esta:
+            # por eso el carril se busca en esa banda y no en la del Excel.
+            pareja = en_otra_banda(x, del_mes, usadas, mismas_fechas=False)
+            if pareja:
+                usadas.add(pareja["id"])
+                plan["recategorizadas"].append({"id": pareja["id"], "mes": mes, "nombre": x["nombre"],
+                                                "banda_excel": x["banda"], "banda_plataforma": pareja["banda"]})
+                plan["cambiar"].append({"id": pareja["id"], "mes": mes, "banda": pareja["banda"], "nombre": x["nombre"],
+                                        "antes": {k2: pareja.get(k2) for k2 in ("nombre", "desde", "hasta", "color")},
+                                        "cambios": cambios_entre(pareja, {**x, "banda": pareja["banda"]}, existentes, con_nombre=False),
+                                        "motivo": "recategorizada en la plataforma: se actualizan las fechas"})
                 continue
             nueva = {"id": id_de(mes, x), "seccion": "comercial", "banda": x["banda"],
                      "carril": carril_libre(existentes, x["banda"], x["desde"], x["hasta"], x["carril"]),
@@ -246,16 +335,21 @@ def armar_plan(excel: dict[str, list[dict]], existentes: list[dict]) -> dict:
     return plan
 
 
-def mostrar(plan: dict, excel: dict) -> None:
+def mostrar(plan: dict, excel: dict, retiradas: collections.Counter | None = None) -> None:
     por_mes = collections.Counter(b["mes"] for b in plan["crear"])
     print("== PLAN ==")
     print("meses leidos:", ", ".join(f"{m}:{len(v)}" for m, v in sorted(excel.items())))
+    if retiradas:
+        print("renglones del Excel que no se cargan (tienen su propio mundo):", dict(retiradas))
     print("iguales (nada que hacer):", plan["iguales"])
     print("a crear:", len(plan["crear"]), "->", dict(sorted(por_mes.items())))
     print("a cambiar:", len(plan["cambiar"]))
     for c in plan["cambiar"]:
         print(f"    {c['mes']} {c['banda']} | {c['antes']['nombre'][:40]!r} {c['antes']['desde']}..{c['antes']['hasta']}"
               f" -> {c['cambios']}  [{c['motivo']}]")
+    print("recategorizadas en la plataforma (se respetan):", len(plan["recategorizadas"]))
+    for r in plan["recategorizadas"]:
+        print(f"    {r['mes']} {r['nombre'][:40]!r} | en el Excel: {r['banda_excel']} -> en la plataforma: {r['banda_plataforma']}")
     print("en la plataforma pero no en el Excel (se dejan):", len(plan["solo_plataforma"]))
     for s in plan["solo_plataforma"]:
         print("   ", s)
@@ -303,11 +397,12 @@ def main() -> int:
         return 1
 
     api = Api()
-    datos = api.pedir("GET", "/calendario/datos").json()
+    datos = api.pedir("GET", "/calendario/datos", params={"mundo": MUNDO}).json()
     existentes = list(datos["barras"])
     excel = leer_excel(filtro)
+    retiradas = quitar_retiradas(excel)
     plan = armar_plan(excel, existentes)
-    mostrar(plan, excel)
+    mostrar(plan, excel, retiradas)
 
     if not args.aplicar:
         print("\n(simulacion) sin --aplicar no se escribe nada")
@@ -330,6 +425,7 @@ def main() -> int:
         time.sleep(PAUSA)
     for i, b in enumerate(plan["crear"], 1):
         payload = {k: b[k] for k in ("id", "seccion", "banda", "carril", "nombre", "color", "desde", "hasta")}
+        payload["mundo"] = MUNDO
         r = api.pedir("POST", "/calendario/barras", json=payload)
         if r.status_code >= 300:
             errores.append(("POST", b["id"], r.status_code, r.text[:200]))
@@ -344,7 +440,7 @@ def main() -> int:
     print("\n== HECHO ==", hechas, "| errores:", len(errores))
     for e in errores[:20]:
         print("   ", e)
-    despues = api.pedir("GET", "/calendario/datos").json()
+    despues = api.pedir("GET", "/calendario/datos", params={"mundo": MUNDO}).json()
     cnt = collections.Counter(b["desde"][:7] for b in despues["barras"] if b["seccion"] == "comercial")
     print("comercial por mes ahora:", dict(sorted(cnt.items())))
     return 0 if not errores else 1
