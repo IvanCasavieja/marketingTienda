@@ -14,6 +14,7 @@ import { textoSobre } from '@/lib/calendario/colores'
 import { diasEntre, fechaCorta, hoyIso, rangoLargo, sumarDias } from '@/lib/calendario/fechas'
 import { useCalendario, useCategoriasDelMundo, useHeaderDerivado } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
+import { CLASE_SEMAFORO, semaforoDe } from '@/lib/calendario/semaforo'
 import {
   ANTICIPACIONES_DE_AVISO, CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader, tituloDeCanal,
   type AreaPieza, type Aviso, type BarraGuardada, type EstadoPieza, type Persona, type Pieza,
@@ -211,6 +212,7 @@ export function PanelAccion() {
                     {ahora && (
                       <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ahora.tono}`}>{ahora.texto}</span>
                     )}
+                    <SemaforoDeLaFicha accion={accion} />
                   </div>
                   <h2 id="ficha-titulo" className="mt-2.5 text-2xl font-bold leading-tight tracking-tight text-balance">{accion.nombre}</h2>
                   <p className="mt-1.5 flex items-center gap-1.5 text-sm opacity-80">
@@ -783,5 +785,23 @@ function BloqueArea({
         </ul>
       )}
     </section>
+  )
+}
+
+/** El semáforo en el encabezado de la ficha: el puntito y qué falta. Sobre el
+ *  color de la acción va en blanco, para que se lea con cualquier color. */
+function SemaforoDeLaFicha({ accion }: { accion: BarraGuardada }) {
+  const semaforo = semaforoDe(accion, hoyIso())
+  if (!semaforo) return null
+  // Cuándo arranca ya lo dice la píldora de al lado: acá va solo lo que falta.
+  const queFalta = semaforo.texto.includes(': ') ? semaforo.texto.split(': ')[1] : semaforo.texto
+  return (
+    <span
+      title={semaforo.texto}
+      className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm dark:bg-slate-950/70 dark:text-slate-100"
+    >
+      <span className={`h-2 w-2 shrink-0 rounded-full ${CLASE_SEMAFORO[semaforo.color]}`} aria-hidden />
+      {queFalta.replace(/^./, c => c.toUpperCase())}
+    </span>
   )
 }
