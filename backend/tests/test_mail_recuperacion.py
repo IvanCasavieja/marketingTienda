@@ -169,6 +169,27 @@ def test_sin_servicio_no_se_hace_como_que_se_mando(config):
         asyncio.run(send_email("ana@ejemplo.uy", "x", "<p>x</p>", "x"))
 
 
+def test_sin_remitente_configurado_sale_de_la_casilla_con_la_que_se_entra(config):
+    """Zoho (y casi todos los SMTP) rechaza un remitente distinto de la cuenta."""
+    config.setattr(settings, "EMAIL_FROM", "Core Tienda <onboarding@example.com>")
+    config.setattr(settings, "SMTP_USER", "coretienda@ejemplo.uy")
+    assert email_service.remitente() == "Core Tienda <coretienda@ejemplo.uy>"
+    config.setattr(settings, "EMAIL_FROM", "")
+    assert email_service.remitente() == "Core Tienda <coretienda@ejemplo.uy>"
+
+
+def test_el_remitente_configurado_manda(config):
+    config.setattr(settings, "SMTP_USER", "coretienda@ejemplo.uy")
+    assert email_service.remitente() == "Core Tienda <DoNotReply@ejemplo.uy>"
+
+
+def test_un_usuario_smtp_que_no_es_casilla_no_se_usa_de_remitente(config):
+    """El de Azure Communication Services no es una dirección de mail."""
+    config.setattr(settings, "EMAIL_FROM", "")
+    config.setattr(settings, "SMTP_USER", "recurso.app.tenant")
+    assert email_service.remitente() == ""
+
+
 def test_el_mensaje_tiene_remitente_destino_y_asunto(config):
     msg = armar_mensaje("ana@ejemplo.uy", "Asunto", "<p>hola</p>", "hola")
     assert msg["From"] == "Core Tienda <DoNotReply@ejemplo.uy>" and msg["Subject"] == "Asunto"

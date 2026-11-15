@@ -134,7 +134,8 @@ class Settings(BaseSettings):
     # y docs/AZURE.md, "Mails". EMAIL_PROVIDER: "smtp", "sendgrid" o vacío
     # (SMTP si hay SMTP_HOST; si no, SendGrid si hay clave).
     EMAIL_PROVIDER: str = ""
-    # SMTP: Azure Communication Services Email o Microsoft 365.
+    # SMTP: Zoho Mail (smtppro.zoho.com, 465 con "ssl"), Azure Communication
+    # Services Email o Microsoft 365.
     # SMTP_SEGURIDAD: "starttls" (puerto 587), "ssl" (465) o "ninguna".
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587

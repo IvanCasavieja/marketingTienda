@@ -49,8 +49,26 @@ configurado (`backend/app/services/email_service.py`). Sin ninguno, la pantalla
 avisa que la recuperación por mail no está activada y que hay que pedirle a
 quien administra una contraseña nueva.
 
-Para mandarlo desde el tenant de la empresa, lo natural es **Azure
-Communication Services Email**, que tiene un SMTP propio. Datos a confirmar con
+**Hoy (15/11/2026) se usa una casilla de Zoho Mail**, por SMTP. Datos de
+Zoho para una casilla con dominio propio (a confirmar en la configuración de
+Zoho; las cuentas del centro de datos europeo usan `smtppro.zoho.eu`):
+
+| Variable | Valor |
+| --- | --- |
+| `EMAIL_PROVIDER` | `smtp` |
+| `SMTP_HOST` | `smtppro.zoho.com` |
+| `SMTP_PORT` | `465` |
+| `SMTP_SEGURIDAD` | `ssl` |
+| `SMTP_USER` | la dirección completa de la casilla |
+| `SMTP_PASSWORD` | su contraseña, o una "contraseña de aplicación" de Zoho si la casilla tiene verificación en dos pasos (**secreto**) |
+| `EMAIL_FROM` | vacío (sale de la casilla) o `Core Tienda <la misma casilla>`: Zoho rechaza otro remitente |
+
+Para que no caiga en spam, el dominio de la casilla tiene que tener SPF y DKIM
+configurados en Zoho.
+
+En Azure no cambia nada: es la misma casilla y las mismas variables, con el
+secreto en la Container App. Si más adelante se quiere mandar desde el tenant
+de la empresa, lo natural es **Azure Communication Services Email**, que tiene un SMTP propio. Datos a confirmar con
 la guía de Microsoft al configurarlo:
 
 | Variable | Valor |

@@ -3,9 +3,9 @@
 Dos formas de mandarlos, según lo que esté configurado:
 
 - **SMTP** (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
-  `SMTP_SEGURIDAD`). Es como se manda desde el tenant de la empresa: Azure
-  Communication Services Email tiene un SMTP propio, y Microsoft 365 también.
-  Ver docs/AZURE.md, "Mails".
+  `SMTP_SEGURIDAD`). Sirve una casilla de Zoho Mail (la que se usa desde el
+  15/11/2026) y es también como se manda desde el tenant de la empresa con
+  Azure Communication Services Email. Ver docs/AZURE.md, "Mails".
 - **SendGrid** (`SENDGRID_API_KEY`), lo que se usaba hasta ahora.
 
 `EMAIL_PROVIDER` fuerza uno ("smtp" o "sendgrid"); vacío, se usa SMTP si hay
@@ -62,11 +62,25 @@ def _from_email() -> str:
     return match.group(1) if match else settings.EMAIL_FROM
 
 
+_REMITENTE_DE_EJEMPLO = "onboarding@example.com"
+
+
+def remitente() -> str:
+    """Quién manda el mail. Si EMAIL_FROM no se configuró y se entra al SMTP
+    con una casilla, sale de esa casilla: Zoho, Microsoft 365 y la mayoría de
+    los SMTP rechazan un remitente distinto de la cuenta con la que se entra."""
+    configurado = (settings.EMAIL_FROM or "").strip()
+    usuario = (settings.SMTP_USER or "").strip()
+    if (not configurado or _REMITENTE_DE_EJEMPLO in configurado) and "@" in usuario:
+        return f"{NOMBRE_DE_LA_PLATAFORMA} <{usuario}>"
+    return configurado
+
+
 def armar_mensaje(to: str, subject: str, html: str, plain: str) -> EmailMessage:
     """El mail con las dos versiones: texto para los clientes que no muestran
     HTML y HTML para el resto."""
     msg = EmailMessage()
-    msg["From"] = settings.EMAIL_FROM
+    msg["From"] = remitente()
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(plain)
