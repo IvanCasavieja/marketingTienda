@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     # y docs/AZURE.md, "Mails". EMAIL_PROVIDER: "resend", "smtp", "sendgrid" o vacío
     # (Resend si hay clave; si no SMTP si hay SMTP_HOST; si no SendGrid).
     EMAIL_PROVIDER: str = ""
+    # Cuántos proxies propios agregan su eslabón al final de X-Forwarded-For
+    # (ver app/core/rate_limit.py::ip_de_la_cadena). 0 = el primero, como antes.
+    PROXY_SALTOS_DE_CONFIANZA: int = 0
     # Resend (API web, la que usa Tuki): la recomendada en Render gratis, que
     # no deja salir SMTP. Remitente de un dominio verificado en Resend.
     RESEND_API_KEY: str = ""

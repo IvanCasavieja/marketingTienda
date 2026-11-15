@@ -366,7 +366,8 @@ export default function ListasMonitoreoPage() {
                     {fMoneyByCurrency(item.precio_actual, item.moneda)}
                   </span>
                   <a
-                    href={item.url}
+                    // Solo links web: un "javascript:" guardado en una lista compartida se ejecutaría al tocarlo.
+                    href={/^https?:\/\//i.test(item.url ?? "") ? item.url : undefined}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shrink-0"

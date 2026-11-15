@@ -23,7 +23,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select, update, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,6 +68,16 @@ class AgregarItemRequest(BaseModel):
     # chequeo diario no puede saber cuál sucursal seguir (ver watchlist_service.py).
     sucursal_id: Optional[str] = None
     sucursal_nombre: Optional[str] = None
+
+    # Solo links web: un "javascript:..." en una lista compartida se
+    # ejecutaba al tocarlo y podía robar la sesión (auditoría 15/11/2026).
+    @field_validator("url")
+    @classmethod
+    def _solo_links_web(cls, v: str) -> str:
+        v = (v or "").strip()
+        if v and not v.lower().startswith(("http://", "https://")):
+            raise ValueError("El link tiene que empezar con http:// o https://")
+        return v
 
 
 def _item_to_dict(item: WatchlistItem) -> dict:

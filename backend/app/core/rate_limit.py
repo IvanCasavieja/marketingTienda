@@ -15,15 +15,33 @@ from fastapi import Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core.config import settings
+
+
+def ip_de_la_cadena(forwarded: str | None, saltos_de_confianza: int) -> str | None:
+    """La IP del cliente según X-Forwarded-For.
+
+    El primer eslabón lo escribe quien pide, así que se puede falsear
+    (auditoría 15/11/2026: 12 logins rotando ese header y ningún 429). Lo que
+    agregan los proxies propios va al final: con `saltos_de_confianza` = N se
+    toma el eslabón N contando desde el final, que es el que escribió nuestro
+    proxy y no se puede falsear. Con 0 (el valor por defecto) se sigue
+    tomando el primero, como siempre: se prende con PROXY_SALTOS_DE_CONFIANZA
+    después de confirmar en los logs cómo arma la cadena Render (o Azure)."""
+    if not forwarded:
+        return None
+    cadena = [p.strip() for p in forwarded.split(",") if p.strip()]
+    if not cadena:
+        return None
+    if saltos_de_confianza <= 0 or len(cadena) < saltos_de_confianza:
+        return cadena[0]
+    return cadena[-saltos_de_confianza]
+
 
 def ip_de_quien_pide(request: Request) -> str:
     """La IP del cliente, no la del proxy. Sin esto el límite es compartido."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        primera = forwarded.split(",")[0].strip()
-        if primera:
-            return primera
-    return get_remote_address(request)
+    ip = ip_de_la_cadena(request.headers.get("X-Forwarded-For"), settings.PROXY_SALTOS_DE_CONFIANZA)
+    return ip or get_remote_address(request)
 
 
 limiter = Limiter(key_func=ip_de_quien_pide, default_limits=["200/minute"])
