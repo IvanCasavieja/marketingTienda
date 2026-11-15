@@ -2,21 +2,25 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, ListChecks, Menu } from "lucide-react";
+import { Bell, CalendarDays, ListChecks, Menu } from "lucide-react";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
+import { useAvisos } from "@/store/avisos";
 
 /**
  * La barra de abajo del teléfono: el calendario, mis tareas y el resto del
  * menú, donde llega el pulgar. Son los mismos links del núcleo del menú
  * lateral, con el mismo permiso; quien no ve el calendario no tiene barra.
+ * Los avisos van con su número, como en la campanita: antes solo se veían
+ * abriendo el menú.
  */
-export default function NavegacionInferior({ onMenu }: { onMenu: () => void }) {
+export default function NavegacionInferior({ onMenu, onAvisos }: { onMenu: () => void; onAvisos: () => void }) {
   const pathname = usePathname();
   const { t } = useTranslation();
   const { user } = useCurrentUser();
+  const noLeidos = useAvisos((s) => s.noLeidos);
   if (!hasPermission(user, "calendario.view")) return null;
 
   const items = [
@@ -49,6 +53,22 @@ export default function NavegacionInferior({ onMenu }: { onMenu: () => void }) {
             </Link>
           );
         })}
+        <button
+          type="button"
+          onClick={onAvisos}
+          aria-label={noLeidos > 0 ? `${t("sidebar.avisos", "Avisos")}: ${noLeidos} sin leer` : t("sidebar.avisos", "Avisos")}
+          className="group flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400"
+        >
+          <span className="relative flex h-8 w-14 items-center justify-center rounded-full transition-all duration-200 group-active:scale-90">
+            <Bell size={20} />
+            {noLeidos > 0 && (
+              <span className="absolute right-2.5 top-0 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white dark:ring-navy-900">
+                {noLeidos > 9 ? "9+" : noLeidos}
+              </span>
+            )}
+          </span>
+          {t("sidebar.avisos", "Avisos")}
+        </button>
         <button
           type="button"
           onClick={onMenu}

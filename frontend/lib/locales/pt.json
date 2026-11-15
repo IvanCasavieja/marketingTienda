@@ -28,6 +28,7 @@
     "metaFixtureTooltip": "Dados de exemplo — a integração com o Meta Ads está pausada, não são números reais"
   },
   "sidebar": {
+    "avisos": "Avisos",
     "mktgPlatform": "Core Tienda",
     "medios": "MÍDIA",
     "analyticsGa4": "Analytics GA4",

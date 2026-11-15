@@ -131,12 +131,10 @@ export default function CalendarioPage() {
   // equipo, y pisa lo local.
   const [listo, setListo] = useState(false);
   useEffect(() => {
-    // La primera vez en una pantalla angosta (un teléfono) arranca en la
-    // lista de tarjetas: la línea de tiempo necesita ancho. Después manda lo
-    // que la persona elija.
-    const primeraVez = localStorage.getItem("calendario-mktg-v3") === null;
+    // Arranca en la vista Calendario también en el teléfono: desde el
+    // rediseño del 15/11/2026 se usa bien en pantallas angostas (antes la
+    // primera vez abría en la Lista). Después manda lo que la persona elija.
     useCalendario.persist.rehydrate();
-    if (primeraVez && window.innerWidth < 768) useCalendario.getState().setVista("lista");
     setListo(true);
   }, []);
 

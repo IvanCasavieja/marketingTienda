@@ -8,6 +8,7 @@ import { BloqueTareas } from './BloqueTareas'
 import { Cocarda, SelectorDeCategoria } from './Cocarda'
 import { useDialogo } from './useDialogo'
 import { CampoFecha } from './CampoFecha'
+import { CLASE_MANIJA, useDeslizarParaCerrar } from './useDeslizarParaCerrar'
 import { categoriasParaElegir } from '@/lib/calendario/categorias'
 import { textoSobre } from '@/lib/calendario/colores'
 import { diasEntre, fechaCorta, hoyIso, rangoLargo, sumarDias } from '@/lib/calendario/fechas'
@@ -128,6 +129,7 @@ export function PanelAccion() {
   const cajaRef = useRef<HTMLElement>(null)
   const cerrarRef = useRef<HTMLButtonElement>(null)
   useDialogo(visible, cajaRef, cerrarRef)
+  useDeslizarParaCerrar(cajaRef, visible, cerrar)
 
   // Qué se mira de la ficha. Arranca en las tareas: es a lo que viene la
   // mayoría (a ver qué le toca), y las piezas y los avisos quedan a un toque.
@@ -187,6 +189,7 @@ export function PanelAccion() {
           visible ? 'hoja-abierta translate-y-0 sm:translate-x-0' : 'hoja-cerrada translate-y-full sm:translate-x-full sm:translate-y-0'
         }`}
       >
+        <div aria-hidden className={CLASE_MANIJA} />
         {accion && accion.seccion === 'envio' && (
           <FichaEnvio
             envio={accion}

@@ -11,6 +11,7 @@ import { useCalendario } from '@/lib/calendario/store'
 import { formatosDeCanal, tituloDeCanal, type BarraGuardada } from '@/lib/calendario/tipos'
 import { useDialogo } from './useDialogo'
 import { esFechaGuardable } from './CampoFecha'
+import { CLASE_MANIJA, useDeslizarParaCerrar } from './useDeslizarParaCerrar'
 
 const TEXTOS: Record<string, { nueva: string; editar: string; unaSola: string }> = {
   comercial: { nueva: 'Nueva acción', editar: 'Editar acción', unaSola: 'Es una sola acción' },
@@ -93,6 +94,7 @@ export function EditorBarra() {
 
   const formRef = useRef<HTMLFormElement>(null)
   useDialogo(Boolean(edicion), formRef)
+  useDeslizarParaCerrar(formRef, Boolean(edicion), cerrar)
 
   if (!edicion) return null
 
@@ -137,6 +139,7 @@ export function EditorBarra() {
         aria-describedby="editor-bajada"
         className="relative flex max-h-[92dvh] w-full max-w-md animate-sheet-up flex-col overflow-hidden rounded-t-3xl bg-white shadow-panel dark:bg-slate-900 dark:ring-1 dark:ring-slate-800 sm:animate-scale-in sm:rounded-2xl"
       >
+        <div aria-hidden className={CLASE_MANIJA} />
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-5 pb-3.5 pt-4 dark:border-slate-800">
           <div className="min-w-0">
             <h3 id="editor-titulo" className="text-lg font-bold text-slate-900 dark:text-slate-100">
