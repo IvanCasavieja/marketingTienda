@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ChevronLeft, ChevronRight, LayoutPanelTop, Lock, Settings2, X } from 'lucide-react'
 import { textoSobre } from '@/lib/calendario/colores'
 import { diaDeHoy, isoDe, nombreMes, rangoLargo } from '@/lib/calendario/fechas'
 import { headerEnFecha, ocupacionHeader, useCalendario, useMesActivo } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { REGLAS_HEADER } from '@/lib/calendario/tipos'
+import { useDialogo } from './useDialogo'
 
 const TONO_ESTADO = {
   ok: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200',
@@ -38,9 +39,14 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
     setDia(d => Math.min(Math.max(d, 1), mes.dias))
   }, [mes.clave, mes.dias])
 
+  const cajaRef = useRef<HTMLElement>(null)
+  const cerrarRef = useRef<HTMLButtonElement>(null)
+  useDialogo(abierto, cajaRef, cerrarRef)
+
   useEffect(() => {
     if (!abierto) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar() }
+    // Con el editor abierto arriba, Escape cierra el editor y no este panel.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !useCalendario.getState().edicion) onCerrar() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [abierto, onCerrar])
@@ -77,24 +83,43 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
     <>
       <div
         onClick={onCerrar}
-        className={`fixed inset-0 z-40 bg-slate-900/30 transition-opacity duration-300 ${
+        aria-hidden
+        className={`velo z-40 transition-opacity duration-300 ${
           abierto ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
       />
+      {/* Igual que la ficha de una acción: por la derecha en la notebook, como
+          hoja desde abajo en el teléfono, e invisible cerrada. */}
       <aside
-        className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-[520px] flex-col bg-white dark:bg-slate-900 shadow-2xl transition-transform duration-300 ease-out ${
-          abierto ? 'translate-x-0' : 'translate-x-full'
+        ref={cajaRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="headers-titulo"
+        tabIndex={-1}
+        className={`fixed z-50 flex flex-col overflow-hidden bg-white shadow-panel outline-none transition-[transform,visibility] duration-300 ease-suave dark:bg-slate-900
+          inset-x-0 bottom-0 top-3 rounded-t-3xl
+          sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-full sm:w-full sm:max-w-[520px] sm:rounded-none sm:border-l sm:border-slate-200 sm:dark:border-slate-800 ${
+          abierto ? 'translate-y-0 sm:translate-x-0' : 'invisible translate-y-full sm:translate-x-full sm:translate-y-0'
         }`}
       >
-        <header className="shrink-0 border-b border-slate-200 dark:border-slate-700 bg-slate-900 px-5 py-4 text-white">
+        <header className="shrink-0 border-b border-slate-200 bg-slate-900 px-5 py-4 text-white dark:border-slate-800 dark:bg-slate-950">
           <div className="flex items-start gap-3">
-            <LayoutPanelTop className="mt-0.5 h-5 w-5 shrink-0" />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10">
+              <LayoutPanelTop className="h-5 w-5" />
+            </span>
             <div className="min-w-0 flex-1">
-              <h2 className="text-base font-semibold leading-tight">Headers activos por fecha</h2>
-              <p className="text-xs text-slate-300">Las {REGLAS_HEADER.tope} posiciones de la home, tal como quedan ese día.</p>
+              <h2 id="headers-titulo" className="text-base font-bold leading-tight">Headers activos por fecha</h2>
+              <p className="mt-0.5 text-xs text-slate-300">Las {REGLAS_HEADER.tope} posiciones de la home, tal como quedan ese día.</p>
             </div>
-            <button onClick={onCerrar} aria-label="Cerrar" className="shrink-0 rounded-md p-1 transition hover:bg-white/10">
-              <X className="h-4 w-4" />
+            <button
+              ref={cerrarRef}
+              type="button"
+              onClick={onCerrar}
+              aria-label="Cerrar"
+              title="Cerrar (Esc)"
+              className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition hover:bg-white/10 active:scale-95 sm:h-10 sm:w-10"
+            >
+              <X className="h-5 w-5" />
             </button>
           </div>
         </header>
@@ -107,7 +132,7 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
               onClick={() => setDia(d => Math.max(1, d - 1))}
               disabled={dia <= 1}
               aria-label="Día anterior"
-              className="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1.5 text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 active:scale-95 disabled:opacity-30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 sm:h-10 sm:w-10"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -115,7 +140,7 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
               value={dia}
               onChange={e => setDia(Number(e.target.value))}
               aria-label="Día"
-              className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 outline-none"
+              className="campo flex-1 font-semibold"
             >
               {Array.from({ length: mes.dias }, (_, i) => i + 1).map(d => (
                 <option key={d} value={d}>
@@ -128,7 +153,7 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
               onClick={() => setDia(d => Math.min(mes.dias, d + 1))}
               disabled={dia >= mes.dias}
               aria-label="Día siguiente"
-              className="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1.5 text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 active:scale-95 disabled:opacity-30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 sm:h-10 sm:w-10"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -218,7 +243,7 @@ export function PanelHeaders({ abierto, onCerrar }: { abierto: boolean; onCerrar
                 >
                   <div className="flex w-10 shrink-0 flex-col items-center justify-center">
                     <span className="text-lg font-bold leading-none text-slate-800 dark:text-slate-200">{pos.numero}</span>
-                    <span className={`mt-0.5 text-[8px] font-semibold uppercase leading-none ${
+                    <span className={`mt-1 text-[10px] font-semibold uppercase leading-none ${
                       pos.esRM ? 'text-violet-500 dark:text-violet-400' : 'text-slate-400 dark:text-slate-500'
                     }`}>
                       {pos.esRM ? 'RM' : 'Mkt'}

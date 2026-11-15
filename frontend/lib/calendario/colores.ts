@@ -25,5 +25,10 @@ export function textoSobre(fondo: string | null): string {
   }
   const [r, g, b] = [0, 2, 4].map(i => canal(parseInt(hex.slice(i, i + 2), 16)))
   const L = 0.2126 * r + 0.7152 * g + 0.0722 * b
-  return L > 0.42 ? '#111827' : '#ffffff'
+  // Gana el que más contraste da. Con el corte fijo de antes (0.42) el azul
+  // medio de la paleta (#8EA9DB) llevaba letra blanca, que se leía 2.4 a 1;
+  // con negra se lee 7.5 a 1. #111827 tiene luminancia 0.0123.
+  const contraNegro = (L + 0.05) / (0.0123 + 0.05)
+  const contraBlanco = 1.05 / (L + 0.05)
+  return contraNegro >= contraBlanco ? '#111827' : '#ffffff'
 }
