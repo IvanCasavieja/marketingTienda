@@ -7,7 +7,7 @@ era `get_remote_address`, que detrás del proxy de Render devuelve la IP del
 proxy — o sea, una sola para todo el mundo. Con 200 por minuto compartidos, un
 par de personas trabajando juntas dejaban afuera a las demás.
 """
-from app.core.rate_limit import ip_de_quien_pide, limiter
+from app.core.rate_limit import clave_de_quien_pide, ip_de_quien_pide, limiter
 
 
 class _Pedido:
@@ -45,5 +45,7 @@ def test_espacios_alrededor_de_la_ip_no_cuentan():
 
 
 def test_el_limitador_quedo_armado_con_esa_clave():
-    # Si alguien vuelve a poner get_remote_address, esto lo marca.
-    assert limiter._key_func is ip_de_quien_pide
+    # Si alguien vuelve a poner get_remote_address, esto lo marca. Desde el
+    # 15/11/2026 la clave es la persona (con sesión) y esta IP solo sin sesión:
+    # ver test_limite_de_pedidos.py.
+    assert limiter._key_func is clave_de_quien_pide

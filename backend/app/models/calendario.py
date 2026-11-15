@@ -199,3 +199,15 @@ class CalendarioRevision(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     rev: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+
+
+class CalendarioRevisionMundo(Base):
+    """La última revisión (del contador de arriba) que tocó cada mundo.
+
+    Con esto /datos contesta "sin cambios" a quien mira un mundo donde no
+    cambió nada, aunque en otro sí (migración 0063)."""
+
+    __tablename__ = "calendario_revision_mundo"
+
+    mundo: Mapped[str] = mapped_column(String(32), primary_key=True)
+    rev: Mapped[int] = mapped_column(BigInteger, nullable=False)

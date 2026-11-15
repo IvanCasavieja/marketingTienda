@@ -260,6 +260,7 @@ export default function MisTareasPage() {
               <ChevronRight className={`h-4 w-4 transition-transform duration-200 ${verHechas ? "rotate-90" : ""}`} />
               <Check className="h-4 w-4 text-emerald-500" aria-hidden />
               Hechas
+              <span className="text-xs font-normal text-slate-500 dark:text-slate-400">· últimos 30 días</span>
               <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-xs font-bold tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-300">{hechas.length}</span>
             </button>
             {verHechas && (

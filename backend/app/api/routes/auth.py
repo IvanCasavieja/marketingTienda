@@ -33,8 +33,8 @@ _logger = logging.getLogger(__name__)
 
 # El mismo para contraseña equivocada, email inexistente y cuenta bloqueada.
 _CREDENCIALES_INVALIDAS = (
-    "Email o contraseña incorrectos. Después de varios intentos fallidos la cuenta "
-    "se bloquea unos minutos."
+    "Email o contraseña incorrectos. A los 5 intentos fallidos la cuenta se bloquea "
+    "15 minutos; para entrar igual, usá «¿Olvidaste tu contraseña?»."
 )
 _RESETS_POR_HORA = 3
 

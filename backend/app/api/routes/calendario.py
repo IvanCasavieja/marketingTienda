@@ -39,12 +39,13 @@ estado; y aceptan avisos, como una acción.
 """
 import logging
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -53,6 +54,7 @@ from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, 
 from app.models.audit_log import AuditLog
 from app.models.calendario import (
     CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPosicionesRM, CalendarioRevision,
+    CalendarioRevisionMundo,
     CalendarioTarea,
 )
 from app.models.notificacion import Notificacion
@@ -110,9 +112,13 @@ def _validar_rango(desde: date, hasta: date) -> None:
         raise HTTPException(status_code=422, detail="Dura más de tres años: revisá el año de las fechas")
 
 
-async def _nueva_revision(db: AsyncSession) -> int:
+async def _nueva_revision(db: AsyncSession, mundo: str | None) -> int:
     """Sube el contador en la misma transacción que el cambio: quien pregunte
-    ve la revisión nueva recién cuando el cambio ya está guardado."""
+    ve la revisión nueva recién cuando el cambio ya está guardado.
+
+    Y anota que esa revisión tocó `mundo` (0063): quien mira otro mundo sigue
+    "sin cambios". Sin mundo (algo que colgaba de una acción que ya no está)
+    se anota en todos, por las dudas."""
     rev = (await db.execute(
         update(CalendarioRevision).where(CalendarioRevision.id == 1)
         .values(rev=CalendarioRevision.rev + 1).returning(CalendarioRevision.rev)
@@ -121,6 +127,13 @@ async def _nueva_revision(db: AsyncSession) -> int:
         # Una base donde la fila no existe (no debería pasar: la crea la 0057).
         db.add(CalendarioRevision(id=1, rev=1))
         rev = 1
+    if mundo is None:
+        await db.execute(update(CalendarioRevisionMundo).values(rev=rev))
+    else:
+        await db.execute(
+            pg_insert(CalendarioRevisionMundo).values(mundo=mundo, rev=rev)
+            .on_conflict_do_update(index_elements=[CalendarioRevisionMundo.mundo], set_={"rev": rev})
+        )
     return rev
 
 
@@ -157,17 +170,18 @@ async def _barra_o_404(
     return barra
 
 
-async def _exigir_mundo_de(db: AsyncSession, barra_id: str | None, usuario: User) -> None:
+async def _exigir_mundo_de(db: AsyncSession, barra_id: str | None, usuario: User) -> str | None:
     """Para lo que se toca por su propio id (una pieza, un aviso): que la
     acción de la que cuelga sea de un mundo de la persona. Si la acción ya no
-    está, no hay nada que cuidar."""
+    está, no hay nada que cuidar. Devuelve el mundo (para la revisión)."""
     if barra_id is None:
-        return
+        return None
     mundo = (await db.execute(
         select(CalendarioBarra.mundo).where(CalendarioBarra.id == barra_id)
     )).scalar_one_or_none()
     if mundo is not None:
         exigir_mundo(usuario, mundo)
+    return mundo
 
 
 def _puede_ver_el_mundo(usuario: User, mundo: str) -> bool:
@@ -255,16 +269,28 @@ async def traer_datos(
     """Todo el calendario de UN mundo. Si el front ya tiene la revisión actual,
     contesta solo eso y no viaja nada más.
 
-    La revisión es una sola para todos los mundos: un cambio en Redexpres hace
-    que quien mira Tienda Inglesa vuelva a traer lo suyo, que no cambió. Es un
-    viaje de más cada tanto a cambio de no llevar un contador por mundo.
+    El contador es uno solo para todos los mundos, pero cada mundo anota la
+    última revisión que lo tocó (0063): si nada de ESTE mundo cambió después
+    de la revisión del front, es "sin cambios" aunque en otro mundo sí haya
+    habido. Antes un cambio en Redexpres le hacía bajar todo de nuevo a quien
+    miraba Tienda Inglesa. Una revisión más nueva que el contador (una base
+    restaurada) se trata como vieja: se trae todo.
 
     La revisión se lee ANTES que los datos: si alguien guarda en el medio, los
     datos pueden venir un poco más nuevos que la revisión (y la próxima
     pregunta los vuelve a traer), pero nunca más viejos."""
     exigir_mundo(current_user, mundo)
-    actual = await _revision_actual(db)
-    if rev is not None and rev == actual:
+    fila = (await db.execute(
+        select(
+            CalendarioRevision.rev,
+            select(CalendarioRevisionMundo.rev)
+            .where(CalendarioRevisionMundo.mundo == mundo).scalar_subquery(),
+        ).where(CalendarioRevision.id == 1)
+    )).first()
+    actual = fila[0] if fila else 0
+    # Un mundo sin fila (uno nuevo, antes de su primer cambio): como antes, solo la revisión exacta.
+    ultima_del_mundo = fila[1] if fila and fila[1] is not None else actual
+    if rev is not None and ultima_del_mundo <= rev <= actual:
         return {"rev": actual, "sinCambios": True}
 
     barras = (await db.execute(
@@ -468,7 +494,7 @@ async def crear_barra(
         creado_por_id=current_user.id,
         actualizado_por_id=current_user.id,
     ))
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, payload.mundo)
     await db.commit()
     return {"id": payload.id, "rev": rev}
 
@@ -489,7 +515,7 @@ async def cambiar_barra(
     for campo, valor in cambios.items():
         setattr(barra, campo, valor)
     barra.actualizado_por_id = current_user.id
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
     if cambio_la_fecha:
         # Un aviso que con la fecha nueva ya tendría que haber salido, sale ya.
@@ -521,8 +547,9 @@ async def borrar_barra(
             "desde": barra.desde.isoformat(), "hasta": barra.hasta.isoformat(),
         },
     ))
+    mundo = barra.mundo
     await db.delete(barra)
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, mundo)
     await db.commit()
     return {"id": barra_id, "borrada": True, "rev": rev}
 
@@ -575,7 +602,7 @@ async def agregar_pieza(
         estado=payload.estado, desde=payload.desde, hasta=payload.hasta, hora=payload.hora,
         orden=max((p.orden for p in piezas), default=-1) + 1,
     ))
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
     return {"id": payload.id, "rev": rev}
 
@@ -592,7 +619,7 @@ async def cambiar_pieza(
     )).scalar_one_or_none()
     if pieza is None:
         raise HTTPException(status_code=404, detail="Esta pieza ya no existe: la sacó otra persona.")
-    await _exigir_mundo_de(db, pieza.barra_id, current_user)
+    mundo = await _exigir_mundo_de(db, pieza.barra_id, current_user)
     # `desde`, `hasta` y `hora` pueden venir en null a propósito (volver a "con
     # la acción"), por eso se mira qué campos vinieron y no si son None.
     campos = payload.model_fields_set
@@ -606,7 +633,7 @@ async def cambiar_pieza(
         pieza.hora = payload.hora
     if "enSharePoint" in campos and payload.enSharePoint is not None:
         pieza.en_sharepoint = payload.enSharePoint
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, mundo)
     await db.commit()
     return {"id": pieza_id, "rev": rev}
 
@@ -617,11 +644,11 @@ async def quitar_pieza(
     current_user: User = Depends(require_permission("calendario.edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    await _exigir_mundo_de(db, (await db.execute(
+    mundo = await _exigir_mundo_de(db, (await db.execute(
         select(CalendarioPieza.barra_id).where(CalendarioPieza.id == pieza_id)
     )).scalar_one_or_none(), current_user)
     await db.execute(delete(CalendarioPieza).where(CalendarioPieza.id == pieza_id))
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, mundo)
     await db.commit()
     return {"id": pieza_id, "borrada": True, "rev": rev}
 
@@ -670,7 +697,7 @@ async def configurar_aviso(
             id=payload.id, barra_id=barra_id, dias_antes=payload.diasAntes,
             destinatarios=pedidos, creado_por_id=current_user.id,
         ))
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
     # Si la fecha del aviso ya pasó (10 días antes de algo que arranca en 5),
     # sale ahora y no en la próxima vuelta del loop.
@@ -684,11 +711,11 @@ async def quitar_aviso(
     current_user: User = Depends(require_permission("calendario.edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    await _exigir_mundo_de(db, (await db.execute(
+    mundo = await _exigir_mundo_de(db, (await db.execute(
         select(CalendarioAviso.barra_id).where(CalendarioAviso.id == aviso_id)
     )).scalar_one_or_none(), current_user)
     await db.execute(delete(CalendarioAviso).where(CalendarioAviso.id == aviso_id))
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, mundo)
     await db.commit()
     return {"id": aviso_id, "borrado": True, "rev": rev}
 
@@ -765,7 +792,8 @@ async def mover_posiciones_rm(
         resource_id=clave, details={"antes": antes, "ahora": ahora},
         ip_address=_client_ip(request),
     ))
-    rev = await _nueva_revision(db)
+    # Retail Media es solo del calendario de Tienda Inglesa.
+    rev = await _nueva_revision(db, MUNDO_POR_DEFECTO)
     await db.commit()
     return {"clave": clave, "avisados": len(destinatarios), "rev": rev}
 
@@ -905,7 +933,7 @@ async def crear_tarea(
             current_user.full_name, payload.titulo, barra.nombre, payload.vence,
         ), barra_id, payload.id)
         avisados = 1
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
     return {"id": payload.id, "rev": rev, "avisados": avisados}
 
@@ -961,7 +989,7 @@ async def cambiar_tarea(
                 current_user.full_name, tarea.titulo, barra.nombre,
             ), barra.id, tarea.id)
             avisados += 1
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
     return {"id": tarea_id, "rev": rev, "avisados": avisados}
 
@@ -974,13 +1002,16 @@ async def borrar_tarea(
 ):
     """Borra la tarea y todo lo que cuelga de ella."""
     _exigir_gestion_de_tareas(current_user)
-    await _exigir_mundo_de(db, (await db.execute(
+    mundo = await _exigir_mundo_de(db, (await db.execute(
         select(CalendarioTarea.barra_id).where(CalendarioTarea.id == tarea_id)
     )).scalar_one_or_none(), current_user)
     await db.execute(delete(CalendarioTarea).where(CalendarioTarea.id == tarea_id))
-    rev = await _nueva_revision(db)
+    rev = await _nueva_revision(db, mundo)
     await db.commit()
     return {"id": tarea_id, "borrada": True, "rev": rev}
+
+
+DIAS_DE_HECHAS_EN_MIS_TAREAS = 30
 
 
 @router.get("/mis-tareas")
@@ -989,14 +1020,28 @@ async def mis_tareas(
     db: AsyncSession = Depends(get_db),
 ):
     """Lo que la persona tiene asignado, en todos los mundos que puede abrir,
-    con la acción de cada tarea. Es lo que muestra el inicio."""
+    con la acción de cada tarea. Es lo que muestra el inicio.
+
+    Las abiertas, todas; las hechas, solo las de los últimos
+    DIAS_DE_HECHAS_EN_MIS_TAREAS días. Antes venía todo lo de siempre: con el
+    uso se iba a cientos de tareas viejas (medido: 269 KB con 668) que nadie
+    mira y que se bajaban cada vez que se abría la pantalla."""
     mundos = mundos_de(current_user)
     if not mundos:
         return []
+    desde = datetime.now(timezone.utc) - timedelta(days=DIAS_DE_HECHAS_EN_MIS_TAREAS)
     filas = (await db.execute(
         select(CalendarioTarea, CalendarioBarra)
         .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
-        .where(CalendarioTarea.asignado_a_id == current_user.id, CalendarioBarra.mundo.in_(mundos))
+        .where(
+            CalendarioTarea.asignado_a_id == current_user.id,
+            CalendarioBarra.mundo.in_(mundos),
+            or_(
+                CalendarioTarea.estado != "hecha",
+                # Se tildó (o se tocó por última vez) hace menos de eso.
+                func.coalesce(CalendarioTarea.updated_at, CalendarioTarea.created_at) >= desde,
+            ),
+        )
         .order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
     )).all()
     return [

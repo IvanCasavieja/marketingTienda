@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from typing import Optional
 from app.core.config import settings
 from app.core.database import get_db
@@ -39,15 +39,19 @@ _PASSWORD_CHANGE_EXEMPT_PATHS = {
 }
 
 
-async def _needs_password_change(user: User, db: AsyncSession) -> bool:
+async def _needs_password_change(user: User, db: AsyncSession, es_sucursal: bool | None = None) -> bool:
     """Los logins de sucursal (LocalAsignacion) quedan afuera de esta política
     a propósito: comparten contraseña por diseño y ya no pueden cambiarla
     ellos mismos (ver /auth/change-password), así que exigírselo los dejaría
-    trabados sin salida."""
-    is_sucursal = (await db.execute(
-        select(LocalAsignacion).where(LocalAsignacion.user_id == user.id).limit(1)
-    )).scalar_one_or_none() is not None
-    if is_sucursal:
+    trabados sin salida.
+
+    `es_sucursal` lo trae get_current_user en la misma consulta que el
+    usuario; sin él (otros llamadores) se pregunta aparte."""
+    if es_sucursal is None:
+        es_sucursal = (await db.execute(
+            select(LocalAsignacion).where(LocalAsignacion.user_id == user.id).limit(1)
+        )).scalar_one_or_none() is not None
+    if es_sucursal:
         return False
 
     if user.must_change_password:
@@ -95,8 +99,13 @@ async def get_current_user(
         user_id_int = int(user_id)
     except (TypeError, ValueError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    result = await db.execute(select(User).where(User.id == user_id_int, User.is_active == True))
-    user = result.scalar_one_or_none()
+    # El usuario y si es un login de sucursal, en UN viaje a la base: esto
+    # corre en cada pedido de la plataforma.
+    es_sucursal = exists().where(LocalAsignacion.user_id == User.id).label("es_sucursal")
+    fila = (await db.execute(
+        select(User, es_sucursal).where(User.id == user_id_int, User.is_active == True)
+    )).first()
+    user = fila[0] if fila else None
 
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
@@ -118,7 +127,7 @@ async def get_current_user(
         if not issued_at or issued_at < user.tokens_invalidated_at - timedelta(seconds=2):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalidado — volvé a iniciar sesión")
 
-    if request.url.path not in _PASSWORD_CHANGE_EXEMPT_PATHS and await _needs_password_change(user, db):
+    if request.url.path not in _PASSWORD_CHANGE_EXEMPT_PATHS and await _needs_password_change(user, db, bool(fila[1])):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="PASSWORD_CHANGE_REQUIRED",

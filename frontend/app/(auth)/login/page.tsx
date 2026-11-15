@@ -46,8 +46,21 @@ export default function LoginPage() {
         // Si /me falla, el layout del dashboard decide qué hacer.
       }
       router.push(destino);
-    } catch {
-      toast.error(t("login.wrongCredentials"));
+    } catch (err) {
+      // Cada cosa con su nombre: antes cualquier falla (sin conexión, demasiados
+      // intentos) decía "contraseña incorrecta" y la persona seguía probando
+      // hasta bloquearse. Recuperar la contraseña anda siempre, aun bloqueada.
+      const estado = (err as { response?: { status?: number } })?.response?.status;
+      if (estado === 401) {
+        toast.error(t("login.wrongCredentials"), {
+          duration: 10_000,
+          action: { label: t("login.forgotPassword"), onClick: () => router.push("/forgot-password") },
+        });
+      } else if (estado === 429) {
+        toast.error(t("login.tooManyAttempts"));
+      } else {
+        toast.error(t("login.serverDown"));
+      }
     } finally {
       setLoading(false);
     }

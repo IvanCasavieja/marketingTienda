@@ -1,0 +1,109 @@
+# Monitor de producción: cada 30 minutos pregunta /health a la API.
+#
+# Si no contesta bien (ni después de darle tiempo a despertarse: el plan
+# gratis de Render la duerme y tarda hasta ~75 s), abre un issue "Producción
+# caída" asignado al dueño del repo: GitHub le manda el mail (y el aviso al
+# celular si tiene la app). Al resto de la gente no le llega nada. Cuando
+# vuelve, comenta "Volvió" y lo cierra (otro mail). Mientras siga caída no
+# repite el aviso.
+#
+# /health da 503 si la base no contesta o si las migraciones del último
+# deploy fallaron (ver `migraciones` en backend/app/main.py).
+#
+# De yapa, la pregunta cada 30 min mantiene la base con movimiento: el plan
+# gratis de Supabase pausa la base tras 7 días sin uso, que es lo que tiró
+# producción el 15/11/2026.
+name: Monitor de producción
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      url_de_prueba:
+        description: "Solo para probar el aviso: una URL que falle. El issue sale con [PRUEBA] adelante."
+        required: false
+        default: ""
+
+permissions:
+  issues: write
+
+concurrency:
+  group: monitor-produccion
+  cancel-in-progress: false
+
+env:
+  URL_SALUD: ${{ inputs.url_de_prueba || 'https://marketingtienda.onrender.com/health' }}
+  TITULO: "${{ inputs.url_de_prueba && '[PRUEBA] ' || '' }}Producción caída: la API no contesta bien"
+
+jobs:
+  salud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Preguntar /health (hasta 3 veces, esperando que despierte)
+        id: salud
+        run: |
+          codigo=000
+          for intento in 1 2 3; do
+            codigo=$(curl -s -o cuerpo.json -w '%{http_code}' --max-time 100 "$URL_SALUD" || echo 000)
+            echo "intento $intento: HTTP $codigo $(head -c 200 cuerpo.json 2>/dev/null)"
+            if [ "$codigo" = "200" ]; then
+              echo "estado=ok" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "estado=caida" >> "$GITHUB_OUTPUT"
+          echo "codigo=$codigo" >> "$GITHUB_OUTPUT"
+          echo "cuerpo=$(head -c 300 cuerpo.json 2>/dev/null | tr -d '\r\n')" >> "$GITHUB_OUTPUT"
+
+      - name: Avisar o cerrar el aviso
+        uses: actions/github-script@v7
+        env:
+          ESTADO: ${{ steps.salud.outputs.estado }}
+          CODIGO: ${{ steps.salud.outputs.codigo }}
+          CUERPO: ${{ steps.salud.outputs.cuerpo }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const abiertos = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", creator: "github-actions[bot]", per_page: 100,
+            });
+            const aviso = abiertos.find((i) => i.title === process.env.TITULO);
+            const corrida = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const hora = new Date().toLocaleString("es-UY", { timeZone: "America/Montevideo" });
+
+            if (process.env.ESTADO === "ok") {
+              if (aviso) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: aviso.number,
+                  body: `Volvió: /health contesta bien (${hora}).`,
+                });
+                await github.rest.issues.update({ owner, repo, issue_number: aviso.number, state: "closed" });
+              }
+              return;
+            }
+
+            if (aviso) return; // ya avisado: no repetir cada 30 minutos
+
+            const codigo = process.env.CODIGO === "000" ? "no contestó en 100 s" : `HTTP ${process.env.CODIGO}`;
+            const cuerpo = process.env.CUERPO || "(vacío)";
+            let causa = "Revisar los Logs del servicio en Render.";
+            if (cuerpo.includes('"db":"error"')) causa = "La base no contesta: revisar en Supabase si el proyecto está pausado (botón Restore).";
+            else if (cuerpo.includes('"migraciones":"error"')) causa = "Falló la migración del último deploy: en los Logs de Render buscar \"Alembic migration failed\".";
+
+            await github.rest.issues.create({
+              owner, repo,
+              title: process.env.TITULO,
+              assignees: [owner],
+              body: [
+                `La API de Core Tienda no contesta bien desde las ${hora} (3 intentos en ~5 minutos).`,
+                "",
+                `- Respuesta: ${codigo}`,
+                `- Detalle: \`${cuerpo}\``,
+                `- Qué mirar primero: ${causa}`,
+                "",
+                `Este aviso se cierra solo cuando vuelva. Corrida: ${corrida}`,
+              ].join("\n"),
+            });
