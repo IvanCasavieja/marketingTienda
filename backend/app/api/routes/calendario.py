@@ -277,10 +277,12 @@ async def traer_datos(
         .order_by(CalendarioTarea.orden, CalendarioTarea.created_at, CalendarioTarea.id)
     )).scalars():
         tareas.setdefault(t.barra_id, []).append(t)
+    # Retail Media es de la web de Tienda Inglesa: los otros mundos no tienen
+    # esa parte del calendario y no tienen por qué bajar sus posiciones.
     posiciones = {
         p.clave: list(p.posiciones)
         for p in (await db.execute(select(CalendarioPosicionesRM))).scalars()
-    }
+    } if mundo == MUNDO_POR_DEFECTO else {}
     return {
         "rev": actual,
         "mundo": mundo,

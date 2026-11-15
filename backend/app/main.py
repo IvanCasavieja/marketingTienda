@@ -4,6 +4,7 @@ import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -267,6 +268,12 @@ async def error_handling_middleware(request: Request, call_next):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "Internal server error"},
         )
+
+# Compresión. El calendario de un mundo viaja entero en cada cambio: 458 KB
+# medidos el 15/11/2026 que comprimidos son 23 KB. Lo que se manda de a
+# partes (text/event-stream: precios, análisis con IA) Starlette lo deja sin
+# comprimir solo, así sigue llegando en vivo. Va por dentro de CORS.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # CORS — registered last so it becomes the outermost middleware and injects
 # Access-Control-Allow-Origin on ALL responses, including 5xx errors (los
