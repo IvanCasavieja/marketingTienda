@@ -7,7 +7,7 @@ import {
   ChevronRight, Presentation, Globe, ShieldCheck, HelpCircle, X, Tag,
   Sun, Moon, ClipboardList, Bell, BellOff, Star, Activity, TrendingUp, TrendingDown, AlertTriangle, Check,
   FileSpreadsheet, BookOpen, Receipt, Landmark, ScanSearch, CalendarDays, CalendarClock,
-  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle,
+  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle, Camera,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import { useCalendario } from "@/lib/calendario/store";
 import { useAvisos } from "@/store/avisos";
+import { useLocalesDelMundo, usePendientesDeFotos } from "@/lib/colocacion/store";
 
 /** Al cerrar sesión, lo de esta persona no queda en el navegador: la copia del
  *  calendario (con sus tareas) y el mundo que eligió. Antes quien entraba
@@ -76,6 +77,13 @@ function notifIcon(tipo: string) {
       return <Chip tono="bg-brand-100 dark:bg-brand-500/20"><CalendarClock size={15} className="text-brand-600 dark:text-brand-300" /></Chip>;
     case "calendario_header":
       return <Chip tono="bg-violet-100 dark:bg-violet-500/20"><CalendarDays size={15} className="text-violet-600 dark:text-violet-300" /></Chip>;
+    // La foto de colocación: te la pidieron, o mandaron todos (promo); si te
+    // la devolvieron, en ámbar, como lo que hay que arreglar.
+    case "colocacion_pedido":
+    case "colocacion_completa":
+      return <Chip tono="bg-sky-100 dark:bg-sky-500/20"><Camera size={15} className="text-sky-600 dark:text-sky-300" /></Chip>;
+    case "colocacion_devuelta":
+      return <Chip tono="bg-amber-100 dark:bg-amber-500/15"><Camera size={15} className="text-amber-600 dark:text-amber-400" /></Chip>;
     default:
       return <Chip tono="bg-slate-100 dark:bg-slate-500/15"><Bell size={15} className="text-slate-500 dark:text-slate-400" /></Chip>;
   }
@@ -121,6 +129,13 @@ function resolverDestino(n: Notificacion): string | null {
   if (n.origen_tipo === "calendario_tarea" && n.origen_ref) {
     return `/calendario?accion=${encodeURIComponent(n.origen_ref.split(":")[0])}`;
   }
+  // Al local: le pidieron una foto o se la devolvieron. Va a su pantalla, no
+  // al calendario (que no ve).
+  if (n.origen_tipo === "colocacion_pedido" || n.origen_tipo === "colocacion_devuelta") return "/fotos";
+  // A promo: mandaron todos. Abre la acción en el tablero de fotos.
+  if (n.origen_tipo === "colocacion_completa" && n.origen_ref) {
+    return `/calendario?accion=${encodeURIComponent(n.origen_ref.split(":")[0])}&pestana=fotos`;
+  }
   return null;
 }
 
@@ -154,10 +169,30 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   // perm: undefined = visible para cualquier usuario logueado. Cada valor
   // corresponde 1:1 a un permiso realmente exigido por el backend (ver
   // require_permission en las rutas) — si no lo tiene, ni se muestra el link.
-  const nucleo = [
+  //
+  // Las fotos de colocación también van arriba: para un local es lo que le
+  // piden ("Fotos para subir", con cuántas le faltan); para quien edita el
+  // calendario, el resumen de todas ("Colocación"), solo en un mundo que
+  // tiene locales con usuario.
+  const elegido = useMundoElegido((st) => st.elegido);
+  const mundo = mundoEfectivo(currentUser, elegido);
+  const variosMundos = mundosDe(currentUser).length > 1;
+  const esLocal = (currentUser?.assigned_locales?.length ?? 0) > 0;
+  const puedeEditar = hasPerm("calendario.edit");
+  const fotosPendientes = usePendientesDeFotos((s) => s.pendientes) ?? 0;
+  const localesDelMundo = useLocalesDelMundo((s) => (mundo ? s.porMundo[mundo.clave] : undefined));
+  const nucleo: { href: string; label: string; icon: typeof CalendarDays; perm?: string; numero?: number }[] = [
+    ...(esLocal ? [{ href: "/fotos", label: t("sidebar.fotosParaSubir", "Fotos para subir"), icon: Camera, numero: fotosPendientes }] : []),
     { href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" },
     { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
-  ].filter((item) => hasPerm(item.perm));
+    ...((localesDelMundo?.length ?? 0) > 0
+      ? [{ href: "/colocacion", label: t("sidebar.colocacion", "Colocación"), icon: Camera, perm: "calendario.edit" }]
+      : []),
+  ].filter((item) => !item.perm || hasPerm(item.perm));
+  // Las herramientas se pliegan solo para quien tiene el núcleo del
+  // calendario. Un local (con "Fotos para subir" arriba) las sigue viendo
+  // abiertas, como siempre: ahí está "Mi pedido".
+  const plegable = hasPerm("calendario.view");
 
   // El orden de esta lista ES el orden de las herramientas (cada sección sale
   // donde aparece su primer link). Lo fijó Ivan el 23/09/2026: cenefas,
@@ -190,12 +225,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/ayuda",                   label: t("sidebar.guiaUso"),   icon: HelpCircle,      section: t("sidebar.guia") },
   ];
 
-  // El mundo va primero: decide qué herramientas existen. Después el permiso
-  // decide cuáles de esas puede usar la persona.
-  const elegido = useMundoElegido((st) => st.elegido);
-  const mundo = mundoEfectivo(currentUser, elegido);
-  const variosMundos = mundosDe(currentUser).length > 1;
-
+  // El mundo va primero (se calcula arriba): decide qué herramientas existen.
+  // Después el permiso decide cuáles de esas puede usar la persona.
   const nav = herramientasAll.filter((item) =>
     (!item.perm || hasPerm(item.perm)) && (!mundo || rutaEnMundo(item.href, mundo.clave)));
 
@@ -205,15 +236,36 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const [herramientasAbiertas, setHerramientasAbiertas] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     const guardado = localStorage.getItem("core-tienda-herramientas");
-    return guardado === null ? nucleo.length === 0 : guardado === "1";
+    return guardado === null ? !plegable : guardado === "1";
   });
-  const verHerramientas = herramientasAbiertas || enHerramienta || nucleo.length === 0;
+  const verHerramientas = herramientasAbiertas || enHerramienta || !plegable;
   function alternarHerramientas() {
     const abiertas = !verHerramientas;
     setHerramientasAbiertas(abiertas);
     localStorage.setItem("core-tienda-herramientas", abiertas ? "1" : "0");
   }
 
+
+  // Lo de las fotos de colocación: a un local, cuántas le faltan subir (se
+  // pregunta al entrar y cada 2 minutos con la pestaña a la vista); a quien
+  // edita el calendario, si el mundo tiene locales (una vez por mundo).
+  useEffect(() => {
+    if (!esLocal) return;
+    const contar = () => {
+      if (document.visibilityState === "visible") void usePendientesDeFotos.getState().contar();
+    };
+    contar();
+    const intervalo = window.setInterval(contar, 120_000);
+    document.addEventListener("visibilitychange", contar);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", contar);
+    };
+  }, [esLocal]);
+  const claveMundo = mundo?.clave;
+  useEffect(() => {
+    if (claveMundo && puedeEditar) useLocalesDelMundo.getState().pedir(claveMundo);
+  }, [claveMundo, puedeEditar]);
 
   // El número de la campanita se pregunta al entrar, cada minuto con la
   // pestaña a la vista y al volver a ella. Antes solo al entrar: una tarea
@@ -439,7 +491,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         <nav className="px-3 flex-1 overflow-y-auto pb-2" aria-label={MARCA}>
           {/* El núcleo: calendario y tareas */}
           <div className="space-y-1 pt-1">
-            {nucleo.map(({ href, label, icon: Icon }) => {
+            {nucleo.map(({ href, label, icon: Icon, numero }) => {
               const active = pathname === href || pathname.startsWith(href + "/");
               return (
                 <Link key={href} href={href} onClick={handleNavClick}
@@ -452,6 +504,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                   )}>
                   <Icon size={19} className={active ? "text-white" : "text-brand-600 dark:text-brand-400"} />
                   <span className="flex-1 truncate">{label}</span>
+                  {!!numero && (
+                    <span className={clsx(
+                      "flex h-6 min-w-[24px] items-center justify-center rounded-full px-1.5 text-xs font-bold tabular-nums",
+                      active ? "bg-white/25 text-white" : "bg-rose-500 text-white"
+                    )}>
+                      {numero > 9 ? "9+" : numero}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -460,7 +520,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           {/* Las herramientas: todo lo demás, plegable */}
           {nav.length > 0 && (
             <>
-              {nucleo.length > 0 && (
+              {plegable && (
                 <button
                   type="button"
                   onClick={alternarHerramientas}

@@ -119,6 +119,16 @@ async def lifespan(app: FastAPI):
         tareas_post_migracion.append(asyncio.create_task(run_calendario_avisos_loop()))
         logger.info("calendario_avisos: loop iniciado (cada 6 horas, solo avisos configurados)")
 
+        # La purga de las fotos de colocación, por lo mismo que la de cenefas:
+        # hace una pasada apenas arranca y en una base nueva su tabla todavía
+        # no existe. Borra las fotos de las acciones que terminaron hace más
+        # de COLOCACION_RETENCION_DIAS días (ver services/colocacion.py).
+        if settings.COLOCACION_RETENCION_DIAS > 0:
+            from app.services.colocacion import run_purga_colocacion_loop
+            tareas_post_migracion.append(asyncio.create_task(run_purga_colocacion_loop()))
+            logger.info("purga_colocacion: loop iniciado (diario, retencion %dd)",
+                        settings.COLOCACION_RETENCION_DIAS)
+
     # Lo que _run_migrations arranca al terminar, para poder cancelarlo al apagar.
     tareas_post_migracion: list[asyncio.Task] = []
     if mantenimiento:

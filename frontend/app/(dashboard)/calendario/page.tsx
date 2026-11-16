@@ -24,6 +24,8 @@ import { hasPermission } from "@/lib/permissions";
 /**
  * `/calendario?accion=br-xxx` abre la ficha de esa acción, en su mes. Es a
  * donde lleva tocar un aviso en la campanita o una tarea de "Mis tareas".
+ * Con `&pestana=fotos` la abre en las fotos de colocación (el aviso de que
+ * mandaron todos los locales, la vista general de Colocación).
  *
  * La acción puede ser de otro mundo que el que se está mirando: si no está en
  * lo cargado, se le pregunta al servidor en cuál está y se pasa a ese.
@@ -32,6 +34,7 @@ function AbrirAccionDeLaUrl() {
   const params = useSearchParams();
   const router = useRouter();
   const pedida = params.get("accion");
+  const pestana = params.get("pestana");
   const hecha = useRef<string | null>(null);
 
   useEffect(() => {
@@ -44,12 +47,12 @@ function AbrirAccionDeLaUrl() {
     void (async () => {
       // La búsqueda (en lo que ya hay, en el servidor, en otro mundo) está en
       // el store: la usa también "Copiar a otra fecha".
-      if (!(await useCalendario.getState().irAAccion(pedida))) {
+      if (!(await useCalendario.getState().irAAccion(pedida, pestana))) {
         toast.error("Esa acción ya no está en el calendario, o es de un mundo al que no tenés acceso.");
       }
       router.replace("/calendario");
     })();
-  }, [pedida, router]);
+  }, [pedida, pestana, router]);
 
   return null;
 }

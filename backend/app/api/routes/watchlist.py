@@ -29,7 +29,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_permission
+from app.models.local_asignacion import LocalAsignacion
 from app.models.user import User
+from app.services.colocacion import ORIGEN_COMPLETA, ORIGENES_DEL_LOCAL
 from app.models.watchlist import Watchlist
 from app.models.watchlist_item import WatchlistItem
 from app.models.watchlist_precio_historial import WatchlistPrecioHistorial
@@ -438,7 +440,7 @@ async def dejar_de_compartir(
 
 # ── Notificaciones ────────────────────────────────────────────────────────────
 
-def _notif_visible(user: User, n: Notificacion) -> bool:
+def _notif_visible(user: User, n: Notificacion, es_sucursal: bool = False) -> bool:
     """Re-chequea el permiso al leer, no solo al crear — si a un usuario le
     sacan analytics.view después de que ya se le generaron alertas de
     campañas (campaign_alerts_service.py), esas notificaciones viejas no
@@ -456,7 +458,27 @@ def _notif_visible(user: User, n: Notificacion) -> bool:
     # Lo mismo las tareas asignadas (calendario_tarea, desde el 12/11/2026).
     if n.origen_tipo in ("calendario_accion", "calendario_header", "calendario_aviso", "calendario_tarea"):
         return "calendario.view" in perms
+    # La foto de colocación (15/11/2026). Al local le llega por tener un local
+    # asignado: un login de sucursal no tiene ningún permiso que mirar (solo
+    # Don Tino), y sin esta regla caía en la de precios y no veía que le
+    # pidieron una foto. Si le sacan el local, deja de verlos.
+    if n.origen_tipo in ORIGENES_DEL_LOCAL:
+        return es_sucursal
+    # A quien pidió las fotos: el tablero pide poder editar el calendario.
+    if n.origen_tipo == ORIGEN_COMPLETA:
+        return "calendario.edit" in perms
     return "precios.search" in perms
+
+
+async def _es_sucursal_si_hace_falta(db: AsyncSession, user: User, notifs) -> bool:
+    """Si la persona tiene un local asignado, preguntado solo si entre sus
+    avisos hay alguno del local: la campanita se cuenta cada minuto y casi
+    nadie los tiene."""
+    if user.is_superuser or not any(n.origen_tipo in ORIGENES_DEL_LOCAL for n in notifs):
+        return False
+    return (await db.execute(
+        select(LocalAsignacion.id).where(LocalAsignacion.user_id == user.id).limit(1)
+    )).first() is not None
 
 
 @router.get("/notificaciones")
@@ -470,7 +492,9 @@ async def listar_notificaciones(
         .order_by(Notificacion.created_at.desc())
         .limit(50)
     )
-    notifs = [n for n in result.scalars().all() if _notif_visible(current_user, n)]
+    todas = result.scalars().all()
+    es_sucursal = await _es_sucursal_si_hace_falta(db, current_user, todas)
+    notifs = [n for n in todas if _notif_visible(current_user, n, es_sucursal)]
     return [
         {
             "id": n.id,
@@ -494,7 +518,9 @@ async def contar_no_leidas(
     result = await db.execute(
         select(Notificacion).where(Notificacion.user_id == current_user.id, Notificacion.leida == False)
     )
-    count = sum(1 for n in result.scalars().all() if _notif_visible(current_user, n))
+    todas = result.scalars().all()
+    es_sucursal = await _es_sucursal_si_hace_falta(db, current_user, todas)
+    count = sum(1 for n in todas if _notif_visible(current_user, n, es_sucursal))
     return {"count": count}
 
 
