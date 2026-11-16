@@ -51,8 +51,12 @@ class Settings(BaseSettings):
     # gratis es de 500 MB para TODA la plataforma; ahí está la cuenta.
     COLOCACION_RETENCION_DIAS: int = 30
     COLOCACION_TOPE_MB: int = 80
-    # El freno general (services/espacio.py): pasado este tamaño de la base
-    # ENTERA no se guardan más imágenes, de ninguna parte de la plataforma.
+    # El freno de espacio (app/services/espacio.py): si la base pasa de esto,
+    # no se guarda ninguna imagen nueva (las de las entregas, las fotos de
+    # colocación) y se avisa. Supabase gratis tiene 500 MB para TODA la
+    # plataforma y no se va a pagar más: el margen es para que lo demás (el
+    # calendario, las cenefas, los logins) nunca se quede sin lugar.
+    # 0 = sin freno.
     BASE_TOPE_MB: int = 400
 
     # El modelo de Anthropic que usan TODOS los agentes: Don Tino, Tinín,

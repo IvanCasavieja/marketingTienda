@@ -5,7 +5,7 @@ import {
   AlertTriangle, CheckCircle2, HelpCircle, Keyboard, Loader2, Mic, RotateCcw, Sparkles, Square,
 } from 'lucide-react'
 import {
-  iaApi, MAX_TEXTO_BRIEF, type BriefOrdenado, type CampoBrief, type TipoPieza,
+  iaApi, MAX_TEXTO_BRIEF, type BriefOrdenado, type CampoBrief, type TipoPiezaBrief as TipoPieza,
 } from '@/lib/api'
 import { extractErrorDetail } from '@/lib/errors'
 import { useDictado } from './useDictado'
