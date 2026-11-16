@@ -235,30 +235,120 @@ def test_la_sigla_mh_se_expande_en_codigo_no_solo_en_el_prompt():
     assert 'nombre ERP: "LOMO MEAT HOUSE"' in prompt and " MH" not in prompt
 
 
+
 # ---------------------------------------------------------------------------
-# TIENDA CASA por familia (Ivan y Ana, 2026-10-08)
+# La marca la dice la fuente: TI es TIENDA INGLESA, TIENDA CASA solo escrita,
+# y lo que no trae marca va sin marca y aparte (Ivan, 2026-10-15)
 # ---------------------------------------------------------------------------
 
-def test_la_familia_decide_entre_tienda_inglesa_y_tienda_casa():
-    """Gestión escribe "TI" para las dos marcas propias; 15 papeleras, alfombras,
-    felpudos y lámparas salieron como TIENDA INGLESA por aplicar "TI = TIENDA
-    INGLESA" sin mirar la familia. Ahora el comprador viaja con la fila, el
-    prompt lo marca y la salida se corrige en código."""
-    from app.services.cenefas.convertidor_ai import (
-        _STYLE_RULES, _build_prompt, es_familia_tienda_casa, marca_propia_por_familia,
-    )
+def test_ti_es_siempre_tienda_inglesa_y_tienda_casa_solo_si_la_fuente_lo_dice():
+    """Entre el 08/10 y el 15/10 la familia (COMPRADOR) decidía que en bazar,
+    decoración y textil "TI" era TIENDA CASA, y terminó poniéndole marca propia
+    a todo lo que entraba sin marca. Ivan, 15/10/2026: "TI es tienda inglesa,
+    no tienda casa"; "la etiqueta de tienda casa va únicamente en productos que
+    digan tienda casa, punto". Una papelera TI que sea TIENDA CASA la corrige
+    una persona a mano."""
+    from app.services.cenefas import convertidor_ai as c
 
-    for texto, donde in ((_STYLE_RULES, "_STYLE_RULES"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
-        assert "Papelera TIENDA CASA. 12 L" in texto, f"{donde} sigue con la papelera como TIENDA INGLESA"
-        assert "Papelera TIENDA INGLESA. 12 L" not in texto.replace('no "Papelera TIENDA INGLESA"', ""), f"{donde} muestra la papelera como TIENDA INGLESA"
-        assert "Cuadernola tapa dura TIENDA INGLESA" in texto, f"{donde} no deja la papelería como TIENDA INGLESA"
-    assert es_familia_tienda_casa("DECORACION") and es_familia_tienda_casa("BAZAR") and es_familia_tienda_casa("TEXTILES")
-    assert es_familia_tienda_casa("Decoración") and not es_familia_tienda_casa("LIBROS Y PAPELERIA") and not es_familia_tienda_casa("")
-    assert marca_propia_por_familia("Papelera TIENDA INGLESA. 12 L", "DECORACION") == "Papelera TIENDA CASA. 12 L"
-    assert marca_propia_por_familia("Cuadernola TIENDA INGLESA. 100 hojas", "LIBROS Y PAPELERIA") == "Cuadernola TIENDA INGLESA. 100 hojas"
-    assert marca_propia_por_familia("Bowl TIENDA CASA. 18 cm", "BAZAR") == "Bowl TIENDA CASA. 18 cm"
-    prompt = _build_prompt([{"row_id": 1, "codigo": "597792", "nombreArticulo": "PAPELERA TI 12L", "descripcionWeb": "", "comprador": "DECORACION"}])
-    assert "[BAZAR, DECORACIÓN O TEXTIL" in prompt
-    prompt = _build_prompt([{"row_id": 1, "codigo": "598729", "nombreArticulo": "CUADERNOLA TI", "descripcionWeb": "", "comprador": "LIBROS Y PAPELERIA"}])
-    assert "[BAZAR" not in prompt
+    for texto, donde in ((c._STYLE_RULES, "_STYLE_RULES"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
+        assert '"PAPELERA TI 12L" es "Papelera TIENDA INGLESA. 12 L"' in texto, f"{donde} no dice que TI es TIENDA INGLESA"
+        assert '"TI" nunca es TIENDA CASA' in texto, f"{donde} deja abierto que TI sea TIENDA CASA"
+        assert "Papelera TIENDA CASA" not in texto, f"{donde} sigue mostrando la papelera TI como TIENDA CASA"
+        assert "TIENDA CASA" in texto and "RAYLON" in texto, f"{donde} perdió el caso RAYLON"
+    for viejo in ("es_familia_tienda_casa", "marca_propia_por_familia", "_ETIQUETA_TIENDA_CASA"):
+        assert not hasattr(c, viejo), f"{viejo} sigue en convertidor_ai"
 
+    # La sigla se expande en código, como MH.
+    assert c.expandir_siglas_de_marca("PAPELERA TI 12L") == "PAPELERA TIENDA INGLESA 12L"
+    assert c.expandir_siglas_de_marca("HARINA T.I. 1K") == "HARINA TIENDA INGLESA 1K"
+    assert c.expandir_siglas_de_marca("Papelera TI. 12 L") == "Papelera TIENDA INGLESA. 12 L"
+    assert c.expandir_siglas_de_marca("TIJERA 20CM MANTITA") == "TIJERA 20CM MANTITA"
+    prompt = c._build_prompt([{"row_id": 1, "codigo": "597792", "nombreArticulo": "PAPELERA TI 12L",
+                               "descripcionWeb": "", "comprador": "DECORACION"}])
+    assert 'nombre ERP: "PAPELERA TIENDA INGLESA 12L"' in prompt and "[BAZAR" not in prompt
+
+    # De las marcas propias queda solo la que dice la fuente.
+    assert c.marca_propia_de_la_fuente("Papelera TIENDA CASA. 12 L", "PAPELERA TI 12L", "") == "Papelera TIENDA INGLESA. 12 L"
+    assert c.marca_propia_de_la_fuente("Bowl TIENDA INGLESA. 18 cm", "BOWL RYL 18CM", "Bowl Tienda Casa 18 cm") == "Bowl TIENDA CASA. 18 cm"
+    assert c.marca_propia_de_la_fuente("Bowl TIENDA CASA. 18 cm", "BOWL TIENDA CASA 18CM") == "Bowl TIENDA CASA. 18 cm"
+    assert c.marca_propia_de_la_fuente("Escoba TIENDA CASA", "ESCOBA T CASA") == "Escoba"
+
+
+def test_sin_marca_en_la_fuente_va_sin_marca_y_se_lista_aparte(monkeypatch):
+    """"Si la descripción o el nombre del artículo no tienen marca, decí 'che,
+    mirá que tenés estos productos que no tienen marca' y ponelos en un
+    listadito aparte". Probado ese día con las reglas viejas: "PAPELERA 12L"
+    salía "Papelera TIENDA CASA. 12 L" y "HARINA 0000 1K." salía "Harina 0000
+    TIENDA INGLESA. 1 kg"."""
+    import asyncio
+    import json as _json
+    from app.services.cenefas import convertidor_ai as c
+
+    for texto, donde in ((c._STYLE_RULES, "_STYLE_RULES"), (_CONOCIMIENTO, "_CONOCIMIENTO")):
+        assert '"PAPELERA 12L" es "Papelera. 12 L"' in texto, f"{donde} no dice que sin marca va sin marca"
+        assert "nunca se deduce" in texto.lower(), f"{donde} no prohíbe deducir la marca"
+    assert '"sinMarca"' in c._build_prompt([{"row_id": 1, "codigo": "1", "nombreArticulo": "X", "descripcionWeb": ""}])
+
+    # Sin marca propia en la fuente, se borra; una marca de verdad no se toca.
+    assert c.marca_propia_de_la_fuente("Papelera TIENDA CASA. 12 L", "PAPELERA 12L", "") == "Papelera. 12 L"
+    assert c.marca_propia_de_la_fuente("Harina 0000 TIENDA INGLESA. 1 kg", "HARINA 0000 1K.", "") == "Harina 0000. 1 kg"
+    assert c.marca_propia_de_la_fuente("Vino TIENDA INGLESA", "VINO TINTO 750ML") == "Vino"
+    assert c.marca_propia_de_la_fuente("Taza TIENDA INGLESA. 300 ml", "TAZA 300ML", "Una taza para ti") == "Taza. 300 ml"
+    assert c.marca_propia_de_la_fuente("Sartén TRAMONTINA. 24 cm", "SARTEN TRAMONTINA 24CM") == "Sartén TRAMONTINA. 24 cm"
+    assert not c.tiene_marca("Papelera. 12 L") and not c.tiene_marca("Harina 0000. 1 kg")
+    assert c.tiene_marca("Sartén TRAMONTINA. 24 cm")
+
+    respuesta = _json.dumps({
+        "descripciones": {"1": "Papelera TIENDA CASA. 12 L", "2": "Sartén TRAMONTINA. 24 cm",
+                          "3": "Lámpara LED. 40 W", "4": "Harina 0000 TIENDA INGLESA. 1 kg"},
+        "sinMarca": [3],
+    })
+
+    async def _falso_ask_claude(*_a, **_k):
+        return respuesta, 10, 10
+
+    async def _sin_log(*_a, **_k):
+        return None
+
+    monkeypatch.setattr(c, "_ask_claude", _falso_ask_claude)
+    monkeypatch.setattr(c, "log_ai_usage", _sin_log)
+    nombres = ["PAPELERA 12L", "SARTEN TRAMONTINA 24CM", "LAMPARA LED 40W", "HARINA 0000 TI 1K"]
+    items = [{"row_id": i, "codigo": str(i), "nombreArticulo": n, "descripcionWeb": ""} for i, n in enumerate(nombres)]
+    sug = {s["row_id"]: s for s in asyncio.run(c.generar_descripciones(items, None, 1))["suggestions"]}
+    assert (sug[0]["descripcion"], sug[0]["sin_marca"]) == ("Papelera. 12 L", True)       # lo dice el texto
+    assert (sug[1]["descripcion"], sug[1]["sin_marca"]) == ("Sartén TRAMONTINA. 24 cm", False)
+    assert sug[2]["sin_marca"] is True                                                      # lo dice Tinín ("LED" no es marca)
+    assert (sug[3]["descripcion"], sug[3]["sin_marca"]) == ("Harina 0000 TIENDA INGLESA. 1 kg", False)
+
+
+def test_el_unificador_tampoco_pone_marca_propia_que_la_fuente_no_trae(monkeypatch):
+    """El unificador comparte las reglas de estilo pero no pasaba por ninguna
+    red: las opciones de un grupo sin marca podían salir TIENDA CASA."""
+    import asyncio
+    import json as _json
+    from app.services.cenefas import convertidor_ai as c
+
+    respuesta = _json.dumps({"grupos": [{"filas": [1, 2], "grupo": "Papeleras", "opciones": [
+        {"texto": "Papelera TIENDA CASA. 12 o 20 L", "etiqueta": "Nombra los tamaños"},
+        {"texto": "Papelera TIENDA CASA. Distintas variedades", "etiqueta": "Distintas variedades"},
+    ]}]})
+
+    async def _falso_ask_claude(*_a, **_k):
+        return respuesta, 10, 10
+
+    async def _sin_log(*_a, **_k):
+        return None
+
+    monkeypatch.setattr(c, "_ask_claude", _falso_ask_claude)
+    monkeypatch.setattr(c, "log_ai_usage", _sin_log)
+
+    def _grupo(nombres):
+        items = [{"row_id": i, "codigo": str(i), "nombreArticulo": n, "descripcion": ""} for i, n in enumerate(nombres)]
+        return asyncio.run(c.detectar_grupos_unificables(items, None, 1))["grupos"][0]
+
+    sin_marca = _grupo(["PAPELERA 12L", "PAPELERA 20L"])
+    assert [o["texto"] for o in sin_marca["opciones"]] == ["Papelera. 12 o 20 L", "Papelera. Distintas variedades"]
+    assert sin_marca["descripcion"] == "Papelera. 12 o 20 L"
+
+    con_sigla = _grupo(["PAPELERA TI 12L", "PAPELERA TI 20L"])
+    assert con_sigla["descripcion"] == "Papelera TIENDA INGLESA. 12 o 20 L"
