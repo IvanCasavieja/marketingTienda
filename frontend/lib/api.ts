@@ -3,6 +3,11 @@ import type { Ga4FunnelResponse } from "@/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+/** La dirección completa de algo de la API (p. ej. el link del calendario para Outlook). */
+export function urlDeLaApi(ruta: string): string {
+  return `${BASE_URL}${ruta}`;
+}
+
 // ── Token storage ─────────────────────────────────────────────────────────────
 // On mobile browsers (especially Safari iOS) cross-site httpOnly cookies are
 // blocked by ITP / Private Browsing even when SameSite=None; Secure is set.
@@ -2025,6 +2030,10 @@ type CalendarioEscrito = { id?: string; rev?: number; yaExistia?: boolean };
 const ESPERA = { timeout: 15_000 };
 
 export const calendarioApi = {
+  /** El link privado del calendario para Outlook, Google o el iPhone (la ruta, sin la dirección de la API). */
+  linkDelCalendario: () => api.get<{ ruta: string }>("/calendario/ical/link", ESPERA),
+  /** Otro link: el anterior deja de andar. */
+  nuevoLinkDelCalendario: () => api.post<{ ruta: string }>("/calendario/ical/link/nuevo", {}, ESPERA),
   /** Todo el calendario, o `sinCambios` si sigue en la revisión `rev`. */
   traerDatos: (mundo: string, rev?: number | null) =>
     api.get<{ rev: number; mundo?: string; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]> }>(

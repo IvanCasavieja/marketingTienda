@@ -83,7 +83,7 @@ export const SEGUNDOS_ENTRE_REVISIONES = 15
 type Escrito = { rev?: number; enviadosAhora?: number; yaExistia?: boolean; avisados?: number }
 
 /** Como se mira el mes: la linea de tiempo de siempre, o una lista de tarjetas. */
-export type Vista = 'tiempo' | 'lista'
+export type Vista = 'tiempo' | 'lista' | 'equipo'
 /** Que parte del calendario se ve. 'todo' = las cuatro, una abajo de la otra. */
 export type Filtro = 'todo' | 'comercial' | 'envios' | 'retail' | 'header'
 

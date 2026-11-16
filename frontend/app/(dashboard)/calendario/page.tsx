@@ -14,11 +14,13 @@ import { HeaderHome } from "@/components/calendario/HeaderHome";
 import { EditorBarra } from "@/components/calendario/EditorBarra";
 import { PanelAccion } from "@/components/calendario/PanelAccion";
 import { VistaLista } from "@/components/calendario/VistaLista";
+import { VistaEquipo } from "@/components/calendario/VistaEquipo";
 import { calendarioApi } from "@/lib/api";
 import { mundoEfectivo, mundosDe, useMundoElegido, type SeccionDeMundo } from "@/lib/mundos";
 import { SEGUNDOS_ENTRE_REVISIONES, useCalendario } from "@/lib/calendario/store";
 import { claveDe } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
+import { hasPermission } from "@/lib/permissions";
 
 /**
  * `/calendario?accion=br-xxx` abre la ficha de esa acción, en su mes. Es a
@@ -117,6 +119,9 @@ export default function CalendarioPage() {
   const mundo = mundoEfectivo(user, elegido);
   const cantidadDeMundos = mundosDe(user).length;
   const vista = useCalendario(s => s.vista);
+  // La vista "Equipo" es de quien reparte tareas; si quedó elegida y ya no
+  // tiene el permiso, se ve el calendario.
+  const gestionaTareas = hasPermission(user, PERMISOS_CALENDARIO.tareas);
   const filtro = useCalendario(s => s.filtro);
   // De qué mundo es lo cargado en el store (la copia del navegador puede ser
   // de otro). Hasta que coincide con el elegido no se muestra nada: ni un
@@ -210,7 +215,9 @@ export default function CalendarioPage() {
       <BarraSuperior />
       {/* El id lo usa el boton "que entre el mes entero": mide la caja real
           de una seccion para calcular el zoom. */}
-      {vista === "lista" ? (
+      {vista === "equipo" && gestionaTareas ? (
+        <VistaEquipo />
+      ) : vista === "lista" ? (
         <VistaLista />
       ) : (
         <div id="calendario" className="space-y-5">
