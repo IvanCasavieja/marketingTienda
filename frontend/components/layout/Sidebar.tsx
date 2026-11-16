@@ -7,7 +7,7 @@ import {
   ChevronRight, Presentation, Globe, ShieldCheck, HelpCircle, X, Tag,
   Sun, Moon, ClipboardList, Bell, BellOff, Star, Activity, TrendingUp, TrendingDown, AlertTriangle, Check,
   FileSpreadsheet, BookOpen, Receipt, Landmark, ScanSearch, CalendarDays, CalendarClock,
-  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle, Camera,
+  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle, Camera, Layers,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
@@ -72,6 +72,8 @@ function notifIcon(tipo: string) {
       return <Chip tono="bg-amber-100 dark:bg-amber-500/15"><AlertTriangle size={15} className="text-amber-600 dark:text-amber-400" /></Chip>;
     case "calendario_tarea":
       return <Chip tono="bg-brand-100 dark:bg-brand-500/20"><ListChecks size={15} className="text-brand-600 dark:text-brand-300" /></Chip>;
+    case "calendario_entrega":
+      return <Chip tono="bg-amber-100 dark:bg-amber-500/15"><Layers size={15} className="text-amber-700 dark:text-amber-300" /></Chip>;
     case "calendario_aviso":
     case "calendario_accion":
       return <Chip tono="bg-brand-100 dark:bg-brand-500/20"><CalendarClock size={15} className="text-brand-600 dark:text-brand-300" /></Chip>;
@@ -136,6 +138,12 @@ function resolverDestino(n: Notificacion): string | null {
   if (n.origen_tipo === "colocacion_completa" && n.origen_ref) {
     return `/calendario?accion=${encodeURIComponent(n.origen_ref.split(":")[0])}&pestana=fotos`;
   }
+  // Una entrega (llegó una versión, la aprobaron, volvió con cambios) abre
+  // las entregas de su tarea, sobre el tablero: "acción:tarea:versión:evento".
+  if (n.origen_tipo === "calendario_entrega" && n.origen_ref) {
+    const tarea = n.origen_ref.split(":")[1];
+    return tarea ? `/entregas?tarea=${encodeURIComponent(tarea)}` : "/entregas";
+  }
   return null;
 }
 
@@ -185,6 +193,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     ...(esLocal ? [{ href: "/fotos", label: t("sidebar.fotosParaSubir", "Fotos para subir"), icon: Camera, numero: fotosPendientes }] : []),
     { href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" },
     { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
+    // Las piezas con la agencia, como un tablero de Trello (15/11/2026).
+    { href: "/entregas", label: t("sidebar.entregas", "Entregas"), icon: Layers, perm: "calendario.view" },
     ...((localesDelMundo?.length ?? 0) > 0
       ? [{ href: "/colocacion", label: t("sidebar.colocacion", "Colocación"), icon: Camera, perm: "calendario.edit" }]
       : []),

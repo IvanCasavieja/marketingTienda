@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from "axios";
 import type { Ga4FunnelResponse } from "@/types";
 import type { EstadoColocacion, EstadoVisibleColocacion } from "@/lib/colocacion/estados";
+import type { DetalleEntregas, Metricas, ResumenEntrega, Tarjeta, TipoDecision, TipoPieza } from "@/lib/calendario/entregas";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -322,7 +323,7 @@ export const chatApi = {
 // su tipo de pieza. Ver backend/app/services/brief_ia.py.
 // ---------------------------------------------------------------------------
 
-export type TipoPieza = "cenefa" | "mailing" | "banner_web" | "redes" | "otro";
+export type TipoPiezaBrief = "cenefa" | "mailing" | "banner_web" | "redes" | "otro";
 
 export interface CampoBrief {
   clave: string;
@@ -334,7 +335,7 @@ export interface CampoBrief {
 }
 
 export interface BriefOrdenado {
-  tipo: TipoPieza;
+  tipo: TipoPiezaBrief;
   tipoNombre: string;
   /** Título corto del pedido. */
   resumen: string;
@@ -353,7 +354,7 @@ export interface BriefOrdenado {
 export const MAX_TEXTO_BRIEF = 4000;
 
 export const iaApi = {
-  ordenarBrief: (texto: string, tipo: TipoPieza) =>
+  ordenarBrief: (texto: string, tipo: TipoPiezaBrief) =>
     // La IA tarda unos segundos: el tope general de axios no alcanza siempre.
     api.post<BriefOrdenado>("/ia/brief/ordenar", { texto, tipo }, { timeout: 60_000 }),
 };
@@ -2280,4 +2281,54 @@ export const colocacionApi = {
    *  "private, immutable"), así que la segunda vez no viaja. */
   imagen: (fotoId: number, tamano: "mini" | "grande") =>
     api.get<Blob>(`/colocacion/fotos/${fotoId}`, { params: { tamano }, responseType: "blob" }),
+};
+
+// ---------------------------------------------------------------------------
+// Entregas por fases (ver backend/app/api/routes/entregas.py)
+// ---------------------------------------------------------------------------
+// La agencia sube versiones de una pieza y los aprobadores las aprueban o las
+// devuelven con marcas. Las imágenes NO vienen con la tarea: se piden de a
+// una (`imagen`), con la sesión, y el front arma una URL local.
+
+/** Una subida con fotos desde el teléfono puede tardar: más que el resto del calendario. */
+const ESPERA_SUBIDA = { timeout: 180_000 };
+
+export const entregasApi = {
+  /** Que la tarea lleve entregas (o cambiarle el brief, las fases o los aprobadores). */
+  configurar: (tareaId: string, datos: {
+    tipoPieza: TipoPieza; brief: Record<string, string | number>; aprobadores: number[];
+    fases: { id?: string | null; nombre: string }[];
+  }) =>
+    api.put<CalendarioEscrito & { entrega: ResumenEntrega; avisados?: number }>(
+      `/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, datos, ESPERA),
+  quitar: (tareaId: string) =>
+    api.delete<CalendarioEscrito>(`/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, ESPERA),
+  detalle: (tareaId: string) =>
+    api.get<DetalleEntregas>(`/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, ESPERA),
+  /** Una ronda, con sus imágenes (y las miniaturas) en el mismo pedido. */
+  entregar: (tareaId: string, form: FormData, onProgreso?: (fraccion: number) => void) =>
+    api.post<CalendarioEscrito & { ronda: number; entrega: ResumenEntrega }>(
+      `/calendario/tareas/${encodeURIComponent(tareaId)}/versiones`, form, {
+        ...ESPERA_SUBIDA,
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (e) => { if (onProgreso && e.total) onProgreso(e.loaded / e.total); },
+      }),
+  decidir: (versionId: string, datos: {
+    decision: TipoDecision; comentario?: string | null;
+    marcas: { imagenId: string; x: number; y: number; texto: string }[];
+  }) =>
+    api.post<CalendarioEscrito & { resultado: string; entrega: ResumenEntrega }>(
+      `/calendario/versiones/${encodeURIComponent(versionId)}/decision`, datos, ESPERA),
+  tildarMarca: (marcaId: string, corregida: boolean) =>
+    api.patch<{ id: string; corregida: boolean }>(`/calendario/marcas/${encodeURIComponent(marcaId)}`, { corregida }, ESPERA),
+  imagen: (imagenId: string, tam: "mini" | "grande") =>
+    api.get<Blob>(`/calendario/entregas/imagenes/${encodeURIComponent(imagenId)}`, {
+      params: { tam }, responseType: "blob", timeout: 60_000,
+    }),
+  /** El tablero del mundo, o `sinCambios` si sigue en la revisión `rev`. */
+  tablero: (mundo: string, rev?: number | null, dias = 90) =>
+    api.get<{ rev: number; sinCambios?: boolean; tarjetas?: Tarjeta[]; metricas?: Metricas }>(
+      "/calendario/entregas", { ...ESPERA, params: rev == null ? { mundo, dias } : { mundo, rev, dias } }),
+  misEntregas: () =>
+    api.get<{ paraRevisar: Tarjeta[]; conCambios: Tarjeta[] }>("/calendario/mis-entregas", ESPERA),
 };

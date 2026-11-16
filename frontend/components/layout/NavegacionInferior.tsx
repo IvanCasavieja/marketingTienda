@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, CalendarDays, Camera, ClipboardList, ListChecks, Menu } from "lucide-react";
+import { Bell, CalendarDays, Camera, ClipboardList, Layers, ListChecks, Menu } from "lucide-react";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -12,8 +12,8 @@ import { usePendientesDeFotos } from "@/lib/colocacion/store";
 import { mundoEfectivo, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 
 /**
- * La barra de abajo del teléfono: el calendario, mis tareas y el resto del
- * menú, donde llega el pulgar. Son los mismos links del núcleo del menú
+ * La barra de abajo del teléfono: el calendario, mis tareas, las entregas y
+ * el resto del menú, donde llega el pulgar. Son los mismos links del núcleo del menú
  * lateral, con el mismo permiso; quien no ve el calendario no tiene barra.
  * Los avisos van con su número, como en la campanita: antes solo se veían
  * abriendo el menú.
@@ -38,6 +38,7 @@ export default function NavegacionInferior({ onMenu, onAvisos }: { onMenu: () =>
     ? [
       { href: "/calendario", label: t("sidebar.calendario"), Icono: CalendarDays },
       { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), Icono: ListChecks },
+      { href: "/entregas", label: t("sidebar.entregas", "Entregas"), Icono: Layers },
     ]
     : [
       { href: "/fotos", label: t("sidebar.fotos", "Fotos"), Icono: Camera, numero: fotos },

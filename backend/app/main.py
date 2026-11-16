@@ -128,6 +128,15 @@ async def lifespan(app: FastAPI):
             tareas_post_migracion.append(asyncio.create_task(run_purga_colocacion_loop()))
             logger.info("purga_colocacion: loop iniciado (diario, retencion %dd)",
                         settings.COLOCACION_RETENCION_DIAS)
+        # Las imágenes de las entregas se borran a los 30 días de terminada
+        # la acción (las de la versión final, a los 120): la base es de 500
+        # MB para toda la plataforma, ver app/models/entregas.py. Acá y no
+        # antes, por lo mismo que la purga de cenefas: hace una pasada apenas
+        # arranca.
+        from app.services.entregas import DIAS_DE_RETENCION, DIAS_DE_RETENCION_FINAL, run_purga_entregas_loop
+        tareas_post_migracion.append(asyncio.create_task(run_purga_entregas_loop()))
+        logger.info("purga_entregas: loop iniciado (diario, retencion %dd / final %dd)",
+                    DIAS_DE_RETENCION, DIAS_DE_RETENCION_FINAL)
 
     # Lo que _run_migrations arranca al terminar, para poder cancelarlo al apagar.
     tareas_post_migracion: list[asyncio.Task] = []
