@@ -1,5 +1,6 @@
 """Levanta el backend con la API de Anthropic SIMULADA, para ver andando a Don
-Tino con el calendario y el dictado de briefs sin una clave y sin gastar.
+Tino con el calendario, el dictado de briefs y la revisión de piezas de las
+entregas sin una clave y sin gastar.
 
 Solo para una PC de trabajo. Se niega a arrancar:
 - en el servidor desplegado (Render o Azure: `settings.es_servidor_desplegado`);
@@ -47,7 +48,8 @@ def main() -> None:
     from app.services import ia_cliente
 
     ia_cliente.cliente_anthropic = lambda: ia_simulada.cliente_con(ia_simulada.SimuladorDeDonTino())
-    print("IA SIMULADA: Don Tino y el dictado contestan con reglas, sin la API real.", flush=True)
+    print("IA SIMULADA: Don Tino, el dictado y la revisión de piezas contestan con reglas, sin la API real.",
+          flush=True)
 
     import uvicorn
     uvicorn.run("app.main:app", host="127.0.0.1", port=args.port)

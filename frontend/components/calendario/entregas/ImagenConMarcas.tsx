@@ -1,12 +1,14 @@
 'use client'
 
 import { useRef } from 'react'
-import { Check, ImageOff } from 'lucide-react'
+import { Check, ImageOff, Sparkles } from 'lucide-react'
 import { useImagen, type Tam } from './useImagen'
 
 /** Cómo se ve un pin: el que se está poniendo ahora, un cambio pedido, un
- *  ajuste ("aprobado con cambios") o uno que la agencia ya corrigió. */
-export type TonoPin = 'nuevo' | 'cambio' | 'ajuste' | 'corregida'
+ *  ajuste ("aprobado con cambios"), uno que la agencia ya corrigió, o lo
+ *  que sugiere la IA (no es una marca: es dónde vio algo; lo ve solo quien
+ *  aprueba, y recién es marca si lo convierte). */
+export type TonoPin = 'nuevo' | 'cambio' | 'ajuste' | 'corregida' | 'ia'
 
 export type Pin = { clave: string; numero: number; x: number; y: number; tono: TonoPin; texto?: string }
 
@@ -15,6 +17,7 @@ const TONO: Record<TonoPin, string> = {
   cambio: 'bg-rose-600 text-white ring-white',
   ajuste: 'bg-amber-500 text-slate-950 ring-white',
   corregida: 'bg-emerald-600 text-white ring-white',
+  ia: 'bg-violet-600 text-white ring-violet-200 dark:ring-violet-300/60',
 }
 
 /**
@@ -85,15 +88,21 @@ export function ImagenConMarcas({
           <button
             key={p.clave}
             type="button"
+            data-pin={p.clave}
             onClick={e => { e.stopPropagation(); onElegirPin?.(p.clave) }}
             title={p.texto}
-            aria-label={`Marca ${p.numero}${p.texto ? `: ${p.texto}` : ''}`}
+            aria-label={p.tono === 'ia'
+              ? `Lo que vio la IA${p.texto ? `: ${p.texto}` : ''}`
+              : `Marca ${p.numero}${p.texto ? `: ${p.texto}` : ''}`}
             style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
             className={`absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-bold shadow-md ring-2 transition-transform ${TONO[p.tono]} ${
               elegido === p.clave ? 'z-10 scale-125 ring-4' : 'hover:scale-110'
             }`}
           >
-            {p.tono === 'corregida' ? <Check className="h-4 w-4" strokeWidth={3} /> : p.numero}
+            {/* La sugerencia de la IA late, para encontrarla en la pieza. */}
+            {p.tono === 'ia' && <span className="absolute inset-0 animate-ping rounded-full bg-violet-500/40" aria-hidden />}
+            {p.tono === 'corregida' ? <Check className="h-4 w-4" strokeWidth={3} />
+              : p.tono === 'ia' ? <Sparkles className="relative h-4 w-4" /> : p.numero}
           </button>
         ))}
       </div>

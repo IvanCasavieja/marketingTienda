@@ -1,15 +1,45 @@
 'use client'
 
-import { useState } from 'react'
-import { Check, CheckCheck, Columns2, Loader2, MousePointerClick, RotateCcw, ShieldCheck, Trash2, X } from 'lucide-react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import { Check, CheckCheck, Columns2, Loader2, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import {
   fechaYHora, type DetalleEntregas, type Marca, type TipoDecision, type Version,
 } from '@/lib/calendario/entregas'
+import {
+  marcaDesdeObservacion, tieneLugar, type ObservacionIA, type RevisionIA,
+} from '@/lib/calendario/revision-ia'
 import { ImagenConMarcas, Miniatura, type Pin } from './ImagenConMarcas'
+import { PanelRevisionIA } from './PanelRevisionIA'
 
-type Nueva = { clave: string; imagenId: string; x: number; y: number; texto: string }
+/** Una marca que se está poniendo. `observacionIA`: si salió de lo que vio la IA. */
+type Nueva = { clave: string; imagenId: string; x: number; y: number; texto: string; observacionIA?: string }
+
+// Mientras la IA mira la pieza, se vuelve a preguntar cada tanto: una
+// revisión tarda entre unos segundos y un par de minutos. Después de eso, si
+// sigue "pendiente", se deja de preguntar (el servidor la da por perdida a
+// los 10 minutos y no muestra nada).
+const CADA_MS = 5_000
+const MAX_VUELTAS = 36
+
+// La notebook (lg de Tailwind): la imagen a la izquierda y todo lo demás a la
+// derecha. Ahí lo de la IA va arriba de la columna de la derecha, al lado de
+// la imagen: arriba de la imagen la empujaba media pantalla para abajo y el
+// pin de algo que está abajo en la pieza (los legales) quedaba fuera de la
+// vista. En el teléfono, una columna sola: va arriba de la imagen.
+const NOTEBOOK = '(min-width: 1024px)'
+function useEsNotebook(): boolean {
+  return useSyncExternalStore(
+    avisar => {
+      const m = window.matchMedia(NOTEBOOK)
+      m.addEventListener('change', avisar)
+      return () => m.removeEventListener('change', avisar)
+    },
+    () => window.matchMedia(NOTEBOOK).matches,
+    () => false,
+  )
+}
 
 function detalleDeError(e: unknown): string | null {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
@@ -50,6 +80,53 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const [ladoMovil, setLadoMovil] = useState<'anterior' | 'nueva'>('nueva')
   const [enviando, setEnviando] = useState<TipoDecision | null>(null)
   const [confirmandoSalir, setConfirmandoSalir] = useState(false)
+  // Lo que encontró la IA. Solo se pide si el servidor dice que esta persona
+  // lo puede ver (aprobadores y quien gestiona; nunca quien entrega).
+  const verIA = !!detalle.puedo.verRevisionIA
+  const [revisionIA, setRevisionIA] = useState<RevisionIA | null>(null)
+  const [obsElegida, setObsElegida] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!verIA) return
+    let vivo = true
+    let vueltas = 0
+    let reloj: ReturnType<typeof setTimeout> | null = null
+    const pedir = () => {
+      entregasApi.revisionIA(version.id)
+        .then(({ data }) => {
+          if (!vivo) return
+          setRevisionIA(data)
+          if (data.estado === 'pendiente' && ++vueltas < MAX_VUELTAS) reloj = setTimeout(pedir, CADA_MS)
+          else if (data.estado === 'pendiente') setRevisionIA({ estado: 'nada', observaciones: [] })
+        })
+        // Si no se puede traer, no se muestra nada: la revisión sigue como siempre.
+        .catch(() => { if (vivo) setRevisionIA(null) })
+    }
+    pedir()
+    return () => { vivo = false; if (reloj) clearTimeout(reloj) }
+  }, [verIA, version.id])
+
+  const esNotebook = useEsNotebook()
+
+  // Al tocar una observación, que se vea el pin: si quedó fuera de la vista
+  // (en el teléfono la lista está arriba de la imagen), se lleva al medio. Se
+  // busca unas veces porque si es de otra imagen, el pin aparece cuando carga.
+  useEffect(() => {
+    if (!obsElegida) return
+    let intentos = 0
+    let reloj: ReturnType<typeof setTimeout>
+    const buscar = () => {
+      const pin = document.querySelector(`[data-pin="ia-${obsElegida}"]`)
+      if (!pin) { if (++intentos < 15) reloj = setTimeout(buscar, 100); return }
+      const caja = pin.getBoundingClientRect()
+      const vista = pin.closest('.overflow-y-auto')?.getBoundingClientRect()
+      if (vista && (caja.top < vista.top || caja.bottom > vista.bottom)) {
+        pin.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }
+    }
+    reloj = setTimeout(buscar, 50)
+    return () => clearTimeout(reloj)
+  }, [obsElegida])
 
   const ordenActiva = version.imagenes.find(i => i.id === activa)?.orden ?? 0
   const imagenAnterior = anterior
@@ -60,7 +137,18 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const pinesNuevos: Pin[] = nuevas.flatMap((n, i) => (n.imagenId === activa
     ? [{ clave: n.clave, numero: numeroDe(i), x: n.x, y: n.y, tono: 'nuevo' as const, texto: n.texto }]
     : []))
-  const pinesActuales = [...pinesDe(version.marcas, activa), ...pinesNuevos]
+  // Las observaciones de la IA que ya se hicieron marca en esta revisión: id -> número de la marca.
+  const convertidas: Record<string, number> = Object.fromEntries(
+    nuevas.flatMap((n, i) => (n.observacionIA ? [[n.observacionIA, numeroDe(i)]] : [])),
+  )
+  // Dónde vio la IA lo que se tocó en la lista: un pin violeta que no es una
+  // marca. Si ya se hizo marca, se ve la marca y no hace falta.
+  const observacion = revisionIA?.observaciones.find(o => o.id === obsElegida) ?? null
+  const pinIA: Pin[] = observacion && observacion.imagenId === activa && observacion.estado !== 'marca'
+    && convertidas[observacion.id] == null && tieneLugar(observacion, version.imagenes)
+    ? [{ clave: `ia-${observacion.id}`, numero: 0, x: observacion.x as number, y: observacion.y as number, tono: 'ia', texto: observacion.texto }]
+    : []
+  const pinesActuales = [...pinesDe(version.marcas, activa), ...pinesNuevos, ...pinIA]
   const hayMarcas = nuevas.length > 0
   const hayAlgo = hayMarcas || comentario.trim() !== ''
   const sinTexto = nuevas.findIndex(n => !n.texto.trim())
@@ -69,14 +157,58 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const ajustesPendientes = version.marcas.filter(m => m.tipo === 'ajuste')
   const respaldoDe = detalle.puedo.comoRespaldo ? detalle.resumen.aprobadorDeTurno : null
 
-  function poner(x: number, y: number) {
+  function hayLugarParaOtraMarca(): boolean {
     if (nuevas.length + version.marcas.length >= detalle.limites.marcas) {
       toast.error(`Son demasiadas marcas en una ronda (hasta ${detalle.limites.marcas}).`)
-      return
+      return false
     }
-    const clave = `n${Date.now()}${Math.random().toString(36).slice(2, 6)}`
+    return true
+  }
+
+  const nuevaClave = () => `n${Date.now()}${Math.random().toString(36).slice(2, 6)}`
+
+  function poner(x: number, y: number) {
+    if (!hayLugarParaOtraMarca()) return
+    const clave = nuevaClave()
     setNuevas(prev => [...prev, { clave, imagenId: activa, x, y, texto: '' }])
     setElegido(clave)
+  }
+
+  /** Tocar una observación de la IA: se va a su imagen y se ve dónde la vio. */
+  function elegirObservacion(o: ObservacionIA) {
+    if (obsElegida === o.id) { setObsElegida(null); return }
+    setObsElegida(o.id)
+    if (o.imagenId && version.imagenes.some(i => i.id === o.imagenId)) setActiva(o.imagenId)
+    // Comparando en el teléfono, la que tiene el pin es la de ahora.
+    setLadoMovil('nueva')
+    setElegido(`ia-${o.id}`)
+  }
+
+  /** "Hacer marca": una marca normal, del aprobador, con el texto de la IA
+   *  (que puede corregir antes de mandar). Se manda con la decisión. */
+  function convertir(o: ObservacionIA) {
+    if (!hayLugarParaOtraMarca()) return
+    const m = marcaDesdeObservacion(o, version.imagenes, activa)
+    const clave = nuevaClave()
+    setNuevas(prev => [...prev, { clave, ...m, observacionIA: o.id }])
+    setActiva(m.imagenId)
+    setObsElegida(null)
+    setElegido(clave)
+  }
+
+  function deshacerConversion(o: ObservacionIA) {
+    setNuevas(prev => prev.filter(n => n.observacionIA !== o.id))
+  }
+
+  /** Descartar queda guardado ya (el siguiente de la cadena la ve descartada). */
+  async function descartarObservacion(o: ObservacionIA, descartada: boolean) {
+    try {
+      const { data } = await entregasApi.descartarObservacionIA(version.id, o.id, descartada)
+      setRevisionIA(prev => (prev ? { ...prev, observaciones: prev.observaciones.map(x => (x.id === o.id ? data : x)) } : prev))
+      if (descartada && obsElegida === o.id) setObsElegida(null)
+    } catch (e) {
+      toast.error(detalleDeError(e) ?? 'No se pudo guardar. Probá de nuevo.')
+    }
   }
 
   async function decidir(decision: TipoDecision) {
@@ -90,7 +222,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
       const { data } = await entregasApi.decidir(version.id, {
         decision,
         comentario: comentario.trim() || null,
-        marcas: nuevas.map(n => ({ imagenId: n.imagenId, x: n.x, y: n.y, texto: n.texto.trim() })),
+        marcas: nuevas.map(n => ({
+          imagenId: n.imagenId, x: n.x, y: n.y, texto: n.texto.trim(), observacionIA: n.observacionIA ?? null,
+        })),
       })
       const texto = decision === 'cambios'
         ? 'Listo: volvió a la agencia con tus marcas.'
@@ -116,11 +250,29 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
       pines={pinesActuales}
       onTocar={enviando ? undefined : poner}
       elegido={elegido}
-      onElegirPin={setElegido}
+      onElegirPin={clave => {
+        setElegido(clave)
+        // Tocar una marca hecha desde la IA no cambia la lista; tocar otra cosa
+        // que no sea el pin de la IA deja de mostrarlo.
+        if (!clave.startsWith('ia-')) setObsElegida(null)
+      }}
       claseImagen={comparar ? 'max-h-[55vh]' : 'max-h-[62vh]'}
       etiqueta={`Ronda ${version.ronda}, imagen ${ordenActiva + 1}`}
     />
   )
+  const panelIA = verIA ? (
+    <PanelRevisionIA
+      revision={revisionIA}
+      imagenes={version.imagenes}
+      elegida={obsElegida}
+      convertidas={convertidas}
+      deshabilitado={!!enviando}
+      onElegir={elegirObservacion}
+      onConvertir={convertir}
+      onDeshacer={deshacerConversion}
+      onDescartar={descartarObservacion}
+    />
+  ) : null
   const imagenVieja = imagenAnterior && anterior ? (
     <ImagenConMarcas
       imagenId={imagenAnterior}
@@ -165,6 +317,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             a la vista mientras se toca; en el teléfono, una abajo de la otra. */}
         <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-6 lg:space-y-0">
           <div className="space-y-3">
+        {!esNotebook && panelIA}
         {comparar && imagenVieja ? (
           <>
             {/* En el teléfono no entran dos lado a lado: pestañas. */}
@@ -221,6 +374,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
           </div>
 
           <div className="space-y-4">
+        {esNotebook && panelIA}
         {(version.comentario || version.link) && (
           <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
             {version.comentario && <p className="whitespace-pre-line">«{version.comentario}»</p>}
@@ -278,13 +432,22 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                 <button
                   type="button"
                   onClick={() => { setActiva(n.imagenId); setElegido(n.clave) }}
-                  className="mt-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white"
-                  aria-label={`Ver la marca ${numeroDe(i)} en la imagen`}
+                  className="relative mt-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white"
+                  aria-label={`Ver la marca ${numeroDe(i)} en la imagen${n.observacionIA ? ' (la armaste con lo que vio la IA)' : ''}`}
+                  title={n.observacionIA ? 'La armaste con lo que vio la IA: es tu marca, corregila si hace falta' : undefined}
                 >
                   {numeroDe(i)}
+                  {/* Una marca hecha con lo que vio la IA: para quien revisa,
+                      no para la agencia (a ella le llega como una marca más). */}
+                  {n.observacionIA && (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 ring-2 ring-white dark:ring-slate-900" aria-hidden>
+                      <Sparkles className="h-2.5 w-2.5" />
+                    </span>
+                  )}
                 </button>
                 <textarea
-                  autoFocus={i === nuevas.length - 1}
+                  // La que viene de la IA ya trae texto: sin abrir el teclado.
+                  autoFocus={i === nuevas.length - 1 && !n.observacionIA}
                   value={n.texto}
                   onFocus={() => setElegido(n.clave)}
                   onChange={e => setNuevas(prev => prev.map(x => (x.clave === n.clave ? { ...x, texto: e.target.value } : x)))}

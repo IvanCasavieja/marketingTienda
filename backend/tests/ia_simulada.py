@@ -15,6 +15,8 @@ Dos usos:
   herramientas por palabras clave y arma la respuesta con lo que ellas
   devolvieron de la base de verdad. Sirve para probar permisos, links y
   pantallas; NO dice nada de la calidad de las respuestas del modelo real.
+  También contesta la revisión de piezas de las entregas, con observaciones
+  DE EJEMPLO armadas con el pedido (no mira la imagen: ver `_revision`).
 
 No es un test (no empieza con test_): pytest no lo junta solo.
 """
@@ -124,6 +126,8 @@ class SimuladorDeDonTino:
 
     def __call__(self, cuerpo: dict) -> dict:
         formato = (cuerpo.get("output_config") or {}).get("format")
+        if formato and "observaciones" in (formato.get("schema") or {}).get("properties", {}):
+            return self._revision(cuerpo)
         if formato:
             return self._brief(cuerpo)
         return self._chat(cuerpo)
@@ -310,3 +314,43 @@ class SimuladorDeDonTino:
         salida = {"resumen": resumen, "campos": campos,
                   "notas": f"Para {campana.group(1)}." if campana else None, "dudas": dudas}
         return mensaje([texto(json.dumps(salida, ensure_ascii=False))], entrada=820, salida=160)
+
+    # --- Revisión de piezas ------------------------------------------------------
+
+    def _revision(self, cuerpo: dict) -> dict:
+        """Observaciones DE EJEMPLO para ver la pantalla del aprobador: no mira
+        la imagen (no hay modelo). Siempre las mismas tres, armadas con el
+        pedido: una de ortografía sobre el título («OFERAT»), una de precio
+        si el pedido trae precio y una de legales si los trae. La imagen de
+        prueba del recorrido se dibuja con esos errores para que coincidan.
+        Si el pedido dice "sin observaciones", devuelve la lista vacía; si
+        dice "falla la ia" (por ejemplo, en el comentario de la agencia), la
+        API simulada se cae, para ver que la entrega sigue igual."""
+        bloques = cuerpo["messages"][-1]["content"]
+        tamanos = [tuple(int(n) for n in m.groups()) for b in bloques if b.get("type") == "text"
+                   for m in [re.match(r"Imagen \d+ de \d+ \((\d+) × (\d+) px\):", b["text"])] if m]
+        pedido = next(b["text"] for b in reversed(bloques) if b.get("type") == "text")
+        ancho, alto = tamanos[0] if tamanos else (1000, 1000)
+        if "falla la ia" in _norm(pedido):
+            raise ConnectionError("IA simulada caída a propósito")
+        if "sin observaciones" in _norm(pedido):
+            return mensaje([pensamiento(), texto(json.dumps({"observaciones": []}))], entrada=4_300, salida=900)
+        obs = [{
+            "tipo": "ortografia", "gravedad": "importante", "imagen": 1,
+            "texto": "Dice «OFERAT»: debería ser «OFERTA».",
+            "x": round(ancho * 0.30), "y": round(alto * 0.12),
+        }]
+        if (precio := re.search(r"^- Precio: (.+)$", pedido, re.M)):
+            obs.append({
+                "tipo": "precio_vigencia", "gravedad": "importante", "imagen": 1,
+                "texto": f"El precio de la pieza no es el del pedido: el pedido dice {precio.group(1).strip()}.",
+                "x": round(ancho * 0.28), "y": round(alto * 0.52),
+            })
+        if re.search(r"^- Legales: ", pedido, re.M):
+            obs.append({
+                "tipo": "legal", "gravedad": "a_revisar", "imagen": 1,
+                "texto": "No se ven los legales que pide el pedido. Deberían ir abajo.",
+                "x": round(ancho * 0.5), "y": round(alto * 0.94),
+            })
+        return mensaje([pensamiento(), texto(json.dumps({"observaciones": obs}, ensure_ascii=False))],
+                       entrada=4_800, salida=1_400)

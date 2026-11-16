@@ -73,6 +73,27 @@ class Settings(BaseSettings):
     # setear por env var en Render sin desplegar código.
     MODELO_IA: str = "claude-sonnet-5"
 
+    # La IA que revisa las piezas de las entregas antes que el aprobador
+    # (app/services/revision_ia.py): ortografía, logo de otro mundo, falta del
+    # legal, precio o vigencia distintos al pedido, QR ilegible.
+    #
+    # IA_REVISION_ACTIVA=false la apaga sin tocar código: no se llama a la IA
+    # y la pantalla no muestra nada (ni lo que ya se había revisado).
+    IA_REVISION_ACTIVA: bool = True
+    # Un modelo propio y no MODELO_IA: acá todo depende de LEER la imagen
+    # (letra chica de legales, una tilde, un precio), y la guía de Anthropic
+    # recomienda Opus 5.5 para visión: lee imágenes con más precisión que
+    # Sonnet 5 en cualquier nivel de esfuerzo. Cuesta el doble por token
+    # (US$4/US$20 por millón contra US$2/US$10), unos centavos por versión:
+    # ver el docstring del servicio. Si hay que bajar el costo, se cambia por
+    # env var sin desplegar (claude-sonnet-5 acepta el mismo pedido).
+    MODELO_IA_REVISION: str = "claude-opus-5-5"
+    # Cuántas versiones se le mandan a la IA por día (hora de Uruguay), entre
+    # todos. Pasado el tope, las nuevas no se revisan (y no se muestra nada):
+    # es el freno si algo se dispara. Con el uso esperado (unas 4 versiones
+    # por día hábil) no se llega nunca.
+    IA_REVISION_POR_DIA: int = 200
+
     # Demo mode — cuando True, sync_metrics retorna inmediatamente sin llamar APIs externas
     DEMO_MODE: bool = False
 

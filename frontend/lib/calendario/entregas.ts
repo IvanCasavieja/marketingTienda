@@ -104,7 +104,11 @@ export type DetalleEntregas = {
   fases: FaseDetalle[]
   /** id (como texto) -> nombre */
   personas: Record<string, string>
-  puedo: { entregar: boolean; decidir: boolean; comoRespaldo: boolean; configurar: boolean; tildarMarcas: boolean }
+  puedo: {
+    entregar: boolean; decidir: boolean; comoRespaldo: boolean; configurar: boolean; tildarMarcas: boolean
+    /** Si ve lo que encontró la IA (aprobadores y quien gestiona; nunca quien entrega). */
+    verRevisionIA?: boolean
+  }
   limites: { imagenes: number; bytesImagen: number; marcas: number }
 }
 
