@@ -233,5 +233,10 @@ class CalendarioDecision(Base):
     orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # 'aprobada' | 'aprobada-con-cambios' | 'cambios'
     decision: Mapped[str] = mapped_column(String(24), nullable=False)
+    # Lo que ve la agencia: el comentario y las marcas son justamente para ella.
     comentario: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Una nota SOLO para el equipo (0068), como los comentarios internos de
+    # Basecamp: "ojo que comercial todavía no confirmó el precio". Una cuenta
+    # externa nunca la recibe, ni en la tarea ni en los avisos.
+    nota_interna: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

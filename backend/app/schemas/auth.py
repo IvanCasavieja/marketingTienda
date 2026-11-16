@@ -78,6 +78,12 @@ class UserResponse(BaseModel):
     # al menos uno; para un superadmin vienen todos.
     mundos: list[str] = []
     must_change_password: bool = False
+    # Cuenta externa (la agencia, 0068): el front la lleva directo a su trabajo
+    # y le muestra qué parte del calendario ve. `ventana` son las fechas
+    # (ISO) que ve hoy; null para una cuenta del equipo.
+    es_externo: bool = False
+    empresa: str | None = None
+    ventana: dict | None = None
 
     class Config:
         from_attributes = True

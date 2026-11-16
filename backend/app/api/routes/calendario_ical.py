@@ -12,7 +12,10 @@ una firma: el id de la persona y un HMAC con la clave del servidor y su
 
 Lo que sale es de solo lectura y respeta lo mismo que la pantalla: calendario
 habilitado, solo los mundos que la persona puede abrir. Va desde dos meses
-atrás hasta un año adelante.
+atrás hasta un año adelante; para una cuenta externa (la agencia, 0068), solo
+su ventana alrededor del mes actual (app/core/externos.py), igual que en la
+pantalla: el link lo puede pegar en cualquier calendario y no puede ser la
+puerta de atrás para ver lo que viene en tres meses.
 """
 import hashlib
 import hmac
@@ -22,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import externos
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_permission
@@ -147,8 +151,11 @@ async def calendario_ics(user_id: int, firma: str, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=404, detail="Not found")
 
     mundos = [m for m in mundos_de(usuario) if puede_abrir(usuario, m)]
-    hoy = datetime.now(timezone.utc).date()
-    desde, hasta = hoy - timedelta(days=DIAS_PARA_ATRAS), hoy + timedelta(days=DIAS_PARA_ADELANTE)
+    if externos.es_externo(usuario):
+        desde, hasta = externos.ventana_de_hoy()
+    else:
+        hoy = datetime.now(timezone.utc).date()
+        desde, hasta = hoy - timedelta(days=DIAS_PARA_ATRAS), hoy + timedelta(days=DIAS_PARA_ADELANTE)
     varios = len(mundos) > 1
     eventos: list[dict] = []
 
@@ -163,7 +170,7 @@ async def calendario_ics(user_id: int, firma: str, db: AsyncSession = Depends(ge
         )).scalars().all()
         eventos += [_evento_de_accion(b, varios) for b in barras]
 
-        tareas = (await db.execute(
+        consulta_tareas = (
             select(CalendarioTarea, CalendarioBarra)
             .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
             .where(
@@ -174,7 +181,14 @@ async def calendario_ics(user_id: int, firma: str, db: AsyncSession = Depends(ge
                 CalendarioTarea.vence <= hasta,
                 CalendarioBarra.mundo.in_(mundos),
             )
-        )).all()
+        )
+        if externos.es_externo(usuario):
+            # Además de que venza en la ventana, la acción tiene que tocarla:
+            # el título lleva el nombre de la acción.
+            consulta_tareas = consulta_tareas.where(
+                externos.condicion_de_ventana(CalendarioBarra, (desde, hasta)),
+            )
+        tareas = (await db.execute(consulta_tareas)).all()
         eventos += [_evento_de_tarea(t, b) for t, b in tareas]
 
     nombre = "Core Tienda" if varios or not mundos else f"Core Tienda · {MUNDOS.get(mundos[0], mundos[0])}"
