@@ -11,6 +11,8 @@
 // las barras que lo tocan (ver construirMes en derivar.ts).
 // ---------------------------------------------------------------------------
 
+import type { ResumenEntrega } from './entregas'
+
 /** 'envio' = un envio suelto: un mailing, WhatsApp o push sin accion detras. */
 export type Seccion = 'comercial' | 'retail' | 'header' | 'envio'
 
@@ -116,6 +118,9 @@ export type Tarea = {
   /** 'YYYY-MM-DD' */
   vence: string | null
   creadoPor: number | null
+  /** Si lleva entregas por fases (15/11/2026): en qué fase va y a quién le
+   *  toca. Solo el resumen; la historia y las imágenes se piden al abrirla. */
+  entrega?: ResumenEntrega
 }
 
 export const NIVELES_DE_TAREA = 3

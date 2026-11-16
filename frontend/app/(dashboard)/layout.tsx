@@ -18,6 +18,9 @@ const Sidebar = dynamic(() => import("@/components/layout/Sidebar"), { ssr: fals
 // Wrapping children with ssr:false means the server sends null, the client mounts
 // fresh — no hydration reconciliation needed, no #418 errors on any dashboard page.
 const ClientOnly = dynamic(() => import("@/components/ClientOnly"), { ssr: false });
+// Las entregas de una tarea, encima de todo. Una sola para toda la plataforma:
+// la abren la ficha de la acción, el tablero, "Mis tareas" y los avisos.
+const VistaEntregas = dynamic(() => import("@/components/calendario/entregas/VistaEntregas"), { ssr: false });
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -171,6 +174,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         onMenu={() => setSidebarOpen(true)}
         onAvisos={() => { setSidebarOpen(true); useAvisos.getState().pedirAbrir(); }}
       />
+      <VistaEntregas />
     </div>
   );
 }

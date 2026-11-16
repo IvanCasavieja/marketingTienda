@@ -3,7 +3,8 @@
 import { create } from 'zustand'
 import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware'
 import { toast } from 'sonner'
-import { calendarioApi } from '@/lib/api'
+import { calendarioApi, entregasApi } from '@/lib/api'
+import type { ResumenEntrega, TipoPieza } from './entregas'
 import { esSinCategoria } from './categorias'
 import { carrilLibre, headerDerivado, nuevoId, vistaDelMes } from './derivar'
 import { claveDe, hoyIso, mesSiguiente, primerDiaDe, ultimoDiaDe } from './fechas'
@@ -80,12 +81,20 @@ if (typeof window !== 'undefined') {
 /** Cada cuanto se pregunta si alguien cambio algo. */
 export const SEGUNDOS_ENTRE_REVISIONES = 15
 
-type Escrito = { rev?: number; enviadosAhora?: number; yaExistia?: boolean; avisados?: number }
+type Escrito = { rev?: number; enviadosAhora?: number; yaExistia?: boolean; avisados?: number; entrega?: ResumenEntrega }
 
 /** Como se mira el mes: la linea de tiempo de siempre, o una lista de tarjetas. */
 export type Vista = 'tiempo' | 'lista'
 /** Que parte del calendario se ve. 'todo' = las cuatro, una abajo de la otra. */
 export type Filtro = 'todo' | 'comercial' | 'envios' | 'retail' | 'header'
+
+/** Lo que se carga para que una tarea lleve entregas por fases. */
+export type DatosEntregas = {
+  tipoPieza: TipoPieza
+  brief: Record<string, string | number>
+  aprobadores: number[]
+  fases: { id?: string | null; nombre: string }[]
+}
 
 /** Lo que se carga de una tarea nueva. */
 export type DatosTarea = {
@@ -176,8 +185,11 @@ type Estado = {
   /** El estado de un envío suelto (pendiente → publicado), desde su ficha. */
   cambiarEstadoEnvio: (id: string, estado: EstadoPieza) => void
 
-  /** Una tarea (o subtarea) en la accion `barraId`. */
-  crearTarea: (barraId: string, datos: DatosTarea) => void
+  /** Una tarea (o subtarea) en la accion `barraId`. Devuelve su id. */
+  crearTarea: (barraId: string, datos: DatosTarea) => string | null
+  /** Que una tarea lleve entregas por fases. Va en la cola de su acción, así
+   *  sale después del alta de la tarea aunque se pidan seguidas. */
+  configurarEntregas: (barraId: string, tareaId: string, datos: DatosEntregas) => Promise<boolean>
   cambiarTarea: (tareaId: string, cambios: Partial<Pick<Tarea, 'titulo' | 'descripcion' | 'estado' | 'asignadoA' | 'vence'>>) => void
   /** Borra la tarea y todo lo que cuelga de ella. */
   borrarTarea: (tareaId: string) => void
@@ -668,7 +680,7 @@ export const useCalendario = create<Estado>()(
 
         crearTarea: (barraId, datos) => {
           const titulo = datos.titulo.trim()
-          if (!titulo || !get().barras[barraId]) return
+          if (!titulo || !get().barras[barraId]) return null
           const tarea: Tarea = {
             id: nuevoId('ta'), parentId: datos.parentId ?? null, titulo,
             descripcion: datos.descripcion?.trim() || null, estado: 'pendiente' as EstadoTarea,
@@ -681,6 +693,17 @@ export const useCalendario = create<Estado>()(
           }), barraId).then(r => {
             if (r?.avisados) toast.success('Tarea creada. Le llegó el aviso a quien la tiene asignada.')
           })
+          return tarea.id
+        },
+
+        configurarEntregas: async (barraId, tareaId, datos) => {
+          const r = await escribir(() => entregasApi.configurar(tareaId, datos), barraId)
+          if (!r?.entrega) return false
+          const entrega = r.entrega
+          cambiarBarraLocal(barraId, b => ({
+            ...b, tareas: (b.tareas ?? []).map(t => (t.id === tareaId ? { ...t, entrega } : t)),
+          }))
+          return true
         },
 
         cambiarTarea: (tareaId, cambios) => {
