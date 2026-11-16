@@ -2098,11 +2098,18 @@ export const calendarioApi = {
   nuevoLinkDelCalendario: () => api.post<{ ruta: string }>("/calendario/ical/link/nuevo", {}, ESPERA),
   /** Todo el calendario, o `sinCambios` si sigue en la revisión `rev`. */
   traerDatos: (mundo: string, rev?: number | null) =>
-    api.get<{ rev: number; mundo?: string; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]>; plantillas?: any[] }>(
+    api.get<{
+      rev: number; mundo?: string; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]>; plantillas?: any[];
+      /** Cuenta externa: `rev` es la huella de lo que ve, no un contador (ver store.ts). */
+      opaca?: boolean;
+    }>(
       "/calendario/datos", { ...ESPERA, params: rev == null ? { mundo } : { mundo, rev } }),
-  /** A quién se le puede mandar un aviso o asignar una tarea en ese mundo. */
+  /** A quién se le puede mandar un aviso o asignar una tarea en ese mundo. Una
+   *  cuenta externa (la agencia) viene marcada, con su empresa: se le pueden
+   *  asignar tareas, pero no avisos ni aprobar. */
   personas: (mundo: string) =>
-    api.get<{ id: number; nombre: string }[]>("/calendario/personas", { ...ESPERA, params: { mundo } }),
+    api.get<{ id: number; nombre: string; externo?: boolean; empresa?: string | null }[]>(
+      "/calendario/personas", { ...ESPERA, params: { mundo } }),
 
   crearTarea: (barraId: string, tarea: unknown) =>
     api.post<CalendarioEscrito & { avisados?: number }>(
@@ -2316,6 +2323,8 @@ export const entregasApi = {
   decidir: (versionId: string, datos: {
     decision: TipoDecision; comentario?: string | null;
     marcas: { imagenId: string; x: number; y: number; texto: string }[];
+    /** Solo para el equipo: la agencia nunca la ve (el servidor no se la manda). */
+    notaInterna?: string | null;
   }) =>
     api.post<CalendarioEscrito & { resultado: string; entrega: ResumenEntrega }>(
       `/calendario/versiones/${encodeURIComponent(versionId)}/decision`, datos, ESPERA),

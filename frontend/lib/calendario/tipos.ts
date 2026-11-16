@@ -223,7 +223,20 @@ export type Aviso = {
 export const ANTICIPACIONES_DE_AVISO = [60, 50, 40, 30, 20, 10] as const
 
 /** Alguien de la plataforma que puede recibir un aviso. */
-export type Persona = { id: number; nombre: string }
+/** Alguien a quien se le puede asignar una tarea o mandar un aviso. Una cuenta
+ *  externa (la agencia) viene marcada con su empresa: se le asignan tareas,
+ *  pero no recibe avisos ni aprueba (el servidor lo rechaza). */
+export type Persona = { id: number; nombre: string; externo?: boolean; empresa?: string | null }
+
+/** Cómo se la nombra en una lista: "Ana (Agencia Pampa)" si es de afuera. */
+export function nombreConEmpresa(p: Persona): string {
+  return p.externo && p.empresa ? `${p.nombre} (${p.empresa})` : p.nombre
+}
+
+/** Las personas que pueden recibir un aviso o aprobar: las del equipo. */
+export function delEquipo(personas: Persona[]): Persona[] {
+  return personas.filter(p => !p.externo)
+}
 
 /**
  * El catalogo de lo que puede llevar una accion. El area `web-home` es la

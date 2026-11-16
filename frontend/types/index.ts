@@ -93,6 +93,12 @@ export interface CurrentUser {
   /** Los calendarios que puede abrir: claves de lib/mundos.ts. */
   mundos: string[];
   must_change_password: boolean;
+  /** Cuenta externa (la agencia): ve su trabajo y el calendario del mes
+   *  actual, nada de las herramientas internas. Ver lib/externos.ts. */
+  es_externo?: boolean;
+  empresa?: string | null;
+  /** Qué fechas del calendario ve hoy una cuenta externa (ISO). */
+  ventana?: { desde: string; hasta: string } | null;
 }
 
 export const PLATFORM_LABELS: Record<Platform | string, string> = {

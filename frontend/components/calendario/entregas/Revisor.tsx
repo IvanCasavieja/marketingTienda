@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, CheckCheck, Columns2, Loader2, MousePointerClick, RotateCcw, ShieldCheck, Trash2, X } from 'lucide-react'
+import { Check, CheckCheck, Columns2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import {
@@ -46,6 +46,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const [nuevas, setNuevas] = useState<Nueva[]>([])
   const [elegido, setElegido] = useState<string | null>(null)
   const [comentario, setComentario] = useState('')
+  const [notaInterna, setNotaInterna] = useState('')
   const [comparar, setComparar] = useState(false)
   const [ladoMovil, setLadoMovil] = useState<'anterior' | 'nueva'>('nueva')
   const [enviando, setEnviando] = useState<TipoDecision | null>(null)
@@ -62,7 +63,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
     : []))
   const pinesActuales = [...pinesDe(version.marcas, activa), ...pinesNuevos]
   const hayMarcas = nuevas.length > 0
-  const hayAlgo = hayMarcas || comentario.trim() !== ''
+  const hayAlgo = hayMarcas || comentario.trim() !== '' || notaInterna.trim() !== ''
   const sinTexto = nuevas.findIndex(n => !n.texto.trim())
   // Lo que se pidió en la ronda anterior y si la agencia dice que lo corrigió.
   const pedidoAntes = anterior?.faseId === version.faseId ? anterior.marcas.filter(m => m.tipo === 'cambio') : []
@@ -91,6 +92,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         decision,
         comentario: comentario.trim() || null,
         marcas: nuevas.map(n => ({ imagenId: n.imagenId, x: n.x, y: n.y, texto: n.texto.trim() })),
+        notaInterna: notaInterna.trim() || null,
       })
       const texto = decision === 'cambios'
         ? 'Listo: volvió a la agencia con tus marcas.'
@@ -308,7 +310,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         )}
 
         <label className="block">
-          <span className="etiqueta-campo">Comentario (opcional)</span>
+          <span className="etiqueta-campo">Comentario para la agencia (opcional)</span>
           <textarea
             value={comentario}
             onChange={e => setComentario(e.target.value)}
@@ -316,6 +318,24 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             maxLength={5000}
             placeholder="Algo general, que no va en un punto de la imagen"
             className="campo !h-auto py-2"
+          />
+        </label>
+
+        {/* La nota interna (como los comentarios internos de Basecamp): la
+            ve el equipo en la historia de la tarea; a la agencia el servidor
+            no se la manda nunca. */}
+        <label className="mt-3 block">
+          <span className="etiqueta-campo flex items-center gap-1.5">
+            <Lock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" aria-hidden />
+            Nota interna (opcional)
+          </span>
+          <textarea
+            value={notaInterna}
+            onChange={e => setNotaInterna(e.target.value)}
+            rows={2}
+            maxLength={5000}
+            placeholder="Solo la ve el equipo: la agencia no"
+            className="campo !h-auto border-amber-200 bg-amber-50/40 py-2 dark:border-amber-500/25 dark:bg-amber-500/5"
           />
         </label>
           </div>

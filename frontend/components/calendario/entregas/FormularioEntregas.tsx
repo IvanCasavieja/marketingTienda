@@ -85,7 +85,8 @@ export function FormularioEntregas({ valor, onCambiar, personas, responsableId, 
   // los campos de abajo; lo demás, en el detalle (lib/calendario/entregas-dictado).
   const [dictando, setDictando] = useState(false)
   const nombreDe = (id: number) => personas.find(p => p.id === id)?.nombre ?? 'Alguien que ya no ve este calendario'
-  const disponibles = personas.filter(p => !valor.aprobadores.includes(p.id) && p.id !== responsableId)
+  // Una cuenta externa (la agencia) entrega, no aprueba: no se ofrece.
+  const disponibles = personas.filter(p => !p.externo && !valor.aprobadores.includes(p.id) && p.id !== responsableId)
   const hayBloqueadas = valor.fases.some(f => f.bloqueada)
 
   function elegirTipo(tipo: TipoPieza) {

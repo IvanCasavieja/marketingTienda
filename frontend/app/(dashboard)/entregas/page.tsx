@@ -10,6 +10,7 @@ import { hoyIso } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { SEGUNDOS_ENTRE_REVISIONES } from "@/lib/calendario/store";
 import { mundoEfectivo, useMundoElegido } from "@/lib/mundos";
+import { esExterno } from "@/lib/externos";
 import { useVistaEntregas } from "@/store/entregas";
 import { TarjetaEntrega } from "@/components/calendario/entregas/TarjetaEntrega";
 
@@ -93,6 +94,9 @@ export default function EntregasPage() {
 
   const hoy = hoyIso();
   const yo = user?.id ?? null;
+  // Una cuenta externa (la agencia) ve acá solo lo suyo: el servidor ya se lo
+  // manda recortado (sus tareas, de su ventana, y su propio retrabajo).
+  const externo = esExterno(user);
   const delMundo = datos && datos.mundo === claveMundo ? datos : null;
   const tarjetas = delMundo?.tarjetas ?? [];
   const meToca = (t: Tarjeta) => proximoPaso(t.entrega, t.asignadoA, yo, () => "").aQuien === "vos";
@@ -117,9 +121,11 @@ export default function EntregasPage() {
           <Layers className="h-6 w-6" />
         </span>
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Entregas</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{externo ? "Mis entregas" : "Entregas"}</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Las piezas con la agencia{mundo ? ` en ${mundo.nombre}` : ""}: en qué fase va cada una y a quién le toca.
+            {externo
+              ? `Las piezas que te tocan${mundo ? ` en ${mundo.nombre}` : ""}: en qué fase va cada una, qué te pidieron cambiar y a quién le toca revisar.`
+              : `Las piezas con la agencia${mundo ? ` en ${mundo.nombre}` : ""}: en qué fase va cada una y a quién le toca.`}
           </p>
         </div>
       </header>
@@ -138,16 +144,20 @@ export default function EntregasPage() {
 
       {delMundo && (
         <>
-          <MetricasDeRetrabajo metricas={delMundo.metricas} dias={dias} onDias={setDias} />
+          <MetricasDeRetrabajo metricas={delMundo.metricas} dias={dias} onDias={setDias} propio={externo} />
 
           {tarjetas.length === 0 ? (
             <div className="mt-6 flex flex-col items-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900">
               <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
                 <Layers className="h-6 w-6" />
               </span>
-              <p className="text-base font-semibold text-slate-800 dark:text-slate-100">Todavía no hay piezas con entregas</p>
+              <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                {externo ? "Este mes no tenés piezas para entregar" : "Todavía no hay piezas con entregas"}
+              </p>
               <p className="mt-1 max-w-md text-sm text-slate-500 dark:text-slate-400">
-                Se arman desde la ficha de una acción del calendario: «Nueva tarea» y tildar «Lleva entregas para aprobar».
+                {externo
+                  ? "Cuando el equipo te asigne una, aparece acá y te llega un aviso a la campanita."
+                  : "Se arman desde la ficha de una acción del calendario: «Nueva tarea» y tildar «Lleva entregas para aprobar»."}
               </p>
             </div>
           ) : (
@@ -212,13 +222,17 @@ export default function EntregasPage() {
  * aprobaron a la primera. Dos números arriba y, para quien quiera, el
  * detalle por tipo de pieza, por responsable y por mundo.
  */
-function MetricasDeRetrabajo({ metricas, dias, onDias }: { metricas: Metricas; dias: number; onDias: (d: number) => void }) {
+function MetricasDeRetrabajo({ metricas, dias, onDias, propio = false }: {
+  metricas: Metricas; dias: number; onDias: (d: number) => void;
+  /** Una cuenta externa ve solo SU retrabajo: sin las tablas por responsable y por mundo. */
+  propio?: boolean;
+}) {
   const [verDetalle, setVerDetalle] = useState(false);
   const sinDatos = metricas.fases === 0;
   return (
     <section aria-labelledby="retrabajo" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h2 id="retrabajo" className="text-base font-bold text-slate-900 dark:text-slate-100">Retrabajo</h2>
+        <h2 id="retrabajo" className="text-base font-bold text-slate-900 dark:text-slate-100">{propio ? "Tu retrabajo" : "Retrabajo"}</h2>
         <div className="segmentado ml-auto !p-0.5" role="group" aria-label="Período">
           {[30, 90, 365].map(d => (
             <button key={d} type="button" aria-pressed={dias === d} onClick={() => onDias(d)} className="segmento !min-h-[32px] !flex-none whitespace-nowrap !px-2.5 text-xs">
@@ -246,17 +260,19 @@ function MetricasDeRetrabajo({ metricas, dias, onDias }: { metricas: Metricas; d
             className="-ml-2 mt-3 flex min-h-[40px] items-center gap-1 rounded-xl px-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10"
           >
             <ChevronDown className={`h-4 w-4 transition-transform ${verDetalle ? "rotate-180" : ""}`} />
-            {verDetalle ? "Ocultar el detalle" : "Ver por tipo de pieza, responsable y mundo"}
+            {verDetalle ? "Ocultar el detalle" : propio ? "Ver por tipo de pieza" : "Ver por tipo de pieza, responsable y mundo"}
           </button>
           {verDetalle && (
             <>
-              <div className="mt-2 grid gap-5 lg:grid-cols-3">
+              <div className={`mt-2 grid gap-5 ${propio ? "" : "lg:grid-cols-3"}`}>
                 <TablaDeRetrabajo titulo="Por tipo de pieza" filas={metricas.porTipo} />
-                <TablaDeRetrabajo titulo="Por responsable" filas={metricas.porResponsable} />
-                <TablaDeRetrabajo titulo="Por mundo" filas={metricas.porMundo} />
+                {!propio && <TablaDeRetrabajo titulo="Por responsable" filas={metricas.porResponsable} />}
+                {!propio && <TablaDeRetrabajo titulo="Por mundo" filas={metricas.porMundo} />}
               </div>
               <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
-                La barra es el % de fases aprobadas a la primera. «Por mundo» compara los mundos a los que entrás.
+                {propio
+                  ? "La barra es el % de tus fases aprobadas a la primera."
+                  : "La barra es el % de fases aprobadas a la primera. «Por mundo» compara los mundos a los que entrás."}
               </p>
             </>
           )}

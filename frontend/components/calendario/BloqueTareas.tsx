@@ -12,7 +12,7 @@ import { useCalendario } from '@/lib/calendario/store'
 import { plantillasSugeridas, textoDeAncla } from '@/lib/calendario/plantillas'
 import {
   ETIQUETA_ESTADO_TAREA, NIVELES_DE_TAREA, nivelDeTarea,
-  type BarraGuardada, type EstadoTarea, type Persona, type Tarea,
+  type BarraGuardada, type EstadoTarea, type Persona, type Tarea, nombreConEmpresa,
 } from '@/lib/calendario/tipos'
 import { proximoPaso } from '@/lib/calendario/entregas'
 import { useVistaEntregas } from '@/store/entregas'
@@ -397,7 +397,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                     {tarea.asignadoA != null && !asignado && (
                       <option value={tarea.asignadoA}>{personasEstado === 'ok' ? 'Alguien que ya no ve este calendario' : 'Asignada'}</option>
                     )}
-                    {personas.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.id === usuarioId ? ' (vos)' : ''}</option>)}
+                    {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}{p.id === usuarioId ? ' (vos)' : ''}</option>)}
                   </select>
                 </label>
               ) : (
@@ -658,7 +658,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, abierta
           <span className="etiqueta-campo">{conEntregas ? 'Quién entrega (agencia o diseño)' : 'Para quién'}</span>
           <select value={asignadoA} onChange={e => setAsignadoA(e.target.value)} className="campo">
             <option value="">{conEntregas ? 'Elegí quién entrega…' : 'Sin asignar por ahora'}</option>
-            {personas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
           </select>
           {personasEstado === 'error' && (
             <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">

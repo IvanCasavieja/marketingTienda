@@ -57,6 +57,8 @@ export type Decision = {
   orden: number
   decision: TipoDecision
   comentario: string | null
+  /** Solo para el equipo. A una cuenta externa (la agencia) no le llega ni la clave. */
+  notaInterna?: string | null
   fecha: string | null
 }
 
