@@ -3,8 +3,9 @@
 import { create } from 'zustand'
 import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware'
 import { toast } from 'sonner'
-import { calendarioApi } from '@/lib/api'
+import { calendarioApi, type CalendarioCopia } from '@/lib/api'
 import { esSinCategoria } from './categorias'
+import { rangoDeLaCopia } from './copiar'
 import { carrilLibre, headerDerivado, nuevoId, vistaDelMes } from './derivar'
 import { claveDe, hoyIso, mesSiguiente, primerDiaDe, ultimoDiaDe } from './fechas'
 import { ZOOM_POR_DEFECTO, limitarZoom } from './rejilla'
@@ -16,7 +17,7 @@ import type {
 } from './tipos'
 import { conCambios, moverAncladas, tareasDesdePlantilla, type CambiosDeTarea } from './plantillas'
 import { BANDAS_COMERCIAL, BANDAS_RETAIL, type BandaCatalogo } from './catalogo'
-import { MUNDO_POR_DEFECTO, mundoDe } from '@/lib/mundos'
+import { MUNDO_POR_DEFECTO, mundoDe, useMundoElegido } from '@/lib/mundos'
 
 export {
   construirMes, derivarHeaders, accionesDe, ocupacionHeader,
@@ -170,9 +171,23 @@ type Estado = {
   cerrarEditor: () => void
   abrirAccion: (id: string) => void
   cerrarAccion: () => void
+  /**
+   * Lleva a una acción y abre su ficha, en su mes, aunque todavía no esté en
+   * pantalla (recién creada por otro, o una copia que era un reintento) o sea
+   * de otro mundo. Devuelve false si no está o la persona no abre ese mundo.
+   */
+  irAAccion: (id: string) => Promise<boolean>
 
   guardarBarra: (datos: DatosBarra) => void
   borrarBarra: () => void
+  /**
+   * Copia la acción `origenId` a otra fecha, con sus piezas, tareas y
+   * avisos (ver lib/calendario/copiar.ts). Espera al servidor, que es quien
+   * arma lo que cuelga de ella. Devuelve lo que contestó, con el id de la
+   * nueva, o null si no se pudo (ya se avisó por qué) o quedó pendiente de
+   * la conexión.
+   */
+  copiarAccion: (origenId: string, datos: { desde: string; nombre: string }) => Promise<(CalendarioCopia & { id: string }) | null>
   /** Le pone o le cambia la categoría a una acción: pasa a esa fila del calendario. */
   cambiarCategoria: (id: string, banda: string) => void
   /** Guarda las posiciones y avisa a quien lleva Retail Media. */
@@ -342,7 +357,9 @@ export const useCalendario = create<Estado>()(
         return reintentando
       }
 
-      async function escribir(llamada: Llamada, de?: string): Promise<Escrito | null> {
+      async function escribir<T extends Escrito>(
+        llamada: () => Promise<{ data: T }>, de?: string,
+      ): Promise<T | null> {
         // Con cambios esperando a la conexión, este va detrás de ellos: si
         // saliera antes, un "ponerle categoría" podría llegar antes que el alta
         // de la acción.
@@ -512,6 +529,35 @@ export const useCalendario = create<Estado>()(
         abrirAccion: id => set({ abierta: id }),
         cerrarAccion: () => set({ abierta: null }),
 
+        // Antes vivía en la página (lo usaba solo `/calendario?accion=`). Está
+        // acá para que también lo use la copia: navegar con el router a la
+        // misma página cambiando solo `?accion=` no se completaba nunca (visto
+        // con Next 16 el 15/11/2026), y la copia se quedaba en la original.
+        irAAccion: async id => {
+          const abrir = () => {
+            const accion = get().barras[id]
+            if (!accion) return false
+            get().irAMes(claveDe(accion.desde))
+            get().abrirAccion(accion.id)
+            return true
+          }
+          if (abrir()) return true
+          // Si no está en lo que ya hay, primero se pregunta al servidor: puede
+          // ser una acción recién creada que todavía no llegó, o de otro mundo.
+          // Recién si tampoco está ahí, la borraron.
+          try {
+            const { data } = await calendarioApi.ubicar(id)
+            if (data.mundo !== get().mundo) {
+              useMundoElegido.getState().elegir(data.mundo)
+              get().usarMundo(data.mundo)
+            }
+          } catch {
+            // No está, o es de un mundo que la persona no abre: lo dice quien llamó.
+          }
+          await get().sincronizar()
+          return abrir()
+        },
+
         guardarBarra: datos => {
           const { edicion, barras } = get()
           if (!edicion) return
@@ -616,6 +662,34 @@ export const useCalendario = create<Estado>()(
             return { barras, edicion: null, abierta: s.abierta === id ? null : s.abierta }
           })
           void escribir(() => calendarioApi.borrarBarra(id), id)
+        },
+
+        copiarAccion: async (origenId, { desde, nombre }) => {
+          const origen = get().barras[origenId]
+          if (!origen) return null
+          // El id lo pone el front, como al crear una acción: si la conexión
+          // se corta y el cambio queda pendiente, el reintento manda el mismo
+          // y el servidor no la duplica.
+          const id = nuevoId('br')
+          const { hasta } = rangoDeLaCopia(origen, desde)
+          // El renglón libre en las fechas nuevas, como al crear (un envío
+          // suelto no tiene renglón propio).
+          const carril = origen.seccion === 'envio'
+            ? 0
+            : carrilLibre(Object.values(get().barras), origen.seccion, origen.banda, desde, hasta, origen.carril)
+          const mundo = get().mundo
+          // Detrás de lo que esté en viaje de la original (una pieza recién
+          // agregada): la copia la tiene que llevar.
+          const r = await escribir(async () => {
+            const res = await calendarioApi.copiarBarra(origenId, { id, desde, nombre, carril })
+            // La acción nueva llega entera y se pone en pantalla ANTES de
+            // anotar la revisión (ver registrar): si no, la revisión diría
+            // que lo local está al día sin tenerla.
+            const b = res.data.barra as BarraGuardada | undefined
+            if (b && get().mundo === mundo) set(s => ({ barras: { ...s.barras, [b.id]: normalizar(b) } }))
+            return res
+          }, origenId)
+          return r ? { ...r, id } : null
         },
 
         cambiarCategoria: (id, banda) => {

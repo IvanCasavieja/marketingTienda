@@ -16,10 +16,8 @@ import { PanelAccion } from "@/components/calendario/PanelAccion";
 import { DialogoPlantillas } from "@/components/calendario/DialogoPlantillas";
 import { VistaLista } from "@/components/calendario/VistaLista";
 import { VistaEquipo } from "@/components/calendario/VistaEquipo";
-import { calendarioApi } from "@/lib/api";
 import { mundoEfectivo, mundosDe, useMundoElegido, type SeccionDeMundo } from "@/lib/mundos";
 import { SEGUNDOS_ENTRE_REVISIONES, useCalendario } from "@/lib/calendario/store";
-import { claveDe } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { hasPermission } from "@/lib/permissions";
 
@@ -43,29 +41,11 @@ function AbrirAccionDeLaUrl() {
     if (hecha.current === pedida) return;
     hecha.current = pedida;
 
-    const abrir = (id: string) => {
-      const accion = useCalendario.getState().barras[id];
-      if (!accion) return false;
-      useCalendario.getState().irAMes(claveDe(accion.desde));
-      useCalendario.getState().abrirAccion(accion.id);
-      return true;
-    };
     void (async () => {
-      // Si no está en lo que ya hay, primero se pregunta al servidor: puede
-      // ser una acción recién creada que todavía no llegó. Recién si tampoco
-      // está ahí, la borraron.
-      if (!abrir(pedida)) {
-        try {
-          const { data } = await calendarioApi.ubicar(pedida);
-          if (data.mundo !== useCalendario.getState().mundo) {
-            useMundoElegido.getState().elegir(data.mundo);
-            useCalendario.getState().usarMundo(data.mundo);
-          }
-        } catch {
-          // No está, o es de un mundo que la persona no abre: se avisa abajo.
-        }
-        await useCalendario.getState().sincronizar();
-        if (!abrir(pedida)) toast.error("Esa acción ya no está en el calendario, o es de un mundo al que no tenés acceso.");
+      // La búsqueda (en lo que ya hay, en el servidor, en otro mundo) está en
+      // el store: la usa también "Copiar a otra fecha".
+      if (!(await useCalendario.getState().irAAccion(pedida))) {
+        toast.error("Esa acción ya no está en el calendario, o es de un mundo al que no tenés acceso.");
       }
       router.replace("/calendario");
     })();

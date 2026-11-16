@@ -5,6 +5,7 @@
   POST   /calendario/barras                   — una acción, campaña o banner nuevo
   PATCH  /calendario/barras/{id}              — cambia solo los campos que manda
   DELETE /calendario/barras/{id}
+  POST   /calendario/barras/{id}/copiar       — la copia a otra fecha, con piezas, tareas y avisos
   POST   /calendario/barras/{id}/piezas       — agrega una pieza a una acción
   PATCH  /calendario/piezas/{id}              — estado, fecha u hora de una pieza
   DELETE /calendario/piezas/{id}
@@ -52,6 +53,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -66,6 +68,10 @@ from app.models.calendario import (
 from app.models.notificacion import Notificacion
 from app.models.user import User
 from app.services.calendario_avisos import SIN_CATEGORIA, puede_ver_el_calendario, revisar_avisos
+from app.services.calendario_copia import (
+    copiar_avisos, copiar_la_accion, copiar_piezas, copiar_tareas, fechas_corridas, ids_de_personas,
+    nombre_para_la_copia, tareas_por_responsable,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/calendario", tags=["calendario"])
@@ -882,6 +888,23 @@ def mensaje_de_tarea_hecha(quien: str, titulo: str, accion: str) -> str:
     return f"{quien} terminó la tarea «{titulo}» de {accion or 'una acción'}."
 
 
+def mensaje_de_tareas_copiadas(quien: str, titulos: list[str], accion: str, vence: date | None) -> str:
+    """El aviso de quien recibe tareas al copiarse una acción: UNO por persona
+    aunque le toquen varias, que veinte avisos juntos de la misma acción son
+    ruido. Con una sola tarea es el aviso de siempre. `vence` es la primera
+    que vence."""
+    if len(titulos) == 1:
+        return mensaje_de_asignacion(quien, titulos[0], accion, vence)
+    primeras = titulos[:3]
+    resto = len(titulos) - len(primeras)
+    lista = (
+        f"{', '.join(primeras)} y {resto} más" if resto
+        else f"{', '.join(primeras[:-1])} y {primeras[-1]}"
+    )
+    cuando = f" La primera vence el {vence.strftime('%d/%m')}." if vence else ""
+    return f"{quien} te asignó {len(titulos)} tareas en {accion or 'una acción'}: {lista}.{cuando}"
+
+
 def nivel_de(tarea_id: str | None, padres: dict[str, str | None]) -> int:
     """A qué profundidad queda algo que cuelga de `tarea_id`: 1 si no cuelga
     de nada. Pura, para probarla sin base. El tope corta un ciclo."""
@@ -1504,3 +1527,191 @@ async def aplicar_plantilla(
         "id": barra_id, "rev": rev, "creadas": len(plan),
         "avisados": len(por_persona), "sinAsignar": sin_asignar,
     }
+
+
+# ---------------------------------------------------------------------------
+# Copiar una acción a otra fecha
+# ---------------------------------------------------------------------------
+# Pedido de Ivan (15/11/2026): las acciones se repiten cada año y el
+# Ciberlunes 2026 tiene que nacer del 2025 con todo lo que tenía. Qué lleva
+# cada fila nueva está en app/services/calendario_copia.py; acá se busca,
+# se decide quién sigue pudiendo ver el mundo y se guarda todo junto.
+
+class CopiaDeBarra(BaseModel):
+    # Lo genera el front, como al crear una acción: un reintento de la misma
+    # copia (se cortó la conexión y la pantalla vuelve a mandarla) no la
+    # duplica.
+    id: str = Field(..., pattern=_ID)
+    # Dónde arranca la copia. Dura lo mismo que la original.
+    desde: Fecha
+    # Si no viene, el de la original con el año corrido (nombre_para_la_copia).
+    nombre: str | None = Field(None, min_length=1, max_length=1000)
+    # El renglón libre en las fechas nuevas, que lo calcula el front con lo
+    # que tiene en pantalla. Si no viene, el de la original.
+    carril: int | None = Field(None, ge=0, le=500)
+
+    @field_validator("nombre")
+    @classmethod
+    def _sin_espacios(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("El nombre no puede quedar vacío")
+        return v
+
+
+_FECHA_IRREAL = "Con ese corrimiento {} quedaría en un año que no parece real: revisá la fecha"
+
+
+@router.post("/barras/{barra_id}/copiar", status_code=201)
+async def copiar_barra(
+    barra_id: str,
+    payload: CopiaDeBarra,
+    request: Request,
+    current_user: User = Depends(require_permission("calendario.edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Una acción nueva, en el MISMO mundo y a partir de `desde`, con todo lo
+    de la original: sus campos, sus piezas, sus tareas (con sus subtareas) y
+    sus avisos. Lo hecho vuelve a pendiente y lo que tenía fecha se corre lo
+    mismo que la acción.
+
+    - Las tareas se copian solo si la persona puede cargar tareas
+      (`calendario.tareas`), como al crearlas a mano. Si no, se copia el resto
+      y la respuesta lo dice (`tareasSinPermiso`).
+    - Un responsable o un destinatario que ya no puede abrir ese mundo se saca.
+    - A cada responsable le llega UN aviso con todas sus tareas.
+
+    Todo en una transacción y con una sola revisión: quien mira el calendario
+    ve aparecer la acción entera, nunca a medio copiar."""
+    if await db.get(CalendarioBarra, payload.id) is not None:
+        # Es un reintento de esta misma copia: ya está hecha.
+        return {"id": payload.id, "rev": await _revision_actual(db), "yaExistia": True}
+
+    # Bloquear la original ordena la copia con quien le está agregando una
+    # pieza o una tarea en ese momento: entra entera o no entra.
+    origen = await _barra_o_404(db, barra_id, current_user, bloquear=True)
+    corrimiento = payload.desde - origen.desde
+    hasta = origen.hasta + corrimiento
+    try:
+        _fecha_razonable(hasta)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=_FECHA_IRREAL.format("el fin de la acción"))
+    _validar_rango(payload.desde, hasta)
+
+    piezas = (await db.execute(
+        select(CalendarioPieza).where(CalendarioPieza.barra_id == barra_id)
+        .order_by(CalendarioPieza.orden, CalendarioPieza.id)
+    )).scalars().all()
+    avisos = (await db.execute(
+        select(CalendarioAviso).where(CalendarioAviso.barra_id == barra_id)
+        .order_by(CalendarioAviso.dias_antes.desc(), CalendarioAviso.id)
+    )).scalars().all()
+    tareas = (await db.execute(
+        select(CalendarioTarea).where(CalendarioTarea.barra_id == barra_id)
+        .order_by(CalendarioTarea.orden, CalendarioTarea.created_at, CalendarioTarea.id)
+    )).scalars().all()
+    copia_tareas = _puede_gestionar_tareas(current_user)
+
+    # Quién sigue pudiendo ver ese mundo, de una sola consulta.
+    pedidos = {t.asignado_a_id for t in tareas if t.asignado_a_id is not None} if copia_tareas else set()
+    for a in avisos:
+        pedidos.update(ids_de_personas(a.destinatarios))
+    validos = {
+        u.id for u in (await db.execute(select(User).where(User.id.in_(pedidos)))).scalars()
+        if _puede_ver_el_mundo(u, origen.mundo)
+    } if pedidos else set()
+
+    nombre = payload.nombre or nombre_para_la_copia(origen.nombre, origen.desde, origen.hasta, payload.desde)
+    barra = CalendarioBarra(**copiar_la_accion(
+        origen, payload.id, corrimiento, nombre,
+        origen.carril if payload.carril is None else payload.carril, current_user.id,
+    ))
+    filas_piezas = copiar_piezas(piezas, payload.id, corrimiento)
+    copiadas_tareas = copiar_tareas(
+        tareas if copia_tareas else [], payload.id, corrimiento, validos, current_user.id,
+    )
+    copiados_avisos = copiar_avisos(avisos, payload.id, corrimiento, validos, current_user.id)
+
+    # Una pieza o una tarea con su propia fecha puede irse de rango aunque la
+    # acción no (una pieza de diciembre de 2099 corrida un año).
+    for filas, modelo, que in (
+        (filas_piezas, CalendarioPieza, "una pieza"),
+        (copiadas_tareas.filas, CalendarioTarea, "el vencimiento de una tarea"),
+    ):
+        for f in filas:
+            for d in fechas_corridas(f, modelo):
+                try:
+                    _fecha_razonable(d)
+                except ValueError:
+                    raise HTTPException(status_code=422, detail=_FECHA_IRREAL.format(que))
+
+    db.add(barra)
+    try:
+        # La acción primero: piezas, tareas y avisos apuntan a ella.
+        await db.flush()
+    except IntegrityError:
+        # Dos envíos de la misma copia a la vez (el reintento salió antes de
+        # que contestara el primero): el segundo esperó en el bloqueo de la
+        # original y llega acá cuando el primero ya la guardó. Es la misma.
+        await db.rollback()
+        if await db.get(CalendarioBarra, payload.id) is not None:
+            return {"id": payload.id, "rev": await _revision_actual(db), "yaExistia": True}
+        raise
+    nuevas_piezas = [CalendarioPieza(**f) for f in filas_piezas]
+    # En orden de alta: cada tarea madre antes que sus subtareas.
+    nuevas_tareas = [CalendarioTarea(**f) for f in copiadas_tareas.filas]
+    nuevos_avisos = [CalendarioAviso(**f) for f in copiados_avisos.filas]
+    db.add_all(nuevas_piezas)
+    db.add_all(nuevas_tareas)
+    db.add_all(nuevos_avisos)
+
+    # UN aviso a cada responsable, con todas sus tareas. Lleva a la ficha de
+    # la acción nueva, como el de una tarea creada a mano.
+    avisados = 0
+    for uid, suyas in tareas_por_responsable(copiadas_tareas.filas, current_user.id).items():
+        vencimientos = [t["vence"] for t in suyas if t.get("vence")]
+        _avisar(db, uid, mensaje_de_tareas_copiadas(
+            current_user.full_name, [t["titulo"] for t in suyas], nombre,
+            min(vencimientos) if vencimientos else None,
+        ), payload.id, suyas[0]["id"])
+        avisados += 1
+
+    # Queda de dónde salió: "¿esto es copia de cuál?" es lo primero que se
+    # pregunta cuando aparecen dos parecidas.
+    db.add(AuditLog(
+        user_id=current_user.id, action="calendario.copiar", resource="calendario_barra",
+        resource_id=payload.id, ip_address=_client_ip(request),
+        details={
+            "origen": barra_id, "mundo": origen.mundo, "nombre": nombre,
+            "desde": payload.desde.isoformat(), "hasta": hasta.isoformat(),
+            "piezas": len(nuevas_piezas), "tareas": len(nuevas_tareas), "avisos": len(nuevos_avisos),
+        },
+    ))
+    rev = await _nueva_revision(db, origen.mundo)
+    await db.flush()
+    # Lo que se devuelve es la acción como la trae /datos, en el mismo orden:
+    # el front la pone en pantalla sin bajarse todo de nuevo, y cuando sí lo
+    # baje no se le reacomoda nada.
+    respuesta = {
+        "id": payload.id,
+        "rev": rev,
+        "barra": _barra_json(
+            barra,
+            sorted(nuevas_piezas, key=lambda p: (p.orden, p.id)),
+            sorted(nuevos_avisos, key=lambda a: (-a.dias_antes, a.id)),
+            # Todas se crean en la misma transacción (mismo created_at).
+            sorted(nuevas_tareas, key=lambda t: (t.orden, t.id)),
+        ),
+        "copiadas": {"piezas": len(nuevas_piezas), "tareas": len(nuevas_tareas), "avisos": len(nuevos_avisos)},
+        "tareasSinPermiso": 0 if copia_tareas else len(tareas),
+        "sinResponsable": copiadas_tareas.sin_responsable,
+        "destinatariosQuitados": copiados_avisos.destinatarios_quitados,
+        "avisosSinNadie": copiados_avisos.sin_nadie,
+        "avisados": avisados,
+    }
+    await db.commit()
+    # Un aviso que con la fecha nueva ya tendría que haber salido, sale ya.
+    respuesta["enviadosAhora"] = await _avisar_sin_romper(db, payload.id) if nuevos_avisos else 0
+    return respuesta
