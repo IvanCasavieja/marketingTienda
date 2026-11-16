@@ -17,7 +17,10 @@ name: Monitor de producción
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    # En los minutos 17 y 47, no en el 0 y el 30: GitHub atrasa o saltea los
+    # cron de las horas en punto y las medias (son los de más carga). Con
+    # "*/30" no corrió ni una vez en la primera hora y media (16/11/2026).
+    - cron: "17,47 * * * *"
   workflow_dispatch:
     inputs:
       url_de_prueba:
