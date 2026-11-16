@@ -30,13 +30,17 @@ un pedido, cuántos locales y hasta cuándo (`fotos`): nunca las fotos.
 
 Las entregas por fases de una tarea (0067) están en entregas.py.
 
-Las cuentas externas (la agencia, 0069) ven el calendario con la vista
-limitada de app/core/externos.py: solo las acciones que tocan su ventana
-(alrededor del mes actual), solo sus tareas, sin avisos ni plantillas ni fotos
+Cuánto del calendario ve cada persona lo dice su alcance (0070, app/core/
+alcance.py): No lo ve / 1 mes / 2 meses / 12 meses / Todo. Quien no lo ve
+recibe 403 en todo lo de acá; quien lo ve limitado, solo las acciones que
+tocan su ventana. Vale igual para el equipo y para la agencia.
+
+Las cuentas externas (la agencia, 0069) además ven la vista limitada de
+app/core/externos.py: solo sus tareas, sin avisos ni plantillas ni fotos
 de colocación, y de las personas solo las de su empresa y quienes aprueban sus
 entregas. Se cuida en cada ruta de lectura de acá (/datos y su revisión,
 /personas, /mis-tareas, /ubicar) y en `_barra_o_404`, por donde pasa todo lo
-que se toca por el id de una acción: fuera de la ventana, para un externo la
+que se toca por el id de una acción: fuera de su alcance, para esa persona la
 acción no existe.
 
 Desde la 0060 la plataforma entera se divide en MUNDOS (Tienda Inglesa,
@@ -62,6 +66,7 @@ estado; y aceptan avisos, como una acción.
 import logging
 import re
 from datetime import date, datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
@@ -73,7 +78,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import client_ip as _client_ip, require_permission
-from app.core import externos
+from app.core import alcance, externos
 from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, puede_abrir
 from app.models.audit_log import AuditLog
 from app.models.entregas import CalendarioDecision, CalendarioEntrega, CalendarioMarca, CalendarioVersion
@@ -91,6 +96,7 @@ from app.services.calendario_copia import (
     nombre_para_la_copia, tareas_por_responsable,
 )
 from app.services.colocacion import ORIGENES_DEL_LOCAL
+from app.services import entregas as reglas_entregas, tipos_de_tarea
 from app.services.entregas import resumenes_de_entregas
 
 logger = logging.getLogger(__name__)
@@ -124,6 +130,11 @@ _CANALES = ("email", "whatsapp", "push")
 # Las secciones cuya ficha lleva avisos.
 _CON_AVISOS = ("comercial", "envio")
 EstadoTarea = Literal["pendiente", "en-proceso", "hecha"]
+# Para quién es una tarea (0070) y desde dónde se cuenta un vencimiento
+# anclado a la acción (0065).
+ParaQuien = Literal["tienda", "agencia", "fuera"]
+Ancla = Literal["inicio", "fin"]
+_DIAS_DE_ANCLA = 365
 # Tarea → subtarea → sub-subtarea, y no más hondo.
 _NIVELES_DE_TAREA = 3
 PERMISO_TAREAS = "calendario.tareas"
@@ -199,9 +210,10 @@ async def _barra_o_404(
     if barra is None:
         raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
     exigir_mundo(usuario, barra.mundo)
-    # Para una cuenta externa, una acción fuera de su ventana no existe: el
-    # mismo 404 que una borrada, así no se puede deducir que está.
-    if externos.es_externo(usuario) and not externos.toca(barra.desde, barra.hasta, externos.ventana_de_hoy()):
+    # Una acción fuera del alcance de la persona (0070) no existe para ella:
+    # el mismo 404 que una borrada, así no se puede deducir que está. Quien no
+    # ve el calendario no ve ninguna.
+    if not alcance.toca(barra.desde, barra.hasta, alcance.ventana_de(usuario)):
         raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
     return barra
 
@@ -219,21 +231,44 @@ async def _exigir_mundo_de(db: AsyncSession, barra_id: str | None, usuario: User
     if fila is None:
         return None
     exigir_mundo(usuario, fila.mundo)
-    if externos.es_externo(usuario) and not externos.toca(fila.desde, fila.hasta, externos.ventana_de_hoy()):
+    if not alcance.toca(fila.desde, fila.hasta, alcance.ventana_de(usuario)):
         raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
     return fila.mundo
 
 
 def _puede_ver_el_mundo(usuario: User, mundo: str) -> bool:
+    """Si la persona tiene el calendario de ese mundo (el permiso y el mundo).
+    Es lo que hace falta para asignarle una tarea o ponerla a aprobar: aunque
+    su alcance sea "No lo ve", su tablero de tarjetas lo sigue viendo."""
     return puede_ver_el_calendario(usuario) and puede_abrir(usuario, mundo)
 
 
+def _exigir_en_su_alcance(usuario: User, desde: date, hasta: date) -> None:
+    """Que una acción nueva (o la fecha nueva de una que se mueve) caiga en lo
+    que la persona ve del calendario (0070): si no, la dejaría donde ella
+    misma no la puede ver ni corregir."""
+    alcance.exigir_calendario(usuario)
+    if not alcance.toca(desde, hasta, alcance.ventana_de(usuario)):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Esa fecha queda fuera de lo que ves del calendario ({alcance.en_palabras(alcance.alcance_de(usuario))}). "
+                   "Pedile a alguien que lo vea entero que la cargue.",
+        )
+
+
+def _ve_una_parte(usuario: User) -> bool:
+    """Si a esta persona se le recorta lo que ve: una cuenta externa (solo lo
+    suyo) o cualquiera con el alcance limitado. A ella no se le da el contador
+    de todos, sino la huella de lo que ve (`externos.huella`)."""
+    return externos.es_externo(usuario) or alcance.es_limitado(usuario)
+
+
 def _rev_para(usuario: User, rev: int) -> int | None:
-    """La revisión que se le devuelve a quien escribió. A una cuenta externa,
+    """La revisión que se le devuelve a quien escribió. A quien ve una parte,
     ninguna: el contador es de todo el calendario y le diría cuánto se movió
-    fuera de su ventana (ver `externos.huella`). Su pantalla se pone al día
+    fuera de lo que ve (ver `externos.huella`). Su pantalla se pone al día
     sola en la próxima pregunta."""
-    return None if externos.es_externo(usuario) else rev
+    return None if _ve_una_parte(usuario) else rev
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +315,16 @@ def _tarea_json(t: CalendarioTarea, entrega: dict | None = None) -> dict:
         out["anclaDias"] = t.ancla_dias
     if t.plantilla_id:
         out["plantillaId"] = t.plantilla_id
+    # Quién la hace y qué tipo de pieza es (0070): solo si no es lo de
+    # siempre (una tarea común de Tienda), que /datos viaja entero cada vez.
+    if t.para != "tienda":
+        out["para"] = t.para
+        out["agencia"] = t.agencia
+    if t.tipo:
+        out["tipo"] = t.tipo
+        out["opciones"] = list(t.opciones or [])
+        if t.detalles:
+            out["detalles"] = dict(t.detalles)
     # Si lleva entregas por fases (0067): en qué fase va y a quién le toca.
     # Solo el resumen: las imágenes y la historia se piden al abrirla.
     if entrega is not None:
@@ -341,8 +386,8 @@ async def traer_datos(
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Todo el calendario de UN mundo. Si el front ya tiene la revisión actual,
-    contesta solo eso y no viaja nada más.
+    """Todo el calendario de UN mundo que la persona ve. Si el front ya tiene
+    la revisión actual, contesta solo eso y no viaja nada más.
 
     El contador es uno solo para todos los mundos, pero cada mundo anota la
     última revisión que lo tocó (0063): si nada de ESTE mundo cambió después
@@ -353,10 +398,14 @@ async def traer_datos(
 
     La revisión se lee ANTES que los datos: si alguien guarda en el medio, los
     datos pueden venir un poco más nuevos que la revisión (y la próxima
-    pregunta los vuelve a traer), pero nunca más viejos."""
+    pregunta los vuelve a traer), pero nunca más viejos.
+
+    Quien ve una parte (alcance limitado, o una cuenta externa) recibe solo
+    eso, y como revisión la huella de lo que ve: ver `_datos_recortados`."""
     exigir_mundo(current_user, mundo)
-    if externos.es_externo(current_user):
-        return await _datos_para_externo(db, current_user, mundo, rev)
+    alcance.exigir_calendario(current_user)
+    if _ve_una_parte(current_user):
+        return await _datos_recortados(db, current_user, mundo, rev)
     fila = (await db.execute(
         select(
             CalendarioRevision.rev,
@@ -369,121 +418,106 @@ async def traer_datos(
     ultima_del_mundo = fila[1] if fila and fila[1] is not None else actual
     if rev is not None and ultima_del_mundo <= rev <= actual:
         return {"rev": actual, "sinCambios": True}
+    return {"rev": actual, **await _armar_datos(db, mundo, None, None)}
 
+
+async def _armar_datos(db: AsyncSession, mundo: str, v: alcance.Ventana | None, externo: User | None) -> dict:
+    """El calendario de un mundo: las acciones que tocan la ventana `v` (sin
+    ventana, todas) con sus piezas, avisos, tareas, pedidos de fotos y
+    entregas; las posiciones de Retail Media de esos meses y las plantillas.
+
+    Con `externo` (una cuenta externa, ver app/core/externos.py): de cada
+    acción solo SUS tareas, sin avisos (son internos), sin plantillas y sin el
+    pedido de fotos de colocación."""
+    en_la_ventana = (CalendarioBarra.mundo == mundo, alcance.condicion(CalendarioBarra, v))
     barras = (await db.execute(
-        select(CalendarioBarra).where(CalendarioBarra.mundo == mundo)
-        .order_by(CalendarioBarra.desde, CalendarioBarra.id)
+        select(CalendarioBarra).where(*en_la_ventana).order_by(CalendarioBarra.desde, CalendarioBarra.id)
     )).scalars().all()
-    del_mundo = select(CalendarioBarra.id).where(CalendarioBarra.mundo == mundo)
+    visibles = select(CalendarioBarra.id).where(*en_la_ventana)
     piezas: dict[str, list[CalendarioPieza]] = {}
-    for p in (await db.execute(
-        select(CalendarioPieza).where(CalendarioPieza.barra_id.in_(del_mundo))
-        .order_by(CalendarioPieza.orden, CalendarioPieza.id)
-    )).scalars():
-        piezas.setdefault(p.barra_id, []).append(p)
     avisos: dict[str, list[CalendarioAviso]] = {}
-    for a in (await db.execute(
-        select(CalendarioAviso).where(CalendarioAviso.barra_id.in_(del_mundo))
-        .order_by(CalendarioAviso.dias_antes.desc(), CalendarioAviso.id)
-    )).scalars():
-        avisos.setdefault(a.barra_id, []).append(a)
     tareas: dict[str, list[CalendarioTarea]] = {}
-    for t in (await db.execute(
-        select(CalendarioTarea).where(CalendarioTarea.barra_id.in_(del_mundo))
-        .order_by(CalendarioTarea.orden, CalendarioTarea.created_at, CalendarioTarea.id)
-    )).scalars():
-        tareas.setdefault(t.barra_id, []).append(t)
-    fotos: dict[str, dict] = {
-        barra_id: {"pedido": pedido_id, "locales": n, "limite": limite.isoformat()}
-        for barra_id, pedido_id, limite, n in (await db.execute(
-            select(
-                ColocacionPedido.barra_id, ColocacionPedido.id, ColocacionPedido.limite,
-                func.count(ColocacionLocal.id),
-            )
-            .join(ColocacionLocal, ColocacionLocal.pedido_id == ColocacionPedido.id, isouter=True)
-            .where(ColocacionPedido.barra_id.in_(del_mundo))
-            .group_by(ColocacionPedido.id)
-        )).all()
-    }
-    entregas = await resumenes_de_entregas(
-        db, select(CalendarioTarea.id).where(CalendarioTarea.barra_id.in_(del_mundo))
-    )
+    fotos: dict[str, dict] = {}
+    if barras:
+        for p in (await db.execute(
+            select(CalendarioPieza).where(CalendarioPieza.barra_id.in_(visibles))
+            .order_by(CalendarioPieza.orden, CalendarioPieza.id)
+        )).scalars():
+            piezas.setdefault(p.barra_id, []).append(p)
+        consulta_tareas = select(CalendarioTarea).where(CalendarioTarea.barra_id.in_(visibles))
+        if externo is not None:
+            consulta_tareas = consulta_tareas.where(externos.condicion_tarea_propia(CalendarioTarea, externo))
+        for t in (await db.execute(
+            consulta_tareas.order_by(CalendarioTarea.orden, CalendarioTarea.created_at, CalendarioTarea.id)
+        )).scalars():
+            tareas.setdefault(t.barra_id, []).append(t)
+        if externo is None:
+            for a in (await db.execute(
+                select(CalendarioAviso).where(CalendarioAviso.barra_id.in_(visibles))
+                .order_by(CalendarioAviso.dias_antes.desc(), CalendarioAviso.id)
+            )).scalars():
+                avisos.setdefault(a.barra_id, []).append(a)
+            fotos = {
+                barra_id: {"pedido": pedido_id, "locales": n, "limite": limite.isoformat()}
+                for barra_id, pedido_id, limite, n in (await db.execute(
+                    select(
+                        ColocacionPedido.barra_id, ColocacionPedido.id, ColocacionPedido.limite,
+                        func.count(ColocacionLocal.id),
+                    )
+                    .join(ColocacionLocal, ColocacionLocal.pedido_id == ColocacionPedido.id, isouter=True)
+                    .where(ColocacionPedido.barra_id.in_(visibles))
+                    .group_by(ColocacionPedido.id)
+                )).all()
+            }
+    ids_tareas = [t.id for ts in tareas.values() for t in ts]
+    entregas = await resumenes_de_entregas(db, ids_tareas) if ids_tareas else {}
     # Retail Media es de la web de Tienda Inglesa: los otros mundos no tienen
-    # esa parte del calendario y no tienen por qué bajar sus posiciones.
-    posiciones = {
-        p.clave: list(p.posiciones)
-        for p in (await db.execute(select(CalendarioPosicionesRM))).scalars()
-    } if mundo == MUNDO_POR_DEFECTO else {}
-    plantillas = (await db.execute(
+    # esa parte del calendario y no tienen por qué bajar sus posiciones. Con
+    # ventana, solo los meses que toca.
+    posiciones: dict = {}
+    if mundo == MUNDO_POR_DEFECTO:
+        meses = alcance.meses_de(v)
+        consulta_rm = select(CalendarioPosicionesRM)
+        if meses is not None:
+            consulta_rm = consulta_rm.where(CalendarioPosicionesRM.clave.in_(meses))
+        posiciones = {p.clave: list(p.posiciones) for p in (await db.execute(consulta_rm)).scalars()}
+    plantillas = [] if externo is not None else (await db.execute(
         select(CalendarioPlantilla).where(CalendarioPlantilla.mundo == mundo)
         .order_by(CalendarioPlantilla.nombre, CalendarioPlantilla.id)
     )).scalars().all()
+
+    propias = set(ids_tareas)
+
+    def barra_json(b: CalendarioBarra) -> dict:
+        out = _barra_json(b, piezas.get(b.id, []), avisos.get(b.id, []), tareas.get(b.id, []), fotos.get(b.id), entregas)
+        if externo is not None:
+            # Una tarea suya que cuelga de otra que no es suya (la madre la
+            # tiene alguien del equipo) se muestra suelta: la madre no viaja.
+            for t in out.get("tareas", []):
+                if t["parentId"] is not None and t["parentId"] not in propias:
+                    t["parentId"] = None
+        return out
+
     return {
-        "rev": actual,
         "mundo": mundo,
-        "barras": [
-            _barra_json(b, piezas.get(b.id, []), avisos.get(b.id, []), tareas.get(b.id, []), fotos.get(b.id), entregas)
-            for b in barras
-        ],
+        "barras": [barra_json(b) for b in barras],
         "posicionesRM": posiciones,
         "plantillas": [_plantilla_json(p) for p in plantillas],
     }
 
 
-async def _datos_para_externo(db: AsyncSession, usuario: User, mundo: str, rev: int | None) -> dict:
-    """/datos para una cuenta externa (ver app/core/externos.py): las acciones
-    que tocan su ventana, con sus piezas y SOLO sus tareas. Sin avisos (son
-    internos), sin plantillas, sin el pedido de fotos de colocación y, de
-    Retail Media, solo los meses de la ventana.
+async def _datos_recortados(db: AsyncSession, usuario: User, mundo: str, rev: int | None) -> dict:
+    """/datos para quien ve una parte: las acciones que tocan su ventana (su
+    alcance, app/core/alcance.py) y, si es una cuenta externa, solo lo suyo
+    (ver `_armar_datos`).
 
     La revisión es la huella de esto mismo (`externos.huella`), no el contador
     de todo el calendario: si lo que ve no cambió, "sin cambios", aunque
-    afuera de su ventana se haya movido todo. `opaca` le dice al front que no
+    afuera de lo que ve se haya movido todo. `opaca` le dice al front que no
     la compare como un contador (una huella nueva puede ser menor)."""
-    v = externos.ventana_de_hoy()
-    barras = (await db.execute(
-        select(CalendarioBarra).where(CalendarioBarra.mundo == mundo, externos.condicion_de_ventana(CalendarioBarra, v))
-        .order_by(CalendarioBarra.desde, CalendarioBarra.id)
-    )).scalars().all()
-    ids = [b.id for b in barras]
-    piezas: dict[str, list[CalendarioPieza]] = {}
-    tareas: dict[str, list[CalendarioTarea]] = {}
-    if ids:
-        for p in (await db.execute(
-            select(CalendarioPieza).where(CalendarioPieza.barra_id.in_(ids))
-            .order_by(CalendarioPieza.orden, CalendarioPieza.id)
-        )).scalars():
-            piezas.setdefault(p.barra_id, []).append(p)
-        for t in (await db.execute(
-            select(CalendarioTarea).where(
-                CalendarioTarea.barra_id.in_(ids), CalendarioTarea.asignado_a_id == usuario.id,
-            ).order_by(CalendarioTarea.orden, CalendarioTarea.created_at, CalendarioTarea.id)
-        )).scalars():
-            tareas.setdefault(t.barra_id, []).append(t)
-    visibles = {t.id for ts in tareas.values() for t in ts}
-    entregas = await resumenes_de_entregas(db, list(visibles)) if visibles else {}
-
-    def barra_json(b: CalendarioBarra) -> dict:
-        out = _barra_json(b, piezas.get(b.id, []), [], tareas.get(b.id, []), None, entregas)
-        # Una tarea suya que cuelga de otra que no es suya (la madre la tiene
-        # alguien del equipo) se muestra suelta: la madre no viaja.
-        for t in out.get("tareas", []):
-            if t["parentId"] is not None and t["parentId"] not in visibles:
-                t["parentId"] = None
-        return out
-
-    posiciones = {
-        p.clave: list(p.posiciones)
-        for p in (await db.execute(
-            select(CalendarioPosicionesRM).where(CalendarioPosicionesRM.clave.in_(externos.meses_de_la_ventana(v)))
-        )).scalars()
-    } if mundo == MUNDO_POR_DEFECTO else {}
-    datos = {
-        "mundo": mundo,
-        "barras": [barra_json(b) for b in barras],
-        "posicionesRM": posiciones,
-        "plantillas": [],
-    }
+    datos = await _armar_datos(
+        db, mundo, alcance.ventana_de(usuario), usuario if externos.es_externo(usuario) else None,
+    )
     huella = externos.huella(datos)
     if rev is not None and rev == huella:
         return {"rev": huella, "sinCambios": True, "opaca": True}
@@ -492,15 +526,15 @@ async def _datos_para_externo(db: AsyncSession, usuario: User, mundo: str, rev: 
 
 async def ids_de_aprobadores_de(db: AsyncSession, usuario: User, mundo: str | None = None) -> set[int]:
     """Quiénes aprueban (o decidieron, o marcaron) las entregas de las tareas
-    de una cuenta externa en su ventana: son las personas del equipo con las
-    que trabaja, y las únicas de afuera de su empresa que ve con nombre."""
+    de una cuenta externa: son las personas del equipo con las que trabaja, y
+    las únicas de afuera de su empresa que ve con nombre.
+
+    Sin mirar la ventana: solo las tareas con entregas cuentan (`propias` se
+    cruza con las entregas), y esas son sus tarjetas, que ve siempre (0070)."""
     propias = (
         select(CalendarioTarea.id)
         .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
-        .where(
-            CalendarioTarea.asignado_a_id == usuario.id,
-            externos.condicion_de_ventana(CalendarioBarra, externos.ventana_de_hoy()),
-        )
+        .where(externos.condicion_tarea_propia(CalendarioTarea, usuario))
     )
     if mundo is not None:
         propias = propias.where(CalendarioBarra.mundo == mundo)
@@ -575,8 +609,11 @@ async def listar_personas(
     qué empresa).
 
     A una cuenta externa le vuelven solo los de su empresa y quienes aprueban
-    sus entregas, sin mail: no tiene por qué saber quién más trabaja acá."""
+    sus entregas, sin mail: no tiene por qué saber quién más trabaja acá.
+    Quien no ve el calendario (0070) no la necesita: es para armar tareas y
+    avisos desde la ficha de una acción."""
     exigir_mundo(current_user, mundo)
+    alcance.exigir_calendario(current_user)
     usuarios = (await db.execute(
         select(User).where(User.is_active == True).order_by(User.full_name)  # noqa: E712
     )).scalars().all()
@@ -721,13 +758,14 @@ async def crear_barra(
 ):
     _validar_rango(payload.desde, payload.hasta)
     exigir_mundo(current_user, payload.mundo)
+    _exigir_en_su_alcance(current_user, payload.desde, payload.hasta)
     existente = (await db.execute(
         select(CalendarioBarra.id).where(CalendarioBarra.id == payload.id)
     )).scalar_one_or_none()
     if existente is not None:
         # El id lo genera el front: si ya está, es un reintento del mismo alta.
         # `yaExistia` le dice al front que esta revisión NO es la suya.
-        return {"id": payload.id, "rev": await _revision_actual(db), "yaExistia": True}
+        return {"id": payload.id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}
     db.add(CalendarioBarra(
         **payload.model_dump(),
         creado_por_id=current_user.id,
@@ -735,7 +773,7 @@ async def crear_barra(
     ))
     rev = await _nueva_revision(db, payload.mundo)
     await db.commit()
-    return {"id": payload.id, "rev": rev}
+    return {"id": payload.id, "rev": _rev_para(current_user, rev)}
 
 
 @router.patch("/barras/{barra_id}")
@@ -752,6 +790,8 @@ async def cambiar_barra(
         raise HTTPException(status_code=422, detail=str(exc))
     cambio_la_fecha = cambios.get("desde", barra.desde) != barra.desde
     cambio_el_fin = cambios.get("hasta", barra.hasta) != barra.hasta
+    if cambio_la_fecha or cambio_el_fin:
+        _exigir_en_su_alcance(current_user, cambios.get("desde", barra.desde), cambios.get("hasta", barra.hasta))
     for campo, valor in cambios.items():
         setattr(barra, campo, valor)
     barra.actualizado_por_id = current_user.id
@@ -777,7 +817,7 @@ async def cambiar_barra(
     if cambio_la_fecha:
         # Un aviso que con la fecha nueva ya tendría que haber salido, sale ya.
         await _avisar_sin_romper(db, barra_id)
-    return {"id": barra_id, "rev": rev, "tareasMovidas": movidas}
+    return {"id": barra_id, "rev": _rev_para(current_user, rev), "tareasMovidas": movidas}
 
 
 @router.delete("/barras/{barra_id}")
@@ -821,7 +861,7 @@ async def borrar_barra(
     await db.delete(barra)
     rev = await _nueva_revision(db, mundo)
     await db.commit()
-    return {"id": barra_id, "borrada": True, "rev": rev}
+    return {"id": barra_id, "borrada": True, "rev": _rev_para(current_user, rev)}
 
 
 # ---------------------------------------------------------------------------
@@ -866,7 +906,7 @@ async def agregar_pieza(
     if igual is not None:
         # Otra persona la agregó primero (o es un reintento). El front tiene
         # que traer todo: su copia local puede tener otro id para esta pieza.
-        return {"id": igual.id, "rev": await _revision_actual(db), "yaExistia": True}
+        return {"id": igual.id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}
     db.add(CalendarioPieza(
         id=payload.id, barra_id=barra_id, area=payload.area, formato=payload.formato,
         estado=payload.estado, desde=payload.desde, hasta=payload.hasta, hora=payload.hora,
@@ -874,7 +914,7 @@ async def agregar_pieza(
     ))
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
-    return {"id": payload.id, "rev": rev}
+    return {"id": payload.id, "rev": _rev_para(current_user, rev)}
 
 
 @router.patch("/piezas/{pieza_id}")
@@ -905,7 +945,7 @@ async def cambiar_pieza(
         pieza.en_sharepoint = payload.enSharePoint
     rev = await _nueva_revision(db, mundo)
     await db.commit()
-    return {"id": pieza_id, "rev": rev}
+    return {"id": pieza_id, "rev": _rev_para(current_user, rev)}
 
 
 @router.delete("/piezas/{pieza_id}")
@@ -920,7 +960,7 @@ async def quitar_pieza(
     await db.execute(delete(CalendarioPieza).where(CalendarioPieza.id == pieza_id))
     rev = await _nueva_revision(db, mundo)
     await db.commit()
-    return {"id": pieza_id, "borrada": True, "rev": rev}
+    return {"id": pieza_id, "borrada": True, "rev": _rev_para(current_user, rev)}
 
 
 # ---------------------------------------------------------------------------
@@ -979,7 +1019,7 @@ async def configurar_aviso(
     # Si la fecha del aviso ya pasó (10 días antes de algo que arranca en 5),
     # sale ahora y no en la próxima vuelta del loop.
     enviados = await _avisar_sin_romper(db, barra_id)
-    return {"id": payload.id, "rev": rev, "enviadosAhora": enviados}
+    return {"id": payload.id, "rev": _rev_para(current_user, rev), "enviadosAhora": enviados}
 
 
 @router.delete("/avisos/{aviso_id}")
@@ -994,7 +1034,7 @@ async def quitar_aviso(
     await db.execute(delete(CalendarioAviso).where(CalendarioAviso.id == aviso_id))
     rev = await _nueva_revision(db, mundo)
     await db.commit()
-    return {"id": aviso_id, "borrado": True, "rev": rev}
+    return {"id": aviso_id, "borrado": True, "rev": _rev_para(current_user, rev)}
 
 
 # ---------------------------------------------------------------------------
@@ -1032,6 +1072,11 @@ async def mover_posiciones_rm(
     _validar_clave(clave)
     # El header de la home es de Tienda Inglesa: los otros mundos no tienen.
     exigir_mundo(current_user, MUNDO_POR_DEFECTO)
+    # Un mes fuera de lo que la persona ve del calendario (0070) no existe para ella.
+    alcance.exigir_calendario(current_user)
+    meses = alcance.meses_de(alcance.ventana_de(current_user))
+    if meses is not None and clave not in meses:
+        raise HTTPException(status_code=404, detail="Ese mes queda fuera de lo que ves del calendario")
     fila = (await db.execute(
         select(CalendarioPosicionesRM).where(CalendarioPosicionesRM.clave == clave).with_for_update()
     )).scalar_one_or_none()
@@ -1072,7 +1117,7 @@ async def mover_posiciones_rm(
     # Retail Media es solo del calendario de Tienda Inglesa.
     rev = await _nueva_revision(db, MUNDO_POR_DEFECTO)
     await db.commit()
-    return {"clave": clave, "avisados": len(destinatarios), "rev": rev}
+    return {"clave": clave, "avisados": len(destinatarios), "rev": _rev_para(current_user, rev)}
 
 
 # ---------------------------------------------------------------------------
@@ -1084,6 +1129,13 @@ async def mover_posiciones_rm(
 # Crear, editar, asignar y borrar pide `calendario.tareas`. Mover el ESTADO de
 # una tarea lo puede hacer además la persona que la tiene asignada, aunque no
 # tenga ese permiso ni `calendario.edit`: es su tarea.
+#
+# Una PIEZA (0070: una tarea con tipo —Banners, Cenefas...— o que hace una
+# agencia) la puede pedir además quien tiene `calendario.edit`. Ivan
+# (16/11/2026): "todo el equipo (Lucía, Nao…) tiene que poder crear tareas
+# para agencia", y el rol "Usuario" del equipo trae `calendario.edit` pero no
+# `calendario.tareas`. Repartir tareas comunes entre la gente de Tienda,
+# editar y borrar tareas sigue siendo de quien lidera (`calendario.tareas`).
 
 TIPO_TAREA = "calendario_tarea"
 
@@ -1092,6 +1144,86 @@ def _puede_gestionar_tareas(usuario: User) -> bool:
     # Con el freno de las cuentas externas (externos.puede_tener): una agencia
     # nunca arma ni reparte tareas, aunque el permiso apareciera en su lista.
     return externos.puede_tener(usuario, PERMISO_TAREAS)
+
+
+def puede_crear_tarea(usuario: User, pieza: bool) -> bool:
+    """Quién crea una tarea: quien lidera, cualquiera; una pieza (con su
+    tarjeta), además quien edita el calendario. Pura."""
+    if _puede_gestionar_tareas(usuario):
+        return True
+    return pieza and externos.puede_tener(usuario, "calendario.edit")
+
+
+async def _cuentas_de_la_agencia(db: AsyncSession, empresa: str | None, mundo: str) -> list[User]:
+    """Las cuentas activas de esa agencia que entran a este mundo."""
+    empresa = externos.limpiar_empresa(empresa)
+    if not empresa:
+        return []
+    usuarios = (await db.execute(
+        select(User).where(
+            User.es_externo.is_(True), User.is_active.is_(True), externos.empresa_en_sql(User.empresa) == empresa.lower(),
+        )
+    )).scalars().all()
+    return [u for u in usuarios if _puede_ver_el_mundo(u, mundo)]
+
+
+async def _agencia_o_422(db: AsyncSession, empresa: str | None, mundo: str) -> str:
+    """El nombre de la agencia, limpio, si tiene alguna cuenta que entra a
+    este mundo: si no, nadie vería la tarjeta."""
+    limpia = externos.limpiar_empresa(empresa)
+    if not limpia:
+        raise HTTPException(status_code=422, detail="Elegí para qué agencia es")
+    cuentas = await _cuentas_de_la_agencia(db, limpia, mundo)
+    if not cuentas:
+        raise HTTPException(
+            status_code=422,
+            detail=f"«{limpia}» no tiene ninguna cuenta que entre a {MUNDOS.get(mundo, mundo)}: no vería la tarjeta",
+        )
+    # Como la tiene guardada su cuenta: así se ve igual en todos lados.
+    return externos.limpiar_empresa(cuentas[0].empresa) or limpia
+
+
+async def _nacer_tarjetas(
+    db: AsyncSession, usuario: User, barra: CalendarioBarra, tareas: list[CalendarioTarea],
+) -> int:
+    """Lo que pasa cuando nace una pieza (0070: una tarea con tipo, o para una
+    agencia): le nacen sus entregas por defecto (una fase "Entrega", la
+    aprueba quien la creó), o sea su tarjeta en el tablero, y a quien la hace
+    (la agencia entera, o la persona asignada) le llega UN aviso por persona
+    con todas sus tarjetas nuevas: "Iván te pidió: Ciberlunes - Banners
+    (Header, Slider)". Devuelve a cuántas personas se avisó.
+
+    Las tareas tienen que estar ya en la sesión; se manda todo junto (flush)
+    porque las entregas apuntan a la tarea."""
+    piezas = [t for t in tareas if es_pieza(t)]
+    if not piezas:
+        return 0
+    await db.flush()
+    por_persona: dict[int, list[CalendarioTarea]] = {}
+    for t in piezas:
+        if await db.get(CalendarioEntrega, t.id) is None:
+            await reglas_entregas.crear_entregas_por_defecto(db, t, usuario.id)
+        for uid in await reglas_entregas.destinatarios_de_la_tarjeta(db, t, barra.mundo):
+            if uid != usuario.id:
+                por_persona.setdefault(uid, []).append(t)
+    avisados = 0
+    for uid, suyas in por_persona.items():
+        if await reglas_entregas.avisar(
+            db, uid,
+            reglas_entregas.mensaje_de_tarjetas_nuevas(
+                usuario.full_name, [(t.titulo, list(t.opciones or []), t.vence) for t in suyas],
+            ),
+            reglas_entregas.referencia(barra.id, suyas[0].id, "tarjeta", "nueva"),
+        ):
+            avisados += 1
+    return avisados
+
+
+def es_pieza(tarea) -> bool:
+    """Si una tarea es una pieza con su tarjeta en el tablero: tiene tipo
+    (Banners, Cenefas...) o la hace una agencia (de la plataforma o de
+    afuera). Las demás son tareas comunes del equipo. Pura."""
+    return bool(getattr(tarea, "tipo", None)) or getattr(tarea, "para", "tienda") in ("agencia", "fuera")
 
 
 def _exigir_gestion_de_tareas(usuario: User) -> None:
@@ -1207,18 +1339,45 @@ async def _asignable_o_422(db: AsyncSession, user_id: int, mundo: str) -> User:
 class TareaNueva(BaseModel):
     id: str = Field(..., pattern=_ID)
     parentId: str | None = Field(None, pattern=_ID)
-    titulo: str = Field(..., min_length=1, max_length=500)
+    # Con `tipo`, el título lo arma el servidor ("<Acción> - <Tipo>") y este
+    # se ignora: puede venir vacío.
+    titulo: str = Field("", max_length=500)
     descripcion: str | None = Field(None, max_length=5000)
     asignadoA: int | None = None
     vence: Fecha | None = None
+    # Quién la hace (0070): 'tienda', 'agencia' (de la plataforma: cuál, en
+    # `agencia`) o 'fuera' (una agencia que no usa la plataforma: su nombre en
+    # `agencia`, y `asignadoA` es quien del equipo carga sus entregas).
+    para: ParaQuien = "tienda"
+    agencia: str | None = Field(None, max_length=120)
+    # El tipo de tarea (app/services/tipos_de_tarea.py) y lo que se tildó.
+    # Con tipo, es una pieza: le nace su tarjeta.
+    tipo: str | None = Field(None, max_length=20)
+    opciones: list[str] | None = Field(None, max_length=60)
+    # Los datos de más del tipo (el CTA, los bloques del mailing).
+    detalles: dict | None = None
+    # El vencimiento contado desde la acción ("3 días antes del inicio"), en
+    # vez de una fecha fija: se mueve si la acción se mueve (como el de una
+    # plantilla). Si viene, manda sobre `vence`.
+    ancla: Ancla | None = None
+    anclaDias: int | None = Field(None, ge=-_DIAS_DE_ANCLA, le=_DIAS_DE_ANCLA)
 
     @field_validator("titulo")
     @classmethod
     def _sin_espacios(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
+        return v.strip()
+
+    @model_validator(mode="after")
+    def _titulo_o_tipo(self):
+        if self.tipo is not None:
+            self.opciones = tipos_de_tarea.opciones_validas(self.tipo, self.opciones)
+            self.detalles = tipos_de_tarea.detalles_validos(self.tipo, self.detalles, self.opciones) or None
+        elif not self.titulo:
             raise ValueError("La tarea necesita un título")
-        return v
+        else:
+            self.opciones = None
+            self.detalles = None
+        return self
 
 
 class TareaCambios(BaseModel):
@@ -1231,6 +1390,16 @@ class TareaCambios(BaseModel):
     vence: Fecha | None = None
 
 
+@router.get("/tipos-de-tarea")
+async def listar_tipos_de_tarea(
+    current_user: User = Depends(require_permission("calendario.view")),
+):
+    """El catálogo de tipos de tarea con sus opciones. Está en UN solo lugar
+    (app/services/tipos_de_tarea.py): la pantalla lo pide acá y no guarda una
+    copia, así cambiar una medida de banner es cambiarla allá."""
+    return tipos_de_tarea.para_la_pantalla()
+
+
 @router.post("/barras/{barra_id}/tareas", status_code=201)
 async def crear_tarea(
     barra_id: str,
@@ -1238,7 +1407,13 @@ async def crear_tarea(
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    _exigir_gestion_de_tareas(current_user)
+    """Una tarea (o subtarea) de una acción. Si es una pieza (0070: tiene
+    tipo, o la hace una agencia), le nace su tarjeta en el tablero, con el
+    nombre "<Acción> - <Tipo>", sus entregas por defecto y el aviso a quien
+    la hace (ver `_nacer_tarjetas`)."""
+    pieza = es_pieza(payload)
+    if not puede_crear_tarea(current_user, pieza):
+        raise HTTPException(status_code=403, detail=f"Permiso requerido: {PERMISO_TAREAS}")
     barra = await _barra_o_404(db, barra_id, current_user, bloquear=True)
     if barra.seccion not in _CON_AVISOS:
         raise HTTPException(
@@ -1249,7 +1424,7 @@ async def crear_tarea(
         select(CalendarioTarea).where(CalendarioTarea.barra_id == barra_id)
     )).scalars().all()
     if any(t.id == payload.id for t in existentes):
-        return {"id": payload.id, "rev": await _revision_actual(db), "yaExistia": True}
+        return {"id": payload.id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}
     # El id lo genera el front; si ya lo usa una tarea de OTRA acción, la
     # clave primaria lo frenaría con un 500 sin explicación.
     if await db.get(CalendarioTarea, payload.id) is not None:
@@ -1260,24 +1435,92 @@ async def crear_tarea(
             raise HTTPException(status_code=404, detail="La tarea de la que cuelga ya no existe: la borraron.")
         if nivel_de(payload.parentId, padres) > _NIVELES_DE_TAREA:
             raise HTTPException(status_code=422, detail="Una sub-subtarea no puede tener más tareas adentro")
-    if payload.asignadoA is not None:
-        await _asignable_o_422(db, payload.asignadoA, barra.mundo)
-    db.add(CalendarioTarea(
-        id=payload.id, barra_id=barra_id, parent_id=payload.parentId, titulo=payload.titulo,
+    asignado = await _asignable_o_422(db, payload.asignadoA, barra.mundo) if payload.asignadoA is not None else None
+    para, agencia = await _para_quien(db, payload.para, payload.agencia, asignado, barra.mundo)
+    if not es_pieza(SimpleNamespace(tipo=payload.tipo, para=para)) and not _puede_gestionar_tareas(current_user):
+        # Una tarea común para alguien de Tienda es repartir trabajo: de quien lidera.
+        raise HTTPException(status_code=403, detail=f"Permiso requerido: {PERMISO_TAREAS}")
+
+    if payload.ancla is not None:
+        dias = payload.anclaDias or 0
+        vence = vence_anclado(payload.ancla, dias, barra.desde, barra.hasta)
+        try:
+            _fecha_razonable(vence)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        ancla, ancla_dias = payload.ancla, dias
+    else:
+        vence, ancla, ancla_dias = payload.vence, None, None
+
+    # Con tipo, el nombre se arma solo: "Ciberlunes - Banners" (así se
+    # encuentra escribiendo el nombre de la acción, un guión y lo que se busca).
+    titulo = tipos_de_tarea.nombre_de_tarjeta(barra.nombre, payload.tipo) if payload.tipo else payload.titulo
+    tarea = CalendarioTarea(
+        id=payload.id, barra_id=barra_id, parent_id=payload.parentId, titulo=titulo,
         descripcion=(payload.descripcion or "").strip() or None,
-        asignado_a_id=payload.asignadoA, vence=payload.vence,
+        asignado_a_id=payload.asignadoA, vence=vence, ancla=ancla, ancla_dias=ancla_dias,
+        para=para, agencia=agencia, tipo=payload.tipo, opciones=payload.opciones, detalles=payload.detalles,
         orden=max((t.orden for t in existentes), default=-1) + 1,
         creado_por_id=current_user.id,
-    ))
+    )
+    db.add(tarea)
     avisados = 0
-    if payload.asignadoA is not None and payload.asignadoA != current_user.id:
+    entrega = None
+    if es_pieza(tarea):
+        # A quien la hace le llega "Iván te pidió: …" (lleva al tablero), no
+        # el aviso de tarea asignada: uno solo, no dos por lo mismo.
+        avisados = await _nacer_tarjetas(db, current_user, barra, [tarea])
+        await db.flush()
+        entrega = (await resumenes_de_entregas(db, [tarea.id])).get(tarea.id)
+    elif payload.asignadoA is not None and payload.asignadoA != current_user.id:
         _avisar(db, payload.asignadoA, mensaje_de_asignacion(
-            current_user.full_name, payload.titulo, barra.nombre, payload.vence,
+            current_user.full_name, titulo, barra.nombre, vence,
         ), barra_id, payload.id)
         avisados = 1
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
-    return {"id": payload.id, "rev": rev, "avisados": avisados}
+    return {
+        "id": payload.id, "rev": _rev_para(current_user, rev), "avisados": avisados,
+        "titulo": titulo, "para": para, "agencia": agencia, "vence": vence.isoformat() if vence else None,
+        "entrega": entrega,
+    }
+
+
+async def _para_quien(
+    db: AsyncSession, para: str, agencia: str | None, asignado: User | None, mundo: str,
+) -> tuple[str, str | None]:
+    """Quién la hace: ('tienda', None), ('agencia', empresa) o ('fuera', nombre).
+
+    - Asignarla a una cuenta externa es hacerla para su agencia (era lo que
+      se hacía antes de la 0070, y la migración pasó esas tareas a "para la
+      agencia"). Para una agencia de la plataforma, la persona asignada, si
+      hay, tiene que ser de esa agencia: la tarjeta es de ella.
+    - Una agencia de afuera no entra a la plataforma: hace falta alguien del
+      equipo asignado, que carga sus entregas en su nombre."""
+    if asignado is not None and externos.es_externo(asignado):
+        if para == "agencia" and agencia and not externos.misma_empresa(agencia, asignado.empresa):
+            raise HTTPException(status_code=422, detail="Esa persona es de otra agencia")
+        if para == "fuera":
+            raise HTTPException(status_code=422, detail="Quien carga lo de una agencia de afuera es alguien del equipo")
+        return "agencia", externos.limpiar_empresa(asignado.empresa)
+    if para == "agencia":
+        if asignado is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Una tarea para la agencia la entrega la agencia: elegí a alguien de ella o dejala sin asignar",
+            )
+        return "agencia", await _agencia_o_422(db, agencia, mundo)
+    if para == "fuera":
+        nombre = externos.limpiar_empresa(agencia)
+        if not nombre:
+            raise HTTPException(status_code=422, detail="Escribí el nombre de la agencia de afuera")
+        if asignado is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Elegí quién del equipo carga lo que manda esa agencia (no usa la plataforma)",
+            )
+        return "fuera", nombre
+    return "tienda", None
 
 
 @router.patch("/tareas/{tarea_id}")
@@ -1327,14 +1570,25 @@ async def cambiar_tarea(
     if "vence" in campos:
         poner_vence_a_mano(tarea, payload.vence)
     if "asignadoA" in campos and payload.asignadoA != tarea.asignado_a_id:
-        if payload.asignadoA is not None:
-            await _asignable_o_422(db, payload.asignadoA, barra.mundo)
-            if payload.asignadoA != current_user.id:
-                _avisar(db, payload.asignadoA, mensaje_de_asignacion(
-                    current_user.full_name, tarea.titulo, barra.nombre, tarea.vence,
-                ), barra.id, tarea.id)
-                avisados += 1
+        nuevo = await _asignable_o_422(db, payload.asignadoA, barra.mundo) if payload.asignadoA is not None else None
+        era_de_la_agencia = tarea.para == "agencia"
+        if nuevo is not None and externos.es_externo(nuevo):
+            # A alguien de una agencia: la tarea pasa a ser para su agencia (0070).
+            tarea.para, tarea.agencia = "agencia", externos.limpiar_empresa(nuevo.empresa)
+        elif nuevo is not None and era_de_la_agencia:
+            # A alguien de Tienda: deja de ser de la agencia (sus entregas
+            # quedan, las entrega esta persona).
+            tarea.para, tarea.agencia = "tienda", None
         tarea.asignado_a_id = payload.asignadoA
+        if tarea.para == "agencia" and (not era_de_la_agencia or nuevo is not None):
+            # Le nace la tarjeta si no la tenía, y el aviso va como "tarjeta
+            # nueva" (al tablero), no como tarea asignada: uno solo.
+            avisados += await _nacer_tarjetas(db, current_user, barra, [tarea])
+        elif nuevo is not None and nuevo.id != current_user.id:
+            _avisar(db, nuevo.id, mensaje_de_asignacion(
+                current_user.full_name, tarea.titulo, barra.nombre, tarea.vence,
+            ), barra.id, tarea.id)
+            avisados += 1
     if "estado" in campos and payload.estado is not None and payload.estado != tarea.estado:
         if tarea.estado == "hecha" and "vence" not in campos:
             # Hecha no se movía con la acción; si se reabre, vuelve a su fecha
@@ -1367,7 +1621,7 @@ async def borrar_tarea(
     await db.execute(delete(CalendarioTarea).where(CalendarioTarea.id == tarea_id))
     rev = await _nueva_revision(db, mundo)
     await db.commit()
-    return {"id": tarea_id, "borrada": True, "rev": rev}
+    return {"id": tarea_id, "borrada": True, "rev": _rev_para(current_user, rev)}
 
 
 DIAS_DE_HECHAS_EN_MIS_TAREAS = 30
@@ -1384,7 +1638,12 @@ async def mis_tareas(
     Las abiertas, todas; las hechas, solo las de los últimos
     DIAS_DE_HECHAS_EN_MIS_TAREAS días. Antes venía todo lo de siempre: con el
     uso se iba a cientos de tareas viejas (medido: 269 KB con 668) que nadie
-    mira y que se bajaban cada vez que se abría la pantalla."""
+    mira y que se bajaban cada vez que se abría la pantalla.
+
+    Es una lista del calendario (cada tarea dice su acción): quien no lo ve
+    (0070) recibe 403, y quien lo ve limitado, solo las de su alcance. Sus
+    tarjetas con entregas las ve siempre en el tablero (/calendario/entregas)."""
+    alcance.exigir_calendario(current_user)
     mundos = mundos_de(current_user)
     if not mundos:
         return []
@@ -1403,10 +1662,9 @@ async def mis_tareas(
         )
     )
     externo = externos.es_externo(current_user)
-    if externo:
-        # Aunque sea suya: la tarea de una acción de dentro de tres meses la
-        # ve cuando la acción entra en su ventana.
-        consulta = consulta.where(externos.condicion_de_ventana(CalendarioBarra, externos.ventana_de_hoy()))
+    # Aunque sea suya: la tarea de una acción fuera de su alcance la ve cuando
+    # la acción entra en lo que ve.
+    consulta = consulta.where(alcance.condicion(CalendarioBarra, alcance.ventana_de(current_user)))
     filas = (await db.execute(
         consulta.order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
     )).all()
@@ -1454,8 +1712,6 @@ async def ubicar_barra(
 # que crear tareas a mano: aplicar una es crear varias de una vez. Cada
 # plantilla es de un mundo, y solo se ve y se usa en ese.
 
-Ancla = Literal["inicio", "fin"]
-_DIAS_DE_ANCLA = 365
 _TAREAS_POR_PLANTILLA = 60
 
 
@@ -1472,6 +1728,16 @@ class TareaDePlantilla(BaseModel):
     # Sin ancla, la tarea se crea sin fecha.
     ancla: Ancla | None = "inicio"
     dias: int = Field(0, ge=-_DIAS_DE_ANCLA, le=_DIAS_DE_ANCLA)
+    # Para quién es (0070): si es para la agencia, al aplicar la plantilla le
+    # nace sola su tarjeta.
+    para: ParaQuien = "tienda"
+    agencia: str | None = Field(None, max_length=120)
+    # El tipo de tarea (Banners, Cenefas...), lo tildado y los datos de más:
+    # con tipo, la tarea nace como pieza, con su tarjeta y el nombre
+    # "<Acción> - <Tipo>" de la acción donde se aplica.
+    tipo: str | None = Field(None, max_length=20)
+    opciones: list[str] | None = Field(None, max_length=60)
+    detalles: dict | None = None
 
     @field_validator("titulo")
     @classmethod
@@ -1490,6 +1756,20 @@ class TareaDePlantilla(BaseModel):
     def _sin_ancla_no_hay_dias(self):
         if self.ancla is None:
             self.dias = 0
+        if self.para in ("agencia", "fuera"):
+            self.agencia = externos.limpiar_empresa(self.agencia)
+            if not self.agencia:
+                raise ValueError(f"Elegí qué agencia hace «{self.titulo}»")
+        else:
+            self.agencia = None
+        if self.para == "fuera" and self.asignadoA is None:
+            raise ValueError(f"«{self.titulo}» la hace una agencia de afuera: elegí quién del equipo carga sus entregas")
+        if self.tipo is not None:
+            self.opciones = tipos_de_tarea.opciones_validas(self.tipo, self.opciones)
+            self.detalles = tipos_de_tarea.detalles_validos(self.tipo, self.detalles, self.opciones) or None
+        else:
+            self.opciones = None
+            self.detalles = None
         return self
 
 
@@ -1571,7 +1851,9 @@ class PlantillaCambio(ValueError):
     persona la editó desde que el front la leyó."""
 
 
-def tareas_de_plantilla(tareas: list[dict], ids: dict[str, str], desde: date, hasta: date) -> list[dict]:
+def tareas_de_plantilla(
+    tareas: list[dict], ids: dict[str, str], desde: date, hasta: date, accion: str = "",
+) -> list[dict]:
     """Las tareas que crea una plantilla en una acción que va de `desde` a
     `hasta`, con el vencimiento calculado y anclado. Las tareas sueltas
     primero y las subtareas después, cada grupo en el orden de la plantilla:
@@ -1596,7 +1878,16 @@ def tareas_de_plantilla(tareas: list[dict], ids: dict[str, str], desde: date, ha
             "vence": vence_anclado(ancla, dias, desde, hasta) if ancla else None,
             "ancla": ancla,
             "ancla_dias": dias if ancla else None,
+            # Una plantilla guardada antes de la 0070 no dice quién la hace: Tienda.
+            "para": t["para"] if t.get("para") in ("agencia", "fuera") and t.get("agencia") else "tienda",
+            "agencia": t.get("agencia") if t.get("para") in ("agencia", "fuera") and t.get("agencia") else None,
+            "tipo": t.get("tipo") or None,
+            "opciones": list(t.get("opciones") or []) if t.get("tipo") else None,
+            "detalles": dict(t.get("detalles") or {}) or None if t.get("tipo") else None,
         })
+        if t.get("tipo"):
+            # Una pieza se llama como la acción donde se aplica: "Ciberlunes - Banners".
+            out[-1]["titulo"] = tipos_de_tarea.nombre_de_tarjeta(accion, t["tipo"])
     return out
 
 
@@ -1636,6 +1927,7 @@ async def guardar_plantilla(
     reintento del mismo guardado vuelve a escribir lo mismo."""
     _exigir_gestion_de_tareas(current_user)
     exigir_mundo(current_user, payload.mundo)
+    alcance.exigir_calendario(current_user)
     plantilla = (await db.execute(
         select(CalendarioPlantilla).where(CalendarioPlantilla.id == plantilla_id).with_for_update()
     )).scalar_one_or_none()
@@ -1649,6 +1941,31 @@ async def guardar_plantilla(
             detail=(f"Hay responsables que no pueden abrir el calendario de "
                     f"{MUNDOS.get(payload.mundo, payload.mundo)}: no verían sus tareas. Elegí a otra persona."),
         )
+    # Cada agencia nombrada tiene que tener quien vea sus tarjetas en este
+    # mundo (0070); y la persona fija de una tarea para la agencia, ser de ella.
+    for agencia in sorted({t.agencia for t in payload.tareas if t.para == "agencia" and t.agencia}):
+        await _agencia_o_422(db, agencia, payload.mundo)
+    con_persona = [t for t in payload.tareas if t.asignadoA is not None]
+    if con_persona:
+        personas = {u.id: u for u in (await db.execute(
+            select(User).where(User.id.in_({t.asignadoA for t in con_persona}))
+        )).scalars()}
+        for t in con_persona:
+            u = personas.get(t.asignadoA)
+            if t.para == "agencia" and (u is None or not externos.es_externo(u)
+                                         or not externos.misma_empresa(u.empresa, t.agencia)):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"«{t.titulo}» es para {t.agencia}: la persona fija tiene que ser de esa agencia, o ninguna",
+                )
+            if t.para == "tienda" and u is not None and externos.es_externo(u):
+                # Una persona de una agencia hace que la tarea sea para su agencia.
+                t.para, t.agencia = "agencia", externos.limpiar_empresa(u.empresa)
+            if t.para == "fuera" and u is not None and externos.es_externo(u):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"«{t.titulo}» la hace una agencia de afuera: la carga alguien del equipo",
+                )
     tareas = [t.model_dump() for t in payload.tareas]
     if plantilla is None:
         db.add(CalendarioPlantilla(
@@ -1662,7 +1979,7 @@ async def guardar_plantilla(
         plantilla.actualizado_por_id = current_user.id
     rev = await _nueva_revision(db, payload.mundo)
     await db.commit()
-    return {"id": plantilla_id, "rev": rev}
+    return {"id": plantilla_id, "rev": _rev_para(current_user, rev)}
 
 
 @router.delete("/plantillas/{plantilla_id}")
@@ -1675,6 +1992,7 @@ async def borrar_plantilla(
     """Borra la plantilla. Las tareas que ya creó en las acciones se quedan, y
     siguen moviéndose con su acción: el ancla está en cada tarea."""
     _exigir_gestion_de_tareas(current_user)
+    alcance.exigir_calendario(current_user)
     plantilla = (await db.execute(
         select(CalendarioPlantilla).where(CalendarioPlantilla.id == plantilla_id).with_for_update()
     )).scalar_one_or_none()
@@ -1695,7 +2013,7 @@ async def borrar_plantilla(
     await db.delete(plantilla)
     rev = await _nueva_revision(db, mundo)
     await db.commit()
-    return {"id": plantilla_id, "borrada": True, "rev": rev}
+    return {"id": plantilla_id, "borrada": True, "rev": _rev_para(current_user, rev)}
 
 
 @router.post("/barras/{barra_id}/plantilla", status_code=201)
@@ -1728,10 +2046,10 @@ async def aplicar_plantilla(
     if ya_estan:
         if all(b == barra_id for b in ya_estan):
             # Un reintento de lo mismo: ya se crearon.
-            return {"id": barra_id, "rev": await _revision_actual(db), "yaExistia": True}
+            return {"id": barra_id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}
         raise HTTPException(status_code=409, detail="Esa tarea ya existe en otra acción")
     try:
-        plan = tareas_de_plantilla(list(plantilla.tareas or []), payload.ids, barra.desde, barra.hasta)
+        plan = tareas_de_plantilla(list(plantilla.tareas or []), payload.ids, barra.desde, barra.hasta, barra.nombre)
     except PlantillaCambio:
         raise HTTPException(
             status_code=409,
@@ -1745,6 +2063,17 @@ async def aplicar_plantilla(
         if t["asignado_a_id"] is not None and t["asignado_a_id"] not in validos:
             t["asignado_a_id"] = None
             sin_asignar += 1
+    # Una plantilla de antes de la 0070 con una persona de la agencia fija:
+    # esa tarea es para su agencia, como al crearla a mano.
+    externas = {
+        u.id: u for u in (await db.execute(
+            select(User).where(User.id.in_(validos), User.es_externo.is_(True))
+        )).scalars()
+    } if validos else {}
+    for t in plan:
+        u = externas.get(t["asignado_a_id"])
+        if u is not None and t["para"] == "tienda":
+            t["para"], t["agencia"] = "agencia", externos.limpiar_empresa(u.empresa)
 
     ultimo = (await db.execute(
         select(func.max(CalendarioTarea.orden)).where(CalendarioTarea.barra_id == barra_id)
@@ -1762,10 +2091,19 @@ async def aplicar_plantilla(
     await db.flush()
     db.add_all([t for t in nuevas if t.parent_id is not None])
 
+    # Las que son para la agencia (0070): les nace su tarjeta, y a la agencia
+    # le llega UN aviso por persona con todas sus tarjetas nuevas. Una agencia
+    # que dejó de tener cuentas en este mundo igual queda nombrada: la tarjeta
+    # se ve en el tablero del equipo.
+    tarjetas_avisadas = await _nacer_tarjetas(db, current_user, barra, nuevas)
+
     # Un aviso por persona, con todas sus tareas (no a quien la aplicó: se
     # las asignó él mismo). Lleva a la ficha de la acción, como el de siempre.
+    # Las de la agencia ya tuvieron el suyo ("tarjetas nuevas"): no dos.
     por_persona: dict[int, list[dict]] = {}
     for t in plan:
+        if es_pieza(SimpleNamespace(tipo=t["tipo"], para=t["para"])):
+            continue
         if t["asignado_a_id"] is not None and t["asignado_a_id"] != current_user.id:
             por_persona.setdefault(t["asignado_a_id"], []).append(t)
     for user_id, suyas in por_persona.items():
@@ -1776,8 +2114,9 @@ async def aplicar_plantilla(
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
     return {
-        "id": barra_id, "rev": rev, "creadas": len(plan),
-        "avisados": len(por_persona), "sinAsignar": sin_asignar,
+        "id": barra_id, "rev": _rev_para(current_user, rev), "creadas": len(plan),
+        "avisados": len(por_persona) + tarjetas_avisadas, "sinAsignar": sin_asignar,
+        "tarjetas": sum(1 for t in plan if es_pieza(SimpleNamespace(tipo=t["tipo"], para=t["para"]))),
     }
 
 
@@ -1839,7 +2178,7 @@ async def copiar_barra(
     ve aparecer la acción entera, nunca a medio copiar."""
     if await db.get(CalendarioBarra, payload.id) is not None:
         # Es un reintento de esta misma copia: ya está hecha.
-        return {"id": payload.id, "rev": await _revision_actual(db), "yaExistia": True}
+        return {"id": payload.id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}
 
     # Bloquear la original ordena la copia con quien le está agregando una
     # pieza o una tarea en ese momento: entra entera o no entra.
@@ -1851,6 +2190,7 @@ async def copiar_barra(
     except ValueError:
         raise HTTPException(status_code=422, detail=_FECHA_IRREAL.format("el fin de la acción"))
     _validar_rango(payload.desde, hasta)
+    _exigir_en_su_alcance(current_user, payload.desde, hasta)
 
     piezas = (await db.execute(
         select(CalendarioPieza).where(CalendarioPieza.barra_id == barra_id)
@@ -1909,7 +2249,7 @@ async def copiar_barra(
         # original y llega acá cuando el primero ya la guardó. Es la misma.
         await db.rollback()
         if await db.get(CalendarioBarra, payload.id) is not None:
-            return {"id": payload.id, "rev": await _revision_actual(db), "yaExistia": True}
+            return {"id": payload.id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}
         raise
     nuevas_piezas = [CalendarioPieza(**f) for f in filas_piezas]
     # En orden de alta: cada tarea madre antes que sus subtareas.
@@ -1919,10 +2259,17 @@ async def copiar_barra(
     db.add_all(nuevas_tareas)
     db.add_all(nuevos_avisos)
 
+    # Las tareas para la agencia (0070) se copian como tales y les nace su
+    # tarjeta nueva (en Ingresado, sin la historia de la original), con UN
+    # aviso por persona de la agencia.
+    avisados = await _nacer_tarjetas(db, current_user, barra, nuevas_tareas)
+
     # UN aviso a cada responsable, con todas sus tareas. Lleva a la ficha de
-    # la acción nueva, como el de una tarea creada a mano.
-    avisados = 0
-    for uid, suyas in tareas_por_responsable(copiadas_tareas.filas, current_user.id).items():
+    # la acción nueva, como el de una tarea creada a mano. Las de la agencia
+    # ya tuvieron el suyo.
+    for uid, suyas in tareas_por_responsable(
+        [f for f in copiadas_tareas.filas if f.get("para") != "agencia"], current_user.id,
+    ).items():
         vencimientos = [t["vence"] for t in suyas if t.get("vence")]
         _avisar(db, uid, mensaje_de_tareas_copiadas(
             current_user.full_name, [t["titulo"] for t in suyas], nombre,
@@ -1948,7 +2295,7 @@ async def copiar_barra(
     # baje no se le reacomoda nada.
     respuesta = {
         "id": payload.id,
-        "rev": rev,
+        "rev": _rev_para(current_user, rev),
         "barra": _barra_json(
             barra,
             sorted(nuevas_piezas, key=lambda p: (p.orden, p.id)),

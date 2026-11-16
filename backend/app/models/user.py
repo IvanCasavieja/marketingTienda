@@ -60,6 +60,11 @@ class User(Base):
     # La empresa de la cuenta externa ("Agencia Pampa"): entre los de la misma
     # empresa se ven los nombres; a los de otra, no.
     empresa: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Hasta dónde ve el calendario (0070): 'nada' (No lo ve), '1m', '2m',
+    # '12m' o 'todo'. Lo elige un admin en el panel. Las cuentas externas
+    # arrancan en 'nada' y las del equipo en 'todo'. Las cuentas y los filtros
+    # están en app/core/alcance.py.
+    calendario_alcance: Mapped[str] = mapped_column(String(8), nullable=False, default="todo", server_default="todo")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)

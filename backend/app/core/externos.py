@@ -19,15 +19,17 @@ el flag. Lo que cambia, todo del lado del servidor:
    calendario (filtrado) y sus avisos. Lo demás (cenefas, precios, medios,
    finanzas, Redexpres, el panel...) contesta 403 aunque el permiso alcanzara:
    no alcanza con esconder los botones.
-3. **La ventana.** Del calendario ve solo las acciones cuyo rango toca
-   [hoy - EXTERNOS_DIAS_ANTES, fin del mes actual + EXTERNOS_DIAS_DESPUES],
-   en hora de Uruguay. Una acción fuera de la ventana para él no existe: da el
-   mismo 404 que una que se borró, así no se puede ni deducir que está.
-4. **Lo de adentro de la ventana.** Solo sus tareas (las que tiene
-   asignadas, que son las que entrega), sin avisos internos, sin plantillas,
-   sin las fotos de colocación; de las personas, los de su empresa y los que
-   aprueban sus entregas, con nombre y sin mail; y de las entregas, todo lo
-   suyo menos las notas internas de las decisiones.
+3. **Cuánto del calendario ve.** Desde la 0070 eso no depende de ser
+   externo: cada persona tiene su alcance (app/core/alcance.py), y una cuenta
+   externa arranca en "No lo ve". Una acción fuera de su alcance no existe
+   para ella: el mismo 404 que una que se borró.
+4. **Lo de adentro de lo que ve.** Solo sus tareas (las que tiene asignadas,
+   y las que son "para la agencia" de su empresa: ver `es_tarea_propia`),
+   sin avisos internos, sin plantillas, sin las fotos de colocación; de las
+   personas, los de su empresa y los que aprueban sus entregas, con nombre y
+   sin mail; y de las entregas, todo lo suyo menos las notas internas de las
+   decisiones. Sus tarjetas del tablero las ve siempre, aunque la campaña
+   quede fuera de su alcance (16/11/2026: las trabaja con anticipación).
 
 Lo puro (sin base) está acá para probarlo sin levantar nada; los filtros de
 cada ruta están en cada ruta, llamando a esto.
@@ -36,12 +38,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+
+from sqlalchemy import and_, func, or_
 
 from app.core.config import settings
-
-URUGUAY = ZoneInfo("America/Montevideo")
 
 # Lo único que puede tener una cuenta externa. Si se agrega algo, va también
 # en la regla de la base (`ck_users_externo_solo_calendario`, migración 0069).
@@ -101,65 +101,46 @@ def misma_empresa(a: str | None, b: str | None) -> bool:
     return bool(a) and bool(b) and a.casefold() == b.casefold()
 
 
-# ---------------------------------------------------------------------------
-# La ventana
-# ---------------------------------------------------------------------------
-
-def hoy_en_uruguay(ahora: datetime | None = None) -> date:
-    """El día de hoy en Montevideo. A las 22 de un 31 en Uruguay ya es 1 en
-    Greenwich: la ventana no puede cambiar de mes por eso."""
-    return (ahora or datetime.now(URUGUAY)).astimezone(URUGUAY).date()
-
-
-def fin_de_mes(d: date) -> date:
-    primero_del_siguiente = date(d.year + d.month // 12, d.month % 12 + 1, 1)
-    return primero_del_siguiente - timedelta(days=1)
+def es_tarea_propia(usuario, tarea) -> bool:
+    """Si una tarea es de esta cuenta externa: la tiene asignada ella, o es
+    "para la agencia" y la agencia es su empresa (16/11/2026: la tarjeta es de
+    la agencia, la puede tomar cualquiera de sus cuentas). Pura."""
+    if tarea.asignado_a_id is not None and tarea.asignado_a_id == usuario.id:
+        return True
+    return getattr(tarea, "para", None) == "agencia" and misma_empresa(getattr(tarea, "agencia", None), usuario.empresa)
 
 
-def ventana(hoy: date, dias_antes: int | None = None, dias_despues: int | None = None) -> tuple[date, date]:
-    """[hoy - días antes, fin del mes de hoy + días después]. Pura."""
-    antes = settings.EXTERNOS_DIAS_ANTES if dias_antes is None else dias_antes
-    despues = settings.EXTERNOS_DIAS_DESPUES if dias_despues is None else dias_despues
-    return hoy - timedelta(days=max(0, antes)), fin_de_mes(hoy) + timedelta(days=max(0, despues))
+def empresa_en_sql(columna):
+    """La empresa como la compara `misma_empresa`, para un WHERE: sin espacios
+    de más y en minúscula. El panel ya la guarda limpia; esto cubre una que
+    haya entrado de otro lado."""
+    return func.lower(func.regexp_replace(func.btrim(columna), r"\s+", " ", "g"))
 
 
-def ventana_de_hoy(ahora: datetime | None = None) -> tuple[date, date]:
-    return ventana(hoy_en_uruguay(ahora))
-
-
-def toca(desde: date, hasta: date, v: tuple[date, date]) -> bool:
-    """Si una acción que va de `desde` a `hasta` toca la ventana (aunque sea
-    un día). Una con las fechas al revés se toma como de un solo día."""
-    if hasta < desde:
-        hasta = desde
-    return desde <= v[1] and hasta >= v[0]
-
-
-def condicion_de_ventana(modelo, v: tuple[date, date]):
-    """La misma regla que `toca`, para el WHERE de una consulta sobre una
-    tabla con `desde` y `hasta` (las barras del calendario)."""
-    return (modelo.desde <= v[1]) & (modelo.hasta >= v[0])
-
-
-def meses_de_la_ventana(v: tuple[date, date]) -> list[str]:
-    """Las claves 'YYYY-MM' de los meses que toca la ventana."""
-    claves = []
-    y, m = v[0].year, v[0].month
-    while (y, m) <= (v[1].year, v[1].month):
-        claves.append(f"{y:04d}-{m:02d}")
-        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
-    return claves
+def condicion_tarea_propia(modelo, usuario):
+    """La misma regla que `es_tarea_propia`, para el WHERE de una consulta
+    sobre las tareas. La empresa se compara sin mayúsculas ni espacios de
+    más, como `misma_empresa` (la de la tarea se guarda ya limpia)."""
+    empresa = limpiar_empresa(getattr(usuario, "empresa", None))
+    asignada = modelo.asignado_a_id == usuario.id
+    if not empresa:
+        return asignada
+    return or_(
+        asignada,
+        and_(modelo.para == "agencia", func.lower(modelo.agencia) == empresa.lower()),
+    )
 
 
 # ---------------------------------------------------------------------------
 # La revisión de lo que ve
 # ---------------------------------------------------------------------------
 # El calendario y el tablero preguntan cada 15 s "¿cambió algo desde la
-# revisión N?". El número de revisión es uno para todos: si se le diera a un
-# externo, vería subir el contador con cada cambio que hace cualquiera, en
-# cualquier mundo y en cualquier fecha, y podría deducir que pasó algo fuera de
-# su ventana. Por eso a un externo se le da otro número: la huella de lo que él
-# ve. Si lo que ve no cambió, la huella es la misma y la respuesta es "sin
+# revisión N?". El número de revisión es uno para todos: si se le diera a
+# quien ve una parte (un externo, o cualquiera con el alcance limitado: ver
+# app/core/alcance.py), vería subir el contador con cada cambio que hace
+# cualquiera, en cualquier mundo y en cualquier fecha, y podría deducir que
+# pasó algo fuera de lo que ve. Por eso a esa persona se le da otro número: la
+# huella de lo que ve. Si lo que ve no cambió, la huella es la misma y la respuesta es "sin
 # cambios", aunque el resto del calendario se haya movido entero.
 
 def huella(datos) -> int:

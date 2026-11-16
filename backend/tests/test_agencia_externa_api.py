@@ -7,6 +7,17 @@ a propósito, en el mismo mundo, acciones del mes pasado, del que viene y de
 dentro de tres meses, tareas suyas fuera de la ventana, tareas del equipo y de
 otra agencia, avisos, plantillas, notas internas y pedidos de fotos.
 
+Desde la 0070 (tablero de la agencia):
+- la ventana es el alcance de cada persona (app/core/alcance.py). Acá las
+  cuentas de la agencia se siembran con "1 mes" para seguir probando el
+  recorte por fechas; "No lo ve" (lo que tiene por defecto) se prueba en
+  test_tablero_agencia_api.py.
+- sus TARJETAS (tareas con entregas) las ve siempre, aunque la campaña quede
+  fuera de lo que ve del calendario: la "Mi tarea FUERA de la ventana" (con
+  entregas) ahora le aparece en el tablero, en el detalle, en sus imágenes y
+  en sus avisos de entregas, y la puede entregar. Lo demás de afuera
+  (acciones, tareas sin entregas, lo de otros) sigue sin existir para ella.
+
 Necesita una base Postgres en la última migración: se le pasa en
 TEST_DATABASE_URL (por ejemplo, la copia local de prueba). Sin eso, se saltea
 (el CI no tiene base: ver conftest.py). Todo corre adentro de una transacción
@@ -30,7 +41,7 @@ if URL:
     from sqlalchemy.pool import NullPool
 
     from app.api.routes.calendario_ical import firma_del_link
-    from app.core import externos
+    from app.core import alcance, externos
     from app.core.database import get_db
     from app.core.rate_limit import limiter
     from app.core.security import create_access_token, hash_password
@@ -81,8 +92,8 @@ async def _sembrar(s) -> Datos:
     d = Datos()
     sufijo = uuid.uuid4().hex[:8]
     d.sufijo = sufijo
-    hoy = externos.hoy_en_uruguay()
-    v = externos.ventana_de_hoy()
+    hoy = alcance.hoy_en_uruguay()
+    v = alcance.ventana_de_alcance(hoy, "1m")
     d.v = v
     ahora = datetime.now(timezone.utc)
 
@@ -91,6 +102,7 @@ async def _sembrar(s) -> Datos:
             email=f"{nombre.lower().replace(' ', '.')}.{sufijo}@prueba-externos.test", full_name=nombre,
             hashed_password=_clave(), permissions=list(permisos), mundos=[MUNDO],
             is_active=True, is_superuser=superusuario, es_externo=externo, empresa=empresa,
+            calendario_alcance="1m" if externo else "todo",
             must_change_password=False, password_changed_at=ahora,
         )
         s.add(u)
@@ -183,8 +195,11 @@ async def _sembrar(s) -> Datos:
         nota="NOTA INTERNA: comercial no confirmó el precio", comentario="Más grande el logo")
     d.v_b1, d.im_b1, d.mk_b1 = await entrega(
         d.t_b1, d.b1, momento="aprobada", estado_version="aprobada", aprobadores=[d.otro.id])
+    # La suya de más adelante la aprueba la misma del equipo que la de adentro:
+    # desde la 0070 la ve (es su tarjeta), y con ella el nombre de quien la
+    # aprueba; "otro" tiene que seguir sin aparecerle.
     d.v_fuera, d.im_fuera, d.mk_fuera = await entrega(
-        d.t_fuera, d.a1, momento="cambios", estado_version="cambios", aprobadores=[d.otro.id])
+        d.t_fuera, d.a1, momento="cambios", estado_version="cambios", aprobadores=[d.aprob.id])
     d.v_ajena, _, _ = await entrega(
         d.t_ajena, d.otro, momento="aprobada", estado_version="aprobada", aprobadores=[d.aprob.id])
 
@@ -309,9 +324,10 @@ def test_la_revision_de_la_agencia_no_delata_cambios_fuera_de_su_ventana():
         assert r.status_code == 201, r.text
         sigue = (await a1.get("/calendario/datos", params={"mundo": MUNDO, "rev": rev})).json()
         assert sigue == {"rev": rev, "sinCambios": True, "opaca": True}
-        # Lo mismo el tablero de entregas.
+        # Lo mismo el tablero de entregas, con una acción donde no tiene
+        # tarjetas (en d.futuro tiene una: esa sí la ve, 0070).
         tab = (await a1.get("/calendario/entregas", params={"mundo": MUNDO})).json()
-        await promo.patch(f"/calendario/barras/{d.futuro.id}", json={"nombre": "Accion FUERA FUTURO 2"})
+        await promo.patch(f"/calendario/barras/{d.pasado.id}", json={"nombre": "Accion MES PASADO 2"})
         assert (await a1.get("/calendario/entregas", params={"mundo": MUNDO, "rev": tab["rev"]})).json().get("sinCambios")
 
         # Y algo ADENTRO de su ventana sí lo ve.
@@ -454,9 +470,15 @@ def test_el_detalle_de_su_entrega_sin_notas_internas_ni_mails():
         personas = r.json()["personas"]
         assert set(personas) <= {str(d.a1.id), str(d.aprob.id)}  # quien creó la tarea (promo) no
         assert r.json()["puedo"]["entregar"] is True and r.json()["puedo"]["decidir"] is False
-        # La de otra agencia, la del equipo y la suya fuera de la ventana: no existen.
-        for t in (d.t_b1, d.t_ajena, d.t_fuera):
+        # La de otra agencia y la del equipo: no existen.
+        for t in (d.t_b1, d.t_ajena):
             assert (await a1.get(f"/calendario/tareas/{t.id}/entregas")).status_code == 404
+        # La suya fuera de la ventana SÍ (0070: sus tarjetas, siempre), sin
+        # nada del calendario más que el nombre, el mundo y las fechas de la acción.
+        fuera = await a1.get(f"/calendario/tareas/{d.t_fuera.id}/entregas")
+        assert fuera.status_code == 200, fuera.text
+        assert set(fuera.json()["accion"]) == {"id", "mundo", "nombre", "color", "seccion", "desde", "hasta"}
+        assert "notaInterna" not in fuera.text and "@" not in fuera.text
         # El equipo sí ve la nota interna.
         r = await Cliente(d.http, d.promo).get(f"/calendario/tareas/{d.t_mia.id}/entregas")
         assert "NOTA INTERNA" in r.json()["fases"][0]["versiones"][0]["decisiones"][0]["notaInterna"]
@@ -467,8 +489,8 @@ def test_las_imagenes_solo_las_de_sus_entregas():
     async def prueba(d):
         a1 = Cliente(d.http, d.a1)
         assert (await a1.get(f"/calendario/entregas/imagenes/{d.im_mia.id}", params={"tam": "mini"})).status_code == 200
-        for im in (d.im_b1, d.im_fuera):
-            assert (await a1.get(f"/calendario/entregas/imagenes/{im.id}")).status_code == 404
+        assert (await a1.get(f"/calendario/entregas/imagenes/{d.im_fuera.id}")).status_code == 200  # su tarjeta (0070)
+        assert (await a1.get(f"/calendario/entregas/imagenes/{d.im_b1.id}")).status_code == 404
     correr(prueba)
 
 
@@ -481,10 +503,13 @@ def test_entrega_una_ronda_de_lo_suyo_y_nada_mas():
                           files=archivos)
         assert r.status_code == 201, r.text
         assert r.json()["ronda"] == 2 and r.json()["rev"] is None
-        for t in (d.t_fuera, d.t_b1):
-            r = await a1.post(f"/calendario/tareas/{t.id}/versiones",
-                              data={"versionId": f"ve-x-{t.id}"}, files=archivos)
-            assert r.status_code == 404, r.text
+        r = await a1.post(f"/calendario/tareas/{d.t_b1.id}/versiones",
+                          data={"versionId": f"ve-x-{d.t_b1.id}"}, files=archivos)
+        assert r.status_code == 404, r.text
+        # Su tarjeta de una campaña fuera de su ventana la puede trabajar (0070).
+        r = await a1.post(f"/calendario/tareas/{d.t_fuera.id}/versiones",
+                          data={"versionId": f"ve-x-{d.t_fuera.id}"}, files=archivos)
+        assert r.status_code == 201, r.text
     correr(prueba)
 
 
@@ -492,34 +517,43 @@ def test_tilda_las_marcas_de_lo_suyo_y_nada_mas():
     async def prueba(d):
         a1 = Cliente(d.http, d.a1)
         assert (await a1.patch(f"/calendario/marcas/{d.mk_mia.id}", json={"corregida": True})).status_code == 200
-        for mk in (d.mk_b1, d.mk_fuera):
-            assert (await a1.patch(f"/calendario/marcas/{mk.id}", json={"corregida": True})).status_code == 404
+        assert (await a1.patch(f"/calendario/marcas/{d.mk_fuera.id}", json={"corregida": True})).status_code == 200
+        assert (await a1.patch(f"/calendario/marcas/{d.mk_b1.id}", json={"corregida": True})).status_code == 404
     correr(prueba)
 
 
 def test_el_tablero_solo_lo_suyo_y_su_propio_retrabajo():
     async def prueba(d):
-        r = await Cliente(d.http, d.a1).get("/calendario/entregas", params={"mundo": MUNDO, "dias": 90})
+        r = await Cliente(d.http, d.a1).get("/calendario/entregas", params={"mundo": MUNDO})
         assert r.status_code == 200, r.text
         datos = r.json()
-        assert [t["tareaId"] for t in datos["tarjetas"]] == [d.t_mia.id]
-        _sin_prohibido(r.text, "/calendario/entregas")
+        # Sus dos tarjetas: la de la ventana y la de una campaña de más
+        # adelante (0070: las tarjetas se ven siempre). Nada más.
+        assert {t["tareaId"] for t in datos["tarjetas"]} == {d.t_mia.id, d.t_fuera.id}
+        # De afuera, solo lo de su tarjeta (su nombre y el de su acción).
+        for marca in PROHIBIDO:
+            if marca != "FUERA":
+                assert marca not in r.text, marca
         assert "@" not in r.text
-        assert {g["clave"] for g in datos["metricas"]["porResponsable"]} <= {d.a1.id}
+        metricas = (await Cliente(d.http, d.a1).get("/calendario/entregas/metricas", params={"mundo": MUNDO})).json()
+        assert {g["clave"] for g in metricas["porResponsable"]} <= {d.a1.id}
         # El equipo ve las de todos y el retrabajo de todos.
         todo = (await Cliente(d.http, d.promo).get("/calendario/entregas", params={"mundo": MUNDO})).json()
         assert {d.t_b1.id, d.t_fuera.id} <= {t["tareaId"] for t in todo["tarjetas"]}
-        assert {d.b1.id, d.otro.id} <= {g["clave"] for g in todo["metricas"]["porResponsable"]}
+        metricas = (await Cliente(d.http, d.promo).get("/calendario/entregas/metricas", params={"mundo": MUNDO})).json()
+        assert {d.b1.id, d.otro.id} <= {g["clave"] for g in metricas["porResponsable"]}
     correr(prueba)
 
 
-def test_mis_entregas_solo_las_de_la_ventana():
+def test_mis_entregas_solo_las_suyas():
     async def prueba(d):
         r = await Cliente(d.http, d.a1).get("/calendario/mis-entregas")
         assert r.status_code == 200, r.text
         assert r.json()["paraRevisar"] == []
-        assert [t["tareaId"] for t in r.json()["conCambios"]] == [d.t_mia.id]
-        _sin_prohibido(r.text, "/calendario/mis-entregas")
+        # Sus tarjetas que volvieron con cambios, también la de más adelante (0070).
+        assert [t["tareaId"] for t in r.json()["conCambios"]] == [d.t_mia.id, d.t_fuera.id]
+        for marca in ("TRES MESES", "MES PASADO", "INTERNA", "OTRA AGENCIA", "PLANTILLA"):
+            assert marca not in r.text, marca
     correr(prueba)
 
 
@@ -532,9 +566,13 @@ def test_la_campanita_solo_lo_suyo_de_la_ventana():
         a1 = Cliente(d.http, d.a1)
         r = await a1.get("/notificaciones")
         assert r.status_code == 200, r.text
-        assert [n["mensaje"] for n in r.json()] == ["Te asignaron el afiche"]
-        _sin_prohibido(r.text, "/notificaciones")
-        assert (await a1.get("/notificaciones/no-leidas/count")).json() == {"count": 1}
+        # La de su tarea en la ventana, y la de su tarjeta de más adelante
+        # (0070: lo de sus tarjetas le llega siempre). La tarea sin entregas
+        # de dentro de tres meses, los avisos y lo interno, no.
+        assert {n["mensaje"] for n in r.json()} == {"Te asignaron el afiche", "Cambios en Accion FUERA FUTURO"}
+        for marca in ("TRES MESES", "INTERNA"):
+            assert marca not in r.text, marca
+        assert (await a1.get("/notificaciones/no-leidas/count")).json() == {"count": 2}
     correr(prueba)
 
 

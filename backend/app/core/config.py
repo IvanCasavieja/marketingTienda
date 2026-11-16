@@ -59,16 +59,22 @@ class Settings(BaseSettings):
     # 0 = sin freno.
     BASE_TOPE_MB: int = 400
 
-    # Las cuentas externas (la agencia, un diseñador de afuera: ver
-    # app/core/externos.py) ven solo las acciones del calendario que tocan la
-    # ventana [hoy - EXTERNOS_DIAS_ANTES, fin del mes actual +
-    # EXTERNOS_DIAS_DESPUES], en hora de Uruguay. Pedido de Ivan (15/11/2026):
-    # "que solamente puedan ver el calendario actual, no lo que viene dentro de
-    # 2 o 3 meses". Los días de margen son para que una acción que arranca el
-    # 1 del mes que viene, o la que terminó hace unos días, no desaparezca de
-    # golpe a mitad de una entrega.
-    EXTERNOS_DIAS_ANTES: int = 7
-    EXTERNOS_DIAS_DESPUES: int = 7
+    # Cuánto del calendario ve cada persona ya no es un número de días fijo
+    # para las cuentas externas: desde la 0070 cada usuario tiene su alcance
+    # (No lo ve / 1 mes / 2 meses / 12 meses / Todo), que elige un admin en el
+    # panel. Ver app/core/alcance.py.
+
+    # El tablero de tarjetas (16/11/2026): una tarjeta finalizada pasa sola a
+    # "Archivado" a los tantos días si nadie la archivó antes. Pedido de Ivan:
+    # "una vez finalizadas, 10 días después pasan solas a Archivado". Se
+    # calcula al leer el tablero y además lo deja guardado el loop diario
+    # (app/services/entregas.py: archivar_finalizadas).
+    ARCHIVAR_TARJETAS_DIAS: int = 10
+    # Y a los tantos días en Archivado, se archiva "de verdad": no se muestra
+    # ni se carga en el tablero (queda en la base y la encuentra el buscador).
+    # Lo que más molesta del Trello de hoy es que anda lentísimo porque carga
+    # miles de tarjetas viejas.
+    OCULTAR_ARCHIVADAS_DIAS: int = 30
 
     # El modelo de Anthropic que usan TODOS los agentes: Don Tino, Tinín,
     # Doña Tina, Dogti, la extracción de facturas y la pata de Claude en la

@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 TIPOS_DE_PIEZA: dict[str, str] = {
     "cenefa": "Cenefa",
-    "mailing": "Mailing",
+    "mailing": "Email marketing (EMM)",
     "banner": "Banner web",
     "redes": "Redes",
     "otro": "Otro",
@@ -398,6 +398,227 @@ def estado_de_tarea(momento: str, hay_versiones: bool, actual: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# El tablero de tarjetas (puro)
+# ---------------------------------------------------------------------------
+# Pedido de Ivan (16/11/2026): "una vista estilo Trello, que es a lo que están
+# acostumbrados: Ingresado, En proceso, Esperando feedback, Finalizado,
+# Archivado. Podemos ir arrastrando las tarjetas de un lado a otro".
+#
+# La columna NO se guarda: sale del momento de la entrega (que ya se
+# recalcula con cada cambio) y de las fechas que el momento no dice:
+#
+#   Ingresado          produccion, y nadie la arrancó ni entregó nada
+#   En proceso         produccion arrancada, o cambios ("Volvió con cambios")
+#   Esperando feedback revision: hay una versión esperando al equipo
+#   Finalizado         aprobada
+#   Archivado          aprobada, y archivada a mano o finalizada hace
+#                      ARCHIVAR_TARJETAS_DIAS o más (la archiva sola)
+#
+# Así no hay dos verdades que se puedan separar: si alguien aprueba desde el
+# detalle (sin arrastrar), la tarjeta ya está en Finalizado.
+
+COLUMNAS = ("ingresado", "en-proceso", "esperando", "finalizado", "archivado")
+NOMBRES_DE_COLUMNA = {
+    "ingresado": "Ingresado",
+    "en-proceso": "En proceso",
+    "esperando": "Esperando feedback",
+    "finalizado": "Finalizado",
+    "archivado": "Archivado",
+}
+
+
+def _dia_en_uruguay(momento: datetime) -> date:
+    from app.core.alcance import URUGUAY
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=timezone.utc)
+    return momento.astimezone(URUGUAY).date()
+
+
+def se_archiva_sola(
+    finalizada_at: datetime | None, desarchivada_at: datetime | None, hoy: date, dias: int,
+) -> bool:
+    """Si una tarjeta finalizada ya cumplió sus días en Finalizado. Se cuenta
+    desde que se finalizó o, si alguien la sacó del archivo a mano, desde
+    ese momento (si no, se volvería a archivar en el acto). Finalizada el
+    1/11 con 10 días: el 11/11 ya está archivada. En días de Uruguay."""
+    referencias = [f for f in (finalizada_at, desarchivada_at) if f is not None]
+    if not referencias:
+        return False
+    return _dia_en_uruguay(max(referencias)) + timedelta(days=max(0, dias)) <= hoy
+
+
+def dia_de_archivo(
+    finalizada_at: datetime | None, archivada_at: datetime | None, desarchivada_at: datetime | None, dias: int,
+) -> date | None:
+    """El día en que una tarjeta aprobada pasó (o pasa) a Archivado: el que
+    quedó anotado, o el que le toca sola. None si no hay con qué contar."""
+    if archivada_at is not None:
+        return _dia_en_uruguay(archivada_at)
+    referencias = [f for f in (finalizada_at, desarchivada_at) if f is not None]
+    if not referencias:
+        return None
+    return _dia_en_uruguay(max(referencias)) + timedelta(days=max(0, dias))
+
+
+def oculta(
+    finalizada_at: datetime | None, archivada_at: datetime | None, desarchivada_at: datetime | None,
+    hoy: date, dias_para_archivar: int, dias_para_ocultar: int,
+) -> bool:
+    """Si una tarjeta aprobada ya se archivó "de verdad": lleva
+    OCULTAR_ARCHIVADAS_DIAS o más en Archivado. No se carga en el tablero
+    (queda en la base y la encuentra el buscador)."""
+    dia = dia_de_archivo(finalizada_at, archivada_at, desarchivada_at, dias_para_archivar)
+    return dia is not None and dia + timedelta(days=max(0, dias_para_ocultar)) <= hoy
+
+
+def columna_de(
+    momento: str, *, iniciada: bool, finalizada_at: datetime | None = None,
+    archivada_at: datetime | None = None, desarchivada_at: datetime | None = None,
+    hoy: date, dias_para_archivar: int,
+) -> str:
+    """En qué columna del tablero va una tarjeta. `iniciada`: si quien entrega
+    ya la arrancó o ya entregó algo alguna vez."""
+    if momento == "revision":
+        return "esperando"
+    if momento == "cambios":
+        return "en-proceso"
+    if momento == "aprobada":
+        if archivada_at is not None or se_archiva_sola(finalizada_at, desarchivada_at, hoy, dias_para_archivar):
+            return "archivado"
+        return "finalizado"
+    return "en-proceso" if iniciada else "ingresado"
+
+
+class MovimientoInvalido(Exception):
+    """El mensaje es para la persona. `codigo`: 403 si no le toca a ella, 422
+    si ese movimiento no existe, 409 si para hacerlo falta otra cosa antes
+    (entregar los materiales)."""
+
+    def __init__(self, mensaje: str, codigo: int = 422):
+        super().__init__(mensaje)
+        self.codigo = codigo
+
+
+@dataclass
+class QuienMueve:
+    """Lo que puede hacer, con esta tarjeta, quien la arrastra."""
+    es_externo: bool
+    # Es quien entrega: la agencia de la tarjeta, o la persona asignada.
+    entrega: bool
+    # Puede aprobar o pedir cambios sobre la versión que espera: le toca en
+    # la cadena, o tiene `calendario.tareas` y decide como respaldo.
+    decide: bool
+    # Lleva la tarjeta del lado del equipo: gestiona las tareas, la creó o
+    # está entre quienes la aprueban.
+    del_equipo_de_la_tarjeta: bool
+
+
+_MOVIMIENTOS = {
+    ("ingresado", "en-proceso"): "arrancar",
+    ("en-proceso", "ingresado"): "volver",
+    ("ingresado", "esperando"): "entregar",
+    ("en-proceso", "esperando"): "entregar",
+    ("esperando", "en-proceso"): "pedir-cambios",
+    ("esperando", "finalizado"): "aprobar",
+    ("finalizado", "archivado"): "archivar",
+    ("archivado", "finalizado"): "desarchivar",
+}
+
+
+def movimiento(desde: str, a: str, quien: QuienMueve, *, hay_versiones: bool) -> str:
+    """Qué significa arrastrar una tarjeta de `desde` a `a`, si esta persona
+    lo puede hacer; si no, MovimientoInvalido con el porqué. Es la regla del
+    servidor: la pantalla solo la refleja.
+
+    - Quien entrega (la agencia) arranca (Ingresado → En proceso) y entrega
+      (→ Esperando feedback, siempre con los materiales: el arrastre abre
+      "Entregar"). No aprueba, no finaliza ni archiva.
+    - El equipo pide cambios (Esperando → En proceso) o aprueba (Esperando →
+      Finalizado) si le toca en la cadena, y archiva o saca del archivo.
+    """
+    if desde not in COLUMNAS or a not in COLUMNAS:
+        raise MovimientoInvalido("Esa columna no existe")
+    if desde == a:
+        return "nada"
+    if quien.es_externo and a == "finalizado":
+        raise MovimientoInvalido("La agencia no puede finalizar una tarjeta: la aprueba el equipo", 403)
+    accion = _MOVIMIENTOS.get((desde, a))
+    if accion is None:
+        if a == "finalizado":
+            raise MovimientoInvalido("Para finalizarla, primero tiene que haber una entrega esperando feedback")
+        if a == "archivado":
+            raise MovimientoInvalido("Solo se archiva una tarjeta finalizada")
+        if desde in ("finalizado", "archivado"):
+            raise MovimientoInvalido("Esta tarjeta ya está aprobada: no vuelve atrás")
+        if desde == "esperando":
+            raise MovimientoInvalido("Está esperando feedback: hay que aprobarla o pedir cambios")
+        raise MovimientoInvalido(f"No se puede pasar de {NOMBRES_DE_COLUMNA[desde]} a {NOMBRES_DE_COLUMNA[a]}")
+
+    if accion in ("arrancar", "volver"):
+        if quien.es_externo and not quien.entrega:
+            raise MovimientoInvalido("La arranca quien la entrega", 403)
+        if not (quien.entrega or quien.del_equipo_de_la_tarjeta):
+            raise MovimientoInvalido("La arranca quien la entrega", 403)
+        if accion == "volver" and hay_versiones:
+            raise MovimientoInvalido("Ya se entregó algo: no vuelve a Ingresado")
+        return accion
+    if accion == "entregar":
+        if not quien.entrega:
+            raise MovimientoInvalido("La manda a Esperando feedback quien la entrega, con los materiales", 403)
+        # Arrastrar no alcanza: hacen falta los materiales. La pantalla abre
+        # "Entregar" y la tarjeta pasa recién cuando se mandan.
+        raise MovimientoInvalido("Para mandarla a Esperando feedback, entregá los materiales", 409)
+    if accion in ("pedir-cambios", "aprobar"):
+        if quien.es_externo:
+            raise MovimientoInvalido("La agencia no aprueba ni pide cambios: lo hace el equipo", 403)
+        if not quien.decide:
+            raise MovimientoInvalido("No te toca decidir esta entrega: la decide quien está en la cadena de aprobación", 403)
+        return accion
+    # archivar / desarchivar
+    if quien.es_externo or not quien.del_equipo_de_la_tarjeta:
+        raise MovimientoInvalido("La archiva el equipo que lleva la tarjeta", 403)
+    return accion
+
+
+def destinos_posibles(desde: str, quien: QuienMueve, *, hay_versiones: bool) -> list[str]:
+    """A qué columnas puede llevar esta persona la tarjeta: lo que ofrece
+    "Mover a…" y dónde se ilumina al arrastrar. Incluye Esperando feedback
+    para quien entrega: ahí se abre "Entregar"."""
+    out = []
+    for a in COLUMNAS:
+        if a == desde:
+            continue
+        try:
+            movimiento(desde, a, quien, hay_versiones=hay_versiones)
+            out.append(a)
+        except MovimientoInvalido as exc:
+            if exc.codigo == 409:
+                out.append(a)
+    return out
+
+
+def config_por_defecto(
+    creador_id: int, descripcion: str | None, tipo: str | None = None, opciones: list[str] | None = None,
+    detalles: dict | None = None,
+) -> dict:
+    """Las entregas con las que nace una tarjeta, sin llenar el formulario
+    largo: una fase "Entrega", la aprueba quien la creó, el tipo de pieza que
+    corresponde a su tipo de tarea ("otro" si no tiene) y, como pedido, lo
+    tildado con sus medidas más la descripción escrita. Lo demás se cambia
+    después en "Más opciones"."""
+    from app.services.tipos_de_tarea import descripcion_del_pedido, tipo_de
+
+    t = tipo_de(tipo)
+    partes = [descripcion_del_pedido(tipo, opciones, detalles), (descripcion or "").strip()]
+    texto = "\n".join(p for p in partes if p)[:_LARGO_LARGO]
+    pieza = t["pieza"] if t and t["pieza"] in TIPOS_DE_PIEZA else "otro"
+    return {
+        "tipo_pieza": pieza, "brief": {"detalle": texto} if texto else {},
+        "fases": ["Entrega"], "aprobadores": [creador_id],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Retrabajo (pura)
 # ---------------------------------------------------------------------------
 
@@ -490,6 +711,32 @@ def mensaje_de_tarea_aprobada(tarea: str, accion: str) -> str:
     return f"Se aprobó la última fase de «{tarea}» ({accion}): la tarea quedó hecha."
 
 
+def mensaje_de_tarjeta_nueva(quien: str, tarea: str, opciones: list[str] | None, vence: date | None) -> str:
+    """A quien la hace, cuando le nace una tarjeta: "Iván te pidió: Ciberlunes
+    - Banners (Header, Slider, Checkout). Es para el 25/11." (16/11/2026)."""
+    detalle = f" ({', '.join(opciones)})" if opciones else ""
+    cuando = f" Es para el {vence.strftime('%d/%m')}." if vence else ""
+    return _corto(f"{quien or 'El equipo'} te pidió: {tarea}{detalle}.{cuando}")
+
+
+def mensaje_de_tarjetas_nuevas(quien: str, tareas: list[tuple[str, list[str] | None, date | None]]) -> str:
+    """Varias tarjetas juntas (las de una plantilla): UN aviso por persona,
+    no uno por tarjeta."""
+    if len(tareas) == 1:
+        return mensaje_de_tarjeta_nueva(quien, *tareas[0])
+    titulos = [t for t, _, _ in tareas]
+    lista = (f"{', '.join(titulos[:3])} y {len(titulos) - 3} más" if len(titulos) > 3
+             else f"{', '.join(titulos[:-1])} y {titulos[-1]}")
+    vences = [v for _, _, v in tareas if v]
+    cuando = f" La primera es para el {min(vences).strftime('%d/%m')}." if vences else ""
+    return _corto(f"{quien or 'El equipo'} te pidió {len(tareas)} tarjetas: {lista}.{cuando}")
+
+
+def mensaje_de_tarjeta_finalizada(tarea: str, accion: str) -> str:
+    """A quien creó la tarjeta, cuando se aprueba la última entrega."""
+    return f"«{tarea}» ({accion}) quedó finalizada: se aprobó la entrega."
+
+
 # ---------------------------------------------------------------------------
 # Con la base
 # ---------------------------------------------------------------------------
@@ -553,13 +800,43 @@ async def recalcular(db: AsyncSession, entrega: CalendarioEntrega, tarea: Calend
     if nuevo != tarea.estado:
         tarea.estado = nuevo
 
+    # Las fechas del tablero (0070). Entregar algo es haberla arrancado. Se
+    # finaliza cuando se aprueba todo; si vuelve a haber algo para entregar
+    # (le agregaron una fase), deja de estar finalizada y archivada.
+    ahora = datetime.now(timezone.utc)
+    if hay_versiones and entrega.iniciada_at is None:
+        entrega.iniciada_at = ahora
+    if entrega.momento == "aprobada":
+        if entrega.finalizada_at is None:
+            entrega.finalizada_at = ahora
+    elif entrega.finalizada_at is not None or entrega.archivada_at is not None:
+        entrega.finalizada_at = None
+        entrega.archivada_at = None
+        entrega.archivada_por_id = None
+        entrega.desarchivada_at = None
+
+
+def columna_de_entrega(entrega: CalendarioEntrega, hoy: date | None = None) -> str:
+    """La columna del tablero de una entrega guardada (ver columna_de)."""
+    from app.core.alcance import hoy_en_uruguay
+    from app.core.config import settings
+    return columna_de(
+        entrega.momento,
+        iniciada=entrega.iniciada_at is not None or (entrega.ronda or 0) > 0,
+        finalizada_at=entrega.finalizada_at, archivada_at=entrega.archivada_at,
+        desarchivada_at=entrega.desarchivada_at,
+        hoy=hoy or hoy_en_uruguay(), dias_para_archivar=settings.ARCHIVAR_TARJETAS_DIAS,
+    )
+
 
 def resumen_json(entrega: CalendarioEntrega, fases: list[CalendarioFase], rondas: dict[str, int]) -> dict:
     """Lo que viaja con la tarea en /calendario/datos y en "Mis tareas": en qué
-    fase va, a quién le toca. Sin imágenes ni historia (eso se pide al abrir)."""
+    fase va, a quién le toca y en qué columna del tablero está. Sin imágenes
+    ni historia (eso se pide al abrir)."""
     return {
         "tipoPieza": entrega.tipo_pieza,
         "momento": entrega.momento,
+        "columna": columna_de_entrega(entrega),
         "ronda": entrega.ronda,
         "faseActual": entrega.fase_actual_id,
         "aprobadorDeTurno": entrega.aprobador_de_turno_id,
@@ -569,6 +846,99 @@ def resumen_json(entrega: CalendarioEntrega, fases: list[CalendarioFase], rondas
             for f in fases
         ],
     }
+
+
+def es_tarjeta_propia(usuario, tarea, entrega) -> bool:
+    """Si una tarjeta es "de" esta persona: se ve siempre en su tablero,
+    aunque la campaña quede fuera de su alcance del calendario (0070), porque
+    la tiene que trabajar con anticipación. Pura.
+
+    - Una cuenta externa: la tiene asignada o es de su agencia.
+    - Alguien del equipo: la hace, la pidió o está entre quienes la aprueban."""
+    from app.core import externos
+
+    if externos.es_externo(usuario):
+        return externos.es_tarea_propia(usuario, tarea)
+    if usuario.id in (tarea.asignado_a_id, tarea.creado_por_id, getattr(entrega, "creado_por_id", None)):
+        return True
+    return usuario.id in list(getattr(entrega, "aprobadores", None) or [])
+
+
+def condicion_tarjeta_propia(usuario):
+    """La misma regla que `es_tarjeta_propia`, para el WHERE de una consulta
+    que junta tareas con sus entregas."""
+    from app.core import externos
+
+    if externos.es_externo(usuario):
+        return externos.condicion_tarea_propia(CalendarioTarea, usuario)
+    return or_(
+        CalendarioTarea.asignado_a_id == usuario.id,
+        CalendarioTarea.creado_por_id == usuario.id,
+        CalendarioEntrega.creado_por_id == usuario.id,
+        CalendarioEntrega.aprobadores.contains([usuario.id]),
+    )
+
+
+async def tarjetas_propias(db: AsyncSession, usuario, tarea_ids) -> set[str]:
+    """De esas tareas, las que son tarjetas propias de esta persona."""
+    ids = [i for i in set(tarea_ids or []) if i]
+    if not ids:
+        return set()
+    filas = (await db.execute(
+        select(CalendarioTarea, CalendarioEntrega)
+        .join(CalendarioEntrega, CalendarioEntrega.tarea_id == CalendarioTarea.id)
+        .where(CalendarioTarea.id.in_(ids))
+    )).all()
+    return {t.id for t, e in filas if es_tarjeta_propia(usuario, t, e)}
+
+
+async def destinatarios_de_la_tarjeta(db: AsyncSession, tarea: CalendarioTarea, mundo: str) -> list[int]:
+    """A quiénes les llega lo que es "para quien entrega": la persona
+    asignada y, si la tarea es para una agencia, todas las cuentas activas de
+    esa agencia que entran al mundo (la tarjeta es de la agencia: la puede
+    estar mirando cualquiera de ellas). Sin repetidos."""
+    from app.core import externos
+    from app.core.mundos import puede_abrir
+    from app.models.user import User
+
+    ids: list[int] = []
+    if tarea.asignado_a_id is not None:
+        ids.append(tarea.asignado_a_id)
+    empresa = externos.limpiar_empresa(tarea.agencia) if tarea.para == "agencia" else None
+    if empresa:
+        for u in (await db.execute(
+            select(User).where(
+                User.es_externo.is_(True), User.is_active.is_(True),
+                externos.empresa_en_sql(User.empresa) == empresa.lower(),
+            ).order_by(User.id)
+        )).scalars():
+            if u.id not in ids and puede_abrir(u, mundo) and externos.puede_tener(u, "calendario.view"):
+                ids.append(u.id)
+    return ids
+
+
+async def crear_entregas_por_defecto(db: AsyncSession, tarea: CalendarioTarea, creador_id: int) -> CalendarioEntrega:
+    """Las entregas con las que nace una tarea para la agencia (ver
+    config_por_defecto). Va en la misma transacción que el alta de la tarea,
+    después de que la tarea existe (FK)."""
+    conf = config_por_defecto(
+        creador_id, tarea.descripcion, tarea.tipo, list(tarea.opciones or []), dict(tarea.detalles or {}),
+    )
+    entrega = CalendarioEntrega(
+        tarea_id=tarea.id, tipo_pieza=conf["tipo_pieza"], brief=conf["brief"], aprobadores=conf["aprobadores"],
+        momento="produccion", ronda=0, creado_por_id=creador_id,
+    )
+    db.add(entrega)
+    for orden, nombre in enumerate(conf["fases"]):
+        db.add(CalendarioFase(
+            id=nuevo_id("fa"), tarea_id=tarea.id, orden=orden, nombre=nombre,
+            estado="en-curso" if orden == 0 else "pendiente",
+        ))
+    await db.flush()
+    entrega.fase_actual_id = (await db.execute(
+        select(CalendarioFase.id).where(CalendarioFase.tarea_id == tarea.id).order_by(CalendarioFase.orden).limit(1)
+    )).scalar_one()
+    return entrega
 
 
 async def resumenes_de_entregas(db: AsyncSession, tareas) -> dict[str, dict]:
@@ -649,9 +1019,50 @@ async def purgar_imagenes_viejas(db: AsyncSession, hoy: date | None = None) -> i
     return r.rowcount or 0
 
 
+async def archivar_finalizadas(db: AsyncSession, hoy: date | None = None) -> int:
+    """Deja guardado en Archivado lo que ya se archivó solo (ver
+    se_archiva_sola): las finalizadas hace ARCHIVAR_TARJETAS_DIAS o más que
+    nadie archivó a mano. El tablero ya las muestra en Archivado al leer;
+    esto lo deja anotado (con `archivada_por_id` en null: se archivó sola) y
+    sube la revisión de cada mundo tocado, así quien tiene el tablero abierto
+    lo ve moverse sin recargar. Devuelve cuántas archivó."""
+    from app.api.routes.calendario import _nueva_revision
+    from app.core.alcance import hoy_en_uruguay
+    from app.core.config import settings
+
+    hoy = hoy or hoy_en_uruguay()
+    dias = max(0, settings.ARCHIVAR_TARJETAS_DIAS)
+    candidatas = (await db.execute(
+        select(CalendarioEntrega, CalendarioBarra.mundo)
+        .join(CalendarioTarea, CalendarioTarea.id == CalendarioEntrega.tarea_id)
+        .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
+        .where(
+            CalendarioEntrega.momento == "aprobada",
+            CalendarioEntrega.archivada_at.is_(None),
+            CalendarioEntrega.finalizada_at.isnot(None),
+        )
+        .with_for_update(of=CalendarioEntrega)
+    )).all()
+    ahora = datetime.now(timezone.utc)
+    mundos: set[str] = set()
+    n = 0
+    for entrega, mundo in candidatas:
+        if se_archiva_sola(entrega.finalizada_at, entrega.desarchivada_at, hoy, dias):
+            entrega.archivada_at = ahora
+            entrega.archivada_por_id = None
+            mundos.add(mundo)
+            n += 1
+    for mundo in sorted(mundos):
+        await _nueva_revision(db, mundo)
+    await db.commit()
+    return n
+
+
 async def run_purga_entregas_loop() -> None:
     """Loop perpetuo, como la purga de cenefas: una pasada al arrancar y
-    después una por día."""
+    después una por día. Hace las dos cosas que vencen con los días: borrar
+    las imágenes viejas y pasar a Archivado las tarjetas finalizadas hace
+    ARCHIVAR_TARJETAS_DIAS."""
     from app.core.database import AsyncSessionLocal
 
     while True:
@@ -662,4 +1073,11 @@ async def run_purga_entregas_loop() -> None:
                 logger.info("purga_entregas: %d imagen(es) vencidas liberadas", n)
         except Exception as exc:
             logger.error("purga_entregas: falló la pasada -- %s", exc, exc_info=True)
+        try:
+            async with AsyncSessionLocal() as db:
+                n = await archivar_finalizadas(db)
+            if n:
+                logger.info("tablero: %d tarjeta(s) finalizada(s) pasaron solas a Archivado", n)
+        except Exception as exc:
+            logger.error("tablero: falló el archivado diario -- %s", exc, exc_info=True)
         await asyncio.sleep(24 * 3600)

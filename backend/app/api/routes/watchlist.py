@@ -19,6 +19,7 @@ watchlist.py — listas de monitoreo de precios + notificaciones.
   POST   /notificaciones/marcar-todas-leidas
 """
 import logging
+import re
 from datetime import date, datetime
 from typing import Optional
 
@@ -27,13 +28,14 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select, update, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import externos
+from app.core import alcance, externos
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_permission
 from app.core.mundos import mundos_de
 from app.models.calendario import CalendarioBarra
 from app.models.local_asignacion import LocalAsignacion
 from app.models.user import User
+from app.services import entregas as entregas_reglas
 from app.services.colocacion import ORIGEN_COMPLETA, ORIGENES_DEL_LOCAL
 from app.models.watchlist import Watchlist
 from app.models.watchlist_item import WatchlistItem
@@ -481,33 +483,77 @@ def _notif_visible(user: User, n: Notificacion, es_sucursal: bool = False) -> bo
 # header, las fotos de colocación, las alertas de medios y de precios son del
 # equipo.
 ORIGENES_PARA_EXTERNOS = ("calendario_tarea", "calendario_entrega")
+# Los avisos que hablan de una acción del calendario: se recortan al alcance
+# de cada uno (0070). La referencia empieza por la acción (los automáticos de
+# antes del 28/09/2026, "2026-09:br-xxx:...", la llevan segunda).
+ORIGENES_DEL_CALENDARIO = (
+    "calendario_accion", "calendario_aviso", "calendario_tarea", "calendario_entrega", "calendario_header",
+    ORIGEN_COMPLETA,
+)
+_MES = re.compile(r"^\d{4}-\d{2}$")
 
 
-async def _visibles_para_externo(db: AsyncSession, user: User, notifs) -> list:
-    """Los avisos de una cuenta externa que puede ver: los de ORIGENES_PARA_EXTERNOS
-    cuya acción toca hoy su ventana (la referencia empieza por la acción).
+def _accion_de(ref: str) -> str | None:
+    partes = (ref or "").split(":")
+    if not partes or not partes[0]:
+        return None
+    if _MES.match(partes[0]):
+        return partes[1] if len(partes) > 1 and partes[1] else None
+    return partes[0]
 
-    Una tarea que le asignan en una acción de dentro de tres meses le genera
-    el aviso igual, pero no lo ve hasta que la acción entra en su ventana: el
-    aviso dice el nombre de la acción, y eso es justo lo que no tiene que ver
-    antes de tiempo."""
-    if not externos.puede_tener(user, "calendario.view"):
-        return []
-    candidatas = [
-        n for n in notifs
-        if n.origen_tipo in ORIGENES_PARA_EXTERNOS and n.origen_ref and ":" in n.origen_ref
-    ]
-    if not candidatas:
-        return []
-    ids = {n.origen_ref.split(":", 1)[0] for n in candidatas}
-    en_ventana = set((await db.execute(
-        select(CalendarioBarra.id).where(
-            CalendarioBarra.id.in_(ids),
-            CalendarioBarra.mundo.in_(mundos_de(user)),
-            externos.condicion_de_ventana(CalendarioBarra, externos.ventana_de_hoy()),
-        )
-    )).scalars())
-    return [n for n in candidatas if n.origen_ref.split(":", 1)[0] in en_ventana]
+
+def _tarea_de(ref: str) -> str | None:
+    partes = (ref or "").split(":")
+    return partes[1] if len(partes) > 1 and partes[1] else None
+
+
+async def _recortar_al_alcance(db: AsyncSession, user: User, notifs, *, externo: bool) -> list:
+    """Los avisos del calendario que la persona puede ver: los de acciones que
+    tocan su alcance (0070) y, siempre, los de sus tarjetas (la tarjeta se ve
+    aunque la campaña quede fuera de lo que ve del calendario). Los que no son
+    del calendario pasan como están (ya los filtró el permiso).
+
+    A una cuenta externa además le llegan solo ORIGENES_PARA_EXTERNOS: una
+    tarea que le asignan en una acción fuera de lo que ve le genera el aviso
+    igual, pero no lo ve hasta que la acción entra en su alcance: el aviso dice
+    el nombre de la acción. Con una excepción: "te pidieron una tarjeta" sí,
+    que es su trabajo."""
+    if externo:
+        if not externos.puede_tener(user, "calendario.view"):
+            return []
+        notifs = [n for n in notifs if n.origen_tipo in ORIGENES_PARA_EXTERNOS]
+    v = alcance.ventana_de(user)
+    if v is None and not externo:
+        return list(notifs)
+    del_calendario = [n for n in notifs if n.origen_tipo in ORIGENES_DEL_CALENDARIO]
+    if not del_calendario:
+        return list(notifs)
+    acciones = {a for n in del_calendario if (a := _accion_de(n.origen_ref or ""))}
+    en_alcance: set[str] = set()
+    if acciones:
+        en_alcance = set((await db.execute(
+            select(CalendarioBarra.id).where(
+                CalendarioBarra.id.in_(acciones),
+                CalendarioBarra.mundo.in_(mundos_de(user)),
+                alcance.condicion(CalendarioBarra, v),
+            )
+        )).scalars())
+    tarjetas = await entregas_reglas.tarjetas_propias(
+        db, user, [_tarea_de(n.origen_ref or "") for n in del_calendario if n.origen_tipo == "calendario_entrega"],
+    )
+    meses = alcance.meses_de(v)
+
+    def visible(n) -> bool:
+        if n.origen_tipo not in ORIGENES_DEL_CALENDARIO:
+            return True
+        ref = n.origen_ref or ""
+        if n.origen_tipo == "calendario_entrega" and _tarea_de(ref) in tarjetas:
+            return True
+        if n.origen_tipo == "calendario_header":
+            return meses is None or ref.split(":")[0] in meses
+        return _accion_de(ref) in en_alcance
+
+    return [n for n in notifs if visible(n)]
 
 
 async def _es_sucursal_si_hace_falta(db: AsyncSession, user: User, notifs) -> bool:
@@ -534,10 +580,12 @@ async def listar_notificaciones(
     )
     todas = result.scalars().all()
     if externos.es_externo(current_user):
-        notifs = await _visibles_para_externo(db, current_user, todas)
+        notifs = await _recortar_al_alcance(db, current_user, todas, externo=True)
     else:
         es_sucursal = await _es_sucursal_si_hace_falta(db, current_user, todas)
-        notifs = [n for n in todas if _notif_visible(current_user, n, es_sucursal)]
+        notifs = await _recortar_al_alcance(
+            db, current_user, [n for n in todas if _notif_visible(current_user, n, es_sucursal)], externo=False,
+        )
     return [
         {
             "id": n.id,
@@ -563,10 +611,10 @@ async def contar_no_leidas(
     )
     todas = result.scalars().all()
     if externos.es_externo(current_user):
-        return {"count": len(await _visibles_para_externo(db, current_user, todas))}
+        return {"count": len(await _recortar_al_alcance(db, current_user, todas, externo=True))}
     es_sucursal = await _es_sucursal_si_hace_falta(db, current_user, todas)
-    count = sum(1 for n in todas if _notif_visible(current_user, n, es_sucursal))
-    return {"count": count}
+    visibles = [n for n in todas if _notif_visible(current_user, n, es_sucursal)]
+    return {"count": len(await _recortar_al_alcance(db, current_user, visibles, externo=False))}
 
 
 @router.post("/notificaciones/{notif_id}/marcar-leida")

@@ -8,8 +8,8 @@ Lo que se fija acá, sin base (lo que pasa con la base y la API de punta a
 punta está en test_agencia_externa_api.py, que corre si hay una base de
 prueba):
 
-- La ventana: [hoy - 7, fin del mes + 7], en hora de Uruguay, con los bordes
-  de mes, el cambio de año y la hora de Montevideo.
+- La ventana (qué fechas ve) ahora es el alcance de cada persona: ver
+  test_alcance_del_calendario.py.
 - Un externo nunca tiene permisos de gestión ni de admin, ni pasa como
   superadmin, aunque estén en su lista.
 - Solo llega a su sesión, al calendario y a su campanita.
@@ -19,7 +19,7 @@ prueba):
 """
 import asyncio
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -35,75 +35,21 @@ from app.services.calendario_avisos import puede_recibir_el_aviso
 # ---------------------------------------------------------------------------
 # La ventana
 # ---------------------------------------------------------------------------
-
-
-def test_la_ventana_va_de_una_semana_atras_al_fin_de_mes_mas_una_semana():
-    assert externos.ventana(date(2026, 11, 15), 7, 7) == (date(2026, 11, 8), date(2026, 12, 7))
-
-
-def test_la_ventana_usa_los_dias_de_la_configuracion():
-    assert externos.ventana(date(2026, 11, 15), 0, 0) == (date(2026, 11, 15), date(2026, 11, 30))
-    assert externos.ventana(date(2026, 11, 15), 3, 10) == (date(2026, 11, 12), date(2026, 12, 10))
-    # Por defecto, la de settings (EXTERNOS_DIAS_ANTES / _DESPUES = 7).
-    assert externos.ventana(date(2026, 11, 15)) == (date(2026, 11, 8), date(2026, 12, 7))
-
-
-def test_los_bordes_del_mes():
-    # El 1: arranca en el mes anterior y termina el 7 del que viene.
-    assert externos.ventana(date(2026, 11, 1), 7, 7) == (date(2026, 10, 25), date(2026, 12, 7))
-    # El último día: igual hasta el 7 del que viene.
-    assert externos.ventana(date(2026, 11, 30), 7, 7) == (date(2026, 11, 23), date(2026, 12, 7))
-    # Febrero, bisiesto y no.
-    assert externos.ventana(date(2028, 2, 10), 7, 7)[1] == date(2028, 3, 7)
-    assert externos.fin_de_mes(date(2028, 2, 10)) == date(2028, 2, 29)
-    assert externos.fin_de_mes(date(2027, 2, 10)) == date(2027, 2, 28)
-
-
-def test_el_cambio_de_anio():
-    # Fines de diciembre: la ventana termina en enero del año siguiente.
-    assert externos.ventana(date(2026, 12, 28), 7, 7) == (date(2026, 12, 21), date(2027, 1, 7))
-    # Principios de enero: arranca en diciembre del año anterior.
-    assert externos.ventana(date(2027, 1, 3), 7, 7) == (date(2026, 12, 27), date(2027, 2, 7))
-    assert externos.meses_de_la_ventana((date(2026, 12, 21), date(2027, 1, 7))) == ["2026-12", "2027-01"]
-
-
-def test_hoy_es_el_de_montevideo_y_no_el_de_greenwich():
-    # 30/11 a las 22:30 en Montevideo = 1/12 01:30 en UTC: sigue siendo noviembre.
-    ahora_utc = datetime(2026, 12, 1, 1, 30, tzinfo=timezone.utc)
-    assert externos.hoy_en_uruguay(ahora_utc) == date(2026, 11, 30)
-    assert externos.ventana_de_hoy(ahora_utc) == (date(2026, 11, 23), date(2026, 12, 7))
-    # A las 3:30 UTC ya es 1/12 también en Montevideo: la ventana pasa a diciembre.
-    assert externos.ventana_de_hoy(datetime(2026, 12, 1, 3, 30, tzinfo=timezone.utc)) == (
-        date(2026, 11, 24), date(2027, 1, 7))
-    # Fin de año: 31/12 a las 23 en Montevideo ya es 2027 en UTC.
-    assert externos.hoy_en_uruguay(datetime(2027, 1, 1, 2, 0, tzinfo=timezone.utc)) == date(2026, 12, 31)
-
-
-V = (date(2026, 11, 8), date(2026, 12, 7))
-
-
-@pytest.mark.parametrize("desde,hasta,esperado", [
-    (date(2026, 11, 15), date(2026, 11, 20), True),     # este mes
-    (date(2026, 12, 7), date(2026, 12, 20), True),      # arranca justo el último día
-    (date(2026, 10, 1), date(2026, 11, 8), True),       # termina justo el primero
-    (date(2026, 10, 1), date(2027, 1, 30), True),       # la cruza entera
-    (date(2026, 12, 8), date(2026, 12, 20), False),     # el mes que viene, pasado el margen
-    (date(2027, 2, 15), date(2027, 2, 20), False),      # dentro de 3 meses
-    (date(2026, 10, 1), date(2026, 11, 7), False),      # el mes pasado
-    (date(2026, 11, 20), date(2026, 11, 10), True),     # fechas al revés: un día, adentro
-])
-def test_que_acciones_tocan_la_ventana(desde, hasta, esperado):
-    assert externos.toca(desde, hasta, V) is esperado
-
+# Desde la 0070 la ventana no es de las cuentas externas sino de cada persona
+# (su alcance: No lo ve / 1 mes / 2 meses / 12 meses / Todo), y la de la
+# agencia arranca en "No lo ve". Las cuentas de la ventana (bordes de mes, de
+# año, la hora de Montevideo) están en test_alcance_del_calendario.py.
 
 # ---------------------------------------------------------------------------
 # Permisos
 # ---------------------------------------------------------------------------
 
-def _usuario(uid=50, *permisos, externo=True, super_=False, empresa="Agencia Pampa", mundos=("tienda_inglesa",)):
+def _usuario(uid=50, *permisos, externo=True, super_=False, empresa="Agencia Pampa", mundos=("tienda_inglesa",),
+             alcance=None):
     return SimpleNamespace(
         id=uid, full_name=f"Persona {uid}", email=f"p{uid}@x.uy", permissions=list(permisos),
         is_superuser=super_, is_active=True, es_externo=externo, empresa=empresa, mundos=list(mundos),
+        calendario_alcance=alcance or ("nada" if externo else "todo"),
     )
 
 
@@ -216,7 +162,9 @@ def test_la_huella_es_la_misma_si_lo_que_ve_es_lo_mismo():
 # ---------------------------------------------------------------------------
 
 HOY = date(2026, 11, 15)
-AGENCIA = _usuario(50, "calendario.view", "ai.don_tino")
+# Con "1 mes" (25/10 al 30/11): la agencia arranca en "No lo ve" (0070), y
+# para probar qué le recorta Don Tino hace falta que vea algo.
+AGENCIA = _usuario(50, "calendario.view", "ai.don_tino", alcance="1m")
 OTRA_AGENCIA = _usuario(51, "calendario.view", empresa="Estudio Sur")
 COLEGA = _usuario(52, "calendario.view", empresa="agencia pampa")
 DEL_EQUIPO = _usuario(2, "calendario.view", "calendario.tareas", externo=False)
@@ -327,6 +275,13 @@ def test_ni_la_carga_del_equipo_ni_los_avisos():
         datos, texto = _tino(herramienta)
         assert "error" in datos and "externa" in datos["error"]
         assert "Black Friday" not in texto
+
+
+def test_a_una_agencia_que_no_ve_el_calendario_don_tino_no_le_cuenta_nada():
+    sin_calendario = _usuario(53, "calendario.view", "ai.don_tino")
+    for herramienta in ("calendario_acciones", "calendario_tareas", "calendario_accion"):
+        datos, texto = _tino(herramienta, usuario=sin_calendario, args={"accion_id": "b-ahora"})
+        assert "error" in datos and "Black Friday" not in texto
 
 
 def test_al_equipo_don_tino_le_sigue_contando_todo():

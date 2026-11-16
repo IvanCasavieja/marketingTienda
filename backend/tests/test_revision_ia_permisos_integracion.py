@@ -2,7 +2,8 @@
 16/11/2026): pedir las observaciones de la IA siendo quien entrega tiene que dar
 403, no reventar. Antes de integrar, `_puede_ver` pasó a pedir también el
 responsable de la tarea (para filtrar a la agencia) y la ruta de la IA lo
-seguía llamando con dos datos: 500 en vez de 403."""
+seguía llamando con dos datos: 500 en vez de 403. Desde la 0070 recibe la
+tarea entera (si es para una agencia, la ve toda la agencia)."""
 import asyncio
 from types import SimpleNamespace
 
@@ -30,7 +31,7 @@ def _usuario(**kw):
 
 @pytest.mark.parametrize("externo", [False, True])
 def test_quien_entrega_pide_la_revision_ia_y_recibe_403(monkeypatch, externo):
-    tarea = SimpleNamespace(id="ta-1", asignado_a_id=7)
+    tarea = SimpleNamespace(id="ta-1", asignado_a_id=7, para="tienda", agencia=None)
     barra = SimpleNamespace(id="br-1", mundo="tienda_inglesa")
     version = SimpleNamespace(id="ve-1", tarea_id="ta-1")
     entrega = SimpleNamespace(tarea_id="ta-1", aprobadores=[99], responsable_id=7)

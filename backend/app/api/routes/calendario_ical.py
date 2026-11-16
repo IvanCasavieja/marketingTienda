@@ -12,10 +12,10 @@ una firma: el id de la persona y un HMAC con la clave del servidor y su
 
 Lo que sale es de solo lectura y respeta lo mismo que la pantalla: calendario
 habilitado, solo los mundos que la persona puede abrir. Va desde dos meses
-atrás hasta un año adelante; para una cuenta externa (la agencia, 0069), solo
-su ventana alrededor del mes actual (app/core/externos.py), igual que en la
-pantalla: el link lo puede pegar en cualquier calendario y no puede ser la
-puerta de atrás para ver lo que viene en tres meses.
+atrás hasta un año adelante, recortado a lo que la persona ve del calendario
+(su alcance, 0070: app/core/alcance.py), igual que en la pantalla: el link lo
+puede pegar en cualquier calendario y no puede ser la puerta de atrás para ver
+lo que no ve. Quien no ve el calendario no tiene link (404).
 """
 import hashlib
 import hmac
@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import externos
+from app.core import alcance
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_permission
@@ -125,6 +125,7 @@ def armar_ics(nombre: str, eventos: list[dict], ahora: datetime) -> str:
 @router.get("/ical/link")
 async def mi_link(current_user: User = Depends(require_permission("calendario.view"))):
     """La ruta del link (el front le pone adelante la dirección de la API)."""
+    alcance.exigir_calendario(current_user)
     return {"ruta": ruta_del_link(current_user)}
 
 
@@ -134,6 +135,7 @@ async def link_nuevo(
     db: AsyncSession = Depends(get_db),
 ):
     """Otro link: el anterior deja de andar (por si se compartió sin querer)."""
+    alcance.exigir_calendario(current_user)
     current_user.calendario_link_version = (current_user.calendario_link_version or 0) + 1
     db.add(current_user)
     return {"ruta": ruta_del_link(current_user)}
@@ -146,16 +148,20 @@ async def calendario_ics(user_id: int, firma: str, db: AsyncSession = Depends(ge
         usuario is None
         or not hmac.compare_digest(firma, firma_del_link(user_id, usuario.calendario_link_version or 0))
         or not puede_ver_el_calendario(usuario)
+        # Quien no ve el calendario (alcance "No lo ve", 0070) tampoco lo ve en Outlook.
+        or not alcance.ve_el_calendario(usuario)
     ):
         # Lo mismo exista o no la persona: el link no dice nada de quién es.
         raise HTTPException(status_code=404, detail="Not found")
 
     mundos = [m for m in mundos_de(usuario) if puede_abrir(usuario, m)]
-    if externos.es_externo(usuario):
-        desde, hasta = externos.ventana_de_hoy()
-    else:
-        hoy = datetime.now(timezone.utc).date()
-        desde, hasta = hoy - timedelta(days=DIAS_PARA_ATRAS), hoy + timedelta(days=DIAS_PARA_ADELANTE)
+    # Lo de siempre (unos meses para atrás y para adelante), recortado a lo
+    # que la persona ve del calendario (0070): ni un día más que en la pantalla.
+    hoy = datetime.now(timezone.utc).date()
+    desde, hasta = hoy - timedelta(days=DIAS_PARA_ATRAS), hoy + timedelta(days=DIAS_PARA_ADELANTE)
+    v = alcance.ventana_de(usuario)
+    if v is not None:
+        desde, hasta = max(desde, v[0]), min(hasta, v[1])
     varios = len(mundos) > 1
     eventos: list[dict] = []
 
@@ -182,12 +188,10 @@ async def calendario_ics(user_id: int, firma: str, db: AsyncSession = Depends(ge
                 CalendarioBarra.mundo.in_(mundos),
             )
         )
-        if externos.es_externo(usuario):
+        if v is not None:
             # Además de que venza en la ventana, la acción tiene que tocarla:
             # el título lleva el nombre de la acción.
-            consulta_tareas = consulta_tareas.where(
-                externos.condicion_de_ventana(CalendarioBarra, (desde, hasta)),
-            )
+            consulta_tareas = consulta_tareas.where(alcance.condicion(CalendarioBarra, (desde, hasta)))
         tareas = (await db.execute(consulta_tareas)).all()
         eventos += [_evento_de_tarea(t, b) for t, b in tareas]
 

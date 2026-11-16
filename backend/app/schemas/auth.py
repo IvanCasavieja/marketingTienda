@@ -78,11 +78,13 @@ class UserResponse(BaseModel):
     # al menos uno; para un superadmin vienen todos.
     mundos: list[str] = []
     must_change_password: bool = False
-    # Cuenta externa (la agencia, 0069): el front la lleva directo a su trabajo
-    # y le muestra qué parte del calendario ve. `ventana` son las fechas
-    # (ISO) que ve hoy; null para una cuenta del equipo.
+    # Cuenta externa (la agencia, 0069): el front la lleva directo a su trabajo.
     es_externo: bool = False
     empresa: str | None = None
+    # Hasta dónde ve el calendario (0070, app/core/alcance.py): 'nada', '1m',
+    # '2m', '12m' o 'todo'. `ventana` son las fechas (ISO) que ve hoy; null si
+    # lo ve todo (o no lo ve: ahí lo dice el alcance).
+    calendario_alcance: str = "todo"
     ventana: dict | None = None
 
     class Config:

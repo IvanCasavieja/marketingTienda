@@ -24,7 +24,7 @@ from app.models.audit_log import AuditLog
 from app.models.cenefa_job import CenefaJob
 from app.models.local_asignacion import LocalAsignacion
 from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
-from app.core import externos
+from app.core import alcance, externos
 from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, mundos_de, mundos_iniciales, mundos_que_no_puede_dar
 from app.models.user import User
 
@@ -294,6 +294,13 @@ class CreateUserRequest(BaseModel):
     # Solo para una cuenta externa: los mundos donde trabaja (por defecto
     # Tienda Inglesa). A una interna se le dan según su rol, como siempre.
     mundos: list[str] | None = None
+    # Hasta dónde ve el calendario (0070). Sin decirlo: una externa, "No lo
+    # ve"; una del equipo, "Todo" (ver app/core/alcance.py).
+    calendario_alcance: str | None = None
+
+
+class UpdateAlcanceRequest(BaseModel):
+    calendario_alcance: str
 
 
 class UpdateExternoRequest(BaseModel):
@@ -378,6 +385,7 @@ async def list_users(
             "is_superuser": u.is_superuser,
             "es_externo":   bool(u.es_externo),
             "empresa":      u.empresa,
+            "calendario_alcance": alcance.alcance_de(u),
             "created_at":   u.created_at.isoformat() if u.created_at else None,
             "sucursales":   sorted(sucursales.get(u.id, [])),
             "sucursal_tipo": tipo_sucursal.get(u.id),
@@ -432,6 +440,7 @@ async def create_user(
         # Redexpres); los demás mundos se tildan después, uno por uno.
         mundos=mundos_iniciales(_seed_permissions_for_role(role)),
         is_superuser=False,
+        calendario_alcance=_alcance_pedido(current_user, payload.calendario_alcance, es_externo=False),
         # La contraseña la eligió quien está creando la cuenta, no su dueño —
         # se lo obliga a poner una propia en el primer login.
         must_change_password=True,
@@ -478,6 +487,7 @@ async def _crear_externo(
         is_superuser=False,
         es_externo=True,
         empresa=empresa,
+        calendario_alcance=_alcance_pedido(current_user, payload.calendario_alcance, es_externo=True),
         must_change_password=True,
         password_changed_at=datetime.now(timezone.utc),
     )
@@ -702,6 +712,9 @@ async def update_externo(
         user.es_externo = True
         user.empresa = empresa
         user.role_id = None
+        # Una cuenta externa arranca sin ver el calendario (0070): si después
+        # tiene que verlo, se le da a ella puntualmente.
+        user.calendario_alcance = alcance.POR_DEFECTO_EXTERNO
         user.permissions = [p for p in (user.permissions or []) if p in externos.PERMISOS_DE_EXTERNOS]
     else:
         user.es_externo = False
@@ -720,6 +733,48 @@ async def update_externo(
 async def list_mundos(_: User = Depends(_require_admin_panel)):
     """El catálogo de mundos, para tildarlos por usuario."""
     return [{"key": clave, "nombre": nombre} for clave, nombre in MUNDOS.items()]
+
+
+def _alcance_pedido(quien_da: User, pedido: str | None, *, es_externo: bool) -> str:
+    """El alcance con el que se crea (o al que se cambia) una cuenta: el
+    pedido, o el de su tipo si no se pidió ninguno. Nadie da más calendario
+    del que ve: como con los permisos y los mundos."""
+    valor = pedido or alcance.por_defecto(es_externo)
+    if valor not in alcance.ALCANCES:
+        raise HTTPException(status_code=422, detail="Ese alcance del calendario no existe")
+    if not quien_da.is_superuser and alcance.ALCANCES.index(valor) > alcance.ALCANCES.index(alcance.alcance_de(quien_da)):
+        raise HTTPException(status_code=403, detail="No podés dar más calendario del que ves vos")
+    return valor
+
+
+@router.patch("/users/{user_id}/alcance")
+@limiter.limit("20/minute")
+async def update_alcance(
+    user_id: int,
+    payload: UpdateAlcanceRequest,
+    request: Request,
+    current_user: User = Depends(_require_user_management),
+    db: AsyncSession = Depends(get_db),
+):
+    """Hasta dónde ve el calendario una persona (0070): No lo ve / 1 mes /
+    2 meses / 12 meses / Todo. Pedido de Ivan (16/11/2026): el calendario lo
+    ve mucha gente y lo quiere empezar a cerrar; y a la agencia, darle de a
+    poco (al dueño, por ejemplo). El tablero de tarjetas lo ve siempre: es su
+    trabajo. Uno no se lo cambia a sí mismo."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    _ensure_not_self(current_user, user_id)
+    await _check_not_protected_admin(current_user, user, db)
+    antes = alcance.alcance_de(user)
+    user.calendario_alcance = _alcance_pedido(current_user, payload.calendario_alcance, es_externo=bool(user.es_externo))
+    db.add(user)
+    db.add(AuditLog(
+        user_id=current_user.id, action="admin.user.update_alcance", resource="user", resource_id=str(user.id),
+        details={"antes": antes, "despues": user.calendario_alcance}, ip_address=_client_ip(request),
+    ))
+    return {"calendario_alcance": user.calendario_alcance}
 
 
 @router.patch("/users/{user_id}/mundos")

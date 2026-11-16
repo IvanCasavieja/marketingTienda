@@ -160,6 +160,25 @@ class CalendarioTarea(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     vence: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Quién la hace (0070). Pedido de Ivan (16/11/2026): los banners los hace
+    # Publicis (usa la plataforma), algunos mailings otra agencia que no la
+    # usa, los rompeprecios del finde los diseñadores de Tienda. Entonces:
+    # - 'agencia': una agencia de la plataforma. `agencia` es el nombre de su
+    #   empresa, como `users.empresa`: la tarjeta es de la agencia, la ven y la
+    #   trabajan todas sus cuentas (ver externos.es_tarea_propia).
+    # - 'fuera': una agencia que no usa la plataforma. `agencia` es su nombre y
+    #   quien carga sus entregas es la persona del equipo asignada.
+    # - 'tienda': la gente de Tienda Inglesa (la persona asignada).
+    para: Mapped[str] = mapped_column(String(8), nullable=False, default="tienda", server_default="tienda")
+    agencia: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # El tipo de tarea ('banners', 'cenefas'... ver app/services/tipos_de_tarea.py)
+    # y lo que se tildó de él (["Header", "Slider"]). Con tipo, la tarea es una
+    # pieza: tiene su tarjeta en el tablero y se llama "<Acción> - <Tipo>".
+    tipo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    opciones: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Los datos de más del tipo: el CTA de un banner, cuántos bloques lleva
+    # un mailing ({"cta": "Ver ofertas", "bloques": 5}).
+    detalles: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # De dónde sale `vence` cuando vino de una plantilla (0065): 'inicio' o
     # 'fin' de la acción, más `ancla_dias` (negativo = antes). Mientras esté,
     # si la acción se mueve de fecha la tarea se mueve con ella. Si alguien le
@@ -203,7 +222,9 @@ class CalendarioPlantilla(Base):
     # La categoría de acción (la `banda`, "MEGA EVENTO") a la que va. Con una,
     # la ficha de una acción de esa categoría la sugiere. Null = de cualquiera.
     categoria: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # [{id, parentId, titulo, descripcion, asignadoA, ancla, dias}, ...]
+    # [{id, parentId, titulo, descripcion, asignadoA, ancla, dias, para, agencia}, ...]
+    # `para`/`agencia` (0070): si la tarea es para la agencia, al aplicar la
+    # plantilla le nace sola su tarjeta.
     tareas: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     creado_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
