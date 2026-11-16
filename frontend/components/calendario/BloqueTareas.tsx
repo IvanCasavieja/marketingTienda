@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { CalendarClock, Check, CornerDownRight, ListChecks, Plus, Trash2, UserRound } from 'lucide-react'
+import { CalendarClock, Check, CornerDownRight, FileText, ListChecks, Mic, Plus, Trash2, UserRound } from 'lucide-react'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
 import { CampoFecha, esFechaGuardable } from './CampoFecha'
+import { DictarBrief, type BriefListo } from '@/components/ia/DictarBrief'
 import { useCalendario } from '@/lib/calendario/store'
 import {
   ETIQUETA_ESTADO_TAREA, NIVELES_DE_TAREA, nivelDeTarea,
@@ -30,6 +31,85 @@ const ESTADOS: EstadoTarea[] = ['pendiente', 'en-proceso', 'hecha']
 
 /** Las pastillas de una tarea (a quién, cuándo, estado): mismo alto y mismo radio. */
 const PASTILLA = 'h-9 rounded-lg border-0 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-brand-500 sm:h-8'
+
+/** Lo más largo que guarda el servidor en el detalle de una tarea (TareaNueva.descripcion). */
+const MAX_DETALLE = 5000
+
+/** El botón chico que abre el dictado, al lado del título "Detalle". */
+const BOTON_DICTAR = 'flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 active:scale-95 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:h-8'
+
+/**
+ * El detalle de una tarea, escrito o dictado. "Dictar el pedido" abre el
+ * dictado (components/ia/DictarBrief): lo ordenado por la IA cae en el texto,
+ * que todavía se puede corregir antes de guardar.
+ */
+function CampoDetalle({ valor, onCambiar, onDictado, id }: {
+  valor: string
+  onCambiar: (v: string) => void
+  /** Además del texto, el pedido ordenado entero (para sacarle el título, por ejemplo). */
+  onDictado?: (brief: BriefListo) => void
+  id: string
+}) {
+  const [dictando, setDictando] = useState(false)
+
+  function usar(brief: BriefListo) {
+    onCambiar(brief.comoTexto.slice(0, MAX_DETALLE))
+    onDictado?.(brief)
+    setDictando(false)
+  }
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <label htmlFor={id} className="etiqueta-campo mb-0">Detalle (opcional)</label>
+        {!dictando && (
+          <button type="button" onClick={() => setDictando(true)} className={BOTON_DICTAR}>
+            <Mic className="h-4 w-4" /> Dictar el pedido
+          </button>
+        )}
+      </div>
+      {dictando ? (
+        <DictarBrief etiquetaUsar="Usar en la tarea" onListo={usar} onCancelar={() => setDictando(false)} />
+      ) : (
+        <textarea
+          id={id}
+          value={valor}
+          onChange={e => onCambiar(e.target.value)}
+          rows={valor ? 6 : 2}
+          maxLength={MAX_DETALLE}
+          placeholder="Qué hay que hacer, con los datos para la agencia o el equipo"
+          className="campo h-auto resize-y py-2.5 leading-relaxed"
+        />
+      )}
+    </div>
+  )
+}
+
+/** Editar el detalle de una tarea que ya existe (quien gestiona tareas). */
+function EditorDeDetalle({ tarea, onCerrar }: { tarea: Tarea; onCerrar: () => void }) {
+  const cambiar = useCalendario(s => s.cambiarTarea)
+  const [texto, setTexto] = useState(tarea.descripcion ?? '')
+
+  function guardar() {
+    const nuevo = texto.trim()
+    if (nuevo !== (tarea.descripcion ?? '').trim()) cambiar(tarea.id, { descripcion: nuevo || null })
+    onCerrar()
+  }
+
+  return (
+    <div className="mt-2.5 animate-scale-in space-y-2.5" onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onCerrar() } }}>
+      <CampoDetalle id={`detalle-${tarea.id}`} valor={texto} onCambiar={setTexto} />
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCerrar} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[40px]">
+          Cancelar
+        </button>
+        <button type="button" onClick={guardar} className="min-h-[44px] rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] sm:min-h-[40px]">
+          Guardar detalle
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo = true }: {
   accion: BarraGuardada
@@ -108,6 +188,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   const personasEstado = useCalendario(s => s.personasEstado)
   const [agregando, setAgregando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
+  const [editandoDetalle, setEditandoDetalle] = useState(false)
 
   const hijas = todas.filter(t => t.parentId === tarea.id)
   const nivel = nivelDeTarea(tarea, todas)
@@ -159,9 +240,10 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                 </span>
               )}
             </p>
-            {tarea.descripcion && (
+            {tarea.descripcion && !editandoDetalle && (
               <p className="mt-0.5 whitespace-pre-line text-sm text-slate-600 dark:text-slate-400">{tarea.descripcion}</p>
             )}
+            {editandoDetalle && <EditorDeDetalle tarea={tarea} onCerrar={() => setEditandoDetalle(false)} />}
 
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               {gestiona ? (
@@ -226,6 +308,17 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
 
               {gestiona && (
                 <span className="ml-auto flex items-center gap-0.5">
+                  {!editandoDetalle && (
+                    <button
+                      type="button"
+                      onClick={() => setEditandoDetalle(true)}
+                      aria-label={`${tarea.descripcion ? 'Editar' : 'Agregar'} el detalle de ${tarea.titulo}`}
+                      title="Escribir o dictar el detalle"
+                      className="flex h-9 items-center gap-1 rounded-lg px-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-brand-200 sm:h-8"
+                    >
+                      <FileText className="h-4 w-4" /> Detalle
+                    </button>
+                  )}
                   {nivel < NIVELES_DE_TAREA && (
                     <button
                       type="button"
@@ -300,9 +393,10 @@ function NuevaTarea({ accionId, parentId, personas, etiqueta, abierta = false, o
   const [titulo, setTitulo] = useState('')
   const [asignadoA, setAsignadoA] = useState('')
   const [vence, setVence] = useState('')
+  const [descripcion, setDescripcion] = useState('')
 
   function cerrar() {
-    setTitulo(''); setAsignadoA(''); setVence('')
+    setTitulo(''); setAsignadoA(''); setVence(''); setDescripcion('')
     setAbierto(false)
     onListo?.()
   }
@@ -312,6 +406,7 @@ function NuevaTarea({ accionId, parentId, personas, etiqueta, abierta = false, o
     crear(accionId, {
       titulo, parentId, asignadoA: asignadoA ? Number(asignadoA) : null,
       vence: esFechaGuardable(vence) ? vence : null,
+      descripcion: descripcion.trim() || null,
     })
   }
 
@@ -320,6 +415,12 @@ function NuevaTarea({ accionId, parentId, personas, etiqueta, abierta = false, o
     crearLaEscrita()
     // Se queda abierto para cargar la siguiente: las tareas se cargan de a varias.
     setTitulo('')
+    setDescripcion('')
+  }
+
+  /** Lo dictado trae un título: si la tarea todavía no tiene, se usa ese. */
+  function alDictar(brief: BriefListo) {
+    if (!titulo.trim()) setTitulo(brief.resumen.slice(0, 500))
   }
 
   /** "Listo" con algo escrito se lee como "guardá esto y cerrá": antes la
@@ -358,6 +459,12 @@ function NuevaTarea({ accionId, parentId, personas, etiqueta, abierta = false, o
         aria-label="Qué hay que hacer"
         maxLength={500}
         className="campo"
+      />
+      <CampoDetalle
+        id={`detalle-nueva-${parentId ?? accionId}`}
+        valor={descripcion}
+        onCambiar={setDescripcion}
+        onDictado={alDictar}
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">

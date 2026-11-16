@@ -312,6 +312,47 @@ export const chatApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Dictar el brief: la IA ordena un pedido dictado (o escrito) en los campos de
+// su tipo de pieza. Ver backend/app/services/brief_ia.py.
+// ---------------------------------------------------------------------------
+
+export type TipoPieza = "cenefa" | "mailing" | "banner_web" | "redes" | "otro";
+
+export interface CampoBrief {
+  clave: string;
+  etiqueta: string;
+  /** null = no se dijo. */
+  valor: string | null;
+  /** Cómo se avisa que falta: "Falta la vigencia", "Faltan las medidas". */
+  falta: string;
+}
+
+export interface BriefOrdenado {
+  tipo: TipoPieza;
+  tipoNombre: string;
+  /** Título corto del pedido. */
+  resumen: string;
+  /** En el orden del tipo de pieza. */
+  campos: CampoBrief[];
+  /** Los campos vacíos, ya dichos ("Falta la vigencia"). */
+  falta: string[];
+  /** Lo ambiguo, como preguntas. */
+  dudas: string[];
+  /** Lo que se dijo y no entra en ningún campo. */
+  notas: string | null;
+  usage?: AiTaskUsage;
+}
+
+/** El tope del texto que se manda a ordenar: el mismo que el servidor (MAX_TEXTO). */
+export const MAX_TEXTO_BRIEF = 4000;
+
+export const iaApi = {
+  ordenarBrief: (texto: string, tipo: TipoPieza) =>
+    // La IA tarda unos segundos: el tope general de axios no alcanza siempre.
+    api.post<BriefOrdenado>("/ia/brief/ordenar", { texto, tipo }, { timeout: 60_000 }),
+};
+
+// ---------------------------------------------------------------------------
 // Cenefas v2
 // ---------------------------------------------------------------------------
 
