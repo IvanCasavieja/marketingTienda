@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { ALCANCES, alcanceDe, nombreDeAlcance, type Alcance } from "@/lib/alcance";
 import AuditLogTab from "./AuditLogTab";
 import AiUsageTab from "./AiUsageTab";
 import UserActivityModal from "./UserActivityModal";
@@ -46,9 +47,11 @@ interface AdminUser {
   sucursales: string[];
   /** "redex" | "tienda" — null si no tiene sucursales. */
   sucursal_tipo: string | null;
-  /** Cuenta externa (la agencia): solo ve el calendario de su mes y sus tareas. */
+  /** Cuenta externa (la agencia): solo ve su tablero y, si se le habilita, el calendario. */
   es_externo?: boolean;
   empresa?: string | null;
+  /** Hasta dónde ve el calendario (0070, lib/alcance.ts). */
+  calendario_alcance?: Alcance;
 }
 
 /** El cartelito de una cuenta externa, en la lista y en el editor. */
@@ -139,6 +142,10 @@ function UserEditorModal({
   // mes. El servidor le saca todo lo demás al marcarla (y no deja dárselo).
   const [externo,  setExterno]  = useState<boolean>(!!user.es_externo);
   const [empresa,  setEmpresa]  = useState<string>(user.empresa ?? "");
+  // Hasta dónde ve el calendario (16/11/2026): para cerrarlo a quien no lo
+  // necesita entero, y para dárselo de a poco a la agencia (al dueño, por ejemplo).
+  const alcanceInicial = alcanceDe(user);
+  const [alcance, setAlcance] = useState<Alcance>(alcanceInicial);
   // Los mundos que quien edita puede dar: los suyos (un Super Admin, todos).
   const yo = useCurrentUserStore((s) => s.user);
   const puedoDar = new Set(yo?.is_superuser ? MUNDOS.map((m) => m.clave) : (yo?.mundos ?? []));
@@ -197,6 +204,11 @@ function UserEditorModal({
       // servidor le saca lo que no le corresponde.
       if (externo !== !!user.es_externo || (externo && empresa.trim() !== (user.empresa ?? ""))) {
         await api.patch(`/admin/users/${user.id}/externo`, { es_externo: externo, empresa: externo ? empresa.trim() : null });
+      }
+      // Después de lo de externa: al pasarla a externa el servidor la deja en
+      // "No lo ve", y si acá se eligió otra cosa, manda esto.
+      if (alcance !== alcanceInicial || (externo && !user.es_externo && alcance !== "nada")) {
+        await api.patch(`/admin/users/${user.id}/alcance`, { calendario_alcance: alcance });
       }
       // Los mundos van antes que los permisos: uno se los puede cambiar a sí
       // mismo, y los permisos propios no (el servidor lo rechaza y corta acá).
@@ -324,8 +336,8 @@ function UserEditorModal({
                 <span>
                   <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Cuenta externa (agencia o diseñador de afuera)</span>
                   <span className="block text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-                    Ve solo el calendario del mes actual (con una semana de margen), sus tareas y sus entregas.
-                    No ve avisos, notas internas ni ninguna herramienta, y no se le pueden dar permisos de gestión.
+                    Entra a su tablero de tarjetas. El calendario lo ve solo si se lo habilitás abajo, y de él solo
+                    sus tareas. No ve avisos, notas internas ni ninguna herramienta, y no se le pueden dar permisos de gestión.
                   </span>
                 </span>
               </label>
@@ -344,10 +356,40 @@ function UserEditorModal({
             </div>
           )}
 
+          {/* Hasta dónde ve el calendario: para todos, del equipo o de afuera. */}
+          {!user.is_superuser && !esSucursal && (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Calendario</p>
+              <p className="mb-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                Hasta dónde ve el calendario. «1 mes» es el mes actual (y la última semana del anterior); «2 meses»
+                suma el que viene. Su tablero de tarjetas lo ve siempre, aunque elijas «No lo ve».
+              </p>
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Hasta dónde ve el calendario">
+                {ALCANCES.map((a) => (
+                  <button
+                    key={a.valor}
+                    type="button"
+                    role="radio"
+                    aria-checked={alcance === a.valor}
+                    onClick={() => setAlcance(a.valor)}
+                    title={a.bajada}
+                    className={`min-h-[40px] rounded-xl border px-3 text-sm font-semibold transition ${
+                      alcance === a.valor
+                        ? "border-brand-600 bg-brand-600 text-white"
+                        : "border-slate-300 bg-white text-slate-700 hover:border-brand-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                    }`}
+                  >
+                    {a.nombre}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Permisos individuales — se prenden/apagan por usuario, no por rol */}
           {externo ? (
             <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-600 dark:bg-slate-800/50 dark:text-slate-300">
-              Una cuenta externa tiene un solo permiso, fijo: ver el calendario de su mes (calendario.view).
+              Una cuenta externa tiene un solo permiso, fijo: calendario.view (su tablero y, si se lo habilitás, el calendario).
             </p>
           ) : (
           <div>
@@ -648,7 +690,7 @@ export default function AdminPage() {
           role_id: form.role_id === "" ? null : Number(form.role_id),
         });
       toast.success(form.es_externo
-        ? `Listo: ${form.full_name} ya puede entrar. Ve su trabajo y el calendario del mes; la primera vez elige su contraseña.`
+        ? `Listo: ${form.full_name} ya puede entrar a su tablero. La primera vez elige su contraseña.`
         : t("admin.createForm.created"));
       setShowForm(false);
       if (form.es_externo) setLista("externas");
@@ -806,8 +848,9 @@ export default function AdminPage() {
           </div>
           {form.es_externo && (
             <p className="rounded-xl bg-sky-50 px-3 py-2.5 text-xs leading-relaxed text-sky-900 dark:bg-sky-500/10 dark:text-sky-100">
-              Entra directo a sus entregas y a sus tareas. Del calendario ve solo el mes actual, con una semana de margen;
-              no ve avisos, notas internas ni ninguna herramienta, y no se le pueden dar permisos de gestión.
+              Entra directo a su tablero de tarjetas. Arranca sin ver el calendario: si alguien de la agencia lo necesita
+              (el dueño, por ejemplo), se lo habilitás después en su ficha (1 mes, 2 meses…). No ve avisos, notas
+              internas ni ninguna herramienta, y no se le pueden dar permisos de gestión.
             </p>
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -967,6 +1010,11 @@ export default function AdminPage() {
                       </span>
                     )}
                     {u.es_externo && <MarcaExterna empresa={u.empresa} />}
+                    {!u.is_superuser && alcanceDe(u) !== "todo" && (
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                        Calendario: {nombreDeAlcance(alcanceDe(u))}
+                      </span>
+                    )}
                     {!u.is_active && (
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{t("admin.inactive")}</span>
                     )}

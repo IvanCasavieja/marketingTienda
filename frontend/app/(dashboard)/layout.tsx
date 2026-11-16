@@ -11,7 +11,7 @@ import { MARCA, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/
 import FueraDeMundo from "@/components/layout/FueraDeMundo";
 import NavegacionInferior from "@/components/layout/NavegacionInferior";
 import AvisoDeVentana from "@/components/layout/AvisoDeVentana";
-import { INICIO_DE_EXTERNOS, esExterno, rutaDeExterno } from "@/lib/externos";
+import { INICIO_DE_EXTERNOS, calendarioVedado, esExterno, rutaDeExterno } from "@/lib/externos";
 import { useAvisos } from "@/store/avisos";
 import { useTranslation } from "react-i18next";
 
@@ -54,7 +54,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // (un link viejo, la barra de direcciones) va a su trabajo. El servidor igual
   // le contesta 403 a todo lo interno: esto es para que no vea una pantalla rota.
   const externo = esExterno(user);
-  const fueraDeLoSuyo = authChecked && !mustChangePassword && externo && !rutaDeExterno(pathname);
+  // Y quien no ve el calendario (su alcance es "No lo ve", sea del equipo o
+  // de afuera) va a su tablero si llega al calendario o a Mis tareas.
+  const fueraDeLoSuyo = authChecked && !mustChangePassword && (
+    (externo && !rutaDeExterno(pathname, user)) || calendarioVedado(pathname, user)
+  );
   useEffect(() => {
     if (fueraDeLoSuyo) router.replace(INICIO_DE_EXTERNOS);
   }, [fueraDeLoSuyo, router]);
@@ -173,8 +177,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* Una herramienta que no es de este mundo no se muestra: se dice
                 dónde está y se ofrece pasar. */}
             <ClientOnly>
-              {/* A la agencia, arriba de su trabajo: qué parte del calendario ve. */}
-              {externo && user && pathname !== "/perfil" && <AvisoDeVentana user={user} />}
+              {/* Arriba del calendario, a quien lo ve limitado: qué parte ve. */}
+              {user?.ventana && pathname === "/calendario" && <AvisoDeVentana user={user} />}
               {mundo && !rutaEnMundo(pathname, mundo.clave)
                 ? <FueraDeMundo pathname={pathname} mundo={mundo} />
                 : children}

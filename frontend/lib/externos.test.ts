@@ -5,7 +5,8 @@
  *
  *     npm run test:externos
  */
-import { INICIO_DE_EXTERNOS, esExterno, rutaDeExterno, ventanaEnPalabras } from './externos'
+import { INICIO_DE_EXTERNOS, calendarioVedado, esExterno, rutaDeExterno, ventanaEnPalabras } from './externos'
+import { alcanceDe, veCalendario } from './alcance'
 import { inicioDe } from './mundos'
 import { delEquipo, nombreConEmpresa, type Persona } from './calendario/tipos'
 import type { CurrentUser } from '../types'
@@ -27,19 +28,34 @@ const usuario = (extra: Partial<CurrentUser>): CurrentUser => ({
 })
 
 console.log('externos')
-const agencia = usuario({ es_externo: true, empresa: 'Agencia Pampa', ventana: { desde: '2026-11-08', hasta: '2026-12-07' } })
+// Por defecto (0070) la agencia no ve el calendario: solo su tablero.
+const agencia = usuario({ es_externo: true, empresa: 'Agencia Pampa' })
+const agenciaConCalendario = usuario({
+  es_externo: true, empresa: 'Agencia Pampa', calendario_alcance: '2m', ventana: { desde: '2026-10-25', hasta: '2026-12-31' },
+})
 const delEquipoUsuario = usuario({})
+const delEquipoSinCalendario = usuario({ calendario_alcance: 'nada' })
 
 ok('una cuenta externa se reconoce', esExterno(agencia))
 ok('una del equipo no', !esExterno(delEquipoUsuario) && !esExterno(null))
-igual('la agencia entra a sus entregas', inicioDe(agencia), INICIO_DE_EXTERNOS)
+igual('la agencia entra a su tablero', inicioDe(agencia), INICIO_DE_EXTERNOS)
 igual('el equipo, al calendario', inicioDe(delEquipoUsuario), '/calendario')
+igual('alguien del equipo que no ve el calendario, a su tablero', inicioDe(delEquipoSinCalendario), INICIO_DE_EXTERNOS)
 
-for (const r of ['/entregas', '/mis-tareas', '/calendario', '/perfil', '/mundos', '/entregas?tarea=x'.split('?')[0]]) {
-  ok(`la agencia tiene ${r}`, rutaDeExterno(r))
+igual('la agencia arranca sin calendario', alcanceDe(agencia), 'nada')
+igual('el equipo arranca con todo', alcanceDe(delEquipoUsuario), 'todo')
+ok('con 2 meses ve el calendario', veCalendario(agenciaConCalendario))
+
+for (const r of ['/entregas', '/perfil', '/mundos']) {
+  ok(`la agencia tiene ${r}`, rutaDeExterno(r, agencia))
+}
+for (const r of ['/calendario', '/mis-tareas']) {
+  ok(`sin alcance, la agencia no tiene ${r}`, !rutaDeExterno(r, agencia) && calendarioVedado(r, agencia))
+  ok(`con alcance, la agencia tiene ${r}`, rutaDeExterno(r, agenciaConCalendario) && !calendarioVedado(r, agenciaConCalendario))
+  ok(`alguien del equipo sin alcance tampoco tiene ${r}`, calendarioVedado(r, delEquipoSinCalendario))
 }
 for (const r of ['/admin', '/materiales/cenefas', '/precios', '/facturacion', '/dashboard', '/colocacion', '/fotos', '/home', '/ayuda', '/calendariox']) {
-  ok(`la agencia no tiene ${r}`, !rutaDeExterno(r))
+  ok(`la agencia no tiene ${r}`, !rutaDeExterno(r, agenciaConCalendario))
 }
 
 igual('la ventana en palabras', ventanaEnPalabras({ desde: '2026-11-08', hasta: '2026-12-07' }), 'del 8 de noviembre al 7 de diciembre')

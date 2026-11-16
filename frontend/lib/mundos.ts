@@ -24,6 +24,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { CurrentUser } from '../types'
 import { INICIO_DE_EXTERNOS } from './externos'
+import { veCalendario } from './alcance'
 
 /** El nombre de la plataforma. Está en un solo lugar para poder cambiarlo. */
 export const MARCA = 'Core Tienda'
@@ -156,6 +157,8 @@ export function rutaEnMundo(pathname: string, mundo: string): boolean {
 export function inicioDe(user: CurrentUser | null | undefined): string {
   if (user?.es_externo) return INICIO_DE_EXTERNOS
   const ve = !!user && (user.is_superuser || (user.permissions ?? []).includes('calendario.view'))
+  // Quien tiene el calendario pero su alcance es "No lo ve" (0070) entra a su tablero.
+  if (ve && !veCalendario(user)) return INICIO_DE_EXTERNOS
   return ve ? '/calendario' : '/home'
 }
 

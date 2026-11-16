@@ -164,6 +164,13 @@
     @apply bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-white;
   }
   .etiqueta-campo { @apply mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400; }
+  /* Mientras se arrastra una tarjeta del tablero: que no se seleccione texto
+     ni se haga scroll con el dedo (el dedo es de la tarjeta). */
+  body.arrastrando-tarjeta {
+    @apply cursor-grabbing select-none;
+    touch-action: none;
+    -webkit-user-select: none;
+  }
   /* Texto, fecha, hora o select de un formulario. En el teléfono la letra va
      en 16px: con menos, el iPhone agranda la página al tocar el campo. */
   .campo {

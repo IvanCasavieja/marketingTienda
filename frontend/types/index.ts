@@ -97,7 +97,10 @@ export interface CurrentUser {
    *  actual, nada de las herramientas internas. Ver lib/externos.ts. */
   es_externo?: boolean;
   empresa?: string | null;
-  /** Qué fechas del calendario ve hoy una cuenta externa (ISO). */
+  /** Hasta dónde ve el calendario (0070): No lo ve / 1 mes / 2 meses / 12
+   *  meses / Todo. Ver lib/alcance.ts. */
+  calendario_alcance?: 'nada' | '1m' | '2m' | '12m' | 'todo';
+  /** Qué fechas del calendario ve hoy (ISO); null si lo ve todo o no lo ve. */
   ventana?: { desde: string; hasta: string } | null;
 }
 

@@ -1,7 +1,8 @@
 import axios, { AxiosInstance } from "axios";
 import type { Ga4FunnelResponse } from "@/types";
 import type { EstadoColocacion, EstadoVisibleColocacion } from "@/lib/colocacion/estados";
-import type { DetalleEntregas, Metricas, ResumenEntrega, Tarjeta, TipoDecision, TipoPieza } from "@/lib/calendario/entregas";
+import type { Columna, DetalleEntregas, Metricas, ResumenEntrega, Tarjeta, TipoDecision, TipoPieza } from "@/lib/calendario/entregas";
+import type { TipoDeTarea } from "@/lib/calendario/tipos-de-tarea";
 import type { ObservacionIA, RevisionIA } from "@/lib/calendario/revision-ia";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -2120,6 +2121,8 @@ export const calendarioApi = {
   borrarTarea: (id: string) => api.delete<CalendarioEscrito>(`/calendario/tareas/${encodeURIComponent(id)}`, ESPERA),
   /** Lo que tengo asignado, en todos mis mundos, con la acción de cada tarea. */
   misTareas: () => api.get<any[]>("/calendario/mis-tareas", ESPERA),
+  /** El catálogo de tipos de tarea (Banners, Cenefas…) con sus opciones y medidas. */
+  tiposDeTarea: () => api.get<TipoDeTarea[]>("/calendario/tipos-de-tarea", ESPERA),
   /** En qué mundo está una acción (para abrir su ficha desde un aviso). */
   ubicar: (barraId: string) =>
     api.get<{ id: string; mundo: string; desde: string }>(`/calendario/ubicar/${encodeURIComponent(barraId)}`, ESPERA),
@@ -2343,10 +2346,28 @@ export const entregasApi = {
     api.get<Blob>(`/calendario/entregas/imagenes/${encodeURIComponent(imagenId)}`, {
       params: { tam }, responseType: "blob", timeout: 60_000,
     }),
-  /** El tablero del mundo, o `sinCambios` si sigue en la revisión `rev`. */
-  tablero: (mundo: string, rev?: number | null, dias = 90) =>
-    api.get<{ rev: number; sinCambios?: boolean; tarjetas?: Tarjeta[]; metricas?: Metricas }>(
-      "/calendario/entregas", { ...ESPERA, params: rev == null ? { mundo, dias } : { mundo, rev, dias } }),
+  /** El tablero del mundo, o `sinCambios` si sigue en la revisión `rev`.
+   *  Liviano: las columnas activas y la primera página de Archivado. */
+  tablero: (mundo: string, rev?: number | null) =>
+    api.get<{
+      rev: number; sinCambios?: boolean; hoy?: string; tarjetas?: Tarjeta[];
+      archivadas?: { total: number; mostradas: number }; dias?: { archivar: number; ocultar: number };
+    }>("/calendario/entregas", { ...ESPERA, params: rev == null ? { mundo } : { mundo, rev } }),
+  /** "Ver más" de Archivado. */
+  archivadas: (mundo: string, desde: number) =>
+    api.get<{ tarjetas: Tarjeta[]; total: number; hasta: number }>(
+      "/calendario/entregas/archivadas", { ...ESPERA, params: { mundo, desde } }),
+  /** El buscador: lo del tablero y, aparte, lo archivado de verdad. */
+  buscar: (mundo: string, q: string) =>
+    api.get<{ enTablero: Tarjeta[]; archivadas: Tarjeta[]; palabras: string[] }>(
+      "/calendario/entregas/buscar", { ...ESPERA, params: { mundo, q } }),
+  /** El retrabajo: aparte del tablero, que no cambia con cada movimiento. */
+  metricas: (mundo: string, dias = 90) =>
+    api.get<Metricas>("/calendario/entregas/metricas", { ...ESPERA, params: { mundo, dias } }),
+  /** Arrastrar la tarjeta a otra columna. `desde` es donde la veía la pantalla. */
+  mover: (tareaId: string, datos: { desde: Columna; a: Columna; comentario?: string | null }) =>
+    api.post<CalendarioEscrito & { columna: Columna; resultado?: string | null; entrega?: ResumenEntrega; avisados?: number }>(
+      `/calendario/tareas/${encodeURIComponent(tareaId)}/mover`, datos, ESPERA),
   misEntregas: () =>
     api.get<{ paraRevisar: Tarjeta[]; conCambios: Tarjeta[] }>("/calendario/mis-entregas", ESPERA),
 };

@@ -3,8 +3,9 @@
 // Tienda, con la vista limitada.
 //
 // Pedido de Ivan (15/11/2026): "que la agencia en un futuro tenga acceso a la
-// plataforma… limitar también las vistas… que solamente puedan ver el
-// calendario actual, no lo que viene dentro de 2 o 3 meses".
+// plataforma… limitar también las vistas…". Y el 16/11: la agencia entra
+// directo a su tablero de tarjetas; el calendario lo ve solo si un admin se
+// lo habilita (su alcance, ver lib/alcance.ts).
 //
 // Lo que de verdad cuida es el servidor (backend/app/core/externos.py): solo
 // le manda lo de su ventana y lo suyo, y lo demás le contesta 403. Acá está lo
@@ -14,20 +15,34 @@
 // ---------------------------------------------------------------------------
 
 import type { CurrentUser } from '../types'
+import { veCalendario } from './alcance'
 
 export function esExterno(user: CurrentUser | null | undefined): boolean {
   return !!user?.es_externo
 }
 
-/** Las pantallas de una cuenta externa. Las demás la mandan a su inicio (y el
- *  servidor igual no le contestaría). */
-export const RUTAS_DE_EXTERNOS = ['/entregas', '/mis-tareas', '/calendario', '/perfil', '/mundos']
+/** Las pantallas de una cuenta externa (16/11/2026): su tablero de tarjetas
+ *  y, si un admin le habilitó el calendario (su alcance no es "No lo ve"), el
+ *  calendario. Las demás la mandan a su tablero (y el servidor igual no le
+ *  contestaría). */
+export const RUTAS_DE_EXTERNOS = ['/entregas', '/perfil', '/mundos']
+export const RUTAS_DEL_CALENDARIO = ['/calendario', '/mis-tareas']
 
-/** A dónde entra: a su trabajo, el tablero de entregas (que ya muestra solo lo suyo). */
+/** A dónde entra: a su trabajo, el tablero (que ya muestra solo lo suyo). */
 export const INICIO_DE_EXTERNOS = '/entregas'
 
-export function rutaDeExterno(pathname: string): boolean {
-  return RUTAS_DE_EXTERNOS.some(r => pathname === r || pathname.startsWith(r + '/'))
+function enAlguna(pathname: string, rutas: string[]): boolean {
+  return rutas.some(r => pathname === r || pathname.startsWith(r + '/'))
+}
+
+export function rutaDeExterno(pathname: string, user?: CurrentUser | null): boolean {
+  return enAlguna(pathname, RUTAS_DE_EXTERNOS) || (veCalendario(user) && enAlguna(pathname, RUTAS_DEL_CALENDARIO))
+}
+
+/** Si es una pantalla del calendario que esta persona no tiene (su alcance
+ *  es "No lo ve"), sea del equipo o de afuera. */
+export function calendarioVedado(pathname: string, user: CurrentUser | null | undefined): boolean {
+  return !!user && !veCalendario(user) && enAlguna(pathname, RUTAS_DEL_CALENDARIO)
 }
 
 const FECHA = new Intl.DateTimeFormat('es-UY', { day: 'numeric', month: 'long', timeZone: 'UTC' })

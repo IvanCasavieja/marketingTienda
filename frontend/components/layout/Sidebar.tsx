@@ -18,6 +18,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
 import { esExterno } from "@/lib/externos";
+import { veCalendario } from "@/lib/alcance";
 import { toast } from "sonner";
 import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import { useCalendario } from "@/lib/calendario/store";
@@ -190,19 +191,24 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const puedeEditar = hasPerm("calendario.edit");
   const fotosPendientes = usePendientesDeFotos((s) => s.pendientes) ?? 0;
   const localesDelMundo = useLocalesDelMundo((s) => (mundo ? s.porMundo[mundo.clave] : undefined));
-  // Una cuenta externa (la agencia, lib/externos.ts) ve su trabajo primero y
-  // nada de las herramientas internas: el servidor igual se las niega.
+  // Una cuenta externa (la agencia, lib/externos.ts) tiene un menú chiquito
+  // (16/11/2026): su tablero y, si un admin le habilitó el calendario (su
+  // alcance, lib/alcance.ts), el calendario. Nada de las herramientas
+  // internas: el servidor igual se las niega.
   const externo = esExterno(currentUser);
+  const conCalendario = veCalendario(currentUser);
   const nucleo: { href: string; label: string; icon: typeof CalendarDays; perm?: string; numero?: number }[] = externo ? [
-    { href: "/entregas", label: t("sidebar.misEntregas", "Mis entregas"), icon: Layers, perm: "calendario.view" },
-    { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
-    { href: "/calendario", label: t("sidebar.calendarioDelMes", "Calendario del mes"), icon: CalendarDays, perm: "calendario.view" },
+    { href: "/entregas", label: t("sidebar.miTablero", "Mi tablero"), icon: Layers, perm: "calendario.view" },
+    ...(conCalendario ? [{ href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" }] : []),
   ].filter((item) => hasPerm(item.perm)) : [
     ...(esLocal ? [{ href: "/fotos", label: t("sidebar.fotosParaSubir", "Fotos para subir"), icon: Camera, numero: fotosPendientes }] : []),
-    { href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" },
-    { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
-    // Las piezas con la agencia, como un tablero de Trello (15/11/2026).
-    { href: "/entregas", label: t("sidebar.entregas", "Entregas"), icon: Layers, perm: "calendario.view" },
+    // Quien no ve el calendario (su alcance es "No lo ve") tiene solo el tablero.
+    ...(conCalendario ? [
+      { href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" },
+      { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
+    ] : []),
+    // Las piezas con la agencia, como un tablero de Trello (16/11/2026).
+    { href: "/entregas", label: t("sidebar.tablero", "Tablero"), icon: Layers, perm: "calendario.view" },
     ...((localesDelMundo?.length ?? 0) > 0
       ? [{ href: "/colocacion", label: t("sidebar.colocacion", "Colocación"), icon: Camera, perm: "calendario.edit" }]
       : []),

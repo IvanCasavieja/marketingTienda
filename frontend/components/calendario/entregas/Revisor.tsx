@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { Check, CheckCheck, Columns2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
+import {
+  Check, CheckCheck, Columns2, ExternalLink, Link2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2, X,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import {
@@ -246,7 +248,23 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
     onCancelar()
   }
 
-  const imagenNueva = (
+  // Una ronda puede venir solo con un link (16/11/2026: "imágenes y/o un
+  // link"): no hay dónde marcar, se revisa en el link y se escribe qué cambiar.
+  const sinImagenes = version.imagenes.length === 0
+  const imagenNueva = sinImagenes ? (
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center dark:border-slate-700 dark:bg-slate-800/40">
+      <Link2 className="h-6 w-6 text-brand-600 dark:text-brand-300" aria-hidden />
+      <p className="max-w-sm text-sm text-slate-700 dark:text-slate-200">
+        Esta ronda vino con un link, sin imágenes. Abrilo para revisarla y, si hay que cambiar algo, escribilo abajo.
+      </p>
+      {version.link && (
+        <a href={version.link} target="_blank" rel="noopener noreferrer"
+          className="flex min-h-[44px] items-center gap-2 rounded-xl bg-brand-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-brand-700">
+          <ExternalLink className="h-4 w-4" /> Abrir los materiales
+        </a>
+      )}
+    </div>
+  ) : (
     <ImagenConMarcas
       imagenId={activa}
       pines={pinesActuales}
@@ -369,10 +387,12 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
           </div>
         )}
 
-        <p className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-          <MousePointerClick className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-300" />
-          Tocá la imagen donde hay que cambiar algo: queda una marca numerada.
-        </p>
+        {!sinImagenes && (
+          <p className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+            <MousePointerClick className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-300" />
+            Tocá la imagen donde hay que cambiar algo: queda una marca numerada.
+          </p>
+        )}
           </div>
 
           <div className="space-y-4">

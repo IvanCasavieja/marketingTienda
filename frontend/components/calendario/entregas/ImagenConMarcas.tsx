@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, ImageOff, Sparkles } from 'lucide-react'
 import { useImagen, type Tam } from './useImagen'
 
@@ -110,15 +110,30 @@ export function ImagenConMarcas({
   )
 }
 
-/** Una miniatura chica (la del tablero, la de la historia). */
-export function Miniatura({ imagenId, etiqueta, className = 'h-16 w-16' }: {
-  imagenId: string | null; etiqueta: string; className?: string
+/** Una miniatura chica (la del tablero, la de la historia).
+ *
+ * `perezosa`: se pide recién cuando la tarjeta aparece en pantalla (o está
+ * por aparecer). En el tablero hay decenas de tarjetas y la mayoría quedan
+ * fuera de la vista: así el tablero se pinta enseguida y las imágenes llegan
+ * a medida que se ven (16/11/2026: "que se sienta instantáneo"). */
+export function Miniatura({ imagenId, etiqueta, className = 'h-16 w-16', perezosa = false }: {
+  imagenId: string | null; etiqueta: string; className?: string; perezosa?: boolean
 }) {
-  const { url, error } = useImagen(imagenId, 'mini')
+  const ref = useRef<HTMLSpanElement>(null)
+  const [visible, setVisible] = useState(() => !perezosa || typeof IntersectionObserver === 'undefined')
+  useEffect(() => {
+    if (visible || !ref.current) return
+    const io = new IntersectionObserver(es => {
+      if (es.some(e => e.isIntersecting)) { setVisible(true); io.disconnect() }
+    }, { rootMargin: '200px' })
+    io.observe(ref.current)
+    return () => io.disconnect()
+  }, [visible])
+  const { url, error } = useImagen(visible ? imagenId : null, 'mini')
   if (!imagenId) return null
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element -- URL local del navegador (blob:)
-    return <img src={url} alt={etiqueta} className={`shrink-0 rounded-lg bg-white object-cover ring-1 ring-black/5 dark:ring-white/10 ${className}`} />
+    return <img src={url} alt={etiqueta} draggable={false} className={`shrink-0 rounded-lg bg-white object-cover ring-1 ring-black/5 dark:ring-white/10 ${className}`} />
   }
   // Ya vencida (se borró) o sin conexión: un hueco con el ícono, no un "cargando" eterno.
   return error ? (
@@ -126,6 +141,6 @@ export function Miniatura({ imagenId, etiqueta, className = 'h-16 w-16' }: {
       <ImageOff className="h-4 w-4" aria-label={error} />
     </span>
   ) : (
-    <span className={`skeleton block shrink-0 rounded-lg ${className}`} aria-hidden />
+    <span ref={ref} className={`skeleton block shrink-0 rounded-lg ${className}`} aria-hidden />
   )
 }

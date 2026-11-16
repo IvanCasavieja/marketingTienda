@@ -14,9 +14,9 @@ import { ZOOM_POR_DEFECTO, limitarZoom } from './rejilla'
 export { ZOOMS, ZOOM_POR_DEFECTO } from './rejilla'
 import { SECCIONES_CON_FICHA, conDescendientes, formatosDeCanal } from './tipos'
 import type {
-  AreaPieza, Aviso, BarraGuardada, EstadoPieza, EstadoTarea, Mes, Persona, Pieza, Plantilla, Seccion, Tarea,
+  AnclaTarea, AreaPieza, Aviso, BarraGuardada, EstadoPieza, EstadoTarea, Mes, Persona, Pieza, Plantilla, Seccion, Tarea,
 } from './tipos'
-import { conCambios, moverAncladas, tareasDesdePlantilla, type CambiosDeTarea } from './plantillas'
+import { conCambios, moverAncladas, tareasDesdePlantilla, venceAnclado, type CambiosDeTarea } from './plantillas'
 import { BANDAS_COMERCIAL, BANDAS_RETAIL, type BandaCatalogo } from './catalogo'
 import { MUNDO_POR_DEFECTO, mundoDe, useMundoElegido } from '@/lib/mundos'
 
@@ -115,6 +115,16 @@ export type DatosTarea = {
   asignadoA?: number | null
   vence?: string | null
   descripcion?: string | null
+  /** Quién la hace (16/11/2026): Tienda, una agencia de la plataforma o una de afuera. */
+  para?: 'tienda' | 'agencia' | 'fuera'
+  agencia?: string | null
+  /** El tipo de tarea (una pieza: nace su tarjeta) con lo tildado y los datos de más. */
+  tipo?: string | null
+  opciones?: string[]
+  detalles?: Record<string, string | number>
+  /** "N días antes del inicio": el vencimiento se mueve con la acción. */
+  ancla?: AnclaTarea | null
+  anclaDias?: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -805,18 +815,44 @@ export const useCalendario = create<Estado>()(
 
         crearTarea: (barraId, datos) => {
           const titulo = datos.titulo.trim()
-          if (!titulo || !get().barras[barraId]) return null
+          const accion = get().barras[barraId]
+          if (!titulo || !accion) return null
+          const pieza = Boolean(datos.tipo) || datos.para === 'agencia' || datos.para === 'fuera'
+          const vence = datos.ancla ? venceAnclado(datos.ancla, datos.anclaDias ?? 0, accion.desde, accion.hasta) : datos.vence || null
           const tarea: Tarea = {
             id: nuevoId('ta'), parentId: datos.parentId ?? null, titulo,
             descripcion: datos.descripcion?.trim() || null, estado: 'pendiente' as EstadoTarea,
-            asignadoA: datos.asignadoA ?? null, vence: datos.vence || null, creadoPor: null,
+            asignadoA: datos.asignadoA ?? null, vence, creadoPor: null,
+            ancla: datos.ancla ?? null, anclaDias: datos.ancla ? datos.anclaDias ?? 0 : null,
+            para: datos.para ?? 'tienda', agencia: datos.agencia ?? null, tipo: datos.tipo ?? null,
+            opciones: datos.opciones ?? [],
           }
           cambiarBarraLocal(barraId, b => ({ ...b, tareas: [...(b.tareas ?? []), tarea] }))
           void escribir(() => calendarioApi.crearTarea(barraId, {
-            id: tarea.id, parentId: tarea.parentId, titulo, descripcion: tarea.descripcion,
-            asignadoA: tarea.asignadoA, vence: tarea.vence,
+            id: tarea.id, parentId: tarea.parentId, titulo: datos.tipo ? '' : titulo, descripcion: tarea.descripcion,
+            asignadoA: tarea.asignadoA, vence: datos.ancla ? null : tarea.vence,
+            para: datos.para ?? 'tienda', agencia: datos.agencia ?? null,
+            tipo: datos.tipo ?? null, opciones: datos.opciones ?? null, detalles: datos.detalles ?? null,
+            ancla: datos.ancla ?? null, anclaDias: datos.ancla ? datos.anclaDias ?? 0 : null,
           }), barraId).then(r => {
-            if (r?.avisados) toast.success('Tarea creada. Le llegó el aviso a quien la tiene asignada.')
+            if (!r) return
+            const res = r as { titulo?: string; vence?: string | null; entrega?: Tarea['entrega']; para?: Tarea['para']; agencia?: string | null }
+            // Lo que armó el servidor (el nombre "<Acción> - <Tipo>", la
+            // tarjeta en Ingresado) reemplaza lo de la pantalla.
+            if (res.titulo || res.entrega) {
+              cambiarBarraLocal(barraId, b => ({
+                ...b,
+                tareas: (b.tareas ?? []).map(t => (t.id === tarea.id ? {
+                  ...t, titulo: res.titulo || t.titulo, vence: res.vence ?? t.vence, entrega: res.entrega ?? t.entrega,
+                  para: res.para ?? t.para, agencia: res.agencia ?? t.agencia,
+                } : t)),
+              }))
+            }
+            if (pieza) {
+              toast.success(r.avisados
+                ? 'Listo: nació su tarjeta en el tablero, en «Ingresado». Le avisamos a quien la hace.'
+                : 'Listo: nació su tarjeta en el tablero, en «Ingresado».')
+            } else if (r.avisados) toast.success('Tarea creada. Le llegó el aviso a quien la tiene asignada.')
           })
           return tarea.id
         },
