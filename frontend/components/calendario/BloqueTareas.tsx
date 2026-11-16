@@ -270,7 +270,8 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                       onBlur={() => setConfirmando(false)}
                       className="h-9 animate-scale-in rounded-lg bg-rose-600 px-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 active:scale-95 sm:h-8"
                     >
-                      {hijas.length > 0 ? 'Borrar con sus subtareas' : 'Sí, borrar'}
+                      {/* Borrar se lleva todo lo que cuelga: que se lea antes de confirmar. */}
+                      {conEntregas ? 'Borrar con sus entregas' : hijas.length > 0 ? 'Borrar con sus subtareas' : 'Sí, borrar'}
                     </button>
                   ) : (
                     <button
