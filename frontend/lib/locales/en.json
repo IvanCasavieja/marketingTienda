@@ -889,6 +889,8 @@
       "precioOferta": "precioOferta",
       "rowError": "Couldn't save — try again",
       "approveAll": "Approve all",
+      "sinMarcaTitle": "No brand ({{count}})",
+      "sinMarcaHint": "These products have no brand in the article name or in the web description. Tinín didn't add one: if they have one, type it in before approving. They are not included in \"Approve all\".",
       "approving": "Approving…",
       "failedCount": "We couldn't generate a suggestion for {{count}} product(s) — fill them in by hand.",
       "loadingMore": "Generating the rest in the background… ({{done}}/{{total}})",
