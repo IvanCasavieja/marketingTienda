@@ -117,7 +117,7 @@ export function CopiarAccion({ accion, onCerrar }: {
         className="relative flex max-h-[92dvh] w-full max-w-md animate-sheet-up flex-col overflow-hidden rounded-t-3xl bg-white shadow-panel dark:bg-slate-900 dark:ring-1 dark:ring-slate-800 sm:animate-scale-in sm:rounded-2xl"
       >
         <div aria-hidden className={CLASE_MANIJA} />
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-5 pb-3.5 pt-4 dark:border-slate-800">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-300 px-5 pb-3.5 pt-4 dark:border-slate-800">
           <div className="min-w-0">
             <h3 id="copiar-titulo" className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-slate-100">
               <CopyPlus className="h-5 w-5 text-brand-600 dark:text-brand-300" aria-hidden /> Copiar a otra fecha
@@ -211,7 +211,7 @@ export function CopiarAccion({ accion, onCerrar }: {
 
           <section aria-labelledby="copiar-que">
             <h4 id="copiar-que" className="etiqueta-campo">Qué se copia</h4>
-            <ul className="space-y-2.5 rounded-xl border border-slate-200 px-3.5 py-3 dark:border-slate-700">
+            <ul className="space-y-2.5 rounded-xl border border-slate-300 px-3.5 py-3 dark:border-slate-700">
               {!esEnvio && (
                 <li className={fila}>
                   <LayoutGrid className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
@@ -282,7 +282,7 @@ export function CopiarAccion({ accion, onCerrar }: {
           )}
         </div>
 
-        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-800/40">
+        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-300 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-800/40">
           <button
             type="button"
             onClick={cerrarSiSePuede}

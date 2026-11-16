@@ -140,7 +140,7 @@ export function DictarBrief({
 
   return (
     <div
-      className="space-y-4 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4"
+      className="space-y-4 rounded-2xl border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4"
       // Va adentro de formularios (el de una tarea nueva): un Enter en un campo
       // de acá no tiene que mandar el formulario de afuera a medio completar.
       onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault() }}
@@ -261,7 +261,7 @@ export function DictarBrief({
       </div>
 
       {resultado && (
-        <div ref={resultadoRef} className="animate-scale-in space-y-3.5 border-t border-slate-200 pt-4 dark:border-slate-700">
+        <div ref={resultadoRef} className="animate-scale-in space-y-3.5 border-t border-slate-300 pt-4 dark:border-slate-700">
           <p className="text-xs font-bold uppercase tracking-wide text-brand-700 dark:text-brand-300">
             Pedido ordenado · {resultado.tipoNombre}
           </p>

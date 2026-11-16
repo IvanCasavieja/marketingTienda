@@ -87,7 +87,7 @@ export function HeaderHome() {
           <CabeceraDias mes={mes} hoy={hoy} titulo="Día" />
           <div className="flex bg-slate-50 dark:bg-slate-800/40">
             <div
-              className="sticky left-0 z-20 shrink-0 border-r border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-[#151e31]"
+              className="sticky left-0 z-20 shrink-0 border-r border-slate-300 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-[#151e31]"
               style={{ width: ESTILO_ETIQUETA }}
             >
               <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Banners ese día</div>
@@ -117,7 +117,7 @@ export function HeaderHome() {
           </div>
         </MarcoScroll>
 
-        <footer className="flex flex-wrap items-center gap-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-[11px] text-slate-500 dark:text-slate-400">
+        <footer className="flex flex-wrap items-center gap-4 border-t border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-[11px] text-slate-500 dark:text-slate-400">
           <span className="flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-sm bg-emerald-100 dark:bg-emerald-900/50 ring-1 ring-emerald-300" />
             hasta {REGLAS_HEADER.ideal}, ideal
@@ -130,7 +130,7 @@ export function HeaderHome() {
             <span className="h-3 w-3 rounded-sm bg-rose-500" />
             más de {REGLAS_HEADER.tolerable}, se pasa
           </span>
-          <span className="border-l border-slate-200 dark:border-slate-700 pl-4">
+          <span className="border-l border-slate-300 dark:border-slate-700 pl-4">
             Tocá un día para ver qué hay puesto.
           </span>
         </footer>

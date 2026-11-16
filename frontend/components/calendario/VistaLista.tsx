@@ -108,7 +108,7 @@ function Tarjeta({ barra, personas, hoy, onAbrir, pasada, orden }: {
       className={`group flex w-full animate-rise overflow-hidden rounded-2xl border bg-white text-left shadow-card transition duration-200 ease-suave hover:-translate-y-0.5 hover:shadow-card-hover active:translate-y-0 active:scale-[.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:bg-slate-900 dark:focus-visible:ring-offset-slate-950 ${
         mega
           ? 'border-slate-300 ring-1 ring-slate-900/5 hover:border-slate-400 dark:border-slate-600 dark:ring-white/5 dark:hover:border-slate-500'
-          : 'border-slate-200 hover:border-brand-300 dark:border-slate-800 dark:hover:border-brand-500/50'
+          : 'border-slate-300 hover:border-brand-300 dark:border-slate-800 dark:hover:border-brand-500/50'
       } ${pasada ? 'opacity-75 hover:opacity-100' : ''}`}
     >
       <span className="w-2 shrink-0" style={{ backgroundColor: barra.color ?? '#cbd5e1' }} />
@@ -157,7 +157,7 @@ function Tarjeta({ barra, personas, hoy, onAbrir, pasada, orden }: {
         </span>
 
         {(piezas.length > 0 || tareas.length > 0) && (
-          <span className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-2.5 text-sm dark:border-slate-800">
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 pt-2.5 text-sm dark:border-slate-800">
             {piezas.length > 0 && (
               <span className="flex items-center gap-1.5 tabular-nums text-slate-600 dark:text-slate-400">
                 <CheckCircle2 className={`h-4 w-4 ${publicadas === piezas.length ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-500'}`} />
@@ -273,7 +273,7 @@ export function VistaLista() {
                   onClick={() => abrirEditor({ seccion: 'envio', banda: canal, carril: 0, barra: null, fechaInicial: diaInicial })}
                   aria-label={`Envío por ${tituloDeCanal(canal)}`}
                   title={`Nuevo envío suelto por ${tituloDeCanal(canal)}`}
-                  className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-brand-300 hover:text-brand-700 active:scale-[.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-brand-500/50 dark:hover:text-brand-200 sm:min-h-[40px] sm:flex-none"
+                  className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-brand-300 hover:text-brand-700 active:scale-[.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-brand-500/50 dark:hover:text-brand-200 sm:min-h-[40px] sm:flex-none"
                 >
                   {ICONO_CANAL[canal]} {tituloDeCanal(canal)}
                 </button>

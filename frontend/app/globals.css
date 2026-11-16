@@ -60,7 +60,7 @@
 @layer components {
   /* ── Cards ─────────────────────────────────── */
   .card {
-    @apply bg-white rounded-2xl border border-slate-100 shadow-card
+    @apply bg-white rounded-2xl border border-slate-200 shadow-card
            dark:bg-slate-900 dark:border-slate-800;
   }
   .card-hover {
@@ -142,7 +142,8 @@
          rounded-full las pastillas;
        - alto de control: 40px en la notebook y 44px en el teléfono (lo que
          se puede tocar con el dedo sin errarle);
-       - bordes slate-200 / slate-800, superficies white / slate-900. */
+       - bordes slate-300 / slate-800, superficies white / slate-900 (con
+         slate-200 en el modo claro no se distinguían las divisiones, 16/11/2026). */
   .boton-icono {
     @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 transition
            hover:bg-slate-100 hover:text-slate-900 active:scale-95

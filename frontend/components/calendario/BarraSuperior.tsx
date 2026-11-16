@@ -176,7 +176,7 @@ export function BarraSuperior() {
   ] as const
 
   return (
-    <header className="mb-4 rounded-2xl border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900">
+    <header className="mb-4 rounded-2xl border border-slate-300 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-2 py-2 sm:px-5 sm:py-3.5">
         {/* En qué mundo se está parado: lo primero que tiene que quedar claro.
             En el teléfono ya lo dice la barra de arriba, con su color. */}
@@ -198,7 +198,7 @@ export function BarraSuperior() {
             <Link
               href="/mundos"
               title="Cambiar de mundo"
-              className="ml-1 flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 active:scale-95 dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500/40 dark:hover:bg-brand-500/10 dark:hover:text-brand-200"
+              className="ml-1 flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-slate-300 px-3 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 active:scale-95 dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500/40 dark:hover:bg-brand-500/10 dark:hover:text-brand-200"
             >
               <ArrowLeftRight className="h-3.5 w-3.5" />
               Cambiar
@@ -251,7 +251,7 @@ export function BarraSuperior() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 px-2 py-2 dark:border-slate-800 sm:px-5 sm:py-2.5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 px-2 py-2 dark:border-slate-800 sm:px-5 sm:py-2.5">
         {/* Cómo se mira. La primera opción decía "Mes" y, al lado del selector
             de mes, se leía como "este mes": Ivan buscó "el calendario general
             de todo" y no lo encontró (12/11/2026). En el teléfono va primero y
@@ -299,7 +299,7 @@ export function BarraSuperior() {
         </div>
 
         {vista === 'tiempo' && (
-          <div className="hidden items-center gap-0.5 rounded-xl border border-slate-200 p-0.5 dark:border-slate-700 md:order-last md:flex" role="group" aria-label="Tamaño del calendario">
+          <div className="hidden items-center gap-0.5 rounded-xl border border-slate-300 p-0.5 dark:border-slate-700 md:order-last md:flex" role="group" aria-label="Tamaño del calendario">
             <button type="button" onClick={() => setZoom(siguienteZoom(zoom, -1))} disabled={!sePuedeAlejar(zoom)} title="Alejar" aria-label="Alejar" className="boton-icono">
               <Minus className="h-4 w-4" />
             </button>

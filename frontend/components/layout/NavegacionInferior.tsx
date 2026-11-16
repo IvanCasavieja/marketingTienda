@@ -51,7 +51,7 @@ export default function NavegacionInferior({ onMenu, onAvisos }: { onMenu: () =>
   return (
     <nav
       aria-label={t("sidebar.navegacion", "Navegación principal")}
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md dark:border-white/10 dark:bg-navy-900/90 md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-300 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md dark:border-white/10 dark:bg-navy-900/90 md:hidden"
     >
       <div className="mx-auto flex max-w-md items-stretch px-2">
         {items.map(({ href, label, Icono, numero }) => {

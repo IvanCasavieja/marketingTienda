@@ -13,8 +13,8 @@ export function Seccion({
   children: ReactNode
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2.5 border-b border-slate-200 px-4 py-3 dark:border-slate-800 sm:px-5 sm:py-3.5">
+    <section className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2.5 border-b border-slate-300 px-4 py-3 dark:border-slate-800 sm:px-5 sm:py-3.5">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-100 dark:bg-brand-500/15 dark:text-brand-300 dark:ring-brand-500/20">
           {icono}
         </span>

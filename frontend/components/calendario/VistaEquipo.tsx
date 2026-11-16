@@ -28,7 +28,7 @@ export function VistaEquipo() {
   const nombreDe = (id: number) => personas.find(p => p.id === id)?.nombre ?? `Persona ${id}`
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+    <section className="rounded-2xl border border-slate-300 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-5">
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200">
           <Users className="h-5 w-5" />
@@ -43,7 +43,7 @@ export function VistaEquipo() {
       </div>
 
       {filas.length === 0 ? (
-        <p className="mt-6 rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+        <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
           Nadie tiene tareas abiertas en este mundo.
         </p>
       ) : (
@@ -73,7 +73,7 @@ function Persona({ fila, nombre, semanas }: { fila: FilaDeCarga; nombre: string;
   ]
 
   return (
-    <li className="rounded-xl border border-slate-200 p-3 dark:border-slate-800 sm:p-4">
+    <li className="rounded-xl border border-slate-300 p-3 dark:border-slate-800 sm:p-4">
       <div className="flex items-center gap-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
           {iniciales || '?'}
@@ -110,7 +110,7 @@ function Persona({ fila, nombre, semanas }: { fila: FilaDeCarga; nombre: string;
         {abierta ? 'Ocultar tareas' : 'Ver tareas'}
       </button>
       {abierta && (
-        <ul className="mt-2 divide-y divide-slate-100 text-sm dark:divide-slate-800">
+        <ul className="mt-2 divide-y divide-slate-200 text-sm dark:divide-slate-800">
           {fila.tareas.map(t => (
             <li key={t.id} className="flex items-baseline gap-2 py-1.5">
               <span className="w-12 shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400">{t.vence ? fechaCorta(t.vence) : '—'}</span>

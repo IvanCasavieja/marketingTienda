@@ -439,7 +439,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       <aside className={clsx(
         // Claro en tema claro (pedido de Ivan, 12/11/2026: "necesitamos
         // aclarar. No oscurecer más"); el navy de antes queda para el oscuro.
-        "w-72 md:w-64 flex flex-col shrink-0 z-50 border-r border-slate-200 bg-white dark:border-white/5 dark:bg-navy-900",
+        "w-72 md:w-64 flex flex-col shrink-0 z-50 border-r border-slate-300 bg-white dark:border-white/5 dark:bg-navy-900",
         // Desktop: always visible, relative positioning
         "md:relative md:translate-x-0 md:min-h-screen md:visible",
         // Mobile: fixed overlay, slides in/out. Cerrado queda invisible, así
@@ -476,7 +476,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               href="/mundos"
               onClick={handleNavClick}
               title={t("sidebar.cambiarMundo", "Cambiar de mundo")}
-              className="group relative mx-3 mb-3 flex items-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white py-2.5 pl-4 pr-3 shadow-card transition hover:border-slate-300 hover:shadow-card-hover active:scale-[.99] dark:border-white/10 dark:bg-white/[.04] dark:hover:border-white/20"
+              className="group relative mx-3 mb-3 flex items-center gap-3 overflow-hidden rounded-xl border border-slate-300 bg-white py-2.5 pl-4 pr-3 shadow-card transition hover:border-slate-300 hover:shadow-card-hover active:scale-[.99] dark:border-white/10 dark:bg-white/[.04] dark:hover:border-white/20"
             >
               <span className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: mundo.color }} aria-hidden />
               <span className="h-2.5 w-2.5 shrink-0 rounded-full ring-4 ring-slate-100 dark:ring-white/5" style={{ backgroundColor: mundo.color }} />
@@ -578,7 +578,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </nav>
 
         {/* Perfil + notificaciones */}
-        <div className="border-t border-slate-200 px-3 pt-3 dark:border-white/5">
+        <div className="border-t border-slate-300 px-3 pt-3 dark:border-white/5">
           <div ref={notifWrapRef} className="relative flex items-center gap-1.5">
             <Link
               href="/perfil"
@@ -622,14 +622,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 role="dialog"
                 aria-label={t("sidebar.notificaciones")}
                 className={clsx(
-                  "z-50 flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-pop dark:border-white/10 dark:bg-slate-900",
+                  "z-50 flex flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-pop dark:border-white/10 dark:bg-slate-900",
                   // En el teléfono es una hoja abajo de todo, ancha; en la
                   // notebook sale de la campanita hacia arriba.
                   "fixed inset-x-3 bottom-3 max-h-[75dvh] animate-sheet-up",
                   "md:absolute md:inset-x-auto md:bottom-full md:left-0 md:mb-2 md:max-h-[min(32rem,calc(100vh-6rem))] md:w-[22rem] md:origin-bottom-left md:animate-scale-in"
                 )}
               >
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-100 px-4 py-3 dark:border-white/5">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-200 px-4 py-3 dark:border-white/5">
                   <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{t("sidebar.notificaciones")}</p>
                   {notifCount > 0 && (
                     <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
@@ -678,7 +678,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                         onClick={() => irANotificacion(n)}
                         onKeyDown={(e) => teclaEnNotificacion(e, n)}
                         className={clsx(
-                          "relative flex items-start gap-3 border-b border-slate-100 px-4 py-3 transition-colors last:border-0 dark:border-white/5",
+                          "relative flex items-start gap-3 border-b border-slate-200 px-4 py-3 transition-colors last:border-0 dark:border-white/5",
                           destino ? "cursor-pointer hover:bg-slate-50 focus-visible:bg-slate-50 dark:hover:bg-white/5 dark:focus-visible:bg-white/5" : "cursor-default",
                           !n.leida && "bg-brand-50/50 dark:bg-brand-500/[0.07]"
                         )}
@@ -735,7 +735,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               <CurrentFlag className="w-4 h-auto rounded-[2px] shrink-0" />
             </button>
             {showLangMenu && (
-              <div className="absolute bottom-full left-0 mb-2 w-44 origin-bottom-left animate-scale-in overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-pop dark:border-white/10 dark:bg-slate-900 z-50">
+              <div className="absolute bottom-full left-0 mb-2 w-44 origin-bottom-left animate-scale-in overflow-hidden rounded-xl border border-slate-300 bg-white p-1 shadow-pop dark:border-white/10 dark:bg-slate-900 z-50">
                 {LANGUAGES.map((lang) => {
                   const Flag = FLAG_ICONS[lang.country];
                   const actual = i18n.language === lang.code;

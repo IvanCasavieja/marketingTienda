@@ -233,7 +233,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         )}
 
         {pedidoAntes.length > 0 && (
-          <section className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+          <section className="rounded-xl border border-slate-300 p-3 dark:border-slate-700">
             <h4 className="mb-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">Lo que se pidió en la ronda {anterior?.ronda}</h4>
             <ul className="space-y-1">
               {pedidoAntes.map(m => {
@@ -274,7 +274,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         {nuevas.length > 0 && (
           <ol className="space-y-2" aria-label="Tus marcas">
             {nuevas.map((n, i) => (
-              <li key={n.clave} className={`flex items-start gap-2 rounded-xl border p-2 transition ${elegido === n.clave ? 'border-brand-400 bg-brand-50/60 dark:border-brand-500/50 dark:bg-brand-500/10' : 'border-slate-200 dark:border-slate-700'}`}>
+              <li key={n.clave} className={`flex items-start gap-2 rounded-xl border p-2 transition ${elegido === n.clave ? 'border-brand-400 bg-brand-50/60 dark:border-brand-500/50 dark:bg-brand-500/10' : 'border-slate-300 dark:border-slate-700'}`}>
                 <button
                   type="button"
                   onClick={() => { setActiva(n.imagenId); setElegido(n.clave) }}
@@ -322,7 +322,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-2.5 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+      <div className="shrink-0 border-t border-slate-300 bg-white px-4 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-2.5 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
         {confirmandoSalir ? (
           <div className="flex flex-wrap items-center gap-2 py-1">
             <p className="flex-1 text-sm font-semibold text-slate-800 dark:text-slate-100">

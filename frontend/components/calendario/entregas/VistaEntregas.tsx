@@ -164,7 +164,7 @@ function Encabezado({ detalle, modo, onCerrar, cerrarRef }: {
   const t = detalle?.tarea
   const vencida = t?.vence && t.vence < hoy && detalle?.resumen.momento !== 'aprobada'
   return (
-    <header className="flex shrink-0 items-start gap-3 border-b border-slate-200 px-4 pb-3 pt-4 dark:border-slate-800 sm:px-6">
+    <header className="flex shrink-0 items-start gap-3 border-b border-slate-300 px-4 pb-3 pt-4 dark:border-slate-800 sm:px-6">
       <div className="min-w-0 flex-1">
         {detalle ? (
           <>
@@ -240,7 +240,7 @@ function Resumen({ detalle, usuarioId, onRecargar }: {
     ? 'border-brand-300 bg-brand-50 dark:border-brand-500/40 dark:bg-brand-500/10'
     : resumen.momento === 'aprobada'
       ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10'
-      : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50'
+      : 'border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50'
   const IconoPaso = resumen.momento === 'aprobada' ? PartyPopper : paso.aQuien === 'vos' ? ArrowRight : Hourglass
 
   return (
@@ -399,7 +399,7 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
   const todasPurgadas = version.imagenes.length > 0 && version.imagenes.every(i => i.purgada)
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4">
+    <article className="rounded-2xl border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4">
       <header className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Ronda {version.ronda}</h4>
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${estado.tono}`}>{estado.texto}</span>
@@ -598,7 +598,7 @@ function EditarConfiguracion({ detalle, onListo, onCancelar }: {
           usuarioId={user?.id ?? null}
         />
       </div>
-      <div className="flex shrink-0 items-center gap-2 border-t border-slate-200 px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 sm:px-6">
+      <div className="flex shrink-0 items-center gap-2 border-t border-slate-300 px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 sm:px-6">
         {falta && <p className="flex-1 text-xs text-amber-700 dark:text-amber-300">{falta}</p>}
         <button type="button" onClick={onCancelar} className="ml-auto min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
           Cancelar

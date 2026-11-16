@@ -58,7 +58,7 @@ function Esqueleto() {
       <div className="skeleton mb-3 h-4 w-32 rounded-md" />
       <div className="space-y-2.5">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="flex gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <div key={i} className="flex gap-3 rounded-2xl border border-slate-300 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <div className="skeleton h-7 w-7 shrink-0 rounded-lg" />
             <div className="flex-1 space-y-2.5">
               <div className="skeleton h-4 w-2/3 rounded-md" />
@@ -357,7 +357,7 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
       className={`flex animate-rise items-start gap-3 rounded-2xl border p-4 shadow-card transition duration-500 ease-suave ${
         saliendo ? "scale-[.98] border-emerald-200 bg-emerald-50/60 opacity-70 dark:border-emerald-500/20 dark:bg-emerald-500/[.06]"
           : vencida ? "border-rose-200 bg-white dark:border-rose-500/30 dark:bg-slate-900"
-            : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+            : "border-slate-300 bg-white dark:border-slate-800 dark:bg-slate-900"
       }`}
     >
       {entrega ? (

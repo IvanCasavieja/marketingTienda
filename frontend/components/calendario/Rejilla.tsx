@@ -58,9 +58,9 @@ export function CabeceraDias({ mes, hoy, titulo }: { mes: Mes; hoy: number | nul
   const conNumero = zoom >= MINIMO_CON_NUMERO
 
   return (
-    <div className="sticky top-0 z-30 flex border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <div className="sticky top-0 z-30 flex border-b border-slate-300 bg-white dark:border-slate-800 dark:bg-slate-900">
       <div
-        className="sticky left-0 z-40 flex shrink-0 items-end border-r border-slate-200 bg-white px-3 pb-2 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 sm:px-4"
+        className="sticky left-0 z-40 flex shrink-0 items-end border-r border-slate-300 bg-white px-3 pb-2 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 sm:px-4"
         style={{ width: ESTILO_ETIQUETA }}
         data-etiqueta
       >
@@ -77,8 +77,8 @@ export function CabeceraDias({ mes, hoy, titulo }: { mes: Mes; hoy: number | nul
               title={esHoy ? `Hoy, ${mes.dow[String(d)]} ${d}` : `${mes.dow[String(d)]} ${d}`}
               data-hoy={esHoy || undefined}
               className={[
-                'flex flex-col items-center overflow-hidden border-r border-slate-100 px-0.5 pb-1.5 pt-2 dark:border-slate-800',
-                finde ? 'bg-slate-50 dark:bg-slate-800/50' : '',
+                'flex flex-col items-center overflow-hidden border-r border-slate-200 px-0.5 pb-1.5 pt-2 dark:border-slate-800',
+                finde ? 'bg-slate-100 dark:bg-slate-800/50' : '',
                 esHoy ? 'bg-brand-50 dark:bg-brand-500/10' : '',
               ].join(' ')}
             >
@@ -131,6 +131,10 @@ type FilaProps = {
   detalleDe?: (b: Barra) => string | null
   /** El semáforo de la acción (verde, amarillo o rojo), como un puntito antes del nombre. */
   semaforoDe?: (b: Barra) => Semaforo | null
+  /** Hay otra fila de la misma categoría abajo: el borde va fino y suave; el
+   *  que cierra la categoría va de 2 px, como el de su etiqueta, para que se
+   *  vea dónde termina una y empieza la otra (pedido del 16/11/2026). */
+  interna?: boolean
 }
 
 /** "Fiesta · del 25 de setiembre al 5 de octubre · sigue en octubre" */
@@ -144,15 +148,15 @@ function tituloPorDefecto(b: Barra, derivada: boolean): string {
 
 // Las clases de cada celda de día se arman una vez por tipo de día, no una
 // vez por celda: en un mes con todas las categorías son más de mil celdas.
-const CELDA = 'relative border-r border-slate-100 dark:border-slate-800'
-const CELDA_FINDE = 'bg-slate-50/80 dark:bg-slate-800/30'
+const CELDA = 'relative border-r border-slate-200 dark:border-slate-800'
+const CELDA_FINDE = 'bg-slate-100/70 dark:bg-slate-800/30'
 // Hoy: un tinte y una línea de la marca que cruza todas las filas.
 const CELDA_HOY = "bg-brand-50/70 dark:bg-brand-500/[.07] before:absolute before:inset-y-0 before:left-1/2 before:w-0.5 before:-translate-x-1/2 before:bg-brand-500/50 before:content-['']"
 // Un día libre donde se puede cargar algo muestra un + al pasar.
 const CELDA_LIBRE = "cursor-cell transition-colors hover:bg-brand-50 dark:hover:bg-brand-500/10 after:absolute after:inset-0 after:flex after:items-center after:justify-center after:text-base after:font-semibold after:text-brand-500 after:opacity-0 after:transition-opacity after:content-['+'] hover:after:opacity-100"
 
 export function FilaRejilla({
-  mes, fila, hoy, alto = ALTO_FILA, editable, onBarra, onDiaVacio, esDerivada, tituloDe, detalleDe, semaforoDe,
+  mes, fila, hoy, alto = ALTO_FILA, editable, onBarra, onDiaVacio, esDerivada, tituloDe, detalleDe, semaforoDe, interna = false,
 }: FilaProps) {
   const franja = useFranja(mes.dias)
   const zoom = useCalendario(s => s.zoom)
@@ -161,7 +165,7 @@ export function FilaRejilla({
 
   return (
     <div
-      className="grid shrink-0 border-b border-slate-200 dark:border-slate-800"
+      className={`grid shrink-0 dark:border-slate-800 ${interna ? 'border-b border-slate-200' : 'border-b-2 border-slate-300'}`}
       style={{ ...franja, minHeight: alto }}
     >
       {Array.from({ length: mes.dias }, (_, i) => i + 1).map(d => {
@@ -265,7 +269,7 @@ export function EtiquetaBanda({
           : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-300'
   return (
     <div
-      className={`group/etiqueta sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-0.5 border-b border-r border-slate-200 py-1 pl-2.5 pr-1 dark:border-slate-800 sm:pl-4 sm:pr-1.5 ${fondo}`}
+      className={`group/etiqueta sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-0.5 border-b-2 border-r border-slate-300 py-1 pl-2.5 pr-1 dark:border-slate-800 sm:pl-4 sm:pr-1.5 ${fondo}`}
       style={{ width: ESTILO_ETIQUETA, minHeight: filas * ALTO_FILA }}
     >
       <div className="flex items-center gap-0.5 sm:gap-1">

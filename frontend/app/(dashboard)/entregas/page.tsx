@@ -216,7 +216,7 @@ function MetricasDeRetrabajo({ metricas, dias, onDias }: { metricas: Metricas; d
   const [verDetalle, setVerDetalle] = useState(false);
   const sinDatos = metricas.fases === 0;
   return (
-    <section aria-labelledby="retrabajo" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+    <section aria-labelledby="retrabajo" className="rounded-2xl border border-slate-300 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 id="retrabajo" className="text-base font-bold text-slate-900 dark:text-slate-100">Retrabajo</h2>
         <div className="segmentado ml-auto !p-0.5" role="group" aria-label="Período">
@@ -288,7 +288,7 @@ function TablaDeRetrabajo({ titulo, filas }: { titulo: string; filas: Metricas["
         </thead>
         <tbody>
           {filas.map(f => (
-            <tr key={String(f.clave)} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
+            <tr key={String(f.clave)} className="border-b border-slate-200 last:border-0 dark:border-slate-800">
               <td className="max-w-0 py-2 pr-2">
                 <span className="block truncate font-medium text-slate-800 dark:text-slate-200" title={f.nombre ?? String(f.clave)}>{f.nombre ?? String(f.clave)}</span>
                 <span className="text-xs text-slate-500 dark:text-slate-400">{f.fases === 1 ? "1 fase" : `${f.fases} fases`} · {numero(f.rondasPromedio)} rondas</span>

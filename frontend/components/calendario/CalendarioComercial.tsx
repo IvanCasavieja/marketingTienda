@@ -58,7 +58,7 @@ export function CalendarioComercial() {
               className={`flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition active:scale-[.98] sm:min-h-[40px] ${
                 soloConAcciones
                   ? 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200'
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                  : 'border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
               }`}
             >
               {soloConAcciones ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -123,6 +123,7 @@ export function CalendarioComercial() {
                 <div className="flex-1">
                   {banda.filas.map((fila, i) => (
                     <FilaRejilla
+                      interna={i < banda.filas.length - 1}
                       key={i}
                       mes={mes}
                       fila={fila}

@@ -38,7 +38,7 @@ export function CalendarioRetail() {
 
           {grupos.map(grupo => (
             <div key={grupo.nombre}>
-              <div className="flex border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800">
+              <div className="flex border-b border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800">
                 <div
                   className="sticky left-0 z-20 shrink-0 bg-slate-100 dark:bg-slate-800 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
                   style={{ width: ESTILO_ETIQUETA }}
@@ -71,6 +71,7 @@ export function CalendarioRetail() {
                       {banda.filas.map((fila, i) => (
                         <FilaRejilla
                           key={i}
+                          interna={i < banda.filas.length - 1}
                           mes={mes}
                           fila={fila}
                           hoy={hoy}
