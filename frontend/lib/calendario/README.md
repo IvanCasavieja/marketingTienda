@@ -66,6 +66,31 @@ por tarea, hasta tres niveles (tarea → subtarea → sub-subtarea).
 - `calendario.tareas` lo recibieron Superadmin y Admin en la 0060. A quien
   lidere el equipo sin ser Admin hay que tildárselo a mano.
 
+### Plantillas de tareas (0064)
+
+Cada tipo de acción lleva casi siempre las mismas tareas. Una **plantilla**
+(tabla `calendario_plantillas`, una por mundo) las guarda con su vencimiento
+relativo: N días antes o después del **inicio** o del **fin** de la acción, y
+opcionalmente un responsable fijo y la categoría a la que va.
+
+- **Usar plantilla**, en la pestaña Tareas de la ficha, crea sus tareas con la
+  fecha ya calculada. Si la acción tiene una categoría con plantilla, la ficha
+  la sugiere ("¿Usar la plantilla Mega evento?"); "Ahora no" la saca de esa
+  acción en ese navegador. A cada responsable le llega UN aviso con todas sus
+  tareas, no uno por tarea.
+- **Las tareas se mueven con la acción.** Cada tarea de plantilla guarda su
+  ancla (`ancla`, `ancla_dias`): si la acción cambia de fecha, las que no
+  están hechas se recalculan solas, en el mismo cambio. Si alguien les cambia
+  el vencimiento a mano, se sueltan y quedan donde las pusieron.
+- El retiro de lo que se colgó (cenefas, carteles) es una tarea más, anclada
+  al fin: "Empezar con un ejemplo" la trae, junto con el brief, las entregas,
+  la aprobación, las cenefas a los locales y la foto de colocación.
+- Armarlas, editarlas, borrarlas y usarlas pide `calendario.tareas`. Borrar
+  una plantilla no toca las tareas que ya creó.
+- Las cuentas están dos veces a propósito: en `lib/calendario/plantillas.ts`
+  (para que la pantalla cambie al instante) y en el backend
+  (`app/api/routes/calendario.py`), que es el que manda.
+
 ## Categorías: la fila, la cocarda y 'Sin categoría'
 
 Pedido de Ivan (12/11/2026): "Para mí debería de ser nueva acción y punto.

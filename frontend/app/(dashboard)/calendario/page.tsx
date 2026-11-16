@@ -13,6 +13,7 @@ import { CalendarioEnvios } from "@/components/calendario/CalendarioEnvios";
 import { HeaderHome } from "@/components/calendario/HeaderHome";
 import { EditorBarra } from "@/components/calendario/EditorBarra";
 import { PanelAccion } from "@/components/calendario/PanelAccion";
+import { DialogoPlantillas } from "@/components/calendario/DialogoPlantillas";
 import { VistaLista } from "@/components/calendario/VistaLista";
 import { calendarioApi } from "@/lib/api";
 import { mundoEfectivo, mundosDe, useMundoElegido, type SeccionDeMundo } from "@/lib/mundos";
@@ -222,6 +223,9 @@ export default function CalendarioPage() {
       )}
       <EditorBarra />
       <PanelAccion />
+      {/* Afuera de la ficha (como el editor): adentro, la ficha corrida con
+          transform haría que "fixed" se acomode a ella y no a la pantalla. */}
+      <DialogoPlantillas />
     </div>
   );
 }

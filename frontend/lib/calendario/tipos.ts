@@ -116,6 +116,45 @@ export type Tarea = {
   /** 'YYYY-MM-DD' */
   vence: string | null
   creadoPor: number | null
+  /** Solo en las que vinieron de una plantilla y nadie les cambió la fecha a
+   *  mano: `vence` sale de contar `anclaDias` desde el inicio o el fin de la
+   *  acción, y si la acción se mueve, se mueve con ella. */
+  ancla?: AnclaTarea | null
+  anclaDias?: number | null
+  /** De qué plantilla vino. */
+  plantillaId?: string | null
+}
+
+/** Desde dónde se cuenta el vencimiento de una tarea de plantilla. */
+export type AnclaTarea = 'inicio' | 'fin'
+
+/** Una tarea de una plantilla: su vencimiento es relativo a la acción. */
+export type TareaDePlantilla = {
+  id: string
+  /** Otra tarea de la misma plantilla: subtareas de un nivel nomás. */
+  parentId: string | null
+  titulo: string
+  descripcion: string | null
+  /** Una persona fija, o null: la tarea se crea sin asignar. */
+  asignadoA: number | null
+  /** null = la tarea se crea sin fecha. */
+  ancla: AnclaTarea | null
+  /** Días desde el ancla. Negativo = antes. */
+  dias: number
+}
+
+/**
+ * Las tareas que lleva casi siempre un tipo de acción, con sus vencimientos
+ * relativos (pedido del 15/11/2026). Cada mundo tiene las suyas. Con
+ * categoría, la ficha de una acción de esa categoría la sugiere.
+ */
+export type Plantilla = {
+  id: string
+  mundo?: string
+  nombre: string
+  /** La `banda` de las acciones a las que va ("MEGA EVENTO"). null = cualquiera. */
+  categoria: string | null
+  tareas: TareaDePlantilla[]
 }
 
 export const NIVELES_DE_TAREA = 3

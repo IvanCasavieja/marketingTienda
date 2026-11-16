@@ -2027,7 +2027,7 @@ const ESPERA = { timeout: 15_000 };
 export const calendarioApi = {
   /** Todo el calendario, o `sinCambios` si sigue en la revisión `rev`. */
   traerDatos: (mundo: string, rev?: number | null) =>
-    api.get<{ rev: number; mundo?: string; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]> }>(
+    api.get<{ rev: number; mundo?: string; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]>; plantillas?: any[] }>(
       "/calendario/datos", { ...ESPERA, params: rev == null ? { mundo } : { mundo, rev } }),
   /** A quién se le puede mandar un aviso o asignar una tarea en ese mundo. */
   personas: (mundo: string) =>
@@ -2046,8 +2046,9 @@ export const calendarioApi = {
     api.get<{ id: string; mundo: string; desde: string }>(`/calendario/ubicar/${encodeURIComponent(barraId)}`, ESPERA),
 
   crearBarra: (barra: unknown) => api.post<CalendarioEscrito>("/calendario/barras", barra, ESPERA),
+  /** `tareasMovidas`: cuántas tareas de plantilla se corrieron con la acción. */
   cambiarBarra: (id: string, cambios: unknown) =>
-    api.patch<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`, cambios, ESPERA),
+    api.patch<CalendarioEscrito & { tareasMovidas?: number }>(`/calendario/barras/${encodeURIComponent(id)}`, cambios, ESPERA),
   borrarBarra: (id: string) => api.delete<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`, ESPERA),
 
   agregarPieza: (barraId: string, pieza: unknown) =>
@@ -2060,6 +2061,16 @@ export const calendarioApi = {
     api.post<CalendarioEscrito & { enviadosAhora?: number }>(
       `/calendario/barras/${encodeURIComponent(barraId)}/avisos`, aviso, ESPERA),
   quitarAviso: (id: string) => api.delete<CalendarioEscrito>(`/calendario/avisos/${encodeURIComponent(id)}`, ESPERA),
+
+  /** Crea o reemplaza entera una plantilla de tareas (el id lo genera el front). */
+  guardarPlantilla: (id: string, plantilla: unknown) =>
+    api.put<CalendarioEscrito>(`/calendario/plantillas/${encodeURIComponent(id)}`, plantilla, ESPERA),
+  borrarPlantilla: (id: string) =>
+    api.delete<CalendarioEscrito>(`/calendario/plantillas/${encodeURIComponent(id)}`, ESPERA),
+  /** Crea en la acción las tareas de la plantilla. `ids`: el id nuevo de cada tarea de la plantilla. */
+  aplicarPlantilla: (barraId: string, datos: { plantillaId: string; ids: Record<string, string> }) =>
+    api.post<CalendarioEscrito & { creadas?: number; avisados?: number; sinAsignar?: number }>(
+      `/calendario/barras/${encodeURIComponent(barraId)}/plantilla`, datos, ESPERA),
 
   /** Guarda las posiciones de RM de un mes y avisa a quien lleva Retail Media. */
   moverPosicionesRM: (clave: string, posiciones: number[]) =>

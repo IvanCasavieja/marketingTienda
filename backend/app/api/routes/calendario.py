@@ -16,6 +16,12 @@
   DELETE /calendario/tareas/{id}
   GET    /calendario/mis-tareas               — lo que tengo asignado, de todos mis mundos
   GET    /calendario/ubicar/{id}              — en qué mundo está una acción
+  PUT    /calendario/plantillas/{id}          — crea o reemplaza una plantilla de tareas
+  DELETE /calendario/plantillas/{id}
+  POST   /calendario/barras/{id}/plantilla    — crea en una acción las tareas de una plantilla
+
+Las plantillas (0064) viajan con /datos, como todo lo del mundo: guardar una
+sube la revisión y los demás la ven aparecer sola.
 
 Desde la 0060 la plataforma entera se divide en MUNDOS (Tienda Inglesa,
 Redexpres...) y cada uno tiene su calendario: cada barra es de un mundo,
@@ -42,7 +48,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -53,13 +59,13 @@ from app.core.deps import client_ip as _client_ip, require_permission
 from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, puede_abrir
 from app.models.audit_log import AuditLog
 from app.models.calendario import (
-    CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPosicionesRM, CalendarioRevision,
-    CalendarioRevisionMundo,
+    CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPlantilla, CalendarioPosicionesRM,
+    CalendarioRevision, CalendarioRevisionMundo,
     CalendarioTarea,
 )
 from app.models.notificacion import Notificacion
 from app.models.user import User
-from app.services.calendario_avisos import puede_ver_el_calendario, revisar_avisos
+from app.services.calendario_avisos import SIN_CATEGORIA, puede_ver_el_calendario, revisar_avisos
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/calendario", tags=["calendario"])
@@ -215,7 +221,7 @@ def _aviso_json(a: CalendarioAviso) -> dict:
 
 
 def _tarea_json(t: CalendarioTarea) -> dict:
-    return {
+    out = {
         "id": t.id,
         "parentId": t.parent_id,
         "titulo": t.titulo,
@@ -224,6 +230,24 @@ def _tarea_json(t: CalendarioTarea) -> dict:
         "asignadoA": t.asignado_a_id,
         "vence": t.vence.isoformat() if t.vence else None,
         "creadoPor": t.creado_por_id,
+    }
+    # Solo las que vinieron de una plantilla: /datos viaja entero cada vez que
+    # algo cambia, y tres null por tarea en todas las demás no dicen nada.
+    if t.ancla is not None and t.ancla_dias is not None:
+        out["ancla"] = t.ancla
+        out["anclaDias"] = t.ancla_dias
+    if t.plantilla_id:
+        out["plantillaId"] = t.plantilla_id
+    return out
+
+
+def _plantilla_json(p: CalendarioPlantilla) -> dict:
+    return {
+        "id": p.id,
+        "mundo": p.mundo,
+        "nombre": p.nombre,
+        "categoria": p.categoria,
+        "tareas": list(p.tareas or []),
     }
 
 
@@ -322,6 +346,10 @@ async def traer_datos(
         p.clave: list(p.posiciones)
         for p in (await db.execute(select(CalendarioPosicionesRM))).scalars()
     } if mundo == MUNDO_POR_DEFECTO else {}
+    plantillas = (await db.execute(
+        select(CalendarioPlantilla).where(CalendarioPlantilla.mundo == mundo)
+        .order_by(CalendarioPlantilla.nombre, CalendarioPlantilla.id)
+    )).scalars().all()
     return {
         "rev": actual,
         "mundo": mundo,
@@ -330,6 +358,7 @@ async def traer_datos(
             for b in barras
         ],
         "posicionesRM": posiciones,
+        "plantillas": [_plantilla_json(p) for p in plantillas],
     }
 
 
@@ -512,15 +541,33 @@ async def cambiar_barra(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     cambio_la_fecha = cambios.get("desde", barra.desde) != barra.desde
+    cambio_el_fin = cambios.get("hasta", barra.hasta) != barra.hasta
     for campo, valor in cambios.items():
         setattr(barra, campo, valor)
     barra.actualizado_por_id = current_user.id
+    movidas = 0
+    if cambio_la_fecha or cambio_el_fin:
+        # Las tareas que vinieron de una plantilla y no están hechas se mueven
+        # con la acción, en la misma transacción: nadie ve la acción en la
+        # fecha nueva con las tareas todavía en la vieja.
+        ancladas = (await db.execute(
+            select(CalendarioTarea).where(
+                CalendarioTarea.barra_id == barra_id,
+                CalendarioTarea.ancla.is_not(None),
+                CalendarioTarea.estado != "hecha",
+            ).with_for_update()
+        )).scalars().all()
+        nuevas = vencimientos_al_mover(ancladas, barra.desde, barra.hasta)
+        for t in ancladas:
+            if t.id in nuevas:
+                t.vence = nuevas[t.id]
+        movidas = len(nuevas)
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
     if cambio_la_fecha:
         # Un aviso que con la fecha nueva ya tendría que haber salido, sale ya.
         await _avisar_sin_romper(db, barra_id)
-    return {"id": barra_id, "rev": rev}
+    return {"id": barra_id, "rev": rev, "tareasMovidas": movidas}
 
 
 @router.delete("/barras/{barra_id}")
@@ -845,6 +892,52 @@ def nivel_de(tarea_id: str | None, padres: dict[str, str | None]) -> int:
     return nivel
 
 
+# --- Vencimientos anclados a la acción (0064) ---------------------------------
+# Una tarea que vino de una plantilla vence "N días antes/después del inicio o
+# del fin" de su acción. Se guarda la fecha calculada (es lo que leen "Mis
+# tareas", los vencidos y los avisos) y además de dónde sale, para poder
+# recalcularla si la acción se mueve. Estas funciones no usan la base (la que
+# cambia algo, cambia solo la tarea que recibe), para probarlas sin ella;
+# reciben cualquier cosa con los campos de una tarea.
+
+def vence_anclado(ancla: str, dias: int, desde: date, hasta: date) -> date:
+    """`dias` contados desde el inicio o el fin de la acción. Negativo = antes."""
+    return (desde if ancla == "inicio" else hasta) + timedelta(days=dias)
+
+
+def vencimientos_al_mover(tareas, desde: date, hasta: date) -> dict[str, date]:
+    """Las tareas que se mueven porque la acción pasó a ir de `desde` a
+    `hasta`, con su vencimiento nuevo. Solo las ancladas que no están hechas
+    (lo hecho, hecho está: su fecha queda como registro) y solo si cambia."""
+    nuevas: dict[str, date] = {}
+    for t in tareas:
+        if t.ancla is None or t.ancla_dias is None or t.estado == "hecha":
+            continue
+        vence = vence_anclado(t.ancla, t.ancla_dias, desde, hasta)
+        if vence != t.vence:
+            nuevas[t.id] = vence
+    return nuevas
+
+
+def poner_vence_a_mano(tarea, vence: date | None) -> None:
+    """Alguien eligió la fecha: manda esa, y la tarea deja de moverse con la
+    acción. Volver a mandar la misma fecha no es elegir otra: el ancla queda."""
+    if vence == tarea.vence:
+        return
+    tarea.vence = vence
+    tarea.ancla = None
+    tarea.ancla_dias = None
+
+
+def vence_al_reabrir(tarea, desde: date, hasta: date) -> date | None:
+    """El vencimiento de una tarea hecha que se vuelve a abrir. Mientras
+    estuvo hecha no se movió con la acción; si sigue anclada, vuelve a la
+    fecha que le toca hoy. Una sin ancla queda como estaba."""
+    if tarea.ancla is None or tarea.ancla_dias is None:
+        return tarea.vence
+    return vence_anclado(tarea.ancla, tarea.ancla_dias, desde, hasta)
+
+
 def _avisar(db: AsyncSession, user_id: int, mensaje: str, barra_id: str, tarea_id: str) -> None:
     db.add(Notificacion(
         user_id=user_id, tipo=TIPO_TAREA, mensaje=mensaje,
@@ -970,7 +1063,7 @@ async def cambiar_tarea(
     if "descripcion" in campos:
         tarea.descripcion = (payload.descripcion or "").strip() or None
     if "vence" in campos:
-        tarea.vence = payload.vence
+        poner_vence_a_mano(tarea, payload.vence)
     if "asignadoA" in campos and payload.asignadoA != tarea.asignado_a_id:
         if payload.asignadoA is not None:
             await _asignable_o_422(db, payload.asignadoA, barra.mundo)
@@ -981,6 +1074,10 @@ async def cambiar_tarea(
                 avisados += 1
         tarea.asignado_a_id = payload.asignadoA
     if "estado" in campos and payload.estado is not None and payload.estado != tarea.estado:
+        if tarea.estado == "hecha" and "vence" not in campos:
+            # Hecha no se movía con la acción; si se reabre, vuelve a su fecha
+            # contada desde la acción como está hoy (ver vence_al_reabrir).
+            tarea.vence = vence_al_reabrir(tarea, barra.desde, barra.hasta)
         tarea.estado = payload.estado
         # A quien la creó le interesa saber que se terminó, salvo que la haya
         # terminado esa misma persona.
@@ -1067,3 +1164,343 @@ async def ubicar_barra(
     campanita para abrir su ficha aunque se esté mirando otro mundo."""
     barra = await _barra_o_404(db, barra_id, current_user)
     return {"id": barra.id, "mundo": barra.mundo, "desde": barra.desde.isoformat()}
+
+
+# ---------------------------------------------------------------------------
+# Plantillas de tareas (0064)
+# ---------------------------------------------------------------------------
+# Cada tipo de acción lleva casi siempre las mismas tareas (el brief a la
+# agencia, las entregas, la aprobación, las cenefas a los locales, el retiro).
+# Una plantilla las guarda con su vencimiento relativo y, al aplicarla en una
+# acción, se crean con la fecha ya calculada y ancladas: si la acción se
+# mueve, se mueven con ella (ver cambiar_barra).
+#
+# Armarlas, cambiarlas, borrarlas y aplicarlas pide `calendario.tareas`, igual
+# que crear tareas a mano: aplicar una es crear varias de una vez. Cada
+# plantilla es de un mundo, y solo se ve y se usa en ese.
+
+Ancla = Literal["inicio", "fin"]
+_DIAS_DE_ANCLA = 365
+_TAREAS_POR_PLANTILLA = 60
+
+
+class TareaDePlantilla(BaseModel):
+    """Una tarea de la plantilla. `parentId` es otra tarea de la MISMA
+    plantilla: una subtarea, de un nivel nomás."""
+    id: str = Field(..., pattern=_ID)
+    parentId: str | None = Field(None, pattern=_ID)
+    titulo: str = Field(..., min_length=1, max_length=500)
+    descripcion: str | None = Field(None, max_length=5000)
+    # Una persona fija. Sin nadie, la tarea se crea sin asignar.
+    asignadoA: int | None = None
+    # Desde dónde se cuenta el vencimiento, y cuántos días (negativo = antes).
+    # Sin ancla, la tarea se crea sin fecha.
+    ancla: Ancla | None = "inicio"
+    dias: int = Field(0, ge=-_DIAS_DE_ANCLA, le=_DIAS_DE_ANCLA)
+
+    @field_validator("titulo")
+    @classmethod
+    def _titulo_sin_espacios(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Cada tarea de la plantilla necesita un título")
+        return v
+
+    @field_validator("descripcion")
+    @classmethod
+    def _descripcion_o_nada(cls, v: str | None) -> str | None:
+        return (v or "").strip() or None
+
+    @model_validator(mode="after")
+    def _sin_ancla_no_hay_dias(self):
+        if self.ancla is None:
+            self.dias = 0
+        return self
+
+
+def revisar_estructura(tareas: list[TareaDePlantilla]) -> None:
+    """Que la plantilla se pueda aplicar tal cual: ids sin repetir, y cada
+    subtarea colgando de una tarea de la plantilla que no es a su vez una
+    subtarea. Pura; un ValueError trae el mensaje para la persona."""
+    ids = [t.id for t in tareas]
+    if len(set(ids)) != len(ids):
+        raise ValueError("Hay dos tareas con el mismo id en la plantilla")
+    padres = {t.id: t.parentId for t in tareas}
+    for t in tareas:
+        if t.parentId is None:
+            continue
+        if t.parentId == t.id or t.parentId not in padres:
+            raise ValueError(f"La subtarea «{t.titulo}» cuelga de una tarea que no está en la plantilla")
+        if padres[t.parentId] is not None:
+            raise ValueError("En una plantilla las subtareas son de un nivel: una subtarea no lleva otras adentro")
+
+
+def categoria_de_plantilla(v: str | None) -> str | None:
+    """La categoría con la que se guarda una plantilla. "Sin categoría" (lo
+    que lleva en `banda` una acción a la que no se le eligió ninguna) no es
+    una categoría: es que la plantilla sirve para cualquiera."""
+    v = (v or "").strip()
+    if not v or v.casefold() == SIN_CATEGORIA.casefold():
+        return None
+    return v
+
+
+class PlantillaDatos(BaseModel):
+    """Una plantilla entera: se guarda siempre completa, como se ve en su editor."""
+    mundo: str = Field(MUNDO_POR_DEFECTO, max_length=32)
+    nombre: str = Field(..., min_length=1, max_length=200)
+    categoria: str | None = Field(None, max_length=200)
+    tareas: list[TareaDePlantilla] = Field(..., min_length=1, max_length=_TAREAS_POR_PLANTILLA)
+
+    @field_validator("nombre")
+    @classmethod
+    def _nombre_sin_espacios(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("La plantilla necesita un nombre")
+        return v
+
+    @field_validator("categoria")
+    @classmethod
+    def _categoria(cls, v: str | None) -> str | None:
+        return categoria_de_plantilla(v)
+
+    @model_validator(mode="after")
+    def _estructura(self):
+        revisar_estructura(self.tareas)
+        return self
+
+
+_PATRON_ID = re.compile(_ID)
+
+
+class PlantillaAplicada(BaseModel):
+    plantillaId: str = Field(..., pattern=_ID)
+    # El id de cada tarea nueva, por el id de su tarea en la plantilla. Los
+    # genera el front, como el de cualquier tarea: así la ficha las muestra
+    # antes de que conteste el servidor, y un reintento no las duplica.
+    ids: dict[str, str] = Field(..., min_length=1, max_length=_TAREAS_POR_PLANTILLA)
+
+    @field_validator("ids")
+    @classmethod
+    def _ids_validos(cls, v: dict[str, str]) -> dict[str, str]:
+        if any(not _PATRON_ID.match(k) or not _PATRON_ID.match(x) for k, x in v.items()):
+            raise ValueError("Hay un id de tarea que no es válido")
+        if len(set(v.values())) != len(v):
+            raise ValueError("Dos tareas nuevas no pueden tener el mismo id")
+        return v
+
+
+class PlantillaCambio(ValueError):
+    """Los ids que mandó el front no son los de la plantilla guardada: otra
+    persona la editó desde que el front la leyó."""
+
+
+def tareas_de_plantilla(tareas: list[dict], ids: dict[str, str], desde: date, hasta: date) -> list[dict]:
+    """Las tareas que crea una plantilla en una acción que va de `desde` a
+    `hasta`, con el vencimiento calculado y anclado. Las tareas sueltas
+    primero y las subtareas después, cada grupo en el orden de la plantilla:
+    una subtarea no se puede guardar antes que la tarea de la que cuelga. Pura.
+
+    Si `ids` no trae exactamente las tareas de la plantilla, lo que vio el
+    front ya no es lo guardado: PlantillaCambio, y que vuelva a mirar."""
+    if set(ids) != {t["id"] for t in tareas}:
+        raise PlantillaCambio("La plantilla cambió")
+    sueltas = [t for t in tareas if not t.get("parentId")]
+    subtareas = [t for t in tareas if t.get("parentId")]
+    out = []
+    for t in sueltas + subtareas:
+        ancla = t.get("ancla") or None
+        dias = int(t.get("dias") or 0)
+        out.append({
+            "id": ids[t["id"]],
+            "parent_id": ids.get(t["parentId"]) if t.get("parentId") else None,
+            "titulo": t["titulo"],
+            "descripcion": t.get("descripcion") or None,
+            "asignado_a_id": t.get("asignadoA"),
+            "vence": vence_anclado(ancla, dias, desde, hasta) if ancla else None,
+            "ancla": ancla,
+            "ancla_dias": dias if ancla else None,
+        })
+    return out
+
+
+def mensaje_de_asignaciones(quien: str, tareas: list[tuple[str, date | None]], accion: str) -> str:
+    """El aviso a quien recibe tareas de una plantilla: UNO por persona con
+    todas las suyas, no uno por tarea (diez avisos seguidos de la misma acción
+    son ruido, y el que importa se pierde). Con una sola, el aviso de siempre."""
+    if len(tareas) == 1:
+        titulo, vence = tareas[0]
+        return mensaje_de_asignacion(quien, titulo, accion, vence)
+    titulos = [t for t, _ in tareas]
+    if len(titulos) <= 3:
+        lista = f"{', '.join(titulos[:-1])} y {titulos[-1]}"
+    else:
+        lista = f"{', '.join(titulos[:3])} y {len(titulos) - 3} más"
+    vences = [v for _, v in tareas if v]
+    cuando = f" La primera vence el {min(vences).strftime('%d/%m')}." if vences else ""
+    return f"{quien} te asignó {len(tareas)} tareas en {accion or 'una acción'}: {lista}.{cuando}"
+
+
+async def _asignables(db: AsyncSession, ids: set[int], mundo: str) -> set[int]:
+    """De esas personas, las que pueden abrir el calendario de `mundo`."""
+    if not ids:
+        return set()
+    usuarios = (await db.execute(select(User).where(User.id.in_(ids)))).scalars().all()
+    return {u.id for u in usuarios if _puede_ver_el_mundo(u, mundo)}
+
+
+@router.put("/plantillas/{plantilla_id}")
+async def guardar_plantilla(
+    payload: PlantillaDatos,
+    plantilla_id: str = Path(..., pattern=_ID),
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Crea la plantilla o la reemplaza entera. El id lo genera el front: un
+    reintento del mismo guardado vuelve a escribir lo mismo."""
+    _exigir_gestion_de_tareas(current_user)
+    exigir_mundo(current_user, payload.mundo)
+    plantilla = (await db.execute(
+        select(CalendarioPlantilla).where(CalendarioPlantilla.id == plantilla_id).with_for_update()
+    )).scalar_one_or_none()
+    if plantilla is not None and plantilla.mundo != payload.mundo:
+        # Una plantilla no se muda de mundo, ni se pisa una ajena con el mismo id.
+        raise HTTPException(status_code=409, detail="Esa plantilla es de otro mundo")
+    pedidos = {t.asignadoA for t in payload.tareas if t.asignadoA is not None}
+    if pedidos - await _asignables(db, pedidos, payload.mundo):
+        raise HTTPException(
+            status_code=422,
+            detail=(f"Hay responsables que no pueden abrir el calendario de "
+                    f"{MUNDOS.get(payload.mundo, payload.mundo)}: no verían sus tareas. Elegí a otra persona."),
+        )
+    tareas = [t.model_dump() for t in payload.tareas]
+    if plantilla is None:
+        db.add(CalendarioPlantilla(
+            id=plantilla_id, mundo=payload.mundo, nombre=payload.nombre, categoria=payload.categoria,
+            tareas=tareas, creado_por_id=current_user.id, actualizado_por_id=current_user.id,
+        ))
+    else:
+        plantilla.nombre = payload.nombre
+        plantilla.categoria = payload.categoria
+        plantilla.tareas = tareas
+        plantilla.actualizado_por_id = current_user.id
+    rev = await _nueva_revision(db, payload.mundo)
+    await db.commit()
+    return {"id": plantilla_id, "rev": rev}
+
+
+@router.delete("/plantillas/{plantilla_id}")
+async def borrar_plantilla(
+    plantilla_id: str,
+    request: Request,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Borra la plantilla. Las tareas que ya creó en las acciones se quedan, y
+    siguen moviéndose con su acción: el ancla está en cada tarea."""
+    _exigir_gestion_de_tareas(current_user)
+    plantilla = (await db.execute(
+        select(CalendarioPlantilla).where(CalendarioPlantilla.id == plantilla_id).with_for_update()
+    )).scalar_one_or_none()
+    if plantilla is None:
+        # Ya la había borrado otro: el resultado es el mismo.
+        return {"id": plantilla_id, "borrada": True}
+    exigir_mundo(current_user, plantilla.mundo)
+    # Como con las acciones: queda quién la borró y qué tenía.
+    db.add(AuditLog(
+        user_id=current_user.id, action="calendario.borrar_plantilla", resource="calendario_plantilla",
+        resource_id=plantilla_id, ip_address=_client_ip(request),
+        details={
+            "mundo": plantilla.mundo, "nombre": plantilla.nombre, "categoria": plantilla.categoria,
+            "tareas": [t.get("titulo") for t in (plantilla.tareas or [])],
+        },
+    ))
+    mundo = plantilla.mundo
+    await db.delete(plantilla)
+    rev = await _nueva_revision(db, mundo)
+    await db.commit()
+    return {"id": plantilla_id, "borrada": True, "rev": rev}
+
+
+@router.post("/barras/{barra_id}/plantilla", status_code=201)
+async def aplicar_plantilla(
+    barra_id: str,
+    payload: PlantillaAplicada,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Crea en la acción las tareas de una plantilla, con el vencimiento
+    calculado desde las fechas de la acción y anclado a ellas.
+
+    A cada responsable le llega UN aviso con todas sus tareas. Si la plantilla
+    nombra a alguien que ya no abre este calendario, su tarea se crea sin
+    asignar (no se frena todo por una persona) y se dice cuántas quedaron así."""
+    _exigir_gestion_de_tareas(current_user)
+    barra = await _barra_o_404(db, barra_id, current_user, bloquear=True)
+    if barra.seccion not in _CON_AVISOS:
+        raise HTTPException(
+            status_code=422,
+            detail="Las tareas se cargan en las acciones del calendario comercial y en los envíos",
+        )
+    plantilla = await db.get(CalendarioPlantilla, payload.plantillaId)
+    if plantilla is None or plantilla.mundo != barra.mundo:
+        raise HTTPException(status_code=404, detail="Esa plantilla ya no existe: la borró otra persona.")
+
+    ya_estan = (await db.execute(
+        select(CalendarioTarea.barra_id).where(CalendarioTarea.id.in_(list(payload.ids.values())))
+    )).scalars().all()
+    if ya_estan:
+        if all(b == barra_id for b in ya_estan):
+            # Un reintento de lo mismo: ya se crearon.
+            return {"id": barra_id, "rev": await _revision_actual(db), "yaExistia": True}
+        raise HTTPException(status_code=409, detail="Esa tarea ya existe en otra acción")
+    try:
+        plan = tareas_de_plantilla(list(plantilla.tareas or []), payload.ids, barra.desde, barra.hasta)
+    except PlantillaCambio:
+        raise HTTPException(
+            status_code=409,
+            detail="Otra persona cambió esa plantilla recién. Se recargó el calendario: probá de nuevo.",
+        )
+
+    pedidos = {t["asignado_a_id"] for t in plan if t["asignado_a_id"] is not None}
+    validos = await _asignables(db, pedidos, barra.mundo)
+    sin_asignar = 0
+    for t in plan:
+        if t["asignado_a_id"] is not None and t["asignado_a_id"] not in validos:
+            t["asignado_a_id"] = None
+            sin_asignar += 1
+
+    ultimo = (await db.execute(
+        select(func.max(CalendarioTarea.orden)).where(CalendarioTarea.barra_id == barra_id)
+    )).scalar_one_or_none()
+    base = (ultimo if ultimo is not None else -1) + 1
+    nuevas = [
+        CalendarioTarea(**t, barra_id=barra_id, orden=base + i, plantilla_id=plantilla.id,
+                        creado_por_id=current_user.id)
+        for i, t in enumerate(plan)
+    ]
+    # Primero las tareas sueltas y después las subtareas, cada tanda en su
+    # INSERT: la subtarea apunta a una tarea de esta misma tanda, que tiene
+    # que existir antes.
+    db.add_all([t for t in nuevas if t.parent_id is None])
+    await db.flush()
+    db.add_all([t for t in nuevas if t.parent_id is not None])
+
+    # Un aviso por persona, con todas sus tareas (no a quien la aplicó: se
+    # las asignó él mismo). Lleva a la ficha de la acción, como el de siempre.
+    por_persona: dict[int, list[dict]] = {}
+    for t in plan:
+        if t["asignado_a_id"] is not None and t["asignado_a_id"] != current_user.id:
+            por_persona.setdefault(t["asignado_a_id"], []).append(t)
+    for user_id, suyas in por_persona.items():
+        _avisar(db, user_id, mensaje_de_asignaciones(
+            current_user.full_name, [(t["titulo"], t["vence"]) for t in suyas], barra.nombre,
+        ), barra_id, suyas[0]["id"])
+
+    rev = await _nueva_revision(db, barra.mundo)
+    await db.commit()
+    return {
+        "id": barra_id, "rev": rev, "creadas": len(plan),
+        "avisados": len(por_persona), "sinAsignar": sin_asignar,
+    }
