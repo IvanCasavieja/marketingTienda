@@ -132,7 +132,7 @@ function ElegirLocales({
       </div>
       {disponibles.length > 8 && (
         <label className="relative mb-2 block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden />
           <input
             value={busca}
             onChange={e => setBusca(e.target.value)}
@@ -142,7 +142,7 @@ function ElegirLocales({
           />
         </label>
       )}
-      <div className="max-h-56 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
+      <div className="max-h-56 overflow-y-auto overscroll-contain rounded-xl border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
         {lista.length === 0 && <p className="px-3 py-2.5 text-sm text-slate-500 dark:text-slate-400">Ningún local se llama así.</p>}
         {lista.map(n => {
           const marcado = elegidos.has(n)
@@ -177,7 +177,7 @@ function FormularioPedido({ tablero, onPedido }: { tablero: TableroColocacion; o
   if (tablero.disponibles.length === 0) {
     return (
       <div className="flex items-start gap-3 rounded-2xl border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300">
-        <Camera className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+        <Camera className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
         <p>Todavía no hay locales con usuario en este mundo: cuando los den de alta, desde acá se les va a poder pedir la foto.</p>
       </div>
     )
@@ -293,7 +293,7 @@ function Tablero({
   return (
     <section className="space-y-4">
       {/* El cumplimiento: cuántos tienen la foto aprobada */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="rounded-2xl border border-slate-300 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-end gap-3">
           <p className="text-4xl font-bold tabular-nums leading-none text-slate-900 dark:text-white">{r.porcentaje}%</p>
           <p className="pb-0.5 text-sm text-slate-600 dark:text-slate-300">
@@ -313,7 +313,7 @@ function Tablero({
         </div>
         {pedido.indicacion && (
           <p className="mt-2 flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
-            <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" /> {pedido.indicacion}
+            <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" /> {pedido.indicacion}
           </p>
         )}
         {primeraPorRevisar && (
@@ -346,7 +346,7 @@ function Tablero({
                 onClick={() => (l.fotos.length > 0 ? setAbierto(l.id) : undefined)}
                 disabled={l.fotos.length === 0}
                 aria-label={`${l.local}: ${ETIQUETA_PROMO[l.visible]}${l.fotos.length ? ', ver la foto' : ', sin foto todavía'}`}
-                className="group flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-left transition enabled:hover:border-brand-300 enabled:hover:shadow-card-hover enabled:active:scale-[.98] disabled:cursor-default dark:border-slate-700 dark:bg-slate-900 dark:enabled:hover:border-brand-500/50"
+                className="group flex w-full flex-col overflow-hidden rounded-xl border border-slate-300 bg-white text-left transition enabled:hover:border-brand-300 enabled:hover:shadow-card-hover enabled:active:scale-[.98] disabled:cursor-default dark:border-slate-700 dark:bg-slate-900 dark:enabled:hover:border-brand-500/50"
               >
                 <div className="relative aspect-[4/3] w-full">
                   {foto ? (
@@ -408,7 +408,7 @@ function BotonFiltro({ activo, onClick, texto, n, punto }: { activo: boolean; on
       className={`flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold transition active:scale-95 ${
         activo
           ? 'border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500'
-          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+          : 'border-slate-300 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
       }`}
     >
       {punto && <span className={`h-2 w-2 rounded-full ${punto}`} aria-hidden />}
@@ -504,7 +504,7 @@ function EditarPedido({
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 dark:border-slate-700">
+    <div className="rounded-2xl border border-slate-300 dark:border-slate-700">
       <button
         type="button"
         onClick={abrir}
@@ -515,7 +515,7 @@ function EditarPedido({
         <ChevronDown className={`h-4 w-4 transition-transform ${abierto ? 'rotate-180' : ''}`} />
       </button>
       {abierto && (
-        <div className="animate-fade-in space-y-4 border-t border-slate-200 px-4 py-4 dark:border-slate-700">
+        <div className="animate-fade-in space-y-4 border-t border-slate-300 px-4 py-4 dark:border-slate-700">
           <ElegirLocales disponibles={disponibles} elegidos={elegidos} onCambio={setElegidos} conFotos={conFotos} />
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">

@@ -292,7 +292,7 @@ function TarjetaPedido({
           <div role="alertdialog" aria-labelledby={`sacar-${pedido.id}`} className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 dark:border-rose-500/30 dark:bg-rose-500/10">
             <p id={`sacar-${pedido.id}`} className="text-base text-rose-900 dark:text-rose-100">¿Sacar esta foto? Marketing deja de verla.</p>
             <div className="grid grid-cols-2 gap-2">
-              <button type="button" autoFocus onClick={() => setSacando(null)} className="min-h-[48px] rounded-xl bg-white text-base font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700">
+              <button type="button" autoFocus onClick={() => setSacando(null)} className="min-h-[48px] rounded-xl bg-white text-base font-semibold text-slate-700 ring-1 ring-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700">
                 No
               </button>
               <button type="button" onClick={() => sacar(sacando)} className="flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl bg-rose-600 text-base font-semibold text-white">

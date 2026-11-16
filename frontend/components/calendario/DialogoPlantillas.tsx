@@ -126,7 +126,7 @@ function Encabezado({ titulo, bajada, onCerrar, onVolver }: {
   onVolver?: () => void
 }) {
   return (
-    <header className="flex shrink-0 items-start gap-2 border-b border-slate-200 px-5 pb-3.5 pt-4 dark:border-slate-800">
+    <header className="flex shrink-0 items-start gap-2 border-b border-slate-300 px-5 pb-3.5 pt-4 dark:border-slate-700">
       {onVolver && (
         <button
           type="button"
@@ -148,7 +148,7 @@ function Encabezado({ titulo, bajada, onCerrar, onVolver }: {
           onClick={onCerrar}
           aria-label="Cerrar"
           title="Cerrar (Esc)"
-          className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 active:scale-95 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 sm:h-10 sm:w-10"
+          className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 sm:h-10 sm:w-10"
         >
           <X className="h-5 w-5" />
         </button>
@@ -195,7 +195,7 @@ function ListaDePlantillas({ accion, nombreMundo, onCerrar, onEditar, onNueva }:
         )}
       </div>
 
-      <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-800/40">
+      <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-300 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-800/40">
         <button type="button" onClick={onNueva} className={`${BOTON} border border-slate-300 bg-white text-slate-800 hover:border-brand-400 hover:text-brand-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-brand-500/60 dark:hover:text-brand-200`}>
           <Plus className="h-4 w-4" /> Nueva plantilla
         </button>
@@ -224,7 +224,7 @@ function TarjetaDePlantilla({ plantilla, accion, onEditar }: {
     <article className={`rounded-2xl border p-4 transition-colors ${
       deSuCategoria
         ? 'border-brand-300 bg-brand-50/50 dark:border-brand-500/40 dark:bg-brand-500/[.06]'
-        : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'
+        : 'border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900'
     }`}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <h4 className="min-w-0 break-words text-base font-bold text-slate-900 dark:text-slate-100">{plantilla.nombre}</h4>
@@ -239,7 +239,7 @@ function TarjetaDePlantilla({ plantilla, accion, onEditar }: {
       <ul className="mt-2.5 space-y-1">
         {aMostrar.map(t => (
           <li key={t.id} className={`flex items-baseline gap-2 text-sm ${t.parentId ? 'pl-5' : ''}`}>
-            {t.parentId && <CornerDownRight className="h-3.5 w-3.5 shrink-0 self-center text-slate-400" aria-hidden />}
+            {t.parentId && <CornerDownRight className="h-3.5 w-3.5 shrink-0 self-center text-slate-500" aria-hidden />}
             <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-300">{t.titulo}</span>
             <span className="shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400">
               {accion && t.ancla
@@ -286,7 +286,7 @@ function TarjetaDePlantilla({ plantilla, accion, onEditar }: {
               <Sparkles className="h-4 w-4" /> {yaUsada ? 'Usar de nuevo' : 'Usar en esta acción'}
             </button>
           )}
-          <button type="button" onClick={onEditar} className={`${SECUNDARIO} border border-slate-200 dark:border-slate-700`}>
+          <button type="button" onClick={onEditar} className={`${SECUNDARIO} border border-slate-300 dark:border-slate-700`}>
             <Pencil className="h-4 w-4" /> Editar
           </button>
           <button
@@ -294,7 +294,7 @@ function TarjetaDePlantilla({ plantilla, accion, onEditar }: {
             onClick={() => setConfirmando(true)}
             aria-label={`Borrar la plantilla ${plantilla.nombre}`}
             title="Borrar la plantilla"
-            className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 sm:h-10 sm:w-10"
+            className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 sm:h-10 sm:w-10"
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -402,7 +402,7 @@ function EditorDePlantilla({ inicial, accion, onVolver }: {
               <button type="button" onClick={cargarEjemplo} className={PRINCIPAL}>
                 <Sparkles className="h-4 w-4" /> Empezar con un ejemplo
               </button>
-              <button type="button" onClick={() => agregar()} className={`${SECUNDARIO} border border-slate-200 dark:border-slate-700`}>
+              <button type="button" onClick={() => agregar()} className={`${SECUNDARIO} border border-slate-300 dark:border-slate-700`}>
                 <Plus className="h-4 w-4" /> Empezar de cero
               </button>
             </div>
@@ -439,7 +439,7 @@ function EditorDePlantilla({ inicial, accion, onVolver }: {
         )}
       </div>
 
-      <footer className="shrink-0 border-t border-slate-200 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-800/40">
+      <footer className="shrink-0 border-t border-slate-300 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-800/40">
         {intento && problema && (
           <p role="alert" className="mb-2 text-sm font-medium text-rose-700 dark:text-rose-300">{problema}</p>
         )}
@@ -506,10 +506,10 @@ function FilaDeTarea({
   const ejemplo = accion && tarea.ancla ? fechaCorta(venceAnclado(tarea.ancla, tarea.dias, accion.desde, accion.hasta)) : null
 
   return (
-    <li className={tarea.parentId ? 'ml-4 border-l-2 border-slate-200 pl-3 dark:border-slate-700' : ''}>
-      <div className="space-y-2.5 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+    <li className={tarea.parentId ? 'ml-4 border-l-2 border-slate-300 pl-3 dark:border-slate-700' : ''}>
+      <div className="space-y-2.5 rounded-2xl border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-start gap-2">
-          {tarea.parentId && <CornerDownRight className="mt-3 h-4 w-4 shrink-0 text-slate-400" aria-hidden />}
+          {tarea.parentId && <CornerDownRight className="mt-3 h-4 w-4 shrink-0 text-slate-500" aria-hidden />}
           <input
             id={`tp-titulo-${tarea.id}`}
             value={tarea.titulo}
@@ -525,7 +525,7 @@ function FilaDeTarea({
             onClick={onQuitar}
             aria-label={`Quitar ${tarea.titulo || 'esta tarea'}`}
             title={tieneSubtareas ? 'Quitar la tarea con sus subtareas' : 'Quitar la tarea'}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 sm:h-10 sm:w-10"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 sm:h-10 sm:w-10"
           >
             <Trash2 className="h-4 w-4" />
           </button>

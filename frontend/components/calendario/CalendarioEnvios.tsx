@@ -102,6 +102,7 @@ export function CalendarioEnvios() {
                 {filas.map((fila, i) => (
                   <FilaRejilla
                     key={i}
+                    interna={i < filas.length - 1}
                     mes={mes}
                     fila={fila}
                     hoy={hoy}
@@ -130,7 +131,7 @@ export function CalendarioEnvios() {
 
       {total === 0 && (
         <div className="flex flex-col items-center gap-1 px-4 py-7 text-center">
-          <span className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+          <span className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
             <Send className="h-4 w-4" />
           </span>
           <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Todavía no hay envíos cargados este mes.</p>
@@ -140,7 +141,7 @@ export function CalendarioEnvios() {
         </div>
       )}
 
-      <footer className="flex flex-wrap items-center gap-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-[11px] text-slate-500 dark:text-slate-400">
+      <footer className="flex flex-wrap items-center gap-4 border-t border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-[11px] text-slate-500 dark:text-slate-400">
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-sm border-l-[3px] border-l-slate-900/40 bg-slate-200 dark:bg-slate-700" />
           de una acción: se edita en la ficha de la acción

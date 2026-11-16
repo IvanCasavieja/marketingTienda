@@ -191,7 +191,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
             ))}
             {Array.from({ length: preparando }).map((_, i) => (
               <div key={`p${i}`} className="skeleton flex aspect-square items-center justify-center rounded-xl">
-                <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
               </div>
             ))}
           </div>
@@ -250,7 +250,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 border-t border-slate-200 bg-white px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+      <div className="flex shrink-0 items-center gap-2 border-t border-slate-300 bg-white px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-900 sm:px-6">
         <button
           type="button"
           onClick={onCancelar}
@@ -288,7 +288,7 @@ function ListaDeMarcasATildar({ marcas, tildadas, onAlternar }: {
         return (
           <li key={m.id}>
             <label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-2 pr-3 transition ${
-              si ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900'
+              si ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10' : 'border-slate-300 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900'
             }`}>
               <input type="checkbox" checked={si} onChange={() => onAlternar(m.id)} className="sr-only" />
               <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 transition ${

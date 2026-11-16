@@ -213,7 +213,7 @@ export function FormularioEntregas({ valor, onCambiar, personas, responsableId, 
         {valor.aprobadores.length > 0 && (
           <ol className="mb-2 space-y-1.5">
             {valor.aprobadores.map((id, i) => (
-              <li key={id} className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white py-1 pl-2.5 pr-1 dark:border-slate-700 dark:bg-slate-900">
+              <li key={id} className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white py-1 pl-2.5 pr-1 dark:border-slate-700 dark:bg-slate-900">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-500/20 dark:text-brand-200">{i + 1}</span>
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
                   {nombreDe(id)}{id === usuarioId ? ' (vos)' : ''}
