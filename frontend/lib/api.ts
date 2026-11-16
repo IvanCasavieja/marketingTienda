@@ -2012,6 +2012,25 @@ export const redexpresApi = {
 /** Lo que contesta cada escritura del calendario: la revisión en que quedó. */
 type CalendarioEscrito = { id?: string; rev?: number; yaExistia?: boolean };
 
+/** Lo que contesta la copia de una acción a otra fecha (ver copiar_barra en el backend). */
+export type CalendarioCopia = CalendarioEscrito & {
+  /** La acción nueva entera, como la trae /datos: se pone en pantalla sin bajarse todo. */
+  barra?: unknown;
+  copiadas?: { piezas: number; tareas: number; avisos: number };
+  /** Tareas que no se copiaron porque quien copió no puede cargar tareas. */
+  tareasSinPermiso?: number;
+  /** Tareas copiadas sin responsable: esa persona ya no abre ese mundo. */
+  sinResponsable?: number;
+  /** Personas sacadas de los avisos, por lo mismo. */
+  destinatariosQuitados?: number;
+  /** Avisos que no se copiaron porque se quedaban sin nadie. */
+  avisosSinNadie?: number;
+  /** A cuántas personas les llegó el aviso de sus tareas (uno por persona). */
+  avisados?: number;
+  /** Avisos que con la fecha nueva ya tocaban y salieron en el momento. */
+  enviadosAhora?: number;
+};
+
 /**
  * El calendario, una barra por vez. Hasta el 28/09/2026 se subía el mes entero
  * y dos personas editando el mismo mes se pisaban; ahora cada llamada toca solo
@@ -2049,6 +2068,10 @@ export const calendarioApi = {
   cambiarBarra: (id: string, cambios: unknown) =>
     api.patch<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`, cambios, ESPERA),
   borrarBarra: (id: string) => api.delete<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`, ESPERA),
+  /** Una acción nueva a partir de `desde`, con todo lo de `barraId`. El id lo
+   *  pone el front, como al crear una: un reintento no la duplica. */
+  copiarBarra: (barraId: string, copia: { id: string; desde: string; nombre?: string; carril?: number }) =>
+    api.post<CalendarioCopia>(`/calendario/barras/${encodeURIComponent(barraId)}/copiar`, copia, ESPERA),
 
   agregarPieza: (barraId: string, pieza: unknown) =>
     api.post<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(barraId)}/piezas`, pieza, ESPERA),

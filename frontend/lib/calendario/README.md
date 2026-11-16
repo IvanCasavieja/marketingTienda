@@ -211,6 +211,40 @@ teléfono sube desde abajo y tiene scroll propio.
 
 Se cierra con Escape, con la X o tocando afuera.
 
+### Copiar a otra fecha ("copiar del año pasado")
+
+Pedido de Ivan (15/11/2026): las acciones se repiten cada año, y el Ciberlunes
+2026 tiene que nacer del 2025 con todo lo que tenía. Al lado de **Editar** está
+**Copiar a otra fecha** (en las acciones y en los envíos sueltos, para quien
+tiene `calendario.edit`). Abre un cuadro que:
+
+- arranca en **Al año que viene**: 364 días después (52 semanas), así cae el
+  mismo día de la semana. Se puede elegir otra fecha con el mismo campo de
+  fecha que el resto del calendario. La duración se mantiene;
+- propone el nombre con el año corrido ("Ciberlunes 2025" → "Ciberlunes
+  2026"), si la copia arranca en otro año y el nombre tiene un año de cuatro
+  cifras que es el de la acción (el "Mundial 2030" de una acción de 2025 no se
+  toca). Se puede cambiar antes de copiar;
+- dice qué se lleva y qué se resetea, y avisa (sin frenar) si en esas fechas ya
+  hay una acción con ese nombre: es la señal de que alguien ya la copió.
+
+Lo copia el servidor (`POST /calendario/barras/{id}/copiar`), en el MISMO mundo,
+en una transacción y con una sola subida de revisión:
+
+| Qué | Cómo queda |
+|---|---|
+| La acción | Todos sus campos (categoría, color, formato, hora...), fechas corridas, firmada por quien copia. Un envío suelto vuelve a pendiente. |
+| Piezas | En pendiente, sin la marca de SharePoint, con sus fechas propias corridas lo mismo. |
+| Tareas | Solo si quien copia tiene `calendario.tareas` (si no, se copia el resto y se dice). En pendiente, vencimiento corrido, subtareas con su estructura e ids nuevos. El responsable sigue solo si todavía abre ese mundo. |
+| Avisos | Los mismos días antes. Sale quien ya no abre el mundo; un aviso que se queda sin nadie no se copia. |
+
+A cada responsable le llega **un** aviso con todas sus tareas, no uno por tarea.
+Las columnas de piezas y tareas se copian leyendo el modelo
+(`backend/app/services/calendario_copia.py`): una columna nueva viaja sola (una
+fecha se corre, un timestamp no se copia). El id de la acción nueva lo pone el
+front, así un reintento (se cortó la conexión) no la duplica. Después de copiar
+se abre la ficha de la nueva, en su mes.
+
 ## Una acción que cruza de mes es UNA sola
 
 Desde el 28/09/2026 cada barra va de una fecha a otra (`'YYYY-MM-DD'`), no "del
@@ -397,15 +431,17 @@ probar sin levantar nada.
 cd frontend && npm run test:calendario
 ```
 
-156 comprobaciones, sin framework: se compilan con `tsc` y corren con node.
+179 comprobaciones, sin framework: se compilan con `tsc` y corren con node.
 Fijan las reglas del header, el zoom, el cronograma de envíos, el header
 mirado por fecha, las acciones que cruzan de mes y las categorías
 (`categorias.test.ts`: qué cuenta como "Sin categoría", cuánto pesa cada una,
 las filas retiradas y qué ofrece el selector; en `derivar.test.ts`, dónde va
-cada fila y a qué renglón pasa una acción al cambiarle la categoría). No
-borrarlas al reescribirlas con otro runner. Del lado del backend,
-`tests/test_calendario_avisos.py`, `tests/test_calendario_migracion.py` y
-`tests/test_calendario_envios_sueltos.py`.
+cada fila y a qué renglón pasa una acción al cambiarle la categoría) y lo que
+dice el cuadro de "Copiar a otra fecha" (`copiar.test.ts`: la fecha del año que
+viene, el año del nombre, el choque y qué se lleva). No borrarlas al
+reescribirlas con otro runner. Del lado del backend,
+`tests/test_calendario_avisos.py`, `tests/test_calendario_migracion.py`,
+`tests/test_calendario_envios_sueltos.py` y `tests/test_calendario_copiar.py`.
 
 ## Lo que falta
 

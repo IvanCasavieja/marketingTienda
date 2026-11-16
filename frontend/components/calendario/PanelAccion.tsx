@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
-  AlertTriangle, Bell, BellPlus, CalendarDays, Check, Clock, LayoutPanelTop, Pencil, Plus, Send, X,
+  AlertTriangle, Bell, BellPlus, CalendarDays, Check, Clock, CopyPlus, LayoutPanelTop, Pencil, Plus, Send, X,
+  type LucideIcon,
 } from 'lucide-react'
 import { BloqueTareas } from './BloqueTareas'
 import { Cocarda, SelectorDeCategoria } from './Cocarda'
+import { CopiarAccion } from './CopiarAccion'
 import { useDialogo } from './useDialogo'
 import { CampoFecha } from './CampoFecha'
 import { CLASE_MANIJA, useDeslizarParaCerrar } from './useDeslizarParaCerrar'
@@ -79,16 +81,34 @@ function BotonCerrar({ onCerrar, refBoton }: { onCerrar: () => void; refBoton?: 
   )
 }
 
-/** El botón de editar, una pastilla clara sobre el color de la acción. */
-function BotonEditar({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+/** Un botón del encabezado (editar, copiar): una pastilla clara sobre el color de la acción. */
+function BotonDeEncabezado({ onClick, icono: Icono = Pencil, children }: {
+  onClick: () => void
+  icono?: LucideIcon
+  children: React.ReactNode
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="mt-3.5 flex min-h-[40px] items-center gap-2 rounded-xl bg-white/85 px-3.5 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-black/5 transition hover:bg-white active:scale-[.98] dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
+      className="flex min-h-[40px] items-center gap-2 rounded-xl bg-white/85 px-3.5 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-black/5 transition hover:bg-white active:scale-[.98] dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
     >
-      <Pencil className="h-4 w-4" /> {children}
+      <Icono className="h-4 w-4" /> {children}
     </button>
+  )
+}
+
+/** Editar y "Copiar a otra fecha", juntos abajo del nombre. En el teléfono, si no entran, el segundo baja. */
+function BotonesDeEncabezado({ editar, onEditar, onCopiar }: {
+  editar: string
+  onEditar: () => void
+  onCopiar: () => void
+}) {
+  return (
+    <div className="mt-3.5 flex flex-wrap gap-2">
+      <BotonDeEncabezado onClick={onEditar}>{editar}</BotonDeEncabezado>
+      <BotonDeEncabezado onClick={onCopiar} icono={CopyPlus}>Copiar a otra fecha</BotonDeEncabezado>
+    </div>
   )
 }
 
@@ -135,6 +155,12 @@ export function PanelAccion() {
   // mayoría (a ver qué le toca), y las piezas y los avisos quedan a un toque.
   const [pestana, setPestana] = useState<Pestana>('tareas')
   useEffect(() => { setPestana('tareas') }, [abierta])
+
+  // "Copiar a otra fecha" (pedido de Ivan, 15/11/2026). Se anota DE QUÉ
+  // acción se abrió: si la ficha pasa a otra (la copia recién hecha, un aviso
+  // de la campanita), el cuadro no queda abierto para la que no era.
+  const [copiarDe, setCopiarDe] = useState<string | null>(null)
+  const copiaAbierta = copiarDe !== null && copiarDe === abierta && visible
 
   const piezas = accion?.piezas ?? []
   const tareas = accion?.tareas ?? []
@@ -198,6 +224,7 @@ export function PanelAccion() {
             usuarioId={user?.id ?? null}
             gestionaTareas={gestionaTareas}
             onCerrar={cerrar}
+            onCopiar={() => setCopiarDe(accion.id)}
             cerrarRef={cerrarRef}
           />
         )}
@@ -225,16 +252,16 @@ export function PanelAccion() {
               </div>
 
               {editable && (
-                <BotonEditar
-                  onClick={() => abrirEditor({
+                <BotonesDeEncabezado
+                  editar="Editar nombre, fechas y color"
+                  onEditar={() => abrirEditor({
                     seccion: 'comercial',
                     banda: accion.banda,
                     carril: accion.carril,
                     barra: accion,
                   })}
-                >
-                  Editar nombre, fechas y color
-                </BotonEditar>
+                  onCopiar={() => setCopiarDe(accion.id)}
+                />
               )}
             </header>
 
@@ -367,6 +394,11 @@ export function PanelAccion() {
           </>
         )}
       </aside>
+      {/* Afuera de la ficha: la ficha se mueve con un transform, y adentro
+          de algo así un `fixed` queda pegado a ella en vez de a la pantalla. */}
+      {copiaAbierta && accion && (
+        <CopiarAccion key={accion.id} accion={accion} onCerrar={() => setCopiarDe(null)} />
+      )}
     </>
   )
 }
@@ -396,7 +428,7 @@ function CategoriaDeLaFicha({ accion, editable }: { accion: BarraGuardada; edita
  * avisos. No tiene áreas ni piezas: el envío ES la pieza.
  */
 function FichaEnvio({
-  envio, editable, personas, usuarioId, gestionaTareas, onCerrar, cerrarRef,
+  envio, editable, personas, usuarioId, gestionaTareas, onCerrar, onCopiar, cerrarRef,
 }: {
   envio: BarraGuardada
   editable: boolean
@@ -404,6 +436,7 @@ function FichaEnvio({
   usuarioId: number | null
   gestionaTareas: boolean
   onCerrar: () => void
+  onCopiar: () => void
   cerrarRef: React.Ref<HTMLButtonElement>
 }) {
   const abrirEditor = useCalendario(s => s.abrirEditor)
@@ -436,9 +469,11 @@ function FichaEnvio({
         </div>
 
         {editable && (
-          <BotonEditar onClick={() => abrirEditor({ seccion: 'envio', banda: envio.banda, carril: 0, barra: envio })}>
-            Editar nombre, fecha, hora y color
-          </BotonEditar>
+          <BotonesDeEncabezado
+            editar="Editar nombre, fecha, hora y color"
+            onEditar={() => abrirEditor({ seccion: 'envio', banda: envio.banda, carril: 0, barra: envio })}
+            onCopiar={onCopiar}
+          />
         )}
       </header>
 
