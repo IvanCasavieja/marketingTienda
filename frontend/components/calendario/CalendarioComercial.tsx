@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
 import { CalendarDays, Eye, EyeOff, Star } from 'lucide-react'
-import { CabeceraDias, EtiquetaBanda, FilaRejilla, useAnchoTotal } from './Rejilla'
+import { CabeceraDias, EtiquetaBanda, FilaRejilla, Renglones, useAnchoTotal } from './Rejilla'
 import { MarcoScroll } from './MarcoScroll'
 import { NuevaAccion } from './NuevaAccion'
 import { Seccion } from './Seccion'
 import { esBandaRetirada, esSinCategoria, nivelDeCategoria } from '@/lib/calendario/categorias'
 import { diaDeHoy, hoyIso, isoDe } from '@/lib/calendario/fechas'
+import { renglonesVisibles } from '@/lib/calendario/rejilla'
 import { semaforoDe } from '@/lib/calendario/semaforo'
 import { useCalendario, useMesActivo } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
@@ -30,8 +30,10 @@ export function CalendarioComercial() {
 
   // En un mes se usan pocas categorías: la mayoría de las filas quedan vacías
   // y hay que recorrerlas para encontrar algo. Se pueden esconder las que no
-  // tienen nada este mes; para cargar en una vacía se vuelven a ver.
-  const [soloConAcciones, setSoloConAcciones] = useState(false)
+  // tienen nada este mes; para cargar en una vacía se vuelven a ver. Queda
+  // como lo dejó cada persona (se guarda en su navegador, como el zoom).
+  const soloConAcciones = useCalendario(s => s.ocultarVacias)
+  const setSoloConAcciones = useCalendario(s => s.setOcultarVacias)
   const bandas = soloConAcciones
     ? mes.comercial.filter(b => b.filas.some(f => f.length > 0))
     : mes.comercial
@@ -50,7 +52,7 @@ export function CalendarioComercial() {
           {vacias > 0 && (
             <button
               type="button"
-              onClick={() => setSoloConAcciones(v => !v)}
+              onClick={() => setSoloConAcciones(!soloConAcciones)}
               aria-pressed={soloConAcciones}
               title={soloConAcciones
                 ? (vacias === 1 ? 'Ver la categoría vacía' : `Ver las ${vacias} categorías vacías`)
@@ -92,10 +94,14 @@ export function CalendarioComercial() {
             // estrella, Mailing GRAL y Especiales con un punto de la marca, y
             // el resto sin nada.
             const nivel = nivelDeCategoria(banda.id)
+            // Un renglón que este mes quedó vacío no ocupa lugar.
+            const renglones = renglonesVisibles(banda.filas)
+            const clave = `comercial:${banda.id}`
             return (
               <div key={banda.id} className="flex">
                 <EtiquetaBanda
-                  filas={banda.filas.length}
+                  clave={clave}
+                  filas={renglones.length}
                   tono={sin || retirada ? 'grupo' : nivel === 'mega' ? 'destacada' : 'normal'}
                   titulo={banda.nombre}
                   extra={retirada
@@ -120,11 +126,11 @@ export function CalendarioComercial() {
                     <span className="italic">{banda.nombre}</span>
                   ) : banda.nombre}
                 </EtiquetaBanda>
-                <div className="flex-1">
-                  {banda.filas.map((fila, i) => (
+                <Renglones clave={clave}>
+                  {renglones.map(({ fila, carril }, i) => (
                     <FilaRejilla
-                      interna={i < banda.filas.length - 1}
-                      key={i}
+                      interna={i < renglones.length - 1}
+                      key={carril}
                       mes={mes}
                       fila={fila}
                       hoy={hoy}
@@ -133,11 +139,11 @@ export function CalendarioComercial() {
                       detalleDe={b => tareasDe(b.id)}
                       semaforoDe={b => semaforoDe(barras[b.id], hoyIso())}
                       onDiaVacio={seCarga
-                        ? d => abrirEditor({ seccion: 'comercial', banda: banda.id, carril: i, barra: null, fechaInicial: isoDe(mes.clave, d) })
+                        ? d => abrirEditor({ seccion: 'comercial', banda: banda.id, carril, barra: null, fechaInicial: isoDe(mes.clave, d) })
                         : undefined}
                     />
                   ))}
-                </div>
+                </Renglones>
               </div>
             )
           })}

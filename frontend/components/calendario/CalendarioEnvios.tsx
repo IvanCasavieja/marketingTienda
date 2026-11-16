@@ -1,7 +1,7 @@
 'use client'
 
 import { AlertTriangle, Mail, MessageCircle, Send, Smartphone } from 'lucide-react'
-import { CabeceraDias, EtiquetaBanda, FilaRejilla, useAnchoTotal } from './Rejilla'
+import { CabeceraDias, EtiquetaBanda, FilaRejilla, Renglones, useAnchoTotal } from './Rejilla'
 import { MarcoScroll } from './MarcoScroll'
 import { Seccion } from './Seccion'
 import { diaDeHoy, isoDe } from '@/lib/calendario/fechas'
@@ -54,14 +54,19 @@ export function CalendarioEnvios() {
       contador={total === 1 ? '1 envío' : `${total} envíos`}
     >
       {sinFecha.length > 0 && (
-        <div className="border-b border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 px-4 py-2.5">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-900 dark:text-amber-200">
-            <AlertTriangle className="h-3.5 w-3.5" />
+        // Compacto: los envíos van uno al lado del otro y no uno por renglón
+        // (con cuatro, el aviso ocupaba más que el cronograma).
+        <div className="border-b border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 px-4 py-2">
+          <p className="flex flex-wrap items-center gap-x-1.5 text-xs font-semibold text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
             {sinFecha.length === 1
               ? 'Un envío todavía no tiene fecha propia'
               : `${sinFecha.length} envíos todavía no tienen fecha propia`}
+            <span className="text-[11px] font-normal text-amber-800 dark:text-amber-300">
+              · se muestran el día que arranca su acción; la fecha se pone en la ficha.
+            </span>
           </p>
-          <ul className="mt-1 space-y-0.5">
+          <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
             {sinFecha.map(e => (
               <li key={e.id} className="text-[11px] text-amber-800 dark:text-amber-300">
                 <button onClick={() => abrirFicha(e.accionId)} className="font-medium underline underline-offset-2">
@@ -71,9 +76,6 @@ export function CalendarioEnvios() {
               </li>
             ))}
           </ul>
-          <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400">
-            Mientras tanto se muestran el día que arranca su acción. La fecha se pone en la ficha.
-          </p>
         </div>
       )}
 
@@ -82,12 +84,14 @@ export function CalendarioEnvios() {
 
         {canales.map(canal => {
           const filas = filasDeEnvios(canal.envios, mes.clave)
+          const clave = `envio:${canal.area}`
           return (
             <div key={canal.area} className="flex">
               <EtiquetaBanda
+                clave={clave}
                 filas={filas.length}
                 extra={
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  <span className="text-[10px] font-semibold uppercase leading-none tracking-wide text-slate-500 dark:text-slate-400">
                     {canal.envios.length === 0
                       ? 'sin envíos'
                       : canal.envios.length === 1 ? '1 envío' : `${canal.envios.length} envíos`}
@@ -98,7 +102,7 @@ export function CalendarioEnvios() {
               >
                 <span className="flex items-center gap-1.5">{ICONO[canal.area]} {canal.titulo}</span>
               </EtiquetaBanda>
-              <div className="flex-1">
+              <Renglones clave={clave}>
                 {filas.map((fila, i) => (
                   <FilaRejilla
                     key={i}
@@ -123,33 +127,33 @@ export function CalendarioEnvios() {
                     onDiaVacio={editable ? d => nuevoEnvio(canal.area, d) : undefined}
                   />
                 ))}
-              </div>
+              </Renglones>
             </div>
           )
         })}
       </MarcoScroll>
 
-      {total === 0 && (
-        <div className="flex flex-col items-center gap-1 px-4 py-7 text-center">
-          <span className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-            <Send className="h-4 w-4" />
+      {/* Sin envíos, una sola línea: el cartel grande con su ícono ocupaba
+          más que el cronograma entero (pedido del 16/11/2026). Y la leyenda
+          de colores recién hace falta cuando hay algo que leer. */}
+      <footer className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-300 bg-white px-4 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+        {total === 0 ? (
+          <span>
+            <b className="font-semibold">Todavía no hay envíos este mes.</b>{' '}
+            Salen de la ficha de cada acción (Email, WhatsApp o Push) o se cargan sueltos con el + de cada canal.
           </span>
-          <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Todavía no hay envíos cargados este mes.</p>
-          <p className="max-w-md text-xs text-slate-500 dark:text-slate-400">
-            Salen de la ficha de cada acción, en Email, WhatsApp o Push, o se cargan sueltos con el + de cada canal.
-          </p>
-        </div>
-      )}
-
-      <footer className="flex flex-wrap items-center gap-4 border-t border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-[11px] text-slate-500 dark:text-slate-400">
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-sm border-l-[3px] border-l-slate-900/40 bg-slate-200 dark:bg-slate-700" />
-          de una acción: se edita en la ficha de la acción
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-sm bg-slate-200 dark:bg-slate-700" />
-          suelto: tiene su propia ficha
-        </span>
+        ) : (
+          <>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-sm border-l-[3px] border-l-slate-900/40 bg-slate-200 dark:bg-slate-700" />
+              de una acción: se edita en la ficha de la acción
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-sm bg-slate-200 dark:bg-slate-700" />
+              suelto: tiene su propia ficha
+            </span>
+          </>
+        )}
       </footer>
     </Seccion>
   )

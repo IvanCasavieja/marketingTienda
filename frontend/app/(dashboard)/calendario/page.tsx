@@ -204,7 +204,7 @@ export default function CalendarioPage() {
       ) : vista === "lista" ? (
         <VistaLista />
       ) : (
-        <div id="calendario" className="space-y-5">
+        <div id="calendario" className="space-y-4">
           {ve("comercial") && <CalendarioComercial />}
           {ve("envios") && <CalendarioEnvios />}
           {ve("retail") && <CalendarioRetail />}
