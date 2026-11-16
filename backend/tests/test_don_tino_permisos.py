@@ -36,7 +36,18 @@ def test_cada_herramienta_pide_el_permiso_de_su_modulo():
 def test_el_superadmin_las_tiene_todas():
     assert [t["name"] for t in _tools_para(_usuario(super_=True))] == [
         "buscar_precio", "consultar_estado_cenefa", "resumen_ultimo_debate",
+        "calendario_acciones", "calendario_accion", "calendario_piezas",
+        "calendario_tareas", "calendario_carga", "calendario_avisos",
     ]
+
+
+def test_las_del_calendario_piden_calendario_view():
+    nombres = [t["name"] for t in _tools_para(_usuario("ai.don_tino", "calendario.view"))]
+    assert nombres == [
+        "calendario_acciones", "calendario_accion", "calendario_piezas",
+        "calendario_tareas", "calendario_carga", "calendario_avisos",
+    ]
+    assert not any(n.startswith("calendario_") for n in [t["name"] for t in _tools_para(_usuario("ai.don_tino"))])
 
 
 def test_sin_ningun_permiso_no_hay_herramientas():
