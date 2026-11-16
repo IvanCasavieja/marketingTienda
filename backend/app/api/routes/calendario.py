@@ -17,6 +17,8 @@
   GET    /calendario/mis-tareas               — lo que tengo asignado, de todos mis mundos
   GET    /calendario/ubicar/{id}              — en qué mundo está una acción
 
+Las entregas por fases de una tarea (0064) están en entregas.py.
+
 Desde la 0060 la plataforma entera se divide en MUNDOS (Tienda Inglesa,
 Redexpres...) y cada uno tiene su calendario: cada barra es de un mundo,
 `GET /datos?mundo=` trae solo ese, y nadie lee ni escribe en un mundo al que no
@@ -52,6 +54,7 @@ from app.core.database import get_db
 from app.core.deps import client_ip as _client_ip, require_permission
 from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, puede_abrir
 from app.models.audit_log import AuditLog
+from app.models.entregas import CalendarioEntrega
 from app.models.calendario import (
     CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPosicionesRM, CalendarioRevision,
     CalendarioRevisionMundo,
@@ -60,6 +63,7 @@ from app.models.calendario import (
 from app.models.notificacion import Notificacion
 from app.models.user import User
 from app.services.calendario_avisos import puede_ver_el_calendario, revisar_avisos
+from app.services.entregas import resumenes_de_entregas
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/calendario", tags=["calendario"])
@@ -214,8 +218,8 @@ def _aviso_json(a: CalendarioAviso) -> dict:
     }
 
 
-def _tarea_json(t: CalendarioTarea) -> dict:
-    return {
+def _tarea_json(t: CalendarioTarea, entrega: dict | None = None) -> dict:
+    out = {
         "id": t.id,
         "parentId": t.parent_id,
         "titulo": t.titulo,
@@ -225,11 +229,16 @@ def _tarea_json(t: CalendarioTarea) -> dict:
         "vence": t.vence.isoformat() if t.vence else None,
         "creadoPor": t.creado_por_id,
     }
+    # Si lleva entregas por fases (0064): en qué fase va y a quién le toca.
+    # Solo el resumen: las imágenes y la historia se piden al abrirla.
+    if entrega is not None:
+        out["entrega"] = entrega
+    return out
 
 
 def _barra_json(
     b: CalendarioBarra, piezas: list[CalendarioPieza], avisos: list[CalendarioAviso],
-    tareas: list[CalendarioTarea] | None = None,
+    tareas: list[CalendarioTarea] | None = None, entregas: dict[str, dict] | None = None,
 ) -> dict:
     out = {
         "id": b.id,
@@ -251,7 +260,7 @@ def _barra_json(
             out["hora"] = b.hora
     if b.seccion in _CON_AVISOS:
         out["avisos"] = [_aviso_json(a) for a in avisos]
-        out["tareas"] = [_tarea_json(t) for t in (tareas or [])]
+        out["tareas"] = [_tarea_json(t, (entregas or {}).get(t.id)) for t in (tareas or [])]
     return out
 
 
@@ -316,6 +325,9 @@ async def traer_datos(
         .order_by(CalendarioTarea.orden, CalendarioTarea.created_at, CalendarioTarea.id)
     )).scalars():
         tareas.setdefault(t.barra_id, []).append(t)
+    entregas = await resumenes_de_entregas(
+        db, select(CalendarioTarea.id).where(CalendarioTarea.barra_id.in_(del_mundo))
+    )
     # Retail Media es de la web de Tienda Inglesa: los otros mundos no tienen
     # esa parte del calendario y no tienen por qué bajar sus posiciones.
     posiciones = {
@@ -326,7 +338,7 @@ async def traer_datos(
         "rev": actual,
         "mundo": mundo,
         "barras": [
-            _barra_json(b, piezas.get(b.id, []), avisos.get(b.id, []), tareas.get(b.id, []))
+            _barra_json(b, piezas.get(b.id, []), avisos.get(b.id, []), tareas.get(b.id, []), entregas)
             for b in barras
         ],
         "posicionesRM": posiciones,
@@ -960,6 +972,19 @@ async def cambiar_tarea(
             status_code=403,
             detail="Solo podés cambiar el estado de las tareas que tenés asignadas",
         )
+    # Una tarea con entregas por fases (0064) se termina cuando se aprueba su
+    # última fase, no con un tilde: si no, quien entrega se la daría por
+    # aprobada. Quien lidera sí puede moverla a mano (cerrar una que se
+    # abandonó, por ejemplo).
+    if (
+        "estado" in campos and payload.estado is not None and payload.estado != tarea.estado
+        and not _puede_gestionar_tareas(current_user)
+        and await db.get(CalendarioEntrega, tarea.id) is not None
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Esta tarea lleva entregas: queda hecha sola cuando se aprueba la última fase",
+        )
 
     avisados = 0
     if "titulo" in campos and payload.titulo is not None:
@@ -1044,9 +1069,10 @@ async def mis_tareas(
         )
         .order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
     )).all()
+    entregas = await resumenes_de_entregas(db, [t.id for t, _ in filas]) if filas else {}
     return [
         {
-            **_tarea_json(t),
+            **_tarea_json(t, entregas.get(t.id)),
             "accion": {
                 "id": b.id, "mundo": b.mundo, "nombre": b.nombre, "banda": b.banda,
                 "seccion": b.seccion, "color": b.color,

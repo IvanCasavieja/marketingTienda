@@ -34,6 +34,9 @@ from app.models.calendario_mes import CalendarioMes
 from app.models.calendario import (
     CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPosicionesRM, CalendarioRevision, CalendarioRevisionMundo,
 )
+from app.models.entregas import (
+    CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioMarca, CalendarioVersion, CalendarioVersionImagen,
+)
 
 __all__ = [
     "User", "Role", "PlatformConnection", "Platform",
@@ -50,4 +53,6 @@ __all__ = [
     "CalendarioMes",
     "CalendarioBarra", "CalendarioPieza", "CalendarioAviso", "CalendarioPosicionesRM", "CalendarioRevision", "CalendarioRevisionMundo",
     "CalendarioTarea",
+    "CalendarioEntrega", "CalendarioFase", "CalendarioVersion", "CalendarioVersionImagen", "CalendarioMarca",
+    "CalendarioDecision",
 ]

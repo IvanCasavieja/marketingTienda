@@ -119,6 +119,14 @@ async def lifespan(app: FastAPI):
         tareas_post_migracion.append(asyncio.create_task(run_calendario_avisos_loop()))
         logger.info("calendario_avisos: loop iniciado (cada 6 horas, solo avisos configurados)")
 
+        # Las imágenes grandes de las versiones que no quedaron aprobadas se
+        # borran a los 180 días de terminada la acción (la base es chica:
+        # ver app/models/entregas.py). Acá y no antes, por lo mismo que la
+        # purga de cenefas: hace una pasada apenas arranca.
+        from app.services.entregas import DIAS_DE_RETENCION, run_purga_entregas_loop
+        tareas_post_migracion.append(asyncio.create_task(run_purga_entregas_loop()))
+        logger.info("purga_entregas: loop iniciado (diario, retencion %dd)", DIAS_DE_RETENCION)
+
     # Lo que _run_migrations arranca al terminar, para poder cancelarlo al apagar.
     tareas_post_migracion: list[asyncio.Task] = []
     if mantenimiento:
