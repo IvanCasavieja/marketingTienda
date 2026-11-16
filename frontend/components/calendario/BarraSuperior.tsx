@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeftRight, CalendarRange, ChevronLeft, ChevronRight, LayoutList, Maximize2, Minimize2, Minus,
-  MoveHorizontal, Plus, WifiOff,
+  MoveHorizontal, Plus, Users, WifiOff,
 } from 'lucide-react'
 import { claveDe, diaDeHoy, diasDelMes, hoyIso, isoDe, mesSiguiente } from '@/lib/calendario/fechas'
 import { SIN_CATEGORIA } from '@/lib/calendario/categorias'
@@ -16,6 +16,7 @@ import {
 } from '@/lib/calendario/rejilla'
 import { mundoDe, mundosDe, type SeccionDeMundo } from '@/lib/mundos'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { BotonOutlook } from './BotonOutlook'
 
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -73,7 +74,7 @@ export function BarraSuperior() {
   const anios = ANIOS.includes(anio) ? ANIOS : [...ANIOS, anio].sort((a, b) => a - b)
   const esteMes = claveDe(hoyIso())
   const abrirEditor = useCalendario(s => s.abrirEditor)
-  const { editable } = usePermisosCalendario()
+  const { editable, gestionaTareas } = usePermisosCalendario()
 
   // Atajos de teclado (propuesta de diseño del 15/11/2026): ← y → cambian
   // de mes, T vuelve a hoy y N crea una acción, como el botón. No se activan
@@ -170,6 +171,8 @@ export function BarraSuperior() {
   const vistas = [
     { id: 'tiempo', nombre: 'Calendario', titulo: 'El mes entero, como en el Excel', Icono: CalendarRange },
     { id: 'lista', nombre: 'Lista', titulo: 'Las acciones como tarjetas', Icono: LayoutList },
+    // Solo quien reparte tareas: ver la carga de cada uno antes de asignar.
+    ...(gestionaTareas ? [{ id: 'equipo', nombre: 'Equipo', titulo: 'Cuántas tareas tiene cada persona por semana', Icono: Users }] as const : []),
   ] as const
 
   return (
@@ -201,6 +204,7 @@ export function BarraSuperior() {
               Cambiar
             </Link>
           )}
+          <BotonOutlook compacto />
         </div>
         <h1 className="sr-only sm:hidden">Calendario de {mundo?.nombre ?? 'este mundo'}</h1>
 

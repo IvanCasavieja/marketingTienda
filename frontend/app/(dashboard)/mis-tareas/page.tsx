@@ -14,6 +14,7 @@ import { fechaCorta, hoyIso, sumarDias } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { ETIQUETA_ESTADO_TAREA, type EstadoTarea, type Tarea } from "@/lib/calendario/tipos";
 import { mundoEfectivo, mundosDe, useMundoElegido } from "@/lib/mundos";
+import { BotonOutlook } from "@/components/calendario/BotonOutlook";
 
 /**
  * Mis tareas: lo que la persona tiene asignado en el mundo en el que está.
@@ -183,6 +184,9 @@ export default function MisTareasPage() {
             )}
           </div>
         )}
+        <div className="sm:ml-auto">
+          <BotonOutlook />
+        </div>
       </header>
 
       {enOtros.length > 0 && (
