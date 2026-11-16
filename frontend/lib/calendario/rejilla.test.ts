@@ -8,8 +8,8 @@
  */
 import {
   ANCHO_ETIQUETA, ZOOMS, ZOOM_MAX, ZOOM_MIN, ZOOM_POR_DEFECTO,
-  anchoDias, anchoTotal, columnasDe, limitarZoom, porcentajeZoom,
-  sePuedeAcercar, sePuedeAlejar, siguienteZoom, zoomParaAncho,
+  anchoDias, anchoTotal, columnasDe, diaMarcadoEn, limitarZoom, porcentajeZoom,
+  renglonesVisibles, sePuedeAcercar, sePuedeAlejar, siguienteZoom, zoomParaAncho,
 } from './rejilla'
 
 let fallos = 0
@@ -29,14 +29,17 @@ ok('no queda ningún minmax', ZOOMS.every(z => !columnasDe(31, z).includes('minm
 
 console.log('\ncada paso de zoom tiene que cambiar el ancho de verdad')
 const anchos = ZOOMS.map(z => anchoDias(30, z))
-igual('los 7 niveles dan 7 anchos distintos', new Set(anchos).size, ZOOMS.length)
+igual('cada nivel da un ancho distinto', new Set(anchos).size, ZOOMS.length)
 ok('y siempre crecen', anchos.every((a, i) => i === 0 || a > anchos[i - 1]), anchos.join(' '))
 // El bug viejo: en una pantalla de 1920 el contenedor daba ~1536px para 30 días,
 // o sea 51px por columna, y todo zoom por debajo de eso se veía igual.
 const anchoViejo = 1536
 const comoSeVeiaAntes = ZOOMS.map(z => Math.max(anchoDias(30, z), anchoViejo))
-ok('antes 5 de los 7 niveles se veían idénticos',
-  new Set(comoSeVeiaAntes).size === 3, `antes daban ${new Set(comoSeVeiaAntes).size} anchos distintos`)
+// Con el bug, todos los niveles de menos de 51px por día daban el mismo ancho
+// (con los 7 niveles de entonces, 5 se veían idénticos).
+const porEncima = ZOOMS.filter(z => anchoDias(30, z) > anchoViejo).length
+ok('antes, todos los niveles angostos se veían idénticos',
+  new Set(comoSeVeiaAntes).size === porEncima + 1, `antes daban ${new Set(comoSeVeiaAntes).size} anchos distintos`)
 
 console.log('\nancho total')
 igual('etiquetas + días', anchoTotal(30, 38), ANCHO_ETIQUETA + 30 * 38)
@@ -75,6 +78,25 @@ ok('nunca devuelve algo fuera de rango',
     const z = zoomParaAncho(a, 31)
     return z >= ZOOM_MIN && z <= ZOOM_MAX
   }))
+
+console.log('\nrenglones vacíos: no ocupan lugar')
+igual('los vacíos del medio se saltean y cada uno conserva su carril',
+  renglonesVisibles([['a'], [], ['b', 'c'], []]),
+  [{ fila: ['a'], carril: 0 }, { fila: ['b', 'c'], carril: 2 }])
+igual('si están todos vacíos queda uno, para poder cargar',
+  renglonesVisibles([[], [], []]), [{ fila: [], carril: 0 }])
+igual('una categoría sin nada tiene su renglón', renglonesVisibles([[]]), [{ fila: [], carril: 0 }])
+igual('sin renglones, igual queda uno', renglonesVisibles([]), [{ fila: [], carril: 0 }])
+igual('si no hay vacíos no cambia nada',
+  renglonesVisibles([['a'], ['b']]), [{ fila: ['a'], carril: 0 }, { fila: ['b'], carril: 1 }])
+
+console.log('\nel día marcado, en el mes que se mira')
+igual('del mes que se mira, su número', diaMarcadoEn('2026-11', '2026-11-14'), 14)
+igual('el primero', diaMarcadoEn('2026-11', '2026-11-01'), 1)
+igual('de otro mes, nada', diaMarcadoEn('2026-12', '2026-11-14'), null)
+igual('del mismo mes de otro año, nada', diaMarcadoEn('2027-11', '2026-11-14'), null)
+igual('sin marca, nada', diaMarcadoEn('2026-11', null), null)
+igual('una fecha rota, nada', diaMarcadoEn('2026-11', '2026-11-xx'), null)
 
 console.log('\nlímites y porcentaje')
 igual('recorta por abajo', limitarZoom(5), ZOOM_MIN)

@@ -890,6 +890,8 @@
       "precioOferta": "precioOferta",
       "rowError": "No se pudo guardar — reintentá",
       "approveAll": "Aprobar todas",
+      "sinMarcaTitle": "Sin marca ({{count}})",
+      "sinMarcaHint": "Estos productos no traen marca ni en el nombre de artículo ni en la descripción web. Tinín no les puso ninguna: si la tienen, escribila a mano antes de aprobar. No entran en \"Aprobar todas\".",
       "approving": "Aprobando…",
       "failedCount": "No pudimos generar sugerencia para {{count}} producto(s) — completalos a mano.",
       "loadingMore": "Generando el resto en segundo plano… ({{done}}/{{total}})",

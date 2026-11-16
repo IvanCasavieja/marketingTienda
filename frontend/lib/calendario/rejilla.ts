@@ -20,7 +20,9 @@ export const ANCHO_ETIQUETA_TELEFONO = 136
 export const ZOOM_TELEFONO = 32
 
 /** Anchos de columna disponibles, en px por día. El 38 es el natural. */
-export const ZOOMS = [20, 26, 32, 38, 48, 60, 76]
+// 96 y 120: para leer el nombre entero de las acciones de un día (pedido
+// del 16/11/2026). El zoom es de cada persona: se guarda en su navegador.
+export const ZOOMS = [20, 26, 32, 38, 48, 60, 76, 96, 120]
 export const ZOOM_MIN = ZOOMS[0]
 export const ZOOM_MAX = ZOOMS[ZOOMS.length - 1]
 export const ZOOM_POR_DEFECTO = 38
@@ -83,4 +85,26 @@ export function zoomParaAncho(anchoDisponible: number, dias: number, anchoEtique
 /** El porcentaje que muestra el control, relativo al tamaño natural. */
 export function porcentajeZoom(zoom: number): number {
   return Math.round((zoom / ZOOM_POR_DEFECTO) * 100)
+}
+
+/**
+ * Los renglones de una categoría que se dibujan en un mes. Uno que quedó vacío
+ * (su acción es de otro mes, o se movió) no ocupa lugar; si están todos vacíos
+ * queda uno, para poder cargar ahí. `carril` es el renglón de verdad: al crear
+ * tocando un día libre se usa ese, y no la posición en la pantalla (pedido del
+ * 16/11/2026: "aprovechar más el espacio de este calendario").
+ */
+export function renglonesVisibles<T>(filas: T[][]): { fila: T[]; carril: number }[] {
+  const conAlgo = filas.map((fila, carril) => ({ fila, carril })).filter(r => r.fila.length > 0)
+  return conAlgo.length > 0 ? conAlgo : [{ fila: filas[0] ?? [], carril: 0 }]
+}
+
+/**
+ * El día que la persona marcó (una fecha 'YYYY-MM-DD'), como número de día del
+ * mes que se mira. Si es de otro mes, null: no hay columna que pintar.
+ */
+export function diaMarcadoEn(clave: string, marcado: string | null): number | null {
+  if (!marcado || marcado.slice(0, 7) !== clave) return null
+  const dia = Number(marcado.slice(8, 10))
+  return Number.isInteger(dia) && dia >= 1 ? dia : null
 }

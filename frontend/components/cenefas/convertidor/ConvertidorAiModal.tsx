@@ -35,6 +35,11 @@ type RowState = {
   // "Guardar cambios" en vez de "Aprobar". Sin esto, corregir una descripción
   // recién aprobada obligaba a salir al Diccionario y volver a cargar el Excel.
   yaAprobado: boolean;
+  // Ni el nombre de artículo ni la descripción web traen marca. Va en el
+  // listado aparte y no entra en "Aprobar todas": la marca, si la tiene, la
+  // pone una persona (Ivan, 15/10/2026: "che, mirá que tenés estos productos
+  // que no tienen marca").
+  sinMarca: boolean;
 };
 
 // Los precios ahora viajan como texto ya formateado y con el decimal en su
@@ -103,10 +108,6 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
       // Tinín escribe la descripción sin gramaje, porque tiene prohibido
       // inventar lo que no está en la fuente.
       unidadVenta: r.unidadVenta ?? "",
-      // La familia (COMPRADOR) decide la marca propia: en bazar, decoración y
-      // textiles "TI" es TIENDA CASA y no TIENDA INGLESA (Ivan y Ana,
-      // 08/10/2026). Sin esto Tinín solo veía "PAPELERA TI 12L".
-      comprador: r.comprador ?? "",
     };
   }
 
@@ -121,6 +122,7 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
           precioAnterior: row?.esFiambreKg ? precioDividido(row.precioRegular, row.decimalPrecioRegular) : "",
           status: "pending",
           yaAprobado: false,
+          sinMarca: s.sin_marca ?? false,
         });
       });
       return next;
@@ -265,12 +267,149 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
       // "error" también se reintenta acá -- si no, una fila que falló en un
       // intento individual quedaría trabada ahí para siempre salvo que el
       // usuario la reintente fila por fila.
-      if (s && (s.status === "pending" || s.status === "error")) await approveOne(row.row_id, row.codigo);
+      if (s && !s.sinMarca && (s.status === "pending" || s.status === "error")) await approveOne(row.row_id, row.codigo);
     }
     if (mountedRef.current) setApprovingAll(false);
   }
 
   const visibleRows = rows.filter((r) => state.has(r.row_id));
+  const filasConMarca = visibleRows.filter((r) => !state.get(r.row_id)!.sinMarca);
+  const filasSinMarca = visibleRows.filter((r) => state.get(r.row_id)!.sinMarca);
+
+  function renderFila(row: ConvertidorRow) {
+    const s = state.get(row.row_id)!;
+    // Los dos precios de la fila, para confirmarlos junto con la
+    // descripción sin salir del modal (Ivan, 07/10/2026: "en todas las
+    // sugerencias ... tenés que traer el precio regular y el precio
+    // oferta para confirmar"). Son los de la fila tal como vino: en
+    // un fiambre por kg, los campos editables de abajo siguen siendo
+    // el precio dividido por 10, aparte de esto.
+    const precios = preciosDeFila(row);
+    return (
+      <div
+        key={row.row_id}
+        className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-2"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] text-slate-400 flex items-center gap-1.5">
+            {row.esFiambreKg && (
+              <span className="badge badge-yellow text-[9px] px-1.5 py-0 shrink-0">
+                {t("convertidor.ai.fiambreKgBadge")}
+              </span>
+            )}
+            {/* Por qué la sugerencia trae un gramaje que el nombre de
+                gestión no dice: lo puso la plataforma, no el modelo. */}
+            {!row.esFiambreKg && row.unidadVenta && (
+              <span className="badge badge-blue text-[9px] px-1.5 py-0 shrink-0">
+                {t("convertidor.ai.unidadVentaBadge", {
+                  unidad: row.unidadVenta === "kg" ? "Kg" : "100g",
+                })}
+              </span>
+            )}
+            <span className="truncate flex-1 min-w-0">{row.codigo} · {row.nombreArticulo}</span>
+            {/* Grandes y con contraste, a propósito: están para
+                confirmar el precio antes de aprobar, y a 10 px en
+                gris claro no se leían (Ivan, 08/10/2026: "bien
+                legibles y en todos"). */}
+            {(precios.anterior || precios.oferta) && (
+              <span className="shrink-0 tabular-nums flex items-baseline gap-2">
+                {precios.anterior && (
+                  <span
+                    title={t("convertidor.ai.precioRegular")}
+                    className="text-xs line-through text-slate-400 dark:text-slate-500"
+                  >
+                    {precios.anterior}
+                  </span>
+                )}
+                {precios.oferta && (
+                  <span
+                    title={t("convertidor.ai.precioOferta")}
+                    className="text-sm font-bold text-slate-800 dark:text-slate-100"
+                  >
+                    {precios.oferta}
+                  </span>
+                )}
+              </span>
+            )}
+          </p>
+          <input
+            value={s.value}
+            disabled={s.status === "approved" || s.status === "approving"}
+            onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, value: e.target.value }))}
+            className="input text-xs w-full"
+          />
+          {row.esFiambreKg && (
+            <div className="flex items-center gap-3 mt-1">
+              <label className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
+                {t("convertidor.columns.precio")}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={s.precio}
+                  disabled={s.status === "approved" || s.status === "approving"}
+                  onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, precio: e.target.value }))}
+                  className="input text-xs w-20 py-0.5"
+                />
+              </label>
+              <label className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
+                {t("convertidor.columns.precioAnterior")}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={s.precioAnterior}
+                  disabled={s.status === "approved" || s.status === "approving"}
+                  onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, precioAnterior: e.target.value }))}
+                  className="input text-xs w-20 py-0.5"
+                />
+              </label>
+            </div>
+          )}
+          {s.value.trim().length > DESCRIPTION_WARN_CHARS && (
+            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+              {t("convertidor.ai.tooLong")}
+            </p>
+          )}
+          {s.status === "error" && (
+            <p className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">
+              {t("convertidor.ai.rowError")}
+            </p>
+          )}
+        </div>
+        {s.status === "approved" ? (
+          // Ya guardada, pero editable en el mismo lugar: sin esto había
+          // que salir al Diccionario, corregir, volver y recargar el Excel.
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Check size={16} className="text-emerald-500" />
+            <button
+              onClick={() => editarDeNuevo(row.row_id)}
+              disabled={approvingAll}
+              className="btn-secondary text-xs disabled:opacity-50"
+            >
+              {t("convertidor.ai.edit")}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => approveOne(row.row_id, row.codigo)}
+            disabled={s.status === "approving" || approvingAll}
+            className={`text-xs shrink-0 disabled:opacity-50 ${
+              s.status === "error" ? "btn-secondary border-red-300 text-red-600 dark:text-red-400" : "btn-secondary"
+            }`}
+          >
+            {s.status === "approving" ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : s.status === "error" ? (
+              t("convertidor.ai.retry")
+            ) : s.yaAprobado ? (
+              t("convertidor.ai.saveChanges")
+            ) : (
+              t("convertidor.ai.approve")
+            )}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
@@ -330,142 +469,22 @@ export default function ConvertidorAiModal({ rows, onApprove, onClose }: Props) 
             </div>
           )}
 
-          {!loading &&
-            !loadError &&
-            visibleRows.map((row) => {
-              const s = state.get(row.row_id)!;
-              // Los dos precios de la fila, para confirmarlos junto con la
-              // descripción sin salir del modal (Ivan, 07/10/2026: "en todas las
-              // sugerencias ... tenés que traer el precio regular y el precio
-              // oferta para confirmar"). Son los de la fila tal como vino: en
-              // un fiambre por kg, los campos editables de abajo siguen siendo
-              // el precio dividido por 10, aparte de esto.
-              const precios = preciosDeFila(row);
-              return (
-                <div
-                  key={row.row_id}
-                  className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-slate-400 flex items-center gap-1.5">
-                      {row.esFiambreKg && (
-                        <span className="badge badge-yellow text-[9px] px-1.5 py-0 shrink-0">
-                          {t("convertidor.ai.fiambreKgBadge")}
-                        </span>
-                      )}
-                      {/* Por qué la sugerencia trae un gramaje que el nombre de
-                          gestión no dice: lo puso la plataforma, no el modelo. */}
-                      {!row.esFiambreKg && row.unidadVenta && (
-                        <span className="badge badge-blue text-[9px] px-1.5 py-0 shrink-0">
-                          {t("convertidor.ai.unidadVentaBadge", {
-                            unidad: row.unidadVenta === "kg" ? "Kg" : "100g",
-                          })}
-                        </span>
-                      )}
-                      <span className="truncate flex-1 min-w-0">{row.codigo} · {row.nombreArticulo}</span>
-                      {/* Grandes y con contraste, a propósito: están para
-                          confirmar el precio antes de aprobar, y a 10 px en
-                          gris claro no se leían (Ivan, 08/10/2026: "bien
-                          legibles y en todos"). */}
-                      {(precios.anterior || precios.oferta) && (
-                        <span className="shrink-0 tabular-nums flex items-baseline gap-2">
-                          {precios.anterior && (
-                            <span
-                              title={t("convertidor.ai.precioRegular")}
-                              className="text-xs line-through text-slate-400 dark:text-slate-500"
-                            >
-                              {precios.anterior}
-                            </span>
-                          )}
-                          {precios.oferta && (
-                            <span
-                              title={t("convertidor.ai.precioOferta")}
-                              className="text-sm font-bold text-slate-800 dark:text-slate-100"
-                            >
-                              {precios.oferta}
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </p>
-                    <input
-                      value={s.value}
-                      disabled={s.status === "approved" || s.status === "approving"}
-                      onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, value: e.target.value }))}
-                      className="input text-xs w-full"
-                    />
-                    {row.esFiambreKg && (
-                      <div className="flex items-center gap-3 mt-1">
-                        <label className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
-                          {t("convertidor.columns.precio")}
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={s.precio}
-                            disabled={s.status === "approved" || s.status === "approving"}
-                            onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, precio: e.target.value }))}
-                            className="input text-xs w-20 py-0.5"
-                          />
-                        </label>
-                        <label className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
-                          {t("convertidor.columns.precioAnterior")}
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={s.precioAnterior}
-                            disabled={s.status === "approved" || s.status === "approving"}
-                            onChange={(e) => setState((prev) => new Map(prev).set(row.row_id, { ...s, precioAnterior: e.target.value }))}
-                            className="input text-xs w-20 py-0.5"
-                          />
-                        </label>
-                      </div>
-                    )}
-                    {s.value.trim().length > DESCRIPTION_WARN_CHARS && (
-                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
-                        {t("convertidor.ai.tooLong")}
-                      </p>
-                    )}
-                    {s.status === "error" && (
-                      <p className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">
-                        {t("convertidor.ai.rowError")}
-                      </p>
-                    )}
-                  </div>
-                  {s.status === "approved" ? (
-                    // Ya guardada, pero editable en el mismo lugar: sin esto había
-                    // que salir al Diccionario, corregir, volver y recargar el Excel.
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Check size={16} className="text-emerald-500" />
-                      <button
-                        onClick={() => editarDeNuevo(row.row_id)}
-                        disabled={approvingAll}
-                        className="btn-secondary text-xs disabled:opacity-50"
-                      >
-                        {t("convertidor.ai.edit")}
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => approveOne(row.row_id, row.codigo)}
-                      disabled={s.status === "approving" || approvingAll}
-                      className={`text-xs shrink-0 disabled:opacity-50 ${
-                        s.status === "error" ? "btn-secondary border-red-300 text-red-600 dark:text-red-400" : "btn-secondary"
-                      }`}
-                    >
-                      {s.status === "approving" ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : s.status === "error" ? (
-                        t("convertidor.ai.retry")
-                      ) : s.yaAprobado ? (
-                        t("convertidor.ai.saveChanges")
-                      ) : (
-                        t("convertidor.ai.approve")
-                      )}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+          {!loading && !loadError && filasConMarca.map(renderFila)}
+
+          {/* El listado aparte (Ivan, 15/10/2026): lo que no trae marca ni en el
+              nombre de artículo ni en la descripción web. Tinín no le pone
+              ninguna; la pone una persona si la tiene. */}
+          {!loading && !loadError && filasSinMarca.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2">
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                  {t("convertidor.ai.sinMarcaTitle", { count: filasSinMarca.length })}
+                </p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">{t("convertidor.ai.sinMarcaHint")}</p>
+              </div>
+              {filasSinMarca.map(renderFila)}
+            </div>
+          )}
         </div>
 
         {!loading && !loadError && state.size > 0 && (

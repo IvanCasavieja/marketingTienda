@@ -68,6 +68,20 @@ log = logging.getLogger(__name__)
 # marca MEAT HOUSE (carnes y frescos de carnicería, marca exclusiva y a la vez
 # propia de Tienda Inglesa; Ivan, 08/10/2026): se escribe entera, nunca la
 # sigla, y esos productos llevan sus propias cenefas.
+#
+# 2026-10-15 (Ivan): "cuando no hay marca se pone TIENDA INGLESA o TIENDA CASA
+# automáticamente; eso está mal ... me matás todas las nuevas cosas que
+# ingresan". Probado contra la API ese día con las reglas del 08/10: de 8
+# productos sin marca, 6 salieron con marca propia, las dos vueltas igual
+# ("PAPELERA 12L" -> "Papelera TIENDA CASA. 12 L", "HARINA 0000 1K." ->
+# "Harina 0000 TIENDA INGLESA. 1 kg"). Venía de la regla de la familia del
+# 08/10 (en bazar, decoración y textil "TI" era TIENDA CASA), que se borró
+# entera. Las reglas desde ese día: la marca sale del nombre ERP o de la
+# descripción web y nunca se deduce; "TI" es TIENDA INGLESA siempre; TIENDA
+# CASA solo si la fuente lo dice escrito. Si una papelera "TI" en realidad es
+# TIENDA CASA, la corrige una persona a mano, no la IA. Lo que no trae marca
+# no se completa: Tinín lo devuelve sin marca y la pantalla lo lista aparte
+# (ver "sinMarca" en _build_prompt).
 # ---------------------------------------------------------------------------
 _STYLE_RULES = f"""\
 - EL ORDEN DE LAS PARTES ES SIEMPRE EL MISMO: primero el PRODUCTO (qué es), después la MARCA, después la VARIEDAD (sabor, tipo, color, línea o modelo) y al final el GRAMAJE o la cantidad. Cada parte se separa de la siguiente con un punto y un espacio, y la que sigue arranca con mayúscula, como una oración nueva: "Vino TIENDA INGLESA. Blanco. 500 ml" — producto "Vino", marca "TIENDA INGLESA", variedad "Blanco", gramaje "500 ml". Nunca la variedad antes de la marca ("Vino blanco TIENDA INGLESA" está MAL) ni pegada a la marca sin el punto ("Vino TIENDA INGLESA blanco. 500 ml" está MAL). Si una parte no existe, se la saltea y las demás conservan ese orden ("Vino TIENDA INGLESA. 500 ml").
@@ -81,8 +95,9 @@ _STYLE_RULES = f"""\
 - CUANDO HAY VARIAS VARIEDADES, VAN SEPARADAS POR COMA Y LA ÚLTIMA UNIDA CON "O", NUNCA CON "Y": "Chocolate TIENDA INGLESA. Naranja, frutilla o coco. 100 g", "Leche TIENDA INGLESA. Entera o descremada. 1 L", "Cappuccino SAINT CAFÉ. Chocolate, tradicional o vainilla. 6 sobres". La oferta es por UNA u otra; con "y" el cliente entiende que la promo es por llevarse las tres juntas ("Naranja, frutilla y coco" está MAL). Delante de una palabra que empieza con o-/ho- la "o" se escribe "u" ("Hippo u Oso"). La "y" que forma parte del NOMBRE de una variedad sí queda ("Jamón y muzzarella", "Maní y almendras"): lo que no puede unir dos variedades es la "y".
 - HASTA TRES VARIEDADES SE NOMBRAN; CON MÁS DE TRES NO SE ENUMERA NINGUNA. En su lugar va, como una parte más, exactamente "Distintas variedades": "Helado TIENDA INGLESA. Distintas variedades. 1.9 L", "Fideos TIENDA INGLESA. Distintas variedades. 500 g". Cuatro sabores ya son "Distintas variedades"; con tres o menos se nombran, unidas con "o".
 - SI EL GRAMAJE YA DICE LO QUE SE LLEVA, LA CANTIDAD DE UNIDADES NO VA. Un pack de 485 g de frankfurters es "Frankfurters TIENDA INGLESA. 485 g", nunca "485 g x 8": escrito así se lee como ocho paquetes de 485 g por ese precio. La cantidad acompaña al gramaje solo cuando el gramaje es POR UNIDAD y la cantidad cambia lo que se lleva ("30 m x 4 rollos", "3 x 200 ml"); si el gramaje es el del pack entero, va solo el gramaje.
-- "TI", "IT", "T.I." o "T.INGLESA" EN EL NOMBRE DE GESTIÓN ES LA MARCA PROPIA DE TIENDA INGLESA, y se escribe entera, nunca la abreviatura. CUÁL de las dos marcas propias es lo decide la FAMILIA del producto, porque gestión escribe "TI" para las dos: en alimentos, bebidas, limpieza, congelados, fiambrería, carnicería, lácteos, ferretería y papelería es "TIENDA INGLESA" ("Harina 0000 TIENDA INGLESA. 1 kg", "Cuadernola tapa dura TIENDA INGLESA. 100 hojas", no "Harina TI."); en BAZAR, DECORACIÓN y TEXTIL (vajilla, cocina, alfombras, felpudos, papeleras, lámparas, portarretratos, velas, perchas, sábanas, toallas) es "TIENDA CASA" ("Papelera TIENDA CASA. 12 L", "Alfombra TIENDA CASA. Arcoiris, Hippo u Oso", no "Papelera TIENDA INGLESA"). Cuando la fila viene marcada [BAZAR, DECORACIÓN O TEXTIL], la marca propia es TIENDA CASA sin excepción. "TI CASA" o "T CASA" es TIENDA CASA siempre.
-- TIENDA CASA ES LA MARCA PROPIA DE TIENDA INGLESA PARA BAZAR, TEXTIL Y DECORACIÓN. Cuando la fuente dice TIENDA CASA, o el producto es de esas familias, la marca se escribe "TIENDA CASA": no se cambia por TIENDA INGLESA ni se reemplaza por el nombre o el código de un proveedor ("Bowl TIENDA CASA. Blanco. 18 cm", no "Bowls RAYLON"). Si la descripción web dice TIENDA CASA y gestión trae "TI" o un código de proveedor, manda la web.
+- LA MARCA SALE DEL NOMBRE ERP O DE LA DESCRIPCIÓN WEB, de cualquiera de las dos, Y NUNCA SE DEDUCE. Si ninguna de las dos trae marca, la descripción va SIN marca: el producto, la variedad y el gramaje, en ese orden ("PAPELERA 12L" es "Papelera. 12 L", "HARINA 0000 1K." es "Harina 0000. 1 kg"). No se pone TIENDA INGLESA, TIENDA CASA ni ninguna otra por el rubro, por el tipo de producto o porque estas reglas las usen de ejemplo: un producto sin marca no es TIENDA INGLESA.
+- "TI", "IT", "T.I." o "T.INGLESA" EN EL NOMBRE DE GESTIÓN ES LA MARCA TIENDA INGLESA, SIEMPRE, sea cual sea el producto, y se escribe entera, nunca la abreviatura ("HARINA 0000 TI 1K." es "Harina 0000 TIENDA INGLESA. 1 kg", "PAPELERA TI 12L" es "Papelera TIENDA INGLESA. 12 L"; "Harina TI." está MAL). "TI" nunca es TIENDA CASA.
+- TIENDA CASA VA ÚNICAMENTE CUANDO LA FUENTE DICE "TIENDA CASA", escrito así, en el nombre ERP o en la descripción web. Ahí la marca se escribe "TIENDA CASA": no se cambia por TIENDA INGLESA ni se reemplaza por el nombre o el código de un proveedor ("Bowl TIENDA CASA. Blanco. 18 cm", no "Bowls RAYLON"). Si la descripción web dice TIENDA CASA y gestión trae "TI" o un código de proveedor, manda la web.
 - "MH" EN EL NOMBRE DE GESTIÓN ES LA MARCA MEAT HOUSE: la marca exclusiva de carnes y frescos de carnicería de Tienda Inglesa (a la vez marca propia). Se escribe siempre "MEAT HOUSE" completa, en el lugar de la marca, nunca la sigla: "Colita de cuadril MEAT HOUSE. Kg", "Asado 4 costillas MEAT HOUSE. Kg", "Entraña fina MEAT HOUSE. Kg" ("Lomo MH. Kg" está MAL). Como se vende por peso, termina en "Kg".
 - Si un producto viene marcado "[FIAMBRE POR KG]", la unidad en la descripción tiene que decir "100 g", nunca "kg" — el precio de ese producto ya se va a recalcular aparte para esa unidad, así que el texto tiene que ser consistente con eso.
 - Si un producto viene marcado "[SE COBRA POR 100 G]" o "[SE COBRA POR KILO]", la descripción TIENE QUE terminar con esa unidad, escrita exactamente "100 g" o "Kg", después del punto que cierra la marca o la variedad: "Muzzarella NATURALACT. 100 g", "Panceta VILLA MARGARITA. Ahumada. 100 g", "Morcilla DON JOAQUIN. Dulce. Kg". Esa marca la pone la plataforma, que sabe con qué unidad se cobra ese producto en la góndola, así que NO cae en "no inventes datos": el nombre del sistema de gestión no la trae y sin ella el cartel no dice por cuánto se está cobrando. "Kg" es la única unidad que va con mayúscula, justamente porque ahí va sola después del punto y no pegada a un número.
@@ -138,34 +153,54 @@ def _strip_json_fence(text: str) -> str:
 # siempre como MEAT HOUSE (08/10/2026: "tenés que hacer que Tinín mapee el MH
 # como MEAT HOUSE así puedo generar las descripciones"). Se aplica al nombre
 # que se le muestra al modelo y a lo que devuelve. Solo siglas inequívocas
-# como palabra entera: "TI" no entra porque el modelo necesita el contexto
-# ("TI CASA" es TIENDA CASA) y la regla escrita ya lo resuelve.
-_SIGLAS_DE_MARCA = {"MH": "MEAT HOUSE"}
+# como palabra entera. "TI" y "T.I." entran desde el 15/10/2026: son TIENDA
+# INGLESA siempre, sea cual sea el producto (Ivan: "TI es tienda inglesa, no
+# tienda casa"). "IT" queda solo en la regla escrita: como palabra suelta
+# también es inglés ("IT'S") y acá se reemplazaría a ciegas.
+_SIGLAS_DE_MARCA = {"MH": "MEAT HOUSE", "T.I.": "TIENDA INGLESA", "TI": "TIENDA INGLESA"}
 
-# Familias (columna COMPRADOR de gestión) cuya marca propia es TIENDA CASA y
-# no TIENDA INGLESA. Gestión escribe "TI" en las dos, así que el texto del
-# nombre no alcanza para distinguirlas: lo decide la familia. Caso real (Ivan y
-# Ana, 08/10/2026): 15 papeleras, alfombras, felpudos, lámparas y portarretratos
-# de marca propia salieron impresos como TIENDA INGLESA porque gestión decía
-# "PAPELERA TI 12L" y la descripción web venía vacía. Se normaliza sin tildes
-# y en mayúsculas porque el export las trae así ("DECORACION", "TEXTILES").
-_FAMILIAS_TIENDA_CASA = ("BAZAR", "DECORACION", "TEXTIL")
-_ETIQUETA_TIENDA_CASA = "[BAZAR, DECORACIÓN O TEXTIL: la marca propia TI es TIENDA CASA]"
+# La marca propia del cartel es la que dice la fuente, nunca una deducida
+# (Ivan, 15/10/2026: "no me deduzcas esas cosas automáticas porque me matás
+# todas las nuevas cosas que ingresan"). La regla escrita sola no alcanza: el
+# modelo copia los ejemplos ("HARINA 0000 1K." salía "Harina 0000 TIENDA
+# INGLESA. 1 kg"). Así que el código deja en la descripción solo la marca
+# propia que la fuente dice: TIENDA CASA si alguna de las dos columnas dice
+# "TIENDA CASA" escrito (manda sobre "TI", como la descripción web manda sobre
+# gestión); si no, TIENDA INGLESA si dice TIENDA INGLESA o trae su sigla; si
+# no dice ninguna, se borra y la fila queda sin marca para que la vea una
+# persona.
+_RE_DICE_TIENDA_CASA = re.compile(r"TIENDA\s+CASA", re.IGNORECASE)
+_RE_DICE_TIENDA_INGLESA = re.compile(r"TIENDA\s+INGLESA|(?<![A-Za-z0-9])T\.\s?INGLESA", re.IGNORECASE)
+# La sigla, en mayúscula como la escribe gestión: en minúscula "ti" e "it" son
+# palabras ("para ti") y no la marca.
+_RE_SIGLA_TIENDA_INGLESA = re.compile(r"(?<![A-Za-z0-9])(?:TI|IT|T\.I\.?)(?![A-Za-z0-9])")
+_RE_MARCA_PROPIA = re.compile(r"\s*\bTIENDA (?:INGLESA|CASA)\b", re.IGNORECASE)
 
 
-def es_familia_tienda_casa(comprador: str | None) -> bool:
-    """True si el COMPRADOR de gestión es de bazar, decoración o textiles."""
-    base = unicodedata.normalize("NFKD", str(comprador or "")).encode("ascii", "ignore").decode().upper()
-    return any(f in base for f in _FAMILIAS_TIENDA_CASA)
-
-
-def marca_propia_por_familia(texto: str, comprador: str | None) -> str:
-    """En una fila de bazar / decoración / textiles, TIENDA INGLESA pasa a
-    TIENDA CASA. Red de seguridad determinística sobre lo que devuelve el
-    modelo; en las otras familias no toca nada."""
-    if not texto or not es_familia_tienda_casa(comprador):
+def marca_propia_de_la_fuente(texto: str, *fuente: str | None) -> str:
+    """"Papelera TIENDA CASA. 12 L" con fuente "PAPELERA TI 12L" -> "Papelera
+    TIENDA INGLESA. 12 L"; con fuente "PAPELERA 12L" -> "Papelera. 12 L". Una
+    marca que no es TIENDA INGLESA ni TIENDA CASA no se toca."""
+    if not texto:
         return texto
-    return re.sub(r"\bTIENDA INGLESA\b", "TIENDA CASA", texto)
+    fuente = tuple(f or "" for f in fuente)
+    if any(_RE_DICE_TIENDA_CASA.search(f) for f in fuente):
+        correcta = "TIENDA CASA"
+    elif any(_RE_DICE_TIENDA_INGLESA.search(f) or _RE_SIGLA_TIENDA_INGLESA.search(f) for f in fuente):
+        correcta = "TIENDA INGLESA"
+    else:
+        correcta = ""
+    return _RE_MARCA_PROPIA.sub(f" {correcta}" if correcta else "", texto).strip()
+
+
+def tiene_marca(texto: str) -> bool:
+    """La descripción nombra una marca: alguna palabra entera en MAYÚSCULA, que
+    es como las reglas escriben siempre la marca y lo que la cenefa pone en
+    negrita (ver _marca_de). "Papelera. 12 L" no tiene; "Sartén TRAMONTINA.
+    24 cm" sí."""
+    return bool(_marca_de(texto or ""))
+
+
 _RE_SIGLA_DE_MARCA = re.compile(
     r"(?<![A-Za-z0-9])(" + "|".join(re.escape(s) for s in _SIGLAS_DE_MARCA) + r")(?![A-Za-z0-9])"
 )
@@ -193,8 +228,6 @@ def _build_prompt(items: list[dict]) -> str:
             partes.append("[SE COBRA POR 100 G]")
         elif it.get("unidadVenta") == "kg":
             partes.append("[SE COBRA POR KILO]")
-        if es_familia_tienda_casa(it.get("comprador")):
-            partes.append(_ETIQUETA_TIENDA_CASA)
         if it["nombreArticulo"]:
             partes.append(f'nombre ERP: "{expandir_siglas_de_marca(it["nombreArticulo"])}"')
         if it["descripcionWeb"]:
@@ -204,8 +237,11 @@ def _build_prompt(items: list[dict]) -> str:
     return (
         f"Generá una descripción de cartel para cada uno de estos {len(items)} productos:\n\n"
         f"{listado}\n\n"
-        'Devolvé SOLO un JSON con esta forma exacta: {"descripciones": {"1": "texto...", "2": "texto...", ...}} '
-        "— una entrada por cada número de la lista, en el mismo orden. Sin comentarios ni texto fuera del JSON."
+        'Devolvé SOLO un JSON con esta forma exacta: {"descripciones": {"1": "texto...", "2": "texto...", ...}, '
+        '"sinMarca": [3, 7]} — una entrada en "descripciones" por cada número de la lista, en el mismo orden, '
+        'y en "sinMarca" los números de los productos que no traen marca ni en el nombre ERP ni en la '
+        "descripción web (esos van sin marca; si todos la traen, la lista va vacía). Sin comentarios ni texto "
+        "fuera del JSON."
     )
 
 
@@ -284,18 +320,27 @@ async def generar_descripciones(items: list[dict], db, user_id: int) -> dict:
         try:
             parsed = json.loads(_strip_json_fence(content))
             descripciones = parsed.get("descripciones", {})
+            sin_marca_modelo = parsed.get("sinMarca")
+            sin_marca_modelo = {str(x) for x in sin_marca_modelo} if isinstance(sin_marca_modelo, list) else set()
             for n, it in enumerate(chunk, start=1):
                 texto = descripciones.get(str(n))
                 if isinstance(texto, str) and texto.strip():
                     # Red de seguridad: aunque el modelo copie la sigla, al
-                    # cartel llega la marca entera; y en bazar, decoración y
-                    # textiles la marca propia es TIENDA CASA, diga lo que diga.
-                    texto = marca_propia_por_familia(expandir_siglas_de_marca(texto.strip()), it.get("comprador"))
+                    # cartel llega la marca entera, y de las marcas propias
+                    # solo queda la que dice la fuente.
+                    texto = marca_propia_de_la_fuente(
+                        expandir_siglas_de_marca(texto.strip()), it["nombreArticulo"], it["descripcionWeb"])
                     suggestions.append({
                         "row_id": it["row_id"],
                         "codigo": it["codigo"],
                         "descripcion": texto,
                         "too_long": len(texto) > DESCRIPTION_WARN_CHARS,
+                        # Va al listado aparte del modal (Ivan, 15/10/2026: "che,
+                        # mirá que tenés estos productos que no tienen marca").
+                        # Lo dice Tinín, que lee las dos columnas, y también el
+                        # texto: si no quedó ninguna palabra en mayúscula, no
+                        # hay marca aunque el modelo se haya olvidado de listarla.
+                        "sin_marca": str(n) in sin_marca_modelo or not tiene_marca(texto),
                     })
                 else:
                     failed_row_ids.append(it["row_id"])
@@ -630,6 +675,10 @@ async def detectar_grupos_unificables(items: list[dict], db, user_id: int) -> di
                 vistos.add(it["row_id"])
                 miembros.append(it)
             if len(miembros) >= 2:
+                # Misma red que en generar_descripciones: de las marcas propias
+                # solo queda la que dice algún miembro.
+                fuente = [m.get(k) for m in miembros for k in ("nombreArticulo", "descripcion")]
+                opciones = [{**o, "texto": marca_propia_de_la_fuente(o["texto"], *fuente)} for o in opciones]
                 candidatos.append({"grupo": nombre.strip()[:150],
                                    "opciones": opciones, "miembros": miembros})
 

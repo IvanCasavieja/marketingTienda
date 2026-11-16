@@ -90,6 +90,16 @@ export function BarraSuperior() {
       if (e.key === 'ArrowLeft') irAMes(mesSiguiente(mes, -1))
       else if (e.key === 'ArrowRight') irAMes(mesSiguiente(mes, 1))
       else if (e.key === 't' || e.key === 'T') irAMes(claveDe(hoyIso()))
+      // El zoom es de cada persona (se guarda en su navegador): agrandar no le
+      // cambia la vista a nadie más.
+      else if (e.key === '+' || e.key === '=') setZoom(siguienteZoom(useCalendario.getState().zoom, 1))
+      else if (e.key === '-' || e.key === '_') setZoom(siguienteZoom(useCalendario.getState().zoom, -1))
+      else if (e.key === '0') setZoom(ZOOM_POR_DEFECTO)
+      // Esc saca la fila y la columna marcadas (si no hay ninguna, no hace nada
+      // y la tecla sigue su camino).
+      else if (e.key === 'Escape' && (useCalendario.getState().diaMarcado || useCalendario.getState().filaMarcada)) {
+        useCalendario.getState().quitarMarcas()
+      }
       else if ((e.key === 'n' || e.key === 'N') && editable) {
         abrirEditor({ seccion: 'comercial', banda: SIN_CATEGORIA, carril: 0, barra: null, fechaInicial: isoDe(mes, diaDeHoy(mes) ?? 1) })
       } else return
@@ -97,7 +107,7 @@ export function BarraSuperior() {
     }
     window.addEventListener('keydown', tecla)
     return () => window.removeEventListener('keydown', tecla)
-  }, [irAMes, abrirEditor, editable])
+  }, [irAMes, abrirEditor, editable, setZoom])
 
   const ir = (a: number, m: number) => irAMes(`${a}-${String(m).padStart(2, '0')}`)
 
@@ -300,18 +310,18 @@ export function BarraSuperior() {
 
         {vista === 'tiempo' && (
           <div className="hidden items-center gap-0.5 rounded-xl border border-slate-300 p-0.5 dark:border-slate-700 md:order-last md:flex" role="group" aria-label="Tamaño del calendario">
-            <button type="button" onClick={() => setZoom(siguienteZoom(zoom, -1))} disabled={!sePuedeAlejar(zoom)} title="Alejar" aria-label="Alejar" className="boton-icono">
+            <button type="button" onClick={() => setZoom(siguienteZoom(zoom, -1))} disabled={!sePuedeAlejar(zoom)} title="Alejar (−)" aria-label="Alejar" aria-keyshortcuts="-" className="boton-icono">
               <Minus className="h-4 w-4" />
             </button>
             <button
               type="button"
               onClick={() => setZoom(ZOOM_POR_DEFECTO)}
-              title="Volver al tamaño normal"
+              title="Volver al tamaño normal (0)"
               className="h-9 w-12 rounded-lg text-center text-xs font-semibold tabular-nums text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
             >
               {porcentajeZoom(zoom)}%
             </button>
-            <button type="button" onClick={() => setZoom(siguienteZoom(zoom, 1))} disabled={!sePuedeAcercar(zoom)} title="Acercar" aria-label="Acercar" className="boton-icono">
+            <button type="button" onClick={() => setZoom(siguienteZoom(zoom, 1))} disabled={!sePuedeAcercar(zoom)} title="Acercar (+)" aria-label="Acercar" aria-keyshortcuts="+" className="boton-icono">
               <Plus className="h-4 w-4" />
             </button>
             <span className="mx-0.5 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden />
