@@ -99,9 +99,9 @@ async def _sembrar(s) -> Datos:
     d.promo = persona("Promo Jefa", superusuario=True, permisos=tuple(ALL_PERMISSIONS))
     d.aprob = persona("Aprobadora Marca")
     d.otro = persona("Otro INTERNA Persona")
-    d.a1 = persona("Ana Pampa", externo=True, empresa="Agencia Pampa")
-    d.a2 = persona("Beto Pampa", externo=True, empresa="agencia pampa")
-    d.b1 = persona("Bruno OTRA AGENCIA", externo=True, empresa="Estudio Sur")
+    d.a1 = persona("Ana Pampa", externo=True, empresa=f"Agencia Pampa {sufijo}")
+    d.a2 = persona("Beto Pampa", externo=True, empresa=f"agencia  pampa {sufijo}")
+    d.b1 = persona("Bruno OTRA AGENCIA", externo=True, empresa=f"Estudio Sur {sufijo}")
     await s.flush()
 
     def barra(clave, nombre, desde, hasta):
@@ -334,7 +334,7 @@ def test_personas_solo_su_empresa_y_sus_aprobadores_sin_mail():
         todos = (await Cliente(d.http, d.promo).get("/calendario/personas", params={"mundo": MUNDO})).json()
         por_id = {p["id"]: p for p in todos}
         assert {d.a1.id, d.b1.id, d.otro.id, d.aprob.id} <= set(por_id)
-        assert por_id[d.a1.id]["externo"] is True and por_id[d.a1.id]["empresa"] == "Agencia Pampa"
+        assert por_id[d.a1.id]["externo"] is True and por_id[d.a1.id]["empresa"] == f"Agencia Pampa {d.sufijo}"
         assert "externo" not in por_id[d.aprob.id]
     correr(prueba)
 
@@ -566,7 +566,7 @@ def test_lo_interno_contesta_403_aunque_sepa_la_ruta():
             assert r.status_code == 403, (ruta, r.status_code, r.text)
         # Su sesión, sí: y le dice qué ventana ve.
         me = (await a1.get("/auth/me")).json()
-        assert me["es_externo"] is True and me["empresa"] == "Agencia Pampa"
+        assert me["es_externo"] is True and me["empresa"] == f"Agencia Pampa {d.sufijo}"
         assert me["ventana"] == {"desde": d.v[0].isoformat(), "hasta": d.v[1].isoformat()}
         assert me["permissions"] == ["calendario.view"]
     correr(prueba)
