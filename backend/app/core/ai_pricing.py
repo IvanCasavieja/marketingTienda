@@ -11,6 +11,10 @@ logger = logging.getLogger(__name__)
 # (provider, model) -> {"input": $/millón tokens input, "output": $/millón tokens output}
 _PRICING: dict[tuple[str, str], dict[str, Decimal]] = {
     ("anthropic", "claude-sonnet-5"):   {"input": Decimal("2.00"), "output": Decimal("10.00")},
+    # Los que se pueden poner en MODELO_IA por env var sin desplegar código: si
+    # no están acá, el uso se registra con costo 0 (tarifas públicas al 11/2026).
+    ("anthropic", "claude-sonnet-5-5"): {"input": Decimal("2.00"), "output": Decimal("10.00")},
+    ("anthropic", "claude-opus-5-5"):   {"input": Decimal("4.00"), "output": Decimal("20.00")},
     # Queda el anterior para que las llamadas ya registradas conserven su costo
     # real: el histórico del informe de consumo se calculó con esta tarifa.
     ("anthropic", "claude-sonnet-4-6"): {"input": Decimal("3.00"), "output": Decimal("15.00")},
