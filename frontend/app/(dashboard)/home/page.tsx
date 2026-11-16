@@ -4,6 +4,7 @@ import { chatApi, type AiTaskUsage } from "@/lib/api";
 import { Send, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { RobotMascot, RobotMini } from "@/components/RobotMascot";
+import { BotonCopiar, RespuestaDelBot } from "@/components/chat/RespuestaDelBot";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 // ---------------------------------------------------------------------------
@@ -128,7 +129,7 @@ export default function HomePage() {
           {/* Messages */}
           {open && (
             <>
-              <div className="border-t border-slate-100 dark:border-slate-800 px-5 py-4 space-y-4 max-h-80 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="border-t border-slate-100 dark:border-slate-800 px-5 py-4 space-y-4 max-h-[min(60vh,32rem)] overflow-y-auto bg-slate-50/50 dark:bg-slate-900/50">
                 {messages.map((m, i) => (
                   <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
                     {m.role === "bot" && (
@@ -137,21 +138,24 @@ export default function HomePage() {
                       </div>
                     )}
                     <div className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
-                      <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                      <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words ${
                         m.role === "user"
-                          ? "bg-brand-600 text-white rounded-tr-sm"
+                          ? "bg-brand-600 text-white rounded-tr-sm whitespace-pre-wrap"
                           : "bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-tl-sm shadow-sm"
                       }`}>
-                        {m.text.split("**").map((part, j) =>
-                          j % 2 === 1
-                            ? <strong key={j} className={m.role === "user" ? "text-white" : "text-slate-900"}>{part}</strong>
-                            : <span key={j}>{part}</span>
-                        )}
+                        {/* Lo del bot viene en markdown (negritas, listas, links a las
+                            acciones); lo de la persona se muestra tal cual lo escribió. */}
+                        {m.role === "bot" ? <RespuestaDelBot texto={m.text} /> : m.text}
                       </div>
-                      {m.usage && (
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 px-1">
-                          {m.usage.total_tokens.toLocaleString()} tokens
-                        </p>
+                      {m.role === "bot" && i > 0 && (
+                        <div className="mt-1 flex items-center gap-2 px-1">
+                          <BotonCopiar texto={m.text} />
+                          {m.usage && (
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                              {m.usage.total_tokens.toLocaleString()} tokens
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
