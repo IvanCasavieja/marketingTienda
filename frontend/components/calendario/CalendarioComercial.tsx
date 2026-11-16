@@ -7,7 +7,8 @@ import { MarcoScroll } from './MarcoScroll'
 import { NuevaAccion } from './NuevaAccion'
 import { Seccion } from './Seccion'
 import { esBandaRetirada, esSinCategoria, nivelDeCategoria } from '@/lib/calendario/categorias'
-import { diaDeHoy, isoDe } from '@/lib/calendario/fechas'
+import { diaDeHoy, hoyIso, isoDe } from '@/lib/calendario/fechas'
+import { semaforoDe } from '@/lib/calendario/semaforo'
 import { useCalendario, useMesActivo } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 
@@ -129,6 +130,7 @@ export function CalendarioComercial() {
                       editable
                       onBarra={b => abrirAccion(b.id)}
                       detalleDe={b => tareasDe(b.id)}
+                      semaforoDe={b => semaforoDe(barras[b.id], hoyIso())}
                       onDiaVacio={seCarga
                         ? d => abrirEditor({ seccion: 'comercial', banda: banda.id, carril: i, barra: null, fechaInicial: isoDe(mes.clave, d) })
                         : undefined}

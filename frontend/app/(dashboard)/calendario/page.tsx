@@ -13,12 +13,13 @@ import { CalendarioEnvios } from "@/components/calendario/CalendarioEnvios";
 import { HeaderHome } from "@/components/calendario/HeaderHome";
 import { EditorBarra } from "@/components/calendario/EditorBarra";
 import { PanelAccion } from "@/components/calendario/PanelAccion";
+import { DialogoPlantillas } from "@/components/calendario/DialogoPlantillas";
 import { VistaLista } from "@/components/calendario/VistaLista";
-import { calendarioApi } from "@/lib/api";
+import { VistaEquipo } from "@/components/calendario/VistaEquipo";
 import { mundoEfectivo, mundosDe, useMundoElegido, type SeccionDeMundo } from "@/lib/mundos";
 import { SEGUNDOS_ENTRE_REVISIONES, useCalendario } from "@/lib/calendario/store";
-import { claveDe } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
+import { hasPermission } from "@/lib/permissions";
 
 /**
  * `/calendario?accion=br-xxx` abre la ficha de esa acción, en su mes. Es a
@@ -40,29 +41,11 @@ function AbrirAccionDeLaUrl() {
     if (hecha.current === pedida) return;
     hecha.current = pedida;
 
-    const abrir = (id: string) => {
-      const accion = useCalendario.getState().barras[id];
-      if (!accion) return false;
-      useCalendario.getState().irAMes(claveDe(accion.desde));
-      useCalendario.getState().abrirAccion(accion.id);
-      return true;
-    };
     void (async () => {
-      // Si no está en lo que ya hay, primero se pregunta al servidor: puede
-      // ser una acción recién creada que todavía no llegó. Recién si tampoco
-      // está ahí, la borraron.
-      if (!abrir(pedida)) {
-        try {
-          const { data } = await calendarioApi.ubicar(pedida);
-          if (data.mundo !== useCalendario.getState().mundo) {
-            useMundoElegido.getState().elegir(data.mundo);
-            useCalendario.getState().usarMundo(data.mundo);
-          }
-        } catch {
-          // No está, o es de un mundo que la persona no abre: se avisa abajo.
-        }
-        await useCalendario.getState().sincronizar();
-        if (!abrir(pedida)) toast.error("Esa acción ya no está en el calendario, o es de un mundo al que no tenés acceso.");
+      // La búsqueda (en lo que ya hay, en el servidor, en otro mundo) está en
+      // el store: la usa también "Copiar a otra fecha".
+      if (!(await useCalendario.getState().irAAccion(pedida))) {
+        toast.error("Esa acción ya no está en el calendario, o es de un mundo al que no tenés acceso.");
       }
       router.replace("/calendario");
     })();
@@ -117,6 +100,9 @@ export default function CalendarioPage() {
   const mundo = mundoEfectivo(user, elegido);
   const cantidadDeMundos = mundosDe(user).length;
   const vista = useCalendario(s => s.vista);
+  // La vista "Equipo" es de quien reparte tareas; si quedó elegida y ya no
+  // tiene el permiso, se ve el calendario.
+  const gestionaTareas = hasPermission(user, PERMISOS_CALENDARIO.tareas);
   const filtro = useCalendario(s => s.filtro);
   // De qué mundo es lo cargado en el store (la copia del navegador puede ser
   // de otro). Hasta que coincide con el elegido no se muestra nada: ni un
@@ -210,7 +196,9 @@ export default function CalendarioPage() {
       <BarraSuperior />
       {/* El id lo usa el boton "que entre el mes entero": mide la caja real
           de una seccion para calcular el zoom. */}
-      {vista === "lista" ? (
+      {vista === "equipo" && gestionaTareas ? (
+        <VistaEquipo />
+      ) : vista === "lista" ? (
         <VistaLista />
       ) : (
         <div id="calendario" className="space-y-5">
@@ -222,6 +210,9 @@ export default function CalendarioPage() {
       )}
       <EditorBarra />
       <PanelAccion />
+      {/* Afuera de la ficha (como el editor): adentro, la ficha corrida con
+          transform haría que "fixed" se acomode a ella y no a la pantalla. */}
+      <DialogoPlantillas />
     </div>
   );
 }

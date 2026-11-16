@@ -160,8 +160,55 @@ class CalendarioTarea(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     vence: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # De dónde sale `vence` cuando vino de una plantilla (0065): 'inicio' o
+    # 'fin' de la acción, más `ancla_dias` (negativo = antes). Mientras esté,
+    # si la acción se mueve de fecha la tarea se mueve con ella. Si alguien le
+    # cambia el vencimiento a mano, se vacía: lo manual se respeta.
+    ancla: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    ancla_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # De qué plantilla salió (sin FK: borrar la plantilla no toca las tareas
+    # ya creadas). Sirve para no sugerir otra vez una plantilla ya usada.
+    plantilla_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     creado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
+    )
+
+
+class CalendarioPlantilla(Base):
+    """Una plantilla de tareas de un mundo (0065).
+
+    Cada tipo de acción lleva casi siempre las mismas tareas (el brief a la
+    agencia, las entregas, la aprobación, las cenefas a los locales, el
+    retiro), y cargarlas a mano en cada acción era repetir lo mismo cada vez.
+    Una plantilla las guarda con su vencimiento RELATIVO (N días antes o
+    después del inicio o del fin de la acción), y al aplicarla en una acción
+    se crean con la fecha ya calculada.
+
+    Las tareas van en una lista y no en una tabla, como los destinatarios de
+    un aviso: una plantilla se lee y se guarda siempre entera, y nadie
+    consulta "las tareas de plantilla de tal persona"."""
+
+    __tablename__ = "calendario_plantillas"
+
+    # Lo genera el front (pl-...), como el de las barras: un reintento del
+    # mismo guardado no duplica la plantilla.
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    mundo: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    nombre: Mapped[str] = mapped_column(Text, nullable=False)
+    # La categoría de acción (la `banda`, "MEGA EVENTO") a la que va. Con una,
+    # la ficha de una acción de esa categoría la sugiere. Null = de cualquiera.
+    categoria: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # [{id, parentId, titulo, descripcion, asignadoA, ancla, dias}, ...]
+    tareas: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    creado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    actualizado_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

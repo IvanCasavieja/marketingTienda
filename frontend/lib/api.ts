@@ -3,6 +3,11 @@ import type { Ga4FunnelResponse } from "@/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+/** La dirección completa de algo de la API (p. ej. el link del calendario para Outlook). */
+export function urlDeLaApi(ruta: string): string {
+  return `${BASE_URL}${ruta}`;
+}
+
 // ── Token storage ─────────────────────────────────────────────────────────────
 // On mobile browsers (especially Safari iOS) cross-site httpOnly cookies are
 // blocked by ITP / Private Browsing even when SameSite=None; Secure is set.
@@ -2012,6 +2017,25 @@ export const redexpresApi = {
 /** Lo que contesta cada escritura del calendario: la revisión en que quedó. */
 type CalendarioEscrito = { id?: string; rev?: number; yaExistia?: boolean };
 
+/** Lo que contesta la copia de una acción a otra fecha (ver copiar_barra en el backend). */
+export type CalendarioCopia = CalendarioEscrito & {
+  /** La acción nueva entera, como la trae /datos: se pone en pantalla sin bajarse todo. */
+  barra?: unknown;
+  copiadas?: { piezas: number; tareas: number; avisos: number };
+  /** Tareas que no se copiaron porque quien copió no puede cargar tareas. */
+  tareasSinPermiso?: number;
+  /** Tareas copiadas sin responsable: esa persona ya no abre ese mundo. */
+  sinResponsable?: number;
+  /** Personas sacadas de los avisos, por lo mismo. */
+  destinatariosQuitados?: number;
+  /** Avisos que no se copiaron porque se quedaban sin nadie. */
+  avisosSinNadie?: number;
+  /** A cuántas personas les llegó el aviso de sus tareas (uno por persona). */
+  avisados?: number;
+  /** Avisos que con la fecha nueva ya tocaban y salieron en el momento. */
+  enviadosAhora?: number;
+};
+
 /**
  * El calendario, una barra por vez. Hasta el 28/09/2026 se subía el mes entero
  * y dos personas editando el mismo mes se pisaban; ahora cada llamada toca solo
@@ -2025,9 +2049,13 @@ type CalendarioEscrito = { id?: string; rev?: number; yaExistia?: boolean };
 const ESPERA = { timeout: 15_000 };
 
 export const calendarioApi = {
+  /** El link privado del calendario para Outlook, Google o el iPhone (la ruta, sin la dirección de la API). */
+  linkDelCalendario: () => api.get<{ ruta: string }>("/calendario/ical/link", ESPERA),
+  /** Otro link: el anterior deja de andar. */
+  nuevoLinkDelCalendario: () => api.post<{ ruta: string }>("/calendario/ical/link/nuevo", {}, ESPERA),
   /** Todo el calendario, o `sinCambios` si sigue en la revisión `rev`. */
   traerDatos: (mundo: string, rev?: number | null) =>
-    api.get<{ rev: number; mundo?: string; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]> }>(
+    api.get<{ rev: number; mundo?: string; sinCambios?: boolean; barras?: any[]; posicionesRM?: Record<string, number[]>; plantillas?: any[] }>(
       "/calendario/datos", { ...ESPERA, params: rev == null ? { mundo } : { mundo, rev } }),
   /** A quién se le puede mandar un aviso o asignar una tarea en ese mundo. */
   personas: (mundo: string) =>
@@ -2046,9 +2074,14 @@ export const calendarioApi = {
     api.get<{ id: string; mundo: string; desde: string }>(`/calendario/ubicar/${encodeURIComponent(barraId)}`, ESPERA),
 
   crearBarra: (barra: unknown) => api.post<CalendarioEscrito>("/calendario/barras", barra, ESPERA),
+  /** `tareasMovidas`: cuántas tareas de plantilla se corrieron con la acción. */
   cambiarBarra: (id: string, cambios: unknown) =>
-    api.patch<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`, cambios, ESPERA),
+    api.patch<CalendarioEscrito & { tareasMovidas?: number }>(`/calendario/barras/${encodeURIComponent(id)}`, cambios, ESPERA),
   borrarBarra: (id: string) => api.delete<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(id)}`, ESPERA),
+  /** Una acción nueva a partir de `desde`, con todo lo de `barraId`. El id lo
+   *  pone el front, como al crear una: un reintento no la duplica. */
+  copiarBarra: (barraId: string, copia: { id: string; desde: string; nombre?: string; carril?: number }) =>
+    api.post<CalendarioCopia>(`/calendario/barras/${encodeURIComponent(barraId)}/copiar`, copia, ESPERA),
 
   agregarPieza: (barraId: string, pieza: unknown) =>
     api.post<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(barraId)}/piezas`, pieza, ESPERA),
@@ -2060,6 +2093,16 @@ export const calendarioApi = {
     api.post<CalendarioEscrito & { enviadosAhora?: number }>(
       `/calendario/barras/${encodeURIComponent(barraId)}/avisos`, aviso, ESPERA),
   quitarAviso: (id: string) => api.delete<CalendarioEscrito>(`/calendario/avisos/${encodeURIComponent(id)}`, ESPERA),
+
+  /** Crea o reemplaza entera una plantilla de tareas (el id lo genera el front). */
+  guardarPlantilla: (id: string, plantilla: unknown) =>
+    api.put<CalendarioEscrito>(`/calendario/plantillas/${encodeURIComponent(id)}`, plantilla, ESPERA),
+  borrarPlantilla: (id: string) =>
+    api.delete<CalendarioEscrito>(`/calendario/plantillas/${encodeURIComponent(id)}`, ESPERA),
+  /** Crea en la acción las tareas de la plantilla. `ids`: el id nuevo de cada tarea de la plantilla. */
+  aplicarPlantilla: (barraId: string, datos: { plantillaId: string; ids: Record<string, string> }) =>
+    api.post<CalendarioEscrito & { creadas?: number; avisados?: number; sinAsignar?: number }>(
+      `/calendario/barras/${encodeURIComponent(barraId)}/plantilla`, datos, ESPERA),
 
   /** Guarda las posiciones de RM de un mes y avisa a quien lleva Retail Media. */
   moverPosicionesRM: (clave: string, posiciones: number[]) =>

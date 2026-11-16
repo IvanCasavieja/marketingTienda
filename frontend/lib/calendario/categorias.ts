@@ -35,6 +35,11 @@ export function esSinCategoria(banda: string | null | undefined): boolean {
   return !banda || limpio(banda) === limpio(SIN_CATEGORIA)
 }
 
+/** Si dos nombres son la misma categoría ("MEGA EVENTO" y "Mega evento"). */
+export function mismaCategoria(a: string | null | undefined, b: string | null | undefined): boolean {
+  return !!a && !!b && limpio(a) === limpio(b)
+}
+
 /**
  * Cuánto pesa una categoría: es lo que la cocarda tiene que decir de un
  * vistazo. Ivan nombró tres ("mega evento, evento general, especial"), que

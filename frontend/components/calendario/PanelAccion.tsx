@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
-  AlertTriangle, Bell, BellPlus, CalendarDays, Check, Clock, LayoutPanelTop, Pencil, Plus, Send, X,
+  AlertTriangle, Bell, BellPlus, CalendarDays, Check, Clock, CopyPlus, LayoutPanelTop, Pencil, Plus, Send, X,
+  type LucideIcon,
 } from 'lucide-react'
 import { BloqueTareas } from './BloqueTareas'
 import { Cocarda, SelectorDeCategoria } from './Cocarda'
+import { CopiarAccion } from './CopiarAccion'
 import { useDialogo } from './useDialogo'
 import { CampoFecha } from './CampoFecha'
 import { CLASE_MANIJA, useDeslizarParaCerrar } from './useDeslizarParaCerrar'
@@ -14,6 +16,8 @@ import { textoSobre } from '@/lib/calendario/colores'
 import { diasEntre, fechaCorta, hoyIso, rangoLargo, sumarDias } from '@/lib/calendario/fechas'
 import { useCalendario, useCategoriasDelMundo, useHeaderDerivado } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
+import { CLASE_SEMAFORO, semaforoDe } from '@/lib/calendario/semaforo'
+import { choquesDe } from '@/lib/calendario/choques'
 import {
   ANTICIPACIONES_DE_AVISO, CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader, tituloDeCanal,
   type AreaPieza, type Aviso, type BarraGuardada, type EstadoPieza, type Persona, type Pieza,
@@ -79,16 +83,34 @@ function BotonCerrar({ onCerrar, refBoton }: { onCerrar: () => void; refBoton?: 
   )
 }
 
-/** El botón de editar, una pastilla clara sobre el color de la acción. */
-function BotonEditar({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+/** Un botón del encabezado (editar, copiar): una pastilla clara sobre el color de la acción. */
+function BotonDeEncabezado({ onClick, icono: Icono = Pencil, children }: {
+  onClick: () => void
+  icono?: LucideIcon
+  children: React.ReactNode
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="mt-3.5 flex min-h-[40px] items-center gap-2 rounded-xl bg-white/85 px-3.5 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-black/5 transition hover:bg-white active:scale-[.98] dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
+      className="flex min-h-[40px] items-center gap-2 rounded-xl bg-white/85 px-3.5 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-black/5 transition hover:bg-white active:scale-[.98] dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
     >
-      <Pencil className="h-4 w-4" /> {children}
+      <Icono className="h-4 w-4" /> {children}
     </button>
+  )
+}
+
+/** Editar y "Copiar a otra fecha", juntos abajo del nombre. En el teléfono, si no entran, el segundo baja. */
+function BotonesDeEncabezado({ editar, onEditar, onCopiar }: {
+  editar: string
+  onEditar: () => void
+  onCopiar: () => void
+}) {
+  return (
+    <div className="mt-3.5 flex flex-wrap gap-2">
+      <BotonDeEncabezado onClick={onEditar}>{editar}</BotonDeEncabezado>
+      <BotonDeEncabezado onClick={onCopiar} icono={CopyPlus}>Copiar a otra fecha</BotonDeEncabezado>
+    </div>
   )
 }
 
@@ -135,6 +157,12 @@ export function PanelAccion() {
   // mayoría (a ver qué le toca), y las piezas y los avisos quedan a un toque.
   const [pestana, setPestana] = useState<Pestana>('tareas')
   useEffect(() => { setPestana('tareas') }, [abierta])
+
+  // "Copiar a otra fecha" (pedido de Ivan, 15/11/2026). Se anota DE QUÉ
+  // acción se abrió: si la ficha pasa a otra (la copia recién hecha, un aviso
+  // de la campanita), el cuadro no queda abierto para la que no era.
+  const [copiarDe, setCopiarDe] = useState<string | null>(null)
+  const copiaAbierta = copiarDe !== null && copiarDe === abierta && visible
 
   const piezas = accion?.piezas ?? []
   const tareas = accion?.tareas ?? []
@@ -198,6 +226,7 @@ export function PanelAccion() {
             usuarioId={user?.id ?? null}
             gestionaTareas={gestionaTareas}
             onCerrar={cerrar}
+            onCopiar={() => setCopiarDe(accion.id)}
             cerrarRef={cerrarRef}
           />
         )}
@@ -211,6 +240,7 @@ export function PanelAccion() {
                     {ahora && (
                       <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ahora.tono}`}>{ahora.texto}</span>
                     )}
+                    <SemaforoDeLaFicha accion={accion} />
                   </div>
                   <h2 id="ficha-titulo" className="mt-2.5 text-2xl font-bold leading-tight tracking-tight text-balance">{accion.nombre}</h2>
                   <p className="mt-1.5 flex items-center gap-1.5 text-sm opacity-80">
@@ -225,18 +255,19 @@ export function PanelAccion() {
               </div>
 
               {editable && (
-                <BotonEditar
-                  onClick={() => abrirEditor({
+                <BotonesDeEncabezado
+                  editar="Editar nombre, fechas y color"
+                  onEditar={() => abrirEditor({
                     seccion: 'comercial',
                     banda: accion.banda,
                     carril: accion.carril,
                     barra: accion,
                   })}
-                >
-                  Editar nombre, fechas y color
-                </BotonEditar>
+                  onCopiar={() => setCopiarDe(accion.id)}
+                />
               )}
             </header>
+            <ChoquesDeLaFicha accion={accion} />
 
             <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-slate-50 px-5 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/40 sm:px-6">
               <span className="font-medium tabular-nums text-slate-700 dark:text-slate-300">
@@ -367,6 +398,11 @@ export function PanelAccion() {
           </>
         )}
       </aside>
+      {/* Afuera de la ficha: la ficha se mueve con un transform, y adentro
+          de algo así un `fixed` queda pegado a ella en vez de a la pantalla. */}
+      {copiaAbierta && accion && (
+        <CopiarAccion key={accion.id} accion={accion} onCerrar={() => setCopiarDe(null)} />
+      )}
     </>
   )
 }
@@ -396,7 +432,7 @@ function CategoriaDeLaFicha({ accion, editable }: { accion: BarraGuardada; edita
  * avisos. No tiene áreas ni piezas: el envío ES la pieza.
  */
 function FichaEnvio({
-  envio, editable, personas, usuarioId, gestionaTareas, onCerrar, cerrarRef,
+  envio, editable, personas, usuarioId, gestionaTareas, onCerrar, onCopiar, cerrarRef,
 }: {
   envio: BarraGuardada
   editable: boolean
@@ -404,6 +440,7 @@ function FichaEnvio({
   usuarioId: number | null
   gestionaTareas: boolean
   onCerrar: () => void
+  onCopiar: () => void
   cerrarRef: React.Ref<HTMLButtonElement>
 }) {
   const abrirEditor = useCalendario(s => s.abrirEditor)
@@ -436,11 +473,14 @@ function FichaEnvio({
         </div>
 
         {editable && (
-          <BotonEditar onClick={() => abrirEditor({ seccion: 'envio', banda: envio.banda, carril: 0, barra: envio })}>
-            Editar nombre, fecha, hora y color
-          </BotonEditar>
+          <BotonesDeEncabezado
+            editar="Editar nombre, fecha, hora y color"
+            onEditar={() => abrirEditor({ seccion: 'envio', banda: envio.banda, carril: 0, barra: envio })}
+            onCopiar={onCopiar}
+          />
         )}
       </header>
+      <ChoquesDeLaFicha accion={envio} />
 
       <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-slate-50 px-5 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/40 sm:px-6">
         <span className="font-medium text-slate-700 dark:text-slate-300">Estado</span>
@@ -783,5 +823,50 @@ function BloqueArea({
         </ul>
       )}
     </section>
+  )
+}
+
+/** El semáforo en el encabezado de la ficha: el puntito y qué falta. Sobre el
+ *  color de la acción va en blanco, para que se lea con cualquier color. */
+function SemaforoDeLaFicha({ accion }: { accion: BarraGuardada }) {
+  const semaforo = semaforoDe(accion, hoyIso())
+  if (!semaforo) return null
+  // Cuándo arranca ya lo dice la píldora de al lado: acá va solo lo que falta.
+  const queFalta = semaforo.texto.includes(': ') ? semaforo.texto.split(': ')[1] : semaforo.texto
+  return (
+    <span
+      title={semaforo.texto}
+      className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm dark:bg-slate-950/70 dark:text-slate-100"
+    >
+      <span className={`h-2 w-2 shrink-0 rounded-full ${CLASE_SEMAFORO[semaforo.color]}`} aria-hidden />
+      {queFalta.replace(/^./, c => c.toUpperCase())}
+    </span>
+  )
+}
+
+/** Aviso de choques: otro mega evento esos días, u otro envío por el mismo
+ *  canal el mismo día. Solo avisa; tocar el nombre abre la otra acción. */
+function ChoquesDeLaFicha({ accion }: { accion: BarraGuardada }) {
+  const barras = useCalendario(s => s.barras)
+  const abrirAccion = useCalendario(s => s.abrirAccion)
+  const choques = choquesDe(accion, Object.values(barras))
+  if (choques.length === 0) return null
+  return (
+    <div className="flex shrink-0 gap-2.5 border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 sm:px-6">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+      <ul className="min-w-0 flex-1 space-y-1">
+        {choques.map(c => (
+          <li key={`${c.tipo}-${c.otraId}-${c.texto}`}>
+            <button
+              type="button"
+              onClick={() => abrirAccion(c.otraId)}
+              className="text-left underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+            >
+              {c.texto}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

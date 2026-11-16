@@ -44,6 +44,12 @@ class User(Base):
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # El link del calendario para Outlook/Google/iPhone va firmado con esto:
+    # "Generar otro link" lo sube y el anterior deja de andar. No se usa la
+    # marca de tokens_invalidated_at porque la contraseña se renueva cada 20
+    # días y la suscripción de Outlook se cortaría sola (migración 0064).
+    calendario_link_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
