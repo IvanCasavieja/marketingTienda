@@ -14,13 +14,18 @@ Pedido de Ivan (15/11/2026), como tarjetas de Trello con la agencia. La lógica
 pura está en app/services/entregas.py; acá están los permisos, que se cuidan
 todos del lado del servidor:
 
-- Ve todo esto quien puede abrir el calendario del mundo de la acción. Cuando
-  existan las cuentas de agencia (vista limitada), el lugar para restringirlas
-  es `_puede_ver`: hoy es lo mismo que ver el calendario.
+- Ve todo esto quien puede abrir el calendario del mundo de la acción. Una
+  cuenta externa (la agencia, 0069) ve SOLO las tareas que tiene asignadas y
+  de acciones que tocan su ventana (ver app/core/externos.py y
+  `_tarea_y_barra`): de lo demás, un 404 igual al de algo que no existe.
 - Configura (tipo, brief, fases, aprobadores) quien tiene `calendario.tareas`.
 - Entrega SOLO el responsable de la tarea (`asignado_a_id`).
 - Decide el aprobador al que le toca; quien tiene `calendario.tareas` puede
-  decidir por él como respaldo. Nadie decide sobre lo que subió.
+  decidir por él como respaldo. Nadie decide sobre lo que subió. Una cuenta
+  externa no aprueba: no se la puede poner en la cadena ni decide.
+- La decisión puede llevar una nota interna (0069): la ve el equipo, nunca la
+  agencia (ni en la tarea ni en el aviso). Las marcas y el comentario sí, que
+  son para ella.
 
 Las imágenes NO viajan en /calendario/datos (que se pregunta cada 15 s): ahí va
 solo el resumen de cada tarea (en qué fase, a quién le toca). Las imágenes se
@@ -38,13 +43,15 @@ from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.calendario import (
     _ID, _barra_o_404, _exigir_gestion_de_tareas, _nueva_revision, _puede_gestionar_tareas, _puede_ver_el_mundo,
+    _rev_para, ids_de_aprobadores_de, nombre_sin_mail, nombres_para_externo,
 )
 from app.core.config import settings
+from app.core import externos
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.core.mundos import MUNDOS, exigir_mundo, mundos_de
@@ -75,11 +82,16 @@ DIAS_DE_APROBADAS_EN_EL_TABLERO = 30
 # Ayudas
 # ---------------------------------------------------------------------------
 
-def _puede_ver(usuario: User, mundo: str) -> bool:
-    """Quién ve las entregas de una tarea. Hoy, quien abre el calendario del
-    mundo; cuando haya cuentas de agencia con vista limitada, acá se las
-    restringe a sus propias tareas."""
-    return _puede_ver_el_mundo(usuario, mundo)
+_NO_EXISTE_LA_TAREA = "Esta tarea ya no existe: la borró otra persona."
+
+
+def _puede_ver(usuario: User, mundo: str, asignado_a_id: int | None) -> bool:
+    """Quién ve las entregas de una tarea: quien abre el calendario del mundo.
+    Una cuenta externa, además, solo las de SUS tareas (la ventana la mira
+    `_barra_o_404`)."""
+    if not _puede_ver_el_mundo(usuario, mundo):
+        return False
+    return not externos.es_externo(usuario) or asignado_a_id == usuario.id
 
 
 def puede_ver_revision(
@@ -104,7 +116,11 @@ async def _tarea_y_barra(
         consulta = consulta.with_for_update()
     tarea = (await db.execute(consulta)).scalar_one_or_none()
     if tarea is None:
-        raise HTTPException(status_code=404, detail="Esta tarea ya no existe: la borró otra persona.")
+        raise HTTPException(status_code=404, detail=_NO_EXISTE_LA_TAREA)
+    # Una tarea que no es suya, para una cuenta externa, no existe: el mismo
+    # 404, así no se puede ni deducir qué ids hay.
+    if externos.es_externo(usuario) and tarea.asignado_a_id != usuario.id:
+        raise HTTPException(status_code=404, detail=_NO_EXISTE_LA_TAREA)
     barra = await _barra_o_404(db, tarea.barra_id, usuario)
     return tarea, barra
 
@@ -182,7 +198,13 @@ async def configurar_entregas(
             detail="Quien entrega la pieza no puede estar entre los que la aprueban",
         )
     usuarios = (await db.execute(select(User).where(User.id.in_(aprobadores)))).scalars().all()
-    validos = {u.id for u in usuarios if u.is_active and _puede_ver(u, barra.mundo)}
+    if any(externos.es_externo(u) for u in usuarios):
+        # Aprobar es una decisión de la casa: la agencia entrega, no aprueba.
+        raise HTTPException(
+            status_code=422,
+            detail="Una cuenta externa (agencia) no aprueba piezas: elegí a alguien del equipo",
+        )
+    validos = {u.id for u in usuarios if u.is_active and _puede_ver_el_mundo(u, barra.mundo)}
     if any(a not in validos for a in aprobadores):
         raise HTTPException(
             status_code=422,
@@ -342,10 +364,15 @@ async def ver_entregas(
     db: AsyncSession = Depends(get_db),
 ):
     """Todo lo de las entregas de una tarea. Las imágenes van por id: se piden
-    aparte (ver `ver_imagen`)."""
+    aparte (ver `ver_imagen`).
+
+    A una cuenta externa (solo de sus tareas, ver `_tarea_y_barra`) no le
+    viajan las notas internas de las decisiones, y de las personas solo ve con
+    nombre (sin mail) a las de su empresa y a quienes aprueban sus entregas."""
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user)
-    if not _puede_ver(current_user, barra.mundo):
+    if not _puede_ver(current_user, barra.mundo, tarea.asignado_a_id):
         raise HTTPException(status_code=403, detail="No podés ver esta tarea")
+    externo = externos.es_externo(current_user)
     entrega = await db.get(CalendarioEntrega, tarea_id)
     if entrega is None:
         raise HTTPException(status_code=404, detail=_NO_LLEVA)
@@ -383,7 +410,23 @@ async def ver_entregas(
     personas += [d.aprobador_id for ds in decisiones.values() for d in ds]
     personas += [d.decidido_por_id for ds in decisiones.values() for d in ds]
     personas += [m.autor_id for ms in marcas.values() for m in ms]
-    nombres = await _nombres(db, personas)
+    if externo:
+        nombres = await nombres_para_externo(
+            db, current_user, personas, await ids_de_aprobadores_de(db, current_user, barra.mundo),
+        )
+    else:
+        nombres = await _nombres(db, personas)
+
+    def decision_json(d: CalendarioDecision) -> dict:
+        out = {
+            "aprobador": d.aprobador_id, "decididoPor": d.decidido_por_id, "orden": d.orden,
+            "decision": d.decision, "comentario": d.comentario,
+            "fecha": d.created_at.isoformat() if d.created_at else None,
+        }
+        # La nota interna, solo al equipo: a la agencia no le viaja ni la clave.
+        if not externo:
+            out["notaInterna"] = d.nota_interna
+        return out
 
     def version_json(v: CalendarioVersion) -> dict:
         return {
@@ -395,14 +438,7 @@ async def ver_entregas(
                 {"id": im.id, "orden": im.orden, "purgada": im.purgada_at is not None}
                 for im in imagenes.get(v.id, [])
             ],
-            "decisiones": [
-                {
-                    "aprobador": d.aprobador_id, "decididoPor": d.decidido_por_id, "orden": d.orden,
-                    "decision": d.decision, "comentario": d.comentario,
-                    "fecha": d.created_at.isoformat() if d.created_at else None,
-                }
-                for d in decisiones.get(v.id, [])
-            ],
+            "decisiones": [decision_json(d) for d in decisiones.get(v.id, [])],
             "marcas": [
                 {
                     "id": m.id, "numero": m.numero, "imagenId": m.imagen_id, "x": m.x, "y": m.y,
@@ -466,7 +502,8 @@ async def ver_imagen(
     lanzar no puede quedar abierta a quien tenga el link."""
     fila = (await db.execute(
         select(CalendarioVersionImagen.tipo_mime, CalendarioVersionImagen.tipo_mime_miniatura,
-               CalendarioVersionImagen.purgada_at, CalendarioBarra.mundo)
+               CalendarioVersionImagen.purgada_at, CalendarioBarra.mundo, CalendarioTarea.asignado_a_id,
+               CalendarioBarra.desde, CalendarioBarra.hasta)
         .join(CalendarioVersion, CalendarioVersion.id == CalendarioVersionImagen.version_id)
         .join(CalendarioTarea, CalendarioTarea.id == CalendarioVersion.tarea_id)
         .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
@@ -474,9 +511,15 @@ async def ver_imagen(
     )).first()
     if fila is None:
         raise HTTPException(status_code=404, detail="Esa imagen ya no existe")
-    tipo, tipo_mini, purgada, mundo = fila
+    tipo, tipo_mini, purgada, mundo, asignado, desde, hasta = fila
+    # Una cuenta externa, solo las de sus tareas y en su ventana. Lo demás,
+    # el mismo 404 que una imagen que no existe.
+    if externos.es_externo(current_user) and (
+        asignado != current_user.id or not externos.toca(desde, hasta, externos.ventana_de_hoy())
+    ):
+        raise HTTPException(status_code=404, detail="Esa imagen ya no existe")
     exigir_mundo(current_user, mundo)
-    if not _puede_ver(current_user, mundo):
+    if not _puede_ver(current_user, mundo, asignado):
         raise HTTPException(status_code=403, detail="No podés ver esta imagen")
     columna = CalendarioVersionImagen.miniatura if tam == "mini" else CalendarioVersionImagen.datos
     datos = (await db.execute(select(columna).where(CalendarioVersionImagen.id == imagen_id))).scalar_one_or_none()
@@ -628,7 +671,7 @@ async def entregar(
     # sesión y no levanta nunca. Si falla, la entrega queda igual.
     if revision_ia.activa():
         background_tasks.add_task(revision_ia.revisar_version, versionId)
-    return {"id": versionId, "rev": rev, "ronda": ronda, "entrega": resumen, "avisados": avisados}
+    return {"id": versionId, "rev": _rev_para(current_user, rev), "ronda": ronda, "entrega": resumen, "avisados": avisados}
 
 
 # ---------------------------------------------------------------------------
@@ -656,8 +699,11 @@ class MarcaNueva(BaseModel):
 
 class DecisionNueva(BaseModel):
     decision: Literal["aprobada", "aprobada-con-cambios", "cambios"]
+    # Lo que lee la agencia, con las marcas.
     comentario: str | None = Field(None, max_length=5000)
     marcas: list[MarcaNueva] = Field(default_factory=list, max_length=MAX_MARCAS)
+    # Solo para el equipo: la agencia nunca la ve (0069).
+    notaInterna: str | None = Field(None, max_length=5000)
 
 
 @router.post("/versiones/{version_id}/decision")
@@ -670,6 +716,11 @@ async def decidir(
     version = await db.get(CalendarioVersion, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Esa versión ya no existe")
+    if externos.es_externo(current_user):
+        # La agencia entrega; aprobar o pedir cambios es de la casa. No se la
+        # puede poner en la cadena (ver configurar_entregas) y acá tampoco
+        # decide como respaldo.
+        raise HTTPException(status_code=403, detail="Una cuenta externa no aprueba ni pide cambios")
     tarea, barra = await _tarea_y_barra(db, version.tarea_id, current_user, bloquear=True)
     entrega = await _entrega_bloqueada(db, tarea.id)
     # Con la entrega bloqueada, se vuelve a leer: otro pudo haber decidido.
@@ -678,12 +729,14 @@ async def decidir(
         raise HTTPException(status_code=409, detail="Esa versión ya no es la que está en revisión: recargá")
 
     comentario = (payload.comentario or "").strip() or None
+    nota_interna = (payload.notaInterna or "").strip() or None
     if payload.decision == "aprobada" and payload.marcas:
         raise HTTPException(
             status_code=422,
             detail="Con marcas, elegí «Aprobado con cambios» o «Pedir cambios»: «Aprobar» las perdería",
         )
     if payload.decision != "aprobada" and not payload.marcas and not comentario:
+        # La nota interna no cuenta: quien entrega no la ve, y no sabría qué cambiar.
         raise HTTPException(status_code=422, detail="Decí qué hay que cambiar: poné una marca sobre la imagen o un comentario")
 
     aprobadores = list(entrega.aprobadores or [])
@@ -706,7 +759,7 @@ async def decidir(
     ahora = datetime.now(timezone.utc)
     db.add(CalendarioDecision(
         version_id=version.id, aprobador_id=aprobador, decidido_por_id=current_user.id, orden=orden,
-        decision=payload.decision, comentario=comentario,
+        decision=payload.decision, comentario=comentario, nota_interna=nota_interna,
     ))
     hay = (await db.execute(
         select(func.coalesce(func.max(CalendarioMarca.numero), 0)).where(CalendarioMarca.version_id == version.id)
@@ -824,9 +877,10 @@ async def tildar_marca(
 # El tablero y "Mis tareas"
 # ---------------------------------------------------------------------------
 
-async def _tarjetas(db: AsyncSession, filas) -> list[dict]:
+async def _tarjetas(db: AsyncSession, filas, usuario: User | None = None) -> list[dict]:
     """Una tarjeta por tarea con entregas: lo que muestra el tablero (y "Mis
-    tareas"), con la miniatura de la última versión."""
+    tareas"), con la miniatura de la última versión. Para una cuenta externa,
+    los nombres sin mail (los de afuera de su empresa, solo si aprueban)."""
     filas = list(filas)
     if not filas:
         return []
@@ -847,7 +901,11 @@ async def _tarjetas(db: AsyncSession, filas) -> list[dict]:
                    CalendarioVersionImagen.orden == 0)
         )).all()
     }
-    nombres = await _nombres(db, [t.asignado_a_id for _, t, _ in filas] + [e.aprobador_de_turno_id for e, _, _ in filas])
+    ids_personas = [t.asignado_a_id for _, t, _ in filas] + [e.aprobador_de_turno_id for e, _, _ in filas]
+    if usuario is not None and externos.es_externo(usuario):
+        nombres = await nombres_para_externo(db, usuario, ids_personas, await ids_de_aprobadores_de(db, usuario))
+    else:
+        nombres = await _nombres(db, ids_personas)
     return [
         {
             "tareaId": t.id, "titulo": t.titulo, "estado": t.estado, "vence": t.vence.isoformat() if t.vence else None,
@@ -879,7 +937,7 @@ async def _metricas(db: AsyncSession, usuario: User, mundo: str, dias: int) -> d
     comparación entre los mundos que la persona puede abrir."""
     mundos = mundos_de(usuario)
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
-    filas = (await db.execute(
+    consulta = (
         select(CalendarioEntrega.tipo_pieza, CalendarioVersion.subida_por_id, CalendarioBarra.mundo,
                CalendarioVersion.ronda)
         .select_from(CalendarioVersion)
@@ -891,10 +949,20 @@ async def _metricas(db: AsyncSession, usuario: User, mundo: str, dias: int) -> d
             CalendarioBarra.mundo.in_(mundos),
             CalendarioVersion.decidida_at >= desde,
         )
-    )).all()
+    )
+    externo = externos.es_externo(usuario)
+    if externo:
+        # Una cuenta externa ve SU retrabajo (lo que entregó ella), no el de
+        # los demás: ni de otras agencias ni del equipo. Son números, sin
+        # nombres de acciones: por eso no se recorta a la ventana.
+        consulta = consulta.where(CalendarioVersion.subida_por_id == usuario.id)
+    filas = (await db.execute(consulta)).all()
     del_mundo = reglas.metricas_de_retrabajo([tuple(f) for f in filas if f[2] == mundo])
     todos = reglas.metricas_de_retrabajo([tuple(f) for f in filas])
-    nombres = await _nombres(db, [g["clave"] for g in del_mundo["porResponsable"]])
+    if externo:
+        nombres = {usuario.id: nombre_sin_mail(usuario)}
+    else:
+        nombres = await _nombres(db, [g["clave"] for g in del_mundo["porResponsable"]])
     for g in del_mundo["porResponsable"]:
         g["nombre"] = nombres.get(g["clave"], "Alguien que ya no está")
     for g in del_mundo["porTipo"]:
@@ -918,6 +986,8 @@ async def tablero(
     exigir_mundo(current_user, mundo)
     if not (7 <= dias <= 730):
         raise HTTPException(status_code=422, detail="El período va de 7 a 730 días")
+    if externos.es_externo(current_user):
+        return await _tablero_para_externo(db, current_user, mundo, rev, dias)
     fila = (await db.execute(
         select(
             CalendarioRevision.rev,
@@ -947,6 +1017,34 @@ async def tablero(
     }
 
 
+async def _tablero_para_externo(db: AsyncSession, usuario: User, mundo: str, rev: int | None, dias: int) -> dict:
+    """El tablero de una cuenta externa: solo SUS tareas con entregas, de
+    acciones que tocan su ventana, y su propio retrabajo. Como en /datos, la
+    revisión es la huella de lo que ve (`externos.huella`): el contador de
+    todo el calendario le diría que algo se movió fuera de su ventana."""
+    desde = datetime.now(timezone.utc) - timedelta(days=DIAS_DE_APROBADAS_EN_EL_TABLERO)
+    filas = (await db.execute(
+        _consulta_tarjetas().where(
+            CalendarioBarra.mundo == mundo,
+            CalendarioTarea.asignado_a_id == usuario.id,
+            externos.condicion_de_ventana(CalendarioBarra, externos.ventana_de_hoy()),
+            or_(
+                CalendarioEntrega.momento != "aprobada",
+                func.coalesce(CalendarioEntrega.updated_at, CalendarioEntrega.created_at) >= desde,
+            ),
+        ).order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
+    )).all()
+    datos = {
+        "mundo": mundo,
+        "tarjetas": await _tarjetas(db, filas, usuario),
+        "metricas": await _metricas(db, usuario, mundo, dias),
+    }
+    huella = externos.huella(datos)
+    if rev is not None and rev == huella:
+        return {"rev": huella, "sinCambios": True}
+    return {"rev": huella, **datos}
+
+
 @router.get("/mis-entregas")
 async def mis_entregas(
     current_user: User = Depends(require_permission("calendario.view")),
@@ -956,7 +1054,13 @@ async def mis_entregas(
     decisión (soy el aprobador de turno) y lo que me devolvieron con cambios
     (soy el responsable y le toca a la agencia otra ronda)."""
     mundos = mundos_de(current_user)
-    para_revisar = (await db.execute(
+    # Una cuenta externa no aprueba (no tiene nada "para revisar") y lo que le
+    # devolvieron lo ve si la acción toca su ventana.
+    externo = externos.es_externo(current_user)
+    en_ventana = (
+        externos.condicion_de_ventana(CalendarioBarra, externos.ventana_de_hoy()) if externo else true()
+    )
+    para_revisar = [] if externo else (await db.execute(
         _consulta_tarjetas().where(
             CalendarioBarra.mundo.in_(mundos),
             CalendarioEntrega.momento == "revision",
@@ -968,9 +1072,10 @@ async def mis_entregas(
             CalendarioBarra.mundo.in_(mundos),
             CalendarioEntrega.momento == "cambios",
             CalendarioTarea.asignado_a_id == current_user.id,
+            en_ventana,
         ).order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioTarea.id)
     )).all()
     return {
-        "paraRevisar": await _tarjetas(db, para_revisar),
-        "conCambios": await _tarjetas(db, con_cambios),
+        "paraRevisar": await _tarjetas(db, para_revisar, current_user),
+        "conCambios": await _tarjetas(db, con_cambios, current_user),
     }

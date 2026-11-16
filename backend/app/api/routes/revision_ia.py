@@ -36,7 +36,7 @@ async def _version_visible(db: AsyncSession, version_id: str, usuario: User) -> 
     if version is None:
         raise HTTPException(status_code=404, detail="Esa versión ya no existe")
     tarea, barra = await _tarea_y_barra(db, version.tarea_id, usuario)
-    if not _puede_ver(usuario, barra.mundo):
+    if not _puede_ver(usuario, barra.mundo, tarea.asignado_a_id):
         raise HTTPException(status_code=403, detail="No podés ver esta tarea")
     entrega = await db.get(CalendarioEntrega, tarea.id)
     if entrega is None or not puede_ver_revision(usuario, entrega, tarea, version):

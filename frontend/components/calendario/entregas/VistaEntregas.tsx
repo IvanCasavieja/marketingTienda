@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  ArrowRight, Check, ChevronDown, Clock, ExternalLink, FileText, Hourglass, Loader2, PartyPopper, Pencil, RotateCcw,
-  Send, ShieldCheck, UserRound, X,
+  ArrowRight, Check, ChevronDown, Clock, ExternalLink, FileText, Hourglass, Loader2, Lock, PartyPopper, Pencil,
+  RotateCcw, Send, ShieldCheck, UserRound, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { calendarioApi, entregasApi } from '@/lib/api'
@@ -459,6 +459,12 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
               )}
               <span className="text-xs text-slate-500 dark:text-slate-400">{fechaYHora(d.fecha)}</span>
               {d.comentario && <span className="w-full text-slate-600 dark:text-slate-400">«{d.comentario}»</span>}
+              {d.notaInterna && (
+                <span className="mt-0.5 flex w-full items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[13px] text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span><span className="font-semibold">Nota interna (la agencia no la ve):</span> {d.notaInterna}</span>
+                </span>
+              )}
             </li>
           ))}
         </ul>

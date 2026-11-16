@@ -7,6 +7,7 @@ import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
+import { esExterno } from "@/lib/externos";
 import { useAvisos } from "@/store/avisos";
 import { usePendientesDeFotos } from "@/lib/colocacion/store";
 import { mundoEfectivo, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
@@ -34,7 +35,14 @@ export default function NavegacionInferior({ onMenu, onAvisos }: { onMenu: () =>
   const esLocal = (user?.assigned_locales?.length ?? 0) > 0;
   if (!veCalendario && !esLocal) return null;
 
-  const items: { href: string; label: string; Icono: typeof CalendarDays; numero?: number }[] = veCalendario
+  // Una cuenta externa (la agencia): su trabajo primero, como en el menú.
+  const items: { href: string; label: string; Icono: typeof CalendarDays; numero?: number }[] = veCalendario && esExterno(user)
+    ? [
+      { href: "/entregas", label: t("sidebar.entregas", "Entregas"), Icono: Layers },
+      { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), Icono: ListChecks },
+      { href: "/calendario", label: t("sidebar.calendario"), Icono: CalendarDays },
+    ]
+    : veCalendario
     ? [
       { href: "/calendario", label: t("sidebar.calendario"), Icono: CalendarDays },
       { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), Icono: ListChecks },

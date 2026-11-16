@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Eye, EyeOff, Loader2, BarChart3, Brain, Tag, Presentation } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { RobotMascot, RobotMini } from "@/components/RobotMascot";
+import { INICIO_DE_EXTERNOS } from "@/lib/externos";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,11 +37,13 @@ export default function LoginPage() {
       // Quien entra a uno solo va derecho: al calendario, que es el centro de
       // la plataforma, o a donde entraba antes si no lo puede ver (los logins
       // de sucursal, por ejemplo).
+      // Una cuenta externa (la agencia) va directo a su trabajo: las entregas.
       let destino = "/home";
       try {
         const { data } = await authApi.me();
         const ve = data?.is_superuser || (data?.permissions ?? []).includes("calendario.view");
         if ((data?.mundos ?? []).length > 1) destino = "/mundos";
+        else if (data?.es_externo) destino = INICIO_DE_EXTERNOS;
         else if (ve) destino = "/calendario";
       } catch {
         // Si /me falla, el layout del dashboard decide qué hacer.

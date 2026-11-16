@@ -27,8 +27,11 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select, update, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import externos
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_permission
+from app.core.mundos import mundos_de
+from app.models.calendario import CalendarioBarra
 from app.models.local_asignacion import LocalAsignacion
 from app.models.user import User
 from app.services.colocacion import ORIGEN_COMPLETA, ORIGENES_DEL_LOCAL
@@ -473,6 +476,40 @@ def _notif_visible(user: User, n: Notificacion, es_sucursal: bool = False) -> bo
     return "precios.search" in perms
 
 
+# Lo único que le llega a la campanita de una cuenta externa (la agencia): las
+# tareas que le asignan y lo de sus entregas. Los avisos configurados, los del
+# header, las fotos de colocación, las alertas de medios y de precios son del
+# equipo.
+ORIGENES_PARA_EXTERNOS = ("calendario_tarea", "calendario_entrega")
+
+
+async def _visibles_para_externo(db: AsyncSession, user: User, notifs) -> list:
+    """Los avisos de una cuenta externa que puede ver: los de ORIGENES_PARA_EXTERNOS
+    cuya acción toca hoy su ventana (la referencia empieza por la acción).
+
+    Una tarea que le asignan en una acción de dentro de tres meses le genera
+    el aviso igual, pero no lo ve hasta que la acción entra en su ventana: el
+    aviso dice el nombre de la acción, y eso es justo lo que no tiene que ver
+    antes de tiempo."""
+    if not externos.puede_tener(user, "calendario.view"):
+        return []
+    candidatas = [
+        n for n in notifs
+        if n.origen_tipo in ORIGENES_PARA_EXTERNOS and n.origen_ref and ":" in n.origen_ref
+    ]
+    if not candidatas:
+        return []
+    ids = {n.origen_ref.split(":", 1)[0] for n in candidatas}
+    en_ventana = set((await db.execute(
+        select(CalendarioBarra.id).where(
+            CalendarioBarra.id.in_(ids),
+            CalendarioBarra.mundo.in_(mundos_de(user)),
+            externos.condicion_de_ventana(CalendarioBarra, externos.ventana_de_hoy()),
+        )
+    )).scalars())
+    return [n for n in candidatas if n.origen_ref.split(":", 1)[0] in en_ventana]
+
+
 async def _es_sucursal_si_hace_falta(db: AsyncSession, user: User, notifs) -> bool:
     """Si la persona tiene un local asignado, preguntado solo si entre sus
     avisos hay alguno del local: la campanita se cuenta cada minuto y casi
@@ -496,8 +533,11 @@ async def listar_notificaciones(
         .limit(50)
     )
     todas = result.scalars().all()
-    es_sucursal = await _es_sucursal_si_hace_falta(db, current_user, todas)
-    notifs = [n for n in todas if _notif_visible(current_user, n, es_sucursal)]
+    if externos.es_externo(current_user):
+        notifs = await _visibles_para_externo(db, current_user, todas)
+    else:
+        es_sucursal = await _es_sucursal_si_hace_falta(db, current_user, todas)
+        notifs = [n for n in todas if _notif_visible(current_user, n, es_sucursal)]
     return [
         {
             "id": n.id,
@@ -522,6 +562,8 @@ async def contar_no_leidas(
         select(Notificacion).where(Notificacion.user_id == current_user.id, Notificacion.leida == False)
     )
     todas = result.scalars().all()
+    if externos.es_externo(current_user):
+        return {"count": len(await _visibles_para_externo(db, current_user, todas))}
     es_sucursal = await _es_sucursal_si_hace_falta(db, current_user, todas)
     count = sum(1 for n in todas if _notif_visible(current_user, n, es_sucursal))
     return {"count": count}

@@ -504,18 +504,23 @@ export const useCalendario = create<Estado>()(
               // Alguien de acá escribio mientras tanto: esto puede ser de antes.
               if (enVuelo > 0 || pendientes.length > 0) return
               if (get().personasEstado === 'error') void get().traerPersonas()
+              // A una cuenta externa (la agencia) la revisión no es el contador
+              // de todo el calendario sino la huella de lo que ella ve
+              // (backend/app/core/externos.py): no crece, así que no se compara
+              // con "mayor" o "menor". Lo que sí vale igual: si cambió, se trae.
+              const opaca = !!data.opaca
               if (data.sinCambios) {
                 // "Sin cambios" ahora es por mundo: el contador pudo subir por
                 // cambios en OTRO mundo y lo de acá sigue siendo eso. Ponerse al
                 // día evita bajarse todo después de un guardado propio (que
                 // compara con rev + 1).
                 const actual = get().rev
-                if (actual != null && data.rev > actual) set({ rev: data.rev })
+                if (!opaca && actual != null && data.rev > actual) set({ rev: data.rev })
                 if (get().conexion !== 'ok') set({ conexion: 'ok' })
                 return
               }
               const actual = get().rev
-              if (data.rev < revMinima || (actual != null && data.rev < actual)) return
+              if (!opaca && (data.rev < revMinima || (actual != null && data.rev < actual))) return
               const barras: Record<string, BarraGuardada> = {}
               for (const b of data.barras ?? []) barras[b.id] = normalizar(b as BarraGuardada)
               set({

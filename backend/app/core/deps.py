@@ -6,6 +6,7 @@ from sqlalchemy import exists, select
 from typing import Optional
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.externos import SIN_ACCESO, es_externo, puede_tener, ruta_permitida
 from app.core.security import decode_token
 from app.models.user import User
 from app.models.local_asignacion import LocalAsignacion
@@ -133,6 +134,13 @@ async def get_current_user(
             detail="PASSWORD_CHANGE_REQUIRED",
         )
 
+    # Una cuenta externa (la agencia) llega solo a su sesión, al calendario
+    # (que cada ruta filtra) y a su campanita: ver app/core/externos.py. Va
+    # acá, en la puerta de TODAS las rutas con sesión, para que una ruta nueva
+    # que se olvide de mirar el flag no le muestre nada interno.
+    if es_externo(user) and not ruta_permitida(request.url.path):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=SIN_ACCESO)
+
     return user
 
 
@@ -143,10 +151,10 @@ def require_permission(permission: str):
     para sembrar ese valor al asignarlo; de ahí en más cada usuario tiene su
     propia lista, editable desde su perfil."""
     async def _check(user: User = Depends(get_current_user)) -> User:
-        if user.is_superuser:
-            return user
-        user_perms = user.permissions or []
-        if permission not in user_perms:
+        # Con el freno de las cuentas externas: aunque un externo tuviera el
+        # permiso en su lista (no debería: lo impiden el panel y la base), si
+        # no es de los suyos no le sirve.
+        if not puede_tener(user, permission):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permiso requerido: {permission}",
@@ -163,10 +171,7 @@ def require_any_permission(*permissions: str):
     (cenefas.view) y el Diccionario (cenefas.diccionario), que desde el
     2026-09-23 se pueden dar por separado."""
     async def _check(user: User = Depends(get_current_user)) -> User:
-        if user.is_superuser:
-            return user
-        user_perms = set(user.permissions or [])
-        if not user_perms.intersection(permissions):
+        if not any(puede_tener(user, p) for p in permissions):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permiso requerido: {' o '.join(permissions)}",

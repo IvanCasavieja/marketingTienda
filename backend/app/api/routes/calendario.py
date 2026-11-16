@@ -30,6 +30,15 @@ un pedido, cuántos locales y hasta cuándo (`fotos`): nunca las fotos.
 
 Las entregas por fases de una tarea (0067) están en entregas.py.
 
+Las cuentas externas (la agencia, 0069) ven el calendario con la vista
+limitada de app/core/externos.py: solo las acciones que tocan su ventana
+(alrededor del mes actual), solo sus tareas, sin avisos ni plantillas ni fotos
+de colocación, y de las personas solo las de su empresa y quienes aprueban sus
+entregas. Se cuida en cada ruta de lectura de acá (/datos y su revisión,
+/personas, /mis-tareas, /ubicar) y en `_barra_o_404`, por donde pasa todo lo
+que se toca por el id de una acción: fuera de la ventana, para un externo la
+acción no existe.
+
 Desde la 0060 la plataforma entera se divide en MUNDOS (Tienda Inglesa,
 Redexpres...) y cada uno tiene su calendario: cada barra es de un mundo,
 `GET /datos?mundo=` trae solo ese, y nadie lee ni escribe en un mundo al que no
@@ -64,9 +73,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import client_ip as _client_ip, require_permission
+from app.core import externos
 from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, puede_abrir
 from app.models.audit_log import AuditLog
-from app.models.entregas import CalendarioEntrega
+from app.models.entregas import CalendarioDecision, CalendarioEntrega, CalendarioMarca, CalendarioVersion
 from app.models.calendario import (
     CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPlantilla, CalendarioPosicionesRM,
     CalendarioRevision, CalendarioRevisionMundo,
@@ -189,6 +199,10 @@ async def _barra_o_404(
     if barra is None:
         raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
     exigir_mundo(usuario, barra.mundo)
+    # Para una cuenta externa, una acción fuera de su ventana no existe: el
+    # mismo 404 que una borrada, así no se puede deducir que está.
+    if externos.es_externo(usuario) and not externos.toca(barra.desde, barra.hasta, externos.ventana_de_hoy()):
+        raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
     return barra
 
 
@@ -198,16 +212,28 @@ async def _exigir_mundo_de(db: AsyncSession, barra_id: str | None, usuario: User
     está, no hay nada que cuidar. Devuelve el mundo (para la revisión)."""
     if barra_id is None:
         return None
-    mundo = (await db.execute(
-        select(CalendarioBarra.mundo).where(CalendarioBarra.id == barra_id)
-    )).scalar_one_or_none()
-    if mundo is not None:
-        exigir_mundo(usuario, mundo)
-    return mundo
+    fila = (await db.execute(
+        select(CalendarioBarra.mundo, CalendarioBarra.desde, CalendarioBarra.hasta)
+        .where(CalendarioBarra.id == barra_id)
+    )).first()
+    if fila is None:
+        return None
+    exigir_mundo(usuario, fila.mundo)
+    if externos.es_externo(usuario) and not externos.toca(fila.desde, fila.hasta, externos.ventana_de_hoy()):
+        raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
+    return fila.mundo
 
 
 def _puede_ver_el_mundo(usuario: User, mundo: str) -> bool:
     return puede_ver_el_calendario(usuario) and puede_abrir(usuario, mundo)
+
+
+def _rev_para(usuario: User, rev: int) -> int | None:
+    """La revisión que se le devuelve a quien escribió. A una cuenta externa,
+    ninguna: el contador es de todo el calendario y le diría cuánto se movió
+    fuera de su ventana (ver `externos.huella`). Su pantalla se pone al día
+    sola en la próxima pregunta."""
+    return None if externos.es_externo(usuario) else rev
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +355,8 @@ async def traer_datos(
     datos pueden venir un poco más nuevos que la revisión (y la próxima
     pregunta los vuelve a traer), pero nunca más viejos."""
     exigir_mundo(current_user, mundo)
+    if externos.es_externo(current_user):
+        return await _datos_para_externo(db, current_user, mundo, rev)
     fila = (await db.execute(
         select(
             CalendarioRevision.rev,
@@ -402,6 +430,140 @@ async def traer_datos(
     }
 
 
+async def _datos_para_externo(db: AsyncSession, usuario: User, mundo: str, rev: int | None) -> dict:
+    """/datos para una cuenta externa (ver app/core/externos.py): las acciones
+    que tocan su ventana, con sus piezas y SOLO sus tareas. Sin avisos (son
+    internos), sin plantillas, sin el pedido de fotos de colocación y, de
+    Retail Media, solo los meses de la ventana.
+
+    La revisión es la huella de esto mismo (`externos.huella`), no el contador
+    de todo el calendario: si lo que ve no cambió, "sin cambios", aunque
+    afuera de su ventana se haya movido todo. `opaca` le dice al front que no
+    la compare como un contador (una huella nueva puede ser menor)."""
+    v = externos.ventana_de_hoy()
+    barras = (await db.execute(
+        select(CalendarioBarra).where(CalendarioBarra.mundo == mundo, externos.condicion_de_ventana(CalendarioBarra, v))
+        .order_by(CalendarioBarra.desde, CalendarioBarra.id)
+    )).scalars().all()
+    ids = [b.id for b in barras]
+    piezas: dict[str, list[CalendarioPieza]] = {}
+    tareas: dict[str, list[CalendarioTarea]] = {}
+    if ids:
+        for p in (await db.execute(
+            select(CalendarioPieza).where(CalendarioPieza.barra_id.in_(ids))
+            .order_by(CalendarioPieza.orden, CalendarioPieza.id)
+        )).scalars():
+            piezas.setdefault(p.barra_id, []).append(p)
+        for t in (await db.execute(
+            select(CalendarioTarea).where(
+                CalendarioTarea.barra_id.in_(ids), CalendarioTarea.asignado_a_id == usuario.id,
+            ).order_by(CalendarioTarea.orden, CalendarioTarea.created_at, CalendarioTarea.id)
+        )).scalars():
+            tareas.setdefault(t.barra_id, []).append(t)
+    visibles = {t.id for ts in tareas.values() for t in ts}
+    entregas = await resumenes_de_entregas(db, list(visibles)) if visibles else {}
+
+    def barra_json(b: CalendarioBarra) -> dict:
+        out = _barra_json(b, piezas.get(b.id, []), [], tareas.get(b.id, []), None, entregas)
+        # Una tarea suya que cuelga de otra que no es suya (la madre la tiene
+        # alguien del equipo) se muestra suelta: la madre no viaja.
+        for t in out.get("tareas", []):
+            if t["parentId"] is not None and t["parentId"] not in visibles:
+                t["parentId"] = None
+        return out
+
+    posiciones = {
+        p.clave: list(p.posiciones)
+        for p in (await db.execute(
+            select(CalendarioPosicionesRM).where(CalendarioPosicionesRM.clave.in_(externos.meses_de_la_ventana(v)))
+        )).scalars()
+    } if mundo == MUNDO_POR_DEFECTO else {}
+    datos = {
+        "mundo": mundo,
+        "barras": [barra_json(b) for b in barras],
+        "posicionesRM": posiciones,
+        "plantillas": [],
+    }
+    huella = externos.huella(datos)
+    if rev is not None and rev == huella:
+        return {"rev": huella, "sinCambios": True, "opaca": True}
+    return {"rev": huella, "opaca": True, **datos}
+
+
+async def ids_de_aprobadores_de(db: AsyncSession, usuario: User, mundo: str | None = None) -> set[int]:
+    """Quiénes aprueban (o decidieron, o marcaron) las entregas de las tareas
+    de una cuenta externa en su ventana: son las personas del equipo con las
+    que trabaja, y las únicas de afuera de su empresa que ve con nombre."""
+    propias = (
+        select(CalendarioTarea.id)
+        .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
+        .where(
+            CalendarioTarea.asignado_a_id == usuario.id,
+            externos.condicion_de_ventana(CalendarioBarra, externos.ventana_de_hoy()),
+        )
+    )
+    if mundo is not None:
+        propias = propias.where(CalendarioBarra.mundo == mundo)
+    ids: set[int] = set()
+    for aprobadores, turno in (await db.execute(
+        select(CalendarioEntrega.aprobadores, CalendarioEntrega.aprobador_de_turno_id)
+        .where(CalendarioEntrega.tarea_id.in_(propias))
+    )).all():
+        ids.update(a for a in (aprobadores or []) if isinstance(a, int))
+        if turno is not None:
+            ids.add(turno)
+    for (uid,) in (await db.execute(
+        select(CalendarioDecision.decidido_por_id)
+        .join(CalendarioVersion, CalendarioVersion.id == CalendarioDecision.version_id)
+        .where(CalendarioVersion.tarea_id.in_(propias))
+    )).all():
+        if uid is not None:
+            ids.add(uid)
+    for (uid,) in (await db.execute(
+        select(CalendarioMarca.autor_id).where(CalendarioMarca.tarea_id.in_(propias))
+    )).all():
+        if uid is not None:
+            ids.add(uid)
+    return ids
+
+
+def nombre_sin_mail(u: User) -> str:
+    """A una cuenta externa no le viaja el mail de nadie: si alguien no tiene
+    nombre cargado, se lo nombra genérico."""
+    return (u.full_name or "").strip() or externos.ALGUIEN_DEL_EQUIPO
+
+
+def ve_el_nombre(externo: User, u: User, aprobadores: set[int]) -> bool:
+    """Si una cuenta externa ve con nombre a `u`: es ella, es de su empresa o
+    aprueba sus entregas."""
+    return (
+        u.id == externo.id or u.id in aprobadores
+        or (externos.es_externo(u) and externos.misma_empresa(u.empresa, externo.empresa))
+    )
+
+
+async def nombres_para_externo(db: AsyncSession, usuario: User, ids, aprobadores: set[int]) -> dict[int, str]:
+    """De esos ids, los nombres que una cuenta externa puede ver. Sin mail."""
+    ids = {i for i in ids if i is not None}
+    if not ids:
+        return {}
+    return {
+        u.id: nombre_sin_mail(u)
+        for u in (await db.execute(select(User).where(User.id.in_(ids)))).scalars()
+        if ve_el_nombre(usuario, u, aprobadores)
+    }
+
+
+def _persona_json(u: User) -> dict:
+    out = {"id": u.id, "nombre": u.full_name or u.email}
+    # Para quien arma las tareas: que se vea que es de afuera y de qué empresa
+    # (y el front no lo ofrece para avisos ni para aprobar).
+    if externos.es_externo(u):
+        out["externo"] = True
+        out["empresa"] = u.empresa
+    return out
+
+
 @router.get("/personas")
 async def listar_personas(
     mundo: str = MUNDO_POR_DEFECTO,
@@ -409,15 +571,23 @@ async def listar_personas(
     db: AsyncSession = Depends(get_db),
 ):
     """Quiénes pueden recibir un aviso o una tarea: los que pueden abrir el
-    calendario de ese mundo. Solo id y nombre."""
+    calendario de ese mundo. Solo id y nombre (y si es una cuenta externa, de
+    qué empresa).
+
+    A una cuenta externa le vuelven solo los de su empresa y quienes aprueban
+    sus entregas, sin mail: no tiene por qué saber quién más trabaja acá."""
     exigir_mundo(current_user, mundo)
     usuarios = (await db.execute(
         select(User).where(User.is_active == True).order_by(User.full_name)  # noqa: E712
-    )).scalars()
-    return [
-        {"id": u.id, "nombre": u.full_name or u.email}
-        for u in usuarios if _puede_ver_el_mundo(u, mundo)
-    ]
+    )).scalars().all()
+    if externos.es_externo(current_user):
+        aprobadores = await ids_de_aprobadores_de(db, current_user, mundo)
+        return [
+            {"id": u.id, "nombre": nombre_sin_mail(u)}
+            for u in usuarios
+            if _puede_ver_el_mundo(u, mundo) and ve_el_nombre(current_user, u, aprobadores)
+        ]
+    return [_persona_json(u) for u in usuarios if _puede_ver_el_mundo(u, mundo)]
 
 
 # ---------------------------------------------------------------------------
@@ -781,6 +951,13 @@ async def configurar_aviso(
 
     pedidos = list(dict.fromkeys(payload.destinatarios))
     usuarios = (await db.execute(select(User).where(User.id.in_(pedidos)))).scalars().all()
+    if any(externos.es_externo(u) for u in usuarios):
+        # Los avisos son del equipo: dicen qué arranca y cuándo, también de lo
+        # que está fuera de la ventana de la agencia.
+        raise HTTPException(
+            status_code=422,
+            detail="Los avisos son internos: una cuenta externa (agencia) no los recibe. Sacala de la lista.",
+        )
     validos = {u.id for u in usuarios if _puede_ver_el_mundo(u, barra.mundo)}
     faltan = [uid for uid in pedidos if uid not in validos]
     if faltan:
@@ -912,7 +1089,9 @@ TIPO_TAREA = "calendario_tarea"
 
 
 def _puede_gestionar_tareas(usuario: User) -> bool:
-    return bool(usuario.is_superuser) or PERMISO_TAREAS in (usuario.permissions or [])
+    # Con el freno de las cuentas externas (externos.puede_tener): una agencia
+    # nunca arma ni reparte tareas, aunque el permiso apareciera en su lista.
+    return externos.puede_tener(usuario, PERMISO_TAREAS)
 
 
 def _exigir_gestion_de_tareas(usuario: User) -> None:
@@ -1171,7 +1350,7 @@ async def cambiar_tarea(
             avisados += 1
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
-    return {"id": tarea_id, "rev": rev, "avisados": avisados}
+    return {"id": tarea_id, "rev": _rev_para(current_user, rev), "avisados": avisados}
 
 
 @router.delete("/tareas/{tarea_id}")
@@ -1210,7 +1389,7 @@ async def mis_tareas(
     if not mundos:
         return []
     desde = datetime.now(timezone.utc) - timedelta(days=DIAS_DE_HECHAS_EN_MIS_TAREAS)
-    filas = (await db.execute(
+    consulta = (
         select(CalendarioTarea, CalendarioBarra)
         .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
         .where(
@@ -1222,12 +1401,23 @@ async def mis_tareas(
                 func.coalesce(CalendarioTarea.updated_at, CalendarioTarea.created_at) >= desde,
             ),
         )
-        .order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
+    )
+    externo = externos.es_externo(current_user)
+    if externo:
+        # Aunque sea suya: la tarea de una acción de dentro de tres meses la
+        # ve cuando la acción entra en su ventana.
+        consulta = consulta.where(externos.condicion_de_ventana(CalendarioBarra, externos.ventana_de_hoy()))
+    filas = (await db.execute(
+        consulta.order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
     )).all()
     entregas = await resumenes_de_entregas(db, [t.id for t, _ in filas]) if filas else {}
+    propias = {t.id for t, _ in filas}
     return [
         {
             **_tarea_json(t, entregas.get(t.id)),
+            # Como en /datos: a un externo no le viaja el id de una tarea madre
+            # que no es suya.
+            **({"parentId": None} if externo and t.parent_id not in propias else {}),
             "accion": {
                 "id": b.id, "mundo": b.mundo, "nombre": b.nombre, "banda": b.banda,
                 "seccion": b.seccion, "color": b.color,
@@ -1245,7 +1435,8 @@ async def ubicar_barra(
     db: AsyncSession = Depends(get_db),
 ):
     """En qué mundo y en qué fecha está una acción: lo necesita un aviso de la
-    campanita para abrir su ficha aunque se esté mirando otro mundo."""
+    campanita para abrir su ficha aunque se esté mirando otro mundo. Para una
+    cuenta externa, una acción fuera de su ventana da 404 (`_barra_o_404`)."""
     barra = await _barra_o_404(db, barra_id, current_user)
     return {"id": barra.id, "mundo": barra.mundo, "desde": barra.desde.isoformat()}
 

@@ -700,6 +700,7 @@
     },
     "listas": {
       "personas": "Users",
+      "externas": "External",
       "redex": "Redex branches",
       "tienda": "Tienda branches",
       "vacia": "Nothing in this list yet."

@@ -30,6 +30,13 @@ Tres reglas que cuida este módulo, y por qué:
 
 Las lecturas a la base están todas en `FuenteCalendario`, aparte, para que las
 pruebas las cambien por datos en memoria sin una base.
+
+4. **Una cuenta externa (la agencia) ve lo mismo que en la pantalla.** Hoy no
+   tiene Don Tino (ver PERMISOS_DE_EXTERNOS en app/core/externos.py), pero si
+   algún día se le habilita, sus herramientas ya salen recortadas:
+   `FuenteDeExterno` envuelve a la fuente y deja pasar solo las acciones que
+   tocan su ventana, solo SUS tareas, ningún aviso y, de las personas, solo
+   las de su empresa. La carga del equipo y los avisos no se le contestan.
 """
 from __future__ import annotations
 
@@ -42,6 +49,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func, or_, select
 
+from app.core import externos
 from app.core.mundos import MUNDOS, mundos_de, puede_abrir
 from app.models.calendario import CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioTarea
 from app.models.user import User
@@ -464,6 +472,97 @@ class FuenteCalendario:
 
     async def personas_activas(self) -> list:
         return list((await self.db.execute(select(User).where(User.is_active == True))).scalars())  # noqa: E712
+
+
+def _interseccion(rango, v):
+    """El pedazo de `rango` que cae en la ventana `v`, o None si no se tocan.
+    Sin rango, la ventana entera."""
+    if rango is None:
+        return v
+    d, h = max(rango[0], v[0]), min(rango[1], v[1])
+    return (d, h) if d <= h else None
+
+
+class FuenteDeExterno:
+    """La fuente de una cuenta externa (ver app/core/externos.py): envuelve a
+    otra y deja pasar solo lo que la persona ve en la pantalla. Las acciones,
+    las que tocan su ventana; las tareas, solo las suyas; los avisos, ninguno
+    (son internos); las personas, ella y las de su empresa.
+
+    Cada método filtra lo que vuelve, no solo lo que pide: si una herramienta
+    pide algo de más, igual no se escapa. Lo que se vio pasar queda anotado
+    (`_visibles`, `_propias`) para que lo que cuelga de una acción o de una
+    tarea (piezas, títulos de tareas madre) salga solo si su dueña salió."""
+
+    def __init__(self, fuente, usuario, ventana: tuple[date, date]):
+        self.fuente = fuente
+        self.usuario = usuario
+        self.v = ventana
+        self._visibles: set[str] = set()
+        self._propias: set[str] = set()
+
+    def _toca(self, b) -> bool:
+        return externos.toca(b.desde, b.hasta, self.v)
+
+    def _anotar(self, barras) -> list:
+        out = [b for b in barras if self._toca(b)]
+        self._visibles.update(b.id for b in out)
+        return out
+
+    async def barras(self, mundos, *, rango=None, secciones=None, ids=None) -> list:
+        acotado = _interseccion(rango, self.v)
+        if acotado is None:
+            return []
+        return self._anotar(await self.fuente.barras(mundos, rango=acotado, secciones=secciones, ids=ids))
+
+    async def piezas_de(self, barra_ids) -> list:
+        ids = [i for i in (barra_ids or []) if i in self._visibles]
+        return [p for p in await self.fuente.piezas_de(ids) if p.barra_id in self._visibles]
+
+    async def tareas_de(self, barra_ids) -> list:
+        ids = [i for i in (barra_ids or []) if i in self._visibles]
+        out = [
+            t for t in await self.fuente.tareas_de(ids)
+            if t.barra_id in self._visibles and t.asignado_a_id == self.usuario.id
+        ]
+        self._propias.update(t.id for t in out)
+        return out
+
+    async def avisos_de(self, barra_ids) -> list:
+        return []
+
+    async def piezas_con_accion(self, mundos, desde: date, hasta: date) -> list[tuple]:
+        return [(p, b) for p, b in await self.fuente.piezas_con_accion(mundos, desde, hasta) if self._toca(b)]
+
+    async def tareas_con_accion(self, mundos, **kw) -> list[tuple]:
+        out = [
+            (t, b) for t, b in await self.fuente.tareas_con_accion(mundos, **kw)
+            if self._toca(b) and t.asignado_a_id == self.usuario.id
+        ]
+        self._propias.update(t.id for t, _ in out)
+        return out
+
+    async def titulos_de_tareas(self, ids) -> dict[str, str]:
+        # El título de una tarea madre que no es suya no sale.
+        return await self.fuente.titulos_de_tareas([i for i in (ids or []) if i in self._propias])
+
+    async def avisos_con_accion(self, mundos, arranque_desde: date, arranque_hasta: date) -> list[tuple]:
+        return []
+
+    async def personas_activas(self) -> list:
+        return [
+            u for u in await self.fuente.personas_activas()
+            if u.id == self.usuario.id
+            or (externos.es_externo(u) and externos.misma_empresa(u.empresa, self.usuario.empresa))
+        ]
+
+
+# Lo que no se le contesta a una cuenta externa: la carga de todo el equipo y
+# los avisos (internos).
+_NO_PARA_EXTERNOS = {
+    "calendario_carga": "Es una cuenta externa (agencia): no ve la carga del equipo. Contale solo de sus tareas.",
+    "calendario_avisos": "Es una cuenta externa (agencia): los avisos del calendario son internos y no los ve.",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -930,7 +1029,13 @@ async def ejecutar(nombre: str, args: dict, usuario, db, *, hoy: date | None = N
     funcion = HERRAMIENTAS.get(nombre)
     if funcion is None:
         return _dump({"error": f"Herramienta desconocida: {nombre}"})
+    hoy = hoy or hoy_en_uruguay()
+    fuente = fuente or FuenteCalendario(db)
+    if externos.es_externo(usuario):
+        if nombre in _NO_PARA_EXTERNOS:
+            return _dump({"error": _NO_PARA_EXTERNOS[nombre]})
+        fuente = FuenteDeExterno(fuente, usuario, externos.ventana(hoy))
     try:
-        return await funcion(usuario, args or {}, fuente or FuenteCalendario(db), hoy or hoy_en_uruguay())
+        return await funcion(usuario, args or {}, fuente, hoy)
     except ConsultaInvalida as exc:
         return _dump({"error": str(exc)})

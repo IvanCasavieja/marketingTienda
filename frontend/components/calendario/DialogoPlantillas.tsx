@@ -13,7 +13,7 @@ import {
 } from '@/lib/calendario/plantillas'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { useCalendario, useCategoriasDelMundo } from '@/lib/calendario/store'
-import type { AnclaTarea, BarraGuardada, Persona, Plantilla, TareaDePlantilla } from '@/lib/calendario/tipos'
+import { nombreConEmpresa, type AnclaTarea, type BarraGuardada, type Persona, type Plantilla, type TareaDePlantilla } from '@/lib/calendario/tipos'
 import { mundoDe } from '@/lib/mundos'
 import { Cocarda } from './Cocarda'
 import { useDialogo } from './useDialogo'
@@ -583,7 +583,7 @@ function FilaDeTarea({
               {tarea.asignadoA != null && !asignado && (
                 <option value={tarea.asignadoA}>{personasCargadas ? 'Alguien que ya no ve este calendario' : 'Asignada'}</option>
               )}
-              {personas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
             </select>
           </label>
           <span className="flex items-center gap-1">

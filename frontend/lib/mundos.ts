@@ -22,7 +22,8 @@
 
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import type { CurrentUser } from '@/types'
+import type { CurrentUser } from '../types'
+import { INICIO_DE_EXTERNOS } from './externos'
 
 /** El nombre de la plataforma. Está en un solo lugar para poder cambiarlo. */
 export const MARCA = 'Core Tienda'
@@ -149,9 +150,11 @@ export function rutaEnMundo(pathname: string, mundo: string): boolean {
   return !herramienta || herramienta.mundos.includes(mundo)
 }
 
-/** A dónde va la persona al entrar: al calendario si lo puede ver; si no, a
- *  donde entraba antes (los logins de sucursal, por ejemplo). */
+/** A dónde va la persona al entrar: una cuenta externa (la agencia), a su
+ *  trabajo (lib/externos.ts); al calendario si lo puede ver; si no, a donde
+ *  entraba antes (los logins de sucursal, por ejemplo). */
 export function inicioDe(user: CurrentUser | null | undefined): string {
+  if (user?.es_externo) return INICIO_DE_EXTERNOS
   const ve = !!user && (user.is_superuser || (user.permissions ?? []).includes('calendario.view'))
   return ve ? '/calendario' : '/home'
 }

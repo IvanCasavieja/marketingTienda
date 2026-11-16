@@ -117,8 +117,15 @@ def puede_ver_el_calendario(usuario: User) -> bool:
 def puede_recibir_el_aviso(usuario: User | None, mundo: str) -> bool:
     """Si a esa persona le sale hoy un aviso de una acción de ese mundo. A
     quien le sacaron el calendario, o el mundo de la acción, después de que se
-    configuró el aviso no le llegan avisos de algo que no puede abrir."""
-    return usuario is not None and puede_ver_el_calendario(usuario) and puede_abrir(usuario, mundo)
+    configuró el aviso no le llegan avisos de algo que no puede abrir.
+
+    A una cuenta externa (la agencia) nunca: los avisos son del equipo y salen
+    hasta un año antes de la acción, fuera de su ventana. La ficha ya no deja
+    elegirla; esto cuida los avisos que se hayan configurado antes."""
+    return (
+        usuario is not None and not getattr(usuario, "es_externo", False)
+        and puede_ver_el_calendario(usuario) and puede_abrir(usuario, mundo)
+    )
 
 
 def _ids(destinatarios) -> list[int]:

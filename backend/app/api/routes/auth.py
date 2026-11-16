@@ -14,6 +14,7 @@ from app.core.rate_limit import limiter
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
 from app.core.deps import get_current_user, _needs_password_change, client_ip as _client_ip
 from app.models.user import User
+from app.core import externos
 from app.core.mundos import mundos_de
 from app.models.audit_log import AuditLog
 from app.models.local_asignacion import LocalAsignacion
@@ -67,6 +68,10 @@ def _user_response(
     user: User, assigned_locales: list[str] | None = None, must_change_password: bool = False
 ) -> UserResponse:
     role = user.role
+    ventana = None
+    if externos.es_externo(user):
+        desde, hasta = externos.ventana_de_hoy()
+        ventana = {"desde": desde.isoformat(), "hasta": hasta.isoformat()}
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -79,6 +84,9 @@ def _user_response(
         assigned_locales=assigned_locales or [],
         mundos=mundos_de(user),
         must_change_password=must_change_password,
+        es_externo=bool(user.es_externo),
+        empresa=user.empresa,
+        ventana=ventana,
     )
 
 

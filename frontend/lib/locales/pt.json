@@ -700,6 +700,7 @@
     },
     "listas": {
       "personas": "Usuários",
+      "externas": "Externas",
       "redex": "Filiais Redex",
       "tienda": "Filiais Tienda",
       "vacia": "Ainda não há nada nesta lista."

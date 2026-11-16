@@ -17,6 +17,7 @@ import { LANGUAGES, setLanguage, type LangCode } from "@/lib/i18n";
 import { useTheme } from "@/hooks/useTheme";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
+import { esExterno } from "@/lib/externos";
 import { toast } from "sonner";
 import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import { useCalendario } from "@/lib/calendario/store";
@@ -189,7 +190,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const puedeEditar = hasPerm("calendario.edit");
   const fotosPendientes = usePendientesDeFotos((s) => s.pendientes) ?? 0;
   const localesDelMundo = useLocalesDelMundo((s) => (mundo ? s.porMundo[mundo.clave] : undefined));
-  const nucleo: { href: string; label: string; icon: typeof CalendarDays; perm?: string; numero?: number }[] = [
+  // Una cuenta externa (la agencia, lib/externos.ts) ve su trabajo primero y
+  // nada de las herramientas internas: el servidor igual se las niega.
+  const externo = esExterno(currentUser);
+  const nucleo: { href: string; label: string; icon: typeof CalendarDays; perm?: string; numero?: number }[] = externo ? [
+    { href: "/entregas", label: t("sidebar.misEntregas", "Mis entregas"), icon: Layers, perm: "calendario.view" },
+    { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
+    { href: "/calendario", label: t("sidebar.calendarioDelMes", "Calendario del mes"), icon: CalendarDays, perm: "calendario.view" },
+  ].filter((item) => hasPerm(item.perm)) : [
     ...(esLocal ? [{ href: "/fotos", label: t("sidebar.fotosParaSubir", "Fotos para subir"), icon: Camera, numero: fotosPendientes }] : []),
     { href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" },
     { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
@@ -237,7 +245,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   // El mundo va primero (se calcula arriba): decide qué herramientas existen.
   // Después el permiso decide cuáles de esas puede usar la persona.
-  const nav = herramientasAll.filter((item) =>
+  const nav = externo ? [] : herramientasAll.filter((item) =>
     (!item.perm || hasPerm(item.perm)) && (!mundo || rutaEnMundo(item.href, mundo.clave)));
 
   // Las herramientas arrancan plegadas, salvo que se esté parado en una. Lo
@@ -591,7 +599,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-semibold">{currentUser?.full_name ?? t("sidebar.miPerfil")}</span>
-                <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{t("sidebar.miPerfil")}</span>
+                <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">
+                  {externo && currentUser?.empresa ? currentUser.empresa : t("sidebar.miPerfil")}
+                </span>
               </span>
             </Link>
             <button

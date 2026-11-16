@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     # 0 = sin freno.
     BASE_TOPE_MB: int = 400
 
+    # Las cuentas externas (la agencia, un diseñador de afuera: ver
+    # app/core/externos.py) ven solo las acciones del calendario que tocan la
+    # ventana [hoy - EXTERNOS_DIAS_ANTES, fin del mes actual +
+    # EXTERNOS_DIAS_DESPUES], en hora de Uruguay. Pedido de Ivan (15/11/2026):
+    # "que solamente puedan ver el calendario actual, no lo que viene dentro de
+    # 2 o 3 meses". Los días de margen son para que una acción que arranca el
+    # 1 del mes que viene, o la que terminó hace unos días, no desaparezca de
+    # golpe a mitad de una entrega.
+    EXTERNOS_DIAS_ANTES: int = 7
+    EXTERNOS_DIAS_DESPUES: int = 7
+
     # El modelo de Anthropic que usan TODOS los agentes: Don Tino, Tinín,
     # Doña Tina, Dogti, la extracción de facturas y la pata de Claude en la
     # Tríada. Estaba hardcodeado y repetido en seis archivos, cada uno con un

@@ -7,7 +7,7 @@ import { useCurrentUserStore } from "@/store/currentUser";
 import {
   Users, UserPlus, KeyRound, ShieldAlert, ShieldCheck,
   Loader2, CheckCircle2, XCircle, ChevronDown,
-  Plus, Trash2, Pencil, X, Shield, History, Cpu, Store,
+  Plus, Trash2, Pencil, X, Shield, History, Cpu, Store, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -20,7 +20,9 @@ type AdminTab = "usuarios" | "auditoria" | "ia";
 // Dentro de la pestaña de usuarios: las personas y los logins de sucursal se
 // listaban mezclados (29 personas perdidas entre 60 sucursales). Se separan en
 // tres listas; la de Tienda todavía no tiene ninguna, llegan más adelante.
-type ListaDeUsuarios = "personas" | "redex" | "tienda";
+// Las cuentas externas (la agencia, 15/11/2026) van en la suya: son de afuera
+// y se administran distinto (sin rol, solo ven el calendario de su mes).
+type ListaDeUsuarios = "personas" | "externas" | "redex" | "tienda";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,6 +46,52 @@ interface AdminUser {
   sucursales: string[];
   /** "redex" | "tienda" — null si no tiene sucursales. */
   sucursal_tipo: string | null;
+  /** Cuenta externa (la agencia): solo ve el calendario de su mes y sus tareas. */
+  es_externo?: boolean;
+  empresa?: string | null;
+}
+
+/** El cartelito de una cuenta externa, en la lista y en el editor. */
+function MarcaExterna({ empresa }: { empresa?: string | null }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-sky-800 dark:bg-sky-500/15 dark:text-sky-200">
+      <Building2 size={10} aria-hidden /> Externa{empresa ? ` · ${empresa}` : ""}
+    </span>
+  );
+}
+
+/** Los mundos de una cuenta nueva o externa, como chips que se tildan. */
+function ChipsDeMundos({ elegidos, puedoDar, onAlternar }: {
+  elegidos: Set<string>;
+  puedoDar: Set<string>;
+  onAlternar: (clave: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {MUNDOS.map((m) => {
+        const activo = elegidos.has(m.clave);
+        const ajeno = !activo && !puedoDar.has(m.clave);
+        return (
+          <button
+            key={m.clave}
+            type="button"
+            onClick={() => onAlternar(m.clave)}
+            disabled={ajeno}
+            aria-pressed={activo}
+            title={ajeno ? "No entrás a este mundo: no lo podés dar" : undefined}
+            className={`flex min-h-[36px] items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+              activo
+                ? "border-brand-500 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
+                : "border-slate-300 text-slate-500 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400"
+            }`}
+          >
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: m.color, opacity: activo ? 1 : 0.35 }} />
+            {m.nombre}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 interface RoleItem {
@@ -87,6 +135,10 @@ function UserEditorModal({
   const [email,    setEmail]    = useState(user.email);
   const [selected, setSelected] = useState<Set<string>>(new Set(user.permissions));
   const [mundos,   setMundos]   = useState<Set<string>>(new Set(user.mundos ?? []));
+  // Cuenta externa (la agencia): sin rol y con solo ver el calendario de su
+  // mes. El servidor le saca todo lo demás al marcarla (y no deja dárselo).
+  const [externo,  setExterno]  = useState<boolean>(!!user.es_externo);
+  const [empresa,  setEmpresa]  = useState<string>(user.empresa ?? "");
   // Los mundos que quien edita puede dar: los suyos (un Super Admin, todos).
   const yo = useCurrentUserStore((s) => s.user);
   const puedoDar = new Set(yo?.is_superuser ? MUNDOS.map((m) => m.clave) : (yo?.mundos ?? []));
@@ -137,9 +189,15 @@ function UserEditorModal({
   async function save() {
     if (!fullName.trim()) { toast.error(t("admin.userEditor.nameRequired")); return; }
     if (!esSucursal && !email.trim()) { toast.error(t("admin.userEditor.emailRequired")); return; }
+    if (externo && !empresa.trim()) { toast.error("Decí de qué empresa es la cuenta externa."); return; }
     setSaving(true);
     try {
       await api.patch(`/admin/users/${user.id}`, esSucursal ? { full_name: fullName } : { full_name: fullName, email });
+      // Externa o del equipo, antes que los permisos: al pasarla a externa el
+      // servidor le saca lo que no le corresponde.
+      if (externo !== !!user.es_externo || (externo && empresa.trim() !== (user.empresa ?? ""))) {
+        await api.patch(`/admin/users/${user.id}/externo`, { es_externo: externo, empresa: externo ? empresa.trim() : null });
+      }
       // Los mundos van antes que los permisos: uno se los puede cambiar a sí
       // mismo, y los permisos propios no (el servidor lo rechaza y corta acá).
       const distintos = (a: Set<string>, b: Set<string>) => a.size !== b.size || [...a].some((x) => !b.has(x));
@@ -152,7 +210,8 @@ function UserEditorModal({
       }
       // Los permisos viajan solo si cambiaron: los propios el servidor no deja
       // tocarlos, y mandarlos igual daba error aunque nadie los hubiera tocado.
-      if (distintos(selected, new Set(user.permissions))) {
+      // A una externa no: tiene los suyos fijos.
+      if (!externo && distintos(selected, new Set(user.permissions))) {
         try {
           await api.patch(`/admin/users/${user.id}/permissions`, { permissions: [...selected] });
         } catch (err: any) {
@@ -252,7 +311,45 @@ function UserEditorModal({
             )}
           </div>
 
+          {/* Cuenta externa: la agencia o un diseñador de afuera. */}
+          {!user.is_superuser && !esSucursal && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 dark:border-sky-500/25 dark:bg-sky-500/5">
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={externo}
+                  onChange={(e) => setExterno(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-sky-600"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Cuenta externa (agencia o diseñador de afuera)</span>
+                  <span className="block text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                    Ve solo el calendario del mes actual (con una semana de margen), sus tareas y sus entregas.
+                    No ve avisos, notas internas ni ninguna herramienta, y no se le pueden dar permisos de gestión.
+                  </span>
+                </span>
+              </label>
+              {externo && (
+                <label className="mt-2.5 block">
+                  <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Empresa</span>
+                  <input
+                    className="input w-full text-sm"
+                    value={empresa}
+                    maxLength={120}
+                    onChange={(e) => setEmpresa(e.target.value)}
+                    placeholder="Agencia, estudio…"
+                  />
+                </label>
+              )}
+            </div>
+          )}
+
           {/* Permisos individuales — se prenden/apagan por usuario, no por rol */}
+          {externo ? (
+            <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-600 dark:bg-slate-800/50 dark:text-slate-300">
+              Una cuenta externa tiene un solo permiso, fijo: ver el calendario de su mes (calendario.view).
+            </p>
+          ) : (
           <div>
             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">{t("admin.roleEditor.permissionsLabel")}</p>
             {viewOnly && (
@@ -287,6 +384,7 @@ function UserEditorModal({
               ))}
             </div>
           </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -471,7 +569,24 @@ export default function AdminPage() {
   const [form, setForm] = useState({
     email: "", full_name: "", password: "",
     role_id: "" as string | number,
+    // Cuenta externa (la agencia): sin rol, con su empresa y sus mundos.
+    es_externo: false, empresa: "",
   });
+  const [mundosNuevos, setMundosNuevos] = useState<Set<string>>(new Set(["tienda_inglesa"]));
+  const yo = useCurrentUserStore((s) => s.user);
+  const puedoDarMundos = new Set(yo?.is_superuser ? MUNDOS.map((m) => m.clave) : (yo?.mundos ?? []));
+  function alternarMundoNuevo(clave: string) {
+    setMundosNuevos((prev) => {
+      const next = new Set(prev);
+      if (next.has(clave)) {
+        if (next.size === 1) { toast.error("Tiene que quedar al menos un mundo."); return prev; }
+        next.delete(clave);
+      } else {
+        next.add(clave);
+      }
+      return next;
+    });
+  }
 
   // Superadmin no se ofrece como rol asignable desde el panel — es un flag
   // reservado para la cuenta principal, no algo que se elija en un select.
@@ -482,7 +597,8 @@ export default function AdminPage() {
   // devuelve en `sucursales` junto con su tipo.
   const esSucursal = (u: AdminUser) => u.sucursales.length > 0;
   const usuariosPorLista: Record<ListaDeUsuarios, AdminUser[]> = {
-    personas: users.filter((u) => !esSucursal(u)),
+    personas: users.filter((u) => !esSucursal(u) && !u.es_externo),
+    externas: users.filter((u) => !!u.es_externo),
     redex:    users.filter((u) => esSucursal(u) && u.sucursal_tipo !== "tienda"),
     tienda:   users.filter((u) => esSucursal(u) && u.sucursal_tipo === "tienda"),
   };
@@ -522,13 +638,22 @@ export default function AdminPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await api.post("/admin/users", {
-        ...form,
-        role_id: form.role_id === "" ? null : Number(form.role_id),
-      });
-      toast.success(t("admin.createForm.created"));
+      await api.post("/admin/users", form.es_externo
+        ? {
+          email: form.email, full_name: form.full_name, password: form.password,
+          es_externo: true, empresa: form.empresa.trim(), mundos: [...mundosNuevos],
+        }
+        : {
+          email: form.email, full_name: form.full_name, password: form.password,
+          role_id: form.role_id === "" ? null : Number(form.role_id),
+        });
+      toast.success(form.es_externo
+        ? `Listo: ${form.full_name} ya puede entrar. Ve su trabajo y el calendario del mes; la primera vez elige su contraseña.`
+        : t("admin.createForm.created"));
       setShowForm(false);
-      setForm({ email: "", full_name: "", password: "", role_id: "" });
+      if (form.es_externo) setLista("externas");
+      setForm({ email: "", full_name: "", password: "", role_id: "", es_externo: false, empresa: "" });
+      setMundosNuevos(new Set(["tienda_inglesa"]));
       await load();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("admin.createForm.createError"));
@@ -601,9 +726,13 @@ export default function AdminPage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("admin.title")}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("admin.subtitle")}</p>
         </div>
-        {activeTab === "usuarios" && lista === "personas" && (
+        {activeTab === "usuarios" && (lista === "personas" || lista === "externas") && (
           <button
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => {
+              // Desde la lista de externas, el alta arranca como cuenta externa.
+              if (!showForm) setForm((f) => ({ ...f, es_externo: lista === "externas" }));
+              setShowForm((v) => !v);
+            }}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-all"
           >
             <UserPlus size={15} /> {t("admin.newUser")}
@@ -662,13 +791,37 @@ export default function AdminPage() {
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
             <UserPlus size={15} className="text-brand-500" /> {t("admin.createForm.title")}
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          {/* Del equipo o de afuera: la agencia entra con la vista limitada. */}
+          <div className="segmentado w-full sm:w-fit" role="group" aria-label="Tipo de cuenta">
+            <button type="button" aria-pressed={!form.es_externo}
+              onClick={() => setForm((f) => ({ ...f, es_externo: false }))}
+              className="segmento !min-h-[40px] !px-3 text-sm">
+              <Users size={14} aria-hidden /> Del equipo
+            </button>
+            <button type="button" aria-pressed={form.es_externo}
+              onClick={() => setForm((f) => ({ ...f, es_externo: true, role_id: "" }))}
+              className="segmento !min-h-[40px] !px-3 text-sm">
+              <Building2 size={14} aria-hidden /> Externa (agencia)
+            </button>
+          </div>
+          {form.es_externo && (
+            <p className="rounded-xl bg-sky-50 px-3 py-2.5 text-xs leading-relaxed text-sky-900 dark:bg-sky-500/10 dark:text-sky-100">
+              Entra directo a sus entregas y a sus tareas. Del calendario ve solo el mes actual, con una semana de margen;
+              no ve avisos, notas internas ni ninguna herramienta, y no se le pueden dar permisos de gestión.
+            </p>
+          )}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <input required className="input text-sm" placeholder={t("admin.createForm.namePlaceholder")}
               value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
             <input required type="email" className="input text-sm" placeholder={t("admin.createForm.emailPlaceholder")}
               value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
             <input required className="input text-sm" placeholder={t("admin.createForm.passwordPlaceholder")}
               value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
+            {form.es_externo ? (
+              <input required className="input text-sm" placeholder="Empresa (la agencia, el estudio…)" maxLength={120}
+                aria-label="Empresa"
+                value={form.empresa} onChange={(e) => setForm((f) => ({ ...f, empresa: e.target.value }))} />
+            ) : (
             <div className="relative">
               <select className="input text-sm w-full appearance-none pr-8" value={form.role_id}
                 onChange={(e) => setForm((f) => ({ ...f, role_id: e.target.value }))}>
@@ -677,7 +830,14 @@ export default function AdminPage() {
               </select>
               <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             </div>
+            )}
           </div>
+          {form.es_externo && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Mundos donde trabaja</p>
+              <ChipsDeMundos elegidos={mundosNuevos} puedoDar={puedoDarMundos} onAlternar={alternarMundoNuevo} />
+            </div>
+          )}
           <div className="flex gap-2">
             <button type="submit" className="btn-primary text-sm px-4 py-2">{t("admin.createForm.create")}</button>
             <button type="button" onClick={() => setShowForm(false)} className="btn-secondary text-sm px-4 py-2">{t("admin.createForm.cancel")}</button>
@@ -765,6 +925,7 @@ export default function AdminPage() {
           <div className="ml-auto flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
             {([
               ["personas", t("admin.listas.personas"), Users],
+              ["externas", t("admin.listas.externas", "Externas"), Building2],
               ["redex",    t("admin.listas.redex"),    Store],
               ["tienda",   t("admin.listas.tienda"),   Store],
             ] as const).map(([clave, etiqueta, Icono]) => (
@@ -805,6 +966,7 @@ export default function AdminPage() {
                         {u.role_name.toUpperCase()}
                       </span>
                     )}
+                    {u.es_externo && <MarcaExterna empresa={u.empresa} />}
                     {!u.is_active && (
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{t("admin.inactive")}</span>
                     )}
@@ -827,9 +989,12 @@ export default function AdminPage() {
                   <History size={15} />
                 </button>
 
-                {/* Role selector — el Super Admin no se reasigna desde acá */}
+                {/* Role selector — el Super Admin no se reasigna desde acá, y
+                    una cuenta externa no lleva rol (el servidor lo rechaza). */}
                 {u.is_superuser ? (
                   <span className="text-[11px] text-slate-400 dark:text-slate-500 italic shrink-0 px-1">—</span>
+                ) : u.es_externo ? (
+                  <span className="hidden shrink-0 px-1 text-[11px] text-slate-500 dark:text-slate-400 sm:inline">Sin rol</span>
                 ) : (
                   <div className="relative shrink-0">
                     <select

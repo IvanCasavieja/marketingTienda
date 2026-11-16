@@ -1,10 +1,16 @@
-"""Endpoints de administración — Super Admin y Admin (con restricciones entre sí)."""
+"""Endpoints de administración — Super Admin y Admin (con restricciones entre sí).
+
+Las cuentas externas (la agencia, 0069) se crean y se editan acá, con el
+mismo panel: `es_externo` y el nombre de la empresa. Un externo nunca recibe
+permisos de gestión ni de admin, ni un rol: el servidor lo rechaza aunque se
+pida (`_ensure_externo_puede_tener`), y la base también (ver la 0069).
+"""
 import secrets
 import string
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from app.schemas.auth import _validate_password_strength
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +24,8 @@ from app.models.audit_log import AuditLog
 from app.models.cenefa_job import CenefaJob
 from app.models.local_asignacion import LocalAsignacion
 from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
-from app.core.mundos import MUNDOS, mundos_de, mundos_iniciales, mundos_que_no_puede_dar
+from app.core import externos
+from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, mundos_de, mundos_iniciales, mundos_que_no_puede_dar
 from app.models.user import User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -74,6 +81,38 @@ def _ensure_can_grant(current_user: User, permissions: list[str]) -> None:
             status_code=403,
             detail=f"No podés otorgar permisos que vos mismo no tenés: {missing}",
         )
+
+
+def _ensure_externo_puede_tener(target: User, permissions: list[str]) -> None:
+    """Una cuenta externa (la agencia) tiene como mucho los permisos de
+    PERMISOS_DE_EXTERNOS: nada de gestión (tareas, edición del calendario,
+    Retail Media) ni de admin. Lo pida quien lo pida, superadmin incluido."""
+    if not externos.es_externo(target):
+        return
+    de_mas = externos.permisos_no_permitidos(permissions)
+    if de_mas:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Una cuenta externa solo puede ver el calendario: no se le pueden dar {de_mas}",
+        )
+
+
+def _validar_mundos_pedidos(current_user: User, antes, pedidos: list[str]) -> list[str]:
+    """Los mundos pedidos, en el orden del catálogo, con las mismas reglas que
+    PATCH /users/{id}/mundos: que existan, al menos uno, y nadie da un mundo al
+    que no entra."""
+    desconocidos = [m for m in pedidos if m not in MUNDOS]
+    if desconocidos:
+        raise HTTPException(status_code=422, detail=f"Mundos desconocidos: {desconocidos}")
+    if not pedidos:
+        raise HTTPException(status_code=422, detail="Tiene que quedar al menos un mundo.")
+    ajenos = mundos_que_no_puede_dar(current_user, antes, pedidos)
+    if ajenos:
+        raise HTTPException(
+            status_code=403,
+            detail="No podés dar acceso a un mundo al que vos no entrás: " + ", ".join(MUNDOS[m] for m in ajenos),
+        )
+    return [m for m in MUNDOS if m in set(pedidos)]
 
 
 def _ensure_not_self(current_user: User, user_id: int) -> None:
@@ -248,6 +287,18 @@ class CreateUserRequest(BaseModel):
     full_name: str
     password: str
     role_id: int | None = None
+    # Cuenta externa (la agencia): sin rol, solo ve el calendario, con la
+    # vista limitada de app/core/externos.py. La empresa es obligatoria.
+    es_externo: bool = False
+    empresa: str | None = Field(None, max_length=120)
+    # Solo para una cuenta externa: los mundos donde trabaja (por defecto
+    # Tienda Inglesa). A una interna se le dan según su rol, como siempre.
+    mundos: list[str] | None = None
+
+
+class UpdateExternoRequest(BaseModel):
+    es_externo: bool
+    empresa: str | None = Field(None, max_length=120)
 
 
 class AssignRoleRequest(BaseModel):
@@ -325,6 +376,8 @@ async def list_users(
             "mundos":       mundos_de(u),
             "is_active":    u.is_active,
             "is_superuser": u.is_superuser,
+            "es_externo":   bool(u.es_externo),
+            "empresa":      u.empresa,
             "created_at":   u.created_at.isoformat() if u.created_at else None,
             "sucursales":   sorted(sucursales.get(u.id, [])),
             "sucursal_tipo": tipo_sucursal.get(u.id),
@@ -349,6 +402,9 @@ async def create_user(
     existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email ya registrado")
+
+    if payload.es_externo:
+        return await _crear_externo(payload, request, current_user, db)
 
     role: Role | None = None
     if payload.role_id is not None:
@@ -388,6 +444,51 @@ async def create_user(
         details={"email": user.email, "role_id": user.role_id}, ip_address=_client_ip(request),
     ))
     return {"id": user.id, "email": user.email, "full_name": user.full_name}
+
+
+async def _crear_externo(
+    payload: CreateUserRequest, request: Request, current_user: User, db: AsyncSession,
+) -> dict:
+    """Una cuenta externa: sin rol, con solo ver el calendario (la vista
+    limitada la ponen las rutas) y en los mundos pedidos. Como cualquier cuenta
+    nueva, tiene que elegir su contraseña al entrar la primera vez."""
+    if payload.role_id is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="Una cuenta externa no lleva rol: solo ve el calendario de su mes y sus tareas",
+        )
+    empresa = externos.limpiar_empresa(payload.empresa)
+    if not empresa:
+        raise HTTPException(status_code=422, detail="Decí de qué empresa es (la agencia, el estudio…)")
+    permisos = sorted(externos.PERMISOS_DE_EXTERNOS)
+    # Igual que con cualquier cuenta: nadie da lo que no tiene.
+    _ensure_can_grant(current_user, permisos)
+    mundos = _validar_mundos_pedidos(current_user, [], payload.mundos or [MUNDO_POR_DEFECTO])
+    try:
+        _validate_password_strength(payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    user = User(
+        email=payload.email,
+        full_name=payload.full_name,
+        hashed_password=hash_password(payload.password),
+        role_id=None,
+        permissions=permisos,
+        mundos=mundos,
+        is_superuser=False,
+        es_externo=True,
+        empresa=empresa,
+        must_change_password=True,
+        password_changed_at=datetime.now(timezone.utc),
+    )
+    db.add(user)
+    await db.flush()
+    db.add(AuditLog(
+        user_id=current_user.id, action="admin.user.create", resource="user", resource_id=str(user.id),
+        details={"email": user.email, "externo": True, "empresa": empresa, "mundos": mundos},
+        ip_address=_client_ip(request),
+    ))
+    return {"id": user.id, "email": user.email, "full_name": user.full_name, "es_externo": True, "empresa": empresa}
 
 
 @router.patch("/users/{user_id}")
@@ -483,6 +584,17 @@ async def assign_role(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     await _check_not_protected_admin(current_user, user, db)
     _ensure_not_self(current_user, user_id)
+    if externos.es_externo(user) and payload.role_id is not None:
+        # Un rol siembra permisos de gestión (Admin, Usuario...): a una cuenta
+        # externa no. Para darle más, primero deja de ser externa.
+        raise HTTPException(
+            status_code=422,
+            detail="Una cuenta externa no lleva rol: solo ve el calendario de su mes y sus tareas",
+        )
+    if externos.es_externo(user):
+        # "Sin rol" a una externa: ya no tiene. No se le tocan los permisos
+        # (sembrar los de "ningún rol" le sacaría ver el calendario).
+        return {"ok": True}
 
     role: Role | None = None
     if payload.role_id is not None:
@@ -529,6 +641,7 @@ async def update_permissions(
     unknown = [p for p in payload.permissions if p not in ALL_PERMISSIONS]
     if unknown:
         raise HTTPException(status_code=422, detail=f"Permisos desconocidos: {unknown}")
+    _ensure_externo_puede_tener(user, payload.permissions)
     _ensure_can_grant(current_user, payload.permissions)
 
     if user.role_id is not None:
@@ -549,6 +662,58 @@ async def update_permissions(
         details={"permissions_antes": permisos_antes, "permissions_despues": payload.permissions}, ip_address=_client_ip(request),
     ))
     return {"permissions": user.permissions}
+
+
+@router.patch("/users/{user_id}/externo")
+@limiter.limit("20/minute")
+async def update_externo(
+    user_id: int,
+    payload: UpdateExternoRequest,
+    request: Request,
+    current_user: User = Depends(_require_user_management),
+    db: AsyncSession = Depends(get_db),
+):
+    """Marcar (o desmarcar) una cuenta como externa, o cambiarle la empresa.
+
+    Al pasar a externa pierde el rol y todo permiso que no sea de los suyos
+    (queda viendo el calendario, con la vista limitada): es la forma de que
+    alguien que pasó a trabajar desde la agencia no siga viendo lo interno.
+    No aplica a uno mismo, a un admin protegido ni a un login de sucursal.
+    Desmarcarla no le da nada: los permisos se dan después, uno por uno."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    await _check_not_protected_admin(current_user, user, db)
+    _ensure_not_self(current_user, user_id)
+
+    antes = {"es_externo": bool(user.es_externo), "empresa": user.empresa, "permissions": list(user.permissions or [])}
+    if payload.es_externo:
+        empresa = externos.limpiar_empresa(payload.empresa)
+        if not empresa:
+            raise HTTPException(status_code=422, detail="Decí de qué empresa es (la agencia, el estudio…)")
+        if user.is_superuser:
+            raise HTTPException(status_code=422, detail="El superadmin no puede ser una cuenta externa")
+        es_sucursal = (await db.execute(
+            select(LocalAsignacion.id).where(LocalAsignacion.user_id == user.id).limit(1)
+        )).scalar_one_or_none()
+        if es_sucursal is not None:
+            raise HTTPException(status_code=422, detail="Un login de sucursal no puede ser una cuenta externa")
+        user.es_externo = True
+        user.empresa = empresa
+        user.role_id = None
+        user.permissions = [p for p in (user.permissions or []) if p in externos.PERMISOS_DE_EXTERNOS]
+    else:
+        user.es_externo = False
+        user.empresa = None
+    db.add(user)
+    db.add(AuditLog(
+        user_id=current_user.id, action="admin.user.update_externo", resource="user", resource_id=str(user.id),
+        details={"antes": antes, "es_externo": user.es_externo, "empresa": user.empresa,
+                 "permissions": list(user.permissions or [])},
+        ip_address=_client_ip(request),
+    ))
+    return {"es_externo": user.es_externo, "empresa": user.empresa, "permissions": user.permissions or []}
 
 
 @router.get("/mundos")
