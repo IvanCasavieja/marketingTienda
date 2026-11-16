@@ -34,8 +34,9 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Iterable
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, not_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.models.calendario import CalendarioBarra, CalendarioTarea
 from app.models.entregas import (
@@ -86,15 +87,20 @@ FASES_POR_DEFECTO: dict[str, list[str]] = {
 
 MAX_FASES = 8
 MAX_APROBADORES = 6
-MAX_IMAGENES = 6
-# La grande llega comprimida del navegador (2400 px, JPEG 0,85): una de 4 MB
-# ya es una foto enorme. La miniatura (360 px) pesa 15-30 KB.
-MAX_BYTES_IMAGEN = 4 * 1024 * 1024
-MAX_BYTES_MINIATURA = 512 * 1024
+MAX_IMAGENES = 4
+# La grande llega comprimida del navegador (1600 px, JPEG 0,75: 50-250 KB).
+# Una de 2 MB ya es algo que no pasó por el navegador. La miniatura (320 px)
+# pesa 6-20 KB.
+MAX_BYTES_IMAGEN = 2 * 1024 * 1024
+MAX_BYTES_MINIATURA = 256 * 1024
 MAX_MARCAS = 40
-# Lo que tarda en borrarse la imagen grande de una versión que no quedó
-# aprobada, contado desde que termina la acción. La miniatura queda.
-DIAS_DE_RETENCION = 180
+# Cuándo se borran las imágenes (la grande y la miniatura), contado desde que
+# termina la acción. Las versiones, decisiones y marcas quedan siempre: solo
+# se van los bytes. La base es de 500 MB para toda la plataforma.
+DIAS_DE_RETENCION = 30
+# La versión final (la aprobada de la última fase: la pieza que salió) se
+# guarda más, por si hay que reimprimir o reclamar algo.
+DIAS_DE_RETENCION_FINAL = 120
 
 ORIGEN = "calendario_entrega"
 DECISIONES = ("aprobada", "aprobada-con-cambios", "cambios")
@@ -593,22 +599,50 @@ async def resumenes_de_entregas(db: AsyncSession, tareas) -> dict[str, dict]:
 # La purga
 # ---------------------------------------------------------------------------
 
-async def purgar_imagenes_viejas(db: AsyncSession, hoy: date | None = None, dias: int = DIAS_DE_RETENCION) -> int:
-    """Borra la imagen grande de las versiones que NO quedaron aprobadas,
-    `dias` después de que terminó su acción. Queda la miniatura (para ver la
-    historia de rondas) y lo que pesaba. Lo aprobado no se toca: es lo que
-    salió. Devuelve cuántas se borraron."""
-    corte = (hoy or date.today()) - timedelta(days=dias)
-    viejas = (
+def dias_de_retencion(es_final: bool) -> int:
+    """Cuánto se guardan las imágenes de una versión después de que termina
+    su acción: la final, DIAS_DE_RETENCION_FINAL; cualquier otra (las que
+    volvieron con cambios, los bocetos aprobados), DIAS_DE_RETENCION."""
+    return DIAS_DE_RETENCION_FINAL if es_final else DIAS_DE_RETENCION
+
+
+def vencio(fin_de_la_accion: date, es_final: bool, hoy: date) -> bool:
+    """Si las imágenes de una versión ya se tienen que borrar."""
+    return fin_de_la_accion < hoy - timedelta(days=dias_de_retencion(es_final))
+
+
+async def purgar_imagenes_viejas(db: AsyncSession, hoy: date | None = None) -> int:
+    """Borra los bytes de las imágenes (la grande y la miniatura) que ya
+    vencieron (ver `vencio`). Las versiones, decisiones y marcas quedan: la
+    historia de rondas y el retrabajo se siguen viendo, sin las fotos.
+    Devuelve cuántas imágenes se vaciaron.
+
+    "Final" es la versión aprobada de la ÚLTIMA fase de su tarea: la pieza que
+    salió. Un boceto aprobado no es final."""
+    hoy = hoy or date.today()
+    otra_fase = aliased(CalendarioFase)
+    ultima_fase = (
+        select(func.max(otra_fase.orden)).where(otra_fase.tarea_id == CalendarioVersion.tarea_id)
+        .correlate(CalendarioVersion).scalar_subquery()
+    )
+    es_final = and_(CalendarioVersion.estado == "aprobada", CalendarioFase.orden == ultima_fase)
+    vencidas = (
         select(CalendarioVersion.id)
+        .join(CalendarioFase, CalendarioFase.id == CalendarioVersion.fase_id)
         .join(CalendarioTarea, CalendarioTarea.id == CalendarioVersion.tarea_id)
         .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
-        .where(CalendarioVersion.estado != "aprobada", CalendarioBarra.hasta < corte)
+        .where(or_(
+            and_(not_(es_final), CalendarioBarra.hasta < hoy - timedelta(days=DIAS_DE_RETENCION)),
+            and_(es_final, CalendarioBarra.hasta < hoy - timedelta(days=DIAS_DE_RETENCION_FINAL)),
+        ))
     )
     r = await db.execute(
         update(CalendarioVersionImagen)
-        .where(CalendarioVersionImagen.version_id.in_(viejas), CalendarioVersionImagen.datos.isnot(None))
-        .values(datos=None, purgada_at=datetime.now(timezone.utc))
+        .where(
+            CalendarioVersionImagen.version_id.in_(vencidas),
+            or_(CalendarioVersionImagen.datos.isnot(None), CalendarioVersionImagen.miniatura.isnot(None)),
+        )
+        .values(datos=None, miniatura=None, purgada_at=datetime.now(timezone.utc))
         .execution_options(synchronize_session=False)
     )
     await db.commit()
@@ -625,7 +659,7 @@ async def run_purga_entregas_loop() -> None:
             async with AsyncSessionLocal() as db:
                 n = await purgar_imagenes_viejas(db)
             if n:
-                logger.info("purga_entregas: %d imagen(es) de versiones no aprobadas liberadas", n)
+                logger.info("purga_entregas: %d imagen(es) vencidas liberadas", n)
         except Exception as exc:
             logger.error("purga_entregas: falló la pasada -- %s", exc, exc_info=True)
         await asyncio.sleep(24 * 3600)

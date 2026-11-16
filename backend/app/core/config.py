@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     # queda para siempre, y el archivo de una corrida VERIFICADA también.
     CENEFAS_RETENCION_DIAS: int = 7
 
+    # El freno de espacio (app/services/espacio.py): si la base pasa de esto,
+    # no se guarda ninguna imagen nueva (las de las entregas, las fotos de
+    # colocación) y se avisa. Supabase gratis tiene 500 MB para TODA la
+    # plataforma y no se va a pagar más: el margen es para que lo demás (el
+    # calendario, las cenefas, los logins) nunca se quede sin lugar.
+    # 0 = sin freno.
+    BASE_TOPE_MB: int = 400
+
     # El modelo de Anthropic que usan TODOS los agentes: Don Tino, Tinín,
     # Doña Tina, Dogti, la extracción de facturas y la pata de Claude en la
     # Tríada. Estaba hardcodeado y repetido en seis archivos, cada uno con un

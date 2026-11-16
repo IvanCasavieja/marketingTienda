@@ -97,7 +97,7 @@ def upgrade() -> None:
         sa.Column("tipo_mime", sa.String(20), nullable=False),
         sa.Column("datos", sa.LargeBinary(), nullable=True),
         sa.Column("tipo_mime_miniatura", sa.String(20), nullable=False, server_default="image/jpeg"),
-        sa.Column("miniatura", sa.LargeBinary(), nullable=False),
+        sa.Column("miniatura", sa.LargeBinary(), nullable=True),
         sa.Column("tamano", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("purgada_at", sa.DateTime(timezone=True), nullable=True),
         _ahora(),

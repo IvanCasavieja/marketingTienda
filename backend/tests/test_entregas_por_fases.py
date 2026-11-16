@@ -20,11 +20,13 @@ from pydantic import ValidationError
 from app.api.routes.entregas import DecisionNueva, EntregaConfig, MarcaNueva
 from app.api.routes.watchlist import _notif_visible
 from app.services.entregas import (
-    CAMPOS_DEL_BRIEF, FASES_POR_DEFECTO, MAX_BYTES_IMAGEN, ORIGEN, TIPOS_DE_PIEZA, FaseExistente, NoPuedeDecidir,
-    a_quien_le_toca, aprobadores_validos, estado_de_tarea, estados_de_fases, limpiar_brief, link_valido,
-    lugar_para_decidir, mensaje_de_aprobacion, mensaje_de_cambios, mensaje_para_revisar, metricas_de_retrabajo,
-    momento_de, nombres_de_fases, plan_de_fases, referencia, resultado_de_version, tipo_de_imagen, validar_imagen,
+    CAMPOS_DEL_BRIEF, FASES_POR_DEFECTO, MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, MAX_IMAGENES, ORIGEN, TIPOS_DE_PIEZA,
+    FaseExistente, NoPuedeDecidir, a_quien_le_toca, aprobadores_validos, dias_de_retencion, estado_de_tarea,
+    estados_de_fases, limpiar_brief, link_valido, lugar_para_decidir, mensaje_de_aprobacion, mensaje_de_cambios,
+    mensaje_para_revisar, metricas_de_retrabajo, momento_de, nombres_de_fases, plan_de_fases, referencia,
+    resultado_de_version, tipo_de_imagen, validar_imagen, vencio,
 )
+from app.services.espacio import MENSAJE_SIN_LUGAR, entra
 
 PROMO, MARCA, COMERCIAL, AGENCIA, LIDER = 1, 2, 3, 4, 5
 CADENA = [PROMO, MARCA, COMERCIAL]
@@ -295,13 +297,47 @@ def test_una_imagen_que_no_es_imagen_no_entra_aunque_diga_jpg():
 
 
 def test_el_tope_de_peso():
+    """La base es de 500 MB para toda la plataforma: 2 MB por imagen como
+    mucho (comprimida en el navegador pesa 50-250 KB), hasta 4 por ronda."""
+    assert MAX_BYTES_IMAGEN == 2 * 1024 * 1024 and MAX_IMAGENES == 4
     assert validar_imagen(JPEG) == "image/jpeg"
-    with pytest.raises(ValueError, match="4 MB"):
+    with pytest.raises(ValueError, match="2 MB"):
         validar_imagen(b"\xff\xd8\xff" + b"\x00" * MAX_BYTES_IMAGEN)
     with pytest.raises(ValueError, match="vacía"):
         validar_imagen(b"")
-    with pytest.raises(ValueError, match="512 KB"):
-        validar_imagen(b"\xff\xd8\xff" + b"\x00" * 600_000, maximo=512 * 1024, que="La miniatura")
+    with pytest.raises(ValueError, match="256 KB"):
+        validar_imagen(b"\xff\xd8\xff" + b"\x00" * 300_000, maximo=MAX_BYTES_MINIATURA, que="La miniatura")
+
+
+# --- Cuándo se borran las imágenes y el freno de espacio -------------------
+
+def test_las_imagenes_de_versiones_no_finales_se_borran_a_los_30_dias():
+    fin = date(2026, 12, 24)
+    assert dias_de_retencion(False) == 30
+    assert not vencio(fin, False, date(2027, 1, 23))
+    assert vencio(fin, False, date(2027, 1, 24))
+
+
+def test_las_de_la_version_final_a_los_120():
+    fin = date(2026, 12, 24)
+    assert dias_de_retencion(True) == 120
+    assert not vencio(fin, True, date(2027, 1, 24))
+    assert not vencio(fin, True, date(2027, 4, 23))
+    assert vencio(fin, True, date(2027, 4, 24))
+
+
+def test_el_freno_de_espacio():
+    mb = 1024 * 1024
+    assert entra(300 * mb, 2 * mb, 400)
+    assert entra(398 * mb, 2 * mb, 400)
+    assert not entra(399 * mb, 2 * mb, 400)
+    assert not entra(401 * mb, 0, 400)
+    # Sin tope configurado, no frena.
+    assert entra(10_000 * mb, mb, 0)
+
+
+def test_el_mensaje_de_base_llena_dice_que_hacer():
+    assert "avisale a quien administra Core Tienda" in MENSAJE_SIN_LUGAR
 
 
 # --- Lo que llega del front ------------------------------------------------

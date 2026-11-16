@@ -17,26 +17,35 @@ Cómo se arma:
   trabaja una por vez: la siguiente arranca cuando se aprueba la anterior.
 - `calendario_versiones`: cada ronda de una fase. Ronda 1, y si vuelve con
   cambios, ronda 2...
-- `calendario_version_imagenes`: hasta 6 por versión, en la base (como los
+- `calendario_version_imagenes`: hasta 4 por versión, en la base (como los
   archivos de cenefas, ver cenefa_job.py), con su miniatura.
 - `calendario_marcas`: un pin numerado sobre un punto de una imagen, con su
   texto. Es un ítem que la agencia tilda cuando lo corrigió.
 - `calendario_decisiones`: lo que decidió cada aprobador sobre una versión.
 
-**Cuánto ocupa** (Supabase gratis: 500 MB para toda la base). Las imágenes se
-comprimen en el navegador antes de subir (lado mayor 2400 px, JPEG 0,85):
-una pieza gráfica plana (cenefa, banner) queda en 100-400 KB y una con foto en
-0,6-1,1 MB; la miniatura (360 px) en 15-30 KB (medido el 15/11/2026 con
-imágenes de prueba: una gráfica plana de 2400 px pesó 97 KB, una foto de
-2400x1600 612 KB y su miniatura 21 KB). Con un uso razonable de Tienda
-Inglesa —25 tareas con entregas por mes, 2 fases, 1,5 rondas por fase y 1,5
-imágenes por versión— son unas 110 imágenes por mes: entre 30 y 80 MB por mes.
-A los 180 días de que termina la acción se borran las imágenes grandes de las
-versiones que NO quedaron aprobadas (queda su miniatura), que son un tercio;
-lo aprobado se guarda. En régimen la base crece unos 20-55 MB por mes: entra
-holgado el primer año, pero no para siempre. Si el uso sube, el paso siguiente
-es mover `datos` a un almacenamiento de archivos (Azure Blob, que ya está en
-el plan) y dejar acá solo la miniatura.
+**Cuánto ocupa.** La base es Supabase gratis: 500 MB para TODA la plataforma,
+y no se va a pagar más (15/11/2026). Por eso:
+
+- Las imágenes se comprimen en el navegador antes de subir: lado mayor 1600
+  px, JPEG 0,75, y una miniatura de 320 px. Medido el 15/11/2026 con
+  imágenes de prueba: una gráfica plana (cenefa) pesó 46 KB, una foto de
+  1600x1067 247 KB, y sus miniaturas 6 y 17 KB. Hasta 4 por versión y 2 MB
+  como mucho cada una (lo controla el servidor).
+- Los bytes se borran (la grande y la miniatura): los de las versiones que
+  no son la final, a los 30 días de terminada la acción; los de la final (la
+  aprobada de la última fase), a los 120. Las versiones, decisiones y marcas
+  quedan siempre (ver purgar_imagenes_viejas).
+- Antes de guardar, el freno general (app/services/espacio.py): si la base
+  pasa de BASE_TOPE_MB (400), la subida se rechaza.
+
+Con un uso razonable de Tienda Inglesa —25 tareas con entregas por mes, 2
+fases, 1,5 rondas por fase y 1,5 imágenes por versión— son unas 110 imágenes
+por mes: entre 6 MB (si fueran todas gráficas planas) y 30 MB (todas fotos),
+unos 18 MB con una mezcla normal. Como todo vence, lo guardado NO crece con
+el tiempo: en régimen quedan unos 3,5 meses de subidas (las no finales viven
+~2,5 meses desde que se suben, la final ~5,5), o sea entre 20 y 100 MB, unos
+60 con la mezcla normal. Si el uso se duplica, el doble; el freno de 400 MB
+cuida que nunca le quite lugar al resto.
 """
 from datetime import datetime
 
@@ -152,10 +161,11 @@ class CalendarioVersionImagen(Base):
     orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # 'image/jpeg' | 'image/png' | 'image/webp'
     tipo_mime: Mapped[str] = mapped_column(String(20), nullable=False)
-    # La imagen grande. NULL después de la purga (ver purgar_imagenes_viejas).
+    # La imagen grande y su miniatura. Las dos quedan en NULL cuando vencen
+    # (ver purgar_imagenes_viejas); la fila queda, con lo que pesaba.
     datos: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     tipo_mime_miniatura: Mapped[str] = mapped_column(String(20), nullable=False, default="image/jpeg")
-    miniatura: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
+    miniatura: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     # Lo que pesaba la grande: queda después de la purga, para medir.
     tamano: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     purgada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

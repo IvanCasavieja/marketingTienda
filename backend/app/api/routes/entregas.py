@@ -50,6 +50,7 @@ from app.models.entregas import (
 )
 from app.models.user import User
 from app.services import entregas as reglas
+from app.services.espacio import exigir_lugar
 from app.services.entregas import (
     MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, MAX_IMAGENES, MAX_MARCAS, NoPuedeDecidir, FaseExistente,
 )
@@ -455,9 +456,11 @@ async def ver_imagen(
     columna = CalendarioVersionImagen.miniatura if tam == "mini" else CalendarioVersionImagen.datos
     datos = (await db.execute(select(columna).where(CalendarioVersionImagen.id == imagen_id))).scalar_one_or_none()
     if datos is None:
+        # Venció: los bytes se borran a los 30 días de terminada la acción
+        # (120 la versión final). La versión, sus marcas y decisiones quedan.
         raise HTTPException(
             status_code=410,
-            detail="La imagen grande se borró (a los 180 días de terminada la acción). Queda la miniatura.",
+            detail="Esta imagen ya se borró: se guardan hasta un tiempo después de terminada la acción.",
         )
     return Response(
         content=datos,
@@ -548,6 +551,9 @@ async def entregar(
         datos, tipo = await _leer(grande, MAX_BYTES_IMAGEN, cual)
         datos_mini, tipo_mini = await _leer(mini, MAX_BYTES_MINIATURA, f"La miniatura de {cual.lower()}")
         leidas.append((datos, tipo, datos_mini, tipo_mini))
+    # El freno general: con la base casi llena no se guarda ninguna imagen
+    # (507, con el mensaje para la persona, y un error en el log).
+    await exigir_lugar(db, sum(len(g) + len(m) for g, _, m, _ in leidas))
 
     ronda = (ultima.ronda if ultima else 0) + 1
     # Solo cuentan las marcas de ESTA tarea que estaban sin corregir: lo
