@@ -1,10 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { CalendarClock, Check, CornerDownRight, ListChecks, Plus, Trash2, UserRound } from 'lucide-react'
+import {
+  CalendarClock, Check, CornerDownRight, LayoutTemplate, Link2, ListChecks, Plus, Sparkles, Trash2, UserRound, X,
+} from 'lucide-react'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
 import { CampoFecha, esFechaGuardable } from './CampoFecha'
 import { useCalendario } from '@/lib/calendario/store'
+import { plantillasSugeridas, textoDeAncla } from '@/lib/calendario/plantillas'
 import {
   ETIQUETA_ESTADO_TAREA, NIVELES_DE_TAREA, nivelDeTarea,
   type BarraGuardada, type EstadoTarea, type Persona, type Tarea,
@@ -16,10 +19,30 @@ import {
  * Pedido de Ivan (12/11/2026): quien lidera abre una acción, le crea tareas y
  * subtareas, y se las asigna a cada persona, que se entera por la campanita.
  *
- * - `gestiona` (permiso `calendario.tareas`): crea, asigna, pone fecha y borra.
+ * - `gestiona` (permiso `calendario.tareas`): crea, asigna, pone fecha y borra,
+ *   y usa las plantillas del mundo (ver DialogoPlantillas).
  * - Los demás ven todo y pueden mover el estado de las tareas que tienen
  *   asignadas, y de ninguna otra. Es lo mismo que exige el servidor.
  */
+
+/** Las acciones donde alguien dijo "ahora no" a la plantilla sugerida. Solo
+ *  en este navegador: es una comodidad, no un dato del calendario. */
+const CLAVE_DESCARTADAS = 'calendario-plantillas-descartadas'
+
+function leerDescartadas(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(CLAVE_DESCARTADAS) ?? '[]')
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function guardarDescartada(accionId: string): string[] {
+  const lista = [...leerDescartadas().filter(x => x !== accionId), accionId].slice(-300)
+  try { localStorage.setItem(CLAVE_DESCARTADAS, JSON.stringify(lista)) } catch { /* sin lugar: se olvida al recargar */ }
+  return lista
+}
 
 const TONO: Record<EstadoTarea, string> = {
   pendiente: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -43,6 +66,10 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
   const hechas = tareas.filter(t => t.estado === 'hecha').length
   const raices = tareas.filter(t => !t.parentId || !tareas.some(x => x.id === t.parentId))
   const todas = tareas.length > 0 && hechas === tareas.length
+  const abrirPlantillas = useCalendario(s => s.abrirPlantillas)
+  const plantillas = useCalendario(s => s.plantillas)
+  const [descartadas, setDescartadas] = useState<string[]>(() => (typeof window === 'undefined' ? [] : leerDescartadas()))
+  const sugeridas = gestiona && !descartadas.includes(accion.id) ? plantillasSugeridas(plantillas, accion) : []
 
   return (
     <section>
@@ -62,6 +89,15 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
         </div>
       )}
 
+      {sugeridas.length > 0 && (
+        <SugerenciaDePlantilla
+          accion={accion}
+          sugeridas={sugeridas.map(p => ({ id: p.id, nombre: p.nombre, tareas: p.tareas.length }))}
+          onVer={() => abrirPlantillas(accion.id)}
+          onAhoraNo={() => setDescartadas(guardarDescartada(accion.id))}
+        />
+      )}
+
       {tareas.length > 0 && (
         <div className="mb-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800" role="progressbar" aria-valuemin={0} aria-valuemax={tareas.length} aria-valuenow={hechas} aria-label="Tareas hechas">
           <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-500 ease-suave" style={{ width: `${(hechas / tareas.length) * 100}%` }} />
@@ -75,7 +111,7 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
           </span>
           <p className="max-w-xs text-sm text-slate-600 dark:text-slate-400">
             {gestiona
-              ? 'Esta acción todavía no tiene tareas. Creá la primera y asignásela a alguien: le llega un aviso.'
+              ? 'Esta acción todavía no tiene tareas. Creá la primera y asignásela a alguien (le llega un aviso), o arrancá con una plantilla.'
               : 'Esta acción todavía no tiene tareas. Las crea y las asigna quien lidera el equipo.'}
           </p>
         </div>
@@ -90,8 +126,80 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
         ))}
       </ul>
 
-      {gestiona && <NuevaTarea accionId={accion.id} parentId={null} personas={personas} etiqueta="Nueva tarea" />}
+      {gestiona && (
+        <NuevaTarea
+          accionId={accion.id} parentId={null} personas={personas} etiqueta="Nueva tarea"
+          alLado={(
+            <button
+              type="button"
+              onClick={() => abrirPlantillas(accion.id)}
+              className="flex min-h-[48px] items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:text-brand-700 active:scale-[.99] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-brand-500/60 dark:hover:text-brand-200"
+            >
+              <LayoutTemplate className="h-4 w-4" /> Usar plantilla
+            </button>
+          )}
+        />
+      )}
     </section>
+  )
+}
+
+/**
+ * "¿Usar la plantilla Mega evento?": arriba de las tareas de una acción cuya
+ * categoría tiene plantilla, para quien gestiona tareas. Se va sola cuando se
+ * usa una, y con "Ahora no" no vuelve a aparecer en esa acción.
+ */
+function SugerenciaDePlantilla({ accion, sugeridas, onVer, onAhoraNo }: {
+  accion: BarraGuardada
+  sugeridas: { id: string; nombre: string; tareas: number }[]
+  onVer: () => void
+  onAhoraNo: () => void
+}) {
+  const aplicar = useCalendario(s => s.aplicarPlantilla)
+  const una = sugeridas.length === 1 ? sugeridas[0] : null
+  return (
+    <div className="mb-4 flex animate-fade-in items-start gap-3 rounded-2xl border border-brand-200 bg-brand-50/60 p-3.5 dark:border-brand-500/30 dark:bg-brand-500/[.07]">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-brand-600 shadow-sm dark:bg-slate-900 dark:text-brand-300">
+        <LayoutTemplate className="h-[18px] w-[18px]" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          {una ? `¿Usar la plantilla «${una.nombre}»?` : `Hay ${sugeridas.length} plantillas de ${accion.banda}`}
+        </p>
+        <p className="mt-0.5 text-[13px] leading-snug text-slate-600 dark:text-slate-400">
+          {una
+            ? `Crea sus ${una.tareas === 1 ? 'tarea' : `${una.tareas} tareas`} con la fecha ya calculada para esta acción.`
+            : 'Elegí una y se crean sus tareas con la fecha ya calculada para esta acción.'}
+        </p>
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {una && (
+            <button
+              type="button"
+              onClick={() => aplicar(accion.id, una.id)}
+              className="flex min-h-[40px] items-center gap-1.5 rounded-xl bg-brand-600 px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] sm:min-h-[36px]"
+            >
+              <Sparkles className="h-4 w-4" /> Usar plantilla
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onVer}
+            className="flex min-h-[40px] items-center rounded-xl px-3 text-sm font-semibold text-brand-700 transition hover:bg-brand-100/70 dark:text-brand-200 dark:hover:bg-brand-500/15 sm:min-h-[36px]"
+          >
+            {una ? 'Ver las tareas' : 'Elegir plantilla'}
+          </button>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onAhoraNo}
+        aria-label="Ahora no: no sugerir plantillas en esta acción"
+        title="Ahora no"
+        className="-mr-1.5 -mt-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/70 hover:text-slate-700 active:scale-95 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
   )
 }
 
@@ -116,6 +224,8 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   const hecha = tarea.estado === 'hecha'
   const vencida = !hecha && !!tarea.vence && tarea.vence < hoyIso()
   const asignado = personas.find(p => p.id === tarea.asignadoA)
+  // Hecha ya no se mueve: no hace falta decirlo.
+  const anclada = !hecha && !!tarea.ancla && tarea.anclaDias != null
 
   return (
     <li>
@@ -161,6 +271,17 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
             </p>
             {tarea.descripcion && (
               <p className="mt-0.5 whitespace-pre-line text-sm text-slate-600 dark:text-slate-400">{tarea.descripcion}</p>
+            )}
+            {/* Una tarea de plantilla dice de dónde sale su fecha: que se
+                mueva sola con la acción no tiene que sorprender a nadie. */}
+            {anclada && (
+              <p
+                className="mt-1 flex items-start gap-1 text-xs text-slate-500 dark:text-slate-400"
+                title="Si la acción cambia de fecha, esta tarea se mueve con ella. Si le cambiás el vencimiento a mano, queda fija."
+              >
+                <Link2 className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span>Vence {textoDeAncla(tarea.ancla, tarea.anclaDias ?? 0)} · se mueve con la acción</span>
+              </p>
             )}
 
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -286,13 +407,15 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   )
 }
 
-function NuevaTarea({ accionId, parentId, personas, etiqueta, abierta = false, onListo }: {
+function NuevaTarea({ accionId, parentId, personas, etiqueta, abierta = false, onListo, alLado }: {
   accionId: string
   parentId: string | null
   personas: Persona[]
   etiqueta: string
   abierta?: boolean
   onListo?: () => void
+  /** Otro botón al lado de "Nueva tarea" mientras está cerrado (Usar plantilla). */
+  alLado?: React.ReactNode
 }) {
   const crear = useCalendario(s => s.crearTarea)
   const personasEstado = useCalendario(s => s.personasEstado)
@@ -331,13 +454,16 @@ function NuevaTarea({ accionId, parentId, personas, etiqueta, abierta = false, o
 
   if (!abierto) {
     return (
-      <button
-        type="button"
-        onClick={() => setAbierto(true)}
-        className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 px-4 text-sm font-semibold text-slate-600 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 active:scale-[.99] dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500/60 dark:hover:bg-brand-500/10 dark:hover:text-brand-200"
-      >
-        <Plus className="h-4 w-4" /> {etiqueta}
-      </button>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          onClick={() => setAbierto(true)}
+          className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 px-4 text-sm font-semibold text-slate-600 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 active:scale-[.99] dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500/60 dark:hover:bg-brand-500/10 dark:hover:text-brand-200"
+        >
+          <Plus className="h-4 w-4" /> {etiqueta}
+        </button>
+        {alLado}
+      </div>
     )
   }
 

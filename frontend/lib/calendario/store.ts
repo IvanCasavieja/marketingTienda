@@ -12,8 +12,9 @@ import { ZOOM_POR_DEFECTO, limitarZoom } from './rejilla'
 export { ZOOMS, ZOOM_POR_DEFECTO } from './rejilla'
 import { SECCIONES_CON_FICHA, conDescendientes, formatosDeCanal } from './tipos'
 import type {
-  AreaPieza, Aviso, BarraGuardada, EstadoPieza, EstadoTarea, Mes, Persona, Pieza, Seccion, Tarea,
+  AreaPieza, Aviso, BarraGuardada, EstadoPieza, EstadoTarea, Mes, Persona, Pieza, Plantilla, Seccion, Tarea,
 } from './tipos'
+import { conCambios, moverAncladas, tareasDesdePlantilla, type CambiosDeTarea } from './plantillas'
 import { BANDAS_COMERCIAL, BANDAS_RETAIL, type BandaCatalogo } from './catalogo'
 import { MUNDO_POR_DEFECTO, mundoDe } from '@/lib/mundos'
 
@@ -80,7 +81,13 @@ if (typeof window !== 'undefined') {
 /** Cada cuanto se pregunta si alguien cambio algo. */
 export const SEGUNDOS_ENTRE_REVISIONES = 15
 
-type Escrito = { rev?: number; enviadosAhora?: number; yaExistia?: boolean; avisados?: number }
+type Escrito = {
+  rev?: number; enviadosAhora?: number; yaExistia?: boolean; avisados?: number
+  /** Al mover una acción: cuántas tareas de plantilla se corrieron con ella. */
+  tareasMovidas?: number
+  /** Al aplicar una plantilla: cuántas tareas creó y cuántas quedaron sin asignar. */
+  creadas?: number; sinAsignar?: number
+}
 
 /** Como se mira el mes: la linea de tiempo de siempre, o una lista de tarjetas. */
 export type Vista = 'tiempo' | 'lista' | 'equipo'
@@ -135,6 +142,11 @@ type Estado = {
   edicion: Edicion | null
   /** El id de la accion con la ficha abierta. */
   abierta: string | null
+  /** Las plantillas de tareas del mundo (vienen con /datos). */
+  plantillas: Plantilla[]
+  /** El diálogo de plantillas, si está abierto: desde la ficha de `barraId`
+   *  (para aplicar una ahí), o con null para solo armarlas y editarlas. */
+  dialogoPlantillas: { barraId: string | null } | null
   /** Ancho de cada día en px. Sube y baja con el control de zoom. */
   zoom: number
   /** false = nadie toco el zoom: el mes se ajusta solo al ancho de la pantalla. */
@@ -178,9 +190,17 @@ type Estado = {
 
   /** Una tarea (o subtarea) en la accion `barraId`. */
   crearTarea: (barraId: string, datos: DatosTarea) => void
-  cambiarTarea: (tareaId: string, cambios: Partial<Pick<Tarea, 'titulo' | 'descripcion' | 'estado' | 'asignadoA' | 'vence'>>) => void
+  cambiarTarea: (tareaId: string, cambios: CambiosDeTarea) => void
   /** Borra la tarea y todo lo que cuelga de ella. */
   borrarTarea: (tareaId: string) => void
+
+  abrirPlantillas: (barraId: string | null) => void
+  cerrarPlantillas: () => void
+  /** Crea o reemplaza entera una plantilla del mundo que se mira. */
+  guardarPlantilla: (p: Plantilla) => void
+  borrarPlantilla: (id: string) => void
+  /** Crea en la acción las tareas de la plantilla, con su fecha calculada. */
+  aplicarPlantilla: (barraId: string, plantillaId: string) => void
 }
 
 /** Lo que llega del servidor, con las listas que el front da por sentadas. */
@@ -388,6 +408,8 @@ export const useCalendario = create<Estado>()(
         mesActivo: claveDe(hoyIso()),
         edicion: null,
         abierta: null,
+        plantillas: [],
+        dialogoPlantillas: null,
         zoom: ZOOM_POR_DEFECTO,
         zoomElegido: false,
         vista: 'tiempo',
@@ -413,7 +435,7 @@ export const useCalendario = create<Estado>()(
           revMinima = 0
           set({
             mundo: clave, barras: {}, posicionesRM: {}, rev: null, personas: [], personasEstado: 'cargando',
-            abierta: null, edicion: null, conexion: 'cargando',
+            abierta: null, edicion: null, conexion: 'cargando', plantillas: [], dialogoPlantillas: null,
             // Un mundo sin Retail Media ni headers no puede quedar filtrado en ellos.
             filtro: 'todo',
           })
@@ -459,7 +481,10 @@ export const useCalendario = create<Estado>()(
               if (data.rev < revMinima || (actual != null && data.rev < actual)) return
               const barras: Record<string, BarraGuardada> = {}
               for (const b of data.barras ?? []) barras[b.id] = normalizar(b as BarraGuardada)
-              set({ barras, posicionesRM: data.posicionesRM ?? {}, rev: data.rev, conexion: 'ok' })
+              set({
+                barras, posicionesRM: data.posicionesRM ?? {}, plantillas: (data.plantillas ?? []) as Plantilla[],
+                rev: data.rev, conexion: 'ok',
+              })
             } catch {
               set({ conexion: 'sin-conexion' })
             }
@@ -560,12 +585,25 @@ export const useCalendario = create<Estado>()(
           cambiarBarraLocal(original.id, b => {
             const nueva = { ...b, ...cambios }
             if (nueva.hora === undefined) delete nueva.hora
+            // Las tareas de plantilla se corren con la acción, como hace el
+            // servidor en el mismo cambio: se ven en su fecha nueva ya.
+            if ((cambios.desde || cambios.hasta) && b.tareas?.length) {
+              nueva.tareas = moverAncladas(b.tareas, nueva.desde, nueva.hasta)
+            }
             return nueva
           })
           // Sacar la hora es mandarla en null: un undefined ni siquiera viaja.
           const payload: Record<string, unknown> = { ...cambios }
           if ('hora' in cambios && cambios.hora === undefined) payload.hora = null
-          void escribir(() => calendarioApi.cambiarBarra(original.id, payload), original.id)
+          void escribir(() => calendarioApi.cambiarBarra(original.id, payload), original.id).then(r => {
+            // Que se movieron solas no es obvio: se dice, al moverla.
+            const n = r?.tareasMovidas ?? 0
+            if (n > 0) {
+              toast.success(n === 1
+                ? 'Se movió 1 tarea de plantilla con la acción.'
+                : `Se movieron ${n} tareas de plantilla con la acción.`)
+            }
+          })
         },
 
         borrarBarra: () => {
@@ -686,8 +724,10 @@ export const useCalendario = create<Estado>()(
         cambiarTarea: (tareaId, cambios) => {
           const duena = duenaDe(get().barras, b => (b.tareas ?? []).some(t => t.id === tareaId))
           if (!duena) return
+          // Lo mismo que hace el servidor: una fecha puesta a mano suelta la
+          // tarea de la acción; reabrir una hecha la vuelve a su fecha.
           cambiarBarraLocal(duena.id, b => ({
-            ...b, tareas: (b.tareas ?? []).map(t => (t.id === tareaId ? { ...t, ...cambios } : t)),
+            ...b, tareas: (b.tareas ?? []).map(t => (t.id === tareaId ? conCambios(t, cambios, b.desde, b.hasta) : t)),
           }))
           void escribir(() => calendarioApi.cambiarTarea(tareaId, cambios), duena.id)
         },
@@ -698,6 +738,63 @@ export const useCalendario = create<Estado>()(
           const fuera = conDescendientes(tareaId, duena.tareas ?? [])
           cambiarBarraLocal(duena.id, b => ({ ...b, tareas: (b.tareas ?? []).filter(t => !fuera.has(t.id)) }))
           void escribir(() => calendarioApi.borrarTarea(tareaId), duena.id)
+        },
+
+        abrirPlantillas: barraId => set({ dialogoPlantillas: { barraId } }),
+        cerrarPlantillas: () => set({ dialogoPlantillas: null }),
+
+        guardarPlantilla: p => {
+          const mundo = get().mundo
+          const plantilla: Plantilla = { ...p, mundo }
+          set(s => ({
+            plantillas: [...s.plantillas.filter(x => x.id !== p.id), plantilla]
+              .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+          }))
+          void escribir(() => calendarioApi.guardarPlantilla(p.id, {
+            mundo, nombre: p.nombre, categoria: p.categoria, tareas: p.tareas,
+          }), p.id).then(r => {
+            if (r) toast.success(`Plantilla «${p.nombre}» guardada.`)
+          })
+        },
+
+        borrarPlantilla: id => {
+          set(s => ({ plantillas: s.plantillas.filter(p => p.id !== id) }))
+          void escribir(() => calendarioApi.borrarPlantilla(id), id)
+        },
+
+        aplicarPlantilla: (barraId, plantillaId) => {
+          const accion = get().barras[barraId]
+          const plantilla = get().plantillas.find(p => p.id === plantillaId)
+          if (!accion || !plantilla) return
+          const { tareas, ids } = tareasDesdePlantilla(plantilla, accion, () => nuevoId('ta'))
+          cambiarBarraLocal(barraId, b => ({ ...b, tareas: [...(b.tareas ?? []), ...tareas] }))
+          // Si la plantilla se acaba de guardar, se aplica cuando el servidor
+          // ya la tiene: si no, contestaría que no existe.
+          const guardandola = colas.get(plantillaId)
+          void escribir(async () => {
+            if (guardandola) await guardandola
+            return calendarioApi.aplicarPlantilla(barraId, { plantillaId, ids })
+          }, barraId).then(r => {
+            if (!r || r.yaExistia) return
+            const creadas = r.creadas ?? tareas.length
+            const partes = [creadas === 1
+              ? `Se creó 1 tarea de «${plantilla.nombre}».`
+              : `Se crearon ${creadas} tareas de «${plantilla.nombre}».`]
+            if (r.avisados) {
+              partes.push(r.avisados === 1
+                ? 'Le llegó un aviso a la persona responsable.'
+                : `Les llegó un aviso a las ${r.avisados} personas responsables.`)
+            }
+            if (r.sinAsignar) {
+              partes.push(r.sinAsignar === 1
+                ? 'Una quedó sin asignar: su responsable ya no ve este calendario.'
+                : `${r.sinAsignar} quedaron sin asignar: su responsable ya no ve este calendario.`)
+              // Acá se mostraban asignadas: se trae lo que quedó de verdad.
+              set({ rev: null })
+              void get().sincronizar()
+            }
+            toast.success(partes.join(' '))
+          })
         },
       }
     },
