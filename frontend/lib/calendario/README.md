@@ -66,7 +66,7 @@ por tarea, hasta tres niveles (tarea → subtarea → sub-subtarea).
 - `calendario.tareas` lo recibieron Superadmin y Admin en la 0060. A quien
   lidere el equipo sin ser Admin hay que tildárselo a mano.
 
-### Plantillas de tareas (0064)
+### Plantillas de tareas (0065)
 
 Cada tipo de acción lleva casi siempre las mismas tareas. Una **plantilla**
 (tabla `calendario_plantillas`, una por mundo) las guarda con su vencimiento

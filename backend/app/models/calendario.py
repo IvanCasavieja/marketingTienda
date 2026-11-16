@@ -160,7 +160,7 @@ class CalendarioTarea(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     vence: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # De dónde sale `vence` cuando vino de una plantilla (0064): 'inicio' o
+    # De dónde sale `vence` cuando vino de una plantilla (0065): 'inicio' o
     # 'fin' de la acción, más `ancla_dias` (negativo = antes). Mientras esté,
     # si la acción se mueve de fecha la tarea se mueve con ella. Si alguien le
     # cambia el vencimiento a mano, se vacía: lo manual se respeta.
@@ -180,7 +180,7 @@ class CalendarioTarea(Base):
 
 
 class CalendarioPlantilla(Base):
-    """Una plantilla de tareas de un mundo (0064).
+    """Una plantilla de tareas de un mundo (0065).
 
     Cada tipo de acción lleva casi siempre las mismas tareas (el brief a la
     agencia, las entregas, la aprobación, las cenefas a los locales, el

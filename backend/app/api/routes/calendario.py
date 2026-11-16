@@ -21,7 +21,7 @@
   DELETE /calendario/plantillas/{id}
   POST   /calendario/barras/{id}/plantilla    — crea en una acción las tareas de una plantilla
 
-Las plantillas (0064) viajan con /datos, como todo lo del mundo: guardar una
+Las plantillas (0065) viajan con /datos, como todo lo del mundo: guardar una
 sube la revisión y los demás la ven aparecer sola.
 
 Desde la 0060 la plataforma entera se divide en MUNDOS (Tienda Inglesa,
@@ -915,7 +915,7 @@ def nivel_de(tarea_id: str | None, padres: dict[str, str | None]) -> int:
     return nivel
 
 
-# --- Vencimientos anclados a la acción (0064) ---------------------------------
+# --- Vencimientos anclados a la acción (0065) ---------------------------------
 # Una tarea que vino de una plantilla vence "N días antes/después del inicio o
 # del fin" de su acción. Se guarda la fecha calculada (es lo que leen "Mis
 # tareas", los vencidos y los avisos) y además de dónde sale, para poder
@@ -1190,7 +1190,7 @@ async def ubicar_barra(
 
 
 # ---------------------------------------------------------------------------
-# Plantillas de tareas (0064)
+# Plantillas de tareas (0065)
 # ---------------------------------------------------------------------------
 # Cada tipo de acción lleva casi siempre las mismas tareas (el brief a la
 # agencia, las entregas, la aprobación, las cenefas a los locales, el retiro).

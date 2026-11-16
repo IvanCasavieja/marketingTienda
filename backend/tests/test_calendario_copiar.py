@@ -206,7 +206,20 @@ def test_una_tarea_vuelve_a_pendiente_y_su_vencimiento_se_corre():
         "vence": date(2026, 11, 24), "orden": 4,
         # Las carga quien copia: a esa persona le avisa quien termine una.
         "creado_por_id": 42,
+        # Una tarea cargada a mano no viene de ninguna plantilla (0065).
+        "ancla": None, "ancla_dias": None, "plantilla_id": None,
     }
+
+
+def test_una_tarea_de_plantilla_sigue_anclada_en_la_copia():
+    """Las columnas de las plantillas (0065) se copian solas: la tarea de la
+    copia se sigue moviendo con su acción nueva."""
+    [v] = copiar_tareas(
+        [_tarea("t", vence=date(2025, 10, 31), ancla="inicio", ancla_dias=-30, plantilla_id="pl-mega")],
+        "br-2026", UN_ANIO, set(), 42, _ids(),
+    ).filas
+    assert (v["ancla"], v["ancla_dias"], v["plantilla_id"]) == ("inicio", -30, "pl-mega")
+    assert v["vence"] == date(2026, 10, 30)
 
 
 def test_el_responsable_que_ya_no_entra_al_mundo_se_saca():
