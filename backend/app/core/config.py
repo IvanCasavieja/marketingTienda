@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     # queda para siempre, y el archivo de una corrida VERIFICADA también.
     CENEFAS_RETENCION_DIAS: int = 7
 
+    # Fotos de colocación (las que suben los locales, ver
+    # services/colocacion.py). Se borran a los N días de que termina la acción
+    # (0 = no se borran nunca). Y un tope de lo que pueden ocupar entre todas:
+    # pasado ese, el local no puede subir más y se le dice que avise. La base
+    # gratis es de 500 MB para TODA la plataforma; ahí está la cuenta.
+    COLOCACION_RETENCION_DIAS: int = 120
+    COLOCACION_TOPE_MB: int = 300
+
     # El modelo de Anthropic que usan TODOS los agentes: Don Tino, Tinín,
     # Doña Tina, Dogti, la extracción de facturas y la pata de Claude en la
     # Tríada. Estaba hardcodeado y repetido en seis archivos, cada uno con un

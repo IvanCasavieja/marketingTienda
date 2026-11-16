@@ -5,6 +5,8 @@ import {
   AlertTriangle, Bell, BellPlus, CalendarDays, Check, Clock, LayoutPanelTop, Pencil, Plus, Send, X,
 } from 'lucide-react'
 import { BloqueTareas } from './BloqueTareas'
+import { BloqueFotos } from '@/components/colocacion/BloqueFotos'
+import { useLocalesDelMundo } from '@/lib/colocacion/store'
 import { Cocarda, SelectorDeCategoria } from './Cocarda'
 import { useDialogo } from './useDialogo'
 import { CampoFecha } from './CampoFecha'
@@ -92,7 +94,7 @@ function BotonEditar({ onClick, children }: { onClick: () => void; children: Rea
   )
 }
 
-type Pestana = 'tareas' | 'piezas' | 'avisos'
+type Pestana = 'tareas' | 'piezas' | 'avisos' | 'fotos'
 
 export function PanelAccion() {
   const abierta = useCalendario(s => s.abierta)
@@ -133,8 +135,24 @@ export function PanelAccion() {
 
   // Qué se mira de la ficha. Arranca en las tareas: es a lo que viene la
   // mayoría (a ver qué le toca), y las piezas y los avisos quedan a un toque.
+  // Salvo que se haya pedido otra: el aviso de que mandaron todas las fotos
+  // abre la ficha en las fotos.
   const [pestana, setPestana] = useState<Pestana>('tareas')
-  useEffect(() => { setPestana('tareas') }, [abierta])
+  useEffect(() => {
+    setPestana(useCalendario.getState().pestanaPedida === 'fotos' ? 'fotos' : 'tareas')
+  }, [abierta])
+
+  // Las fotos de colocación: las pide y las revisa quien edita el calendario,
+  // en las acciones de un mundo que tiene locales con usuario (Redexpres hoy;
+  // Tienda Inglesa cuando den de alta los suyos). Si la acción ya tiene un
+  // pedido, la pestaña está aunque después se hayan dado de baja los locales.
+  const mundo = useCalendario(s => s.mundo)
+  const localesDelMundo = useLocalesDelMundo(s => s.porMundo[mundo])
+  const pedirLocales = useLocalesDelMundo(s => s.pedir)
+  useEffect(() => { if (editable) pedirLocales(mundo) }, [editable, mundo, pedirLocales])
+  const conFotos = editable && accion?.seccion === 'comercial' &&
+    (Boolean(accion?.fotos) || (localesDelMundo?.length ?? 0) > 0)
+  const pestanaVista: Pestana = pestana === 'fotos' && !conFotos ? 'tareas' : pestana
 
   const piezas = accion?.piezas ?? []
   const tareas = accion?.tareas ?? []
@@ -147,17 +165,19 @@ export function PanelAccion() {
     : undefined
   const noEntro = accion ? header.sinLugar.find(s => s.accionId === accion.id) : undefined
 
-  const pestanas = [
+  const pestanas: { id: Pestana; nombre: string; n: number }[] = [
     { id: 'tareas', nombre: 'Tareas', n: tareas.length },
     { id: 'piezas', nombre: 'Piezas', n: piezas.length },
     { id: 'avisos', nombre: 'Avisos', n: (accion?.avisos ?? []).length },
-  ] as const
+    // El número es a cuántos locales se les pidió la foto.
+    ...(conFotos ? [{ id: 'fotos' as const, nombre: 'Fotos', n: accion?.fotos?.locales ?? 0 }] : []),
+  ]
 
   /** Flechas izquierda y derecha para moverse entre pestañas, como en cualquier lista de pestañas. */
   function teclaEnPestanas(e: ReactKeyboardEvent<HTMLDivElement>) {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
     e.preventDefault()
-    const i = pestanas.findIndex(p => p.id === pestana)
+    const i = pestanas.findIndex(p => p.id === pestanaVista)
     const siguiente = pestanas[(i + (e.key === 'ArrowRight' ? 1 : pestanas.length - 1)) % pestanas.length]
     setPestana(siguiente.id)
     e.currentTarget.querySelector<HTMLButtonElement>(`#pestana-${siguiente.id}`)?.focus()
@@ -280,13 +300,13 @@ export function PanelAccion() {
             )}
 
             <div
-              className="flex shrink-0 gap-1 border-b border-slate-200 px-3 dark:border-slate-800 sm:px-4"
+              className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 px-3 dark:border-slate-800 sm:px-4"
               role="tablist"
               aria-label="Qué ver de la acción"
               onKeyDown={teclaEnPestanas}
             >
               {pestanas.map(t => {
-                const activa = pestana === t.id
+                const activa = pestanaVista === t.id
                 return (
                   <button
                     key={t.id}
@@ -315,11 +335,13 @@ export function PanelAccion() {
             <div
               id="ficha-contenido"
               role="tabpanel"
-              aria-labelledby={`pestana-${pestana}`}
+              aria-labelledby={`pestana-${pestanaVista}`}
               className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6"
             >
-              <div key={pestana} className="animate-fade-in">
-                {pestana === 'tareas' && (
+              <div key={pestanaVista} className="animate-fade-in">
+                {pestanaVista === 'fotos' && <BloqueFotos accion={accion} />}
+
+                {pestanaVista === 'tareas' && (
                   <BloqueTareas
                     accion={accion}
                     personas={personas}
@@ -329,7 +351,7 @@ export function PanelAccion() {
                   />
                 )}
 
-                {pestana === 'avisos' && (
+                {pestanaVista === 'avisos' && (
                   <BloqueAvisos
                     accion={accion}
                     editable={editable}
@@ -338,7 +360,7 @@ export function PanelAccion() {
                   />
                 )}
 
-                {pestana === 'piezas' && (<>
+                {pestanaVista === 'piezas' && (<>
                   <div className="space-y-6">
                     {CATALOGO_PIEZAS.map(area => (
                       <BloqueArea

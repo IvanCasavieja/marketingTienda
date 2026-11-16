@@ -43,6 +43,10 @@ export type BarraGuardada = {
   formato?: string | null
   hora?: string
   estado?: EstadoPieza
+  /** Solo en las acciones: si se les pidió la foto de colocación a los
+   *  locales, a cuántos y hasta cuándo. El resto (estados, fotos) lo trae el
+   *  tablero aparte: las fotos no viajan con el calendario. */
+  fotos?: { pedido: number; locales: number; limite: string }
 }
 
 /** Las secciones que tienen ficha (se abre al tocarlas) y avisos. */

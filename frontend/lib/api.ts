@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from "axios";
 import type { Ga4FunnelResponse } from "@/types";
+import type { EstadoColocacion, EstadoVisibleColocacion } from "@/lib/colocacion/estados";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -2064,4 +2065,135 @@ export const calendarioApi = {
   /** Guarda las posiciones de RM de un mes y avisa a quien lleva Retail Media. */
   moverPosicionesRM: (clave: string, posiciones: number[]) =>
     api.put<CalendarioEscrito & { avisados: number }>(`/calendario/posiciones-rm/${clave}`, { posiciones }, ESPERA),
+};
+
+// ---------------------------------------------------------------------------
+// Foto de colocación
+// ---------------------------------------------------------------------------
+// Promo le pide a los locales una foto de cómo quedó la cartelería de una
+// acción; el local la saca con el teléfono y la sube; promo la aprueba o la
+// devuelve. Ver backend/app/api/routes/colocacion.py.
+
+export type { EstadoColocacion, EstadoVisibleColocacion };
+
+export interface FotoColocacion {
+  id: number;
+  ancho: number;
+  alto: number;
+  /** Estaba cuando la devolvieron: se borra cuando el local manda la nueva. */
+  devuelta: boolean;
+  subidaAt: string | null;
+}
+
+export interface ResumenColocacion {
+  total: number;
+  pendientes: number;
+  enviadas: number;
+  aprobadas: number;
+  devueltas: number;
+  atrasadas: number;
+  /** El de las aprobadas. */
+  porcentaje: number;
+}
+
+/** Un local en el tablero de promo. */
+export interface LocalColocacion {
+  id: number;
+  local: string;
+  estado: EstadoColocacion;
+  visible: EstadoVisibleColocacion;
+  /** Mandó la foto después del día límite. */
+  tarde: boolean;
+  comentario: string | null;
+  enviadaAt: string | null;
+  revisadoAt: string | null;
+  revisadoPor: string | null;
+  fotos: FotoColocacion[];
+}
+
+export interface PedidoColocacion {
+  id: number;
+  tipoLocal: string;
+  limite: string;
+  indicacion: string | null;
+  creadoPor: string | null;
+  createdAt: string | null;
+  resumen: ResumenColocacion;
+  locales: LocalColocacion[];
+}
+
+export interface TableroColocacion {
+  accion: { id: string; mundo: string; nombre: string; desde: string; hasta: string };
+  hoy: string;
+  tipoLocal: string | null;
+  disponibles: string[];
+  limitePorDefecto: string;
+  pedido: PedidoColocacion | null;
+}
+
+/** Lo que ve el local de un pedido: la acción (solo nombre y fechas) y lo suyo. */
+export interface MiPedidoColocacion {
+  id: number;
+  local: string;
+  estado: EstadoColocacion;
+  visible: EstadoVisibleColocacion;
+  comentario: string | null;
+  limite: string;
+  indicacion: string | null;
+  accion: { nombre: string; desde: string; hasta: string };
+  fotos: FotoColocacion[];
+  puedeSubir: boolean;
+  quedan: number;
+}
+
+export interface FilaResumenColocacion {
+  pedidoId: number;
+  accion: { id: string; nombre: string; color: string | null; desde: string; hasta: string };
+  limite: string;
+  indicacion: string | null;
+  resumen: ResumenColocacion;
+  atrasados: string[];
+}
+
+export const colocacionApi = {
+  disponibles: (mundo: string) =>
+    api.get<{ mundo: string; tipoLocal: string | null; locales: string[] }>("/colocacion/disponibles", { params: { mundo } }),
+  resumen: (mundo: string) =>
+    api.get<{
+      mundo: string; hoy: string; tipoLocal: string | null;
+      abiertas: FilaResumenColocacion[]; completas: FilaResumenColocacion[];
+      espacio: { ocupadoMb: number; topeMb: number };
+    }>("/colocacion/resumen", { params: { mundo } }),
+  tablero: (barraId: string) =>
+    api.get<TableroColocacion>(`/colocacion/acciones/${encodeURIComponent(barraId)}`),
+  pedir: (barraId: string, datos: { locales: string[] | null; limite: string | null; indicacion: string | null }) =>
+    api.post<{ rev: number; avisados: number; pedido: PedidoColocacion }>(
+      `/colocacion/acciones/${encodeURIComponent(barraId)}`, datos),
+  cambiarPedido: (pedidoId: number, cambios: { locales?: string[]; limite?: string; indicacion?: string | null }) =>
+    api.patch<{ rev: number; avisados: number; pedido: PedidoColocacion }>(`/colocacion/pedidos/${pedidoId}`, cambios),
+  cancelarPedido: (pedidoId: number) => api.delete<{ rev: number }>(`/colocacion/pedidos/${pedidoId}`),
+  aprobar: (localId: number) => api.post<LocalColocacion>(`/colocacion/locales/${localId}/aprobar`),
+  devolver: (localId: number, comentario: string) =>
+    api.post<LocalColocacion>(`/colocacion/locales/${localId}/devolver`, { comentario }),
+
+  misFotos: () =>
+    api.get<{ locales: string[]; pedidos: MiPedidoColocacion[]; maxFotos: number }>("/colocacion/mis-fotos"),
+  /** Sube una foto ya achicada (ver lib/colocacion/imagen.ts), con su miniatura. */
+  subir: (localId: number, foto: Blob, miniatura: Blob, onProgreso?: (fraccion: number) => void) => {
+    const datos = new FormData();
+    datos.append("foto", foto, "foto.jpg");
+    datos.append("miniatura", miniatura, "miniatura.jpg");
+    return api.post<MiPedidoColocacion>(`/colocacion/locales/${localId}/fotos`, datos, {
+      headers: { "Content-Type": "multipart/form-data" },
+      // Con mala señal una foto puede tardar: un minuto antes de darla por perdida.
+      timeout: 60_000,
+      onUploadProgress: (e) => { if (onProgreso && e.total) onProgreso(e.loaded / e.total); },
+    });
+  },
+  sacarFoto: (fotoId: number) => api.delete<MiPedidoColocacion>(`/colocacion/fotos/${fotoId}`),
+  /** La imagen como Blob: va con la sesión en el header, así que no puede ser un
+   *  <img src> directo. El navegador la guarda en su caché (el servidor dice
+   *  "private, immutable"), así que la segunda vez no viaja. */
+  imagen: (fotoId: number, tamano: "mini" | "grande") =>
+    api.get<Blob>(`/colocacion/fotos/${fotoId}`, { params: { tamano }, responseType: "blob" }),
 };

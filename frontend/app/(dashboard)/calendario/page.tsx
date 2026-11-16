@@ -23,6 +23,8 @@ import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 /**
  * `/calendario?accion=br-xxx` abre la ficha de esa acción, en su mes. Es a
  * donde lleva tocar un aviso en la campanita o una tarea de "Mis tareas".
+ * Con `&pestana=fotos` la abre en las fotos de colocación (el aviso de que
+ * mandaron todos los locales, la vista general de Colocación).
  *
  * La acción puede ser de otro mundo que el que se está mirando: si no está en
  * lo cargado, se le pregunta al servidor en cuál está y se pasa a ese.
@@ -31,6 +33,7 @@ function AbrirAccionDeLaUrl() {
   const params = useSearchParams();
   const router = useRouter();
   const pedida = params.get("accion");
+  const pestana = params.get("pestana");
   const hecha = useRef<string | null>(null);
 
   useEffect(() => {
@@ -44,7 +47,7 @@ function AbrirAccionDeLaUrl() {
       const accion = useCalendario.getState().barras[id];
       if (!accion) return false;
       useCalendario.getState().irAMes(claveDe(accion.desde));
-      useCalendario.getState().abrirAccion(accion.id);
+      useCalendario.getState().abrirAccion(accion.id, pestana);
       return true;
     };
     void (async () => {
@@ -66,7 +69,7 @@ function AbrirAccionDeLaUrl() {
       }
       router.replace("/calendario");
     })();
-  }, [pedida, router]);
+  }, [pedida, pestana, router]);
 
   return null;
 }

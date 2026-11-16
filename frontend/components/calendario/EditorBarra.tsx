@@ -348,9 +348,12 @@ function ConfirmarBorrado({ barra, onSi, onNo }: { barra: BarraGuardada; onSi: (
     [barra.avisos?.length ?? 0, 'aviso', 'avisos'],
   ] as const
   const lista = cosas.filter(([n]) => n > 0).map(([n, una, varias]) => `${n} ${n === 1 ? una : varias}`)
+  // El pedido de fotos de colocación también se va, con las fotos que mandaron los locales.
+  if (barra.fotos) lista.push(`el pedido de fotos a ${barra.fotos.locales} ${barra.fotos.locales === 1 ? 'local' : 'locales'}`)
+  const singular = lista.length === 1 && (barra.fotos ? true : cosas.find(([n]) => n > 0)?.[0] === 1)
   const queSeVa = lista.length === 0
     ? ''
-    : ` Se ${lista.length === 1 && cosas.find(([n]) => n > 0)?.[0] === 1 ? 'va' : 'van'} con ella ${
+    : ` Se ${singular ? 'va' : 'van'} con ella ${
       lista.length === 1 ? lista[0] : `${lista.slice(0, -1).join(', ')} y ${lista[lista.length - 1]}`}.`
   return (
     <footer

@@ -17,6 +17,10 @@
   GET    /calendario/mis-tareas               — lo que tengo asignado, de todos mis mundos
   GET    /calendario/ubicar/{id}              — en qué mundo está una acción
 
+Las fotos de colocación que se le piden a los locales desde la ficha de una
+acción están en routes/colocacion.py. Acá solo viaja, en cada acción que tiene
+un pedido, cuántos locales y hasta cuándo (`fotos`): nunca las fotos.
+
 Desde la 0060 la plataforma entera se divide en MUNDOS (Tienda Inglesa,
 Redexpres...) y cada uno tiene su calendario: cada barra es de un mundo,
 `GET /datos?mundo=` trae solo ese, y nadie lee ni escribe en un mundo al que no
@@ -57,9 +61,11 @@ from app.models.calendario import (
     CalendarioRevisionMundo,
     CalendarioTarea,
 )
+from app.models.colocacion import ColocacionLocal, ColocacionPedido
 from app.models.notificacion import Notificacion
 from app.models.user import User
 from app.services.calendario_avisos import puede_ver_el_calendario, revisar_avisos
+from app.services.colocacion import ORIGENES_DEL_LOCAL
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/calendario", tags=["calendario"])
@@ -229,7 +235,7 @@ def _tarea_json(t: CalendarioTarea) -> dict:
 
 def _barra_json(
     b: CalendarioBarra, piezas: list[CalendarioPieza], avisos: list[CalendarioAviso],
-    tareas: list[CalendarioTarea] | None = None,
+    tareas: list[CalendarioTarea] | None = None, fotos: dict | None = None,
 ) -> dict:
     out = {
         "id": b.id,
@@ -244,6 +250,10 @@ def _barra_json(
     }
     if b.seccion == "comercial":
         out["piezas"] = [_pieza_json(p) for p in piezas]
+        # El pedido de foto de colocación, si tiene: cuántos locales y hasta
+        # cuándo. Lo demás (estados, fotos) lo trae el tablero aparte.
+        if fotos:
+            out["fotos"] = fotos
     if b.seccion == "envio":
         out["formato"] = b.formato
         out["estado"] = b.estado or "pendiente"
@@ -316,6 +326,18 @@ async def traer_datos(
         .order_by(CalendarioTarea.orden, CalendarioTarea.created_at, CalendarioTarea.id)
     )).scalars():
         tareas.setdefault(t.barra_id, []).append(t)
+    fotos: dict[str, dict] = {
+        barra_id: {"pedido": pedido_id, "locales": n, "limite": limite.isoformat()}
+        for barra_id, pedido_id, limite, n in (await db.execute(
+            select(
+                ColocacionPedido.barra_id, ColocacionPedido.id, ColocacionPedido.limite,
+                func.count(ColocacionLocal.id),
+            )
+            .join(ColocacionLocal, ColocacionLocal.pedido_id == ColocacionPedido.id, isouter=True)
+            .where(ColocacionPedido.barra_id.in_(del_mundo))
+            .group_by(ColocacionPedido.id)
+        )).all()
+    }
     # Retail Media es de la web de Tienda Inglesa: los otros mundos no tienen
     # esa parte del calendario y no tienen por qué bajar sus posiciones.
     posiciones = {
@@ -326,7 +348,7 @@ async def traer_datos(
         "rev": actual,
         "mundo": mundo,
         "barras": [
-            _barra_json(b, piezas.get(b.id, []), avisos.get(b.id, []), tareas.get(b.id, []))
+            _barra_json(b, piezas.get(b.id, []), avisos.get(b.id, []), tareas.get(b.id, []), fotos.get(b.id))
             for b in barras
         ],
         "posicionesRM": posiciones,
@@ -548,6 +570,19 @@ async def borrar_barra(
         },
     ))
     mundo = barra.mundo
+    # Con la acción se va su pedido de fotos (la base lo borra en cascada). El
+    # "te pidieron una foto" que tienen los locales en la campanita ya no
+    # llevaría a nada: se va también.
+    locales = (await db.execute(
+        select(ColocacionLocal.id)
+        .join(ColocacionPedido, ColocacionPedido.id == ColocacionLocal.pedido_id)
+        .where(ColocacionPedido.barra_id == barra_id)
+    )).scalars().all()
+    if locales:
+        await db.execute(delete(Notificacion).where(
+            Notificacion.origen_tipo.in_(ORIGENES_DEL_LOCAL),
+            Notificacion.origen_ref.in_([f"{barra_id}:{i}" for i in locales]),
+        ))
     await db.delete(barra)
     rev = await _nueva_revision(db, mundo)
     await db.commit()

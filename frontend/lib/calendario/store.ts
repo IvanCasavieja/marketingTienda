@@ -135,6 +135,9 @@ type Estado = {
   edicion: Edicion | null
   /** El id de la accion con la ficha abierta. */
   abierta: string | null
+  /** La pestaña con la que se pidió abrir la ficha (un aviso de la campanita
+   *  lleva a las fotos). null = la de siempre. */
+  pestanaPedida: string | null
   /** Ancho de cada día en px. Sube y baja con el control de zoom. */
   zoom: number
   /** false = nadie toco el zoom: el mes se ajusta solo al ancho de la pantalla. */
@@ -156,7 +159,7 @@ type Estado = {
 
   abrirEditor: (e: Edicion) => void
   cerrarEditor: () => void
-  abrirAccion: (id: string) => void
+  abrirAccion: (id: string, pestana?: string | null) => void
   cerrarAccion: () => void
 
   guardarBarra: (datos: DatosBarra) => void
@@ -388,6 +391,7 @@ export const useCalendario = create<Estado>()(
         mesActivo: claveDe(hoyIso()),
         edicion: null,
         abierta: null,
+        pestanaPedida: null,
         zoom: ZOOM_POR_DEFECTO,
         zoomElegido: false,
         vista: 'tiempo',
@@ -484,7 +488,7 @@ export const useCalendario = create<Estado>()(
 
         abrirEditor: e => set({ edicion: e }),
         cerrarEditor: () => set({ edicion: null }),
-        abrirAccion: id => set({ abierta: id }),
+        abrirAccion: (id, pestana = null) => set({ abierta: id, pestanaPedida: pestana }),
         cerrarAccion: () => set({ abierta: null }),
 
         guardarBarra: datos => {
