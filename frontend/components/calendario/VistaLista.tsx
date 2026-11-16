@@ -12,6 +12,7 @@ import { tituloDeCanal, type BarraGuardada, type Persona } from '@/lib/calendari
 import { Cocarda } from './Cocarda'
 import { HeaderHome } from './HeaderHome'
 import { NuevaAccion } from './NuevaAccion'
+import { CLASE_SEMAFORO, semaforoDe, type ColorSemaforo } from '@/lib/calendario/semaforo'
 
 /**
  * El mes como una lista de tarjetas.
@@ -58,6 +59,12 @@ function iniciales(nombre: string): string {
   return nombre.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('')
 }
 
+const CLASE_PILDORA: Record<ColorSemaforo, string> = {
+  verde: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200',
+  amarillo: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200',
+  rojo: 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-200',
+}
+
 function Tarjeta({ barra, personas, hoy, onAbrir, pasada, orden }: {
   barra: BarraGuardada
   personas: Persona[]
@@ -86,7 +93,11 @@ function Tarjeta({ barra, personas, hoy, onAbrir, pasada, orden }: {
   // categoría que no está por arrancar no tiene ninguna de las dos, y la línea
   // no se dibuja: vacía dejaría un hueco.
   const esAccion = barra.seccion === 'comercial'
-  const conPrimeraLinea = !esAccion || !esSinCategoria(barra.banda) || porArrancar || porTerminar
+  // El semáforo, cuando avisa algo (amarillo o rojo), ya dice cuánto falta para
+  // que arranque: reemplaza al "Faltan N días".
+  const semaforo = esAccion ? semaforoDe(barra, hoy) : null
+  const semaforoAvisa = !!semaforo && (semaforo.color !== 'verde' || semaforo.texto === 'Todo listo')
+  const conPrimeraLinea = !esAccion || !esSinCategoria(barra.banda) || porArrancar || porTerminar || semaforoAvisa
   const mega = esAccion && nivelDeCategoria(barra.banda) === 'mega'
 
   return (
@@ -115,7 +126,13 @@ function Tarjeta({ barra, personas, hoy, onAbrir, pasada, orden }: {
                 {esEnvio ? `${tituloDeCanal(barra.banda)} · envío` : barra.banda}
               </span>
             )}
-            {porArrancar && (
+            {semaforo && semaforoAvisa && (
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${CLASE_PILDORA[semaforo.color]}`}>
+                <span className={`h-2 w-2 shrink-0 rounded-full ${CLASE_SEMAFORO[semaforo.color]}`} aria-hidden />
+                {semaforo.texto}
+              </span>
+            )}
+            {porArrancar && !(semaforo && semaforo.color !== 'verde') && (
               <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
                 {faltan === 1 ? 'Arranca mañana' : `Faltan ${faltan} días`}
               </span>

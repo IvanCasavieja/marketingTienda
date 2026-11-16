@@ -9,6 +9,7 @@ import {
 } from '@/lib/calendario/rejilla'
 import { useCalendario } from '@/lib/calendario/store'
 import type { Barra, Mes } from '@/lib/calendario/tipos'
+import { CLASE_SEMAFORO, type Semaforo } from '@/lib/calendario/semaforo'
 
 export { ANCHO_ETIQUETA }
 
@@ -128,6 +129,8 @@ type FilaProps = {
   tituloDe?: (b: Barra) => string
   /** Un dato corto pegado a la derecha de la barra: "2/5" tareas hechas. */
   detalleDe?: (b: Barra) => string | null
+  /** El semáforo de la acción (verde, amarillo o rojo), como un puntito antes del nombre. */
+  semaforoDe?: (b: Barra) => Semaforo | null
 }
 
 /** "Fiesta · del 25 de setiembre al 5 de octubre · sigue en octubre" */
@@ -149,7 +152,7 @@ const CELDA_HOY = "bg-brand-50/70 dark:bg-brand-500/[.07] before:absolute before
 const CELDA_LIBRE = "cursor-cell transition-colors hover:bg-brand-50 dark:hover:bg-brand-500/10 after:absolute after:inset-0 after:flex after:items-center after:justify-center after:text-base after:font-semibold after:text-brand-500 after:opacity-0 after:transition-opacity after:content-['+'] hover:after:opacity-100"
 
 export function FilaRejilla({
-  mes, fila, hoy, alto = ALTO_FILA, editable, onBarra, onDiaVacio, esDerivada, tituloDe, detalleDe,
+  mes, fila, hoy, alto = ALTO_FILA, editable, onBarra, onDiaVacio, esDerivada, tituloDe, detalleDe, semaforoDe,
 }: FilaProps) {
   const franja = useFranja(mes.dias)
   const zoom = useCalendario(s => s.zoom)
@@ -187,11 +190,14 @@ export function FilaRejilla({
         // El dato extra solo entra en una barra con lugar: en una angosta le
         // comía el nombre ("Ci… 0/1").
         const detalle = (b.hasta - b.desde + 1) * zoom >= 130 ? detalleDe?.(b) : null
+        const semaforo = semaforoDe?.(b) ?? null
+        const titulo = tituloDe ? tituloDe(b) : tituloPorDefecto(b, derivada)
         return (
           <button
             key={b.id}
             type="button"
-            title={tituloDe ? tituloDe(b) : tituloPorDefecto(b, derivada)}
+            title={semaforo ? `${titulo}
+${semaforo.texto}` : titulo}
             onClick={clicable ? () => onBarra!(b) : undefined}
             disabled={!clicable}
             style={{
@@ -215,6 +221,13 @@ export function FilaRejilla({
             ].join(' ')}
           >
             {b.vieneDeAntes && <ChevronLeft className="h-3 w-3 shrink-0 opacity-60" aria-hidden />}
+            {semaforo && (
+              <span
+                className={`h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white/80 ${CLASE_SEMAFORO[semaforo.color]}`}
+                role="img"
+                aria-label={semaforo.texto}
+              />
+            )}
             <span className="min-w-0 flex-1 truncate">{b.nombre}</span>
             {detalle && (
               <span className="shrink-0 rounded-md bg-black/10 px-1.5 text-[10px] font-bold leading-[18px] tabular-nums">{detalle}</span>
