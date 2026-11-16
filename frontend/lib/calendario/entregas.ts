@@ -311,10 +311,17 @@ export function proximoPaso(
 ): ProximoPaso {
   const fase = resumen.fases.find(f => f.id === resumen.faseActual)
   if (resumen.momento === 'aprobada' || !fase) {
-    return { texto: 'Aprobada: todas las fases quedaron aprobadas', accion: null, aQuien: 'nadie' }
+    return {
+      texto: resumen.fases.length === 1 ? 'Finalizada: se aprobó la entrega' : 'Aprobada: todas las fases quedaron aprobadas',
+      accion: null, aQuien: 'nadie',
+    }
   }
+  // Con una sola fase (la "Entrega" con la que nacen las tarjetas) no se
+  // nombra la fase: "entregar Entrega" no se entiende.
+  const unaSola = resumen.fases.length === 1
+  const deFase = unaSola ? '' : ` de ${fase.nombre}`
   if (resumen.momento === 'revision') {
-    const que = `revisar la ronda ${resumen.ronda} de ${fase.nombre}`
+    const que = `revisar la ronda ${resumen.ronda}${deFase}`
     if (puedeDecidir || (usuarioId != null && resumen.aprobadorDeTurno === usuarioId)) {
       return { texto: `Te toca: ${que}`, accion: 'revisar', aQuien: 'vos' }
     }
@@ -325,8 +332,8 @@ export function proximoPaso(
   }
   const ronda = resumen.ronda + 1
   const que = resumen.momento === 'cambios'
-    ? `corregir y entregar la ronda ${ronda} de ${fase.nombre}`
-    : `entregar ${ronda === 1 ? fase.nombre : `la ronda ${ronda} de ${fase.nombre}`}`
+    ? `corregir y entregar la ronda ${ronda}${deFase}`
+    : ronda === 1 ? (unaSola ? 'entregar' : `entregar ${fase.nombre}`) : `entregar la ronda ${ronda}${deFase}`
   const soyYo = quien.entregoYo ?? (usuarioId != null && responsableId === usuarioId)
   if (soyYo) return { texto: `Te toca: ${que}`, accion: 'entregar', aQuien: 'vos' }
   // Una agencia (de la plataforma o de afuera) se nombra por la agencia.

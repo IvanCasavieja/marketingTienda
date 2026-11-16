@@ -501,12 +501,20 @@ def test_el_tablero_carga_poco_y_pagina_lo_archivado():
                 e.finalizada_at = datetime.now(timezone.utc) - timedelta(days=12 + i)
             await s.commit()
         r = (await lucia.get("/calendario/entregas", params={"mundo": MUNDO})).json()
-        propias = [t for t in r["tarjetas"] if t["tareaId"] in ids]
-        # 25 archivadas: viajan las primeras 20 y se dice cuántas hay.
-        assert len(propias) == 20 and all(t["columna"] == "archivado" for t in propias)
+        archivadas = [t for t in r["tarjetas"] if t["columna"] == "archivado"]
+        # 25 (o más, si la base de prueba ya tenía): viajan las primeras 20 y
+        # se dice cuántas hay.
+        assert len(archivadas) == 20
         assert r["archivadas"]["total"] >= 25 and r["archivadas"]["mostradas"] == 20
         # Liviana: ni historia ni marcas.
-        assert "fases" not in propias[0] and "marcas" not in str(propias[0])
-        mas = (await lucia.get("/calendario/entregas/archivadas", params={"mundo": MUNDO, "desde": 20})).json()
-        assert {t["tareaId"] for t in mas["tarjetas"]} | {t["tareaId"] for t in propias} >= set(ids)
+        assert "fases" not in archivadas[0] and "marcas" not in str(archivadas[0])
+        # "Ver más", de a 20, hasta traerlas todas.
+        vistas = {t["tareaId"] for t in archivadas}
+        desde = 20
+        while desde < r["archivadas"]["total"]:
+            mas = (await lucia.get("/calendario/entregas/archivadas", params={"mundo": MUNDO, "desde": desde})).json()
+            assert 0 < len(mas["tarjetas"]) <= 20
+            vistas |= {t["tareaId"] for t in mas["tarjetas"]}
+            desde = mas["hasta"]
+        assert vistas >= set(ids)
     correr(prueba)

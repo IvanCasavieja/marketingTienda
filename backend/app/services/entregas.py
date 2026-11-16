@@ -941,27 +941,34 @@ async def crear_entregas_por_defecto(db: AsyncSession, tarea: CalendarioTarea, c
     return entrega
 
 
-async def resumenes_de_entregas(db: AsyncSession, tareas) -> dict[str, dict]:
+async def resumenes_de_entregas(db: AsyncSession, tareas, entregas: list | None = None) -> dict[str, dict]:
     """El resumen de cada tarea que lleva entregas, de entre `tareas` (una
-    lista de ids o una subconsulta). Tres consultas, y una sola si no hay
-    ninguna (lo común en la mayoría de los mundos)."""
-    entregas = (await db.execute(
-        select(CalendarioEntrega).where(CalendarioEntrega.tarea_id.in_(tareas))
-    )).scalars().all()
+    lista de ids o una subconsulta). Dos consultas, y una sola si no hay
+    ninguna (lo común en la mayoría de los mundos). Si quien llama ya tiene
+    las entregas (el tablero), las pasa y se ahorra una.
+
+    Cada ida y vuelta a la base cuesta, con la base lejos, más que la consulta
+    misma: por eso las rondas de cada fase vienen en la misma consulta que las
+    fases (16/11/2026, medido en el tablero con 3.100 tarjetas)."""
+    if entregas is None:
+        entregas = (await db.execute(
+            select(CalendarioEntrega).where(CalendarioEntrega.tarea_id.in_(tareas))
+        )).scalars().all()
     if not entregas:
         return {}
     ids = [e.tarea_id for e in entregas]
+    ultima_ronda = (
+        select(func.max(CalendarioVersion.ronda)).where(CalendarioVersion.fase_id == CalendarioFase.id)
+        .correlate(CalendarioFase).scalar_subquery()
+    )
     fases: dict[str, list[CalendarioFase]] = {}
-    for f in (await db.execute(
-        select(CalendarioFase).where(CalendarioFase.tarea_id.in_(ids)).order_by(CalendarioFase.orden)
-    )).scalars():
+    rondas: dict[str, int] = {}
+    for f, n in (await db.execute(
+        select(CalendarioFase, ultima_ronda).where(CalendarioFase.tarea_id.in_(ids)).order_by(CalendarioFase.orden)
+    )).all():
         fases.setdefault(f.tarea_id, []).append(f)
-    rondas = {
-        fase_id: n for fase_id, n in (await db.execute(
-            select(CalendarioVersion.fase_id, func.max(CalendarioVersion.ronda))
-            .where(CalendarioVersion.tarea_id.in_(ids)).group_by(CalendarioVersion.fase_id)
-        )).all()
-    }
+        if n is not None:
+            rondas[f.id] = n
     return {e.tarea_id: resumen_json(e, fases.get(e.tarea_id, []), rondas) for e in entregas}
 
 

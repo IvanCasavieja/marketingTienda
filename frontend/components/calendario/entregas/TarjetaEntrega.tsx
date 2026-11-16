@@ -20,7 +20,7 @@ import { Miniatura } from './ImagenConMarcas'
  * cómodo, y con el teclado, lo único.
  */
 export function TarjetaEntrega({
-  tarjeta, usuarioId, hoy, orden = 0, onMoverA, onPointerDown, arrastrandose = false, fantasma = false,
+  tarjeta, usuarioId, hoy, orden = 0, onMoverA, onPointerDown, arrastrandose = false, fantasma = false, mostrarQuien = true,
 }: {
   tarjeta: Tarjeta
   usuarioId: number | null
@@ -34,6 +34,8 @@ export function TarjetaEntrega({
   arrastrandose?: boolean
   /** La copia que sigue al puntero mientras se arrastra. */
   fantasma?: boolean
+  /** Quién la hace. La agencia no necesita leer su propio nombre en cada tarjeta. */
+  mostrarQuien?: boolean
 }) {
   const abrir = useVistaEntregas(s => s.abrir)
   const r = tarjeta.entrega
@@ -44,7 +46,7 @@ export function TarjetaEntrega({
   const meToca = paso.aQuien === 'vos'
   const fecha = textoDeFecha(tarjeta, hoy)
   const mundo = mundoDe(tarjeta.accion.mundo)
-  const quien = quienLaHaceTexto(tarjeta.hace)
+  const quien = mostrarQuien ? quienLaHaceTexto(tarjeta.hace) : null
   const destinos = tarjeta.puedo?.mover ?? []
   const terminada = tarjeta.columna === 'finalizado' || tarjeta.columna === 'archivado'
 
@@ -60,7 +62,7 @@ export function TarjetaEntrega({
           arrastrandose ? 'opacity-40 ring-2 ring-dashed ring-slate-400 dark:ring-slate-500' : ''
         } ${fantasma ? 'rotate-[1.5deg] shadow-2xl ring-2 ring-brand-400' : 'hover:shadow-card-hover'} ${
           meToca && !terminada ? 'border-brand-400 dark:border-brand-500/60' : 'border-slate-300 dark:border-slate-700'
-        } ${onPointerDown ? 'cursor-grab touch-pan-y select-none active:cursor-grabbing' : ''}`}
+        } ${onPointerDown ? 'cursor-grab touch-pan-y select-none [-webkit-touch-callout:none] active:cursor-grabbing' : ''}`}
       >
         {/* El color del mundo, como un lomo a la izquierda. */}
         <span aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-r-full" style={{ backgroundColor: mundo?.color ?? '#94a3b8' }} />
@@ -70,9 +72,8 @@ export function TarjetaEntrega({
           className="flex w-full flex-col gap-2 rounded-2xl py-3 pl-4 pr-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         >
           <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-inset ring-black/10" style={{ backgroundColor: tarjeta.accion.color ?? mundo?.color ?? '#cbd5e1' }} />
-            <span className="truncate">{tarjeta.accion.nombre}</span>
-            {mundo && <span className="hidden shrink-0 text-slate-500 dark:text-slate-400 xl:inline">· {mundo.nombre}</span>}
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/40" style={{ backgroundColor: tarjeta.accion.color ?? mundo?.color ?? '#cbd5e1' }} />
+            <span className="truncate" title={mundo ? `${tarjeta.accion.nombre} · ${mundo.nombre}` : tarjeta.accion.nombre}>{tarjeta.accion.nombre}</span>
           </span>
 
           <span className="flex items-start gap-2.5">
@@ -161,9 +162,14 @@ function MoverA({ tarjeta, destinos, onMoverA }: { tarjeta: Tarjeta; destinos: C
         onClick={() => setAbierto(v => !v)}
         aria-expanded={abierto}
         aria-haspopup="menu"
+        aria-label={`Mover a… (${tarjeta.titulo})`}
+        title="Mover a otra columna"
         className="flex min-h-[36px] items-center gap-1 rounded-lg px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
       >
-        <ArrowRightLeft className="h-3.5 w-3.5" /> Mover a…
+        <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden />
+        {/* En la notebook las columnas son angostas y se arrastra: el ícono
+            alcanza (y deja leer quién la hace). En el teléfono, con texto. */}
+        <span className="md:sr-only 2xl:not-sr-only">Mover</span>
       </button>
       {abierto && (
         <div role="menu" aria-label={`Mover ${tarjeta.titulo}`}

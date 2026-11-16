@@ -123,7 +123,9 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     try {
       await entregasApi.entregar(detalle.tarea.id, form, f => setSubiendo(f))
       imagenes.forEach(im => URL.revokeObjectURL(im.vista))
-      toast.success(`Entregaste la ronda ${ronda} de ${fase?.nombre ?? 'la fase'}. Le avisamos a quien tiene que revisarla.`)
+      // Con una sola fase (la "Entrega" de las tarjetas) no se nombra la fase.
+      const deFase = resumen.fases.length > 1 ? ` de ${fase?.nombre ?? 'la fase'}` : ''
+      toast.success(`Entregaste la ronda ${ronda}${deFase}. Quedó en «Esperando feedback»: le avisamos a quien la revisa.`)
       onListo()
     } catch (e) {
       toast.error(detalleDeError(e) ?? 'No se pudo entregar. Revisá la conexión y probá de nuevo: no se pierde nada.')
@@ -136,7 +138,9 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       <div className="flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
         <div>
           <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-            Entregar {ronda === 1 ? fase?.nombre : `la ronda ${ronda} de ${fase?.nombre}`}
+            {resumen.fases.length === 1
+              ? (ronda === 1 ? 'Entregar los materiales' : `Entregar la ronda ${ronda}`)
+              : `Entregar ${ronda === 1 ? fase?.nombre : `la ronda ${ronda} de ${fase?.nombre}`}`}
           </h3>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             Subí la pieza (hasta {limites.imagenes} imágenes) y/o pegá el link al original. La van a revisar en el orden de la cadena.

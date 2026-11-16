@@ -1142,25 +1142,31 @@ async def _tarjetas(db: AsyncSession, filas, usuario: User, hoy=None) -> list[di
         return []
     hoy = hoy or alcance.hoy_en_uruguay()
     ids = [t.id for _, t, _ in filas]
-    resumenes = await reglas.resumenes_de_entregas(db, ids)
-    ultimas = {
-        tid: (vid, estado) for tid, vid, estado in (await db.execute(
-            select(CalendarioVersion.tarea_id, CalendarioVersion.id, CalendarioVersion.estado)
+    # Las entregas ya vinieron con las filas: no se vuelven a pedir.
+    resumenes = await reglas.resumenes_de_entregas(db, ids, entregas=[e for e, _, _ in filas])
+    # La última versión de cada tarjeta, con quién la subió y su miniatura,
+    # en UNA consulta (con la base lejos, cada ida y vuelta pesa más que la
+    # consulta misma).
+    miniatura = (
+        select(CalendarioVersionImagen.id)
+        .where(CalendarioVersionImagen.version_id == CalendarioVersion.id, CalendarioVersionImagen.orden == 0,
+               CalendarioVersionImagen.purgada_at.is_(None))
+        .correlate(CalendarioVersion).limit(1).scalar_subquery()
+    )
+    ultimas: dict[str, tuple] = {
+        tid: (vid, estado, subida, mini) for tid, vid, estado, subida, mini in (await db.execute(
+            select(CalendarioVersion.tarea_id, CalendarioVersion.id, CalendarioVersion.estado,
+                   CalendarioVersion.subida_por_id, miniatura)
             .where(CalendarioVersion.tarea_id.in_(ids))
             .distinct(CalendarioVersion.tarea_id)
             .order_by(CalendarioVersion.tarea_id, CalendarioVersion.created_at.desc())
         )).all()
     }
-    miniaturas = {
-        vid: iid for vid, iid in (await db.execute(
-            select(CalendarioVersionImagen.version_id, CalendarioVersionImagen.id)
-            .where(CalendarioVersionImagen.version_id.in_([v for v, _ in ultimas.values()] or [""]),
-                   CalendarioVersionImagen.orden == 0, CalendarioVersionImagen.purgada_at.is_(None))
-        )).all()
-    }
+    miniaturas = {v[0]: v[3] for v in ultimas.values() if v[3]}
+    subidas = {v[0]: v[2] for v in ultimas.values()}
     # Para saber quién puede aprobarlas arrastrando: las decisiones de las
     # versiones que esperan feedback, de una sola vez.
-    en_revision = [v for v, estado in ultimas.values() if estado == "revision"]
+    en_revision = [v[0] for v in ultimas.values() if v[1] == "revision"]
     decisiones: dict[str, reglas.Decisiones] = {}
     if en_revision:
         for vid, a, d in (await db.execute(
@@ -1168,13 +1174,14 @@ async def _tarjetas(db: AsyncSession, filas, usuario: User, hoy=None) -> list[di
             .where(CalendarioDecision.version_id.in_(en_revision)).order_by(CalendarioDecision.id)
         )).all():
             decisiones.setdefault(vid, []).append((a, d))
-    subidas = dict((await db.execute(
-        select(CalendarioVersion.id, CalendarioVersion.subida_por_id).where(CalendarioVersion.id.in_(en_revision or [""]))
-    )).all()) if en_revision else {}
 
     ids_personas = [t.asignado_a_id for _, t, _ in filas] + [e.aprobador_de_turno_id for e, _, _ in filas]
     if externos.es_externo(usuario):
-        nombres = await nombres_para_externo(db, usuario, ids_personas, await ids_de_aprobadores_de(db, usuario))
+        # Quiénes aprueban estas tarjetas (todas suyas): los ve con nombre.
+        # Salen de las filas que ya están, sin ir otra vez a la base.
+        aprobadores = {a for e, _, _ in filas for a in (e.aprobadores or []) if isinstance(a, int)}
+        aprobadores |= {e.aprobador_de_turno_id for e, _, _ in filas if e.aprobador_de_turno_id is not None}
+        nombres = await nombres_para_externo(db, usuario, ids_personas, aprobadores)
     else:
         nombres = await _nombres(db, ids_personas)
     gestor = _puede_gestionar_tareas(usuario)
@@ -1344,9 +1351,11 @@ async def buscar(
     hoy = alcance.hoy_en_uruguay()
     visibles = [f for f in filas if not _es_oculta(f[0], hoy)][:30]
     ocultas = [f for f in filas if _es_oculta(f[0], hoy)][:30]
+    # Las dos listas en una sola tanda de consultas (y después se separan).
+    tarjetas = {t["tareaId"]: t for t in await _tarjetas(db, visibles + ocultas, current_user, hoy)}
     return {
-        "enTablero": await _tarjetas(db, visibles, current_user, hoy),
-        "archivadas": await _tarjetas(db, ocultas, current_user, hoy),
+        "enTablero": [tarjetas[f[1].id] for f in visibles],
+        "archivadas": [tarjetas[f[1].id] for f in ocultas],
         "palabras": palabras,
     }
 

@@ -6,6 +6,9 @@ const config: Config = {
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    // Las clases que arman las librerías de la pantalla (los colores de las
+    // columnas del tablero, lib/calendario/tablero.ts) también existen.
+    "./lib/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {

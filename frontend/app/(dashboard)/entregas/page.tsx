@@ -189,7 +189,11 @@ export default function TableroPage() {
     const a = arrastreRef.current;
     const f = fantasmaRef.current;
     if (!a || !f) return;
-    f.style.transform = `translate3d(${x - a.dx}px, ${y - a.dy}px, 0)`;
+    // Con el dedo, la copia va más chica y arriba del dedo: si no, tapa
+    // justo la columna donde se va a soltar.
+    f.style.transform = a.conElDedo
+      ? `translate3d(${x - a.ancho * 0.35}px, ${y - f.offsetHeight * 0.7 - 28}px, 0) scale(.7)`
+      : `translate3d(${x - a.dx}px, ${y - a.dy}px, 0)`;
     const c = columnaEn(x, y);
     if (c !== sobreRef.current) {
       sobreRef.current = c;
@@ -439,7 +443,7 @@ export default function TableroPage() {
                   <div className="mb-2 px-1.5 pt-1">
                     <h2 id={`col-${c.clave}`} className="flex items-center gap-2">
                       <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${c.punto}`} aria-hidden />
-                      <span className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{c.titulo}</span>
+                      <span className="min-w-0 text-sm font-bold leading-tight text-slate-900 dark:text-slate-100">{c.titulo}</span>
                       <span className="ml-auto rounded-full bg-white px-2 py-0.5 text-xs font-bold tabular-nums text-slate-700 ring-1 ring-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700">
                         {c.clave === "archivado" ? totalArchivadas : c.lista.length}
                       </span>
@@ -461,6 +465,7 @@ export default function TableroPage() {
                           orden={i}
                           onMoverA={a => void moverA(t, a)}
                           onPointerDown={alApretar(t)}
+                          mostrarQuien={!externo}
                           arrastrandose={arrastre?.tarjeta.tareaId === t.tareaId}
                         />
                       ))}
@@ -521,7 +526,7 @@ export default function TableroPage() {
         <div
           ref={fantasmaRef}
           aria-hidden
-          className="pointer-events-none fixed left-0 top-0 z-[80]"
+          className="pointer-events-none fixed left-0 top-0 z-[80] origin-top-left"
           style={{ width: arrastre.ancho }}
         >
           <ul>
@@ -533,7 +538,7 @@ export default function TableroPage() {
       {/* En el teléfono se ve una columna sola: mientras se arrastra, abajo
           aparecen todas, para soltar en cualquiera. */}
       {arrastre?.conElDedo && (
-        <div className="fixed inset-x-0 bottom-0 z-[75] border-t border-slate-300 bg-white/95 px-2 pb-[max(.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 md:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-[85] border-t border-slate-300 bg-white/95 px-2 pb-[max(.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 md:hidden">
           <p className="mb-1.5 text-center text-xs font-semibold text-slate-600 dark:text-slate-300">Soltala en:</p>
           <div className="grid grid-cols-5 gap-1.5">
             {COLUMNAS_DEL_TABLERO.map(c => {
