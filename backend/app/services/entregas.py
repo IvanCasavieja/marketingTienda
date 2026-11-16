@@ -1069,7 +1069,13 @@ async def run_purga_entregas_loop() -> None:
     """Loop perpetuo, como la purga de cenefas: una pasada al arrancar y
     después una por día. Hace las dos cosas que vencen con los días: borrar
     las imágenes viejas y pasar a Archivado las tarjetas finalizadas hace
-    ARCHIVAR_TARJETAS_DIAS."""
+    ARCHIVAR_TARJETAS_DIAS.
+
+    PENDIENTE (Ivan, 16/11/2026; no se hace hasta que se conecte Outlook):
+    acá va también el mail a toda la empresa 1 o 2 días antes de que arranque
+    una acción grande, con su entrega final (por ejemplo, el mailing de Black
+    Friday ya aprobado). La pasada diaria es el lugar: ya sabe qué acciones
+    arrancan y qué tarjetas quedaron finalizadas."""
     from app.core.database import AsyncSessionLocal
 
     while True:
