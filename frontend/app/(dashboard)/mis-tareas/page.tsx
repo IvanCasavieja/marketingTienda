@@ -3,10 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle, CalendarClock, CalendarDays, Check, ChevronRight, CircleDashed, ListChecks, PartyPopper, ShieldAlert,
+  AlertTriangle, CalendarClock, CalendarDays, Check, ChevronRight, CircleDashed, Eye, Layers, ListChecks, PartyPopper,
+  RotateCcw, ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
-import { calendarioApi } from "@/lib/api";
+import { calendarioApi, entregasApi } from "@/lib/api";
+import { faseActualTexto, FasesCompactas } from "@/components/calendario/entregas/LineaDeFases";
+import { TarjetaEntrega } from "@/components/calendario/entregas/TarjetaEntrega";
+import { proximoPaso, type Tarjeta } from "@/lib/calendario/entregas";
+import { useVistaEntregas } from "@/store/entregas";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import { Cocarda } from "@/components/calendario/Cocarda";
 import { nivelDeCategoria } from "@/lib/calendario/categorias";
@@ -79,6 +84,9 @@ export default function MisTareasPage() {
   const elegido = useMundoElegido(s => s.elegido);
   const elegir = useMundoElegido(s => s.elegir);
   const mundo = mundoEfectivo(user, elegido);
+  // Las entregas: lo que espera MI decisión y lo que me devolvieron con cambios.
+  const [entregas, setEntregas] = useState<{ paraRevisar: Tarjeta[]; conCambios: Tarjeta[] }>({ paraRevisar: [], conCambios: [] });
+  const cambiosEnEntregas = useVistaEntregas(s => s.cambios);
 
   const cargar = useCallback(async () => {
     try {
@@ -88,9 +96,16 @@ export default function MisTareasPage() {
       setTareas(prev => prev ?? []);
       toast.error("No se pudieron traer tus tareas. Probá de nuevo en un momento.");
     }
+    try {
+      const { data } = await entregasApi.misEntregas();
+      setEntregas(data);
+    } catch {
+      // Sin esto la página igual sirve: se ven las tareas.
+    }
   }, []);
 
-  useEffect(() => { if (allowed) void cargar(); }, [allowed, cargar]);
+  // Se vuelve a traer después de entregar o decidir algo desde la vista de entregas.
+  useEffect(() => { if (allowed) void cargar(); }, [allowed, cargar, cambiosEnEntregas]);
 
   useEffect(() => {
     const pendientes = relojes.current;
@@ -137,7 +152,12 @@ export default function MisTareasPage() {
   const hoy = hoyIso();
   const enUnaSemana = sumarDias(hoy, 7);
   const deEsteMundo = tareas.filter(t => !mundo || t.accion.mundo === mundo.clave);
-  const abiertas = deEsteMundo.filter(t => t.estado !== "hecha" || saliendo.has(t.id));
+  const paraRevisar = entregas.paraRevisar.filter(t => !mundo || t.accion.mundo === mundo.clave);
+  const conCambios = entregas.conCambios.filter(t => !mundo || t.accion.mundo === mundo.clave);
+  // Lo que volvió con cambios ya está arriba, en su sección: no se repite abajo.
+  const yaArriba = new Set(conCambios.map(t => t.tareaId));
+  const hayEntregasArriba = paraRevisar.length + conCambios.length > 0;
+  const abiertas = deEsteMundo.filter(t => (t.estado !== "hecha" || saliendo.has(t.id)) && !yaArriba.has(t.id));
   const hechas = deEsteMundo.filter(t => t.estado === "hecha" && !saliendo.has(t.id));
   const pendientes = deEsteMundo.filter(t => t.estado !== "hecha");
   // Lo pendiente en los otros mundos a los que entra, contado por mundo.
@@ -163,9 +183,12 @@ export default function MisTareasPage() {
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Mis tareas</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            {pendientes.length === 0
+            {pendientes.length === 0 && paraRevisar.length === 0
               ? `No tenés nada pendiente${mundo ? ` en ${mundo.nombre}` : ""}.`
-              : `Tenés ${pendientes.length === 1 ? "1 tarea pendiente" : `${pendientes.length} tareas pendientes`}${mundo ? ` en ${mundo.nombre}` : ""}.`}
+              : `Tenés ${[
+                pendientes.length > 0 ? (pendientes.length === 1 ? "1 tarea pendiente" : `${pendientes.length} tareas pendientes`) : "",
+                paraRevisar.length > 0 ? (paraRevisar.length === 1 ? "1 pieza para revisar" : `${paraRevisar.length} piezas para revisar`) : "",
+              ].filter(Boolean).join(" y ")}${mundo ? ` en ${mundo.nombre}` : ""}.`}
           </p>
         </div>
         {/* Lo urgente, contado: se ve antes de leer la lista */}
@@ -204,7 +227,38 @@ export default function MisTareasPage() {
         </div>
       )}
 
-      {deEsteMundo.length === 0 && (
+      {/* Las entregas que esperan algo de mí: lo primero que se ve. */}
+      {hayEntregasArriba && (
+        <div className="mb-8 space-y-6">
+          {paraRevisar.length > 0 && (
+            <section aria-labelledby="para-revisar">
+              <h2 id="para-revisar" className="mb-3 flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
+                <Eye className="h-[18px] w-[18px] text-amber-600 dark:text-amber-400" aria-hidden />
+                Para revisar
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold tabular-nums text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">{paraRevisar.length}</span>
+                <span className="text-sm font-normal text-slate-500 dark:text-slate-400">· esperan tu decisión</span>
+              </h2>
+              <ul className="grid gap-2.5 sm:grid-cols-2">
+                {paraRevisar.map((t, i) => <TarjetaEntrega key={t.tareaId} tarjeta={t} usuarioId={user?.id ?? null} hoy={hoy} orden={i} />)}
+              </ul>
+            </section>
+          )}
+          {conCambios.length > 0 && (
+            <section aria-labelledby="con-cambios">
+              <h2 id="con-cambios" className="mb-3 flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
+                <RotateCcw className="h-[18px] w-[18px] text-rose-600 dark:text-rose-400" aria-hidden />
+                Te devolvieron con cambios
+                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold tabular-nums text-rose-800 dark:bg-rose-500/15 dark:text-rose-200">{conCambios.length}</span>
+              </h2>
+              <ul className="grid gap-2.5 sm:grid-cols-2">
+                {conCambios.map((t, i) => <TarjetaEntrega key={t.tareaId} tarjeta={t} usuarioId={user?.id ?? null} hoy={hoy} orden={i} />)}
+              </ul>
+            </section>
+          )}
+        </div>
+      )}
+
+      {deEsteMundo.length === 0 && !hayEntregasArriba && (
         <div className="flex flex-col items-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900">
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
             <ListChecks className="h-6 w-6" />
@@ -217,7 +271,7 @@ export default function MisTareasPage() {
       )}
 
       {/* Todo hecho: se festeja, apenas */}
-      {deEsteMundo.length > 0 && abiertas.length === 0 && (
+      {deEsteMundo.length > 0 && abiertas.length === 0 && !hayEntregasArriba && (
         <div className="flex animate-rise flex-col items-center rounded-2xl border border-emerald-200 bg-emerald-50/70 px-6 py-12 text-center dark:border-emerald-500/20 dark:bg-emerald-500/[.06]">
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
             <PartyPopper className="h-6 w-6" />
@@ -288,6 +342,10 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
 }) {
   const hecha = tarea.estado === "hecha";
   const vencida = !hecha && !!tarea.vence && tarea.vence < hoy;
+  const abrirEntregas = useVistaEntregas(s => s.abrir);
+  // Una tarea con entregas no se tilda: queda hecha sola cuando se aprueba la
+  // última fase. En su lugar va en qué fase está y la puerta a sus entregas.
+  const entrega = tarea.entrega;
 
   return (
     <li
@@ -298,7 +356,15 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
             : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
       }`}
     >
-      {/* El tilde: 44px para el dedo, el cuadrado de 28 adentro */}
+      {entrega ? (
+        <span
+          title="Queda hecha sola cuando se aprueba la última fase"
+          className={`-m-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${hecha ? "text-emerald-600 dark:text-emerald-400" : "text-brand-600 dark:text-brand-300"}`}
+        >
+          {hecha ? <Check className="h-6 w-6" strokeWidth={3} /> : <Layers className="h-6 w-6" />}
+        </span>
+      ) : (
+      /* El tilde: 44px para el dedo, el cuadrado de 28 adentro */
       <button
         type="button"
         onClick={() => onTildar(tarea)}
@@ -315,6 +381,7 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
           {hecha && <Check className="h-4 w-4 animate-tilde" strokeWidth={3} />}
         </span>
       </button>
+      )}
 
       <div className="min-w-0 flex-1">
         <p className={`text-base font-semibold leading-snug transition-colors duration-300 ${hecha ? "text-slate-400 line-through decoration-slate-300 dark:text-slate-500 dark:decoration-slate-600" : "text-slate-900 dark:text-slate-100"}`}>
@@ -345,15 +412,47 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
               <CalendarClock className="h-4 w-4" /> {vencida ? "Venció el" : "Vence el"} {fechaCorta(tarea.vence)}
             </span>
           )}
-          <select
-            value={tarea.estado}
-            onChange={e => onEstado(tarea, e.target.value as EstadoTarea)}
-            aria-label={`Estado de ${tarea.titulo}`}
-            className={`ml-auto h-9 cursor-pointer appearance-none rounded-lg border-0 px-3 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-brand-500 ${TONO[tarea.estado]}`}
-          >
-            {ESTADOS.map(e => <option key={e} value={e}>{ETIQUETA_ESTADO_TAREA[e]}</option>)}
-          </select>
+          {!entrega && (
+            <select
+              value={tarea.estado}
+              onChange={e => onEstado(tarea, e.target.value as EstadoTarea)}
+              aria-label={`Estado de ${tarea.titulo}`}
+              className={`ml-auto h-9 cursor-pointer appearance-none rounded-lg border-0 px-3 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-brand-500 ${TONO[tarea.estado]}`}
+            >
+              {ESTADOS.map(e => <option key={e} value={e}>{ETIQUETA_ESTADO_TAREA[e]}</option>)}
+            </select>
+          )}
         </div>
+
+        {entrega && (() => {
+          // La tarea es mía: si le toca a alguien, soy yo (entregar) o un aprobador (esperar).
+          const paso = proximoPaso(entrega, tarea.asignadoA, tarea.asignadoA, () => "");
+          const fase = entrega.fases.find(f => f.id === entrega.faseActual);
+          const texto = entrega.momento === "revision" && fase
+            ? `Esperando que revisen la ronda ${entrega.ronda} de ${fase.nombre}`
+            : paso.texto;
+          return (
+            <div className="mt-2.5 space-y-2">
+              <span className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                <FasesCompactas resumen={entrega} /> {faseActualTexto(entrega)}
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className={`min-w-0 flex-1 text-sm font-semibold ${paso.aQuien === "vos" ? "text-brand-700 dark:text-brand-200" : "text-slate-600 dark:text-slate-300"}`}>{texto}</p>
+                <button
+                  type="button"
+                  onClick={() => abrirEntregas(tarea.id, paso.accion === "entregar" ? "entregar" : "ver")}
+                  className={`flex min-h-[40px] items-center gap-1.5 rounded-xl px-3.5 text-sm font-bold transition active:scale-[.98] ${
+                    paso.accion === "entregar"
+                      ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <Layers className="h-4 w-4" /> {paso.accion === "entregar" ? "Entregar" : "Ver entregas"}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </li>
   );
