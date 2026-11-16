@@ -3,10 +3,10 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { textoSobre } from '@/lib/calendario/colores'
-import { esFinde, nombreMes, rangoLargo } from '@/lib/calendario/fechas'
+import { esFinde, isoDe, nombreMes, rangoLargo } from '@/lib/calendario/fechas'
 import {
   ANCHO_ETIQUETA, MINIMO_CON_DOW, MINIMO_CON_NUMERO,
-  anchoDias, columnasDe,
+  anchoDias, columnasDe, diaMarcadoEn,
 } from '@/lib/calendario/rejilla'
 import { useCalendario } from '@/lib/calendario/store'
 import type { Barra, Mes } from '@/lib/calendario/tipos'
@@ -26,8 +26,13 @@ export const ESTILO_ETIQUETA = `var(--ancho-etiqueta, ${ANCHO_ETIQUETA}px)`
  * que acercarse a la pantalla para leer el nombre de una acción (pedido de
  * Ivan, 12/11/2026: "tarjetas más grandes", pensadas para las notebooks y no
  * para un monitor de 27 pulgadas).
+ *
+ * Son 40 y no 38: un renglón con una acción ya medía 40 (la barra de 32, sus
+ * 3 + 3 de aire y los 2 de la línea), y uno vacío quedaba en 38. Con la
+ * etiqueta de 42 no se notaba; ahora que la etiqueta mide lo que su renglón,
+ * todos tienen que medir lo mismo.
  */
-export const ALTO_FILA = 38
+export const ALTO_FILA = 40
 
 /** Ancho total de la rejilla al zoom actual: etiquetas + días. */
 export function useAnchoTotal(dias: number): string {
@@ -57,8 +62,13 @@ export function CabeceraDias({ mes, hoy, titulo }: { mes: Mes; hoy: number | nul
   const franja = useFranja(mes.dias)
   const conDow = zoom >= MINIMO_CON_DOW
   const conNumero = zoom >= MINIMO_CON_NUMERO
+  // Tocar un día marca su columna entera, como en un Excel (pedido del
+  // 16/11/2026); tocarlo de nuevo, o Esc, la desmarca.
+  const marcado = useCalendario(s => diaMarcadoEn(mes.clave, s.diaMarcado))
+  const marcarDia = useCalendario(s => s.marcarDia)
 
   return (
+    <>
     <div className="sticky top-0 z-30 flex border-b border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900">
       <div
         className="sticky left-0 z-40 flex shrink-0 items-end border-r border-slate-300 bg-white px-3 pb-2 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 sm:px-4"
@@ -71,43 +81,79 @@ export function CabeceraDias({ mes, hoy, titulo }: { mes: Mes; hoy: number | nul
         {Array.from({ length: mes.dias }, (_, i) => i + 1).map(d => {
           const finde = esFinde(mes.clave, d)
           const esHoy = d === hoy
+          const esMarcado = d === marcado
+          const dia = `${esHoy ? 'Hoy, ' : ''}${mes.dow[String(d)]} ${d}`
           return (
-            <div
+            <button
               key={d}
+              type="button"
+              onClick={() => marcarDia(isoDe(mes.clave, d))}
+              aria-pressed={esMarcado}
               style={{ gridColumn: d, gridRow: 1 }}
-              title={esHoy ? `Hoy, ${mes.dow[String(d)]} ${d}` : `${mes.dow[String(d)]} ${d}`}
+              title={esMarcado ? `${dia} · marcado. Tocá de nuevo para desmarcarlo` : `${dia} · tocá para marcar la columna`}
               data-hoy={esHoy || undefined}
               className={[
-                'flex flex-col items-center overflow-hidden border-r border-slate-200 px-0.5 pb-1.5 pt-2 dark:border-slate-700',
-                finde ? 'bg-slate-100 dark:bg-slate-800/50' : '',
-                esHoy ? 'bg-brand-50 dark:bg-brand-500/10' : '',
+                'flex cursor-pointer flex-col items-center overflow-hidden border-r border-slate-200 px-0.5 pb-1.5 pt-2 transition-colors dark:border-slate-700',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500',
+                // Un solo fondo por día: el marcado le gana a hoy y al fin de semana.
+                esMarcado ? 'bg-amber-300 dark:bg-amber-400'
+                  : esHoy ? 'bg-brand-50 hover:bg-amber-100 dark:bg-brand-500/10 dark:hover:bg-amber-400/25'
+                    : finde ? 'bg-slate-100 hover:bg-amber-100 dark:bg-slate-800/50 dark:hover:bg-amber-400/25'
+                      : 'hover:bg-amber-100 dark:hover:bg-amber-400/25',
               ].join(' ')}
             >
               {conDow && (
-                <div className={[
-                  'text-[10px] font-semibold uppercase leading-none',
-                  esHoy ? 'text-brand-600 dark:text-brand-300' : 'text-slate-500 dark:text-slate-400',
+                <span className={[
+                  'block text-[10px] font-semibold uppercase leading-none',
+                  esMarcado ? 'font-bold text-slate-900'
+                    : esHoy ? 'text-brand-600 dark:text-brand-300' : 'text-slate-500 dark:text-slate-400',
                 ].join(' ')}>
                   {mes.dow[String(d)]}
-                </div>
+                </span>
               )}
               {/* Hoy va en un círculo lleno: es lo primero que se busca */}
-              <div
+              <span
                 className={[
                   conDow ? 'mt-1' : '',
                   'flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-0.5 text-[13px] font-semibold leading-none tabular-nums',
                   esHoy ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/40'
-                    : finde ? 'text-slate-500 dark:text-slate-400'
-                      : 'text-slate-700 dark:text-slate-300',
+                    : esMarcado ? 'font-bold text-slate-900'
+                      : finde ? 'text-slate-500 dark:text-slate-400'
+                        : 'text-slate-700 dark:text-slate-300',
                 ].join(' ')}
               >
-                {conNumero || esHoy || d === 1 || d % 5 === 0 ? d : ''}
-              </div>
-            </div>
+                {conNumero || esHoy || esMarcado || d === 1 || d % 5 === 0 ? d : ''}
+              </span>
+            </button>
           )
         })}
       </div>
     </div>
+    {/* Hermana de la cabecera y no hija: la cabecera es sticky, y adentro de
+        ella la franja mediría solo el alto de la cabecera. */}
+    <MarcaDeColumna mes={mes} dia={marcado} />
+    </>
+  )
+}
+
+/**
+ * La columna del día marcado: una franja de punta a punta con sus dos líneas.
+ * Va por encima de las celdas y por DEBAJO de las barras (z-5 contra z-10),
+ * como el relleno de una columna elegida en Excel: encima les lavaba el color
+ * y las líneas les cruzaban el nombre. Es una sola caja por sección: marcar
+ * un día no vuelve a dibujar ninguna fila. Se apoya en el marco de la sección
+ * (ver MarcoScroll).
+ */
+function MarcaDeColumna({ mes, dia }: { mes: Mes; dia: number | null }) {
+  const zoom = useCalendario(s => s.zoom)
+  if (dia == null || dia > mes.dias) return null
+  return (
+    <div
+      aria-hidden
+      data-columna-marcada={dia}
+      className="pointer-events-none absolute inset-y-0 z-[5] border-x-2 border-amber-500 bg-amber-300/40 dark:border-amber-400 dark:bg-amber-300/25"
+      style={{ left: `calc(${ESTILO_ETIQUETA} + ${(dia - 1) * zoom}px)`, width: zoom }}
+    />
   )
 }
 
@@ -169,7 +215,10 @@ export function FilaRejilla({
 
   return (
     <div
-      className={`grid shrink-0 ${interna ? 'border-b border-slate-200 dark:border-slate-700/80' : 'border-b-2 border-slate-300 dark:border-slate-600'}`}
+      // `grow`: si la etiqueta de la categoría es más alta que sus renglones
+      // (un nombre en dos líneas), el renglón llega hasta abajo. Sin esto
+      // quedaba una franja blanca entre la fila y la línea de la categoría.
+      className={`grid shrink-0 grow ${interna ? 'border-b border-slate-200 dark:border-slate-700/80' : 'border-b-2 border-slate-300 dark:border-slate-600'}`}
       style={{ ...franja, minHeight: alto }}
     >
       {Array.from({ length: mes.dias }, (_, i) => i + 1).map(d => {
@@ -288,12 +337,17 @@ export function FilaRejilla({
 // ---------------------------------------------------------------------------
 
 export function EtiquetaBanda({
-  children, filas = 1, tono = 'normal', extra, onAgregar, tituloAgregar, titulo,
+  children, filas = 1, tono = 'normal', extra, onAgregar, tituloAgregar, titulo, clave,
 }: {
   children: React.ReactNode
   filas?: number
   tono?: 'normal' | 'rm' | 'grupo' | 'destacada'
+  /** Una línea chica debajo del nombre ("2 envíos"). Con `leading-none`, para
+   *  que la etiqueta de un renglón no pase de ALTO_FILA. */
   extra?: React.ReactNode
+  /** `seccion:categoría`. Con esto, tocar la etiqueta marca su fila entera,
+   *  como el número de fila de un Excel (va con <Renglones clave=...>). */
+  clave?: string
   /** Botón + para crear algo en esta banda aunque todos sus renglones estén
    *  ocupados ese día: va al primer renglón libre, o a uno nuevo. */
   onAgregar?: () => void
@@ -301,36 +355,89 @@ export function EtiquetaBanda({
   /** El nombre entero, para el tooltip, cuando `children` no es un texto. */
   titulo?: string
 }) {
+  const marcada = useCalendario(s => clave != null && s.filaMarcada === clave)
+  const marcarFila = useCalendario(s => s.marcarFila)
+  // El fondo es opaco también en oscuro: la etiqueta queda pegada a la
+  // izquierda y las barras pasan por debajo al correr el mes.
   const fondo =
-    tono === 'rm' ? 'bg-violet-50 text-violet-900 dark:bg-[#1e1638] dark:text-violet-200'
-      : tono === 'grupo' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-        : tono === 'destacada' ? 'bg-white text-slate-900 dark:bg-slate-900 dark:text-white'
-          : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-300'
+    marcada ? 'bg-amber-200 text-slate-900 shadow-[inset_4px_0_0_0_#f59e0b,inset_0_2px_0_0_#f59e0b] dark:bg-[#4a4128] dark:text-amber-50'
+      : tono === 'rm' ? 'bg-violet-50 text-violet-900 dark:bg-[#1e1638] dark:text-violet-200'
+        : tono === 'grupo' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+          : tono === 'destacada' ? 'bg-white text-slate-900 dark:bg-slate-900 dark:text-white'
+            : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-300'
+  const nombre = titulo ?? (typeof children === 'string' ? children : undefined)
+  // El nombre y su línea chica van juntos, al lado del +: así la etiqueta de
+  // un renglón mide lo mismo que el renglón (antes la línea chica iba abajo
+  // de todo y la etiqueta quedaba más alta que la fila).
+  const cuerpo = (
+    <>
+      <span className={`line-clamp-2 break-words text-xs leading-tight sm:text-[12.5px] ${tono === 'destacada' ? 'font-bold' : 'font-semibold'}`}>
+        {children}
+      </span>
+      {extra}
+    </>
+  )
+  const CAJA = 'flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-0.5 pl-2.5 text-left sm:pl-4'
   return (
     <div
-      className={`group/etiqueta sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-0.5 border-b-2 border-r border-slate-300 py-1 pl-2.5 pr-1 dark:border-slate-600 sm:pl-4 sm:pr-1.5 ${fondo}`}
+      className={[
+        'group/etiqueta sticky left-0 z-20 flex shrink-0 items-stretch gap-0.5 border-b-2 border-r border-slate-300 pr-1 dark:border-slate-600 sm:gap-1 sm:pr-1.5',
+        marcada ? 'border-b-amber-500 dark:border-b-amber-400' : '',
+        fondo,
+      ].join(' ')}
       style={{ width: ESTILO_ETIQUETA, minHeight: filas * ALTO_FILA }}
+      data-fila-marcada={marcada || undefined}
     >
-      <div className="flex items-center gap-0.5 sm:gap-1">
-        <div
-          className={`line-clamp-2 min-w-0 flex-1 break-words text-xs leading-tight sm:text-[12.5px] ${tono === 'destacada' ? 'font-bold' : 'font-semibold'}`}
-          title={titulo ?? (typeof children === 'string' ? children : undefined)}
+      {clave ? (
+        <button
+          type="button"
+          onClick={() => marcarFila(clave)}
+          aria-pressed={marcada}
+          title={[nombre, marcada ? 'fila marcada. Tocá de nuevo para desmarcarla' : 'tocá para marcar la fila'].filter(Boolean).join(' · ')}
+          className={`${CAJA} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500`}
         >
-          {children}
-        </div>
-        {onAgregar && (
-          <button
-            type="button"
-            onClick={onAgregar}
-            title={tituloAgregar}
-            aria-label={tituloAgregar}
-            className="flex h-8 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 sm:w-8 transition hover:bg-brand-50 hover:text-brand-700 active:scale-90 group-hover/etiqueta:text-slate-600 dark:text-slate-400 dark:hover:bg-brand-500/15 dark:hover:text-brand-200 dark:group-hover/etiqueta:text-slate-300"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-      {extra}
+          {cuerpo}
+        </button>
+      ) : (
+        <div className={CAJA} title={nombre}>{cuerpo}</div>
+      )}
+      {onAgregar && (
+        <button
+          type="button"
+          onClick={onAgregar}
+          title={tituloAgregar}
+          aria-label={tituloAgregar}
+          className={[
+            'flex h-8 w-7 shrink-0 items-center justify-center self-center rounded-lg transition active:scale-90 sm:w-8',
+            marcada
+              ? 'text-slate-700 hover:bg-amber-300 hover:text-slate-900 dark:text-amber-100 dark:hover:bg-amber-400/30'
+              : 'text-slate-500 hover:bg-brand-50 hover:text-brand-700 group-hover/etiqueta:text-slate-600 dark:text-slate-400 dark:hover:bg-brand-500/15 dark:hover:text-brand-200 dark:group-hover/etiqueta:text-slate-300',
+          ].join(' ')}
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Los renglones de una categoría, a la derecha de su etiqueta. Llenan el alto
+ * de la etiqueta (ver `grow` en FilaRejilla) y, si la fila está marcada, llevan
+ * la franja con sus dos líneas, igual que la columna de un día (por debajo
+ * de las barras, que siguen con su color).
+ */
+export function Renglones({ clave, children }: { clave?: string; children: React.ReactNode }) {
+  const marcada = useCalendario(s => clave != null && s.filaMarcada === clave)
+  return (
+    <div className="relative flex flex-1 flex-col">
+      {children}
+      {marcada && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-[5] border-y-2 border-amber-500 bg-amber-300/40 dark:border-amber-400 dark:bg-amber-300/25"
+        />
+      )}
     </div>
   )
 }

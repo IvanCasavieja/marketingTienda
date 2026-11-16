@@ -89,7 +89,9 @@ export function MarcoScroll({ ancho, children }: { ancho: number | string; child
       onScroll={sincronizar}
       className="max-h-[calc(100dvh-9rem)] overflow-auto overscroll-x-contain md:max-h-[calc(100dvh-3rem)]"
     >
-      <div style={{ width: ancho }}>{children}</div>
+      {/* relative: la franja del día marcado (ver CabeceraDias) va de punta
+          a punta de este contenido, y se mueve con él al scrollear. */}
+      <div className="relative" style={{ width: ancho }}>{children}</div>
     </div>
   )
 }

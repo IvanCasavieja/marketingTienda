@@ -95,6 +95,11 @@ export function BarraSuperior() {
       else if (e.key === '+' || e.key === '=') setZoom(siguienteZoom(useCalendario.getState().zoom, 1))
       else if (e.key === '-' || e.key === '_') setZoom(siguienteZoom(useCalendario.getState().zoom, -1))
       else if (e.key === '0') setZoom(ZOOM_POR_DEFECTO)
+      // Esc saca la fila y la columna marcadas (si no hay ninguna, no hace nada
+      // y la tecla sigue su camino).
+      else if (e.key === 'Escape' && (useCalendario.getState().diaMarcado || useCalendario.getState().filaMarcada)) {
+        useCalendario.getState().quitarMarcas()
+      }
       else if ((e.key === 'n' || e.key === 'N') && editable) {
         abrirEditor({ seccion: 'comercial', banda: SIN_CATEGORIA, carril: 0, barra: null, fechaInicial: isoDe(mes, diaDeHoy(mes) ?? 1) })
       } else return

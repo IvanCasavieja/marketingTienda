@@ -170,9 +170,25 @@ type Estado = {
   zoomElegido: boolean
   vista: Vista
   filtro: Filtro
+  /**
+   * Lo que la persona marcó para no perderse, como en un Excel (pedido del
+   * 16/11/2026): un día (la columna entera) y una fila. Es solo de su
+   * pantalla: no se guarda ni se le manda a nadie.
+   */
+  diaMarcado: string | null
+  /** `seccion:categoría`, por ejemplo `comercial:Mailing GRAL`. */
+  filaMarcada: string | null
+  /** Esconder las categorías sin nada este mes. Cada uno lo deja como le sirve. */
+  ocultarVacias: boolean
 
   accionAbierta: () => BarraGuardada | null
   irAMes: (clave: string) => void
+  /** Marca ese día; si ya estaba marcado, lo desmarca. */
+  marcarDia: (iso: string) => void
+  /** Marca esa fila; si ya estaba marcada, la desmarca. */
+  marcarFila: (clave: string) => void
+  quitarMarcas: () => void
+  setOcultarVacias: (v: boolean) => void
   /** `elegido` = lo pidio la persona (y entonces ya no se ajusta solo). */
   setZoom: (px: number, elegido?: boolean) => void
   setVista: (v: Vista) => void
@@ -451,6 +467,14 @@ export const useCalendario = create<Estado>()(
         zoomElegido: false,
         vista: 'tiempo',
         filtro: 'todo',
+        diaMarcado: null,
+        filaMarcada: null,
+        ocultarVacias: false,
+
+        marcarDia: iso => set(s => ({ diaMarcado: s.diaMarcado === iso ? null : iso })),
+        marcarFila: clave => set(s => ({ filaMarcada: s.filaMarcada === clave ? null : clave })),
+        quitarMarcas: () => set({ diaMarcado: null, filaMarcada: null }),
+        setOcultarVacias: ocultarVacias => set({ ocultarVacias }),
 
         accionAbierta: () => {
           const { abierta, barras } = get()
@@ -475,6 +499,8 @@ export const useCalendario = create<Estado>()(
             abierta: null, edicion: null, conexion: 'cargando', plantillas: [], dialogoPlantillas: null,
             // Un mundo sin Retail Media ni headers no puede quedar filtrado en ellos.
             filtro: 'todo',
+            // Las filas son otras: la marca de este mundo no dice nada en aquel.
+            diaMarcado: null, filaMarcada: null,
           })
           void get().sincronizar()
           void get().traerPersonas()
@@ -930,6 +956,7 @@ export const useCalendario = create<Estado>()(
         zoomElegido: s.zoomElegido,
         vista: s.vista,
         filtro: s.filtro,
+        ocultarVacias: s.ocultarVacias,
       }),
     },
   ),

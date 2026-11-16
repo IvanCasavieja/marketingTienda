@@ -8,8 +8,8 @@
  */
 import {
   ANCHO_ETIQUETA, ZOOMS, ZOOM_MAX, ZOOM_MIN, ZOOM_POR_DEFECTO,
-  anchoDias, anchoTotal, columnasDe, limitarZoom, porcentajeZoom,
-  sePuedeAcercar, sePuedeAlejar, siguienteZoom, zoomParaAncho,
+  anchoDias, anchoTotal, columnasDe, diaMarcadoEn, limitarZoom, porcentajeZoom,
+  renglonesVisibles, sePuedeAcercar, sePuedeAlejar, siguienteZoom, zoomParaAncho,
 } from './rejilla'
 
 let fallos = 0
@@ -78,6 +78,25 @@ ok('nunca devuelve algo fuera de rango',
     const z = zoomParaAncho(a, 31)
     return z >= ZOOM_MIN && z <= ZOOM_MAX
   }))
+
+console.log('\nrenglones vacíos: no ocupan lugar')
+igual('los vacíos del medio se saltean y cada uno conserva su carril',
+  renglonesVisibles([['a'], [], ['b', 'c'], []]),
+  [{ fila: ['a'], carril: 0 }, { fila: ['b', 'c'], carril: 2 }])
+igual('si están todos vacíos queda uno, para poder cargar',
+  renglonesVisibles([[], [], []]), [{ fila: [], carril: 0 }])
+igual('una categoría sin nada tiene su renglón', renglonesVisibles([[]]), [{ fila: [], carril: 0 }])
+igual('sin renglones, igual queda uno', renglonesVisibles([]), [{ fila: [], carril: 0 }])
+igual('si no hay vacíos no cambia nada',
+  renglonesVisibles([['a'], ['b']]), [{ fila: ['a'], carril: 0 }, { fila: ['b'], carril: 1 }])
+
+console.log('\nel día marcado, en el mes que se mira')
+igual('del mes que se mira, su número', diaMarcadoEn('2026-11', '2026-11-14'), 14)
+igual('el primero', diaMarcadoEn('2026-11', '2026-11-01'), 1)
+igual('de otro mes, nada', diaMarcadoEn('2026-12', '2026-11-14'), null)
+igual('del mismo mes de otro año, nada', diaMarcadoEn('2027-11', '2026-11-14'), null)
+igual('sin marca, nada', diaMarcadoEn('2026-11', null), null)
+igual('una fecha rota, nada', diaMarcadoEn('2026-11', '2026-11-xx'), null)
 
 console.log('\nlímites y porcentaje')
 igual('recorta por abajo', limitarZoom(5), ZOOM_MIN)

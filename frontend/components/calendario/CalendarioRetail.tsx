@@ -1,10 +1,11 @@
 'use client'
 
 import { ShoppingBag } from 'lucide-react'
-import { CabeceraDias, EtiquetaBanda, FilaRejilla, useAnchoTotal, ESTILO_ETIQUETA } from './Rejilla'
+import { CabeceraDias, EtiquetaBanda, FilaRejilla, Renglones, useAnchoTotal, ESTILO_ETIQUETA } from './Rejilla'
 import { MarcoScroll } from './MarcoScroll'
 import { Seccion } from './Seccion'
 import { diaDeHoy, isoDe } from '@/lib/calendario/fechas'
+import { renglonesVisibles } from '@/lib/calendario/rejilla'
 import { useCalendario, useMesActivo } from '@/lib/calendario/store'
 import { REGLAS_HEADER, type Banda } from '@/lib/calendario/tipos'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
@@ -50,13 +51,16 @@ export function CalendarioRetail() {
 
               {grupo.bandas.map(banda => {
                 const esHeader = banda.nombre === REGLAS_HEADER.formatoHeader
+                const renglones = renglonesVisibles(banda.filas)
+                const clave = `retail:${banda.id}`
                 return (
                   <div key={banda.id} className="flex">
                     <EtiquetaBanda
-                      filas={banda.filas.length}
+                      clave={clave}
+                      filas={renglones.length}
                       tono={esHeader ? 'rm' : 'normal'}
                       extra={esHeader
-                        ? <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+                        ? <span className="text-[10px] font-semibold uppercase leading-none tracking-wide text-violet-600 dark:text-violet-300">
                             baja al header
                           </span>
                         : undefined}
@@ -67,11 +71,11 @@ export function CalendarioRetail() {
                     >
                       {banda.nombre}
                     </EtiquetaBanda>
-                    <div className="flex-1">
-                      {banda.filas.map((fila, i) => (
+                    <Renglones clave={clave}>
+                      {renglones.map(({ fila, carril }, i) => (
                         <FilaRejilla
-                          key={i}
-                          interna={i < banda.filas.length - 1}
+                          key={carril}
+                          interna={i < renglones.length - 1}
                           mes={mes}
                           fila={fila}
                           hoy={hoy}
@@ -80,10 +84,10 @@ export function CalendarioRetail() {
                             const guardada = useCalendario.getState().barras[b.id]
                             if (guardada) abrirEditor({ seccion: 'retail', banda: banda.id, carril: guardada.carril, barra: guardada })
                           }}
-                          onDiaVacio={d => abrirEditor({ seccion: 'retail', banda: banda.id, carril: i, barra: null, fechaInicial: isoDe(mes.clave, d) })}
+                          onDiaVacio={d => abrirEditor({ seccion: 'retail', banda: banda.id, carril, barra: null, fechaInicial: isoDe(mes.clave, d) })}
                         />
                       ))}
-                    </div>
+                    </Renglones>
                   </div>
                 )
               })}
