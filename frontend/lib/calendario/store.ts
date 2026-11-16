@@ -148,6 +148,9 @@ type Estado = {
   /** El diálogo de plantillas, si está abierto: desde la ficha de `barraId`
    *  (para aplicar una ahí), o con null para solo armarlas y editarlas. */
   dialogoPlantillas: { barraId: string | null } | null
+  /** La pestaña con la que se pidió abrir la ficha (un aviso de la campanita
+   *  lleva a las fotos). null = la de siempre. */
+  pestanaPedida: string | null
   /** Ancho de cada día en px. Sube y baja con el control de zoom. */
   zoom: number
   /** false = nadie toco el zoom: el mes se ajusta solo al ancho de la pantalla. */
@@ -169,14 +172,14 @@ type Estado = {
 
   abrirEditor: (e: Edicion) => void
   cerrarEditor: () => void
-  abrirAccion: (id: string) => void
+  abrirAccion: (id: string, pestana?: string | null) => void
   cerrarAccion: () => void
   /**
    * Lleva a una acción y abre su ficha, en su mes, aunque todavía no esté en
    * pantalla (recién creada por otro, o una copia que era un reintento) o sea
    * de otro mundo. Devuelve false si no está o la persona no abre ese mundo.
    */
-  irAAccion: (id: string) => Promise<boolean>
+  irAAccion: (id: string, pestana?: string | null) => Promise<boolean>
 
   guardarBarra: (datos: DatosBarra) => void
   borrarBarra: () => void
@@ -427,6 +430,7 @@ export const useCalendario = create<Estado>()(
         abierta: null,
         plantillas: [],
         dialogoPlantillas: null,
+        pestanaPedida: null,
         zoom: ZOOM_POR_DEFECTO,
         zoomElegido: false,
         vista: 'tiempo',
@@ -526,19 +530,19 @@ export const useCalendario = create<Estado>()(
 
         abrirEditor: e => set({ edicion: e }),
         cerrarEditor: () => set({ edicion: null }),
-        abrirAccion: id => set({ abierta: id }),
+        abrirAccion: (id, pestana = null) => set({ abierta: id, pestanaPedida: pestana }),
         cerrarAccion: () => set({ abierta: null }),
 
         // Antes vivía en la página (lo usaba solo `/calendario?accion=`). Está
         // acá para que también lo use la copia: navegar con el router a la
         // misma página cambiando solo `?accion=` no se completaba nunca (visto
         // con Next 16 el 15/11/2026), y la copia se quedaba en la original.
-        irAAccion: async id => {
+        irAAccion: async (id, pestana = null) => {
           const abrir = () => {
             const accion = get().barras[id]
             if (!accion) return false
             get().irAMes(claveDe(accion.desde))
-            get().abrirAccion(accion.id)
+            get().abrirAccion(accion.id, pestana)
             return true
           }
           if (abrir()) return true
