@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from "axios";
 import type { Ga4FunnelResponse } from "@/types";
 import type { EstadoColocacion, EstadoVisibleColocacion } from "@/lib/colocacion/estados";
 import type { DetalleEntregas, Metricas, ResumenEntrega, Tarjeta, TipoDecision, TipoPieza } from "@/lib/calendario/entregas";
+import type { ObservacionIA, RevisionIA } from "@/lib/calendario/revision-ia";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -2315,10 +2316,18 @@ export const entregasApi = {
       }),
   decidir: (versionId: string, datos: {
     decision: TipoDecision; comentario?: string | null;
-    marcas: { imagenId: string; x: number; y: number; texto: string }[];
+    /** `observacionIA`: si la marca salió de una observación de la IA ("Hacer marca"). */
+    marcas: { imagenId: string; x: number; y: number; texto: string; observacionIA?: string | null }[];
   }) =>
     api.post<CalendarioEscrito & { resultado: string; entrega: ResumenEntrega }>(
       `/calendario/versiones/${encodeURIComponent(versionId)}/decision`, datos, ESPERA),
+  /** Lo que encontró la IA en una versión (solo aprobadores y quien gestiona). */
+  revisionIA: (versionId: string) =>
+    api.get<RevisionIA>(`/calendario/versiones/${encodeURIComponent(versionId)}/revision-ia`, ESPERA),
+  descartarObservacionIA: (versionId: string, observacionId: string, descartada: boolean) =>
+    api.patch<ObservacionIA>(
+      `/calendario/versiones/${encodeURIComponent(versionId)}/revision-ia/${encodeURIComponent(observacionId)}`,
+      { descartada }, ESPERA),
   tildarMarca: (marcaId: string, corregida: boolean) =>
     api.patch<{ id: string; corregida: boolean }>(`/calendario/marcas/${encodeURIComponent(marcaId)}`, { corregida }, ESPERA),
   imagen: (imagenId: string, tam: "mini" | "grande") =>

@@ -1,0 +1,59 @@
+/**
+ * Pruebas de cómo se muestra lo que encontró la IA en una pieza. Se corren
+ * con las demás:
+ *
+ *     npm run test:calendario
+ */
+import {
+  marcaDesdeObservacion, ordenarObservaciones, tieneLugar, tituloRevisionIA, type ObservacionIA,
+} from './revision-ia'
+
+let fallos = 0
+function ok(nombre: string, cond: boolean, detalle = '') {
+  if (cond) console.log(`  ok    ${nombre}`)
+  else { fallos++; console.log(`  FALLA ${nombre}${detalle ? ' — ' + detalle : ''}`) }
+}
+function igual<T>(nombre: string, obtenido: T, esperado: T) {
+  ok(nombre, JSON.stringify(obtenido) === JSON.stringify(esperado),
+    `obtenido ${JSON.stringify(obtenido)}, esperado ${JSON.stringify(esperado)}`)
+}
+
+function obs(id: string, extra: Partial<ObservacionIA> = {}): ObservacionIA {
+  return {
+    id, tipo: 'ortografia', texto: `texto ${id}`, gravedad: 'importante', imagenId: 'im-1', x: 0.3, y: 0.1,
+    estado: 'nueva', numero: null, por: null, porNombre: null, ...extra,
+  }
+}
+
+console.log('revision-ia')
+igual('el título cuenta lo que encontró', [
+  tituloRevisionIA([]), tituloRevisionIA([obs('a')]), tituloRevisionIA([obs('a'), obs('b'), obs('c')]),
+], ['La IA no encontró nada para marcar', 'La IA encontró 1 cosa para mirar', 'La IA encontró 3 cosas para mirar'])
+
+igual('abiertas primero (las importantes antes), después las marcas y al final las descartadas',
+  ordenarObservaciones([
+    obs('descartada', { estado: 'descartada' }),
+    obs('dudosa', { gravedad: 'a_revisar' }),
+    obs('marca', { estado: 'marca', numero: 2 }),
+    obs('importante1'),
+    obs('importante2'),
+  ]).map(o => o.id),
+  ['importante1', 'importante2', 'dudosa', 'marca', 'descartada'])
+
+const imagenes = [{ id: 'im-1' }, { id: 'im-2' }]
+ok('con imagen de la versión y punto, tiene lugar', tieneLugar(obs('a'), imagenes))
+ok('sin punto no tiene lugar', !tieneLugar(obs('a', { x: null, y: null }), imagenes))
+ok('con una imagen que no es de esta versión no tiene lugar', !tieneLugar(obs('a', { imagenId: 'im-9' }), imagenes))
+
+igual('la marca va donde dijo la IA, con su texto',
+  marcaDesdeObservacion(obs('a', { imagenId: 'im-2', x: 0.25, y: 0.75 }), imagenes, 'im-1'),
+  { imagenId: 'im-2', x: 0.25, y: 0.75, texto: 'texto a' })
+igual('sin lugar, va al medio de su imagen',
+  marcaDesdeObservacion(obs('a', { imagenId: 'im-2', x: null, y: null }), imagenes, 'im-1'),
+  { imagenId: 'im-2', x: 0.5, y: 0.5, texto: 'texto a' })
+igual('sin imagen, al medio de la que se está mirando',
+  marcaDesdeObservacion(obs('a', { imagenId: null, x: null, y: null }), imagenes, 'im-2'),
+  { imagenId: 'im-2', x: 0.5, y: 0.5, texto: 'texto a' })
+
+if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
+console.log('\nrevision-ia: todo bien')

@@ -25,13 +25,18 @@ todos del lado del servidor:
 Las imágenes NO viajan en /calendario/datos (que se pregunta cada 15 s): ahí va
 solo el resumen de cada tarea (en qué fase, a quién le toca). Las imágenes se
 piden al abrir la tarea, de a una.
+
+Cada versión entregada se la revisa la IA en segundo plano, después de
+contestar la subida (app/services/revision_ia.py). Lo que encontró se pide
+aparte (app/api/routes/revision_ia.py) y lo ven solo los aprobadores y quien
+gestiona: ver `puede_ver_revision`.
 """
 import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.routes.calendario import (
     _ID, _barra_o_404, _exigir_gestion_de_tareas, _nueva_revision, _puede_gestionar_tareas, _puede_ver_el_mundo,
 )
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.core.mundos import MUNDOS, exigir_mundo, mundos_de
@@ -48,8 +54,10 @@ from app.models.entregas import (
     CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioMarca, CalendarioVersion,
     CalendarioVersionImagen,
 )
+from app.models.revision_ia import CalendarioRevisionIA
 from app.models.user import User
 from app.services import entregas as reglas
+from app.services import revision_ia
 from app.services.espacio import exigir_lugar
 from app.services.entregas import (
     MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, MAX_IMAGENES, MAX_MARCAS, NoPuedeDecidir, FaseExistente,
@@ -72,6 +80,20 @@ def _puede_ver(usuario: User, mundo: str) -> bool:
     mundo; cuando haya cuentas de agencia con vista limitada, acá se las
     restringe a sus propias tareas."""
     return _puede_ver_el_mundo(usuario, mundo)
+
+
+def puede_ver_revision(
+    usuario: User, entrega: CalendarioEntrega, tarea: CalendarioTarea, version: CalendarioVersion | None,
+) -> bool:
+    """Si `usuario` ve lo que encontró la IA en `version`: los aprobadores de
+    la cadena y quien gestiona las tareas, nunca quien entrega (ver
+    revision_ia.puede_ver). Además tiene que poder ver la tarea (`_puede_ver`):
+    eso lo controla quien llama."""
+    return revision_ia.puede_ver(
+        usuario.id, es_gestor=_puede_gestionar_tareas(usuario), aprobadores=list(entrega.aprobadores or []),
+        responsable_id=tarea.asignado_a_id, subida_por_id=version.subida_por_id if version else None,
+        activa=settings.IA_REVISION_ACTIVA,
+    )
 
 
 async def _tarea_y_barra(
@@ -424,6 +446,9 @@ async def ver_entregas(
             "comoRespaldo": como_respaldo,
             "configurar": _puede_gestionar_tareas(current_user),
             "tildarMarcas": es_responsable or _puede_gestionar_tareas(current_user),
+            # Si le mostramos lo que encontró la IA en la versión en curso (el
+            # front la pide aparte, y el servidor lo vuelve a controlar ahí).
+            "verRevisionIA": puede_ver_revision(current_user, entrega, tarea, actual),
         },
         "limites": {"imagenes": MAX_IMAGENES, "bytesImagen": MAX_BYTES_IMAGEN, "marcas": MAX_MARCAS},
     }
@@ -493,6 +518,7 @@ async def _leer(archivo: UploadFile, maximo: int, que: str) -> tuple[bytes, str]
 @limiter.limit("20/minute")
 async def entregar(
     request: Request,
+    background_tasks: BackgroundTasks,
     tarea_id: str,
     versionId: str = Form(..., pattern=_ID),
     comentario: str = Form("", max_length=5000),
@@ -597,6 +623,11 @@ async def entregar(
     resumen = await _resumen(db, tarea_id)
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
+    # La IA la revisa en segundo plano: arranca después de contestar (y ya
+    # con la versión guardada, por el commit de arriba), abre su propia
+    # sesión y no levanta nunca. Si falla, la entrega queda igual.
+    if revision_ia.activa():
+        background_tasks.add_task(revision_ia.revisar_version, versionId)
     return {"id": versionId, "rev": rev, "ronda": ronda, "entrega": resumen, "avisados": avisados}
 
 
@@ -609,6 +640,10 @@ class MarcaNueva(BaseModel):
     x: float = Field(..., ge=0, le=1)
     y: float = Field(..., ge=0, le=1)
     texto: str = Field(..., min_length=1, max_length=1000)
+    # Si el aprobador la armó desde una observación de la IA ("Hacer marca"):
+    # la observación queda como convertida. La marca es una marca más, del
+    # aprobador; para la agencia no hay diferencia.
+    observacionIA: str | None = Field(None, pattern=_ID)
 
     @field_validator("texto")
     @classmethod
@@ -677,11 +712,23 @@ async def decidir(
         select(func.coalesce(func.max(CalendarioMarca.numero), 0)).where(CalendarioMarca.version_id == version.id)
     )).scalar_one()
     tipo_marca = "cambio" if payload.decision == "cambios" else "ajuste"
+    de_la_ia: dict[str, tuple[str, int]] = {}
     for i, m in enumerate(payload.marcas, 1):
+        marca_id = reglas.nuevo_id("mk")
         db.add(CalendarioMarca(
-            id=reglas.nuevo_id("mk"), version_id=version.id, imagen_id=m.imagenId, tarea_id=tarea.id,
+            id=marca_id, version_id=version.id, imagen_id=m.imagenId, tarea_id=tarea.id,
             numero=hay + i, x=m.x, y=m.y, texto=m.texto, tipo=tipo_marca, autor_id=current_user.id,
         ))
+        if m.observacionIA:
+            de_la_ia[m.observacionIA] = (marca_id, hay + i)
+    if de_la_ia:
+        # Las observaciones de la IA que se hicieron marca. Si no hay revisión
+        # (o no es de esta versión), no pasa nada: la marca ya está.
+        revision = await db.get(CalendarioRevisionIA, version.id, with_for_update=True)
+        if revision is not None and revision.estado == "lista":
+            revision.observaciones = revision_ia.marcar_convertidas(
+                list(revision.observaciones or []), de_la_ia, current_user.id, ahora,
+            )
 
     resultado = reglas.resultado_de_version(aprobadores, previas + [(aprobador, payload.decision)])
     fase = await db.get(CalendarioFase, version.fase_id)
