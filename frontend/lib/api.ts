@@ -1060,6 +1060,10 @@ export interface DescripcionSugerencia {
   codigo: string;
   descripcion: string;
   too_long: boolean;
+  /** Ni el nombre de artículo ni la descripción web traen marca: Tinín la deja
+   * sin marca y el modal la muestra aparte (Ivan, 15/10/2026). Opcional por si
+   * el backend desplegado todavía no lo manda. */
+  sin_marca?: boolean;
 }
 
 export interface GenerarDescripcionesIAResponse {
@@ -1226,8 +1230,6 @@ export const convertidorApi = {
       descripcionWeb: string;
       esFiambreKg: boolean;
       unidadVenta: string;
-      /** COMPRADOR de gestión: decide si la marca propia es TIENDA CASA. */
-      comprador?: string;
     }[]
   ) =>
     api.post<GenerarDescripcionesIAResponse>("/tools/cenefas/convertidor/descripciones/generar-ia", { rows }),
