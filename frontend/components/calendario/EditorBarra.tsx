@@ -140,7 +140,7 @@ export function EditorBarra() {
         className="relative flex max-h-[92dvh] w-full max-w-md animate-sheet-up flex-col overflow-hidden rounded-t-3xl bg-white shadow-panel dark:bg-slate-900 dark:ring-1 dark:ring-slate-800 sm:animate-scale-in sm:rounded-2xl"
       >
         <div aria-hidden className={CLASE_MANIJA} />
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-300 px-5 pb-3.5 pt-4 dark:border-slate-800">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-300 px-5 pb-3.5 pt-4 dark:border-slate-700">
           <div className="min-w-0">
             <h3 id="editor-titulo" className="text-lg font-bold text-slate-900 dark:text-slate-100">
               {esAlta ? textos.nueva : textos.editar}
@@ -160,7 +160,7 @@ export function EditorBarra() {
             onClick={cerrar}
             aria-label="Cerrar sin guardar"
             title="Cerrar (Esc)"
-            className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 active:scale-95 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 sm:h-10 sm:w-10"
+            className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 sm:h-10 sm:w-10"
           >
             <X className="h-5 w-5" />
           </button>
@@ -307,7 +307,7 @@ export function EditorBarra() {
             onNo={() => setConfirmandoEn(null)}
           />
         ) : (
-        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-300 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-800/40">
+        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-300 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-800/40">
           {!esAlta ? (
             <button
               type="button"

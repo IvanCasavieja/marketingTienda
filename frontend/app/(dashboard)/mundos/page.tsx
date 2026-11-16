@@ -73,7 +73,7 @@ export default function MundosPage() {
 
       <div className="relative mt-8 grid gap-3 sm:grid-cols-2 sm:gap-4">
         {esperando && [0, 1].map(i => (
-          <div key={i} className="flex items-center gap-4 rounded-2xl border border-slate-300 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <div key={i} className="flex items-center gap-4 rounded-2xl border border-slate-300 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
             <div className="skeleton h-14 w-14 shrink-0 rounded-2xl" />
             <div className="flex-1 space-y-2.5">
               <div className="skeleton h-4 w-1/2 rounded-md" />
@@ -90,7 +90,7 @@ export default function MundosPage() {
               type="button"
               onClick={() => entrar(m)}
               style={{ "--mundo": m.color, animationDelay: `${i * 60}ms` } as CSSProperties}
-              className="group relative flex animate-rise items-center gap-4 overflow-hidden rounded-2xl border border-slate-300 bg-white p-4 text-left shadow-card transition duration-200 ease-suave hover:-translate-y-0.5 hover:border-[color:var(--mundo)] hover:shadow-card-hover active:translate-y-0 active:scale-[.99] dark:border-slate-800 dark:bg-slate-900 dark:hover:border-[color:var(--mundo)] sm:p-5"
+              className="group relative flex animate-rise items-center gap-4 overflow-hidden rounded-2xl border border-slate-300 bg-white p-4 text-left shadow-card transition duration-200 ease-suave hover:-translate-y-0.5 hover:border-[color:var(--mundo)] hover:shadow-card-hover active:translate-y-0 active:scale-[.99] dark:border-slate-700 dark:bg-slate-900 dark:hover:border-[color:var(--mundo)] sm:p-5"
             >
               {/* La franja del color del mundo, que se ensancha al pasar */}
               <span className="absolute inset-y-0 left-0 w-1.5 transition-all duration-200 group-hover:w-2" style={{ backgroundColor: m.color }} aria-hidden />
@@ -113,7 +113,7 @@ export default function MundosPage() {
                 </span>
                 <span className="mt-1 block text-sm leading-snug text-slate-600 dark:text-slate-400">{m.bajada}</span>
               </span>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-400 transition duration-200 group-hover:translate-x-0.5 group-hover:bg-[color:var(--mundo)] group-hover:text-white dark:bg-slate-800 dark:text-slate-500">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-500 transition duration-200 group-hover:translate-x-0.5 group-hover:bg-[color:var(--mundo)] group-hover:text-white dark:bg-slate-800 dark:text-slate-400">
                 <ArrowRight className="h-[18px] w-[18px]" />
               </span>
             </button>

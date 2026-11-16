@@ -164,7 +164,7 @@ function Encabezado({ detalle, modo, onCerrar, cerrarRef }: {
   const t = detalle?.tarea
   const vencida = t?.vence && t.vence < hoy && detalle?.resumen.momento !== 'aprobada'
   return (
-    <header className="flex shrink-0 items-start gap-3 border-b border-slate-300 px-4 pb-3 pt-4 dark:border-slate-800 sm:px-6">
+    <header className="flex shrink-0 items-start gap-3 border-b border-slate-300 px-4 pb-3 pt-4 dark:border-slate-700 sm:px-6">
       <div className="min-w-0 flex-1">
         {detalle ? (
           <>
@@ -361,7 +361,7 @@ function CadenaDeAprobacion({ detalle, version }: { detalle: DetalleEntregas; ve
         const toca = id === turno
         return (
           <li key={id} className="flex items-center gap-1.5">
-            {i > 0 && <ArrowRight className="h-3 w-3 text-slate-400" aria-hidden />}
+            {i > 0 && <ArrowRight className="h-3 w-3 text-slate-500" aria-hidden />}
             <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${
               d ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200'
                 : toca ? 'bg-amber-100 text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-100 dark:ring-amber-500/40'
@@ -471,7 +471,7 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
               <span className={`mt-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[11px] font-bold ${
                 m.corregida ? 'bg-emerald-600 text-white' : m.tipo === 'ajuste' ? 'bg-amber-500 text-slate-950' : 'bg-rose-600 text-white'
               }`}>{m.corregida ? <Check className="h-3 w-3" strokeWidth={3} /> : m.numero}</span>
-              <span className={`min-w-0 ${m.corregida ? 'text-slate-500 line-through decoration-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-300'}`}>
+              <span className={`min-w-0 ${m.corregida ? 'text-slate-500 line-through decoration-slate-400 dark:text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}>
                 {m.texto}
                 {m.tipo === 'ajuste' && <span className="ml-1 text-xs text-amber-700 no-underline dark:text-amber-300">(ajuste)</span>}
               </span>
@@ -496,7 +496,7 @@ function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas;
       >
         <FileText className="h-4 w-4 text-brand-600 dark:text-brand-300" />
         Lo que se pidió
-        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${abierto ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${abierto ? 'rotate-180' : ''}`} />
       </button>
       {abierto && (
         campos.length === 0 ? (
@@ -598,7 +598,7 @@ function EditarConfiguracion({ detalle, onListo, onCancelar }: {
           usuarioId={user?.id ?? null}
         />
       </div>
-      <div className="flex shrink-0 items-center gap-2 border-t border-slate-300 px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 sm:px-6">
+      <div className="flex shrink-0 items-center gap-2 border-t border-slate-300 px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 sm:px-6">
         {falta && <p className="flex-1 text-xs text-amber-700 dark:text-amber-300">{falta}</p>}
         <button type="button" onClick={onCancelar} className="ml-auto min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
           Cancelar

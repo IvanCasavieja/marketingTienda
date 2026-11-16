@@ -484,7 +484,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("sidebar.mundo", "Mundo")}</span>
                 <span className="block truncate text-sm font-bold text-slate-900 dark:text-slate-100">{mundo.nombre}</span>
               </span>
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition group-hover:bg-slate-100 group-hover:text-slate-700 dark:group-hover:bg-white/10 dark:group-hover:text-slate-200">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition group-hover:bg-slate-100 group-hover:text-slate-700 dark:group-hover:bg-white/10 dark:group-hover:text-slate-200">
                 <ArrowLeftRight size={15} />
               </span>
             </Link>
@@ -552,7 +552,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                     return (
                       <div key={href}>
                         {showLabel && (
-                          <p className="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                          <p className="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                             {section}
                           </p>
                         )}
@@ -564,7 +564,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                               ? "bg-brand-50 text-brand-700 dark:bg-brand-600 dark:text-white"
                               : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200"
                           )}>
-                          <Icon size={16} className={active ? "text-brand-600 dark:text-white" : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300"} />
+                          <Icon size={16} className={active ? "text-brand-600 dark:text-white" : "text-slate-500 group-hover:text-slate-600 dark:text-slate-400 dark:group-hover:text-slate-300"} />
                           <span className="flex-1 truncate">{label}</span>
                           {active && <ChevronRight size={14} className="text-brand-400 dark:text-white/60 shrink-0" />}
                         </Link>
@@ -662,7 +662,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                   )}
                   {notificaciones?.length === 0 && (
                     <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-white/5 dark:text-slate-500">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400">
                         <BellOff size={18} />
                       </span>
                       <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{t("sidebar.sinNotificaciones")}</p>

@@ -25,7 +25,7 @@ export default function FueraDeMundo({ pathname, mundo }: { pathname: string; mu
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-5 px-2 py-14 text-center animate-rise sm:py-20">
       {/* El mundo en el que se está, con su color: lo que hay que entender primero */}
-      <span className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-card ring-1 ring-slate-300 dark:bg-slate-900 dark:text-slate-500 dark:ring-slate-800">
+      <span className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-card ring-1 ring-slate-300 dark:bg-slate-900 dark:text-slate-400 dark:ring-slate-800">
         <Globe2 className="h-7 w-7" />
         <span
           className="absolute -right-1 -top-1 h-4 w-4 rounded-full ring-4 ring-slate-50 dark:ring-slate-950"
@@ -49,11 +49,11 @@ export default function FueraDeMundo({ pathname, mundo }: { pathname: string; mu
             key={m.clave}
             type="button"
             onClick={() => elegir(m.clave)}
-            className="group relative flex min-h-[52px] items-center gap-3 overflow-hidden rounded-xl border border-slate-300 bg-white py-3 pl-5 pr-4 text-left shadow-card transition hover:-translate-y-px hover:border-slate-300 hover:shadow-card-hover active:translate-y-0 active:scale-[.99] dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700"
+            className="group relative flex min-h-[52px] items-center gap-3 overflow-hidden rounded-xl border border-slate-300 bg-white py-3 pl-5 pr-4 text-left shadow-card transition hover:-translate-y-px hover:border-slate-300 hover:shadow-card-hover active:translate-y-0 active:scale-[.99] dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-700"
           >
             <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: m.color }} aria-hidden />
             <span className="flex-1 text-sm font-semibold text-slate-800 dark:text-slate-100">Pasar a {m.nombre}</span>
-            <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-700 dark:group-hover:text-slate-200" />
+            <ArrowRight className="h-4 w-4 text-slate-500 transition group-hover:translate-x-0.5 group-hover:text-slate-700 dark:group-hover:text-slate-200" />
           </button>
         ))}
         <Link

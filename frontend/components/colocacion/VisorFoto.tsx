@@ -172,7 +172,7 @@ export function VisorFoto({
               className="h-[52dvh] w-full !bg-black sm:h-[60dvh]"
             />
           ) : (
-            <p className="flex h-[40dvh] items-center justify-center text-sm text-slate-400">Este local todavía no mandó foto.</p>
+            <p className="flex h-[40dvh] items-center justify-center text-sm text-slate-500">Este local todavía no mandó foto.</p>
           )}
           {foto?.devuelta && (
             <span className="absolute left-3 top-3 rounded-full bg-amber-400 px-2.5 py-1 text-xs font-bold text-amber-950">

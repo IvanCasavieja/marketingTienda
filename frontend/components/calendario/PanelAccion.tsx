@@ -289,7 +289,7 @@ export function PanelAccion() {
             </header>
             <ChoquesDeLaFicha accion={accion} />
 
-            <div className="flex shrink-0 items-center gap-3 border-b border-slate-300 bg-slate-50 px-5 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/40 sm:px-6">
+            <div className="flex shrink-0 items-center gap-3 border-b border-slate-300 bg-slate-50 px-5 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-800/40 sm:px-6">
               <span className="font-medium tabular-nums text-slate-700 dark:text-slate-300">
                 {piezas.length === 0
                   ? 'Todavía no tiene piezas cargadas'
@@ -331,7 +331,7 @@ export function PanelAccion() {
             )}
 
             <div
-              className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-300 px-3 dark:border-slate-800 sm:px-4"
+              className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-300 px-3 dark:border-slate-700 sm:px-4"
               role="tablist"
               aria-label="Qué ver de la acción"
               onKeyDown={teclaEnPestanas}
@@ -504,7 +504,7 @@ function FichaEnvio({
       </header>
       <ChoquesDeLaFicha accion={envio} />
 
-      <div className="flex shrink-0 items-center gap-3 border-b border-slate-300 bg-slate-50 px-5 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/40 sm:px-6">
+      <div className="flex shrink-0 items-center gap-3 border-b border-slate-300 bg-slate-50 px-5 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-800/40 sm:px-6">
         <span className="font-medium text-slate-700 dark:text-slate-300">Estado</span>
         <select
           value={estado}
@@ -591,7 +591,7 @@ function BloqueAvisos({
 
       {avisos.length === 0 ? (
         <p className="flex items-center gap-2.5 rounded-xl border border-dashed border-slate-300 px-4 py-3.5 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-          <Bell className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
+          <Bell className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
           {esEnvio ? 'Este envío no tiene avisos.' : 'Esta acción no tiene avisos.'}
           {!editable || yaArranco ? null : ' Configurá el primero acá abajo.'}
         </p>
@@ -616,7 +616,7 @@ function BloqueAvisos({
                 <button
                   type="button"
                   onClick={() => quitarAviso(a.id)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
                   aria-label={`Quitar el aviso de ${a.diasAntes} días antes`}
                   title="Quitar este aviso"
                 >
@@ -793,7 +793,7 @@ function BloqueArea({
                 <button
                   type="button"
                   onClick={() => onQuitar(p.id)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 sm:h-8 sm:w-8"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 sm:h-8 sm:w-8"
                   aria-label={`Quitar ${p.formato}`}
                   title={`Quitar ${p.formato}`}
                 >
@@ -806,7 +806,7 @@ function BloqueArea({
                 cronograma. Sin fecha propia caen el día que arranca la acción.
                 La fecha puede ser de otro mes que el del arranque. */}
             {esPiezaDeEnvio(p) && (
-              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 dark:border-slate-800">
+              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 dark:border-slate-700">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sale</span>
                 <CampoFecha
                   valor={p.desde}

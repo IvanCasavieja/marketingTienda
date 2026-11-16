@@ -31,14 +31,14 @@ export function TarjetaEntrega({ tarjeta, usuarioId, hoy, orden = 0 }: {
         type="button"
         onClick={() => abrir(tarjeta.tareaId, paso.accion === 'revisar' ? 'revisar' : paso.accion === 'entregar' ? 'entregar' : 'ver')}
         className={`group flex w-full flex-col gap-2.5 rounded-2xl border bg-white p-3 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-card-hover active:scale-[.99] dark:bg-slate-900 ${
-          meToca ? 'border-brand-300 ring-1 ring-brand-200 dark:border-brand-500/50 dark:ring-brand-500/20' : 'border-slate-300 dark:border-slate-800'
+          meToca ? 'border-brand-300 ring-1 ring-brand-200 dark:border-brand-500/50 dark:ring-brand-500/20' : 'border-slate-300 dark:border-slate-700'
         }`}
       >
         <div className="flex items-start gap-3">
           {tarjeta.miniatura ? (
             <Miniatura imagenId={tarjeta.miniatura} etiqueta={`La última versión de ${tarjeta.titulo}`} className="h-14 w-14" />
           ) : (
-            <span className="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+            <span className="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
               <FileImage className="h-5 w-5" />
               <span className="text-[9px] font-bold uppercase">{tipoDePieza(r.tipoPieza).nombre}</span>
             </span>

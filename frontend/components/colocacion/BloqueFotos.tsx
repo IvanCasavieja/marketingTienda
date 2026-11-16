@@ -132,7 +132,7 @@ function ElegirLocales({
       </div>
       {disponibles.length > 8 && (
         <label className="relative mb-2 block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden />
           <input
             value={busca}
             onChange={e => setBusca(e.target.value)}
@@ -177,7 +177,7 @@ function FormularioPedido({ tablero, onPedido }: { tablero: TableroColocacion; o
   if (tablero.disponibles.length === 0) {
     return (
       <div className="flex items-start gap-3 rounded-2xl border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300">
-        <Camera className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+        <Camera className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
         <p>Todavía no hay locales con usuario en este mundo: cuando los den de alta, desde acá se les va a poder pedir la foto.</p>
       </div>
     )
@@ -313,7 +313,7 @@ function Tablero({
         </div>
         {pedido.indicacion && (
           <p className="mt-2 flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
-            <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" /> {pedido.indicacion}
+            <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" /> {pedido.indicacion}
           </p>
         )}
         {primeraPorRevisar && (

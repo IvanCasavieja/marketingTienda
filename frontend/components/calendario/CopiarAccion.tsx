@@ -117,7 +117,7 @@ export function CopiarAccion({ accion, onCerrar }: {
         className="relative flex max-h-[92dvh] w-full max-w-md animate-sheet-up flex-col overflow-hidden rounded-t-3xl bg-white shadow-panel dark:bg-slate-900 dark:ring-1 dark:ring-slate-800 sm:animate-scale-in sm:rounded-2xl"
       >
         <div aria-hidden className={CLASE_MANIJA} />
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-300 px-5 pb-3.5 pt-4 dark:border-slate-800">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-300 px-5 pb-3.5 pt-4 dark:border-slate-700">
           <div className="min-w-0">
             <h3 id="copiar-titulo" className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-slate-100">
               <CopyPlus className="h-5 w-5 text-brand-600 dark:text-brand-300" aria-hidden /> Copiar a otra fecha
@@ -131,7 +131,7 @@ export function CopiarAccion({ accion, onCerrar }: {
             onClick={cerrarSiSePuede}
             aria-label="Cerrar sin copiar"
             title="Cerrar (Esc)"
-            className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 active:scale-95 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 sm:h-10 sm:w-10"
+            className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 sm:h-10 sm:w-10"
           >
             <X className="h-5 w-5" />
           </button>
@@ -214,7 +214,7 @@ export function CopiarAccion({ accion, onCerrar }: {
             <ul className="space-y-2.5 rounded-xl border border-slate-300 px-3.5 py-3 dark:border-slate-700">
               {!esEnvio && (
                 <li className={fila}>
-                  <LayoutGrid className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
+                  <LayoutGrid className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
                   <span>
                     {resumen.piezas === 0 ? 'Sin piezas' : cuantas(resumen.piezas, 'pieza', 'piezas')}
                     {resumen.piezas > 0 && <span className="text-slate-500 dark:text-slate-400"> · en Pendiente y sin la marca de SharePoint</span>}
@@ -222,7 +222,7 @@ export function CopiarAccion({ accion, onCerrar }: {
                 </li>
               )}
               <li className={fila}>
-                <ListChecks className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
+                <ListChecks className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
                 <span>
                   {resumen.tareasSinPermiso > 0 ? (
                     <span className="text-amber-800 dark:text-amber-200">
@@ -242,7 +242,7 @@ export function CopiarAccion({ accion, onCerrar }: {
                 </span>
               </li>
               <li className={fila}>
-                <Bell className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
+                <Bell className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
                 <span>
                   {resumen.avisos === 0 && resumen.avisosSinNadie === 0 ? 'Sin avisos' : (
                     <>
@@ -260,7 +260,7 @@ export function CopiarAccion({ accion, onCerrar }: {
               </li>
               {fechaOk && corrimiento !== 0 && (
                 <li className={fila}>
-                  <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
+                  <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
                   <span className="text-slate-500 dark:text-slate-400">
                     Las fechas propias de piezas y tareas se corren lo mismo que {esEnvio ? 'el envío' : 'la acción'}: {Math.abs(corrimiento)} días {corrimiento > 0 ? 'más adelante' : 'antes'}.
                   </span>
@@ -282,7 +282,7 @@ export function CopiarAccion({ accion, onCerrar }: {
           )}
         </div>
 
-        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-300 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-800/40">
+        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-300 bg-slate-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-800/40">
           <button
             type="button"
             onClick={cerrarSiSePuede}

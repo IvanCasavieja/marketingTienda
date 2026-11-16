@@ -113,7 +113,7 @@ export function Miniatura({ imagenId, etiqueta, className = 'h-16 w-16' }: {
   }
   // Ya vencida (se borró) o sin conexión: un hueco con el ícono, no un "cargando" eterno.
   return error ? (
-    <span title={error} className={`flex shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 ${className}`}>
+    <span title={error} className={`flex shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 ${className}`}>
       <ImageOff className="h-4 w-4" aria-label={error} />
     </span>
   ) : (

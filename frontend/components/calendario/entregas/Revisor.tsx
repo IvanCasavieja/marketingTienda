@@ -297,7 +297,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                 <button
                   type="button"
                   onClick={() => setNuevas(prev => prev.filter(x => x.clave !== n.clave))}
-                  className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+                  className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
                   aria-label={`Borrar la marca ${numeroDe(i)}`}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -322,7 +322,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-slate-300 bg-white px-4 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-2.5 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+      <div className="shrink-0 border-t border-slate-300 bg-white px-4 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-2.5 dark:border-slate-700 dark:bg-slate-900 sm:px-6">
         {confirmandoSalir ? (
           <div className="flex flex-wrap items-center gap-2 py-1">
             <p className="flex-1 text-sm font-semibold text-slate-800 dark:text-slate-100">

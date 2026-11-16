@@ -282,7 +282,7 @@ function SugerenciaDePlantilla({ accion, sugeridas, onVer, onAhoraNo }: {
         onClick={onAhoraNo}
         aria-label="Ahora no: no sugerir plantillas en esta acción"
         title="Ahora no"
-        className="-mr-1.5 -mt-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/70 hover:text-slate-700 active:scale-95 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+        className="-mr-1.5 -mt-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-white/70 hover:text-slate-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
       >
         <X className="h-4 w-4" />
       </button>
@@ -323,7 +323,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
     <li>
       <div className={`rounded-2xl border px-3.5 py-3 transition-colors duration-300 ${
         hecha
-          ? 'border-slate-300 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-800/30'
+          ? 'border-slate-300 bg-slate-50/70 dark:border-slate-700 dark:bg-slate-800/30'
           : esMia
             ? 'border-brand-300 bg-brand-50/60 dark:border-brand-500/40 dark:bg-brand-500/[.07]'
             : vencida
@@ -356,7 +356,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
 
           <div className="min-w-0 flex-1">
             <p className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-snug transition-colors duration-300 ${
-              hecha ? 'text-slate-400 line-through decoration-slate-300 dark:text-slate-500 dark:decoration-slate-600' : 'text-slate-900 dark:text-slate-100'
+              hecha ? 'text-slate-500 line-through decoration-slate-300 dark:text-slate-400 dark:decoration-slate-600' : 'text-slate-900 dark:text-slate-100'
             }`}>
               <span className="min-w-0 break-words">{tarea.titulo}</span>
               {vencida && (
@@ -493,7 +493,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                       onClick={() => setConfirmando(true)}
                       aria-label={`Borrar ${tarea.titulo}`}
                       title="Borrar la tarea"
-                      className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 sm:h-8 sm:w-8"
+                      className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 sm:h-8 sm:w-8"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>

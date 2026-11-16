@@ -176,7 +176,7 @@ export function BarraSuperior() {
   ] as const
 
   return (
-    <header className="mb-4 rounded-2xl border border-slate-300 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900">
+    <header className="mb-4 rounded-2xl border border-slate-300 bg-white shadow-card dark:border-slate-700 dark:bg-slate-900">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-2 py-2 sm:px-5 sm:py-3.5">
         {/* En qué mundo se está parado: lo primero que tiene que quedar claro.
             En el teléfono ya lo dice la barra de arriba, con su color. */}
@@ -251,7 +251,7 @@ export function BarraSuperior() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 px-2 py-2 dark:border-slate-800 sm:px-5 sm:py-2.5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 px-2 py-2 dark:border-slate-700 sm:px-5 sm:py-2.5">
         {/* Cómo se mira. La primera opción decía "Mes" y, al lado del selector
             de mes, se leía como "este mes": Ivan buscó "el calendario general
             de todo" y no lo encontró (12/11/2026). En el teléfono va primero y

@@ -118,7 +118,7 @@ export function PanelHeaders({ abierto, onCerrar, diaInicial = null }: {
         }`}
       >
         <div aria-hidden className={`${CLASE_MANIJA} !bg-white/40`} />
-        <header className="shrink-0 border-b border-slate-300 bg-slate-900 px-5 py-4 text-white dark:border-slate-800 dark:bg-slate-950">
+        <header className="shrink-0 border-b border-slate-300 bg-slate-900 px-5 py-4 text-white dark:border-slate-700 dark:bg-slate-950">
           <div className="flex items-start gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10">
               <LayoutPanelTop className="h-5 w-5" />
@@ -192,7 +192,7 @@ export function PanelHeaders({ abierto, onCerrar, diaInicial = null }: {
               </button>
             )}
             {!puedeMover && (
-              <span className="ml-auto flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500">
+              <span className="ml-auto flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
                 <Lock className="h-3 w-3" /> RM en {mes.posicionesRM.join(', ')}
               </span>
             )}
@@ -260,7 +260,7 @@ export function PanelHeaders({ abierto, onCerrar, diaInicial = null }: {
                   <div className="flex w-10 shrink-0 flex-col items-center justify-center">
                     <span className="text-lg font-bold leading-none text-slate-800 dark:text-slate-200">{pos.numero}</span>
                     <span className={`mt-1 text-[10px] font-semibold uppercase leading-none ${
-                      pos.esRM ? 'text-violet-500 dark:text-violet-400' : 'text-slate-400 dark:text-slate-500'
+                      pos.esRM ? 'text-violet-500 dark:text-violet-400' : 'text-slate-500 dark:text-slate-400'
                     }`}>
                       {pos.esRM ? 'RM' : 'Mkt'}
                     </span>
@@ -299,12 +299,12 @@ export function PanelHeaders({ abierto, onCerrar, diaInicial = null }: {
                         abrirEditor({ seccion: 'header', banda: mes.header[pos.numero - 1].id, carril: 0, barra: null, fechaInicial: isoDe(mes.clave, dia) })
                         onCerrar()
                       }}
-                      className="flex flex-1 items-center rounded-md border border-dashed border-slate-300 dark:border-slate-600 px-2 py-1.5 text-left text-xs text-slate-400 dark:text-slate-500 transition hover:border-emerald-400 hover:text-emerald-600"
+                      className="flex flex-1 items-center rounded-md border border-dashed border-slate-300 dark:border-slate-600 px-2 py-1.5 text-left text-xs text-slate-500 dark:text-slate-400 transition hover:border-emerald-400 hover:text-emerald-600"
                     >
                       Libre — poner algo este día
                     </button>
                   ) : (
-                    <span className="flex flex-1 items-center text-xs text-slate-400 dark:text-slate-500">Libre</span>
+                    <span className="flex flex-1 items-center text-xs text-slate-500 dark:text-slate-400">Libre</span>
                   )}
                 </li>
               )
