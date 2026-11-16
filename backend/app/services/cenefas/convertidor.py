@@ -13,7 +13,7 @@ import io
 import re
 import unicodedata
 import zipfile
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -26,7 +26,11 @@ from app.models.cenefa_ofertadet_alias import CenefaOfertadetAlias
 from app.models.convertidor_header_alias import ConvertidorHeaderAlias
 from app.models.cenefa_grupo_unificado import CenefaGrupoUnificado
 from app.models.sku_descripcion import SkuDescripcion
-from app.services.cenefas.convertidor_ai import resolve_date_columns_with_ai
+from app.services.cenefas.convertidor_ai import (
+    REGLA_DE_MARCA_DESDE,
+    descripcion_sin_marca_deducida,
+    resolve_date_columns_with_ai,
+)
 from app.services.cenefas.convertidor_variables import construir_variables, familia_de_ofertadet
 from app.services.cenefas.variables import (
     DECIMAL_OF,
@@ -1479,6 +1483,17 @@ def _compute_warnings(row: dict) -> list[str]:
     elif len(descripcion) > DESCRIPTION_WARN_CHARS:
         w.append("descripcion_algo_larga")
 
+    # La descripción guardada nombra una marca propia que el listado no dice
+    # (ver match_rows). Se vuelve a comprobar contra la descripción de AHORA y
+    # no se confía solo en la propuesta que viajó: si la persona ya la cambió
+    # a mano, o eligió "Está bien así" (la grilla vacía la propuesta), el
+    # Excel no tiene que salir marcando algo que ya se resolvió.
+    if descripcion and str(row.get("descripcionMarcaCorregida") or "").strip():
+        if descripcion_sin_marca_deducida(
+            descripcion, row.get("nombreArticulo"), row.get("descripcionWeb")
+        ):
+            w.append("marca_no_dicha")
+
     precioRaw = str(row.get("precioRaw") or "").strip()
     if not precioRaw:
         w.append("missing_price")
@@ -1644,12 +1659,25 @@ async def match_rows(
     SKUs" detectados (ver detect_ma_pairs) todavía sin unificar."""
     skus = sorted({r["codigo"] for r in parsed if r["codigo"]})
     catalogo: dict[str, str] = {}
+    # Los SKU cuya descripción guardó una PERSONA antes de que la marca dejara
+    # de deducirse (ver REGLA_DE_MARCA_DESDE): son las únicas que pueden traer
+    # una marca propia que nadie escribió a conciencia. Las del seed inicial
+    # (sin usuario) vienen del Diccionario hecho a mano y no se discuten.
+    anteriores_a_la_regla: set[str] = set()
     for chunk in _chunks(skus, 1000):
         result = await db.execute(
-            select(SkuDescripcion.sku, SkuDescripcion.descripcion)
+            select(SkuDescripcion.sku, SkuDescripcion.descripcion,
+                   SkuDescripcion.updated_at, SkuDescripcion.updated_by_id)
             .where(SkuDescripcion.sku.in_(chunk))
         )
-        catalogo.update(dict(result.all()))
+        for sku, guardada, cuando, quien in result.all():
+            catalogo[sku] = guardada
+            if quien is None or cuando is None:
+                continue
+            if cuando.tzinfo is None:
+                cuando = cuando.replace(tzinfo=timezone.utc)
+            if cuando < REGLA_DE_MARCA_DESDE:
+                anteriores_a_la_regla.add(sku)
 
     # NO hay fallback por claves combinadas (eliminado 2026-08-28, decisión de
     # Ivan). Antes, un SKU suelto sin entrada propia recibía la descripción DEL
@@ -1683,6 +1711,15 @@ async def match_rows(
         descripcion = del_excel or catalogo.get(r["codigo"], "")
         origen = "excel" if del_excel else ("catalogo" if descripcion else "")
 
+        # La descripción guardada trae TIENDA INGLESA o TIENDA CASA y el
+        # listado no la dice: se propone cómo quedaría sin esa marca (o con
+        # la que sí dice) y una persona decide. Nunca se corrige sola: el
+        # producto puede ser de esa marca aunque gestión no lo escriba.
+        marca_corregida = ""
+        if origen == "catalogo" and r["codigo"] in anteriores_a_la_regla:
+            marca_corregida = descripcion_sin_marca_deducida(
+                descripcion, r.get("nombreArticulo"), r.get("descripcionWeb"))
+
         # Las 26 variables ya resueltas: mecánica redactada, precios partidos
         # en entero + decimal, y lo que la persona mapeó pisando lo calculado.
         variables, warn_mecanica = construir_variables(
@@ -1703,6 +1740,10 @@ async def match_rows(
             # De dónde salió la descripción: "excel" (la escribió una persona
             # en el listado), "catalogo" (la puso la plataforma) o "" (falta).
             "descripcionOrigen":  origen,
+            # Cómo quedaría la descripción guardada si su marca propia saliera
+            # solo del listado; "" cuando no hay nada que revisar. La grilla
+            # lo ofrece con "Quitar la marca" / "Está bien así".
+            "descripcionMarcaCorregida": marca_corregida,
             "comprador":           r["comprador"],
             "moneda":              r["moneda"],
             "ofertaOrigen":       r["oferta"],
@@ -1823,6 +1864,7 @@ _WARN_VAR = {
     "descripcion_invalida":     "descripcion",
     "descripcion_larga":        "descripcion",
     "descripcion_algo_larga":   "descripcion",
+    "marca_no_dicha":           "descripcion",
     "missing_price":            "precioOferta",
     "precio_invalido":          "precioOferta",
     "missing_precio_anterior":  "precioRegular",
