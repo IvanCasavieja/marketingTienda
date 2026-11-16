@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { textoSobre } from '@/lib/calendario/colores'
 import { esFinde, nombreMes, rangoLargo } from '@/lib/calendario/fechas'
@@ -160,6 +161,9 @@ export function FilaRejilla({
 }: FilaProps) {
   const franja = useFranja(mes.dias)
   const zoom = useCalendario(s => s.zoom)
+  // La barra de esta fila cuyo nombre no entra y que tiene el mouse (o el
+  // foco) encima: se le muestra el fantasma con el nombre completo.
+  const [fantasma, setFantasma] = useState<string | null>(null)
   const ocupado = new Set<number>()
   fila.forEach(b => { for (let d = b.desde; d <= b.hasta; d++) ocupado.add(d) })
 
@@ -196,28 +200,45 @@ export function FilaRejilla({
         const detalle = (b.hasta - b.desde + 1) * zoom >= 130 ? detalleDe?.(b) : null
         const semaforo = semaforoDe?.(b) ?? null
         const titulo = tituloDe ? tituloDe(b) : tituloPorDefecto(b, derivada)
+        const fondo = b.color ?? '#e2e8f0'
+        // Si el nombre no entra, al pasar el mouse (o con el foco) aparece
+        // encima la barra entera, "como un fantasma" (pedido del 16/11/2026).
+        // En el teléfono no: ahí tocar ya abre la ficha con todo.
+        const mirarSiNoEntra = (caja: HTMLElement) => {
+          const nombre = caja.querySelector<HTMLElement>('[data-nombre]')
+          if (nombre && nombre.scrollWidth > nombre.clientWidth + 1) setFantasma(b.id)
+        }
+        // Cerca del fin de mes se abre hacia la izquierda: no se sale del calendario.
+        const haciaLaIzquierda = b.desde > mes.dias - 7
         return (
-          <button
+          <div
             key={b.id}
+            style={{ gridColumn: `${b.desde} / ${b.hasta + 1}`, gridRow: 1 }}
+            className={[
+              'relative my-[3px] min-w-0',
+              fantasma === b.id ? 'z-40' : 'z-10',
+              b.vieneDeAntes ? 'ml-0' : 'ml-[2px]',
+              b.sigueDespues ? 'mr-0' : 'mr-[2px]',
+            ].join(' ')}
+            onPointerEnter={e => { if (e.pointerType === 'mouse') mirarSiNoEntra(e.currentTarget) }}
+            onPointerLeave={() => setFantasma(f => (f === b.id ? null : f))}
+            onFocus={e => mirarSiNoEntra(e.currentTarget)}
+            onBlur={() => setFantasma(f => (f === b.id ? null : f))}
+          >
+          <button
             type="button"
-            title={semaforo ? `${titulo}
-${semaforo.texto}` : titulo}
+            title={semaforo ? `${titulo}\n${semaforo.texto}` : titulo}
             onClick={clicable ? () => onBarra!(b) : undefined}
             disabled={!clicable}
-            style={{
-              gridColumn: `${b.desde} / ${b.hasta + 1}`,
-              gridRow: 1,
-              backgroundColor: b.color ?? '#e2e8f0',
-              color: textoSobre(b.color),
-            }}
+            style={{ backgroundColor: fondo, color: textoSobre(b.color) }}
             className={[
-              'relative z-10 my-[3px] flex items-center gap-1 overflow-hidden rounded-lg px-2 text-left text-[13px] font-semibold leading-8',
+              'relative flex h-full w-full items-center gap-1 overflow-hidden rounded-lg px-2 text-left text-[13px] font-semibold leading-8',
               'shadow-sm ring-1 ring-inset ring-black/[.06] transition duration-150 ease-suave',
               // Una barra que viene del mes anterior o sigue en el próximo
               // llega al borde sin redondear y con una flecha: se ve que no
               // termina acá.
-              b.vieneDeAntes ? 'ml-0 rounded-l-none pl-0.5' : 'ml-[2px]',
-              b.sigueDespues ? 'mr-0 rounded-r-none pr-0.5' : 'mr-[2px]',
+              b.vieneDeAntes ? 'rounded-l-none pl-0.5' : '',
+              b.sigueDespues ? 'rounded-r-none pr-0.5' : '',
               clicable
                 ? 'cursor-pointer hover:z-20 hover:-translate-y-px hover:shadow-md hover:ring-black/15 active:translate-y-0 active:shadow-sm focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-900'
                 : 'cursor-default',
@@ -232,12 +253,30 @@ ${semaforo.texto}` : titulo}
                 aria-label={semaforo.texto}
               />
             )}
-            <span className="min-w-0 flex-1 truncate">{b.nombre}</span>
+            <span data-nombre className="min-w-0 flex-1 truncate">{b.nombre}</span>
             {detalle && (
               <span className="shrink-0 rounded-md bg-black/10 px-1.5 text-[10px] font-bold leading-[18px] tabular-nums">{detalle}</span>
             )}
             {b.sigueDespues && <ChevronRight className="h-3 w-3 shrink-0 opacity-60" aria-hidden />}
           </button>
+          {fantasma === b.id && (
+            <span
+              aria-hidden
+              style={{ backgroundColor: fondo, color: textoSobre(b.color) }}
+              className={[
+                'pointer-events-none absolute top-0 z-30 flex h-full w-max min-w-full max-w-[min(420px,80vw)] animate-fade-in items-center gap-1.5',
+                'rounded-lg px-2.5 text-[13px] font-semibold leading-8 shadow-lg ring-1 ring-black/20',
+                haciaLaIzquierda ? 'right-0' : 'left-0',
+              ].join(' ')}
+            >
+              {semaforo && <span className={`h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white/80 ${CLASE_SEMAFORO[semaforo.color]}`} />}
+              <span className="truncate">{b.nombre}</span>
+              {detalleDe?.(b) && (
+                <span className="shrink-0 rounded-md bg-black/10 px-1.5 text-[10px] font-bold leading-[18px] tabular-nums">{detalleDe(b)}</span>
+              )}
+            </span>
+          )}
+          </div>
         )
       })}
     </div>

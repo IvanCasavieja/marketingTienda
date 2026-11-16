@@ -20,7 +20,9 @@ export const ANCHO_ETIQUETA_TELEFONO = 136
 export const ZOOM_TELEFONO = 32
 
 /** Anchos de columna disponibles, en px por día. El 38 es el natural. */
-export const ZOOMS = [20, 26, 32, 38, 48, 60, 76]
+// 96 y 120: para leer el nombre entero de las acciones de un día (pedido
+// del 16/11/2026). El zoom es de cada persona: se guarda en su navegador.
+export const ZOOMS = [20, 26, 32, 38, 48, 60, 76, 96, 120]
 export const ZOOM_MIN = ZOOMS[0]
 export const ZOOM_MAX = ZOOMS[ZOOMS.length - 1]
 export const ZOOM_POR_DEFECTO = 38

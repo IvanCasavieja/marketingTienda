@@ -29,14 +29,17 @@ ok('no queda ningún minmax', ZOOMS.every(z => !columnasDe(31, z).includes('minm
 
 console.log('\ncada paso de zoom tiene que cambiar el ancho de verdad')
 const anchos = ZOOMS.map(z => anchoDias(30, z))
-igual('los 7 niveles dan 7 anchos distintos', new Set(anchos).size, ZOOMS.length)
+igual('cada nivel da un ancho distinto', new Set(anchos).size, ZOOMS.length)
 ok('y siempre crecen', anchos.every((a, i) => i === 0 || a > anchos[i - 1]), anchos.join(' '))
 // El bug viejo: en una pantalla de 1920 el contenedor daba ~1536px para 30 días,
 // o sea 51px por columna, y todo zoom por debajo de eso se veía igual.
 const anchoViejo = 1536
 const comoSeVeiaAntes = ZOOMS.map(z => Math.max(anchoDias(30, z), anchoViejo))
-ok('antes 5 de los 7 niveles se veían idénticos',
-  new Set(comoSeVeiaAntes).size === 3, `antes daban ${new Set(comoSeVeiaAntes).size} anchos distintos`)
+// Con el bug, todos los niveles de menos de 51px por día daban el mismo ancho
+// (con los 7 niveles de entonces, 5 se veían idénticos).
+const porEncima = ZOOMS.filter(z => anchoDias(30, z) > anchoViejo).length
+ok('antes, todos los niveles angostos se veían idénticos',
+  new Set(comoSeVeiaAntes).size === porEncima + 1, `antes daban ${new Set(comoSeVeiaAntes).size} anchos distintos`)
 
 console.log('\nancho total')
 igual('etiquetas + días', anchoTotal(30, 38), ANCHO_ETIQUETA + 30 * 38)
