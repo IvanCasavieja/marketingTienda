@@ -23,6 +23,25 @@ export type CampoDeTipo = {
   maximo?: number
   /** Solo si se tildó esta opción ("En bloques"). */
   para?: string
+  /** …o un texto (con `largo`), un link o una fecha con hora (17/11/2026: la
+   *  push lleva título, link de destino y cuándo sale). */
+  tipo?: 'texto' | 'link' | 'fechaHora'
+  largo?: number
+}
+
+/** Un link que el servidor acepta: http o https, sin espacios. */
+export function linkValido(texto: string): boolean {
+  return /^https?:\/\/\S+$/i.test(texto.trim())
+}
+
+/** Cómo se lee un dato: la fecha y hora como "20/11/2026 18:30", como en el
+ *  servidor (valor_para_leer); lo demás, tal cual. */
+export function valorParaLeer(campo: Pick<CampoDeTipo, 'tipo'>, valor: string | number): string {
+  if (campo.tipo === 'fechaHora' && typeof valor === 'string') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(valor)
+    if (m) return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`
+  }
+  return String(valor)
 }
 
 export type TipoDeTarea = {
@@ -65,7 +84,7 @@ export function descripcionDelPedido(
   }
   for (const c of tipo.campos) {
     const v = detalles[c.clave]
-    if (v !== undefined && v !== null && v !== '' && (!c.para || opciones.includes(c.para))) lineas.push(`${c.nombre}: ${v}`)
+    if (v !== undefined && v !== null && v !== '' && (!c.para || opciones.includes(c.para))) lineas.push(`${c.nombre}: ${valorParaLeer(c, v)}`)
   }
   return lineas.join('\n') || null
 }

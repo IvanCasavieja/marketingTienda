@@ -22,7 +22,8 @@ Cada tipo:
 - `medida`: la medida del tipo entero, cuando no hay opciones (WhatsApp).
 - `campos`: datos de más para elegir (el CTA de un banner, cuántos bloques
   lleva un mailing). Cada uno con `clave`, `nombre` y `opciones` (se elige
-  una) o `minimo`/`maximo` (un número).
+  una) o `minimo`/`maximo` (un número), o con `tipo` (17/11/2026): "texto"
+  (con `largo`), "link" (http o https) o "fechaHora" (AAAA-MM-DDTHH:MM).
 - `bajada`: una ayuda corta debajo del tipo.
 - `pieza`: el tipo de pieza de las entregas (TIPOS_DE_PIEZA en
   app/services/entregas.py) con el que nace: decide qué campos trae
@@ -30,7 +31,9 @@ Cada tipo:
 """
 from __future__ import annotations
 
+import re
 import unicodedata
+from datetime import datetime
 
 
 def _px(ancho: int, alto: int) -> str:
@@ -122,10 +125,17 @@ TIPOS_DE_TAREA: list[dict] = [
     },
     {
         # Push (17/11/2026): faltaba entre las piezas que pide el equipo. Sin
-        # opciones: el texto y a dónde lleva van en la descripción.
+        # opciones para tildar; lleva título, link de destino y cuándo sale
+        # (Ivan: "descripción y título de la push... link de destino, y la
+        # fecha y hora"). El texto de la push va en la descripción.
         "clave": "push", "nombre": "Push", "pieza": "otro", "otras": False,
         "opciones": [],
-        "bajada": "Escribí el texto y a dónde lleva en la descripción.",
+        "bajada": "El texto de la push va en la descripción.",
+        "campos": [
+            {"clave": "titulo", "nombre": "Título de la push", "tipo": "texto", "largo": 120},
+            {"clave": "link", "nombre": "Link de destino", "tipo": "link"},
+            {"clave": "envio", "nombre": "Fecha y hora de envío", "tipo": "fechaHora"},
+        ],
     },
     {
         "clave": "cenefas", "nombre": "Cenefas", "pieza": "cenefa", "otras": True,
@@ -249,6 +259,21 @@ def detalles_validos(clave: str, detalles, opciones: list[str]) -> dict:
             if valor not in campo["opciones"]:
                 raise ValueError(f"«{valor}» no es un {campo['nombre']} permitido")
             out[clave_campo] = valor
+        elif campo.get("tipo") == "texto":
+            texto = " ".join(valor.split()) if isinstance(valor, str) else None
+            if texto is None:
+                raise ValueError(f"«{campo['nombre']}» tiene que ser un texto")
+            if len(texto) > campo.get("largo", 300):
+                raise ValueError(f"«{campo['nombre']}» es demasiado largo (hasta {campo.get('largo', 300)} letras)")
+            if texto:
+                out[clave_campo] = texto
+        elif campo.get("tipo") == "link":
+            link = valor.strip() if isinstance(valor, str) else ""
+            if not _LINK.match(link) or len(link) > 1000:
+                raise ValueError(f"«{campo['nombre']}» tiene que ser un link que empiece con http:// o https://")
+            out[clave_campo] = link
+        elif campo.get("tipo") == "fechaHora":
+            out[clave_campo] = fecha_y_hora_valida(valor, campo["nombre"])
         else:
             try:
                 n = int(valor)
@@ -260,6 +285,33 @@ def detalles_validos(clave: str, detalles, opciones: list[str]) -> dict:
                 raise ValueError(f"«{campo['nombre']}» va de {campo.get('minimo', 0)} a {campo.get('maximo', 1000)}")
             out[clave_campo] = n
     return out
+
+
+_LINK = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
+
+
+def fecha_y_hora_valida(valor, nombre: str) -> str:
+    """'2026-11-20T18:30' (lo que manda un <input type="datetime-local">),
+    sin segundos. ValueError con el mensaje para la persona. Pura."""
+    texto = valor.strip()[:16] if isinstance(valor, str) else ""
+    try:
+        cuando = datetime.strptime(texto, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        raise ValueError(f"«{nombre}» tiene que ser una fecha con hora")
+    if not 2000 <= cuando.year <= 2100:
+        raise ValueError(f"«{nombre}» tiene un año que no parece real")
+    return cuando.strftime("%Y-%m-%dT%H:%M")
+
+
+def valor_para_leer(campo: dict, valor) -> str:
+    """Cómo se lee un dato en la descripción: la fecha y hora como
+    "20/11/2026 18:30"; lo demás, tal cual. Pura."""
+    if campo.get("tipo") == "fechaHora" and isinstance(valor, str):
+        try:
+            return datetime.strptime(valor[:16], "%Y-%m-%dT%H:%M").strftime("%d/%m/%Y %H:%M")
+        except ValueError:
+            return valor
+    return str(valor)
 
 
 def descripcion_del_pedido(clave: str | None, opciones: list[str] | None, detalles: dict | None) -> str | None:
@@ -282,7 +334,7 @@ def descripcion_del_pedido(clave: str | None, opciones: list[str] | None, detall
     for campo in t.get("campos", []):
         valor = (detalles or {}).get(campo["clave"])
         if valor not in (None, ""):
-            lineas.append(f"{campo['nombre']}: {valor}")
+            lineas.append(f"{campo['nombre']}: {valor_para_leer(campo, valor)}")
     return "\n".join(lineas) or None
 
 

@@ -15,6 +15,7 @@ import {
 } from './tablero'
 import { diaEnUruguay } from './fechas'
 import { pasoEnLaVista, proximoPaso, type ResumenEntrega, type Tarjeta } from './entregas'
+import { descripcionDelPedido, linkValido, type TipoDeTarea } from './tipos-de-tarea'
 
 let fallos = 0
 function ok(nombre: string, cond: boolean, detalle = '') {
@@ -177,6 +178,22 @@ const devuelta: ResumenEntrega = {
 igual('devuelta: le toca entregar la Entrega 2', proximoPaso(devuelta, 9, 9, nombreDe).texto, 'Te toca: entregar Entrega 2')
 const aprobada: ResumenEntrega = { ...devuelta, momento: 'aprobada', faseActual: null, fases: devuelta.fases.map(f => ({ ...f, estado: 'aprobada' as const })) }
 igual('aprobada otra vez: sin próximo paso', proximoPaso(aprobada, 9, 9, nombreDe).accion, null)
+
+// La push (17/11/2026): título, link de destino y fecha y hora, leída como en el servidor.
+const push: TipoDeTarea = {
+  clave: 'push', nombre: 'Push', opciones: [], otras: false, medida: null, bajada: null, pieza: 'otro',
+  campos: [
+    { clave: 'titulo', nombre: 'Título de la push', tipo: 'texto', largo: 120 },
+    { clave: 'link', nombre: 'Link de destino', tipo: 'link' },
+    { clave: 'envio', nombre: 'Fecha y hora de envío', tipo: 'fechaHora' },
+  ],
+}
+igual('la push se lee con la fecha en criollo', descripcionDelPedido(push, [], {
+  titulo: 'Llegó el Ciberlunes', link: 'https://www.tiendainglesa.com.uy/ciber', envio: '2026-11-20T18:30',
+}), 'Título de la push: Llegó el Ciberlunes\nLink de destino: https://www.tiendainglesa.com.uy/ciber\nFecha y hora de envío: 20/11/2026 18:30')
+ok('un link con https vale', linkValido(' https://tiendainglesa.com.uy/x '))
+ok('sin http no vale', !linkValido('tiendainglesa.com.uy'))
+ok('javascript: no vale', !linkValido('javascript:alert(1)'))
 
 if (fallos) {
   console.log(`\n${fallos} prueba(s) fallaron`)

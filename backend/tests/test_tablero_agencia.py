@@ -330,6 +330,26 @@ def test_estan_todas_las_piezas_que_pide_el_equipo():
     assert tipos.opciones_validas("push", []) == []
 
 
+def test_push_lleva_titulo_link_y_fecha_y_hora():
+    # Ivan, 17/11/2026: "descripción y título de la push... link de destino, y
+    # la fecha y hora". El texto va en la descripción de la tarea.
+    d = tipos.detalles_validos("push", {
+        "titulo": "  Llegó el   Ciberlunes ", "link": " https://www.tiendainglesa.com.uy/ciber ",
+        "envio": "2026-11-20T18:30"}, [])
+    assert d == {"titulo": "Llegó el Ciberlunes", "link": "https://www.tiendainglesa.com.uy/ciber",
+                 "envio": "2026-11-20T18:30"}
+    assert tipos.descripcion_del_pedido("push", [], d) == (
+        "Título de la push: Llegó el Ciberlunes\n"
+        "Link de destino: https://www.tiendainglesa.com.uy/ciber\n"
+        "Fecha y hora de envío: 20/11/2026 18:30")
+    # Todo es opcional: sin datos, nada.
+    assert tipos.detalles_validos("push", {"titulo": "", "link": None}, []) == {}
+    for malo in ({"link": "tiendainglesa.com.uy"}, {"link": "javascript:alert(1)"}, {"envio": "mañana"},
+                 {"envio": "1900-01-01T10:00"}, {"titulo": "x" * 121}, {"titulo": 5}):
+        with pytest.raises(ValueError):
+            tipos.detalles_validos("push", malo, [])
+
+
 def test_el_email_marketing_no_es_el_mailing():
     emm = tipos.tipo_de("emm")
     mailing = tipos.tipo_de("mailing")

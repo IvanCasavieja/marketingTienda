@@ -6,7 +6,7 @@ import { Building2, CalendarClock, Check, ChevronDown, Layers, Mic, Plus, Sparkl
 import { toast } from 'sonner'
 import { DictarBrief, type BriefListo } from '@/components/ia/DictarBrief'
 import { useCalendario } from '@/lib/calendario/store'
-import { camposVisibles, descripcionDelPedido, nombreDeTarjeta, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
+import { camposVisibles, descripcionDelPedido, linkValido, nombreDeTarjeta, valorParaLeer, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
 import { TIPOS_DE_PIEZA, type TipoPieza } from '@/lib/calendario/entregas'
 import { TIPO_PARA_DICTADO } from '@/lib/calendario/entregas-dictado'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
@@ -108,7 +108,9 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usua
   // Antes arrancaba siempre en cenefa.
   const piezaDictado = TIPO_PARA_DICTADO[TIPOS_DE_PIEZA.some(p => p.tipo === tipo?.pieza) ? (tipo!.pieza as TipoPieza) : 'otro']
 
+  const linkMalo = tipo ? camposVisibles(tipo, opciones).find(c => c.tipo === 'link' && detalles[c.clave]?.trim() && !linkValido(detalles[c.clave])) : undefined
   const falta = !tipo ? 'Elegí qué es.'
+    : linkMalo ? `${linkMalo.nombre}: tiene que empezar con https://`
     : quien === 'agencia' && !agencia ? 'Elegí qué agencia la hace.'
       : quien === 'fuera' && !afuera.trim() ? 'Escribí el nombre de la agencia de afuera.'
         : quien === 'fuera' && responsable == null ? 'Elegí quién del equipo carga lo que manda.'
@@ -248,7 +250,17 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usua
           {(tipo.opciones.length > 0 || tipo.otras || tipo.campos.length > 0) && (
             <div className="space-y-2">
               {/* Solo los nombres: con las medidas va abajo, en "Lo que va a ver quien la hace". */}
-              {opciones.length > 0 ? (
+              {tipo.opciones.length === 0 && !tipo.otras ? (
+                camposVisibles(tipo, opciones).some(c => detalles[c.clave]) ? (
+                  <ul className="space-y-0.5 text-sm text-slate-800 dark:text-slate-100" aria-label={`Datos de ${tipo.nombre}`}>
+                    {camposVisibles(tipo, opciones).filter(c => detalles[c.clave]).map(c => (
+                      <li key={c.clave} className="break-words"><span className="font-semibold">{c.nombre}:</span> {valorParaLeer(c, detalles[c.clave])}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Todavía no completaste los datos.</p>
+                )
+              ) : opciones.length > 0 ? (
                 <ul className="flex flex-wrap gap-1.5" aria-label={`${tipo.nombre} elegidos`}>
                   {opciones.map(o => (
                     <li key={o} className="rounded-lg bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-800 ring-1 ring-brand-200 dark:bg-brand-500/10 dark:text-brand-100 dark:ring-brand-500/30">{o}</li>
@@ -262,7 +274,9 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usua
                 onClick={() => setEligiendoOpciones(true)}
                 className="flex min-h-[44px] items-center gap-2 rounded-xl border border-brand-300 bg-white px-3 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 active:scale-[.98] dark:border-brand-500/50 dark:bg-slate-900 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:min-h-[40px]"
               >
-                <Check className="h-4 w-4" /> {opciones.length > 0 ? 'Cambiar lo elegido' : `Elegir ${tipo.nombre.toLocaleLowerCase('es')}`}
+                <Check className="h-4 w-4" /> {tipo.opciones.length === 0 && !tipo.otras
+                  ? (camposVisibles(tipo, opciones).some(c => detalles[c.clave]) ? 'Cambiar los datos' : 'Completar los datos')
+                  : opciones.length > 0 ? 'Cambiar lo elegido' : `Elegir ${tipo.nombre.toLocaleLowerCase('es')}`}
               </button>
             </div>
           )}
@@ -580,6 +594,20 @@ function ModalDeOpciones({ tipo, opciones, detalles, onAlternar, onAgregarOtra, 
                   <option value="">—</option>
                   {c.opciones.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
+              ) : c.tipo === 'texto' ? (
+                <input value={detalles[c.clave] ?? ''} maxLength={c.largo ?? 300}
+                  onChange={e => onDetalle(c.clave, e.target.value)} className="campo" />
+              ) : c.tipo === 'link' ? (
+                <>
+                  <input type="url" inputMode="url" value={detalles[c.clave] ?? ''} maxLength={1000} placeholder="https://"
+                    onChange={e => onDetalle(c.clave, e.target.value)} className="campo" />
+                  {detalles[c.clave]?.trim() && !linkValido(detalles[c.clave]) && (
+                    <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">Tiene que empezar con https://</span>
+                  )}
+                </>
+              ) : c.tipo === 'fechaHora' ? (
+                <input type="datetime-local" min="2000-01-01T00:00" max="2100-12-31T23:59" value={detalles[c.clave] ?? ''}
+                  onChange={e => onDetalle(c.clave, e.target.value)} className="campo !w-auto" />
               ) : (
                 <input type="number" inputMode="numeric" min={c.minimo} max={c.maximo} value={detalles[c.clave] ?? ''}
                   onChange={e => onDetalle(c.clave, e.target.value)} className="campo !w-32" />
@@ -590,7 +618,9 @@ function ModalDeOpciones({ tipo, opciones, detalles, onAlternar, onAgregarOtra, 
 
         <div className="flex items-center gap-3 border-t border-slate-200 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800">
           <p className="mr-auto text-sm text-slate-600 dark:text-slate-400">
-            {opciones.length === 0 ? 'Nada elegido todavía' : opciones.length === 1 ? '1 elegida' : `${opciones.length} elegidas`}
+            {tipo.opciones.length === 0 && !tipo.otras
+              ? 'Todo es opcional'
+              : opciones.length === 0 ? 'Nada elegido todavía' : opciones.length === 1 ? '1 elegida' : `${opciones.length} elegidas`}
           </p>
           <button
             type="button"
