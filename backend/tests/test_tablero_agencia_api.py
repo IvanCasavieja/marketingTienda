@@ -26,7 +26,6 @@ if URL:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from app.api.routes.calendario_ical import firma_del_link
     from app.core import alcance
     from app.core.database import get_db
     from app.core.rate_limit import limiter
@@ -121,6 +120,9 @@ class Cliente:
 
     async def put(self, ruta, **kw):
         return await self.http.put(API + ruta, headers=self.headers, **kw)
+
+    async def delete(self, ruta, **kw):
+        return await self.http.delete(API + ruta, headers=self.headers, **kw)
 
 
 def correr(prueba):
@@ -250,10 +252,9 @@ def test_no_lo_ve_queda_afuera_de_todo_el_calendario_pero_ve_su_tablero():
             # Mis tareas: a la agencia no (lo suyo es el tablero); a alguien del
             # equipo sí, siempre: lo que le asignan le tiene que llegar.
             assert (await c.get("/calendario/mis-tareas")).status_code == (403 if usuario.es_externo else 200)
-            assert (await c.get("/calendario/ical/link")).status_code == 403
             assert (await c.get(f"/calendario/ubicar/{d.ahora.id}")).status_code == 404
-            r = await d.http.get(f"{API}/calendario/ical/{usuario.id}/{firma_del_link(usuario.id, 0)}.ics")
-            assert r.status_code == 404
+            # Su agenda personal tampoco: es parte del calendario.
+            assert (await c.get("/calendario/mi-agenda")).status_code == 403
             async with d.Sesion() as s:
                 yo = await s.get(User, usuario.id)
                 texto = await cc.ejecutar("calendario_acciones", {}, yo, s)
@@ -1438,4 +1439,122 @@ def test_los_tres_tableros_y_los_comentarios_de_la_tarjeta():
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
             "id": f"ta-tab-x-{d.sufijo}", "parentId": madre, "tipo": "push", "para": "agencia", "agencia": "Otra Agencia SA"})
         assert r.status_code == 422
+    correr(prueba)
+
+
+# ---------------------------------------------------------------------------
+# Mi agenda (0074): el calendario de cada persona, solo para ella
+# ---------------------------------------------------------------------------
+
+_ICS_UNO = b"""BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:uno@prueba
+DTSTART;TZID=America/Montevideo:%(dia)sT100000
+DTEND;TZID=America/Montevideo:%(dia)sT103000
+SUMMARY:Daily de marketing
+END:VEVENT
+END:VCALENDAR
+"""
+
+
+def _ics(d, titulo="Daily de marketing"):
+    return (_ICS_UNO % {b"dia": d.hoy.strftime("%Y%m%d").encode()}).replace(b"Daily de marketing", titulo.encode())
+
+
+def test_mi_agenda_se_conecta_se_ve_y_es_solo_de_su_duenio(monkeypatch):
+    from app.core.security import decrypt_token
+    from app.models.agenda import AgendaExterna
+    from app.services import agenda_externa
+
+    pedidos: list[str] = []
+    respuesta = {"datos": b""}
+
+    async def bajar(url):
+        pedidos.append(url)
+        if isinstance(respuesta["datos"], Exception):
+            raise respuesta["datos"]
+        return respuesta["datos"]
+
+    monkeypatch.setattr(agenda_externa, "bajar", bajar)
+
+    async def prueba(d):
+        respuesta["datos"] = _ics(d)
+        lucia, lider = Cliente(d.http, d.lucia), Cliente(d.http, d.lider)
+        r = await lucia.get("/calendario/mi-agenda")
+        assert r.status_code == 200 and r.json() == {"conectada": False, "leidaEl": None, "error": None, "eventos": []}
+
+        r = await lucia.put("/calendario/mi-agenda", json={"url": " webcal://calendar.google.com/privado/basic.ics "})
+        assert r.status_code == 200, r.text
+        assert pedidos == ["https://calendar.google.com/privado/basic.ics"]
+        cuerpo = r.json()
+        assert cuerpo["conectada"] and cuerpo["error"] is None and cuerpo["leidaEl"]
+        assert [e["titulo"] for e in cuerpo["eventos"]] == ["Daily de marketing"]
+        # El link se guarda cifrado y nunca vuelve al navegador.
+        assert "calendar.google.com" not in r.text
+        async with d.Sesion() as s:
+            fila = await s.get(AgendaExterna, d.lucia.id)
+            assert "calendar.google.com" not in fila.url_cifrada
+            assert decrypt_token(fila.url_cifrada) == "https://calendar.google.com/privado/basic.ics"
+
+        # Es de ella: otra persona no la ve (no hay forma de pedir la de otro).
+        assert (await lider.get("/calendario/mi-agenda")).json()["conectada"] is False
+
+        # Recién leída: mirarla no vuelve a pedir el link.
+        assert (await lucia.get("/calendario/mi-agenda")).json()["eventos"] == cuerpo["eventos"]
+        assert len(pedidos) == 1
+
+        # Pasaron 15 minutos: al mirarla se relee y trae lo que agregó.
+        async def envejecer():
+            async with d.Sesion() as s:
+                fila = await s.get(AgendaExterna, d.lucia.id)
+                fila.leida_at = datetime.now(timezone.utc) - timedelta(minutes=20)
+                await s.commit()
+
+        await envejecer()
+        respuesta["datos"] = _ics(d, "Comite de precios")
+        r = await lucia.get("/calendario/mi-agenda")
+        assert len(pedidos) == 2 and [e["titulo"] for e in r.json()["eventos"]] == ["Comite de precios"]
+
+        # Si el link deja de andar, quedan los eventos de antes con el motivo.
+        await envejecer()
+        respuesta["datos"] = agenda_externa.AgendaInvalida("El calendario no se pudo leer (el servidor contestó 404).")
+        r = await lucia.get("/calendario/mi-agenda")
+        assert [e["titulo"] for e in r.json()["eventos"]] == ["Comite de precios"]
+        assert "404" in r.json()["error"]
+
+        # "Actualizar" relee aunque esté recién leída.
+        respuesta["datos"] = _ics(d, "Reunion nueva")
+        r = await lucia.post("/calendario/mi-agenda/actualizar")
+        assert r.status_code == 200 and r.json()["error"] is None
+        assert [e["titulo"] for e in r.json()["eventos"]] == ["Reunion nueva"]
+
+        r = await lucia.delete("/calendario/mi-agenda")
+        assert r.status_code == 200 and r.json()["conectada"] is False
+        assert (await lucia.get("/calendario/mi-agenda")).json()["conectada"] is False
+        async with d.Sesion() as s:
+            assert await s.get(AgendaExterna, d.lucia.id) is None
+        # Actualizar sin agenda no hace nada.
+        assert (await lucia.post("/calendario/mi-agenda/actualizar")).json()["conectada"] is False
+    correr(prueba)
+
+
+def test_mi_agenda_un_link_que_no_sirve_se_avisa_y_no_se_guarda(monkeypatch):
+    from app.models.agenda import AgendaExterna
+    from app.services import agenda_externa
+
+    async def bajar(url):
+        return b"<html><body>Iniciar sesion</body></html>"
+
+    monkeypatch.setattr(agenda_externa, "bajar", bajar)
+
+    async def prueba(d):
+        lucia = Cliente(d.http, d.lucia)
+        for url, motivo in (("http://calendar.google.com/x.ics", "https"),
+                            ("https://outlook.office365.com/owa/calendar/x/calendar.html", "calendario")):
+            r = await lucia.put("/calendario/mi-agenda", json={"url": url})
+            assert r.status_code == 422, r.text
+            assert motivo in r.json()["detail"]
+        async with d.Sesion() as s:
+            assert await s.get(AgendaExterna, d.lucia.id) is None
     correr(prueba)

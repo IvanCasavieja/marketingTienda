@@ -40,7 +40,6 @@ if URL:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from app.api.routes.calendario_ical import firma_del_link
     from app.core import alcance, externos
     from app.core.database import get_db
     from app.core.rate_limit import limiter
@@ -378,14 +377,16 @@ def test_ubicar_una_accion_fuera_de_la_ventana_es_404():
     correr(prueba)
 
 
-def test_el_link_de_outlook_solo_trae_la_ventana():
+def test_las_acciones_de_tienda_no_salen_a_otro_calendario():
+    # Ivan (17/11/2026): "no me gusta que las acciones del calendario de
+    # Tienda puedan estar en un calendario cualquiera". El link para Outlook
+    # se sacó: ni pedirlo ni el feed existen más.
     async def prueba(d):
-        r = await d.http.get(f"{API}/calendario/ical/{d.a1.id}/{firma_del_link(d.a1.id, 0)}.ics")
-        assert r.status_code == 200, r.text
-        assert "Accion DENTRO" in r.text and "Afiche Black Friday" in r.text
-        _sin_prohibido(r.text, "ical")
-        r_promo = await d.http.get(f"{API}/calendario/ical/{d.promo.id}/{firma_del_link(d.promo.id, 0)}.ics")
-        assert "Accion TRES MESES" in r_promo.text
+        for usuario in (d.a1, d.promo):
+            c = Cliente(d.http, usuario)
+            assert (await c.get("/calendario/ical/link")).status_code in (404, 405)
+            r = await d.http.get(f"{API}/calendario/ical/{usuario.id}/firma.ics")
+            assert r.status_code == 404
     correr(prueba)
 
 

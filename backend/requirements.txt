@@ -26,6 +26,10 @@ aiohttp>=3.10.5
 # zoneinfo (stdlib) necesita esta base de datos IANA — python:3.11-slim no la trae instalada
 tzdata>=2024.1
 
+# Mi agenda: leer el calendario de Outlook/Google de cada persona (link ICS) y expandir las reuniones que se repiten
+icalendar>=6,<7
+recurring-ical-events>=3,<4
+
 # Platform SDKs (connectors use httpx directly, only auth libs needed)
 google-api-python-client==2.145.0
 google-auth==2.34.0
