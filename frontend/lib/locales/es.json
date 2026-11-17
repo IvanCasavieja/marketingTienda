@@ -68,6 +68,8 @@
     "mundo": "Mundo",
     "cambiarMundo": "Cambiar de mundo",
     "cerrarMenu": "Cerrar menú",
+    "ocultarMenu": "Ocultar menú",
+    "mostrarMenu": "Mostrar menú",
     "mas": "Más",
     "navegacion": "Navegación principal"
   },

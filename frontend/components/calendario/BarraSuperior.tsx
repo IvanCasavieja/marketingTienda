@@ -141,7 +141,13 @@ export function BarraSuperior() {
     const ajustar = () => ajustarAlAncho(false)
     const cuadro = requestAnimationFrame(ajustar)
     window.addEventListener('resize', ajustar)
-    return () => { cancelAnimationFrame(cuadro); window.removeEventListener('resize', ajustar) }
+    // También cuando cambia el ancho sin que cambie la ventana: al ocultar o
+    // mostrar el menú del costado (17/11/2026). El ancho de #calendario no
+    // depende del zoom (las secciones recortan), así que no se realimenta.
+    const contenedor = document.getElementById('calendario')
+    const observador = contenedor ? new ResizeObserver(() => ajustar()) : null
+    if (contenedor && observador) observador.observe(contenedor)
+    return () => { cancelAnimationFrame(cuadro); window.removeEventListener('resize', ajustar); observador?.disconnect() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomElegido, vista, dias, filtro])
 
