@@ -8,7 +8,7 @@ on:
 
 jobs:
   frontend:
-    name: Frontend (lint + type-check)
+    name: Frontend (lint + type-check + pruebas)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -23,18 +23,44 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run type-check
+      # Las reglas del calendario y del tablero (tablero.test.ts) y lo que ve
+      # una cuenta externa: hasta el 16/11/2026 existian pero ningun job las
+      # corria.
+      - run: npm run test:calendario
+      - run: npm run test:externos
 
   backend:
-    name: Backend (sintaxis + imports)
+    name: Backend (sintaxis + imports + pruebas con base)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
+    # Por que hay una base (revision del 16/11/2026). Las pruebas que cuidan
+    # quien ve que en el tablero y en el calendario (test_tablero_agencia_api,
+    # test_agencia_externa_api) necesitan Postgres y sin TEST_DATABASE_URL se
+    # salteaban siempre: un cambio que dejara a una agencia ver las tarjetas
+    # de otra pasaba con el CI en verde. La base arranca vacia y se lleva a la
+    # ultima migracion antes de las pruebas; cada prueba corre adentro de una
+    # transaccion que se deshace.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 30
     env:
-      # Dummies solo para que la app pueda importarse — no se conecta a nada
-      # real acá, así que no hace falta Postgres/Redis levantados en el runner.
+      # Dummies para que la app pueda importarse; la base es la del servicio de
+      # arriba (Alembic lee DATABASE_URL: con una que no existe, falla).
       APP_SECRET_KEY: ci-dummy-secret-not-used-in-prod
-      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci_dummy
+      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
+      TEST_DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
       REDIS_URL: redis://localhost:6379/0
       ENCRYPTION_KEY: "Y2q_vIGd2FgQ4CqY3Fh3du3ZehOWmx4pVHPfpJC44bA="
     steps:
@@ -49,7 +75,9 @@ jobs:
         run: python -m compileall -q app migrations
       - name: Chequeo de imports (detecta ImportError/circular imports que compileall no ve)
         run: python -c "import app.main"
-      - name: Tests del motor de cenefas (precios, mecanicas, importer, render)
+      - name: Base de prueba en la ultima migracion
+        run: alembic upgrade head
+      - name: Pruebas (las puras y las que necesitan la base)
         run: python -m pytest tests/ -q
 
   despliegue:
