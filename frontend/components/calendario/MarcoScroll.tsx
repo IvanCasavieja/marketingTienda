@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 /**
  * El marco con scroll horizontal de cada sección.
@@ -30,6 +30,21 @@ function llevarAHoy(el: HTMLDivElement): number | null {
 
 export function MarcoScroll({ ancho, children }: { ancho: number | string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
+  const interior = useRef<HTMLDivElement>(null)
+  /** Si el mes no entra a lo ancho: solo entonces el marco scrollea (de costado). */
+  const [desborda, setDesborda] = useState(false)
+
+  useEffect(() => {
+    const el = ref.current
+    const adentro = interior.current
+    if (!el || !adentro) return
+    const medir = () => setDesborda(adentro.offsetWidth > el.clientWidth + 1)
+    medir()
+    const observador = new ResizeObserver(medir)
+    observador.observe(el)
+    observador.observe(adentro)
+    return () => observador.disconnect()
+  }, [])
   /** Mientras la persona no lo corra a mano, se acomoda solo para mostrar hoy. */
   const solo = useRef(true)
   /** Dónde lo dejó el acomodo automático, para no confundirlo con un scroll a mano. */
@@ -79,19 +94,24 @@ export function MarcoScroll({ ancho, children }: { ancho: number | string; child
   }
 
   return (
-    // Con alto tope, la rejilla se desplaza adentro de su marco y la fila de
-    // los días (sticky arriba) queda a la vista al bajar, como en un Excel.
-    // Sin tope, el marco era el contenedor del sticky pero nunca se movía
-    // para abajo, y la fila se iba con la página. El tope deja lugar a la
-    // barra de arriba y a la de abajo del teléfono.
+    // Sin alto tope (Ivan, 17/11/2026: "el calendario no debería tener
+    // scroll, lo ideal sería que tengamos el alto ajustable automático"):
+    // cada sección mide lo que su contenido y baja la página entera. Antes
+    // tenía tope y su propia barra para bajar.
+    //
+    // Cuando el mes entra a lo ancho (lo normal en una notebook: el zoom se
+    // ajusta solo), el marco no es un contenedor de scroll y la fila de los
+    // días (sticky arriba) queda a la vista al bajar la página, como en un
+    // Excel. Si no entra (teléfono, zoom), scrollea de costado: un marco con
+    // scroll es el contenedor del sticky, y ahí la fila se va con la página.
     <div
       ref={ref}
       onScroll={sincronizar}
-      className="max-h-[calc(100dvh-9rem)] overflow-auto overscroll-x-contain md:max-h-[calc(100dvh-3rem)]"
+      className={desborda ? 'overflow-x-auto overscroll-x-contain' : 'overflow-visible'}
     >
       {/* relative: la franja del día marcado (ver CabeceraDias) va de punta
           a punta de este contenido, y se mueve con él al scrollear. */}
-      <div className="relative" style={{ width: ancho }}>{children}</div>
+      <div ref={interior} className="relative" style={{ width: ancho }}>{children}</div>
     </div>
   )
 }

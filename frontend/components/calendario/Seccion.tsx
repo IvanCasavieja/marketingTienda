@@ -13,7 +13,10 @@ export function Seccion({
   children: ReactNode
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-card dark:border-slate-700 dark:bg-slate-900">
+    // overflow-clip y no overflow-hidden: recorta las esquinas igual, pero no
+    // es un contenedor de scroll, así la fila de los días (sticky) se queda
+    // arriba al bajar la página (ver MarcoScroll).
+    <section className="overflow-clip rounded-2xl border border-slate-300 bg-white shadow-card dark:border-slate-700 dark:bg-slate-900">
       {/* Compacto (pedido del 16/11/2026, "aprovechar más el espacio"): el
           título y su explicación van en una sola línea cuando hay lugar, y la
           explicación se corta con puntos (entera, al pasar el mouse). */}
