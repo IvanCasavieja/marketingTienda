@@ -1333,3 +1333,32 @@ def test_se_pide_un_material_de_redes_sociales_debajo_de_una_tarea():
             "id": f"ta-rrss-x-{d.sufijo}", "parentId": madre, "tipo": "redes", "opciones": ["3:2"]})
         assert r.status_code == 422
     correr(prueba)
+
+
+def test_se_pide_una_push_con_titulo_link_y_fecha_y_hora():
+    async def prueba(d):
+        lucia = Cliente(d.http, d.lucia)
+        catalogo = (await lucia.get("/calendario/tipos-de-tarea")).json()
+        push = next(t for t in catalogo if t["clave"] == "push")
+        assert [(c["clave"], c["tipo"]) for c in push["campos"]] == [
+            ("titulo", "texto"), ("link", "link"), ("envio", "fechaHora")]
+        madre = f"ta-push-m-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": madre, "titulo": "Avisos del Ciberlunes"})
+        assert r.status_code == 201, r.text
+        pieza = f"ta-push-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": pieza, "parentId": madre, "tipo": "push", "para": "tienda", "asignadoA": d.aprob2.id,
+            "descripcion": "Hasta 50% en tecnología, solo hoy",
+            "detalles": {"titulo": "Llegó el Ciberlunes", "link": "https://www.tiendainglesa.com.uy/ciber",
+                         "envio": "2026-11-20T18:30"}})
+        assert r.status_code == 201, r.text
+        async with d.Sesion() as s:
+            t = await s.get(CalendarioTarea, pieza)
+            assert t.detalles == {"titulo": "Llegó el Ciberlunes", "link": "https://www.tiendainglesa.com.uy/ciber",
+                                  "envio": "2026-11-20T18:30"}
+        det = (await lucia.get(f"/calendario/tareas/{pieza}/entregas")).json()
+        assert "Fecha y hora de envío: 20/11/2026 18:30" in det["tarea"]["pedido"]
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": f"ta-push-x-{d.sufijo}", "parentId": madre, "tipo": "push", "detalles": {"link": "tiendainglesa.com.uy"}})
+        assert r.status_code == 422
+    correr(prueba)
