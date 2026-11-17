@@ -254,6 +254,10 @@ class ConvertidorRowIn(BaseModel):
     ofertaOrigen:       str = ""
     ofertaDet:          str = ""
     descripcionWeb:     str = ""
+    # La propuesta de descripción sin la marca que el listado no dice (ver
+    # match_rows). Vuelve con la fila para que el Excel marque la celda si
+    # nadie la resolvió; la grilla la vacía cuando se corrige o se deja.
+    descripcionMarcaCorregida: str = ""
     precioRaw:          str = ""
     precioAnteriorRaw: str = ""
     esFiambreKg:       bool = False
