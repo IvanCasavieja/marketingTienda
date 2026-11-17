@@ -110,6 +110,11 @@ export function TarjetaEntrega({
           )}
 
           <span className="flex flex-wrap items-center gap-1.5">
+            {tarjeta.cancelada && (
+              <span className="rounded-full border border-slate-400 bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-800 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-100">
+                Cancelada
+              </span>
+            )}
             {tarjeta.volvioConCambios && (
               <span className="flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-800 dark:bg-rose-500/20 dark:text-rose-200">
                 <RotateCcw className="h-3 w-3" aria-hidden /> Volvió con cambios

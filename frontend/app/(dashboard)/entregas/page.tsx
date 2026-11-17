@@ -172,6 +172,12 @@ export default function TableroPage() {
       setPidiendoCambios(t);
       return false;
     }
+    // Archivar lo que no se terminó es cancelar la pieza (16/11/2026): la
+    // tarea queda cerrada y la agencia no la puede entregar. Se pregunta antes.
+    const cancela = a === "archivado" && t.columna !== "finalizado";
+    if (cancela && !window.confirm(`¿Cancelar «${t.titulo}»? Queda en Archivado y no se entrega ni se revisa. Si hace falta, se saca del archivo y vuelve a su columna.`)) {
+      return false;
+    }
     setDatos(d => d && { ...d, tarjetas: d.tarjetas.map(x => (x.tareaId === t.tareaId ? { ...x, columna: a, volvioConCambios: a === "en-proceso" && t.columna === "esperando" } : x)) });
     // Lo que se pidió antes de este movimiento ya no vale (ver `pedido`).
     pedido.current++;
@@ -185,6 +191,8 @@ export default function TableroPage() {
         toast.success(data.columna === "esperando"
           ? "Aprobaste: ahora la revisa la siguiente persona de la cadena."
           : `Quedó en ${defColumna(data.columna).titulo}.`);
+      } else if (cancela) {
+        toast.success("Pieza cancelada: quedó en Archivado. Para retomarla, sacala del archivo.");
       } else if (a === "finalizado") {
         toast.success("Aprobada: quedó en Finalizado. Le avisamos a quien la hizo.");
       } else if (a === "en-proceso" && t.columna === "esperando") {

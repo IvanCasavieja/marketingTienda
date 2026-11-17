@@ -1296,6 +1296,9 @@ async def _tarjetas(db: AsyncSession, filas, usuario: User, hoy=None) -> list[di
         return {
             "tareaId": t.id, "titulo": t.titulo, "estado": t.estado,
             "columna": columna, "volvioConCambios": e.momento == "cambios" and not cancelada,
+            # Archivada sin aprobarse: la pantalla la marca "Cancelada" para que
+            # no se confunda con una pieza terminada.
+            "cancelada": cancelada,
             "vence": t.vence.isoformat() if t.vence else None,
             "ancla": t.ancla, "anclaDias": t.ancla_dias,
             "tipo": t.tipo, "opciones": list(t.opciones or []),
