@@ -237,7 +237,9 @@ def detalles_validos(clave: str, detalles, opciones: list[str]) -> dict:
         else:
             try:
                 n = int(valor)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
+                # OverflowError: un 1e400 en el JSON llega como infinito, e
+                # int(infinito) no es un ValueError: contestaba 500 (16/11/2026).
                 raise ValueError(f"«{campo['nombre']}» tiene que ser un número")
             if not (campo.get("minimo", 0) <= n <= campo.get("maximo", 1000)):
                 raise ValueError(f"«{campo['nombre']}» va de {campo.get('minimo', 0)} a {campo.get('maximo', 1000)}")

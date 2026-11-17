@@ -30,7 +30,8 @@ import { useDictado } from './useDictado'
 
 export const TIPOS_DE_PIEZA: { tipo: TipoPieza; nombre: string }[] = [
   { tipo: 'cenefa', nombre: 'Cenefa' },
-  { tipo: 'mailing', nombre: 'Mailing' },
+  // La clave 'mailing' es el email marketing (EMM); el «Mailing» (folleto) es 'otro' (16/11/2026).
+  { tipo: 'mailing', nombre: 'Email marketing (EMM)' },
   { tipo: 'banner_web', nombre: 'Banner web' },
   { tipo: 'redes', nombre: 'Redes' },
   { tipo: 'otro', nombre: 'Otro' },

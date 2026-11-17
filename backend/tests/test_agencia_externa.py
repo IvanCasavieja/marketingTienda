@@ -198,7 +198,13 @@ PIEZAS = [
     SimpleNamespace(id="p2", barra_id="b-futuro", area="fisico", formato="Cenefa FUTURA", estado="pendiente",
                     desde=None, hasta=None, hora=None, en_sharepoint=False),
 ]
-AVISOS = [SimpleNamespace(id="a1", barra_id="b-ahora", dias_antes=3, destinatarios=[2, 50])]
+AVISOS = [
+    SimpleNamespace(id="a1", barra_id="b-ahora", dias_antes=3, destinatarios=[2, 50]),
+    # De una acción fuera de "1 mes" que sale DENTRO del mes (90 días antes del
+    # 10/02 es el 12/11): para probar que a quien la ve limitada no se le
+    # cuenta aunque la fecha del aviso caiga en lo que pregunta.
+    SimpleNamespace(id="a2", barra_id="b-futuro", dias_antes=90, destinatarios=[2]),
+]
 
 
 class FuenteSinFiltro:
@@ -286,4 +292,34 @@ def test_a_una_agencia_que_no_ve_el_calendario_don_tino_no_le_cuenta_nada():
 
 def test_al_equipo_don_tino_le_sigue_contando_todo():
     datos, texto = _tino("calendario_tareas", usuario=DEL_EQUIPO, args={"responsable": "todos"})
+    assert "Tarea INTERNA de otro" in texto
+    # El aviso de la acción de febrero, a quien ve todo, sí.
+    _, texto = _tino("calendario_avisos", usuario=DEL_EQUIPO, args={"desde": "2026-11-01", "hasta": "2026-11-30"})
+    assert "SECRETA" in texto
+
+
+# Alguien del EQUIPO con el calendario en "1 mes" (0070): Don Tino le recorta
+# las fechas como la pantalla, pero no las tareas de los demás (es del equipo).
+INTERNO_1M = _usuario(3, "calendario.view", externo=False, alcance="1m")
+
+
+@pytest.mark.parametrize("herramienta,args", [
+    ("calendario_acciones", {}),
+    ("calendario_acciones", {"desde": "2027-02-01", "hasta": "2027-02-28"}),
+    ("calendario_piezas", {"desde": "2026-01-01", "hasta": "2027-03-01"}),
+    ("calendario_tareas", {"responsable": "todos"}),
+    ("calendario_avisos", {}),
+    ("calendario_avisos", {"desde": "2026-11-01", "hasta": "2026-11-30"}),
+])
+def test_don_tino_le_recorta_las_fechas_a_alguien_del_equipo_con_un_mes(herramienta, args):
+    """Si la condición volviera a ser solo para las cuentas externas, Don Tino
+    le contaría la «Navidad SECRETA de febrero» que en la pantalla no ve
+    (revisión del 16/11/2026: no había prueba)."""
+    _, texto = _tino(herramienta, usuario=INTERNO_1M, args=args)
+    for secreto in ("SECRETA", "FUTURA", "FUTURO", "PASADO"):
+        assert secreto not in texto, (herramienta, secreto, texto)
+
+
+def test_a_alguien_del_equipo_con_un_mes_le_cuenta_las_tareas_de_los_demas_de_su_ventana():
+    _, texto = _tino("calendario_tareas", usuario=INTERNO_1M, args={"responsable": "todos"})
     assert "Tarea INTERNA de otro" in texto

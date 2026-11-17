@@ -32,7 +32,9 @@ if URL:
     from app.core.rate_limit import limiter
     from app.core.security import create_access_token, hash_password
     from app.main import app
-    from app.models.calendario import CalendarioBarra, CalendarioTarea
+    from app.models.calendario import (
+        CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPlantilla, CalendarioTarea,
+    )
     from app.models.entregas import CalendarioEntrega, CalendarioFase
     from app.models.notificacion import Notificacion
     from app.models.role import ALL_PERMISSIONS
@@ -171,6 +173,32 @@ async def _tarjeta(cliente, tarea_id):
     return next((t for t in r.json()["tarjetas"] if t["tareaId"] == tarea_id), None)
 
 
+async def _persona(d, nombre, *, permisos=("calendario.view",), alc=None, externo=False, empresa=None):
+    """Una cuenta más, para la prueba que la necesita (las de _sembrar son de todas)."""
+    async with d.Sesion() as s:
+        u = User(
+            email=f"{nombre.lower().replace(' ', '.')}.{d.sufijo}@prueba-tablero.test", full_name=nombre,
+            hashed_password=_clave(), permissions=list(permisos), mundos=[MUNDO], is_active=True,
+            is_superuser=False, es_externo=externo, empresa=empresa,
+            calendario_alcance=alc or alcance.por_defecto(externo),
+            must_change_password=False, password_changed_at=datetime.now(timezone.utc),
+        )
+        s.add(u)
+        await s.commit()
+        return u
+
+
+async def _estado(d, tarea_id) -> str:
+    async with d.Sesion() as s:
+        return (await s.get(CalendarioTarea, tarea_id)).estado
+
+
+async def _entregar_link(cliente, tarea_id, version_id):
+    r = await cliente.post(f"/calendario/tareas/{tarea_id}/versiones", data={
+        "versionId": version_id, "link": "https://drive.example.com/ronda"})
+    return r
+
+
 async def _pedir_banners(d, quien, *, barra=None, tarea_id=None, **extra):
     tarea_id = tarea_id or f"ta-{uuid.uuid4().hex[:10]}"
     cuerpo = {"id": tarea_id, "tipo": "banners", "opciones": ["header", "Checkout"], "detalles": {"cta": "Ver ofertas"},
@@ -249,17 +277,47 @@ def test_un_interno_con_alcance_limitado_tambien_se_filtra():
         assert d.ahora.id in ids and not ids & {d.ciber.id, d.viejo.id, d.lejos.id}
         assert datos["opaca"] is True
         assert (await c.get(f"/calendario/ubicar/{d.ciber.id}")).status_code == 404
-        # Una tarjeta ajena de afuera de su alcance: no existe. Una que pidió
-        # él (aunque la campaña quede fuera): sí.
+        # Una tarjeta ajena de afuera de su alcance: no existe (ni en el
+        # buscador). Una suya (la aprueba él) aunque la campaña quede fuera de
+        # su alcance: sí, entera (abajo).
         ajena, _ = await _pedir_banners(d, d.lucia)
         assert (await c.get(f"/calendario/tareas/{ajena}/entregas")).status_code == 404
         assert await _tarjeta(c, ajena) is None
+        r = await c.get("/calendario/entregas/buscar", params={"mundo": MUNDO, "q": f"Ciberlunes {d.sufijo} banners"})
+        assert ajena not in [t["tareaId"] for t in r.json()["enTablero"] + r.json()["archivadas"]]
         # No puede pedir piezas en una acción que no ve; en una que ve, sí.
         r = await c.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
             "id": f"ta-l-{d.sufijo}", "tipo": "totem", "para": "agencia", "agencia": f"Agencia Pampa {d.sufijo}"})
         assert r.status_code == 404
         propia, _ = await _pedir_banners(d, d.limitado, barra=d.ahora)
         assert (await c.get(f"/calendario/tareas/{propia}/entregas")).status_code == 200
+
+        # «Navidad - Banners», dentro de dos meses, la aprueba él (1 mes): la
+        # ve en su tablero, la abre, ve la imagen, la decide y la finaliza.
+        # Revisión del 16/11/2026: antes ninguna prueba lo cubría.
+        suya, _ = await _pedir_banners(d, d.lider)
+        r = await Cliente(d.http, d.lider).put(f"/calendario/tareas/{suya}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.limitado.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+        a1 = Cliente(d.http, d.a1)
+        archivos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg"))]
+        r = await a1.post(f"/calendario/tareas/{suya}/versiones", data={"versionId": f"ve-l1-{d.sufijo}"}, files=archivos)
+        assert r.status_code == 201, r.text
+        tarjeta = await _tarjeta(c, suya)
+        assert tarjeta is not None and tarjeta["columna"] == "esperando" and tarjeta["puedo"]["decidir"] is True
+        detalle = await c.get(f"/calendario/tareas/{suya}/entregas")
+        assert detalle.status_code == 200, detalle.text
+        imagen = detalle.json()["fases"][0]["versiones"][0]["imagenes"][0]["id"]
+        assert (await c.get(f"/calendario/entregas/imagenes/{imagen}")).status_code == 200
+        # Decide (pide cambios): a quien ve una parte no le viaja el contador de todos.
+        r = await c.post(f"/calendario/versiones/ve-l1-{d.sufijo}/decision", json={
+            "decision": "cambios", "comentario": "El precio más grande"})
+        assert r.status_code == 200, r.text
+        assert r.json()["rev"] is None
+        assert (await _entregar_link(a1, suya, f"ve-l2-{d.sufijo}")).status_code == 201
+        r = await c.post(f"/calendario/tareas/{suya}/mover", json={"desde": "esperando", "a": "finalizado"})
+        assert r.status_code == 200, r.text
+        assert r.json()["columna"] == "finalizado" and r.json()["rev"] is None
         # Ni mover una acción fuera de lo que ve.
         r = await c.patch(f"/calendario/barras/{d.ahora.id}", json={"desde": d.ciber.desde.isoformat(),
                                                                     "hasta": d.ciber.hasta.isoformat()})
@@ -434,6 +492,15 @@ def test_el_recorrido_completo_con_las_reglas_de_cada_uno():
         # Archivado a mano y de vuelta.
         assert (await mover(a1, "finalizado", "archivado")).status_code == 403
         assert (await mover(lucia, "finalizado", "archivado")).json()["columna"] == "archivado"
+        # «Ver más» de Archivado: la ve quien la lleva; ni la otra agencia ni
+        # un interno con el alcance limitado al que no le toca (revisión del
+        # 16/11/2026: antes solo lo pedía Lucía, que ve todo).
+        def ids_de(r):
+            assert r.status_code == 200, r.text
+            return [t["tareaId"] for t in r.json()["tarjetas"]]
+        assert tarea_id in ids_de(await lucia.get("/calendario/entregas/archivadas", params={"mundo": MUNDO}))
+        for otro in (b1, Cliente(d.http, d.limitado)):
+            assert tarea_id not in ids_de(await otro.get("/calendario/entregas/archivadas", params={"mundo": MUNDO}))
         assert (await mover(lucia, "archivado", "finalizado")).json()["columna"] == "finalizado"
 
         # 11 días después (fecha simulada: la finalización y el desarchivo,
@@ -458,6 +525,9 @@ def test_el_recorrido_completo_con_las_reglas_de_cada_uno():
         for q in ("ciberlunes banners", f"Ciberlunes {d.sufijo} - Banners", "CÍBERLUNES   banners"):
             r = await a1.get("/calendario/entregas/buscar", params={"mundo": MUNDO, "q": q})
             assert [t["tareaId"] for t in r.json()["archivadas"]] == [tarea_id], (q, r.text)
+        # La otra agencia, tampoco en lo archivado de verdad.
+        r = await b1.get("/calendario/entregas/buscar", params={"mundo": MUNDO, "q": "ciberlunes banners"})
+        assert r.json()["enTablero"] == [] and r.json()["archivadas"] == []
         # Y se abre, con sus materiales.
         detalle = (await a1.get(f"/calendario/tareas/{tarea_id}/entregas")).json()
         imagen = detalle["fases"][0]["versiones"][0]["imagenes"][0]["id"]
@@ -542,9 +612,25 @@ def test_quien_pide_y_carga_lo_de_una_agencia_de_afuera_lo_puede_aprobar():
         assert r.status_code == 201, r.text
         tarjeta = await _tarjeta(lucia, tarea_id)
         assert tarjeta["columna"] == "esperando" and tarjeta["puedo"]["decidir"] is True
+        # Es la única que decide: ve lo que encontró la IA (antes, no).
+        detalle = (await lucia.get(f"/calendario/tareas/{tarea_id}/entregas")).json()
+        assert detalle["puedo"]["verRevisionIA"] is True
+        assert (await lucia.get(f"/calendario/versiones/ve-fa-{d.sufijo}/revision-ia")).status_code == 200
+        # «Configurar» con quien carga entre quienes aprueban: se puede guardar
+        # (antes daba 422 y había que sacarla de la cadena). Revisión del 16/11/2026.
+        fase = detalle["fases"][0]["id"]
+        r = await Cliente(d.http, d.lider).put(f"/calendario/tareas/{tarea_id}/entregas", json={
+            "tipoPieza": "otro", "aprobadores": [d.lucia.id], "fases": [{"id": fase, "nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
         r = await lucia.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "esperando", "a": "finalizado"})
         assert r.status_code == 200, r.text
         assert (await _tarjeta(lucia, tarea_id))["columna"] == "finalizado"
+        # El retrabajo de esa ronda es de la agencia de afuera, no de Lucía.
+        r = await Cliente(d.http, d.lider).get("/calendario/entregas/metricas", params={"mundo": MUNDO})
+        assert r.status_code == 200, r.text
+        grupos = {g["clave"]: g for g in r.json()["porResponsable"]}
+        assert d.lucia.id not in grupos
+        assert grupos["fuera:estudio afuera"]["nombre"] == "Estudio Afuera (agencia de afuera)"
     correr(prueba)
 
 
@@ -708,4 +794,327 @@ def test_colocacion_respeta_el_alcance_del_calendario():
         assert (await limitado.get(f"/colocacion/acciones/{d.ciber.id}")).status_code == 404
         assert (await limitado.get(f"/colocacion/acciones/{d.ahora.id}")).status_code == 200
         assert (await Cliente(d.http, d.lucia).get(f"/colocacion/acciones/{d.ciber.id}")).status_code == 200
+    correr(prueba)
+
+
+# ---------------------------------------------------------------------------
+# La tanda de arreglos del servidor (revisión del 16/11/2026)
+# ---------------------------------------------------------------------------
+
+def test_una_pieza_cancelada_se_archiva_y_se_puede_sacar_del_archivo():
+    """Antes una pieza cancelada quedaba para siempre en Ingresado o En
+    proceso, en rojo, para la agencia y para el equipo: solo se archivaba una
+    finalizada, y cerrar la tarea a mano («hecha») no tocaba la tarjeta. Ahora
+    el equipo la archiva desde el tablero (y la tarea se cierra), o quien
+    lidera cierra la tarea y la tarjeta se archiva; reabrirla la trae de vuelta."""
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        a1, lucia, lider = Cliente(d.http, d.a1), Cliente(d.http, d.lucia), Cliente(d.http, d.lider)
+        mover = lambda c, desde, a, **kw: c.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": desde, "a": a, **kw})  # noqa: E731
+
+        async def con_cambios(c):
+            return [t["tareaId"] for t in (await c.get("/calendario/mis-entregas")).json()["conCambios"]]
+
+        # La ficha sigue al tablero: arrancarla la pone en proceso; volverla, en pendiente.
+        assert (await mover(a1, "ingresado", "en-proceso")).status_code == 200
+        assert await _estado(d, tarea_id) == "en-proceso"
+        assert (await mover(a1, "en-proceso", "ingresado")).status_code == 200
+        assert await _estado(d, tarea_id) == "pendiente"
+
+        # La agencia no la archiva; el equipo de la tarjeta sí, desde Ingresado.
+        assert (await mover(a1, "ingresado", "archivado")).status_code == 403
+        assert (await mover(Cliente(d.http, d.aprob2), "ingresado", "archivado")).status_code == 403
+        r = await mover(lucia, "ingresado", "archivado")
+        assert r.status_code == 200 and r.json()["columna"] == "archivado", r.text
+        assert await _estado(d, tarea_id) == "hecha"
+        t = await _tarjeta(a1, tarea_id)
+        assert t["columna"] == "archivado" and t["archivadaEl"] is not None
+        assert t["puedo"]["entregar"] is False and t["puedo"]["mover"] == []
+        assert (await a1.get(f"/calendario/tareas/{tarea_id}/entregas")).json()["puedo"]["entregar"] is False
+        assert (await _entregar_link(a1, tarea_id, f"ve-x-{d.sufijo}")).status_code == 409
+        # En el calendario también: la tarea lleva su tarjeta en Archivado.
+        datos = (await Cliente(d.http, d.promo).get("/calendario/datos", params={"mundo": MUNDO})).json()
+        tareas = next(b for b in datos["barras"] if b["id"] == d.ciber.id)["tareas"]
+        assert next(x for x in tareas if x["id"] == tarea_id)["entrega"]["columna"] == "archivado"
+        # Sale del archivo solo a su columna, y la tarea se reabre.
+        assert (await _tarjeta(lucia, tarea_id))["puedo"]["mover"] == ["ingresado"]
+        assert (await mover(lucia, "archivado", "finalizado")).status_code == 422
+        r = await mover(lucia, "archivado", "ingresado")
+        assert r.status_code == 200 and r.json()["columna"] == "ingresado", r.text
+        assert await _estado(d, tarea_id) == "pendiente"
+
+        # Vuelve con cambios y quien lidera la cierra con el tilde de la ficha:
+        # la tarjeta pasa a Archivado y deja de esperar a la agencia.
+        assert (await _entregar_link(a1, tarea_id, f"ve-c1-{d.sufijo}")).status_code == 201
+        assert (await mover(lucia, "esperando", "en-proceso", comentario="El precio más grande")).status_code == 200
+        assert tarea_id in await con_cambios(a1)
+        assert (await lider.patch(f"/calendario/tareas/{tarea_id}", json={"estado": "hecha"})).status_code == 200
+        assert (await _tarjeta(a1, tarea_id))["columna"] == "archivado"
+        assert tarea_id not in await con_cambios(a1)
+        assert (await _entregar_link(a1, tarea_id, f"ve-c2-{d.sufijo}")).status_code == 409
+        # Si la reabre, la tarjeta vuelve sola a su columna.
+        assert (await lider.patch(f"/calendario/tareas/{tarea_id}", json={"estado": "en-proceso"})).status_code == 200
+        t = await _tarjeta(a1, tarea_id)
+        assert t["columna"] == "en-proceso" and t["volvioConCambios"] is True and t["puedo"]["entregar"] is True
+        assert tarea_id in await con_cambios(a1)
+
+        # Cerrada otra vez, a los 30 días en Archivado ya no se carga: la
+        # encuentra el buscador, aparte.
+        assert (await lider.patch(f"/calendario/tareas/{tarea_id}", json={"estado": "hecha"})).status_code == 200
+        async with d.Sesion() as s:
+            e = await s.get(CalendarioEntrega, tarea_id)
+            e.archivada_at = datetime.now(timezone.utc) - timedelta(days=31)
+            await s.commit()
+        assert await _tarjeta(lucia, tarea_id) is None
+        r = await lucia.get("/calendario/entregas/buscar", params={"mundo": MUNDO, "q": f"Ciberlunes {d.sufijo} banners"})
+        assert r.json()["enTablero"] == [] and [t["tareaId"] for t in r.json()["archivadas"]] == [tarea_id]
+    correr(prueba)
+
+
+def test_el_archivado_nocturno_deja_en_paz_lo_que_no_le_toca():
+    """La pasada diaria archiva lo finalizado hace 10 días o más y lo que
+    quedó sin terminar con la tarea cerrada a mano (de antes de este
+    arreglo). No toca una finalizada hace 9 días, una que alguien sacó del
+    archivo hace 2, ni una activa con la tarea abierta."""
+    async def prueba(d):
+        ids = {}
+        for clave in ("nueve", "desarchivada", "once", "activa", "cerrada"):
+            ids[clave], _ = await _pedir_banners(d, d.lucia, barra=d.ahora, tarea_id=f"ta-n{clave}-{d.sufijo}")
+        ahora = datetime.now(timezone.utc)
+        async with d.Sesion() as s:
+            for clave, (fin, desarchivada) in {"nueve": (9, None), "desarchivada": (20, 2), "once": (11, None)}.items():
+                e = await s.get(CalendarioEntrega, ids[clave])
+                e.momento, e.fase_actual_id = "aprobada", None
+                e.finalizada_at = ahora - timedelta(days=fin)
+                e.desarchivada_at = ahora - timedelta(days=desarchivada) if desarchivada else None
+            # Cerrada a mano antes de que cerrarla archivara la tarjeta.
+            (await s.get(CalendarioTarea, ids["cerrada"])).estado = "hecha"
+            await s.commit()
+        async with d.Sesion() as s:
+            assert await reglas.archivar_finalizadas(s) >= 2
+        async with d.Sesion() as s:
+            entregas = {clave: await s.get(CalendarioEntrega, tid) for clave, tid in ids.items()}
+        assert entregas["once"].archivada_at is not None and entregas["once"].archivada_por_id is None
+        assert entregas["cerrada"].archivada_at is not None
+        for clave in ("nueve", "desarchivada", "activa"):
+            assert entregas[clave].archivada_at is None, clave
+        assert (await _tarjeta(Cliente(d.http, d.lucia), ids["cerrada"]))["columna"] == "archivado"
+    correr(prueba)
+
+
+def test_agregarle_una_fase_a_una_finalizada_la_reabre():
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        mover = lambda desde, a: lider.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": desde, "a": a})  # noqa: E731
+        assert (await _entregar_link(a1, tarea_id, f"ve-r1-{d.sufijo}")).status_code == 201
+        assert (await mover("esperando", "finalizado")).json()["columna"] == "finalizado"
+        assert (await mover("finalizado", "archivado")).json()["columna"] == "archivado"
+        assert await _estado(d, tarea_id) == "hecha"
+        fase = (await lider.get(f"/calendario/tareas/{tarea_id}/entregas")).json()["fases"][0]["id"]
+        r = await lider.put(f"/calendario/tareas/{tarea_id}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lider.id],
+            "fases": [{"id": fase, "nombre": "Entrega"}, {"nombre": "Ajuste final"}]})
+        assert r.status_code == 200, r.text
+        assert (await _tarjeta(lider, tarea_id))["columna"] == "en-proceso"
+        async with d.Sesion() as s:
+            e = await s.get(CalendarioEntrega, tarea_id)
+            assert e.momento == "produccion" and e.finalizada_at is None and e.archivada_at is None
+        assert await _estado(d, tarea_id) == "en-proceso"
+        assert (await _entregar_link(a1, tarea_id, f"ve-r2-{d.sufijo}")).status_code == 201
+        assert (await mover("esperando", "finalizado")).json()["columna"] == "finalizado"
+        assert await _estado(d, tarea_id) == "hecha"
+    correr(prueba)
+
+
+def test_corregir_el_nombre_de_la_agencia_corrige_sus_plantillas():
+    """«Publisis» pasa a llamarse «Publicis»: las plantillas que la nombran
+    pasan al nombre nuevo, como sus tarjetas. Y si al aplicar una plantilla
+    alguna agencia no tiene cuentas, la respuesta lo dice."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        plantilla = f"pl-sur-{d.sufijo}"
+        r = await lider.put(f"/calendario/plantillas/{plantilla}", json={
+            "mundo": MUNDO, "nombre": "Mega", "tareas": [
+                {"id": "t1", "titulo": "Banners", "tipo": "banners", "opciones": ["Header"], "para": "agencia",
+                 "agencia": f"Estudio Sur {d.sufijo}", "ancla": "inicio", "dias": -3},
+                {"id": "t2", "titulo": "Retirar carteles", "ancla": "fin", "dias": 1},
+            ]})
+        assert r.status_code == 200, r.text
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}"})
+        assert r.status_code == 200, r.text
+        async with d.Sesion() as s:
+            tareas = (await s.get(CalendarioPlantilla, plantilla)).tareas
+        assert tareas[0]["agencia"] == f"Estudio del Sur {d.sufijo}" and tareas[1].get("agencia") is None
+
+        ids = {"t1": f"ta-s1-{d.sufijo}", "t2": f"ta-s2-{d.sufijo}"}
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/plantilla", json={"plantillaId": plantilla, "ids": ids})
+        assert r.status_code == 201, r.text
+        assert r.json()["agenciasSinCuentas"] == []
+        assert await _tarjeta(Cliente(d.http, d.b1), ids["t1"]) is not None
+        assert len(await _avisos(d, d.b1, ids["t1"])) == 1
+
+        # El respaldo: una agencia que se quedó sin cuentas. La tarjeta nace
+        # igual (la ve el equipo), y la respuesta lo dice para avisarlo.
+        async with d.Sesion() as s:
+            (await s.get(User, d.b1.id)).is_active = False
+            await s.commit()
+        ids = {"t1": f"ta-s3-{d.sufijo}", "t2": f"ta-s4-{d.sufijo}"}
+        r = await lider.post(f"/calendario/barras/{d.ahora.id}/plantilla", json={"plantillaId": plantilla, "ids": ids})
+        assert r.status_code == 201, r.text
+        assert r.json()["agenciasSinCuentas"] == [f"Estudio del Sur {d.sufijo}"]
+    correr(prueba)
+
+
+def test_un_gestor_con_el_calendario_limitado_crea_cuentas_y_no_da_mas_de_lo_que_ve():
+    """Un Admin (no superadmin) con «1 mes» crea la cuenta de un diseñador
+    nuevo desde el panel (que no manda el alcance): nace con «1 mes», no con
+    un 403. Pedir más de lo que ve, a propósito, sí da 403, y nadie se sube ni
+    le da a otro más de lo que ve."""
+    async def prueba(d):
+        gestor = await _persona(d, "Gestor Limitado", permisos=("platform.users.manage", "calendario.view"), alc="1m")
+        g = Cliente(d.http, gestor)
+        r = await g.post("/admin/users", json={
+            "email": f"disenador.{d.sufijo}@ti.uy", "full_name": "Diseñador Nuevo", "password": "Clave-segura-123"})
+        assert r.status_code == 201, r.text
+        async with d.Sesion() as s:
+            assert (await s.get(User, r.json()["id"])).calendario_alcance == "1m"
+        r = await g.post("/admin/users", json={
+            "email": f"otro.{d.sufijo}@ti.uy", "full_name": "Otro", "password": "Clave-segura-123",
+            "calendario_alcance": "todo"})
+        assert r.status_code == 403
+        assert (await g.patch(f"/admin/users/{gestor.id}/alcance", json={"calendario_alcance": "todo"})).status_code == 403
+        assert (await g.patch(f"/admin/users/{d.lucia.id}/alcance", json={"calendario_alcance": "todo"})).status_code == 403
+        assert (await g.patch(f"/admin/users/{d.lucia.id}/alcance", json={"calendario_alcance": "1m"})).status_code == 200
+        # Sin gestión de usuarios, nada.
+        r = await Cliente(d.http, d.lucia).patch(f"/admin/users/{d.aprob2.id}/alcance", json={"calendario_alcance": "1m"})
+        assert r.status_code == 403
+    correr(prueba)
+
+
+@pytest.mark.parametrize("caso", ["cambiar-pieza", "quitar-pieza", "quitar-aviso", "borrar-tarea", "copiar"])
+def test_lo_que_no_se_ve_tampoco_se_toca_por_su_id(caso):
+    """Alguien con «1 mes» no cambia ni borra piezas, avisos o tareas de una
+    acción de dentro de dos meses usando sus ids (de Outlook o de Don Tino),
+    ni copia esa acción a su mes para verla entera."""
+    async def prueba(d):
+        limitado = Cliente(d.http, d.limitado)
+        lider_limitado = await _persona(
+            d, "Lider Limitado", permisos=("calendario.view", "calendario.edit", "calendario.tareas"), alc="1m")
+        async with d.Sesion() as s:
+            s.add(CalendarioPieza(id=f"pz-{d.sufijo}", barra_id=d.ciber.id, area="fisico", formato="Cenefas"))
+            s.add(CalendarioAviso(id=f"av-{d.sufijo}", barra_id=d.ciber.id, dias_antes=3, destinatarios=[d.lucia.id]))
+            s.add(CalendarioTarea(id=f"ta-{d.sufijo}", barra_id=d.ciber.id, titulo="Brief", creado_por_id=d.promo.id))
+            await s.commit()
+        modelo, fila_id = {
+            "cambiar-pieza": (CalendarioPieza, f"pz-{d.sufijo}"),
+            "quitar-pieza": (CalendarioPieza, f"pz-{d.sufijo}"),
+            "quitar-aviso": (CalendarioAviso, f"av-{d.sufijo}"),
+            "borrar-tarea": (CalendarioTarea, f"ta-{d.sufijo}"),
+            "copiar": (CalendarioBarra, f"br-copia-{d.sufijo}"),
+        }[caso]
+        if caso == "cambiar-pieza":
+            r = await limitado.patch(f"/calendario/piezas/{fila_id}", json={"estado": "publicado"})
+        elif caso == "quitar-pieza":
+            r = await d.http.delete(f"{API}/calendario/piezas/{fila_id}", headers=limitado.headers)
+        elif caso == "quitar-aviso":
+            r = await d.http.delete(f"{API}/calendario/avisos/{fila_id}", headers=limitado.headers)
+        elif caso == "borrar-tarea":
+            r = await d.http.delete(f"{API}/calendario/tareas/{fila_id}", headers=Cliente(d.http, lider_limitado).headers)
+        else:
+            r = await limitado.post(f"/calendario/barras/{d.ciber.id}/copiar", json={
+                "id": fila_id, "desde": d.hoy.isoformat(), "nombre": f"Copia {d.sufijo}"})
+        assert r.status_code == 404, (caso, r.status_code, r.text)
+        async with d.Sesion() as s:
+            fila = await s.get(modelo, fila_id)
+            if caso == "copiar":
+                assert fila is None
+            else:
+                assert fila is not None
+                if caso == "cambiar-pieza":
+                    assert fila.estado == "pendiente"
+    correr(prueba)
+
+
+def test_una_entrega_con_un_link_solo_no_pide_lugar_en_la_base(monkeypatch):
+    """Con la base llena, una entrega con imágenes se frena (507); una con un
+    link solo no ocupa lugar y pasa. Antes las dos recibían «La imagen no se
+    guardó»."""
+    from fastapi import HTTPException
+
+    from app.api.routes import entregas as rutas_entregas
+
+    async def sin_lugar(db, bytes_nuevos):
+        raise HTTPException(status_code=507, detail="La imagen no se guardó: no hay lugar")
+
+    monkeypatch.setattr(rutas_entregas, "exigir_lugar", sin_lugar)
+
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        a1 = Cliente(d.http, d.a1)
+        archivos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg"))]
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-i-{d.sufijo}"}, files=archivos)
+        assert r.status_code == 507
+        assert (await _entregar_link(a1, tarea_id, f"ve-l-{d.sufijo}")).status_code == 201
+    correr(prueba)
+
+
+def test_el_buscador_encuentra_nombres_con_tildes_y_mayusculas():
+    async def prueba(d):
+        async with d.Sesion() as s:
+            s.add(CalendarioBarra(
+                id=f"br-nino-{d.sufijo}", mundo=MUNDO, seccion="comercial", banda="MEGA EVENTO", carril=0,
+                nombre=f"DÍA DEL NIÑO {d.sufijo}", desde=d.hoy, hasta=d.hoy + timedelta(days=3),
+                creado_por_id=d.promo.id,
+            ))
+            await s.commit()
+        barra = await _barra(d, f"br-nino-{d.sufijo}")
+        tarea_id, _ = await _pedir_banners(d, d.lucia, barra=barra)
+        r = await Cliente(d.http, d.lucia).get("/calendario/entregas/buscar", params={
+            "mundo": MUNDO, "q": f"dia del nino {d.sufijo}"})
+        assert [t["tareaId"] for t in r.json()["enTablero"]] == [tarea_id], r.text
+    correr(prueba)
+
+
+async def _barra(d, barra_id):
+    async with d.Sesion() as s:
+        return await s.get(CalendarioBarra, barra_id)
+
+
+def test_una_pieza_avisa_como_tarjeta_al_copiarla_y_al_reasignarla():
+    """A quien hace una pieza de Tienda le llegaba, al copiar la acción, el
+    aviso de la tarjeta y además el de «te asignó N tareas»: ahora uno solo.
+    Y reasignarle una pieza le avisa como tarjeta (lleva al tablero)."""
+    async def prueba(d):
+        lider = Cliente(d.http, d.lider)
+        pieza = f"ta-pz-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": pieza, "tipo": "banners", "opciones": ["Header"], "para": "tienda", "asignadoA": d.aprob2.id})
+        assert r.status_code == 201, r.text
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/copiar", json={
+            "id": f"br-cp-{d.sufijo}", "desde": (d.hoy + timedelta(days=20)).isoformat(), "nombre": f"Hot Sale {d.sufijo}"})
+        assert r.status_code == 201, r.text
+        copia = next(x for x in r.json()["barra"]["tareas"] if x.get("tipo") == "banners")
+        avisos = await _avisos(d, d.aprob2, copia["id"])
+        assert len(avisos) == 1 and avisos[0].origen_tipo == "calendario_entrega", [a.mensaje for a in avisos]
+
+        r = await lider.patch(f"/calendario/tareas/{pieza}", json={"asignadoA": d.lucia.id})
+        assert r.status_code == 200, r.text
+        avisos = await _avisos(d, d.lucia, pieza)
+        assert len(avisos) == 1 and avisos[0].origen_tipo == "calendario_entrega"
+        assert "te pidió" in avisos[0].mensaje
+    correr(prueba)
+
+
+def test_quien_gestiona_las_tareas_sin_ver_el_calendario_elige_aprobadores():
+    """«Configurar» del tablero pide la lista de personas: quien gestiona las
+    tareas la recibe aunque su calendario sea «No lo ve». Quien no gestiona y
+    no ve el calendario, no (se prueba arriba)."""
+    async def prueba(d):
+        gestor = await _persona(d, "Lider Sin Calendario", permisos=("calendario.view", "calendario.tareas"), alc="nada")
+        r = await Cliente(d.http, gestor).get("/calendario/personas", params={"mundo": MUNDO})
+        assert r.status_code == 200, r.text
+        assert d.lucia.id in {p["id"] for p in r.json()}
+        assert (await Cliente(d.http, d.sin_cal).get("/calendario/personas", params={"mundo": MUNDO})).status_code == 403
     correr(prueba)

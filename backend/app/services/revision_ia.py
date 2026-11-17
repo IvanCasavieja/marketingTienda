@@ -124,8 +124,12 @@ ETIQUETAS_DEL_BRIEF: dict[str, str] = {
     "link": "Link de destino", "formato": "Formato", "copy": "Copy", "fecha": "Fecha de publicación",
     "detalle": "Qué se necesita",
 }
+# La clave 'mailing' es el email marketing (EMM), como en el catálogo de tipos
+# de tarea y en la pantalla: el «Mailing» de verdad (el folleto) es una pieza
+# 'otro'. Si la IA lee «Mailing», revisa un mail como si fuera un folleto
+# (revisión del 16/11/2026).
 NOMBRES_DE_PIEZA: dict[str, str] = {
-    "cenefa": "Cenefa", "mailing": "Mailing", "banner": "Banner web", "redes": "Redes", "otro": "Otro",
+    "cenefa": "Cenefa", "mailing": "Email marketing (EMM)", "banner": "Banner web", "redes": "Redes", "otro": "Otro",
 }
 
 

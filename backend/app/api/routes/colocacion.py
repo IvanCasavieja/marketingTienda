@@ -49,7 +49,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
 
-from app.api.routes.calendario import _fecha_razonable, _nueva_revision
+from app.api.routes.calendario import _fecha_razonable, _nueva_revision, _rev_para
 from app.core import alcance
 from app.core.config import settings
 from app.core.database import get_db
@@ -490,7 +490,7 @@ async def pedir_fotos(
     await db.commit()
     # created_at lo pone la base: sin esto, leerlo acá rompe (sesión async).
     await db.refresh(pedido)
-    return {"rev": rev, "avisados": avisados, "pedido": await _pedido_json(db, pedido, hoy)}
+    return {"rev": _rev_para(current_user, rev), "avisados": avisados, "pedido": await _pedido_json(db, pedido, hoy)}
 
 
 @router.patch("/pedidos/{pedido_id}")
@@ -543,7 +543,7 @@ async def cambiar_pedido(
             await _avisar_si_mandaron_todos(db, pedido, barra)
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
-    return {"rev": rev, "avisados": avisados, "pedido": await _pedido_json(db, pedido, hoy)}
+    return {"rev": _rev_para(current_user, rev), "avisados": avisados, "pedido": await _pedido_json(db, pedido, hoy)}
 
 
 @router.delete("/pedidos/{pedido_id}")
@@ -566,7 +566,7 @@ async def cancelar_pedido(
     await db.delete(pedido)
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
-    return {"rev": rev, "cancelado": True}
+    return {"rev": _rev_para(current_user, rev), "cancelado": True}
 
 
 async def _local_de_promo(db: AsyncSession, local_id: int, usuario: User):

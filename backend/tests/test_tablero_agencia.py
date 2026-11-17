@@ -142,7 +142,8 @@ def test_el_equipo_pide_cambios_aprueba_y_archiva():
 def test_movimientos_que_no_existen():
     _no("ingresado", "finalizado", APROBADORA, 422)
     _no("en-proceso", "finalizado", APROBADORA, 422, hay=True)
-    _no("ingresado", "archivado", APROBADORA, 422)
+    # Con una entrega esperando feedback, primero se decide: no se archiva.
+    assert "aprobarla o pedir cambios" in _no("esperando", "archivado", APROBADORA, 422, hay=True)
     _no("finalizado", "en-proceso", APROBADORA, 422, hay=True)
     _no("esperando", "ingresado", APROBADORA, 422, hay=True)
     # Lo ya entregado no vuelve a Ingresado.
@@ -157,6 +158,77 @@ def test_los_destinos_para_mover_a():
     assert reglas.destinos_posibles("esperando", APROBADORA, hay_versiones=True) == ["en-proceso", "finalizado"]
     assert reglas.destinos_posibles("finalizado", APROBADORA, hay_versiones=True) == ["archivado"]
     assert reglas.destinos_posibles("en-proceso", OTRA_AGENCIA, hay_versiones=True) == []
+    # El equipo también la archiva (cancelada) desde Ingresado o En proceso.
+    assert reglas.destinos_posibles("ingresado", APROBADORA, hay_versiones=False) == ["en-proceso", "archivado"]
+    assert reglas.destinos_posibles("en-proceso", DEL_EQUIPO_SIN_TURNO, hay_versiones=True) == ["archivado"]
+    # Archivada sin terminar: sale del archivo solo a su columna.
+    assert reglas.destinos_posibles("archivado", APROBADORA, hay_versiones=False, vuelve_a="ingresado") == ["ingresado"]
+    assert reglas.destinos_posibles("archivado", AGENCIA, hay_versiones=False, vuelve_a="ingresado") == []
+
+
+def test_movimientos_prohibidos_para_alguien_del_equipo_que_no_lleva_la_tarjeta():
+    """Quien no tiene nada que ver con la tarjeta (ve el tablero entero con
+    «Todo») no la arranca, no la vuelve, no la archiva ni la saca del archivo.
+    El equipo de la tarjeta sí la puede arrancar (revisión del 16/11/2026)."""
+    _no("ingresado", "en-proceso", AJENO, 403)
+    _no("en-proceso", "ingresado", AJENO, 403)
+    _no("archivado", "finalizado", AJENO, 403)
+    _no("ingresado", "archivado", AJENO, 403)
+    assert _mov("ingresado", "en-proceso", APROBADORA) == "arrancar"
+
+
+# ---------------------------------------------------------------------------
+# Una pieza cancelada (revisión del 16/11/2026)
+# ---------------------------------------------------------------------------
+
+def test_archivada_sin_terminar_va_a_archivado():
+    """Antes solo se archivaba una finalizada: una pieza cancelada quedaba
+    para siempre en Ingresado o En proceso. Archivada a mano manda sobre el
+    momento."""
+    hace_un_rato = _utc(2026, 11, 16, 12)
+    assert _col("produccion", archivada_at=hace_un_rato) == "archivado"
+    assert _col("produccion", iniciada=True, archivada_at=hace_un_rato) == "archivado"
+    assert _col("cambios", archivada_at=hace_un_rato) == "archivado"
+    assert _col("revision", archivada_at=hace_un_rato) == "archivado"
+    # Y a los 30 días en Archivado se oculta, como una finalizada.
+    assert reglas.oculta(None, _utc(2026, 10, 1), None, date(2026, 10, 31), 10, 30)
+    assert not reglas.oculta(None, _utc(2026, 10, 1), None, date(2026, 10, 30), 10, 30)
+
+
+def test_el_equipo_archiva_una_pieza_cancelada_y_la_saca_a_su_columna():
+    assert _mov("ingresado", "archivado", APROBADORA) == "archivar"
+    assert _mov("en-proceso", "archivado", DEL_EQUIPO_SIN_TURNO, hay=True) == "archivar"
+    _no("ingresado", "archivado", AGENCIA, 403)
+    _no("en-proceso", "archivado", AGENCIA, 403, hay=True)
+
+    def sacar(a, quien, vuelve_a):
+        return reglas.movimiento("archivado", a, quien, hay_versiones=False, vuelve_a=vuelve_a)
+
+    assert sacar("ingresado", APROBADORA, "ingresado") == "desarchivar"
+    assert sacar("en-proceso", DEL_EQUIPO_SIN_TURNO, "en-proceso") == "desarchivar"
+    with pytest.raises(reglas.MovimientoInvalido) as e:
+        sacar("finalizado", APROBADORA, "ingresado")
+    assert e.value.codigo == 422 and "Ingresado" in str(e.value)
+    with pytest.raises(reglas.MovimientoInvalido) as e:
+        sacar("ingresado", AGENCIA, "ingresado")
+    assert e.value.codigo == 403
+    with pytest.raises(reglas.MovimientoInvalido) as e:
+        sacar("ingresado", AJENO, "ingresado")
+    assert e.value.codigo == 403
+
+
+def test_a_que_columna_vuelve_al_sacarla_del_archivo():
+    def entrega(momento, iniciada=None, ronda=0):
+        return SimpleNamespace(momento=momento, iniciada_at=iniciada, ronda=ronda, archivada_at=_utc(2026, 11, 16))
+
+    assert reglas.columna_al_desarchivar(entrega("aprobada")) == "finalizado"
+    assert reglas.columna_al_desarchivar(entrega("produccion")) == "ingresado"
+    assert reglas.columna_al_desarchivar(entrega("produccion", iniciada=_utc(2026, 11, 10))) == "en-proceso"
+    assert reglas.columna_al_desarchivar(entrega("cambios", ronda=1)) == "en-proceso"
+    assert reglas.columna_al_desarchivar(entrega("revision", ronda=1)) == "esperando"
+    assert reglas.archivada_sin_terminar(entrega("produccion"))
+    assert not reglas.archivada_sin_terminar(entrega("aprobada"))
+    assert not reglas.archivada_sin_terminar(SimpleNamespace(momento="produccion", archivada_at=None))
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +327,45 @@ def test_el_catalogo_para_la_pantalla_lleva_el_tipo_de_pieza():
     for t in tipos.para_la_pantalla():
         assert t["clave"] and t["nombre"]
         assert t["pieza"] == tipos.tipo_de(t["clave"])["pieza"]
+        # Y es una de las que acepta PUT /entregas: si no, «Más opciones» la
+        # mandaría y el servidor la rechazaría (o caería en «Otro»).
+        assert t["pieza"] in reglas.TIPOS_DE_PIEZA, t["clave"]
+
+
+def test_un_numero_gigante_en_los_datos_del_pedido_es_un_error_claro():
+    """Un 1e400 en el JSON llega como infinito, e int(infinito) no es un
+    ValueError: contestaba 500 (revisión del 16/11/2026)."""
+    with pytest.raises(ValueError):
+        tipos.detalles_validos("emm", {"bloques": float("inf")}, ["En bloques"])
+    with pytest.raises(ValueError):
+        TareaNueva(id="ta-1", tipo="emm", opciones=["En bloques"], detalles={"bloques": float("inf")})
+    with pytest.raises(ValueError):
+        TareaDePlantilla(id="a", titulo="EMM", tipo="emm", opciones=["En bloques"], detalles={"bloques": float("-inf")})
+
+
+def test_el_buscador_saca_tambien_las_tildes_de_las_mayusculas():
+    """Que lower() de la base baje «Í» depende de su configuración regional:
+    la traducción lleva también las mayúsculas acentuadas."""
+    from app.api.routes.entregas import _TILDES
+
+    con, sin = _TILDES
+    assert len(con) == len(sin)
+    traduccion = str.maketrans(con, sin)
+    assert "DÍA DEL NIÑO ÁÉÍÓÚÜÇ".translate(traduccion) == "DiA DEL NInO aeiouuc"
+    assert "día del niño".translate(traduccion) == "dia del nino"
+
+
+def test_el_retrabajo_ordena_personas_y_agencias_de_afuera_sin_romper():
+    """En una pieza de una agencia de afuera el retrabajo es de la agencia
+    (por su nombre), no de quien la carga: se mezclan ids y textos."""
+    m = reglas.metricas_de_retrabajo([
+        ("banner", 7, "tienda_inglesa", 1), ("banner", "fuera:estudio x", "tienda_inglesa", 3),
+        ("banner", 8, "tienda_inglesa", 2), ("otro", 8, "tienda_inglesa", 1),
+        ("banner", None, "tienda_inglesa", 1),
+    ])
+    # Con las mismas fases, primero las personas y después las agencias
+    # (antes, comparar 7 con "fuera:estudio x" levantaba un TypeError).
+    assert [g["clave"] for g in m["porResponsable"]] == [8, None, 7, "fuera:estudio x"]
 
 
 @pytest.mark.parametrize("texto,palabras", [
