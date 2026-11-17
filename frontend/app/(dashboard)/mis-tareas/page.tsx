@@ -13,14 +13,12 @@ import { TarjetaEntrega } from "@/components/calendario/entregas/TarjetaEntrega"
 import { proximoPaso, type Tarjeta } from "@/lib/calendario/entregas";
 import { useVistaEntregas } from "@/store/entregas";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
-import { veCalendario } from "@/lib/alcance";
 import { Cocarda } from "@/components/calendario/Cocarda";
 import { nivelDeCategoria } from "@/lib/calendario/categorias";
 import { fechaCorta, hoyIso, sumarDias } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { ETIQUETA_ESTADO_TAREA, type EstadoTarea, type Tarea } from "@/lib/calendario/tipos";
 import { mundoEfectivo, mundosDe, useMundoElegido } from "@/lib/mundos";
-import { BotonOutlook } from "@/components/calendario/BotonOutlook";
 
 /**
  * Mis tareas: lo que la persona tiene asignado en el mundo en el que está.
@@ -211,13 +209,6 @@ export default function MisTareasPage() {
                 <CalendarClock className="h-4 w-4" /> {estaSemana} esta semana
               </span>
             )}
-          </div>
-        )}
-        {/* El link de Outlook es el calendario: quien no lo ve no lo tiene
-            (el servidor se lo niega y el botón daba un error). */}
-        {veCalendario(user) && (
-          <div className="sm:ml-auto">
-            <BotonOutlook />
           </div>
         )}
       </header>

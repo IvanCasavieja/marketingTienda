@@ -191,6 +191,38 @@ para saber también lo que es la importancia".
   zoom: en una notebook entra entero. Tocar el zoom lo deja fijo.
 - **Ocultar categorías vacías** en el calendario comercial.
 
+## Mi agenda: el calendario de cada persona (0074)
+
+Arriba de todo, una fila con el calendario de Outlook o Google de quien mira.
+Pedido de Ivan (17/11/2026): "que la gente pueda importar su propio
+calendario a la aplicación y que se vaya actualizando con los eventos que
+vayan agregando". **Solo la ve su dueño**: no hay forma de pedir la agenda de
+otro, ni siquiera siendo admin.
+
+- **Se conecta pegando un link**, una vez: en Outlook, *Publicar un
+  calendario* (el link ICS); en Google, la *Dirección secreta en formato
+  iCal*. Los pasos están en el modal de "Conectar mi calendario". El link se
+  guarda cifrado y nunca vuelve al navegador.
+- **Se actualiza solo**: el servidor lo relee cuando alguien mira y pasaron
+  15 minutos (`GET /calendario/mi-agenda`); la pantalla vuelve a preguntar
+  cada 15 minutos y al volver a la pestaña. "Actualizar" lo relee ya. Si el
+  link deja de andar, se ven los eventos de la última vez con el motivo.
+- **Una barra por día con eventos**, en hora de Uruguay: "10:00 Daily +1"
+  (con el zoom chico, solo cuántos hay). Tocarla abre los eventos de ese día.
+  Las reuniones que se repiten ya vienen expandidas del servidor, de dos meses
+  atrás a un año adelante.
+- **Es solo de ida.** Antes había un link para llevar las acciones de Tienda a
+  Outlook (0064); se sacó: "no me gusta que las acciones del calendario de
+  Tienda puedan estar en un calendario cualquiera". La columna
+  `users.calendario_link_version` quedó sin uso.
+- El servidor sale a buscar un link que pegó una persona, así que solo va a
+  https, a servidores de internet (nunca a una dirección interna, tampoco en
+  una redirección) y con topes de tamaño, tiempo y redirecciones. Ver
+  `backend/app/services/agenda_externa.py`.
+
+Lo de la pantalla está en `lib/calendario/mi-agenda.ts` (en qué día cae cada
+evento y cómo se dice) y `components/calendario/MiAgenda.tsx`.
+
 ## Las tres secciones
 
 **1. Calendario comercial.** Las acciones de marketing por categoría (Mega
@@ -506,6 +538,9 @@ viene, el año del nombre, el choque y qué se lleva). No borrarlas al
 reescribirlas con otro runner. Del lado del backend,
 `tests/test_calendario_avisos.py`, `tests/test_calendario_migracion.py`,
 `tests/test_calendario_envios_sueltos.py` y `tests/test_calendario_copiar.py`.
+Mi agenda: `mi-agenda.test.ts` y, en el backend, `tests/test_mi_agenda.py`
+(leer el link y el calendario) y las de `tests/test_tablero_agencia_api.py`
+(conectar, que solo la vea su dueño, releer, desconectar).
 
 ## Lo que falta
 

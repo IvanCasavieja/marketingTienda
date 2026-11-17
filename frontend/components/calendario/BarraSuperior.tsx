@@ -16,7 +16,6 @@ import {
 } from '@/lib/calendario/rejilla'
 import { mundoDe, mundosDe, type SeccionDeMundo } from '@/lib/mundos'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
-import { BotonOutlook } from './BotonOutlook'
 
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -229,7 +228,6 @@ export function BarraSuperior() {
               Cambiar
             </Link>
           )}
-          <BotonOutlook compacto />
         </div>
         <h1 className="sr-only sm:hidden">Calendario de {mundo?.nombre ?? 'este mundo'}</h1>
 

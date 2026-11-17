@@ -10,6 +10,7 @@ import { BarraSuperior } from "@/components/calendario/BarraSuperior";
 import { CalendarioComercial } from "@/components/calendario/CalendarioComercial";
 import { CalendarioRetail } from "@/components/calendario/CalendarioRetail";
 import { CalendarioEnvios } from "@/components/calendario/CalendarioEnvios";
+import { MiAgenda } from "@/components/calendario/MiAgenda";
 import { HeaderHome } from "@/components/calendario/HeaderHome";
 import { EditorBarra } from "@/components/calendario/EditorBarra";
 import { PanelAccion } from "@/components/calendario/PanelAccion";
@@ -212,6 +213,8 @@ export default function CalendarioPage() {
         <VistaLista />
       ) : (
         <div id="calendario" className="space-y-4">
+          {/* El calendario de Outlook o Google de quien mira: solo el suyo (17/11/2026). */}
+          <MiAgenda />
           {ve("comercial") && <CalendarioComercial />}
           {ve("envios") && <CalendarioEnvios />}
           {ve("retail") && <CalendarioRetail />}

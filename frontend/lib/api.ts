@@ -4,13 +4,9 @@ import type { EstadoColocacion, EstadoVisibleColocacion } from "@/lib/colocacion
 import type { Columna, ComentarioDeTarjeta, DetalleEntregas, Metricas, ResumenEntrega, Tarjeta, TipoDecision, TipoPieza } from "@/lib/calendario/entregas";
 import type { TipoDeTarea } from "@/lib/calendario/tipos-de-tarea";
 import type { ObservacionIA, RevisionIA } from "@/lib/calendario/revision-ia";
+import type { MiAgenda } from "@/lib/calendario/mi-agenda";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-
-/** La dirección completa de algo de la API (p. ej. el link del calendario para Outlook). */
-export function urlDeLaApi(ruta: string): string {
-  return `${BASE_URL}${ruta}`;
-}
 
 // ── Token storage ─────────────────────────────────────────────────────────────
 // On mobile browsers (especially Safari iOS) cross-site httpOnly cookies are
@@ -2104,10 +2100,12 @@ export type CalendarioCopia = CalendarioEscrito & {
 const ESPERA = { timeout: 15_000 };
 
 export const calendarioApi = {
-  /** El link privado del calendario para Outlook, Google o el iPhone (la ruta, sin la dirección de la API). */
-  linkDelCalendario: () => api.get<{ ruta: string }>("/calendario/ical/link", ESPERA),
-  /** Otro link: el anterior deja de andar. */
-  nuevoLinkDelCalendario: () => api.post<{ ruta: string }>("/calendario/ical/link/nuevo", {}, ESPERA),
+  /** Mi agenda: el calendario de Outlook o Google de quien pregunta (solo el suyo).
+   *  Leer el link puede tardar: el servidor lo baja y lo entiende en el momento. */
+  miAgenda: () => api.get<MiAgenda>("/calendario/mi-agenda", { timeout: 30_000 }),
+  conectarAgenda: (url: string) => api.put<MiAgenda>("/calendario/mi-agenda", { url }, { timeout: 30_000 }),
+  actualizarAgenda: () => api.post<MiAgenda>("/calendario/mi-agenda/actualizar", {}, { timeout: 30_000 }),
+  desconectarAgenda: () => api.delete<MiAgenda>("/calendario/mi-agenda", ESPERA),
   /** Todo el calendario, o `sinCambios` si sigue en la revisión `rev`. */
   traerDatos: (mundo: string, rev?: number | null) =>
     api.get<{
