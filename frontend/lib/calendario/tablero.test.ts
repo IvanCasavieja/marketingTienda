@@ -10,8 +10,8 @@
  */
 import {
   COLUMNAS_DEL_TABLERO, avisoDeAgenciasSinCuentas, conservarArchivadas, deQuien, filtroVigente, grupoDeQuien,
-  modoAlTocar, opcionesDeQuien, ordenar, queHaceMover, quienLaHaceTexto, rotuloDePieza, seMovioElDedo,
-  sePuedeSoltar, textoDeFecha,
+  modoAlTocar, opcionesDeQuien, ordenar, pestanasDeTableros, queHaceMover, quienLaHaceTexto, rotuloDePieza,
+  seMovioElDedo, sePuedeSoltar, tableroDeTarjeta, textoDeFecha,
 } from './tablero'
 import { diaEnUruguay } from './fechas'
 import { pasoEnLaVista, proximoPaso, type ResumenEntrega, type Tarjeta } from './entregas'
@@ -178,6 +178,19 @@ const devuelta: ResumenEntrega = {
 igual('devuelta: le toca entregar la Entrega 2', proximoPaso(devuelta, 9, 9, nombreDe).texto, 'Te toca: entregar Entrega 2')
 const aprobada: ResumenEntrega = { ...devuelta, momento: 'aprobada', faseActual: null, fases: devuelta.fases.map(f => ({ ...f, estado: 'aprobada' as const })) }
 igual('aprobada otra vez: sin próximo paso', proximoPaso(aprobada, 9, 9, nombreDe).accion, null)
+
+// Los tres tableros (17/11/2026): cada tarjeta va al de su agencia, escrita como sea.
+const tableros = ['Publicis', 'Another Monday', 'Diseñadores']
+const tarjetaDe = (hace: Tarjeta['hace']) => ({ ...base, hace })
+igual('una de Publicis va a Publicis', tableroDeTarjeta(tarjetaDe({ tipo: 'agencia', nombre: '  publicis ' }), tableros), 'Publicis')
+igual('Another Monday, con espacios de más', tableroDeTarjeta(tarjetaDe({ tipo: 'agencia', nombre: 'ANOTHER   monday' }), tableros), 'Another Monday')
+igual('una de Tienda no es de ninguno', tableroDeTarjeta(tarjetaDe({ tipo: 'tienda', nombre: 'Fer' }), tableros), null)
+igual('otra agencia no es de ninguno', tableroDeTarjeta(tarjetaDe({ tipo: 'agencia', nombre: 'Agencia Pampa' }), tableros), null)
+igual('las pestañas: los tres siempre, y Otras si hay', pestanasDeTableros([
+  tarjetaDe({ tipo: 'agencia', nombre: 'Publicis' }), tarjetaDe({ tipo: 'agencia', nombre: 'publicis' }),
+  tarjetaDe({ tipo: 'agencia', nombre: 'Diseñadores' }), tarjetaDe({ tipo: 'tienda', nombre: 'Fer' }),
+], tableros).map(p => `${p.nombre}:${p.cuantas}`), ['Publicis:2', 'Another Monday:0', 'Diseñadores:1', 'Otras:1'])
+igual('sin otras, no hay pestaña Otras', pestanasDeTableros([tarjetaDe({ tipo: 'agencia', nombre: 'Publicis' })], tableros).length, 3)
 
 // La push (17/11/2026): título, link de destino y fecha y hora, leída como en el servidor.
 const push: TipoDeTarea = {

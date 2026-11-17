@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Building2, CalendarClock, Check, ChevronDown, Layers, Mic, Plus, Sparkles, Store, UserRound, X } from 'lucide-react'
+import { CalendarClock, Check, ChevronDown, Layers, Mic, Plus, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { DictarBrief, type BriefListo } from '@/components/ia/DictarBrief'
 import { useCalendario } from '@/lib/calendario/store'
@@ -11,8 +11,8 @@ import { TIPOS_DE_PIEZA, type TipoPieza } from '@/lib/calendario/entregas'
 import { TIPO_PARA_DICTADO } from '@/lib/calendario/entregas-dictado'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
 import { venceAnclado } from '@/lib/calendario/plantillas'
-import { delEquipo, type BarraGuardada, type Persona } from '@/lib/calendario/tipos'
-import { useCatalogoDeTipos } from '@/store/tiposDeTarea'
+import type { BarraGuardada, Persona } from '@/lib/calendario/tipos'
+import { useCatalogoDeTipos, useTableros, type Tablero } from '@/store/tiposDeTarea'
 import { useDialogo } from './useDialogo'
 import {
   FormularioEntregas, configInicial, configParaEnviar, faltaEnConfig, type ConfigEntregas,
@@ -25,9 +25,8 @@ import {
  * sola su tarjeta en el tablero, en «Ingresado», con el nombre "<Acción> -
  * <Tipo>", y a quien la hace le llega "Iván te pidió: …".
  *
- * ¿Quién la hace? Una agencia que usa la plataforma (le aparece en su
- * tablero), alguien del equipo de diseño de Tienda, u otra agencia que no
- * usa la plataforma (alguien del equipo carga lo que manda).
+ * ¿A qué tablero va? Publicis, Another Monday o Diseñadores (17/11/2026):
+ * la pieza la toma cualquiera de ese tablero, no se elige persona.
  *
  * La fecha es N días antes del inicio de la acción (se mueve si la acción se
  * mueve) o una fija. La descripción es opcional (se puede dictar). El
@@ -37,21 +36,16 @@ import {
  * El catálogo (los tipos, las opciones y sus medidas) lo manda el servidor:
  * se edita en un solo lugar (backend/app/services/tipos_de_tarea.py).
  */
-type Quien = 'agencia' | 'tienda' | 'fuera'
-
 const DIAS_RAPIDOS = [1, 2, 3]
 /** Lo mismo que acepta el servidor para "N días antes" (calendario.py, _DIAS_DE_ANCLA). */
 const DIAS_MAXIMOS = 365
 
-export function PedirPieza({ accion, parentId = null, tareaMadre, responsableInicial = null, personas, usuarioId, gestiona, onListo }: {
+export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usuarioId, gestiona, onListo }: {
   accion: BarraGuardada
   /** La tarea de la que es material (17/11/2026: "crear tarea y debajo de
    *  eso poder asignar los materiales de esa tarea creada"). */
   parentId?: string | null
   tareaMadre?: string
-  /** Quién hace la tarea de la que cuelga: su pieza nueva arranca con esa
-   *  persona elegida, no se pregunta de nuevo (17/11/2026). */
-  responsableInicial?: number | null
   personas: Persona[]
   usuarioId: number | null
   gestiona: boolean
@@ -61,32 +55,15 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, responsableIni
   const configurarEntregas = useCalendario(s => s.configurarEntregas)
   const { tipos, error, reintentar } = useCatalogoDeTipos()
 
-  // Las agencias que usan la plataforma: las empresas de las cuentas externas
-  // que entran a este mundo. Con una sola, ya elegida.
-  const agencias = useMemo(() => {
-    const vistas = new Map<string, string>()
-    for (const p of personas) if (p.externo && p.empresa) vistas.set(p.empresa.toLocaleLowerCase('es'), p.empresa)
-    return [...vistas.values()].sort((a, b) => a.localeCompare(b, 'es'))
-  }, [personas])
-  const equipo = delEquipo(personas)
+  // A qué tablero va (17/11/2026): la toma cualquiera de ese tablero.
+  const { tableros } = useTableros(accion.mundo)
+  const [tablero, setTablero] = useState<string | null>(null)
 
   const [tipoClave, setTipoClave] = useState<string | null>(null)
   const [opciones, setOpciones] = useState<string[]>([])
   // Las opciones del tipo se eligen en un modal en el centro (17/11/2026).
   const [eligiendoOpciones, setEligiendoOpciones] = useState(false)
   const [detalles, setDetalles] = useState<Record<string, string>>({})
-  // Hasta que se elija, la agencia si hay alguna (es lo más común), si no Tienda.
-  // Las personas pueden llegar después de abrir el formulario: por eso se deriva.
-  const [quienElegido, setQuien] = useState<Quien | null>(null)
-  // Si la tarea de la que cuelga ya tiene a alguien del equipo, arranca en
-  // "Diseño de Tienda" con esa persona.
-  const inicialDelEquipo = responsableInicial != null && equipo.some(p => p.id === responsableInicial)
-  const quien: Quien = quienElegido ?? (inicialDelEquipo ? 'tienda' : agencias.length ? 'agencia' : 'tienda')
-  const [agenciaElegida, setAgencia] = useState<string>('')
-  const agencia = agenciaElegida || agencias[0] || ''
-  const [disenador, setDisenador] = useState<string>(responsableInicial != null ? String(responsableInicial) : '')
-  const [afuera, setAfuera] = useState('')
-  const [cargaAfuera, setCargaAfuera] = useState<string>(usuarioId != null ? String(usuarioId) : '')
   const [cuando, setCuando] = useState<'antes' | 'fecha'>('antes')
   const [dias, setDias] = useState(3)
   // Lo que se está escribiendo en "N días antes" (puede quedar vacío un
@@ -102,11 +79,9 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, responsableIni
   const titulo = nombreDeTarjeta(accion.nombre, tipo)
   const vence = cuando === 'antes' ? venceAnclado('inicio', -dias, accion.desde, accion.hasta) : fecha
   const pedido = descripcionDelPedido(tipo, opciones, detalles)
-  const responsable = quien === 'tienda' ? (disenador ? Number(disenador) : null) : quien === 'fuera' ? (cargaAfuera ? Number(cargaAfuera) : null) : null
-  // De una agencia de afuera, `responsable` es quien del equipo CARGA lo que
-  // manda, no quien la hace: puede aprobar (lo común es que la cargue y la
-  // apruebe la misma persona). Para la regla "quien entrega no aprueba", nadie.
-  const quienEntrega = quien === 'fuera' ? null : responsable
+  // La entrega la sube el tablero, no una persona de Tienda: para la regla
+  // "quien entrega no aprueba", nadie del equipo.
+  const quienEntrega = null
   // La fecha ya pasó: la tarjeta nacería vencida. Se avisa, sin trabar.
   const yaPaso = /^\d{4}-\d{2}-\d{2}$/.test(vence) && vence < hoyIso()
   // El dictado ordena según lo elegido en "¿Qué es?" (Banners → banner web,
@@ -117,9 +92,7 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, responsableIni
   const linkMalo = tipo ? camposVisibles(tipo, opciones).find(c => c.tipo === 'link' && detalles[c.clave]?.trim() && !linkValido(detalles[c.clave])) : undefined
   const falta = !tipo ? 'Elegí qué es.'
     : linkMalo ? `${linkMalo.nombre}: tiene que empezar con https://`
-    : quien === 'agencia' && !agencia ? 'Elegí qué agencia la hace.'
-      : quien === 'fuera' && !afuera.trim() ? 'Escribí el nombre de la agencia de afuera.'
-        : quien === 'fuera' && responsable == null ? 'Elegí quién del equipo carga lo que manda.'
+    : !tablero ? 'Elegí a qué tablero va.'
           : cuando === 'fecha' && !/^\d{4}-\d{2}-\d{2}$/.test(fecha) ? 'Elegí la fecha.'
             : masOpciones ? faltaEnConfig(config, quienEntrega) : null
 
@@ -142,8 +115,8 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, responsableIni
     const elegido = tipos?.find(x => x.clave === clave)
     // Ivan (17/11/2026): "si aprieto banners que se abra un modal en el
     // centro que me dé todas las opciones de banners a marcar, y así con
-    // todo". Los tipos sin opciones (Push, Tótem, Otro) no abren nada.
-    const conOpciones = !!elegido && (elegido.opciones.length > 0 || elegido.otras || elegido.campos.length > 0)
+    // todo". Abre siempre: ahí también se elige a qué tablero va.
+    const conOpciones = !!elegido
     if (clave === tipoClave) {
       if (conOpciones) setEligiendoOpciones(true)
       return
@@ -174,9 +147,9 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, responsableIni
       titulo,
       parentId,
       descripcion: descripcion.trim() || null,
-      asignadoA: responsable,
-      para: quien,
-      agencia: quien === 'agencia' ? agencia : quien === 'fuera' ? afuera.trim() : null,
+      asignadoA: null,
+      para: 'agencia',
+      agencia: tablero,
       tipo: tipo.clave,
       opciones,
       detalles: detallesLimpios,
@@ -296,62 +269,15 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, responsableIni
           onAlternar={alternar}
           onAgregarOtra={agregarOtra}
           onDetalle={(clave, valor) => setDetalles(d => ({ ...d, [clave]: valor }))}
+          tableros={tableros}
+          tablero={tablero}
+          onTablero={setTablero}
           onCerrar={() => setEligiendoOpciones(false)}
         />
       )}
 
-      {/* ¿Quién la hace? */}
-      <fieldset>
-        <legend className="etiqueta-campo">¿Quién la hace?</legend>
-        <div className="grid gap-1.5 sm:grid-cols-3" role="radiogroup" aria-label="Quién la hace">
-          {([
-            ['agencia', 'Una agencia', 'Que usa Core Tienda', Building2],
-            ['tienda', 'Diseño de Tienda', 'Alguien del equipo', UserRound],
-            ['fuera', 'Otra agencia', 'Fuera de la plataforma', Store],
-          ] as const).map(([valor, nombre, bajada, Icono]) => (
-            // La elegida, con relleno y tilde (no solo un borde de otro tono:
-            // en oscuro casi no se distinguía). La deshabilitada no baja la
-            // opacidad: el motivo ("No hay cuentas de agencia") se tiene que leer.
-            <button key={valor} type="button" role="radio" aria-checked={quien === valor} onClick={() => setQuien(valor)}
-              disabled={valor === 'agencia' && agencias.length === 0}
-              className={`flex min-h-[52px] items-center gap-2.5 rounded-xl border px-3 text-left transition disabled:cursor-not-allowed disabled:border-dashed disabled:bg-slate-50 dark:disabled:bg-slate-800/40 ${
-                quien === valor ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-500/40 dark:border-brand-400 dark:bg-brand-500/20' : 'border-slate-300 bg-white/70 hover:border-brand-400 dark:border-slate-700 dark:bg-slate-900/60'
-              }`}>
-              <Icono className={`h-5 w-5 shrink-0 ${quien === valor ? 'text-brand-600 dark:text-brand-300' : 'text-slate-500 dark:text-slate-400'}`} />
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{nombre}</span>
-                <span className="block text-xs text-slate-600 dark:text-slate-400">{valor === 'agencia' && agencias.length === 0 ? 'No hay cuentas de agencia' : bajada}</span>
-              </span>
-              {quien === valor && <Check className="ml-auto h-4 w-4 shrink-0 text-brand-600 dark:text-brand-300" strokeWidth={3} aria-hidden />}
-            </button>
-          ))}
-        </div>
-        <div className="mt-2">
-          {quien === 'agencia' && agencias.length > 1 && (
-            <select value={agencia} onChange={e => setAgencia(e.target.value)} aria-label="Qué agencia" className="campo">
-              {agencias.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-          )}
-          {quien === 'agencia' && agencias.length === 1 && (
-            <p className="text-sm text-slate-700 dark:text-slate-200">La hace <strong>{agencias[0]}</strong>: le aparece en su tablero.</p>
-          )}
-          {quien === 'tienda' && (
-            <select value={disenador} onChange={e => setDisenador(e.target.value)} aria-label="Quién de Tienda la hace" className="campo">
-              <option value="">Sin asignar por ahora</option>
-              {equipo.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.id === usuarioId ? ' (vos)' : ''}</option>)}
-            </select>
-          )}
-          {quien === 'fuera' && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <input value={afuera} onChange={e => setAfuera(e.target.value)} maxLength={120} placeholder="Nombre de la agencia" aria-label="Nombre de la agencia de afuera" className="campo" />
-              <select value={cargaAfuera} onChange={e => setCargaAfuera(e.target.value)} aria-label="Quién del equipo carga lo que manda" className="campo">
-                <option value="">¿Quién carga lo que manda?</option>
-                {equipo.map(p => <option key={p.id} value={p.id}>Lo carga {p.nombre}{p.id === usuarioId ? ' (vos)' : ''}</option>)}
-              </select>
-            </div>
-          )}
-        </div>
-      </fieldset>
+      {/* ¿A qué tablero va? (también se elige en el modal del tipo) */}
+      <ElegirTablero tableros={tableros} valor={tablero} onCambiar={setTablero} />
 
       {/* ¿Para cuándo? */}
       <fieldset>
@@ -483,7 +409,7 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, responsableIni
  * muestra solo ese elemento): adentro de la ficha, que se anima con
  * transform, un `fixed` quedaba atado a la ficha y no a la pantalla.
  */
-export function ModalDeOpciones({ tipo, opciones, detalles, onAlternar, onAgregarOtra, onDetalle, onCerrar }: {
+export function ModalDeOpciones({ tipo, opciones, detalles, onAlternar, onAgregarOtra, onDetalle, onCerrar, tableros, tablero, onTablero }: {
   tipo: TipoDeTarea
   opciones: string[]
   detalles: Record<string, string>
@@ -491,6 +417,11 @@ export function ModalDeOpciones({ tipo, opciones, detalles, onAlternar, onAgrega
   onAgregarOtra: (texto: string) => void
   onDetalle: (clave: string, valor: string) => void
   onCerrar: () => void
+  /** A qué tablero va (17/11/2026: "en el modal este tengamos para asignar a
+   *  la agencia"). Sin `onTablero`, el modal no lo pregunta. */
+  tableros?: Tablero[] | null
+  tablero?: string | null
+  onTablero?: (nombre: string) => void
 }) {
   const cajaRef = useRef<HTMLDivElement>(null)
   const [otra, setOtra] = useState('')
@@ -534,7 +465,9 @@ export function ModalDeOpciones({ tipo, opciones, detalles, onAlternar, onAgrega
           <div className="min-w-0 flex-1">
             <h2 id="opciones-del-tipo" className="text-lg font-bold text-slate-900 dark:text-slate-100">{tipo.nombre}</h2>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              {tipo.opciones.length > 0 ? 'Tildá todo lo que hace falta.' : 'Completá lo que haga falta.'}
+              {onTablero
+                ? (tipo.opciones.length > 0 ? 'Elegí a qué tablero va y tildá todo lo que hace falta.' : 'Elegí a qué tablero va y completá lo que haga falta.')
+                : (tipo.opciones.length > 0 ? 'Tildá todo lo que hace falta.' : 'Completá lo que haga falta.')}
             </p>
             {tipo.bajada && <p className="mt-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-100">{tipo.bajada}</p>}
           </div>
@@ -544,6 +477,7 @@ export function ModalDeOpciones({ tipo, opciones, detalles, onAlternar, onAgrega
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
+          {onTablero && <ElegirTablero tableros={tableros ?? null} valor={tablero ?? null} onCambiar={onTablero} />}
           {(tipo.opciones.length > 0 || extras.length > 0) && (
             <ul className="grid gap-1.5 sm:grid-cols-2">
               {tipo.opciones.map(o => {
@@ -639,5 +573,54 @@ export function ModalDeOpciones({ tipo, opciones, detalles, onAlternar, onAgrega
       </div>
     </div>,
     destino,
+  )
+}
+
+
+/**
+ * ¿A qué tablero va? Publicis, Another Monday o Diseñadores (17/11/2026). La
+ * pieza cae en ese tablero y la toma cualquiera de ese equipo. Un tablero sin
+ * cuentas todavía se puede elegir: la pieza espera ahí.
+ */
+export function ElegirTablero({ tableros, valor, onCambiar }: {
+  tableros: Tablero[] | null
+  valor: string | null
+  onCambiar: (nombre: string) => void
+}) {
+  return (
+    <fieldset className="min-w-0">
+      <legend className="etiqueta-campo">¿A qué tablero va?</legend>
+      {!tableros ? (
+        <div className="skeleton h-12 rounded-xl" />
+      ) : (
+        <div className="grid gap-1.5 sm:grid-cols-3" role="radiogroup" aria-label="A qué tablero va">
+          {tableros.map(t => {
+            const elegido = valor === t.nombre
+            return (
+              <button
+                key={t.nombre}
+                type="button"
+                role="radio"
+                aria-checked={elegido}
+                onClick={() => onCambiar(t.nombre)}
+                className={`flex min-h-[52px] items-center gap-2 rounded-xl border px-3 text-left transition active:scale-[.98] ${
+                  elegido
+                    ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-500/40 dark:border-brand-400 dark:bg-brand-500/20'
+                    : 'border-slate-300 bg-white hover:border-brand-400 dark:border-slate-700 dark:bg-slate-900/60'
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{t.nombre}</span>
+                  <span className="block text-xs text-slate-600 dark:text-slate-400">
+                    {t.cuentas === 0 ? 'Todavía sin usuarios' : t.cuentas === 1 ? '1 usuario' : `${t.cuentas} usuarios`}
+                  </span>
+                </span>
+                {elegido && <Check className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-300" strokeWidth={3} aria-hidden />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </fieldset>
   )
 }

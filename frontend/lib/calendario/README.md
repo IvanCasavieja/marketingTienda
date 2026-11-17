@@ -73,12 +73,26 @@ se eligen en el mismo formulario, antes de crearla ("la idea es que antes de
 crear la tarea ya seleccionemos las piezas"): qué hay que hacer, **¿Qué
 piezas lleva?** (cada tipo abre su modal con todas las opciones del catálogo
 de `tipos_de_tarea.py`: Banners con sus medidas, Redes sociales, Mailing, EMM,
-Push, WhatsApp, Cartelería...), el detalle, **¿Quién la hace?** y para
-cuándo. La persona y la fecha se piden una sola vez y valen para la tarea y
-todas sus piezas; el detalle va también en cada pieza. Se crea todo junto,
-con un solo aviso. Debajo de cada tarea queda **Agregar pieza a esta tarea**
-para sumar más después, ya con la persona de la tarea elegida. Cada pieza
-nace con su tarjeta en el tablero y sus entregas.
+Push, WhatsApp, Cartelería...), el detalle, el **responsable de Tienda
+Inglesa** (quien lleva la tarea) y para cuándo. Se crea todo junto, con un
+solo aviso. Debajo de cada tarea queda **Agregar pieza a esta tarea** para
+sumar más después. Cada pieza nace con su tarjeta en el tablero y sus
+entregas.
+
+**Los tres tableros (17/11/2026).** En el modal de cada pieza se elige **a
+qué tablero va**: Publicis, Another Monday o Diseñadores
+(`backend/app/core/tableros.py`). La pieza no lleva persona: la toma, la hace
+y la responde cualquiera de ese tablero. Cada tablero es una agencia de la
+0069: sus usuarios son cuentas externas con la empresa escrita igual que el
+tablero, entran directo a su tablero y ven solo lo suyo. Se puede mandar una
+pieza a uno de los tres aunque todavía no tenga usuarios: espera ahí. El
+equipo ve los tres en pestañas en **Tableros** (y "Otras", si hay tarjetas de
+antes que no son de ninguno).
+
+**Comentarios (0073).** Cada tarjeta tiene comentarios al costado, como en
+Trello: los escribe cualquiera que la ve (el equipo y su tablero), y a los
+demás que la siguen (quien la hace, quien la pidió, quienes la aprueban y el
+responsable de la tarea) les llega a la campanita.
 Una tarea común ya no lleva entregas propias: ni "Lleva entregas para
 aprobar" al crearla ni el botón "Entregas" (traían otra lista de tipos, más
 corta, y confundía). En todo el bloque hay un solo formulario abierto a la vez.

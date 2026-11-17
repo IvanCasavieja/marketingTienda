@@ -18,7 +18,7 @@ import { proximoPaso } from '@/lib/calendario/entregas'
 import { useVistaEntregas } from '@/store/entregas'
 import { FasesCompactas, faseActualTexto } from './entregas/LineaDeFases'
 import { ModalDeOpciones, PedirPieza } from './PedirPieza'
-import { useCatalogoDeTipos } from '@/store/tiposDeTarea'
+import { useCatalogoDeTipos, useTableros, type Tablero } from '@/store/tiposDeTarea'
 import { camposVisibles, linkValido, nombreDeTarjeta, valorParaLeer, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 
@@ -579,7 +579,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
               con su tarjeta en el tablero y sus entregas. */}
           {puedeMaterial && accion && (pidiendoMaterial ? (
             <PedirPieza
-              accion={accion} parentId={tarea.id} tareaMadre={tarea.titulo} responsableInicial={tarea.asignadoA}
+              accion={accion} parentId={tarea.id} tareaMadre={tarea.titulo}
               personas={personas} usuarioId={usuarioId} gestiona={gestiona} onListo={() => abrir(null)}
             />
           ) : (
@@ -617,6 +617,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
   // formulario (pedir material, otra subtarea).
   const { abierto: abiertoEnElBloque, abrir, pidePiezas, accion } = useContext(FormularioAbierto)
   const { tipos } = useCatalogoDeTipos()
+  const { tableros } = useTableros(accion?.mundo)
   const clave = parentId ? `sub:${parentId}` : 'nueva'
   const abierto = abierta || abiertoEnElBloque === clave
   const setAbierto = (v: boolean) => abrir(v ? clave : null)
@@ -654,18 +655,21 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
       descripcion: descripcion.trim() || null,
       silencioso: elegidas.length > 0,
     })
-    // Sus piezas, con la misma persona y la misma fecha: la tarea es la
-    // acción principal y las piezas cuelgan de ella. Van en la cola de la
-    // acción, detrás del alta de la tarea. Cada una lleva el detalle de la
-    // tarea, que es lo que lee quien la hace en su tarjeta.
+    // Sus piezas, con la misma fecha: la tarea es la acción principal y las
+    // piezas cuelgan de ella. Cada una va al tablero que se eligió en su
+    // modal (Publicis, Another Monday o Diseñadores) y la toma cualquiera de
+    // ese tablero: no llevan persona (17/11/2026). La persona de la tarea es
+    // quien la lleva por Tienda Inglesa. Van en la cola de la acción, detrás
+    // del alta de la tarea, y cada una lleva el detalle de la tarea, que es
+    // lo que lee quien la hace en su tarjeta.
     if (id) {
       for (const p of elegidas) {
         const tipo = tipos?.find(t => t.clave === p.clave)
         crear(accionId, {
           titulo: nombreDeTarjeta(accion?.nombre ?? '', tipo), parentId: id,
-          asignadoA: responsable, vence: venceGuardable,
+          asignadoA: null, vence: venceGuardable,
           descripcion: descripcion.trim() || null,
-          para: 'tienda', tipo: p.clave, opciones: p.opciones,
+          para: 'agencia', agencia: p.tablero, tipo: p.clave, opciones: p.opciones,
           detalles: Object.fromEntries(Object.entries(p.detalles).filter(([, v]) => v.trim() !== '')),
           silencioso: true,
         })
@@ -717,7 +721,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
         maxLength={500}
         className="campo"
       />
-      {conPiezas && <ElegirPiezas valor={piezas} onCambiar={setPiezas} tipos={tipos} />}
+      {conPiezas && <ElegirPiezas valor={piezas} onCambiar={setPiezas} tipos={tipos} tableros={tableros} />}
       <CampoDetalle
         id={`detalle-nueva-${parentId ?? accionId}`}
         valor={descripcion}
@@ -726,7 +730,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="etiqueta-campo">{conPiezas ? '¿Quién la hace?' : 'Para quién'}</span>
+          <span className="etiqueta-campo">{conPiezas ? 'Responsable de Tienda Inglesa' : 'Para quién'}</span>
           <select value={asignadoA} onChange={e => setAsignadoA(e.target.value)} className="campo">
             <option value="">Sin asignar por ahora</option>
             {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
@@ -760,17 +764,15 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
   )
 }
 
-/** Una pieza elegida al crear la tarea: el tipo, lo tildado y los datos de más. */
-type PiezaElegida = { clave: string; opciones: string[]; detalles: Record<string, string> }
-
-function tieneOpciones(t: TipoDeTarea): boolean {
-  return t.opciones.length > 0 || t.otras || t.campos.length > 0
-}
+/** Una pieza elegida al crear la tarea: el tipo, a qué tablero va, lo tildado
+ *  y los datos de más. */
+type PiezaElegida = { clave: string; tablero: string | null; opciones: string[]; detalles: Record<string, string> }
 
 /** Lo que frena crear la tarea por una pieza: hoy, un link mal escrito. */
 function faltaEnPieza(p: PiezaElegida, tipos: TipoDeTarea[] | null): string | null {
   const tipo = tipos?.find(t => t.clave === p.clave)
   if (!tipo) return null
+  if (!p.tablero) return `Elegí a qué tablero va ${tipo.nombre}`
   const malo = camposVisibles(tipo, p.opciones).find(c => c.tipo === 'link' && p.detalles[c.clave]?.trim() && !linkValido(p.detalles[c.clave]))
   return malo ? `${tipo.nombre} · ${malo.nombre}: tiene que empezar con https://` : null
 }
@@ -780,18 +782,20 @@ function faltaEnPieza(p: PiezaElegida, tipos: TipoDeTarea[] | null): string | nu
  * Redes, Push… Tocar un tipo lo suma y abre su modal con todas las opciones
  * (el mismo de "Agregar pieza"); tocarlo de nuevo lo vuelve a abrir.
  */
-function ElegirPiezas({ valor, onCambiar, tipos }: {
+function ElegirPiezas({ valor, onCambiar, tipos, tableros }: {
   valor: PiezaElegida[]
   onCambiar: (v: PiezaElegida[]) => void
   tipos: TipoDeTarea[] | null
+  tableros: Tablero[] | null
 }) {
   const [editando, setEditando] = useState<string | null>(null)
   const actual = valor.find(p => p.clave === editando) ?? null
   const tipoActual = tipos?.find(t => t.clave === editando) ?? null
 
   function tocar(t: TipoDeTarea) {
-    if (!valor.some(p => p.clave === t.clave)) onCambiar([...valor, { clave: t.clave, opciones: [], detalles: {} }])
-    if (tieneOpciones(t)) setEditando(t.clave)
+    if (!valor.some(p => p.clave === t.clave)) onCambiar([...valor, { clave: t.clave, tablero: null, opciones: [], detalles: {} }])
+    // Siempre abre: ahí se elige a qué tablero va, y lo que se tilda.
+    setEditando(t.clave)
   }
   function cambiar(clave: string, cambio: Partial<PiezaElegida>) {
     onCambiar(valor.map(p => (p.clave === clave ? { ...p, ...cambio } : p)))
@@ -834,20 +838,18 @@ function ElegirPiezas({ valor, onCambiar, tipos }: {
             if (!t) return null
             const datos = camposVisibles(t, p.opciones).filter(c => p.detalles[c.clave]?.trim())
               .map(c => `${c.nombre}: ${valorParaLeer(c, p.detalles[c.clave])}`)
-            const resumen = [...p.opciones, ...datos].join(' · ')
+            const resumen = [p.tablero ? `→ ${p.tablero}` : '', ...p.opciones, ...datos].filter(Boolean).join(' · ')
             return (
               <li key={p.clave} className="flex items-center gap-2 rounded-xl border border-brand-200 bg-white px-3 py-2 dark:border-brand-500/30 dark:bg-slate-900">
                 <span className="min-w-0 flex-1 text-sm">
                   <span className="font-semibold text-slate-900 dark:text-slate-100">{t.nombre}</span>
                   <span className="block truncate text-xs text-slate-600 dark:text-slate-400">
-                    {resumen || (tieneOpciones(t) ? 'Todavía sin elegir opciones' : 'Sin opciones para elegir')}
+                    {p.tablero ? resumen : <span className="font-semibold text-amber-700 dark:text-amber-300">Falta elegir a qué tablero va</span>}
                   </span>
                 </span>
-                {tieneOpciones(t) && (
-                  <button type="button" onClick={() => setEditando(p.clave)} className="min-h-[36px] rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
-                    Cambiar
-                  </button>
-                )}
+                <button type="button" onClick={() => setEditando(p.clave)} className="min-h-[36px] rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
+                  Cambiar
+                </button>
                 <button type="button" onClick={() => onCambiar(valor.filter(x => x.clave !== p.clave))} aria-label={`Sacar ${t.nombre}`}
                   className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
                   <X className="h-4 w-4" />
@@ -873,6 +875,9 @@ function ElegirPiezas({ valor, onCambiar, tipos }: {
             }
           }}
           onDetalle={(k, v) => cambiar(actual.clave, { detalles: { ...actual.detalles, [k]: v } })}
+          tableros={tableros}
+          tablero={actual.tablero}
+          onTablero={nombre => cambiar(actual.clave, { tablero: nombre })}
           onCerrar={() => setEditando(null)}
         />
       )}

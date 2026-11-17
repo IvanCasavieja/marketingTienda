@@ -138,6 +138,18 @@ export type DetalleEntregas = {
     mover?: Columna[]
   }
   limites: { imagenes: number; bytesImagen: number; marcas: number }
+  /** La conversación de la tarjeta, al costado como en Trello (17/11/2026). */
+  comentarios?: ComentarioDeTarjeta[]
+}
+
+export type ComentarioDeTarjeta = {
+  id: string
+  autor: number | null
+  autorNombre: string | null
+  texto: string
+  fecha: string | null
+  /** Si lo escribió quien mira. */
+  mio: boolean
 }
 
 /** Una tarjeta del tablero, de "Mis tareas" o del buscador. Liviana: la

@@ -129,6 +129,36 @@ export function opcionesDeQuien(tarjetas: Pick<Tarjeta, 'hace'>[]): { clave: str
   return [...por.values()].sort((a, b) => b.cuantas - a.cuantas || a.nombre.localeCompare(b.nombre, 'es'))
 }
 
+/** La pestaña de las tarjetas que no son de ninguno de los tres tableros
+ *  (las de antes del 17/11/2026: de Tienda, o de otra agencia). */
+export const OTRAS = '__otras__'
+
+/**
+ * A cuál de los tableros (Publicis, Another Monday, Diseñadores: los manda el
+ * servidor) va una tarjeta, o null si a ninguno. Una tarjeta "es" de un
+ * tablero cuando la hace esa agencia, escrita como sea.
+ */
+export function tableroDeTarjeta(t: Pick<Tarjeta, 'hace'>, tableros: string[]): string | null {
+  if (!t.hace || t.hace.tipo !== 'agencia' || !t.hace.nombre) return null
+  const nombre = t.hace.nombre.split(/\s+/).filter(Boolean).join(' ').toLocaleLowerCase('es')
+  return tableros.find(x => x.toLocaleLowerCase('es') === nombre) ?? null
+}
+
+/** Las pestañas del tablero para el equipo: los tres siempre, con cuántas
+ *  tarjetas tiene cada uno, y "Otras" solo si hay alguna. */
+export function pestanasDeTableros(
+  tarjetas: Pick<Tarjeta, 'hace'>[], tableros: string[],
+): { clave: string; nombre: string; cuantas: number }[] {
+  const cuenta = new Map<string, number>()
+  for (const t of tarjetas) {
+    const clave = tableroDeTarjeta(t, tableros) ?? OTRAS
+    cuenta.set(clave, (cuenta.get(clave) ?? 0) + 1)
+  }
+  const out = tableros.map(n => ({ clave: n, nombre: n, cuantas: cuenta.get(n) ?? 0 }))
+  if (cuenta.get(OTRAS)) out.push({ clave: OTRAS, nombre: 'Otras', cuantas: cuenta.get(OTRAS)! })
+  return out
+}
+
 export function deQuien(t: Pick<Tarjeta, 'hace'>, clave: string | null): boolean {
   return !clave || grupoDeQuien(t.hace).clave === clave
 }

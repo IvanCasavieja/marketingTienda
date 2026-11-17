@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { calendarioApi } from "@/lib/api";
 import type { TipoDeTarea } from "@/lib/calendario/tipos-de-tarea";
@@ -36,4 +36,30 @@ export function useCatalogoDeTipos(): { tipos: TipoDeTarea[] | null; error: bool
   const traer = useTiposDeTarea((s) => s.traer);
   useEffect(() => { traer(); }, [traer]);
   return { tipos, error, reintentar: traer };
+}
+
+/** Un tablero al que va una pieza (17/11/2026): Publicis, Another Monday o
+ *  Diseñadores, con cuántas cuentas tiene en el mundo (0 = todavía no entra
+ *  nadie; la pieza espera ahí igual). Los define el servidor
+ *  (app/core/tableros.py). */
+export type Tablero = { nombre: string; cuentas: number };
+
+const tablerosPorMundo = new Map<string, Promise<Tablero[]>>();
+
+/** Los tableros del mundo, pedidos una vez por sesión y mundo. */
+export function useTableros(mundo: string | null | undefined): { tableros: Tablero[] | null } {
+  const [tableros, setTableros] = useState<Tablero[] | null>(null);
+  useEffect(() => {
+    if (!mundo) return;
+    let vivo = true;
+    let pedido = tablerosPorMundo.get(mundo);
+    if (!pedido) {
+      pedido = calendarioApi.tableros(mundo).then(({ data }) => data);
+      tablerosPorMundo.set(mundo, pedido);
+      pedido.catch(() => tablerosPorMundo.delete(mundo));
+    }
+    pedido.then((t) => { if (vivo) setTableros(t); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [mundo]);
+  return { tableros };
 }

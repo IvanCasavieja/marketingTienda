@@ -1362,3 +1362,80 @@ def test_se_pide_una_push_con_titulo_link_y_fecha_y_hora():
             "id": f"ta-push-x-{d.sufijo}", "parentId": madre, "tipo": "push", "detalles": {"link": "tiendainglesa.com.uy"}})
         assert r.status_code == 422
     correr(prueba)
+
+
+def test_los_tres_tableros_y_los_comentarios_de_la_tarjeta():
+    """Publicis, Another Monday y Diseñadores (17/11/2026): la pieza va a uno
+    de los tres aunque todavía no tenga cuentas; cuando se crean, la ven solo
+    ellas; y en la tarjeta se conversa con comentarios, como en Trello."""
+    async def prueba(d):
+        lucia = Cliente(d.http, d.lucia)
+        r = await lucia.get("/calendario/tableros", params={"mundo": MUNDO})
+        assert r.status_code == 200, r.text
+        assert [t["nombre"] for t in r.json()] == ["Publicis", "Another Monday", "Diseñadores"]
+
+        # La tarea, con su responsable de Tienda, y su pieza para Publicis.
+        madre = f"ta-tab-m-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": madre, "titulo": "Web de Ciberlunes", "asignadoA": d.lucia.id})
+        assert r.status_code == 201, r.text
+        pieza = f"ta-tab-p-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": pieza, "parentId": madre, "tipo": "banners", "opciones": ["Header"],
+            "para": "agencia", "agencia": "  publicis "})
+        assert r.status_code == 201, r.text
+        assert r.json()["para"] == "agencia" and r.json()["agencia"] == "Publicis"
+        async with d.Sesion() as s:
+            t = await s.get(CalendarioTarea, pieza)
+            assert t.asignado_a_id is None and t.parent_id == madre
+
+        # Llega Publicis: sus cuentas ven la tarjeta; otra agencia, no.
+        p1 = await _persona(d, "Pedro Publicis", externo=True, empresa="Publicis")
+        p2 = await _persona(d, "Paula Publicis", externo=True, empresa="PUBLICIS")
+        c1 = Cliente(d.http, p1)
+        assert (await c1.get(f"/calendario/tareas/{pieza}/entregas")).status_code == 200
+        assert await _tarjeta(c1, pieza) is not None
+        assert (await Cliente(d.http, d.a1).get(f"/calendario/tareas/{pieza}/entregas")).status_code == 404
+        r = await c1.get("/calendario/tableros", params={"mundo": MUNDO})
+        assert r.json() == [{"nombre": "Publicis", "cuentas": 2}]
+
+        # Comenta Publicis: le llega a quien la pidió y lleva la tarea, no a quien comentó.
+        r = await c1.post(f"/calendario/tareas/{pieza}/comentarios", json={
+            "id": f"co-1-{d.sufijo}", "texto": "  ¿El header lleva el precio? "})
+        assert r.status_code == 201, r.text
+        assert r.json()["comentario"]["texto"] == "¿El header lleva el precio?"
+        assert any("comentó en" in n.mensaje for n in await _avisos(d, d.lucia, pieza))
+        assert not any("comentó en" in n.mensaje for n in await _avisos(d, p1, pieza))
+        # Responde Tienda: le llega a todo el tablero de Publicis.
+        r = await lucia.post(f"/calendario/tareas/{pieza}/comentarios", json={
+            "id": f"co-2-{d.sufijo}", "texto": "Sí: 2x1 en tecnología"})
+        assert r.status_code == 201, r.text
+        for cuenta in (p1, p2):
+            assert any("Lucia Equipo comentó" in n.mensaje for n in await _avisos(d, cuenta, pieza))
+        # Repetir el mismo id no duplica (un reintento).
+        r = await lucia.post(f"/calendario/tareas/{pieza}/comentarios", json={
+            "id": f"co-2-{d.sufijo}", "texto": "Sí: 2x1 en tecnología"})
+        assert r.status_code == 201 and r.json()["avisados"] == 0
+
+        # El detalle trae la conversación en orden, con quién escribió.
+        det = (await c1.get(f"/calendario/tareas/{pieza}/entregas")).json()
+        assert [c["texto"] for c in det["comentarios"]] == ["¿El header lleva el precio?", "Sí: 2x1 en tecnología"]
+        assert det["comentarios"][0]["mio"] is True and det["comentarios"][1]["mio"] is False
+        assert det["comentarios"][0]["autorNombre"] == "Pedro Publicis"
+
+        # Otra agencia no comenta, y un comentario vacío no se guarda.
+        r = await Cliente(d.http, d.a1).post(f"/calendario/tareas/{pieza}/comentarios", json={
+            "id": f"co-3-{d.sufijo}", "texto": "hola"})
+        assert r.status_code == 404
+        r = await lucia.post(f"/calendario/tareas/{pieza}/comentarios", json={"id": f"co-4-{d.sufijo}", "texto": "   "})
+        assert r.status_code == 422
+
+        # Diseñadores y Another Monday también valen sin cuentas; otra agencia sin cuentas, no.
+        for tablero in ("Diseñadores", "another monday"):
+            r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+                "id": f"ta-tab-{tablero[:3]}-{d.sufijo}", "parentId": madre, "tipo": "push", "para": "agencia", "agencia": tablero})
+            assert r.status_code == 201, r.text
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": f"ta-tab-x-{d.sufijo}", "parentId": madre, "tipo": "push", "para": "agencia", "agencia": "Otra Agencia SA"})
+        assert r.status_code == 422
+    correr(prueba)

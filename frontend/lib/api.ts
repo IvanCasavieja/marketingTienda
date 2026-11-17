@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from "axios";
 import type { Ga4FunnelResponse } from "@/types";
 import type { EstadoColocacion, EstadoVisibleColocacion } from "@/lib/colocacion/estados";
-import type { Columna, DetalleEntregas, Metricas, ResumenEntrega, Tarjeta, TipoDecision, TipoPieza } from "@/lib/calendario/entregas";
+import type { Columna, ComentarioDeTarjeta, DetalleEntregas, Metricas, ResumenEntrega, Tarjeta, TipoDecision, TipoPieza } from "@/lib/calendario/entregas";
 import type { TipoDeTarea } from "@/lib/calendario/tipos-de-tarea";
 import type { ObservacionIA, RevisionIA } from "@/lib/calendario/revision-ia";
 
@@ -2134,6 +2134,9 @@ export const calendarioApi = {
   /** El catálogo de tipos de tarea (Banners, Cenefas…) con sus opciones y medidas. */
   tiposDeTarea: () => api.get<TipoDeTarea[]>("/calendario/tipos-de-tarea", ESPERA),
   /** En qué mundo está una acción (para abrir su ficha desde un aviso). */
+  /** Los tres tableros a los que va una pieza (17/11/2026). */
+  tableros: (mundo: string) =>
+    api.get<{ nombre: string; cuentas: number }[]>("/calendario/tableros", { params: { mundo } }),
   ubicar: (barraId: string) =>
     api.get<{ id: string; mundo: string; desde: string }>(`/calendario/ubicar/${encodeURIComponent(barraId)}`, ESPERA),
 
@@ -2344,6 +2347,10 @@ export const entregasApi = {
   }) =>
     api.post<CalendarioEscrito & { resultado: string; entrega: ResumenEntrega }>(
       `/calendario/versiones/${encodeURIComponent(versionId)}/decision`, datos, ESPERA),
+  /** Un comentario en la tarjeta (17/11/2026), al costado como en Trello. */
+  comentar: (tareaId: string, datos: { id: string; texto: string }) =>
+    api.post<{ id: string; comentario: ComentarioDeTarjeta; avisados: number }>(
+      `/calendario/tareas/${encodeURIComponent(tareaId)}/comentarios`, datos, ESPERA),
   /** Devolver una pieza ya aprobada, con lo que hay que cambiar: abre la
    *  Entrega siguiente (Entrega 2, 3...) y le avisa a quien entrega. */
   devolver: (tareaId: string, comentario: string) =>

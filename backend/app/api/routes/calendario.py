@@ -79,6 +79,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import client_ip as _client_ip, require_permission
 from app.core import alcance, externos
+from app.core.tableros import TABLEROS, tablero_de
 from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, puede_abrir
 from app.models.audit_log import AuditLog
 from app.models.entregas import CalendarioDecision, CalendarioEntrega, CalendarioMarca, CalendarioVersion
@@ -1214,11 +1215,15 @@ async def _cuentas_de_la_agencia(db: AsyncSession, empresa: str | None, mundo: s
 
 async def _agencia_o_422(db: AsyncSession, empresa: str | None, mundo: str) -> str:
     """El nombre de la agencia, limpio, si tiene alguna cuenta que entra a
-    este mundo: si no, nadie vería la tarjeta."""
+    este mundo: si no, nadie vería la tarjeta. Los tres tableros (Publicis,
+    Another Monday y Diseñadores, ver app/core/tableros.py) valen aunque
+    todavía no tengan cuentas: la tarjeta espera en su tablero."""
     limpia = externos.limpiar_empresa(empresa)
     if not limpia:
         raise HTTPException(status_code=422, detail="Elegí para qué agencia es")
     cuentas = await _cuentas_de_la_agencia(db, limpia, mundo)
+    if not cuentas and tablero_de(limpia):
+        return tablero_de(limpia)
     if not cuentas:
         raise HTTPException(
             status_code=422,
@@ -1450,6 +1455,24 @@ async def listar_tipos_de_tarea(
     (app/services/tipos_de_tarea.py): la pantalla lo pide acá y no guarda una
     copia, así cambiar una medida de banner es cambiarla allá."""
     return tipos_de_tarea.para_la_pantalla()
+
+
+@router.get("/tableros")
+async def listar_tableros(
+    mundo: str = MUNDO_POR_DEFECTO,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Los tres tableros a los que va una pieza (17/11/2026), con cuántas
+    cuentas tiene cada uno en este mundo (cero = todavía no entra nadie: la
+    pieza espera ahí igual). A una cuenta externa, solo el suyo."""
+    exigir_mundo(current_user, mundo)
+    out = []
+    for nombre in TABLEROS:
+        if externos.es_externo(current_user) and not externos.misma_empresa(nombre, current_user.empresa):
+            continue
+        out.append({"nombre": nombre, "cuentas": len(await _cuentas_de_la_agencia(db, nombre, mundo))})
+    return out
 
 
 @router.post("/barras/{barra_id}/tareas", status_code=201)
