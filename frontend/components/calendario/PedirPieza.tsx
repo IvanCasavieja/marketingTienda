@@ -43,12 +43,15 @@ const DIAS_RAPIDOS = [1, 2, 3]
 /** Lo mismo que acepta el servidor para "N días antes" (calendario.py, _DIAS_DE_ANCLA). */
 const DIAS_MAXIMOS = 365
 
-export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usuarioId, gestiona, onListo }: {
+export function PedirPieza({ accion, parentId = null, tareaMadre, responsableInicial = null, personas, usuarioId, gestiona, onListo }: {
   accion: BarraGuardada
   /** La tarea de la que es material (17/11/2026: "crear tarea y debajo de
    *  eso poder asignar los materiales de esa tarea creada"). */
   parentId?: string | null
   tareaMadre?: string
+  /** Quién hace la tarea de la que cuelga: su pieza nueva arranca con esa
+   *  persona elegida, no se pregunta de nuevo (17/11/2026). */
+  responsableInicial?: number | null
   personas: Persona[]
   usuarioId: number | null
   gestiona: boolean
@@ -75,10 +78,13 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usua
   // Hasta que se elija, la agencia si hay alguna (es lo más común), si no Tienda.
   // Las personas pueden llegar después de abrir el formulario: por eso se deriva.
   const [quienElegido, setQuien] = useState<Quien | null>(null)
-  const quien: Quien = quienElegido ?? (agencias.length ? 'agencia' : 'tienda')
+  // Si la tarea de la que cuelga ya tiene a alguien del equipo, arranca en
+  // "Diseño de Tienda" con esa persona.
+  const inicialDelEquipo = responsableInicial != null && equipo.some(p => p.id === responsableInicial)
+  const quien: Quien = quienElegido ?? (inicialDelEquipo ? 'tienda' : agencias.length ? 'agencia' : 'tienda')
   const [agenciaElegida, setAgencia] = useState<string>('')
   const agencia = agenciaElegida || agencias[0] || ''
-  const [disenador, setDisenador] = useState<string>('')
+  const [disenador, setDisenador] = useState<string>(responsableInicial != null ? String(responsableInicial) : '')
   const [afuera, setAfuera] = useState('')
   const [cargaAfuera, setCargaAfuera] = useState<string>(usuarioId != null ? String(usuarioId) : '')
   const [cuando, setCuando] = useState<'antes' | 'fecha'>('antes')
@@ -477,7 +483,7 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usua
  * muestra solo ese elemento): adentro de la ficha, que se anima con
  * transform, un `fixed` quedaba atado a la ficha y no a la pantalla.
  */
-function ModalDeOpciones({ tipo, opciones, detalles, onAlternar, onAgregarOtra, onDetalle, onCerrar }: {
+export function ModalDeOpciones({ tipo, opciones, detalles, onAlternar, onAgregarOtra, onDetalle, onCerrar }: {
   tipo: TipoDeTarea
   opciones: string[]
   detalles: Record<string, string>
