@@ -69,7 +69,11 @@ export function CabeceraDias({ mes, hoy, titulo }: { mes: Mes; hoy: number | nul
 
   return (
     <>
-    <div className="sticky top-0 z-30 flex border-b border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900">
+    {/* Al bajar la página queda pegada al borde de arriba. El top negativo es
+        el margen de la página (p-3 / sm:p-5 / lg:p-6 en el layout, p-6 en
+        pantalla completa): con top-0 quedaba a ese margen del borde y por el
+        hueco se veían pasar las filas (17/11/2026). */}
+    <div className="sticky -top-3 z-30 flex border-b border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900 sm:-top-5 lg:-top-6">
       <div
         className="sticky left-0 z-40 flex shrink-0 items-end border-r border-slate-300 bg-white px-3 pb-2 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 sm:px-4"
         style={{ width: ESTILO_ETIQUETA }}
