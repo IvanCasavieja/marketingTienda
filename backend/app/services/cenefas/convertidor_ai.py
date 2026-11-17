@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import unicodedata
+from datetime import datetime, timezone
 
 from app.services.ai_usage_service import log_ai_usage
 from app.services.cenefas.validation_engine import DESCRIPTION_MAX_CHARS, DESCRIPTION_WARN_CHARS
@@ -191,6 +192,50 @@ def marca_propia_de_la_fuente(texto: str, *fuente: str | None) -> str:
     else:
         correcta = ""
     return _RE_MARCA_PROPIA.sub(f" {correcta}" if correcta else "", texto).strip()
+
+
+# Desde cuándo la marca no se deduce en producción: el PR #20 se mergeó el
+# 16/11/2026 a las 11:18 de Uruguay (14:18 UTC); se deja margen para que
+# termine el despliegue. Una descripción que una persona guardó ANTES pudo
+# haber salido con la marca deducida (del 08/10 al 16/11 el generador ponía
+# TIENDA CASA por la familia del producto y copiaba TIENDA INGLESA de los
+# ejemplos) y haberse aprobado así. Una guardada DESPUÉS no: el generador ya
+# no la puede escribir, así que si la marca está es porque alguien la puso a
+# conciencia. Por eso alcanza con volver a guardar una descripción para que
+# deje de ser sospechosa (el botón "Está bien así" del Convertidor hace eso).
+REGLA_DE_MARCA_DESDE = datetime(2026, 11, 16, 15, 0, tzinfo=timezone.utc)
+
+_RE_SOBRA_AL_PRINCIPIO = re.compile(r"^[\s.,;:\-–]+")
+_RE_PUNTOS_SEGUIDOS = re.compile(r"\.(?:\s*\.)+")
+_RE_ESPACIOS = re.compile(r"\s{2,}")
+
+
+def descripcion_sin_marca_deducida(texto: str, *fuente: str | None) -> str:
+    """Cómo quedaría una descripción GUARDADA si su marca propia (TIENDA
+    INGLESA / TIENDA CASA) saliera solo de lo que dice la fuente de esa fila.
+
+    "Cubrecama TIENDA CASA. King Size" con fuente "CUBRECAMA KING RAYAS" ->
+    "Cubrecama. King Size". Con fuente "CUBRECAMA TI KING" -> "Cubrecama
+    TIENDA INGLESA. King Size" (la fuente dice otra marca propia).
+
+    Devuelve "" cuando no hay nada para proponer: la descripción no trae una
+    marca propia, la que trae es la que dice la fuente, no hay fuente contra
+    la cual comparar (un listado sin nombre ni descripción web no puede
+    desmentir nada) o al sacarla no quedaría una descripción.
+
+    No decide nada: es lo que el Convertidor le PROPONE a una persona (Ivan,
+    16/11/2026, después de encontrar en el Diccionario marcas deducidas que ya
+    estaban aprobadas). Otras marcas no se tocan nunca."""
+    texto = (texto or "").strip()
+    if not texto or not any((f or "").strip() for f in fuente):
+        return ""
+    corregida = marca_propia_de_la_fuente(texto, *fuente)
+    corregida = _RE_SOBRA_AL_PRINCIPIO.sub("", corregida)
+    corregida = _RE_PUNTOS_SEGUIDOS.sub(".", corregida)
+    corregida = _RE_ESPACIOS.sub(" ", corregida).strip()
+    if corregida == texto or not any(c.isalpha() for c in corregida):
+        return ""
+    return corregida
 
 
 def tiene_marca(texto: str) -> bool:

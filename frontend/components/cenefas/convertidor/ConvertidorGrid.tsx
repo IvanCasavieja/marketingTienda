@@ -101,7 +101,7 @@ const COLUMNS: ColumnDef[] = [
   // ── Lo que define la cenefa ─────────────────────────────────────────────
   { key: "codigo",        label: "codigo",      siempre: true },
   { key: "descripcion",   label: "descripcion", editable: "descripcion", siempre: true,
-    warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"] },
+    warningCodes: ["missing_description", "descripcion_invalida", "descripcion_larga", "marca_no_dicha", "descripcion_algo_larga"] },
   // Sin warningCodes a propósito: los avisos de mecánica nacen de OFERTA y
   // OFERTADET, y se pintan allá. Ver la nota en esas dos columnas.
   { key: "mecanica",      label: "mecanica",    editable: "simple", siempre: true },
@@ -185,7 +185,10 @@ const HAS_LETTER_RE = /\p{L}/u;
 // esperar un round-trip al backend en cada tecla.
 const DESCRIPTION_WARN_CHARS = 60;
 const DESCRIPTION_MAX_CHARS = 100;
-const DESCRIPCION_WARNING_CODES = ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga"];
+// "marca_no_dicha" no se recalcula acá (lo decide el servidor, ver match_rows en
+// convertidor.py): está en la lista para que se vaya cuando la persona
+// reescribe la descripción, que es cuando la propuesta deja de corresponder.
+const DESCRIPCION_WARNING_CODES = ["missing_description", "descripcion_invalida", "descripcion_larga", "descripcion_algo_larga", "marca_no_dicha"];
 // El tope SKU_COMBINADO_MAX_CHARS se eliminó el 2026-08-28: la clave combinada
 // ya no se guarda en sku_descripciones (los grupos viven en
 // cenefa_grupos_unificados, donde los SKU van como lista), así que no hay
@@ -479,6 +482,75 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onRes
     toast.success(t("convertidor.tinin.cienGramosAplicado", { count: ids.size }));
   }
 
+  // Descripciones GUARDADAS que nombran TIENDA INGLESA o TIENDA CASA sin que el
+  // listado lo diga. Se aprobaron cuando la marca todavía se deducía sola (antes
+  // del 16/11/2026) y ya no pasan por el generador --tienen descripción--, así
+  // que la red de seguridad nueva no las ve y el cartel sigue saliendo con la
+  // marca inventada. La propuesta la arma el servidor (match_rows); acá decide
+  // una persona, porque el producto puede ser de esa marca aunque gestión no la
+  // escriba.
+  const rowsMarcaNoDicha = useMemo(
+    () => rows.filter((r) => r.descripcionMarcaCorregida && r.warnings.includes("marca_no_dicha")),
+    [rows]);
+  const [corrigiendoMarca, setCorrigiendoMarca] = useState(false);
+
+  // "Quitar la marca": la propuesta pasa a ser la descripción, acá y en el
+  // Diccionario. No usa commitDescripcion porque ese avisa por cada fila, y
+  // corregir treinta de una vez serían treinta carteles: acá va uno al final.
+  async function corregirMarca(filas: ConvertidorRow[]) {
+    if (corrigiendoMarca) return;
+    setCorrigiendoMarca(true);
+    const hechas = new Map<number, string>();
+    let fallidas = 0;
+    try {
+      for (const r of filas) {
+        const propuesta = (r.descripcionMarcaCorregida ?? "").trim();
+        if (!propuesta) continue;
+        try {
+          await convertidorApi.updateDescripcion(r.codigo, propuesta);
+          hechas.set(r.row_id, propuesta);
+        } catch {
+          fallidas++;
+        }
+      }
+    } finally {
+      setCorrigiendoMarca(false);
+    }
+    if (hechas.size > 0) {
+      setRows((prev) => (prev ?? []).map((r) => {
+        const propuesta = hechas.get(r.row_id);
+        if (propuesta === undefined) return r;
+        return {
+          ...r,
+          descripcion: propuesta,
+          descripcionMarcaCorregida: "",
+          warnings: computeDescripcionWarnings(r.warnings, propuesta),
+        };
+      }));
+      toast.success(t("convertidor.tinin.marcaCorregida", { count: hechas.size }));
+    }
+    if (fallidas > 0) toast.error(t("convertidor.tinin.marcaError", { count: fallidas }));
+  }
+
+  // "Está bien así": la marca se queda. Se vuelve a guardar la MISMA
+  // descripción a propósito: una guardada después de que la marca dejó de
+  // deducirse ya no es sospechosa (ver REGLA_DE_MARCA_DESDE en
+  // convertidor_ai.py), así que el aviso no le vuelve a salir a nadie.
+  async function dejarMarca(r: ConvertidorRow) {
+    try {
+      await convertidorApi.updateDescripcion(r.codigo, r.descripcion);
+    } catch {
+      toast.error(t("convertidor.tinin.marcaError", { count: 1 }));
+      return;
+    }
+    setRows((prev) => (prev ?? []).map((x) =>
+      x.row_id === r.row_id
+        ? { ...x, descripcionMarcaCorregida: "",
+            warnings: x.warnings.filter((w) => w !== "marca_no_dicha") }
+        : x));
+    toast.success(t("convertidor.tinin.marcaDejada", { sku: r.codigo }));
+  }
+
   // Combinado para el modal de IA, en orden de urgencia y sin repetir una fila
   // que caiga en más de una lista: fiambres por kg (descripción + precio),
   // después las que no tienen descripción, y al final las que la tienen pero sin
@@ -544,6 +616,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onRes
                 descripcion,
                 stockPorSucursal: stockCombinado,
                 warnings: computeDescripcionWarnings(r.warnings, descripcion),
+                descripcionMarcaCorregida: "",
               }
             : r
         );
@@ -596,6 +669,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onRes
                 descripcion: grupo.descripcion,
                 stockPorSucursal: stockCombinado,
                 warnings: computeDescripcionWarnings(r.warnings, grupo.descripcion),
+                descripcionMarcaCorregida: "",
               }
             : r
         );
@@ -656,7 +730,8 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onRes
     setRows((prev) =>
       (prev ?? []).map((r) =>
         r.row_id === rowId
-          ? { ...r, descripcion: value, warnings: computeDescripcionWarnings(r.warnings, value) }
+          ? { ...r, descripcion: value, descripcionMarcaCorregida: "",
+              warnings: computeDescripcionWarnings(r.warnings, value) }
           : r
       )
     );
@@ -711,6 +786,7 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onRes
               ...r,
               descripcion: value,
               warnings: computeDescripcionWarnings(r.warnings, value),
+              descripcionMarcaCorregida: "",
               // Ya se aprobó desde acá (el único lugar que resuelve description
               // + precio÷10 juntos) -- sin este reset, una fila fiambre_kg ya
               // aprobada seguía volviendo a aparecer en "Generar con IA" cada
@@ -805,6 +881,8 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onRes
       descripcion_invalida: "Esto no parece una descripción.",
       descripcion_larga:   `${valor.length} caracteres: no entra en el cartel.`,
       descripcion_algo_larga: `${valor.length} caracteres: puede no entrar, conviene acortarla.`,
+      marca_no_dicha:      "La descripción guardada nombra una marca que este listado no dice. " +
+                           "Fijate si corresponde: en los avisos de Tinín la podés quitar o dejar.",
       missing_price:       "Falta el precio.",
       precio_invalido:     `«${valor}» no es un precio.`,
       missing_precio_anterior: "Falta el precio anterior.",
@@ -948,6 +1026,34 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onRes
       });
     }
 
+    if (rowsMarcaNoDicha.length > 0) {
+      out.push({
+        id: "marca-no-dicha",
+        titulo: t("convertidor.tinin.marcaTitulo", { count: rowsMarcaNoDicha.length }),
+        detalle: t("convertidor.tinin.marcaDetalle"),
+        accion: {
+          etiqueta: corrigiendoMarca
+            ? t("convertidor.tinin.marcaCorrigiendo")
+            : t("convertidor.tinin.marcaBotonTodas", { count: rowsMarcaNoDicha.length }),
+          onClick: () => { void corregirMarca(rowsMarcaNoDicha); },
+        },
+        items: rowsMarcaNoDicha.slice(0, 40).map((row) => ({
+          clave: String(row.row_id),
+          texto: `${row.codigo} · ${row.descripcion}`,
+          subtexto: t("convertidor.tinin.marcaQuedaria", { texto: row.descripcionMarcaCorregida }),
+          onIr: () => scrollToRow(row.row_id),
+          onRevisar: () => { void corregirMarca([row]); },
+          // La fuente puede decir OTRA marca propia ("TI" con una guardada como
+          // TIENDA CASA): ahí no se quita, se cambia.
+          revisarEtiqueta: /TIENDA (?:INGLESA|CASA)/i.test(row.descripcionMarcaCorregida ?? "")
+            ? t("convertidor.tinin.marcaCambiar")
+            : t("convertidor.tinin.marcaQuitar"),
+          onDescartar: () => { void dejarMarca(row); },
+          descartarEtiqueta: t("convertidor.tinin.marcaDejar"),
+        })),
+      });
+    }
+
     out.push({
       id: "alcohol",
       titulo: t("convertidor.tinin.alcoholTitulo"),
@@ -1015,8 +1121,8 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onRes
     });
 
     return out;
-  }, [rows, rowsParaIA, visiblePairs, rowsPrecioDeKilo, grupos, gruposDescartados,
-      buscandoAlcohol, onRevalidar, t]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, rowsParaIA, visiblePairs, rowsPrecioDeKilo, rowsMarcaNoDicha, corrigiendoMarca,
+      grupos, gruposDescartados, buscandoAlcohol, onRevalidar, t]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-4">

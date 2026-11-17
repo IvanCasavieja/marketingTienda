@@ -1004,7 +1004,18 @@
       "cienGramosTitulo": "{{count}} artículo(s) de 100 g con precio de kilo",
       "cienGramosDetalle": "Se venden por 100 g, pero el precio que vino del listado parece el del kilo. Revisá el valor propuesto antes de aplicarlo: si está mal, el cartel sale diez veces más barato.",
       "cienGramosBoton": "Pasar los precios a 100 g",
-      "cienGramosAplicado": "Precios de 100 g aplicados en {{count}} fila(s)."
+      "cienGramosAplicado": "Precios de 100 g aplicados en {{count}} fila(s).",
+      "marcaTitulo": "{{count}} descripción(es) guardada(s) con una marca que el listado no dice",
+      "marcaDetalle": "Se guardaron cuando la marca todavía se ponía sola. Mirá cada una: si el producto no es de esa marca, quitásela (se corrige acá y en el Diccionario); si la marca está bien, dejala y no se vuelve a preguntar.",
+      "marcaBotonTodas": "Corregir las {{count}}",
+      "marcaCorrigiendo": "Corrigiendo…",
+      "marcaQuitar": "Quitar la marca",
+      "marcaCambiar": "Cambiar la marca",
+      "marcaDejar": "Está bien así",
+      "marcaQuedaria": "Quedaría: {{texto}}",
+      "marcaCorregida": "Marca corregida en {{count}} descripción(es), acá y en el Diccionario.",
+      "marcaDejada": "La descripción del SKU {{sku}} queda como está. No se vuelve a preguntar.",
+      "marcaError": "No se pudo guardar {{count}} descripción(es). Probá de nuevo."
     },
     "mapeoIA": {
       "titulo": "Columnas que no reconocí",

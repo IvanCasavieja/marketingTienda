@@ -18,6 +18,12 @@ import { useTranslation } from "react-i18next";
 export interface ItemTema {
   clave: string;
   texto: string;
+  /**
+   * Segunda línea, resaltada. Con ella el item NO se corta con puntos
+   * suspensivos: es para cuando hay que leer entero lo que la acción va a
+   * dejar escrito (una descripción y cómo quedaría).
+   */
+  subtexto?: string;
   /** Llevar la grilla hasta esa fila. */
   onIr?: () => void;
   /** Acción principal sobre ese item puntual (ej. revisar un par). */
@@ -170,12 +176,21 @@ export default function TininRevision({
                     type="button"
                     onClick={it.onIr}
                     disabled={!it.onIr}
-                    className={`min-w-0 truncate text-left text-slate-600 dark:text-slate-300 ${
+                    className={`min-w-0 text-left text-slate-600 dark:text-slate-300 ${
+                      it.subtexto ? "flex-1 basis-72" : "truncate"
+                    } ${
                       it.onIr ? "hover:text-brand-600 dark:hover:text-brand-400 cursor-pointer" : "cursor-default"
                     }`}
                     title={it.onIr ? t("convertidor.unmatchedNavGo") : undefined}
                   >
-                    {it.texto}
+                    {it.subtexto ? (
+                      <>
+                        <span className="block break-words">{it.texto}</span>
+                        <span className="mt-0.5 block break-words font-semibold text-slate-900 dark:text-slate-100">
+                          {it.subtexto}
+                        </span>
+                      </>
+                    ) : it.texto}
                   </button>
                   <div className="flex items-center gap-2 shrink-0">
                     {it.onRevisar && (
@@ -183,8 +198,15 @@ export default function TininRevision({
                         {it.revisarEtiqueta ?? t("convertidor.merge.review")}
                       </button>
                     )}
+                    {/* Con borde y texto oscuro: descartar también es una decisión
+                        (en el aviso de marca es "Está bien así") y en gris claro
+                        de 11 px no se leía con la luz de la oficina. */}
                     {it.onDescartar && (
-                      <button type="button" onClick={it.onDescartar} className="btn-ghost text-[11px] py-1">
+                      <button
+                        type="button"
+                        onClick={it.onDescartar}
+                        className="btn-ghost border border-slate-300 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
+                      >
                         {it.descartarEtiqueta ?? t("convertidor.merge.notSameProduct")}
                       </button>
                     )}

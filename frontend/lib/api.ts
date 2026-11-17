@@ -594,6 +594,14 @@ export interface ConvertidorRow {
    */
   descripcionOrigen: string;
   /**
+   * Cómo quedaría la descripción GUARDADA sin la marca propia (TIENDA INGLESA /
+   * TIENDA CASA) que el listado no dice, o con la que sí dice; "" si no hay
+   * nada que revisar. La arma el servidor (match_rows en convertidor.py) y la
+   * grilla la ofrece con "Quitar la marca" / "Está bien así". Vuelve con la
+   * fila al exportar: el Excel marca la celda si nadie la resolvió.
+   */
+  descripcionMarcaCorregida?: string;
+  /**
    * "100g" | "kg" | "" — con qué unidad se cobra el producto, cuando el nombre
    * de gestión no lo dice (morcilla por kilo, queso de corte y panceta por
    * 100 g). Es lo que le permite a Tinín escribir el gramaje sin inventarlo.
