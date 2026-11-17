@@ -470,7 +470,13 @@ async def _armar_datos(db: AsyncSession, mundo: str, v: alcance.Ventana | None, 
                 )).all()
             }
     ids_tareas = [t.id for ts in tareas.values() for t in ts]
-    entregas = await resumenes_de_entregas(db, ids_tareas) if ids_tareas else {}
+    # Las entregas, con la misma consulta de las tareas como subconsulta (ya
+    # lleva el filtro de la cuenta externa) y no con la lista de ids: con
+    # años de tareas en un mundo, la lista armaba un IN de miles de valores,
+    # y el driver corta en 32.767 (revisión del 16/11/2026).
+    entregas = await resumenes_de_entregas(
+        db, consulta_tareas.with_only_columns(CalendarioTarea.id),
+    ) if ids_tareas else {}
     # Retail Media es de la web de Tienda Inglesa: los otros mundos no tienen
     # esa parte del calendario y no tienen por qué bajar sus posiciones. Con
     # ventana, solo los meses que toca.
@@ -611,9 +617,12 @@ async def listar_personas(
     A una cuenta externa le vuelven solo los de su empresa y quienes aprueban
     sus entregas, sin mail: no tiene por qué saber quién más trabaja acá.
     Quien no ve el calendario (0070) no la necesita: es para armar tareas y
-    avisos desde la ficha de una acción."""
+    avisos desde la ficha de una acción... salvo quien gestiona las tareas:
+    aunque no vea el calendario, abre sus tarjetas en el tablero y ahí elige
+    los aprobadores de «Configurar» (revisión del 16/11/2026)."""
     exigir_mundo(current_user, mundo)
-    alcance.exigir_calendario(current_user)
+    if not _puede_gestionar_tareas(current_user):
+        alcance.exigir_calendario(current_user)
     usuarios = (await db.execute(
         select(User).where(User.is_active == True).order_by(User.full_name)  # noqa: E712
     )).scalars().all()
@@ -1619,16 +1628,49 @@ async def cambiar_tarea(
             # nueva" (al tablero), no como tarea asignada: uno solo.
             avisados += await _nacer_tarjetas(db, current_user, barra, [tarea])
         elif nuevo is not None and nuevo.id != current_user.id:
-            _avisar(db, nuevo.id, mensaje_de_asignacion(
-                current_user.full_name, tarea.titulo, barra.nombre, tarea.vence,
-            ), barra.id, tarea.id)
-            avisados += 1
+            if await db.get(CalendarioEntrega, tarea.id) is not None:
+                # Una pieza (con su tarjeta) que pasa a otra persona del
+                # equipo: el aviso es el de la tarjeta («te pidió», lleva al
+                # tablero), como cuando nace, y no el de una tarea común
+                # (revisión del 16/11/2026). Uno por persona y tarjeta.
+                if await reglas_entregas.avisar(
+                    db, nuevo.id,
+                    reglas_entregas.mensaje_de_tarjeta_nueva(
+                        current_user.full_name, tarea.titulo, list(tarea.opciones or []), tarea.vence,
+                    ),
+                    reglas_entregas.referencia(barra.id, tarea.id, "tarjeta", "nueva"),
+                ):
+                    avisados += 1
+            else:
+                _avisar(db, nuevo.id, mensaje_de_asignacion(
+                    current_user.full_name, tarea.titulo, barra.nombre, tarea.vence,
+                ), barra.id, tarea.id)
+                avisados += 1
     if "estado" in campos and payload.estado is not None and payload.estado != tarea.estado:
+        era = tarea.estado
         if tarea.estado == "hecha" and "vence" not in campos:
             # Hecha no se movía con la acción; si se reabre, vuelve a su fecha
             # contada desde la acción como está hoy (ver vence_al_reabrir).
             tarea.vence = vence_al_reabrir(tarea, barra.desde, barra.hasta)
         tarea.estado = payload.estado
+        # Una pieza sin terminar que quien lidera cierra a mano (la pieza se
+        # canceló, o se hizo fuera de la plataforma): su tarjeta pasa a
+        # Archivado. Antes quedaba para siempre en Ingresado o En proceso, y
+        # la agencia la seguía viendo para entregar. Si se reabre, la tarjeta
+        # vuelve sola a su columna (revisión del 16/11/2026). La entrega se
+        # bloquea después de la tarea, como en todos lados.
+        entrega = (await db.execute(
+            select(CalendarioEntrega).where(CalendarioEntrega.tarea_id == tarea.id).with_for_update()
+        )).scalar_one_or_none()
+        if entrega is not None and entrega.momento != "aprobada":
+            ahora = datetime.now(timezone.utc)
+            if payload.estado == "hecha" and entrega.archivada_at is None:
+                entrega.archivada_at = ahora
+                entrega.archivada_por_id = current_user.id
+            elif era == "hecha" and entrega.archivada_at is not None:
+                entrega.archivada_at = None
+                entrega.archivada_por_id = None
+                entrega.desarchivada_at = ahora
         # A quien la creó le interesa saber que se terminó, salvo que la haya
         # terminado esa misma persona.
         if payload.estado == "hecha" and tarea.creado_por_id and tarea.creado_por_id != current_user.id:
@@ -2136,7 +2178,15 @@ async def aplicar_plantilla(
     # Las que son para la agencia (0070): les nace su tarjeta, y a la agencia
     # le llega UN aviso por persona con todas sus tarjetas nuevas. Una agencia
     # que dejó de tener cuentas en este mundo igual queda nombrada: la tarjeta
-    # se ve en el tablero del equipo.
+    # se ve en el tablero del equipo... pero esa agencia no la ve ni se
+    # entera, así que la respuesta lo dice (`agenciasSinCuentas`) y la
+    # pantalla lo avisa. Pasaba, por ejemplo, con una plantilla guardada con
+    # el nombre viejo de una agencia que después se corrigió (revisión del
+    # 16/11/2026; corregir el nombre ahora también corrige las plantillas).
+    sin_cuentas = []
+    for agencia in sorted({t["agencia"] for t in plan if t["para"] == "agencia" and t["agencia"]}):
+        if not await _cuentas_de_la_agencia(db, agencia, barra.mundo):
+            sin_cuentas.append(agencia)
     tarjetas_avisadas = await _nacer_tarjetas(db, current_user, barra, nuevas)
 
     # Un aviso por persona, con todas sus tareas (no a quien la aplicó: se
@@ -2159,6 +2209,9 @@ async def aplicar_plantilla(
         "id": barra_id, "rev": _rev_para(current_user, rev), "creadas": len(plan),
         "avisados": len(por_persona) + tarjetas_avisadas, "sinAsignar": sin_asignar,
         "tarjetas": sum(1 for t in plan if es_pieza(SimpleNamespace(tipo=t["tipo"], para=t["para"]))),
+        # Las agencias nombradas que no tienen ninguna cuenta que entre a este
+        # mundo: sus tarjetas nacieron, pero nadie de ellas las ve.
+        "agenciasSinCuentas": sin_cuentas,
     }
 
 
@@ -2314,10 +2367,15 @@ async def copiar_barra(
     avisados = await _nacer_tarjetas(db, current_user, barra, nuevas_tareas)
 
     # UN aviso a cada responsable, con todas sus tareas. Lleva a la ficha de
-    # la acción nueva, como el de una tarea creada a mano. Las de la agencia
-    # ya tuvieron el suyo.
+    # la acción nueva, como el de una tarea creada a mano. Las piezas (las de
+    # la agencia, y también las de Tienda con tipo y las de una agencia de
+    # afuera) ya tuvieron el suyo de tarjeta: antes a quien hacía una pieza
+    # de Tienda le llegaban dos avisos por lo mismo (revisión del 16/11/2026).
+    # Es la misma regla que al aplicar una plantilla.
     for uid, suyas in tareas_por_responsable(
-        [f for f in copiadas_tareas.filas if f.get("para") != "agencia"], current_user.id,
+        [f for f in copiadas_tareas.filas
+         if not es_pieza(SimpleNamespace(tipo=f.get("tipo"), para=f.get("para")))],
+        current_user.id,
     ).items():
         vencimientos = [t["vence"] for t in suyas if t.get("vence")]
         _avisar(db, uid, mensaje_de_tareas_copiadas(

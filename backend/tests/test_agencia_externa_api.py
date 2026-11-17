@@ -20,7 +20,7 @@ Desde la 0070 (tablero de la agencia):
 
 Necesita una base Postgres en la última migración: se le pasa en
 TEST_DATABASE_URL (por ejemplo, la copia local de prueba). Sin eso, se saltea
-(el CI no tiene base: ver conftest.py). Todo corre adentro de una transacción
+(el CI levanta una vacía y la migra: ver conftest.py). Todo corre adentro de una transacción
 que se deshace al final: la base queda como estaba.
 """
 import asyncio

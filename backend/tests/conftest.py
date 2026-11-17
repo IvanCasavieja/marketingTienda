@@ -6,9 +6,14 @@ tienen que existir ANTES de cualquier import de la app — por eso van acá, en
 conftest, que pytest ejecuta primero. Son los mismos dummies que usa el CI
 para el chequeo de imports (ver .github/workflows/ci.yml).
 
-Ningún test toca la base ni la red: prueban las funciones puras del motor de
-cenefas (parseo de precios, mecánicas, importer, render). Lo que necesita
-Postgres se prueba a mano contra producción, no acá.
+Casi todos los tests son puros: no tocan la base ni la red. Los que necesitan
+Postgres (test_tablero_agencia_api.py, test_agencia_externa_api.py) usan la
+base de TEST_DATABASE_URL, en la última migración, y corren adentro de una
+transacción que se deshace; sin esa variable se saltean. Desde el 16/11/2026
+el CI levanta una base vacía, la migra y los corre (ver
+.github/workflows/ci.yml): antes se salteaban siempre, y lo que cuidan —quién
+ve qué en el tablero y en el calendario— quedaba sin protección. Nunca contra
+producción.
 """
 import os
 import sys

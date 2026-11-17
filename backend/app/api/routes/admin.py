@@ -702,6 +702,7 @@ async def update_externo(
     ya_era_externa = bool(user.es_externo)
     empresa_vieja = externos.limpiar_empresa(user.empresa)
     tarjetas_pasadas = 0
+    plantillas_pasadas = 0
     if payload.es_externo:
         empresa = externos.limpiar_empresa(payload.empresa)
         if not empresa:
@@ -736,6 +737,7 @@ async def update_externo(
                     .values(agencia=empresa)
                     .execution_options(synchronize_session=False)
                 )).rowcount or 0
+                plantillas_pasadas = await _pasar_plantillas_de_agencia(db, empresa_vieja, empresa)
         user.es_externo = True
         user.empresa = empresa
         user.role_id = None
@@ -753,7 +755,8 @@ async def update_externo(
     db.add(AuditLog(
         user_id=current_user.id, action="admin.user.update_externo", resource="user", resource_id=str(user.id),
         details={"antes": antes, "es_externo": user.es_externo, "empresa": user.empresa,
-                 "permissions": list(user.permissions or []), "tarjetas_pasadas": tarjetas_pasadas},
+                 "permissions": list(user.permissions or []), "tarjetas_pasadas": tarjetas_pasadas,
+                 "plantillas_pasadas": plantillas_pasadas},
         ip_address=_client_ip(request),
     ))
     return {"es_externo": user.es_externo, "empresa": user.empresa, "permissions": user.permissions or []}
@@ -765,13 +768,52 @@ async def list_mundos(_: User = Depends(_require_admin_panel)):
     return [{"key": clave, "nombre": nombre} for clave, nombre in MUNDOS.items()]
 
 
+async def _pasar_plantillas_de_agencia(db: AsyncSession, vieja: str, nueva: str) -> int:
+    """Al corregirle el nombre a una agencia ("Publisis" -> "Publicis"), las
+    plantillas que la nombran pasan al nombre nuevo, como sus tarjetas. Si
+    no, cada vez que se aplicaba la plantilla nacía una tarjeta para el
+    nombre viejo, que la agencia no veía ni le avisaba (revisión del
+    16/11/2026). Devuelve cuántas plantillas cambió.
+
+    Las tareas de una plantilla son una lista en JSONB: se asigna una lista
+    nueva (si no, SQLAlchemy no ve el cambio y no lo guarda)."""
+    from app.api.routes.calendario import _nueva_revision
+    from app.models.calendario import CalendarioPlantilla
+
+    mundos: set[str] = set()
+    n = 0
+    for p in (await db.execute(select(CalendarioPlantilla).with_for_update())).scalars():
+        tareas = [dict(t) for t in (p.tareas or [])]
+        cambio = False
+        for t in tareas:
+            if t.get("para") == "agencia" and externos.misma_empresa(t.get("agencia"), vieja):
+                t["agencia"] = nueva
+                cambio = True
+        if cambio:
+            p.tareas = tareas
+            mundos.add(p.mundo)
+            n += 1
+    # Quien tiene el calendario abierto ve la plantilla con el nombre nuevo.
+    for mundo in sorted(mundos):
+        await _nueva_revision(db, mundo)
+    return n
+
+
 def _alcance_pedido(quien_da: User, pedido: str | None, *, es_externo: bool) -> str:
     """El alcance con el que se crea (o al que se cambia) una cuenta: el
     pedido, o el de su tipo si no se pidió ninguno. Nadie da más calendario
-    del que ve: como con los permisos y los mundos."""
+    del que ve: como con los permisos y los mundos.
+
+    Sin pedido, la cuenta nace con lo menos entre el de su tipo y lo que ve
+    quien la crea: el panel no manda el alcance al crear una cuenta del
+    equipo, y un Admin con el calendario limitado recibía «No podés dar más
+    calendario del que ves vos» y no podía crear ninguna (revisión del
+    16/11/2026). El 403 queda para un alcance pedido a propósito."""
     valor = pedido or alcance.por_defecto(es_externo)
     if valor not in alcance.ALCANCES:
         raise HTTPException(status_code=422, detail="Ese alcance del calendario no existe")
+    if not pedido and not quien_da.is_superuser:
+        valor = min(valor, alcance.alcance_de(quien_da), key=alcance.ALCANCES.index)
     if not quien_da.is_superuser and alcance.ALCANCES.index(valor) > alcance.ALCANCES.index(alcance.alcance_de(quien_da)):
         raise HTTPException(status_code=403, detail="No podés dar más calendario del que ves vos")
     return valor

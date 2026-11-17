@@ -76,7 +76,9 @@ TIPOS: dict[str, TipoDePieza] = {
               "Texto legal o condiciones. Si se dijo que no lleva, 'No lleva'."),
         Campo("locales", "Locales", "Faltan los locales", "En qué locales o en cuántos, ej. '40 locales'."),
     )),
-    "mailing": TipoDePieza("Mailing", (
+    # La clave 'mailing' es el email marketing (EMM): asunto, segmento y fecha
+    # de envío son de un mail. El «Mailing» (folleto) es 'otro' (16/11/2026).
+    "mailing": TipoDePieza("Email marketing (EMM)", (
         Campo("asunto", "Asunto", "Falta el asunto", "El asunto del mail."),
         Campo("segmento", "Segmento", "Falta el segmento", "A quién va, ej. 'clientes con tarjeta', 'toda la base'."),
         Campo("fecha_envio", "Fecha de envío", "Falta la fecha de envío", "Día (y hora si se dijo) en que sale."),

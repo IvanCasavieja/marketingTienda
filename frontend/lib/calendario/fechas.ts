@@ -119,3 +119,19 @@ export function hoyIso(): string {
   const h = new Date()
   return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`
 }
+
+/**
+ * El día en Uruguay, como lo cuenta el servidor (alcance.hoy_en_uruguay). Para
+ * comparar con el `hoy` que manda el tablero: con hoyIso(), una computadora
+ * con otra zona horaria (alguien de viaje) veía "cambió el día" en cada
+ * pregunta y se bajaba el tablero entero cada 15 s. Si el navegador no sabe
+ * de zonas, la de la computadora.
+ */
+export function diaEnUruguay(cuando: Date = new Date()): string {
+  try {
+    // 'en-CA' escribe la fecha como AAAA-MM-DD.
+    return cuando.toLocaleDateString('en-CA', { timeZone: 'America/Montevideo', year: 'numeric', month: '2-digit', day: '2-digit' })
+  } catch {
+    return `${cuando.getFullYear()}-${String(cuando.getMonth() + 1).padStart(2, '0')}-${String(cuando.getDate()).padStart(2, '0')}`
+  }
+}

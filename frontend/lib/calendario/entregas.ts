@@ -142,6 +142,8 @@ export type Tarjeta = {
   columna: Columna
   /** En proceso porque volvió con cambios (se ve en la tarjeta). */
   volvioConCambios: boolean
+  /** Se archivó sin aprobarse (se canceló): no se entrega ni se revisa. */
+  cancelada?: boolean
   vence: string | null
   ancla?: 'inicio' | 'fin' | null
   anclaDias?: number | null

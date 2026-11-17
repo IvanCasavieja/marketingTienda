@@ -58,7 +58,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.calendario import (
     _ID, _exigir_gestion_de_tareas, _nueva_revision, _puede_gestionar_tareas, _puede_ver_el_mundo,
-    _rev_para, _ve_una_parte, ids_de_aprobadores_de, nombre_sin_mail, nombres_para_externo,
+    _rev_para, _ve_una_parte, ids_de_aprobadores_de, nombre_sin_mail, nombres_para_externo, vence_al_reabrir,
 )
 from app.core.config import settings
 from app.core import alcance, externos
@@ -119,12 +119,19 @@ def puede_ver_revision(
     """Si `usuario` ve lo que encontró la IA en `version`: los aprobadores de
     la cadena y quien gestiona las tareas, nunca quien entrega (ver
     revision_ia.puede_ver). Además tiene que poder ver la tarea (`_puede_ver`):
-    eso lo controla quien llama."""
-    if puede_entregar(usuario, tarea):
+    eso lo controla quien llama.
+
+    En una pieza de una agencia de AFUERA, quien la carga es alguien del
+    equipo y suele ser quien la aprueba (ver `_autor`): no es quien la hace,
+    así que la ve como cualquier aprobador. Antes era la única que decidía y
+    la única que no veía lo que encontró la IA (revisión del 16/11/2026)."""
+    afuera = getattr(tarea, "para", None) == "fuera"
+    if not afuera and puede_entregar(usuario, tarea):
         return False
     return revision_ia.puede_ver(
         usuario.id, es_gestor=_puede_gestionar_tareas(usuario), aprobadores=list(entrega.aprobadores or []),
-        responsable_id=tarea.asignado_a_id, subida_por_id=version.subida_por_id if version else None,
+        responsable_id=None if afuera else tarea.asignado_a_id,
+        subida_por_id=_autor(tarea, version.subida_por_id) if version else None,
         activa=settings.IA_REVISION_ACTIVA,
     )
 
@@ -236,7 +243,11 @@ async def configurar_entregas(
         aprobadores = reglas.aprobadores_validos(payload.aprobadores)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    if tarea.asignado_a_id is not None and tarea.asignado_a_id in aprobadores:
+    # En una pieza de una agencia de AFUERA, quien la carga (la persona
+    # asignada) es del equipo y puede aprobarla (ver `_autor`): es el camino
+    # por defecto de «Pedir una pieza». Sin esto, «Configurar» y «Más
+    # opciones» no dejaban guardar esa tarjeta (revisión del 16/11/2026).
+    if tarea.para != "fuera" and tarea.asignado_a_id is not None and tarea.asignado_a_id in aprobadores:
         raise HTTPException(
             status_code=422,
             detail="Quien entrega la pieza no puede estar entre los que la aprueban",
@@ -346,7 +357,8 @@ async def configurar_entregas(
     resumen = await _resumen(db, tarea_id)
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
-    return {"id": tarea_id, "rev": rev, "entrega": resumen, "avisados": avisados}
+    # A quien ve una parte, sin el contador de todos (ver _rev_para).
+    return {"id": tarea_id, "rev": _rev_para(current_user, rev), "entrega": resumen, "avisados": avisados}
 
 
 @router.delete("/tareas/{tarea_id}/entregas")
@@ -371,7 +383,7 @@ async def quitar_entregas(
     await db.execute(delete(CalendarioEntrega).where(CalendarioEntrega.tarea_id == tarea_id))
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
-    return {"id": tarea_id, "rev": rev, "borrada": True}
+    return {"id": tarea_id, "rev": _rev_para(current_user, rev), "borrada": True}
 
 
 async def _ultima_version(db: AsyncSession, fase_id: str | None) -> CalendarioVersion | None:
@@ -509,6 +521,11 @@ async def ver_entregas(
     actual = next((v for v in reversed(versiones) if v.fase_id == entrega.fase_actual_id), None)
     decisiones_actual = [(d.aprobador_id, d.decision) for d in decisiones.get(actual.id, [])] if actual else []
     puede_decidir, como_respaldo = _puede_decidir(current_user, tarea, entrega, actual, decisiones_actual)
+    # Archivada sin terminar (cancelada): nadie entrega ni decide hasta que el
+    # equipo la saque del archivo (ver `entregar` y `decidir`).
+    cancelada = reglas.archivada_sin_terminar(entrega)
+    if cancelada:
+        puede_decidir, como_respaldo = False, False
     entrega_yo = puede_entregar(current_user, tarea)
     quien = _quien_mueve(current_user, tarea, entrega, puede_decidir)
     columna = reglas.columna_de_entrega(entrega)
@@ -543,13 +560,15 @@ async def ver_entregas(
         "personas": {str(k): v for k, v in nombres.items()},
         "columna": columna,
         "puedo": {
-            "entregar": entrega_yo and entrega.momento in ("produccion", "cambios"),
+            "entregar": entrega_yo and entrega.momento in ("produccion", "cambios") and not cancelada,
             "decidir": puede_decidir,
             "comoRespaldo": como_respaldo,
             "configurar": _puede_gestionar_tareas(current_user),
             "tildarMarcas": entrega_yo or _puede_gestionar_tareas(current_user),
             # A qué columnas del tablero la puede llevar (ver reglas.movimiento).
-            "mover": reglas.destinos_posibles(columna, quien, hay_versiones=bool(versiones)),
+            "mover": reglas.destinos_posibles(
+                columna, quien, hay_versiones=bool(versiones), vuelve_a=reglas.columna_al_desarchivar(entrega),
+            ),
             # Si le mostramos lo que encontró la IA en la versión en curso (el
             # front la pide aparte, y el servidor lo vuelve a controlar ahí).
             "verRevisionIA": puede_ver_revision(current_user, entrega, tarea, actual),
@@ -662,6 +681,13 @@ async def entregar(
                 "entrega": await _resumen(db, tarea_id)}
     if entrega.fase_actual_id is None:
         raise HTTPException(status_code=409, detail="Todas las fases ya están aprobadas: no hay nada más para entregar")
+    if reglas.archivada_sin_terminar(entrega):
+        # Se canceló (16/11/2026): entregarla la reabría sola, sin que el
+        # equipo se enterara de por qué volvía.
+        raise HTTPException(
+            status_code=409,
+            detail="Esta tarjeta está archivada: para entregarla, el equipo tiene que sacarla del archivo",
+        )
     fase = await db.get(CalendarioFase, entrega.fase_actual_id)
     ultima = await _ultima_version(db, entrega.fase_actual_id)
     if ultima is not None and ultima.estado == "revision":
@@ -694,8 +720,11 @@ async def entregar(
         datos_mini, tipo_mini = await _leer(mini, MAX_BYTES_MINIATURA, f"La miniatura de {cual.lower()}")
         leidas.append((datos, tipo, datos_mini, tipo_mini))
     # El freno general: con la base casi llena no se guarda ninguna imagen
-    # (507, con el mensaje para la persona, y un error en el log).
-    await exigir_lugar(db, sum(len(g) + len(m) for g, _, m, _ in leidas))
+    # (507, con el mensaje para la persona, y un error en el log). Solo si hay
+    # imágenes: una entrega con un link solo no ocupa lugar, y con la base
+    # llena recibía un 507 que decía «La imagen no se guardó» (16/11/2026).
+    if leidas:
+        await exigir_lugar(db, sum(len(g) + len(m) for g, _, m, _ in leidas))
 
     ronda = (ultima.ronda if ultima else 0) + 1
     # Solo cuentan las marcas de ESTA tarea que estaban sin corregir: lo
@@ -811,6 +840,11 @@ async def decidir(
     await db.refresh(version)
     if version.fase_id != entrega.fase_actual_id:
         raise HTTPException(status_code=409, detail="Esa versión ya no es la que está en revisión: recargá")
+    if reglas.archivada_sin_terminar(entrega):
+        raise HTTPException(
+            status_code=409,
+            detail="Esta tarjeta está archivada: para decidirla, el equipo tiene que sacarla del archivo",
+        )
     resultado, avisados = await _aplicar_decision(
         db, current_user, tarea, barra, entrega, version, payload.decision,
         comentario=payload.comentario, marcas=payload.marcas, nota_interna=payload.notaInterna,
@@ -818,7 +852,10 @@ async def decidir(
     resumen = await _resumen(db, tarea.id)
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
-    return {"id": version.id, "rev": rev, "resultado": resultado, "entrega": resumen, "avisados": avisados}
+    return {
+        "id": version.id, "rev": _rev_para(current_user, rev), "resultado": resultado, "entrega": resumen,
+        "avisados": avisados,
+    }
 
 
 async def _aplicar_decision(
@@ -1010,7 +1047,9 @@ async def mover(
         decide, _ = _puede_decidir(current_user, tarea, entrega, version, await reglas.decisiones_de(db, version.id))
     quien = _quien_mueve(current_user, tarea, entrega, decide)
     try:
-        accion = reglas.movimiento(actual, payload.a, quien, hay_versiones=hay_versiones)
+        accion = reglas.movimiento(
+            actual, payload.a, quien, hay_versiones=hay_versiones, vuelve_a=reglas.columna_al_desarchivar(entrega),
+        )
     except reglas.MovimientoInvalido as exc:
         raise HTTPException(status_code=exc.codigo, detail=str(exc))
 
@@ -1021,8 +1060,15 @@ async def mover(
         return {"id": tarea_id, "columna": actual, "rev": None, "avisados": 0}
     if accion == "arrancar":
         entrega.iniciada_at = ahora
+        # La ficha muestra el estado de la tarea: si la agencia la arrancó,
+        # que no siga diciendo «Pendiente» hasta la primera entrega (16/11/2026).
+        if tarea.estado == "pendiente":
+            tarea.estado = "en-proceso"
     elif accion == "volver":
         entrega.iniciada_at = None
+        # Volver a Ingresado solo se puede sin nada entregado: vuelve a pendiente.
+        if tarea.estado == "en-proceso":
+            tarea.estado = "pendiente"
     elif accion in ("aprobar", "pedir-cambios"):
         if version is None:
             raise HTTPException(status_code=409, detail="No hay ninguna entrega esperando feedback: recargá")
@@ -1034,10 +1080,21 @@ async def mover(
     elif accion == "archivar":
         entrega.archivada_at = ahora
         entrega.archivada_por_id = current_user.id
+        if entrega.momento != "aprobada":
+            # Archivarla sin terminar es cancelarla (16/11/2026): la tarea se
+            # cierra, como si quien lidera la tildara «hecha» en la ficha, y
+            # deja de aparecer pendiente en Mis tareas.
+            tarea.estado = "hecha"
     elif accion == "desarchivar":
         entrega.archivada_at = None
         entrega.archivada_por_id = None
         entrega.desarchivada_at = ahora
+        if entrega.momento != "aprobada" and tarea.estado == "hecha":
+            # Sacarla del archivo sin terminar es reabrirla: la tarea vuelve a
+            # pendiente (o en proceso, si ya se entregó algo) y a su fecha
+            # contada desde la acción, como al reabrirla desde la ficha.
+            tarea.estado = reglas.estado_de_tarea(entrega.momento, hay_versiones, "pendiente")
+            tarea.vence = vence_al_reabrir(tarea, barra.desde, barra.hasta)
     await db.flush()
     columna = reglas.columna_de_entrega(entrega)
     rev = await _nueva_revision(db, barra.mundo)
@@ -1120,10 +1177,11 @@ def _las_que_ve(usuario: User):
 
 
 def _sin_ocultar():
-    """El WHERE de lo que todavía se muestra: lo activo, y de lo aprobado lo
-    que no lleva OCULTAR_ARCHIVADAS_DIAS en Archivado. Es un filtro grueso
-    (con un día de margen, para no depender de la hora): el fino, en días de
-    Uruguay, lo hace reglas.oculta al clasificar."""
+    """El WHERE de lo que todavía se muestra: lo activo que no se archivó, y
+    de lo archivado (aprobado, o cancelado sin terminar) lo que no lleva
+    OCULTAR_ARCHIVADAS_DIAS en Archivado. Es un filtro grueso (con un día de
+    margen, para no depender de la hora): el fino, en días de Uruguay, lo hace
+    reglas.oculta al clasificar."""
     archivar = timedelta(days=max(0, settings.ARCHIVAR_TARJETAS_DIAS))
     margen = datetime.now(timezone.utc) - timedelta(days=max(0, settings.OCULTAR_ARCHIVADAS_DIAS) + 1)
     se_archiva = func.coalesce(
@@ -1132,8 +1190,13 @@ def _sin_ocultar():
         func.coalesce(CalendarioEntrega.updated_at, CalendarioEntrega.created_at) + archivar,
     )
     return or_(
-        CalendarioEntrega.momento.in_(_ACTIVOS),
-        and_(CalendarioEntrega.momento == "aprobada", se_archiva > margen),
+        and_(CalendarioEntrega.momento.in_(_ACTIVOS), CalendarioEntrega.archivada_at.is_(None)),
+        # Lo archivado a mano, con cualquier momento (16/11/2026: también lo
+        # cancelado), se archivó ese día: `se_archiva` es su archivada_at.
+        and_(
+            or_(CalendarioEntrega.momento == "aprobada", CalendarioEntrega.archivada_at.isnot(None)),
+            se_archiva > margen,
+        ),
     )
 
 
@@ -1142,7 +1205,10 @@ def _columna(e: CalendarioEntrega, hoy) -> str:
 
 
 def _es_oculta(e: CalendarioEntrega, hoy) -> bool:
-    return e.momento == "aprobada" and reglas.oculta(
+    """Si ya lleva OCULTAR_ARCHIVADAS_DIAS en Archivado: no se carga en el
+    tablero (la encuentra el buscador). Lo aprobado, y también lo que se
+    archivó sin terminar (cancelado)."""
+    return (e.momento == "aprobada" or e.archivada_at is not None) and reglas.oculta(
         e.finalizada_at, e.archivada_at, e.desarchivada_at, hoy,
         settings.ARCHIVAR_TARJETAS_DIAS, settings.OCULTAR_ARCHIVADAS_DIAS,
     )
@@ -1212,7 +1278,10 @@ async def _tarjetas(db: AsyncSession, filas, usuario: User, hoy=None) -> list[di
     def tarjeta(e: CalendarioEntrega, t: CalendarioTarea, b: CalendarioBarra) -> dict:
         ultima = ultimas.get(t.id)
         decide = False
-        if ultima and ultima[1] == "revision" and e.momento == "revision" and not externos.es_externo(usuario):
+        # Archivada sin terminar (cancelada): ni se entrega ni se decide.
+        cancelada = reglas.archivada_sin_terminar(e)
+        if (ultima and ultima[1] == "revision" and e.momento == "revision" and not cancelada
+                and not externos.es_externo(usuario)):
             try:
                 reglas.lugar_para_decidir(
                     usuario.id, gestor, list(e.aprobadores or []), decisiones.get(ultima[0], []),
@@ -1223,10 +1292,13 @@ async def _tarjetas(db: AsyncSession, filas, usuario: User, hoy=None) -> list[di
                 decide = False
         columna = _columna(e, hoy)
         quien = _quien_mueve(usuario, t, e, decide)
-        archivo = _dia_de_archivo(e) if e.momento == "aprobada" else None
+        archivo = _dia_de_archivo(e) if (e.momento == "aprobada" or e.archivada_at is not None) else None
         return {
             "tareaId": t.id, "titulo": t.titulo, "estado": t.estado,
-            "columna": columna, "volvioConCambios": e.momento == "cambios",
+            "columna": columna, "volvioConCambios": e.momento == "cambios" and not cancelada,
+            # Archivada sin aprobarse: la pantalla la marca "Cancelada" para que
+            # no se confunda con una pieza terminada.
+            "cancelada": cancelada,
             "vence": t.vence.isoformat() if t.vence else None,
             "ancla": t.ancla, "anclaDias": t.ancla_dias,
             "tipo": t.tipo, "opciones": list(t.opciones or []),
@@ -1240,9 +1312,11 @@ async def _tarjetas(db: AsyncSession, filas, usuario: User, hoy=None) -> list[di
             "entrega": resumenes.get(t.id),
             "miniatura": miniaturas.get(ultima[0]) if ultima else None,
             "puedo": {
-                "entregar": quien.entrega and e.momento in ("produccion", "cambios"),
+                "entregar": quien.entrega and e.momento in ("produccion", "cambios") and not cancelada,
                 "decidir": decide,
-                "mover": reglas.destinos_posibles(columna, quien, hay_versiones=ultima is not None),
+                "mover": reglas.destinos_posibles(
+                    columna, quien, hay_versiones=ultima is not None, vuelve_a=reglas.columna_al_desarchivar(e),
+                ),
             },
             "archivadaEl": archivo.isoformat() if archivo and columna == "archivado" else None,
             "actualizada": (e.updated_at or e.created_at).isoformat() if (e.updated_at or e.created_at) else None,
@@ -1340,7 +1414,13 @@ async def mas_archivadas(
     }
 
 
-_TILDES = ("áàâäãéèêëíìîïóòôöõúùûüñç", "aaaaaeeeeiiiiooooouuuunc")
+# También las mayúsculas acentuadas: que lower() de la base las baje depende
+# de su configuración regional (con la "C", "DÍA" queda "dÍa" y no se
+# encontraba buscando "dia"). Revisión del 16/11/2026.
+_TILDES = (
+    "áàâäãéèêëíìîïóòôöõúùûüñçÁÀÂÄÃÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÑÇ",
+    "aaaaaeeeeiiiiooooouuuuncaaaaaeeeeiiiiooooouuuunc",
+)
 
 
 def _normalizado(columna):
@@ -1392,7 +1472,7 @@ async def _metricas(db: AsyncSession, usuario: User, mundo: str, dias: int) -> d
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
     consulta = (
         select(CalendarioEntrega.tipo_pieza, CalendarioVersion.subida_por_id, CalendarioBarra.mundo,
-               CalendarioVersion.ronda)
+               CalendarioVersion.ronda, CalendarioTarea.para, CalendarioTarea.agencia)
         .select_from(CalendarioVersion)
         .join(CalendarioTarea, CalendarioTarea.id == CalendarioVersion.tarea_id)
         .join(CalendarioEntrega, CalendarioEntrega.tarea_id == CalendarioTarea.id)
@@ -1409,15 +1489,32 @@ async def _metricas(db: AsyncSession, usuario: User, mundo: str, dias: int) -> d
         # los demás: ni de otras agencias ni del equipo. Son números, sin
         # nombres de acciones: por eso no se recorta al alcance.
         consulta = consulta.where(CalendarioVersion.subida_por_id == usuario.id)
-    filas = (await db.execute(consulta)).all()
-    del_mundo = reglas.metricas_de_retrabajo([tuple(f) for f in filas if f[2] == mundo])
-    todos = reglas.metricas_de_retrabajo([tuple(f) for f in filas])
+    # De quién es el retrabajo: de quien subió la versión... salvo en una pieza
+    # de una agencia de AFUERA, donde quien la sube es alguien del equipo que
+    # carga lo que le mandaron: las rondas son de esa agencia, no de esa
+    # persona (revisión del 16/11/2026). Ahí se agrupa por el nombre de la
+    # agencia (sin mirar mayúsculas ni espacios).
+    agencias: dict[str, str] = {}
+    filas = []
+    for tipo, subida, mundo_fila, ronda, para, agencia in (await db.execute(consulta)).all():
+        limpia = externos.limpiar_empresa(agencia) if para == "fuera" else None
+        if limpia:
+            clave = f"fuera:{limpia.casefold()}"
+            agencias.setdefault(clave, limpia)
+            filas.append((tipo, clave, mundo_fila, ronda))
+        else:
+            filas.append((tipo, subida, mundo_fila, ronda))
+    del_mundo = reglas.metricas_de_retrabajo([f for f in filas if f[2] == mundo])
+    todos = reglas.metricas_de_retrabajo(filas)
     if externo:
         nombres = {usuario.id: nombre_sin_mail(usuario)}
     else:
-        nombres = await _nombres(db, [g["clave"] for g in del_mundo["porResponsable"]])
+        nombres = await _nombres(db, [g["clave"] for g in del_mundo["porResponsable"] if isinstance(g["clave"], int)])
     for g in del_mundo["porResponsable"]:
-        g["nombre"] = nombres.get(g["clave"], "Alguien que ya no está")
+        if g["clave"] in agencias:
+            g["nombre"] = f"{agencias[g['clave']]} (agencia de afuera)"
+        else:
+            g["nombre"] = nombres.get(g["clave"], "Alguien que ya no está")
     for g in del_mundo["porTipo"]:
         g["nombre"] = reglas.TIPOS_DE_PIEZA.get(g["clave"], g["clave"])
     por_mundo = [{**g, "nombre": MUNDOS.get(g["clave"], g["clave"])} for g in todos["porMundo"]]
@@ -1450,11 +1547,15 @@ async def mis_entregas(
     campaña quede fuera de su alcance del calendario (0070)."""
     mundos = mundos_de(current_user)
     externo = externos.es_externo(current_user)
+    # Ni lo que se canceló (archivada sin terminar) ni lo que quien lidera
+    # cerró a mano («hecha»): no espera a nadie (revisión del 16/11/2026).
+    vigentes = (CalendarioEntrega.archivada_at.is_(None), CalendarioTarea.estado != "hecha")
     para_revisar = [] if externo else (await db.execute(
         _consulta_tarjetas().where(
             CalendarioBarra.mundo.in_(mundos),
             CalendarioEntrega.momento == "revision",
             CalendarioEntrega.aprobador_de_turno_id == current_user.id,
+            *vigentes,
         ).order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioTarea.id)
     )).all()
     mias = externos.condicion_tarea_propia(CalendarioTarea, current_user) if externo \
@@ -1464,6 +1565,7 @@ async def mis_entregas(
             CalendarioBarra.mundo.in_(mundos),
             CalendarioEntrega.momento == "cambios",
             mias,
+            *vigentes,
         ).order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioTarea.id)
     )).all()
     return {

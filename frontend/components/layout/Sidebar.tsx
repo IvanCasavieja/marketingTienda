@@ -18,7 +18,8 @@ import { useTheme } from "@/hooks/useTheme";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
 import { esExterno } from "@/lib/externos";
-import { veCalendario } from "@/lib/alcance";
+import { alcanceDe, veCalendario } from "@/lib/alcance";
+import type { CurrentUser } from "@/types";
 import { toast } from "sonner";
 import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import { useCalendario } from "@/lib/calendario/store";
@@ -114,7 +115,7 @@ function cuandoFue(iso: string, idioma: string): string {
 // A dónde navegar al clickear una notificación — se deriva de los campos que
 // ya existen (watchlist_item_id, origen_tipo), sin necesidad de un campo
 // nuevo. Cualquier tipo futuro no mapeado no navega, en vez de adivinar.
-function resolverDestino(n: Notificacion): string | null {
+function resolverDestino(n: Notificacion, user?: CurrentUser | null): string | null {
   if (n.watchlist_item_id != null) return "/precios/listas";
   if (n.origen_tipo === "campaign_alert") return "/campaigns";
   // Los avisos del calendario abren la ficha de su acción. Los configurados a
@@ -130,7 +131,12 @@ function resolverDestino(n: Notificacion): string | null {
   if (n.origen_tipo === "calendario_header") return "/calendario";
   // Una tarea asignada (o terminada) abre la ficha de su acción, que puede
   // ser de otro mundo: la página del calendario se encarga de pasar a ese.
+  // A quien ve el calendario recortado, la acción puede quedarle afuera (una
+  // tarea suya en mayo, con "1 mes"): la ficha no abría y el aviso decía "Esa
+  // acción ya no está", como si se la hubieran borrado. Va a Mis tareas, que
+  // la muestra siempre (con link si la acción está a la vista).
   if (n.origen_tipo === "calendario_tarea" && n.origen_ref) {
+    if (alcanceDe(user) !== "todo") return "/mis-tareas";
     return `/calendario?accion=${encodeURIComponent(n.origen_ref.split(":")[0])}`;
   }
   // Al local: le pidieron una foto o se la devolvieron. Va a su pantalla, no
@@ -410,7 +416,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   function irANotificacion(n: Notificacion) {
     marcarUnaLeida(n);
-    const destino = resolverDestino(n);
+    const destino = resolverDestino(n, currentUser);
     setShowNotifMenu(false);
     // En el teléfono el menú es un cajón: si no se cierra, queda abierto
     // debajo de la ficha que abre el aviso y aparece al cerrarla.
@@ -685,7 +691,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                     </div>
                   )}
                   {notificaciones?.map((n) => {
-                    const destino = resolverDestino(n);
+                    const destino = resolverDestino(n, currentUser);
                     return (
                       <div
                         key={n.id}

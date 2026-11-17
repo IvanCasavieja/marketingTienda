@@ -562,6 +562,29 @@ def test_puede_ver_revision_de_la_ruta_usa_la_tarea_y_la_version(monkeypatch):
     assert not puede_ver_revision(persona(PROMO, "calendario.view"), entrega, tarea, version)
 
 
+def test_de_una_agencia_de_afuera_la_ve_quien_la_carga_y_la_aprueba(monkeypatch):
+    """Nao pide un mailing a una agencia de afuera y lo carga ella: es la
+    única que lo aprueba. Antes no veía lo que encontró la IA (era «quien
+    entrega»), y la IA se pagaba para que lo vieran solo los gestores
+    (revisión del 16/11/2026). Quien la carga sin aprobarla, tampoco ahora."""
+    from app.api.routes.entregas import puede_ver_revision
+
+    monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", True)
+    NAO = 70
+
+    def persona(uid, *permisos):
+        return SimpleNamespace(id=uid, permissions=list(permisos), is_superuser=False, es_externo=False)
+
+    tarea = SimpleNamespace(asignado_a_id=NAO, para="fuera", agencia="Otra agencia")
+    version = SimpleNamespace(subida_por_id=NAO)
+    assert puede_ver_revision(persona(NAO, "calendario.view"), SimpleNamespace(aprobadores=[NAO]), tarea, version)
+    assert not puede_ver_revision(persona(NAO, "calendario.view"), SimpleNamespace(aprobadores=[PROMO]), tarea, version)
+    assert puede_ver_revision(persona(PROMO, "calendario.view"), SimpleNamespace(aprobadores=[PROMO]), tarea, version)
+    # En una pieza de Tienda, quien la hace sigue sin verla.
+    de_tienda = SimpleNamespace(asignado_a_id=NAO, para="tienda", agencia=None)
+    assert not puede_ver_revision(persona(NAO, "calendario.view"), SimpleNamespace(aprobadores=[NAO]), de_tienda, version)
+
+
 def test_que_se_muestra_segun_como_termino():
     ahora = datetime(2026, 11, 16, 15, 0, tzinfo=timezone.utc)
     recien = ahora - timedelta(minutes=1)

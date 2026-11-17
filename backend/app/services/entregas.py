@@ -411,11 +411,21 @@ def estado_de_tarea(momento: str, hay_versiones: bool, actual: str) -> str:
 #   En proceso         produccion arrancada, o cambios ("Volvió con cambios")
 #   Esperando feedback revision: hay una versión esperando al equipo
 #   Finalizado         aprobada
-#   Archivado          aprobada, y archivada a mano o finalizada hace
-#                      ARCHIVAR_TARJETAS_DIAS o más (la archiva sola)
+#   Archivado          archivada a mano (con cualquier momento: también una
+#                      pieza que se canceló sin terminar), o aprobada y
+#                      finalizada hace ARCHIVAR_TARJETAS_DIAS o más (la
+#                      archiva sola)
 #
 # Así no hay dos verdades que se puedan separar: si alguien aprueba desde el
 # detalle (sin arrastrar), la tarjeta ya está en Finalizado.
+#
+# Una pieza cancelada (revisión del 16/11/2026): antes solo se archivaba una
+# finalizada, y una que se dejaba de hacer quedaba para siempre en Ingresado o
+# En proceso, en rojo por vencida, para la agencia y para el equipo. Ahora el
+# equipo la archiva desde Ingresado o En proceso, y cerrar la tarea a mano
+# («hecha», desde la ficha) también la archiva. Archivada sin terminar es
+# "cancelada": la tarea queda cerrada y nadie entrega ni decide hasta que el
+# equipo la saque del archivo (vuelve a su columna y la tarea se reabre).
 
 COLUMNAS = ("ingresado", "en-proceso", "esperando", "finalizado", "archivado")
 NOMBRES_DE_COLUMNA = {
@@ -478,12 +488,16 @@ def columna_de(
 ) -> str:
     """En qué columna del tablero va una tarjeta. `iniciada`: si quien entrega
     ya la arrancó o ya entregó algo alguna vez."""
+    if archivada_at is not None:
+        # Archivada a mano manda sobre el momento: también la que se canceló
+        # sin terminar (16/11/2026).
+        return "archivado"
     if momento == "revision":
         return "esperando"
     if momento == "cambios":
         return "en-proceso"
     if momento == "aprobada":
-        if archivada_at is not None or se_archiva_sola(finalizada_at, desarchivada_at, hoy, dias_para_archivar):
+        if se_archiva_sola(finalizada_at, desarchivada_at, hoy, dias_para_archivar):
             return "archivado"
         return "finalizado"
     return "en-proceso" if iniciada else "ingresado"
@@ -521,11 +535,17 @@ _MOVIMIENTOS = {
     ("esperando", "en-proceso"): "pedir-cambios",
     ("esperando", "finalizado"): "aprobar",
     ("finalizado", "archivado"): "archivar",
+    # Una pieza que se canceló, sin terminar (16/11/2026). Desde Esperando
+    # feedback no: hay una entrega que primero se decide.
+    ("ingresado", "archivado"): "archivar",
+    ("en-proceso", "archivado"): "archivar",
     ("archivado", "finalizado"): "desarchivar",
 }
 
 
-def movimiento(desde: str, a: str, quien: QuienMueve, *, hay_versiones: bool) -> str:
+def movimiento(
+    desde: str, a: str, quien: QuienMueve, *, hay_versiones: bool, vuelve_a: str = "finalizado",
+) -> str:
     """Qué significa arrastrar una tarjeta de `desde` a `a`, si esta persona
     lo puede hacer; si no, MovimientoInvalido con el porqué. Es la regla del
     servidor: la pantalla solo la refleja.
@@ -534,7 +554,12 @@ def movimiento(desde: str, a: str, quien: QuienMueve, *, hay_versiones: bool) ->
       (→ Esperando feedback, siempre con los materiales: el arrastre abre
       "Entregar"). No aprueba, no finaliza ni archiva.
     - El equipo pide cambios (Esperando → En proceso) o aprueba (Esperando →
-      Finalizado) si le toca en la cadena, y archiva o saca del archivo.
+      Finalizado) si le toca en la cadena, y archiva o saca del archivo. Archiva
+      también una que se canceló, desde Ingresado o En proceso.
+
+    `vuelve_a`: si la tarjeta está en Archivado, la columna a la que vuelve al
+    sacarla del archivo (ver columna_al_desarchivar): Finalizado si estaba
+    aprobada; si se archivó sin terminar, la suya (Ingresado, En proceso...).
     """
     if desde not in COLUMNAS or a not in COLUMNAS:
         raise MovimientoInvalido("Esa columna no existe")
@@ -542,12 +567,20 @@ def movimiento(desde: str, a: str, quien: QuienMueve, *, hay_versiones: bool) ->
         return "nada"
     if quien.es_externo and a == "finalizado":
         raise MovimientoInvalido("La agencia no puede finalizar una tarjeta: la aprueba el equipo", 403)
-    accion = _MOVIMIENTOS.get((desde, a))
+    if desde == "archivado" and vuelve_a != "finalizado":
+        # Archivada sin terminar: sale del archivo a donde estaba, no a otra.
+        if a != vuelve_a:
+            raise MovimientoInvalido(
+                f"Esta tarjeta se archivó sin terminar: sale del archivo a {NOMBRES_DE_COLUMNA.get(vuelve_a, vuelve_a)}"
+            )
+        accion = "desarchivar"
+    else:
+        accion = _MOVIMIENTOS.get((desde, a))
     if accion is None:
         if a == "finalizado":
             raise MovimientoInvalido("Para finalizarla, primero tiene que haber una entrega esperando feedback")
         if a == "archivado":
-            raise MovimientoInvalido("Solo se archiva una tarjeta finalizada")
+            raise MovimientoInvalido("Está esperando feedback: hay que aprobarla o pedir cambios antes de archivarla")
         if desde in ("finalizado", "archivado"):
             raise MovimientoInvalido("Esta tarjeta ya está aprobada: no vuelve atrás")
         if desde == "esperando":
@@ -580,7 +613,9 @@ def movimiento(desde: str, a: str, quien: QuienMueve, *, hay_versiones: bool) ->
     return accion
 
 
-def destinos_posibles(desde: str, quien: QuienMueve, *, hay_versiones: bool) -> list[str]:
+def destinos_posibles(
+    desde: str, quien: QuienMueve, *, hay_versiones: bool, vuelve_a: str = "finalizado",
+) -> list[str]:
     """A qué columnas puede llevar esta persona la tarjeta: lo que ofrece
     "Mover a…" y dónde se ilumina al arrastrar. Incluye Esperando feedback
     para quien entrega: ahí se abre "Entregar"."""
@@ -589,7 +624,7 @@ def destinos_posibles(desde: str, quien: QuienMueve, *, hay_versiones: bool) -> 
         if a == desde:
             continue
         try:
-            movimiento(desde, a, quien, hay_versiones=hay_versiones)
+            movimiento(desde, a, quien, hay_versiones=hay_versiones, vuelve_a=vuelve_a)
             out.append(a)
         except MovimientoInvalido as exc:
             if exc.codigo == 409:
@@ -653,7 +688,13 @@ def metricas_de_retrabajo(filas: Iterable[tuple[str, int | None, str, int]]) -> 
         return [{"clave": k, **_bloque(v)} for k, v in grupos.items()]
 
     por_tipo = sorted(agrupar(0), key=lambda g: list(TIPOS_DE_PIEZA).index(g["clave"]) if g["clave"] in TIPOS_DE_PIEZA else 99)
-    por_responsable = sorted(agrupar(1), key=lambda g: (-g["fases"], g["clave"] or 0))
+    # El responsable es un id de usuario o, en una agencia de afuera, su nombre
+    # (un texto: ver _metricas en las rutas). Para ordenar no se comparan
+    # números con textos: primero las personas, después las agencias.
+    por_responsable = sorted(
+        agrupar(1),
+        key=lambda g: (-g["fases"], 1, g["clave"]) if isinstance(g["clave"], str) else (-g["fases"], 0, g["clave"] or 0),
+    )
     por_mundo = sorted(agrupar(2), key=lambda g: (-g["fases"], g["clave"]))
     return {**_bloque([f[3] for f in lista]), "porTipo": por_tipo, "porResponsable": por_responsable, "porMundo": por_mundo}
 
@@ -827,6 +868,25 @@ def columna_de_entrega(entrega: CalendarioEntrega, hoy: date | None = None) -> s
         desarchivada_at=entrega.desarchivada_at,
         hoy=hoy or hoy_en_uruguay(), dias_para_archivar=settings.ARCHIVAR_TARJETAS_DIAS,
     )
+
+
+def columna_al_desarchivar(entrega) -> str:
+    """A qué columna vuelve una tarjeta si se la saca del archivo: una
+    aprobada, a Finalizado (sus días vuelven a contar desde ese momento); una
+    que se archivó sin terminar (cancelada), a la que le toca por su momento:
+    Ingresado, En proceso o Esperando feedback. Pura."""
+    if entrega.momento == "aprobada":
+        return "finalizado"
+    return columna_de(
+        entrega.momento, iniciada=entrega.iniciada_at is not None or (entrega.ronda or 0) > 0,
+        hoy=date.today(), dias_para_archivar=0,
+    )
+
+
+def archivada_sin_terminar(entrega) -> bool:
+    """Si la tarjeta se archivó (canceló) sin que se aprobara: no se entrega
+    ni se decide hasta que el equipo la saque del archivo. Pura."""
+    return entrega.archivada_at is not None and entrega.momento != "aprobada"
 
 
 def resumen_json(entrega: CalendarioEntrega, fases: list[CalendarioFase], rondas: dict[str, int]) -> dict:
@@ -1058,7 +1118,8 @@ async def archivar_finalizadas(db: AsyncSession, hoy: date | None = None) -> int
     nadie archivó a mano. El tablero ya las muestra en Archivado al leer;
     esto lo deja anotado (con `archivada_por_id` en null: se archivó sola) y
     sube la revisión de cada mundo tocado, así quien tiene el tablero abierto
-    lo ve moverse sin recargar. Devuelve cuántas archivó."""
+    lo ve moverse sin recargar. También archiva las que quedaron sin terminar
+    con la tarea cerrada a mano (ver abajo). Devuelve cuántas archivó."""
     from app.api.routes.calendario import _nueva_revision
     from app.core.alcance import hoy_en_uruguay
     from app.core.config import settings
@@ -1085,6 +1146,26 @@ async def archivar_finalizadas(db: AsyncSession, hoy: date | None = None) -> int
             entrega.archivada_por_id = None
             mundos.add(mundo)
             n += 1
+    # Las que se cerraron a mano («hecha» desde la ficha) sin terminar antes
+    # de que cerrarlas las archivara (16/11/2026): quedaban para siempre en
+    # Ingresado o En proceso. Desde ahora cerrar la tarea ya la archiva; esto
+    # acomoda las de antes y cualquier camino que cierre la tarea sin pasar
+    # por ahí. Una tarea con entregas solo queda «hecha» sola al aprobarse.
+    for entrega, mundo in (await db.execute(
+        select(CalendarioEntrega, CalendarioBarra.mundo)
+        .join(CalendarioTarea, CalendarioTarea.id == CalendarioEntrega.tarea_id)
+        .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
+        .where(
+            CalendarioEntrega.momento != "aprobada",
+            CalendarioEntrega.archivada_at.is_(None),
+            CalendarioTarea.estado == "hecha",
+        )
+        .with_for_update(of=CalendarioEntrega)
+    )).all():
+        entrega.archivada_at = ahora
+        entrega.archivada_por_id = None
+        mundos.add(mundo)
+        n += 1
     for mundo in sorted(mundos):
         await _nueva_revision(db, mundo)
     await db.commit()

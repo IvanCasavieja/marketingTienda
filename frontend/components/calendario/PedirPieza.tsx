@@ -7,7 +7,8 @@ import { DictarBrief, type BriefListo } from '@/components/ia/DictarBrief'
 import { useCalendario } from '@/lib/calendario/store'
 import { camposVisibles, descripcionDelPedido, nombreDeTarjeta, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
 import { TIPOS_DE_PIEZA, type TipoPieza } from '@/lib/calendario/entregas'
-import { fechaCorta } from '@/lib/calendario/fechas'
+import { TIPO_PARA_DICTADO } from '@/lib/calendario/entregas-dictado'
+import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
 import { venceAnclado } from '@/lib/calendario/plantillas'
 import { delEquipo, type BarraGuardada, type Persona } from '@/lib/calendario/tipos'
 import { useCatalogoDeTipos } from '@/store/tiposDeTarea'
@@ -37,6 +38,8 @@ import {
 type Quien = 'agencia' | 'tienda' | 'fuera'
 
 const DIAS_RAPIDOS = [1, 2, 3]
+/** Lo mismo que acepta el servidor para "N días antes" (calendario.py, _DIAS_DE_ANCLA). */
+const DIAS_MAXIMOS = 365
 
 export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
   accion: BarraGuardada
@@ -73,6 +76,9 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
   const [cargaAfuera, setCargaAfuera] = useState<string>(usuarioId != null ? String(usuarioId) : '')
   const [cuando, setCuando] = useState<'antes' | 'fecha'>('antes')
   const [dias, setDias] = useState(3)
+  // Lo que se está escribiendo en "N días antes" (puede quedar vacío un
+  // momento mientras se escribe; `dias` es siempre un número válido).
+  const [diasTexto, setDiasTexto] = useState<string | null>(null)
   const [fecha, setFecha] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [dictando, setDictando] = useState(false)
@@ -84,13 +90,30 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
   const vence = cuando === 'antes' ? venceAnclado('inicio', -dias, accion.desde, accion.hasta) : fecha
   const pedido = descripcionDelPedido(tipo, opciones, detalles)
   const responsable = quien === 'tienda' ? (disenador ? Number(disenador) : null) : quien === 'fuera' ? (cargaAfuera ? Number(cargaAfuera) : null) : null
+  // De una agencia de afuera, `responsable` es quien del equipo CARGA lo que
+  // manda, no quien la hace: puede aprobar (lo común es que la cargue y la
+  // apruebe la misma persona). Para la regla "quien entrega no aprueba", nadie.
+  const quienEntrega = quien === 'fuera' ? null : responsable
+  // La fecha ya pasó: la tarjeta nacería vencida. Se avisa, sin trabar.
+  const yaPaso = /^\d{4}-\d{2}-\d{2}$/.test(vence) && vence < hoyIso()
+  // El dictado ordena según lo elegido en "¿Qué es?" (Banners → banner web,
+  // EMM → el mail, Cenefas → cenefa; Mailing, el folleto, y lo demás → otro).
+  // Antes arrancaba siempre en cenefa.
+  const piezaDictado = TIPO_PARA_DICTADO[TIPOS_DE_PIEZA.some(p => p.tipo === tipo?.pieza) ? (tipo!.pieza as TipoPieza) : 'otro']
 
   const falta = !tipo ? 'Elegí qué es.'
     : quien === 'agencia' && !agencia ? 'Elegí qué agencia la hace.'
       : quien === 'fuera' && !afuera.trim() ? 'Escribí el nombre de la agencia de afuera.'
         : quien === 'fuera' && responsable == null ? 'Elegí quién del equipo carga lo que manda.'
           : cuando === 'fecha' && !/^\d{4}-\d{2}-\d{2}$/.test(fecha) ? 'Elegí la fecha.'
-            : masOpciones ? faltaEnConfig(config, responsable) : null
+            : masOpciones ? faltaEnConfig(config, quienEntrega) : null
+
+  function escribirDias(texto: string) {
+    setCuando('antes')
+    setDiasTexto(texto)
+    const n = Number(texto)
+    if (texto.trim() !== '' && Number.isFinite(n)) setDias(Math.max(0, Math.min(DIAS_MAXIMOS, Math.round(n))))
+  }
 
   function alternar(o: string) {
     setOpciones(prev => (prev.includes(o) ? prev.filter(x => x !== o) : [...prev, o]))
@@ -217,13 +240,17 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
                       <label className={`flex min-h-[44px] cursor-pointer items-start gap-2.5 rounded-xl border px-2.5 py-2 transition ${
                         si ? 'border-brand-400 bg-brand-50 dark:border-brand-500/50 dark:bg-brand-500/10' : 'border-slate-300 hover:border-slate-400 dark:border-slate-700'
                       }`}>
-                        <input type="checkbox" checked={si} onChange={() => alternar(o.nombre)} className="sr-only" />
-                        <span aria-hidden className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
-                          si ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-400 dark:border-slate-500'
+                        {/* El tilde real es invisible (sr-only también tapa el
+                            contorno del foco): con el teclado, el foco se pinta
+                            en la casilla dibujada. Vacía, con borde slate-500
+                            para que se vea sobre el blanco. */}
+                        <input type="checkbox" checked={si} onChange={() => alternar(o.nombre)} className="peer sr-only" />
+                        <span aria-hidden className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-slate-900 ${
+                          si ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-500 dark:border-slate-500'
                         }`}>{si && <Check className="h-3.5 w-3.5" strokeWidth={3} />}</span>
                         <span className="min-w-0">
                           <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{o.nombre}</span>
-                          {o.medida && <span className="block text-xs text-slate-500 dark:text-slate-400">{o.medida}</span>}
+                          {o.medida && <span className="block text-xs text-slate-600 dark:text-slate-400">{o.medida}</span>}
                         </span>
                       </label>
                     </li>
@@ -233,7 +260,7 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
                   <li key={o}>
                     <span className="flex min-h-[44px] items-center gap-2 rounded-xl border border-brand-400 bg-brand-50 px-2.5 text-sm font-semibold text-slate-900 dark:border-brand-500/50 dark:bg-brand-500/10 dark:text-slate-100">
                       <span className="min-w-0 flex-1 truncate">{o}</span>
-                      <button type="button" onClick={() => alternar(o)} aria-label={`Sacar ${o}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-white dark:hover:bg-slate-800">
+                      <button type="button" onClick={() => alternar(o)} aria-label={`Sacar ${o}`} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800">
                         <X className="h-4 w-4" />
                       </button>
                     </span>
@@ -279,16 +306,20 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
             ['tienda', 'Diseño de Tienda', 'Alguien del equipo', UserRound],
             ['fuera', 'Otra agencia', 'Fuera de la plataforma', Store],
           ] as const).map(([valor, nombre, bajada, Icono]) => (
+            // La elegida, con relleno y tilde (no solo un borde de otro tono:
+            // en oscuro casi no se distinguía). La deshabilitada no baja la
+            // opacidad: el motivo ("No hay cuentas de agencia") se tiene que leer.
             <button key={valor} type="button" role="radio" aria-checked={quien === valor} onClick={() => setQuien(valor)}
               disabled={valor === 'agencia' && agencias.length === 0}
-              className={`flex min-h-[52px] items-center gap-2.5 rounded-xl border px-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                quien === valor ? 'border-brand-600 bg-white ring-2 ring-brand-500/30 dark:bg-slate-900' : 'border-slate-300 bg-white/70 hover:border-brand-400 dark:border-slate-700 dark:bg-slate-900/60'
+              className={`flex min-h-[52px] items-center gap-2.5 rounded-xl border px-3 text-left transition disabled:cursor-not-allowed disabled:border-dashed disabled:bg-slate-50 dark:disabled:bg-slate-800/40 ${
+                quien === valor ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-500/40 dark:border-brand-400 dark:bg-brand-500/20' : 'border-slate-300 bg-white/70 hover:border-brand-400 dark:border-slate-700 dark:bg-slate-900/60'
               }`}>
               <Icono className={`h-5 w-5 shrink-0 ${quien === valor ? 'text-brand-600 dark:text-brand-300' : 'text-slate-500 dark:text-slate-400'}`} />
               <span className="min-w-0">
                 <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{nombre}</span>
-                <span className="block text-xs text-slate-500 dark:text-slate-400">{valor === 'agencia' && agencias.length === 0 ? 'No hay cuentas de agencia' : bajada}</span>
+                <span className="block text-xs text-slate-600 dark:text-slate-400">{valor === 'agencia' && agencias.length === 0 ? 'No hay cuentas de agencia' : bajada}</span>
               </span>
+              {quien === valor && <Check className="ml-auto h-4 w-4 shrink-0 text-brand-600 dark:text-brand-300" strokeWidth={3} aria-hidden />}
             </button>
           ))}
         </div>
@@ -324,13 +355,33 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
         <legend className="etiqueta-campo">¿Para cuándo?</legend>
         <div className="flex flex-wrap items-center gap-1.5">
           {DIAS_RAPIDOS.map(n => (
-            <button key={n} type="button" aria-pressed={cuando === 'antes' && dias === n} onClick={() => { setCuando('antes'); setDias(n) }}
+            <button key={n} type="button" aria-pressed={cuando === 'antes' && dias === n} onClick={() => { setCuando('antes'); setDias(n); setDiasTexto(null) }}
               className={`min-h-[40px] rounded-xl border px-3 text-sm font-semibold transition ${
                 cuando === 'antes' && dias === n ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-brand-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200'
               }`}>
               {n} {n === 1 ? 'día' : 'días'} antes
             </button>
           ))}
+          {/* Cualquier otro N (un catálogo de 44 páginas pide 15 días): sigue
+              atado al inicio de la acción, así se mueve si la acción se mueve.
+              Con "Otra fecha" queda fija. */}
+          <label className={`flex min-h-[40px] items-center gap-1.5 rounded-xl border px-2 text-sm font-semibold ${
+            cuando === 'antes' && !DIAS_RAPIDOS.includes(dias) ? 'border-brand-600 ring-2 ring-brand-500/30' : 'border-slate-300 dark:border-slate-600'
+          } bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200`}>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={DIAS_MAXIMOS}
+              value={diasTexto ?? (cuando === 'antes' && !DIAS_RAPIDOS.includes(dias) ? String(dias) : '')}
+              onChange={e => escribirDias(e.target.value)}
+              onBlur={() => setDiasTexto(null)}
+              placeholder="N"
+              aria-label="Cuántos días antes del inicio"
+              className="h-8 w-14 rounded-lg border border-slate-300 bg-white px-1.5 text-center tabular-nums text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            />
+            días antes
+          </label>
           <button type="button" aria-pressed={cuando === 'fecha'} onClick={() => setCuando('fecha')}
             className={`min-h-[40px] rounded-xl border px-3 text-sm font-semibold transition ${
               cuando === 'fecha' ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-brand-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200'
@@ -343,8 +394,15 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
         </div>
         {cuando === 'antes' && (
           <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-            <CalendarClock className="h-3.5 w-3.5" aria-hidden />
-            Para el {fechaCorta(vence)} · {dias} {dias === 1 ? 'día' : 'días'} antes de que arranque {accion.nombre}. Si la acción se mueve, se mueve con ella.
+            <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>
+              Para el {fechaCorta(vence)} · {dias === 0 ? 'el día que arranca' : `${dias} ${dias === 1 ? 'día' : 'días'} antes de que arranque`} {accion.nombre}. Si la acción se mueve, se mueve con ella.
+            </span>
+          </p>
+        )}
+        {yaPaso && (
+          <p className="mt-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-100 dark:ring-amber-500/40" role="status">
+            Esa fecha ya pasó ({fechaCorta(vence)}): la tarjeta nacería vencida. Elegí menos días o una fecha nueva.
           </p>
         )}
       </fieldset>
@@ -354,13 +412,22 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
         <div className="mb-1.5 flex items-center justify-between gap-2">
           <label htmlFor={`pieza-desc-${accion.id}`} className="etiqueta-campo mb-0">Descripción (opcional)</label>
           {!dictando && (
-            <button type="button" onClick={() => setDictando(true)} className="flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
+            <button type="button" onClick={() => setDictando(true)} className="flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
               <Mic className="h-4 w-4" /> Dictar
             </button>
           )}
         </div>
         {dictando ? (
-          <DictarBrief etiquetaUsar="Usar en la descripción" onListo={usarDictado} onCancelar={() => setDictando(false)} />
+          // Con el tipo de lo que se pide (y solo ese): si se cambia "¿Qué
+          // es?" mientras se dicta, arranca de nuevo con el tipo nuevo.
+          <DictarBrief
+            key={tipoClave ?? 'sin-tipo'}
+            tipoInicial={piezaDictado}
+            tipos={[piezaDictado]}
+            etiquetaUsar="Usar en la descripción"
+            onListo={usarDictado}
+            onCancelar={() => setDictando(false)}
+          />
         ) : (
           <textarea id={`pieza-desc-${accion.id}`} value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={descripcion ? 4 : 2}
             maxLength={5000} placeholder="Lo que no entra en lo tildado: tono, referencias, qué no puede faltar…" className="campo !h-auto py-2.5" />
@@ -383,7 +450,7 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
           </button>
           {masOpciones && (
             <div className="mt-2 rounded-xl border border-slate-300 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900">
-              <FormularioEntregas valor={config} onCambiar={setConfig} personas={personas} responsableId={responsable} usuarioId={usuarioId} />
+              <FormularioEntregas valor={config} onCambiar={setConfig} personas={personas} responsableId={quienEntrega} usuarioId={usuarioId} ocultarTipo={!!tipo} />
             </div>
           )}
         </div>
