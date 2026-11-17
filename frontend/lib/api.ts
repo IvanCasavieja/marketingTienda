@@ -2163,9 +2163,10 @@ export const calendarioApi = {
     api.put<CalendarioEscrito>(`/calendario/plantillas/${encodeURIComponent(id)}`, plantilla, ESPERA),
   borrarPlantilla: (id: string) =>
     api.delete<CalendarioEscrito>(`/calendario/plantillas/${encodeURIComponent(id)}`, ESPERA),
-  /** Crea en la acción las tareas de la plantilla. `ids`: el id nuevo de cada tarea de la plantilla. */
+  /** Crea en la acción las tareas de la plantilla. `ids`: el id nuevo de cada tarea de la plantilla.
+   *  `agenciasSinCuentas`: las agencias de la plantilla que no tienen ninguna cuenta (sus tarjetas no las ve nadie de afuera). */
   aplicarPlantilla: (barraId: string, datos: { plantillaId: string; ids: Record<string, string> }) =>
-    api.post<CalendarioEscrito & { creadas?: number; avisados?: number; sinAsignar?: number; tarjetas?: number }>(
+    api.post<CalendarioEscrito & { creadas?: number; avisados?: number; sinAsignar?: number; tarjetas?: number; agenciasSinCuentas?: string[] }>(
       `/calendario/barras/${encodeURIComponent(barraId)}/plantilla`, datos, ESPERA),
 
   /** Guarda las posiciones de RM de un mes y avisa a quien lleva Retail Media. */

@@ -20,6 +20,8 @@ import { mundoEfectivo, mundosDe, useMundoElegido, type SeccionDeMundo } from "@
 import { SEGUNDOS_ENTRE_REVISIONES, useCalendario } from "@/lib/calendario/store";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { hasPermission } from "@/lib/permissions";
+import { alcanceDe } from "@/lib/alcance";
+import { useCurrentUserStore } from "@/store/currentUser";
 
 /**
  * `/calendario?accion=br-xxx` abre la ficha de esa acción, en su mes. Es a
@@ -48,7 +50,12 @@ function AbrirAccionDeLaUrl() {
       // La búsqueda (en lo que ya hay, en el servidor, en otro mundo) está en
       // el store: la usa también "Copiar a otra fecha".
       if (!(await useCalendario.getState().irAAccion(pedida, pestana))) {
-        toast.error("Esa acción ya no está en el calendario, o es de un mundo al que no tenés acceso.");
+        // Con el calendario recortado, lo más probable es que quede fuera de
+        // lo que se ve, no que la hayan borrado: se dice dónde están sus tareas.
+        const recortado = alcanceDe(useCurrentUserStore.getState().user) !== "todo";
+        toast.error(recortado
+          ? "Esa acción queda fuera de lo que ves del calendario (o ya no está). Tus tareas están en Mis tareas."
+          : "Esa acción ya no está en el calendario, o es de un mundo al que no tenés acceso.");
       }
       router.replace("/calendario");
     })();

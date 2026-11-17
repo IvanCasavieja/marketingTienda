@@ -18,7 +18,9 @@ import type {
 } from './tipos'
 import { conCambios, moverAncladas, tareasDesdePlantilla, venceAnclado, type CambiosDeTarea } from './plantillas'
 import { BANDAS_COMERCIAL, BANDAS_RETAIL, type BandaCatalogo } from './catalogo'
+import { avisoDeAgenciasSinCuentas } from './tablero'
 import { MUNDO_POR_DEFECTO, mundoDe, useMundoElegido } from '@/lib/mundos'
+import { useCurrentUserStore } from '@/store/currentUser'
 
 export {
   construirMes, derivarHeaders, accionesDe, ocupacionHeader,
@@ -60,6 +62,10 @@ const pendientes: { llamada: Llamada; de?: string }[] = []
 let reintentando: Promise<void> | null = null
 /** La revisión que está en viaje, para no pedir dos veces lo mismo. */
 let sincronizando: { mundo: string; promesa: Promise<void> } | null = null
+/** Si la última revisión aplicada fue la huella de quien ve una parte (ver
+ *  sincronizar). Si un admin le pasa el alcance a "Todo", la siguiente ya es
+ *  el contador, mucho menor que la huella: no se tiene que tomar por vieja. */
+let ultimaFueOpaca = false
 
 /** Si el error es de conexión (se reintenta) y no un "no" del servidor. */
 function esDeConexion(e: unknown): boolean {
@@ -556,14 +562,24 @@ export const useCalendario = create<Estado>()(
                 return
               }
               const actual = get().rev
-              if (!opaca && (data.rev < revMinima || (actual != null && data.rev < actual))) return
+              // Recién pasó de ver una parte a verlo todo: la revisión de antes
+              // era la huella (un número grande), no se compara con el contador.
+              const vieneDeOpaca = ultimaFueOpaca && !opaca
+              if (!opaca && !vieneDeOpaca && (data.rev < revMinima || (actual != null && data.rev < actual))) return
               const barras: Record<string, BarraGuardada> = {}
               for (const b of data.barras ?? []) barras[b.id] = normalizar(b as BarraGuardada)
+              ultimaFueOpaca = opaca
               set({
                 barras, posicionesRM: data.posicionesRM ?? {}, plantillas: (data.plantillas ?? []) as Plantilla[],
                 rev: data.rev, conexion: 'ok',
               })
-            } catch {
+            } catch (e) {
+              // 403: le cambiaron el alcance a "No lo ve" mientras miraba. No
+              // es un corte de conexión: se vuelve a preguntar quién es y el
+              // layout la lleva a su tablero.
+              if ((e as { response?: { status?: number } })?.response?.status === 403) {
+                void useCurrentUserStore.getState().refetch().catch(() => {})
+              }
               set({ conexion: 'sin-conexion' })
             }
           })()
@@ -975,6 +991,14 @@ export const useCalendario = create<Estado>()(
               // como tareas comunes y daban ganas de pedirlas de nuevo).
               set({ rev: null })
               void get().sincronizar()
+            }
+            // Piezas pedidas a una agencia sin ninguna cuenta (en la plantilla
+            // quedó un nombre viejo): la tarjeta queda en el tablero del equipo
+            // y la agencia nunca la ve. Se avisa fuerte, no en el verde de siempre.
+            const sinCuentas = avisoDeAgenciasSinCuentas(r.agenciasSinCuentas)
+            if (sinCuentas) {
+              toast.warning(`${partes.join(' ')} ${sinCuentas}`, { duration: 12_000 })
+              return
             }
             toast.success(partes.join(' '))
           })

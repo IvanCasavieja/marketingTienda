@@ -8,10 +8,10 @@ import { entregasApi } from "@/lib/api";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import { numero, proximoPaso, type Columna, type Metricas, type Tarjeta } from "@/lib/calendario/entregas";
 import {
-  COLUMNAS_DEL_TABLERO, MS_PARA_ARRASTRAR_CON_EL_DEDO, PX_PARA_ARRASTRAR, defColumna, deQuien, opcionesDeQuien,
-  ordenar, queHaceMover, sePuedeSoltar,
+  COLUMNAS_DEL_TABLERO, MS_PARA_ARRASTRAR_CON_EL_DEDO, PX_PARA_ARRASTRAR, conservarArchivadas, defColumna, deQuien,
+  filtroVigente, opcionesDeQuien, ordenar, queHaceMover, seMovioElDedo, sePuedeSoltar,
 } from "@/lib/calendario/tablero";
-import { hoyIso } from "@/lib/calendario/fechas";
+import { diaEnUruguay, hoyIso } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { SEGUNDOS_ENTRE_REVISIONES } from "@/lib/calendario/store";
 import { mundoEfectivo, useMundoElegido } from "@/lib/mundos";
@@ -85,33 +85,55 @@ export default function TableroPage() {
   const [datos, setDatos] = useState<Datos | null>(null);
   const [error, setError] = useState(false);
   const [pestana, setPestana] = useState<Columna | null>(null);
-  const [filtro, setFiltro] = useState<string | null>(null);
+  const [filtroElegido, setFiltro] = useState<string | null>(null);
   const [cargandoMas, setCargandoMas] = useState(false);
   const [pidiendoCambios, setPidiendoCambios] = useState<Tarjeta | null>(null);
   const [verMetricas, setVerMetricas] = useState(false);
   const rev = useRef<number | null>(null);
   const datosRef = useRef<Datos | null>(null);
   useEffect(() => { datosRef.current = datos; }, [datos]);
+  // Como el calendario (lib/calendario/store.ts, sincronizar): cada pedido
+  // del tablero lleva un número y solo se aplica la respuesta del último, y
+  // nunca mientras haya un movimiento propio en camino. Si no, al pasar
+  // varias tarjetas seguidas la respuesta de un pedido armado antes de
+  // guardar el movimiento siguiente las hacía saltar a su columna vieja.
+  const pedido = useRef(0);
+  const enVuelo = useRef(0);
+  const movioAlguna = useRef(false);
   const claveMundo = mundo?.clave;
   const externo = esExterno(user);
   const yo = user?.id ?? null;
 
   const cargar = useCallback(async (desdeCero: boolean) => {
     if (!claveMundo) return;
+    const n = ++pedido.current;
     try {
       // Si cambió el día, una tarjeta pudo haber pasado sola a Archivado sin
-      // que cambie nada más: se trae todo.
-      const nuevoDia = datosRef.current && datosRef.current.hoy !== hoyIso();
+      // que cambie nada más: se trae todo. El día es el de Uruguay, como el
+      // que manda el servidor (con el de la computadora, en otra zona horaria
+      // daba distinto siempre y se bajaba todo en cada pregunta).
+      const nuevoDia = datosRef.current && datosRef.current.hoy !== diaEnUruguay();
       const { data } = await entregasApi.tablero(claveMundo, desdeCero || nuevoDia ? null : rev.current);
+      // Salió otro pedido después, o se está moviendo una tarjeta: esto
+      // puede ser de antes. Lo trae el pedido que sigue.
+      if (n !== pedido.current || enVuelo.current > 0) return;
       if (data.sinCambios) return;
       rev.current = data.rev;
-      setDatos({
-        mundo: claveMundo, hoy: data.hoy ?? hoyIso(), tarjetas: data.tarjetas ?? [],
-        archivadas: data.archivadas ?? { total: 0, mostradas: 0 },
+      const nuevas = data.tarjetas ?? [];
+      setDatos(d => {
+        // Lo que se trajo con "Ver más" de Archivado no se borra con cada
+        // refresco (ver conservarArchivadas). Al cambiar de mundo, sí.
+        const tarjetas = d && d.mundo === claveMundo ? conservarArchivadas(d.tarjetas, nuevas) : nuevas;
+        const locales = tarjetas.filter(t => t.columna === "archivado").length;
+        const total = data.archivadas?.total ?? 0;
+        return {
+          mundo: claveMundo, hoy: data.hoy ?? diaEnUruguay(), tarjetas,
+          archivadas: { total, mostradas: Math.max(data.archivadas?.mostradas ?? 0, locales) },
+        };
       });
       setError(false);
     } catch {
-      setError(true);
+      if (n === pedido.current) setError(true);
     }
   }, [claveMundo]);
 
@@ -136,22 +158,29 @@ export default function TableroPage() {
 
   /** Lo que pasa al llevar una tarjeta a otra columna (arrastrando o con
    *  "Mover a…"). La regla la tiene el servidor; acá se abre lo que haga
-   *  falta (entregar, decir qué cambiar) y se mueve en la pantalla al toque. */
-  const moverA = useCallback(async (t: Tarjeta, a: Columna, comentario?: string) => {
-    if (!sePuedeSoltar(t, a)) return;
+   *  falta (entregar, decir qué cambiar) y se mueve en la pantalla al toque.
+   *  Devuelve si la tarjeta se movió (para no cerrar "Pedir cambios" y
+   *  perder lo escrito si el servidor dijo que no). */
+  const moverA = useCallback(async (t: Tarjeta, a: Columna, comentario?: string): Promise<boolean> => {
+    if (!sePuedeSoltar(t, a)) return false;
     if (a === "esperando") {
       // A Esperando feedback se llega entregando: se abre "Entregar".
       abrirDetalle(t.tareaId, "entregar", null, true);
-      return;
+      return false;
     }
     if (t.columna === "esperando" && a === "en-proceso" && comentario === undefined) {
       setPidiendoCambios(t);
-      return;
+      return false;
     }
-    const antes = datosRef.current;
     setDatos(d => d && { ...d, tarjetas: d.tarjetas.map(x => (x.tareaId === t.tareaId ? { ...x, columna: a, volvioConCambios: a === "en-proceso" && t.columna === "esperando" } : x)) });
+    // Lo que se pidió antes de este movimiento ya no vale (ver `pedido`).
+    pedido.current++;
+    enVuelo.current++;
+    let salio = false;
     try {
       const { data } = await entregasApi.mover(t.tareaId, { desde: t.columna, a, comentario: comentario ?? null });
+      salio = true;
+      movioAlguna.current = true;
       if (data.columna !== a) {
         toast.success(data.columna === "esperando"
           ? "Aprobaste: ahora la revisa la siguiente persona de la cadena."
@@ -161,12 +190,25 @@ export default function TableroPage() {
       } else if (a === "en-proceso" && t.columna === "esperando") {
         toast.success("Volvió a En proceso con tus cambios. Le avisamos a quien la hace.");
       }
-      useVistaEntregas.getState().huboCambios();
     } catch (e) {
-      setDatos(antes);
+      // Vuelve solo esta tarjeta: con una foto de antes se deshacían también
+      // las otras que se movieron mientras tanto.
+      setDatos(d => d && { ...d, tarjetas: d.tarjetas.map(x => (x.tareaId === t.tareaId ? t : x)) });
       toast.error(detalleDeError(e) ?? "No se pudo mover la tarjeta. Probá de nuevo.");
-      void cargar(true);
+    } finally {
+      enVuelo.current--;
+      pedido.current++;
     }
+    // Se trae el tablero cuando terminó el último movimiento en camino.
+    if (enVuelo.current === 0) {
+      if (movioAlguna.current) {
+        movioAlguna.current = false;
+        useVistaEntregas.getState().huboCambios();
+      } else {
+        void cargar(true);
+      }
+    }
+    return salio;
   }, [abrirDetalle, cargar]);
 
   // ---------------------------------------------------------------------
@@ -179,6 +221,10 @@ export default function TableroPage() {
   const sobreRef = useRef<Columna | null>(null);
   const arrastreRef = useRef<Arrastre | null>(null);
   const recienArrastrada = useRef(false);
+  /** Saca los oyentes del puntero de la tarjeta apretada (ver alApretar).
+   *  Escape lo usa: si no, con el botón todavía apretado, mover el mouse
+   *  volvía a arrancar el arrastre y al soltar movía (o aprobaba) igual. */
+  const soltarPresion = useRef<(() => void) | null>(null);
 
   const columnaEn = (x: number, y: number): Columna | null => {
     const el = document.elementFromPoint(x, y) as HTMLElement | null;
@@ -201,7 +247,9 @@ export default function TableroPage() {
     }
   };
 
-  const terminar = useCallback((soltar: boolean) => {
+  /** `comoToque`: fue un toque largo con el dedo, sin moverlo. No se mueve
+   *  nada y el clic que sigue abre la tarjeta, como un toque común. */
+  const terminar = useCallback((soltar: boolean, comoToque = false) => {
     const a = arrastreRef.current;
     const destino = sobreRef.current;
     arrastreRef.current = null;
@@ -209,7 +257,7 @@ export default function TableroPage() {
     setArrastre(null);
     setSobre(null);
     document.body.classList.remove("arrastrando-tarjeta");
-    if (!a) return;
+    if (!a || comoToque) return;
     recienArrastrada.current = true;
     window.setTimeout(() => { recienArrastrada.current = false; }, 50);
     if (soltar && destino && sePuedeSoltar(a.tarjeta, destino)) void moverA(a.tarjeta, destino);
@@ -243,6 +291,11 @@ export default function TableroPage() {
     const conElDedo = e.pointerType === "touch";
     let reloj: number | null = null;
     let ultimo = { clientX: e.clientX, clientY: e.clientY };
+    // Con el dedo: dónde estaba cuando arrancó el arrastre y si después se
+    // movió de verdad. Un toque largo sin mover no suelta en ningún lado
+    // (si no, la barra "Soltala en:" aparecía bajo el dedo y aprobaba).
+    let desde: { x: number; y: number } | null = null;
+    let seMovio = false;
 
     const limpiar = () => {
       if (reloj) window.clearTimeout(reloj);
@@ -252,10 +305,15 @@ export default function TableroPage() {
       document.removeEventListener("touchmove", alMoverDedo);
       document.removeEventListener("touchend", alSoltarDedo);
       document.removeEventListener("touchcancel", alCancelarDedo);
+      if (soltarPresion.current === limpiar) soltarPresion.current = null;
     };
     const alMover = (ev: PointerEvent) => {
       ultimo = { clientX: ev.clientX, clientY: ev.clientY };
-      if (arrastreRef.current) { ponerFantasma(ev.clientX, ev.clientY); return; }
+      if (arrastreRef.current) {
+        if (conElDedo && seMovioElDedo(desde, ev.clientX, ev.clientY)) seMovio = true;
+        ponerFantasma(ev.clientX, ev.clientY);
+        return;
+      }
       const movido = Math.hypot(ev.clientX - inicio.x, ev.clientY - inicio.y);
       if (conElDedo) {
         // Se movió antes de tiempo: es scroll, no arrastre.
@@ -264,7 +322,14 @@ export default function TableroPage() {
       }
       if (movido > PX_PARA_ARRASTRAR) empezar(t, ev, tarjetaEl.getBoundingClientRect(), false);
     };
-    const alSoltar = () => { limpiar(); if (arrastreRef.current) terminar(true); };
+    /** Soltar: con el dedo quieto es un toque (abre la tarjeta), no un movimiento. */
+    const soltar = () => {
+      limpiar();
+      if (!arrastreRef.current) return;
+      if (conElDedo && !seMovio) terminar(false, true);
+      else terminar(true);
+    };
+    const alSoltar = soltar;
     const alCancelar = () => {
       // Con el dedo, el navegador cancela el puntero cuando empieza a
       // arrastrar: desde ahí se sigue con los eventos de toque.
@@ -278,11 +343,16 @@ export default function TableroPage() {
       if (!arrastreRef.current) return;
       ev.preventDefault();
       const toque = ev.touches[0];
-      if (toque) { ultimo = { clientX: toque.clientX, clientY: toque.clientY }; ponerFantasma(toque.clientX, toque.clientY); }
+      if (toque) {
+        ultimo = { clientX: toque.clientX, clientY: toque.clientY };
+        if (seMovioElDedo(desde, toque.clientX, toque.clientY)) seMovio = true;
+        ponerFantasma(toque.clientX, toque.clientY);
+      }
     };
-    const alSoltarDedo = () => { limpiar(); if (arrastreRef.current) terminar(true); };
+    const alSoltarDedo = soltar;
     const alCancelarDedo = () => { limpiar(); if (arrastreRef.current) terminar(false); };
 
+    soltarPresion.current = limpiar;
     window.addEventListener("pointermove", alMover);
     window.addEventListener("pointerup", alSoltar);
     window.addEventListener("pointercancel", alCancelar);
@@ -292,15 +362,21 @@ export default function TableroPage() {
       document.addEventListener("touchcancel", alCancelarDedo);
       reloj = window.setTimeout(() => {
         reloj = null;
+        desde = { x: ultimo.clientX, y: ultimo.clientY };
         empezar(t, ultimo, tarjetaEl.getBoundingClientRect(), true);
       }, MS_PARA_ARRASTRAR_CON_EL_DEDO);
     }
   };
 
-  // Escape suelta sin mover.
+  // Escape suelta sin mover, y suelta también la tarjeta apretada: mover
+  // el mouse con el botón todavía abajo ya no vuelve a arrancar el arrastre.
   useEffect(() => {
     if (!arrastre) return;
-    const tecla = (e: KeyboardEvent) => { if (e.key === "Escape") terminar(false); };
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      soltarPresion.current?.();
+      terminar(false);
+    };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
   }, [arrastre, terminar]);
@@ -347,6 +423,10 @@ export default function TableroPage() {
   const delMundo = datos && datos.mundo === claveMundo ? datos : null;
   const todas = delMundo?.tarjetas ?? [];
   const opciones = externo ? [] : opcionesDeQuien(todas);
+  // Si la opción elegida se quedó sin tarjetas (o quedó una sola opción y no
+  // hay chips), el filtro no vale: si no, el tablero quedaba vacío sin
+  // ningún botón para sacarlo.
+  const filtro = filtroVigente(filtroElegido, opciones);
   const tarjetas = todas.filter(t => deQuien(t, filtro));
   // Sin `puedo.decidir`: ver la nota en TarjetaEntrega (el respaldo no es "te toca").
   const meToca = (t: Tarjeta) => proximoPaso(t.entrega, t.asignadoA, yo, () => "", false, {
@@ -415,13 +495,16 @@ export default function TableroPage() {
                 role="tab"
                 aria-selected={activa === c.clave}
                 onClick={() => setPestana(c.clave)}
-                className="segmento !min-h-[48px] !flex-1 !px-0.5 flex-col !gap-0 text-[11px] leading-tight"
+                title={c.titulo}
+                // En 12 px y sin cortar el nombre: si no entra (un teléfono
+                // angosto, la letra agrandada), pasa a dos renglones.
+                className="segmento !min-h-[48px] !flex-1 !px-0.5 flex-col !gap-0 text-xs leading-tight"
               >
                 <span className="flex items-center gap-1 font-bold tabular-nums">
                   <span className={`h-1.5 w-1.5 rounded-full ${c.punto}`} aria-hidden />
                   {c.clave === "archivado" ? totalArchivadas : c.lista.length}
                 </span>
-                <span className="w-full truncate">{c.clave === "esperando" ? "Feedback" : c.titulo}</span>
+                <span className="w-full break-words">{c.clave === "esperando" ? "Feedback" : c.titulo}</span>
               </button>
             ))}
           </div>
@@ -435,9 +518,13 @@ export default function TableroPage() {
                   key={c.clave}
                   data-columna={c.clave}
                   aria-labelledby={`col-${c.clave}`}
+                  // El anillo de "soltá acá" va por dentro (ring-inset): el
+                  // contenedor hace scroll de costado y cortaba el de afuera.
+                  // Fondos grises: el texto secundario va en slate-600 (en
+                  // slate-500 sobre slate-100 no llegaba a 4,5:1).
                   className={`flex min-w-0 flex-1 flex-col rounded-2xl border p-2 transition-[box-shadow,background-color] md:min-w-[12.5rem] ${c.fondo} ${
                     activa === c.clave ? "" : "hidden md:flex"
-                  } ${arrastre && destinoValido ? `border-dashed ${encima ? `ring-2 ${c.destino} border-transparent` : "border-slate-400 dark:border-slate-500"}` : "border-slate-300 dark:border-slate-800"} ${
+                  } ${arrastre && destinoValido ? `border-dashed ${encima ? `ring-2 ring-inset ${c.destino} border-transparent` : "border-slate-400 dark:border-slate-500"}` : "border-slate-300 dark:border-slate-700"} ${
                     arrastre && !destinoValido && c.clave !== arrastre.tarjeta.columna ? "opacity-60" : ""
                   }`}
                 >
@@ -449,10 +536,10 @@ export default function TableroPage() {
                         {c.clave === "archivado" ? totalArchivadas : c.lista.length}
                       </span>
                     </h2>
-                    <p className="mt-0.5 pl-[1.125rem] text-xs text-slate-500 dark:text-slate-400">{c.bajada}</p>
+                    <p className="mt-0.5 pl-[1.125rem] text-xs text-slate-600 dark:text-slate-400">{c.bajada}</p>
                   </div>
                   {c.lista.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                    <p className="rounded-xl border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:text-slate-400">
                       {arrastre && destinoValido ? `Soltá acá: ${queHaceMover(arrastre.tarjeta.columna, c.clave)}` : "Nada por acá."}
                     </p>
                   ) : (
@@ -484,7 +571,7 @@ export default function TableroPage() {
                     </button>
                   )}
                   {c.clave === "archivado" && (
-                    <p className="mt-2 px-1.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                    <p className="mt-2 px-1.5 text-xs leading-snug text-slate-600 dark:text-slate-400">
                       A los 30 días en Archivado dejan de cargarse: las encontrás con el buscador.
                     </p>
                   )}
@@ -537,9 +624,11 @@ export default function TableroPage() {
       )}
 
       {/* En el teléfono se ve una columna sola: mientras se arrastra, abajo
-          aparecen todas, para soltar en cualquiera. */}
+          aparecen todas, para soltar en cualquiera. También en la tablet: con
+          el dedo no hay scroll de costado mientras se arrastra, y las
+          columnas que no entran no se alcanzaban. */}
       {arrastre?.conElDedo && (
-        <div className="fixed inset-x-0 bottom-0 z-[85] border-t border-slate-300 bg-white/95 px-2 pb-[max(.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 md:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-[85] border-t border-slate-300 bg-white/95 px-2 pb-[max(.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
           <p className="mb-1.5 text-center text-xs font-semibold text-slate-600 dark:text-slate-300">Soltala en:</p>
           <div className="grid grid-cols-5 gap-1.5">
             {COLUMNAS_DEL_TABLERO.map(c => {
@@ -548,8 +637,10 @@ export default function TableroPage() {
                 <div
                   key={c.clave}
                   data-columna={c.clave}
+                  // La que no acepta la tarjeta ya se distingue por el fondo
+                  // gris sin borde: el nombre igual se tiene que poder leer.
                   className={`flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-xl border-2 px-1 text-center text-[11px] font-bold leading-tight ${
-                    !vale ? "border-transparent bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+                    !vale ? "border-transparent bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
                       : sobre === c.clave ? `border-brand-500 bg-brand-50 text-brand-800 dark:bg-brand-500/20 dark:text-brand-100`
                         : "border-dashed border-slate-400 bg-white text-slate-800 dark:border-slate-500 dark:bg-slate-900 dark:text-slate-100"
                   }`}
@@ -567,7 +658,9 @@ export default function TableroPage() {
         <PedirCambios
           tarjeta={pidiendoCambios}
           onCancelar={() => setPidiendoCambios(null)}
-          onMandar={texto => { const t = pidiendoCambios; setPidiendoCambios(null); void moverA(t, "en-proceso", texto); }}
+          // El cuadro se cierra recién cuando el servidor dijo que sí: si no
+          // (otra persona ya decidió, se cortó el wifi), lo escrito queda.
+          onMandar={async texto => { const t = pidiendoCambios; if (await moverA(t, "en-proceso", texto)) setPidiendoCambios(null); }}
           onRevisionCompleta={() => { const t = pidiendoCambios; setPidiendoCambios(null); abrirDetalle(t.tareaId, "revisar", null, true); }}
         />
       )}
@@ -581,7 +674,7 @@ function Chip({ activo, onClick, children }: { activo: boolean; onClick: () => v
       type="button"
       onClick={onClick}
       aria-pressed={activo}
-      className={`min-h-[36px] rounded-full border px-3 text-xs font-semibold transition ${
+      className={`min-h-[40px] rounded-full border px-3 text-xs font-semibold transition ${
         activo
           ? "border-brand-600 bg-brand-600 text-white"
           : "border-slate-300 bg-white text-slate-700 hover:border-brand-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
@@ -600,10 +693,23 @@ function Chip({ activo, onClick, children }: { activo: boolean; onClick: () => v
 function PedirCambios({ tarjeta, onCancelar, onMandar, onRevisionCompleta }: {
   tarjeta: Tarjeta
   onCancelar: () => void
-  onMandar: (texto: string) => void
+  /** Termina cuando contestó el servidor. Si salió bien, el cuadro se cierra
+   *  desde afuera; si no, queda abierto con lo escrito. */
+  onMandar: (texto: string) => Promise<void>
   onRevisionCompleta: () => void
 }) {
   const [texto, setTexto] = useState("");
+  const [mandando, setMandando] = useState(false);
+  async function mandar() {
+    const limpio = texto.trim();
+    if (!limpio || mandando) return;
+    setMandando(true);
+    try {
+      await onMandar(limpio);
+    } finally {
+      setMandando(false);
+    }
+  }
   const cajaRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { cajaRef.current?.focus(); }, []);
   useEffect(() => {
@@ -618,8 +724,8 @@ function PedirCambios({ tarjeta, onCancelar, onMandar, onRevisionCompleta }: {
         role="dialog"
         aria-modal="true"
         aria-labelledby="pedir-cambios-titulo"
-        onSubmit={e => { e.preventDefault(); if (texto.trim()) onMandar(texto.trim()); }}
-        className="relative w-full max-w-lg animate-sheet-up rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-panel dark:bg-slate-900 dark:ring-1 dark:ring-slate-800 sm:animate-scale-in sm:rounded-2xl"
+        onSubmit={e => { e.preventDefault(); void mandar(); }}
+        className="relative w-full max-w-lg animate-sheet-up rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-panel dark:bg-slate-900 dark:ring-1 dark:ring-slate-700 sm:animate-scale-in sm:rounded-2xl"
       >
         <div className="mb-3 flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200">
@@ -648,8 +754,8 @@ function PedirCambios({ tarjeta, onCancelar, onMandar, onRevisionCompleta }: {
           <button type="button" onClick={onCancelar} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
             Cancelar
           </button>
-          <button type="submit" disabled={!texto.trim()} className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-400">
-            <RotateCcw className="h-4 w-4" /> Pedir cambios
+          <button type="submit" disabled={!texto.trim() || mandando} className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-400">
+            {mandando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Pedir cambios
           </button>
         </div>
       </form>
@@ -666,7 +772,10 @@ function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: 
   const [q, setQ] = useState("");
   // El resultado queda atado a lo que se buscó: si la persona sigue
   // escribiendo, el de antes no se muestra como si fuera el de ahora.
-  const [hallado, setHallado] = useState<{ q: string; enTablero: Tarjeta[]; archivadas: Tarjeta[] } | null>(null);
+  // Si la búsqueda falla, se dice (antes se mostraba "No hay tarjetas", como
+  // si no existieran).
+  const [hallado, setHallado] = useState<{ q: string; enTablero: Tarjeta[]; archivadas: Tarjeta[]; fallo?: boolean } | null>(null);
+  const [intento, setIntento] = useState(0);
   const cambios = useVistaEntregas(s => s.cambios);
   const texto = q.trim();
   useEffect(() => {
@@ -675,10 +784,10 @@ function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: 
     const reloj = window.setTimeout(() => {
       entregasApi.buscar(mundo, texto)
         .then(({ data }) => { if (vivo) setHallado({ q: texto, enTablero: data.enTablero, archivadas: data.archivadas }); })
-        .catch(() => { if (vivo) setHallado({ q: texto, enTablero: [], archivadas: [] }); });
+        .catch(() => { if (vivo) setHallado({ q: texto, enTablero: [], archivadas: [], fallo: true }); });
     }, 250);
     return () => { vivo = false; window.clearTimeout(reloj); };
-  }, [texto, mundo, cambios]);
+  }, [texto, mundo, cambios, intento]);
   const resultado = hallado && hallado.q === texto ? hallado : null;
   const buscando = texto.length >= 2 && !resultado;
 
@@ -692,11 +801,12 @@ function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: 
           onChange={e => setQ(e.target.value)}
           placeholder="Buscar: Ciberlunes - Banners"
           aria-label="Buscar tarjetas por acción o nombre"
-          className="campo !pl-9 !pr-9"
+          className="campo !pl-9 !pr-12 sm:!pr-9"
         />
+        {/* 40 px para el dedo en el teléfono; en la compu, el de siempre. */}
         {q && (
           <button type="button" onClick={() => setQ("")} aria-label="Borrar la búsqueda"
-            className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+            className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 sm:right-1.5 sm:h-8 sm:w-8">
             <X className="h-4 w-4" />
           </button>
         )}
@@ -705,6 +815,14 @@ function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: 
         <div className="absolute right-0 top-full z-30 mt-2 max-h-[70vh] w-[min(100vw-2rem,26rem)] overflow-y-auto rounded-2xl border border-slate-300 bg-white p-3 shadow-panel dark:border-slate-700 dark:bg-slate-900">
           {buscando && !resultado ? (
             <p className="flex items-center gap-2 p-2 text-sm text-slate-600 dark:text-slate-300"><Loader2 className="h-4 w-4 animate-spin" /> Buscando…</p>
+          ) : resultado?.fallo ? (
+            <div className="flex flex-wrap items-center gap-2 p-2">
+              <p className="text-sm text-slate-700 dark:text-slate-200">No se pudo buscar. Probá de nuevo.</p>
+              <button type="button" onClick={() => { setHallado(null); setIntento(n => n + 1); }}
+                className="min-h-[40px] rounded-xl px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
+                Reintentar
+              </button>
+            </div>
           ) : resultado && resultado.enTablero.length + resultado.archivadas.length === 0 ? (
             <p className="p-2 text-sm text-slate-600 dark:text-slate-300">No hay tarjetas con «{q.trim()}».</p>
           ) : resultado && (
@@ -739,36 +857,53 @@ function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: 
  */
 function Retrabajo({ mundo, propio }: { mundo: string; propio: boolean }) {
   const [dias, setDias] = useState(90);
-  const [metricas, setMetricas] = useState<Metricas | null>(null);
+  // Las métricas quedan atadas al pedido (mundo y días) que las trajo; si
+  // falla, se dice y se puede reintentar (antes quedaba el esqueleto para
+  // siempre).
+  const [metricas, setMetricas] = useState<{ clave: string; datos: Metricas | null } | null>(null);
+  const [intento, setIntento] = useState(0);
   const [verDetalle, setVerDetalle] = useState(false);
+  const clave = `${mundo}|${dias}|${intento}`;
   useEffect(() => {
     let vivo = true;
-    entregasApi.metricas(mundo, dias).then(({ data }) => { if (vivo) setMetricas(data); }).catch(() => { if (vivo) setMetricas(null); });
+    entregasApi.metricas(mundo, dias)
+      .then(({ data }) => { if (vivo) setMetricas({ clave, datos: data }); })
+      .catch(() => { if (vivo) setMetricas({ clave, datos: null }); });
     return () => { vivo = false; };
-  }, [mundo, dias]);
+  }, [mundo, dias, clave]);
+  const actual = metricas && metricas.clave === clave ? metricas : null;
+  const m = actual?.datos ?? null;
   return (
     <section aria-label="Retrabajo" className="mt-2 rounded-2xl border border-slate-300 bg-white p-4 shadow-card dark:border-slate-700 dark:bg-slate-900 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="segmentado !p-0.5" role="group" aria-label="Período">
           {[30, 90, 365].map(d => (
-            <button key={d} type="button" aria-pressed={dias === d} onClick={() => setDias(d)} className="segmento !min-h-[32px] !flex-none whitespace-nowrap !px-2.5 text-xs">
+            <button key={d} type="button" aria-pressed={dias === d} onClick={() => setDias(d)} className="segmento !min-h-[40px] !flex-none whitespace-nowrap !px-2.5 text-xs">
               {d === 365 ? "1 año" : `${d} días`}
             </button>
           ))}
         </div>
       </div>
-      {!metricas ? (
+      {!actual ? (
         <div className="skeleton h-20 rounded-xl" />
-      ) : metricas.fases === 0 ? (
+      ) : !m ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm text-slate-700 dark:text-slate-200">No se pudo traer el retrabajo.</p>
+          <button type="button" onClick={() => setIntento(n => n + 1)}
+            className="min-h-[40px] rounded-xl px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
+            Probar de nuevo
+          </button>
+        </div>
+      ) : m.fases === 0 ? (
         <p className="text-sm text-slate-600 dark:text-slate-400">
           Todavía no se aprobó ninguna fase en este período: cuando se aprueben, acá se ve cuántas rondas llevaron.
         </p>
       ) : (
         <>
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            <Dato etiqueta="Rondas hasta aprobar" valor={numero(metricas.rondasPromedio)} bajada="promedio por fase" />
-            <Dato etiqueta="Aprobado a la primera" valor={metricas.aLaPrimera == null ? "—" : `${metricas.aLaPrimera}%`} bajada="de las fases" />
-            <Dato etiqueta="Fases aprobadas" valor={String(metricas.fases)} bajada={dias === 365 ? "en el último año" : `en ${dias} días`} />
+            <Dato etiqueta="Rondas hasta aprobar" valor={numero(m.rondasPromedio)} bajada="promedio por fase" />
+            <Dato etiqueta="Aprobado a la primera" valor={m.aLaPrimera == null ? "—" : `${m.aLaPrimera}%`} bajada="de las fases" />
+            <Dato etiqueta="Fases aprobadas" valor={String(m.fases)} bajada={dias === 365 ? "en el último año" : `en ${dias} días`} />
           </div>
           <button type="button" onClick={() => setVerDetalle(v => !v)} aria-expanded={verDetalle}
             className="-ml-2 mt-3 flex min-h-[40px] items-center gap-1 rounded-xl px-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
@@ -777,9 +912,9 @@ function Retrabajo({ mundo, propio }: { mundo: string; propio: boolean }) {
           </button>
           {verDetalle && (
             <div className={`mt-2 grid gap-5 ${propio ? "" : "lg:grid-cols-3"}`}>
-              <TablaDeRetrabajo titulo="Por tipo de pieza" filas={metricas.porTipo} />
-              {!propio && <TablaDeRetrabajo titulo="Por responsable" filas={metricas.porResponsable} />}
-              {!propio && <TablaDeRetrabajo titulo="Por mundo" filas={metricas.porMundo} />}
+              <TablaDeRetrabajo titulo="Por tipo de pieza" filas={m.porTipo} />
+              {!propio && <TablaDeRetrabajo titulo="Por responsable" filas={m.porResponsable} />}
+              {!propio && <TablaDeRetrabajo titulo="Por mundo" filas={m.porMundo} />}
             </div>
           )}
         </>
@@ -793,7 +928,7 @@ function Dato({ etiqueta, valor, bajada }: { etiqueta: string; valor: string; ba
     <div className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/50">
       <p className="text-xs font-semibold leading-tight text-slate-600 dark:text-slate-400">{etiqueta}</p>
       <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100 sm:text-3xl">{valor}</p>
-      <p className="text-[11px] text-slate-500 dark:text-slate-400">{bajada}</p>
+      <p className="text-xs text-slate-600 dark:text-slate-400">{bajada}</p>
     </div>
   );
 }
