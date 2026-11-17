@@ -38,12 +38,21 @@ export function MarcoScroll({ ancho, children }: { ancho: number | string; child
     const el = ref.current
     const adentro = interior.current
     if (!el || !adentro) return
-    const medir = () => setDesborda(adentro.offsetWidth > el.clientWidth + 1)
-    medir()
-    const observador = new ResizeObserver(medir)
+    const sale = () => adentro.offsetWidth > el.clientWidth + 1
+    // La primera vez, ya: en el teléfono hace falta el scroll para llevar a hoy.
+    setDesborda(sale())
+    // Después, pasar a scrollear espera un momento: mientras el menú se
+    // desliza, el mes queda unos píxeles más ancho durante un cuadro (hasta
+    // que se reajusta el zoom) y la barra de scroll aparecía y se iba.
+    let espera = 0
+    const observador = new ResizeObserver(() => {
+      window.clearTimeout(espera)
+      if (!sale()) setDesborda(false)
+      else espera = window.setTimeout(() => setDesborda(sale()), 250)
+    })
     observador.observe(el)
     observador.observe(adentro)
-    return () => observador.disconnect()
+    return () => { observador.disconnect(); window.clearTimeout(espera) }
   }, [])
   /** Mientras la persona no lo corra a mano, se acomoda solo para mostrar hoy. */
   const solo = useRef(true)

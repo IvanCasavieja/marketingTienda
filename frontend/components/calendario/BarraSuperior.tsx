@@ -144,10 +144,19 @@ export function BarraSuperior() {
     // También cuando cambia el ancho sin que cambie la ventana: al ocultar o
     // mostrar el menú del costado (17/11/2026). El ancho de #calendario no
     // depende del zoom (las secciones recortan), así que no se realimenta.
+    // Mientras el menú se desliza el ancho cambia en cada cuadro, y redibujar
+    // el mes en cada uno trababa el deslizamiento: se reacomoda una sola vez,
+    // cuando el ancho deja de cambiar.
     const contenedor = document.getElementById('calendario')
-    const observador = contenedor ? new ResizeObserver(() => ajustar()) : null
+    let espera = 0
+    const observador = contenedor
+      ? new ResizeObserver(() => { window.clearTimeout(espera); espera = window.setTimeout(ajustar, 120) })
+      : null
     if (contenedor && observador) observador.observe(contenedor)
-    return () => { cancelAnimationFrame(cuadro); window.removeEventListener('resize', ajustar); observador?.disconnect() }
+    return () => {
+      cancelAnimationFrame(cuadro); window.clearTimeout(espera)
+      window.removeEventListener('resize', ajustar); observador?.disconnect()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomElegido, vista, dias, filtro])
 
