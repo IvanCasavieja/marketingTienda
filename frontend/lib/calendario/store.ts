@@ -131,6 +131,9 @@ export type DatosTarea = {
   /** "N días antes del inicio": el vencimiento se mueve con la acción. */
   ancla?: AnclaTarea | null
   anclaDias?: number | null
+  /** Sin el aviso de "Listo" de cada una: la tarea con sus piezas avisa una
+   *  sola vez, desde el formulario (17/11/2026). */
+  silencioso?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -890,6 +893,7 @@ export const useCalendario = create<Estado>()(
                 } : t)),
               }))
             }
+            if (datos.silencioso) return
             if (pieza) {
               toast.success(r.avisados
                 ? 'Listo: nació su tarjeta en el tablero, en «Ingresado». Le avisamos a quien la hace.'

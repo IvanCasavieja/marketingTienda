@@ -17,7 +17,9 @@ import {
 import { proximoPaso } from '@/lib/calendario/entregas'
 import { useVistaEntregas } from '@/store/entregas'
 import { FasesCompactas, faseActualTexto } from './entregas/LineaDeFases'
-import { PedirPieza } from './PedirPieza'
+import { ModalDeOpciones, PedirPieza } from './PedirPieza'
+import { useCatalogoDeTipos } from '@/store/tiposDeTarea'
+import { camposVisibles, linkValido, nombreDeTarjeta, valorParaLeer, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 
 /**
@@ -577,7 +579,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
               con su tarjeta en el tablero y sus entregas. */}
           {puedeMaterial && accion && (pidiendoMaterial ? (
             <PedirPieza
-              accion={accion} parentId={tarea.id} tareaMadre={tarea.titulo}
+              accion={accion} parentId={tarea.id} tareaMadre={tarea.titulo} responsableInicial={tarea.asignadoA}
               personas={personas} usuarioId={usuarioId} gestiona={gestiona} onListo={() => abrir(null)}
             />
           ) : (
@@ -613,7 +615,8 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
   const personasEstado = useCalendario(s => s.personasEstado)
   // Abierto o cerrado lo lleva el bloque: abrir esto cierra cualquier otro
   // formulario (pedir material, otra subtarea).
-  const { abierto: abiertoEnElBloque, abrir, pidePiezas } = useContext(FormularioAbierto)
+  const { abierto: abiertoEnElBloque, abrir, pidePiezas, accion } = useContext(FormularioAbierto)
+  const { tipos } = useCatalogoDeTipos()
   const clave = parentId ? `sub:${parentId}` : 'nueva'
   const abierto = abierta || abiertoEnElBloque === clave
   const setAbierto = (v: boolean) => abrir(v ? clave : null)
@@ -621,12 +624,18 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
   const [asignadoA, setAsignadoA] = useState('')
   const [vence, setVence] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  // Ivan (17/11/2026): "la idea es que antes de crear la tarea ya
+  // seleccionemos las piezas". Solo en la tarea principal, y para quien
+  // puede pedirlas; la persona y la fecha valen para todas.
+  const [piezas, setPiezas] = useState<PiezaElegida[]>([])
+  const conPiezas = !parentId && pidePiezas
 
   const responsable = asignadoA ? Number(asignadoA) : null
-  const valida = titulo.trim() !== ''
+  const linkMalo = piezas.map(p => faltaEnPieza(p, tipos)).find(Boolean) ?? null
+  const valida = titulo.trim() !== '' && !linkMalo
 
   function limpiar() {
-    setTitulo(''); setAsignadoA(''); setVence(''); setDescripcion('')
+    setTitulo(''); setAsignadoA(''); setVence(''); setDescripcion(''); setPiezas([])
   }
 
   function cerrar() {
@@ -638,20 +647,34 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
   function enviar(e: React.FormEvent) {
     e.preventDefault()
     if (!valida) return
+    const venceGuardable = esFechaGuardable(vence) ? vence : null
+    const elegidas = conPiezas ? piezas : []
     const id = crear(accionId, {
-      titulo, parentId, asignadoA: responsable,
-      vence: esFechaGuardable(vence) ? vence : null,
+      titulo, parentId, asignadoA: responsable, vence: venceGuardable,
       descripcion: descripcion.trim() || null,
+      silencioso: elegidas.length > 0,
     })
-    limpiar()
-    // La tarea es la acción principal; lo que sigue es agregarle sus piezas
-    // (Ivan, 17/11/2026: "uno crea la tarea y el resto empieza a crear las
-    // subtareas... yo hago la de banners, Belén la de mailing"). Por eso,
-    // recién creada, se abre ahí mismo el pedido de su primera pieza, con el
-    // catálogo (Banners con sus medidas, Redes, Mailing...). Una subtarea
-    // común se cierra y listo.
-    if (id && !parentId && pidePiezas) abrir(`material:${id}`)
-    else { setAbierto(false); onListo?.() }
+    // Sus piezas, con la misma persona y la misma fecha: la tarea es la
+    // acción principal y las piezas cuelgan de ella. Van en la cola de la
+    // acción, detrás del alta de la tarea. Cada una lleva el detalle de la
+    // tarea, que es lo que lee quien la hace en su tarjeta.
+    if (id) {
+      for (const p of elegidas) {
+        const tipo = tipos?.find(t => t.clave === p.clave)
+        crear(accionId, {
+          titulo: nombreDeTarjeta(accion?.nombre ?? '', tipo), parentId: id,
+          asignadoA: responsable, vence: venceGuardable,
+          descripcion: descripcion.trim() || null,
+          para: 'tienda', tipo: p.clave, opciones: p.opciones,
+          detalles: Object.fromEntries(Object.entries(p.detalles).filter(([, v]) => v.trim() !== '')),
+          silencioso: true,
+        })
+      }
+      if (elegidas.length > 0) {
+        toast.success(`Tarea creada con ${elegidas.length} ${elegidas.length === 1 ? 'pieza' : 'piezas'}: nacieron sus tarjetas en el tablero.`)
+      }
+    }
+    cerrar()
   }
 
   /** Lo dictado trae un título: si la tarea todavía no tiene, se usa ese. */
@@ -694,6 +717,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
         maxLength={500}
         className="campo"
       />
+      {conPiezas && <ElegirPiezas valor={piezas} onCambiar={setPiezas} tipos={tipos} />}
       <CampoDetalle
         id={`detalle-nueva-${parentId ?? accionId}`}
         valor={descripcion}
@@ -702,7 +726,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="etiqueta-campo">Para quién</span>
+          <span className="etiqueta-campo">{conPiezas ? '¿Quién la hace?' : 'Para quién'}</span>
           <select value={asignadoA} onChange={e => setAsignadoA(e.target.value)} className="campo">
             <option value="">Sin asignar por ahora</option>
             {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
@@ -720,6 +744,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {linkMalo && <p className="mr-auto text-xs text-amber-700 dark:text-amber-300">{linkMalo}</p>}
         <button type="button" onClick={cerrar} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[40px]">
           Cancelar
         </button>
@@ -728,10 +753,130 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
           disabled={!valida}
           className="min-h-[44px] rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-700 dark:disabled:text-slate-400 sm:min-h-[40px]"
         >
-          Crear tarea
+          {conPiezas && piezas.length > 0 ? `Crear tarea con ${piezas.length} ${piezas.length === 1 ? 'pieza' : 'piezas'}` : 'Crear tarea'}
         </button>
       </div>
     </form>
+  )
+}
+
+/** Una pieza elegida al crear la tarea: el tipo, lo tildado y los datos de más. */
+type PiezaElegida = { clave: string; opciones: string[]; detalles: Record<string, string> }
+
+function tieneOpciones(t: TipoDeTarea): boolean {
+  return t.opciones.length > 0 || t.otras || t.campos.length > 0
+}
+
+/** Lo que frena crear la tarea por una pieza: hoy, un link mal escrito. */
+function faltaEnPieza(p: PiezaElegida, tipos: TipoDeTarea[] | null): string | null {
+  const tipo = tipos?.find(t => t.clave === p.clave)
+  if (!tipo) return null
+  const malo = camposVisibles(tipo, p.opciones).find(c => c.tipo === 'link' && p.detalles[c.clave]?.trim() && !linkValido(p.detalles[c.clave]))
+  return malo ? `${tipo.nombre} · ${malo.nombre}: tiene que empezar con https://` : null
+}
+
+/**
+ * Las piezas de la tarea, elegidas antes de crearla (17/11/2026): Banners,
+ * Redes, Push… Tocar un tipo lo suma y abre su modal con todas las opciones
+ * (el mismo de "Agregar pieza"); tocarlo de nuevo lo vuelve a abrir.
+ */
+function ElegirPiezas({ valor, onCambiar, tipos }: {
+  valor: PiezaElegida[]
+  onCambiar: (v: PiezaElegida[]) => void
+  tipos: TipoDeTarea[] | null
+}) {
+  const [editando, setEditando] = useState<string | null>(null)
+  const actual = valor.find(p => p.clave === editando) ?? null
+  const tipoActual = tipos?.find(t => t.clave === editando) ?? null
+
+  function tocar(t: TipoDeTarea) {
+    if (!valor.some(p => p.clave === t.clave)) onCambiar([...valor, { clave: t.clave, opciones: [], detalles: {} }])
+    if (tieneOpciones(t)) setEditando(t.clave)
+  }
+  function cambiar(clave: string, cambio: Partial<PiezaElegida>) {
+    onCambiar(valor.map(p => (p.clave === clave ? { ...p, ...cambio } : p)))
+  }
+
+  return (
+    // min-w-0: un <fieldset> no se achica por debajo de su contenido, y los
+    // tipos (y el resumen de cada pieza) se salían por el costado de la ficha.
+    <fieldset className="min-w-0">
+      <legend className="etiqueta-campo">¿Qué piezas lleva?</legend>
+      {!tipos ? (
+        <div className="skeleton h-10 rounded-xl" />
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {tipos.map(t => {
+            const elegida = valor.some(p => p.clave === t.clave)
+            return (
+              <button
+                key={t.clave}
+                type="button"
+                aria-pressed={elegida}
+                onClick={() => tocar(t)}
+                className={`flex min-h-[40px] items-center gap-1 rounded-xl border px-3 text-sm font-semibold transition active:scale-95 ${
+                  elegida
+                    ? 'border-brand-600 bg-brand-600 text-white shadow-sm'
+                    : 'border-slate-300 bg-white text-slate-700 hover:border-brand-400 hover:text-brand-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-brand-500/60'
+                }`}
+              >
+                {elegida && <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden />} {t.nombre}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {valor.length > 0 && tipos && (
+        <ul className="mt-2 space-y-1.5" aria-label="Piezas elegidas">
+          {valor.map(p => {
+            const t = tipos.find(x => x.clave === p.clave)
+            if (!t) return null
+            const datos = camposVisibles(t, p.opciones).filter(c => p.detalles[c.clave]?.trim())
+              .map(c => `${c.nombre}: ${valorParaLeer(c, p.detalles[c.clave])}`)
+            const resumen = [...p.opciones, ...datos].join(' · ')
+            return (
+              <li key={p.clave} className="flex items-center gap-2 rounded-xl border border-brand-200 bg-white px-3 py-2 dark:border-brand-500/30 dark:bg-slate-900">
+                <span className="min-w-0 flex-1 text-sm">
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">{t.nombre}</span>
+                  <span className="block truncate text-xs text-slate-600 dark:text-slate-400">
+                    {resumen || (tieneOpciones(t) ? 'Todavía sin elegir opciones' : 'Sin opciones para elegir')}
+                  </span>
+                </span>
+                {tieneOpciones(t) && (
+                  <button type="button" onClick={() => setEditando(p.clave)} className="min-h-[36px] rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
+                    Cambiar
+                  </button>
+                )}
+                <button type="button" onClick={() => onCambiar(valor.filter(x => x.clave !== p.clave))} aria-label={`Sacar ${t.nombre}`}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
+                  <X className="h-4 w-4" />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      {actual && tipoActual && (
+        <ModalDeOpciones
+          tipo={tipoActual}
+          opciones={actual.opciones}
+          detalles={actual.detalles}
+          onAlternar={o => cambiar(actual.clave, {
+            opciones: actual.opciones.includes(o) ? actual.opciones.filter(x => x !== o) : [...actual.opciones, o],
+          })}
+          onAgregarOtra={texto => {
+            const o = texto.trim()
+            if (o && !actual.opciones.some(x => x.toLocaleLowerCase('es') === o.toLocaleLowerCase('es'))) {
+              cambiar(actual.clave, { opciones: [...actual.opciones, o] })
+            }
+          }}
+          onDetalle={(k, v) => cambiar(actual.clave, { detalles: { ...actual.detalles, [k]: v } })}
+          onCerrar={() => setEditando(null)}
+        />
+      )}
+    </fieldset>
   )
 }
 

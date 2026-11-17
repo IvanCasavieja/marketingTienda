@@ -68,12 +68,17 @@ por tarea, hasta tres niveles (tarea → subtarea → sub-subtarea).
   lidere el equipo sin ser Admin hay que tildárselo a mano.
 
 **Cómo se arma (17/11/2026).** En la ficha de una acción hay un solo botón
-para empezar: **Crear tarea**. La tarea es la acción principal; sus piezas
-cuelgan de ella ("yo hago la de banners, Belén la de mailing"). Al crearla se
-abre ahí mismo **Nueva pieza**, con el catálogo de `tipos_de_tarea.py`
-(Banners con sus medidas, Redes sociales, Mailing, EMM, Push, WhatsApp,
-Cartelería...), y debajo de cada tarea queda **Agregar pieza a esta tarea**
-para sumar más. Cada pieza nace con su tarjeta en el tablero y sus entregas.
+para empezar: **Crear tarea**. La tarea es la acción principal y sus piezas
+se eligen en el mismo formulario, antes de crearla ("la idea es que antes de
+crear la tarea ya seleccionemos las piezas"): qué hay que hacer, **¿Qué
+piezas lleva?** (cada tipo abre su modal con todas las opciones del catálogo
+de `tipos_de_tarea.py`: Banners con sus medidas, Redes sociales, Mailing, EMM,
+Push, WhatsApp, Cartelería...), el detalle, **¿Quién la hace?** y para
+cuándo. La persona y la fecha se piden una sola vez y valen para la tarea y
+todas sus piezas; el detalle va también en cada pieza. Se crea todo junto,
+con un solo aviso. Debajo de cada tarea queda **Agregar pieza a esta tarea**
+para sumar más después, ya con la persona de la tarea elegida. Cada pieza
+nace con su tarjeta en el tablero y sus entregas.
 Una tarea común ya no lleva entregas propias: ni "Lleva entregas para
 aprobar" al crearla ni el botón "Entregas" (traían otra lista de tipos, más
 corta, y confundía). En todo el bloque hay un solo formulario abierto a la vez.
