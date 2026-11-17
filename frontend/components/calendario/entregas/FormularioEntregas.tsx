@@ -73,12 +73,16 @@ function mover<T>(lista: T[], i: number, paso: number): T[] {
 const BOTON_CHICO =
   'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 active:scale-95 disabled:pointer-events-none disabled:opacity-30 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100'
 
-export function FormularioEntregas({ valor, onCambiar, personas, responsableId, usuarioId }: {
+export function FormularioEntregas({ valor, onCambiar, personas, responsableId, usuarioId, ocultarTipo = false }: {
   valor: ConfigEntregas
   onCambiar: (c: ConfigEntregas) => void
   personas: Persona[]
   responsableId: number | null
   usuarioId: number | null
+  /** Sin el selector "Tipo de pieza": en "Pedir una pieza" ya sale de lo
+   *  elegido en "¿Qué es?" (un segundo catálogo de 5, con el Mailing en
+   *  "Otro" al lado de "Email marketing", invitaba a confundirlos). */
+  ocultarTipo?: boolean
 }) {
   const set = (cambios: Partial<ConfigEntregas>) => onCambiar({ ...valor, ...cambios })
   // Dictar el pedido desde el celular: la IA lo ordena y lo que encaja cae en
@@ -100,7 +104,7 @@ export function FormularioEntregas({ valor, onCambiar, personas, responsableId, 
 
   return (
     <div className="space-y-5">
-      <fieldset>
+      <fieldset hidden={ocultarTipo}>
         <legend className="etiqueta-campo">Tipo de pieza</legend>
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Tipo de pieza">
           {TIPOS_DE_PIEZA.map(t => {

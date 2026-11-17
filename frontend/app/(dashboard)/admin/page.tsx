@@ -345,7 +345,9 @@ function UserEditorModal({
                 />
                 <span>
                   <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Cuenta externa (agencia o diseñador de afuera)</span>
-                  <span className="block text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                  {/* Lo que explica qué ve una cuenta externa: en 12 px y oscuro
+                      (en 11 px gris claro no se leía). */}
+                  <span className="block text-xs leading-snug text-slate-600 dark:text-slate-300">
                     Entra a su tablero de tarjetas. El calendario lo ve solo si se lo habilitás abajo, y de él solo
                     sus tareas. No ve avisos, notas internas ni ninguna herramienta, y no se le pueden dar permisos de gestión.
                   </span>
@@ -370,7 +372,7 @@ function UserEditorModal({
           {!user.is_superuser && !esSucursal && (
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Calendario</p>
-              <p className="mb-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+              <p className="mb-2 text-xs leading-snug text-slate-600 dark:text-slate-300">
                 Hasta dónde ve el calendario. «1 mes» es el mes actual (y la última semana del anterior); «2 meses»
                 suma el que viene. Su tablero de tarjetas lo ve siempre, aunque elijas «No lo ve».
               </p>
@@ -1023,7 +1025,7 @@ export default function AdminPage() {
                     {/* Se marca lo que se sale de lo normal: alguien del equipo
                         con el calendario recortado, o una externa que sí lo ve. */}
                     {!u.is_superuser && (u.es_externo ? alcanceDe(u) !== "nada" : alcanceDe(u) !== "todo") && (
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold uppercase text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                         Calendario: {nombreDeAlcance(alcanceDe(u))}
                       </span>
                     )}

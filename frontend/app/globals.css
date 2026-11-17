@@ -155,9 +155,11 @@
   .segmentado {
     @apply flex items-center gap-0.5 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80;
   }
+  /* Lo no elegido, en slate-600: en slate-500 sobre el gris del segmentado
+     no llegaba a 4,5:1 (revisión del tablero, 16/11). */
   .segmento {
     @apply flex min-h-[36px] flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold
-           text-slate-500 transition hover:text-slate-900
+           text-slate-600 transition hover:text-slate-900
            dark:text-slate-400 dark:hover:text-slate-100 sm:flex-none;
   }
   .segmento[aria-pressed="true"], .segmento[aria-selected="true"] {

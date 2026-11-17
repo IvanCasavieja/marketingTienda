@@ -66,6 +66,8 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const camaraRef = useRef<HTMLInputElement>(null)
   const galeriaRef = useRef<HTMLInputElement>(null)
 
+  // La última fase es la que sale publicada: ahí el original importa más.
+  const esLaUltima = resumen.fases.length > 0 && resumen.fases[resumen.fases.length - 1].id === resumen.faseActual
   const linkMalo = link.trim() !== '' && !/^https?:\/\//i.test(link.trim())
   // Los materiales son las imágenes y/o el link (16/11/2026): con uno alcanza.
   const hayMateriales = imagenes.length > 0 || (link.trim() !== '' && !linkMalo)
@@ -226,6 +228,14 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
                 onChange={e => { void agregar(e.target.files); e.target.value = '' }} />
             </div>
           )}
+          {/* Las imágenes se achican antes de subir (la base es chica): sirven
+              para revisar, no para publicar. Se dice acá, y en la última fase
+              se destaca si falta el link, que es lo que el equipo va a bajar. */}
+          <p className={esLaUltima && !link.trim()
+            ? 'mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-medium text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-100 dark:ring-amber-500/40'
+            : 'mt-2 text-xs text-slate-600 dark:text-slate-400'}>
+            Se achican para revisar (1600 px, JPEG). Para que el equipo baje el archivo final, pegá el link al original.
+          </p>
         </section>
 
         <div className="grid gap-3">
@@ -296,9 +306,11 @@ function ListaDeMarcasATildar({ marcas, tildadas, onAlternar }: {
             <label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-2 pr-3 transition ${
               si ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10' : 'border-slate-300 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900'
             }`}>
-              <input type="checkbox" checked={si} onChange={() => onAlternar(m.id)} className="sr-only" />
-              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 transition ${
-                si ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 dark:border-slate-600'
+              {/* El tilde real es invisible (sr-only también tapa el contorno
+                  del foco): el foco del teclado se pinta en la casilla dibujada. */}
+              <input type="checkbox" checked={si} onChange={() => onAlternar(m.id)} className="peer sr-only" />
+              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 transition peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-slate-900 ${
+                si ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-500 dark:border-slate-500'
               }`} aria-hidden>
                 {si && <Check className="h-4 w-4" strokeWidth={3} />}
               </span>

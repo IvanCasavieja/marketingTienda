@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ArrowRightLeft, Building2, CalendarClock, FileImage, RotateCcw, UserRound } from 'lucide-react'
-import { proximoPaso, tipoDePieza, type Columna, type Tarjeta } from '@/lib/calendario/entregas'
-import { defColumna, queHaceMover, quienLaHaceTexto, textoDeFecha } from '@/lib/calendario/tablero'
+import { proximoPaso, type Columna, type Tarjeta } from '@/lib/calendario/entregas'
+import { defColumna, modoAlTocar, queHaceMover, quienLaHaceTexto, rotuloDePieza, textoDeFecha } from '@/lib/calendario/tablero'
 import { mundoDe } from '@/lib/mundos'
 import { useVistaEntregas } from '@/store/entregas'
 import { FasesCompactas } from './LineaDeFases'
@@ -69,9 +69,12 @@ export function TarjetaEntrega({
       >
         {/* El color del mundo, como un lomo a la izquierda. */}
         <span aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-r-full" style={{ backgroundColor: mundo?.color ?? '#94a3b8' }} />
+        {/* Una tarjeta nueva (nada entregado) se abre mirando, con lo que se
+            pidió a la vista y el botón de entregar: "Entregar" no muestra el
+            pedido (ver modoAlTocar). */}
         <button
           type="button"
-          onClick={() => abrir(tarjeta.tareaId, paso.accion === 'revisar' ? 'revisar' : paso.accion === 'entregar' ? 'entregar' : 'ver')}
+          onClick={() => abrir(tarjeta.tareaId, modoAlTocar(paso.accion, r))}
           className="flex w-full flex-col gap-2 rounded-2xl py-3 pl-4 pr-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         >
           <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
@@ -86,15 +89,17 @@ export function TarjetaEntrega({
             {tarjeta.miniatura ? (
               <Miniatura imagenId={tarjeta.miniatura} etiqueta={`La última versión de ${tarjeta.titulo}`} className="h-12 w-12" perezosa />
             ) : !tarjeta.tipo ? (
-              <span className="flex h-12 w-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" aria-hidden>
+              // El tipo con un rótulo corto y entero ("EMM", "Banner") en 11 px
+              // oscuro: en 8 px gris y recortado ("EMAIL M") no se leía.
+              <span className="flex h-12 w-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200" aria-hidden>
                 <FileImage className="h-4 w-4" />
-                <span className="text-[8px] font-bold uppercase">{tipoDePieza(r.tipoPieza).nombre.slice(0, 7)}</span>
+                <span className="text-[11px] font-bold leading-none">{rotuloDePieza(r.tipoPieza)}</span>
               </span>
             ) : null}
           </span>
 
           {(tarjeta.opciones?.length ?? 0) > 0 && (
-            <span className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300">{tarjeta.opciones!.join(' · ')}</span>
+            <span className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300" title={tarjeta.opciones!.join(' · ')}>{tarjeta.opciones!.join(' · ')}</span>
           )}
 
           {fecha && (
@@ -128,11 +133,11 @@ export function TarjetaEntrega({
         </button>
 
         {(quien || (onMoverA && destinos.length > 0)) && (
-          <div className="flex items-center gap-2 border-t border-slate-200 py-1.5 pl-4 pr-1.5 dark:border-slate-800">
+          <div className="flex items-center gap-2 border-t border-slate-300 py-1.5 pl-4 pr-1.5 dark:border-slate-700">
             {quien && (
               <span className="flex min-w-0 flex-1 items-center gap-1 text-xs text-slate-600 dark:text-slate-300">
                 {tarjeta.hace?.tipo === 'tienda' ? <UserRound className="h-3.5 w-3.5 shrink-0" /> : <Building2 className="h-3.5 w-3.5 shrink-0" />}
-                <span className="truncate">{quien}</span>
+                <span className="truncate" title={quien}>{quien}</span>
               </span>
             )}
             {onMoverA && destinos.length > 0 && !fantasma && (
@@ -167,7 +172,8 @@ function MoverA({ tarjeta, destinos, onMoverA }: { tarjeta: Tarjeta; destinos: C
         aria-haspopup="menu"
         aria-label={`Mover a… (${tarjeta.titulo})`}
         title="Mover a otra columna"
-        className="flex min-h-[36px] items-center gap-1 rounded-lg px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+        // En el teléfono es la forma cómoda de mover: 44 px para el dedo.
+        className="flex min-h-[44px] items-center gap-1 rounded-lg px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 md:min-h-[36px]"
       >
         <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden />
         {/* En la notebook las columnas son angostas y se arrastra: el ícono

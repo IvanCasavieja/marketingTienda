@@ -409,7 +409,8 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
             // se nombra, pero sin enlace a una ficha que no abriría.
             <span
               className="flex min-h-[36px] min-w-0 items-center gap-2 rounded-xl bg-slate-100 py-1 pl-1.5 pr-2.5 text-sm font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-              title="Esta acción queda fuera de lo que ves del calendario"
+              // El nombre se corta en el teléfono: el title lo dice entero.
+              title={`${tarea.accion.nombre} · Esta acción queda fuera de lo que ves del calendario`}
             >
               <span className="h-5 w-5 shrink-0 rounded-md ring-1 ring-inset ring-black/10" style={{ backgroundColor: tarea.accion.color ?? "#cbd5e1" }} />
               <span className="truncate">{tarea.accion.nombre}</span>

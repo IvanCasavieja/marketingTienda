@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import {
   ArrowRight, Building2, Check, ChevronDown, Clock, Download, ExternalLink, FileText, Hourglass, Link2, Loader2, Lock,
   PartyPopper, Pencil, RotateCcw, Send, ShieldCheck, UserRound, X,
@@ -15,7 +16,10 @@ import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
 import { useCalendario } from '@/lib/calendario/store'
 import type { Persona } from '@/lib/calendario/tipos'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { veCalendario } from '@/lib/alcance'
+import { esExterno } from '@/lib/externos'
 import { useVistaEntregas } from '@/store/entregas'
+import { useCatalogoDeTipos } from '@/store/tiposDeTarea'
 import { defColumna, quienLaHaceTexto } from '@/lib/calendario/tablero'
 import { useDialogo } from '../useDialogo'
 import { FormularioEntrega } from './FormularioEntrega'
@@ -53,6 +57,7 @@ function Contenido({ tareaId }: { tareaId: string }) {
   // soltar la tarjeta): al terminar o cancelar, se vuelve al tablero.
   const soloEsto = useVistaEntregas(s => s.soloEsto)
   const { user } = useCurrentUser()
+  const pathname = usePathname()
   const [detalle, setDetalle] = useState<DetalleEntregas | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [recarga, setRecarga] = useState(0)
@@ -68,6 +73,18 @@ function Contenido({ tareaId }: { tareaId: string }) {
     return () => { vivo = false }
   }, [tareaId, recarga])
 
+  const version = detalle ? versionEnCurso(detalle) : null
+  // Si de verdad hay un formulario abierto (entregar, revisar, configurar).
+  // Si no se pudo abrir (falló la carga, la tarjeta ya cambió y no le toca,
+  // la versión ya se decidió), se ve el resumen y se tiene que poder cerrar:
+  // antes no había X ni Esc y el único botón era "Probar de nuevo".
+  const formulario = !!detalle && (
+    (modo === 'entregar' && detalle.puedo.entregar)
+    || (modo === 'revisar' && detalle.puedo.decidir && !!version)
+    || (modo === 'configurar' && detalle.puedo.configurar)
+  )
+  const sePuedeCerrar = !formulario
+
   // Escape cierra (solo mirando: entregando o revisando, se sale con Cancelar,
   // que avisa si hay algo sin mandar). Va en la captura para que no cierre
   // también la ficha que puede estar abajo.
@@ -75,11 +92,11 @@ function Contenido({ tareaId }: { tareaId: string }) {
     const tecla = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       e.stopPropagation()
-      if (modo === 'ver') cerrar()
+      if (sePuedeCerrar) cerrar()
     }
     window.addEventListener('keydown', tecla, true)
     return () => window.removeEventListener('keydown', tecla, true)
-  }, [modo, cerrar])
+  }, [sePuedeCerrar, cerrar])
 
   /** Después de entregar, decidir o configurar: se trae todo de nuevo y se
    *  avisa al resto de la pantalla (el calendario, el tablero, Mis tareas). */
@@ -88,28 +105,30 @@ function Contenido({ tareaId }: { tareaId: string }) {
     else setModo('ver')
     setRecarga(n => n + 1)
     huboCambios()
-    // Si el calendario está cargado (se abrió desde la ficha), se pone al día
-    // ya; si no, no hay nada que traer.
-    if (useCalendario.getState().rev != null) void useCalendario.getState().sincronizar()
+    // Si el calendario está en pantalla (se abrió desde la ficha), se pone al
+    // día ya. Desde el tablero o Mis tareas no: el calendario se trae solo al
+    // volver, y bajar /datos entero (lo más pesado) con cada entrega no sirve.
+    if (pathname?.startsWith('/calendario') && useCalendario.getState().rev != null) {
+      void useCalendario.getState().sincronizar()
+    }
   }
 
   // Revisando, la imagen necesita todo el lugar; en lo demás, la caja mide
   // lo que tiene adentro (sin un hueco blanco abajo) hasta el 92 % del alto.
   const ancho = modo === 'revisar' ? 'sm:max-w-6xl sm:h-[92dvh]' : 'sm:max-w-3xl sm:h-auto sm:max-h-[92dvh]'
-  const version = detalle ? versionEnCurso(detalle) : null
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-4">
-      <div className="velo animate-fade-in" onClick={() => { if (modo === 'ver') cerrar() }} aria-hidden />
+      <div className="velo animate-fade-in" onClick={() => { if (sePuedeCerrar) cerrar() }} aria-hidden />
       <div
         ref={cajaRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="entregas-titulo"
         tabIndex={-1}
-        className={`relative flex h-[100dvh] w-full animate-sheet-up flex-col overflow-hidden bg-white shadow-panel outline-none dark:bg-slate-900 dark:ring-1 dark:ring-slate-800 sm:animate-scale-in sm:rounded-2xl ${ancho}`}
+        className={`relative flex h-[100dvh] w-full animate-sheet-up flex-col overflow-hidden bg-white shadow-panel outline-none dark:bg-slate-900 dark:ring-1 dark:ring-slate-700 sm:animate-scale-in sm:rounded-2xl ${ancho}`}
       >
-        <Encabezado detalle={detalle} modo={modo} onCerrar={cerrar} cerrarRef={cerrarRef} />
+        <Encabezado detalle={detalle} sePuedeCerrar={sePuedeCerrar} onCerrar={cerrar} cerrarRef={cerrarRef} />
 
         {error && !detalle && (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -146,7 +165,15 @@ function Contenido({ tareaId }: { tareaId: string }) {
           || (modo === 'entregar' && !detalle.puedo.entregar)
           || (modo === 'revisar' && (!detalle.puedo.decidir || !version))
           || (modo === 'configurar' && !detalle.puedo.configurar)) && (
-          <Resumen detalle={detalle} usuarioId={user?.id ?? null} onRecargar={() => setRecarga(n => n + 1)} />
+          <Resumen
+            detalle={detalle}
+            usuarioId={user?.id ?? null}
+            // Cambiar la configuración necesita la lista de personas, que es
+            // del calendario: con "No lo ve" el servidor no la da y el
+            // formulario quedaba sin nombres. A esa persona no se le ofrece.
+            puedeConfigurar={detalle.puedo.configurar && veCalendario(user)}
+            onRecargar={() => setRecarga(n => n + 1)}
+          />
         )}
       </div>
     </div>
@@ -160,23 +187,28 @@ function versionEnCurso(d: DetalleEntregas): Version | null {
   return ultima && ultima.estado === 'revision' ? ultima : null
 }
 
-function Encabezado({ detalle, modo, onCerrar, cerrarRef }: {
+function Encabezado({ detalle, sePuedeCerrar, onCerrar, cerrarRef }: {
   detalle: DetalleEntregas | null
-  modo: string
+  sePuedeCerrar: boolean
   onCerrar: () => void
   cerrarRef: React.Ref<HTMLButtonElement>
 }) {
   const hoy = hoyIso()
   const t = detalle?.tarea
   const vencida = t?.vence && t.vence < hoy && detalle?.resumen.momento !== 'aprobada'
+  // Lo que es: el tipo de tarea del catálogo ("Mailing", "Pantallas",
+  // "Tótem") cuando la tarjeta tiene uno. El tipo de pieza de las entregas
+  // los junta a todos en "Otro".
+  const { tipos } = useCatalogoDeTipos()
+  const queEs = (t?.tipo && tipos?.find(x => x.clave === t.tipo)?.nombre) || (detalle ? tipoDePieza(detalle.tipoPieza).nombre : '')
   return (
     <header className="flex shrink-0 items-start gap-3 border-b border-slate-300 px-4 pb-3 pt-4 dark:border-slate-700 sm:px-6">
       <div className="min-w-0 flex-1">
         {detalle ? (
           <>
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200">
-                {tipoDePieza(detalle.tipoPieza).nombre}
+                {queEs}
               </span>
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-sm ring-1 ring-inset ring-black/10" style={{ backgroundColor: detalle.accion.color ?? '#cbd5e1' }} />
@@ -207,7 +239,7 @@ function Encabezado({ detalle, modo, onCerrar, cerrarRef }: {
           <h2 id="entregas-titulo" className="text-xl font-bold text-slate-900 dark:text-slate-100">Entregas</h2>
         )}
       </div>
-      {modo === 'ver' && (
+      {sePuedeCerrar && (
         <button ref={cerrarRef} type="button" onClick={onCerrar} className="boton-icono -mr-2 -mt-1" aria-label="Cerrar las entregas" title="Cerrar (Esc)">
           <X className="h-5 w-5" />
         </button>
@@ -220,9 +252,10 @@ function Encabezado({ detalle, modo, onCerrar, cerrarRef }: {
 // Mirando
 // ---------------------------------------------------------------------------
 
-function Resumen({ detalle, usuarioId, onRecargar }: {
+function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
   detalle: DetalleEntregas
   usuarioId: number | null
+  puedeConfigurar: boolean
   onRecargar: () => void
 }) {
   const setModo = useVistaEntregas(s => s.setModo)
@@ -355,7 +388,7 @@ function Resumen({ detalle, usuarioId, onRecargar }: {
       <Brief detalle={detalle} abiertoAlInicio={resumen.ronda === 0 && resumen.momento === 'produccion' && !detalle.fases.some(f => f.versiones.length > 0)} />
       <Historia detalle={detalle} sin={ultimaDeFase?.id ?? null} />
 
-      {puedo.configurar && (
+      {puedeConfigurar && (
         <button
           type="button"
           onClick={() => setModo('configurar')}
@@ -415,17 +448,22 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
   }))
   const estado = ESTADO_VERSION[version.estado]
   const todasPurgadas = version.imagenes.length > 0 && version.imagenes.every(i => i.purgada)
+  const vivas = version.imagenes.filter(i => !i.purgada)
   const [bajando, setBajando] = useState(false)
+  const { user } = useCurrentUser()
+  // A quien la hizo (o a la agencia) no se le dice que se la pida a sí misma.
+  const laHizoQuienMira = esExterno(user) || (user?.id != null && user.id === version.subidaPor)
 
-  /** Bajar los materiales de esta ronda (16/11/2026: "para no andar pidiéndolos
+  /** Bajar las imágenes de esta ronda (16/11/2026: "para no andar pidiéndolos
    *  por mail"). Son las mismas imágenes comprimidas que se ven (no se guarda
-   *  nada nuevo: la base es de 500 MB); el original va por el link. */
+   *  nada nuevo: la base es de 500 MB): sirven para revisar, no para
+   *  publicar. El archivo final es el original, que va por el link; por eso
+   *  el botón dice qué es lo que baja. */
   async function descargar() {
     setBajando(true)
     try {
       const fase = detalle.fases.find(f => f.id === version.faseId)?.nombre ?? 'Entrega'
-      const base = `${detalle.tarea.titulo} - ${fase} - ronda ${version.ronda}`.replace(/[\\/:*?"<>|]+/g, '-')
-      const vivas = version.imagenes.filter(i => !i.purgada)
+      const base = `${detalle.tarea.titulo} - ${fase} - ronda ${version.ronda} - vista previa`.replace(/[\\/:*?"<>|]+/g, '-')
       for (const [i, im] of vivas.entries()) {
         const url = await urlDeImagen(im.id, 'grande')
         const a = document.createElement('a')
@@ -435,7 +473,11 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
         a.click()
         a.remove()
       }
-      toast.success(vivas.length === 1 ? 'Se bajó la imagen.' : `Se bajaron ${vivas.length} imágenes.`)
+      // Con varias, el navegador puede preguntar (o bloquear sin decir nada)
+      // si se permiten varias descargas: no se da por hecho que bajaron todas.
+      toast.success(vivas.length === 1
+        ? 'Empezó a bajar la vista previa.'
+        : `Empezaron a bajar ${vivas.length} imágenes: si el navegador pregunta, permití descargar varios archivos.`)
     } catch {
       toast.error('No se pudieron bajar las imágenes. Probá de nuevo.')
     } finally {
@@ -449,28 +491,50 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
         <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Ronda {version.ronda}</h4>
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${estado.tono}`}>{estado.texto}</span>
         <span className="text-xs text-slate-500 dark:text-slate-400">{nombreDe(version.subidaPor)} · {fechaYHora(version.fecha)}</span>
-        <span className="ml-auto flex items-center gap-1">
-          {version.imagenes.some(i => !i.purgada) && (
+        {/* 44 px para el dedo en el teléfono; en la compu, más chicos. */}
+        <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
+          {version.link && vivas.length > 0 && (
+            <a
+              href={version.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 text-xs font-bold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:min-h-[36px]"
+              title={`El archivo final, en el link: ${version.link}`}
+            >
+              <ExternalLink className="h-3.5 w-3.5" /> Bajar el original
+            </a>
+          )}
+          {vivas.length > 0 && (
             <button
               type="button"
               onClick={() => void descargar()}
               disabled={bajando}
-              className="flex min-h-[36px] items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-800"
-              title="Bajar las imágenes de esta ronda"
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-h-[36px]"
+              title="Las imágenes de esta ronda, achicadas para revisar (1600 px, JPEG): no son el archivo final"
             >
-              {bajando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Descargar
+              {bajando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Vista previa (1600 px)
             </button>
           )}
           {!abierta && version.imagenes.length > 0 && (
-            <button type="button" onClick={() => setAbierta(true)} className="min-h-[36px] rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
+            <button type="button" onClick={() => setAbierta(true)} className="min-h-[44px] rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:min-h-[36px]">
               Ver grande
             </button>
           )}
         </span>
       </header>
 
+      {/* Solo imágenes: lo que baja es la vista previa. Se dice, para que nadie
+          publique una imagen achicada creyendo que es el archivo final. */}
+      {!version.link && vivas.length > 0 && (
+        <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
+          {laHizoQuienMira
+            ? 'Sin link al original: lo que se baja es la vista previa.'
+            : 'Sin link al original: pedíselo a quien la hace.'}
+        </p>
+      )}
+
       {version.imagenes.length === 0 && version.link && (
-        <a href={version.link} target="_blank" rel="noopener noreferrer"
+        <a href={version.link} target="_blank" rel="noopener noreferrer" title={version.link}
           className="mt-2 flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-brand-700 transition hover:border-brand-400 dark:border-slate-700 dark:bg-slate-800/50 dark:text-brand-200">
           <Link2 className="h-4 w-4 shrink-0" /> <span className="min-w-0 truncate">Materiales en el link: {version.link}</span>
         </a>
@@ -500,10 +564,12 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
         </button>
       ) : null}
 
-      {(version.comentario || version.link) && (
+      {(version.comentario || (version.link && todasPurgadas)) && (
         <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
           {version.comentario && <p className="whitespace-pre-line">«{version.comentario}»</p>}
-          {version.link && (
+          {/* Con imágenes, el original está arriba ("Bajar el original"); sin
+              imágenes, en el recuadro del link. Acá, si ya se borraron. */}
+          {version.link && todasPurgadas && (
             <a href={version.link} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-flex items-center gap-1 font-semibold text-brand-700 underline underline-offset-2 dark:text-brand-200">
               <ExternalLink className="h-3.5 w-3.5" /> Abrir el original
             </a>
@@ -652,7 +718,11 @@ function EditarConfiguracion({ detalle, onListo, onCancelar }: {
     return () => { vivo = false }
   }, [detalle.accion.mundo])
 
-  const falta = faltaEnConfig(config, detalle.tarea.asignadoA)
+  // De una agencia de afuera, `asignadoA` es quien del equipo CARGA lo que
+  // manda, no quien la hace: puede aprobar (es lo común: la carga y la
+  // aprueba la misma persona). La regla "quien entrega no aprueba" no va.
+  const responsableId = detalle.tarea.quienLaHace?.tipo === 'fuera' ? null : detalle.tarea.asignadoA
+  const falta = faltaEnConfig(config, responsableId)
 
   async function guardar() {
     if (falta || guardando) return
@@ -674,7 +744,7 @@ function EditarConfiguracion({ detalle, onListo, onCancelar }: {
           valor={config}
           onCambiar={setConfig}
           personas={personas}
-          responsableId={detalle.tarea.asignadoA}
+          responsableId={responsableId}
           usuarioId={user?.id ?? null}
         />
       </div>

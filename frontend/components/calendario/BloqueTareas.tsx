@@ -343,6 +343,21 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   const asignado = personas.find(p => p.id === tarea.asignadoA)
   // Hecha ya no se mueve: no hace falta decirlo.
   const anclada = !hecha && !!tarea.ancla && tarea.anclaDias != null
+  // La hace una agencia de la plataforma: sin nadie asignado no está "sin
+  // asignar", la tiene la agencia. Y pasársela a alguien de Tienda se la saca
+  // del tablero (el servidor la pasa a Tienda): se pregunta antes.
+  const deLaAgencia = tarea.para === 'agencia' ? (tarea.agencia || 'la agencia') : null
+  function asignar(valor: string) {
+    const id = valor ? Number(valor) : null
+    const nueva = id != null ? personas.find(p => p.id === id) : undefined
+    const mismaAgencia = !!nueva?.externo && !!nueva.empresa && !!tarea.agencia
+      && nueva.empresa.toLocaleLowerCase('es') === tarea.agencia.toLocaleLowerCase('es')
+    if (deLaAgencia && id != null && !mismaAgencia
+      && !window.confirm(`Se la sacás a ${deLaAgencia}: deja de estar en su tablero y la hace ${nueva?.nombre ?? 'esa persona'}. ¿Seguís?`)) {
+      return
+    }
+    cambiar(tarea.id, { asignadoA: id })
+  }
 
   return (
     <li>
@@ -412,11 +427,11 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                   <UserRound className="pointer-events-none absolute left-2.5 h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden />
                   <select
                     value={tarea.asignadoA ?? ''}
-                    onChange={e => cambiar(tarea.id, { asignadoA: e.target.value ? Number(e.target.value) : null })}
+                    onChange={e => asignar(e.target.value)}
                     aria-label={`A quién se asigna ${tarea.titulo}`}
                     className={`${PASTILLA} max-w-[12rem] cursor-pointer bg-slate-100 pl-8 pr-7 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700`}
                   >
-                    <option value="">Sin asignar</option>
+                    <option value="">{deLaAgencia ? `La agencia (${deLaAgencia})` : 'Sin asignar'}</option>
                     {/* Alguien que ya no abre este mundo igual se muestra: no se pierde de quién era. */}
                     {/* Sin la lista de personas todavía no se sabe quién es: no se dice que ya no está. */}
                     {tarea.asignadoA != null && !asignado && (
@@ -430,7 +445,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                   esMia ? 'bg-brand-100 text-brand-800 dark:bg-brand-500/20 dark:text-brand-100' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
                 }`}>
                   <UserRound className="h-4 w-4" />
-                  {tarea.asignadoA == null ? 'Sin asignar' : esMia ? 'La tenés vos' : asignado?.nombre ?? 'Otra persona'}
+                  {tarea.asignadoA == null ? (deLaAgencia ? `La hace ${deLaAgencia}` : 'Sin asignar') : esMia ? 'La tenés vos' : asignado?.nombre ?? 'Otra persona'}
                 </span>
               )}
 
