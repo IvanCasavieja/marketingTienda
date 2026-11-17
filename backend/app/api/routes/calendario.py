@@ -792,9 +792,21 @@ async def cambiar_barra(
     cambio_el_fin = cambios.get("hasta", barra.hasta) != barra.hasta
     if cambio_la_fecha or cambio_el_fin:
         _exigir_en_su_alcance(current_user, cambios.get("desde", barra.desde), cambios.get("hasta", barra.hasta))
+    nombre_anterior = barra.nombre
     for campo, valor in cambios.items():
         setattr(barra, campo, valor)
     barra.actualizado_por_id = current_user.id
+    if barra.nombre != nombre_anterior:
+        # Las tarjetas se llaman "<Acción> - <Tipo>": si a la acción se le
+        # corrige el nombre, sus tarjetas lo siguen (las que conservan el
+        # nombre automático; una renombrada a mano se respeta).
+        for tarea in (await db.execute(
+            select(CalendarioTarea).where(
+                CalendarioTarea.barra_id == barra_id, CalendarioTarea.tipo.is_not(None),
+            ).with_for_update()
+        )).scalars():
+            if tarea.titulo == tipos_de_tarea.nombre_de_tarjeta(nombre_anterior, tarea.tipo):
+                tarea.titulo = tipos_de_tarea.nombre_de_tarjeta(barra.nombre, tarea.tipo)
     movidas = 0
     if cambio_la_fecha or cambio_el_fin:
         # Las tareas que vinieron de una plantilla y no están hechas se mueven
@@ -834,6 +846,12 @@ async def borrar_barra(
         # Ya la había borrado otro: el resultado es el mismo.
         return {"id": barra_id, "borrada": True}
     exigir_mundo(current_user, barra.mundo)
+    # Lo que no se ve tampoco se borra: con un id viejo (un link, una respuesta
+    # de Don Tino, Outlook) alguien con alcance de 1 mes podía borrar una
+    # acción de dentro de tres. Se contesta como si no existiera, igual que al
+    # editarla o copiarla ("No lo ve" tiene la ventana vacía: tampoco pasa).
+    if not alcance.toca(barra.desde, barra.hasta, alcance.ventana_de(current_user)):
+        raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
     # Queda quién la borró y qué era: con varias personas en el mismo
     # calendario, "¿quién sacó tal acción?" es la pregunta que va a aparecer.
     db.add(AuditLog(
@@ -1202,7 +1220,14 @@ async def _nacer_tarjetas(
     por_persona: dict[int, list[CalendarioTarea]] = {}
     for t in piezas:
         if await db.get(CalendarioEntrega, t.id) is None:
-            await reglas_entregas.crear_entregas_por_defecto(db, t, usuario.id)
+            # Una pieza de Tienda que alguien se pide a sí mismo no puede
+            # tenerlo de único aprobador (nadie decide sobre lo que subió):
+            # nace sin cadena y la aprueba quien tiene calendario.tareas.
+            # Vale igual para lo que nace de una plantilla o de una copia.
+            se_la_hace_solo = t.para == "tienda" and t.asignado_a_id == usuario.id
+            await reglas_entregas.crear_entregas_por_defecto(
+                db, t, usuario.id, aprobadores=[] if se_la_hace_solo else None,
+            )
         for uid in await reglas_entregas.destinatarios_de_la_tarjeta(db, t, barra.mundo):
             if uid != usuario.id:
                 por_persona.setdefault(uid, []).append(t)
@@ -1535,11 +1560,20 @@ async def cambiar_tarea(
     )).scalar_one_or_none()
     if tarea is None:
         raise HTTPException(status_code=404, detail="Esta tarea ya no existe: la borró otra persona.")
-    barra = await _barra_o_404(db, tarea.barra_id, current_user)
-
     campos = payload.model_fields_set
     solo_estado = campos <= {"estado"}
     es_suya = tarea.asignado_a_id == current_user.id
+    if solo_estado and es_suya and not externos.es_externo(current_user):
+        # Alguien del equipo tilda SU tarea aunque la acción quede fuera de lo
+        # que ve del calendario: la tiene en Mis tareas (ver mis_tareas) y
+        # tiene que poder avanzarla. Se mira el mundo, no el alcance.
+        barra = await db.get(CalendarioBarra, tarea.barra_id)
+        if barra is None:
+            raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
+        exigir_mundo(current_user, barra.mundo)
+    else:
+        barra = await _barra_o_404(db, tarea.barra_id, current_user)
+
     if not _puede_gestionar_tareas(current_user) and not (solo_estado and es_suya):
         raise HTTPException(
             status_code=403,
@@ -1640,10 +1674,18 @@ async def mis_tareas(
     uso se iba a cientos de tareas viejas (medido: 269 KB con 668) que nadie
     mira y que se bajaban cada vez que se abría la pantalla.
 
-    Es una lista del calendario (cada tarea dice su acción): quien no lo ve
-    (0070) recibe 403, y quien lo ve limitado, solo las de su alcance. Sus
-    tarjetas con entregas las ve siempre en el tablero (/calendario/entregas)."""
-    alcance.exigir_calendario(current_user)
+    A alguien del EQUIPO sus tareas abiertas le llegan siempre, vea lo que vea
+    del calendario: si a un diseñador se le deja el calendario en "1 mes" o
+    "No lo ve" y le asignan algo de una acción lejana, tiene que enterarse (si
+    no, vence sin que la vea nunca). De esa acción ve el nombre y las fechas,
+    que es lo que ya decía el aviso. Las hechas, solo las de su alcance.
+
+    A una cuenta EXTERNA no: su trabajo son las tarjetas del tablero
+    (/calendario/entregas), que ve siempre; esta lista es calendario, así que
+    sin calendario recibe 403 y con uno limitado, solo lo de su alcance."""
+    externo = externos.es_externo(current_user)
+    if externo:
+        alcance.exigir_calendario(current_user)
     mundos = mundos_de(current_user)
     if not mundos:
         return []
@@ -1661,10 +1703,9 @@ async def mis_tareas(
             ),
         )
     )
-    externo = externos.es_externo(current_user)
-    # Aunque sea suya: la tarea de una acción fuera de su alcance la ve cuando
-    # la acción entra en lo que ve.
-    consulta = consulta.where(alcance.condicion(CalendarioBarra, alcance.ventana_de(current_user)))
+    ventana = alcance.ventana_de(current_user)
+    en_alcance = alcance.condicion(CalendarioBarra, ventana)
+    consulta = consulta.where(en_alcance if externo else or_(en_alcance, CalendarioTarea.estado != "hecha"))
     filas = (await db.execute(
         consulta.order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
     )).all()
@@ -1677,6 +1718,7 @@ async def mis_tareas(
             # que no es suya.
             **({"parentId": None} if externo and t.parent_id not in propias else {}),
             "accion": {
+                **({} if alcance.toca(b.desde, b.hasta, ventana) else {"fueraDeAlcance": True}),
                 "id": b.id, "mundo": b.mundo, "nombre": b.nombre, "banda": b.banda,
                 "seccion": b.seccion, "color": b.color,
                 "desde": b.desde.isoformat(), "hasta": b.hasta.isoformat(),
@@ -2224,6 +2266,13 @@ async def copiar_barra(
     copiadas_tareas = copiar_tareas(
         tareas if copia_tareas else [], payload.id, corrimiento, validos, current_user.id,
     )
+    # El nombre de una tarjeta lleva el de su acción ("Ciberlunes 2025 -
+    # Banners"): en la copia tiene que decir el de la acción nueva, también
+    # en el aviso que le llega a la agencia. Uno escrito a mano no coincide
+    # con el automático y se respeta.
+    for f in copiadas_tareas.filas:
+        if f.get("tipo") and f.get("titulo") == tipos_de_tarea.nombre_de_tarjeta(origen.nombre, f["tipo"]):
+            f["titulo"] = tipos_de_tarea.nombre_de_tarjeta(nombre, f["tipo"])
     copiados_avisos = copiar_avisos(avisos, payload.id, corrimiento, validos, current_user.id)
 
     # Una pieza o una tarea con su propia fecha puede irse de rango aunque la
@@ -2302,6 +2351,7 @@ async def copiar_barra(
             sorted(nuevos_avisos, key=lambda a: (-a.dias_antes, a.id)),
             # Todas se crean en la misma transacción (mismo created_at).
             sorted(nuevas_tareas, key=lambda t: (t.orden, t.id)),
+            entregas=(await resumenes_de_entregas(db, [t.id for t in nuevas_tareas])) if nuevas_tareas else {},
         ),
         "copiadas": {"piezas": len(nuevas_piezas), "tareas": len(nuevas_tareas), "avisos": len(nuevos_avisos)},
         "tareasSinPermiso": 0 if copia_tareas else len(tareas),

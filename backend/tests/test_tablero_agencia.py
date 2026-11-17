@@ -248,9 +248,13 @@ def test_el_email_marketing_no_es_el_mailing():
         tipos.detalles_validos("banners", {"cta": "Comprá ya"}, ["Header"])
 
 
-def test_el_catalogo_para_la_pantalla_no_lleva_lo_interno():
+def test_el_catalogo_para_la_pantalla_lleva_el_tipo_de_pieza():
+    """«Más opciones» de Pedir una pieza arranca con el mismo tipo de pieza
+    que pondría el servidor: antes el catálogo no lo mandaba y la pieza
+    quedaba como «Otro» (revisión del 16/11/2026)."""
     for t in tipos.para_la_pantalla():
-        assert "pieza" not in t and t["clave"] and t["nombre"]
+        assert t["clave"] and t["nombre"]
+        assert t["pieza"] == tipos.tipo_de(t["clave"])["pieza"]
 
 
 @pytest.mark.parametrize("texto,palabras", [

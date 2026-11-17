@@ -229,7 +229,7 @@ function Resumen({ detalle, usuarioId, onRecargar }: {
   const huboCambios = useVistaEntregas(s => s.huboCambios)
   const { resumen, tarea, puedo } = detalle
   const nombreDe = (id: number | null) => (id != null ? detalle.personas[String(id)] : null) ?? 'alguien'
-  const paso = proximoPaso(resumen, tarea.asignadoA, usuarioId, nombreDe, puedo.decidir, {
+  const paso = proximoPaso(resumen, tarea.asignadoA, usuarioId, nombreDe, puedo.decidir && !puedo.comoRespaldo, {
     entregoYo: puedo.entregar, hace: tarea.quienLaHace,
   })
   const enCurso = versionEnCurso(detalle)

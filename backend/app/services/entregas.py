@@ -917,13 +917,39 @@ async def destinatarios_de_la_tarjeta(db: AsyncSession, tarea: CalendarioTarea, 
     return ids
 
 
-async def crear_entregas_por_defecto(db: AsyncSession, tarea: CalendarioTarea, creador_id: int) -> CalendarioEntrega:
+async def gestores_del_mundo(db: AsyncSession, mundo: str, menos: int | None = None) -> list[int]:
+    """Quiénes pueden decidir como respaldo en ese mundo: las cuentas activas
+    del equipo con `calendario.tareas` (o superadmin) que entran al mundo. Es a
+    quienes hay que avisarles cuando una entrega no tiene a nadie más que la
+    pueda aprobar. `menos`: a quién no (quien acaba de entregar)."""
+    from app.core import externos
+    from app.core.mundos import puede_abrir
+    from app.models.user import User
+
+    ids: list[int] = []
+    for u in (await db.execute(
+        select(User).where(User.is_active.is_(True), User.es_externo.is_(False)).order_by(User.id)
+    )).scalars():
+        if u.id != menos and puede_abrir(u, mundo) and externos.puede_tener(u, "calendario.tareas"):
+            ids.append(u.id)
+    return ids
+
+
+async def crear_entregas_por_defecto(
+    db: AsyncSession, tarea: CalendarioTarea, creador_id: int, aprobadores: list[int] | None = None,
+) -> CalendarioEntrega:
     """Las entregas con las que nace una tarea para la agencia (ver
     config_por_defecto). Va en la misma transacción que el alta de la tarea,
-    después de que la tarea existe (FK)."""
+    después de que la tarea existe (FK).
+
+    `aprobadores`: para cuando quien la crea no puede ser quien la aprueba
+    (la va a hacer esa misma persona). Vacía = decide quien tiene
+    `calendario.tareas`, como respaldo."""
     conf = config_por_defecto(
         creador_id, tarea.descripcion, tarea.tipo, list(tarea.opciones or []), dict(tarea.detalles or {}),
     )
+    if aprobadores is not None:
+        conf["aprobadores"] = list(aprobadores)
     entrega = CalendarioEntrega(
         tarea_id=tarea.id, tipo_pieza=conf["tipo_pieza"], brief=conf["brief"], aprobadores=conf["aprobadores"],
         momento="produccion", ronda=0, creado_por_id=creador_id,

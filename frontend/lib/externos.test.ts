@@ -52,7 +52,9 @@ for (const r of ['/entregas', '/perfil', '/mundos']) {
 for (const r of ['/calendario', '/mis-tareas']) {
   ok(`sin alcance, la agencia no tiene ${r}`, !rutaDeExterno(r, agencia) && calendarioVedado(r, agencia))
   ok(`con alcance, la agencia tiene ${r}`, rutaDeExterno(r, agenciaConCalendario) && !calendarioVedado(r, agenciaConCalendario))
-  ok(`alguien del equipo sin alcance tampoco tiene ${r}`, calendarioVedado(r, delEquipoSinCalendario))
+  // Al equipo, sin calendario, se le cierra el calendario pero no sus tareas.
+  ok(`alguien del equipo sin alcance ${r === '/mis-tareas' ? 'conserva' : 'no tiene'} ${r}`,
+    calendarioVedado(r, delEquipoSinCalendario) === (r !== '/mis-tareas'))
 }
 for (const r of ['/admin', '/materiales/cenefas', '/precios', '/facturacion', '/dashboard', '/colocacion', '/fotos', '/home', '/ayuda', '/calendariox']) {
   ok(`la agencia no tiene ${r}`, !rutaDeExterno(r, agenciaConCalendario))

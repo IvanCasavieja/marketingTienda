@@ -46,10 +46,9 @@ export default function NavegacionInferior({ onMenu, onAvisos }: { onMenu: () =>
     ]
     : puedeVer
     ? [
-      ...(conCalendario ? [
-        { href: "/calendario", label: t("sidebar.calendario"), Icono: CalendarDays },
-        { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), Icono: ListChecks },
-      ] : []),
+      ...(conCalendario ? [{ href: "/calendario", label: t("sidebar.calendario"), Icono: CalendarDays }] : []),
+      // Sus tareas, siempre: aunque no vea el calendario, lo que le asignan le llega.
+      { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), Icono: ListChecks },
       { href: "/entregas", label: t("sidebar.tablero", "Tablero"), Icono: Layers },
     ]
     : [

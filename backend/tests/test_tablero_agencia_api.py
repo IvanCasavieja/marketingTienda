@@ -218,7 +218,9 @@ def test_no_lo_ve_queda_afuera_de_todo_el_calendario_pero_ve_su_tablero():
             c = Cliente(d.http, usuario)
             assert (await c.get("/calendario/datos", params={"mundo": MUNDO})).status_code == 403
             assert (await c.get("/calendario/personas", params={"mundo": MUNDO})).status_code == 403
-            assert (await c.get("/calendario/mis-tareas")).status_code == 403
+            # Mis tareas: a la agencia no (lo suyo es el tablero); a alguien del
+            # equipo sí, siempre: lo que le asignan le tiene que llegar.
+            assert (await c.get("/calendario/mis-tareas")).status_code == (403 if usuario.es_externo else 200)
             assert (await c.get("/calendario/ical/link")).status_code == 403
             assert (await c.get(f"/calendario/ubicar/{d.ahora.id}")).status_code == 404
             r = await d.http.get(f"{API}/calendario/ical/{usuario.id}/{firma_del_link(usuario.id, 0)}.ics")
@@ -517,4 +519,193 @@ def test_el_tablero_carga_poco_y_pagina_lo_archivado():
             vistas |= {t["tareaId"] for t in mas["tarjetas"]}
             desde = mas["hasta"]
         assert vistas >= set(ids)
+    correr(prueba)
+
+
+# ---------------------------------------------------------------------------
+# Lo que encontró la revisión del 16/11/2026
+# ---------------------------------------------------------------------------
+
+def test_quien_pide_y_carga_lo_de_una_agencia_de_afuera_lo_puede_aprobar():
+    """El camino por defecto del formulario: Lucía pide un mailing a una agencia
+    de afuera y lo carga ella. Antes la tarjeta quedaba trabada en Esperando
+    feedback: era la única aprobadora y no podía decidir sobre lo que subió."""
+    async def prueba(d):
+        tarea_id = f"ta-fa-{d.sufijo}"
+        lucia = Cliente(d.http, d.lucia)
+        r = await lucia.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+            "id": tarea_id, "tipo": "mailing", "opciones": ["Físico (impreso)"], "detalles": {"paginas": 16},
+            "para": "fuera", "agencia": "Estudio Afuera", "asignadoA": d.lucia.id})
+        assert r.status_code == 201, r.text
+        r = await lucia.post(f"/calendario/tareas/{tarea_id}/versiones", data={
+            "versionId": f"ve-fa-{d.sufijo}", "link": "https://drive.example.com/folleto"})
+        assert r.status_code == 201, r.text
+        tarjeta = await _tarjeta(lucia, tarea_id)
+        assert tarjeta["columna"] == "esperando" and tarjeta["puedo"]["decidir"] is True
+        r = await lucia.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "esperando", "a": "finalizado"})
+        assert r.status_code == 200, r.text
+        assert (await _tarjeta(lucia, tarea_id))["columna"] == "finalizado"
+    correr(prueba)
+
+
+def test_una_pieza_de_tienda_que_uno_se_pide_a_si_mismo_la_aprueba_otro():
+    """Nadie decide sobre lo que subió: si Lucía se pide una pieza a sí misma no
+    puede quedar de única aprobadora. Nace sin cadena, al entregar se les avisa
+    a quienes pueden aprobar como respaldo, y uno de ellos la finaliza."""
+    async def prueba(d):
+        tarea_id = f"ta-yo-{d.sufijo}"
+        lucia = Cliente(d.http, d.lucia)
+        r = await lucia.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+            "id": tarea_id, "tipo": "banners", "opciones": ["Header"], "para": "tienda", "asignadoA": d.lucia.id})
+        assert r.status_code == 201, r.text
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioEntrega, tarea_id)).aprobadores == []
+        r = await lucia.post(f"/calendario/tareas/{tarea_id}/versiones", data={
+            "versionId": f"ve-yo-{d.sufijo}", "link": "https://drive.example.com/banner"})
+        assert r.status_code == 201, r.text
+        # Les llegó a quienes lideran (y no a ella ni a la agencia).
+        assert len(await _avisos(d, d.lider, tarea_id)) == 1
+        assert await _avisos(d, d.lucia, tarea_id) == [] and await _avisos(d, d.a1, tarea_id) == []
+        r = await lucia.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "esperando", "a": "finalizado"})
+        assert r.status_code == 403
+        r = await Cliente(d.http, d.lider).post(
+            f"/calendario/tareas/{tarea_id}/mover", json={"desde": "esperando", "a": "finalizado"})
+        assert r.status_code == 200, r.text
+        # Pedida para otra persona, sigue como siempre: la aprueba quien la pidió.
+        otra = f"ta-otra-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+            "id": otra, "tipo": "banners", "opciones": ["Header"], "para": "tienda", "asignadoA": d.aprob2.id})
+        assert r.status_code == 201, r.text
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioEntrega, otra)).aprobadores == [d.lucia.id]
+    correr(prueba)
+
+
+def test_al_renombrar_o_copiar_la_accion_las_tarjetas_llevan_el_nombre_nuevo():
+    async def prueba(d):
+        lider = Cliente(d.http, d.lider)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        a_mano = f"ta-mano-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": a_mano, "titulo": "Revisar textos", "asignadoA": d.lucia.id})
+        assert r.status_code == 201, r.text
+
+        r = await lider.patch(f"/calendario/barras/{d.ciber.id}", json={"nombre": f"Ciber Monday {d.sufijo}"})
+        assert r.status_code == 200, r.text
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioTarea, tarea_id)).titulo == f"Ciber Monday {d.sufijo} - Banners"
+            assert (await s.get(CalendarioTarea, a_mano)).titulo == "Revisar textos"   # la escrita a mano no se toca
+
+        copia = f"br-copia-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/copiar", json={
+            "id": copia, "desde": (d.hoy + timedelta(days=20)).isoformat(), "nombre": f"Hot Sale {d.sufijo}"})
+        assert r.status_code == 201, r.text
+        tareas = r.json()["barra"]["tareas"]
+        pieza = next(x for x in tareas if x.get("tipo") == "banners")
+        assert pieza["titulo"] == f"Hot Sale {d.sufijo} - Banners"
+        # La copia ya trae su tarjeta: la ficha no la muestra como tarea común.
+        assert pieza.get("entrega"), pieza
+        # Y a la agencia le llegó con el nombre de la acción nueva.
+        avisos = await _avisos(d, d.a1, pieza["id"])
+        assert avisos and f"Hot Sale {d.sufijo} - Banners" in avisos[0].mensaje
+    correr(prueba)
+
+
+def test_corregir_la_empresa_de_la_agencia_no_le_saca_las_tarjetas_ni_el_calendario():
+    async def prueba(d):
+        promo = Cliente(d.http, d.promo)
+        # Estudio Sur tiene una sola cuenta, con el calendario habilitado a 1 mes.
+        assert (await promo.patch(f"/admin/users/{d.b1.id}/alcance", json={"calendario_alcance": "1m"})).status_code == 200
+        tarea_id, _ = await _pedir_banners(d, d.lider, agencia=f"Estudio Sur {d.sufijo}")
+        assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is not None
+
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}"})
+        assert r.status_code == 200, r.text
+        # Sigue viendo su tarjeta (pasó al nombre nuevo) y conserva su alcance.
+        assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is not None
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioTarea, tarea_id)).agencia == f"Estudio del Sur {d.sufijo}"
+            assert (await s.get(User, d.b1.id)).calendario_alcance == "1m"
+
+        # Pampa tiene dos cuentas: si una se va a otra empresa, las tarjetas
+        # siguen siendo de la agencia (de la otra cuenta), no se van con ella.
+        de_pampa, _ = await _pedir_banners(d, d.lider)
+        r = await promo.patch(f"/admin/users/{d.a1.id}/externo", json={
+            "es_externo": True, "empresa": f"Otra Agencia {d.sufijo}"})
+        assert r.status_code == 200, r.text
+        assert await _tarjeta(Cliente(d.http, d.a2), de_pampa) is not None
+        assert await _tarjeta(Cliente(d.http, d.a1), de_pampa) is None
+    correr(prueba)
+
+
+def test_pasar_a_alguien_del_equipo_a_externo_lo_deja_sin_calendario():
+    async def prueba(d):
+        promo = Cliente(d.http, d.promo)
+        r = await promo.patch(f"/admin/users/{d.aprob2.id}/externo", json={"es_externo": True, "empresa": "Agencia X"})
+        assert r.status_code == 200, r.text
+        async with d.Sesion() as s:
+            assert (await s.get(User, d.aprob2.id)).calendario_alcance == "nada"
+    correr(prueba)
+
+
+def test_lo_que_no_se_ve_tampoco_se_borra():
+    async def prueba(d):
+        # Con alcance de 1 mes, una acción de dentro de dos meses; y sin calendario, cualquiera.
+        for usuario, barra in ((d.limitado, d.ciber), (d.sin_cal, d.ahora)):
+            r = await d.http.delete(
+                f"{API}/calendario/barras/{barra.id}", headers=Cliente(d.http, usuario).headers)
+            assert r.status_code == 404, (usuario.full_name, r.status_code)
+            async with d.Sesion() as s:
+                assert await s.get(CalendarioBarra, barra.id) is not None
+        # La que sí ve, la borra.
+        r = await d.http.delete(f"{API}/calendario/barras/{d.ahora.id}", headers=Cliente(d.http, d.limitado).headers)
+        assert r.status_code == 200, r.text
+    correr(prueba)
+
+
+def test_al_equipo_sus_tareas_le_llegan_aunque_no_vea_la_accion():
+    """Un diseñador con el calendario en «1 mes» o «No lo ve»: lo que le asignan
+    le aparece igual en Mis tareas y en la campanita (antes vencía sin que se
+    enterara). De la acción ve el nombre, sin enlace a una ficha que no abre."""
+    async def prueba(d):
+        lider = Cliente(d.http, d.lider)
+        casos = ((d.limitado, d.ciber, f"ta-l-{d.sufijo}"), (d.sin_cal, d.ahora, f"ta-s-{d.sufijo}"))
+        for usuario, barra, tarea_id in casos:
+            r = await lider.post(f"/calendario/barras/{barra.id}/tareas", json={
+                "id": tarea_id, "titulo": "Preparar el brief", "asignadoA": usuario.id})
+            assert r.status_code == 201, r.text
+            c = Cliente(d.http, usuario)
+            mias = (await c.get("/calendario/mis-tareas")).json()
+            tarea = next((x for x in mias if x["id"] == tarea_id), None)
+            assert tarea is not None, usuario.full_name
+            assert tarea["accion"]["nombre"] == barra.nombre and tarea["accion"].get("fueraDeAlcance") is True
+            avisos = (await c.get("/notificaciones")).json()
+            assert any(tarea_id in (n["origen_ref"] or "") for n in avisos), usuario.full_name
+            # La ficha de esa acción sigue cerrada para esa persona.
+            assert (await c.get(f"/calendario/ubicar/{barra.id}")).status_code == 404
+        # Una hecha de una acción fuera de su alcance ya no se le muestra.
+        r = await Cliente(d.http, d.limitado).patch(f"/calendario/tareas/{casos[0][2]}", json={"estado": "hecha"})
+        assert r.status_code == 200, r.text
+        mias = (await Cliente(d.http, d.limitado).get("/calendario/mis-tareas")).json()
+        assert all(x["id"] != casos[0][2] for x in mias)
+        # Quien ve todo no tiene ninguna marcada como fuera de alcance.
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": f"ta-t-{d.sufijo}", "titulo": "Otra", "asignadoA": d.lucia.id})
+        assert r.status_code == 201, r.text
+        mias = (await Cliente(d.http, d.lucia).get("/calendario/mis-tareas")).json()
+        assert all("fueraDeAlcance" not in x["accion"] for x in mias)
+    correr(prueba)
+
+
+def test_colocacion_respeta_el_alcance_del_calendario():
+    async def prueba(d):
+        # Sin calendario no hay lista de acciones con fotos; con 1 mes, la ficha
+        # de fotos de una acción de dentro de dos meses no existe para esa persona.
+        assert (await Cliente(d.http, d.sin_cal).get("/colocacion/resumen", params={"mundo": MUNDO})).status_code == 403
+        limitado = Cliente(d.http, d.limitado)
+        assert (await limitado.get("/colocacion/resumen", params={"mundo": MUNDO})).status_code == 200
+        assert (await limitado.get(f"/colocacion/acciones/{d.ciber.id}")).status_code == 404
+        assert (await limitado.get(f"/colocacion/acciones/{d.ahora.id}")).status_code == 200
+        assert (await Cliente(d.http, d.lucia).get(f"/colocacion/acciones/{d.ciber.id}")).status_code == 200
     correr(prueba)

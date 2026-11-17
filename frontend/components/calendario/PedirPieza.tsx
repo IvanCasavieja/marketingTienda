@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { DictarBrief, type BriefListo } from '@/components/ia/DictarBrief'
 import { useCalendario } from '@/lib/calendario/store'
 import { camposVisibles, descripcionDelPedido, nombreDeTarjeta, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
+import { TIPOS_DE_PIEZA, type TipoPieza } from '@/lib/calendario/entregas'
 import { fechaCorta } from '@/lib/calendario/fechas'
 import { venceAnclado } from '@/lib/calendario/plantillas'
 import { delEquipo, type BarraGuardada, type Persona } from '@/lib/calendario/tipos'
@@ -105,6 +106,10 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
     setTipoClave(clave)
     setOpciones([])
     setDetalles({})
+    // El tipo de pieza de las entregas sale del tipo de tarea, como en el
+    // servidor: con "Más opciones" abierto quedaba siempre en "Otro".
+    const pieza = tipos?.find(x => x.clave === clave)?.pieza
+    setConfig(c => ({ ...c, tipoPieza: TIPOS_DE_PIEZA.some(p => p.tipo === pieza) ? (pieza as TipoPieza) : 'otro' }))
   }
   function usarDictado(brief: BriefListo) {
     setDescripcion(brief.comoTexto.slice(0, 5000))
@@ -133,7 +138,15 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
     if (id && masOpciones && gestiona) {
       // Va en la cola de la acción, detrás del alta: reemplaza las entregas
       // por defecto con las que nace (una fase, la aprueba quien la pidió).
-      void configurarEntregas(accion.id, id, configParaEnviar(config)).then(ok => {
+      // El pedido viaja igual que sin "Más opciones": lo tildado con sus
+      // medidas y la descripción escrita. Antes este guardado lo pisaba y a
+      // la agencia no le llegaba lo que se había escrito.
+      const datos = configParaEnviar(config)
+      const detalle = [pedido, descripcion.trim(), typeof datos.brief.detalle === 'string' ? datos.brief.detalle : '']
+        .filter(Boolean).join('\n').slice(0, 5000)
+      if (detalle) datos.brief.detalle = detalle
+      else delete datos.brief.detalle
+      void configurarEntregas(accion.id, id, datos).then(ok => {
         if (ok) toast.success('Se guardaron las fases y quiénes aprueban.')
       })
     }

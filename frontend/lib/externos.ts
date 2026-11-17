@@ -42,7 +42,11 @@ export function rutaDeExterno(pathname: string, user?: CurrentUser | null): bool
 /** Si es una pantalla del calendario que esta persona no tiene (su alcance
  *  es "No lo ve"), sea del equipo o de afuera. */
 export function calendarioVedado(pathname: string, user: CurrentUser | null | undefined): boolean {
-  return !!user && !veCalendario(user) && enAlguna(pathname, RUTAS_DEL_CALENDARIO)
+  if (!user || veCalendario(user)) return false
+  // A alguien del equipo sus tareas le llegan siempre, vea o no el
+  // calendario: Mis tareas no se le cierra (a la agencia sí: lo suyo es el tablero).
+  if (!esExterno(user) && enAlguna(pathname, ['/mis-tareas'])) return false
+  return enAlguna(pathname, RUTAS_DEL_CALENDARIO)
 }
 
 const FECHA = new Intl.DateTimeFormat('es-UY', { day: 'numeric', month: 'long', timeZone: 'UTC' })

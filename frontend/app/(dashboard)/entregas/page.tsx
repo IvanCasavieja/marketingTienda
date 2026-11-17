@@ -348,7 +348,8 @@ export default function TableroPage() {
   const todas = delMundo?.tarjetas ?? [];
   const opciones = externo ? [] : opcionesDeQuien(todas);
   const tarjetas = todas.filter(t => deQuien(t, filtro));
-  const meToca = (t: Tarjeta) => proximoPaso(t.entrega, t.asignadoA, yo, () => "", !!t.puedo?.decidir, {
+  // Sin `puedo.decidir`: ver la nota en TarjetaEntrega (el respaldo no es "te toca").
+  const meToca = (t: Tarjeta) => proximoPaso(t.entrega, t.asignadoA, yo, () => "", false, {
     entregoYo: t.puedo?.entregar, hace: t.hace,
   }).aQuien === "vos";
   const columnas = COLUMNAS_DEL_TABLERO.map(c => ({

@@ -40,7 +40,10 @@ export function TarjetaEntrega({
   const abrir = useVistaEntregas(s => s.abrir)
   const r = tarjeta.entrega
   const nombreDe = (id: number | null) => (id != null && id === r.aprobadorDeTurno ? tarjeta.turno : tarjeta.responsable) ?? 'alguien'
-  const paso = proximoPaso(r, tarjeta.asignadoA, usuarioId, nombreDe, !!tarjeta.puedo?.decidir, {
+  // `false` y no `puedo.decidir`: quien tiene calendario.tareas puede decidir
+  // CUALQUIERA como respaldo, y con eso todas las tarjetas le decían "Te toca:
+  // revisar". A quien le toca de verdad lo reconoce proximoPaso por el turno.
+  const paso = proximoPaso(r, tarjeta.asignadoA, usuarioId, nombreDe, false, {
     entregoYo: tarjeta.puedo?.entregar, hace: tarjeta.hace,
   })
   const meToca = paso.aQuien === 'vos'

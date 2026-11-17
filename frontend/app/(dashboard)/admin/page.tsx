@@ -207,7 +207,11 @@ function UserEditorModal({
       }
       // Después de lo de externa: al pasarla a externa el servidor la deja en
       // "No lo ve", y si acá se eligió otra cosa, manda esto.
-      if (alcance !== alcanceInicial || (externo && !user.es_externo && alcance !== "nada")) {
+      // Al pasar a externa el servidor ya la dejó en "No lo ve": el alcance
+      // viaja solo si acá se eligió otra cosa a propósito. Antes viajaba el
+      // "Todo" que traía la cuenta y la agencia quedaba viendo el calendario entero.
+      const alcanceEnServidor: Alcance = externo && !user.es_externo ? "nada" : alcanceInicial;
+      if (alcance !== alcanceEnServidor) {
         await api.patch(`/admin/users/${user.id}/alcance`, { calendario_alcance: alcance });
       }
       // Los mundos van antes que los permisos: uno se los puede cambiar a sí
@@ -330,7 +334,13 @@ function UserEditorModal({
                 <input
                   type="checkbox"
                   checked={externo}
-                  onChange={(e) => setExterno(e.target.checked)}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    setExterno(v);
+                    // El selector de abajo muestra lo que va a quedar: una
+                    // cuenta que pasa a externa arranca sin calendario.
+                    setAlcance(v && !user.es_externo ? "nada" : alcanceInicial);
+                  }}
                   className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-sky-600"
                 />
                 <span>
@@ -1010,7 +1020,9 @@ export default function AdminPage() {
                       </span>
                     )}
                     {u.es_externo && <MarcaExterna empresa={u.empresa} />}
-                    {!u.is_superuser && alcanceDe(u) !== "todo" && (
+                    {/* Se marca lo que se sale de lo normal: alguien del equipo
+                        con el calendario recortado, o una externa que sí lo ve. */}
+                    {!u.is_superuser && (u.es_externo ? alcanceDe(u) !== "nada" : alcanceDe(u) !== "todo") && (
                       <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                         Calendario: {nombreDeAlcance(alcanceDe(u))}
                       </span>

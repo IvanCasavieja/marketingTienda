@@ -35,6 +35,8 @@ export type TipoDeTarea = {
   medida: string | null
   campos: CampoDeTipo[]
   bajada: string | null
+  /** A qué tipo de pieza de las entregas corresponde (banner, mailing…). */
+  pieza?: string | null
 }
 
 /** "Ciberlunes - Banners": como lo arma el servidor (nombre_de_tarjeta). */

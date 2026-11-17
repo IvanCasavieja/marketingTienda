@@ -202,14 +202,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     ...(conCalendario ? [{ href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" }] : []),
   ].filter((item) => hasPerm(item.perm)) : [
     ...(esLocal ? [{ href: "/fotos", label: t("sidebar.fotosParaSubir", "Fotos para subir"), icon: Camera, numero: fotosPendientes }] : []),
-    // Quien no ve el calendario (su alcance es "No lo ve") tiene solo el tablero.
-    ...(conCalendario ? [
-      { href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" },
-      { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
-    ] : []),
+    // Quien no ve el calendario (su alcance es "No lo ve") no lo tiene en el
+    // menú. Sus tareas sí, siempre: lo que le asignan le tiene que llegar.
+    ...(conCalendario ? [{ href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" }] : []),
+    { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
     // Las piezas con la agencia, como un tablero de Trello (16/11/2026).
     { href: "/entregas", label: t("sidebar.tablero", "Tablero"), icon: Layers, perm: "calendario.view" },
-    ...((localesDelMundo?.length ?? 0) > 0
+    // Colocación muestra el nombre y las fechas de las acciones: es calendario.
+    ...(conCalendario && (localesDelMundo?.length ?? 0) > 0
       ? [{ href: "/colocacion", label: t("sidebar.colocacion", "Colocación"), icon: Camera, perm: "calendario.edit" }]
       : []),
   ].filter((item) => !item.perm || hasPerm(item.perm));

@@ -154,11 +154,14 @@ def tipo_de(clave: str | None) -> dict | None:
 
 
 def para_la_pantalla() -> list[dict]:
-    """El catálogo como lo pide la pantalla (sin lo interno, como `pieza`)."""
+    """El catálogo como lo pide la pantalla. Lleva `pieza` (a qué tipo de
+    pieza de las entregas corresponde) para que "Más opciones" arranque con
+    el mismo que pondría el servidor."""
     return [
         {
             "clave": t["clave"], "nombre": t["nombre"], "opciones": t["opciones"], "otras": t["otras"],
             "medida": t.get("medida"), "campos": t.get("campos", []), "bajada": t.get("bajada"),
+            "pieza": t.get("pieza"),
         }
         for t in TIPOS_DE_TAREA
     ]

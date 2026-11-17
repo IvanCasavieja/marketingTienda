@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from app.schemas.auth import _validate_password_strength
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -22,6 +22,7 @@ from app.core.rate_limit import limiter
 from app.models.ai_usage_log import AIUsageLog
 from app.models.audit_log import AuditLog
 from app.models.cenefa_job import CenefaJob
+from app.models.calendario import CalendarioTarea
 from app.models.local_asignacion import LocalAsignacion
 from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
 from app.core import alcance, externos
@@ -698,6 +699,9 @@ async def update_externo(
     _ensure_not_self(current_user, user_id)
 
     antes = {"es_externo": bool(user.es_externo), "empresa": user.empresa, "permissions": list(user.permissions or [])}
+    ya_era_externa = bool(user.es_externo)
+    empresa_vieja = externos.limpiar_empresa(user.empresa)
+    tarjetas_pasadas = 0
     if payload.es_externo:
         empresa = externos.limpiar_empresa(payload.empresa)
         if not empresa:
@@ -709,12 +713,38 @@ async def update_externo(
         )).scalar_one_or_none()
         if es_sucursal is not None:
             raise HTTPException(status_code=422, detail="Un login de sucursal no puede ser una cuenta externa")
+        if ya_era_externa and empresa_vieja and not externos.misma_empresa(empresa_vieja, empresa):
+            # Le corrigieron el nombre a la empresa ("Publisis" -> "Publicis").
+            # Las tarjetas son de la AGENCIA, por nombre: si era la última
+            # cuenta con el nombre viejo, se pasan al nuevo; si no, el
+            # tablero de la agencia quedaba vacío y nadie las podía entregar.
+            # Si quedan otras cuentas con el nombre viejo, las tarjetas siguen
+            # siendo de ellas: esta cuenta es la que cambió de agencia.
+            quedan = (await db.execute(
+                select(func.count()).select_from(User).where(
+                    User.id != user.id, User.es_externo.is_(True),
+                    externos.empresa_en_sql(User.empresa) == empresa_vieja.lower(),
+                )
+            )).scalar_one()
+            if not quedan:
+                tarjetas_pasadas = (await db.execute(
+                    update(CalendarioTarea)
+                    .where(
+                        CalendarioTarea.para == "agencia",
+                        externos.empresa_en_sql(CalendarioTarea.agencia) == empresa_vieja.lower(),
+                    )
+                    .values(agencia=empresa)
+                    .execution_options(synchronize_session=False)
+                )).rowcount or 0
         user.es_externo = True
         user.empresa = empresa
         user.role_id = None
-        # Una cuenta externa arranca sin ver el calendario (0070): si después
-        # tiene que verlo, se le da a ella puntualmente.
-        user.calendario_alcance = alcance.POR_DEFECTO_EXTERNO
+        if not ya_era_externa:
+            # Una cuenta externa arranca sin ver el calendario (0070): si
+            # después tiene que verlo, se le da a ella puntualmente. A una
+            # que ya era externa no se le toca lo que ya le habilitaron:
+            # corregirle la empresa le cerraba el calendario sin aviso.
+            user.calendario_alcance = alcance.POR_DEFECTO_EXTERNO
         user.permissions = [p for p in (user.permissions or []) if p in externos.PERMISOS_DE_EXTERNOS]
     else:
         user.es_externo = False
@@ -723,7 +753,7 @@ async def update_externo(
     db.add(AuditLog(
         user_id=current_user.id, action="admin.user.update_externo", resource="user", resource_id=str(user.id),
         details={"antes": antes, "es_externo": user.es_externo, "empresa": user.empresa,
-                 "permissions": list(user.permissions or [])},
+                 "permissions": list(user.permissions or []), "tarjetas_pasadas": tarjetas_pasadas},
         ip_address=_client_ip(request),
     ))
     return {"es_externo": user.es_externo, "empresa": user.empresa, "permissions": user.permissions or []}

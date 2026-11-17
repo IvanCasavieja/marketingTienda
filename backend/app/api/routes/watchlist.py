@@ -32,7 +32,7 @@ from app.core import alcance, externos
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_permission
 from app.core.mundos import mundos_de
-from app.models.calendario import CalendarioBarra
+from app.models.calendario import CalendarioBarra, CalendarioTarea
 from app.models.local_asignacion import LocalAsignacion
 from app.models.user import User
 from app.services import entregas as entregas_reglas
@@ -541,6 +541,20 @@ async def _recortar_al_alcance(db: AsyncSession, user: User, notifs, *, externo:
     tarjetas = await entregas_reglas.tarjetas_propias(
         db, user, [_tarea_de(n.origen_ref or "") for n in del_calendario if n.origen_tipo == "calendario_entrega"],
     )
+    # A alguien del equipo, el aviso de una tarea SUYA le llega aunque la
+    # acción quede fuera de lo que ve: es su trabajo (lo mismo que Mis tareas).
+    tareas_propias: set[str] = set()
+    if not externo:
+        ids = {
+            tid for n in del_calendario
+            if n.origen_tipo == "calendario_tarea" and (tid := _tarea_de(n.origen_ref or ""))
+        }
+        if ids:
+            tareas_propias = set((await db.execute(
+                select(CalendarioTarea.id).where(
+                    CalendarioTarea.id.in_(ids), CalendarioTarea.asignado_a_id == user.id,
+                )
+            )).scalars())
     meses = alcance.meses_de(v)
 
     def visible(n) -> bool:
@@ -548,6 +562,8 @@ async def _recortar_al_alcance(db: AsyncSession, user: User, notifs, *, externo:
             return True
         ref = n.origen_ref or ""
         if n.origen_tipo == "calendario_entrega" and _tarea_de(ref) in tarjetas:
+            return True
+        if n.origen_tipo == "calendario_tarea" and _tarea_de(ref) in tareas_propias:
             return True
         if n.origen_tipo == "calendario_header":
             return meses is None or ref.split(":")[0] in meses

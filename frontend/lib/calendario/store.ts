@@ -901,7 +901,14 @@ export const useCalendario = create<Estado>()(
           cambiarBarraLocal(duena.id, b => ({
             ...b, tareas: (b.tareas ?? []).map(t => (t.id === tareaId ? conCambios(t, cambios, b.desde, b.hasta) : t)),
           }))
-          void escribir(() => calendarioApi.cambiarTarea(tareaId, cambios), duena.id)
+          void escribir(() => calendarioApi.cambiarTarea(tareaId, cambios), duena.id).then(r => {
+            // Cambiar a quién va puede hacerla pasar a la agencia (le nace su
+            // tarjeta) o sacársela: se trae cómo quedó de verdad.
+            if (r && 'asignadoA' in cambios) {
+              set({ rev: null })
+              void get().sincronizar()
+            }
+          })
         },
 
         borrarTarea: tareaId => {
@@ -961,7 +968,11 @@ export const useCalendario = create<Estado>()(
               partes.push(r.sinAsignar === 1
                 ? 'Una quedó sin asignar: su responsable ya no ve este calendario.'
                 : `${r.sinAsignar} quedaron sin asignar: su responsable ya no ve este calendario.`)
-              // Acá se mostraban asignadas: se trae lo que quedó de verdad.
+            }
+            if (r.sinAsignar || r.tarjetas) {
+              // Se trae lo que quedó de verdad: las que perdieron su
+              // responsable y las tarjetas que nacieron (sin esto se veían
+              // como tareas comunes y daban ganas de pedirlas de nuevo).
               set({ rev: null })
               void get().sincronizar()
             }

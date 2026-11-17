@@ -387,15 +387,27 @@ async def _ultima_version(db: AsyncSession, fase_id: str | None) -> CalendarioVe
 # Leer
 # ---------------------------------------------------------------------------
 
-def _puede_decidir(usuario: User, entrega: CalendarioEntrega, version: CalendarioVersion | None,
-                   decisiones: reglas.Decisiones) -> tuple[bool, bool]:
+def _autor(tarea, subida_por_id: int | None) -> int | None:
+    """De quién es la versión, para la regla "nadie decide sobre lo que subió".
+
+    En una pieza de una agencia de AFUERA de la plataforma quien la sube es
+    alguien del equipo que carga lo que le mandaron por mail o WhatsApp: no
+    es su trabajo, y es justo quien tiene que poder aprobarlo o pedir
+    cambios. Sin esto, quien pedía un mailing y lo cargaba (el camino por
+    defecto del formulario) dejaba la tarjeta trabada en Esperando feedback,
+    sin que nadie más se enterara."""
+    return None if getattr(tarea, "para", None) == "fuera" else subida_por_id
+
+
+def _puede_decidir(usuario: User, tarea: CalendarioTarea, entrega: CalendarioEntrega,
+                   version: CalendarioVersion | None, decisiones: reglas.Decisiones) -> tuple[bool, bool]:
     """(puede decidir, como respaldo). La misma regla que exige el POST."""
     if version is None or version.estado != "revision":
         return False, False
     try:
         _, _, respaldo = reglas.lugar_para_decidir(
             usuario.id, _puede_gestionar_tareas(usuario), list(entrega.aprobadores or []), decisiones,
-            version.subida_por_id,
+            _autor(tarea, version.subida_por_id),
         )
         return True, respaldo
     except NoPuedeDecidir:
@@ -496,7 +508,7 @@ async def ver_entregas(
 
     actual = next((v for v in reversed(versiones) if v.fase_id == entrega.fase_actual_id), None)
     decisiones_actual = [(d.aprobador_id, d.decision) for d in decisiones.get(actual.id, [])] if actual else []
-    puede_decidir, como_respaldo = _puede_decidir(current_user, entrega, actual, decisiones_actual)
+    puede_decidir, como_respaldo = _puede_decidir(current_user, tarea, entrega, actual, decisiones_actual)
     entrega_yo = puede_entregar(current_user, tarea)
     quien = _quien_mueve(current_user, tarea, entrega, puede_decidir)
     columna = reglas.columna_de_entrega(entrega)
@@ -718,12 +730,22 @@ async def entregar(
     # puede decidir como respaldo si tiene calendario.tareas).
     destino = entrega.aprobador_de_turno_id or tarea.creado_por_id
     avisados = 0
-    if destino != current_user.id and await reglas.avisar(
-        db, destino,
-        reglas.mensaje_para_revisar(_quien(current_user), ronda, fase.nombre, tarea.titulo, barra.nombre),
-        reglas.referencia(barra.id, tarea.id, versionId, f"revisar-{destino}"),
-    ):
-        avisados = 1
+    # Si a quien le tocaría es quien acaba de entregar y no puede decidir
+    # sobre lo suyo (una pieza de Tienda que se pidió a sí mismo), se les
+    # avisa a quienes pueden aprobarla como respaldo: si no, quedaba en
+    # Esperando feedback sin que nadie se enterara. En una pieza de una
+    # agencia de afuera no hace falta: quien la carga la decide (ver _autor).
+    if destino == current_user.id and _autor(tarea, current_user.id) is not None:
+        destinos = await reglas.gestores_del_mundo(db, barra.mundo, menos=current_user.id)
+    else:
+        destinos = [destino] if destino != current_user.id else []
+    for uid in destinos:
+        if await reglas.avisar(
+            db, uid,
+            reglas.mensaje_para_revisar(_quien(current_user), ronda, fase.nombre, tarea.titulo, barra.nombre),
+            reglas.referencia(barra.id, tarea.id, versionId, f"revisar-{uid}"),
+        ):
+            avisados += 1
     resumen = await _resumen(db, tarea_id)
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
@@ -824,7 +846,8 @@ async def _aplicar_decision(
     previas = await reglas.decisiones_de(db, version.id)
     try:
         aprobador, orden, _ = reglas.lugar_para_decidir(
-            current_user.id, _puede_gestionar_tareas(current_user), aprobadores, previas, version.subida_por_id,
+            current_user.id, _puede_gestionar_tareas(current_user), aprobadores, previas,
+            _autor(tarea, version.subida_por_id),
         )
     except NoPuedeDecidir as exc:
         raise HTTPException(status_code=exc.codigo, detail=str(exc))
@@ -984,7 +1007,7 @@ async def mover(
     version = await _ultima_version(db, entrega.fase_actual_id) if entrega.momento == "revision" else None
     decide = False
     if version is not None and version.estado == "revision":
-        decide, _ = _puede_decidir(current_user, entrega, version, await reglas.decisiones_de(db, version.id))
+        decide, _ = _puede_decidir(current_user, tarea, entrega, version, await reglas.decisiones_de(db, version.id))
     quien = _quien_mueve(current_user, tarea, entrega, decide)
     try:
         accion = reglas.movimiento(actual, payload.a, quien, hay_versiones=hay_versiones)
@@ -1192,7 +1215,8 @@ async def _tarjetas(db: AsyncSession, filas, usuario: User, hoy=None) -> list[di
         if ultima and ultima[1] == "revision" and e.momento == "revision" and not externos.es_externo(usuario):
             try:
                 reglas.lugar_para_decidir(
-                    usuario.id, gestor, list(e.aprobadores or []), decisiones.get(ultima[0], []), subidas.get(ultima[0]),
+                    usuario.id, gestor, list(e.aprobadores or []), decisiones.get(ultima[0], []),
+                    _autor(t, subidas.get(ultima[0])),
                 )
                 decide = True
             except NoPuedeDecidir:
