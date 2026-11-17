@@ -94,6 +94,28 @@ class CalendarioEntrega(Base):
     creado_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+    # El tablero de tarjetas (0070), estilo Trello: Ingresado, En proceso,
+    # Esperando feedback, Finalizado y Archivado. La columna sale del momento
+    # (ver entregas.columna_de) y de estas fechas, que son lo único que el
+    # momento no dice:
+    # - cuándo la arrancó quien entrega (Ingresado → En proceso). También se
+    #   pone sola con la primera entrega.
+    iniciada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # - cuándo quedó aprobada la última fase (Finalizado). Se vacía si vuelve
+    #   a haber algo para entregar (le agregaron una fase).
+    finalizada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # - cuándo pasó a Archivado: a mano, o sola a los ARCHIVAR_TARJETAS_DIAS
+    #   de finalizada (entonces `archivada_por_id` queda en null).
+    archivada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archivada_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # - cuándo alguien la sacó del archivo a mano: los días para que se
+    #   archive sola vuelven a contar desde ahí (si no, se volvería a
+    #   archivar en el acto).
+    desarchivada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=func.now(), nullable=True
@@ -233,5 +255,10 @@ class CalendarioDecision(Base):
     orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # 'aprobada' | 'aprobada-con-cambios' | 'cambios'
     decision: Mapped[str] = mapped_column(String(24), nullable=False)
+    # Lo que ve la agencia: el comentario y las marcas son justamente para ella.
     comentario: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Una nota SOLO para el equipo (0069), como los comentarios internos de
+    # Basecamp: "ojo que comercial todavía no confirmó el precio". Una cuenta
+    # externa nunca la recibe, ni en la tarea ni en los avisos.
+    nota_interna: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

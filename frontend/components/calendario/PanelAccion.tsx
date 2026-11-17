@@ -22,8 +22,9 @@ import { CLASE_SEMAFORO, semaforoDe } from '@/lib/calendario/semaforo'
 import { choquesDe } from '@/lib/calendario/choques'
 import {
   ANTICIPACIONES_DE_AVISO, CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader, tituloDeCanal,
-  type AreaPieza, type Aviso, type BarraGuardada, type EstadoPieza, type Persona, type Pieza,
+  type AreaPieza, type Aviso, type BarraGuardada, type EstadoPieza, type Persona, type Pieza, delEquipo,
 } from '@/lib/calendario/tipos'
+import { esExterno } from '@/lib/externos'
 
 const ESTADOS: EstadoPieza[] = ['pendiente', 'en-proceso', 'aprobado', 'publicado']
 
@@ -193,10 +194,13 @@ export function PanelAccion() {
     : undefined
   const noEntro = accion ? header.sinLugar.find(s => s.accionId === accion.id) : undefined
 
+  // Una cuenta externa (la agencia) ve sus tareas y las piezas; los avisos son
+  // del equipo (el servidor ni se los manda).
+  const externo = esExterno(user)
   const pestanas: { id: Pestana; nombre: string; n: number }[] = [
-    { id: 'tareas', nombre: 'Tareas', n: tareas.length },
+    { id: 'tareas', nombre: externo ? 'Mis tareas' : 'Tareas', n: tareas.length },
     { id: 'piezas', nombre: 'Piezas', n: piezas.length },
-    { id: 'avisos', nombre: 'Avisos', n: (accion?.avisos ?? []).length },
+    ...(externo ? [] : [{ id: 'avisos' as const, nombre: 'Avisos', n: (accion?.avisos ?? []).length }]),
     // El número es a cuántos locales se les pidió la foto.
     ...(conFotos ? [{ id: 'fotos' as const, nombre: 'Fotos', n: accion?.fotos?.locales ?? 0 }] : []),
   ]
@@ -382,7 +386,7 @@ export function PanelAccion() {
                   />
                 )}
 
-                {pestanaVista === 'avisos' && (
+                {pestanaVista === 'avisos' && !externo && (
                   <BloqueAvisos
                     accion={accion}
                     editable={editable}
@@ -467,6 +471,7 @@ function FichaEnvio({
 }) {
   const abrirEditor = useCalendario(s => s.abrirEditor)
   const cambiarEstado = useCalendario(s => s.cambiarEstadoEnvio)
+  const externo = esExterno(usePermisosCalendario().user)
   const estado: EstadoPieza = envio.estado ?? 'pendiente'
   const canal = tituloDeCanal(envio.banda)
   const ahora = momento(envio.desde, envio.desde, true)
@@ -520,7 +525,8 @@ function FichaEnvio({
 
       <div className="flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6">
         <BloqueTareas accion={envio} personas={personas} usuarioId={usuarioId} gestiona={gestionaTareas} />
-        <BloqueAvisos accion={envio} editable={editable} personas={personas} usuarioId={usuarioId} />
+        {/* Los avisos son del equipo: a la agencia no se le muestran. */}
+        {!externo && <BloqueAvisos accion={envio} editable={editable} personas={personas} usuarioId={usuarioId} />}
         <p className="rounded-xl bg-slate-50 px-3.5 py-3 text-[13px] leading-relaxed text-slate-600 dark:bg-slate-800/40 dark:text-slate-400">
           Es un envío que no sale de ninguna acción. Los que sí son parte de una acción se cargan en
           la ficha de esa acción, en Email, WhatsApp o Push, y aparecen solos en el cronograma.
@@ -659,7 +665,8 @@ function BloqueAvisos({
               </div>
             ) : (
               <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
-                {personas.map(p => {
+                {/* Los avisos son internos: la agencia no los recibe (el servidor lo rechaza). */}
+                {delEquipo(personas).map(p => {
                   const marcado = elegidos.includes(p.id)
                   return (
                     <label

@@ -7,6 +7,8 @@ import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
+import { esExterno } from "@/lib/externos";
+import { veCalendario } from "@/lib/alcance";
 import { useAvisos } from "@/store/avisos";
 import { usePendientesDeFotos } from "@/lib/colocacion/store";
 import { mundoEfectivo, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
@@ -30,15 +32,24 @@ export default function NavegacionInferior({ onMenu, onAvisos }: { onMenu: () =>
   const fotos = usePendientesDeFotos((s) => s.pendientes) ?? 0;
   const elegido = useMundoElegido((s) => s.elegido);
   const mundo = mundoEfectivo(user, elegido);
-  const veCalendario = hasPermission(user, "calendario.view");
+  const puedeVer = hasPermission(user, "calendario.view");
   const esLocal = (user?.assigned_locales?.length ?? 0) > 0;
-  if (!veCalendario && !esLocal) return null;
+  if (!puedeVer && !esLocal) return null;
 
-  const items: { href: string; label: string; Icono: typeof CalendarDays; numero?: number }[] = veCalendario
+  // Lo mismo que el menú (16/11/2026): la agencia, su tablero y, si se lo
+  // habilitaron, el calendario; quien no ve el calendario, solo el tablero.
+  const conCalendario = veCalendario(user);
+  const items: { href: string; label: string; Icono: typeof CalendarDays; numero?: number }[] = puedeVer && esExterno(user)
     ? [
-      { href: "/calendario", label: t("sidebar.calendario"), Icono: CalendarDays },
+      { href: "/entregas", label: t("sidebar.miTablero", "Mi tablero"), Icono: Layers },
+      ...(conCalendario ? [{ href: "/calendario", label: t("sidebar.calendario"), Icono: CalendarDays }] : []),
+    ]
+    : puedeVer
+    ? [
+      ...(conCalendario ? [{ href: "/calendario", label: t("sidebar.calendario"), Icono: CalendarDays }] : []),
+      // Sus tareas, siempre: aunque no vea el calendario, lo que le asignan le llega.
       { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), Icono: ListChecks },
-      { href: "/entregas", label: t("sidebar.entregas", "Entregas"), Icono: Layers },
+      { href: "/entregas", label: t("sidebar.tablero", "Tablero"), Icono: Layers },
     ]
     : [
       { href: "/fotos", label: t("sidebar.fotos", "Fotos"), Icono: Camera, numero: fotos },

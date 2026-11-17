@@ -59,6 +59,23 @@ class Settings(BaseSettings):
     # 0 = sin freno.
     BASE_TOPE_MB: int = 400
 
+    # Cuánto del calendario ve cada persona ya no es un número de días fijo
+    # para las cuentas externas: desde la 0070 cada usuario tiene su alcance
+    # (No lo ve / 1 mes / 2 meses / 12 meses / Todo), que elige un admin en el
+    # panel. Ver app/core/alcance.py.
+
+    # El tablero de tarjetas (16/11/2026): una tarjeta finalizada pasa sola a
+    # "Archivado" a los tantos días si nadie la archivó antes. Pedido de Ivan:
+    # "una vez finalizadas, 10 días después pasan solas a Archivado". Se
+    # calcula al leer el tablero y además lo deja guardado el loop diario
+    # (app/services/entregas.py: archivar_finalizadas).
+    ARCHIVAR_TARJETAS_DIAS: int = 10
+    # Y a los tantos días en Archivado, se archiva "de verdad": no se muestra
+    # ni se carga en el tablero (queda en la base y la encuentra el buscador).
+    # Lo que más molesta del Trello de hoy es que anda lentísimo porque carga
+    # miles de tarjetas viejas.
+    OCULTAR_ARCHIVADAS_DIAS: int = 30
+
     # El modelo de Anthropic que usan TODOS los agentes: Don Tino, Tinín,
     # Doña Tina, Dogti, la extracción de facturas y la pata de Claude en la
     # Tríada. Estaba hardcodeado y repetido en seis archivos, cada uno con un
@@ -72,6 +89,27 @@ class Settings(BaseSettings):
     # mandarlos devuelve 400. Si hay que volver atrás en caliente, se puede
     # setear por env var en Render sin desplegar código.
     MODELO_IA: str = "claude-sonnet-5"
+
+    # La IA que revisa las piezas de las entregas antes que el aprobador
+    # (app/services/revision_ia.py): ortografía, logo de otro mundo, falta del
+    # legal, precio o vigencia distintos al pedido, QR ilegible.
+    #
+    # IA_REVISION_ACTIVA=false la apaga sin tocar código: no se llama a la IA
+    # y la pantalla no muestra nada (ni lo que ya se había revisado).
+    IA_REVISION_ACTIVA: bool = True
+    # Un modelo propio y no MODELO_IA: acá todo depende de LEER la imagen
+    # (letra chica de legales, una tilde, un precio), y la guía de Anthropic
+    # recomienda Opus 5.5 para visión: lee imágenes con más precisión que
+    # Sonnet 5 en cualquier nivel de esfuerzo. Cuesta el doble por token
+    # (US$4/US$20 por millón contra US$2/US$10), unos centavos por versión:
+    # ver el docstring del servicio. Si hay que bajar el costo, se cambia por
+    # env var sin desplegar (claude-sonnet-5 acepta el mismo pedido).
+    MODELO_IA_REVISION: str = "claude-opus-5-5"
+    # Cuántas versiones se le mandan a la IA por día (hora de Uruguay), entre
+    # todos. Pasado el tope, las nuevas no se revisan (y no se muestra nada):
+    # es el freno si algo se dispara. Con el uso esperado (unas 4 versiones
+    # por día hábil) no se llega nunca.
+    IA_REVISION_POR_DIA: int = 200
 
     # Demo mode — cuando True, sync_metrics retorna inmediatamente sin llamar APIs externas
     DEMO_MODE: bool = False

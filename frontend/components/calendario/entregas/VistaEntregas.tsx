@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  ArrowRight, Check, ChevronDown, Clock, ExternalLink, FileText, Hourglass, Loader2, PartyPopper, Pencil, RotateCcw,
-  Send, ShieldCheck, UserRound, X,
+  ArrowRight, Building2, Check, ChevronDown, Clock, Download, ExternalLink, FileText, Hourglass, Link2, Loader2, Lock,
+  PartyPopper, Pencil, RotateCcw, Send, ShieldCheck, UserRound, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { calendarioApi, entregasApi } from '@/lib/api'
@@ -16,6 +16,7 @@ import { useCalendario } from '@/lib/calendario/store'
 import type { Persona } from '@/lib/calendario/tipos'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useVistaEntregas } from '@/store/entregas'
+import { defColumna, quienLaHaceTexto } from '@/lib/calendario/tablero'
 import { useDialogo } from '../useDialogo'
 import { FormularioEntrega } from './FormularioEntrega'
 import {
@@ -24,6 +25,7 @@ import {
 import { ImagenConMarcas, Miniatura, type Pin } from './ImagenConMarcas'
 import { LineaDeFases } from './LineaDeFases'
 import { Revisor } from './Revisor'
+import { urlDeImagen } from './useImagen'
 
 function detalleDeError(e: unknown): string | null {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
@@ -47,6 +49,9 @@ function Contenido({ tareaId }: { tareaId: string }) {
   const setModo = useVistaEntregas(s => s.setModo)
   const cerrar = useVistaEntregas(s => s.cerrar)
   const huboCambios = useVistaEntregas(s => s.huboCambios)
+  // Abierta desde el tablero para una sola cosa (entregar o revisar al
+  // soltar la tarjeta): al terminar o cancelar, se vuelve al tablero.
+  const soloEsto = useVistaEntregas(s => s.soloEsto)
   const { user } = useCurrentUser()
   const [detalle, setDetalle] = useState<DetalleEntregas | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -79,7 +84,8 @@ function Contenido({ tareaId }: { tareaId: string }) {
   /** Después de entregar, decidir o configurar: se trae todo de nuevo y se
    *  avisa al resto de la pantalla (el calendario, el tablero, Mis tareas). */
   function listo() {
-    setModo('ver')
+    if (soloEsto) cerrar()
+    else setModo('ver')
     setRecarga(n => n + 1)
     huboCambios()
     // Si el calendario está cargado (se abrió desde la ficha), se pone al día
@@ -122,7 +128,7 @@ function Contenido({ tareaId }: { tareaId: string }) {
         )}
 
         {detalle && modo === 'entregar' && detalle.puedo.entregar && (
-          <FormularioEntrega detalle={detalle} onListo={listo} onCancelar={() => setModo('ver')} />
+          <FormularioEntrega detalle={detalle} onListo={listo} onCancelar={() => (soloEsto ? cerrar() : setModo('ver'))} />
         )}
         {detalle && modo === 'revisar' && detalle.puedo.decidir && version && (
           <Revisor
@@ -130,7 +136,7 @@ function Contenido({ tareaId }: { tareaId: string }) {
             version={version}
             anterior={versionAnterior(detalle.fases, version)}
             onListo={listo}
-            onCancelar={() => setModo('ver')}
+            onCancelar={() => (soloEsto ? cerrar() : setModo('ver'))}
           />
         )}
         {detalle && modo === 'configurar' && detalle.puedo.configurar && (
@@ -179,7 +185,17 @@ function Encabezado({ detalle, modo, onCerrar, cerrarRef }: {
             </p>
             <h2 id="entregas-titulo" className="mt-1 text-xl font-bold leading-tight text-slate-900 dark:text-slate-100">{t?.titulo}</h2>
             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600 dark:text-slate-400">
-              <span className="flex items-center gap-1"><UserRound className="h-4 w-4" /> Entrega {t?.asignadoA != null ? detalle.personas[String(t.asignadoA)] ?? 'alguien' : 'nadie todavía'}</span>
+              {detalle.columna && (
+                <span className="flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                  <span className={`h-2 w-2 rounded-full ${defColumna(detalle.columna).punto}`} aria-hidden />
+                  {defColumna(detalle.columna).titulo}
+                </span>
+              )}
+              {t?.quienLaHace && t.quienLaHace.tipo !== 'tienda' ? (
+                <span className="flex items-center gap-1"><Building2 className="h-4 w-4" /> La hace {quienLaHaceTexto(t.quienLaHace)}</span>
+              ) : (
+                <span className="flex items-center gap-1"><UserRound className="h-4 w-4" /> Entrega {t?.asignadoA != null ? detalle.personas[String(t.asignadoA)] ?? 'alguien' : 'nadie todavía'}</span>
+              )}
               {t?.vence && (
                 <span className={`flex items-center gap-1 ${vencida ? 'font-semibold text-rose-600 dark:text-rose-300' : ''}`}>
                   <Clock className="h-4 w-4" /> {vencida ? 'Venció el' : 'Vence el'} {fechaCorta(t.vence)}
@@ -213,7 +229,9 @@ function Resumen({ detalle, usuarioId, onRecargar }: {
   const huboCambios = useVistaEntregas(s => s.huboCambios)
   const { resumen, tarea, puedo } = detalle
   const nombreDe = (id: number | null) => (id != null ? detalle.personas[String(id)] : null) ?? 'alguien'
-  const paso = proximoPaso(resumen, tarea.asignadoA, usuarioId, nombreDe)
+  const paso = proximoPaso(resumen, tarea.asignadoA, usuarioId, nombreDe, puedo.decidir && !puedo.comoRespaldo, {
+    entregoYo: puedo.entregar, hace: tarea.quienLaHace,
+  })
   const enCurso = versionEnCurso(detalle)
   // La versión que se muestra grande: la última de la fase en curso o, si ya
   // se aprobó todo, la aprobada de la última fase (la pieza que salió).
@@ -397,6 +415,33 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
   }))
   const estado = ESTADO_VERSION[version.estado]
   const todasPurgadas = version.imagenes.length > 0 && version.imagenes.every(i => i.purgada)
+  const [bajando, setBajando] = useState(false)
+
+  /** Bajar los materiales de esta ronda (16/11/2026: "para no andar pidiéndolos
+   *  por mail"). Son las mismas imágenes comprimidas que se ven (no se guarda
+   *  nada nuevo: la base es de 500 MB); el original va por el link. */
+  async function descargar() {
+    setBajando(true)
+    try {
+      const fase = detalle.fases.find(f => f.id === version.faseId)?.nombre ?? 'Entrega'
+      const base = `${detalle.tarea.titulo} - ${fase} - ronda ${version.ronda}`.replace(/[\\/:*?"<>|]+/g, '-')
+      const vivas = version.imagenes.filter(i => !i.purgada)
+      for (const [i, im] of vivas.entries()) {
+        const url = await urlDeImagen(im.id, 'grande')
+        const a = document.createElement('a')
+        a.href = url
+        a.download = vivas.length > 1 ? `${base} - ${i + 1}.jpg` : `${base}.jpg`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      }
+      toast.success(vivas.length === 1 ? 'Se bajó la imagen.' : `Se bajaron ${vivas.length} imágenes.`)
+    } catch {
+      toast.error('No se pudieron bajar las imágenes. Probá de nuevo.')
+    } finally {
+      setBajando(false)
+    }
+  }
 
   return (
     <article className="rounded-2xl border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4">
@@ -404,12 +449,32 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
         <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Ronda {version.ronda}</h4>
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${estado.tono}`}>{estado.texto}</span>
         <span className="text-xs text-slate-500 dark:text-slate-400">{nombreDe(version.subidaPor)} · {fechaYHora(version.fecha)}</span>
-        {!abierta && (
-          <button type="button" onClick={() => setAbierta(true)} className="ml-auto rounded-lg px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
-            Ver grande
-          </button>
-        )}
+        <span className="ml-auto flex items-center gap-1">
+          {version.imagenes.some(i => !i.purgada) && (
+            <button
+              type="button"
+              onClick={() => void descargar()}
+              disabled={bajando}
+              className="flex min-h-[36px] items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-800"
+              title="Bajar las imágenes de esta ronda"
+            >
+              {bajando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Descargar
+            </button>
+          )}
+          {!abierta && version.imagenes.length > 0 && (
+            <button type="button" onClick={() => setAbierta(true)} className="min-h-[36px] rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
+              Ver grande
+            </button>
+          )}
+        </span>
       </header>
+
+      {version.imagenes.length === 0 && version.link && (
+        <a href={version.link} target="_blank" rel="noopener noreferrer"
+          className="mt-2 flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-brand-700 transition hover:border-brand-400 dark:border-slate-700 dark:bg-slate-800/50 dark:text-brand-200">
+          <Link2 className="h-4 w-4 shrink-0" /> <span className="min-w-0 truncate">Materiales en el link: {version.link}</span>
+        </a>
+      )}
 
       {todasPurgadas ? (
         <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
@@ -429,11 +494,11 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
             </div>
           )}
         </div>
-      ) : (
+      ) : version.imagenes.length > 0 ? (
         <button type="button" onClick={() => setAbierta(true)} className="mt-2 flex gap-2" aria-label={`Ver la ronda ${version.ronda} grande`}>
           {version.imagenes.map((im, i) => <Miniatura key={im.id} imagenId={im.id} etiqueta={`Imagen ${i + 1}`} className="h-14 w-14" />)}
         </button>
-      )}
+      ) : null}
 
       {(version.comentario || version.link) && (
         <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
@@ -459,6 +524,12 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
               )}
               <span className="text-xs text-slate-500 dark:text-slate-400">{fechaYHora(d.fecha)}</span>
               {d.comentario && <span className="w-full text-slate-600 dark:text-slate-400">«{d.comentario}»</span>}
+              {d.notaInterna && (
+                <span className="mt-0.5 flex w-full items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[13px] text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span><span className="font-semibold">Nota interna (la agencia no la ve):</span> {d.notaInterna}</span>
+                </span>
+              )}
             </li>
           ))}
         </ul>
@@ -485,7 +556,11 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
 
 function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas; abiertoAlInicio?: boolean }) {
   const [abierto, setAbierto] = useState(abiertoAlInicio)
+  // Lo tildado con sus medidas ya está arriba (`pedido`): el detalle del
+  // pedido que lo repite no se muestra dos veces.
+  const pedido = detalle.tarea.pedido ?? null
   const campos = camposDe(detalle.tipoPieza).filter(c => detalle.brief[c.clave] != null && detalle.brief[c.clave] !== '')
+    .filter(c => !(pedido && c.clave === 'detalle' && String(detalle.brief.detalle).trim() === pedido.trim()))
   return (
     <section>
       <button
@@ -498,9 +573,14 @@ function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas;
         Lo que se pidió
         <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${abierto ? 'rotate-180' : ''}`} />
       </button>
+      {abierto && pedido && (
+        <p className="mt-2 whitespace-pre-line rounded-2xl border border-brand-200 bg-brand-50/60 p-3.5 text-sm font-medium leading-relaxed text-slate-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-slate-100">
+          {pedido}
+        </p>
+      )}
       {abierto && (
         campos.length === 0 ? (
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">El pedido no tiene detalles cargados.</p>
+          pedido ? null : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">El pedido no tiene detalles cargados.</p>
         ) : (
           <dl className="mt-2 grid gap-x-4 gap-y-2 rounded-2xl bg-slate-50 p-3.5 text-sm dark:bg-slate-800/50 sm:grid-cols-2">
             {campos.map(c => {

@@ -67,6 +67,8 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const galeriaRef = useRef<HTMLInputElement>(null)
 
   const linkMalo = link.trim() !== '' && !/^https?:\/\//i.test(link.trim())
+  // Los materiales son las imágenes y/o el link (16/11/2026): con uno alcanza.
+  const hayMateriales = imagenes.length > 0 || (link.trim() !== '' && !linkMalo)
   const lugar = limites.imagenes - imagenes.length - preparando
 
   async function agregar(archivos: FileList | null) {
@@ -107,7 +109,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   }
 
   async function entregar() {
-    if (imagenes.length === 0 || linkMalo || subiendo !== null) return
+    if (!hayMateriales || linkMalo || subiendo !== null) return
     const form = new FormData()
     form.append('versionId', versionId)
     form.append('comentario', comentario.trim())
@@ -121,7 +123,9 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     try {
       await entregasApi.entregar(detalle.tarea.id, form, f => setSubiendo(f))
       imagenes.forEach(im => URL.revokeObjectURL(im.vista))
-      toast.success(`Entregaste la ronda ${ronda} de ${fase?.nombre ?? 'la fase'}. Le avisamos a quien tiene que revisarla.`)
+      // Con una sola fase (la "Entrega" de las tarjetas) no se nombra la fase.
+      const deFase = resumen.fases.length > 1 ? ` de ${fase?.nombre ?? 'la fase'}` : ''
+      toast.success(`Entregaste la ronda ${ronda}${deFase}. Quedó en «Esperando feedback»: le avisamos a quien la revisa.`)
       onListo()
     } catch (e) {
       toast.error(detalleDeError(e) ?? 'No se pudo entregar. Revisá la conexión y probá de nuevo: no se pierde nada.')
@@ -134,10 +138,12 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       <div className="flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
         <div>
           <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-            Entregar {ronda === 1 ? fase?.nombre : `la ronda ${ronda} de ${fase?.nombre}`}
+            {resumen.fases.length === 1
+              ? (ronda === 1 ? 'Entregar los materiales' : `Entregar la ronda ${ronda}`)
+              : `Entregar ${ronda === 1 ? fase?.nombre : `la ronda ${ronda} de ${fase?.nombre}`}`}
           </h3>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Subí la pieza (hasta {limites.imagenes} imágenes). La van a revisar en el orden de la cadena.
+            Subí la pieza (hasta {limites.imagenes} imágenes) y/o pegá el link al original. La van a revisar en el orden de la cadena.
           </p>
         </div>
 
@@ -235,7 +241,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
             />
           </label>
           <label className="block">
-            <span className="etiqueta-campo flex items-center gap-1"><Link2 className="h-3.5 w-3.5" /> Link al original (opcional)</span>
+            <span className="etiqueta-campo flex items-center gap-1"><Link2 className="h-3.5 w-3.5" /> Link al original (Drive, WeTransfer…)</span>
             <input
               type="url"
               value={link}
@@ -262,7 +268,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
         <button
           type="button"
           onClick={() => void entregar()}
-          disabled={imagenes.length === 0 || preparando > 0 || linkMalo || subiendo !== null}
+          disabled={!hayMateriales || preparando > 0 || linkMalo || subiendo !== null}
           className="ml-auto flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-700 dark:disabled:text-slate-400 sm:min-h-[44px] sm:flex-none"
         >
           {subiendo !== null ? (

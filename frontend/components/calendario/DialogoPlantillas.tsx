@@ -13,8 +13,9 @@ import {
 } from '@/lib/calendario/plantillas'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { useCalendario, useCategoriasDelMundo } from '@/lib/calendario/store'
-import type { AnclaTarea, BarraGuardada, Persona, Plantilla, TareaDePlantilla } from '@/lib/calendario/tipos'
+import { nombreConEmpresa, type AnclaTarea, type BarraGuardada, type Persona, type Plantilla, type TareaDePlantilla } from '@/lib/calendario/tipos'
 import { mundoDe } from '@/lib/mundos'
+import { useCatalogoDeTipos } from '@/store/tiposDeTarea'
 import { Cocarda } from './Cocarda'
 import { useDialogo } from './useDialogo'
 import { CLASE_MANIJA, useDeslizarParaCerrar } from './useDeslizarParaCerrar'
@@ -486,6 +487,19 @@ function FilaDeTarea({
   const [conDetalle, setConDetalle] = useState(Boolean(tarea.descripcion))
   const asignado = personas.find(p => p.id === tarea.asignadoA)
   const sinTitulo = intento && !tarea.titulo.trim()
+  // Quién la hace (16/11/2026): si es una agencia, al aplicar la plantilla le
+  // nace sola su tarjeta en el tablero. Las agencias de la plataforma son las
+  // empresas de las cuentas externas.
+  const { tipos } = useCatalogoDeTipos()
+  const agencias = [...new Set(personas.filter(p => p.externo && p.empresa).map(p => p.empresa as string))]
+    .sort((a, b) => a.localeCompare(b, 'es'))
+  const para = tarea.para ?? 'tienda'
+  const valorQuien = para === 'agencia' ? `agencia:${tarea.agencia ?? ''}` : para
+  function elegirQuien(v: string) {
+    if (v.startsWith('agencia:')) onCambiar({ para: 'agencia', agencia: v.slice(8), asignadoA: null })
+    else if (v === 'fuera') onCambiar({ para: 'fuera', agencia: tarea.para === 'fuera' ? tarea.agencia ?? '' : '' })
+    else onCambiar({ para: 'tienda', agencia: null })
+  }
 
   function elegirCuando(v: Cuando) {
     if (v === 'sin') { onCambiar({ ancla: null, dias: 0 }); return }
@@ -568,6 +582,32 @@ function FilaDeTarea({
           )}
         </div>
 
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">¿Qué es?</span>
+            <select value={tarea.tipo ?? ''} onChange={e => onCambiar({ tipo: e.target.value || null, opciones: [] })}
+              aria-label="Tipo de pieza" className="campo">
+              <option value="">Una tarea común</option>
+              {(tipos ?? []).map(t => <option key={t.clave} value={t.clave}>Pieza: {t.nombre}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">¿Quién la hace?</span>
+            <select value={valorQuien} onChange={e => elegirQuien(e.target.value)} aria-label="Quién la hace" className="campo">
+              <option value="tienda">Alguien de Tienda</option>
+              {agencias.map(a => <option key={a} value={`agencia:${a}`}>{a} (agencia)</option>)}
+              {para === 'agencia' && tarea.agencia && !agencias.includes(tarea.agencia) && (
+                <option value={`agencia:${tarea.agencia}`}>{tarea.agencia} (agencia)</option>
+              )}
+              <option value="fuera">Otra agencia (fuera de la plataforma)</option>
+            </select>
+          </label>
+          {para === 'fuera' && (
+            <input value={tarea.agencia ?? ''} onChange={e => onCambiar({ agencia: e.target.value })} maxLength={120}
+              placeholder="Nombre de la agencia de afuera" aria-label="Nombre de la agencia de afuera" className="campo sm:col-span-2" />
+          )}
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           {/* En el teléfono el responsable va solo en su línea: al lado de los
               botones no se leía el nombre. */}
@@ -576,14 +616,15 @@ function FilaDeTarea({
             <select
               value={tarea.asignadoA ?? ''}
               onChange={e => onCambiar({ asignadoA: e.target.value ? Number(e.target.value) : null })}
-              aria-label="Responsable"
+              aria-label={para === 'fuera' ? 'Quién del equipo carga lo que manda' : 'Responsable'}
+              disabled={para === 'agencia'}
               className="campo !pl-9 sm:!w-64"
             >
-              <option value="">Sin asignar</option>
+              <option value="">{para === 'agencia' ? 'La agencia entera' : para === 'fuera' ? '¿Quién la carga?' : 'Sin asignar'}</option>
               {tarea.asignadoA != null && !asignado && (
                 <option value={tarea.asignadoA}>{personasCargadas ? 'Alguien que ya no ve este calendario' : 'Asignada'}</option>
               )}
-              {personas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
             </select>
           </label>
           <span className="flex items-center gap-1">

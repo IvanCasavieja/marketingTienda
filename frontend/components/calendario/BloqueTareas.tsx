@@ -12,7 +12,7 @@ import { useCalendario } from '@/lib/calendario/store'
 import { plantillasSugeridas, textoDeAncla } from '@/lib/calendario/plantillas'
 import {
   ETIQUETA_ESTADO_TAREA, NIVELES_DE_TAREA, nivelDeTarea,
-  type BarraGuardada, type EstadoTarea, type Persona, type Tarea,
+  type BarraGuardada, type EstadoTarea, type Persona, type Tarea, nombreConEmpresa,
 } from '@/lib/calendario/tipos'
 import { proximoPaso } from '@/lib/calendario/entregas'
 import { useVistaEntregas } from '@/store/entregas'
@@ -20,6 +20,8 @@ import {
   FormularioEntregas, configInicial, configParaEnviar, faltaEnConfig, type ConfigEntregas,
 } from './entregas/FormularioEntregas'
 import { FasesCompactas, faseActualTexto } from './entregas/LineaDeFases'
+import { PedirPieza } from './PedirPieza'
+import { usePermisosCalendario } from '@/lib/calendario/permisos'
 
 /**
  * Las tareas de una acción.
@@ -29,6 +31,10 @@ import { FasesCompactas, faseActualTexto } from './entregas/LineaDeFases'
  *
  * - `gestiona` (permiso `calendario.tareas`): crea, asigna, pone fecha y borra,
  *   y usa las plantillas del mundo (ver DialogoPlantillas).
+ * - Cualquiera del equipo que edita el calendario pide piezas (16/11/2026:
+ *   "todo el equipo tiene que poder crear tareas para agencia"): Banners,
+ *   Mailing, Cenefas… con quién la hace y para cuándo. Le nace su tarjeta en
+ *   el tablero (ver PedirPieza).
  * - Los demás ven todo y pueden mover el estado de las tareas que tienen
  *   asignadas, y de ninguna otra. Es lo mismo que exige el servidor.
  */
@@ -157,6 +163,11 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
   const plantillas = useCalendario(s => s.plantillas)
   const [descartadas, setDescartadas] = useState<string[]>(() => (typeof window === 'undefined' ? [] : leerDescartadas()))
   const sugeridas = gestiona && !descartadas.includes(accion.id) ? plantillasSugeridas(plantillas, accion) : []
+  // Pedir una pieza: quien gestiona tareas y cualquiera que edita el
+  // calendario (una cuenta externa nunca edita).
+  const { editable } = usePermisosCalendario()
+  const pidePiezas = gestiona || editable
+  const [pidiendo, setPidiendo] = useState(false)
 
   return (
     <section>
@@ -198,8 +209,10 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
           </span>
           <p className="max-w-xs text-sm text-slate-600 dark:text-slate-400">
             {gestiona
-              ? 'Esta acción todavía no tiene tareas. Creá la primera y asignásela a alguien (le llega un aviso), o arrancá con una plantilla.'
-              : 'Esta acción todavía no tiene tareas. Las crea y las asigna quien lidera el equipo.'}
+              ? 'Esta acción todavía no tiene tareas. Pedí una pieza (le nace su tarjeta en el tablero), creá una tarea común o arrancá con una plantilla.'
+              : pidePiezas
+                ? 'Esta acción todavía no tiene tareas. Pedí una pieza: Banners, Mailing, Cenefas… y elegís quién la hace.'
+                : 'Esta acción todavía no tiene tareas. Las crea y las asigna quien lidera el equipo.'}
           </p>
         </div>
       )}
@@ -213,9 +226,21 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
         ))}
       </ul>
 
+      {pidePiezas && (pidiendo ? (
+        <PedirPieza accion={accion} personas={personas} usuarioId={usuarioId} gestiona={gestiona} onListo={() => setPidiendo(false)} />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setPidiendo(true)}
+          className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.99]"
+        >
+          <Layers className="h-4 w-4" /> Pedir una pieza
+        </button>
+      ))}
+
       {gestiona && (
         <NuevaTarea
-          accionId={accion.id} parentId={null} personas={personas} usuarioId={usuarioId} etiqueta="Nueva tarea"
+          accionId={accion.id} parentId={null} personas={personas} usuarioId={usuarioId} etiqueta="Tarea común"
           alLado={(
             <button
               type="button"
@@ -397,7 +422,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                     {tarea.asignadoA != null && !asignado && (
                       <option value={tarea.asignadoA}>{personasEstado === 'ok' ? 'Alguien que ya no ve este calendario' : 'Asignada'}</option>
                     )}
-                    {personas.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.id === usuarioId ? ' (vos)' : ''}</option>)}
+                    {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}{p.id === usuarioId ? ' (vos)' : ''}</option>)}
                   </select>
                 </label>
               ) : (
@@ -658,7 +683,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, abierta
           <span className="etiqueta-campo">{conEntregas ? 'Quién entrega (agencia o diseño)' : 'Para quién'}</span>
           <select value={asignadoA} onChange={e => setAsignadoA(e.target.value)} className="campo">
             <option value="">{conEntregas ? 'Elegí quién entrega…' : 'Sin asignar por ahora'}</option>
-            {personas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
           </select>
           {personasEstado === 'error' && (
             <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">
@@ -743,7 +768,10 @@ function EntregasDeLaTarea({ tarea, personas, usuarioId }: {
   const abrir = useVistaEntregas(s => s.abrir)
   const r = tarea.entrega!
   const nombreDe = (id: number | null) => personas.find(p => p.id === id)?.nombre ?? 'alguien'
-  const paso = proximoPaso(r, tarea.asignadoA, usuarioId, nombreDe)
+  // La hace una agencia (16/11/2026): se nombra a la agencia, no a una persona.
+  const hace = tarea.para && tarea.para !== 'tienda' && tarea.agencia
+    ? { tipo: tarea.para, nombre: tarea.agencia } as const : null
+  const paso = proximoPaso(r, tarea.asignadoA, usuarioId, nombreDe, false, { hace })
   const meToca = paso.aQuien === 'vos'
   return (
     <div className={`mt-3 rounded-xl border p-2.5 ${
@@ -753,6 +781,7 @@ function EntregasDeLaTarea({ tarea, personas, usuarioId }: {
         <Layers className="h-3.5 w-3.5 text-brand-600 dark:text-brand-300" aria-hidden />
         <FasesCompactas resumen={r} />
         {faseActualTexto(r)}
+        {hace && <span className="font-semibold text-slate-700 dark:text-slate-200">· La hace {hace.nombre}{hace.tipo === 'fuera' ? ' (de afuera)' : ''}</span>}
       </p>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <p className={`min-w-0 flex-1 text-sm font-semibold ${meToca ? 'text-brand-800 dark:text-brand-100' : 'text-slate-700 dark:text-slate-200'}`}>

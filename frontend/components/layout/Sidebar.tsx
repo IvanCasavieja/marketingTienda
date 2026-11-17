@@ -17,6 +17,8 @@ import { LANGUAGES, setLanguage, type LangCode } from "@/lib/i18n";
 import { useTheme } from "@/hooks/useTheme";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
+import { esExterno } from "@/lib/externos";
+import { veCalendario } from "@/lib/alcance";
 import { toast } from "sonner";
 import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import { useCalendario } from "@/lib/calendario/store";
@@ -189,13 +191,25 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const puedeEditar = hasPerm("calendario.edit");
   const fotosPendientes = usePendientesDeFotos((s) => s.pendientes) ?? 0;
   const localesDelMundo = useLocalesDelMundo((s) => (mundo ? s.porMundo[mundo.clave] : undefined));
-  const nucleo: { href: string; label: string; icon: typeof CalendarDays; perm?: string; numero?: number }[] = [
+  // Una cuenta externa (la agencia, lib/externos.ts) tiene un menú chiquito
+  // (16/11/2026): su tablero y, si un admin le habilitó el calendario (su
+  // alcance, lib/alcance.ts), el calendario. Nada de las herramientas
+  // internas: el servidor igual se las niega.
+  const externo = esExterno(currentUser);
+  const conCalendario = veCalendario(currentUser);
+  const nucleo: { href: string; label: string; icon: typeof CalendarDays; perm?: string; numero?: number }[] = externo ? [
+    { href: "/entregas", label: t("sidebar.miTablero", "Mi tablero"), icon: Layers, perm: "calendario.view" },
+    ...(conCalendario ? [{ href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" }] : []),
+  ].filter((item) => hasPerm(item.perm)) : [
     ...(esLocal ? [{ href: "/fotos", label: t("sidebar.fotosParaSubir", "Fotos para subir"), icon: Camera, numero: fotosPendientes }] : []),
-    { href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" },
+    // Quien no ve el calendario (su alcance es "No lo ve") no lo tiene en el
+    // menú. Sus tareas sí, siempre: lo que le asignan le tiene que llegar.
+    ...(conCalendario ? [{ href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" }] : []),
     { href: "/mis-tareas", label: t("sidebar.misTareas", "Mis tareas"), icon: ListChecks, perm: "calendario.view" },
-    // Las piezas con la agencia, como un tablero de Trello (15/11/2026).
-    { href: "/entregas", label: t("sidebar.entregas", "Entregas"), icon: Layers, perm: "calendario.view" },
-    ...((localesDelMundo?.length ?? 0) > 0
+    // Las piezas con la agencia, como un tablero de Trello (16/11/2026).
+    { href: "/entregas", label: t("sidebar.tablero", "Tablero"), icon: Layers, perm: "calendario.view" },
+    // Colocación muestra el nombre y las fechas de las acciones: es calendario.
+    ...(conCalendario && (localesDelMundo?.length ?? 0) > 0
       ? [{ href: "/colocacion", label: t("sidebar.colocacion", "Colocación"), icon: Camera, perm: "calendario.edit" }]
       : []),
   ].filter((item) => !item.perm || hasPerm(item.perm));
@@ -237,7 +251,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   // El mundo va primero (se calcula arriba): decide qué herramientas existen.
   // Después el permiso decide cuáles de esas puede usar la persona.
-  const nav = herramientasAll.filter((item) =>
+  const nav = externo ? [] : herramientasAll.filter((item) =>
     (!item.perm || hasPerm(item.perm)) && (!mundo || rutaEnMundo(item.href, mundo.clave)));
 
   // Las herramientas arrancan plegadas, salvo que se esté parado en una. Lo
@@ -591,7 +605,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-semibold">{currentUser?.full_name ?? t("sidebar.miPerfil")}</span>
-                <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{t("sidebar.miPerfil")}</span>
+                <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">
+                  {externo && currentUser?.empresa ? currentUser.empresa : t("sidebar.miPerfil")}
+                </span>
               </span>
             </Link>
             <button

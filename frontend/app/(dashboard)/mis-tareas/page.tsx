@@ -13,6 +13,7 @@ import { TarjetaEntrega } from "@/components/calendario/entregas/TarjetaEntrega"
 import { proximoPaso, type Tarjeta } from "@/lib/calendario/entregas";
 import { useVistaEntregas } from "@/store/entregas";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
+import { veCalendario } from "@/lib/alcance";
 import { Cocarda } from "@/components/calendario/Cocarda";
 import { nivelDeCategoria } from "@/lib/calendario/categorias";
 import { fechaCorta, hoyIso, sumarDias } from "@/lib/calendario/fechas";
@@ -32,7 +33,12 @@ import { BotonOutlook } from "@/components/calendario/BotonOutlook";
  */
 
 type MiTarea = Tarea & {
-  accion: { id: string; mundo: string; nombre: string; banda: string; color: string | null; desde: string; hasta: string };
+  accion: {
+    id: string; mundo: string; nombre: string; banda: string; color: string | null; desde: string; hasta: string;
+    /** La acción queda fuera de lo que esta persona ve del calendario: la
+     *  tarea es suya y la ve, pero la ficha no la va a poder abrir. */
+    fueraDeAlcance?: boolean;
+  };
 };
 
 const TONO: Record<EstadoTarea, string> = {
@@ -207,9 +213,13 @@ export default function MisTareasPage() {
             )}
           </div>
         )}
-        <div className="sm:ml-auto">
-          <BotonOutlook />
-        </div>
+        {/* El link de Outlook es el calendario: quien no lo ve no lo tiene
+            (el servidor se lo niega y el botón daba un error). */}
+        {veCalendario(user) && (
+          <div className="sm:ml-auto">
+            <BotonOutlook />
+          </div>
+        )}
       </header>
 
       {enOtros.length > 0 && (
@@ -394,6 +404,17 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
         {tarea.descripcion && <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">{tarea.descripcion}</p>}
 
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          {tarea.accion.fueraDeAlcance ? (
+            // La acción no entra en lo que esta persona ve del calendario:
+            // se nombra, pero sin enlace a una ficha que no abriría.
+            <span
+              className="flex min-h-[36px] min-w-0 items-center gap-2 rounded-xl bg-slate-100 py-1 pl-1.5 pr-2.5 text-sm font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              title="Esta acción queda fuera de lo que ves del calendario"
+            >
+              <span className="h-5 w-5 shrink-0 rounded-md ring-1 ring-inset ring-black/10" style={{ backgroundColor: tarea.accion.color ?? "#cbd5e1" }} />
+              <span className="truncate">{tarea.accion.nombre}</span>
+            </span>
+          ) : (
           <Link
             href={`/calendario?accion=${encodeURIComponent(tarea.accion.id)}`}
             className="group/accion flex min-h-[36px] min-w-0 items-center gap-2 rounded-xl bg-slate-100 py-1 pl-1.5 pr-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-200 active:scale-[.98] dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
@@ -403,6 +424,7 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
             <span className="truncate">{tarea.accion.nombre}</span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform group-hover/accion:translate-x-0.5" />
           </Link>
+          )}
           {/* La cocarda solo en las tres categorías destacadas: acá lo que se
               mira es la tarea, y una cocarda gris en cada fila sería ruido. En
               un envío suelto `banda` es el canal, que nunca es una de esas. */}

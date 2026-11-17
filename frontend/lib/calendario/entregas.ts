@@ -24,10 +24,20 @@ export type EstadoFase = 'pendiente' | 'en-curso' | 'aprobada'
 export type EstadoVersion = 'revision' | 'aprobada' | 'cambios'
 export type TipoDecision = 'aprobada' | 'aprobada-con-cambios' | 'cambios'
 
+/** Las columnas del tablero estilo Trello (16/11/2026). La calcula el
+ *  servidor (backend/app/services/entregas.py: columna_de). */
+export type Columna = 'ingresado' | 'en-proceso' | 'esperando' | 'finalizado' | 'archivado'
+
+/** Quién hace la tarjeta: una agencia de la plataforma, una de afuera (con
+ *  quién del equipo carga sus entregas) o alguien de Tienda. */
+export type QuienLaHace = { tipo: 'agencia' | 'fuera' | 'tienda'; nombre: string | null; carga?: string | null }
+
 /** Lo que viaja con cada tarea en /calendario/datos: sin imágenes ni historia. */
 export type ResumenEntrega = {
   tipoPieza: TipoPieza
   momento: MomentoEntrega
+  /** En qué columna del tablero está. */
+  columna?: Columna
   /** La última ronda de la fase actual (0 = todavía no se entregó nada). */
   ronda: number
   faseActual: string | null
@@ -57,6 +67,8 @@ export type Decision = {
   orden: number
   decision: TipoDecision
   comentario: string | null
+  /** Solo para el equipo. A una cuenta externa (la agencia) no le llega ni la clave. */
+  notaInterna?: string | null
   fecha: string | null
 }
 
@@ -95,6 +107,12 @@ export type DetalleEntregas = {
   tarea: {
     id: string; titulo: string; descripcion: string | null; estado: string
     asignadoA: number | null; vence: string | null; creadoPor: number | null
+    ancla?: 'inicio' | 'fin' | null; anclaDias?: number | null
+    /** El tipo de tarea (Banners, Cenefas…), lo tildado y los datos de más. */
+    tipo?: string | null; opciones?: string[]; detalles?: Record<string, string | number>
+    /** Lo pedido con sus medidas: "Banners: Header (web 1920×416 · mobile 640×260)". */
+    pedido?: string | null
+    quienLaHace?: QuienLaHace
   }
   accion: AccionDeTarjeta & { seccion: string }
   tipoPieza: TipoPieza
@@ -104,22 +122,40 @@ export type DetalleEntregas = {
   fases: FaseDetalle[]
   /** id (como texto) -> nombre */
   personas: Record<string, string>
-  puedo: { entregar: boolean; decidir: boolean; comoRespaldo: boolean; configurar: boolean; tildarMarcas: boolean }
+  columna?: Columna
+  puedo: {
+    entregar: boolean; decidir: boolean; comoRespaldo: boolean; configurar: boolean; tildarMarcas: boolean
+    /** Si ve lo que encontró la IA (aprobadores y quien gestiona; nunca quien entrega). */
+    verRevisionIA?: boolean
+    /** A qué columnas del tablero la puede llevar. */
+    mover?: Columna[]
+  }
   limites: { imagenes: number; bytesImagen: number; marcas: number }
 }
 
-/** Una tarjeta del tablero o de "Mis tareas". */
+/** Una tarjeta del tablero, de "Mis tareas" o del buscador. Liviana: la
+ *  miniatura va por id (se pide cuando la tarjeta se ve) y nada de historia. */
 export type Tarjeta = {
   tareaId: string
   titulo: string
   estado: string
+  columna: Columna
+  /** En proceso porque volvió con cambios (se ve en la tarjeta). */
+  volvioConCambios: boolean
   vence: string | null
+  ancla?: 'inicio' | 'fin' | null
+  anclaDias?: number | null
+  tipo?: string | null
+  opciones?: string[]
   asignadoA: number | null
   responsable: string | null
   turno: string | null
+  hace?: QuienLaHace
   accion: AccionDeTarjeta
   entrega: ResumenEntrega
   miniatura: string | null
+  puedo?: { entregar: boolean; decidir: boolean; mover: Columna[] }
+  archivadaEl?: string | null
   actualizada: string | null
 }
 
@@ -176,7 +212,7 @@ export const TIPOS_DE_PIEZA: { tipo: TipoPieza; nombre: string; fases: string[];
     ],
   },
   {
-    tipo: 'mailing', nombre: 'Mailing', fases: ['Boceto', 'Arte final'],
+    tipo: 'mailing', nombre: 'Email marketing (EMM)', fases: ['Boceto', 'Arte final'],
     campos: [
       { clave: 'asunto', etiqueta: 'Asunto', tipo: 'texto', entero: true, placeholder: 'Ej: ¡Llegó la Navidad a Tienda Inglesa!' },
       { clave: 'segmento', etiqueta: 'Segmento', tipo: 'texto', placeholder: 'Ej: Clientes Club con compras en 2026' },
@@ -269,13 +305,23 @@ export function proximoPaso(
   usuarioId: number | null,
   nombreDe: (id: number | null) => string,
   puedeDecidir = false,
+  /** Para las tarjetas de una agencia (16/11/2026): si quien mira la entrega
+   *  (es de la agencia de la tarjeta) y cómo se nombra a quien la hace. */
+  quien: { entregoYo?: boolean; hace?: QuienLaHace | null } = {},
 ): ProximoPaso {
   const fase = resumen.fases.find(f => f.id === resumen.faseActual)
   if (resumen.momento === 'aprobada' || !fase) {
-    return { texto: 'Aprobada: todas las fases quedaron aprobadas', accion: null, aQuien: 'nadie' }
+    return {
+      texto: resumen.fases.length === 1 ? 'Finalizada: se aprobó la entrega' : 'Aprobada: todas las fases quedaron aprobadas',
+      accion: null, aQuien: 'nadie',
+    }
   }
+  // Con una sola fase (la "Entrega" con la que nacen las tarjetas) no se
+  // nombra la fase: "entregar Entrega" no se entiende.
+  const unaSola = resumen.fases.length === 1
+  const deFase = unaSola ? '' : ` de ${fase.nombre}`
   if (resumen.momento === 'revision') {
-    const que = `revisar la ronda ${resumen.ronda} de ${fase.nombre}`
+    const que = `revisar la ronda ${resumen.ronda}${deFase}`
     if (puedeDecidir || (usuarioId != null && resumen.aprobadorDeTurno === usuarioId)) {
       return { texto: `Te toca: ${que}`, accion: 'revisar', aQuien: 'vos' }
     }
@@ -286,9 +332,14 @@ export function proximoPaso(
   }
   const ronda = resumen.ronda + 1
   const que = resumen.momento === 'cambios'
-    ? `corregir y entregar la ronda ${ronda} de ${fase.nombre}`
-    : `entregar ${ronda === 1 ? fase.nombre : `la ronda ${ronda} de ${fase.nombre}`}`
-  if (usuarioId != null && responsableId === usuarioId) return { texto: `Te toca: ${que}`, accion: 'entregar', aQuien: 'vos' }
+    ? `corregir y entregar la ronda ${ronda}${deFase}`
+    : ronda === 1 ? (unaSola ? 'entregar' : `entregar ${fase.nombre}`) : `entregar la ronda ${ronda}${deFase}`
+  const soyYo = quien.entregoYo ?? (usuarioId != null && responsableId === usuarioId)
+  if (soyYo) return { texto: `Te toca: ${que}`, accion: 'entregar', aQuien: 'vos' }
+  // Una agencia (de la plataforma o de afuera) se nombra por la agencia.
+  if (quien.hace && quien.hace.tipo !== 'tienda' && quien.hace.nombre) {
+    return { texto: `Le toca a ${quien.hace.nombre}: ${que}`, accion: null, aQuien: 'otro' }
+  }
   if (responsableId == null) return { texto: `Falta asignar quién entrega: ${que}`, accion: null, aQuien: 'nadie' }
   return { texto: `Le toca a ${nombreDe(responsableId)}: ${que}`, accion: null, aQuien: 'otro' }
 }

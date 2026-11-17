@@ -50,6 +50,22 @@ class User(Base):
     # días y la suscripción de Outlook se cortaría sola (migración 0064).
     calendario_link_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
+    # Cuenta externa: la agencia o un diseñador de afuera (0069). Entra igual
+    # que todos (mail y contraseña hoy; el día que se entre con Microsoft, igual,
+    # con este flag), pero ve el calendario solo en una ventana alrededor del
+    # mes actual, solo sus tareas y nada de las herramientas internas. Qué se
+    # le permite está en app/core/externos.py; la base además se niega a
+    # guardar un externo con otros permisos o como superadmin (ver la 0069).
+    es_externo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # La empresa de la cuenta externa ("Agencia Pampa"): entre los de la misma
+    # empresa se ven los nombres; a los de otra, no.
+    empresa: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Hasta dónde ve el calendario (0070): 'nada' (No lo ve), '1m', '2m',
+    # '12m' o 'todo'. Lo elige un admin en el panel. Las cuentas externas
+    # arrancan en 'nada' y las del equipo en 'todo'. Las cuentas y los filtros
+    # están en app/core/alcance.py.
+    calendario_alcance: Mapped[str] = mapped_column(String(8), nullable=False, default="todo", server_default="todo")
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 

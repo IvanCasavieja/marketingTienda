@@ -166,7 +166,7 @@ def test_cada_pieza_tiene_un_id_nuevo():
 def _tarea(id, parent_id=None, **kw) -> CalendarioTarea:
     base = dict(
         id=id, barra_id="br-2025", parent_id=parent_id, titulo=f"Tarea {id}", descripcion="Detalle",
-        estado="hecha", asignado_a_id=None, vence=None, orden=0, creado_por_id=7,
+        estado="hecha", asignado_a_id=None, vence=None, orden=0, creado_por_id=7, para="tienda",
         created_at=AHORA, updated_at=AHORA,
     )
     base.update(kw)
@@ -208,6 +208,10 @@ def test_una_tarea_vuelve_a_pendiente_y_su_vencimiento_se_corre():
         "creado_por_id": 42,
         # Una tarea cargada a mano no viene de ninguna plantilla (0065).
         "ancla": None, "ancla_dias": None, "plantilla_id": None,
+        # Quién la hace y qué tipo de pieza es (0070) se copian tal cual: la
+        # copia de una tarea para la agencia sigue siendo para la agencia (y
+        # al guardarla le nace su tarjeta nueva, ver copiar_barra).
+        "para": "tienda", "agencia": None, "tipo": None, "opciones": None, "detalles": None,
     }
 
 

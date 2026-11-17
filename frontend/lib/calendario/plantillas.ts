@@ -113,6 +113,11 @@ export function tareasDesdePlantilla(
     anclaDias: t.ancla ? t.dias : null,
     plantillaId: plantilla.id,
     creadoPor: null,
+    // Quién la hace y si es una pieza: el nombre "<Acción> - <Tipo>" lo arma
+    // el servidor y llega en la próxima revisión.
+    para: t.para ?? 'tienda',
+    agencia: t.agencia ?? null,
+    tipo: t.tipo ?? null,
   }))
   return { tareas, ids }
 }
@@ -164,6 +169,9 @@ export function problemaDePlantilla(p: { nombre: string; tareas: TareaDePlantill
   if (p.tareas.length === 0) return 'Agregale al menos una tarea.'
   if (p.tareas.length > TAREAS_POR_PLANTILLA) return `Una plantilla lleva hasta ${TAREAS_POR_PLANTILLA} tareas.`
   if (p.tareas.some(t => !t.titulo.trim())) return 'Hay una tarea sin título.'
+  if (p.tareas.some(t => t.para === 'fuera' && (!t.agencia?.trim() || t.asignadoA == null))) {
+    return 'Una tarea la hace una agencia de afuera: escribí su nombre y elegí quién del equipo la carga.'
+  }
   if (p.tareas.some(t => t.ancla && (!Number.isInteger(t.dias) || Math.abs(t.dias) > DIAS_DE_ANCLA))) {
     return `Los días van de 0 a ${DIAS_DE_ANCLA}.`
   }

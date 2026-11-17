@@ -108,7 +108,7 @@ param encryptionKey string
 @secure()
 param secretosBackend object = {}
 
-@description('Variables de entorno NO secretas del backend, como objeto NOMBRE: valor. Ej.: META_APP_ID, META_REDIRECT_URI, GOOGLE_CLIENT_ID, GOOGLE_REDIRECT_URI, EMAIL_FROM, SFMC_SUBDOMAIN, MODELO_IA. La lista completa está en backend/.env.example.')
+@description('Variables de entorno NO secretas del backend, como objeto NOMBRE: valor. Ej.: META_APP_ID, META_REDIRECT_URI, GOOGLE_CLIENT_ID, GOOGLE_REDIRECT_URI, EMAIL_FROM, SFMC_SUBDOMAIN, MODELO_IA, IA_REVISION_ACTIVA, MODELO_IA_REVISION, IA_REVISION_POR_DIA. La lista completa está en backend/.env.example.')
 param envBackend object = {}
 
 @description('URL pública del frontend, sin barra final (FRONTEND_URL: va en los mails de recuperación de contraseña y se agrega sola a CORS). Vacío = la URL por defecto de la Container App del frontend.')

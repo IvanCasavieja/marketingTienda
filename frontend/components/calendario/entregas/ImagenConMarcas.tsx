@@ -1,12 +1,14 @@
 'use client'
 
-import { useRef } from 'react'
-import { Check, ImageOff } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Check, ImageOff, Sparkles } from 'lucide-react'
 import { useImagen, type Tam } from './useImagen'
 
 /** Cómo se ve un pin: el que se está poniendo ahora, un cambio pedido, un
- *  ajuste ("aprobado con cambios") o uno que la agencia ya corrigió. */
-export type TonoPin = 'nuevo' | 'cambio' | 'ajuste' | 'corregida'
+ *  ajuste ("aprobado con cambios"), uno que la agencia ya corrigió, o lo
+ *  que sugiere la IA (no es una marca: es dónde vio algo; lo ve solo quien
+ *  aprueba, y recién es marca si lo convierte). */
+export type TonoPin = 'nuevo' | 'cambio' | 'ajuste' | 'corregida' | 'ia'
 
 export type Pin = { clave: string; numero: number; x: number; y: number; tono: TonoPin; texto?: string }
 
@@ -15,6 +17,7 @@ const TONO: Record<TonoPin, string> = {
   cambio: 'bg-rose-600 text-white ring-white',
   ajuste: 'bg-amber-500 text-slate-950 ring-white',
   corregida: 'bg-emerald-600 text-white ring-white',
+  ia: 'bg-violet-600 text-white ring-violet-200 dark:ring-violet-300/60',
 }
 
 /**
@@ -85,15 +88,21 @@ export function ImagenConMarcas({
           <button
             key={p.clave}
             type="button"
+            data-pin={p.clave}
             onClick={e => { e.stopPropagation(); onElegirPin?.(p.clave) }}
             title={p.texto}
-            aria-label={`Marca ${p.numero}${p.texto ? `: ${p.texto}` : ''}`}
+            aria-label={p.tono === 'ia'
+              ? `Lo que vio la IA${p.texto ? `: ${p.texto}` : ''}`
+              : `Marca ${p.numero}${p.texto ? `: ${p.texto}` : ''}`}
             style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
             className={`absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-bold shadow-md ring-2 transition-transform ${TONO[p.tono]} ${
               elegido === p.clave ? 'z-10 scale-125 ring-4' : 'hover:scale-110'
             }`}
           >
-            {p.tono === 'corregida' ? <Check className="h-4 w-4" strokeWidth={3} /> : p.numero}
+            {/* La sugerencia de la IA late, para encontrarla en la pieza. */}
+            {p.tono === 'ia' && <span className="absolute inset-0 animate-ping rounded-full bg-violet-500/40" aria-hidden />}
+            {p.tono === 'corregida' ? <Check className="h-4 w-4" strokeWidth={3} />
+              : p.tono === 'ia' ? <Sparkles className="relative h-4 w-4" /> : p.numero}
           </button>
         ))}
       </div>
@@ -101,15 +110,30 @@ export function ImagenConMarcas({
   )
 }
 
-/** Una miniatura chica (la del tablero, la de la historia). */
-export function Miniatura({ imagenId, etiqueta, className = 'h-16 w-16' }: {
-  imagenId: string | null; etiqueta: string; className?: string
+/** Una miniatura chica (la del tablero, la de la historia).
+ *
+ * `perezosa`: se pide recién cuando la tarjeta aparece en pantalla (o está
+ * por aparecer). En el tablero hay decenas de tarjetas y la mayoría quedan
+ * fuera de la vista: así el tablero se pinta enseguida y las imágenes llegan
+ * a medida que se ven (16/11/2026: "que se sienta instantáneo"). */
+export function Miniatura({ imagenId, etiqueta, className = 'h-16 w-16', perezosa = false }: {
+  imagenId: string | null; etiqueta: string; className?: string; perezosa?: boolean
 }) {
-  const { url, error } = useImagen(imagenId, 'mini')
+  const ref = useRef<HTMLSpanElement>(null)
+  const [visible, setVisible] = useState(() => !perezosa || typeof IntersectionObserver === 'undefined')
+  useEffect(() => {
+    if (visible || !ref.current) return
+    const io = new IntersectionObserver(es => {
+      if (es.some(e => e.isIntersecting)) { setVisible(true); io.disconnect() }
+    }, { rootMargin: '200px' })
+    io.observe(ref.current)
+    return () => io.disconnect()
+  }, [visible])
+  const { url, error } = useImagen(visible ? imagenId : null, 'mini')
   if (!imagenId) return null
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element -- URL local del navegador (blob:)
-    return <img src={url} alt={etiqueta} className={`shrink-0 rounded-lg bg-white object-cover ring-1 ring-black/5 dark:ring-white/10 ${className}`} />
+    return <img src={url} alt={etiqueta} draggable={false} className={`shrink-0 rounded-lg bg-white object-cover ring-1 ring-black/5 dark:ring-white/10 ${className}`} />
   }
   // Ya vencida (se borró) o sin conexión: un hueco con el ícono, no un "cargando" eterno.
   return error ? (
@@ -117,6 +141,6 @@ export function Miniatura({ imagenId, etiqueta, className = 'h-16 w-16' }: {
       <ImageOff className="h-4 w-4" aria-label={error} />
     </span>
   ) : (
-    <span className={`skeleton block shrink-0 rounded-lg ${className}`} aria-hidden />
+    <span ref={ref} className={`skeleton block shrink-0 rounded-lg ${className}`} aria-hidden />
   )
 }

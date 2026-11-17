@@ -71,6 +71,6 @@ export function FasesCompactas({ resumen }: { resumen: ResumenEntrega }) {
 /** "Fase 2 de 3 · Arte final" */
 export function faseActualTexto(resumen: ResumenEntrega): string {
   const i = resumen.fases.findIndex(f => f.id === resumen.faseActual)
-  if (i === -1) return `${resumen.fases.length === 1 ? '1 fase' : `${resumen.fases.length} fases`} aprobadas`
+  if (i === -1) return resumen.fases.length === 1 ? 'Aprobada' : `${resumen.fases.length} fases aprobadas`
   return `Fase ${i + 1} de ${resumen.fases.length} · ${resumen.fases[i].nombre}`
 }

@@ -50,6 +50,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
 
 from app.api.routes.calendario import _fecha_razonable, _nueva_revision
+from app.core import alcance
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import client_ip, get_current_user, require_permission
@@ -264,6 +265,16 @@ async def _borrar_avisos_del_local(db: AsyncSession, barra_id: str, local_ids) -
         ))
 
 
+def _exigir_a_la_vista(usuario: User, barra: CalendarioBarra, mensaje: str) -> None:
+    """Lo que promo no ve en el calendario tampoco lo ve acá: el nombre y las
+    fechas de una acción son calendario. Sin esto, alguien con alcance de 1
+    mes (o "No lo ve") listaba todas las acciones con pedido de fotos y les
+    pedía fotos a los locales. Se contesta como si no existiera, igual que el
+    calendario."""
+    if not alcance.toca(barra.desde, barra.hasta, alcance.ventana_de(usuario)):
+        raise HTTPException(status_code=404, detail=mensaje)
+
+
 async def _barra_de_promo(db: AsyncSession, barra_id: str, usuario: User, *, bloquear: bool = False) -> CalendarioBarra:
     consulta = select(CalendarioBarra).where(CalendarioBarra.id == barra_id)
     if bloquear:
@@ -272,6 +283,7 @@ async def _barra_de_promo(db: AsyncSession, barra_id: str, usuario: User, *, blo
     if barra is None:
         raise HTTPException(status_code=404, detail="Esta acción ya no existe: la borró otra persona.")
     exigir_mundo(usuario, barra.mundo)
+    _exigir_a_la_vista(usuario, barra, "Esta acción ya no existe: la borró otra persona.")
     return barra
 
 
@@ -291,6 +303,7 @@ async def _pedido_de_promo(
     if fila is None:
         raise HTTPException(status_code=404, detail=_NO_ESTA)
     exigir_mundo(usuario, fila[1].mundo)
+    _exigir_a_la_vista(usuario, fila[1], _NO_ESTA)
     return fila[0], fila[1]
 
 
@@ -559,6 +572,7 @@ async def cancelar_pedido(
 async def _local_de_promo(db: AsyncSession, local_id: int, usuario: User):
     local, pedido, barra = await _local_con_pedido(db, local_id, bloquear=True)
     exigir_mundo(usuario, barra.mundo)
+    _exigir_a_la_vista(usuario, barra, _NO_ESTA)
     return local, pedido, barra
 
 
@@ -627,11 +641,14 @@ async def resumen_del_mundo(
     """La vista general: cada acción con pedido abierto, su porcentaje y los
     locales atrasados; abajo, las que se completaron hace poco."""
     exigir_mundo(current_user, mundo)
+    # La lista es calendario (nombre y fechas de cada acción): se recorta al
+    # alcance de quien mira, y quien no ve el calendario no la ve.
+    alcance.exigir_calendario(current_user)
     hoy = hoy_en_uruguay()
     pares = (await db.execute(
         select(ColocacionPedido, CalendarioBarra)
         .join(CalendarioBarra, CalendarioBarra.id == ColocacionPedido.barra_id)
-        .where(CalendarioBarra.mundo == mundo)
+        .where(CalendarioBarra.mundo == mundo, alcance.condicion(CalendarioBarra, alcance.ventana_de(current_user)))
     )).all()
     por_pedido: dict[int, list] = {}
     if pares:
@@ -911,7 +928,10 @@ async def ver_foto(
     columna = ColocacionFoto.miniatura if tamano == "mini" else ColocacionFoto.datos
     tipo = ColocacionFoto.tipo_miniatura if tamano == "mini" else ColocacionFoto.tipo
     fila = (await db.execute(
-        select(ColocacionFoto.local_id, ColocacionLocal.local_nombre, ColocacionPedido.tipo_local, CalendarioBarra.mundo)
+        select(
+            ColocacionFoto.local_id, ColocacionLocal.local_nombre, ColocacionPedido.tipo_local, CalendarioBarra.mundo,
+            CalendarioBarra.desde, CalendarioBarra.hasta,
+        )
         .join(ColocacionLocal, ColocacionLocal.id == ColocacionFoto.local_id)
         .join(ColocacionPedido, ColocacionPedido.id == ColocacionLocal.pedido_id)
         .join(CalendarioBarra, CalendarioBarra.id == ColocacionPedido.barra_id)
@@ -919,7 +939,11 @@ async def ver_foto(
     )).first()
     if fila is None:
         raise HTTPException(status_code=404, detail="Esa foto ya no está")
-    puede = es_promo_del_mundo(current_user, fila.mundo) or es_del_local(
+    # Promo ve la foto si ve la acción (su alcance); el local, la suya siempre.
+    de_promo = es_promo_del_mundo(current_user, fila.mundo) and alcance.toca(
+        fila.desde, fila.hasta, alcance.ventana_de(current_user),
+    )
+    puede = de_promo or es_del_local(
         current_user, await _asignaciones(db, current_user.id), fila.local_nombre, fila.tipo_local, fila.mundo,
     )
     if not puede:
