@@ -7,7 +7,7 @@ import {
   ChevronRight, Presentation, Globe, ShieldCheck, HelpCircle, X, Tag,
   Sun, Moon, ClipboardList, Bell, BellOff, Star, Activity, TrendingUp, TrendingDown, AlertTriangle, Check,
   FileSpreadsheet, BookOpen, Receipt, Landmark, ScanSearch, CalendarDays, CalendarClock,
-  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle, Camera, Layers,
+  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle, Camera, Layers, PanelLeftClose,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import { useCalendario } from "@/lib/calendario/store";
 import { useAvisos } from "@/store/avisos";
+import { useMenuLateral } from "@/store/menuLateral";
 import { useLocalesDelMundo, usePendientesDeFotos } from "@/lib/colocacion/store";
 
 /** Al cerrar sesión, lo de esta persona no queda en el navegador: la copia del
@@ -165,6 +166,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { t, i18n } = useTranslation();
   const { user: currentUser } = useCurrentUser();
   const [showLangMenu, setShowLangMenu] = useState(false);
+  // En pantallas grandes se puede ocultar (17/11/2026); lo vuelve a mostrar
+  // el botón de la franja que queda en su lugar (ver el layout del dashboard).
+  const menuOculto = useMenuLateral((s) => s.oculto);
+  const ocultarMenu = useMenuLateral((s) => s.ocultar);
   // El número vive en un lugar compartido: la barra de abajo del teléfono también lo muestra.
   const notifCount = useAvisos((s) => s.noLeidos);
   const setNotifCount = useAvisos((s) => s.setNoLeidos);
@@ -465,7 +470,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         // Mobile: fixed overlay, slides in/out. Cerrado queda invisible, así
         // el teclado no recorre links que no se ven.
         "fixed inset-y-0 left-0",
-        isOpen ? "hoja-abierta translate-x-0 shadow-panel md:shadow-none" : "hoja-cerrada -translate-x-full md:translate-x-0"
+        isOpen ? "hoja-abierta translate-x-0 shadow-panel md:shadow-none" : "hoja-cerrada -translate-x-full md:translate-x-0",
+        // Oculto a pedido, solo en pantallas grandes: en el teléfono es la hoja de siempre.
+        menuOculto && "md:hidden"
       )}>
         {/* Logo. La X del teléfono va al lado, no adentro del link. */}
         <div className="flex items-center gap-1 px-3 pb-3 pt-4 md:pb-4 md:pt-5">
@@ -486,6 +493,16 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             className="boton-icono md:hidden"
           >
             <X size={20} />
+          </button>
+          {/* Ocultar el menú — pantallas grandes */}
+          <button
+            type="button"
+            onClick={ocultarMenu}
+            aria-label={t("sidebar.ocultarMenu", "Ocultar menú")}
+            title={t("sidebar.ocultarMenu", "Ocultar menú")}
+            className="boton-icono hidden md:flex"
+          >
+            <PanelLeftClose size={18} />
           </button>
         </div>
 
