@@ -350,6 +350,18 @@ def test_push_lleva_titulo_link_y_fecha_y_hora():
             tipos.detalles_validos("push", malo, [])
 
 
+def test_los_tres_tableros_y_el_aviso_de_comentario():
+    from app.core.tableros import TABLEROS, tablero_de
+    assert TABLEROS == ("Publicis", "Another Monday", "Diseñadores")
+    assert tablero_de("  another   MONDAY ") == "Another Monday"
+    assert tablero_de("diseñadores") == "Diseñadores"
+    assert tablero_de("Agencia Pampa") is None and tablero_de("") is None and tablero_de(None) is None
+    assert reglas.mensaje_de_comentario("Lucía", "Ciber - Banners", "  El  header\nlleva precio ") == (
+        "Lucía comentó en «Ciber - Banners»: El header lleva precio")
+    largo = reglas.mensaje_de_comentario("Lucía", "X", "a" * 300)
+    assert largo.endswith("…") and len(largo) < 220
+
+
 def test_el_email_marketing_no_es_el_mailing():
     emm = tipos.tipo_de("emm")
     mailing = tipos.tipo_de("mailing")

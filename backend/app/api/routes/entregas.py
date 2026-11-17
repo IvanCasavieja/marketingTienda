@@ -68,7 +68,7 @@ from app.core.mundos import MUNDOS, exigir_mundo, mundos_de
 from app.core.rate_limit import limiter
 from app.models.calendario import CalendarioBarra, CalendarioRevision, CalendarioRevisionMundo, CalendarioTarea
 from app.models.entregas import (
-    CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioMarca, CalendarioVersion,
+    CalendarioComentario, CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioMarca, CalendarioVersion,
     CalendarioVersionImagen,
 )
 from app.models.revision_ia import CalendarioRevisionIA
@@ -473,8 +473,13 @@ async def ver_entregas(
             .order_by(CalendarioMarca.numero)
         )).scalars():
             marcas.setdefault(m.version_id, []).append(m)
+    comentarios = (await db.execute(
+        select(CalendarioComentario).where(CalendarioComentario.tarea_id == tarea_id)
+        .order_by(CalendarioComentario.created_at, CalendarioComentario.id)
+    )).scalars().all()
 
     personas = [tarea.asignado_a_id, tarea.creado_por_id, *list(entrega.aprobadores or [])]
+    personas += [c.autor_id for c in comentarios]
     personas += [v.subida_por_id for v in versiones]
     personas += [f.abierta_por_id for f in fases]
     personas += [d.aprobador_id for ds in decisiones.values() for d in ds]
@@ -581,7 +586,78 @@ async def ver_entregas(
             "verRevisionIA": puede_ver_revision(current_user, entrega, tarea, actual),
         },
         "limites": {"imagenes": MAX_IMAGENES, "bytesImagen": MAX_BYTES_IMAGEN, "marcas": MAX_MARCAS},
+        # La conversación de la tarjeta, al costado como en Trello (0073).
+        "comentarios": [_comentario_json(c, current_user, nombres) for c in comentarios],
     }
+
+
+def _comentario_json(c: CalendarioComentario, usuario: User, nombres: dict) -> dict:
+    return {
+        "id": c.id, "autor": c.autor_id, "autorNombre": nombres.get(c.autor_id) if c.autor_id else None,
+        "texto": c.texto, "fecha": c.created_at.isoformat() if c.created_at else None,
+        "mio": c.autor_id is not None and c.autor_id == usuario.id,
+    }
+
+
+class ComentarioNuevo(BaseModel):
+    id: str = Field(..., pattern=_ID)
+    texto: str = Field(..., max_length=2000)
+
+    @field_validator("texto")
+    @classmethod
+    def _con_texto(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Escribí el comentario")
+        return v
+
+
+@router.post("/tareas/{tarea_id}/comentarios", status_code=201)
+@limiter.limit("30/minute")
+async def comentar(
+    tarea_id: str,
+    payload: ComentarioNuevo,
+    request: Request,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Un comentario en la tarjeta (17/11/2026: "como tiene Trello en un
+    costado, para poder explicar cambios"). Lo escribe cualquiera que ve la
+    tarjeta: el equipo y el tablero al que va. Le llega a la campanita de los
+    que la siguen: quien la hace (todo el tablero, si es de una agencia),
+    quien la pidió, quienes la aprueban y quien lleva la tarea de la que
+    cuelga. Nunca a quien comentó."""
+    tarea, barra = await _tarea_y_barra(db, tarea_id, current_user)
+    if not _puede_ver(current_user, barra.mundo, tarea):
+        raise HTTPException(status_code=403, detail="No podés ver esta tarea")
+    entrega = await db.get(CalendarioEntrega, tarea.id)
+    if entrega is None:
+        raise HTTPException(status_code=404, detail=_NO_LLEVA)
+    ya = await db.get(CalendarioComentario, payload.id)
+    if ya is not None:
+        if ya.tarea_id != tarea.id:
+            raise HTTPException(status_code=409, detail="Ese comentario ya existe en otra tarjeta")
+        return {"id": ya.id, "comentario": _comentario_json(ya, current_user, await _nombres(db, [ya.autor_id])), "avisados": 0}
+    comentario = CalendarioComentario(id=payload.id, tarea_id=tarea.id, autor_id=current_user.id, texto=payload.texto)
+    db.add(comentario)
+    await db.flush()
+    await db.refresh(comentario)
+
+    siguen = list(await reglas.destinatarios_de_la_tarjeta(db, tarea, barra.mundo))
+    siguen += [tarea.creado_por_id, *list(entrega.aprobadores or [])]
+    if tarea.parent_id:
+        madre = await db.get(CalendarioTarea, tarea.parent_id)
+        if madre is not None:
+            siguen.append(madre.asignado_a_id)
+    mensaje = reglas.mensaje_de_comentario(current_user.full_name, tarea.titulo, payload.texto)
+    referencia = reglas.referencia(barra.id, tarea.id, comentario.id, "comentario")
+    avisados = 0
+    for uid in dict.fromkeys(u for u in siguen if u is not None and u != current_user.id):
+        if await reglas.avisar(db, uid, mensaje, referencia):
+            avisados += 1
+    await db.commit()
+    nombres = await _nombres(db, [current_user.id])
+    return {"id": comentario.id, "comentario": _comentario_json(comentario, current_user, nombres), "avisados": avisados}
 
 
 @router.get("/entregas/imagenes/{imagen_id}")

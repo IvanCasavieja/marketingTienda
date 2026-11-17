@@ -8,14 +8,15 @@ import { entregasApi } from "@/lib/api";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import { numero, proximoPaso, type Columna, type Metricas, type Tarjeta } from "@/lib/calendario/entregas";
 import {
-  COLUMNAS_DEL_TABLERO, MS_PARA_ARRASTRAR_CON_EL_DEDO, PX_PARA_ARRASTRAR, conservarArchivadas, defColumna, deQuien,
-  filtroVigente, opcionesDeQuien, ordenar, queHaceMover, seMovioElDedo, sePuedeSoltar,
+  COLUMNAS_DEL_TABLERO, MS_PARA_ARRASTRAR_CON_EL_DEDO, OTRAS, PX_PARA_ARRASTRAR, conservarArchivadas, defColumna,
+  ordenar, pestanasDeTableros, queHaceMover, seMovioElDedo, sePuedeSoltar, tableroDeTarjeta,
 } from "@/lib/calendario/tablero";
 import { diaEnUruguay, hoyIso } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { SEGUNDOS_ENTRE_REVISIONES } from "@/lib/calendario/store";
 import { mundoEfectivo, useMundoElegido } from "@/lib/mundos";
 import { esExterno } from "@/lib/externos";
+import { useTableros } from "@/store/tiposDeTarea";
 import { useVistaEntregas } from "@/store/entregas";
 import { TarjetaEntrega } from "@/components/calendario/entregas/TarjetaEntrega";
 
@@ -85,7 +86,8 @@ export default function TableroPage() {
   const [datos, setDatos] = useState<Datos | null>(null);
   const [error, setError] = useState(false);
   const [pestana, setPestana] = useState<Columna | null>(null);
-  const [filtroElegido, setFiltro] = useState<string | null>(null);
+  // Qué tablero mira el equipo (17/11/2026): Publicis, Another Monday o Diseñadores.
+  const [tableroElegido, setTablero] = useState<string | null>(null);
   const [cargandoMas, setCargandoMas] = useState(false);
   const [pidiendoCambios, setPidiendoCambios] = useState<Tarjeta | null>(null);
   const [verMetricas, setVerMetricas] = useState(false);
@@ -103,6 +105,7 @@ export default function TableroPage() {
   const claveMundo = mundo?.clave;
   const externo = esExterno(user);
   const yo = user?.id ?? null;
+  const { tableros } = useTableros(claveMundo);
 
   const cargar = useCallback(async (desdeCero: boolean) => {
     if (!claveMundo) return;
@@ -430,12 +433,17 @@ export default function TableroPage() {
   const hoy = datos?.hoy ?? hoyIso();
   const delMundo = datos && datos.mundo === claveMundo ? datos : null;
   const todas = delMundo?.tarjetas ?? [];
-  const opciones = externo ? [] : opcionesDeQuien(todas);
-  // Si la opción elegida se quedó sin tarjetas (o quedó una sola opción y no
-  // hay chips), el filtro no vale: si no, el tablero quedaba vacío sin
-  // ningún botón para sacarlo.
-  const filtro = filtroVigente(filtroElegido, opciones);
-  const tarjetas = todas.filter(t => deQuien(t, filtro));
+  // Tres tableros (17/11/2026: "asignar a Publicis, asignar a Another Monday
+  // o asignar a diseñadores, esos son los 3"). El equipo los ve en pestañas;
+  // cada uno de esos equipos entra con su usuario y ve solo el suyo (eso lo
+  // recorta el servidor), así que a una cuenta externa no se le muestran.
+  const nombresDeTableros = tableros?.map(t => t.nombre) ?? [];
+  const pestanas = externo || !tableros ? [] : pestanasDeTableros(todas, nombresDeTableros);
+  const filtro = externo || pestanas.length === 0 ? null
+    : pestanas.some(p => p.clave === tableroElegido) ? tableroElegido
+      : (pestanas.find(p => p.cuantas > 0)?.clave ?? pestanas[0].clave);
+  const tarjetas = filtro == null ? todas
+    : todas.filter(t => (tableroDeTarjeta(t, nombresDeTableros) ?? OTRAS) === filtro);
   // Sin `puedo.decidir`: ver la nota en TarjetaEntrega (el respaldo no es "te toca").
   const meToca = (t: Tarjeta) => proximoPaso(t.entrega, t.asignadoA, yo, () => "", false, {
     entregoYo: t.puedo?.entregar, hace: t.hace,
@@ -459,11 +467,13 @@ export default function TableroPage() {
           <Layers className="h-6 w-6" />
         </span>
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{externo ? "Mi tablero" : "Tablero"}</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            {externo ? (user?.empresa ? `Tablero de ${user.empresa}` : "Mi tablero") : "Tableros"}
+          </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             {externo
               ? `Lo que te pidieron${mundo ? ` en ${mundo.nombre}` : ""}. Arrastrá cada tarjeta a medida que avanzás: para mandarla a revisar, soltala en «Esperando feedback» y subí los materiales.`
-              : `Las piezas de cada acción${mundo ? ` de ${mundo.nombre}` : ""}, con la agencia o con el equipo. Arrastrá para mover; las finalizadas pasan solas a Archivado a los 10 días.`}
+              : `Las piezas de cada acción${mundo ? ` de ${mundo.nombre}` : ""}, en el tablero al que se mandaron. Arrastrá para mover; las finalizadas pasan solas a Archivado a los 10 días.`}
           </p>
         </div>
         <Buscador mundo={claveMundo ?? null} usuarioId={yo} hoy={hoy} />
@@ -482,15 +492,28 @@ export default function TableroPage() {
 
       {delMundo && (
         <>
-          {opciones.length > 1 && (
-            <div className="mb-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="¿Quién la hace?">
-              <span className="mr-1 text-xs font-semibold text-slate-600 dark:text-slate-300">¿Quién la hace?</span>
-              <Chip activo={filtro === null} onClick={() => setFiltro(null)}>Todas · {todas.length}</Chip>
-              {opciones.map(o => (
-                <Chip key={o.clave} activo={filtro === o.clave} onClick={() => setFiltro(f => (f === o.clave ? null : o.clave))}>
-                  {o.nombre} · {o.cuantas}
-                </Chip>
-              ))}
+          {pestanas.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Tableros">
+              {pestanas.map(p => {
+                const activa = filtro === p.clave;
+                return (
+                  <button
+                    key={p.clave}
+                    type="button"
+                    role="tab"
+                    aria-selected={activa}
+                    onClick={() => setTablero(p.clave)}
+                    className={`flex min-h-[44px] items-center gap-2 rounded-xl border px-4 text-sm font-bold transition active:scale-[.98] ${
+                      activa
+                        ? "border-brand-600 bg-brand-600 text-white shadow-sm"
+                        : "border-slate-300 bg-white text-slate-700 hover:border-brand-400 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    }`}
+                  >
+                    {p.nombre}
+                    <span className={`rounded-full px-1.5 text-xs tabular-nums ${activa ? "bg-white/20" : "bg-slate-100 dark:bg-slate-800"}`}>{p.cuantas}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -673,23 +696,6 @@ export default function TableroPage() {
         />
       )}
     </div>
-  );
-}
-
-function Chip({ activo, onClick, children }: { activo: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={activo}
-      className={`min-h-[40px] rounded-full border px-3 text-xs font-semibold transition ${
-        activo
-          ? "border-brand-600 bg-brand-600 text-white"
-          : "border-slate-300 bg-white text-slate-700 hover:border-brand-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

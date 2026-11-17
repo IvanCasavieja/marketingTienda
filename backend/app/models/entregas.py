@@ -270,3 +270,25 @@ class CalendarioDecision(Base):
     # externa nunca la recibe, ni en la tarea ni en los avisos.
     nota_interna: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CalendarioComentario(Base):
+    """Un comentario en una tarjeta del tablero (0073).
+
+    Pedido de Ivan (17/11/2026): "en las tarjetas de los tableros deberíamos
+    tener una opción de poner comentario como tiene Trello en un costado, para
+    así poder explicar cambios y cosas así". Los ve y los escribe cualquiera
+    que ve la tarjeta: el equipo de Tienda y el tablero (la agencia) al que va.
+    """
+
+    __tablename__ = "calendario_comentarios"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tarea_id: Mapped[str] = mapped_column(
+        ForeignKey("calendario_tareas.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    autor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    texto: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

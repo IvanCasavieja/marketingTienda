@@ -804,6 +804,13 @@ def mensaje_de_devolucion(quien: str, tarea: str, accion: str, fase: str, motivo
     return _corto(f"{quien} devolvió «{tarea}» ({accion}) para corregir: {motivo} Te toca entregar {fase}.")
 
 
+def mensaje_de_comentario(quien: str, tarea: str, texto: str) -> str:
+    """A los que siguen la tarjeta, cuando alguien comenta (17/11/2026)."""
+    texto = " ".join((texto or "").split())
+    corto = texto if len(texto) <= 160 else texto[:159].rstrip() + "…"
+    return _corto(f"{quien or 'Alguien'} comentó en «{tarea}»: {corto}")
+
+
 def mensaje_de_tarjeta_finalizada(tarea: str, accion: str) -> str:
     """A quien creó la tarjeta, cuando se aprueba la última entrega."""
     return f"«{tarea}» ({accion}) quedó finalizada: se aprobó la entrega."

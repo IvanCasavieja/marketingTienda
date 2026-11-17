@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import {
-  ArrowRight, Building2, Check, ChevronDown, Clock, Download, ExternalLink, FileText, Hourglass, Link2, Loader2, Lock,
+  ArrowRight, Building2, Check, MessageSquare, ChevronDown, Clock, Download, ExternalLink, FileText, Hourglass, Link2, Loader2, Lock,
   PartyPopper, Pencil, RotateCcw, Send, ShieldCheck, UserRound, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -115,7 +115,11 @@ function Contenido({ tareaId }: { tareaId: string }) {
 
   // Revisando, la imagen necesita todo el lugar; en lo demás, la caja mide
   // lo que tiene adentro (sin un hueco blanco abajo) hasta el 92 % del alto.
-  const ancho = modo === 'revisar' ? 'sm:max-w-6xl sm:h-[92dvh]' : 'sm:max-w-3xl sm:h-auto sm:max-h-[92dvh]'
+  // Viendo la tarjeta, en pantalla grande, al costado van los comentarios
+  // (17/11/2026, "como tiene Trello en un costado"): la caja es más ancha.
+  const ancho = modo === 'revisar' ? 'sm:max-w-6xl sm:h-[92dvh]'
+    : modo === 'ver' ? 'sm:max-w-3xl lg:max-w-5xl sm:h-auto sm:max-h-[92dvh]'
+      : 'sm:max-w-3xl sm:h-auto sm:max-h-[92dvh]'
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-4">
@@ -165,15 +169,24 @@ function Contenido({ tareaId }: { tareaId: string }) {
           || (modo === 'entregar' && !detalle.puedo.entregar)
           || (modo === 'revisar' && (!detalle.puedo.decidir || !version))
           || (modo === 'configurar' && !detalle.puedo.configurar)) && (
-          <Resumen
-            detalle={detalle}
-            usuarioId={user?.id ?? null}
-            // Cambiar la configuración necesita la lista de personas, que es
-            // del calendario: con "No lo ve" el servidor no la da y el
-            // formulario quedaba sin nombres. A esa persona no se le ofrece.
-            puedeConfigurar={detalle.puedo.configurar && veCalendario(user)}
-            onRecargar={() => setRecarga(n => n + 1)}
-          />
+          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+            <Resumen
+              detalle={detalle}
+              usuarioId={user?.id ?? null}
+              // Cambiar la configuración necesita la lista de personas, que es
+              // del calendario: con "No lo ve" el servidor no la da y el
+              // formulario quedaba sin nombres. A esa persona no se le ofrece.
+              puedeConfigurar={detalle.puedo.configurar && veCalendario(user)}
+              onRecargar={() => setRecarga(n => n + 1)}
+            />
+            {/* En pantalla grande, los comentarios al costado; en una chica,
+                van al final del resumen (ver Resumen). */}
+            <Comentarios
+              detalle={detalle}
+              onRecargar={() => setRecarga(n => n + 1)}
+              className="hidden min-h-0 border-l border-slate-200 dark:border-slate-800 lg:flex lg:w-80 lg:shrink-0 lg:flex-col"
+            />
+          </div>
         )}
       </div>
     </div>
@@ -300,7 +313,7 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
   const IconoPaso = resumen.momento === 'aprobada' ? PartyPopper : paso.aQuien === 'vos' ? ArrowRight : Hourglass
 
   return (
-    <div className="flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6">
+    <div className="min-w-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6">
       <LineaDeFases resumen={resumen} />
 
       {/* El próximo paso: lo primero que se lee, con su botón */}
@@ -408,6 +421,9 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
       <Brief detalle={detalle} abiertoAlInicio={resumen.ronda === 0 && resumen.momento === 'produccion' && !detalle.fases.some(f => f.versiones.length > 0)} />
       <Historia detalle={detalle} sin={ultimaDeFase?.id ?? null} />
 
+      {/* En pantalla chica, los comentarios van acá; en grande, al costado. */}
+      <Comentarios detalle={detalle} onRecargar={onRecargar} className="flex flex-col lg:hidden" />
+
       {puedeConfigurar && (
         <button
           type="button"
@@ -418,6 +434,86 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * Los comentarios de la tarjeta, como en Trello (17/11/2026: "deberíamos tener
+ * una opción de poner comentario como tiene Trello en un costado, para así
+ * poder explicar cambios y cosas así"). Los ve y los escribe cualquiera que ve
+ * la tarjeta: el equipo y el tablero al que va; a los demás les llega a la
+ * campanita.
+ */
+function Comentarios({ detalle, onRecargar, className = '' }: {
+  detalle: DetalleEntregas
+  onRecargar: () => void
+  className?: string
+}) {
+  const comentarios = detalle.comentarios ?? []
+  const [texto, setTexto] = useState('')
+  const [mandando, setMandando] = useState(false)
+  const id = `comentar-${detalle.tarea.id}-${className.includes('lg:hidden') ? 'abajo' : 'costado'}`
+
+  async function comentar() {
+    const t = texto.trim()
+    if (!t || mandando) return
+    setMandando(true)
+    try {
+      await entregasApi.comentar(detalle.tarea.id, { id: `co-${crypto.randomUUID()}`, texto: t })
+      setTexto('')
+      onRecargar()
+    } catch (e) {
+      toast.error(detalleDeError(e) ?? 'No se pudo guardar el comentario. Probá de nuevo.')
+    } finally {
+      setMandando(false)
+    }
+  }
+
+  return (
+    <section aria-labelledby={`${id}-titulo`} className={className}>
+      <h3 id={`${id}-titulo`} className="flex items-center gap-2 px-4 pt-4 text-sm font-bold text-slate-900 dark:text-slate-100 lg:px-4">
+        <MessageSquare className="h-4 w-4 text-brand-600 dark:text-brand-300" /> Comentarios
+        {comentarios.length > 0 && <span className="rounded-full bg-slate-100 px-1.5 text-xs tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-300">{comentarios.length}</span>}
+      </h3>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-3">
+        {comentarios.length === 0 ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">Todavía no hay comentarios. Usalos para explicar cambios o hacer preguntas.</p>
+        ) : (
+          <ol className="space-y-2">
+            {comentarios.map(c => (
+              <li key={c.id} className={`rounded-xl px-3 py-2 ${c.mio ? 'ml-6 bg-brand-50 dark:bg-brand-500/10' : 'mr-6 bg-slate-100 dark:bg-slate-800'}`}>
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  {c.mio ? 'Vos' : (c.autorNombre ?? 'Alguien del equipo')}
+                  {c.fecha && <span className="font-normal text-slate-500 dark:text-slate-400"> · {fechaYHora(c.fecha)}</span>}
+                </p>
+                <p className="mt-0.5 whitespace-pre-line break-words text-sm text-slate-900 dark:text-slate-100">{c.texto}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+      <div className="space-y-2 border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+        <label htmlFor={id} className="sr-only">Escribí un comentario</label>
+        <textarea
+          id={id}
+          value={texto}
+          onChange={e => setTexto(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void comentar() } }}
+          rows={2}
+          maxLength={2000}
+          placeholder="Escribí un comentario…"
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        />
+        <button
+          type="button"
+          onClick={() => void comentar()}
+          disabled={!texto.trim() || mandando}
+          className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {mandando && <Loader2 className="h-4 w-4 animate-spin" />} Comentar
+        </button>
+      </div>
+    </section>
   )
 }
 
