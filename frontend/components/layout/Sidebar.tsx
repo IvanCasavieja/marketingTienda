@@ -7,7 +7,7 @@ import {
   ChevronRight, Presentation, Globe, ShieldCheck, HelpCircle, X, Tag,
   Sun, Moon, ClipboardList, Bell, BellOff, Star, Activity, TrendingUp, TrendingDown, AlertTriangle, Check,
   FileSpreadsheet, BookOpen, Receipt, Landmark, ScanSearch, CalendarDays, CalendarClock,
-  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle, Camera, Layers, PanelLeftClose,
+  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle, Camera, Layers, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
@@ -170,6 +170,36 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   // el botón de la franja que queda en su lugar (ver el layout del dashboard).
   const menuOculto = useMenuLateral((s) => s.oculto);
   const ocultarMenu = useMenuLateral((s) => s.ocultar);
+  const mostrarMenu = useMenuLateral((s) => s.mostrar);
+  // Se desliza (17/11/2026: "que deslice despacio, ahí es como que oculta y
+  // muestra de una"): el ancho va de 256 a 48 px y el contenido se desvanece.
+  // Mientras se achica, y hasta que termina de abrirse, recorta lo que
+  // sobresale; abierto no recorta, porque la lista de avisos se abre por
+  // encima de la página y es más ancha que el menú.
+  const [recortar, setRecortar] = useState(menuOculto);
+  // Ocultar es solo de pantallas grandes: en una ventana angosta el menú es
+  // la hoja de siempre y su contenido se tiene que poder usar aunque haya
+  // quedado "oculto" de antes.
+  const [esAncha, setEsAncha] = useState(() => window.matchMedia("(min-width: 768px)").matches);
+  useEffect(() => {
+    const consulta = window.matchMedia("(min-width: 768px)");
+    const alCambiar = () => setEsAncha(consulta.matches);
+    consulta.addEventListener("change", alCambiar);
+    return () => consulta.removeEventListener("change", alCambiar);
+  }, []);
+  // Oculto, el contenido no se recorre con el teclado ni lo lee un lector de
+  // pantalla. `inert` va a mano: React 18 no conoce el atributo y lo tiraba.
+  const contenidoRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = contenidoRef.current;
+    if (!el) return;
+    if (menuOculto && esAncha) el.setAttribute("inert", "");
+    else el.removeAttribute("inert");
+  }, [menuOculto, esAncha]);
+  function ocultarDeslizando() {
+    setRecortar(true);
+    ocultarMenu();
+  }
   // El número vive en un lugar compartido: la barra de abajo del teléfono también lo muestra.
   const notifCount = useAvisos((s) => s.noLeidos);
   const setNotifCount = useAvisos((s) => s.setNoLeidos);
@@ -464,16 +494,49 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       <aside className={clsx(
         // Claro en tema claro (pedido de Ivan, 12/11/2026: "necesitamos
         // aclarar. No oscurecer más"); el navy de antes queda para el oscuro.
-        "w-72 md:w-64 flex flex-col shrink-0 z-50 border-r border-slate-300 bg-white dark:border-white/5 dark:bg-navy-900",
+        "w-72 flex flex-col shrink-0 z-50 border-r border-slate-300 bg-white dark:border-white/5 dark:bg-navy-900",
+        // Desktop: se desliza entre abierto (256 px) y la franja (48 px).
+        menuOculto ? "md:w-12" : "md:w-64",
+        "md:transition-[width] md:duration-500 md:ease-[cubic-bezier(.32,.72,0,1)] motion-reduce:transition-none",
+        recortar && "md:overflow-hidden",
         // Desktop: always visible, relative positioning
         "md:relative md:translate-x-0 md:min-h-screen md:visible",
         // Mobile: fixed overlay, slides in/out. Cerrado queda invisible, así
         // el teclado no recorre links que no se ven.
         "fixed inset-y-0 left-0",
         isOpen ? "hoja-abierta translate-x-0 shadow-panel md:shadow-none" : "hoja-cerrada -translate-x-full md:translate-x-0",
-        // Oculto a pedido, solo en pantallas grandes: en el teléfono es la hoja de siempre.
-        menuOculto && "md:hidden"
-      )}>
+      )}
+        onTransitionEnd={(e) => {
+          if (e.target === e.currentTarget && e.propertyName === "width" && !menuOculto) setRecortar(false);
+        }}
+      >
+        {/* Oculto (pantallas grandes): el botón para volver a mostrarlo, que
+            aparece cuando el menú ya se está cerrando. */}
+        <button
+          type="button"
+          onClick={mostrarMenu}
+          aria-label={t("sidebar.mostrarMenu", "Mostrar menú")}
+          title={t("sidebar.mostrarMenu", "Mostrar menú")}
+          tabIndex={menuOculto ? 0 : -1}
+          aria-hidden={!menuOculto}
+          className={clsx(
+            "boton-icono absolute left-1 top-5 z-10 hidden md:flex",
+            "transition-opacity duration-300 motion-reduce:transition-none",
+            menuOculto ? "opacity-100 delay-200" : "pointer-events-none opacity-0"
+          )}
+        >
+          <PanelLeftOpen size={18} />
+        </button>
+        {/* El contenido, con su ancho fijo: al achicarse el menú se corre y se
+            desvanece en vez de aplastarse. Oculto, el teclado no lo recorre. */}
+        <div
+          ref={contenidoRef}
+          className={clsx(
+            "flex min-h-0 flex-1 flex-col md:w-64 md:shrink-0",
+            "md:transition-[opacity,transform] md:duration-300 motion-reduce:transition-none",
+            menuOculto ? "md:pointer-events-none md:-translate-x-6 md:opacity-0" : "md:translate-x-0 md:opacity-100 md:delay-150"
+          )}
+        >
         {/* Logo. La X del teléfono va al lado, no adentro del link. */}
         <div className="flex items-center gap-1 px-3 pb-3 pt-4 md:pb-4 md:pt-5">
           <Link href={inicioDe(currentUser)} onClick={handleNavClick} className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-1">
@@ -497,7 +560,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           {/* Ocultar el menú — pantallas grandes */}
           <button
             type="button"
-            onClick={ocultarMenu}
+            onClick={ocultarDeslizando}
             aria-label={t("sidebar.ocultarMenu", "Ocultar menú")}
             title={t("sidebar.ocultarMenu", "Ocultar menú")}
             className="boton-icono hidden md:flex"
@@ -819,6 +882,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           >
             <LogOut size={17} />
           </button>
+        </div>
         </div>
       </aside>
     </>

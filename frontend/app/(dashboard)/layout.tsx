@@ -6,14 +6,13 @@ import { useCurrentUserStore } from "@/store/currentUser";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
 import Link from "next/link";
-import { Menu, CalendarDays, ShieldAlert, ArrowLeftRight, PanelLeftOpen } from "lucide-react";
+import { Menu, CalendarDays, ShieldAlert, ArrowLeftRight } from "lucide-react";
 import { MARCA, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import FueraDeMundo from "@/components/layout/FueraDeMundo";
 import NavegacionInferior from "@/components/layout/NavegacionInferior";
 import AvisoDeVentana from "@/components/layout/AvisoDeVentana";
 import { INICIO_DE_EXTERNOS, calendarioVedado, esExterno, rutaDeExterno } from "@/lib/externos";
 import { useAvisos } from "@/store/avisos";
-import { useMenuLateral } from "@/store/menuLateral";
 import { useTranslation } from "react-i18next";
 
 const Sidebar = dynamic(() => import("@/components/layout/Sidebar"), { ssr: false });
@@ -30,8 +29,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const { t } = useTranslation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const menuOculto = useMenuLateral((s) => s.oculto);
-  const mostrarMenu = useMenuLateral((s) => s.mostrar);
   // No hay middleware server-side posible acá: el token vive en localStorage
   // (necesario para mobile Safari, que bloquea la cookie cross-site del backend
   // en Render) y esa cookie tampoco es visible para un middleware.ts del frontend
@@ -136,21 +133,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      {/* Con el menú oculto (pantallas grandes), una franja angosta con el
-          botón para volver a mostrarlo (17/11/2026). */}
-      {menuOculto && (
-        <div className="hidden w-12 shrink-0 flex-col items-center border-r border-slate-300 bg-white pt-5 dark:border-white/5 dark:bg-navy-900 md:flex">
-          <button
-            type="button"
-            onClick={mostrarMenu}
-            aria-label={t("sidebar.mostrarMenu", "Mostrar menú")}
-            title={t("sidebar.mostrarMenu", "Mostrar menú")}
-            className="boton-icono"
-          >
-            <PanelLeftOpen size={18} />
-          </button>
-        </div>
-      )}
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile top bar: el menú, la marca y en qué mundo se está */}
