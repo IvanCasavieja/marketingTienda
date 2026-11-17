@@ -43,7 +43,8 @@ export type ResumenEntrega = {
   faseActual: string | null
   aprobadorDeTurno: number | null
   aprobadores: number[]
-  fases: { id: string; nombre: string; estado: EstadoFase; rondas: number }[]
+  /** `motivo`: lo que hay que cambiar, si la fase la abrió una devolución. */
+  fases: { id: string; nombre: string; estado: EstadoFase; rondas: number; motivo?: string | null }[]
 }
 
 export type Marca = {
@@ -96,6 +97,10 @@ export type FaseDetalle = {
   nombre: string
   estado: EstadoFase
   aprobadaEl: string | null
+  /** Si la abrió una devolución después de aprobada (17/11/2026): lo que hay
+   *  que cambiar y quién lo pidió. */
+  motivo?: string | null
+  abiertaPor?: number | null
   versiones: Version[]
 }
 
@@ -125,6 +130,8 @@ export type DetalleEntregas = {
   columna?: Columna
   puedo: {
     entregar: boolean; decidir: boolean; comoRespaldo: boolean; configurar: boolean; tildarMarcas: boolean
+    /** Devolver una pieza ya aprobada con un texto: abre la Entrega siguiente. */
+    devolver?: boolean
     /** Si ve lo que encontró la IA (aprobadores y quien gestiona; nunca quien entrega). */
     verRevisionIA?: boolean
     /** A qué columnas del tablero la puede llevar. */
@@ -286,6 +293,23 @@ export function estadoDeFase(
   if (resumen.momento === 'revision') return { texto: `En revisión · ronda ${resumen.ronda}`, tono: 'actual' }
   if (resumen.momento === 'cambios') return { texto: `Con cambios · ronda ${resumen.ronda}`, tono: 'cambios' }
   return { texto: resumen.ronda === 0 ? 'En producción' : `En producción · ronda ${resumen.ronda + 1}`, tono: 'actual' }
+}
+
+/**
+ * El próximo paso en la vista de UNA entrega, donde el servidor dice si la
+ * persona puede decidir. Si la cadena dice que le toca pero la versión la
+ * subió ella, no es su turno: nadie aprueba lo que entregó (17/11/2026: antes
+ * decía "Te toca: revisar" y no aparecía ningún botón). Las listas (tablero,
+ * ficha, Mis tareas) no tienen ese dato y muestran el turno de la cadena.
+ */
+export function pasoEnLaVista(paso: ProximoPaso, puedeDecidir: boolean, laSubioYo: boolean): ProximoPaso {
+  if (paso.accion === 'revisar' && !puedeDecidir && laSubioYo) {
+    return {
+      texto: 'La entregaste vos: la revisa otra persona del equipo (nadie aprueba lo que entregó)',
+      accion: null, aQuien: 'otro',
+    }
+  }
+  return paso
 }
 
 export type ProximoPaso = {

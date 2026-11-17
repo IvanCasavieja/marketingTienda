@@ -2344,6 +2344,11 @@ export const entregasApi = {
   }) =>
     api.post<CalendarioEscrito & { resultado: string; entrega: ResumenEntrega }>(
       `/calendario/versiones/${encodeURIComponent(versionId)}/decision`, datos, ESPERA),
+  /** Devolver una pieza ya aprobada, con lo que hay que cambiar: abre la
+   *  Entrega siguiente (Entrega 2, 3...) y le avisa a quien entrega. */
+  devolver: (tareaId: string, comentario: string) =>
+    api.post<CalendarioEscrito & { fase: { id: string; nombre: string }; entrega: ResumenEntrega; avisados: number }>(
+      `/calendario/tareas/${encodeURIComponent(tareaId)}/devolver`, { comentario }, ESPERA),
   /** Lo que encontró la IA en una versión (solo aprobadores y quien gestiona). */
   revisionIA: (versionId: string) =>
     api.get<RevisionIA>(`/calendario/versiones/${encodeURIComponent(versionId)}/revision-ia`, ESPERA),

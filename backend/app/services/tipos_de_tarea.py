@@ -91,6 +91,12 @@ TIPOS_DE_TAREA: list[dict] = [
         ],
     },
     {
+        # Redes sociales (Ivan, 17/11/2026): se pide por proporción, "1:1,
+        # 4:5, 9:16, 16:9". Sin medida en px: lo que se pide es la proporción.
+        "clave": "redes", "nombre": "Redes sociales", "pieza": "redes", "otras": False,
+        "opciones": [opcion("1:1"), opcion("4:5"), opcion("9:16"), opcion("16:9")],
+    },
+    {
         # El folleto o catálogo de ofertas ("DECO NAVIDAD 16 PAG", "CATÁLOGO
         # CANASTAS 44 pag"). El formato es la hoja "Medidas Mailings" de Ivan
         # (impresos): depende del medio que lo reparte.

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import {
   CalendarClock, Check, CornerDownRight, FileText, Layers, LayoutTemplate, Link2, ListChecks, Mic, Plus, Sparkles, Trash2, UserRound, X,
 } from 'lucide-react'
@@ -31,8 +31,8 @@ import { usePermisosCalendario } from '@/lib/calendario/permisos'
  *
  * - `gestiona` (permiso `calendario.tareas`): crea, asigna, pone fecha y borra,
  *   y usa las plantillas del mundo (ver DialogoPlantillas).
- * - Cualquiera del equipo que edita el calendario pide piezas (16/11/2026:
- *   "todo el equipo tiene que poder crear tareas para agencia"): Banners,
+ * - Quien tiene `calendario.pedidos` pide piezas (16/11/2026: "todo el
+ *   equipo tiene que poder crear tareas para agencia"): Banners,
  *   Mailing, Cenefas… con quién la hace y para cuándo. Le nace su tarjeta en
  *   el tablero (ver PedirPieza).
  * - Los demás ven todo y pueden mover el estado de las tareas que tienen
@@ -163,13 +163,16 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
   const plantillas = useCalendario(s => s.plantillas)
   const [descartadas, setDescartadas] = useState<string[]>(() => (typeof window === 'undefined' ? [] : leerDescartadas()))
   const sugeridas = gestiona && !descartadas.includes(accion.id) ? plantillasSugeridas(plantillas, accion) : []
-  // Pedir una pieza: quien gestiona tareas y cualquiera que edita el
-  // calendario (una cuenta externa nunca edita).
-  const { editable } = usePermisosCalendario()
-  const pidePiezas = gestiona || editable
-  const [pidiendo, setPidiendo] = useState(false)
+  // Pedir una pieza: quien gestiona tareas y quien tiene el permiso de pedir
+  // piezas (calendario.pedidos, aparte de editar desde el 17/11/2026). Una
+  // cuenta externa nunca lo tiene. Es lo mismo que exige el servidor.
+  const { pidePiezas: puedePedir } = usePermisosCalendario()
+  const pidePiezas = gestiona || puedePedir
+  // Un solo formulario abierto a la vez en todo el bloque (ver FormularioAbierto).
+  const [abierto, abrir] = useState<Abierto>(null)
 
   return (
+    <FormularioAbierto.Provider value={{ accion, pidePiezas, abierto, abrir }}>
     <section>
       {(conTitulo || tareas.length > 0) && (
         <div className="mb-3 flex items-center gap-2">
@@ -209,10 +212,10 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
           </span>
           <p className="max-w-xs text-sm text-slate-600 dark:text-slate-400">
             {gestiona
-              ? 'Esta acción todavía no tiene tareas. Pedí una pieza (le nace su tarjeta en el tablero), creá una tarea común o arrancá con una plantilla.'
+              ? 'Esta acción todavía no tiene tareas. Creá la primera (o arrancá con una plantilla) y, debajo de cada tarea, pedí sus materiales.'
               : pidePiezas
-                ? 'Esta acción todavía no tiene tareas. Pedí una pieza: Banners, Mailing, Cenefas… y elegís quién la hace.'
-                : 'Esta acción todavía no tiene tareas. Las crea y las asigna quien lidera el equipo.'}
+                ? 'Esta acción todavía no tiene tareas. Creá la primera y, debajo, pedí sus materiales: Banners, Mailing, Cenefas…'
+                : 'Esta acción todavía no tiene tareas. Las crea el equipo.'}
           </p>
         </div>
       )}
@@ -226,33 +229,25 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
         ))}
       </ul>
 
-      {pidePiezas && (pidiendo ? (
-        <PedirPieza accion={accion} personas={personas} usuarioId={usuarioId} gestiona={gestiona} onListo={() => setPidiendo(false)} />
-      ) : (
-        <button
-          type="button"
-          onClick={() => setPidiendo(true)}
-          className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.99]"
-        >
-          <Layers className="h-4 w-4" /> Pedir una pieza
-        </button>
-      ))}
-
-      {gestiona && (
+      {/* El inicio es uno solo: Crear tarea. Los materiales se piden debajo de
+          cada tarea creada (17/11/2026). La plantilla sigue para quien lidera. */}
+      {pidePiezas && (
         <NuevaTarea
-          accionId={accion.id} parentId={null} personas={personas} usuarioId={usuarioId} etiqueta="Tarea común"
-          alLado={(
+          accionId={accion.id} parentId={null} personas={personas} usuarioId={usuarioId} etiqueta="Crear tarea"
+          gestiona={gestiona} principal
+          alLado={gestiona ? (
             <button
               type="button"
-              onClick={() => abrirPlantillas(accion.id)}
+              onClick={() => { abrir(null); abrirPlantillas(accion.id) }}
               className="flex min-h-[48px] items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:text-brand-700 active:scale-[.99] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-brand-500/60 dark:hover:text-brand-200"
             >
               <LayoutTemplate className="h-4 w-4" /> Usar plantilla
             </button>
-          )}
+          ) : undefined}
         />
       )}
     </section>
+    </FormularioAbierto.Provider>
   )
 }
 
@@ -315,6 +310,22 @@ function SugerenciaDePlantilla({ accion, sugeridas, onVer, onAhoraNo }: {
   )
 }
 
+/**
+ * Qué formulario está abierto en el bloque de tareas: uno solo a la vez.
+ * Ivan (17/11/2026): "al crear una tarea común el cuadro de creación queda
+ * abierto incluso si presiono pedir materiales". 'nueva' = Crear tarea;
+ * 'material:<id>' = pedir un material de esa tarea; 'sub:<id>' = una
+ * subtarea común (quien lidera).
+ */
+type Abierto = string | null
+const FormularioAbierto = createContext<{
+  accion: BarraGuardada | null
+  /** Crea tareas y pide sus materiales (calendario.pedidos, o quien lidera). */
+  pidePiezas: boolean
+  abierto: Abierto
+  abrir: (a: Abierto) => void
+}>({ accion: null, pidePiezas: false, abierto: null, abrir: () => {} })
+
 function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   tarea: Tarea
   todas: Tarea[]
@@ -326,7 +337,9 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   const cambiar = useCalendario(s => s.cambiarTarea)
   const borrar = useCalendario(s => s.borrarTarea)
   const personasEstado = useCalendario(s => s.personasEstado)
-  const [agregando, setAgregando] = useState(false)
+  const { accion, pidePiezas, abierto, abrir } = useContext(FormularioAbierto)
+  const agregando = abierto === `sub:${tarea.id}`
+  const pidiendoMaterial = abierto === `material:${tarea.id}`
   const [confirmando, setConfirmando] = useState(false)
   const [editandoDetalle, setEditandoDetalle] = useState(false)
   const [sumandoEntregas, setSumandoEntregas] = useState(false)
@@ -338,6 +351,10 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   // quien entrega no la tilda (lo mismo exige el servidor). Quien lidera sí.
   const conEntregas = Boolean(tarea.entrega)
   const puedeEstado = gestiona || (esMia && !conEntregas)
+  // "Crear tarea y debajo de eso poder asignar los materiales de esa tarea
+  // creada" (17/11/2026): los materiales cuelgan de una tarea común, no de
+  // otra pieza, y respetan el tope de niveles.
+  const puedeMaterial = pidePiezas && !conEntregas && !!accion && nivel < NIVELES_DE_TAREA
   const hecha = tarea.estado === 'hecha'
   const vencida = !hecha && !!tarea.vence && tarea.vence < hoyIso()
   const asignado = personas.find(p => p.id === tarea.asignadoA)
@@ -509,7 +526,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                   {nivel < NIVELES_DE_TAREA && (
                     <button
                       type="button"
-                      onClick={() => setAgregando(v => !v)}
+                      onClick={() => abrir(agregando ? null : `sub:${tarea.id}`)}
                       aria-expanded={agregando}
                       className="flex h-9 items-center gap-1 rounded-lg px-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-brand-200 sm:h-8"
                     >
@@ -555,34 +572,57 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
         )}
       </div>
 
-      {(hijas.length > 0 || agregando) && (
+      {(hijas.length > 0 || agregando || puedeMaterial) && (
         <div className="ml-4 mt-2 border-l-2 border-slate-300 pl-3 dark:border-slate-700">
-          <ul className="space-y-2">
-            {hijas.map(h => (
-              <ItemTarea
-                key={h.id} tarea={h} todas={todas} accionId={accionId}
-                personas={personas} usuarioId={usuarioId} gestiona={gestiona}
-              />
-            ))}
-          </ul>
+          {hijas.length > 0 && (
+            <ul className="space-y-2">
+              {hijas.map(h => (
+                <ItemTarea
+                  key={h.id} tarea={h} todas={todas} accionId={accionId}
+                  personas={personas} usuarioId={usuarioId} gestiona={gestiona}
+                />
+              ))}
+            </ul>
+          )}
           {agregando && (
             <NuevaTarea
               accionId={accionId} parentId={tarea.id} personas={personas} usuarioId={usuarioId}
-              etiqueta="Nueva subtarea" abierta onListo={() => setAgregando(false)}
+              etiqueta="Nueva subtarea" gestiona={gestiona} abierta onListo={() => abrir(null)}
             />
           )}
+          {/* Los materiales de esta tarea: Banners, Mailing, Cenefas… cada uno
+              con su tarjeta en el tablero y sus entregas. */}
+          {puedeMaterial && accion && (pidiendoMaterial ? (
+            <PedirPieza
+              accion={accion} parentId={tarea.id} tareaMadre={tarea.titulo}
+              personas={personas} usuarioId={usuarioId} gestiona={gestiona} onListo={() => abrir(null)}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => abrir(`material:${tarea.id}`)}
+              className={`${hijas.length > 0 ? 'mt-2' : ''} flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 text-left text-sm font-semibold text-slate-600 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 active:scale-[.99] dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500/60 dark:hover:bg-brand-500/10 dark:hover:text-brand-200`}
+            >
+              <Layers className="h-4 w-4 shrink-0" /> Pedir material para esta tarea
+            </button>
+          ))}
         </div>
       )}
     </li>
   )
 }
 
-function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, abierta = false, onListo, alLado }: {
+function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, gestiona, principal = false, abierta = false, onListo, alLado }: {
   accionId: string
   parentId: string | null
   personas: Persona[]
   usuarioId: number | null
   etiqueta: string
+  /** "Lleva entregas para aprobar" es configurar entregas: de quien lidera
+   *  (el servidor lo exige). Los demás piden materiales debajo de la tarea. */
+  gestiona: boolean
+  /** El botón de arranque del bloque: lleno, no punteado. */
+  principal?: boolean
   abierta?: boolean
   onListo?: () => void
   /** Otro botón al lado de "Nueva tarea" mientras está cerrado (Usar plantilla). */
@@ -591,7 +631,12 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, abierta
   const crear = useCalendario(s => s.crearTarea)
   const configurarEntregas = useCalendario(s => s.configurarEntregas)
   const personasEstado = useCalendario(s => s.personasEstado)
-  const [abierto, setAbierto] = useState(abierta)
+  // Abierto o cerrado lo lleva el bloque: abrir esto cierra cualquier otro
+  // formulario (pedir material, otra subtarea).
+  const { abierto: abiertoEnElBloque, abrir } = useContext(FormularioAbierto)
+  const clave = parentId ? `sub:${parentId}` : 'nueva'
+  const abierto = abierta || abiertoEnElBloque === clave
+  const setAbierto = (v: boolean) => abrir(v ? clave : null)
   const [titulo, setTitulo] = useState('')
   const [asignadoA, setAsignadoA] = useState('')
   const [vence, setVence] = useState('')
@@ -631,23 +676,17 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, abierta
 
   function enviar(e: React.FormEvent) {
     e.preventDefault()
+    if (!valida) return
     crearLaEscrita()
-    // Se queda abierto para cargar la siguiente: las tareas se cargan de a varias.
-    setTitulo('')
-    setDescripcion('')
-    if (conEntregas) { setConEntregas(false); setConfig(configInicial()) }
+    // Se cierra: lo que sigue es pedir los materiales debajo de la tarea
+    // recién creada (17/11/2026). Antes quedaba abierto para cargar otra, y
+    // quedaba abierto también al ir a pedir un material.
+    cerrar()
   }
 
   /** Lo dictado trae un título: si la tarea todavía no tiene, se usa ese. */
   function alDictar(brief: BriefListo) {
     if (!titulo.trim()) setTitulo(brief.resumen.slice(0, 500))
-  }
-
-  /** "Listo" con algo escrito se lee como "guardá esto y cerrá": antes la
-   *  tiraba sin avisar (pruebas del 15/11/2026). */
-  function listo() {
-    crearLaEscrita()
-    cerrar()
   }
 
   if (!abierto) {
@@ -656,7 +695,9 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, abierta
         <button
           type="button"
           onClick={() => setAbierto(true)}
-          className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 px-4 text-sm font-semibold text-slate-600 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 active:scale-[.99] dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500/60 dark:hover:bg-brand-500/10 dark:hover:text-brand-200"
+          className={principal
+            ? 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-2xl bg-brand-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.99]'
+            : 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 px-4 text-sm font-semibold text-slate-600 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 active:scale-[.99] dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500/60 dark:hover:bg-brand-500/10 dark:hover:text-brand-200'}
         >
           <Plus className="h-4 w-4" /> {etiqueta}
         </button>
@@ -712,6 +753,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, abierta
         </label>
       </div>
 
+      {gestiona && (
       <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
         conEntregas ? 'border-brand-300 bg-white dark:border-brand-500/40 dark:bg-slate-900' : 'border-slate-300 bg-white/60 hover:border-brand-300 dark:border-slate-700 dark:bg-slate-900/40'
       }`}>
@@ -739,6 +781,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, abierta
           </span>
         </span>
       </label>
+      )}
 
       {conEntregas && (
         <div className="animate-fade-in rounded-xl border border-slate-300 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900">
@@ -756,8 +799,8 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, abierta
         {titulo.trim() && faltaEntregas && (
           <p className="mr-auto text-xs text-amber-700 dark:text-amber-300">{faltaEntregas}</p>
         )}
-        <button type="button" onClick={listo} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[40px]">
-          Listo
+        <button type="button" onClick={cerrar} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[40px]">
+          Cancelar
         </button>
         <button
           type="submit"

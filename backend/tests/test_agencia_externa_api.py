@@ -630,6 +630,7 @@ def test_el_admin_crea_una_cuenta_externa_y_no_le_puede_dar_mas():
 
         # Ni el superadmin le puede dar gestión, admin ni un rol.
         for permisos in (["calendario.view", "calendario.tareas"], ["calendario.view", "calendario.edit"],
+                         ["calendario.view", "calendario.pedidos"],
                          ["platform.admin"], ["calendario.view", "calendario.retail_media"]):
             r = await promo.patch(f"/admin/users/{nuevo}/permissions", json={"permissions": permisos})
             assert r.status_code == 422, (permisos, r.text)

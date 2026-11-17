@@ -20,6 +20,9 @@ export const PERMISOS_CALENDARIO = {
   retailMedia: "calendario.retail_media",
   /** Crear, asignar y borrar las tareas de cada acción. */
   tareas: "calendario.tareas",
+  /** Pedir piezas y materiales desde una acción (Banners, Mailing, Cenefas…).
+   *  Desde el 17/11/2026 es un permiso aparte de `editar`. */
+  pedidos: "calendario.pedidos",
 } as const;
 
 export function puedeVer(user: CurrentUser | null | undefined): boolean {
@@ -47,6 +50,8 @@ export function usePermisosCalendario() {
     moverRM: puedeMoverRM(user),
     /** Crea, asigna y borra tareas. Los demás solo mueven el estado de las suyas. */
     gestionaTareas: hasPermission(user, PERMISOS_CALENDARIO.tareas),
+    /** Pide piezas y materiales. Quien gestiona tareas también puede. */
+    pidePiezas: hasPermission(user, PERMISOS_CALENDARIO.tareas) || hasPermission(user, PERMISOS_CALENDARIO.pedidos),
     autor: user?.full_name || user?.email || "Alguien",
   };
 }

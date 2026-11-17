@@ -41,8 +41,12 @@ const DIAS_RAPIDOS = [1, 2, 3]
 /** Lo mismo que acepta el servidor para "N días antes" (calendario.py, _DIAS_DE_ANCLA). */
 const DIAS_MAXIMOS = 365
 
-export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
+export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usuarioId, gestiona, onListo }: {
   accion: BarraGuardada
+  /** La tarea de la que es material (17/11/2026: "crear tarea y debajo de
+   *  eso poder asignar los materiales de esa tarea creada"). */
+  parentId?: string | null
+  tareaMadre?: string
   personas: Persona[]
   usuarioId: number | null
   gestiona: boolean
@@ -149,6 +153,7 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
     }
     const id = crear(accion.id, {
       titulo,
+      parentId,
       descripcion: descripcion.trim() || null,
       asignadoA: responsable,
       para: quien,
@@ -184,7 +189,7 @@ export function PedirPieza({ accion, personas, usuarioId, gestiona, onListo }: {
     >
       <div className="flex items-start justify-between gap-2">
         <p className="flex items-center gap-1.5 text-sm font-bold text-brand-800 dark:text-brand-200">
-          <Layers className="h-4 w-4" /> Pedir una pieza
+          <Layers className="h-4 w-4" /> {tareaMadre ? `Pedir material para «${tareaMadre}»` : 'Pedir una pieza'}
         </p>
         <button type="button" onClick={onListo} aria-label="Cerrar sin pedir" className="-mr-1.5 -mt-1.5 flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-white/70 dark:text-slate-400 dark:hover:bg-slate-800">
           <X className="h-4 w-4" />

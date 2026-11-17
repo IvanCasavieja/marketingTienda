@@ -52,7 +52,8 @@ por tarea, hasta tres niveles (tarea → subtarea → sub-subtarea).
 
 | Quién | Qué puede |
 |---|---|
-| Con `calendario.tareas` | Crear, asignar, poner vencimiento y borrar tareas. |
+| Con `calendario.tareas` | Crear, asignar, reasignar, poner vencimiento y borrar tareas; subtareas comunes, plantillas y entregas por fases. |
+| Con `calendario.pedidos` | Crear tareas en la acción y pedir sus materiales debajo (Banners, Mailing, Cenefas…). Desde el 17/11/2026 es aparte de `calendario.edit`: la acción la arma quien lidera, y las tareas y sus materiales los crea el equipo de analistas. La 0071 se lo dio a todos los que tenían `calendario.edit`. |
 | A quien se le asignó | Mover el estado de SUS tareas (pendiente → en proceso → hecha), aunque no tenga `calendario.edit`. |
 | Los demás | Ver. |
 
@@ -65,6 +66,20 @@ por tarea, hasta tres niveles (tarea → subtarea → sub-subtarea).
   pendiente en otro.
 - `calendario.tareas` lo recibieron Superadmin y Admin en la 0060. A quien
   lidere el equipo sin ser Admin hay que tildárselo a mano.
+
+**Cómo se arma (17/11/2026).** En la ficha de una acción hay un solo botón
+para empezar: **Crear tarea**. Debajo de cada tarea creada está **Pedir
+material para esta tarea**, que abre el pedido de pieza (le nace su tarjeta en
+el tablero). En todo el bloque hay un solo formulario abierto a la vez: abrir
+uno cierra el otro (antes "Crear tarea" quedaba abierto al ir a pedir un
+material). Crear una tarea cierra el formulario.
+
+**Devolver una pieza aprobada (0072).** Con todas sus fases aprobadas, quien
+la aprueba o quien lidera ve **Devolver para corregir**: escribe qué cambiar y
+se abre una fase nueva al final (Entrega 2, Entrega 3… sin tope), que guarda
+ese texto. Quien entrega lo ve arriba de la entrega y le llega a la campanita
+(`POST /calendario/tareas/{id}/devolver`). Antes, con la única fase aprobada,
+la tarjeta quedaba cerrada y no había dónde escribir.
 
 ### Plantillas de tareas (0065)
 
@@ -311,6 +326,7 @@ administración:
 |---|---|
 | `calendario.view` | Entrar. Es el que decide si aparece el link en el menú. |
 | `calendario.edit` | Crear, editar y borrar barras, mover el estado de las piezas y configurar avisos. |
+| `calendario.pedidos` | Pedir piezas y materiales desde una acción. |
 | `calendario.retail_media` | Mover las posiciones que Retail Media tiene reservadas en el header. |
 
 Mover las posiciones de Retail Media las guarda y le avisa a quien lleva Retail

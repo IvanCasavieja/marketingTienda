@@ -261,12 +261,16 @@ def test_del_equipo_es_suya_si_la_hace_la_pidio_o_la_aprueba():
 
 
 def test_quien_crea_que():
-    lucia = SimpleNamespace(id=1, es_externo=False, is_superuser=False, permissions=["calendario.view", "calendario.edit"])
+    lucia = SimpleNamespace(id=1, es_externo=False, is_superuser=False,
+                            permissions=["calendario.view", "calendario.edit", "calendario.pedidos"])
     lider = SimpleNamespace(id=2, es_externo=False, is_superuser=False, permissions=["calendario.view", "calendario.tareas"])
     agencia = SimpleNamespace(id=3, es_externo=True, is_superuser=False, permissions=["calendario.view"])
-    # Una pieza (con tarjeta) la pide cualquiera del equipo que edita el calendario.
+    # Tareas y piezas las crea quien tiene calendario.pedidos (17/11/2026);
+    # editar el calendario solo ya no alcanza.
     assert puede_crear_tarea(lucia, pieza=True)
-    assert not puede_crear_tarea(lucia, pieza=False)
+    assert puede_crear_tarea(lucia, pieza=False)
+    solo_edita = SimpleNamespace(id=4, es_externo=False, is_superuser=False, permissions=["calendario.view", "calendario.edit"])
+    assert not puede_crear_tarea(solo_edita, pieza=True) and not puede_crear_tarea(solo_edita, pieza=False)
     assert puede_crear_tarea(lider, pieza=False) and puede_crear_tarea(lider, pieza=True)
     assert not puede_crear_tarea(agencia, pieza=True)
     assert es_pieza(SimpleNamespace(tipo="banners", para="tienda"))
@@ -302,6 +306,18 @@ def test_la_descripcion_lleva_las_medidas():
     assert tipos.descripcion_del_pedido("cenefas", ["A5"], None) == "Cenefas: A5 (2 por hoja · 210×148,5 mm)"
     assert tipos.descripcion_del_pedido("whatsapp", [], None) == "Envío WhatsApp: imagen de 1080×1350 px · 4:5 vertical"
     assert tipos.descripcion_del_pedido("totem", [], None) is None
+
+
+def test_redes_sociales_se_pide_por_proporcion():
+    # Ivan, 17/11/2026: "redes sociales son opciones 1:1 4:5 9:16 16:9".
+    redes = tipos.tipo_de("redes")
+    assert redes["nombre"] == "Redes sociales" and redes["pieza"] == "redes"
+    assert [o["nombre"] for o in redes["opciones"]] == ["1:1", "4:5", "9:16", "16:9"]
+    assert tipos.opciones_validas("redes", ["16:9", "1:1"]) == ["1:1", "16:9"]
+    with pytest.raises(ValueError):
+        tipos.opciones_validas("redes", ["3:2"])
+    assert tipos.nombre_de_tarjeta("Ciberlunes", "redes") == "Ciberlunes - Redes sociales"
+    assert tipos.descripcion_del_pedido("redes", ["4:5", "9:16"], None) == "Redes sociales: 4:5, 9:16"
 
 
 def test_el_email_marketing_no_es_el_mailing():

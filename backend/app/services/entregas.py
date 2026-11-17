@@ -85,7 +85,10 @@ FASES_POR_DEFECTO: dict[str, list[str]] = {
     "otro": ["Boceto", "Arte final"],
 }
 
-MAX_FASES = 8
+# No es un tope de trabajo: devolver una entrega aprobada abre otra fase, sin
+# límite (Ivan, 17/11/2026: "la idea sería que eso sea infinito"). Es solo el
+# freno de un pedido mal armado al configurar las fases a mano.
+MAX_FASES = 100
 MAX_APROBADORES = 6
 MAX_IMAGENES = 4
 # La grande llega comprimida del navegador (1600 px, JPEG 0,75: 50-250 KB).
@@ -384,6 +387,26 @@ def momento_de(hay_fase_actual: bool, estado_ultima_version: str | None) -> str:
     if estado_ultima_version == "cambios":
         return "cambios"
     return "produccion"
+
+
+def nombre_de_fase_nueva(nombres: list[str]) -> str:
+    """El nombre de la fase que abre una devolución: "Entrega N", donde N es
+    la cantidad de fases que va a haber. La que nace con la pieza se llama
+    "Entrega", así que la primera devolución abre "Entrega 2". Si ese nombre
+    ya está (alguien la nombró así a mano), sigue contando. Pura."""
+    usados = {(n or "").strip().casefold() for n in nombres}
+    n = len(nombres) + 1
+    while f"entrega {n}" in usados:
+        n += 1
+    return f"Entrega {n}"
+
+
+def puede_devolver(usuario_id: int, es_gestor: bool, aprobadores: list[int], momento: str) -> bool:
+    """Quién devuelve una pieza ya aprobada: quien está en la cadena de
+    aprobación, o quien lidera (`calendario.tareas`). Solo cuando todas sus
+    fases están aprobadas: antes, los cambios se piden al revisar la entrega.
+    Pura (el freno de las cuentas externas va en la ruta)."""
+    return momento == "aprobada" and (es_gestor or usuario_id in (aprobadores or []))
 
 
 def estado_de_tarea(momento: str, hay_versiones: bool, actual: str) -> str:
@@ -773,6 +796,14 @@ def mensaje_de_tarjetas_nuevas(quien: str, tareas: list[tuple[str, list[str] | N
     return _corto(f"{quien or 'El equipo'} te pidió {len(tareas)} tarjetas: {lista}.{cuando}")
 
 
+def mensaje_de_devolucion(quien: str, tarea: str, accion: str, fase: str, motivo: str) -> str:
+    """A quien entrega, cuando le devuelven una pieza que ya estaba aprobada."""
+    motivo = " ".join((motivo or "").split())
+    if motivo and motivo[-1] not in ".!?…":
+        motivo += "."
+    return _corto(f"{quien} devolvió «{tarea}» ({accion}) para corregir: {motivo} Te toca entregar {fase}.")
+
+
 def mensaje_de_tarjeta_finalizada(tarea: str, accion: str) -> str:
     """A quien creó la tarjeta, cuando se aprueba la última entrega."""
     return f"«{tarea}» ({accion}) quedó finalizada: se aprobó la entrega."
@@ -902,7 +933,9 @@ def resumen_json(entrega: CalendarioEntrega, fases: list[CalendarioFase], rondas
         "aprobadorDeTurno": entrega.aprobador_de_turno_id,
         "aprobadores": list(entrega.aprobadores or []),
         "fases": [
-            {"id": f.id, "nombre": f.nombre, "estado": f.estado, "rondas": rondas.get(f.id, 0)}
+            {"id": f.id, "nombre": f.nombre, "estado": f.estado, "rondas": rondas.get(f.id, 0),
+             # Lo que hay que cambiar, si la fase la abrió una devolución (0072).
+             "motivo": f.motivo}
             for f in fases
         ],
     }

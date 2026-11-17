@@ -48,6 +48,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     # Calendario
     "calendario.view":         "Ver el calendario comercial, el de Retail Media y los headers de la home",
     "calendario.edit":         "Crear, editar y borrar acciones, campañas y banners del calendario, mover el estado de las piezas y configurar los avisos de cada acción",
+    "calendario.pedidos":      "Crear tareas en las acciones del calendario y pedir sus piezas y materiales (Banners, Mailing, Cenefas…): a cada pieza le nace su tarjeta en el tablero y le llega el aviso a quien la hace",
     "calendario.retail_media": "Mover las posiciones del header que Retail Media tiene reservadas (avisa a quien lleva Retail Media)",
     "calendario.tareas":       "Crear, asignar y borrar las tareas de cada acción del calendario (a quien se le asigna una le llega un aviso)",
 
@@ -97,7 +98,7 @@ DEFAULT_ROLES: list[dict] = [
             "analytics.view", "analytics.export",
             "connections.view",
             "precios.search",
-            "calendario.view", "calendario.edit",
+            "calendario.view", "calendario.edit", "calendario.pedidos",
             "ai.don_tino", "ai.dona_tina", "ai.tinin", "ai.triada",
         ],
         "is_system":   True,
