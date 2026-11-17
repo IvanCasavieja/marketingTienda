@@ -136,6 +136,14 @@ class CalendarioFase(Base):
     # 'pendiente' | 'en-curso' | 'aprobada'
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default="pendiente")
     aprobada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Si la fase la abrió una devolución (0072): lo que hay que cambiar y
+    # quién lo pidió. Pedido de Ivan (17/11/2026): después de aprobada, la
+    # pieza se tiene que poder volver para atrás con un texto, y cada vuelta
+    # suma una fase más (Entrega 2, Entrega 3...), sin tope.
+    motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    abierta_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

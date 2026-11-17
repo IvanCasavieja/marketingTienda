@@ -476,6 +476,7 @@ async def ver_entregas(
 
     personas = [tarea.asignado_a_id, tarea.creado_por_id, *list(entrega.aprobadores or [])]
     personas += [v.subida_por_id for v in versiones]
+    personas += [f.abierta_por_id for f in fases]
     personas += [d.aprobador_id for ds in decisiones.values() for d in ds]
     personas += [d.decidido_por_id for ds in decisiones.values() for d in ds]
     personas += [m.autor_id for ms in marcas.values() for m in ms]
@@ -553,6 +554,8 @@ async def ver_entregas(
             {
                 "id": f.id, "orden": f.orden, "nombre": f.nombre, "estado": f.estado,
                 "aprobadaEl": f.aprobada_at.isoformat() if f.aprobada_at else None,
+                # Si la abrió una devolución (0072): qué hay que cambiar y quién lo pidió.
+                "motivo": f.motivo, "abiertaPor": f.abierta_por_id,
                 "versiones": [version_json(v) for v in versiones if v.fase_id == f.id],
             }
             for f in fases
@@ -564,6 +567,10 @@ async def ver_entregas(
             "decidir": puede_decidir,
             "comoRespaldo": como_respaldo,
             "configurar": _puede_gestionar_tareas(current_user),
+            # Devolver una pieza ya aprobada, con un texto: abre otra fase (0072).
+            "devolver": not externo and reglas.puede_devolver(
+                current_user.id, _puede_gestionar_tareas(current_user), list(entrega.aprobadores or []), entrega.momento,
+            ),
             "tildarMarcas": entrega_yo or _puede_gestionar_tareas(current_user),
             # A qué columnas del tablero la puede llevar (ver reglas.movimiento).
             "mover": reglas.destinos_posibles(
@@ -856,6 +863,80 @@ async def decidir(
         "id": version.id, "rev": _rev_para(current_user, rev), "resultado": resultado, "entrega": resumen,
         "avisados": avisados,
     }
+
+
+class Devolucion(BaseModel):
+    """Lo que hay que cambiar de una pieza que ya estaba aprobada."""
+    comentario: str = Field(..., max_length=5000)
+
+    @field_validator("comentario")
+    @classmethod
+    def _con_texto(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Escribí qué hay que cambiar")
+        return v
+
+
+@router.post("/tareas/{tarea_id}/devolver")
+async def devolver_aprobada(
+    tarea_id: str,
+    payload: Devolucion,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Devolver una pieza que ya estaba aprobada, con lo que hay que cambiar.
+
+    Pedido de Ivan (17/11/2026): con la última fase aprobada la tarjeta
+    quedaba cerrada y no había dónde escribir para "volver para atrás el
+    arte". Ahora quien la aprueba (o quien lidera) la devuelve con un texto:
+    se abre una fase nueva al final ("Entrega 2", "Entrega 3"... sin tope),
+    que guarda ese texto, y a quien entrega le llega el aviso. La tarjeta
+    deja de estar finalizada (y archivada, si ya lo estaba) y la tarea vuelve
+    a en proceso: es lo que hace `recalcular` cuando vuelve a haber algo para
+    entregar."""
+    if externos.es_externo(current_user):
+        raise HTTPException(status_code=403, detail="Una cuenta externa no devuelve piezas")
+    tarea, barra = await _tarea_y_barra(db, tarea_id, current_user, bloquear=True)
+    entrega = await _entrega_bloqueada(db, tarea.id)
+    if entrega.momento != "aprobada":
+        raise HTTPException(
+            status_code=409,
+            detail="Esta pieza todavía no está aprobada: los cambios se piden al revisar la entrega",
+        )
+    if not reglas.puede_devolver(
+        current_user.id, _puede_gestionar_tareas(current_user), list(entrega.aprobadores or []), entrega.momento,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="La devuelve quien la aprueba o quien lidera las tareas",
+        )
+    fases = (await db.execute(
+        select(CalendarioFase).where(CalendarioFase.tarea_id == tarea.id).order_by(CalendarioFase.orden)
+    )).scalars().all()
+    nombre = reglas.nombre_de_fase_nueva([f.nombre for f in fases])
+    fase = CalendarioFase(
+        id=reglas.nuevo_id("fa"), tarea_id=tarea.id, orden=max((f.orden for f in fases), default=-1) + 1,
+        nombre=nombre, estado="pendiente", motivo=payload.comentario, abierta_por_id=current_user.id,
+    )
+    db.add(fase)
+    await db.flush()
+    await reglas.recalcular(db, entrega, tarea)
+
+    avisados = 0
+    mensaje = reglas.mensaje_de_devolucion(
+        current_user.full_name, tarea.titulo, barra.nombre, nombre, payload.comentario,
+    )
+    for uid in await reglas.destinatarios_de_la_tarjeta(db, tarea, barra.mundo):
+        if uid != current_user.id and await reglas.avisar(
+            db, uid, mensaje, reglas.referencia(barra.id, tarea.id, fase.id, "devuelta"),
+        ):
+            avisados += 1
+    resumen = await _resumen(db, tarea.id)
+    rev = await _nueva_revision(db, barra.mundo)
+    await db.commit()
+    return {"id": tarea.id, "fase": {"id": fase.id, "nombre": nombre}, "rev": _rev_para(current_user, rev),
+            "entrega": resumen, "avisados": avisados}
 
 
 async def _aplicar_decision(

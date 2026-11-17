@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Camera, Check, ImagePlus, Link2, Loader2, Send, X } from 'lucide-react'
+import { Camera, Check, ImagePlus, Link2, Loader2, RotateCcw, Send, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import {
@@ -149,6 +149,17 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           </p>
         </div>
 
+        {/* Devuelta después de aprobada (17/11/2026): lo que pidieron cambiar,
+            arriba de todo, para entregar sabiendo qué corregir. */}
+        {fase?.motivo && (
+          <section aria-labelledby="que-pidieron" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-500/30 dark:bg-rose-500/10">
+            <h4 id="que-pidieron" className="flex items-center gap-2 text-sm font-bold text-rose-800 dark:text-rose-200">
+              <RotateCcw className="h-4 w-4" /> Lo que pidieron cambiar
+            </h4>
+            <p className="mt-1.5 whitespace-pre-line text-sm text-rose-950 dark:text-rose-50">{fase.motivo}</p>
+          </section>
+        )}
+
         {cambios.length > 0 && (
           <section aria-labelledby="que-corregiste">
             <div className="mb-2 flex items-center justify-between gap-2">
@@ -284,7 +295,10 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           {subiendo !== null ? (
             <><Loader2 className="h-4 w-4 animate-spin" /> Subiendo… {Math.round(subiendo * 100)}%</>
           ) : (
-            <><Send className="h-4 w-4" /> Entregar ronda {ronda}</>
+            // Con varias fases, la primera ronda de cada una se nombra por la
+            // fase ("Entregar Entrega 2"), igual que el título: "Entregar
+            // ronda 1" debajo de "Entregar Entrega 2" confundía (17/11/2026).
+            <><Send className="h-4 w-4" /> {resumen.fases.length > 1 && ronda === 1 && fase ? `Entregar ${fase.nombre}` : `Entregar ronda ${ronda}`}</>
           )}
         </button>
       </div>

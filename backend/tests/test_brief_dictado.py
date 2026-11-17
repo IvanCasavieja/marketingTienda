@@ -247,6 +247,15 @@ def test_endpoint_tope_de_tamano_y_tipo_valido(monkeypatch):
     assert api.pedidos == []  # nada de eso llegó a la IA
 
 
+def test_endpoint_lo_usa_quien_solo_pide_piezas(monkeypatch):
+    # El dictado está en "Pedir una pieza": quien tiene calendario.pedidos sin
+    # editar el calendario (0071) también lo usa.
+    api = sim.ApiGrabada([_respuesta_cenefa()])
+    cliente, _ = _app(_persona("calendario.view", "calendario.pedidos"), monkeypatch, api)
+    r = cliente.post("/ia/brief/ordenar", json={"texto": DICTADO, "tipo": "cenefa"})
+    assert r.status_code == 200, r.text
+
+
 def test_endpoint_pide_poder_escribir_tareas_o_acciones(monkeypatch):
     api = sim.ApiGrabada([])
     cliente, _ = _app(_persona("calendario.view", "ai.don_tino"), monkeypatch, api)

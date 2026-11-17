@@ -213,8 +213,28 @@ def test_los_nombres_de_las_fases():
         nombres_de_fases([])
     with pytest.raises(ValueError):
         nombres_de_fases(["Boceto", "  "])
+    # Sin tope de trabajo desde el 17/11/2026: 9, 10 o más fases valen; solo
+    # se frena un pedido mal armado.
+    assert len(nombres_de_fases(["x"] * 9)) == 9
     with pytest.raises(ValueError):
-        nombres_de_fases(["x"] * 9)
+        nombres_de_fases(["x"] * 101)
+
+
+def test_devolver_una_aprobada_abre_entrega_n():
+    from app.services.entregas import mensaje_de_devolucion, nombre_de_fase_nueva, puede_devolver
+    assert nombre_de_fase_nueva(["Entrega"]) == "Entrega 2"
+    assert nombre_de_fase_nueva(["Entrega", "Entrega 2"]) == "Entrega 3"
+    assert nombre_de_fase_nueva(["Boceto", "Arte final"]) == "Entrega 3"
+    # Si alguien ya la nombró así a mano, sigue contando.
+    assert nombre_de_fase_nueva(["Entrega", "entrega 3"]) == "Entrega 4"
+    # La devuelve quien aprueba o quien lidera, y solo ya aprobada.
+    assert puede_devolver(5, False, [5, 6], "aprobada")
+    assert puede_devolver(9, True, [5], "aprobada")
+    assert not puede_devolver(9, False, [5], "aprobada")
+    for momento in ("produccion", "revision", "cambios"):
+        assert not puede_devolver(5, True, [5], momento)
+    texto = mensaje_de_devolucion("Lucía", "Ciber - Banners", "Ciberlunes", "Entrega 2", "  El precio  cambió ")
+    assert texto == "Lucía devolvió «Ciber - Banners» (Ciberlunes) para corregir: El precio cambió. Te toca entregar Entrega 2."
 
 
 def test_cada_tipo_de_pieza_tiene_fases_por_defecto_y_formulario():

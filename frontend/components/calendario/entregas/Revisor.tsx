@@ -154,6 +154,10 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const pinesActuales = [...pinesDe(version.marcas, activa), ...pinesNuevos, ...pinIA]
   const hayMarcas = nuevas.length > 0
   const hayAlgo = hayMarcas || comentario.trim() !== '' || notaInterna.trim() !== ''
+  // Para pedir cambios (o aprobar con cambios) hace falta algo que quien
+  // entrega VEA: una marca o el comentario. La nota interna no cuenta (el
+  // servidor la rechaza igual: quien entrega no sabría qué cambiar).
+  const hayParaQuienEntrega = hayMarcas || comentario.trim() !== ''
   const sinTexto = nuevas.findIndex(n => !n.texto.trim())
   // Lo que se pidió en la ronda anterior y si la agencia dice que lo corrigió.
   const pedidoAntes = anterior?.faseId === version.faseId ? anterior.marcas.filter(m => m.tipo === 'cambio') : []
@@ -575,16 +579,16 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                 />
                 <BotonDecision
                   onClick={() => void decidir('aprobada-con-cambios')} cargando={enviando === 'aprobada-con-cambios'}
-                  deshabilitado={!!enviando || !hayAlgo}
-                  titulo={!hayAlgo ? 'Primero marcá en la imagen qué ajustar' : undefined}
+                  deshabilitado={!!enviando || !hayParaQuienEntrega}
+                  titulo={!hayParaQuienEntrega ? 'Primero marcá en la imagen o escribí en el comentario qué ajustar' : undefined}
                   clase="bg-amber-400 text-slate-950 hover:bg-amber-500"
                   icono={<CheckCheck className="h-4 w-4" />}
                   texto="Aprobado con cambios"
                 />
                 <BotonDecision
                   onClick={() => void decidir('cambios')} cargando={enviando === 'cambios'}
-                  deshabilitado={!!enviando || !hayAlgo}
-                  titulo={!hayAlgo ? 'Primero marcá en la imagen qué cambiar' : undefined}
+                  deshabilitado={!!enviando || !hayParaQuienEntrega}
+                  titulo={!hayParaQuienEntrega ? 'Primero marcá en la imagen o escribí en el comentario qué cambiar' : undefined}
                   clase="bg-rose-600 text-white hover:bg-rose-700"
                   icono={<RotateCcw className="h-4 w-4" />}
                   texto="Pedir cambios"

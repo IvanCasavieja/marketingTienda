@@ -9,7 +9,7 @@ import {
 import { toast } from 'sonner'
 import { calendarioApi, entregasApi } from '@/lib/api'
 import {
-  ETIQUETA_DECISION, camposDe, fechaYHora, marcasPendientes, proximoPaso, tipoDePieza, versionAnterior,
+  ETIQUETA_DECISION, camposDe, fechaYHora, marcasPendientes, pasoEnLaVista, proximoPaso, tipoDePieza, versionAnterior,
   type DetalleEntregas, type FaseDetalle, type Marca, type Version,
 } from '@/lib/calendario/entregas'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
@@ -262,10 +262,13 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
   const huboCambios = useVistaEntregas(s => s.huboCambios)
   const { resumen, tarea, puedo } = detalle
   const nombreDe = (id: number | null) => (id != null ? detalle.personas[String(id)] : null) ?? 'alguien'
-  const paso = proximoPaso(resumen, tarea.asignadoA, usuarioId, nombreDe, puedo.decidir && !puedo.comoRespaldo, {
-    entregoYo: puedo.entregar, hace: tarea.quienLaHace,
-  })
   const enCurso = versionEnCurso(detalle)
+  const paso = pasoEnLaVista(
+    proximoPaso(resumen, tarea.asignadoA, usuarioId, nombreDe, puedo.decidir && !puedo.comoRespaldo, {
+      entregoYo: puedo.entregar, hace: tarea.quienLaHace,
+    }),
+    puedo.decidir, usuarioId != null && enCurso?.subidaPor === usuarioId,
+  )
   // La versión que se muestra grande: la última de la fase en curso o, si ya
   // se aprobó todo, la aprobada de la última fase (la pieza que salió).
   const ultimaDeFase = (() => {
@@ -273,6 +276,8 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
       ?? (resumen.momento === 'aprobada' ? detalle.fases[detalle.fases.length - 1] : undefined)
     return fase?.versiones[fase.versiones.length - 1] ?? null
   })()
+  // La fase en curso, si la abrió una devolución: su texto va arriba de todo.
+  const faseDevuelta = detalle.fases.find(f => f.id === resumen.faseActual && f.motivo) ?? null
   const pendientes = marcasPendientes(detalle.fases)
   const aCorregir = resumen.momento === 'cambios' ? pendientes.filter(m => m.tipo === 'cambio') : []
   const ajustes = pendientes.filter(m => m.tipo === 'ajuste')
@@ -316,6 +321,9 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
             )}
           </div>
         </div>
+        {resumen.momento === 'aprobada' && puedo.devolver && (
+          <DevolverAprobada tareaId={tarea.id} siguiente={`Entrega ${detalle.fases.length + 1}`} onListo={onRecargar} />
+        )}
         {(paso.accion || (puedo.decidir && resumen.momento === 'revision')) && (
           <div className="mt-3 flex flex-wrap gap-2 sm:pl-[3.25rem]">
             {paso.accion === 'entregar' && puedo.entregar && (
@@ -334,6 +342,18 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
           </div>
         )}
       </section>
+
+      {faseDevuelta?.motivo && resumen.momento !== 'aprobada' && (
+        <section aria-labelledby="motivo-devolucion" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-500/30 dark:bg-rose-500/10">
+          <h3 id="motivo-devolucion" className="flex items-center gap-2 text-sm font-bold text-rose-800 dark:text-rose-200">
+            <RotateCcw className="h-4 w-4" /> Volvió después de aprobada: {faseDevuelta.nombre}
+          </h3>
+          <p className="mt-1.5 whitespace-pre-line text-sm text-rose-950 dark:text-rose-50">{faseDevuelta.motivo}</p>
+          {faseDevuelta.abiertaPor != null && (
+            <p className="mt-1.5 text-xs text-rose-800/80 dark:text-rose-200/80">Lo pidió {nombreDe(faseDevuelta.abiertaPor)}</p>
+          )}
+        </section>
+      )}
 
       {aCorregir.length > 0 && (
         <section aria-labelledby="hay-que-corregir">
@@ -397,6 +417,91 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
           <Pencil className="h-4 w-4" /> Cambiar el pedido, las fases o quiénes aprueban
         </button>
       )}
+    </div>
+  )
+}
+
+/**
+ * Devolver una pieza que ya estaba aprobada, con lo que hay que cambiar.
+ *
+ * Pedido de Ivan (17/11/2026): con la entrega aprobada "no aparece algo para
+ * evaluar, un cuadro de texto o algo donde poder escribir algo para que
+ * podamos volver para atrás el arte". Esto abre la Entrega siguiente (2, 3...
+ * sin tope) y le avisa a quien entrega, con el texto.
+ */
+function DevolverAprobada({ tareaId, siguiente, onListo }: { tareaId: string; siguiente: string; onListo: () => void }) {
+  const huboCambios = useVistaEntregas(s => s.huboCambios)
+  const [abierto, setAbierto] = useState(false)
+  const [texto, setTexto] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  async function devolver() {
+    const comentario = texto.trim()
+    if (!comentario || enviando) return
+    setEnviando(true)
+    try {
+      const { data } = await entregasApi.devolver(tareaId, comentario)
+      toast.success(`Devuelta: le toca entregar ${data.fase.nombre}.`)
+      setTexto('')
+      setAbierto(false)
+      onListo()
+      huboCambios()
+      if (useCalendario.getState().rev != null) void useCalendario.getState().sincronizar()
+    } catch (e) {
+      toast.error(detalleDeError(e) ?? 'No se pudo devolver. Probá de nuevo.')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  if (!abierto) {
+    return (
+      <div className="mt-3 sm:pl-[3.25rem]">
+        <button
+          type="button"
+          onClick={() => setAbierto(true)}
+          className="flex min-h-[44px] items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-rose-300 hover:text-rose-700 active:scale-[.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-rose-500/50 dark:hover:text-rose-200"
+        >
+          <RotateCcw className="h-4 w-4" /> Devolver para corregir
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="mt-3 space-y-2 sm:pl-[3.25rem]">
+      <label htmlFor={`devolver-${tareaId}`} className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
+        ¿Qué hay que cambiar?
+      </label>
+      <textarea
+        id={`devolver-${tareaId}`}
+        value={texto}
+        onChange={e => setTexto(e.target.value)}
+        rows={3}
+        maxLength={5000}
+        autoFocus
+        placeholder="Por ejemplo: cambió el precio, ahora es 2x1."
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+      />
+      <p className="text-xs text-slate-600 dark:text-slate-400">
+        Se abre la {siguiente} y le llega el aviso a quien la hace, con este texto.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => void devolver()}
+          disabled={!texto.trim() || enviando}
+          className="flex min-h-[44px] items-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Devolver
+        </button>
+        <button
+          type="button"
+          onClick={() => { setAbierto(false); setTexto('') }}
+          className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Cancelar
+        </button>
+      </div>
     </div>
   )
 }

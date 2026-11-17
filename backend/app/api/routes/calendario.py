@@ -1158,11 +1158,20 @@ async def mover_posiciones_rm(
 # tenga ese permiso ni `calendario.edit`: es su tarea.
 #
 # Una PIEZA (0070: una tarea con tipo —Banners, Cenefas...— o que hace una
-# agencia) la puede pedir además quien tiene `calendario.edit`. Ivan
+# agencia) la puede pedir además quien tiene `calendario.pedidos`. Ivan
 # (16/11/2026): "todo el equipo (Lucía, Nao…) tiene que poder crear tareas
-# para agencia", y el rol "Usuario" del equipo trae `calendario.edit` pero no
-# `calendario.tareas`. Repartir tareas comunes entre la gente de Tienda,
-# editar y borrar tareas sigue siendo de quien lidera (`calendario.tareas`).
+# para agencia". Repartir tareas comunes entre la gente de Tienda, editar y
+# borrar tareas sigue siendo de quien lidera (`calendario.tareas`).
+#
+# Hasta el 17/11/2026 pedir piezas venía con `calendario.edit`. Ivan: "debería
+# de ser un permiso específico el poder hacer peticiones de materiales". La
+# acción la arma quien lidera; las tareas de la acción y los materiales de
+# cada tarea los crea el equipo de analistas. Separado, se puede dar uno sin
+# el otro. La 0071 se lo dio a todos los que tenían `calendario.edit`: nadie
+# pierde lo que hacía. Editar, reasignar y borrar tareas sigue siendo de
+# quien lidera (`calendario.tareas`).
+
+PERMISO_PEDIDOS = "calendario.pedidos"
 
 TIPO_TAREA = "calendario_tarea"
 
@@ -1173,12 +1182,21 @@ def _puede_gestionar_tareas(usuario: User) -> bool:
     return externos.puede_tener(usuario, PERMISO_TAREAS)
 
 
+def puede_pedir_piezas(usuario: User) -> bool:
+    """Quién pide piezas y materiales: quien tiene `calendario.pedidos`, o
+    quien lidera (`calendario.tareas`), que puede crear cualquier tarea. Una
+    cuenta externa nunca pide (externos.puede_tener). Pura."""
+    return _puede_gestionar_tareas(usuario) or externos.puede_tener(usuario, PERMISO_PEDIDOS)
+
+
 def puede_crear_tarea(usuario: User, pieza: bool) -> bool:
-    """Quién crea una tarea: quien lidera, cualquiera; una pieza (con su
-    tarjeta), además quien edita el calendario. Pura."""
-    if _puede_gestionar_tareas(usuario):
-        return True
-    return pieza and externos.puede_tener(usuario, "calendario.edit")
+    """Quién crea una tarea, común o pieza: quien lidera, y quien tiene
+    `calendario.pedidos`. Ivan (17/11/2026): "el inicio debería ser crear
+    tarea y punto... crear tarea y debajo de eso poder asignar los materiales
+    de esa tarea creada"; la acción la arma quien lidera, y las tareas y sus
+    materiales, el equipo de analistas. `pieza` queda por las llamadas de
+    antes: hoy la regla es la misma para las dos. Pura."""
+    return _puede_gestionar_tareas(usuario) or puede_pedir_piezas(usuario)
 
 
 async def _cuentas_de_la_agencia(db: AsyncSession, empresa: str | None, mundo: str) -> list[User]:
@@ -1447,7 +1465,7 @@ async def crear_tarea(
     la hace (ver `_nacer_tarjetas`)."""
     pieza = es_pieza(payload)
     if not puede_crear_tarea(current_user, pieza):
-        raise HTTPException(status_code=403, detail=f"Permiso requerido: {PERMISO_TAREAS}")
+        raise HTTPException(status_code=403, detail=f"Permiso requerido: {PERMISO_PEDIDOS}")
     barra = await _barra_o_404(db, barra_id, current_user, bloquear=True)
     if barra.seccion not in _CON_AVISOS:
         raise HTTPException(
@@ -1471,9 +1489,10 @@ async def crear_tarea(
             raise HTTPException(status_code=422, detail="Una sub-subtarea no puede tener más tareas adentro")
     asignado = await _asignable_o_422(db, payload.asignadoA, barra.mundo) if payload.asignadoA is not None else None
     para, agencia = await _para_quien(db, payload.para, payload.agencia, asignado, barra.mundo)
-    if not es_pieza(SimpleNamespace(tipo=payload.tipo, para=para)) and not _puede_gestionar_tareas(current_user):
-        # Una tarea común para alguien de Tienda es repartir trabajo: de quien lidera.
-        raise HTTPException(status_code=403, detail=f"Permiso requerido: {PERMISO_TAREAS}")
+    if not es_pieza(SimpleNamespace(tipo=payload.tipo, para=para)) and not puede_crear_tarea(current_user, pieza=False):
+        # Una tarea común: quien lidera, o quien crea tareas y pide sus
+        # materiales (calendario.pedidos, 17/11/2026).
+        raise HTTPException(status_code=403, detail=f"Permiso requerido: {PERMISO_PEDIDOS}")
 
     if payload.ancla is not None:
         dias = payload.anclaDias or 0

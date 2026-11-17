@@ -31,7 +31,9 @@ router = APIRouter(prefix="/ia", tags=["ia"])
 # lado (el detalle de una tarea o una acción). Ver solo el calendario no
 # alcanza: no tendría dónde usar el resultado, y cada llamada se paga. Cuando
 # el formulario de "entregas por fases" lo use, su permiso se suma acá.
-PERMISOS_BRIEF = ("calendario.tareas", "calendario.edit")
+# `calendario.pedidos` (0071): el dictado está en "Pedir una pieza", y quien
+# pide piezas puede no editar el calendario.
+PERMISOS_BRIEF = ("calendario.tareas", "calendario.edit", "calendario.pedidos")
 
 
 class PedidoBrief(BaseModel):

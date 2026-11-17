@@ -14,7 +14,7 @@ import {
   sePuedeSoltar, textoDeFecha,
 } from './tablero'
 import { diaEnUruguay } from './fechas'
-import type { Tarjeta } from './entregas'
+import { pasoEnLaVista, proximoPaso, type ResumenEntrega, type Tarjeta } from './entregas'
 
 let fallos = 0
 function ok(nombre: string, cond: boolean, detalle = '') {
@@ -148,6 +148,35 @@ igual('varias, sin repetir', avisoDeAgenciasSinCuentas(['A', 'B', 'A', ' C ']),
 // El día de Uruguay (UTC−3), no el de la computadora.
 igual('a las 23 h de Uruguay sigue siendo ese día', diaEnUruguay(new Date('2026-11-17T02:30:00Z')), '2026-11-16')
 igual('a la medianoche de Uruguay ya es el siguiente', diaEnUruguay(new Date('2026-11-17T03:00:00Z')), '2026-11-17')
+
+// El próximo paso (17/11/2026). En las listas (tablero, ficha, Mis tareas)
+// se muestra el turno de la cadena: ahí no se sabe quién subió la versión.
+// En la vista de la entrega sí: a quien le toca por la cadena pero la subió,
+// no se le dice "Te toca" (nadie aprueba lo que entregó). Antes decía "Te
+// toca" y no aparecía ningún botón.
+const enRevision: ResumenEntrega = {
+  tipoPieza: 'banner', momento: 'revision', ronda: 1, faseActual: 'fa-1', aprobadorDeTurno: 7, aprobadores: [7],
+  fases: [{ id: 'fa-1', nombre: 'Entrega', estado: 'en-curso', rondas: 1 }],
+}
+const nombreDe = () => 'Lucía'
+igual('le toca y puede decidir: te toca revisar', proximoPaso(enRevision, 9, 7, nombreDe, true).accion, 'revisar')
+const enLaLista = proximoPaso(enRevision, 7, 7, nombreDe, false)
+igual('en la lista, a quien le toca por la cadena le dice revisar', enLaLista.accion, 'revisar')
+igual('en la vista, si puede decidir, sigue igual', pasoEnLaVista(enLaLista, true, false).accion, 'revisar')
+const laSubio = pasoEnLaVista(enLaLista, false, true)
+igual('en la vista, si la subió y no puede decidir: no es su turno', [laSubio.accion, laSubio.aQuien], [null, 'otro'])
+ok('y dice que la revisa otra persona', laSubio.texto.startsWith('La entregaste vos'), laSubio.texto)
+// Devuelta después de aprobada: se abrió la Entrega 2 y le toca a quien entrega.
+const devuelta: ResumenEntrega = {
+  ...enRevision, momento: 'produccion', ronda: 0, faseActual: 'fa-2', aprobadorDeTurno: null,
+  fases: [
+    { id: 'fa-1', nombre: 'Entrega', estado: 'aprobada', rondas: 2 },
+    { id: 'fa-2', nombre: 'Entrega 2', estado: 'en-curso', rondas: 0, motivo: 'Cambió el precio' },
+  ],
+}
+igual('devuelta: le toca entregar la Entrega 2', proximoPaso(devuelta, 9, 9, nombreDe).texto, 'Te toca: entregar Entrega 2')
+const aprobada: ResumenEntrega = { ...devuelta, momento: 'aprobada', faseActual: null, fases: devuelta.fases.map(f => ({ ...f, estado: 'aprobada' as const })) }
+igual('aprobada otra vez: sin próximo paso', proximoPaso(aprobada, 9, 9, nombreDe).accion, null)
 
 if (fallos) {
   console.log(`\n${fallos} prueba(s) fallaron`)

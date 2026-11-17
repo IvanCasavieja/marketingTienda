@@ -77,12 +77,13 @@ async def _sembrar(s) -> "Datos":
         return u
 
     d.promo = persona("Promo Jefa", permisos=tuple(ALL_PERMISSIONS), superusuario=True)
-    # Lucía: del equipo, edita el calendario pero NO gestiona tareas (rol "Usuario").
-    d.lucia = persona("Lucia Equipo", permisos=("calendario.view", "calendario.edit"))
+    # Lucía: del equipo, edita el calendario y pide piezas, pero NO gestiona
+    # tareas (rol "Usuario"; calendario.pedidos desde la 0071).
+    d.lucia = persona("Lucia Equipo", permisos=("calendario.view", "calendario.edit", "calendario.pedidos"))
     d.lider = persona("Lider Tareas", permisos=("calendario.view", "calendario.edit", "calendario.tareas"))
     d.aprob2 = persona("Marca Aprobadora")
-    d.limitado = persona("Interno Limitado", permisos=("calendario.view", "calendario.edit"), alc="1m")
-    d.sin_cal = persona("Interno Sin Calendario", permisos=("calendario.view", "calendario.edit"), alc="nada")
+    d.limitado = persona("Interno Limitado", permisos=("calendario.view", "calendario.edit", "calendario.pedidos"), alc="1m")
+    d.sin_cal = persona("Interno Sin Calendario", permisos=("calendario.view", "calendario.edit", "calendario.pedidos"), alc="nada")
     d.a1 = persona("Ana Pampa", externo=True, empresa=f"Agencia Pampa {sufijo}")
     d.a2 = persona("Beto Pampa", externo=True, empresa=f"agencia  pampa {sufijo}")
     d.b1 = persona("Bruno Sur", externo=True, empresa=f"Estudio Sur {sufijo}")
@@ -362,9 +363,17 @@ def test_lucia_pide_una_tarjeta_para_la_agencia_y_le_llega_a_toda_la_agencia():
         # La agencia lo ve en su campanita aunque no vea el calendario.
         r = await Cliente(d.http, d.a1).get("/notificaciones")
         assert any(tarea_id in (n["origen_ref"] or "") for n in r.json())
-        # Una tarea común para alguien de Tienda, Lucía no (es de quien lidera).
+        # Una tarea común: Lucía sí, con calendario.pedidos (17/11/2026: las
+        # tareas las crea el equipo). Quien solo edita el calendario, no.
         r = await Cliente(d.http, d.lucia).post(f"/calendario/barras/{d.ciber.id}/tareas", json={
             "id": f"ta-c-{d.sufijo}", "titulo": "Común", "asignadoA": d.aprob2.id})
+        assert r.status_code == 201, r.text
+        solo_edita = await _persona(d, "Solo Edita", permisos=("calendario.view", "calendario.edit"))
+        r = await Cliente(d.http, solo_edita).post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": f"ta-c2-{d.sufijo}", "titulo": "Común"})
+        assert r.status_code == 403 and "calendario.pedidos" in r.json()["detail"]
+        r = await Cliente(d.http, solo_edita).post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": f"ta-c3-{d.sufijo}", "tipo": "banners", "opciones": ["Header"], "asignadoA": d.lucia.id})
         assert r.status_code == 403
         # Una agencia que no tiene cuentas: no.
         r = await Cliente(d.http, d.lucia).post(f"/calendario/barras/{d.ciber.id}/tareas", json={
@@ -1117,4 +1126,210 @@ def test_quien_gestiona_las_tareas_sin_ver_el_calendario_elige_aprobadores():
         assert r.status_code == 200, r.text
         assert d.lucia.id in {p["id"] for p in r.json()}
         assert (await Cliente(d.http, d.sin_cal).get("/calendario/personas", params={"mundo": MUNDO})).status_code == 403
+    correr(prueba)
+
+
+# ---------------------------------------------------------------------------
+# El flujo de las tareas de punta a punta (17/11/2026)
+# ---------------------------------------------------------------------------
+# Pedido de Ivan: la acción la arma quien lidera; el equipo de analistas crea
+# las tareas y, debajo de cada una, pide sus materiales. Una pieza se revisa,
+# se devuelve con un texto las veces que haga falta y, aunque ya esté
+# aprobada, se puede volver para atrás: cada vuelta abre otra fase (Entrega 2,
+# Entrega 3...), sin tope.
+
+async def _detalle(cliente, tarea_id) -> dict:
+    r = await cliente.get(f"/calendario/tareas/{tarea_id}/entregas")
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+async def _decidir(cliente, version_id, decision, comentario=None):
+    cuerpo = {"decision": decision}
+    if comentario:
+        cuerpo["comentario"] = comentario
+    return await cliente.post(f"/calendario/versiones/{version_id}/decision", json=cuerpo)
+
+
+def test_la_analista_crea_la_tarea_pide_su_material_y_lo_devuelve_hasta_aprobarlo():
+    async def prueba(d):
+        nath = await _persona(d, "Nath Analista", permisos=("calendario.view", "calendario.edit", "calendario.pedidos"))
+        lucia, nathc = Cliente(d.http, d.lucia), Cliente(d.http, nath)
+
+        # 1. Crear tarea: lo primero, sin tipo.
+        tarea = f"ta-web-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": tarea, "titulo": "Web de Ciberlunes", "asignadoA": d.lucia.id})
+        assert r.status_code == 201, r.text
+
+        # 2. Debajo, su material: banners que hace Nath.
+        pieza = f"ta-ban-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": pieza, "parentId": tarea, "tipo": "banners", "opciones": ["Header"],
+            "para": "tienda", "asignadoA": nath.id})
+        assert r.status_code == 201, r.text
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioTarea, pieza)).parent_id == tarea
+            assert (await s.get(CalendarioEntrega, pieza)).aprobadores == [d.lucia.id]
+        assert len(await _avisos(d, nath, pieza)) == 1
+        datos = (await lucia.get("/calendario/datos", params={"mundo": MUNDO})).json()
+        tareas = next(b for b in datos["barras"] if b["id"] == d.ciber.id)["tareas"]
+        assert next(t for t in tareas if t["id"] == pieza)["parentId"] == tarea
+
+        # 3. Ronda 1: Nath entrega, Lucía la devuelve con un texto.
+        assert (await _entregar_link(nathc, pieza, f"ve-1-{d.sufijo}")).status_code == 201
+        det = await _detalle(lucia, pieza)
+        assert det["puedo"]["decidir"] and not det["puedo"]["devolver"]
+        assert not (await _detalle(nathc, pieza))["puedo"]["decidir"]
+        r = await _decidir(lucia, f"ve-1-{d.sufijo}", "cambios")
+        assert r.status_code == 422  # devolver pide decir qué cambiar
+        r = await _decidir(lucia, f"ve-1-{d.sufijo}", "cambios", "El logo más grande")
+        assert r.status_code == 200, r.text
+        det = await _detalle(nathc, pieza)
+        assert det["resumen"]["momento"] == "cambios" and det["puedo"]["entregar"]
+
+        # 4. Ronda 2: la aprueba. Queda hecha, con una sola fase.
+        assert (await _entregar_link(nathc, pieza, f"ve-2-{d.sufijo}")).status_code == 201
+        assert (await _decidir(lucia, f"ve-2-{d.sufijo}", "aprobada")).status_code == 200
+        assert await _estado(d, pieza) == "hecha"
+        det = await _detalle(lucia, pieza)
+        assert det["resumen"]["momento"] == "aprobada" and len(det["fases"]) == 1
+        assert det["fases"][0]["versiones"][0]["decisiones"][0]["comentario"] == "El logo más grande"
+
+        # 5. Ya aprobada, la puede volver para atrás quien la aprueba, con un texto.
+        assert det["puedo"]["devolver"]
+        assert not (await _detalle(nathc, pieza))["puedo"]["devolver"]
+        assert not (await _detalle(Cliente(d.http, d.aprob2), pieza))["puedo"]["devolver"]
+        r = await nathc.post(f"/calendario/tareas/{pieza}/devolver", json={"comentario": "Me olvidé algo"})
+        assert r.status_code == 403
+        r = await lucia.post(f"/calendario/tareas/{pieza}/devolver", json={"comentario": "   "})
+        assert r.status_code == 422
+        r = await lucia.post(f"/calendario/tareas/{pieza}/devolver", json={"comentario": "Cambió el precio: ahora es 2x1"})
+        assert r.status_code == 200, r.text
+        assert r.json()["fase"]["nombre"] == "Entrega 2" and r.json()["avisados"] == 1
+        assert await _estado(d, pieza) == "en-proceso"
+        det = await _detalle(nathc, pieza)
+        assert det["resumen"]["momento"] == "produccion" and det["puedo"]["entregar"]
+        assert det["fases"][1]["motivo"] == "Cambió el precio: ahora es 2x1"
+        assert det["fases"][1]["abiertaPor"] == d.lucia.id
+        assert det["personas"][str(d.lucia.id)]
+        avisos = await _avisos(d, nath, pieza)
+        assert avisos[-1].mensaje.startswith("Lucia Equipo devolvió")
+        assert "Cambió el precio: ahora es 2x1." in avisos[-1].mensaje and "Entrega 2" in avisos[-1].mensaje
+        assert (await _tarjeta(lucia, pieza))["columna"] == "en-proceso"
+
+        # 6. Entrega 2: Nath entrega y Lucía la aprueba. Vuelve a quedar hecha.
+        assert (await _entregar_link(nathc, pieza, f"ve-3-{d.sufijo}")).status_code == 201
+        assert (await _decidir(lucia, f"ve-3-{d.sufijo}", "aprobada")).status_code == 200
+        assert await _estado(d, pieza) == "hecha"
+    correr(prueba)
+
+
+def test_devolver_una_aprobada_no_tiene_tope_de_fases():
+    """"No podés tener un límite en las fases de entrega... fase 1, fase 2,
+    fase 3": cada devolución suma una fase, más allá de las 8 de antes, y la
+    configuración se sigue pudiendo guardar con todas."""
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        for n in range(1, 11):
+            assert (await _entregar_link(a1, tarea_id, f"ve-n{n}-{d.sufijo}")).status_code == 201
+            assert (await _decidir(lider, f"ve-n{n}-{d.sufijo}", "aprobada")).status_code == 200
+            if n < 10:
+                r = await lider.post(f"/calendario/tareas/{tarea_id}/devolver", json={"comentario": f"Vuelta {n}"})
+                assert r.status_code == 200, r.text
+                assert r.json()["fase"]["nombre"] == f"Entrega {n + 1}"
+        det = await _detalle(lider, tarea_id)
+        assert [f["nombre"] for f in det["fases"]] == ["Entrega"] + [f"Entrega {n}" for n in range(2, 11)]
+        assert all(f["estado"] == "aprobada" for f in det["fases"])
+        assert det["resumen"]["momento"] == "aprobada"
+        r = await lider.put(f"/calendario/tareas/{tarea_id}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": det["aprobadores"],
+            "fases": [{"id": f["id"], "nombre": f["nombre"]} for f in det["fases"]]})
+        assert r.status_code == 200, r.text
+    correr(prueba)
+
+
+def test_devolver_solo_cuando_esta_aprobada_y_nunca_una_agencia():
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        r = await lider.post(f"/calendario/tareas/{tarea_id}/devolver", json={"comentario": "x"})
+        assert r.status_code == 409  # todavía no entregó nada
+        assert (await _entregar_link(a1, tarea_id, f"ve-d1-{d.sufijo}")).status_code == 201
+        r = await lider.post(f"/calendario/tareas/{tarea_id}/devolver", json={"comentario": "x"})
+        assert r.status_code == 409  # en revisión: los cambios se piden al revisar
+        assert (await _decidir(lider, f"ve-d1-{d.sufijo}", "aprobada")).status_code == 200
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/devolver", json={"comentario": "x"})
+        assert r.status_code == 403
+        assert not (await _detalle(a1, tarea_id))["puedo"]["devolver"]
+        # Archivada después de terminar, se devuelve igual y sale del archivo.
+        r = await lider.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "finalizado", "a": "archivado"})
+        assert r.status_code == 200, r.text
+        r = await lider.post(f"/calendario/tareas/{tarea_id}/devolver", json={"comentario": "Faltó el legal"})
+        assert r.status_code == 200, r.text
+        async with d.Sesion() as s:
+            e = await s.get(CalendarioEntrega, tarea_id)
+            assert e.archivada_at is None and e.finalizada_at is None and e.momento == "produccion"
+        # A toda la agencia le llega el aviso con el texto.
+        assert "Faltó el legal" in (await _avisos(d, d.a2, tarea_id))[-1].mensaje
+    correr(prueba)
+
+
+def test_subtareas_asignaciones_y_estado_de_las_tareas_comunes():
+    async def prueba(d):
+        lider, lucia = Cliente(d.http, d.lider), Cliente(d.http, d.lucia)
+        madre = f"ta-madre-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": madre, "titulo": "Mailing de Ciberlunes", "asignadoA": d.aprob2.id})
+        assert r.status_code == 201, r.text
+        assert len(await _avisos(d, d.aprob2, madre)) == 1
+        # La subtarea común la arma quien lidera, con aviso a quien la hace.
+        hija = f"ta-hija-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": hija, "parentId": madre, "titulo": "Textos", "asignadoA": d.lucia.id})
+        assert r.status_code == 201, r.text
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioTarea, hija)).parent_id == madre
+        assert len(await _avisos(d, d.lucia, hija)) == 1
+        # Reasignar y borrar sigue siendo de quien lidera.
+        r = await lucia.patch(f"/calendario/tareas/{madre}", json={"asignadoA": d.lider.id})
+        assert r.status_code == 403
+        r = await lider.patch(f"/calendario/tareas/{madre}", json={"asignadoA": d.lider.id})
+        assert r.status_code == 200, r.text
+        # Quien tiene una tarea asignada mueve su estado; otra persona, no.
+        r = await lucia.patch(f"/calendario/tareas/{hija}", json={"estado": "en-proceso"})
+        assert r.status_code == 200, r.text
+        assert await _estado(d, hija) == "en-proceso"
+        r = await Cliente(d.http, d.aprob2).patch(f"/calendario/tareas/{hija}", json={"estado": "hecha"})
+        assert r.status_code == 403
+        assert (await d.http.delete(f"{API}/calendario/tareas/{madre}", headers=lucia.headers)).status_code == 403
+        assert (await d.http.delete(f"{API}/calendario/tareas/{madre}", headers=lider.headers)).status_code == 200
+        async with d.Sesion() as s:
+            assert await s.get(CalendarioTarea, hija) is None  # se fue con su madre
+    correr(prueba)
+
+
+def test_se_pide_un_material_de_redes_sociales_debajo_de_una_tarea():
+    async def prueba(d):
+        lucia = Cliente(d.http, d.lucia)
+        catalogo = (await lucia.get("/calendario/tipos-de-tarea")).json()
+        redes = next(t for t in catalogo if t["clave"] == "redes")
+        assert [o["nombre"] for o in redes["opciones"]] == ["1:1", "4:5", "9:16", "16:9"]
+        madre = f"ta-rrss-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": madre, "titulo": "Lanzamiento en redes"})
+        assert r.status_code == 201, r.text
+        pieza = f"ta-rrss-p-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": pieza, "parentId": madre, "tipo": "redes", "opciones": ["9:16", "1:1"],
+            "para": "tienda", "asignadoA": d.aprob2.id})
+        assert r.status_code == 201, r.text
+        assert r.json()["titulo"] == f"{d.ciber.nombre} - Redes sociales"
+        async with d.Sesion() as s:
+            t = await s.get(CalendarioTarea, pieza)
+            assert t.parent_id == madre and t.opciones == ["1:1", "9:16"]
+            assert (await s.get(CalendarioEntrega, pieza)).tipo_pieza == "redes"
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": f"ta-rrss-x-{d.sufijo}", "parentId": madre, "tipo": "redes", "opciones": ["3:2"]})
+        assert r.status_code == 422
     correr(prueba)
