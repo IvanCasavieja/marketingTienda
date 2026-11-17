@@ -320,6 +320,16 @@ def test_redes_sociales_se_pide_por_proporcion():
     assert tipos.descripcion_del_pedido("redes", ["4:5", "9:16"], None) == "Redes sociales: 4:5, 9:16"
 
 
+def test_estan_todas_las_piezas_que_pide_el_equipo():
+    # "banners, rrss, cartelería, mailing, emm, push, mensaje de wsp" (17/11/2026).
+    nombres = [t["nombre"] for t in tipos.TIPOS_DE_TAREA]
+    for nombre in ("Banners", "Redes sociales", "Cartelería", "Mailing", "Email marketing (EMM)", "Push", "Envío WhatsApp"):
+        assert nombre in nombres, nombre
+    assert tipos.tipo_de("material")["nombre"] == "Cartelería"  # la clave no cambia
+    assert tipos.nombre_de_tarjeta("Ciberlunes", "push") == "Ciberlunes - Push"
+    assert tipos.opciones_validas("push", []) == []
+
+
 def test_el_email_marketing_no_es_el_mailing():
     emm = tipos.tipo_de("emm")
     mailing = tipos.tipo_de("mailing")

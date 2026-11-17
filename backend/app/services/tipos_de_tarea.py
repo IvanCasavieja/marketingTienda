@@ -121,6 +121,13 @@ TIPOS_DE_TAREA: list[dict] = [
         "opciones": [], "medida": "imagen de 1080×1350 px · 4:5 vertical",
     },
     {
+        # Push (17/11/2026): faltaba entre las piezas que pide el equipo. Sin
+        # opciones: el texto y a dónde lleva van en la descripción.
+        "clave": "push", "nombre": "Push", "pieza": "otro", "otras": False,
+        "opciones": [],
+        "bajada": "Escribí el texto y a dónde lleva en la descripción.",
+    },
+    {
         "clave": "cenefas", "nombre": "Cenefas", "pieza": "cenefa", "otras": True,
         "bajada": "En hoja A4.",
         "opciones": [
@@ -135,7 +142,9 @@ TIPOS_DE_TAREA: list[dict] = [
         "opciones": [opcion("Horizontal"), opcion("Vertical")],
     },
     {
-        "clave": "material", "nombre": "Material físico", "pieza": "otro", "otras": True,
+        # "Cartelería" desde el 17/11/2026: así la llama el equipo ("banners,
+        # rrss, cartelería, mailing..."). La clave sigue siendo "material".
+        "clave": "material", "nombre": "Cartelería", "pieza": "otro", "otras": True,
         "opciones": [opcion("Stopper"), opcion("Clip strip"), opcion("Afiche")],
     },
     {

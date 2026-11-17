@@ -16,9 +16,6 @@ import {
 } from '@/lib/calendario/tipos'
 import { proximoPaso } from '@/lib/calendario/entregas'
 import { useVistaEntregas } from '@/store/entregas'
-import {
-  FormularioEntregas, configInicial, configParaEnviar, faltaEnConfig, type ConfigEntregas,
-} from './entregas/FormularioEntregas'
 import { FasesCompactas, faseActualTexto } from './entregas/LineaDeFases'
 import { PedirPieza } from './PedirPieza'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
@@ -212,9 +209,9 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
           </span>
           <p className="max-w-xs text-sm text-slate-600 dark:text-slate-400">
             {gestiona
-              ? 'Esta acción todavía no tiene tareas. Creá la primera (o arrancá con una plantilla) y, debajo de cada tarea, pedí sus materiales.'
+              ? 'Esta acción todavía no tiene tareas. Creá la primera (o arrancá con una plantilla) y agregale sus piezas: Banners, Redes, Mailing…'
               : pidePiezas
-                ? 'Esta acción todavía no tiene tareas. Creá la primera y, debajo, pedí sus materiales: Banners, Mailing, Cenefas…'
+                ? 'Esta acción todavía no tiene tareas. Creá la primera y agregale sus piezas: Banners, Redes, Mailing, EMM…'
                 : 'Esta acción todavía no tiene tareas. Las crea el equipo.'}
           </p>
         </div>
@@ -234,7 +231,7 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
       {pidePiezas && (
         <NuevaTarea
           accionId={accion.id} parentId={null} personas={personas} usuarioId={usuarioId} etiqueta="Crear tarea"
-          gestiona={gestiona} principal
+          principal
           alLado={gestiona ? (
             <button
               type="button"
@@ -342,7 +339,6 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   const pidiendoMaterial = abierto === `material:${tarea.id}`
   const [confirmando, setConfirmando] = useState(false)
   const [editandoDetalle, setEditandoDetalle] = useState(false)
-  const [sumandoEntregas, setSumandoEntregas] = useState(false)
 
   const hijas = todas.filter(t => t.parentId === tarea.id)
   const nivel = nivelDeTarea(tarea, todas)
@@ -354,7 +350,11 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   // "Crear tarea y debajo de eso poder asignar los materiales de esa tarea
   // creada" (17/11/2026): los materiales cuelgan de una tarea común, no de
   // otra pieza, y respetan el tope de niveles.
-  const puedeMaterial = pidePiezas && !conEntregas && !!accion && nivel < NIVELES_DE_TAREA
+  // Una pieza (con tipo, o para una agencia) no lleva piezas adentro. Se mira
+  // el tipo y no solo las entregas: recién creada, la pieza todavía no tiene
+  // su resumen de entregas hasta que contesta el servidor.
+  const esPieza = conEntregas || !!tarea.tipo || (!!tarea.para && tarea.para !== 'tienda')
+  const puedeMaterial = pidePiezas && !esPieza && !!accion && nivel < NIVELES_DE_TAREA
   const hecha = tarea.estado === 'hecha'
   const vencida = !hecha && !!tarea.vence && tarea.vence < hoyIso()
   const asignado = personas.find(p => p.id === tarea.asignadoA)
@@ -512,17 +512,6 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                       <FileText className="h-4 w-4" /> Detalle
                     </button>
                   )}
-                  {!conEntregas && (
-                    <button
-                      type="button"
-                      onClick={() => setSumandoEntregas(v => !v)}
-                      aria-expanded={sumandoEntregas}
-                      title="Que lleve entregas por fases para aprobar"
-                      className="flex h-9 items-center gap-1 rounded-lg px-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-brand-200 sm:h-8"
-                    >
-                      <Layers className="h-4 w-4" /> Entregas
-                    </button>
-                  )}
                   {nivel < NIVELES_DE_TAREA && (
                     <button
                       type="button"
@@ -564,12 +553,6 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
             )}
           </div>
         </div>
-        {sumandoEntregas && !conEntregas && (
-          <SumarEntregas
-            tarea={tarea} accionId={accionId} personas={personas} usuarioId={usuarioId}
-            onListo={() => setSumandoEntregas(false)}
-          />
-        )}
       </div>
 
       {(hijas.length > 0 || agregando || puedeMaterial) && (
@@ -587,7 +570,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
           {agregando && (
             <NuevaTarea
               accionId={accionId} parentId={tarea.id} personas={personas} usuarioId={usuarioId}
-              etiqueta="Nueva subtarea" gestiona={gestiona} abierta onListo={() => abrir(null)}
+              etiqueta="Nueva subtarea" abierta onListo={() => abrir(null)}
             />
           )}
           {/* Los materiales de esta tarea: Banners, Mailing, Cenefas… cada uno
@@ -603,7 +586,8 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
               onClick={() => abrir(`material:${tarea.id}`)}
               className={`${hijas.length > 0 ? 'mt-2' : ''} flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 text-left text-sm font-semibold text-slate-600 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 active:scale-[.99] dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500/60 dark:hover:bg-brand-500/10 dark:hover:text-brand-200`}
             >
-              <Layers className="h-4 w-4 shrink-0" /> Pedir material para esta tarea
+              <Layers className="h-4 w-4 shrink-0" /> Agregar pieza a esta tarea
+              <span className="truncate text-xs font-normal text-slate-500 dark:text-slate-400">Banners, Redes, Mailing, EMM, Push…</span>
             </button>
           ))}
         </div>
@@ -612,15 +596,12 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   )
 }
 
-function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, gestiona, principal = false, abierta = false, onListo, alLado }: {
+function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, principal = false, abierta = false, onListo, alLado }: {
   accionId: string
   parentId: string | null
   personas: Persona[]
   usuarioId: number | null
   etiqueta: string
-  /** "Lleva entregas para aprobar" es configurar entregas: de quien lidera
-   *  (el servidor lo exige). Los demás piden materiales debajo de la tarea. */
-  gestiona: boolean
   /** El botón de arranque del bloque: lleno, no punteado. */
   principal?: boolean
   abierta?: boolean
@@ -629,11 +610,10 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, gestion
   alLado?: React.ReactNode
 }) {
   const crear = useCalendario(s => s.crearTarea)
-  const configurarEntregas = useCalendario(s => s.configurarEntregas)
   const personasEstado = useCalendario(s => s.personasEstado)
   // Abierto o cerrado lo lleva el bloque: abrir esto cierra cualquier otro
   // formulario (pedir material, otra subtarea).
-  const { abierto: abiertoEnElBloque, abrir } = useContext(FormularioAbierto)
+  const { abierto: abiertoEnElBloque, abrir, pidePiezas } = useContext(FormularioAbierto)
   const clave = parentId ? `sub:${parentId}` : 'nueva'
   const abierto = abierta || abiertoEnElBloque === clave
   const setAbierto = (v: boolean) => abrir(v ? clave : null)
@@ -642,46 +622,36 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, gestion
   const [vence, setVence] = useState('')
   const [descripcion, setDescripcion] = useState('')
 
-  // Con entregas por fases: la agencia (o quien diseña) sube versiones y la
-  // cadena de aprobadores las aprueba o las devuelve (15/11/2026).
-  const [conEntregas, setConEntregas] = useState(false)
-  const [config, setConfig] = useState<ConfigEntregas>(() => configInicial())
   const responsable = asignadoA ? Number(asignadoA) : null
-  const faltaEntregas = !conEntregas ? null
-    : responsable == null ? 'Elegí quién entrega (la agencia o quien diseña).'
-      : faltaEnConfig(config, responsable)
-  const valida = titulo.trim() !== '' && !faltaEntregas
+  const valida = titulo.trim() !== ''
+
+  function limpiar() {
+    setTitulo(''); setAsignadoA(''); setVence(''); setDescripcion('')
+  }
 
   function cerrar() {
-    setTitulo(''); setAsignadoA(''); setVence(''); setDescripcion('')
-    setConEntregas(false); setConfig(configInicial())
+    limpiar()
     setAbierto(false)
     onListo?.()
   }
 
-  function crearLaEscrita() {
+  function enviar(e: React.FormEvent) {
+    e.preventDefault()
     if (!valida) return
     const id = crear(accionId, {
       titulo, parentId, asignadoA: responsable,
       vence: esFechaGuardable(vence) ? vence : null,
       descripcion: descripcion.trim() || null,
     })
-    // Va en la cola de la acción, detrás del alta de la tarea.
-    if (id && conEntregas) {
-      void configurarEntregas(accionId, id, configParaEnviar(config)).then(ok => {
-        if (ok) toast.success('Listo: la tarea lleva entregas. Ya puede entregar la primera fase.')
-      })
-    }
-  }
-
-  function enviar(e: React.FormEvent) {
-    e.preventDefault()
-    if (!valida) return
-    crearLaEscrita()
-    // Se cierra: lo que sigue es pedir los materiales debajo de la tarea
-    // recién creada (17/11/2026). Antes quedaba abierto para cargar otra, y
-    // quedaba abierto también al ir a pedir un material.
-    cerrar()
+    limpiar()
+    // La tarea es la acción principal; lo que sigue es agregarle sus piezas
+    // (Ivan, 17/11/2026: "uno crea la tarea y el resto empieza a crear las
+    // subtareas... yo hago la de banners, Belén la de mailing"). Por eso,
+    // recién creada, se abre ahí mismo el pedido de su primera pieza, con el
+    // catálogo (Banners con sus medidas, Redes, Mailing...). Una subtarea
+    // común se cierra y listo.
+    if (id && !parentId && pidePiezas) abrir(`material:${id}`)
+    else { setAbierto(false); onListo?.() }
   }
 
   /** Lo dictado trae un título: si la tarea todavía no tiene, se usa ese. */
@@ -724,21 +694,17 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, gestion
         maxLength={500}
         className="campo"
       />
-      {/* Con entregas, el detalle es el pedido a la agencia (con su propio
-          dictado, más abajo): un solo lugar para escribir o dictar. */}
-      {!conEntregas && (
-        <CampoDetalle
-          id={`detalle-nueva-${parentId ?? accionId}`}
-          valor={descripcion}
-          onCambiar={setDescripcion}
-          onDictado={alDictar}
-        />
-      )}
+      <CampoDetalle
+        id={`detalle-nueva-${parentId ?? accionId}`}
+        valor={descripcion}
+        onCambiar={setDescripcion}
+        onDictado={alDictar}
+      />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="etiqueta-campo">{conEntregas ? 'Quién entrega (agencia o diseño)' : 'Para quién'}</span>
+          <span className="etiqueta-campo">Para quién</span>
           <select value={asignadoA} onChange={e => setAsignadoA(e.target.value)} className="campo">
-            <option value="">{conEntregas ? 'Elegí quién entrega…' : 'Sin asignar por ahora'}</option>
+            <option value="">Sin asignar por ahora</option>
             {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
           </select>
           {personasEstado === 'error' && (
@@ -753,52 +719,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, gestion
         </label>
       </div>
 
-      {gestiona && (
-      <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
-        conEntregas ? 'border-brand-300 bg-white dark:border-brand-500/40 dark:bg-slate-900' : 'border-slate-300 bg-white/60 hover:border-brand-300 dark:border-slate-700 dark:bg-slate-900/40'
-      }`}>
-        <input
-          type="checkbox"
-          checked={conEntregas}
-          onChange={e => {
-            const con = e.target.checked
-            setConEntregas(con)
-            // Lo que ya se había escrito en el detalle pasa al pedido a la
-            // agencia: el detalle se esconde y no tiene que perderse nada.
-            if (con && descripcion.trim()) {
-              setConfig(c => ({ ...c, brief: { ...c.brief, detalle: [c.brief.detalle, descripcion.trim()].filter(Boolean).join('\n') } }))
-              setDescripcion('')
-            }
-          }}
-          className="mt-0.5 h-5 w-5 shrink-0 rounded accent-brand-600"
-        />
-        <span className="min-w-0">
-          <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
-            <Layers className="h-4 w-4 text-brand-600 dark:text-brand-300" /> Lleva entregas para aprobar
-          </span>
-          <span className="block text-xs text-slate-600 dark:text-slate-400">
-            Quien entrega sube la pieza por fases; quienes aprueban la aprueban o piden cambios marcando sobre la imagen.
-          </span>
-        </span>
-      </label>
-      )}
-
-      {conEntregas && (
-        <div className="animate-fade-in rounded-xl border border-slate-300 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900">
-          <FormularioEntregas
-            valor={config}
-            onCambiar={setConfig}
-            personas={personas}
-            responsableId={responsable}
-            usuarioId={usuarioId}
-          />
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {titulo.trim() && faltaEntregas && (
-          <p className="mr-auto text-xs text-amber-700 dark:text-amber-300">{faltaEntregas}</p>
-        )}
         <button type="button" onClick={cerrar} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[40px]">
           Cancelar
         </button>
@@ -807,7 +728,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, gestion
           disabled={!valida}
           className="min-h-[44px] rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-700 dark:disabled:text-slate-400 sm:min-h-[40px]"
         >
-          {conEntregas ? 'Crear tarea con entregas' : 'Crear tarea'}
+          Crear tarea
         </button>
       </div>
     </form>
@@ -859,54 +780,3 @@ function EntregasDeLaTarea({ tarea, personas, usuarioId }: {
   )
 }
 
-/** Sumarle entregas a una tarea que ya existe (quien lidera). */
-function SumarEntregas({ tarea, accionId, personas, usuarioId, onListo }: {
-  tarea: Tarea
-  accionId: string
-  personas: Persona[]
-  usuarioId: number | null
-  onListo: () => void
-}) {
-  const configurar = useCalendario(s => s.configurarEntregas)
-  const [config, setConfig] = useState<ConfigEntregas>(() => configInicial())
-  const [guardando, setGuardando] = useState(false)
-  const falta = tarea.asignadoA == null
-    ? 'Primero asigná la tarea a quien va a entregar (la agencia o quien diseña).'
-    : faltaEnConfig(config, tarea.asignadoA)
-
-  async function guardar() {
-    if (falta || guardando) return
-    setGuardando(true)
-    const ok = await configurar(accionId, tarea.id, configParaEnviar(config))
-    setGuardando(false)
-    if (ok) {
-      toast.success('Listo: la tarea lleva entregas.')
-      onListo()
-    }
-  }
-
-  return (
-    <div className="mt-2 animate-scale-in space-y-3 rounded-2xl border border-brand-200 bg-brand-50/50 p-3.5 dark:border-brand-500/30 dark:bg-brand-500/[.06]">
-      <p className="flex items-center gap-1.5 text-sm font-semibold text-brand-800 dark:text-brand-200">
-        <Layers className="h-4 w-4" /> Que «{tarea.titulo}» lleve entregas
-      </p>
-      <div className="rounded-xl border border-slate-300 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900">
-        <FormularioEntregas valor={config} onCambiar={setConfig} personas={personas} responsableId={tarea.asignadoA} usuarioId={usuarioId} />
-      </div>
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {falta && <p className="mr-auto text-xs text-amber-700 dark:text-amber-300">{falta}</p>}
-        <button type="button" onClick={onListo} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[40px]">
-          Cancelar
-        </button>
-        <button
-          type="button"
-          onClick={() => void guardar()}
-          disabled={!!falta || guardando}
-          className="min-h-[44px] rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 sm:min-h-[40px]"
-        >
-          Guardar
-        </button>
-      </div>
-    </div>
-  )
-}
