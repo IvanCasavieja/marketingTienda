@@ -102,6 +102,8 @@ export interface CurrentUser {
   calendario_alcance?: 'nada' | '1m' | '2m' | '12m' | 'todo';
   /** Qué fechas del calendario ve hoy (ISO); null si lo ve todo o no lo ve. */
   ventana?: { desde: string; hasta: string } | null;
+  /** Si los avisos de la campanita le llegan también por mail (18/11/2026). */
+  avisos_por_mail?: boolean;
 }
 
 export const PLATFORM_LABELS: Record<Platform | string, string> = {

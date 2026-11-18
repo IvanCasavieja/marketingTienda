@@ -57,6 +57,9 @@ class User(Base):
     # le permite está en app/core/externos.py; la base además se niega a
     # guardar un externo con otros permisos o como superadmin (ver la 0069).
     es_externo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Si los avisos de la campanita le llegan también por mail (0079). Lo
+    # apaga cada uno en "Mi perfil"; arranca prendido.
+    avisos_por_mail: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     # La empresa de la cuenta externa ("Agencia Pampa"): entre los de la misma
     # empresa se ven los nombres; a los de otra, no.
     empresa: Mapped[str | None] = mapped_column(String(120), nullable=True)

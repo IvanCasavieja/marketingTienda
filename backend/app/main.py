@@ -119,6 +119,12 @@ async def lifespan(app: FastAPI):
         tareas_post_migracion.append(asyncio.create_task(run_calendario_avisos_loop()))
         logger.info("calendario_avisos: loop iniciado (cada 6 horas, solo avisos configurados)")
 
+        # Los avisos de la campanita, también por mail (0079): al minuto. Acá
+        # y no antes porque usa columnas que agrega esa migración.
+        from app.services.avisos_por_mail import run_avisos_por_mail_loop
+        tareas_post_migracion.append(asyncio.create_task(run_avisos_por_mail_loop()))
+        logger.info("avisos_por_mail: loop iniciado (cada minuto)")
+
         # La purga de las fotos de colocación, por lo mismo que la de cenefas:
         # hace una pasada apenas arranca y en una base nueva su tabla todavía
         # no existe. Borra las fotos de las acciones que terminaron hace más

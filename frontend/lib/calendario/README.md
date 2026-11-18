@@ -255,6 +255,9 @@ evento y cómo se dice) y `components/calendario/MiAgenda.tsx`.
 - **La campanita, arriba a la derecha** (`components/layout/Campanita.tsx`),
   con su nombre y el número. En el teléfono la abre "Avisos", abajo.
 - Una tarea minimizada se abre tocando cualquier parte del renglón.
+- **Los avisos, también por mail (0079).** Todo lo que llega a la campanita sale
+  por mail al minuto, uno por aviso (`backend/app/services/avisos_por_mail.py`).
+  Cada uno lo apaga en "Mi perfil". No se mandan avisos de hace más de un día.
 
 ## Las tres secciones
 
@@ -596,7 +599,6 @@ Mi agenda: `mi-agenda.test.ts` y, en el backend, `tests/test_mi_agenda.py`
   calendarios juntos (`calendario.view`, `calendario.edit`,
   `calendario.retail_media`): quien puede ver, ve los cuatro. Lo pedido es ver,
   crear, editar y borrar por separado en cada uno.
-- **Avisos por mail.** Hoy llegan solo a la campanita.
 - **Que un aviso pueda mirar la fecha de un envío** y no solo el arranque de la
   acción.
 - **Traer una ventana de meses y no todo.** Hoy, cuando otra persona cambia

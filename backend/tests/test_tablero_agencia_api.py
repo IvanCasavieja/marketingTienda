@@ -1817,3 +1817,83 @@ def test_super_fds_cierre_en_cada_uno_y_lanzar_en_el_primero_del_mes():
             ))).scalars()]
         assert any(m.startswith("Cierre FDS: ") for m in mensajes), mensajes
     correr(prueba)
+
+
+def test_los_avisos_salen_por_mail_a_quien_los_quiere(monkeypatch):
+    """Ivan (18/11/2026): todos los avisos de la campanita también por mail,
+    al momento, y cada uno los apaga en su perfil."""
+    from app.services import avisos_por_mail as apm
+    from app.services import email_service
+
+    monkeypatch.setattr(apm, "_PAUSA_ENTRE_MAILS", 0)
+    configurado = {"si": True}
+    monkeypatch.setattr(email_service, "email_configurado", lambda: configurado["si"])
+    enviados: list[tuple[str, str]] = []
+    falla = {"si": False}
+
+    async def enviar(to, subject, html, plain):
+        if falla["si"]:
+            raise RuntimeError("el proveedor no contesta")
+        enviados.append((to, subject))
+
+    async def prueba(d):
+        # Un aviso de verdad: pedir una pieza le avisa a la agencia. Nace pendiente de mail.
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        async with d.Sesion() as s:
+            nuevos = (await s.execute(select(Notificacion).where(Notificacion.origen_ref.contains(tarea_id)))).scalars().all()
+            assert nuevos and all(n.mail_pendiente for n in nuevos)
+            # Uno a quien lo apagó, y uno viejo (de hace dos días).
+            lider = await s.get(User, d.lider.id)
+            lider.avisos_por_mail = False
+            s.add(Notificacion(user_id=d.lider.id, tipo="calendario_aviso", mensaje="No le sale", origen_tipo="calendario_aviso", origen_ref=f"{d.ciber.id}:av-x"))
+            viejo = Notificacion(user_id=d.lucia.id, tipo="calendario_aviso", mensaje="Viejo", origen_tipo="calendario_aviso", origen_ref=f"{d.ciber.id}:av-y")
+            s.add(viejo)
+            s.add(Notificacion(user_id=d.lucia.id, tipo="calendario_aviso", mensaje="Lanzar: Ciberlunes arranca en 60 días.", origen_tipo="calendario_aviso", origen_ref=f"{d.ciber.id}:av-z"))
+            await s.flush()
+            viejo.created_at = datetime.now(timezone.utc) - timedelta(days=2)
+            await s.commit()
+
+        async with d.Sesion() as s:
+            salieron = await apm.mandar_pendientes(s, enviar=enviar)
+        destinatarios = [t for t, _ in enviados]
+        assert d.lucia.email in destinatarios and ("Lanzar: Ciberlunes arranca en 60 días.") in [a for _, a in enviados]
+        assert d.lider.email not in destinatarios                     # lo apagó
+        assert "Viejo" not in [a for _, a in enviados]                # de hace dos días
+        assert salieron == len(enviados)
+        async with d.Sesion() as s:
+            assert (await s.execute(select(func.count()).select_from(Notificacion).where(
+                Notificacion.mail_pendiente.is_(True)))).scalar_one() == 0
+            enviada = (await s.execute(select(Notificacion).where(Notificacion.mensaje.like("Lanzar: Ciberlunes%")))).scalar_one()
+            assert enviada.mail_enviado_at is not None
+
+        # Si el proveedor falla, se reintenta (hasta 5 veces).
+        async with d.Sesion() as s:
+            s.add(Notificacion(user_id=d.lucia.id, tipo="calendario_aviso", mensaje="Reintento", origen_tipo="calendario_aviso", origen_ref=f"{d.ciber.id}:av-r"))
+            await s.commit()
+        falla["si"] = True
+        for intento in range(1, 6):
+            async with d.Sesion() as s:
+                assert await apm.mandar_pendientes(s, enviar=enviar) == 0
+            async with d.Sesion() as s:
+                n = (await s.execute(select(Notificacion).where(Notificacion.mensaje == "Reintento"))).scalar_one()
+                assert n.mail_intentos == intento and n.mail_pendiente is (intento < 5)
+
+        # Sin servicio de mail configurado: no sale nada y no se acumula.
+        falla["si"], configurado["si"] = False, False
+        antes = len(enviados)
+        async with d.Sesion() as s:
+            s.add(Notificacion(user_id=d.lucia.id, tipo="calendario_aviso", mensaje="Sin mail", origen_tipo="calendario_aviso", origen_ref=f"{d.ciber.id}:av-s"))
+            await s.commit()
+        async with d.Sesion() as s:
+            await apm.mandar_pendientes(s, enviar=enviar)
+        assert len(enviados) == antes
+        async with d.Sesion() as s:
+            assert (await s.execute(select(Notificacion).where(Notificacion.mensaje == "Sin mail"))).scalar_one().mail_pendiente is False
+
+        # Cada uno lo apaga (y lo prende) en su perfil.
+        c = Cliente(d.http, d.lucia)
+        assert (await c.get("/auth/me")).json()["avisos_por_mail"] is True
+        r = await d.http.patch(f"{API}/auth/me/preferencias", json={"avisosPorMail": False}, headers=c.headers)
+        assert r.status_code == 200 and r.json() == {"avisosPorMail": False}, r.text
+        assert (await c.get("/auth/me")).json()["avisos_por_mail"] is False
+    correr(prueba)
