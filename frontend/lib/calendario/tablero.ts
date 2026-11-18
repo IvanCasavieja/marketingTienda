@@ -62,14 +62,21 @@ export function defColumna(c: Columna): DefColumna {
 
 /** Lo que pasa al soltar una tarjeta en otra columna, dicho para el botón de
  *  "Mover a…" (y para el aviso de por qué no se puede). */
-export function queHaceMover(desde: Columna, a: Columna): string {
-  if (a === 'esperando') return 'Entregar los materiales'
-  if (desde === 'esperando' && a === 'en-proceso') return 'Pedir cambios'
-  if (desde === 'esperando' && a === 'finalizado') return 'Aprobar'
+export function queHaceMover(
+  desde: Columna, a: Columna, puedo?: { entregar?: boolean; decidir?: boolean } | null,
+): string {
+  // El equipo la mueve a cualquier columna (18/11/2026, "libre, como Trello").
+  // Entregar o decidir, solo a quien le toca; para el resto es moverla a mano.
+  const entrega = !puedo || !!puedo.entregar
+  const decide = !puedo || !!puedo.decidir
+  if (a === 'esperando') return entrega ? 'Entregar los materiales' : 'Moverla a mano, sin entregar'
+  if (desde === 'esperando' && a === 'en-proceso') return decide ? 'Pedir cambios' : 'Volverla a mano, sin decidir'
+  if (desde === 'esperando' && a === 'finalizado') return decide ? 'Aprobar' : 'Darla por terminada'
   if (desde === 'ingresado' && a === 'en-proceso') return 'Arrancar'
   if (desde === 'en-proceso' && a === 'ingresado') return 'Volver a Ingresado'
   if (a === 'archivado') return 'Archivar'
   if (desde === 'archivado') return 'Sacar del archivo'
+  if (a === 'finalizado') return 'Darla por terminada'
   return defColumna(a).titulo
 }
 

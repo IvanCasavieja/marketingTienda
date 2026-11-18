@@ -199,7 +199,7 @@ function MoverA({ tarjeta, destinos, onMoverA }: { tarjeta: Tarjeta; destinos: C
               <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${defColumna(a).punto}`} aria-hidden />
               <span className="min-w-0">
                 <span className="block font-semibold">{defColumna(a).titulo}</span>
-                <span className="block text-xs text-slate-500 dark:text-slate-400">{queHaceMover(tarjeta.columna, a)}</span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">{queHaceMover(tarjeta.columna, a, tarjeta.puedo)}</span>
               </span>
             </button>
           ))}

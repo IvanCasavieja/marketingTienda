@@ -15,7 +15,7 @@ import {
 } from './tablero'
 import { diaEnUruguay } from './fechas'
 import { pasoEnLaVista, proximoPaso, type ResumenEntrega, type Tarjeta } from './entregas'
-import { descripcionDelPedido, linkValido, type TipoDeTarea } from './tipos-de-tarea'
+import { descripcionDelPedido, detalleSinPedido, linkValido, pedidoEnLista, type TipoDeTarea } from './tipos-de-tarea'
 
 let fallos = 0
 function ok(nombre: string, cond: boolean, detalle = '') {
@@ -55,6 +55,13 @@ igual('qué hace cada movimiento', [
   queHaceMover('ingresado', 'en-proceso'), queHaceMover('en-proceso', 'esperando'), queHaceMover('esperando', 'en-proceso'),
   queHaceMover('esperando', 'finalizado'), queHaceMover('finalizado', 'archivado'), queHaceMover('archivado', 'finalizado'),
 ], ['Arrancar', 'Entregar los materiales', 'Pedir cambios', 'Aprobar', 'Archivar', 'Sacar del archivo'])
+// Libre, como Trello (18/11/2026): quien no entrega ni decide la mueve a mano.
+const nada = { entregar: false, decidir: false }
+igual('el equipo la mueve a mano', [
+  queHaceMover('en-proceso', 'esperando', nada), queHaceMover('esperando', 'en-proceso', nada),
+  queHaceMover('esperando', 'finalizado', nada), queHaceMover('en-proceso', 'finalizado', nada),
+  queHaceMover('en-proceso', 'esperando', { entregar: true, decidir: false }),
+], ['Moverla a mano, sin entregar', 'Volverla a mano, sin decidir', 'Darla por terminada', 'Darla por terminada', 'Entregar los materiales'])
 
 ok('se suelta donde el servidor dice', sePuedeSoltar(base, 'en-proceso') && sePuedeSoltar(base, 'esperando'))
 ok('no donde no puede', !sePuedeSoltar(base, 'finalizado') && !sePuedeSoltar(base, 'ingresado') && !sePuedeSoltar(base, null))
@@ -207,6 +214,30 @@ igual('la push se lee con la fecha en criollo', descripcionDelPedido(push, [], {
 ok('un link con https vale', linkValido(' https://tiendainglesa.com.uy/x '))
 ok('sin http no vale', !linkValido('tiendainglesa.com.uy'))
 ok('javascript: no vale', !linkValido('javascript:alert(1)'))
+
+// Lo que se pidió, como lista (18/11/2026): cada opción con su medida y los datos aparte.
+const banners: TipoDeTarea = {
+  clave: 'banner', nombre: 'Banners', otras: true, medida: null, bajada: null, pieza: 'banner',
+  opciones: [{ nombre: 'Header', medida: 'web 1920×416 · mobile 640×260' }, { nombre: 'Carrito', medida: 'web 368×140' }],
+  campos: [{ clave: 'cta', nombre: 'CTA', tipo: 'texto', largo: 60 }],
+}
+igual('cada opción con su medida', pedidoEnLista(banners, ['Header', 'Carrito', 'A mano'], { cta: 'Ver más' }), {
+  tipo: 'Banners',
+  items: [
+    { nombre: 'Header', medida: 'web 1920×416 · mobile 640×260' },
+    { nombre: 'Carrito', medida: 'web 368×140' },
+    { nombre: 'A mano', medida: null },
+  ],
+  datos: [{ nombre: 'CTA', valor: 'Ver más' }],
+})
+igual('sin tipo, no hay lista', pedidoEnLista(null, ['Header'], {}), null)
+igual('sin nada tildado ni datos, tampoco', pedidoEnLista(banners, [], {}), null)
+igual('la push: solo datos', pedidoEnLista(push, [], { titulo: 'Hola' })?.datos, [{ nombre: 'Título de la push', valor: 'Hola' }])
+const pedidoBanners = descripcionDelPedido(banners, ['Header'], { cta: 'Ver más' })
+igual('el detalle sin el pedido repetido', detalleSinPedido(`${pedidoBanners}\nAdaptar kv a medidas`, pedidoBanners), 'Adaptar kv a medidas')
+igual('si es solo el pedido, nada', detalleSinPedido(pedidoBanners, pedidoBanners), '')
+igual('si no empieza con el pedido, entero', detalleSinPedido('Otra cosa', pedidoBanners), 'Otra cosa')
+igual('sin pedido, entero', detalleSinPedido(' Algo ', null), 'Algo')
 
 if (fallos) {
   console.log(`\n${fallos} prueba(s) fallaron`)

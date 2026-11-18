@@ -225,7 +225,7 @@ export function BarraSuperior() {
               className="ml-1 flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-slate-300 px-3 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 active:scale-95 dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500/40 dark:hover:bg-brand-500/10 dark:hover:text-brand-200"
             >
               <ArrowLeftRight className="h-3.5 w-3.5" />
-              Cambiar
+              Cambiar mundo
             </Link>
           )}
         </div>

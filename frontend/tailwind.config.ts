@@ -75,6 +75,10 @@ const config: Config = {
         // "backwards" y no "both": al terminar, la tarjeta vuelve a sus estilos
         // (si no, el hover que la levanta quedaba tapado por la animación).
         rise:            "rise .32s cubic-bezier(.2,.8,.2,1) backwards",
+        // La pantalla de carga: el marco del logo queda quieto y lo azul da
+        // la vuelta por el borde (pedido de Ivan, 18/11/2026; antes giraba
+        // el cuadrado entero). Va con pathLength=100 en el SVG.
+        recorrer:        "recorrer 1.4s linear infinite",
       },
       keyframes: {
         fadeIn:       { from: { opacity: "0" },               to: { opacity: "1" } },
@@ -86,6 +90,7 @@ const config: Config = {
         sheetUp:      { from: { transform: "translateY(100%)" }, to: { transform: "translateY(0)" } },
         tilde:        { "0%": { transform: "scale(.55)" }, "60%": { transform: "scale(1.18)" }, "100%": { transform: "scale(1)" } },
         rise:         { from: { opacity: "0", transform: "translateY(6px)" }, to: { opacity: "1", transform: "none" } },
+        recorrer:     { from: { strokeDashoffset: "0" }, to: { strokeDashoffset: "-100" } },
       },
     },
   },

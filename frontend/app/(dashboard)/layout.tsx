@@ -88,7 +88,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-slate-50 dark:bg-slate-950" role="status" aria-label={t("common.loading")}>
         <div className="relative flex h-14 w-14 items-center justify-center">
-          <span className="absolute inset-0 rounded-2xl border-2 border-brand-500/20 border-t-brand-500 animate-spin" />
+          {/* El marco queda quieto y el tramo azul le da la vuelta por el
+              borde (18/11/2026: antes giraba el cuadrado entero). */}
+          <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 56 56" fill="none" aria-hidden>
+            <rect x="1" y="1" width="54" height="54" rx="16" strokeWidth="2" className="stroke-brand-500/20" />
+            <rect
+              x="1" y="1" width="54" height="54" rx="16" strokeWidth="2" strokeLinecap="round"
+              pathLength={100} strokeDasharray="22 78"
+              className="stroke-brand-500 animate-recorrer motion-reduce:[animation-duration:4s]"
+            />
+          </svg>
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-sm shadow-brand-600/30">
             <CalendarDays size={18} className="text-white" />
           </span>

@@ -166,12 +166,14 @@ export default function TableroPage() {
    *  perder lo escrito si el servidor dijo que no). */
   const moverA = useCallback(async (t: Tarjeta, a: Columna, comentario?: string): Promise<boolean> => {
     if (!sePuedeSoltar(t, a)) return false;
-    if (a === "esperando") {
-      // A Esperando feedback se llega entregando: se abre "Entregar".
+    // Quien la entrega llega a Esperando feedback entregando: se abre
+    // "Entregar". El resto del equipo la mueve a mano, como en Trello
+    // (18/11/2026); lo mismo con pedir cambios, que es de quien decide.
+    if (a === "esperando" && t.puedo?.entregar) {
       abrirDetalle(t.tareaId, "entregar", null, true);
       return false;
     }
-    if (t.columna === "esperando" && a === "en-proceso" && comentario === undefined) {
+    if (t.columna === "esperando" && a === "en-proceso" && comentario === undefined && t.puedo?.decidir) {
       setPidiendoCambios(t);
       return false;
     }
@@ -181,7 +183,7 @@ export default function TableroPage() {
     if (cancela && !window.confirm(`¿Cancelar «${t.titulo}»? Queda en Archivado y no se entrega ni se revisa. Si hace falta, se saca del archivo y vuelve a su columna.`)) {
       return false;
     }
-    setDatos(d => d && { ...d, tarjetas: d.tarjetas.map(x => (x.tareaId === t.tareaId ? { ...x, columna: a, volvioConCambios: a === "en-proceso" && t.columna === "esperando" } : x)) });
+    setDatos(d => d && { ...d, tarjetas: d.tarjetas.map(x => (x.tareaId === t.tareaId ? { ...x, columna: a, volvioConCambios: a === "en-proceso" && t.columna === "esperando" && !!t.puedo?.decidir } : x)) });
     // Lo que se pidió antes de este movimiento ya no vale (ver `pedido`).
     pedido.current++;
     enVuelo.current++;
@@ -190,7 +192,11 @@ export default function TableroPage() {
       const { data } = await entregasApi.mover(t.tareaId, { desde: t.columna, a, comentario: comentario ?? null });
       salio = true;
       movioAlguna.current = true;
-      if (data.columna !== a) {
+      if (data.accion === "a-mano") {
+        toast.success(cancela
+          ? "Pieza cancelada: quedó en Archivado. Para retomarla, sacala del archivo."
+          : `Quedó en ${defColumna(data.columna).titulo}.`);
+      } else if (data.columna !== a) {
         toast.success(data.columna === "esperando"
           ? "Aprobaste: ahora la revisa la siguiente persona de la cadena."
           : `Quedó en ${defColumna(data.columna).titulo}.`);
