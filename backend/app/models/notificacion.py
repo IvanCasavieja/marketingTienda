@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, func
+from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, SmallInteger, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
@@ -22,3 +22,9 @@ class Notificacion(Base):
     origen_tipo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     origen_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Por mail (0079): cada aviso nuevo nace pendiente de salir por mail (el
+    # default es del modelo: los de antes de la 0079 quedaron en false). Lo
+    # manda app/services/avisos_por_mail.py, al minuto.
+    mail_pendiente: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=false())
+    mail_enviado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    mail_intentos: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default="0")

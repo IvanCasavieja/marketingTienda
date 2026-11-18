@@ -4,6 +4,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
@@ -88,6 +89,7 @@ def _user_response(
         empresa=user.empresa,
         calendario_alcance=alcance.alcance_de(user),
         ventana=ventana,
+        avisos_por_mail=bool(getattr(user, "avisos_por_mail", True)),
     )
 
 
@@ -198,6 +200,25 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
     assigned_locales = list(locales_result.scalars().all())
     must_change = await _needs_password_change(current_user, db)
     return _user_response(result.scalar_one(), assigned_locales, must_change)
+
+
+class Preferencias(BaseModel):
+    # Si los avisos de la campanita le llegan también por mail (0079).
+    avisosPorMail: bool
+
+
+@router.patch("/me/preferencias")
+async def cambiar_preferencias(
+    payload: Preferencias,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lo que cada persona elige para sí misma. Hoy, si quiere los avisos por
+    mail (Ivan, 18/11/2026: prendidos por defecto, se apagan en Mi perfil)."""
+    usuario = await db.get(User, current_user.id)
+    usuario.avisos_por_mail = payload.avisosPorMail
+    await db.commit()
+    return {"avisosPorMail": usuario.avisos_por_mail}
 
 
 @router.post("/forgot-password", status_code=200)

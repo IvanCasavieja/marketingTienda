@@ -1,7 +1,10 @@
 "use client";
+import { useState } from "react";
+import { toast } from "sonner";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { Loader2, KeyRound, ShieldCheck } from "lucide-react";
+import { Loader2, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
+import { authApi } from "@/lib/api";
 
 const ROLE_COLORS: Record<string, string> = {
   Superadmin: "bg-rose-100 text-rose-700",
@@ -27,7 +30,7 @@ export default function PerfilPage() {
     <div className="max-w-lg mx-auto space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Mi perfil</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Tu cuenta y tu contraseña</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Tu cuenta, tus avisos y tu contraseña</p>
       </div>
 
       {/* Info de la cuenta */}
@@ -51,6 +54,9 @@ export default function PerfilPage() {
         <ShieldCheck size={18} className="text-slate-300 dark:text-slate-600 shrink-0" />
       </div>
 
+      {/* Los avisos por mail (18/11/2026): prendidos por defecto, se apagan acá. */}
+      <AvisosPorMail prendidos={me?.avisos_por_mail !== false} email={me?.email ?? ""} />
+
       {/* Cambiar contraseña */}
       <div className="card p-5">
         <div className="flex items-center gap-2 mb-4">
@@ -58,6 +64,58 @@ export default function PerfilPage() {
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Cambiar contraseña</p>
         </div>
         <ChangePasswordForm />
+      </div>
+    </div>
+  );
+}
+
+/** "Recibir los avisos por mail": todo lo que llega a la campanita llega
+ *  también al mail de la cuenta (Ivan, 18/11/2026). */
+function AvisosPorMail({ prendidos, email }: { prendidos: boolean; email: string }) {
+  const { refetch } = useCurrentUser();
+  const [valor, setValor] = useState<boolean | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const actual = valor ?? prendidos;
+
+  async function cambiar() {
+    const nuevo = !actual;
+    setValor(nuevo);
+    setGuardando(true);
+    try {
+      await authApi.preferencias({ avisosPorMail: nuevo });
+      toast.success(nuevo ? "Listo: los avisos te van a llegar también por mail." : "Listo: los avisos quedan solo en la campanita.");
+      await refetch?.();
+    } catch {
+      setValor(!nuevo);
+      toast.error("No se pudo guardar. Probá de nuevo en un momento.");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+          <Mail size={17} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Recibir los avisos por mail</p>
+          <p className="mt-0.5 text-[13px] leading-snug text-slate-500 dark:text-slate-400">
+            Todo lo que llega a la campanita te llega también a <span className="font-medium text-slate-700 dark:text-slate-300">{email}</span>, al momento.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={actual}
+          aria-label="Recibir los avisos por mail"
+          onClick={cambiar}
+          disabled={guardando}
+          className={`relative mt-1 inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-60 ${actual ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-600"}`}
+        >
+          <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${actual ? "translate-x-6" : "translate-x-1"}`} />
+        </button>
       </div>
     </div>
   );

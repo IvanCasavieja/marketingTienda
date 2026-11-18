@@ -86,6 +86,8 @@ class UserResponse(BaseModel):
     # lo ve todo (o no lo ve: ahí lo dice el alcance).
     calendario_alcance: str = "todo"
     ventana: dict | None = None
+    # Si los avisos de la campanita le llegan también por mail (0079).
+    avisos_por_mail: bool = True
 
     class Config:
         from_attributes = True

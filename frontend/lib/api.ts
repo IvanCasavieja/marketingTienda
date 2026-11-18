@@ -189,6 +189,9 @@ export const authApi = {
     return api.post("/auth/logout");
   },
   forgotPassword: (email: string) => api.post("/auth/forgot-password", { email }),
+  /** Lo que cada uno elige para sí: hoy, si quiere los avisos por mail. */
+  preferencias: (datos: { avisosPorMail: boolean }) =>
+    api.patch<{ avisosPorMail: boolean }>("/auth/me/preferencias", datos),
   resetPassword: (token: string, new_password: string) =>
     api.post("/auth/reset-password", { token, new_password }),
   changePassword: async (current_password: string, new_password: string) => {
