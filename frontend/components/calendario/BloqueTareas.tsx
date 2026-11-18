@@ -19,7 +19,7 @@ import { useVistaEntregas } from '@/store/entregas'
 import { FasesCompactas, faseActualTexto } from './entregas/LineaDeFases'
 import { ModalDeOpciones, PedirPieza } from './PedirPieza'
 import { useCatalogoDeTipos, useTableros, type Tablero } from '@/store/tiposDeTarea'
-import { camposVisibles, linkValido, nombreDeTarjeta, valorParaLeer, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
+import { camposVisibles, linkValido, nombreDeTarjeta, tiposDelMundo, valorParaLeer, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 
 /**
@@ -392,7 +392,15 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
 
   return (
     <li>
-      <div className={`rounded-2xl border px-3.5 ${abierta ? 'py-3' : 'py-2'} transition-colors duration-300 ${
+      {/* Minimizada, se abre tocando cualquier parte del renglón (Ivan,
+          18/11/2026: "debería ser todo clickeable, no solo la flechita"),
+          menos el tilde, que sigue tildando. Con el teclado, el título y la
+          flecha son botones. */}
+      <div
+        onClick={e => {
+          if (!abierta && !(e.target as HTMLElement).closest('[data-tilde]')) setAbierta(true)
+        }}
+        className={`rounded-2xl border px-3.5 ${abierta ? 'py-3' : 'cursor-pointer py-2 hover:border-brand-300 hover:shadow-sm dark:hover:border-brand-500/40'} transition duration-300 ${
         hecha
           ? 'border-slate-300 bg-slate-50/70 dark:border-slate-700 dark:bg-slate-800/30'
           : esMia
@@ -414,6 +422,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
             }
             aria-label={hecha ? `Desmarcar ${tarea.titulo}` : `Marcar ${tarea.titulo} como hecha`}
             aria-pressed={hecha}
+            data-tilde
             className="group/tilde -m-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl disabled:cursor-not-allowed"
           >
             <span className={`flex h-6 w-6 items-center justify-center rounded-md border-2 transition duration-200 group-active/tilde:scale-90 ${
@@ -755,7 +764,7 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
         maxLength={500}
         className="campo"
       />
-      {conPiezas && <ElegirPiezas valor={piezas} onCambiar={setPiezas} tipos={tipos} tableros={tableros} />}
+      {conPiezas && <ElegirPiezas valor={piezas} onCambiar={setPiezas} tipos={tiposDelMundo(tipos, accion?.mundo)} tableros={tableros} />}
       <CampoDetalle
         id={`detalle-nueva-${parentId ?? accionId}`}
         valor={descripcion}

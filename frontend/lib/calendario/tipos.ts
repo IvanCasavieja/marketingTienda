@@ -231,6 +231,9 @@ export type Aviso = {
   /** Ids de usuario de la plataforma. */
   destinatarios: number[]
   creadoPor: number | null
+  /** Lanzar o Cierre (18/11/2026): los trae sola cada accion de Redexpres y le
+   *  llegan a todo el equipo del mundo, ademas de `destinatarios`. */
+  control?: 'lanzar' | 'cierre'
 }
 
 /** Las anticipaciones que se ofrecen, de la mas larga a la mas corta. */

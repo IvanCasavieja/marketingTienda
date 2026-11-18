@@ -98,6 +98,9 @@ type Escrito = {
   tareasMovidas?: number
   /** Al aplicar una plantilla: cuántas tareas creó y cuántas quedaron sin asignar. */
   creadas?: number; sinAsignar?: number
+  /** El servidor le sumó algo a la acción que la pantalla no tiene (Lanzar y
+   *  Cierre de Redexpres, 18/11/2026): hay que traer todo. */
+  recargar?: boolean
   entrega?: ResumenEntrega
 }
 
@@ -357,6 +360,11 @@ export const useCalendario = create<Estado>()(
           // mismo, o era un reintento): lo local puede tener un id que allá
           // no existe. Se trae todo.
           set({ rev: null })
+        } else if (data?.recargar) {
+          // Le sumó a la acción cosas que acá no están (Lanzar y Cierre): se trae todo.
+          if (data.rev != null) revMinima = Math.max(revMinima, data.rev)
+          set({ rev: null })
+          void get().sincronizar()
         } else if (data?.rev != null) {
           revMinima = Math.max(revMinima, data.rev)
           // Si nadie escribio en el medio, lo local ya ES esa revision: no

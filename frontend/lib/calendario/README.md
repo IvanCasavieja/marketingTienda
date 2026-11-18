@@ -240,6 +240,17 @@ evento y cómo se dice) y `components/calendario/MiAgenda.tsx`.
   una decisión) vuelve a mandar. La agencia sigue con sus reglas.
 - **"Lo que se pidió"** en la tarjeta va como lista: cada opción con su
   medida y los datos aparte, sin repetir el pedido en el detalle.
+- **Lanzar y Cierre (0077), solo en Redexpres.** Cada acción nace con dos
+  tareas: Lanzar (60 días antes) y Cierre (4 semanas antes), ancladas a la
+  acción. Y con tres avisos a todo el equipo del mundo: Lanzar a los 60 y a los
+  30 días y Cierre a los 28. Si se carga tarde, el aviso sale en el momento,
+  una sola vez. No van en "Super FDS" ni en "BOMBAS", que son semanales. Ver
+  `backend/app/services/controles_redexpres.py`.
+- **Piezas de Redexpres:** Imprenta, Video monitores, Bases escribana y
+  Afiche bombas se ofrecen solo en sus acciones (`mundos` en el catálogo).
+- **La campanita, arriba a la derecha** (`components/layout/Campanita.tsx`),
+  con su nombre y el número. En el teléfono la abre "Avisos", abajo.
+- Una tarea minimizada se abre tocando cualquier parte del renglón.
 
 ## Las tres secciones
 

@@ -2,10 +2,11 @@
 import { create } from "zustand";
 
 /**
- * Los avisos de la campanita que comparten el menú lateral y la barra de
- * abajo del teléfono. El menú es el que los pregunta al servidor (cada minuto
- * y al volver a la pestaña); la barra de abajo muestra el número y puede
- * pedir que se abra la lista, que vive en el menú.
+ * Los avisos de la campanita (arriba a la derecha desde el 18/11/2026, ver
+ * components/layout/Campanita.tsx) y de la barra de abajo del teléfono. El
+ * menú lateral es el que los pregunta al servidor (cada minuto y al volver a
+ * la pestaña); la barra de abajo muestra el número y puede pedir que se abra
+ * la lista.
  */
 interface EstadoDeAvisos {
   noLeidos: number;

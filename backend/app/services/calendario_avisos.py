@@ -108,6 +108,22 @@ def mensaje(
     return f"{nombre or 'Sin nombre'}{tipo} {cuando}, el {inicio.strftime('%d/%m')}.{firma}"
 
 
+def mensaje_de_control(
+    control: str, nombre: str, banda: str, inicio: date, hoy: date,
+) -> str:
+    """El texto de Lanzar o Cierre (0077): "Lanzar: Mailing diciembre (MAILING
+    - 16 PAG EL PAIS) arranca en 60 días, el 01/12." Sin firma: no lo
+    configuró nadie, lo trae la acción."""
+    from app.services.controles_redexpres import NOMBRE_DEL_CONTROL
+    titulo = NOMBRE_DEL_CONTROL.get(control, control.capitalize())
+    return f"{titulo}: {mensaje(nombre, banda, inicio, hoy, None)}"
+
+
+def edita_el_calendario(usuario: User) -> bool:
+    """Del equipo que lleva el calendario: a quien le llegan Lanzar y Cierre."""
+    return bool(usuario.is_superuser or "calendario.edit" in (usuario.permissions or []))
+
+
 def puede_ver_el_calendario(usuario: User) -> bool:
     return bool(usuario.is_active) and (
         usuario.is_superuser or "calendario.view" in (usuario.permissions or [])
@@ -175,10 +191,12 @@ async def _revisar(db: AsyncSession, hoy: date, barra_id: str | None) -> int:
     )
     if barra_id is not None:
         consulta = consulta.where(CalendarioBarra.id == barra_id)
-    pares = [
+    # El de más días primero: si Lanzar a 60 y a 30 tocan a la vez (la acción
+    # se cargó tarde), sale el de 60 y el de 30 ya lo encuentra salido.
+    pares = sorted((
         (aviso, barra) for aviso, barra in (await db.execute(consulta)).all()
         if toca_avisar(barra.desde, aviso.dias_antes, hoy)
-    ]
+    ), key=lambda p: (p[1].id, -p[0].dias_antes))
     if not pares:
         return 0
 
@@ -187,6 +205,24 @@ async def _revisar(db: AsyncSession, hoy: date, barra_id: str | None) -> int:
     usuarios = {
         u.id: u for u in (await db.execute(select(User).where(User.id.in_(ids)))).scalars()
     } if ids else {}
+
+    # Lanzar y Cierre (0077) le llegan a todo el equipo del mundo: quienes lo
+    # abren y editan el calendario. Se calcula al avisar, así le llega también
+    # a quien entró al equipo después de que se cargó la acción.
+    equipo: dict[str, list[int]] = {}
+    if any(aviso.control for aviso, _ in pares):
+        todos = (await db.execute(select(User).where(User.is_active.is_(True)))).scalars().all()
+        for u in todos:
+            usuarios.setdefault(u.id, u)
+        for mundo in {barra.mundo for aviso, barra in pares if aviso.control}:
+            equipo[mundo] = sorted(
+                u.id for u in todos if puede_recibir_el_aviso(u, mundo) and edita_el_calendario(u)
+            )
+    # Un control es uno solo aunque tenga dos avisos (Lanzar a 60 y a 30): se
+    # mira cuándo le salió a cada persona cualquiera de los dos.
+    control_de_ref = {
+        referencia(barra.id, aviso.id): (barra.id, aviso.control) for aviso, barra in pares if aviso.control
+    }
 
     # Cuándo le salió a cada uno cada aviso, para saber si ya salió en
     # esta ventana.
@@ -201,21 +237,34 @@ async def _revisar(db: AsyncSession, hoy: date, barra_id: str | None) -> int:
         clave = (n.user_id, n.origen_ref)
         if n.created_at and (clave not in salidos or n.created_at > salidos[clave]):
             salidos[clave] = n.created_at
+        grupo = control_de_ref.get(n.origen_ref)
+        if grupo and n.created_at:
+            clave_c = (n.user_id, *grupo)
+            if clave_c not in salidos or n.created_at > salidos[clave_c]:
+                salidos[clave_c] = n.created_at
 
     creadas = 0
+    ahora = datetime.now(timezone.utc)
     for aviso, barra in pares:
         ref = referencia(barra.id, aviso.id)
         desde_cuando = inicio_de_ventana(barra.desde, aviso.dias_antes)
-        creador = usuarios.get(aviso.creado_por_id) if aviso.creado_por_id else None
-        texto = mensaje(
-            barra.nombre, barra.banda, barra.desde, hoy, creador.full_name if creador else None,
-            es_envio=barra.seccion == "envio",
-        )
-        for uid in _ids(aviso.destinatarios):
+        if aviso.control:
+            texto = mensaje_de_control(aviso.control, barra.nombre, barra.banda, barra.desde, hoy)
+        else:
+            creador = usuarios.get(aviso.creado_por_id) if aviso.creado_por_id else None
+            texto = mensaje(
+                barra.nombre, barra.banda, barra.desde, hoy, creador.full_name if creador else None,
+                es_envio=barra.seccion == "envio",
+            )
+        destinatarios = _ids(aviso.destinatarios)
+        if aviso.control:
+            destinatarios += [u for u in equipo.get(barra.mundo, []) if u not in destinatarios]
+        for uid in destinatarios:
             usuario = usuarios.get(uid)
             if not puede_recibir_el_aviso(usuario, barra.mundo):
                 continue
-            ultimo = salidos.get((uid, ref))
+            clave = (uid, barra.id, aviso.control) if aviso.control else (uid, ref)
+            ultimo = salidos.get(clave)
             if ultimo is not None and ultimo >= desde_cuando:
                 continue
             db.add(Notificacion(
@@ -225,6 +274,7 @@ async def _revisar(db: AsyncSession, hoy: date, barra_id: str | None) -> int:
                 origen_tipo=ORIGEN,
                 origen_ref=ref,
             ))
+            salidos[clave] = ahora
             creadas += 1
     return creadas
 
