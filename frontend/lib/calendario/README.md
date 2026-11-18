@@ -223,6 +223,24 @@ otro, ni siquiera siendo admin.
 Lo de la pantalla está en `lib/calendario/mi-agenda.ts` (en qué día cae cada
 evento y cómo se dice) y `components/calendario/MiAgenda.tsx`.
 
+## Lo del 18/11/2026
+
+- **Redexpres como su Excel.** Sus filas son las de "PAC 2026 Tareas.xlsx"
+  (`BANDAS_REDEXPRES` en `lib/mundos.ts`) y la migración 0076 cargó sus
+  acciones de 2026 (aditiva: no duplica ni pisa nada). La hoja "Valen" son las
+  tareas de Valentina en cada acción (Lanzar, Cierre, Imprenta...): todavía
+  no se cargan, primero se validan con ella.
+- **Tareas minimizadas.** En la ficha, cada tarea muestra solo su título (y
+  cuántas piezas o subtareas tiene); se despliega tocándola.
+- **Una tarea sin piezas.** Las piezas al crear la tarea son opcionales: puede
+  ser solo el nombre y el detalle (idea de Valentina).
+- **El tablero, libre como Trello** para el equipo (0075): lleva la tarjeta a
+  cualquier columna. Si no le toca entregar o decidir, es "a mano": no se
+  entrega ni se aprueba nada, y lo próximo que pase de verdad (una entrega,
+  una decisión) vuelve a mandar. La agencia sigue con sus reglas.
+- **"Lo que se pidió"** en la tarjeta va como lista: cada opción con su
+  medida y los datos aparte, sin repetir el pedido en el detalle.
+
 ## Las tres secciones
 
 **1. Calendario comercial.** Las acciones de marketing por categoría (Mega

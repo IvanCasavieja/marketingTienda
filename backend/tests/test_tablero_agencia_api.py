@@ -558,7 +558,9 @@ def test_con_cadena_de_aprobadores_finaliza_recien_cuando_aprueba_el_ultimo():
         # A Lucía todavía no le toca: primero aprueba Marca.
         t = await _tarjeta(lucia, tarea_id)
         assert t["puedo"]["decidir"] is False
-        r = await lucia.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "esperando", "a": "finalizado"})
+        # La agencia no la finaliza. (Lucía sí podría llevarla a mano: el
+        # tablero es libre para el equipo desde el 18/11/2026.)
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "esperando", "a": "finalizado"})
         assert r.status_code == 403
         r = await marca.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "esperando", "a": "finalizado"})
         assert r.status_code == 200 and r.json()["columna"] == "esperando"  # sigue esperando a Lucía
@@ -662,8 +664,8 @@ def test_una_pieza_de_tienda_que_uno_se_pide_a_si_mismo_la_aprueba_otro():
         # Les llegó a quienes lideran (y no a ella ni a la agencia).
         assert len(await _avisos(d, d.lider, tarea_id)) == 1
         assert await _avisos(d, d.lucia, tarea_id) == [] and await _avisos(d, d.a1, tarea_id) == []
-        r = await lucia.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "esperando", "a": "finalizado"})
-        assert r.status_code == 403
+        # Ella no la aprueba: decide otro.
+        assert (await _tarjeta(lucia, tarea_id))["puedo"]["decidir"] is False
         r = await Cliente(d.http, d.lider).post(
             f"/calendario/tareas/{tarea_id}/mover", json={"desde": "esperando", "a": "finalizado"})
         assert r.status_code == 200, r.text
@@ -831,9 +833,8 @@ def test_una_pieza_cancelada_se_archiva_y_se_puede_sacar_del_archivo():
         assert (await mover(a1, "en-proceso", "ingresado")).status_code == 200
         assert await _estado(d, tarea_id) == "pendiente"
 
-        # La agencia no la archiva; el equipo de la tarjeta sí, desde Ingresado.
+        # La agencia no la archiva; el equipo sí, desde Ingresado.
         assert (await mover(a1, "ingresado", "archivado")).status_code == 403
-        assert (await mover(Cliente(d.http, d.aprob2), "ingresado", "archivado")).status_code == 403
         r = await mover(lucia, "ingresado", "archivado")
         assert r.status_code == 200 and r.json()["columna"] == "archivado", r.text
         assert await _estado(d, tarea_id) == "hecha"
@@ -846,9 +847,9 @@ def test_una_pieza_cancelada_se_archiva_y_se_puede_sacar_del_archivo():
         datos = (await Cliente(d.http, d.promo).get("/calendario/datos", params={"mundo": MUNDO})).json()
         tareas = next(b for b in datos["barras"] if b["id"] == d.ciber.id)["tareas"]
         assert next(x for x in tareas if x["id"] == tarea_id)["entrega"]["columna"] == "archivado"
-        # Sale del archivo solo a su columna, y la tarea se reabre.
-        assert (await _tarjeta(lucia, tarea_id))["puedo"]["mover"] == ["ingresado"]
-        assert (await mover(lucia, "archivado", "finalizado")).status_code == 422
+        # Sale del archivo a su columna, y la tarea se reabre. (El equipo la
+        # podría llevar a cualquiera: el tablero es libre desde el 18/11/2026.)
+        assert "ingresado" in (await _tarjeta(lucia, tarea_id))["puedo"]["mover"]
         r = await mover(lucia, "archivado", "ingresado")
         assert r.status_code == 200 and r.json()["columna"] == "ingresado", r.text
         assert await _estado(d, tarea_id) == "pendiente"
@@ -1557,4 +1558,60 @@ def test_mi_agenda_un_link_que_no_sirve_se_avisa_y_no_se_guarda(monkeypatch):
             assert motivo in r.json()["detail"]
         async with d.Sesion() as s:
             assert await s.get(AgendaExterna, d.lucia.id) is None
+    correr(prueba)
+
+
+def test_el_equipo_mueve_la_tarjeta_libre_como_trello():
+    """Ivan (18/11/2026): "¿por qué en el tablero no puedo mover a esperando
+    feedback o finalizado?". Eligió "libre, como Trello": el equipo de Tienda
+    lleva la tarjeta a cualquier columna; la agencia, con sus reglas. Moverla
+    a mano no entrega ni decide nada, y lo próximo que pasa de verdad (una
+    entrega) vuelve a mandar."""
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        a1, lucia, marca = Cliente(d.http, d.a1), Cliente(d.http, d.lucia), Cliente(d.http, d.aprob2)
+        mover = lambda c, desde, a: c.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": desde, "a": a})  # noqa: E731
+
+        async def entrega():
+            async with d.Sesion() as s:
+                return await s.get(CalendarioEntrega, tarea_id)
+
+        # El equipo ve todas las columnas para moverla; la agencia, las suyas.
+        assert set((await _tarjeta(marca, tarea_id))["puedo"]["mover"]) == {"en-proceso", "esperando", "finalizado", "archivado"}
+        assert "finalizado" not in (await _tarjeta(a1, tarea_id))["puedo"]["mover"]
+
+        # A Esperando feedback, a mano: sin entregar nada. La agencia igual entrega.
+        r = await mover(marca, "ingresado", "esperando")
+        assert r.status_code == 200 and r.json()["columna"] == "esperando" and r.json()["accion"] == "a-mano", r.text
+        assert (await entrega()).columna_manual == "esperando"
+        assert await _estado(d, tarea_id) == "en-proceso"
+        assert (await _tarjeta(a1, tarea_id))["puedo"]["entregar"] is True
+        # Entrega de verdad: vuelve a mandar lo que dicen las entregas.
+        assert (await _entregar_link(a1, tarea_id, f"ve-l1-{d.sufijo}")).status_code == 201
+        assert (await entrega()).columna_manual is None
+        assert (await _tarjeta(lucia, tarea_id))["columna"] == "esperando"
+
+        # Quien no decide la vuelve a En proceso a mano (sin pedir cambios)...
+        r = await mover(marca, "esperando", "en-proceso")
+        assert r.status_code == 200 and r.json()["columna"] == "en-proceso" and r.json()["accion"] == "a-mano", r.text
+        # ...y la da por terminada: queda aprobada y la tarea, hecha.
+        r = await mover(marca, "en-proceso", "finalizado")
+        assert r.status_code == 200 and r.json()["columna"] == "finalizado", r.text
+        e = await entrega()
+        assert e.momento == "aprobada" and e.finalizada_at is not None and e.columna_manual is None
+        assert await _estado(d, tarea_id) == "hecha"
+        # De Finalizado a Ingresado: vuelve a lo que dicen sus entregas, en Ingresado.
+        r = await mover(lucia, "finalizado", "ingresado")
+        assert r.status_code == 200 and r.json()["columna"] == "ingresado", r.text
+        e = await entrega()
+        assert e.momento == "revision" and e.columna_manual == "ingresado"
+        assert await _estado(d, tarea_id) == "pendiente"
+        t = await _tarjeta(a1, tarea_id)
+        assert t["columna"] == "ingresado"
+        # La agencia, con sus reglas: no la finaliza ni la archiva.
+        assert (await mover(a1, "ingresado", "finalizado")).status_code == 403
+        assert (await mover(a1, "ingresado", "archivado")).status_code == 403
+        # Y el equipo la puede volver a dar por terminada desde ahí.
+        r = await lucia.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "ingresado", "a": "finalizado"})
+        assert r.status_code == 200 and r.json()["columna"] == "finalizado", r.text
     correr(prueba)

@@ -48,6 +48,13 @@ export type Mundo = {
 }
 
 const BANDAS_GENERICAS = ['Campañas', 'Promociones', 'Cartelería', 'Redes sociales', 'Otras acciones']
+/** Las filas del Excel de Redexpres ("PAC 2026 Tareas"), en su orden (Ivan,
+ *  18/11/2026: "lo ideal es que el calendario de Redex sea idéntico a esto").
+ *  Las acciones de 2026 las cargó la migración 0076. */
+export const BANDAS_REDEXPRES = [
+  'MAILING - 16 PAG EL PAIS', 'MAILING - 40 PAG EL PAIS', 'ESPECIAL - CM', 'TÁCTICO (x LOCAL) CM',
+  'Super FDS', 'BOMBAS', 'DIAS EXPRES',
+]
 
 export const MUNDOS: Mundo[] = [
   {
@@ -65,7 +72,7 @@ export const MUNDOS: Mundo[] = [
   {
     clave: 'redexpres', nombre: 'Redexpres', color: '#dc2626',
     bajada: 'El calendario, las tareas, las cenefas y los pedidos de la red de locales',
-    secciones: ['comercial', 'envios'], bandas: BANDAS_GENERICAS,
+    secciones: ['comercial', 'envios'], bandas: BANDAS_REDEXPRES,
   },
   {
     clave: 'tienda_viajes', nombre: 'Tienda Viajes', color: '#0891b2',

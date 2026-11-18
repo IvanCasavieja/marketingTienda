@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState } from 'react'
 import {
-  CalendarClock, Check, CornerDownRight, FileText, Layers, LayoutTemplate, Link2, ListChecks, Mic, Plus, Sparkles, Trash2, UserRound, X,
+  CalendarClock, Check, ChevronDown, CornerDownRight, FileText, Layers, LayoutTemplate, Link2, ListChecks, Mic, Plus, Sparkles, Trash2, UserRound, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
@@ -341,8 +341,20 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   const pidiendoMaterial = abierto === `material:${tarea.id}`
   const [confirmando, setConfirmando] = useState(false)
   const [editandoDetalle, setEditandoDetalle] = useState(false)
+  // Minimizada: solo el título (Ivan, 18/11/2026: "que las tareas queden como
+  // minimizadas y se muestre solo su título, porque imaginate tener varias
+  // tareas con toda esa vista"). Se despliega tocándola; si se está
+  // agregando algo adentro, queda abierta.
+  const [abiertaAMano, setAbierta] = useState(false)
+  const abierta = abiertaAMano || agregando || pidiendoMaterial || editandoDetalle
 
   const hijas = todas.filter(t => t.parentId === tarea.id)
+  const piezasHijas = hijas.filter(h => Boolean(h.entrega) || !!h.tipo || (!!h.para && h.para !== 'tienda')).length
+  const subtareasHijas = hijas.length - piezasHijas
+  const resumenHijas = [
+    piezasHijas > 0 ? `${piezasHijas} ${piezasHijas === 1 ? 'pieza' : 'piezas'}` : '',
+    subtareasHijas > 0 ? `${subtareasHijas} ${subtareasHijas === 1 ? 'subtarea' : 'subtareas'}` : '',
+  ].filter(Boolean).join(' · ')
   const nivel = nivelDeTarea(tarea, todas)
   const esMia = usuarioId != null && tarea.asignadoA === usuarioId
   // Una tarea con entregas queda hecha sola cuando se aprueba la última fase:
@@ -380,7 +392,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
 
   return (
     <li>
-      <div className={`rounded-2xl border px-3.5 py-3 transition-colors duration-300 ${
+      <div className={`rounded-2xl border px-3.5 ${abierta ? 'py-3' : 'py-2'} transition-colors duration-300 ${
         hecha
           ? 'border-slate-300 bg-slate-50/70 dark:border-slate-700 dark:bg-slate-800/30'
           : esMia
@@ -389,7 +401,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
               ? 'border-rose-200 bg-white dark:border-rose-500/30 dark:bg-slate-900'
               : 'border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900'
       }`}>
-        <div className="flex items-start gap-3">
+        <div className={`flex gap-3 ${abierta ? 'items-start' : 'items-center'}`}>
           {/* El tilde: un área de 40px para el dedo, con el cuadrado de 24 adentro */}
           <button
             type="button"
@@ -417,13 +429,25 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
             <p className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-snug transition-colors duration-300 ${
               hecha ? 'text-slate-500 line-through decoration-slate-300 dark:text-slate-400 dark:decoration-slate-600' : 'text-slate-900 dark:text-slate-100'
             }`}>
-              <span className="min-w-0 break-words">{tarea.titulo}</span>
+              <button
+                type="button"
+                onClick={() => setAbierta(!abierta)}
+                aria-expanded={abierta}
+                title={abierta ? 'Minimizar' : 'Ver la tarea entera'}
+                className="min-w-0 break-words text-left transition hover:text-brand-700 dark:hover:text-brand-200"
+              >
+                {tarea.titulo}
+              </button>
               {vencida && (
                 <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-rose-700 no-underline dark:bg-rose-500/15 dark:text-rose-300">
                   Vencida
                 </span>
               )}
+              {!abierta && resumenHijas && (
+                <span className="text-xs font-medium text-slate-500 no-underline dark:text-slate-400">{resumenHijas}</span>
+              )}
             </p>
+            {abierta && (<>
             {tarea.descripcion && !editandoDetalle && (
               <p className="mt-0.5 whitespace-pre-line text-sm text-slate-600 dark:text-slate-400">{tarea.descripcion}</p>
             )}
@@ -553,11 +577,21 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
             {tarea.entrega && (
               <EntregasDeLaTarea tarea={tarea} personas={personas} usuarioId={usuarioId} />
             )}
+            </>)}
           </div>
+          <button
+            type="button"
+            onClick={() => setAbierta(!abierta)}
+            aria-expanded={abierta}
+            aria-label={abierta ? `Minimizar ${tarea.titulo}` : `Ver ${tarea.titulo} entera`}
+            className="-my-1 -mr-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 sm:h-8 sm:w-8"
+          >
+            <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${abierta ? 'rotate-180' : ''}`} />
+          </button>
         </div>
       </div>
 
-      {(hijas.length > 0 || agregando || puedeMaterial) && (
+      {abierta && (hijas.length > 0 || agregando || puedeMaterial) && (
         <div className="ml-4 mt-2 border-l-2 border-slate-300 pl-3 dark:border-slate-700">
           {hijas.length > 0 && (
             <ul className="space-y-2">
@@ -805,7 +839,14 @@ function ElegirPiezas({ valor, onCambiar, tipos, tableros }: {
     // min-w-0: un <fieldset> no se achica por debajo de su contenido, y los
     // tipos (y el resumen de cada pieza) se salían por el costado de la ficha.
     <fieldset className="min-w-0">
-      <legend className="etiqueta-campo">¿Qué piezas lleva?</legend>
+      {/* Opcionales (18/11/2026, idea de Valentina): una tarea puede ser solo
+          su nombre y su detalle, sin ninguna pieza, y sumar piezas después. */}
+      <legend className="etiqueta-campo">¿Lleva piezas? <span className="font-normal text-slate-500 dark:text-slate-400">(opcional)</span></legend>
+      {valor.length === 0 && (
+        <p className="-mt-0.5 mb-1.5 text-xs text-slate-500 dark:text-slate-400">
+          Podés crearla sin piezas, solo con el nombre y el detalle, y agregarle piezas después.
+        </p>
+      )}
       {!tipos ? (
         <div className="skeleton h-10 rounded-xl" />
       ) : (

@@ -115,6 +115,11 @@ class CalendarioEntrega(Base):
     #   archive sola vuelven a contar desde ahí (si no, se volvería a
     #   archivar en el acto).
     desarchivada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # - la columna a la que la llevó alguien del equipo a mano (0075, "libre,
+    #   como Trello"): Ingresado, En proceso o Esperando feedback. Manda sobre
+    #   la que dicen las entregas hasta que pasa algo de verdad (una entrega,
+    #   una decisión). Finalizado a mano no va acá: es darla por aprobada.
+    columna_manual: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(

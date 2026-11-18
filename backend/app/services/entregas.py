@@ -451,6 +451,9 @@ def estado_de_tarea(momento: str, hay_versiones: bool, actual: str) -> str:
 # equipo la saque del archivo (vuelve a su columna y la tarea se reabre).
 
 COLUMNAS = ("ingresado", "en-proceso", "esperando", "finalizado", "archivado")
+# Las que se guardan en `columna_manual` (0075). Finalizado a mano es darla por
+# aprobada y Archivado tiene su fecha: ninguna de las dos va ahí.
+COLUMNAS_A_MANO = ("ingresado", "en-proceso", "esperando")
 NOMBRES_DE_COLUMNA = {
     "ingresado": "Ingresado",
     "en-proceso": "En proceso",
@@ -507,14 +510,17 @@ def oculta(
 def columna_de(
     momento: str, *, iniciada: bool, finalizada_at: datetime | None = None,
     archivada_at: datetime | None = None, desarchivada_at: datetime | None = None,
-    hoy: date, dias_para_archivar: int,
+    hoy: date, dias_para_archivar: int, manual: str | None = None,
 ) -> str:
     """En qué columna del tablero va una tarjeta. `iniciada`: si quien entrega
-    ya la arrancó o ya entregó algo alguna vez."""
+    ya la arrancó o ya entregó algo alguna vez. `manual`: la columna a la que
+    la llevó alguien del equipo a mano (0075), que manda sobre el momento."""
     if archivada_at is not None:
         # Archivada a mano manda sobre el momento: también la que se canceló
         # sin terminar (16/11/2026).
         return "archivado"
+    if manual in COLUMNAS_A_MANO:
+        return manual
     if momento == "revision":
         return "esperando"
     if momento == "cambios":
@@ -548,6 +554,11 @@ class QuienMueve:
     # Lleva la tarjeta del lado del equipo: gestiona las tareas, la creó o
     # está entre quienes la aprueban.
     del_equipo_de_la_tarjeta: bool
+    # Es del equipo de Tienda (no una agencia): mueve la tarjeta a cualquier
+    # columna, como en Trello (Ivan, 18/11/2026). Lo que tiene un sentido
+    # (arrancar, aprobar si le toca, archivar) se sigue haciendo así; lo
+    # demás es "a mano" (ver movimiento).
+    libre: bool = False
 
 
 _MOVIMIENTOS = {
@@ -570,8 +581,30 @@ def movimiento(
     desde: str, a: str, quien: QuienMueve, *, hay_versiones: bool, vuelve_a: str = "finalizado",
 ) -> str:
     """Qué significa arrastrar una tarjeta de `desde` a `a`, si esta persona
-    lo puede hacer; si no, MovimientoInvalido con el porqué. Es la regla del
-    servidor: la pantalla solo la refleja.
+    lo puede hacer; si no, MovimientoInvalido con el porqué.
+
+    Desde el 18/11/2026 el equipo de Tienda la mueve a cualquier columna
+    ("libre, como Trello"): si con las reglas de siempre no se puede, para
+    alguien del equipo es "a-mano" (la ruta la deja en esa columna sin
+    entregar ni decidir nada). Dos excepciones: quien la entrega y la lleva a
+    Esperando feedback sigue entregando los materiales (409: se abre
+    "Entregar"), y una columna que no existe no existe para nadie."""
+    try:
+        return _movimiento_con_reglas(desde, a, quien, hay_versiones=hay_versiones, vuelve_a=vuelve_a)
+    except MovimientoInvalido as exc:
+        if not quien.libre or quien.es_externo or desde not in COLUMNAS or a not in COLUMNAS:
+            raise
+        if exc.codigo == 409 and quien.entrega:
+            raise
+        return "a-mano"
+
+
+def _movimiento_con_reglas(
+    desde: str, a: str, quien: QuienMueve, *, hay_versiones: bool, vuelve_a: str = "finalizado",
+) -> str:
+    """Las reglas de siempre (las de una agencia, y las del equipo cuando
+    hacen algo con sentido: arrancar, aprobar, pedir cambios, archivar). Es la
+    regla del servidor: la pantalla solo la refleja.
 
     - Quien entrega (la agencia) arranca (Ingresado → En proceso) y entrega
       (→ Esperando feedback, siempre con los materiales: el arrastre abre
@@ -871,10 +904,16 @@ async def recalcular(db: AsyncSession, entrega: CalendarioEntrega, tarea: Calend
         select(func.count()).select_from(CalendarioVersion).where(CalendarioVersion.tarea_id == tarea.id)
     )).scalar_one() > 0
 
+    antes = (entrega.momento, entrega.fase_actual_id, entrega.ronda or 0)
     entrega.momento = momento_de(actual is not None, ultima.estado if ultima else None)
     entrega.fase_actual_id = actual.id if actual else None
     entrega.ronda = ultima.ronda if ultima else 0
     entrega.aprobador_de_turno_id = turno
+    # Pasó algo de verdad (una entrega, una decisión, otra fase): la columna
+    # vuelve a salir de las entregas, aunque alguien la hubiera movido a mano
+    # (0075). Cambiar quién aprueba o el pedido no la mueve.
+    if (entrega.momento, entrega.fase_actual_id, entrega.ronda) != antes:
+        entrega.columna_manual = None
     nuevo = estado_de_tarea(entrega.momento, hay_versiones, tarea.estado)
     if nuevo != tarea.estado:
         tarea.estado = nuevo
@@ -905,6 +944,7 @@ def columna_de_entrega(entrega: CalendarioEntrega, hoy: date | None = None) -> s
         finalizada_at=entrega.finalizada_at, archivada_at=entrega.archivada_at,
         desarchivada_at=entrega.desarchivada_at,
         hoy=hoy or hoy_en_uruguay(), dias_para_archivar=settings.ARCHIVAR_TARJETAS_DIAS,
+        manual=getattr(entrega, "columna_manual", None),
     )
 
 
@@ -913,6 +953,10 @@ def columna_al_desarchivar(entrega) -> str:
     aprobada, a Finalizado (sus días vuelven a contar desde ese momento); una
     que se archivó sin terminar (cancelada), a la que le toca por su momento:
     Ingresado, En proceso o Esperando feedback. Pura."""
+    manual = getattr(entrega, "columna_manual", None)
+    if manual in COLUMNAS_A_MANO:
+        # La habían llevado a mano a una columna (0075): vuelve a esa.
+        return manual
     if entrega.momento == "aprobada":
         return "finalizado"
     return columna_de(
@@ -1174,6 +1218,9 @@ async def archivar_finalizadas(db: AsyncSession, hoy: date | None = None) -> int
             CalendarioEntrega.momento == "aprobada",
             CalendarioEntrega.archivada_at.is_(None),
             CalendarioEntrega.finalizada_at.isnot(None),
+            # Aprobada, pero alguien la volvió a una columna a mano (0075):
+            # no está en Finalizado, no se archiva sola.
+            CalendarioEntrega.columna_manual.is_(None),
         )
         .with_for_update(of=CalendarioEntrega)
     )).all()

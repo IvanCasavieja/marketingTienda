@@ -1162,6 +1162,8 @@ def _quien_mueve(usuario: User, tarea: CalendarioTarea, entrega: CalendarioEntre
     return reglas.QuienMueve(
         es_externo=externo, entrega=puede_entregar(usuario, tarea), decide=decide and not externo,
         del_equipo_de_la_tarjeta=del_equipo,
+        # El equipo de Tienda la mueve a cualquier columna (18/11/2026).
+        libre=not externo,
     )
 
 
@@ -1215,13 +1217,17 @@ async def mover(
     resultado = None
     if accion == "nada":
         return {"id": tarea_id, "columna": actual, "rev": None, "avisados": 0}
-    if accion == "arrancar":
+    if accion == "a-mano":
+        await _mover_a_mano(db, entrega, tarea, actual, payload.a, ahora, current_user)
+    elif accion == "arrancar":
+        entrega.columna_manual = None
         entrega.iniciada_at = ahora
         # La ficha muestra el estado de la tarea: si la agencia la arrancó,
         # que no siga diciendo «Pendiente» hasta la primera entrega (16/11/2026).
         if tarea.estado == "pendiente":
             tarea.estado = "en-proceso"
     elif accion == "volver":
+        entrega.columna_manual = None
         entrega.iniciada_at = None
         # Volver a Ingresado solo se puede sin nada entregado: vuelve a pendiente.
         if tarea.estado == "en-proceso":
@@ -1259,7 +1265,49 @@ async def mover(
     return {
         "id": tarea_id, "columna": columna, "resultado": resultado, "avisados": avisados,
         "rev": _rev_para(current_user, rev), "entrega": await _resumen(db, tarea_id),
+        # Qué se hizo: "a-mano" es que el equipo la movió sin entregar ni decidir.
+        "accion": accion,
     }
+
+
+async def _mover_a_mano(
+    db: AsyncSession, entrega: CalendarioEntrega, tarea: CalendarioTarea, actual: str, a: str,
+    ahora: datetime, usuario: User,
+) -> None:
+    """Alguien del equipo lleva la tarjeta a una columna a la que las reglas
+    no la llevan (18/11/2026, "libre, como Trello"). No se entrega ni se
+    decide nada y no se avisa a nadie: solo cambia de columna.
+
+    - Archivado: como archivar (sin terminar, cierra la tarea).
+    - Finalizado: se da por aprobada (la tarea queda hecha y se archiva sola
+      a los días, como cualquier finalizada).
+    - Ingresado, En proceso o Esperando feedback: se guarda la columna
+      (`columna_manual`) y la tarea queda pendiente o en proceso. Si estaba
+      dada por aprobada, primero vuelve a lo que dicen sus entregas.
+    Lo próximo que pase de verdad (una entrega, una decisión) vuelve a mandar.
+    """
+    if a == "archivado":
+        entrega.archivada_at = ahora
+        entrega.archivada_por_id = usuario.id
+        if entrega.momento != "aprobada":
+            tarea.estado = "hecha"
+        return
+    if actual == "archivado":
+        entrega.archivada_at = None
+        entrega.archivada_por_id = None
+        entrega.desarchivada_at = ahora
+    if a == "finalizado":
+        entrega.columna_manual = None
+        entrega.momento = "aprobada"
+        entrega.aprobador_de_turno_id = None
+        if entrega.finalizada_at is None or actual != "finalizado":
+            entrega.finalizada_at = ahora
+        tarea.estado = "hecha"
+        return
+    if entrega.momento == "aprobada":
+        await reglas.recalcular(db, entrega, tarea)
+    entrega.columna_manual = a
+    tarea.estado = "pendiente" if a == "ingresado" else "en-proceso"
 
 
 class MarcaCambios(BaseModel):
@@ -1348,6 +1396,8 @@ def _sin_ocultar():
     )
     return or_(
         and_(CalendarioEntrega.momento.in_(_ACTIVOS), CalendarioEntrega.archivada_at.is_(None)),
+        # Una aprobada que alguien volvió a una columna a mano (0075) está activa.
+        and_(CalendarioEntrega.columna_manual.isnot(None), CalendarioEntrega.archivada_at.is_(None)),
         # Lo archivado a mano, con cualquier momento (16/11/2026: también lo
         # cancelado), se archivó ese día: `se_archiva` es su archivada_at.
         and_(
@@ -1365,6 +1415,8 @@ def _es_oculta(e: CalendarioEntrega, hoy) -> bool:
     """Si ya lleva OCULTAR_ARCHIVADAS_DIAS en Archivado: no se carga en el
     tablero (la encuentra el buscador). Lo aprobado, y también lo que se
     archivó sin terminar (cancelado)."""
+    if e.archivada_at is None and e.columna_manual is not None:
+        return False
     return (e.momento == "aprobada" or e.archivada_at is not None) and reglas.oculta(
         e.finalizada_at, e.archivada_at, e.desarchivada_at, hoy,
         settings.ARCHIVAR_TARJETAS_DIAS, settings.OCULTAR_ARCHIVADAS_DIAS,

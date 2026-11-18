@@ -584,8 +584,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("sidebar.mundo", "Mundo")}</span>
                 <span className="block truncate text-sm font-bold text-slate-900 dark:text-slate-100">{mundo.nombre}</span>
               </span>
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition group-hover:bg-slate-100 group-hover:text-slate-700 dark:group-hover:bg-white/10 dark:group-hover:text-slate-200">
-                <ArrowLeftRight size={15} />
+              {/* Con texto y no solo el ícono (18/11/2026): Ivan buscaba cómo
+                  volver a la selección de mundos. */}
+              <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 text-xs font-semibold text-slate-600 transition group-hover:bg-brand-50 group-hover:text-brand-700 dark:bg-white/10 dark:text-slate-300 dark:group-hover:bg-brand-500/15 dark:group-hover:text-brand-200">
+                <ArrowLeftRight size={14} />
+                {t("sidebar.cambiar", "Cambiar")}
               </span>
             </Link>
           ) : (

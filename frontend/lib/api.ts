@@ -2387,7 +2387,11 @@ export const entregasApi = {
     api.get<Metricas>("/calendario/entregas/metricas", { ...ESPERA, params: { mundo, dias } }),
   /** Arrastrar la tarjeta a otra columna. `desde` es donde la veía la pantalla. */
   mover: (tareaId: string, datos: { desde: Columna; a: Columna; comentario?: string | null }) =>
-    api.post<CalendarioEscrito & { columna: Columna; resultado?: string | null; entrega?: ResumenEntrega; avisados?: number }>(
+    api.post<CalendarioEscrito & {
+      columna: Columna; resultado?: string | null; entrega?: ResumenEntrega; avisados?: number
+      /** "a-mano": alguien del equipo la movió sin entregar ni decidir (18/11/2026). */
+      accion?: string
+    }>(
       `/calendario/tareas/${encodeURIComponent(tareaId)}/mover`, datos, ESPERA),
   misEntregas: () =>
     api.get<{ paraRevisar: Tarjeta[]; conCambios: Tarjeta[] }>("/calendario/mis-entregas", ESPERA),

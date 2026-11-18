@@ -20,6 +20,7 @@ import { veCalendario } from '@/lib/alcance'
 import { esExterno } from '@/lib/externos'
 import { useVistaEntregas } from '@/store/entregas'
 import { useCatalogoDeTipos } from '@/store/tiposDeTarea'
+import { detalleSinPedido, pedidoEnLista } from '@/lib/calendario/tipos-de-tarea'
 import { defColumna, quienLaHaceTexto } from '@/lib/calendario/tablero'
 import { useDialogo } from '../useDialogo'
 import { FormularioEntrega } from './FormularioEntrega'
@@ -823,11 +824,16 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
 
 function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas; abiertoAlInicio?: boolean }) {
   const [abierto, setAbierto] = useState(abiertoAlInicio)
-  // Lo tildado con sus medidas ya está arriba (`pedido`): el detalle del
-  // pedido que lo repite no se muestra dos veces.
+  const { tipos } = useCatalogoDeTipos()
+  // Lo tildado con sus medidas va arriba, como lista (18/11/2026: "deberíamos
+  // tener las cosas estilo bullet list"). El detalle escrito viene con ese
+  // mismo pedido adelante (así lo arma el servidor): se muestra solo lo que
+  // escribió la persona, no el pedido dos veces.
   const pedido = detalle.tarea.pedido ?? null
-  const campos = camposDe(detalle.tipoPieza).filter(c => detalle.brief[c.clave] != null && detalle.brief[c.clave] !== '')
-    .filter(c => !(pedido && c.clave === 'detalle' && String(detalle.brief.detalle).trim() === pedido.trim()))
+  const tipo = tipos?.find(t => t.clave === detalle.tarea.tipo) ?? null
+  const lista = pedidoEnLista(tipo, detalle.tarea.opciones ?? [], detalle.tarea.detalles ?? {})
+  const valorDe = (clave: string) => (clave === 'detalle' ? detalleSinPedido(String(detalle.brief.detalle ?? ''), pedido) : detalle.brief[clave])
+  const campos = camposDe(detalle.tipoPieza).filter(c => { const v = valorDe(c.clave); return v != null && v !== '' })
   return (
     <section>
       <button
@@ -840,21 +846,64 @@ function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas;
         Lo que se pidió
         <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${abierto ? 'rotate-180' : ''}`} />
       </button>
-      {abierto && pedido && (
-        <p className="mt-2 whitespace-pre-line rounded-2xl border border-brand-200 bg-brand-50/60 p-3.5 text-sm font-medium leading-relaxed text-slate-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-slate-100">
-          {pedido}
-        </p>
+      {abierto && (lista || pedido) && (
+        <div className="mt-2 rounded-2xl border border-brand-200 bg-brand-50/60 p-3.5 text-sm text-slate-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-slate-100">
+          {lista ? (
+            <>
+              {lista.items.length > 0 && (
+                <>
+                  <p className="text-xs font-bold uppercase tracking-wide text-brand-700 dark:text-brand-200">{lista.tipo}</p>
+                  <ul className="mt-1.5 space-y-1">
+                    {lista.items.map(i => (
+                      <li key={i.nombre} className="flex gap-2 leading-snug">
+                        <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" aria-hidden />
+                        <span className="min-w-0">
+                          <span className="font-semibold">{i.nombre}</span>
+                          {i.medida && <span className="text-slate-500 dark:text-slate-400"> · {i.medida}</span>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {lista.datos.length > 0 && (
+                <ul className={`space-y-1 ${lista.items.length > 0 ? 'mt-2.5 border-t border-brand-200/70 pt-2.5 dark:border-brand-500/20' : ''}`}>
+                  {lista.datos.map(d => (
+                    <li key={d.nombre} className="flex gap-2 leading-snug">
+                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" aria-hidden />
+                      <span className="min-w-0 break-words"><span className="font-semibold">{d.nombre}:</span> {d.valor}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : (
+            // Sin el catálogo de tipos (todavía cargando, o un tipo viejo): el
+            // texto del servidor, un renglón por punto.
+            <ul className="space-y-1">
+              {(pedido ?? '').split(/\r?\n/).filter(l => l.trim()).map(l => (
+                <li key={l} className="flex gap-2 leading-snug">
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" aria-hidden />
+                  <span className="min-w-0 break-words">{l}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       {abierto && (
         campos.length === 0 ? (
-          pedido ? null : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">El pedido no tiene detalles cargados.</p>
+          pedido || lista ? null : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">El pedido no tiene detalles cargados.</p>
         ) : (
           <dl className="mt-2 grid gap-x-4 gap-y-2 rounded-2xl bg-slate-50 p-3.5 text-sm dark:bg-slate-800/50 sm:grid-cols-2">
             {campos.map(c => {
-              const v = String(detalle.brief[c.clave])
+              const v = String(valorDe(c.clave))
               return (
                 <div key={c.clave} className={c.entero ? 'sm:col-span-2' : ''}>
-                  <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">{c.etiqueta}</dt>
+                  <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    {/* Con el pedido arriba, lo escrito a mano es "el detalle". */}
+                    {c.clave === 'detalle' && (pedido || lista) ? 'Detalle' : c.etiqueta}
+                  </dt>
                   <dd className="whitespace-pre-line break-words text-slate-800 dark:text-slate-200">
                     {c.tipo === 'fecha' ? fechaCorta(v) : c.tipo === 'url' && /^https?:\/\//i.test(v)
                       ? <a href={v} target="_blank" rel="noopener noreferrer" className="text-brand-700 underline dark:text-brand-200">{v}</a>

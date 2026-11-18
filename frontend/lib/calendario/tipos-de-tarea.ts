@@ -88,3 +88,40 @@ export function descripcionDelPedido(
   }
   return lineas.join('\n') || null
 }
+
+/** Lo pedido para mostrar como lista (18/11/2026, Ivan: "la forma de ver lo
+ *  que se pidió está horrenda, deberíamos tener las cosas estilo bullet
+ *  list"): el tipo, cada opción tildada con su medida y los datos de más. */
+export type PedidoEnLista = {
+  tipo: string
+  items: { nombre: string; medida: string | null }[]
+  datos: { nombre: string; valor: string }[]
+}
+
+export function pedidoEnLista(
+  tipo: TipoDeTarea | null | undefined, opciones: string[], detalles: Record<string, string | number>,
+): PedidoEnLista | null {
+  if (!tipo) return null
+  const medidas = new Map(tipo.opciones.map(o => [o.nombre, o.medida]))
+  const items = opciones.map(o => ({ nombre: o, medida: medidas.get(o) ?? null }))
+  const datos: PedidoEnLista['datos'] = []
+  if (!opciones.length && tipo.medida) datos.push({ nombre: 'Medida', valor: tipo.medida })
+  for (const c of tipo.campos) {
+    const v = detalles[c.clave]
+    if (v !== undefined && v !== null && v !== '' && (!c.para || opciones.includes(c.para))) {
+      datos.push({ nombre: c.nombre, valor: valorParaLeer(c, v) })
+    }
+  }
+  if (!items.length && !datos.length) return null
+  return { tipo: tipo.nombre, items, datos }
+}
+
+/** El detalle escrito sin el pedido que el servidor le pone adelante al
+ *  crear la tarjeta (config_por_defecto: pedido + "\n" + lo escrito): así no
+ *  se lee dos veces lo mismo. Si no empieza con el pedido, entero. */
+export function detalleSinPedido(detalle: string | null | undefined, pedido: string | null | undefined): string {
+  const texto = (detalle ?? '').trim()
+  const antes = (pedido ?? '').trim()
+  if (antes && texto.startsWith(antes)) return texto.slice(antes.length).trim()
+  return texto
+}
