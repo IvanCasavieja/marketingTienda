@@ -129,6 +129,10 @@ class CalendarioAviso(Base):
     creado_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Un control que la acción trae sola (0077): 'lanzar' o 'cierre', solo en
+    # Redexpres (ver app/services/controles_redexpres.py). Le llega a todo el
+    # equipo del mundo además de `destinatarios`.
+    control: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

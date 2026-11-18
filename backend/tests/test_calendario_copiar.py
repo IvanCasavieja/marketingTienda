@@ -323,7 +323,11 @@ def _aviso(id="av", dias=10, destinatarios=(1, 2), **kw) -> CalendarioAviso:
 
 def test_un_aviso_se_copia_con_los_mismos_dias_antes():
     [v] = copiar_avisos([_aviso(dias=15)], "br-2026", UN_ANIO, {1, 2}, 42, _ids()).filas
-    assert v == {"id": "av-nuevo-1", "barra_id": "br-2026", "dias_antes": 15, "destinatarios": [1, 2], "creado_por_id": 42}
+    # `control` (0077) va vacío: Lanzar y Cierre no se copian, la copia trae los suyos.
+    assert v == {
+        "id": "av-nuevo-1", "barra_id": "br-2026", "dias_antes": 15, "destinatarios": [1, 2], "creado_por_id": 42,
+        "control": None,
+    }
 
 
 def test_quien_ya_no_ve_el_mundo_sale_del_aviso():

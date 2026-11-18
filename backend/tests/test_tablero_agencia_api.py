@@ -22,7 +22,7 @@ pytestmark = pytest.mark.skipif(not URL, reason="Sin TEST_DATABASE_URL: estas pr
 
 if URL:
     import httpx
-    from sqlalchemy import select
+    from sqlalchemy import func, select, update
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
 
@@ -1614,4 +1614,121 @@ def test_el_equipo_mueve_la_tarjeta_libre_como_trello():
         # Y el equipo la puede volver a dar por terminada desde ahí.
         r = await lucia.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "ingresado", "a": "finalizado"})
         assert r.status_code == 200 and r.json()["columna"] == "finalizado", r.text
+    correr(prueba)
+
+
+def test_redexpres_nace_con_lanzar_y_cierre_y_le_avisa_a_todo_el_equipo():
+    """Ivan (18/11/2026): cada acción de Redexpres nace con las tareas Lanzar
+    (60 días antes) y Cierre (4 semanas antes), y con sus avisos a todo el
+    equipo del mundo: Lanzar a los 60 y a los 30, Cierre a los 28. Cargada
+    con menos tiempo, el aviso sale en el momento (una vez)."""
+    async def prueba(d):
+        from app.services import calendario_avisos
+        hoy = d.hoy
+        async with d.Sesion() as s:
+            def persona(nombre, permisos, mundos=("redexpres",)):
+                u = User(
+                    email=f"{nombre.lower().replace(' ', '.')}.{d.sufijo}@prueba-redex.test", full_name=nombre,
+                    hashed_password=_clave(), permissions=list(permisos), mundos=list(mundos), is_active=True,
+                    is_superuser=False, es_externo=False, empresa=None, calendario_alcance=alcance.por_defecto(False),
+                    must_change_password=False, password_changed_at=datetime.now(timezone.utc),
+                )
+                s.add(u)
+                return u
+            valen = persona("Valen Redex", ("calendario.view", "calendario.edit", "calendario.pedidos"))
+            otra = persona("Otra Redex", ("calendario.view", "calendario.edit"))
+            mira = persona("Solo Mira Redex", ("calendario.view",))
+            de_ti = persona("De Tienda Nomas", ("calendario.view", "calendario.edit"), mundos=("tienda_inglesa",))
+            await s.commit()
+        cv = Cliente(d.http, valen)
+
+        async def crear(cliente, id_, banda, dias, mundo="redexpres"):
+            return await cliente.post("/calendario/barras", json={
+                "id": id_, "mundo": mundo, "seccion": "comercial", "banda": banda, "nombre": f"Accion {id_}",
+                "desde": (hoy + timedelta(days=dias)).isoformat(), "hasta": (hoy + timedelta(days=dias + 5)).isoformat(),
+            })
+
+        async def de(barra_id):
+            async with d.Sesion() as s:
+                tareas = {t.titulo: t for t in (await s.execute(
+                    select(CalendarioTarea).where(CalendarioTarea.barra_id == barra_id))).scalars()}
+                avisos = sorted((a.control, a.dias_antes) for a in (await s.execute(
+                    select(CalendarioAviso).where(CalendarioAviso.barra_id == barra_id))).scalars())
+            return tareas, avisos
+
+        async def avisos_de(usuario, barra_id):
+            async with d.Sesion() as s:
+                return [n.mensaje for n in (await s.execute(select(Notificacion).where(
+                    Notificacion.user_id == usuario.id, Notificacion.origen_ref.startswith(f"{barra_id}:"),
+                ).order_by(Notificacion.id))).scalars()]
+
+        # 1. Con tiempo: las dos tareas ancladas y los tres avisos; todavía nadie recibe nada.
+        con_tiempo = f"br-rx-t-{d.sufijo}"
+        r = await crear(cv, con_tiempo, "ESPECIAL - CM", 100)
+        assert r.status_code == 201 and r.json().get("recargar") is True, r.text
+        tareas, avisos = await de(con_tiempo)
+        assert set(tareas) == {"Lanzar", "Cierre"}
+        assert tareas["Lanzar"].vence == hoy + timedelta(days=40) and tareas["Lanzar"].ancla == "inicio"
+        assert tareas["Cierre"].vence == hoy + timedelta(days=72) and tareas["Cierre"].ancla_dias == -28
+        assert avisos == [("cierre", 28), ("lanzar", 30), ("lanzar", 60)]
+        assert await avisos_de(otra, con_tiempo) == []
+        # La ficha los muestra como controles.
+        datos = (await cv.get("/calendario/datos", params={"mundo": "redexpres"})).json()
+        accion = next(b for b in datos["barras"] if b["id"] == con_tiempo)
+        assert sorted(a.get("control") for a in accion["avisos"]) == ["cierre", "lanzar", "lanzar"]
+
+        # 2. Tarde (faltan 20 días): vencen hoy y sale UN Lanzar y UN Cierre, a todo el equipo.
+        tarde = f"br-rx-l-{d.sufijo}"
+        assert (await crear(cv, tarde, "MAILING - 16 PAG EL PAIS", 20)).status_code == 201
+        tareas, _ = await de(tarde)
+        assert tareas["Lanzar"].vence == hoy and tareas["Lanzar"].ancla is None and tareas["Cierre"].vence == hoy
+        for u in (valen, otra):
+            mensajes = await avisos_de(u, tarde)
+            assert sorted(m.split(":")[0] for m in mensajes) == ["Cierre", "Lanzar"], mensajes
+        assert await avisos_de(mira, tarde) == [] and await avisos_de(de_ti, tarde) == []
+        # Otra vuelta del loop ese día: nada más.
+        async with d.Sesion() as s:
+            await calendario_avisos.revisar_avisos(s, hoy=hoy, barra_id=tarde)
+        assert len(await avisos_de(otra, tarde)) == 2
+
+        # 3. Faltan 45: Lanzar ya; a los 30, el segundo Lanzar; a los 28, Cierre.
+        medio = f"br-rx-m-{d.sufijo}"
+        assert (await crear(cv, medio, "TÁCTICO (x LOCAL) CM", 45)).status_code == 201
+        assert [m.split(":")[0] for m in await avisos_de(otra, medio)] == ["Lanzar"]
+        desde = hoy + timedelta(days=45)
+
+        async def loop_el_dia(dia):
+            """Una vuelta del loop "ese día": lo que sale queda con esa fecha
+            (si no, quedaría con la de hoy y la vuelta siguiente lo vería viejo)."""
+            async with d.Sesion() as s:
+                antes = (await s.execute(select(func.coalesce(func.max(Notificacion.id), 0)))).scalar_one()
+                await calendario_avisos.revisar_avisos(s, hoy=dia, barra_id=medio)
+            async with d.Sesion() as s:
+                await s.execute(update(Notificacion).where(Notificacion.id > antes).values(
+                    created_at=datetime(dia.year, dia.month, dia.day, 15, tzinfo=timezone.utc)))
+                await s.commit()
+
+        await loop_el_dia(desde - timedelta(days=30))
+        assert [m.split(":")[0] for m in await avisos_de(otra, medio)] == ["Lanzar", "Lanzar"]
+        await loop_el_dia(desde - timedelta(days=28))
+        assert sorted(m.split(":")[0] for m in await avisos_de(otra, medio)) == ["Cierre", "Lanzar", "Lanzar"]
+        await loop_el_dia(desde - timedelta(days=10))
+        assert len(await avisos_de(otra, medio)) == 3
+
+        # 4. Bombas (semanal) y Tienda Inglesa: sin controles.
+        bombas = f"br-rx-b-{d.sufijo}"
+        r = await crear(cv, bombas, "BOMBAS", 90)
+        assert r.status_code == 201 and "recargar" not in r.json()
+        assert await de(bombas) == ({}, [])
+        ti = f"br-ti-c-{d.sufijo}"
+        assert (await crear(Cliente(d.http, d.lider), ti, "MEGA EVENTO", 90, mundo=MUNDO)).status_code == 201
+        assert await de(ti) == ({}, [])
+
+        # 5. Las piezas de Valentina, solo en Redexpres.
+        r = await cv.post(f"/calendario/barras/{con_tiempo}/tareas", json={
+            "id": f"ta-imp-{d.sufijo}", "titulo": "Imprenta", "tipo": "imprenta", "para": "tienda", "asignadoA": valen.id})
+        assert r.status_code == 201, r.text
+        r = await Cliente(d.http, d.lucia).post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": f"ta-imp2-{d.sufijo}", "titulo": "Imprenta", "tipo": "imprenta", "para": "tienda", "asignadoA": d.lucia.id})
+        assert r.status_code == 422, r.text
     correr(prueba)

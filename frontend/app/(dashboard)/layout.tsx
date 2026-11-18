@@ -10,6 +10,7 @@ import { Menu, CalendarDays, ShieldAlert, ArrowLeftRight } from "lucide-react";
 import { MARCA, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import FueraDeMundo from "@/components/layout/FueraDeMundo";
 import NavegacionInferior from "@/components/layout/NavegacionInferior";
+import { Campanita } from "@/components/layout/Campanita";
 import AvisoDeVentana from "@/components/layout/AvisoDeVentana";
 import { INICIO_DE_EXTERNOS, calendarioVedado, esExterno, rutaDeExterno } from "@/lib/externos";
 import { useAvisos } from "@/store/avisos";
@@ -144,17 +145,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar: el menú, la marca y en qué mundo se está */}
-        <header className="md:hidden flex items-center gap-2 px-2 py-1.5 bg-white/90 backdrop-blur-md border-b border-slate-200 dark:bg-navy-900/90 dark:border-white/5 shrink-0">
+        {/* La barra de arriba. En el teléfono: el menú, la marca y en qué mundo
+            se está. En la notebook: la campanita, arriba a la derecha (Ivan,
+            18/11/2026: "pasa a ser algo importante en la web"). */}
+        <header className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white/90 px-2 py-1.5 backdrop-blur-md dark:border-white/5 dark:bg-navy-900/90 md:h-14 md:justify-end md:px-5">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
-            className="boton-icono"
+            className="boton-icono md:hidden"
             aria-label={t("common.openMenu")}
           >
             <Menu size={20} />
           </button>
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shrink-0">
               <CalendarDays size={14} className="text-white" />
             </div>
@@ -165,19 +168,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Link
                 href="/mundos"
                 title={t("sidebar.cambiarMundo", "Cambiar de mundo")}
-                className="ml-auto flex min-h-[36px] min-w-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-2.5 pr-2 text-xs font-semibold text-slate-700 shadow-sm transition active:scale-95 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                className="ml-auto flex min-h-[36px] md:hidden min-w-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-2.5 pr-2 text-xs font-semibold text-slate-700 shadow-sm transition active:scale-95 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
               >
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: mundo.color }} />
                 <span className="max-w-[8.5rem] truncate">{mundo.nombre}</span>
                 <ArrowLeftRight size={13} className="shrink-0 text-slate-400" />
               </Link>
             ) : (
-              <span className="ml-auto flex min-w-0 items-center gap-1.5 px-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <span className="ml-auto flex min-w-0 items-center gap-1.5 px-2 text-xs font-semibold text-slate-600 dark:text-slate-300 md:hidden">
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: mundo.color }} />
                 <span className="max-w-[8.5rem] truncate">{mundo.nombre}</span>
               </span>
             )
           )}
+          {/* En el teléfono la abre "Avisos", en la barra de abajo: la lista sale igual. */}
+          <div className="hidden md:block">
+            <Campanita onNavegar={() => setSidebarOpen(false)} />
+          </div>
         </header>
 
         {/* En el teléfono deja lugar abajo para la barra de navegación */}
@@ -198,7 +205,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <NavegacionInferior
         onMenu={() => setSidebarOpen(true)}
-        onAvisos={() => { setSidebarOpen(true); useAvisos.getState().pedirAbrir(); }}
+        onAvisos={() => useAvisos.getState().pedirAbrir()}
       />
       <VistaEntregas />
     </div>

@@ -162,6 +162,29 @@ TIPOS_DE_TAREA: list[dict] = [
         "opciones": [],
         "bajada": "Adaptar el key visual. Normalmente no hace falta descripción.",
     },
+    # Las de Redexpres (18/11/2026): las tareas de Valentina en cada acción
+    # (hoja "Valen" del Excel), como piezas que se suman si hacen falta.
+    # Lanzar y Cierre no van acá: los trae cada acción sola (0077).
+    {
+        "clave": "imprenta", "nombre": "Imprenta", "pieza": "otro", "otras": False, "mundos": ["redexpres"],
+        "opciones": [],
+        "bajada": "Mandar a imprenta: unos 10 días antes de que arranque.",
+    },
+    {
+        "clave": "video_monitores", "nombre": "Video monitores", "pieza": "otro", "otras": False,
+        "mundos": ["redexpres"], "opciones": [],
+        "bajada": "El video de los monitores de los locales: 1 o 2 semanas antes.",
+    },
+    {
+        "clave": "bases_escribana", "nombre": "Bases escribana", "pieza": "otro", "otras": False,
+        "mundos": ["redexpres"], "opciones": [],
+        "bajada": "Las bases del sorteo para la escribana: un mes antes.",
+    },
+    {
+        "clave": "afiche_bombas", "nombre": "Afiche bombas", "pieza": "otro", "otras": False,
+        "mundos": ["redexpres"], "opciones": [opcion("Carne"), opcion("No carne")],
+        "bajada": "El afiche de las bombas de la semana.",
+    },
     {
         "clave": "otro", "nombre": "Otro", "pieza": "otro", "otras": False,
         "opciones": [],
@@ -178,6 +201,16 @@ def tipo_de(clave: str | None) -> dict | None:
     return _POR_CLAVE.get(clave or "")
 
 
+def vale_en(clave: str | None, mundo: str | None) -> bool:
+    """Si ese tipo se ofrece en ese mundo: los de Redexpres (Imprenta, Video
+    monitores...) solo ahí; el resto, en todos. Un tipo que no existe, no."""
+    t = tipo_de(clave)
+    if t is None:
+        return False
+    mundos = t.get("mundos")
+    return not mundos or mundo in mundos
+
+
 def para_la_pantalla() -> list[dict]:
     """El catálogo como lo pide la pantalla. Lleva `pieza` (a qué tipo de
     pieza de las entregas corresponde) para que "Más opciones" arranque con
@@ -187,6 +220,8 @@ def para_la_pantalla() -> list[dict]:
             "clave": t["clave"], "nombre": t["nombre"], "opciones": t["opciones"], "otras": t["otras"],
             "medida": t.get("medida"), "campos": t.get("campos", []), "bajada": t.get("bajada"),
             "pieza": t.get("pieza"),
+            # Solo en esos mundos (los de Redexpres); sin esto, en todos.
+            "mundos": t.get("mundos"),
         }
         for t in TIPOS_DE_TAREA
     ]

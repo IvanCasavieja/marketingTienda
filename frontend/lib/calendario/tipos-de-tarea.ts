@@ -56,6 +56,15 @@ export type TipoDeTarea = {
   bajada: string | null
   /** A qué tipo de pieza de las entregas corresponde (banner, mailing…). */
   pieza?: string | null
+  /** Solo en esos mundos (Imprenta, Video monitores… son de Redexpres). Sin esto, en todos. */
+  mundos?: string[] | null
+}
+
+/** Los tipos que se ofrecen en una acción de ese mundo (18/11/2026: las
+ *  piezas de Valentina, solo en Redexpres). Como vale_en en el servidor. */
+export function tiposDelMundo<T extends Pick<TipoDeTarea, 'mundos'>>(tipos: T[] | null, mundo: string | null | undefined): T[] | null {
+  if (!tipos) return null
+  return tipos.filter(t => !t.mundos?.length || (!!mundo && t.mundos.includes(mundo)))
 }
 
 /** "Ciberlunes - Banners": como lo arma el servidor (nombre_de_tarjeta). */

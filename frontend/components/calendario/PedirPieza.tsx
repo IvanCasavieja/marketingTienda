@@ -6,7 +6,7 @@ import { CalendarClock, Check, ChevronDown, Layers, Mic, Plus, Sparkles, X } fro
 import { toast } from 'sonner'
 import { DictarBrief, type BriefListo } from '@/components/ia/DictarBrief'
 import { useCalendario } from '@/lib/calendario/store'
-import { camposVisibles, descripcionDelPedido, linkValido, nombreDeTarjeta, valorParaLeer, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
+import { camposVisibles, descripcionDelPedido, linkValido, nombreDeTarjeta, tiposDelMundo, valorParaLeer, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
 import { TIPOS_DE_PIEZA, type TipoPieza } from '@/lib/calendario/entregas'
 import { TIPO_PARA_DICTADO } from '@/lib/calendario/entregas-dictado'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
@@ -53,7 +53,9 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usua
 }) {
   const crear = useCalendario(s => s.crearTarea)
   const configurarEntregas = useCalendario(s => s.configurarEntregas)
-  const { tipos, error, reintentar } = useCatalogoDeTipos()
+  const catalogo = useCatalogoDeTipos()
+  const { error, reintentar } = catalogo
+  const tipos = tiposDelMundo(catalogo.tipos, accion.mundo)
 
   // A qué tablero va (17/11/2026): la toma cualquiera de ese tablero.
   const { tableros } = useTableros(accion.mundo)

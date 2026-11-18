@@ -25,6 +25,7 @@ import {
   type AreaPieza, type Aviso, type BarraGuardada, type EstadoPieza, type Persona, type Pieza, delEquipo,
 } from '@/lib/calendario/tipos'
 import { esExterno } from '@/lib/externos'
+import { mundoDe } from '@/lib/mundos'
 
 const ESTADOS: EstadoPieza[] = ['pendiente', 'en-proceso', 'aprobado', 'publicado']
 
@@ -593,6 +594,7 @@ function BloqueAvisos({
       <p className="mb-3 text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
         Solo salen los avisos que se configuran acá. Le llegan a la campanita de cada persona elegida,
         los días antes de que {esEnvio ? 'salga el envío' : 'arranque la acción'} que se elijan.
+        {avisos.some(a => a.control) && ' Lanzar y Cierre los trae sola la acción y le llegan a todo el equipo.'}
       </p>
 
       {avisos.length === 0 ? (
@@ -611,11 +613,19 @@ function BloqueAvisos({
               </span>
               <div className="min-w-0 flex-1 text-sm">
                 <p>
+                  {/* Lanzar y Cierre (18/11/2026): los trae cada acción de Redexpres. */}
+                  {a.control && (
+                    <span className="mr-1.5 rounded-md bg-brand-100 px-1.5 py-0.5 text-xs font-bold text-brand-800 dark:bg-brand-500/20 dark:text-brand-100">
+                      {a.control === 'lanzar' ? 'Lanzar' : 'Cierre'}
+                    </span>
+                  )}
                   <span className="font-semibold text-slate-800 dark:text-slate-100">{a.diasAntes} días antes</span>
                   <span className="text-slate-500 dark:text-slate-400"> · {estadoDe(a)}</span>
                 </p>
                 <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                  A {a.destinatarios.map(nombreDe).join(', ')}
+                  {a.control
+                    ? `A todo el equipo de ${mundoDe(accion.mundo)?.nombre ?? 'este mundo'}${a.destinatarios.length ? `, y a ${a.destinatarios.map(nombreDe).join(', ')}` : ''}`
+                    : `A ${a.destinatarios.map(nombreDe).join(', ')}`}
                 </p>
               </div>
               {editable && (

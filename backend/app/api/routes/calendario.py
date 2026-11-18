@@ -97,7 +97,7 @@ from app.services.calendario_copia import (
     nombre_para_la_copia, tareas_por_responsable,
 )
 from app.services.colocacion import ORIGENES_DEL_LOCAL
-from app.services import entregas as reglas_entregas, tipos_de_tarea
+from app.services import controles_redexpres, entregas as reglas_entregas, tipos_de_tarea
 from app.services.entregas import resumenes_de_entregas
 
 logger = logging.getLogger(__name__)
@@ -290,12 +290,16 @@ def _pieza_json(p: CalendarioPieza) -> dict:
 
 
 def _aviso_json(a: CalendarioAviso) -> dict:
-    return {
+    out = {
         "id": a.id,
         "diasAntes": a.dias_antes,
         "destinatarios": list(a.destinatarios or []),
         "creadoPor": a.creado_por_id,
     }
+    if a.control:
+        # Lanzar o Cierre (0077): le llega a todo el equipo del mundo.
+        out["control"] = a.control
+    return out
 
 
 def _tarea_json(t: CalendarioTarea, entrega: dict | None = None) -> dict:
@@ -776,14 +780,26 @@ async def crear_barra(
         # El id lo genera el front: si ya está, es un reintento del mismo alta.
         # `yaExistia` le dice al front que esta revisión NO es la suya.
         return {"id": payload.id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}
-    db.add(CalendarioBarra(
+    barra = CalendarioBarra(
         **payload.model_dump(),
         creado_por_id=current_user.id,
         actualizado_por_id=current_user.id,
-    ))
+    )
+    db.add(barra)
+    await db.flush()
+    # Redexpres: nace con sus tareas Lanzar y Cierre y sus avisos (0077).
+    controles = await controles_redexpres.agregar(db, barra, current_user.id, alcance.hoy_en_uruguay())
     rev = await _nueva_revision(db, payload.mundo)
     await db.commit()
-    return {"id": payload.id, "rev": _rev_para(current_user, rev)}
+    if controles:
+        # Cargada con menos de 60 días: el aviso de Lanzar sale ya.
+        await _avisar_sin_romper(db, payload.id)
+    out = {"id": payload.id, "rev": _rev_para(current_user, rev)}
+    if controles:
+        # La pantalla tiene la acción, pero no las tareas que se le crearon
+        # acá: que se traiga todo.
+        out["recargar"] = True
+    return out
 
 
 @router.patch("/barras/{barra_id}")
@@ -834,12 +850,20 @@ async def cambiar_barra(
             if t.id in nuevas:
                 t.vence = nuevas[t.id]
         movidas = len(nuevas)
+    # Pasada a una fila que lleva Lanzar y Cierre (de "BOMBAS" a "ESPECIAL -
+    # CM", por ejemplo): se le suman (0077).
+    controles = 0
+    if "banda" in cambios:
+        controles = await controles_redexpres.agregar(db, barra, current_user.id, alcance.hoy_en_uruguay())
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
-    if cambio_la_fecha:
+    if cambio_la_fecha or controles:
         # Un aviso que con la fecha nueva ya tendría que haber salido, sale ya.
         await _avisar_sin_romper(db, barra_id)
-    return {"id": barra_id, "rev": _rev_para(current_user, rev), "tareasMovidas": movidas}
+    out = {"id": barra_id, "rev": _rev_para(current_user, rev), "tareasMovidas": movidas}
+    if controles:
+        out["recargar"] = True
+    return out
 
 
 @router.delete("/barras/{barra_id}")
@@ -1510,6 +1534,9 @@ async def crear_tarea(
             raise HTTPException(status_code=404, detail="La tarea de la que cuelga ya no existe: la borraron.")
         if nivel_de(payload.parentId, padres) > _NIVELES_DE_TAREA:
             raise HTTPException(status_code=422, detail="Una sub-subtarea no puede tener más tareas adentro")
+    if payload.tipo and not tipos_de_tarea.vale_en(payload.tipo, barra.mundo):
+        # Imprenta, Video monitores... son de Redexpres (18/11/2026).
+        raise HTTPException(status_code=422, detail="Ese tipo de pieza no se pide en este mundo")
     asignado = await _asignable_o_422(db, payload.asignadoA, barra.mundo) if payload.asignadoA is not None else None
     para, agencia = await _para_quien(db, payload.para, payload.agencia, asignado, barra.mundo)
     if not es_pieza(SimpleNamespace(tipo=payload.tipo, para=para)) and not puede_crear_tarea(current_user, pieza=False):
@@ -2368,7 +2395,10 @@ async def copiar_barra(
     for f in copiadas_tareas.filas:
         if f.get("tipo") and f.get("titulo") == tipos_de_tarea.nombre_de_tarjeta(origen.nombre, f["tipo"]):
             f["titulo"] = tipos_de_tarea.nombre_de_tarjeta(nombre, f["tipo"])
-    copiados_avisos = copiar_avisos(avisos, payload.id, corrimiento, validos, current_user.id)
+    # Lanzar y Cierre no se copian: la copia trae los suyos (0077).
+    copiados_avisos = copiar_avisos(
+        [a for a in avisos if not a.control], payload.id, corrimiento, validos, current_user.id,
+    )
 
     # Una pieza o una tarea con su propia fecha puede irse de rango aunque la
     # acción no (una pieza de diciembre de 2099 corrida un año).
@@ -2402,6 +2432,10 @@ async def copiar_barra(
     db.add_all(nuevas_piezas)
     db.add_all(nuevas_tareas)
     db.add_all(nuevos_avisos)
+    # Copiada a Redexpres: con sus Lanzar y Cierre, los de su fecha nueva.
+    # Las tareas copiadas que ya se llaman así cuentan como que ya están.
+    await db.flush()
+    controles = await controles_redexpres.agregar(db, barra, current_user.id, alcance.hoy_en_uruguay())
 
     # Las tareas para la agencia (0070) se copian como tales y les nace su
     # tarjeta nueva (en Ingresado, sin la historia de la original), con UN
@@ -2460,7 +2494,10 @@ async def copiar_barra(
         "avisosSinNadie": copiados_avisos.sin_nadie,
         "avisados": avisados,
     }
+    if controles:
+        # Lo que se le sumó acá no está en `barra`: que la pantalla traiga todo.
+        respuesta["recargar"] = True
     await db.commit()
     # Un aviso que con la fecha nueva ya tendría que haber salido, sale ya.
-    respuesta["enviadosAhora"] = await _avisar_sin_romper(db, payload.id) if nuevos_avisos else 0
+    respuesta["enviadosAhora"] = await _avisar_sin_romper(db, payload.id) if nuevos_avisos or controles else 0
     return respuesta
