@@ -246,6 +246,10 @@ evento y cómo se dice) y `components/calendario/MiAgenda.tsx`.
   30 días y Cierre a los 28. Si se carga tarde, el aviso sale en el momento,
   una sola vez. No van en "Super FDS" ni en "BOMBAS", que son semanales. Ver
   `backend/app/services/controles_redexpres.py`.
+- **Lanzar FDS y Cierre FDS (0078).** Cada Super FDS lleva Cierre FDS (tarea
+  y aviso, 14 días antes); Lanzar FDS va una vez por mes, en el primer Super
+  FDS del mes, 10 días antes. Si cambia cuál es el primero (se carga uno
+  antes, se mueve o se borra), Lanzar FDS pasa al nuevo.
 - **Piezas de Redexpres:** Imprenta, Video monitores, Bases escribana y
   Afiche bombas se ofrecen solo en sus acciones (`mundos` en el catálogo).
 - **La campanita, arriba a la derecha** (`components/layout/Campanita.tsx`),

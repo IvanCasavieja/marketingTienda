@@ -1732,3 +1732,88 @@ def test_redexpres_nace_con_lanzar_y_cierre_y_le_avisa_a_todo_el_equipo():
             "id": f"ta-imp2-{d.sufijo}", "titulo": "Imprenta", "tipo": "imprenta", "para": "tienda", "asignadoA": d.lucia.id})
         assert r.status_code == 422, r.text
     correr(prueba)
+
+
+def test_super_fds_cierre_en_cada_uno_y_lanzar_en_el_primero_del_mes():
+    """Ivan (18/11/2026): los Super FDS llevan Cierre FDS (14 días antes) y,
+    una vez por mes, Lanzar FDS (10 días antes del primero del mes). Si cambia
+    cuál es el primero, Lanzar FDS pasa al nuevo."""
+    async def prueba(d):
+        hoy = d.hoy
+        async with d.Sesion() as s:
+            valen = User(
+                email=f"valen.fds.{d.sufijo}@prueba-redex.test", full_name="Valen FDS", hashed_password=_clave(),
+                permissions=["calendario.view", "calendario.edit", "calendario.pedidos"], mundos=["redexpres"],
+                is_active=True, is_superuser=False, es_externo=False, empresa=None,
+                calendario_alcance=alcance.por_defecto(False), must_change_password=False,
+                password_changed_at=datetime.now(timezone.utc),
+            )
+            s.add(valen)
+            await s.commit()
+        cv = Cliente(d.http, valen)
+        # Un mes sin Super FDS cargados: el cuarto desde hoy.
+        mes = (hoy.replace(day=1) + timedelta(days=130)).replace(day=1)
+        siguiente = (mes + timedelta(days=40)).replace(day=1)
+
+        async def crear(id_, desde):
+            r = await cv.post("/calendario/barras", json={
+                "id": id_, "mundo": "redexpres", "seccion": "comercial", "banda": "Super FDS", "nombre": "Super FDS",
+                "desde": desde.isoformat(), "hasta": (desde + timedelta(days=3)).isoformat(),
+            })
+            assert r.status_code == 201, r.text
+            return r
+
+        async def controles(barra_id):
+            async with d.Sesion() as s:
+                tareas = sorted(t.titulo for t in (await s.execute(
+                    select(CalendarioTarea).where(CalendarioTarea.barra_id == barra_id))).scalars())
+                avisos = sorted((a.control, a.dias_antes) for a in (await s.execute(
+                    select(CalendarioAviso).where(CalendarioAviso.barra_id == barra_id))).scalars())
+            return tareas, avisos
+
+        con_lanzar = (["Cierre FDS", "Lanzar FDS"], [("cierre_fds", 14), ("lanzar_fds", 10)])
+        sin_lanzar = (["Cierre FDS"], [("cierre_fds", 14)])
+
+        # El primero del mes lleva Lanzar FDS.
+        uno, dos = f"br-fds-1-{d.sufijo}", f"br-fds-2-{d.sufijo}"
+        assert (await crear(uno, mes + timedelta(days=14))).json().get("recargar") is True
+        assert await controles(uno) == con_lanzar
+        async with d.Sesion() as s:
+            t = (await s.execute(select(CalendarioTarea).where(
+                CalendarioTarea.barra_id == uno, CalendarioTarea.titulo == "Cierre FDS"))).scalar_one()
+            assert t.vence == mes + timedelta(days=0) and t.ancla == "inicio" and t.ancla_dias == -14
+
+        # Se carga otro antes en el mes: pasa a ser el primero y se lleva Lanzar FDS.
+        await crear(dos, mes + timedelta(days=7))
+        assert await controles(dos) == con_lanzar
+        assert await controles(uno) == sin_lanzar
+
+        # Se mueve al mes siguiente: el de este mes vuelve a ser el primero.
+        r = await cv.patch(f"/calendario/barras/{dos}", json={
+            "desde": (siguiente + timedelta(days=7)).isoformat(), "hasta": (siguiente + timedelta(days=10)).isoformat()})
+        assert r.status_code == 200 and r.json().get("recargar") is True, r.text
+        assert await controles(uno) == con_lanzar
+        assert await controles(dos) == con_lanzar  # es el primero del mes siguiente
+
+        # Se pasa de fila: deja de llevar los de FDS (y lleva Lanzar y Cierre).
+        r = await cv.patch(f"/calendario/barras/{dos}", json={"banda": "ESPECIAL - CM"})
+        assert r.status_code == 200, r.text
+        assert await controles(dos) == (["Cierre", "Lanzar"], [("cierre", 28), ("lanzar", 30), ("lanzar", 60)])
+
+        # Se borra el único del mes: no queda nada colgando, y no rompe.
+        tres = f"br-fds-3-{d.sufijo}"
+        await crear(tres, mes + timedelta(days=21))
+        assert await controles(tres) == sin_lanzar
+        r = await cv.delete(f"/calendario/barras/{uno}")
+        assert r.status_code == 200 and r.json().get("recargar") is True, r.text
+        assert await controles(tres) == con_lanzar
+
+        # Cargado tarde: Cierre FDS sale en el momento.
+        tarde = f"br-fds-t-{d.sufijo}"
+        await crear(tarde, hoy + timedelta(days=5))
+        async with d.Sesion() as s:
+            mensajes = [n.mensaje for n in (await s.execute(select(Notificacion).where(
+                Notificacion.user_id == valen.id, Notificacion.origen_ref.startswith(f"{tarde}:"),
+            ))).scalars()]
+        assert any(m.startswith("Cierre FDS: ") for m in mensajes), mensajes
+    correr(prueba)

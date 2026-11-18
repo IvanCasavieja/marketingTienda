@@ -21,7 +21,7 @@ import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { CLASE_SEMAFORO, semaforoDe } from '@/lib/calendario/semaforo'
 import { choquesDe } from '@/lib/calendario/choques'
 import {
-  ANTICIPACIONES_DE_AVISO, CATALOGO_PIEZAS, ETIQUETA_ESTADO, esPiezaDeEnvio, esPiezaHeader, tituloDeCanal,
+  ANTICIPACIONES_DE_AVISO, CATALOGO_PIEZAS, ETIQUETA_ESTADO, NOMBRE_DEL_CONTROL, esPiezaDeEnvio, esPiezaHeader, tituloDeCanal,
   type AreaPieza, type Aviso, type BarraGuardada, type EstadoPieza, type Persona, type Pieza, delEquipo,
 } from '@/lib/calendario/tipos'
 import { esExterno } from '@/lib/externos'
@@ -594,7 +594,7 @@ function BloqueAvisos({
       <p className="mb-3 text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
         Solo salen los avisos que se configuran acá. Le llegan a la campanita de cada persona elegida,
         los días antes de que {esEnvio ? 'salga el envío' : 'arranque la acción'} que se elijan.
-        {avisos.some(a => a.control) && ' Lanzar y Cierre los trae sola la acción y le llegan a todo el equipo.'}
+        {avisos.some(a => a.control) && ' Los de Lanzar y Cierre los trae sola la acción y le llegan a todo el equipo.'}
       </p>
 
       {avisos.length === 0 ? (
@@ -616,7 +616,7 @@ function BloqueAvisos({
                   {/* Lanzar y Cierre (18/11/2026): los trae cada acción de Redexpres. */}
                   {a.control && (
                     <span className="mr-1.5 rounded-md bg-brand-100 px-1.5 py-0.5 text-xs font-bold text-brand-800 dark:bg-brand-500/20 dark:text-brand-100">
-                      {a.control === 'lanzar' ? 'Lanzar' : 'Cierre'}
+                      {NOMBRE_DEL_CONTROL[a.control] ?? a.control}
                     </span>
                   )}
                   <span className="font-semibold text-slate-800 dark:text-slate-100">{a.diasAntes} días antes</span>
