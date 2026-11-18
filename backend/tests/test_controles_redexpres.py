@@ -75,3 +75,39 @@ def test_las_piezas_de_valentina_solo_en_redexpres():
     assert not tipos_de_tarea.vale_en("no-existe", "redexpres")
     por_clave = {t["clave"]: t for t in tipos_de_tarea.para_la_pantalla()}
     assert por_clave["imprenta"]["mundos"] == ["redexpres"] and por_clave["banners"]["mundos"] is None
+
+
+# ---------------------------------------------------------------------------
+# Los Super FDS: Cierre FDS en cada uno, Lanzar FDS en el primero del mes
+# ---------------------------------------------------------------------------
+
+def test_un_super_fds_lleva_los_suyos():
+    assert cr.es_fds(barra(banda="Super FDS")) and cr.es_fds(barra(banda=" super  fds"))
+    assert not cr.es_fds(barra()) and not cr.es_fds(barra(banda="Super FDS", mundo="tienda_inglesa"))
+    assert not cr.aplica(barra(banda="Super FDS"))
+
+
+def test_cierre_fds_dos_semanas_antes_y_lanzar_fds_solo_el_primero():
+    fds = barra(banda="Super FDS", desde=date(2027, 3, 4))
+    tareas, avisos = cr.controles_fds(fds, set(), set(), 7, HOY, primero_del_mes=False)
+    assert [(t["titulo"], t["vence"], t["ancla_dias"]) for t in tareas] == [("Cierre FDS", date(2027, 2, 18), -14)]
+    assert [(a["control"], a["dias_antes"]) for a in avisos] == [("cierre_fds", 14)]
+    tareas, avisos = cr.controles_fds(fds, set(), set(), 7, HOY, primero_del_mes=True)
+    assert sorted((t["titulo"], t["vence"]) for t in tareas) == [("Cierre FDS", date(2027, 2, 18)), ("Lanzar FDS", date(2027, 2, 22))]
+    assert sorted((a["control"], a["dias_antes"]) for a in avisos) == [("cierre_fds", 14), ("lanzar_fds", 10)]
+    # Lo que ya tiene no se repite.
+    tareas, avisos = cr.controles_fds(fds, {"cierre fds"}, {("cierre_fds", 14)}, 7, HOY, primero_del_mes=False)
+    assert tareas == [] and avisos == []
+
+
+def test_los_ids_de_fds_no_chocan_con_los_otros():
+    assert cr.id_de_tarea("br-1", "lanzar_fds") != cr.id_de_tarea("br-1", "lanzar")
+    assert cr.id_de_aviso("br-1", "cierre_fds", 14).startswith("av-cf14-")
+
+
+def test_el_mensaje_de_lanzar_fds_es_del_mes():
+    texto = mensaje_de_control("lanzar_fds", "Super FDS", "Super FDS", date(2027, 3, 4), date(2027, 2, 22))
+    assert texto == "Lanzar FDS de marzo: el primer Super FDS del mes arranca en 10 días, el 04/03."
+    assert mensaje_de_control("cierre_fds", "Super FDS", "Super FDS", date(2027, 3, 4), date(2027, 2, 18)) == (
+        "Cierre FDS: Super FDS (Super FDS) arranca en 14 días, el 04/03."
+    )

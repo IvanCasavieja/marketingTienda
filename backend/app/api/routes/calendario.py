@@ -187,7 +187,7 @@ async def _revision_actual(db: AsyncSession) -> int:
     )).scalar_one_or_none() or 0
 
 
-async def _avisar_sin_romper(db: AsyncSession, barra_id: str) -> int:
+async def _avisar_sin_romper(db: AsyncSession, barra_id: str | None) -> int:
     """Manda en el momento los avisos de una acción que ya tocan. Se corre
     DESPUÉS de guardar el cambio: si esto falla, el cambio igual quedó, así que
     no puede terminar en un 500 que le diga a la persona "no se guardó". El
@@ -819,6 +819,9 @@ async def cambiar_barra(
     if cambio_la_fecha or cambio_el_fin:
         _exigir_en_su_alcance(current_user, cambios.get("desde", barra.desde), cambios.get("hasta", barra.hasta))
     nombre_anterior = barra.nombre
+    # Para reacomodar Lanzar FDS si un Super FDS cambia de mes o de fila.
+    era_fds = controles_redexpres.es_fds(barra)
+    mes_anterior = (barra.desde.year, barra.desde.month)
     for campo, valor in cambios.items():
         setattr(barra, campo, valor)
     barra.actualizado_por_id = current_user.id
@@ -853,13 +856,24 @@ async def cambiar_barra(
     # Pasada a una fila que lleva Lanzar y Cierre (de "BOMBAS" a "ESPECIAL -
     # CM", por ejemplo): se le suman (0077).
     controles = 0
+    hoy = alcance.hoy_en_uruguay()
     if "banda" in cambios:
-        controles = await controles_redexpres.agregar(db, barra, current_user.id, alcance.hoy_en_uruguay())
+        controles = await controles_redexpres.agregar(db, barra, current_user.id, hoy)
+        if era_fds and not controles_redexpres.es_fds(barra):
+            await controles_redexpres.dejo_de_ser_fds(db, barra)
+    # Un Super FDS que se movió (o entró o salió de la fila): Lanzar FDS lo
+    # lleva el primero de cada mes, que puede haber cambiado.
+    fds_reordenado = (cambio_la_fecha or "banda" in cambios) and (era_fds or controles_redexpres.es_fds(barra))
+    if fds_reordenado:
+        meses = {mes_anterior, (barra.desde.year, barra.desde.month)}
+        controles += await controles_redexpres.ordenar_lanzar_fds(db, meses, current_user.id, hoy)
+        controles = controles or 1  # aunque solo haya sacado: que la pantalla recargue
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
     if cambio_la_fecha or controles:
         # Un aviso que con la fecha nueva ya tendría que haber salido, sale ya.
-        await _avisar_sin_romper(db, barra_id)
+        # Con Lanzar FDS reacomodado, puede ser el de otro Super FDS: se miran todos.
+        await _avisar_sin_romper(db, None if fds_reordenado else barra_id)
     out = {"id": barra_id, "rev": _rev_para(current_user, rev), "tareasMovidas": movidas}
     if controles:
         out["recargar"] = True
@@ -910,10 +924,20 @@ async def borrar_barra(
             Notificacion.origen_tipo.in_(ORIGENES_DEL_LOCAL),
             Notificacion.origen_ref.in_([f"{barra_id}:{i}" for i in locales]),
         ))
+    era_fds = controles_redexpres.es_fds(barra)
+    mes = (barra.desde.year, barra.desde.month)
     await db.delete(barra)
+    if era_fds:
+        # Si era el primer Super FDS del mes, Lanzar FDS pasa al siguiente.
+        await db.flush()
+        await controles_redexpres.ordenar_lanzar_fds(db, {mes}, current_user.id, alcance.hoy_en_uruguay())
     rev = await _nueva_revision(db, mundo)
     await db.commit()
-    return {"id": barra_id, "borrada": True, "rev": _rev_para(current_user, rev)}
+    out = {"id": barra_id, "borrada": True, "rev": _rev_para(current_user, rev)}
+    if era_fds:
+        out["recargar"] = True
+        await _avisar_sin_romper(db, None)
+    return out
 
 
 # ---------------------------------------------------------------------------
