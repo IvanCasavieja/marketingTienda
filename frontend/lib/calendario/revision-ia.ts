@@ -58,8 +58,9 @@ export type RevisionIA = {
   /** Lo que venía en el ZIP sin ser imagen ni PDF (un PSD, una fuente). */
   ignorados?: string[]
   /** Si se ve hecho lo que pedía cada marca de la ronda anterior (19/11/2026).
-   *  Vacío en una primera ronda, si la anterior volvió sin marcas y en las
-   *  revisiones de antes. */
+   *  Vacío si no había nada que controlar (una primera ronda, o la anterior
+   *  volvió sin marcas), si la IA no llegó a mirar y en las revisiones de
+   *  antes. */
   cambiosPedidos?: CambioPedidoIA[]
 }
 

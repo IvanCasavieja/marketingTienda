@@ -981,10 +981,18 @@ def test_revisar_version_guarda_lo_que_dijo_de_cada_marca(ia_prendida):
     assert base.filas["ve-1"]["cambios_pedidos"] is None
 
 
-def test_si_la_revision_falla_no_queda_nada_de_la_ronda_anterior(ia_prendida):
+def test_si_la_ia_no_llega_a_mirar_no_queda_nada_de_la_ronda_anterior(ia_prendida):
+    """Null también cuando había algo que controlar pero la IA no llegó a
+    mirar: falló, o no había imágenes (revisión del 19/11/2026: los
+    comentarios decían que null era solo «no había nada que controlar»)."""
     base = BaseFalsa(["ve-2"], ronda_anterior=RONDA_1)
     assert _revisar("ve-2", base, sim.ApiGrabada([sim.mensaje([], "refusal")])) == "error"
     assert base.filas["ve-2"]["estado"] == "error" and base.filas["ve-2"]["cambios_pedidos"] is None
+    # Solo un link que no se pudo abrir: no hubo nada que mandarle.
+    base = BaseFalsa(["ve-2"], ronda_anterior=RONDA_1, link="https://fromsmash.com/AbC", imagenes=0)
+    api = sim.ApiGrabada([])
+    assert _revisar("ve-2", base, api) == "lista"
+    assert api.pedidos == [] and base.filas["ve-2"]["cambios_pedidos"] is None
 
 
 def test_los_cambios_pedidos_se_muestran_solo_con_la_revision_lista():

@@ -802,8 +802,9 @@ def materiales_para_mostrar(materiales: dict | None, estado: str) -> dict:
 def cambios_pedidos_para_mostrar(cambios: list | None, estado: str) -> list[dict]:
     """Lo que dijo la IA de cada marca de la ronda anterior, para la pantalla
     (19/11/2026; ver limpiar_cambios_pedidos). Solo con la revisión lista;
-    vacía en una primera ronda, si la anterior volvió sin marcas y en las
-    revisiones de antes de ese día."""
+    vacía si no había nada que controlar (una primera ronda, o la anterior
+    volvió sin marcas), si la IA no llegó a mirar y en las revisiones de
+    antes de ese día."""
     if estado != "lista" or not isinstance(cambios, list):
         return []
     return [dict(c) for c in cambios if isinstance(c, dict)]
@@ -1116,8 +1117,11 @@ class BaseDeRevisiones:
         ai_usage_logs, con la función "revision_piezas" y sin persona (la
         dispara la plataforma, no alguien que la pidió). `materiales`: lo del
         ZIP y el link (ver materiales_para_mostrar). `cambios_pedidos`: lo que
-        dijo de cada marca de la ronda anterior (ver limpiar_cambios_pedidos),
-        o None si la versión no venía después de pedir cambios."""
+        dijo de cada marca de la ronda anterior (ver limpiar_cambios_pedidos);
+        None si no había nada que controlar (la versión no venía después de
+        pedir cambios con marcas) o si la IA no llegó a mirar (falló o no
+        había imágenes). En las revisiones de antes del 19/11/2026 también es
+        null."""
         from app.core.database import AsyncSessionLocal
         from app.models.revision_ia import CalendarioRevisionIA
         from app.services.ai_usage_service import log_ai_usage
