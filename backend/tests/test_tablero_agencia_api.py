@@ -1427,6 +1427,9 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
         assert out["observaciones"][0]["origen"] == "zip" and out["observaciones"][0]["imagenId"] is None
         assert out["revisados"] == [{"nombre": "Cenefas/cenefa 1.jpg", "origen": "zip", "paginas": None}]
         assert out["noSePudoAbrir"][0].startswith("No se pudo abrir el link") and out["ignorados"] == ["notas.txt"]
+        # Una revisión sin lo de la ronda anterior (la de antes volvió sin
+        # marcas, o es de antes del 19/11/2026): la lista va vacía.
+        assert out["cambiosPedidos"] == []
         # La agencia (quien entrega) sigue sin ver nada de esto.
         assert (await a1.get(f"/calendario/versiones/ve-z2-{d.sufijo}/revision-ia")).status_code == 403
 
@@ -1446,6 +1449,85 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
         assert r.json()["zip"]["archivos"] == ["folleto.pdf"]
         assert llamadas[-1] == (f"ve-z3-{d.sufijo}", {"zip_datos": zip_bueno, "zip_nombre": "piezas.zip",
                                                     "zip_saltar": frozenset({0})})
+    correr(prueba)
+
+
+def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_aprueba(monkeypatch):
+    """Ivan (19/11/2026), cuando se le contó que la IA no comparaba con la
+    ronda anterior: "debería de hacerlo (...) si ves que algo no anda, ¿por
+    qué no arreglarlo?". Con la base de verdad: lo que la IA recibe de la
+    ronda anterior (cada marca con su imagen por orden y su lugar, y el
+    comentario de quien pidió los cambios, no la nota interna) y que lo que
+    contestó lo ve quien aprueba, nunca la agencia. Lo que hace la IA con eso
+    está en test_revision_ia.py."""
+    from app.services import revision_ia
+
+    # Entregar no dispara la revisión de verdad (acá no hay clave; por las dudas).
+    monkeypatch.setattr(revision_ia, "activa", lambda: False)
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        dos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg")),
+               ("imagenes", ("b.jpg", JPEG, "image/jpeg")), ("miniaturas", ("n.jpg", JPEG, "image/jpeg"))]
+        v1, v2, v3 = (f"ve-r{i}-{d.sufijo}" for i in (1, 2, 3))
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v1}, files=dos)
+        assert r.status_code == 201, r.text
+        det = await _detalle(lider, tarea_id)
+        im1, im2 = [i["id"] for i in det["fases"][0]["versiones"][0]["imagenes"]]
+        r = await lider.post(f"/calendario/versiones/{v1}/decision", json={
+            "decision": "cambios", "comentario": "Revisen también los legales.",
+            "notaInterna": "Ojo: comercial todavía no confirmó el precio",
+            "marcas": [{"imagenId": im2, "x": 0.5, "y": 0.9, "texto": "Falta la tilde en «Válido»"},
+                       {"imagenId": im1, "x": 0.12, "y": 0.08, "texto": "Agrandar el -40%"}]})
+        assert r.status_code == 200, r.text
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v2}, files=dos)
+        assert r.status_code == 201, r.text
+
+        async with d.Sesion() as s:
+            contexto, imagenes = await revision_ia.cargar_version(s, v2)
+            assert contexto.ronda == 2 and len(imagenes) == 2
+            antes = contexto.ronda_anterior
+            assert (antes.ronda, antes.imagenes, antes.comentarios) == (1, 2, ("Revisen también los legales.",))
+            assert [(m.numero, m.texto, m.imagen, m.x, m.y) for m in antes.marcas] == [
+                (1, "Falta la tilde en «Válido»", 2, 0.5, 0.9), (2, "Agrandar el -40%", 1, 0.12, 0.08)]
+            marcas = [m.marca_id for m in antes.marcas]
+            texto = revision_ia.texto_del_pedido(contexto)
+            assert "- Marca 1, en la imagen 2, abajo en el centro (50% del ancho, 90% del alto): Falta la tilde" in texto
+            # La nota interna no va: es del equipo, no algo que se le pidió a la agencia.
+            assert "comercial" not in texto
+            # La primera ronda no tiene nada antes.
+            assert (await revision_ia.cargar_version(s, v1))[0].ronda_anterior is None
+
+        # Lo que contestó la IA (una revisión guardada) lo ve quien aprueba;
+        # la agencia, nunca.
+        async with d.Sesion() as s:
+            s.add(CalendarioRevisionIA(
+                version_id=v2, estado="lista", modelo="simulado", observaciones=[],
+                cambios_pedidos=[
+                    {"marcaId": marcas[0], "numero": 1, "veredicto": "falta", "nota": "Sigue sin tilde."},
+                    {"marcaId": marcas[1], "numero": 2, "veredicto": "hecho", "nota": "El -40% ahora es más grande."},
+                ],
+            ))
+            await s.commit()
+        r = await lider.get(f"/calendario/versiones/{v2}/revision-ia")
+        assert r.status_code == 200, r.text
+        assert r.json()["cambiosPedidos"] == [
+            {"marcaId": marcas[0], "numero": 1, "veredicto": "falta", "nota": "Sigue sin tilde."},
+            {"marcaId": marcas[1], "numero": 2, "veredicto": "hecho", "nota": "El -40% ahora es más grande."},
+        ]
+        assert (await a1.get(f"/calendario/versiones/{v2}/revision-ia")).status_code == 403
+        # Sin revisión guardada (la primera ronda), nada.
+        r = await lider.get(f"/calendario/versiones/{v1}/revision-ia")
+        assert r.status_code == 200 and r.json()["estado"] == "nada" and r.json()["cambiosPedidos"] == []
+
+        # Si vuelve solo con un comentario, sin marcas, no va nada: la IA
+        # contesta marca por marca, y al lado de cada marca es donde se ve.
+        assert (await _decidir(lider, v2, "cambios", "Otra vuelta: todo más grande")).status_code == 200
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v3}, files=dos)
+        assert r.status_code == 201, r.text
+        async with d.Sesion() as s:
+            assert (await revision_ia.cargar_version(s, v3))[0].ronda_anterior is None
     correr(prueba)
 
 

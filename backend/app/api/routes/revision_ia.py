@@ -1,6 +1,7 @@
 """revision_ia.py — lo que encontró la IA en una versión, para quien la aprueba.
 
-  GET   /calendario/versiones/{id}/revision-ia        — estado y observaciones
+  GET   /calendario/versiones/{id}/revision-ia        — estado, observaciones y, si la ronda
+                                                        anterior volvió con cambios, qué se ve hecho
   PATCH /calendario/versiones/{id}/revision-ia/{obs}  — descartar una (o traerla de vuelta)
 
 Convertir una observación en marca no tiene ruta propia: la marca se crea con
@@ -62,7 +63,11 @@ async def ver_revision(
     Desde el 19/11/2026 cada observación dice de qué archivo es (`archivo`,
     `pagina`, `origen`: una del ZIP o del link no tiene `imagenId`), y viajan
     además `revisados`, `noSePudoAbrir` e `ignorados` (ver
-    revision_ia.materiales_para_mostrar)."""
+    revision_ia.materiales_para_mostrar) y `cambiosPedidos`: si se ve hecho
+    lo que pedía cada marca de la ronda anterior, [{marcaId, numero,
+    veredicto: 'hecho' | 'falta' | 'dudoso', nota}] (ver
+    revision_ia.cambios_pedidos_para_mostrar). Como todo lo de acá, solo para
+    quien puede ver la revisión: la agencia nunca."""
     await _version_visible(db, version_id, current_user)
     fila = await db.get(CalendarioRevisionIA, version_id)
     out = revision_ia.para_mostrar(
@@ -71,6 +76,9 @@ async def ver_revision(
     )
     out["observaciones"] = await _json(db, out["observaciones"])
     out.update(revision_ia.materiales_para_mostrar(fila.materiales if fila else None, out["estado"]))
+    out["cambiosPedidos"] = revision_ia.cambios_pedidos_para_mostrar(
+        fila.cambios_pedidos if fila else None, out["estado"],
+    )
     return out
 
 
