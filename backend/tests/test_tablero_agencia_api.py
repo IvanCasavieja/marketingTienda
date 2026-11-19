@@ -34,7 +34,7 @@ if URL:
     from app.models.calendario import (
         CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPlantilla, CalendarioTarea,
     )
-    from app.models.entregas import CalendarioEntrega, CalendarioFase
+    from app.models.entregas import CalendarioDecision, CalendarioEntrega, CalendarioFase
     from app.models.notificacion import Notificacion
     from app.models.role import ALL_PERMISSIONS
     from app.models.user import User
@@ -1275,6 +1275,62 @@ def test_devolver_solo_cuando_esta_aprobada_y_nunca_una_agencia():
             assert e.archivada_at is None and e.finalizada_at is None and e.momento == "produccion"
         # A toda la agencia le llega el aviso con el texto.
         assert "Faltó el legal" in (await _avisos(d, d.a2, tarea_id))[-1].mensaje
+    correr(prueba)
+
+
+def test_aprobado_con_cambios_ya_no_existe_y_las_decisiones_viejas_siguen_valiendo():
+    """Ivan (19/11/2026) sacó «Aprobado con cambios» ("me resulta raro ese
+    botón. No creo que sume nada"). Una pantalla vieja que lo mande recibe un
+    422 con el porqué; y una decisión de esta semana guardada así se sigue
+    leyendo como aprobada: la cadena sigue con el siguiente, la versión se
+    aprueba cuando aprueba el último y el retrabajo la cuenta."""
+    async def prueba(d):
+        lider, lucia, aprob2 = Cliente(d.http, d.lider), Cliente(d.http, d.lucia), Cliente(d.http, d.aprob2)
+        a1 = Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        r = await lider.put(f"/calendario/tareas/{tarea_id}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lucia.id, d.aprob2.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+        version = f"ve-v-{d.sufijo}"
+        assert (await _entregar_link(a1, tarea_id, version)).status_code == 201
+
+        # La decisión vieja ya no se acepta, y el mensaje dice qué elegir.
+        r = await _decidir(lucia, version, "aprobada-con-cambios", "Una tilde")
+        assert r.status_code == 422, r.text
+        assert "ya no existe" in r.json()["detail"] and "Pedir cambios" in r.json()["detail"]
+        assert (await _decidir(lucia, version, "rechazada")).status_code == 422
+        det = await _detalle(lucia, tarea_id)
+        assert det["puedo"]["decidir"] and "tildarMarcas" not in det["puedo"]
+        # La ruta para tildar ajustes sueltos se fue con la decisión.
+        assert (await lider.patch("/calendario/marcas/mk-inventada", json={"corregida": True})).status_code == 404
+
+        # Una decisión de Lucía guardada por el código de antes del 19/11,
+        # tal como la dejaba: con el turno ya pasado al segundo de la cadena.
+        async with d.Sesion() as s:
+            s.add(CalendarioDecision(version_id=version, aprobador_id=d.lucia.id, decidido_por_id=d.lucia.id,
+                                     orden=0, decision="aprobada-con-cambios", comentario="Una tilde"))
+            (await s.get(CalendarioEntrega, tarea_id)).aprobador_de_turno_id = d.aprob2.id
+            await s.commit()
+        det = await _detalle(aprob2, tarea_id)
+        assert det["puedo"]["decidir"] and det["resumen"]["aprobadorDeTurno"] == d.aprob2.id
+        assert det["resumen"]["momento"] == "revision"
+        # Se sigue mostrando tal cual se guardó.
+        assert det["fases"][0]["versiones"][0]["decisiones"][0]["decision"] == "aprobada-con-cambios"
+        # Lucía ya decidió: no le toca otra vez.
+        assert (await _decidir(lucia, version, "aprobada")).status_code == 403
+        # Aprueba el último: la versión y la fase quedan aprobadas, la tarea hecha.
+        assert (await _decidir(aprob2, version, "aprobada")).status_code == 200
+        assert await _estado(d, tarea_id) == "hecha"
+        det = await _detalle(lider, tarea_id)
+        assert det["resumen"]["momento"] == "aprobada"
+        assert det["fases"][0]["versiones"][0]["estado"] == "aprobada"
+        assert (await _tarjeta(lider, tarea_id))["columna"] == "finalizado"
+        aviso = (await _avisos(d, d.a1, tarea_id))[-1].mensaje
+        assert "aprobó la ronda 1" in aviso and "con cambios" not in aviso and "justes" not in aviso
+        # El retrabajo la cuenta: una fase aprobada en la ronda 1.
+        r = await lider.get("/calendario/entregas/metricas", params={"mundo": MUNDO})
+        assert r.status_code == 200, r.text
+        assert r.json()["fases"] >= 1 and r.json()["rondasPromedio"] >= 1
     correr(prueba)
 
 

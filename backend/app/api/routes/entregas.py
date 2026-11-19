@@ -6,8 +6,7 @@ tablero de tarjetas estilo Trello (0070).
   GET    /calendario/tareas/{id}/entregas     — todo: fases, rondas, imágenes (los ids), marcas, decisiones
   POST   /calendario/tareas/{id}/versiones    — entregar una ronda (multipart: imágenes y/o un link)
   POST   /calendario/tareas/{id}/mover        — arrastrar la tarjeta a otra columna del tablero
-  POST   /calendario/versiones/{id}/decision  — aprobar, aprobar con cambios o pedir cambios
-  PATCH  /calendario/marcas/{id}              — tildar (o destildar) una marca como corregida
+  POST   /calendario/versiones/{id}/decision  — aprobar o pedir cambios
   GET    /calendario/entregas/imagenes/{id}   — una imagen (?tam=mini|grande)
   GET    /calendario/entregas?mundo=&rev=     — el tablero del mundo (5 columnas) y el retrabajo
   GET    /calendario/entregas/archivadas      — más de Archivado ("Ver más")
@@ -31,6 +30,11 @@ del servidor:
 - Decide el aprobador al que le toca; quien tiene `calendario.tareas` puede
   decidir por él como respaldo. Nadie decide sobre lo que subió. Una cuenta
   externa no aprueba: no se la puede poner en la cadena ni decide.
+- Las decisiones son dos: aprobar o pedir cambios. «Aprobado con cambios» (y
+  con él las marcas de tipo "ajuste" y la ruta para tildarlas sueltas) se
+  sacó el 19/11/2026 (Ivan: "me resulta raro ese botón. No creo que sume
+  nada"). Las decisiones y marcas viejas quedan en la base y se siguen
+  leyendo (ver reglas.APRUEBAN).
 - La decisión puede llevar una nota interna (0069): la ve el equipo, nunca la
   agencia (ni en la tarea ni en el aviso). Las marcas y el comentario sí, que
   son para ella.
@@ -576,7 +580,6 @@ async def ver_entregas(
             "devolver": not externo and reglas.puede_devolver(
                 current_user.id, _puede_gestionar_tareas(current_user), list(entrega.aprobadores or []), entrega.momento,
             ),
-            "tildarMarcas": entrega_yo or _puede_gestionar_tareas(current_user),
             # A qué columnas del tablero la puede llevar (ver reglas.movimiento).
             "mover": reglas.destinos_posibles(
                 columna, quien, hay_versiones=bool(versiones), vuelve_a=reglas.columna_al_desarchivar(entrega),
@@ -894,7 +897,11 @@ class MarcaNueva(BaseModel):
 
 
 class DecisionNueva(BaseModel):
-    decision: Literal["aprobada", "aprobada-con-cambios", "cambios"]
+    # 'aprobada' o 'cambios' (reglas.DECISIONES). Es un texto y no un Literal
+    # a propósito: así el 422 de «aprobado con cambios» (que ya no existe,
+    # 19/11/2026) lleva un mensaje para la persona y no el genérico de
+    # pydantic. Lo controla reglas.validar_decision al decidir.
+    decision: str = Field(..., max_length=40)
     # Lo que lee la agencia, con las marcas.
     comentario: str | None = Field(None, max_length=5000)
     marcas: list[MarcaNueva] = Field(default_factory=list, max_length=MAX_MARCAS)
@@ -909,6 +916,10 @@ async def decidir(
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
+    try:
+        decision = reglas.validar_decision(payload.decision)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     version = await db.get(CalendarioVersion, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Esa versión ya no existe")
@@ -929,7 +940,7 @@ async def decidir(
             detail="Esta tarjeta está archivada: para decidirla, el equipo tiene que sacarla del archivo",
         )
     resultado, avisados = await _aplicar_decision(
-        db, current_user, tarea, barra, entrega, version, payload.decision,
+        db, current_user, tarea, barra, entrega, version, decision,
         comentario=payload.comentario, marcas=payload.marcas, nota_interna=payload.notaInterna,
     )
     resumen = await _resumen(db, tarea.id)
@@ -1020,17 +1031,20 @@ async def _aplicar_decision(
     entrega: CalendarioEntrega, version: CalendarioVersion, decision: str, *,
     comentario: str | None, marcas: list, nota_interna: str | None,
 ) -> tuple[str, int]:
-    """Aprobar, aprobar con cambios o pedir cambios sobre la versión que
-    espera, con la tarea y la entrega ya bloqueadas. Es lo mismo desde el
-    revisor (POST /decision) que arrastrando la tarjeta en el tablero
-    (POST /mover): las reglas de la cadena son una sola. No hace commit.
-    Devuelve (resultado de la versión, a cuántos se avisó)."""
+    """Aprobar o pedir cambios sobre la versión que espera, con la tarea y la
+    entrega ya bloqueadas. Es lo mismo desde el revisor (POST /decision) que
+    arrastrando la tarjeta en el tablero (POST /mover): las reglas de la
+    cadena son una sola. No hace commit. Devuelve (resultado de la versión, a
+    cuántos se avisó). `decision` ya viene validada (reglas.validar_decision):
+    'aprobada' o 'cambios'."""
     comentario = (comentario or "").strip() or None
     nota_interna = (nota_interna or "").strip() or None
     if decision == "aprobada" and marcas:
+        # Con marcas no hay aprobación: desde el 19/11/2026 una marca es
+        # siempre algo que la agencia tiene que corregir en otra ronda.
         raise HTTPException(
             status_code=422,
-            detail="Con marcas, elegí «Aprobado con cambios» o «Pedir cambios»: «Aprobar» las perdería",
+            detail="Con marcas, elegí «Pedir cambios»: «Aprobar» las perdería",
         )
     if decision != "aprobada" and not marcas and not comentario:
         # La nota interna no cuenta: quien entrega no la ve, y no sabría qué cambiar.
@@ -1062,13 +1076,15 @@ async def _aplicar_decision(
     hay = (await db.execute(
         select(func.coalesce(func.max(CalendarioMarca.numero), 0)).where(CalendarioMarca.version_id == version.id)
     )).scalar_one()
-    tipo_marca = "cambio" if decision == "cambios" else "ajuste"
     de_la_ia: dict[str, tuple[str, int]] = {}
     for i, m in enumerate(marcas, 1):
         marca_id = reglas.nuevo_id("mk")
+        # Solo hay marcas de tipo "cambio" (las tilda la agencia al
+        # reentregar). El tipo "ajuste" era el del aprobado con cambios: ya no
+        # se crea (19/11/2026); la columna queda por las marcas viejas.
         db.add(CalendarioMarca(
             id=marca_id, version_id=version.id, imagen_id=m.imagenId, tarea_id=tarea.id,
-            numero=hay + i, x=m.x, y=m.y, texto=m.texto, tipo=tipo_marca, autor_id=current_user.id,
+            numero=hay + i, x=m.x, y=m.y, texto=m.texto, tipo="cambio", autor_id=current_user.id,
         ))
         if m.observacionIA:
             de_la_ia[m.observacionIA] = (marca_id, hay + i)
@@ -1098,8 +1114,6 @@ async def _aplicar_decision(
     # → a la agencia").
     quien = _quien(current_user)
     quienes_la_hacen = await reglas.destinatarios_de_la_tarjeta(db, tarea, barra.mundo)
-    nombres = await _nombres(db, [entrega.aprobador_de_turno_id])
-    ajustes = [m.texto for m in marcas] + ([comentario] if comentario and not marcas else [])
     avisados = 0
 
     async def avisar(uid: int | None, mensaje: str, evento: str) -> None:
@@ -1110,21 +1124,12 @@ async def _aplicar_decision(
             avisados += 1
 
     if resultado == "revision":
-        # Aprobó y sigue la cadena: le toca al siguiente.
+        # Aprobó y sigue la cadena: le toca al siguiente. A quien entrega no
+        # se le avisa: no tiene nada que hacer todavía, y sería ruido.
         siguiente = entrega.aprobador_de_turno_id
         await avisar(siguiente, reglas.mensaje_para_revisar(
             "", version.ronda, fase.nombre, tarea.titulo, barra.nombre, aprobo_antes=quien,
         ), f"revisar-{siguiente}")
-        # Un "aprobado con cambios" en el medio le interesa ya a quien entrega
-        # (puede ir aplicando los ajustes). Un "aprobado" en el medio no: no
-        # tiene nada que hacer todavía, y sería ruido.
-        if decision == "aprobada-con-cambios":
-            for uid in quienes_la_hacen:
-                await avisar(uid, reglas.mensaje_de_aprobacion(
-                    quien, version.ronda, fase.nombre, tarea.titulo, con_cambios=True, ajustes=ajustes,
-                    siguiente_fase=None, sigue_revisando=nombres.get(siguiente, "el siguiente aprobador"),
-                    terminada=False,
-                ), f"decision-{orden}")
     elif resultado == "cambios":
         for uid in quienes_la_hacen:
             await avisar(uid, reglas.mensaje_de_cambios(
@@ -1138,7 +1143,6 @@ async def _aplicar_decision(
         for uid in quienes_la_hacen:
             await avisar(uid, reglas.mensaje_de_aprobacion(
                 quien, version.ronda, fase.nombre, tarea.titulo,
-                con_cambios=decision == "aprobada-con-cambios", ajustes=ajustes,
                 siguiente_fase=siguiente_fase, sigue_revisando=None, terminada=terminada,
             ), "aprobada")
         # Finalizada: además, a quien la pidió (16/11/2026).
@@ -1310,31 +1314,9 @@ async def _mover_a_mano(
     tarea.estado = "pendiente" if a == "ingresado" else "en-proceso"
 
 
-class MarcaCambios(BaseModel):
-    corregida: bool
-
-
-@router.patch("/marcas/{marca_id}")
-async def tildar_marca(
-    marca_id: str,
-    payload: MarcaCambios,
-    current_user: User = Depends(require_permission("calendario.view")),
-    db: AsyncSession = Depends(get_db),
-):
-    """Tildar suelto un ajuste ("aprobado con cambios") como aplicado, sin
-    entregar otra ronda. Lo hace quien entrega, o quien lidera."""
-    marca = await db.get(CalendarioMarca, marca_id)
-    if marca is None:
-        raise HTTPException(status_code=404, detail="Esa marca ya no existe")
-    tarea, _ = await _tarea_y_barra(db, marca.tarea_id, current_user)
-    if not puede_entregar(current_user, tarea) and not _puede_gestionar_tareas(current_user):
-        raise HTTPException(status_code=403, detail="Tilda las marcas quien entrega la pieza")
-    marca.corregida = payload.corregida
-    marca.corregida_at = datetime.now(timezone.utc) if payload.corregida else None
-    if not payload.corregida:
-        marca.corregida_en_version_id = None
-    await db.commit()
-    return {"id": marca_id, "corregida": marca.corregida}
+# Hasta el 19/11/2026 acá había PATCH /calendario/marcas/{id}, para tildar
+# suelto un "ajuste" del aprobado con cambios. Se fue con él: las marcas que
+# quedan ("cambio") se tildan al reentregar (ver `entregar`, `corregidas`).
 
 
 # ---------------------------------------------------------------------------

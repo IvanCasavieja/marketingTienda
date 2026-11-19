@@ -213,8 +213,10 @@ class CalendarioMarca(Base):
     cae en el mismo lugar se vea la imagen del tamaño que se vea.
 
     'cambio' sale de "Pedir cambios": la agencia lo tilda al reentregar.
-    'ajuste' sale de "Aprobado con cambios": la versión quedó aprobada y esto
-    queda anotado para que la agencia lo aplique en el archivo final."""
+    'ajuste' salía de "Aprobado con cambios" (la versión quedaba aprobada y
+    esto anotado para el archivo final): esa decisión se sacó el 19/11/2026 y
+    ya no se crean marcas de este tipo. Las que hay quedan como historia (no
+    hace falta migrar nada: la columna es un texto)."""
 
     __tablename__ = "calendario_marcas"
 
@@ -234,14 +236,14 @@ class CalendarioMarca(Base):
     x: Mapped[float] = mapped_column(Float, nullable=False)
     y: Mapped[float] = mapped_column(Float, nullable=False)
     texto: Mapped[str] = mapped_column(Text, nullable=False)
-    # 'cambio' | 'ajuste'
+    # 'cambio' (las nuevas, siempre) | 'ajuste' (solo las de antes del 19/11/2026)
     tipo: Mapped[str] = mapped_column(String(10), nullable=False, default="cambio")
     autor_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     corregida: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # La versión en la que la agencia dijo que la corrigió (o null si la
-    # tildó suelta, como un ajuste de la última fase).
+    # La versión en la que la agencia dijo que la corrigió (null en las
+    # viejas que se tildaron sueltas, cuando existían los ajustes).
     corregida_en_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     corregida_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -266,7 +268,8 @@ class CalendarioDecision(Base):
     )
     # El lugar en la cadena cuando se decidió (0 = el primero).
     orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # 'aprobada' | 'aprobada-con-cambios' | 'cambios'
+    # 'aprobada' | 'cambios'. Las de antes del 19/11/2026 pueden ser
+    # 'aprobada-con-cambios': se leen como aprobadas (ver reglas.APRUEBAN).
     decision: Mapped[str] = mapped_column(String(24), nullable=False)
     # Lo que ve la agencia: el comentario y las marcas son justamente para ella.
     comentario: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -514,13 +514,9 @@ def test_entrega_una_ronda_de_lo_suyo_y_nada_mas():
     correr(prueba)
 
 
-def test_tilda_las_marcas_de_lo_suyo_y_nada_mas():
-    async def prueba(d):
-        a1 = Cliente(d.http, d.a1)
-        assert (await a1.patch(f"/calendario/marcas/{d.mk_mia.id}", json={"corregida": True})).status_code == 200
-        assert (await a1.patch(f"/calendario/marcas/{d.mk_fuera.id}", json={"corregida": True})).status_code == 200
-        assert (await a1.patch(f"/calendario/marcas/{d.mk_b1.id}", json={"corregida": True})).status_code == 404
-    correr(prueba)
+# Hasta el 19/11/2026 acá se probaba PATCH /calendario/marcas/{id} (tildar
+# suelto un ajuste del aprobado con cambios). La ruta se fue con esa decisión:
+# las marcas se tildan al reentregar (`corregidas`, probado arriba).
 
 
 def test_el_tablero_solo_lo_suyo_y_su_propio_retrabajo():

@@ -3,10 +3,15 @@
 Pedido de Ivan (15/11/2026): una tarea "tiene fase 1, fase 2, fase 3…; se
 entrega, se aprueba o vuelve con correcciones, la agencia devuelve con las
 correcciones aplicadas, puede volver otra vez, hasta que se aprueba". Más lo
-que aprobó encima: marcar la corrección sobre la pieza, "aprobado con
-cambios", el pedido según el tipo de pieza, la aprobación en cadena y medir el
-retrabajo. Las tablas están en app/models/entregas.py; las rutas, en
-app/api/routes/entregas.py.
+que aprobó encima: marcar la corrección sobre la pieza, el pedido según el
+tipo de pieza, la aprobación en cadena y medir el retrabajo. Las tablas están
+en app/models/entregas.py; las rutas, en app/api/routes/entregas.py.
+
+Hubo un "aprobado con cambios" (aprobar y dejar anotados ajustes chicos sin
+otra ronda) y se sacó el 19/11/2026 (Ivan: "me resulta raro ese botón. No
+creo que sume nada"). Quedan dos decisiones: aprobar o pedir cambios. Las
+decisiones viejas guardadas así se siguen leyendo como aprobadas (ver
+APRUEBAN).
 
 Lo de arriba de este archivo es puro (sin base) a propósito: las reglas del
 flujo —a quién le toca, cuándo una versión queda aprobada, qué pasa con la
@@ -17,8 +22,8 @@ El flujo, en corto:
 1. Quien lidera marca que la tarea lleva entregas: tipo de pieza, brief,
    fases y la cadena de aprobadores. La primera fase queda en curso.
 2. El responsable de la tarea entrega: una versión (ronda 1) con imágenes.
-3. La revisa el primer aprobador de la cadena. Si aprueba (o "aprueba con
-   cambios"), pasa al siguiente; cuando aprueba el último, la versión queda
+3. La revisa el primer aprobador de la cadena. Si aprueba, pasa al
+   siguiente; cuando aprueba el último, la versión queda
    aprobada, la fase también y arranca la siguiente. Si cualquiera pide
    cambios, la versión vuelve: el responsable entrega la ronda 2, tildando
    qué marcas corrigió, y la cadena arranca de nuevo desde el primero (lo
@@ -106,8 +111,14 @@ DIAS_DE_RETENCION = 30
 DIAS_DE_RETENCION_FINAL = 120
 
 ORIGEN = "calendario_entrega"
-DECISIONES = ("aprobada", "aprobada-con-cambios", "cambios")
-APRUEBAN = ("aprobada", "aprobada-con-cambios")
+# Lo que se puede decidir sobre una versión. «Aprobado con cambios» se sacó
+# el 19/11/2026 (Ivan: "Sacá la funcionalidad 'aprobado con cambios'").
+DECISIONES = ("aprobada", "cambios")
+# La decisión vieja: no se acepta más, pero en la base hay decisiones de esta
+# semana guardadas así y se tienen que seguir leyendo como aprobadas (la
+# cadena, el retrabajo y la pantalla no se pueden romper por ellas).
+DECISION_VIEJA = "aprobada-con-cambios"
+APRUEBAN = ("aprobada", DECISION_VIEJA)
 MOMENTOS = ("produccion", "revision", "cambios", "aprobada")
 
 _LARGO_TEXTO = 300
@@ -285,6 +296,22 @@ def validar_imagen(datos: bytes, *, maximo: int = MAX_BYTES_IMAGEN, que: str = "
     if tipo is None:
         raise ValueError(f"{que} no es una imagen JPG, PNG ni WebP")
     return tipo
+
+
+def validar_decision(decision: str) -> str:
+    """La decisión sobre una versión: 'aprobada' o 'cambios'; si no, ValueError
+    con el mensaje para la persona. Una pantalla vieja (o una pestaña abierta
+    desde antes) que todavía mande «aprobado con cambios» recibe el porqué y
+    qué elegir en su lugar, no un 422 mudo (19/11/2026)."""
+    d = (decision or "").strip()
+    if d == DECISION_VIEJA:
+        raise ValueError(
+            "«Aprobado con cambios» ya no existe: si hay algo para corregir, elegí «Pedir cambios»; "
+            "si está bien así, «Aprobar». Recargá la página."
+        )
+    if d not in DECISIONES:
+        raise ValueError("Esa decisión no existe: elegí «Aprobar» o «Pedir cambios»")
+    return d
 
 
 # ---------------------------------------------------------------------------
@@ -728,9 +755,9 @@ def metricas_de_retrabajo(filas: Iterable[tuple[str, int | None, str, int]]) -> 
     """Cuánto retrabajo hubo, sobre las fases aprobadas.
 
     Cada fila es una fase aprobada: (tipo de pieza, quién entregó la versión
-    aprobada, mundo, en qué ronda se aprobó). "Aprobado con cambios" cuenta
-    como aprobada en esa ronda: es justamente lo que evita una ronda más por
-    un error de tilde.
+    aprobada, mundo, en qué ronda se aprobó). Una versión que se aprobó con la
+    decisión vieja («aprobado con cambios», hasta el 19/11/2026) es una
+    versión aprobada como cualquiera: cuenta en su ronda.
 
     Devuelve el total y el desglose por tipo de pieza, por responsable y por
     mundo, cada uno con cuántas fases, las rondas promedio hasta aprobar y el
@@ -787,14 +814,13 @@ def mensaje_de_cambios(quien: str, ronda: int, fase: str, tarea: str, marcas: in
 
 
 def mensaje_de_aprobacion(
-    quien: str, ronda: int, fase: str, tarea: str, *, con_cambios: bool, ajustes: list[str],
+    quien: str, ronda: int, fase: str, tarea: str, *,
     siguiente_fase: str | None, sigue_revisando: str | None, terminada: bool,
 ) -> str:
-    """Al responsable. "Aprobado con cambios" lleva los ajustes; si con esto
-    se aprobó la fase, dice qué sigue. Uno solo por decisión."""
-    texto = f"{quien} aprobó{' con cambios' if con_cambios else ''} la ronda {ronda} de {fase} de «{tarea}»."
-    if ajustes:
-        texto += " Ajustes: " + "; ".join(f"{i}) {t}" for i, t in enumerate(ajustes, 1)) + "."
+    """Al responsable, cuando se aprobó la fase (o cuando la aprobó el último
+    y sigue otra persona): dice qué sigue. Uno solo por decisión. Hasta el
+    19/11/2026 llevaba también los "ajustes" del aprobado con cambios."""
+    texto = f"{quien} aprobó la ronda {ronda} de {fase} de «{tarea}»."
     if sigue_revisando:
         texto += f" Ahora la revisa {sigue_revisando}."
     elif siguiente_fase:
