@@ -93,5 +93,19 @@ igual('lo que no tiene la forma esperada no se muestra, y una marca repetida val
   ])).entries()],
   [['mk-2', falta]])
 
+// Sin observaciones, pero con «IA: falta» al lado de una marca de la ronda
+// anterior: el título no puede decir «no encontró nada» (revisión del
+// 19/11/2026). Como en el panel: cuenta lo que se muestra al lado de las marcas.
+const conCambios = (r: RevisionIA) => cambiosPorMarca(r).size > 0
+igual('con lo de la ronda anterior, sin observaciones dice que no hay nada nuevo', [
+  tituloRevisionIA([], conCambios(lista([falta]))),
+  tituloRevisionIA([], conCambios(lista([]))),
+  tituloRevisionIA([], conCambios(lista())),
+  tituloRevisionIA([obs('a')], conCambios(lista([falta]))),
+], [
+  'La IA no encontró nada nuevo para marcar', 'La IA no encontró nada para marcar',
+  'La IA no encontró nada para marcar', 'La IA encontró 1 cosa para mirar',
+])
+
 if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
 console.log('\nrevision-ia: todo bien')

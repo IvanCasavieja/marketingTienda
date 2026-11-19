@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { AlertTriangle, FileArchive, Link2, Loader2, MapPin, MessageSquarePlus, RotateCcw, Sparkles, Stamp, X } from 'lucide-react'
 import {
-  TIPO_OBSERVACION, archivoDe, ordenarObservaciones, textoRevisados, tieneLugar, tituloRevisionIA,
+  TIPO_OBSERVACION, archivoDe, cambiosPorMarca, ordenarObservaciones, textoRevisados, tieneLugar, tituloRevisionIA,
   type ObservacionIA, type RevisionIA,
 } from '@/lib/calendario/revision-ia'
 
@@ -69,6 +69,9 @@ export function PanelRevisionIA({
   // Sin imágenes subidas y sin poder abrir el link: no miró nada. Que no
   // diga "no encontró nada", que suena a que estaba todo bien.
   const nadaMirado = imagenes.length === 0 && revisados.length === 0
+  // Si al lado de las marcas de la ronda anterior dice «IA: falta», sin
+  // observaciones el título dice «nada nuevo», no «nada» (19/11/2026).
+  const conCambiosPedidos = cambiosPorMarca(revision).size > 0
   const sinImagenes = imagenes.length === 0
   const numeroDeImagen = (id: string | null) => {
     const i = imagenes.findIndex(im => im.id === id)
@@ -90,7 +93,7 @@ export function PanelRevisionIA({
         <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" aria-hidden />
         <div className="min-w-0 flex-1">
           <h4 id="revision-ia-titulo" className="text-sm font-bold leading-snug text-slate-900 dark:text-slate-100">
-            {nadaMirado && obs.length === 0 ? 'La IA no pudo mirar la pieza' : tituloRevisionIA(obs)}
+            {nadaMirado && obs.length === 0 ? 'La IA no pudo mirar la pieza' : tituloRevisionIA(obs, conCambiosPedidos)}
           </h4>
           <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400">
             {nadaMirado && obs.length === 0
