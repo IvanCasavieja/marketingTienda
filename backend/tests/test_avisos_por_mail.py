@@ -54,3 +54,11 @@ def test_a_quien_le_sale():
     assert not apm.lo_quiere(SimpleNamespace(**{**persona, "is_active": False}))
     assert not apm.lo_quiere(SimpleNamespace(**{**persona, "email": " "}))
     assert not apm.lo_quiere(None)
+
+
+def test_lo_del_tablero_queda_solo_en_la_campanita():
+    """Ivan, 19/11/2026: el tope es de 3.000 mails por mes y el tablero
+    (entregas, rondas, aprobaciones, comentarios) se lo comería."""
+    assert not apm.va_por_mail("calendario_entrega")
+    for otro in ("calendario_tarea", "calendario_aviso", "calendario_accion", "colocacion_pedido", "campaign_alert", None):
+        assert apm.va_por_mail(otro), otro

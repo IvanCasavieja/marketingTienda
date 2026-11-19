@@ -69,8 +69,9 @@ export default function PerfilPage() {
   );
 }
 
-/** "Recibir los avisos por mail": todo lo que llega a la campanita llega
- *  también al mail de la cuenta (Ivan, 18/11/2026). */
+/** "Recibir los avisos por mail": lo que llega a la campanita llega también
+ *  al mail de la cuenta (Ivan, 18/11/2026), menos lo del tablero, que queda
+ *  solo en la campanita (19/11/2026: tope de 3.000 mails por mes). */
 function AvisosPorMail({ prendidos, email }: { prendidos: boolean; email: string }) {
   const { refetch } = useCurrentUser();
   const [valor, setValor] = useState<boolean | null>(null);
@@ -102,7 +103,7 @@ function AvisosPorMail({ prendidos, email }: { prendidos: boolean; email: string
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Recibir los avisos por mail</p>
           <p className="mt-0.5 text-[13px] leading-snug text-slate-500 dark:text-slate-400">
-            Todo lo que llega a la campanita te llega también a <span className="font-medium text-slate-700 dark:text-slate-300">{email}</span>, al momento.
+            Lo que llega a la campanita te llega también a <span className="font-medium text-slate-700 dark:text-slate-300">{email}</span>, al momento. Lo del tablero (entregas, cambios, aprobaciones y comentarios) queda solo en la campanita.
           </p>
         </div>
         <button

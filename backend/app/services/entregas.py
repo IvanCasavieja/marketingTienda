@@ -867,7 +867,11 @@ async def avisar(db: AsyncSession, user_id: int | None, mensaje: str, ref: str) 
     )).scalar_one_or_none()
     if ya is not None:
         return False
-    db.add(Notificacion(user_id=user_id, tipo=ORIGEN, mensaje=mensaje, origen_tipo=ORIGEN, origen_ref=ref))
+    # Solo campanita, nunca mail (Ivan, 19/11/2026: el tope es de 3.000 mails
+    # por mes y el tablero se lo comería). Ver avisos_por_mail.SOLO_CAMPANITA.
+    db.add(Notificacion(
+        user_id=user_id, tipo=ORIGEN, mensaje=mensaje, origen_tipo=ORIGEN, origen_ref=ref, mail_pendiente=False,
+    ))
     return True
 
 

@@ -12,6 +12,10 @@ Resend, SMTP o SendGrid). Así guardar algo no espera al mail, y si el
 proveedor falla se reintenta (hasta MAX_INTENTOS veces).
 
 No se mandan:
+- los del tablero (tarjeta nueva, entregas, cambios pedidos, aprobaciones y
+  comentarios de las tarjetas): quedan solo en la campanita. Ivan, 19/11/2026:
+  hay un tope de 3.000 mails por mes y el tablero solo se lo comería
+  (SOLO_CAMPANITA);
 - a quien apagó los mails, no tiene mail o ya no está activo (queda en la
   campanita igual);
 - los avisos de hace más de MAX_ATRASO: si el servidor estuvo caído un día,
@@ -44,6 +48,16 @@ MAX_ATRASO = timedelta(hours=24)
 # Resend deja 2 pedidos por segundo en el plan gratis.
 _PAUSA_ENTRE_MAILS = 0.6
 _LARGO_DEL_ASUNTO = 90
+
+# Los avisos que NUNCA salen por mail, solo en la campanita: los del tablero
+# (app/services/entregas.py, ORIGEN). Ya nacen sin mail pendiente (ver
+# entregas.avisar); esto es el freno por si alguno quedara en la cola.
+SOLO_CAMPANITA = frozenset({"calendario_entrega"})
+
+
+def va_por_mail(origen_tipo: str | None) -> bool:
+    """Si un aviso de este origen puede salir por mail. Pura."""
+    return origen_tipo not in SOLO_CAMPANITA
 
 
 def destino(n) -> str:
@@ -193,7 +207,7 @@ async def mandar_pendientes(db: AsyncSession, ahora: datetime | None = None, env
             continue
         mensaje, creado, origen_tipo, origen_ref, item, intentos, usuario = fila
         viejo = creado is not None and ahora - creado > MAX_ATRASO
-        if not configurado or viejo or not lo_quiere(usuario):
+        if not configurado or viejo or not va_por_mail(origen_tipo) or not lo_quiere(usuario):
             continue
         n = SimpleNamespace(origen_tipo=origen_tipo, origen_ref=origen_ref, watchlist_item_id=item)
         url = f"{settings.FRONTEND_URL.rstrip('/')}{destino(n)}"
