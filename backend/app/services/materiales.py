@@ -442,7 +442,7 @@ async def _pedir(cliente: httpx.AsyncClient, metodo: str, url: str | httpx.URL, 
     por `_host_publico`, se controla la IP real de la conexión y el cuerpo se
     corta en `tope` bytes. Si un salto lleva a otro servidor, el token no
     viaja (`_CABECERAS_PRIVADAS`). `solo_destino`: solo importa adónde lleva
-    el link (uno corto de WeTransfer): el cuerpo no se lee."""
+    (la página de un link de WeTransfer): el cuerpo no se lee."""
     actual = httpx.URL(url)
     cabeceras = dict(cabeceras or {})
     for _ in range(MAX_REDIRECCIONES + 1):
@@ -640,6 +640,10 @@ async def _bajar_wetransfer(cliente: httpx.AsyncClient, url: str) -> tuple[Respu
     if r.estado != 200:
         raise _motivo_wetransfer(r)
     info = _json(r)
+    if not info:
+        # Una página en vez del JSON (¿una verificación de "no soy un robot"?
+        # no se vio nunca, pero su web la tiene): que no diga "venció".
+        raise NoSePudoAbrir("WeTransfer contestó algo que la plataforma no entiende (¿cambió su página?)")
     # Con contraseña contesta 200 igual, pero sin la lista de archivos.
     if info.get("password_protected"):
         raise _con_contrasena("WeTransfer")

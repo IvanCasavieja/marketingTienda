@@ -882,6 +882,9 @@ _CON_CONTRASENA = "la transferencia de WeTransfer tiene contraseña: pedile a la
     (httpx.Response(200, json={"state": "downloadable", "size": 150 * 1024 * 1024}), None,
      "la transferencia de WeTransfer pesa 150 MB y la plataforma baja hasta 40 MB"),
     (httpx.Response(429, headers={"retry-after": "30"}), None, "WeTransfer pidió esperar"),
+    # Una página en vez del JSON: no se dice que venció.
+    (httpx.Response(200, text="<html>¿Sos un robot?</html>"), None,
+     "WeTransfer contestó algo que la plataforma no entiende"),
     (None, httpx.Response(403, json={"message": "No download access to this Transfer"}),
      "WeTransfer pide una cuenta o verificar el mail"),
     (None, httpx.Response(400, json={"error": "invalid_transfer"}), "la transferencia de WeTransfer venció o la borraron"),
