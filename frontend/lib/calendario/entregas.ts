@@ -22,7 +22,10 @@ export type TipoPieza = 'cenefa' | 'mailing' | 'banner' | 'redes' | 'otro'
 export type MomentoEntrega = 'produccion' | 'revision' | 'cambios' | 'aprobada'
 export type EstadoFase = 'pendiente' | 'en-curso' | 'aprobada'
 export type EstadoVersion = 'revision' | 'aprobada' | 'cambios'
-export type TipoDecision = 'aprobada' | 'aprobada-con-cambios' | 'cambios'
+/** Dos decisiones y nada más (19/11/2026): se sacó «Aprobado con cambios»,
+ *  que confundía. Con marcas la pieza vuelve a la agencia; sin marcas, se
+ *  aprueba. El servidor hace lo mismo. */
+export type TipoDecision = 'aprobada' | 'cambios'
 
 /** Las columnas del tablero estilo Trello (16/11/2026). La calcula el
  *  servidor (backend/app/services/entregas.py: columna_de). */
@@ -55,8 +58,9 @@ export type Marca = {
   x: number
   y: number
   texto: string
-  /** 'cambio' sale de "Pedir cambios"; 'ajuste', de "Aprobado con cambios". */
-  tipo: 'cambio' | 'ajuste'
+  // Antes había dos tipos de marca ('cambio' y 'ajuste', la de «Aprobado con
+  // cambios»). Desde el 19/11/2026 toda marca es un cambio que vuelve a la
+  // agencia: el tipo ya no se mira (si el servidor lo manda, se ignora).
   autor: number | null
   corregida: boolean
   corregidaEn: string | null
@@ -137,7 +141,8 @@ export type DetalleEntregas = {
     /** A qué columnas del tablero la puede llevar. */
     mover?: Columna[]
   }
-  limites: { imagenes: number; bytesImagen: number; marcas: number }
+  /** `bytesZip`: el tope del ZIP de la entrega (19/11/2026; un servidor de antes no lo manda). */
+  limites: { imagenes: number; bytesImagen: number; marcas: number; bytesZip?: number }
   /** La conversación de la tarjeta, al costado como en Trello (17/11/2026). */
   comentarios?: ComentarioDeTarjeta[]
 }
@@ -290,7 +295,6 @@ export const TONO_MOMENTO: Record<MomentoEntrega, string> = {
 
 export const ETIQUETA_DECISION: Record<TipoDecision, string> = {
   aprobada: 'Aprobó',
-  'aprobada-con-cambios': 'Aprobó con cambios',
   cambios: 'Pidió cambios',
 }
 
@@ -401,6 +405,14 @@ export function marcasPendientes(fases: FaseDetalle[]): (Marca & { ronda: number
   return fases.flatMap(f => f.versiones.flatMap(v => v.marcas
     .filter(m => !m.corregida)
     .map(m => ({ ...m, ronda: v.ronda, fase: f.nombre }))))
+}
+
+/** "19/11": el día de una versión, para el renglón de cada ronda. */
+export function fechaDia(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 /** "15/11 14:32" */

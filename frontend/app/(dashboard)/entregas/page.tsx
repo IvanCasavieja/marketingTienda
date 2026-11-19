@@ -559,13 +559,17 @@ export default function TableroPage() {
                   // contenedor hace scroll de costado y cortaba el de afuera.
                   // Fondos grises: el texto secundario va en slate-600 (en
                   // slate-500 sobre slate-100 no llegaba a 4,5:1).
-                  className={`flex min-w-0 flex-1 flex-col rounded-2xl border p-2 transition-[box-shadow,background-color] md:min-w-[12.5rem] ${c.fondo} ${
+                  // Cada columna es una caja apoyada, como las secciones del
+                  // calendario: sombra, borde gris y arriba una línea gruesa
+                  // del color de su estado. Sin eso, en claro se fundían con
+                  // el fondo (Ivan, 19/11/2026).
+                  className={`flex min-w-0 flex-1 flex-col rounded-2xl border border-t-4 p-2 shadow-card transition-[box-shadow,background-color] md:min-w-[12.5rem] ${c.fondo} ${c.arriba} ${
                     activa === c.clave ? "" : "hidden md:flex"
                   } ${arrastre && destinoValido ? `border-dashed ${encima ? `ring-2 ring-inset ${c.destino} border-transparent` : "border-slate-400 dark:border-slate-500"}` : "border-slate-300 dark:border-slate-700"} ${
                     arrastre && !destinoValido && c.clave !== arrastre.tarjeta.columna ? "opacity-60" : ""
                   }`}
                 >
-                  <div className="mb-2 px-1.5 pt-1">
+                  <div className="mb-2 border-b border-slate-300 px-1.5 pb-2 pt-1 dark:border-slate-700">
                     <h2 id={`col-${c.clave}`} className="flex items-center gap-2">
                       <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${c.punto}`} aria-hidden />
                       <span className="min-w-0 text-sm font-bold leading-tight text-slate-900 dark:text-slate-100">{c.titulo}</span>
@@ -576,7 +580,7 @@ export default function TableroPage() {
                     <p className="mt-0.5 pl-[1.125rem] text-xs text-slate-600 dark:text-slate-400">{c.bajada}</p>
                   </div>
                   {c.lista.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:text-slate-400">
+                    <p className="rounded-xl border border-dashed border-slate-400 bg-white/60 px-3 py-6 text-center text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-400">
                       {arrastre && destinoValido ? `Soltá acá: ${queHaceMover(arrastre.tarjeta.columna, c.clave)}` : "Nada por acá."}
                     </p>
                   ) : (

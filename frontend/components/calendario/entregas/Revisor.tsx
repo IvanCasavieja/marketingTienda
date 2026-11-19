@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import {
-  Check, CheckCheck, Columns2, ExternalLink, Link2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2, X,
+  Check, Columns2, ExternalLink, Link2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
@@ -10,7 +10,7 @@ import {
   fechaYHora, type DetalleEntregas, type Marca, type TipoDecision, type Version,
 } from '@/lib/calendario/entregas'
 import {
-  marcaDesdeObservacion, tieneLugar, type ObservacionIA, type RevisionIA,
+  marcaDesdeObservacion, textoConArchivo, tieneLugar, type ObservacionIA, type RevisionIA,
 } from '@/lib/calendario/revision-ia'
 import { ImagenConMarcas, Miniatura, type Pin } from './ImagenConMarcas'
 import { PanelRevisionIA } from './PanelRevisionIA'
@@ -52,7 +52,7 @@ function detalleDeError(e: unknown): string | null {
 function pinesDe(marcas: Marca[], imagenId: string): Pin[] {
   return marcas.filter(m => m.imagenId === imagenId).map(m => ({
     clave: m.id, numero: m.numero, x: m.x, y: m.y, texto: m.texto,
-    tono: m.corregida ? 'corregida' : m.tipo === 'ajuste' ? 'ajuste' : 'cambio',
+    tono: m.corregida ? 'corregida' : 'cambio',
   }))
 }
 
@@ -61,9 +61,15 @@ function pinesDe(marcas: Marca[], imagenId: string): Pin[] {
  * (queda un pin numerado con su texto) y decidir. Se puede comparar con la
  * versión anterior: lado a lado en la notebook, con pestañas en el teléfono.
  *
- * Los tres botones están siempre, y la línea de arriba dice cuál va: sin
- * marcas, «Aprobar»; con marcas, «Aprobado con cambios» si son detalles (no
- * hace falta otra ronda) o «Pedir cambios» si tiene que volver.
+ * Dos botones y nada más (19/11/2026: se sacó «Aprobado con cambios», que
+ * confundía): sin marcas, «Aprobar»; con marcas, «Pedir cambios» y la pieza
+ * vuelve a la agencia. La línea de arriba de los botones dice cuál va.
+ *
+ * Lo que encontró la IA no aparece solo (Ivan, 19/11/2026: "quizás está
+ * demasiado inteligencia artificial y puede llegar a provocar confusión"):
+ * hay un botón discreto arriba, "Ver lo que encontró la IA (3)", y recién al
+ * tocarlo se muestra la lista. Cuándo se calcula no cambió (el servidor, al
+ * entregar): acá solo cambió cuándo se muestra.
  */
 export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -88,6 +94,10 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const verIA = !!detalle.puedo.verRevisionIA
   const [revisionIA, setRevisionIA] = useState<RevisionIA | null>(null)
   const [obsElegida, setObsElegida] = useState<string | null>(null)
+  // Si la persona pidió ver la lista de la IA (cerrada hasta que la toque).
+  const [mostrarIA, setMostrarIA] = useState(false)
+  // Las observaciones que se pasaron al comentario (ronda sin imágenes: no hay dónde marcar).
+  const [pasadas, setPasadas] = useState<string[]>([])
 
   useEffect(() => {
     if (!verIA) return
@@ -160,9 +170,15 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const hayParaQuienEntrega = hayMarcas || comentario.trim() !== ''
   const sinTexto = nuevas.findIndex(n => !n.texto.trim())
   // Lo que se pidió en la ronda anterior y si la agencia dice que lo corrigió.
-  const pedidoAntes = anterior?.faseId === version.faseId ? anterior.marcas.filter(m => m.tipo === 'cambio') : []
-  const ajustesPendientes = version.marcas.filter(m => m.tipo === 'ajuste')
+  const pedidoAntes = anterior?.faseId === version.faseId ? anterior.marcas : []
   const respaldoDe = detalle.puedo.comoRespaldo ? detalle.resumen.aprobadorDeTurno : null
+  // El botón que abre lo de la IA: qué dice según cómo viene la revisión.
+  const hayIA = verIA && !!revisionIA && revisionIA.estado !== 'nada'
+  const textoBotonIA = !revisionIA || revisionIA.estado === 'pendiente'
+    ? 'Revisar con IA'
+    : revisionIA.observaciones.length === 0
+      ? 'Ver la revisión de la IA'
+      : `Ver lo que encontró la IA (${revisionIA.observaciones.length})`
 
   function hayLugarParaOtraMarca(): boolean {
     if (nuevas.length + version.marcas.length >= detalle.limites.marcas) {
@@ -194,6 +210,14 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   /** "Hacer marca": una marca normal, del aprobador, con el texto de la IA
    *  (que puede corregir antes de mandar). Se manda con la decisión. */
   function convertir(o: ObservacionIA) {
+    if (version.imagenes.length === 0) {
+      // La ronda vino solo con el link (y la IA lo pudo bajar): no hay imagen
+      // donde marcar, así que va al comentario, que la agencia sí ve.
+      setComentario(prev => `${prev.trim() ? `${prev.trimEnd()}\n` : ''}- ${textoConArchivo(o)}`)
+      setPasadas(prev => (prev.includes(o.id) ? prev : [...prev, o.id]))
+      setObsElegida(null)
+      return
+    }
     if (!hayLugarParaOtraMarca()) return
     const m = marcaDesdeObservacion(o, version.imagenes, activa)
     const clave = nuevaClave()
@@ -280,28 +304,31 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         // que no sea el pin de la IA deja de mostrarlo.
         if (!clave.startsWith('ia-')) setObsElegida(null)
       }}
-      claseImagen={comparar ? 'max-h-[55vh]' : 'max-h-[62vh]'}
+      // La caja ocupa casi toda la pantalla (19/11/2026): la imagen, grande.
+      claseImagen={comparar ? 'max-h-[60vh]' : 'max-h-[70vh]'}
       etiqueta={`Ronda ${version.ronda}, imagen ${ordenActiva + 1}`}
     />
   )
-  const panelIA = verIA ? (
+  const panelIA = hayIA && mostrarIA ? (
     <PanelRevisionIA
       revision={revisionIA}
       imagenes={version.imagenes}
       elegida={obsElegida}
       convertidas={convertidas}
+      pasadas={pasadas}
       deshabilitado={!!enviando}
       onElegir={elegirObservacion}
       onConvertir={convertir}
       onDeshacer={deshacerConversion}
       onDescartar={descartarObservacion}
+      onCerrar={() => { setMostrarIA(false); setObsElegida(null) }}
     />
   ) : null
   const imagenVieja = imagenAnterior && anterior ? (
     <ImagenConMarcas
       imagenId={imagenAnterior}
       pines={pinesDe(anterior.marcas, imagenAnterior)}
-      claseImagen="max-h-[55vh]"
+      claseImagen="max-h-[60vh]"
       etiqueta={`La versión anterior (ronda ${anterior.ronda})`}
     />
   ) : null
@@ -316,18 +343,33 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
               La subió {nombre(version.subidaPor)} · {fechaYHora(version.fecha)}
             </p>
           </div>
-          {anterior && (
-            <button
-              type="button"
-              onClick={() => setComparar(v => !v)}
-              aria-pressed={comparar}
-              className={`flex min-h-[40px] items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition active:scale-95 ${
-                comparar ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              <Columns2 className="h-4 w-4" /> {comparar ? 'Dejar de comparar' : `Comparar con ${anterior.faseId === version.faseId ? `la ronda ${anterior.ronda}` : 'la fase anterior'}`}
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {hayIA && (
+              <button
+                type="button"
+                onClick={() => setMostrarIA(v => !v)}
+                aria-expanded={mostrarIA}
+                aria-controls="revision-ia"
+                className={`flex min-h-[40px] items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition active:scale-95 ${
+                  mostrarIA ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                <Sparkles className="h-4 w-4" /> {mostrarIA ? 'Ocultar lo de la IA' : textoBotonIA}
+              </button>
+            )}
+            {anterior && (
+              <button
+                type="button"
+                onClick={() => setComparar(v => !v)}
+                aria-pressed={comparar}
+                className={`flex min-h-[40px] items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition active:scale-95 ${
+                  comparar ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                <Columns2 className="h-4 w-4" /> {comparar ? 'Dejar de comparar' : `Comparar con ${anterior.faseId === version.faseId ? `la ronda ${anterior.ronda}` : 'la fase anterior'}`}
+              </button>
+            )}
+          </div>
         </div>
 
         {respaldoDe != null && (
@@ -412,6 +454,10 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
           </div>
         )}
 
+        {/* Lo que se pidió en la ronda anterior, para controlar que esté.
+            Desde el 19/11/2026 la agencia ya no tilda qué corrigió: la lista
+            va sin tilde, numerada como las marcas. Si una ronda vieja trae
+            tildes, se muestran. */}
         {pedidoAntes.length > 0 && (
           <section className="rounded-xl border border-slate-300 p-3 dark:border-slate-700">
             <h4 className="mb-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">Lo que se pidió en la ronda {anterior?.ronda}</h4>
@@ -420,14 +466,12 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                 const dice = version.corregidas.includes(m.id)
                 return (
                   <li key={m.id} className="flex items-start gap-2 text-sm">
-                    <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${dice ? 'bg-emerald-500 text-white' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200'}`}>
-                      {dice ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <X className="h-3.5 w-3.5" />}
+                    <span className={`mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold ${dice ? 'bg-emerald-500 text-white' : 'bg-brand-600 text-white'}`}>
+                      {dice ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : m.numero}
                     </span>
                     <span className="min-w-0 text-slate-700 dark:text-slate-300">
-                      <strong className="font-semibold">{m.numero}.</strong> {m.texto}
-                      <span className={`ml-1.5 text-xs font-semibold ${dice ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
-                        {dice ? 'dice que lo corrigió' : 'no lo marcó como corregido'}
-                      </span>
+                      {m.texto}
+                      {dice && <span className="ml-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">dice que lo corrigió</span>}
                     </span>
                   </li>
                 )
@@ -440,15 +484,6 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
           <p className="hidden rounded-xl border border-dashed border-slate-300 px-3 py-4 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400 lg:block">
             Tus marcas van a aparecer acá, para escribir qué hay que cambiar.
           </p>
-        )}
-
-        {ajustesPendientes.length > 0 && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-            <p className="font-semibold">Ya anotado por quien aprobó antes:</p>
-            <ul className="mt-0.5 list-inside list-disc">
-              {ajustesPendientes.map(m => <li key={m.id}>{m.numero}. {m.texto}</li>)}
-            </ul>
-          </div>
         )}
 
         {nuevas.length > 0 && (
@@ -547,7 +582,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             <div className="mb-2 flex items-start gap-2">
               <p className="flex-1 text-xs text-slate-600 dark:text-slate-400">
                 {hayMarcas
-                  ? '¿Son detalles? «Aprobado con cambios» (no hace falta otra ronda). ¿Tiene que volver? «Pedir cambios».'
+                  ? 'Con marcas, la pieza vuelve a la agencia: «Pedir cambios».'
                   : '¿Está bien? Aprobala. ¿Hay algo para cambiar? Tocá la imagen donde está.'}
               </p>
               <button
@@ -568,22 +603,14 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
               >
                 Cancelar
               </button>
-              <div className="grid flex-1 grid-cols-3 gap-2 sm:ml-auto sm:flex sm:flex-none">
+              <div className="grid flex-1 grid-cols-2 gap-2 sm:ml-auto sm:flex sm:flex-none">
                 <BotonDecision
                   onClick={() => void decidir('aprobada')} cargando={enviando === 'aprobada'}
                   deshabilitado={!!enviando || hayMarcas}
-                  titulo={hayMarcas ? 'Con marcas, elegí «Aprobado con cambios» o «Pedir cambios»' : undefined}
+                  titulo={hayMarcas ? 'Con marcas, la pieza vuelve a la agencia: «Pedir cambios»' : undefined}
                   clase="bg-emerald-600 text-white hover:bg-emerald-700"
                   icono={<Check className="h-4 w-4" strokeWidth={3} />}
                   texto="Aprobar"
-                />
-                <BotonDecision
-                  onClick={() => void decidir('aprobada-con-cambios')} cargando={enviando === 'aprobada-con-cambios'}
-                  deshabilitado={!!enviando || !hayParaQuienEntrega}
-                  titulo={!hayParaQuienEntrega ? 'Primero marcá en la imagen o escribí en el comentario qué ajustar' : undefined}
-                  clase="bg-amber-400 text-slate-950 hover:bg-amber-500"
-                  icono={<CheckCheck className="h-4 w-4" />}
-                  texto="Aprobado con cambios"
                 />
                 <BotonDecision
                   onClick={() => void decidir('cambios')} cargando={enviando === 'cambios'}

@@ -25,6 +25,11 @@ export type DefColumna = {
   punto: string
   /** El fondo suave de la columna, en claro y en oscuro. */
   fondo: string
+  /** El borde de arriba de la columna, del color de su estado: con el fondo
+   *  casi blanco y el borde gris, en claro no se veía dónde empezaba y
+   *  terminaba cada columna (Ivan, 19/11/2026: "tener bien delimitadas todas
+   *  las cosas, que generen su contraste con borde, sombras, etc."). */
+  arriba: string
   /** Cuando se arrastra encima y se puede soltar. */
   destino: string
 }
@@ -36,23 +41,28 @@ export const COLUMNAS_DEL_TABLERO: DefColumna[] = [
   {
     clave: 'ingresado', titulo: 'Ingresado', bajada: 'Nueva: todavía no se arrancó',
     punto: 'bg-slate-500', fondo: 'bg-slate-100 dark:bg-slate-900/70', destino: 'ring-slate-500 dark:ring-slate-400',
+    arriba: 'border-t-slate-500 dark:border-t-slate-400',
   },
   {
     clave: 'en-proceso', titulo: 'En proceso', bajada: 'La están trabajando',
     punto: 'bg-sky-500', fondo: 'bg-sky-50 dark:bg-sky-950/40', destino: 'ring-sky-600 dark:ring-sky-400',
+    arriba: 'border-t-sky-500 dark:border-t-sky-400',
   },
   {
     clave: 'esperando', titulo: 'Esperando feedback', bajada: 'Entregada: le toca al equipo',
     punto: 'bg-amber-500', fondo: 'bg-amber-50 dark:bg-amber-950/30', destino: 'ring-amber-600 dark:ring-amber-400',
+    arriba: 'border-t-amber-500 dark:border-t-amber-400',
   },
   {
     clave: 'finalizado', titulo: 'Finalizado', bajada: 'Aprobada',
     punto: 'bg-emerald-500', fondo: 'bg-emerald-50 dark:bg-emerald-950/30', destino: 'ring-emerald-600 dark:ring-emerald-400',
+    arriba: 'border-t-emerald-500 dark:border-t-emerald-400',
   },
   {
     // "Pasa sola a los 10 días" no decía qué ni desde dónde.
     clave: 'archivado', titulo: 'Archivado', bajada: 'Las finalizadas llegan solas a los 10 días',
     punto: 'bg-slate-400', fondo: 'bg-slate-100/70 dark:bg-slate-900/50', destino: 'ring-slate-500 dark:ring-slate-400',
+    arriba: 'border-t-slate-400 dark:border-t-slate-500',
   },
 ]
 
@@ -195,18 +205,19 @@ export function conservarArchivadas(antes: Tarjeta[], nuevas: Tarjeta[]): Tarjet
 }
 
 /**
- * Con qué se abre una tarjeta al tocarla. Una tarjeta nueva, sin nada
- * entregado todavía, se abre mirando: primero hay que leer lo que se pidió
- * (lo tildado con sus medidas y la descripción están en el resumen, no en
- * "Entregar"), y desde ahí está el botón de entregar. Lo demás, directo a lo
- * que toca: entregar la ronda que volvió o revisar.
+ * Con qué se abre una tarjeta al tocarla: siempre mirando. Antes, si le
+ * tocaba entregar o revisar, se abría directo el formulario o el revisor.
+ * Ivan (19/11/2026): "si yo aprieto arriba de la tarjeta, me abre
+ * automáticamente la parte de corrección y no me abre la tarjeta en sí. Vos
+ * lo que tendrías que abrirme es la tarjeta. La parte de la corrección
+ * deberías abrírmela cuando yo aprieto 'Entregar ronda 2'". Entregar y
+ * revisar salen de los botones de la ficha. Queda la función (y sus
+ * pruebas) para que esa regla esté en un solo lugar.
  */
 export function modoAlTocar(
-  accion: 'entregar' | 'revisar' | null | undefined,
-  r: { ronda: number; momento: MomentoEntrega },
-): 'ver' | 'entregar' | 'revisar' {
-  if (accion === 'revisar') return 'revisar'
-  if (accion === 'entregar') return r.ronda === 0 && r.momento === 'produccion' ? 'ver' : 'entregar'
+  _accion: 'entregar' | 'revisar' | null | undefined,
+  _r: { ronda: number; momento: MomentoEntrega },
+): 'ver' {
   return 'ver'
 }
 
