@@ -1614,6 +1614,157 @@ def test_los_tres_tableros_y_los_comentarios_de_la_tarjeta():
     correr(prueba)
 
 
+def test_la_agencia_se_elige_y_se_compara_sin_tildes_ni_mayusculas():
+    """Ivan (19/11/2026): "¿no debería ser una selección?". La empresa de una
+    cuenta externa se escribía a mano, y una cuenta con «Disenadores» (sin ñ)
+    no veía las tarjetas de Diseñadores (una agencia externa, como Publicis).
+    Ahora se elige de una lista, lo que se guarda queda como ya está escrito,
+    y lo que ya estaba guardado se compara sin tildes ni mayúsculas, sin tocar
+    los datos."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        pieza = f"ta-dis-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+            "id": pieza, "tipo": "push", "para": "agencia", "agencia": "disenadores "})
+        assert r.status_code == 201, r.text
+        assert r.json()["agencia"] == "Diseñadores"
+
+        # Una cuenta guardada antes a mano, sin ñ y en mayúsculas: ve su
+        # tarjeta, la abre, ve su tablero y le llega lo nuevo.
+        vieja = await _persona(d, "Vieja Cuenta", externo=True, empresa="DISENADORES")
+        c = Cliente(d.http, vieja)
+        assert await _tarjeta(c, pieza) is not None
+        assert (await c.get(f"/calendario/tareas/{pieza}/entregas")).status_code == 200
+        assert (await c.get("/calendario/tableros", params={"mundo": MUNDO})).json() == [
+            {"nombre": "Diseñadores", "cuentas": 1}]
+        otra = f"ta-dis2-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+            "id": otra, "tipo": "push", "para": "agencia", "agencia": "Diseñadores"})
+        assert r.status_code == 201, r.text
+        assert len(await _avisos(d, vieja, otra)) == 1
+
+        # La lista del panel: cada agencia una vez, los tres tableros primero.
+        r = await promo.get("/admin/agencias")
+        assert r.status_code == 200, r.text
+        lista = r.json()
+        assert lista[:3] == ["Publicis", "Another Monday", "Diseñadores"] and "DISENADORES" not in lista
+        assert lista.count(f"Agencia Pampa {d.sufijo}") == 1
+        assert (await Cliente(d.http, d.lucia).get("/admin/agencias")).status_code == 403
+
+        # Al crear una cuenta, una agencia que ya existe queda como ya está; una nueva, como se escribió.
+        for escrita, guardada in (("  diseñadores", "Diseñadores"),
+                                  (f"AGENCIA  PAMPA {d.sufijo}", f"Agencia Pampa {d.sufijo}"),
+                                  (f"  Estudio   Nuevo {d.sufijo} ", f"Estudio Nuevo {d.sufijo}")):
+            r = await promo.post("/admin/users", json={
+                "email": f"n{uuid.uuid4().hex[:6]}.{d.sufijo}@agencia-prueba.uy", "full_name": "Cuenta Nueva",
+                "password": "Clave-segura-123", "es_externo": True, "empresa": escrita})
+            assert r.status_code == 201, r.text
+            assert r.json()["empresa"] == guardada
+        # Al editarla, igual: la vieja pasa a escribirse como el tablero y sigue viendo su tarjeta.
+        r = await promo.patch(f"/admin/users/{vieja.id}/externo", json={"es_externo": True, "empresa": "disenadores"})
+        assert r.status_code == 200, r.text
+        assert r.json()["empresa"] == "Diseñadores"
+        assert await _tarjeta(c, pieza) is not None
+        # A la única cuenta de una agencia se le puede corregir cómo se escribe.
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": f"Estudio Súr {d.sufijo}"})
+        assert r.status_code == 200 and r.json()["empresa"] == f"Estudio Súr {d.sufijo}"
+    correr(prueba)
+
+
+def test_la_empresa_se_compara_igual_en_la_base_que_en_python():
+    """La base (`empresa_en_sql`) y Python (`clave_de_empresa`) tienen que dar
+    exactamente lo mismo: si no, el tablero de una agencia y su campanita
+    (que buscan en la base) no coincidirían con lo que se decide en Python."""
+    from sqlalchemy import literal
+
+    from app.core import externos
+
+    async def prueba(d):
+        async with d.Sesion() as s:
+            for texto in ("Diseñadores", "  DISEÑADORES  ", "Another\tMonday", "Ñandú   Estudio", "Publicis",
+                          "ÁÉÍÓÚ áéíóú Üü Çç Ãã", "agencia  pampa"):
+                en_la_base = (await s.execute(select(externos.empresa_en_sql(literal(texto))))).scalar_one()
+                assert en_la_base == externos.clave_de_empresa(texto), texto
+    correr(prueba)
+
+
+def test_el_responsable_de_una_tarea_de_tienda_es_alguien_de_tienda():
+    """19/11/2026: en «Responsable de Tienda Inglesa» aparecían las cuentas de
+    las agencias («Fer (Diseñadores)»), y elegir una convertía la tarea
+    interna en una pieza de la agencia, con su tarjeta. Ahora el servidor lo
+    rechaza con un mensaje claro y la tarea queda como estaba."""
+    async def prueba(d):
+        lider = Cliente(d.http, d.lider)
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        tarea_id = f"ta-r-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": tarea_id, "titulo": "Brief del Ciberlunes", "asignadoA": fer.id})
+        assert r.status_code == 422
+        assert r.json()["detail"].startswith("Fer Disenia es de Diseñadores, una agencia externa:")
+        async with d.Sesion() as s:
+            assert await s.get(CalendarioTarea, tarea_id) is None
+
+        # Con alguien de Tienda, sí; y después pasársela a la agencia, no.
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": tarea_id, "titulo": "Brief del Ciberlunes", "asignadoA": d.aprob2.id})
+        assert r.status_code == 201, r.text
+        r = await lider.patch(f"/calendario/tareas/{tarea_id}", json={"asignadoA": fer.id})
+        assert r.status_code == 422 and "agencia externa" in r.json()["detail"]
+        async with d.Sesion() as s:
+            t = await s.get(CalendarioTarea, tarea_id)
+            assert (t.para, t.agencia, t.asignado_a_id) == ("tienda", None, d.aprob2.id)
+            assert await s.get(CalendarioEntrega, tarea_id) is None
+        assert await _avisos(d, fer, tarea_id) == []
+
+        # Lo de una agencia de afuera lo carga alguien de Tienda: tampoco.
+        fuera = f"ta-rf-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": fuera, "tipo": "mailing", "opciones": ["Físico (impreso)"], "detalles": {"paginas": 16},
+            "para": "fuera", "agencia": "Estudio Afuera", "asignadoA": d.lucia.id})
+        assert r.status_code == 201, r.text
+        r = await lider.patch(f"/calendario/tareas/{fuera}", json={"asignadoA": fer.id})
+        assert r.status_code == 422
+        async with d.Sesion() as s:
+            t = await s.get(CalendarioTarea, fuera)
+            assert (t.para, t.agencia, t.asignado_a_id) == ("fuera", "Estudio Afuera", d.lucia.id)
+
+        # En una plantilla, lo mismo; y una vieja con alguien de la agencia
+        # fijo crea esa tarea sin asignar (no una pieza de la agencia).
+        r = await lider.put(f"/calendario/plantillas/pl-r-{d.sufijo}", json={
+            "mundo": MUNDO, "nombre": "Mega", "tareas": [
+                {"id": "t1", "titulo": "Brief", "ancla": "inicio", "dias": -3, "asignadoA": fer.id}]})
+        assert r.status_code == 422 and "agencia externa" in r.json()["detail"]
+        async with d.Sesion() as s:
+            s.add(CalendarioPlantilla(id=f"pl-vieja-{d.sufijo}", mundo=MUNDO, nombre="Vieja", creado_por_id=d.lider.id,
+                                      tareas=[{"id": "t1", "titulo": "Brief viejo", "asignadoA": fer.id},
+                                              {"id": "t2", "titulo": "Push", "tipo": "push", "para": "agencia",
+                                               "agencia": "disenadores"}]))
+            await s.commit()
+        ids = {"t1": f"ta-pv1-{d.sufijo}", "t2": f"ta-pv2-{d.sufijo}"}
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/plantilla", json={
+            "plantillaId": f"pl-vieja-{d.sufijo}", "ids": ids})
+        assert r.status_code == 201, r.text
+        assert (r.json()["sinAsignar"], r.json()["tarjetas"]) == (1, 1)
+        async with d.Sesion() as s:
+            t1, t2 = await s.get(CalendarioTarea, ids["t1"]), await s.get(CalendarioTarea, ids["t2"])
+            assert (t1.para, t1.agencia, t1.asignado_a_id) == ("tienda", None, None)
+            # La pieza, con la agencia como ya está escrita.
+            assert (t2.para, t2.agencia) == ("agencia", "Diseñadores")
+
+        # Una pieza de su agencia sí puede quedar a nombre de alguien de ella.
+        pieza = f"ta-rp-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": pieza, "tipo": "push", "para": "agencia", "agencia": "Diseñadores"})
+        assert r.status_code == 201, r.text
+        r = await lider.patch(f"/calendario/tareas/{pieza}", json={"asignadoA": fer.id})
+        assert r.status_code == 200, r.text
+        async with d.Sesion() as s:
+            t = await s.get(CalendarioTarea, pieza)
+            assert (t.para, t.agencia, t.asignado_a_id) == ("agencia", "Diseñadores", fer.id)
+    correr(prueba)
+
+
 # ---------------------------------------------------------------------------
 # Mi agenda (0074): el calendario de cada persona, solo para ella
 # ---------------------------------------------------------------------------

@@ -4,6 +4,10 @@ Las cuentas externas (la agencia, 0069) se crean y se editan acá, con el
 mismo panel: `es_externo` y el nombre de la empresa. Un externo nunca recibe
 permisos de gestión ni de admin, ni un rol: el servidor lo rechaza aunque se
 pida (`_ensure_externo_puede_tener`), y la base también (ver la 0069).
+
+La empresa se elige de las agencias que ya existen (GET /agencias) o se
+agrega una nueva, y se guarda como ya está escrita si es la misma
+(19/11/2026, ver app/services/agencias.py).
 """
 import secrets
 import string
@@ -28,6 +32,7 @@ from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
 from app.core import alcance, externos
 from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, mundos_de, mundos_iniciales, mundos_que_no_puede_dar
 from app.models.user import User
+from app.services import agencias
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -467,9 +472,11 @@ async def _crear_externo(
             status_code=422,
             detail="Una cuenta externa no lleva rol: solo ve el calendario de su mes y sus tareas",
         )
-    empresa = externos.limpiar_empresa(payload.empresa)
+    # Si es una agencia que ya existe, con el nombre que ya tiene: «diseñadores »
+    # es Diseñadores (19/11/2026).
+    empresa = await agencias.como_ya_esta(db, payload.empresa)
     if not empresa:
-        raise HTTPException(status_code=422, detail="Decí de qué empresa es (la agencia, el estudio…)")
+        raise HTTPException(status_code=422, detail="Elegí de qué agencia es")
     permisos = sorted(externos.PERMISOS_DE_EXTERNOS)
     # Igual que con cualquier cuenta: nadie da lo que no tiene.
     _ensure_can_grant(current_user, permisos)
@@ -704,9 +711,12 @@ async def update_externo(
     tarjetas_pasadas = 0
     plantillas_pasadas = 0
     if payload.es_externo:
-        empresa = externos.limpiar_empresa(payload.empresa)
+        # Como ya está escrita si es una agencia que existe (19/11/2026). Sin
+        # contar esta misma cuenta: si es la única de su agencia, se le puede
+        # corregir cómo se escribe.
+        empresa = await agencias.como_ya_esta(db, payload.empresa, menos=user.id)
         if not empresa:
-            raise HTTPException(status_code=422, detail="Decí de qué empresa es (la agencia, el estudio…)")
+            raise HTTPException(status_code=422, detail="Elegí de qué agencia es")
         if user.is_superuser:
             raise HTTPException(status_code=422, detail="El superadmin no puede ser una cuenta externa")
         es_sucursal = (await db.execute(
@@ -721,10 +731,11 @@ async def update_externo(
             # tablero de la agencia quedaba vacío y nadie las podía entregar.
             # Si quedan otras cuentas con el nombre viejo, las tarjetas siguen
             # siendo de ellas: esta cuenta es la que cambió de agencia.
+            clave_vieja = externos.clave_de_empresa(empresa_vieja)
             quedan = (await db.execute(
                 select(func.count()).select_from(User).where(
                     User.id != user.id, User.es_externo.is_(True),
-                    externos.empresa_en_sql(User.empresa) == empresa_vieja.lower(),
+                    externos.empresa_en_sql(User.empresa) == clave_vieja,
                 )
             )).scalar_one()
             if not quedan:
@@ -732,7 +743,7 @@ async def update_externo(
                     update(CalendarioTarea)
                     .where(
                         CalendarioTarea.para == "agencia",
-                        externos.empresa_en_sql(CalendarioTarea.agencia) == empresa_vieja.lower(),
+                        externos.empresa_en_sql(CalendarioTarea.agencia) == clave_vieja,
                     )
                     .values(agencia=empresa)
                     .execution_options(synchronize_session=False)
@@ -766,6 +777,19 @@ async def update_externo(
 async def list_mundos(_: User = Depends(_require_admin_panel)):
     """El catálogo de mundos, para tildarlos por usuario."""
     return [{"key": clave, "nombre": nombre} for clave, nombre in MUNDOS.items()]
+
+
+@router.get("/agencias")
+async def list_agencias(
+    _: User = Depends(_require_admin_panel),
+    db: AsyncSession = Depends(get_db),
+):
+    """Las agencias que ya existen, para elegir la de una cuenta externa
+    (19/11/2026, Ivan: "¿no debería ser una selección?"): los tres tableros
+    (Publicis, Another Monday, Diseñadores) y las empresas de las cuentas
+    externas, cada una una sola vez. Una nueva se agrega escribiéndola en el
+    panel, que solo usa quien administra."""
+    return await agencias.existentes(db)
 
 
 async def _pasar_plantillas_de_agencia(db: AsyncSession, vieja: str, nueva: str) -> int:

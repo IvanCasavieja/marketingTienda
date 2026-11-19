@@ -993,9 +993,11 @@ export const useCalendario = create<Estado>()(
                 : `Les llegó un aviso a las ${r.avisados} personas responsables.`)
             }
             if (r.sinAsignar) {
+              // O es de una agencia: una tarea de Tienda no se le asigna a una
+              // cuenta externa (19/11/2026).
               partes.push(r.sinAsignar === 1
-                ? 'Una quedó sin asignar: su responsable ya no ve este calendario.'
-                : `${r.sinAsignar} quedaron sin asignar: su responsable ya no ve este calendario.`)
+                ? 'Una quedó sin asignar: su responsable ya no ve este calendario o es de una agencia.'
+                : `${r.sinAsignar} quedaron sin asignar: su responsable ya no ve este calendario o es de una agencia.`)
             }
             if (r.sinAsignar || r.tarjetas) {
               // Se trae lo que quedó de verdad: las que perdieron su

@@ -199,6 +199,15 @@ igual('las pestañas: los tres siempre, y Otras si hay', pestanasDeTableros([
   tarjetaDe({ tipo: 'agencia', nombre: 'Diseñadores' }), tarjetaDe({ tipo: 'tienda', nombre: 'Fer' }),
 ], tableros).map(p => `${p.nombre}:${p.cuantas}`), ['Publicis:2', 'Another Monday:0', 'Diseñadores:1', 'Otras:1'])
 igual('sin otras, no hay pestaña Otras', pestanasDeTableros([tarjetaDe({ tipo: 'agencia', nombre: 'Publicis' })], tableros).length, 3)
+// 19/11/2026: la empresa se escribía a mano. Una tarjeta guardada para
+// «Disenadores» (sin ñ) o «DISEÑADORES » es de Diseñadores, no de «Otras».
+igual('sin ñ, va a Diseñadores', tableroDeTarjeta(tarjetaDe({ tipo: 'agencia', nombre: 'Disenadores' }), tableros), 'Diseñadores')
+igual('en mayúsculas y con espacios, también', tableroDeTarjeta(tarjetaDe({ tipo: 'agencia', nombre: ' DISEÑADORES ' }), tableros), 'Diseñadores')
+igual('las dos escrituras suman en la misma pestaña', pestanasDeTableros([
+  tarjetaDe({ tipo: 'agencia', nombre: 'Diseñadores' }), tarjetaDe({ tipo: 'agencia', nombre: 'Disenadores' }),
+], tableros).map(p => `${p.nombre}:${p.cuantas}`), ['Publicis:0', 'Another Monday:0', 'Diseñadores:2'])
+igual('y en el filtro «¿Quién la hace?» son una sola agencia',
+  grupoDeQuien({ tipo: 'agencia', nombre: 'Disenadores' }).clave, grupoDeQuien({ tipo: 'agencia', nombre: 'Diseñadores' }).clave)
 
 // La push (17/11/2026): título, link de destino y fecha y hora, leída como en el servidor.
 const push: TipoDeTarea = {

@@ -15,22 +15,22 @@ reglas que ya existen: quién la ve, quién entrega, a quién le llega el aviso.
 A diferencia de cualquier otra agencia, se puede mandar una pieza a uno de
 estos tres aunque todavía no tenga cuentas: la tarjeta espera en su tablero
 (el equipo de Tienda la ve) y aparece sola para sus cuentas cuando se crean
-en el panel, con la empresa escrita igual que el tablero.
+en el panel. Desde el 19/11/2026 la empresa de esas cuentas se elige de una
+lista (app/services/agencias.py) y se compara sin tildes ni mayúsculas: antes
+se escribía a mano y una cuenta con «Disenadores» no veía las de «Diseñadores».
 """
 from __future__ import annotations
 
-from app.core.externos import limpiar_empresa
+from app.core.externos import misma_empresa
 
 TABLEROS: tuple[str, ...] = ("Publicis", "Another Monday", "Diseñadores")
 
 
 def tablero_de(nombre: str | None) -> str | None:
-    """El tablero con ese nombre (sin mirar mayúsculas ni espacios de más), o
-    None si no es uno de los tres. Puro."""
-    limpio = limpiar_empresa(nombre)
-    if not limpio:
-        return None
+    """El tablero con ese nombre (sin mirar tildes, la ñ, mayúsculas ni
+    espacios de más: «disenadores» es Diseñadores), o None si no es uno de
+    los tres. Puro."""
     for tablero in TABLEROS:
-        if tablero.casefold() == limpio.casefold():
+        if misma_empresa(tablero, nombre):
             return tablero
     return None

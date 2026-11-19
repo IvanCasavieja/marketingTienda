@@ -432,10 +432,16 @@ def test_al_equipo_no_lo_dejan_poner_a_la_agencia_en_avisos_ni_de_aprobadora():
         r = await promo.put(f"/calendario/tareas/{d.t_colega.id}/entregas", json={
             "tipoPieza": "banner", "aprobadores": [d.a1.id], "fases": [{"nombre": "Boceto"}]})
         assert r.status_code == 422 and "externa" in r.json()["detail"]
-        # Pero sí asignarle una tarea (es para lo que está).
-        r = await promo.post(f"/calendario/barras/{d.dentro.id}/tareas",
-                             json={"id": f"ta-asig-{d.sufijo}", "titulo": "Para la agencia", "asignadoA": d.a1.id})
+        # Pero sí asignarle una tarea de su agencia (es para lo que está)...
+        r = await promo.post(f"/calendario/barras/{d.dentro.id}/tareas", json={
+            "id": f"ta-asig-{d.sufijo}", "titulo": "Para la agencia", "asignadoA": d.a1.id,
+            "para": "agencia", "agencia": d.a1.empresa})
         assert r.status_code == 201, r.text
+        # ...no una de Tienda: esa la lleva alguien de Tienda, y no se convierte
+        # en una pieza de la agencia por elegirla (19/11/2026).
+        r = await promo.post(f"/calendario/barras/{d.dentro.id}/tareas",
+                             json={"id": f"ta-asig2-{d.sufijo}", "titulo": "De Tienda", "asignadoA": d.a1.id})
+        assert r.status_code == 422 and "agencia externa" in r.json()["detail"]
     correr(prueba)
 
 

@@ -107,6 +107,39 @@ def test_la_misma_empresa_se_reconoce_sin_mayusculas_ni_espacios_de_mas():
     assert not externos.misma_empresa("", "")
 
 
+def test_la_misma_empresa_tambien_sin_tildes_y_con_la_enie_como_n():
+    """19/11/2026: la empresa se escribía a mano, y una cuenta con
+    «Disenadores» (sin ñ) quedaba en otra agencia que no veía sus tarjetas."""
+    for escrita in ("Disenadores", "diseñadores ", "  DISEÑADORES", "Diséñadores"):
+        assert externos.misma_empresa(escrita, "Diseñadores"), escrita
+    assert externos.clave_de_empresa("  Another   MONDAY ") == "another monday"
+    assert externos.clave_de_empresa("Ñandú Estudio") == "nandu estudio"
+    assert externos.clave_de_empresa("   ") is None
+    assert not externos.misma_empresa("Diseñadores", "Diseño")
+
+
+def test_al_guardar_una_agencia_que_ya_existe_queda_como_ya_esta():
+    from app.core.tableros import TABLEROS, tablero_de
+
+    existentes = [*TABLEROS, "Agencia Pampa"]
+    assert externos.empresa_como_ya_esta("disenadores ", existentes) == "Diseñadores"
+    assert externos.empresa_como_ya_esta("AGENCIA  PAMPA", existentes) == "Agencia Pampa"
+    # Una nueva, como vino (sin espacios de más); vacía, nada.
+    assert externos.empresa_como_ya_esta("  Estudio   Nuevo ", existentes) == "Estudio Nuevo"
+    assert externos.empresa_como_ya_esta("  ", existentes) is None
+    # La lista para elegir: cada una una vez, como la escribió la primera.
+    assert externos.sin_repetir([*TABLEROS, "Disenadores", "agencia pampa", "Agencia Pampa", None, ""]) == [
+        "Publicis", "Another Monday", "Diseñadores", "agencia pampa"]
+    assert tablero_de("disenadores") == "Diseñadores" and tablero_de("Otra") is None
+
+
+def test_una_tarjeta_de_disenadores_es_de_la_cuenta_de_disenadores_aunque_falte_la_enie():
+    cuenta = _usuario(60, "calendario.view", empresa="Disenadores")
+    tarjeta = SimpleNamespace(asignado_a_id=None, para="agencia", agencia="Diseñadores")
+    assert externos.es_tarea_propia(cuenta, tarjeta)
+    assert not externos.es_tarea_propia(cuenta, SimpleNamespace(asignado_a_id=None, para="agencia", agencia="Publicis"))
+
+
 @pytest.mark.parametrize("ruta,permitida", [
     ("/api/v1/auth/me", True),
     ("/api/v1/auth/change-password", True),

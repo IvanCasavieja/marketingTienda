@@ -1079,12 +1079,14 @@ async def destinatarios_de_la_tarjeta(db: AsyncSession, tarea: CalendarioTarea, 
     ids: list[int] = []
     if tarea.asignado_a_id is not None:
         ids.append(tarea.asignado_a_id)
-    empresa = externos.limpiar_empresa(tarea.agencia) if tarea.para == "agencia" else None
-    if empresa:
+    # La agencia se compara sin tildes ni mayúsculas (19/11/2026): a una
+    # cuenta guardada con «Disenadores» le llega lo de Diseñadores.
+    clave = externos.clave_de_empresa(tarea.agencia) if tarea.para == "agencia" else None
+    if clave:
         for u in (await db.execute(
             select(User).where(
                 User.es_externo.is_(True), User.is_active.is_(True),
-                externos.empresa_en_sql(User.empresa) == empresa.lower(),
+                externos.empresa_en_sql(User.empresa) == clave,
             ).order_by(User.id)
         )).scalars():
             if u.id not in ids and puede_abrir(u, mundo) and externos.puede_tener(u, "calendario.view"):

@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { ALCANCES, alcanceDe, nombreDeAlcance, type Alcance } from "@/lib/alcance";
+import { mismaEmpresa } from "@/lib/calendario/tipos";
 import AuditLogTab from "./AuditLogTab";
 import AiUsageTab from "./AiUsageTab";
 import UserActivityModal from "./UserActivityModal";
@@ -60,6 +61,70 @@ function MarcaExterna({ empresa }: { empresa?: string | null }) {
     <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-sky-800 dark:bg-sky-500/15 dark:text-sky-200">
       <Building2 size={10} aria-hidden /> Externa{empresa ? ` · ${empresa}` : ""}
     </span>
+  );
+}
+
+/** La opción de la lista para agregar una agencia que todavía no existe. */
+const AGENCIA_NUEVA = "__nueva__";
+
+/**
+ * La agencia de una cuenta externa (Ivan, 19/11/2026: "¿no debería ser una
+ * selección?"): se elige de las que ya existen —Publicis, Another Monday,
+ * Diseñadores y las de las demás cuentas externas— o se agrega una nueva.
+ * Antes se escribía a mano, y con «Disenadores» sin ñ la cuenta quedaba en
+ * otra agencia y no veía sus tarjetas. El servidor igual guarda una que ya
+ * existe con el nombre que ya tiene.
+ */
+function ElegirAgencia({ valor, agencias, onCambiar }: {
+  valor: string;
+  /** null = todavía no llegó la lista. */
+  agencias: string[] | null;
+  onCambiar: (empresa: string) => void;
+}) {
+  const enLista = agencias?.find((a) => mismaEmpresa(a, valor)) ?? null;
+  const [escribiendo, setEscribiendo] = useState(false);
+  // Escribiendo una nueva, o una guardada que no está en la lista.
+  const nueva = escribiendo || (!!valor.trim() && agencias !== null && !enLista);
+  const cargando = agencias === null && !!valor.trim();
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <select
+          required
+          aria-label="Agencia"
+          className="input w-full appearance-none pr-8 text-sm"
+          value={nueva ? AGENCIA_NUEVA : (enLista ?? (cargando ? valor : ""))}
+          onChange={(e) => {
+            const v = e.target.value;
+            setEscribiendo(v === AGENCIA_NUEVA);
+            onCambiar(v === AGENCIA_NUEVA ? "" : v);
+          }}
+        >
+          <option value="" disabled>{agencias ? "Elegí la agencia" : "Cargando agencias…"}</option>
+          {cargando && <option value={valor}>{valor}</option>}
+          {(agencias ?? []).map((a) => <option key={a} value={a}>{a}</option>)}
+          <option value={AGENCIA_NUEVA}>Otra agencia (nueva)…</option>
+        </select>
+        <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
+      </div>
+      {nueva && (
+        <>
+          <input
+            required
+            autoFocus={escribiendo}
+            className="input w-full text-sm"
+            maxLength={120}
+            aria-label="Nombre de la agencia nueva"
+            placeholder="Nombre de la agencia nueva"
+            value={valor}
+            onChange={(e) => onCambiar(e.target.value)}
+          />
+          {enLista && (
+            <p className="text-xs text-slate-600 dark:text-slate-400">Ya existe: se guarda como «{enLista}».</p>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -125,11 +190,13 @@ function groupPermissions(perms: PermissionDef[]) {
 // User editor modal
 // ---------------------------------------------------------------------------
 function UserEditorModal({
-  user, allRoles, allPerms, onClose, onSaved,
+  user, allRoles, allPerms, agencias, onClose, onSaved,
 }: {
   user: AdminUser;
   allRoles: RoleItem[];
   allPerms: PermissionDef[];
+  /** Las agencias que ya existen (GET /admin/agencias); null = cargando. */
+  agencias: string[] | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -196,7 +263,7 @@ function UserEditorModal({
   async function save() {
     if (!fullName.trim()) { toast.error(t("admin.userEditor.nameRequired")); return; }
     if (!esSucursal && !email.trim()) { toast.error(t("admin.userEditor.emailRequired")); return; }
-    if (externo && !empresa.trim()) { toast.error("Decí de qué empresa es la cuenta externa."); return; }
+    if (externo && !empresa.trim()) { toast.error("Elegí de qué agencia es la cuenta externa."); return; }
     setSaving(true);
     try {
       await api.patch(`/admin/users/${user.id}`, esSucursal ? { full_name: fullName } : { full_name: fullName, email });
@@ -354,16 +421,10 @@ function UserEditorModal({
                 </span>
               </label>
               {externo && (
-                <label className="mt-2.5 block">
-                  <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Empresa</span>
-                  <input
-                    className="input w-full text-sm"
-                    value={empresa}
-                    maxLength={120}
-                    onChange={(e) => setEmpresa(e.target.value)}
-                    placeholder="Agencia, estudio…"
-                  />
-                </label>
+                <div className="mt-2.5">
+                  <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Agencia</span>
+                  <ElegirAgencia valor={empresa} agencias={agencias} onCambiar={setEmpresa} />
+                </div>
               )}
             </div>
           )}
@@ -619,6 +680,9 @@ export default function AdminPage() {
   const [activeTab,   setActiveTab]   = useState<AdminTab>("usuarios");
   const [lista,       setLista]       = useState<ListaDeUsuarios>("personas");
   const [activityUser, setActivityUser] = useState<AdminUser | null>(null);
+  // Las agencias que ya existen, para elegir la de una cuenta externa
+  // (19/11/2026). null = todavía no llegaron.
+  const [agencias, setAgencias] = useState<string[] | null>(null);
 
   const [form, setForm] = useState({
     email: "", full_name: "", password: "",
@@ -673,6 +737,9 @@ export default function AdminPage() {
 
   async function load() {
     setLoading(true);
+    // Aparte: si no llega, igual se puede escribir una agencia (la opción
+    // «Otra agencia»), y el servidor la guarda como ya existe si es la misma.
+    api.get<string[]>("/admin/agencias").then(({ data }) => setAgencias(data)).catch(() => setAgencias([]));
     try {
       const [u, r, p] = await Promise.all([
         api.get("/admin/users"),
@@ -873,9 +940,8 @@ export default function AdminPage() {
             <input required className="input text-sm" placeholder={t("admin.createForm.passwordPlaceholder")}
               value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
             {form.es_externo ? (
-              <input required className="input text-sm" placeholder="Empresa (la agencia, el estudio…)" maxLength={120}
-                aria-label="Empresa"
-                value={form.empresa} onChange={(e) => setForm((f) => ({ ...f, empresa: e.target.value }))} />
+              <ElegirAgencia valor={form.empresa} agencias={agencias}
+                onCambiar={(empresa) => setForm((f) => ({ ...f, empresa }))} />
             ) : (
             <div className="relative">
               <select className="input text-sm w-full appearance-none pr-8" value={form.role_id}
@@ -1112,6 +1178,7 @@ export default function AdminPage() {
           user={editingUser}
           allRoles={roles}
           allPerms={allPerms}
+          agencias={agencias}
           onClose={() => setEditingUser(null)}
           onSaved={load}
         />
