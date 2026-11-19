@@ -9,16 +9,16 @@ Eso queda con la revisión: `calendario_revisiones_ia.cambios_pedidos` (JSONB,
 nullable: las revisiones de antes y las de una primera ronda no lo tienen).
 Ver app/services/revision_ia.py (limpiar_cambios_pedidos).
 
-Revision ID: 0081
-Revises: 0080
+Revision ID: 0082
+Revises: 0081
 Create Date: 2026-11-19
 """
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0081"
-down_revision = "0080"
+revision = "0082"
+down_revision = "0081"
 branch_labels = None
 depends_on = None
 

@@ -74,7 +74,7 @@ como datos, entre etiquetas, igual que el pedido. La IA contesta marca por
 marca "hecho", "falta" o "dudoso" con una nota corta (`cambios_pedidos` en
 `RespuestaDeLaIA`); se limpia con `limpiar_cambios_pedidos` (lo que venga mal
 se descarta y nunca tira las observaciones) y se guarda con la revisión
-(`cambios_pedidos`, 0081). Quien aprueba lo ve al lado de cada marca, en «Lo
+(`cambios_pedidos`, 0082). Quien aprueba lo ve al lado de cada marca, en «Lo
 que se pidió en la ronda N»; la agencia nunca.
 
 **Lo que viene en un ZIP o en un link (19/11/2026).** Ivan: "¿Qué pasaría si

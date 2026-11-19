@@ -46,7 +46,7 @@ class CalendarioRevisionIA(Base):
     # el aprobador tiene que ver cuando un link no se pudo abrir. Null en las
     # revisiones de antes y cuando no hubo ZIP ni link.
     materiales: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    # Si se ve hecho lo que se pidió en la ronda anterior (0081, 19/11/2026):
+    # Si se ve hecho lo que se pidió en la ronda anterior (0082, 19/11/2026):
     # [{marcaId, numero, veredicto ('hecho' | 'falta' | 'dudoso'), nota}], una
     # por marca de esa ronda (ver `limpiar_cambios_pedidos` en el servicio).
     # Null si la versión no venía después de una ronda que volvió con marcas,
