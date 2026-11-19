@@ -128,10 +128,11 @@ igual('si la opción desapareció, sin filtro', filtroVigente('agencia:sur', opc
 igual('con una sola opción (sin chips), sin filtro', filtroVigente('tienda', [{ clave: 'tienda' }]), null)
 igual('sin filtro, sin filtro', filtroVigente(null, opciones), null)
 
-// Tocar una tarjeta nueva muestra lo que se pidió antes de entregar.
+// Tocar una tarjeta abre la tarjeta, siempre (Ivan, 19/11/2026): entregar y
+// revisar salen de los botones de la ficha, no del toque.
 igual('nueva, sin nada entregado: se abre mirando', modoAlTocar('entregar', { ronda: 0, momento: 'produccion' }), 'ver')
-igual('volvió con cambios: directo a entregar', modoAlTocar('entregar', { ronda: 1, momento: 'cambios' }), 'entregar')
-igual('a revisar: directo a revisar', modoAlTocar('revisar', { ronda: 1, momento: 'revision' }), 'revisar')
+igual('volvió con cambios: también mirando (el botón "Entregar ronda 2" está en la ficha)', modoAlTocar('entregar', { ronda: 1, momento: 'cambios' }), 'ver')
+igual('a revisar: también mirando (el botón "Revisar ahora" está en la ficha)', modoAlTocar('revisar', { ronda: 1, momento: 'revision' }), 'ver')
 igual('nada que hacer: mirando', modoAlTocar(null, { ronda: 2, momento: 'revision' }), 'ver')
 
 // El rótulo del tipo, entero y legible.

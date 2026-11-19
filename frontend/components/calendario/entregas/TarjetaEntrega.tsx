@@ -69,9 +69,10 @@ export function TarjetaEntrega({
       >
         {/* El color del mundo, como un lomo a la izquierda. */}
         <span aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-r-full" style={{ backgroundColor: mundo?.color ?? '#94a3b8' }} />
-        {/* Una tarjeta nueva (nada entregado) se abre mirando, con lo que se
-            pidió a la vista y el botón de entregar: "Entregar" no muestra el
-            pedido (ver modoAlTocar). */}
+        {/* Tocar la tarjeta abre la tarjeta, mirando: con su estado, lo que
+            hay que corregir, las rondas y los comentarios. Entregar y revisar
+            salen de los botones de la ficha (Ivan, 19/11/2026; ver
+            modoAlTocar). */}
         <button
           type="button"
           onClick={() => abrir(tarjeta.tareaId, modoAlTocar(paso.accion, r))}

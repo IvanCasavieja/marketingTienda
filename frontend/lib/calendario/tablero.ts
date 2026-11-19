@@ -195,18 +195,19 @@ export function conservarArchivadas(antes: Tarjeta[], nuevas: Tarjeta[]): Tarjet
 }
 
 /**
- * Con qué se abre una tarjeta al tocarla. Una tarjeta nueva, sin nada
- * entregado todavía, se abre mirando: primero hay que leer lo que se pidió
- * (lo tildado con sus medidas y la descripción están en el resumen, no en
- * "Entregar"), y desde ahí está el botón de entregar. Lo demás, directo a lo
- * que toca: entregar la ronda que volvió o revisar.
+ * Con qué se abre una tarjeta al tocarla: siempre mirando. Antes, si le
+ * tocaba entregar o revisar, se abría directo el formulario o el revisor.
+ * Ivan (19/11/2026): "si yo aprieto arriba de la tarjeta, me abre
+ * automáticamente la parte de corrección y no me abre la tarjeta en sí. Vos
+ * lo que tendrías que abrirme es la tarjeta. La parte de la corrección
+ * deberías abrírmela cuando yo aprieto 'Entregar ronda 2'". Entregar y
+ * revisar salen de los botones de la ficha. Queda la función (y sus
+ * pruebas) para que esa regla esté en un solo lugar.
  */
 export function modoAlTocar(
-  accion: 'entregar' | 'revisar' | null | undefined,
-  r: { ronda: number; momento: MomentoEntrega },
-): 'ver' | 'entregar' | 'revisar' {
-  if (accion === 'revisar') return 'revisar'
-  if (accion === 'entregar') return r.ronda === 0 && r.momento === 'produccion' ? 'ver' : 'entregar'
+  _accion: 'entregar' | 'revisar' | null | undefined,
+  _r: { ronda: number; momento: MomentoEntrega },
+): 'ver' {
   return 'ver'
 }
 
