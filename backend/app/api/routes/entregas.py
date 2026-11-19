@@ -773,7 +773,9 @@ def _adjunto(nombre: str) -> str:
 
 
 @router.get("/versiones/{version_id}/zip")
+@limiter.limit("10/minute")
 async def bajar_zip(
+    request: Request,
     version_id: str,
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
@@ -782,7 +784,11 @@ async def bajar_zip(
     Ivan: "cuando lo subís deberías de subir la carpeta comprimida"). Lo bajan
     el equipo y la agencia con las mismas reglas que las imágenes de esa
     versión (`_exigir_ver_archivos`), y viaja con la sesión, como ellas: una
-    pieza sin lanzar no queda abierta a quien tenga un link."""
+    pieza sin lanzar no queda abierta a quien tenga un link.
+
+    Con un tope por persona y por minuto: un ZIP pesa hasta 40 MB y cada
+    bajada sale de la base (el plan gratis tiene un tope de transferencia por
+    mes); una pantalla que reintentara sola no tiene que poder gastarlo."""
     fila = (await db.execute(_de_la_version(
         (CalendarioVersionZip.nombre, CalendarioVersionZip.datos.isnot(None)),
         CalendarioVersionZip, por=CalendarioVersionZip.version_id, valor=version_id,

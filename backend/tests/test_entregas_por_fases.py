@@ -396,6 +396,13 @@ def test_el_zip_original_deja_lugar_para_las_imagenes():
     assert entra(10_000 * mb, 40 * mb, 0, reserva_mb=50)         # sin tope, no frena
 
 
+def test_bajar_el_zip_tiene_su_propio_limite_por_minuto():
+    """Un ZIP pesa hasta 40 MB y cada bajada sale de la base: una pantalla que
+    reintentara sola no puede gastar la transferencia del mes."""
+    from app.core.rate_limit import limiter
+    assert "app.api.routes.entregas.bajar_zip" in limiter._route_limits
+
+
 def test_el_mensaje_de_base_llena_dice_que_hacer():
     assert "avisale a quien administra Core Tienda" in MENSAJE_SIN_LUGAR
 
