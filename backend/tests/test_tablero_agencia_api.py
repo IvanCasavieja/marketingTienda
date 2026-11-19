@@ -34,8 +34,9 @@ if URL:
     from app.models.calendario import (
         CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPlantilla, CalendarioTarea,
     )
-    from app.models.entregas import CalendarioEntrega, CalendarioFase
+    from app.models.entregas import CalendarioDecision, CalendarioEntrega, CalendarioFase
     from app.models.notificacion import Notificacion
+    from app.models.revision_ia import CalendarioRevisionIA
     from app.models.role import ALL_PERMISSIONS
     from app.models.user import User
     from app.services import calendario_consultas as cc
@@ -1275,6 +1276,176 @@ def test_devolver_solo_cuando_esta_aprobada_y_nunca_una_agencia():
             assert e.archivada_at is None and e.finalizada_at is None and e.momento == "produccion"
         # A toda la agencia le llega el aviso con el texto.
         assert "Faltó el legal" in (await _avisos(d, d.a2, tarea_id))[-1].mensaje
+    correr(prueba)
+
+
+def test_aprobado_con_cambios_ya_no_existe_y_las_decisiones_viejas_siguen_valiendo():
+    """Ivan (19/11/2026) sacó «Aprobado con cambios» ("me resulta raro ese
+    botón. No creo que sume nada"). Una pantalla vieja que lo mande recibe un
+    422 con el porqué; y una decisión de esta semana guardada así se sigue
+    leyendo como aprobada: la cadena sigue con el siguiente, la versión se
+    aprueba cuando aprueba el último y el retrabajo la cuenta."""
+    async def prueba(d):
+        lider, lucia, aprob2 = Cliente(d.http, d.lider), Cliente(d.http, d.lucia), Cliente(d.http, d.aprob2)
+        a1 = Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        r = await lider.put(f"/calendario/tareas/{tarea_id}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lucia.id, d.aprob2.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+        version = f"ve-v-{d.sufijo}"
+        assert (await _entregar_link(a1, tarea_id, version)).status_code == 201
+
+        # La decisión vieja ya no se acepta, y el mensaje dice qué elegir.
+        r = await _decidir(lucia, version, "aprobada-con-cambios", "Una tilde")
+        assert r.status_code == 422, r.text
+        assert "ya no existe" in r.json()["detail"] and "Pedir cambios" in r.json()["detail"]
+        assert (await _decidir(lucia, version, "rechazada")).status_code == 422
+        det = await _detalle(lucia, tarea_id)
+        assert det["puedo"]["decidir"] and "tildarMarcas" not in det["puedo"]
+        # La ruta para tildar ajustes sueltos se fue con la decisión.
+        assert (await lider.patch("/calendario/marcas/mk-inventada", json={"corregida": True})).status_code == 404
+
+        # Una decisión de Lucía guardada por el código de antes del 19/11,
+        # tal como la dejaba: con el turno ya pasado al segundo de la cadena.
+        async with d.Sesion() as s:
+            s.add(CalendarioDecision(version_id=version, aprobador_id=d.lucia.id, decidido_por_id=d.lucia.id,
+                                     orden=0, decision="aprobada-con-cambios", comentario="Una tilde"))
+            (await s.get(CalendarioEntrega, tarea_id)).aprobador_de_turno_id = d.aprob2.id
+            await s.commit()
+        det = await _detalle(aprob2, tarea_id)
+        assert det["puedo"]["decidir"] and det["resumen"]["aprobadorDeTurno"] == d.aprob2.id
+        assert det["resumen"]["momento"] == "revision"
+        # Se sigue mostrando tal cual se guardó.
+        assert det["fases"][0]["versiones"][0]["decisiones"][0]["decision"] == "aprobada-con-cambios"
+        # Lucía ya decidió: no le toca otra vez.
+        assert (await _decidir(lucia, version, "aprobada")).status_code == 403
+        # Aprueba el último: la versión y la fase quedan aprobadas, la tarea hecha.
+        assert (await _decidir(aprob2, version, "aprobada")).status_code == 200
+        assert await _estado(d, tarea_id) == "hecha"
+        det = await _detalle(lider, tarea_id)
+        assert det["resumen"]["momento"] == "aprobada"
+        assert det["fases"][0]["versiones"][0]["estado"] == "aprobada"
+        assert (await _tarjeta(lider, tarea_id))["columna"] == "finalizado"
+        aviso = (await _avisos(d, d.a1, tarea_id))[-1].mensaje
+        assert "aprobó la ronda 1" in aviso and "con cambios" not in aviso and "justes" not in aviso
+        # El retrabajo la cuenta: una fase aprobada en la ronda 1.
+        r = await lider.get("/calendario/entregas/metricas", params={"mundo": MUNDO})
+        assert r.status_code == 200, r.text
+        assert r.json()["fases"] >= 1 and r.json()["rondasPromedio"] >= 1
+    correr(prueba)
+
+
+def _zip_de_prueba(archivos: dict) -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for nombre, datos in archivos.items():
+            zf.writestr(nombre, datos)
+    return buf.getvalue()
+
+
+def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch):
+    """Ivan (19/11/2026): "¿Qué pasaría si en vez de una imagen me hubieran
+    pasado una carpeta o un link? (…) vos directamente como plataforma ya
+    descargués todas las cosas". El ZIP viaja en el campo `zip` del
+    multipart, no se guarda, y se le pasa en memoria a la revisión de la IA,
+    que corre después de contestar. Acá la revisión es un espía: lo de abrir
+    el ZIP está en test_materiales.py."""
+    from app.services import revision_ia
+
+    llamadas = []
+
+    async def espia(version_id, **kw):
+        llamadas.append((version_id, kw))
+
+    monkeypatch.setattr(revision_ia, "activa", lambda: True)
+    monkeypatch.setattr(revision_ia, "revisar_version", espia)
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        det = await _detalle(lider, tarea_id)
+        assert det["limites"]["bytesZip"] == 40 * 1024 * 1024
+        zip_bueno = _zip_de_prueba({"Cenefas/cenefa 1.jpg": JPEG, "folleto.pdf": b"%PDF-1.4 x", "notas.txt": b"hola"})
+        imagen = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg"))]
+
+        # El ZIP solo no alcanza: quien aprueba tiene que ver la pieza (las
+        # imágenes de adentro las saca el navegador y van como imágenes).
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z0-{d.sufijo}"},
+                          files=[("zip", ("piezas.zip", zip_bueno, "application/zip"))])
+        assert r.status_code == 422 and "ver la pieza" in r.json()["detail"], r.text
+        # Un ZIP que no es un ZIP, o sin nada para revisar adentro.
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z0-{d.sufijo}"},
+                          files=imagen + [("zip", ("piezas.zip", b"esto no es un zip", "application/zip"))])
+        assert r.status_code == 422 and "no es un ZIP" in r.json()["detail"], r.text
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z0-{d.sufijo}"},
+                          files=imagen + [("zip", ("fuentes.zip", _zip_de_prueba({"a.ttf": b"x"}), "application/zip"))])
+        assert r.status_code == 422 and "no trae nada para revisar" in r.json()["detail"], r.text
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z0-{d.sufijo}"},
+                          files=imagen + [("zip", ("malo.zip", _zip_de_prueba({"../x.jpg": JPEG}), "application/zip"))])
+        assert r.status_code == 422 and "rutas que no van" in r.json()["detail"], r.text
+        assert llamadas == []  # nada de eso se entregó
+
+        # Con una imagen y el ZIP: queda la versión, y la IA recibe el ZIP.
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z1-{d.sufijo}"},
+                          files=imagen + [("zip", ("piezas.zip", zip_bueno, "application/zip"))])
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"] == {"nombre": "piezas.zip", "archivos": ["Cenefas/cenefa 1.jpg", "folleto.pdf"],
+                                   "ignorados": ["notas.txt"]}
+        assert llamadas == [(f"ve-z1-{d.sufijo}", {"zip_datos": zip_bueno, "zip_nombre": "piezas.zip",
+                                                    "zip_saltar": frozenset()})]
+        det = await _detalle(lider, tarea_id)
+        assert det["resumen"]["momento"] == "revision" and len(det["fases"][0]["versiones"][0]["imagenes"]) == 1
+        assert (await _decidir(lider, f"ve-z1-{d.sufijo}", "cambios", "Volvé a mandarla")).status_code == 200
+
+        # Un link solo también se manda a revisar (antes no: la IA lo baja ella).
+        assert (await _entregar_link(a1, tarea_id, f"ve-z2-{d.sufijo}")).status_code == 201
+        assert llamadas[-1] == (f"ve-z2-{d.sufijo}", {"zip_datos": None, "zip_nombre": None, "zip_saltar": frozenset()})
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z2-{d.sufijo}"},
+                          files=imagen)
+        assert r.status_code == 201 and r.json()["yaExistia"] and r.json().get("zip") is None
+
+        # Lo que encontró la IA, con el archivo de cada observación y lo que
+        # no se pudo abrir, lo ve quien aprueba (una revisión guardada).
+        async with d.Sesion() as s:
+            s.add(CalendarioRevisionIA(
+                version_id=f"ve-z2-{d.sufijo}", estado="lista", modelo="simulado",
+                observaciones=[{"id": "ob-1", "tipo": "legal", "texto": "Faltan los legales", "gravedad": "importante",
+                                "imagenId": None, "x": 0.5, "y": 0.9, "archivo": "Cenefas/cenefa 1.jpg", "pagina": None,
+                                "origen": "zip", "estado": "nueva", "marcaId": None, "numero": None, "por": None, "fecha": None}],
+                materiales={"revisados": [{"nombre": "Cenefas/cenefa 1.jpg", "origen": "zip", "paginas": None}],
+                            "noSePudoAbrir": ["No se pudo abrir el link (drive.example.com/ronda): el link devolvió una página web"],
+                            "ignorados": ["notas.txt"]},
+            ))
+            await s.commit()
+        r = await lider.get(f"/calendario/versiones/ve-z2-{d.sufijo}/revision-ia")
+        assert r.status_code == 200, r.text
+        out = r.json()
+        assert out["estado"] == "lista" and out["observaciones"][0]["archivo"] == "Cenefas/cenefa 1.jpg"
+        assert out["observaciones"][0]["origen"] == "zip" and out["observaciones"][0]["imagenId"] is None
+        assert out["revisados"] == [{"nombre": "Cenefas/cenefa 1.jpg", "origen": "zip", "paginas": None}]
+        assert out["noSePudoAbrir"][0].startswith("No se pudo abrir el link") and out["ignorados"] == ["notas.txt"]
+        # La agencia (quien entrega) sigue sin ver nada de esto.
+        assert (await a1.get(f"/calendario/versiones/ve-z2-{d.sufijo}/revision-ia")).status_code == 403
+
+        # Las imágenes que el navegador ya sacó del ZIP y subió como imágenes
+        # de la ronda (`zipYaSubidas`: su lugar en el índice) la IA no las
+        # mira dos veces.
+        assert (await _decidir(lider, f"ve-z2-{d.sufijo}", "cambios", "Otra vuelta")).status_code == 200
+        for malo in ("no es una lista", '["0"]', "[-1]", "{}"):
+            r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones",
+                              data={"versionId": f"ve-z3-{d.sufijo}", "zipYaSubidas": malo},
+                              files=imagen + [("zip", ("piezas.zip", zip_bueno, "application/zip"))])
+            assert r.status_code == 422 and "sacadas del ZIP" in r.json()["detail"], (malo, r.text)
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones",
+                          data={"versionId": f"ve-z3-{d.sufijo}", "zipYaSubidas": "[0]"},
+                          files=imagen + [("zip", ("piezas.zip", zip_bueno, "application/zip"))])
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["archivos"] == ["folleto.pdf"]
+        assert llamadas[-1] == (f"ve-z3-{d.sufijo}", {"zip_datos": zip_bueno, "zip_nombre": "piezas.zip",
+                                                    "zip_saltar": frozenset({0})})
     correr(prueba)
 
 

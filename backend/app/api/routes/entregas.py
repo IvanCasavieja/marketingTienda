@@ -4,10 +4,9 @@ tablero de tarjetas estilo Trello (0070).
   PUT    /calendario/tareas/{id}/entregas     — que la tarea lleve entregas: tipo, brief, fases, aprobadores
   DELETE /calendario/tareas/{id}/entregas     — que deje de llevarlas (solo si no se entregó nada)
   GET    /calendario/tareas/{id}/entregas     — todo: fases, rondas, imágenes (los ids), marcas, decisiones
-  POST   /calendario/tareas/{id}/versiones    — entregar una ronda (multipart: imágenes y/o un link)
+  POST   /calendario/tareas/{id}/versiones    — entregar una ronda (multipart: imágenes y/o un link, y un ZIP)
   POST   /calendario/tareas/{id}/mover        — arrastrar la tarjeta a otra columna del tablero
-  POST   /calendario/versiones/{id}/decision  — aprobar, aprobar con cambios o pedir cambios
-  PATCH  /calendario/marcas/{id}              — tildar (o destildar) una marca como corregida
+  POST   /calendario/versiones/{id}/decision  — aprobar o pedir cambios
   GET    /calendario/entregas/imagenes/{id}   — una imagen (?tam=mini|grande)
   GET    /calendario/entregas?mundo=&rev=     — el tablero del mundo (5 columnas) y el retrabajo
   GET    /calendario/entregas/archivadas      — más de Archivado ("Ver más")
@@ -31,6 +30,11 @@ del servidor:
 - Decide el aprobador al que le toca; quien tiene `calendario.tareas` puede
   decidir por él como respaldo. Nadie decide sobre lo que subió. Una cuenta
   externa no aprueba: no se la puede poner en la cadena ni decide.
+- Las decisiones son dos: aprobar o pedir cambios. «Aprobado con cambios» (y
+  con él las marcas de tipo "ajuste" y la ruta para tildarlas sueltas) se
+  sacó el 19/11/2026 (Ivan: "me resulta raro ese botón. No creo que sume
+  nada"). Las decisiones y marcas viejas quedan en la base y se siguen
+  leyendo (ver reglas.APRUEBAN).
 - La decisión puede llevar una nota interna (0069): la ve el equipo, nunca la
   agencia (ni en la tarea ni en el aviso). Las marcas y el comentario sí, que
   son para ella.
@@ -44,7 +48,9 @@ piden al abrir la tarea, de a una.
 Cada versión entregada se la revisa la IA en segundo plano, después de
 contestar la subida (app/services/revision_ia.py). Lo que encontró se pide
 aparte (app/api/routes/revision_ia.py) y lo ven solo los aprobadores y quien
-gestiona: ver `puede_ver_revision`.
+gestiona: ver `puede_ver_revision`. Desde el 19/11/2026 la IA mira también lo
+que venga en un ZIP (campo `zip` del multipart, no se guarda) y detrás del
+link (app/services/materiales.py).
 """
 import json
 import logging
@@ -74,7 +80,7 @@ from app.models.entregas import (
 from app.models.revision_ia import CalendarioRevisionIA
 from app.models.user import User
 from app.services import entregas as reglas
-from app.services import revision_ia, tipos_de_tarea
+from app.services import materiales, revision_ia, tipos_de_tarea
 from app.services.espacio import exigir_lugar
 from app.services.entregas import (
     MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, MAX_IMAGENES, MAX_MARCAS, NoPuedeDecidir, FaseExistente,
@@ -576,7 +582,6 @@ async def ver_entregas(
             "devolver": not externo and reglas.puede_devolver(
                 current_user.id, _puede_gestionar_tareas(current_user), list(entrega.aprobadores or []), entrega.momento,
             ),
-            "tildarMarcas": entrega_yo or _puede_gestionar_tareas(current_user),
             # A qué columnas del tablero la puede llevar (ver reglas.movimiento).
             "mover": reglas.destinos_posibles(
                 columna, quien, hay_versiones=bool(versiones), vuelve_a=reglas.columna_al_desarchivar(entrega),
@@ -585,7 +590,11 @@ async def ver_entregas(
             # front la pide aparte, y el servidor lo vuelve a controlar ahí).
             "verRevisionIA": puede_ver_revision(current_user, entrega, tarea, actual),
         },
-        "limites": {"imagenes": MAX_IMAGENES, "bytesImagen": MAX_BYTES_IMAGEN, "marcas": MAX_MARCAS},
+        "limites": {
+            "imagenes": MAX_IMAGENES, "bytesImagen": MAX_BYTES_IMAGEN, "marcas": MAX_MARCAS,
+            # El ZIP que se suma a la entrega para que lo revise la IA (19/11/2026).
+            "bytesZip": materiales.MAX_BYTES_ZIP,
+        },
         # La conversación de la tarjeta, al costado como en Trello (0073).
         "comentarios": [_comentario_json(c, current_user, nombres) for c in comentarios],
     }
@@ -741,14 +750,25 @@ async def entregar(
     corregidas: str = Form("[]", max_length=20_000),
     imagenes: list[UploadFile] | None = File(None),
     miniaturas: list[UploadFile] | None = File(None),
+    archivo_zip: UploadFile | None = File(None, alias="zip"),
+    zipYaSubidas: str = Form("[]", max_length=2000),
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
     """Entrega una ronda de la fase en curso: la manda a "Esperando feedback".
     Solo quien la hace (`puede_entregar`). Los materiales son imágenes y/o un
-    link al original (Drive, WeTransfer: 16/11/2026, "imágenes como hoy y/o un
+    link al original (WeTransfer, Smash: 16/11/2026, "imágenes como hoy y/o un
     link"). Va todo en un pedido (las imágenes también): o queda la versión
-    entera, o no queda nada."""
+    entera, o no queda nada.
+
+    Desde el 19/11/2026 puede venir además un ZIP (`zip`, hasta 40 MB) con
+    las piezas adentro: no se guarda (la base es chica), se mira acá que sea
+    un ZIP sano y se le pasa a la IA en segundo plano, que lo abre en memoria
+    (app/services/materiales.py). Por eso el ZIP solo no alcanza: el
+    aprobador tiene que ver la pieza, así que hace falta igual una imagen o
+    el link. Las imágenes de adentro las saca el navegador y las sube como
+    imágenes de la ronda: `zipYaSubidas` dice cuáles (su lugar en el índice
+    del ZIP), para que la IA no las mire dos veces."""
     imagenes, miniaturas = imagenes or [], miniaturas or []
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user, bloquear=True)
     entrega = await _entrega_bloqueada(db, tarea_id)
@@ -779,8 +799,37 @@ async def entregar(
             detail=f"La ronda {ultima.ronda} de {fase.nombre} todavía está en revisión: esperá a que la decidan",
         )
 
+    try:
+        ya_subidas = json.loads(zipYaSubidas or "[]")
+        if not isinstance(ya_subidas, list) or not all(type(i) is int and 0 <= i < 100_000 for i in ya_subidas):
+            raise ValueError
+    except ValueError:
+        raise HTTPException(status_code=422, detail="La lista de imágenes sacadas del ZIP no tiene la forma esperada")
+    zip_saltar = frozenset(ya_subidas)
+    zip_datos, zip_nombre, inventario = None, None, None
+    if archivo_zip is not None and archivo_zip.filename:
+        # Uno más que el máximo: alcanza para saber que se pasó.
+        zip_datos = await archivo_zip.read(materiales.MAX_BYTES_ZIP + 1)
+        zip_nombre = archivo_zip.filename.replace("\\", "/").rsplit("/", 1)[-1][:120] or "archivo.zip"
+        if not zip_datos:
+            zip_datos = None
+        else:
+            try:
+                inventario = materiales.inspeccionar_zip(zip_datos)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc))
+            if not any(e.clase != "otro" for e in inventario):
+                raise HTTPException(
+                    status_code=422,
+                    detail="El ZIP no trae nada para revisar: adentro tiene que haber imágenes (JPG, PNG, WebP) o PDF",
+                )
     if not imagenes and not (link or "").strip():
-        raise HTTPException(status_code=422, detail="Subí al menos una imagen o pegá el link al original")
+        raise HTTPException(
+            status_code=422,
+            detail="Subí al menos una imagen o pegá el link al original" + (
+                ": lo de adentro del ZIP no se guarda, y quien aprueba tiene que poder ver la pieza" if zip_datos else ""
+            ),
+        )
     if len(imagenes) > MAX_IMAGENES:
         raise HTTPException(status_code=422, detail=f"Son demasiadas imágenes: hasta {MAX_IMAGENES} por ronda")
     if len(miniaturas) != len(imagenes):
@@ -863,11 +912,23 @@ async def entregar(
     await db.commit()
     # La IA la revisa en segundo plano: arranca después de contestar (y ya
     # con la versión guardada, por el commit de arriba), abre su propia
-    # sesión y no levanta nunca. Si falla, la entrega queda igual.
-    if revision_ia.activa() and leidas:
-        # Solo con imágenes: un link solo no hay cómo mirarlo.
-        background_tasks.add_task(revision_ia.revisar_version, versionId)
-    return {"id": versionId, "rev": _rev_para(current_user, rev), "ronda": ronda, "entrega": resumen, "avisados": avisados}
+    # sesión y no levanta nunca. Si falla, la entrega queda igual. El ZIP va
+    # en memoria (no está en la base) y el link lo baja ella (19/11/2026):
+    # la entrega no espera la descarga.
+    if revision_ia.activa() and (leidas or zip_datos is not None or link_ok):
+        background_tasks.add_task(
+            revision_ia.revisar_version, versionId, zip_datos=zip_datos, zip_nombre=zip_nombre, zip_saltar=zip_saltar,
+        )
+    return {
+        "id": versionId, "rev": _rev_para(current_user, rev), "ronda": ronda, "entrega": resumen, "avisados": avisados,
+        # Qué se le va a mirar del ZIP (y qué no es imagen ni PDF), para que
+        # quien entrega lo vea en el acto.
+        "zip": None if inventario is None else {
+            "nombre": zip_nombre,
+            "archivos": [e.nombre for e in inventario if e.clase != "otro" and e.indice not in zip_saltar],
+            "ignorados": [e.nombre for e in inventario if e.clase == "otro"],
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -894,7 +955,11 @@ class MarcaNueva(BaseModel):
 
 
 class DecisionNueva(BaseModel):
-    decision: Literal["aprobada", "aprobada-con-cambios", "cambios"]
+    # 'aprobada' o 'cambios' (reglas.DECISIONES). Es un texto y no un Literal
+    # a propósito: así el 422 de «aprobado con cambios» (que ya no existe,
+    # 19/11/2026) lleva un mensaje para la persona y no el genérico de
+    # pydantic. Lo controla reglas.validar_decision al decidir.
+    decision: str = Field(..., max_length=40)
     # Lo que lee la agencia, con las marcas.
     comentario: str | None = Field(None, max_length=5000)
     marcas: list[MarcaNueva] = Field(default_factory=list, max_length=MAX_MARCAS)
@@ -909,6 +974,10 @@ async def decidir(
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
+    try:
+        decision = reglas.validar_decision(payload.decision)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     version = await db.get(CalendarioVersion, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Esa versión ya no existe")
@@ -929,7 +998,7 @@ async def decidir(
             detail="Esta tarjeta está archivada: para decidirla, el equipo tiene que sacarla del archivo",
         )
     resultado, avisados = await _aplicar_decision(
-        db, current_user, tarea, barra, entrega, version, payload.decision,
+        db, current_user, tarea, barra, entrega, version, decision,
         comentario=payload.comentario, marcas=payload.marcas, nota_interna=payload.notaInterna,
     )
     resumen = await _resumen(db, tarea.id)
@@ -1020,17 +1089,20 @@ async def _aplicar_decision(
     entrega: CalendarioEntrega, version: CalendarioVersion, decision: str, *,
     comentario: str | None, marcas: list, nota_interna: str | None,
 ) -> tuple[str, int]:
-    """Aprobar, aprobar con cambios o pedir cambios sobre la versión que
-    espera, con la tarea y la entrega ya bloqueadas. Es lo mismo desde el
-    revisor (POST /decision) que arrastrando la tarjeta en el tablero
-    (POST /mover): las reglas de la cadena son una sola. No hace commit.
-    Devuelve (resultado de la versión, a cuántos se avisó)."""
+    """Aprobar o pedir cambios sobre la versión que espera, con la tarea y la
+    entrega ya bloqueadas. Es lo mismo desde el revisor (POST /decision) que
+    arrastrando la tarjeta en el tablero (POST /mover): las reglas de la
+    cadena son una sola. No hace commit. Devuelve (resultado de la versión, a
+    cuántos se avisó). `decision` ya viene validada (reglas.validar_decision):
+    'aprobada' o 'cambios'."""
     comentario = (comentario or "").strip() or None
     nota_interna = (nota_interna or "").strip() or None
     if decision == "aprobada" and marcas:
+        # Con marcas no hay aprobación: desde el 19/11/2026 una marca es
+        # siempre algo que la agencia tiene que corregir en otra ronda.
         raise HTTPException(
             status_code=422,
-            detail="Con marcas, elegí «Aprobado con cambios» o «Pedir cambios»: «Aprobar» las perdería",
+            detail="Con marcas, elegí «Pedir cambios»: «Aprobar» las perdería",
         )
     if decision != "aprobada" and not marcas and not comentario:
         # La nota interna no cuenta: quien entrega no la ve, y no sabría qué cambiar.
@@ -1062,13 +1134,15 @@ async def _aplicar_decision(
     hay = (await db.execute(
         select(func.coalesce(func.max(CalendarioMarca.numero), 0)).where(CalendarioMarca.version_id == version.id)
     )).scalar_one()
-    tipo_marca = "cambio" if decision == "cambios" else "ajuste"
     de_la_ia: dict[str, tuple[str, int]] = {}
     for i, m in enumerate(marcas, 1):
         marca_id = reglas.nuevo_id("mk")
+        # Solo hay marcas de tipo "cambio" (las tilda la agencia al
+        # reentregar). El tipo "ajuste" era el del aprobado con cambios: ya no
+        # se crea (19/11/2026); la columna queda por las marcas viejas.
         db.add(CalendarioMarca(
             id=marca_id, version_id=version.id, imagen_id=m.imagenId, tarea_id=tarea.id,
-            numero=hay + i, x=m.x, y=m.y, texto=m.texto, tipo=tipo_marca, autor_id=current_user.id,
+            numero=hay + i, x=m.x, y=m.y, texto=m.texto, tipo="cambio", autor_id=current_user.id,
         ))
         if m.observacionIA:
             de_la_ia[m.observacionIA] = (marca_id, hay + i)
@@ -1098,8 +1172,6 @@ async def _aplicar_decision(
     # → a la agencia").
     quien = _quien(current_user)
     quienes_la_hacen = await reglas.destinatarios_de_la_tarjeta(db, tarea, barra.mundo)
-    nombres = await _nombres(db, [entrega.aprobador_de_turno_id])
-    ajustes = [m.texto for m in marcas] + ([comentario] if comentario and not marcas else [])
     avisados = 0
 
     async def avisar(uid: int | None, mensaje: str, evento: str) -> None:
@@ -1110,21 +1182,12 @@ async def _aplicar_decision(
             avisados += 1
 
     if resultado == "revision":
-        # Aprobó y sigue la cadena: le toca al siguiente.
+        # Aprobó y sigue la cadena: le toca al siguiente. A quien entrega no
+        # se le avisa: no tiene nada que hacer todavía, y sería ruido.
         siguiente = entrega.aprobador_de_turno_id
         await avisar(siguiente, reglas.mensaje_para_revisar(
             "", version.ronda, fase.nombre, tarea.titulo, barra.nombre, aprobo_antes=quien,
         ), f"revisar-{siguiente}")
-        # Un "aprobado con cambios" en el medio le interesa ya a quien entrega
-        # (puede ir aplicando los ajustes). Un "aprobado" en el medio no: no
-        # tiene nada que hacer todavía, y sería ruido.
-        if decision == "aprobada-con-cambios":
-            for uid in quienes_la_hacen:
-                await avisar(uid, reglas.mensaje_de_aprobacion(
-                    quien, version.ronda, fase.nombre, tarea.titulo, con_cambios=True, ajustes=ajustes,
-                    siguiente_fase=None, sigue_revisando=nombres.get(siguiente, "el siguiente aprobador"),
-                    terminada=False,
-                ), f"decision-{orden}")
     elif resultado == "cambios":
         for uid in quienes_la_hacen:
             await avisar(uid, reglas.mensaje_de_cambios(
@@ -1138,7 +1201,6 @@ async def _aplicar_decision(
         for uid in quienes_la_hacen:
             await avisar(uid, reglas.mensaje_de_aprobacion(
                 quien, version.ronda, fase.nombre, tarea.titulo,
-                con_cambios=decision == "aprobada-con-cambios", ajustes=ajustes,
                 siguiente_fase=siguiente_fase, sigue_revisando=None, terminada=terminada,
             ), "aprobada")
         # Finalizada: además, a quien la pidió (16/11/2026).
@@ -1310,31 +1372,9 @@ async def _mover_a_mano(
     tarea.estado = "pendiente" if a == "ingresado" else "en-proceso"
 
 
-class MarcaCambios(BaseModel):
-    corregida: bool
-
-
-@router.patch("/marcas/{marca_id}")
-async def tildar_marca(
-    marca_id: str,
-    payload: MarcaCambios,
-    current_user: User = Depends(require_permission("calendario.view")),
-    db: AsyncSession = Depends(get_db),
-):
-    """Tildar suelto un ajuste ("aprobado con cambios") como aplicado, sin
-    entregar otra ronda. Lo hace quien entrega, o quien lidera."""
-    marca = await db.get(CalendarioMarca, marca_id)
-    if marca is None:
-        raise HTTPException(status_code=404, detail="Esa marca ya no existe")
-    tarea, _ = await _tarea_y_barra(db, marca.tarea_id, current_user)
-    if not puede_entregar(current_user, tarea) and not _puede_gestionar_tareas(current_user):
-        raise HTTPException(status_code=403, detail="Tilda las marcas quien entrega la pieza")
-    marca.corregida = payload.corregida
-    marca.corregida_at = datetime.now(timezone.utc) if payload.corregida else None
-    if not payload.corregida:
-        marca.corregida_en_version_id = None
-    await db.commit()
-    return {"id": marca_id, "corregida": marca.corregida}
+# Hasta el 19/11/2026 acá había PATCH /calendario/marcas/{id}, para tildar
+# suelto un "ajuste" del aprobado con cambios. Se fue con él: las marcas que
+# quedan ("cambio") se tildan al reentregar (ver `entregar`, `corregidas`).
 
 
 # ---------------------------------------------------------------------------
