@@ -1872,8 +1872,11 @@ async def mis_tareas(
         )
     )
     ventana = alcance.ventana_de(current_user)
-    en_alcance = alcance.condicion(CalendarioBarra, ventana)
-    consulta = consulta.where(en_alcance if externo else or_(en_alcance, CalendarioTarea.estado != "hecha"))
+    # Lo de su alcance y, aunque quede afuera, lo que le llega siempre (sus
+    # abiertas, si es del equipo): la misma regla que usa Don Tino.
+    consulta = consulta.where(or_(
+        alcance.condicion(CalendarioBarra, ventana), alcance.condicion_le_llega_siempre(CalendarioTarea, current_user),
+    ))
     filas = (await db.execute(
         consulta.order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
     )).all()

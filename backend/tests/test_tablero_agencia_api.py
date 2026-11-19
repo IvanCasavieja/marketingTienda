@@ -11,6 +11,7 @@ Necesita una base Postgres en la última migración (TEST_DATABASE_URL); sin
 ella se saltea. Todo corre adentro de una transacción que se deshace al final.
 """
 import asyncio
+import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -783,11 +784,27 @@ def test_al_equipo_sus_tareas_le_llegan_aunque_no_vea_la_accion():
             assert any(tarea_id in (n["origen_ref"] or "") for n in avisos), usuario.full_name
             # La ficha de esa acción sigue cerrada para esa persona.
             assert (await c.get(f"/calendario/ubicar/{barra.id}")).status_code == 404
+            # Don Tino, con la misma regla (19/11/2026: "Don Tino debe amoldarse
+            # a cada usuario"): «¿qué tengo pendiente?» la nombra, sin link a una
+            # ficha que no abre; y la ficha sigue cerrada.
+            async with d.Sesion() as s:
+                quien = await s.get(User, usuario.id)
+                datos = json.loads(await cc.ejecutar("calendario_tareas", {"responsable": "yo"}, quien, s))
+                assert [t["titulo"] for t in datos["tareas"]] == ["Preparar el brief"], usuario.full_name
+                accion = datos["tareas"][0]["accion"]
+                assert accion["nombre"] == barra.nombre and accion["fuera_de_lo_que_ve"] is True
+                assert "link" not in accion and "id" not in accion
+                cerrada = json.loads(await cc.ejecutar("calendario_accion", {"accion_id": barra.id}, quien, s))
+                assert "error" in cerrada
         # Una hecha de una acción fuera de su alcance ya no se le muestra.
         r = await Cliente(d.http, d.limitado).patch(f"/calendario/tareas/{casos[0][2]}", json={"estado": "hecha"})
         assert r.status_code == 200, r.text
         mias = (await Cliente(d.http, d.limitado).get("/calendario/mis-tareas")).json()
         assert all(x["id"] != casos[0][2] for x in mias)
+        async with d.Sesion() as s:
+            quien = await s.get(User, d.limitado.id)
+            texto = await cc.ejecutar("calendario_tareas", {"responsable": "yo", "estados": ["hecha"]}, quien, s)
+            assert "Preparar el brief" not in texto
         # Quien ve todo no tiene ninguna marcada como fuera de alcance.
         r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
             "id": f"ta-t-{d.sufijo}", "titulo": "Otra", "asignadoA": d.lucia.id})

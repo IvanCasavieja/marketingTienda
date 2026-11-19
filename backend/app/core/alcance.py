@@ -30,7 +30,8 @@ herramientas internas) sigue en app/core/externos.py y depende de
 
 La excepción son las tarjetas propias del tablero (ver tarjeta_propia en
 app/api/routes/entregas.py): se ven siempre, aunque la campaña quede fuera
-del alcance, porque hay que trabajarlas con anticipación.
+del alcance, porque hay que trabajarlas con anticipación. Y a alguien del
+equipo, sus tareas abiertas (`le_llega_siempre`): en Mis tareas y en Don Tino.
 
 Este archivo es puro (sin base) a propósito: las cuentas se prueban en
 tests/test_alcance_del_calendario.py sin levantar nada.
@@ -176,3 +177,29 @@ def meses_de(v: Ventana | None) -> list[str] | None:
 
 def en_palabras(alcance: str) -> str:
     return NOMBRES.get(alcance, alcance)
+
+
+# ---------------------------------------------------------------------------
+# Lo propio: lo que le llega aunque quede fuera de su alcance
+# ---------------------------------------------------------------------------
+
+def le_llega_siempre(usuario, tarea) -> bool:
+    """Si esta tarea le llega a esta persona aunque su acción quede fuera de
+    lo que ve del calendario: a alguien del EQUIPO, sus tareas abiertas (si
+    no, vencen sin que las vea nunca). Es la regla de Mis tareas, y la misma
+    que usa Don Tino (19/11/2026, Ivan: "Don Tino debe amoldarse a cada
+    usuario"). A una cuenta externa no: lo suyo es el tablero (ver
+    es_tarjeta_propia en app/services/entregas.py). Pura."""
+    return (
+        not getattr(usuario, "es_externo", False)
+        and tarea.asignado_a_id is not None and tarea.asignado_a_id == usuario.id
+        and tarea.estado != "hecha"
+    )
+
+
+def condicion_le_llega_siempre(modelo, usuario):
+    """La misma regla que `le_llega_siempre`, para el WHERE de una consulta
+    sobre las tareas."""
+    if getattr(usuario, "es_externo", False):
+        return false()
+    return (modelo.asignado_a_id == usuario.id) & (modelo.estado != "hecha")
