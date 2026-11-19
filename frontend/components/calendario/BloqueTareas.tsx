@@ -966,14 +966,17 @@ function EntregasDeLaTarea({ tarea, personas, usuarioId }: {
         <p className={`min-w-0 flex-1 text-sm font-semibold ${meToca ? 'text-brand-800 dark:text-brand-100' : 'text-slate-700 dark:text-slate-200'}`}>
           {paso.texto}
         </p>
+        {/* Siempre abre la tarjeta mirando (Ivan, 19/11/2026: "vos lo que
+            tendrías que abrirme es la tarjeta"); entregar o revisar, desde
+            el botón que está arriba de la ficha. */}
         <button
           type="button"
-          onClick={() => abrir(tarea.id, paso.accion ?? 'ver')}
+          onClick={() => abrir(tarea.id, 'ver')}
           className={`min-h-[40px] shrink-0 rounded-xl px-3.5 text-sm font-bold transition active:scale-[.98] ${
             meToca ? 'bg-brand-600 text-white shadow-sm hover:bg-brand-700' : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-800'
           }`}
         >
-          {paso.accion === 'entregar' ? 'Entregar' : paso.accion === 'revisar' ? 'Revisar' : 'Ver entregas'}
+          Abrir la tarjeta
         </button>
       </div>
     </div>

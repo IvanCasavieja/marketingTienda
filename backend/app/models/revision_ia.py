@@ -36,9 +36,16 @@ class CalendarioRevisionIA(Base):
     # la pantalla: ahí un error no se muestra.
     motivo: Mapped[str | None] = mapped_column(String(300), nullable=True)
     modelo: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    # [{id, tipo, texto, gravedad, imagenId, x, y, estado, marcaId, numero,
-    #   por, fecha}] — ver `limpiar_observaciones` en el servicio.
+    # [{id, tipo, texto, gravedad, imagenId, x, y, archivo, pagina, origen,
+    #   estado, marcaId, numero, por, fecha}] — ver `limpiar_observaciones` en
+    # el servicio. `archivo`/`pagina`/`origen` (19/11/2026): de qué archivo
+    # del ZIP o del link es; una observación de antes no los trae.
     observaciones: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # Lo del ZIP y el link (0080, 19/11/2026): {"revisados": [{nombre, origen,
+    # paginas}], "noSePudoAbrir": [texto], "ignorados": [nombre]}. Es lo que
+    # el aprobador tiene que ver cuando un link no se pudo abrir. Null en las
+    # revisiones de antes y cuando no hubo ZIP ni link.
+    materiales: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     costo_usd: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False, default=0)

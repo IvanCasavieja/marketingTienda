@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import {
-  ArrowRight, Building2, Check, MessageSquare, ChevronDown, Clock, Download, ExternalLink, FileText, Hourglass, Link2, Loader2, Lock,
+  ArrowRight, Building2, Check, MessageSquare, ChevronDown, Clock, Download, ExternalLink, FileText, Layers, Link2, Loader2, Lock,
   PartyPopper, Pencil, RotateCcw, Send, ShieldCheck, UserRound, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { calendarioApi, entregasApi } from '@/lib/api'
 import {
-  ETIQUETA_DECISION, camposDe, fechaYHora, marcasPendientes, pasoEnLaVista, proximoPaso, tipoDePieza, versionAnterior,
+  camposDe, etiquetaDecision, fechaDia, fechaYHora, pasoEnLaVista, proximoPaso, tipoDePieza, versionAnterior,
   type DetalleEntregas, type FaseDetalle, type Marca, type Version,
 } from '@/lib/calendario/entregas'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
@@ -38,10 +38,11 @@ function detalleDeError(e: unknown): string | null {
 }
 
 /**
- * Las entregas de una tarea, encima de todo: la línea de fases, el próximo
- * paso con su botón, la versión actual y la historia. Desde acá se entrega
- * y se revisa. Vive una sola vez, en el layout: la abren la ficha de la
- * acción, el tablero, "Mis tareas" y los avisos (ver store/entregas.ts).
+ * Las entregas de una tarea, encima de todo: el estado en una línea con su
+ * botón, la versión en curso (o lo que hay que corregir) y las rondas
+ * cerradas (ver Resumen). Desde acá se entrega y se revisa. Vive una sola
+ * vez, en el layout: la abren la ficha de la acción, el tablero, "Mis
+ * tareas" y los avisos (ver store/entregas.ts).
  */
 export default function VistaEntregas() {
   const tareaId = useVistaEntregas(s => s.tareaId)
@@ -114,13 +115,15 @@ function Contenido({ tareaId }: { tareaId: string }) {
     }
   }
 
-  // Revisando, la imagen necesita todo el lugar; en lo demás, la caja mide
-  // lo que tiene adentro (sin un hueco blanco abajo) hasta el 92 % del alto.
-  // Viendo la tarjeta, en pantalla grande, al costado van los comentarios
-  // (17/11/2026, "como tiene Trello en un costado"): la caja es más ancha.
-  const ancho = modo === 'revisar' ? 'sm:max-w-6xl sm:h-[92dvh]'
-    : modo === 'ver' ? 'sm:max-w-3xl lg:max-w-5xl sm:h-auto sm:max-h-[92dvh]'
-      : 'sm:max-w-3xl sm:h-auto sm:max-h-[92dvh]'
+  // La caja ocupa casi toda la pantalla de la notebook, en todos los modos
+  // (Ivan, 19/11/2026: "me resulta un poco pequeña la pantalla de aprobación
+  // de los materiales. Debería ser más grande el modal (…) el espacio libre
+  // da tranquilidad"): la imagen se ve grande y hay aire alrededor. Siempre
+  // del mismo tamaño, así no pega un salto al pasar de mirar a entregar o
+  // revisar (los formularios van centrados, con un ancho de lectura). En el
+  // teléfono, la pantalla entera, como antes. Viendo la tarjeta, al costado
+  // van los comentarios (17/11/2026, "como tiene Trello en un costado").
+  const ancho = 'sm:h-[94dvh] sm:max-w-[96vw] xl:max-w-7xl'
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-4">
@@ -185,7 +188,7 @@ function Contenido({ tareaId }: { tareaId: string }) {
             <Comentarios
               detalle={detalle}
               onRecargar={() => setRecarga(n => n + 1)}
-              className="hidden min-h-0 border-l border-slate-200 dark:border-slate-800 lg:flex lg:w-80 lg:shrink-0 lg:flex-col"
+              className="hidden min-h-0 border-l border-slate-200 dark:border-slate-800 lg:flex lg:w-80 lg:shrink-0 lg:flex-col xl:w-96"
             />
           </div>
         )}
@@ -266,6 +269,32 @@ function Encabezado({ detalle, sePuedeCerrar, onCerrar, cerrarRef }: {
 // Mirando
 // ---------------------------------------------------------------------------
 
+/**
+ * La ficha de una tarjeta, mirando. Ivan la vio en producción (19/11/2026):
+ * "está todo muy colorinche (…) veo que se repite: me ponés lo que hay que
+ * corregir y ponés los 4 puntos y abajo dice la última versión, ronda 1,
+ * volvió con cambios y volvés a repetir los cambios que se pidieron". Quedó
+ * así, de arriba para abajo, y cada cosa una sola vez:
+ *
+ *  1. Una línea de estado: la fase, la ronda y a quién le toca, con su botón.
+ *     La línea de fases solo cuando hay varias: con una sola, "Entrega · Con
+ *     cambios · ronda 1" encima del estado era decir lo mismo dos veces.
+ *  2. La versión en curso, grande ("la última versión en realidad siempre va
+ *     a estar arriba del todo"). Si volvió con cambios, es "Lo que hay que
+ *     corregir": las marcas numeradas sobre la imagen y su lista, acá y no
+ *     en otra tarjeta más abajo.
+ *  3. "Lo que se pidió", cerrado.
+ *  4. "Rondas": cada ronda en un renglón cerrado, que se abre tocándolo,
+ *     como las tareas en el calendario (BloqueTareas).
+ *
+ * Y menos color: el rojo queda para "volvió con cambios"; las marcas van
+ * todas del color de la marca.
+ *
+ * Es lo que se abre al tocar una tarjeta, siempre (Ivan, 19/11/2026: "si yo
+ * aprieto arriba de la tarjeta, me abre automáticamente la parte de
+ * corrección y no me abre la tarjeta en sí"): entregar y revisar salen de
+ * los botones de acá arriba.
+ */
 function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
   detalle: DetalleEntregas
   usuarioId: number | null
@@ -273,7 +302,6 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
   onRecargar: () => void
 }) {
   const setModo = useVistaEntregas(s => s.setModo)
-  const huboCambios = useVistaEntregas(s => s.huboCambios)
   const { resumen, tarea, puedo } = detalle
   const nombreDe = (id: number | null) => (id != null ? detalle.personas[String(id)] : null) ?? 'alguien'
   const enCurso = versionEnCurso(detalle)
@@ -283,144 +311,130 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
     }),
     puedo.decidir, usuarioId != null && enCurso?.subidaPor === usuarioId,
   )
-  // La versión que se muestra grande: la última de la fase en curso o, si ya
-  // se aprobó todo, la aprobada de la última fase (la pieza que salió).
-  const ultimaDeFase = (() => {
-    const fase = detalle.fases.find(f => f.id === resumen.faseActual)
-      ?? (resumen.momento === 'aprobada' ? detalle.fases[detalle.fases.length - 1] : undefined)
-    return fase?.versiones[fase.versiones.length - 1] ?? null
-  })()
+  // La fase que se mira: la que está en curso o, si ya se aprobó todo, la
+  // última (la pieza que salió). Su última versión es la que se ve grande.
+  const faseActual = detalle.fases.find(f => f.id === resumen.faseActual)
+    ?? (resumen.momento === 'aprobada' ? detalle.fases[detalle.fases.length - 1] : undefined)
+  const ultimaDeFase = faseActual?.versiones[faseActual.versiones.length - 1] ?? null
   // La fase en curso, si la abrió una devolución: su texto va arriba de todo.
   const faseDevuelta = detalle.fases.find(f => f.id === resumen.faseActual && f.motivo) ?? null
-  const pendientes = marcasPendientes(detalle.fases)
-  const aCorregir = resumen.momento === 'cambios' ? pendientes.filter(m => m.tipo === 'cambio') : []
-  const ajustes = pendientes.filter(m => m.tipo === 'ajuste')
-
-  async function tildar(m: Marca, corregida: boolean) {
-    try {
-      await entregasApi.tildarMarca(m.id, corregida)
-      onRecargar()
-      huboCambios()
-    } catch (e) {
-      toast.error(detalleDeError(e) ?? 'No se pudo guardar.')
-    }
-  }
-
-  const tonoPaso = paso.aQuien === 'vos'
-    ? 'border-brand-300 bg-brand-50 dark:border-brand-500/40 dark:bg-brand-500/10'
-    : resumen.momento === 'aprobada'
-      ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10'
-      : 'border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50'
-  const IconoPaso = resumen.momento === 'aprobada' ? PartyPopper : paso.aQuien === 'vos' ? ArrowRight : Hourglass
+  // Volvió con cambios: lo que hay que corregir son las marcas de la ronda
+  // que volvió (la agencia ya no tilda qué corrigió, 19/11/2026: lo que
+  // falte lo vuelve a marcar quien revisa la ronda siguiente), más lo que
+  // quien revisó escribió aparte de las marcas.
+  const aCorregir = resumen.momento === 'cambios' && ultimaDeFase ? ultimaDeFase.marcas : []
+  const comentariosDeVuelta = resumen.momento === 'cambios' && ultimaDeFase
+    ? ultimaDeFase.decisiones.filter(d => d.decision === 'cambios' && d.comentario)
+    : []
+  const unaFase = resumen.fases.length === 1
+  // El renglón chico arriba del estado, solo si suma algo: con varias fases
+  // la línea de fases ya dice fase, estado y ronda; en revisión y en
+  // producción la ronda ya la nombra el texto del paso. Queda para la ronda
+  // que volvió con cambios ("Ronda 2 · Volvió con cambios") y para cuántas
+  // rondas llevó la aprobada.
+  const rondas = faseActual?.versiones.length ?? 0
+  const cabecera = !unaFase ? null
+    : resumen.momento === 'aprobada' ? (rondas > 0 ? `${rondas} ${rondas === 1 ? 'ronda' : 'rondas'}` : null)
+      : resumen.momento === 'cambios' && resumen.ronda > 0 ? `Ronda ${resumen.ronda}` : null
+  const hayBoton = (paso.accion === 'entregar' && puedo.entregar) || (puedo.decidir && resumen.momento === 'revision')
 
   return (
-    <div className="min-w-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6">
-      <LineaDeFases resumen={resumen} />
-
-      {/* El próximo paso: lo primero que se lee, con su botón */}
-      <section className={`rounded-2xl border p-4 ${tonoPaso}`} aria-label="Próximo paso">
-        <div className="flex items-start gap-3">
-          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-            paso.aQuien === 'vos' ? 'bg-brand-600 text-white' : resumen.momento === 'aprobada' ? 'bg-emerald-500 text-white' : 'bg-white text-slate-500 dark:bg-slate-900 dark:text-slate-400'
-          }`}>
-            <IconoPaso className="h-5 w-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-base font-bold leading-snug text-slate-900 dark:text-slate-100">{paso.texto}</p>
-            {resumen.momento === 'revision' && enCurso && (
+    <div className="min-w-0 flex-1 space-y-8 overflow-y-auto overscroll-contain px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6">
+      {/* 1. Dónde está y a quién le toca: una sola línea, con su botón. */}
+      <section aria-label="Dónde está la pieza" className="space-y-4">
+        {!unaFase && <LineaDeFases resumen={resumen} />}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          <div className="min-w-0">
+            {cabecera && (
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {cabecera}
+                {resumen.momento === 'cambios' && (
+                  <> · <span className="text-rose-700 dark:text-rose-300">Volvió con cambios</span></>
+                )}
+              </p>
+            )}
+            <p className="flex items-start gap-2 text-lg font-bold leading-snug text-slate-900 dark:text-slate-100">
+              {resumen.momento === 'aprobada' && <PartyPopper className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />}
+              <span>{paso.texto}</span>
+            </p>
+            {/* Con una cadena de varios, quién ya aprobó y a quién le toca. */}
+            {resumen.momento === 'revision' && enCurso && detalle.aprobadores.length > 1 && (
               <CadenaDeAprobacion detalle={detalle} version={enCurso} />
             )}
-            {resumen.momento === 'cambios' && paso.aQuien !== 'vos' && (
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Volvió con cambios: lo corrige quien entrega.</p>
-            )}
           </div>
+          {hayBoton && (
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {paso.accion === 'entregar' && puedo.entregar && (
+                <button type="button" onClick={() => setModo('entregar')} className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] sm:min-h-[44px] sm:flex-none">
+                  <Send className="h-4 w-4" /> {resumen.momento === 'cambios' ? `Entregar ronda ${resumen.ronda + 1}` : 'Entregar'}
+                </button>
+              )}
+              {puedo.decidir && resumen.momento === 'revision' && (
+                <button type="button" onClick={() => setModo('revisar')} className={`flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold shadow-sm transition active:scale-[.98] sm:min-h-[44px] sm:flex-none ${
+                  puedo.comoRespaldo ? 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800' : 'bg-brand-600 text-white hover:bg-brand-700'
+                }`}>
+                  {puedo.comoRespaldo ? <ShieldCheck className="h-4 w-4" /> : <Check className="h-4 w-4" strokeWidth={3} />}
+                  {puedo.comoRespaldo ? 'Revisar como respaldo' : 'Revisar ahora'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         {resumen.momento === 'aprobada' && puedo.devolver && (
           <DevolverAprobada tareaId={tarea.id} siguiente={`Entrega ${detalle.fases.length + 1}`} onListo={onRecargar} />
         )}
-        {(paso.accion || (puedo.decidir && resumen.momento === 'revision')) && (
-          <div className="mt-3 flex flex-wrap gap-2 sm:pl-[3.25rem]">
-            {paso.accion === 'entregar' && puedo.entregar && (
-              <button type="button" onClick={() => setModo('entregar')} className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] sm:min-h-[44px] sm:flex-none">
-                <Send className="h-4 w-4" /> {resumen.momento === 'cambios' ? `Entregar ronda ${resumen.ronda + 1}` : 'Entregar'}
-              </button>
-            )}
-            {puedo.decidir && resumen.momento === 'revision' && (
-              <button type="button" onClick={() => setModo('revisar')} className={`flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold shadow-sm transition active:scale-[.98] sm:min-h-[44px] sm:flex-none ${
-                puedo.comoRespaldo ? 'border border-violet-300 bg-white text-violet-800 hover:bg-violet-50 dark:border-violet-500/40 dark:bg-slate-900 dark:text-violet-200' : 'bg-brand-600 text-white hover:bg-brand-700'
-              }`}>
-                {puedo.comoRespaldo ? <ShieldCheck className="h-4 w-4" /> : <Check className="h-4 w-4" strokeWidth={3} />}
-                {puedo.comoRespaldo ? 'Revisar como respaldo' : 'Revisar ahora'}
-              </button>
-            )}
-          </div>
-        )}
       </section>
 
       {faseDevuelta?.motivo && resumen.momento !== 'aprobada' && (
-        <section aria-labelledby="motivo-devolucion" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-500/30 dark:bg-rose-500/10">
-          <h3 id="motivo-devolucion" className="flex items-center gap-2 text-sm font-bold text-rose-800 dark:text-rose-200">
+        <section aria-labelledby="motivo-devolucion">
+          <h3 id="motivo-devolucion" className="flex items-center gap-2 text-sm font-bold text-rose-700 dark:text-rose-300">
             <RotateCcw className="h-4 w-4" /> Volvió después de aprobada: {faseDevuelta.nombre}
           </h3>
-          <p className="mt-1.5 whitespace-pre-line text-sm text-rose-950 dark:text-rose-50">{faseDevuelta.motivo}</p>
+          <p className="mt-1.5 whitespace-pre-line text-sm text-slate-800 dark:text-slate-200">{faseDevuelta.motivo}</p>
           {faseDevuelta.abiertaPor != null && (
-            <p className="mt-1.5 text-xs text-rose-800/80 dark:text-rose-200/80">Lo pidió {nombreDe(faseDevuelta.abiertaPor)}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Lo pidió {nombreDe(faseDevuelta.abiertaPor)}</p>
           )}
         </section>
       )}
 
-      {aCorregir.length > 0 && (
-        <section aria-labelledby="hay-que-corregir">
-          <h3 id="hay-que-corregir" className="mb-2 text-sm font-bold text-rose-700 dark:text-rose-300">
-            Lo que hay que corregir ({aCorregir.length})
+      {/* 2. La versión en curso, grande. Si volvió con cambios, es lo que hay que corregir. */}
+      {ultimaDeFase && (resumen.momento === 'cambios' ? (
+        <section aria-labelledby="hay-que-corregir" className="space-y-3">
+          {/* El número, solo si hay marcas: los cambios pueden venir solo
+              escritos (desde el tablero es lo común), y "(0)" decía que no
+              había nada que corregir. Lo escrito va arriba de la imagen. */}
+          <h3 id="hay-que-corregir" className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            Lo que hay que corregir{aCorregir.length > 0 ? ` (${aCorregir.length})` : ''}
           </h3>
-          <ol className="space-y-1.5">
-            {aCorregir.map(m => (
-              <li key={m.id} className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-900 dark:bg-rose-500/10 dark:text-rose-100">
-                <span className="mt-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-600 px-1 text-[11px] font-bold text-white">{m.numero}</span>
-                <span className="min-w-0">{m.texto}</span>
-              </li>
-            ))}
-          </ol>
+          {comentariosDeVuelta.map((d, i) => (
+            <p key={i} className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">
+              {/* Quien lo escribió: el respaldo, si decidió por otro. */}
+              <span className="font-semibold text-slate-900 dark:text-slate-100">{nombreDe(d.decididoPor ?? d.aprobador)}:</span> «{d.comentario}»
+            </p>
+          ))}
+          {/* key: al entregar, la ficha pasa de la ronda que volvió a la nueva
+              y la imagen elegida no tiene que quedar la de la ronda vieja. */}
+          <VersionGrande key={ultimaDeFase.id} detalle={detalle} version={ultimaDeFase} />
+          <ListaDeMarcas marcas={aCorregir} version={ultimaDeFase} />
         </section>
-      )}
-
-      {ajustes.length > 0 && (
-        <section aria-labelledby="ajustes">
-          <h3 id="ajustes" className="mb-1 text-sm font-bold text-amber-800 dark:text-amber-200">Ajustes para el archivo final ({ajustes.length})</h3>
-          <p className="mb-2 text-xs text-slate-600 dark:text-slate-400">Se aprobó con cambios: no hace falta otra ronda, pero hay que aplicarlos.</p>
-          <ul className="space-y-1.5">
-            {ajustes.map(m => (
-              <li key={m.id}>
-                <label className={`flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-50 ${puedo.tildarMarcas ? 'cursor-pointer' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={false}
-                    disabled={!puedo.tildarMarcas}
-                    onChange={() => void tildar(m, true)}
-                    className="mt-0.5 h-5 w-5 shrink-0 rounded accent-emerald-600"
-                    aria-label={`Marcar como aplicado: ${m.texto}`}
-                  />
-                  <span className="min-w-0"><strong>{m.numero}.</strong> {m.texto} <span className="text-xs opacity-70">· {m.fase}</span></span>
-                </label>
-              </li>
-            ))}
-          </ul>
+      ) : (
+        <section aria-label={`Ronda ${ultimaDeFase.ronda}`} className="space-y-3">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Ronda {ultimaDeFase.ronda} · la subió {nombreDe(ultimaDeFase.subidaPor)} · {fechaYHora(ultimaDeFase.fecha)}
+          </p>
+          <VersionGrande key={ultimaDeFase.id} detalle={detalle} version={ultimaDeFase} />
+          {ultimaDeFase.comentario && (
+            <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">«{ultimaDeFase.comentario}»</p>
+          )}
+          <ListaDeMarcas marcas={ultimaDeFase.marcas} version={ultimaDeFase} />
         </section>
-      )}
+      ))}
 
-      {ultimaDeFase && (
-        <section aria-labelledby="ultima-version">
-          <h3 id="ultima-version" className="mb-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-            {resumen.momento === 'aprobada' ? 'La versión aprobada' : 'La última versión'}
-          </h3>
-          <TarjetaVersion detalle={detalle} version={ultimaDeFase} abierta />
-        </section>
-      )}
-
-      {/* Antes de la primera entrega, lo que se pidió es lo que hay que leer: abierto. */}
+      {/* 3. Antes de la primera entrega, lo que se pidió es lo que hay que leer: abierto. */}
       <Brief detalle={detalle} abiertoAlInicio={resumen.ronda === 0 && resumen.momento === 'produccion' && !detalle.fases.some(f => f.versiones.length > 0)} />
-      <Historia detalle={detalle} sin={ultimaDeFase?.id ?? null} />
+
+      {/* 4. Todas las rondas, cerradas. */}
+      <Rondas detalle={detalle} />
 
       {/* En pantalla chica, los comentarios van acá; en grande, al costado. */}
       <Comentarios detalle={detalle} onRecargar={onRecargar} className="flex flex-col lg:hidden" />
@@ -553,7 +567,7 @@ function DevolverAprobada({ tareaId, siguiente, onListo }: { tareaId: string; si
 
   if (!abierto) {
     return (
-      <div className="mt-3 sm:pl-[3.25rem]">
+      <div>
         <button
           type="button"
           onClick={() => setAbierto(true)}
@@ -565,7 +579,7 @@ function DevolverAprobada({ tareaId, siguiente, onListo }: { tareaId: string; si
     )
   }
   return (
-    <div className="mt-3 space-y-2 sm:pl-[3.25rem]">
+    <div className="max-w-3xl space-y-2">
       <label htmlFor={`devolver-${tareaId}`} className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
         ¿Qué hay que cambiar?
       </label>
@@ -608,20 +622,18 @@ function CadenaDeAprobacion({ detalle, version }: { detalle: DetalleEntregas; ve
   const nombreDe = (id: number | null) => (id != null ? detalle.personas[String(id)] : null) ?? 'alguien'
   const turno = detalle.resumen.aprobadorDeTurno
   return (
-    <ol className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+    <ol className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm">
       {detalle.aprobadores.map((id, i) => {
         const d = version.decisiones.find(x => x.aprobador === id)
         const toca = id === turno
         return (
           <li key={id} className="flex items-center gap-1.5">
-            {i > 0 && <ArrowRight className="h-3 w-3 text-slate-500" aria-hidden />}
-            <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${
-              d ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200'
-                : toca ? 'bg-amber-100 text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-100 dark:ring-amber-500/40'
-                  : 'bg-white text-slate-500 dark:bg-slate-900 dark:text-slate-400'
+            {i > 0 && <ArrowRight className="h-3.5 w-3.5 text-slate-400" aria-hidden />}
+            <span className={`flex items-center gap-1 ${
+              d ? 'text-emerald-700 dark:text-emerald-300' : toca ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'
             }`}>
-              {d && <Check className="h-3 w-3" strokeWidth={3} />}
-              {nombreDe(id)}{d ? (d.decision === 'aprobada-con-cambios' ? ' (con cambios)' : '') : toca ? ' · le toca' : ''}
+              {d && <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden />}
+              {nombreDe(id)}
             </span>
           </li>
         )
@@ -630,25 +642,30 @@ function CadenaDeAprobacion({ detalle, version }: { detalle: DetalleEntregas; ve
   )
 }
 
+/** Cómo está cada ronda, en una palabra. El rojo es solo para la que volvió
+ *  con cambios (Ivan, 19/11/2026: "está bueno que aparezca en rojo para
+ *  resaltar que son cambios"); lo demás, sin color de más. */
 const ESTADO_VERSION = {
-  revision: { texto: 'En revisión', tono: 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200' },
-  aprobada: { texto: 'Aprobada', tono: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200' },
-  cambios: { texto: 'Volvió con cambios', tono: 'bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-200' },
+  revision: { texto: 'En revisión', tono: 'text-slate-700 dark:text-slate-300' },
+  aprobada: { texto: 'Aprobada', tono: 'text-emerald-700 dark:text-emerald-300' },
+  cambios: { texto: 'Volvió con cambios', tono: 'text-rose-700 dark:text-rose-300' },
 } as const
 
-function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: {
+/**
+ * Una versión, grande: la imagen con sus marcas, las otras imágenes como
+ * miniaturas y, abajo, de dónde bajar el original y la vista previa. La usa
+ * la ficha para la versión en curso y cada ronda al abrirse.
+ */
+function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
   detalle: DetalleEntregas
   version: Version
-  abierta?: boolean
+  /** El alto máximo de la imagen: más chica adentro de una ronda abierta. */
+  claseImagen?: string
 }) {
-  const [abierta, setAbierta] = useState(abiertaAlInicio)
   const [activa, setActiva] = useState(version.imagenes[0]?.id ?? null)
-  const nombreDe = (id: number | null) => (id != null ? detalle.personas[String(id)] : null) ?? 'Alguien'
   const pines: Pin[] = version.marcas.filter(m => m.imagenId === activa).map(m => ({
-    clave: m.id, numero: m.numero, x: m.x, y: m.y, texto: m.texto,
-    tono: m.corregida ? 'corregida' : m.tipo === 'ajuste' ? 'ajuste' : 'cambio',
+    clave: m.id, numero: m.numero, x: m.x, y: m.y, texto: m.texto, tono: m.corregida ? 'corregida' : 'cambio',
   }))
-  const estado = ESTADO_VERSION[version.estado]
   const todasPurgadas = version.imagenes.length > 0 && version.imagenes.every(i => i.purgada)
   const vivas = version.imagenes.filter(i => !i.purgada)
   const [bajando, setBajando] = useState(false)
@@ -688,22 +705,49 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
   }
 
   return (
-    <article className="rounded-2xl border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:p-4">
-      <header className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Ronda {version.ronda}</h4>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${estado.tono}`}>{estado.texto}</span>
-        <span className="text-xs text-slate-500 dark:text-slate-400">{nombreDe(version.subidaPor)} · {fechaYHora(version.fecha)}</span>
-        {/* 44 px para el dedo en el teléfono; en la compu, más chicos. */}
-        <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
-          {version.link && vivas.length > 0 && (
+    <div className="space-y-2">
+      {todasPurgadas ? (
+        <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
+          Las imágenes de esta ronda ya se borraron (se guardan hasta un tiempo después de terminada la acción). Quedan las marcas y las decisiones.
+        </p>
+      ) : activa ? (
+        <ImagenConMarcas imagenId={activa} pines={pines} claseImagen={claseImagen} etiqueta={`Ronda ${version.ronda}`} />
+      ) : null}
+
+      {!todasPurgadas && version.imagenes.length > 1 && (
+        <div className="flex justify-center gap-2 overflow-x-auto">
+          {version.imagenes.map((im, i) => (
+            <button key={im.id} type="button" onClick={() => setActiva(im.id)} aria-pressed={im.id === activa} aria-label={`Ver la imagen ${i + 1}`}
+              className={`shrink-0 rounded-xl p-0.5 ${im.id === activa ? 'ring-2 ring-brand-600' : 'opacity-70 hover:opacity-100'}`}>
+              <Miniatura imagenId={im.id} etiqueta={`Imagen ${i + 1}`} className="h-14 w-14" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Una ronda que vino solo con un link (16/11/2026: "imágenes y/o un link"). */}
+      {version.imagenes.length === 0 && version.link && (
+        <a href={version.link} target="_blank" rel="noopener noreferrer" title={version.link}
+          className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-brand-700 transition hover:border-brand-400 dark:border-slate-700 dark:text-brand-200">
+          <Link2 className="h-4 w-4 shrink-0" /> <span className="min-w-0 truncate">Materiales en el link: {version.link}</span>
+        </a>
+      )}
+
+      {/* De dónde bajar. 44 px para el dedo en el teléfono; en la compu, más
+          chicos. Solo imágenes: lo que baja es la vista previa, y se dice,
+          para que nadie publique una imagen achicada creyendo que es el
+          archivo final. */}
+      {version.imagenes.length > 0 && (version.link || vivas.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+          {version.link && (
             <a
               href={version.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 text-xs font-bold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:min-h-[36px]"
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 font-bold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:min-h-[36px]"
               title={`El archivo final, en el link: ${version.link}`}
             >
-              <ExternalLink className="h-3.5 w-3.5" /> Bajar el original
+              <ExternalLink className="h-3.5 w-3.5" /> {todasPurgadas ? 'Abrir el original' : 'Bajar el original'}
             </a>
           )}
           {vivas.length > 0 && (
@@ -711,114 +755,82 @@ function TarjetaVersion({ detalle, version, abierta: abiertaAlInicio = false }: 
               type="button"
               onClick={() => void descargar()}
               disabled={bajando}
-              className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-h-[36px]"
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-h-[36px]"
               title="Las imágenes de esta ronda, achicadas para revisar (1600 px, JPEG): no son el archivo final"
             >
               {bajando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Vista previa (1600 px)
             </button>
           )}
-          {!abierta && version.imagenes.length > 0 && (
-            <button type="button" onClick={() => setAbierta(true)} className="min-h-[44px] rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:min-h-[36px]">
-              Ver grande
-            </button>
-          )}
-        </span>
-      </header>
-
-      {/* Solo imágenes: lo que baja es la vista previa. Se dice, para que nadie
-          publique una imagen achicada creyendo que es el archivo final. */}
-      {!version.link && vivas.length > 0 && (
-        <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
-          {laHizoQuienMira
-            ? 'Sin link al original: lo que se baja es la vista previa.'
-            : 'Sin link al original: pedíselo a quien la hace.'}
-        </p>
-      )}
-
-      {version.imagenes.length === 0 && version.link && (
-        <a href={version.link} target="_blank" rel="noopener noreferrer" title={version.link}
-          className="mt-2 flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-brand-700 transition hover:border-brand-400 dark:border-slate-700 dark:bg-slate-800/50 dark:text-brand-200">
-          <Link2 className="h-4 w-4 shrink-0" /> <span className="min-w-0 truncate">Materiales en el link: {version.link}</span>
-        </a>
-      )}
-
-      {todasPurgadas ? (
-        <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
-          Las imágenes de esta ronda ya se borraron (se guardan hasta un tiempo después de terminada la acción). Quedan las marcas y las decisiones.
-        </p>
-      ) : abierta && activa ? (
-        <div className="mt-3 space-y-2">
-          <ImagenConMarcas imagenId={activa} pines={pines} claseImagen="max-h-[50vh]" etiqueta={`Ronda ${version.ronda}`} />
-          {version.imagenes.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto">
-              {version.imagenes.map((im, i) => (
-                <button key={im.id} type="button" onClick={() => setActiva(im.id)} aria-pressed={im.id === activa}
-                  className={`shrink-0 rounded-xl p-0.5 ${im.id === activa ? 'ring-2 ring-brand-600' : 'opacity-70 hover:opacity-100'}`}>
-                  <Miniatura imagenId={im.id} etiqueta={`Imagen ${i + 1}`} className="h-14 w-14" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : version.imagenes.length > 0 ? (
-        <button type="button" onClick={() => setAbierta(true)} className="mt-2 flex gap-2" aria-label={`Ver la ronda ${version.ronda} grande`}>
-          {version.imagenes.map((im, i) => <Miniatura key={im.id} imagenId={im.id} etiqueta={`Imagen ${i + 1}`} className="h-14 w-14" />)}
-        </button>
-      ) : null}
-
-      {(version.comentario || (version.link && todasPurgadas)) && (
-        <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-          {version.comentario && <p className="whitespace-pre-line">«{version.comentario}»</p>}
-          {/* Con imágenes, el original está arriba ("Bajar el original"); sin
-              imágenes, en el recuadro del link. Acá, si ya se borraron. */}
-          {version.link && todasPurgadas && (
-            <a href={version.link} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-flex items-center gap-1 font-semibold text-brand-700 underline underline-offset-2 dark:text-brand-200">
-              <ExternalLink className="h-3.5 w-3.5" /> Abrir el original
-            </a>
+          {!version.link && vivas.length > 0 && (
+            <span className="px-2">
+              {laHizoQuienMira ? 'Sin link al original: lo que se baja es la vista previa.' : 'Sin link al original: pedíselo a quien la hace.'}
+            </span>
           )}
         </div>
       )}
+    </div>
+  )
+}
 
-      {version.decisiones.length > 0 && (
-        <ul className="mt-2 space-y-1">
-          {version.decisiones.map((d, i) => (
-            <li key={i} className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
-              <span className={`font-semibold ${d.decision === 'cambios' ? 'text-rose-700 dark:text-rose-300' : d.decision === 'aprobada-con-cambios' ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
-                {d.decision === 'cambios' ? <RotateCcw className="mr-1 inline h-3.5 w-3.5" /> : <Check className="mr-1 inline h-3.5 w-3.5" strokeWidth={3} />}
-                {nombreDe(d.aprobador)} {ETIQUETA_DECISION[d.decision].toLowerCase()}
-              </span>
-              {d.decididoPor !== d.aprobador && d.decididoPor != null && (
-                <span className="text-xs text-violet-700 dark:text-violet-300">(decidió {nombreDe(d.decididoPor)} como respaldo)</span>
-              )}
-              <span className="text-xs text-slate-500 dark:text-slate-400">{fechaYHora(d.fecha)}</span>
-              {d.comentario && <span className="w-full text-slate-600 dark:text-slate-400">«{d.comentario}»</span>}
-              {d.notaInterna && (
-                <span className="mt-0.5 flex w-full items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[13px] text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                  <span><span className="font-semibold">Nota interna (la agencia no la ve):</span> {d.notaInterna}</span>
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+/**
+ * Las marcas, numeradas como en la imagen y del mismo color. La que la
+ * agencia tildó como corregida (rondas de antes del 19/11/2026: ya no se
+ * tilda) lleva el tilde y queda tachada. Si la ronda tiene varias imágenes
+ * se dice en cuál está.
+ */
+function ListaDeMarcas({ marcas, version }: { marcas: Marca[]; version: Version }) {
+  if (marcas.length === 0) return null
+  const variasImagenes = version.imagenes.length > 1
+  return (
+    <ol className="space-y-1.5">
+      {marcas.map(m => {
+        const nImagen = variasImagenes ? version.imagenes.findIndex(i => i.id === m.imagenId) + 1 : 0
+        return (
+          <li key={m.id} className="flex items-start gap-2.5 text-sm">
+            <span className="mt-px flex h-6 min-w-[1.5rem] shrink-0 items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">
+              {m.corregida ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-label={`Marca ${m.numero}, corregida`} /> : m.numero}
+            </span>
+            <span className={`min-w-0 leading-relaxed ${m.corregida ? 'text-slate-500 line-through decoration-slate-400 dark:text-slate-400' : 'text-slate-800 dark:text-slate-200'}`}>
+              {m.texto}
+              {nImagen > 0 && <span className="ml-1.5 text-xs text-slate-500 no-underline dark:text-slate-400">imagen {nImagen}</span>}
+            </span>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
 
-      {version.marcas.length > 0 && (
-        <ol className="mt-2 space-y-1">
-          {version.marcas.map(m => (
-            <li key={m.id} className="flex items-start gap-2 text-sm">
-              <span className={`mt-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[11px] font-bold ${
-                m.corregida ? 'bg-emerald-600 text-white' : m.tipo === 'ajuste' ? 'bg-amber-500 text-slate-950' : 'bg-rose-600 text-white'
-              }`}>{m.corregida ? <Check className="h-3 w-3" strokeWidth={3} /> : m.numero}</span>
-              <span className={`min-w-0 ${m.corregida ? 'text-slate-500 line-through decoration-slate-400 dark:text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                {m.texto}
-                {m.tipo === 'ajuste' && <span className="ml-1 text-xs text-amber-700 no-underline dark:text-amber-300">(ajuste)</span>}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </article>
+/** Quién decidió qué en una ronda, con lo que escribió. */
+function Decisiones({ detalle, version }: { detalle: DetalleEntregas; version: Version }) {
+  const nombreDe = (id: number | null) => (id != null ? detalle.personas[String(id)] : null) ?? 'Alguien'
+  if (version.decisiones.length === 0) return null
+  return (
+    <ul className="space-y-1.5">
+      {version.decisiones.map((d, i) => (
+        <li key={i} className="text-sm">
+          <p className="flex flex-wrap items-center gap-x-1.5 text-slate-800 dark:text-slate-200">
+            {d.decision === 'cambios'
+              ? <RotateCcw className="h-3.5 w-3.5 text-rose-600 dark:text-rose-300" aria-hidden />
+              : <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" strokeWidth={3} aria-hidden />}
+            <span className="font-semibold">{nombreDe(d.aprobador)} {etiquetaDecision(d.decision).toLowerCase()}</span>
+            {d.decididoPor !== d.aprobador && d.decididoPor != null && (
+              <span className="text-xs text-slate-500 dark:text-slate-400">(decidió {nombreDe(d.decididoPor)} como respaldo)</span>
+            )}
+            <span className="text-xs text-slate-500 dark:text-slate-400">{fechaYHora(d.fecha)}</span>
+          </p>
+          {d.comentario && <p className="mt-0.5 whitespace-pre-line text-slate-700 dark:text-slate-300">«{d.comentario}»</p>}
+          {/* La nota interna (como los comentarios internos de Basecamp): la
+              ve el equipo; a la agencia el servidor no se la manda nunca. */}
+          {d.notaInterna && (
+            <p className="mt-1 flex items-start gap-1.5 rounded-lg bg-slate-100 px-2 py-1 text-[13px] text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span><span className="font-semibold">Nota interna (la agencia no la ve):</span> {d.notaInterna}</span>
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -844,7 +856,7 @@ function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas;
       >
         <FileText className="h-4 w-4 text-brand-600 dark:text-brand-300" />
         Lo que se pidió
-        <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${abierto ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform dark:text-slate-400 ${abierto ? 'rotate-180' : ''}`} />
       </button>
       {abierto && (lista || pedido) && (
         <div className="mt-2 rounded-2xl border border-brand-200 bg-brand-50/60 p-3.5 text-sm text-slate-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-slate-100">
@@ -919,25 +931,80 @@ function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas;
   )
 }
 
-function Historia({ detalle, sin }: { detalle: DetalleEntregas; sin: string | null }) {
-  const fases: FaseDetalle[] = detalle.fases
-    .map(f => ({ ...f, versiones: f.versiones.filter(v => v.id !== sin).reverse() }))
-    .filter(f => f.versiones.length > 0)
-  if (fases.length === 0) return null
+/**
+ * Todas las rondas, de la más nueva a la más vieja, cada una en un renglón
+ * cerrado ("Ronda 1 · Volvió con cambios · Publicis · 19/11"). Tocarlo la
+ * abre: la imagen con sus marcas, la lista y quién decidió qué. Es el mismo
+ * gesto de las tareas en el calendario. Ivan (19/11/2026): "Si querés mostrar
+ * un historial de rondas, abajo del todo, tipo ronda 1, ronda 2, ronda 3…
+ * mostralas en versión minimalista, cerraditas, y si la persona quiere
+ * expandir la ronda 1 para ver el detalle de qué ocurrió en esa ronda, que
+ * lo pueda hacer". Sin "La última versión" ni "Rondas anteriores": la de
+ * arriba ya es la última, y acá están todas.
+ */
+function Rondas({ detalle }: { detalle: DetalleEntregas }) {
+  const filas = detalle.fases
+    .flatMap(f => f.versiones.map(v => ({ fase: f, version: v })))
+    .sort((a, b) => b.fase.orden - a.fase.orden || b.version.ronda - a.version.ronda)
+  if (filas.length === 0) return null
   return (
-    <section aria-labelledby="historia">
-      <h3 id="historia" className="mb-2 text-sm font-bold text-slate-900 dark:text-slate-100">Rondas anteriores</h3>
-      <div className="space-y-4">
-        {fases.map(f => (
-          <div key={f.id}>
-            <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{f.nombre}</p>
-            <div className="space-y-2">
-              {f.versiones.map(v => <TarjetaVersion key={v.id} detalle={detalle} version={v} />)}
-            </div>
-          </div>
+    <section aria-labelledby="rondas">
+      <h3 id="rondas" className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
+        <Layers className="h-4 w-4 text-brand-600 dark:text-brand-300" aria-hidden /> Rondas
+        <span className="rounded-full bg-slate-100 px-1.5 text-xs tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-300">{filas.length}</span>
+      </h3>
+      <ol className="space-y-1.5">
+        {filas.map(({ fase, version }) => (
+          <Ronda key={version.id} detalle={detalle} fase={fase} version={version} conFase={detalle.fases.length > 1} />
         ))}
-      </div>
+      </ol>
     </section>
+  )
+}
+
+function Ronda({ detalle, fase, version, conFase }: {
+  detalle: DetalleEntregas
+  fase: FaseDetalle
+  version: Version
+  /** Con varias fases, el renglón dice de cuál es ("Boceto · Ronda 2"). */
+  conFase: boolean
+}) {
+  const [abierta, setAbierta] = useState(false)
+  const nombreDe = (id: number | null) => (id != null ? detalle.personas[String(id)] : null) ?? 'Alguien'
+  const estado = ESTADO_VERSION[version.estado]
+  // Quién la entregó: la agencia por su nombre (es como la nombra Ivan:
+  // "Publicis · 19/11"); si la hace alguien de Tienda, esa persona.
+  const hace = detalle.tarea.quienLaHace
+  const quien = hace && hace.tipo !== 'tienda' && hace.nombre ? hace.nombre : nombreDe(version.subidaPor)
+  return (
+    <li className="rounded-2xl border border-slate-300 transition dark:border-slate-700">
+      <button
+        type="button"
+        onClick={() => setAbierta(v => !v)}
+        aria-expanded={abierta}
+        title={abierta ? 'Cerrar' : 'Ver esta ronda'}
+        className={`flex min-h-[48px] w-full items-center gap-2 rounded-2xl px-3.5 text-left text-sm transition sm:min-h-[44px] ${
+          abierta ? '' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
+        }`}
+      >
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{conFase ? `${fase.nombre} · ` : ''}Ronda {version.ronda}</span>
+          <span className="text-slate-500 dark:text-slate-400" aria-hidden>·</span>
+          <span className={`font-semibold ${estado.tono}`}>{estado.texto}</span>
+          <span className="text-slate-500 dark:text-slate-400">· {quien} · {fechaDia(version.fecha)}</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 dark:text-slate-400 ${abierta ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+      {abierta && (
+        <div className="space-y-3 border-t border-slate-300 px-3.5 py-3 dark:border-slate-700">
+          <p className="text-xs text-slate-500 dark:text-slate-400">La subió {nombreDe(version.subidaPor)} · {fechaYHora(version.fecha)}</p>
+          <VersionGrande detalle={detalle} version={version} claseImagen="max-h-[50vh]" />
+          {version.comentario && <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">«{version.comentario}»</p>}
+          <ListaDeMarcas marcas={version.marcas} version={version} />
+          <Decisiones detalle={detalle} version={version} />
+        </div>
+      )}
+    </li>
   )
 }
 
@@ -989,16 +1056,20 @@ function EditarConfiguracion({ detalle, onListo, onCancelar }: {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/* La caja es ancha (19/11/2026): el formulario va al medio, con aire. */}
       <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
-        <FormularioEntregas
-          valor={config}
-          onCambiar={setConfig}
-          personas={personas}
-          responsableId={responsableId}
-          usuarioId={user?.id ?? null}
-        />
+        <div className="mx-auto w-full max-w-3xl">
+          <FormularioEntregas
+            valor={config}
+            onCambiar={setConfig}
+            personas={personas}
+            responsableId={responsableId}
+            usuarioId={user?.id ?? null}
+          />
+        </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2 border-t border-slate-300 px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 sm:px-6">
+      <div className="shrink-0 border-t border-slate-300 px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 sm:px-6">
+      <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
         {falta && <p className="flex-1 text-xs text-amber-700 dark:text-amber-300">{falta}</p>}
         <button type="button" onClick={onCancelar} className="ml-auto min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
           Cancelar
@@ -1011,6 +1082,7 @@ function EditarConfiguracion({ detalle, onListo, onCancelar }: {
         >
           {guardando && <Loader2 className="h-4 w-4 animate-spin" />} Guardar
         </button>
+      </div>
       </div>
     </div>
   )

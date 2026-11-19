@@ -2,8 +2,10 @@
 
 "Una tarea tiene fase 1, fase 2, fase 3…; se entrega, se aprueba o vuelve con
 correcciones, la agencia devuelve con las correcciones aplicadas, puede volver
-otra vez, hasta que se aprueba." Más la aprobación en cadena, "aprobado con
-cambios" y la medición del retrabajo.
+otra vez, hasta que se aprueba." Más la aprobación en cadena y la medición del
+retrabajo. El "aprobado con cambios" se sacó el 19/11/2026: acá se fija que ya
+no se acepta y que las decisiones viejas guardadas así se siguen leyendo como
+aprobadas.
 
 Lo que se fija acá es lo que no depende de la base: a quién le toca decidir,
 cuándo una versión queda aprobada o vuelve, qué pasa con las fases y con la
@@ -20,11 +22,12 @@ from pydantic import ValidationError
 from app.api.routes.entregas import DecisionNueva, EntregaConfig, MarcaNueva
 from app.api.routes.watchlist import _notif_visible
 from app.services.entregas import (
-    CAMPOS_DEL_BRIEF, FASES_POR_DEFECTO, MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, MAX_IMAGENES, ORIGEN, TIPOS_DE_PIEZA,
+    CAMPOS_DEL_BRIEF, DECISION_VIEJA, DECISIONES, FASES_POR_DEFECTO, MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA,
+    MAX_IMAGENES, ORIGEN, TIPOS_DE_PIEZA,
     FaseExistente, NoPuedeDecidir, a_quien_le_toca, aprobadores_validos, estado_de_tarea,
     estados_de_fases, limpiar_brief, link_valido, lugar_para_decidir, mensaje_de_aprobacion, mensaje_de_cambios,
     mensaje_para_revisar, metricas_de_retrabajo, momento_de, nombres_de_fases, plan_de_fases, referencia,
-    resultado_de_version, tipo_de_imagen, validar_imagen,
+    resultado_de_version, tipo_de_imagen, validar_decision, validar_imagen,
 )
 from app.services.espacio import MENSAJE_SIN_LUGAR, entra
 
@@ -54,12 +57,36 @@ def test_aprobada_cuando_aprueban_todos():
     assert a_quien_le_toca(CADENA, decisiones) is None
 
 
-def test_aprobado_con_cambios_cuenta_como_aprobado():
-    """Un error de tilde no obliga a otra ronda: la versión sigue (o queda
-    aprobada) y los ajustes quedan anotados."""
-    assert a_quien_le_toca(CADENA, [(PROMO, "aprobada-con-cambios")]) == MARCA
-    decisiones = [(PROMO, "aprobada"), (MARCA, "aprobada"), (COMERCIAL, "aprobada-con-cambios")]
+def test_una_decision_vieja_aprobada_con_cambios_se_sigue_leyendo_como_aprobada():
+    """«Aprobado con cambios» se sacó el 19/11/2026, pero en producción hay
+    decisiones de esa semana guardadas así: la cadena las tiene que seguir
+    contando como aprobadas (si no, una versión quedaría trabada o volvería a
+    pedirle la decisión a quien ya decidió)."""
+    assert DECISION_VIEJA == "aprobada-con-cambios" and DECISION_VIEJA not in DECISIONES
+    assert a_quien_le_toca(CADENA, [(PROMO, DECISION_VIEJA)]) == MARCA
+    decisiones = [(PROMO, "aprobada"), (MARCA, "aprobada"), (COMERCIAL, DECISION_VIEJA)]
     assert resultado_de_version(CADENA, decisiones) == "aprobada"
+    assert a_quien_le_toca(CADENA, decisiones) is None
+    # Quien ya decidió así no vuelve a decidir: le toca al siguiente.
+    assert lugar_para_decidir(MARCA, False, CADENA, [(PROMO, DECISION_VIEJA)], AGENCIA) == (MARCA, 1, False)
+    with pytest.raises(NoPuedeDecidir) as e:
+        lugar_para_decidir(COMERCIAL, False, CADENA, decisiones, AGENCIA)
+    assert e.value.codigo == 409  # ya se decidió
+
+
+def test_aprobado_con_cambios_ya_no_se_acepta():
+    """Ivan (19/11/2026): "me resulta raro ese botón. No creo que sume nada".
+    Quedan 'aprobada' y 'cambios'; la decisión vieja se rechaza con un
+    mensaje que dice qué elegir en su lugar."""
+    assert DECISIONES == ("aprobada", "cambios")
+    assert validar_decision("aprobada") == "aprobada"
+    assert validar_decision(" cambios ") == "cambios"
+    with pytest.raises(ValueError, match="ya no existe"):
+        validar_decision("aprobada-con-cambios")
+    with pytest.raises(ValueError, match="no existe"):
+        validar_decision("rechazada")
+    with pytest.raises(ValueError):
+        validar_decision("")
 
 
 def test_si_cualquiera_pide_cambios_vuelve_a_la_agencia():
@@ -152,14 +179,13 @@ def test_una_fase_nueva_despues_de_aprobada_la_reabre():
 
 def test_recorrido_entero_de_dos_fases():
     """El recorrido que se probó en el navegador, regla por regla: fase 1 con
-    cambios y después aprobada por los dos (el segundo con cambios), fase 2
-    aprobada a la primera."""
+    cambios y después aprobada por los dos, fase 2 aprobada a la primera."""
     cadena = [PROMO, MARCA]
     # Fase 1, ronda 1: PROMO pide cambios.
     assert resultado_de_version(cadena, [(PROMO, "cambios")]) == "cambios"
     assert momento_de(True, "cambios") == "cambios"
-    # Ronda 2: PROMO aprueba, MARCA aprueba con cambios -> la fase se aprueba.
-    r2 = [(PROMO, "aprobada"), (MARCA, "aprobada-con-cambios")]
+    # Ronda 2: PROMO aprueba, MARCA aprueba -> la fase se aprueba.
+    r2 = [(PROMO, "aprobada"), (MARCA, "aprobada")]
     assert resultado_de_version(cadena, r2) == "aprobada"
     assert estados_de_fases(["aprobada", "pendiente"]) == ["aprobada", "en-curso"]
     assert momento_de(True, None) == "produccion"
@@ -373,10 +399,14 @@ def test_una_marca_va_sobre_la_imagen():
 
 
 def test_las_decisiones_posibles():
-    for d in ("aprobada", "aprobada-con-cambios", "cambios"):
-        DecisionNueva(decision=d)
+    for d in ("aprobada", "cambios"):
+        assert DecisionNueva(decision=d).decision == d
+    # El cuerpo acepta cualquier texto corto: la ruta lo controla con
+    # validar_decision para contestar con un mensaje claro (ver
+    # test_aprobado_con_cambios_ya_no_se_acepta).
+    DecisionNueva(decision="aprobada-con-cambios")
     with pytest.raises(ValidationError):
-        DecisionNueva(decision="rechazada")
+        DecisionNueva(decision="x" * 41)
 
 
 def test_la_configuracion_pide_un_tipo_conocido():
@@ -428,20 +458,19 @@ def test_los_textos_de_los_avisos():
         "", 1, "Boceto", "X", "Y", aprobo_antes="Marca",
     )
     assert mensaje_de_cambios("Promo", 1, "Boceto", "X", 2).endswith("(2 marcas). Te toca entregar la ronda 2.")
-    con_ajustes = mensaje_de_aprobacion(
-        "Comercial", 2, "Boceto", "X", con_cambios=True, ajustes=["Tilde en Navidad", "Logo más grande"],
-        siguiente_fase="Arte final", sigue_revisando=None, terminada=False,
+    aprobada = mensaje_de_aprobacion(
+        "Comercial", 2, "Boceto", "X", siguiente_fase="Arte final", sigue_revisando=None, terminada=False,
     )
-    assert "aprobó con cambios" in con_ajustes
-    assert "1) Tilde en Navidad; 2) Logo más grande" in con_ajustes
-    assert con_ajustes.endswith("Te toca entregar Arte final.")
+    assert aprobada == "Comercial aprobó la ronda 2 de Boceto de «X». Te toca entregar Arte final."
+    assert "con cambios" not in aprobada and "justes" not in aprobada
     assert mensaje_de_aprobacion(
-        "Marca", 1, "Arte final", "X", con_cambios=False, ajustes=[], siguiente_fase=None,
-        sigue_revisando=None, terminada=True,
+        "Marca", 1, "Arte final", "X", siguiente_fase=None, sigue_revisando=None, terminada=True,
     ).endswith("la tarea quedó hecha.")
+    assert mensaje_de_aprobacion(
+        "Marca", 1, "Boceto", "X", siguiente_fase=None, sigue_revisando="Comercial", terminada=False,
+    ).endswith("Ahora la revisa Comercial.")
     largo = mensaje_de_aprobacion(
-        "M", 1, "F", "T", con_cambios=True, ajustes=["x" * 400] * 3, siguiente_fase=None,
-        sigue_revisando=None, terminada=False,
+        "M" * 400, 1, "F" * 400, "T", siguiente_fase=None, sigue_revisando=None, terminada=False,
     )
     assert len(largo) <= 700
 

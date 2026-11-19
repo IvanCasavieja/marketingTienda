@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, 
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
-  AlertTriangle, Bell, BellOff, CalendarClock, CalendarDays, Camera, Check, Layers, ListChecks, TrendingDown, TrendingUp,
+  AlertTriangle, Bell, BellOff, CalendarClock, CalendarDays, Camera, Check, CheckCheck, Layers, ListChecks, TrendingDown, TrendingUp,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
@@ -126,6 +126,15 @@ function resolverDestino(n: Notificacion, user?: CurrentUser | null): string | n
  * debe ser más visible, pasa a ser algo importante en la web, debería estar
  * arriba a la derecha"). Antes vivía al pie del menú lateral.
  *
+ * Marcar como leída sin entrar (Ivan, 19/11/2026: "en las notificaciones
+ * tendría que haber un botoncito que te diga marcar como leída (…) si no
+ * tenés que entrar sí o sí a la notificación para leerla. También otro
+ * botón que diga marcar todas como leídas"). Antes cada aviso tenía un
+ * circulito que no se entendía como botón, y "Marcar todas" dependía del
+ * número que trae el menú cada minuto: ahora cada aviso sin leer lleva un
+ * botón con texto, y "Marcar todas como leídas" está siempre que haya
+ * alguna sin leer en la lista.
+ *
  * El número lo pregunta el menú al servidor (cada minuto y al volver a la
  * pestaña) y lo comparte en `useAvisos`; la barra de abajo del teléfono
  * también lo muestra y pide abrir la lista con `pedirAbrir`. La lista se
@@ -227,6 +236,11 @@ export function Campanita({ onNavegar }: { onNavegar?: () => void }) {
     }
   }
 
+  // Hay algo sin leer: el número del menú (cuenta todos) o la lista. La lista
+  // trae solo los 50 más nuevos: si lo sin leer es más viejo, sin el número
+  // el botón desaparecía y el número quedaba sin poder sacarse.
+  const haySinLeer = notifCount > 0 || !!notificaciones?.some((n) => !n.leida);
+
   const panel = (
     <div
       ref={panelRef}
@@ -236,7 +250,7 @@ export function Campanita({ onNavegar }: { onNavegar?: () => void }) {
         "z-[70] flex flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-pop dark:border-white/10 dark:bg-slate-900",
         // En el teléfono, una hoja abajo de todo; en la notebook, debajo de la campanita.
         "fixed inset-x-3 bottom-3 max-h-[75dvh] animate-sheet-up",
-        "md:inset-x-auto md:bottom-auto md:right-4 md:top-[3.6rem] md:max-h-[min(34rem,calc(100vh-5rem))] md:w-[24rem] md:origin-top-right md:animate-scale-in"
+        "md:inset-x-auto md:bottom-auto md:right-4 md:top-[3.6rem] md:max-h-[min(34rem,calc(100vh-5rem))] md:w-[26rem] md:origin-top-right md:animate-scale-in"
       )}
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-200 px-4 py-3 dark:border-white/5">
@@ -246,13 +260,13 @@ export function Campanita({ onNavegar }: { onNavegar?: () => void }) {
             {notifCount}
           </span>
         )}
-        {notifCount > 0 && (
+        {haySinLeer && (
           <button
             type="button"
             onClick={marcarTodasLeidas}
-            className="-mr-2 ml-auto whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-semibold text-brand-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-brand-300 dark:hover:bg-brand-500/10"
+            className="-mr-2 ml-auto flex min-h-[40px] items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10 md:min-h-[36px]"
           >
-            {t("sidebar.marcarTodasLeidas")}
+            <CheckCheck size={15} aria-hidden /> {t("sidebar.marcarTodasLeidas")}
           </button>
         )}
       </div>
@@ -302,25 +316,26 @@ export function Campanita({ onNavegar }: { onNavegar?: () => void }) {
                 )}>
                   {n.mensaje}
                 </p>
-                {n.created_at && (
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                    {cuandoFue(n.created_at, i18n.language)}
-                  </p>
-                )}
+                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  {n.created_at && <span>{cuandoFue(n.created_at, i18n.language)}</span>}
+                  {/* El botón, con texto, para que se entienda: 40 px de alto
+                      en el teléfono para el dedo. Marca sin entrar al aviso. */}
+                  {!n.leida && (
+                    <button
+                      type="button"
+                      onClick={(e) => marcarUnaLeida(n, e)}
+                      // Enter y espacio son de este botón (no abren el aviso);
+                      // Escape sigue de largo y cierra la campanita.
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); }}
+                      title={t("sidebar.marcarLeida")}
+                      className="-my-2 flex min-h-[40px] items-center gap-1 rounded-lg px-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10 md:min-h-[32px]"
+                    >
+                      <Check size={14} strokeWidth={3} aria-hidden /> {t("sidebar.marcarLeida")}
+                    </button>
+                  )}
+                </p>
               </div>
-              {!n.leida ? (
-                <button
-                  type="button"
-                  onClick={(e) => marcarUnaLeida(n, e)}
-                  title={t("sidebar.marcarLeida")}
-                  aria-label={t("sidebar.marcarLeida")}
-                  className="group/leida -mr-2 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition hover:bg-brand-100 dark:hover:bg-brand-500/20"
-                >
-                  <span className="h-3.5 w-3.5 rounded-full border-2 border-brand-400 transition group-hover/leida:bg-brand-400" />
-                </button>
-              ) : (
-                <Check size={14} className="mt-0.5 shrink-0 text-slate-300 dark:text-slate-600" aria-hidden />
-              )}
+              {n.leida && <Check size={14} className="mt-0.5 shrink-0 text-slate-300 dark:text-slate-600" aria-hidden />}
             </div>
           );
         })}

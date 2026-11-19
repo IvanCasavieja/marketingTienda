@@ -456,16 +456,19 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
               </span>
               <div className="flex flex-wrap items-center gap-2">
                 <p className={`min-w-0 flex-1 text-sm font-semibold ${paso.aQuien === "vos" ? "text-brand-700 dark:text-brand-200" : "text-slate-600 dark:text-slate-300"}`}>{texto}</p>
+                {/* Siempre abre la tarjeta mirando (Ivan, 19/11/2026: "vos lo
+                    que tendrías que abrirme es la tarjeta"); el botón de
+                    entregar está arriba de la ficha. */}
                 <button
                   type="button"
-                  onClick={() => abrirEntregas(tarea.id, paso.accion === "entregar" ? "entregar" : "ver")}
+                  onClick={() => abrirEntregas(tarea.id, "ver")}
                   className={`flex min-h-[40px] items-center gap-1.5 rounded-xl px-3.5 text-sm font-bold transition active:scale-[.98] ${
                     paso.accion === "entregar"
                       ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                   }`}
                 >
-                  <Layers className="h-4 w-4" /> {paso.accion === "entregar" ? "Entregar" : "Ver entregas"}
+                  <Layers className="h-4 w-4" /> Abrir la tarjeta
                 </button>
               </div>
             </div>
