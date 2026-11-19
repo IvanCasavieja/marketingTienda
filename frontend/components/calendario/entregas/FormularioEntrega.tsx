@@ -8,7 +8,8 @@ import {
   nuevoIdDeVersion, prepararImagen, type DetalleEntregas, type ImagenLista,
 } from '@/lib/calendario/entregas'
 import {
-  abrirEntrada, leerIndiceZip, nombreCorto, tipoDeImagen, ZipRaro, type EntradaZip,
+  abrirEntrada, avisoZipSinGuardar, detalleDelZip, leerIndiceZip, nombreCorto, tipoDeImagen, zipSumaImagenes,
+  zipYaResueltas, ZipRaro, type EntradaZip, type EstadoDelZip,
 } from '@/lib/calendario/zip'
 
 function detalleDeError(e: unknown): string | null {
@@ -21,8 +22,9 @@ const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1).replace('.', ',')} MB`
 /** Una imagen de la ronda; `deZip`: su lugar en el índice del ZIP, si salió de ahí. */
 type Imagen = ImagenLista & { deZip?: number }
 
-/** El ZIP elegido. `paraRevisar`: cuántas imágenes y PDF trae (null si no se pudo leer acá). */
-type ZipElegido = { archivo: File; paraRevisar: number | null }
+/** El ZIP elegido: su índice (null si no se pudo leer acá) y las imágenes de
+ *  adentro que la persona sacó de la ronda (el servidor no las vuelve a poner). */
+type ZipElegido = { archivo: File; entradas: EntradaZip[] | null; sacadas: number[] }
 
 /**
  * Entregar una ronda: las imágenes (de la cámara o de la galería), un
@@ -40,9 +42,12 @@ type ZipElegido = { archivo: File; paraRevisar: number | null }
  * La carpeta comprimida (19/11/2026, Ivan: "nos pasan link de WeTransfer o
  * link de Smash o una carpeta comprimida directamente"): al elegir el ZIP se
  * sacan acá las primeras imágenes de adentro y quedan como las imágenes de la
- * ronda, para que quien aprueba las vea y las marque. El ZIP viaja igual (no
- * se guarda) para que se revise lo que no entró, salvo que ya haya entrado
- * todo (lib/calendario/zip.ts).
+ * ronda, para que quien aprueba las vea y las marque. El ZIP viaja siempre:
+ * el servidor lo guarda tal cual, como el original de la ronda ("cuando lo
+ * subís deberías de subir la carpeta comprimida"), y con los lugares de
+ * imagen que queden pasa a la ronda lo que acá no se pudo mostrar, como las
+ * páginas de un PDF. Por eso un ZIP con solo el folleto en PDF alcanza para
+ * entregar (lib/calendario/zip.ts).
  */
 export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -71,15 +76,18 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const topeZip = limites.bytesZip ?? 40 * 1024 * 1024
   // Las imágenes de la ronda que salieron del ZIP (su lugar en el índice).
   const deZip = imagenes.flatMap(im => (im.deZip != null ? [im.deZip] : []))
-  // Si todo lo que trae el ZIP ya va como imágenes, no hace falta mandarlo.
-  const mandarZip = !!zip && (zip.paraRevisar == null || zip.paraRevisar > deZip.length)
+  const estadoZip: EstadoDelZip | null = zip ? { entradas: zip.entradas, tomadas: deZip, sacadas: zip.sacadas } : null
 
   // La última fase es la que sale publicada: ahí el original importa más.
   const esLaUltima = resumen.fases.length > 0 && resumen.fases[resumen.fases.length - 1].id === resumen.faseActual
   const linkMalo = link.trim() !== '' && !/^https?:\/\//i.test(link.trim())
-  // Los materiales son las imágenes y/o el link (16/11/2026): con uno alcanza.
-  const hayMateriales = imagenes.length > 0 || (link.trim() !== '' && !linkMalo)
   const lugar = limites.imagenes - imagenes.length - preparando
+  // Si al entregar el servidor saca del ZIP alguna imagen más para la ronda
+  // (las páginas de un PDF, 19/11/2026).
+  const zipDaImagenes = !!estadoZip && zipSumaImagenes(estadoZip, lugar)
+  // Los materiales son las imágenes y/o el link (16/11/2026): con uno alcanza.
+  // Un ZIP solo, si de adentro sale alguna imagen para ver.
+  const hayMateriales = imagenes.length > 0 || (link.trim() !== '' && !linkMalo) || zipDaImagenes
 
   async function agregar(archivos: FileList | null) {
     if (!archivos || archivos.length === 0) return
@@ -103,6 +111,9 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   }
 
   function sacar(i: number) {
+    // Una del ZIP que se saca a propósito no la vuelve a poner el servidor.
+    const delZip = imagenes[i]?.deZip
+    if (delZip != null) setZip(z => (z ? { ...z, sacadas: [...z.sacadas, delZip] } : z))
     setImagenes(prev => {
       URL.revokeObjectURL(prev[i].vista)
       return prev.filter((_, j) => j !== i)
@@ -144,7 +155,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       // Un ZIP nuevo reemplaza al anterior, con sus imágenes.
       const propias = imagenes.filter(im => im.deZip == null).length
       sacarZip()
-      setZip({ archivo, paraRevisar: paraRevisar?.length ?? null })
+      setZip({ archivo, entradas, sacadas: [] })
       const tomar = (paraRevisar ?? [])
         .filter(e => e.clase === 'imagen' && !e.cifrado)
         .slice(0, Math.max(0, limites.imagenes - propias - preparando))
@@ -156,7 +167,8 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           const preparada = await prepararImagen(new File([datos], nombreCorto(e.nombre), { type: tipoDeImagen(e.nombre) }))
           setImagenes(prev => [...prev, { ...preparada, deZip: e.indice }])
         } catch {
-          // Esa no se pudo sacar acá: queda adentro del ZIP, que se revisa igual.
+          // Esa no se pudo sacar acá: queda adentro del ZIP, y al entregar la
+          // saca el servidor si queda lugar.
         } finally {
           setPreparando(n => n - 1)
         }
@@ -180,18 +192,25 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       form.append('imagenes', im.grande, `imagen-${i + 1}.jpg`)
       form.append('miniaturas', im.mini, `miniatura-${i + 1}.jpg`)
     })
-    if (zip && mandarZip) {
+    if (zip && estadoZip) {
+      // Siempre: el servidor lo guarda tal cual, como el original de la ronda.
       form.append('zip', zip.archivo, zip.archivo.name)
-      // Las que ya van como imágenes no se revisan dos veces.
-      form.append('zipYaSubidas', JSON.stringify(deZip))
+      // Las que ya van como imágenes, y las que la persona sacó, no se vuelven
+      // a poner ni se revisan dos veces.
+      form.append('zipYaSubidas', JSON.stringify(zipYaResueltas(estadoZip)))
     }
     setSubiendo(0)
     try {
-      await entregasApi.entregar(detalle.tarea.id, form, f => setSubiendo(f))
+      const { data } = await entregasApi.entregar(detalle.tarea.id, form, f => setSubiendo(f))
       imagenes.forEach(im => URL.revokeObjectURL(im.vista))
       // Con una sola fase (la "Entrega" de las tarjetas) no se nombra la fase.
       const deFase = resumen.fases.length > 1 ? ` de ${fase?.nombre ?? 'la fase'}` : ''
-      toast.success(`Entregaste la ronda ${ronda}${deFase}. Quedó en «Esperando feedback»: le avisamos a quien la revisa.`)
+      if (data.zip && !data.zip.guardado) {
+        // Entregada igual; el ZIP no entró en la base (no se borra nada para hacerle lugar).
+        toast.warning(`Entregaste la ronda ${ronda}${deFase}. ${avisoZipSinGuardar(link.trim() !== '', true)}`)
+      } else {
+        toast.success(`Entregaste la ronda ${ronda}${deFase}. Quedó en «Esperando feedback»: le avisamos a quien la revisa.`)
+      }
       onListo()
     } catch (e) {
       toast.error(detalleDeError(e) ?? 'No se pudo entregar. Revisá la conexión y probá de nuevo: no se pierde nada.')
@@ -288,14 +307,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{zip.archivo.name}</p>
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    {[
-                      mb(zip.archivo.size),
-                      leyendoZip ? 'abriéndolo…'
-                        : deZip.length ? `${deZip.length === 1 ? 'se tomó 1 imagen' : `se tomaron ${deZip.length} imágenes`} de adentro` : null,
-                      !leyendoZip && zip.paraRevisar != null && zip.paraRevisar > deZip.length
-                        ? `${zip.paraRevisar - deZip.length === 1 ? '1 archivo más' : `${zip.paraRevisar - deZip.length} archivos más`} para revisar`
-                        : null,
-                    ].filter(Boolean).join(' · ')}
+                    {estadoZip && detalleDelZip(estadoZip, zip.archivo.size, leyendoZip, lugar)}
                   </p>
                 </div>
                 <button
@@ -323,19 +335,24 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
             <input ref={zipRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" className="hidden"
               data-testid="elegir-zip"
               onChange={e => { void elegirZip(e.target.files); e.target.value = '' }} />
-            {zip && !leyendoZip && preparando === 0 && deZip.length === 0 && imagenes.length === 0 && !link.trim() && (
+            {/* Solo si de verdad no hay nada para ver: un PDF ya no cuenta
+                como "nada" (sus páginas las saca el servidor al entregar). */}
+            {zip && !leyendoZip && preparando === 0 && imagenes.length === 0 && !link.trim() && !zipDaImagenes && (
               <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-medium text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-100 dark:ring-amber-500/40">
-                Del ZIP no salió ninguna imagen para mostrar: subí una o pegá el link, así quien aprueba ve la pieza.
+                Del ZIP no sale ninguna imagen para mostrar: subí una o pegá el link, así quien aprueba ve la pieza.
               </p>
             )}
           </div>
           {/* Las imágenes se achican antes de subir (la base es chica): sirven
-              para revisar, no para publicar. Se dice acá, y en la última fase
-              se destaca si falta el link, que es lo que el equipo va a bajar. */}
-          <p className={esLaUltima && !link.trim()
+              para revisar, no para publicar. El original es el ZIP, que se
+              guarda tal cual (19/11/2026), o el link. En la última fase se
+              destaca si no hay ninguno de los dos: es lo que el equipo va a bajar. */}
+          <p className={esLaUltima && !link.trim() && !zip
             ? 'mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-medium text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-100 dark:ring-amber-500/40'
             : 'mt-2 text-xs text-slate-600 dark:text-slate-400'}>
-            Se achican para revisar (1600 px, JPEG). Para que el equipo baje el archivo final, pegá el link al original.
+            {zip
+              ? 'Se achican para revisar (1600 px, JPEG). El ZIP se guarda tal cual: es el original que baja el equipo.'
+              : 'Se achican para revisar (1600 px, JPEG). Para que el equipo baje el archivo final, subí el ZIP o pegá el link al original.'}
           </p>
         </section>
 
@@ -381,7 +398,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
         <button
           type="button"
           onClick={() => void entregar()}
-          disabled={!hayMateriales || preparando > 0 || linkMalo || subiendo !== null}
+          disabled={!hayMateriales || preparando > 0 || leyendoZip || linkMalo || subiendo !== null}
           className="ml-auto flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-700 dark:disabled:text-slate-400 sm:min-h-[44px] sm:flex-none"
         >
           {subiendo !== null ? (

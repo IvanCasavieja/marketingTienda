@@ -81,6 +81,11 @@ export type Decision = {
 
 export type ImagenDeVersion = { id: string; orden: number; purgada: boolean }
 
+/** El ZIP que vino con la ronda, tal cual lo mandó la agencia (19/11/2026):
+ *  el original, que se baja desde la ficha. `guardado` en false: la base
+ *  estaba llena y no se guardó (la entrega quedó igual). */
+export type ZipDeVersion = { nombre: string; tamano: number; guardado: boolean; fecha: string | null }
+
 export type Version = {
   id: string
   faseId: string
@@ -93,6 +98,8 @@ export type Version = {
   link: string | null
   corregidas: string[]
   imagenes: ImagenDeVersion[]
+  /** Si la ronda vino con un ZIP (un servidor de antes no lo manda). */
+  zip?: ZipDeVersion | null
   decisiones: Decision[]
   marcas: Marca[]
 }

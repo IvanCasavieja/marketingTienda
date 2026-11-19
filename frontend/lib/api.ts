@@ -2331,9 +2331,14 @@ export const entregasApi = {
     api.delete<CalendarioEscrito>(`/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, ESPERA),
   detalle: (tareaId: string) =>
     api.get<DetalleEntregas>(`/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, ESPERA),
-  /** Una ronda, con sus imágenes (y las miniaturas) en el mismo pedido. */
+  /** Una ronda, con sus imágenes (y las miniaturas) en el mismo pedido. Si
+   *  vino un ZIP, `zip.guardado` dice si se guardó (con la base llena, no) y
+   *  `zip.sumadas` cuántas imágenes de la ronda sacó de él el servidor. */
   entregar: (tareaId: string, form: FormData, onProgreso?: (fraccion: number) => void) =>
-    api.post<CalendarioEscrito & { ronda: number; entrega: ResumenEntrega }>(
+    api.post<CalendarioEscrito & {
+      ronda: number; entrega: ResumenEntrega;
+      zip?: { nombre: string; tamano: number; guardado: boolean; sumadas: number; archivos: string[]; ignorados: string[] } | null;
+    }>(
       `/calendario/tareas/${encodeURIComponent(tareaId)}/versiones`, form, {
         ...ESPERA_SUBIDA,
         headers: { "Content-Type": "multipart/form-data" },
@@ -2367,6 +2372,13 @@ export const entregasApi = {
   imagen: (imagenId: string, tam: "mini" | "grande") =>
     api.get<Blob>(`/calendario/entregas/imagenes/${encodeURIComponent(imagenId)}`, {
       params: { tam }, responseType: "blob", timeout: 60_000,
+    }),
+  /** El ZIP original de una ronda, tal cual lo mandó la agencia (19/11/2026).
+   *  Viaja con la sesión, como las imágenes. Hasta 40 MB: con tiempo de sobra. */
+  zip: (versionId: string, onProgreso?: (fraccion: number) => void) =>
+    api.get<Blob>(`/calendario/versiones/${encodeURIComponent(versionId)}/zip`, {
+      responseType: "blob", timeout: 300_000,
+      onDownloadProgress: (e) => { if (onProgreso && e.total) onProgreso(e.loaded / e.total); },
     }),
   /** El tablero del mundo, o `sinCambios` si sigue en la revisión `rev`.
    *  Liviano: las columnas activas y la primera página de Archivado. */

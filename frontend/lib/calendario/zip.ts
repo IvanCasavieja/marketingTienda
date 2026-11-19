@@ -6,10 +6,13 @@
 // entrega se leen acá, en el navegador, las imágenes de adentro (las
 // primeras, hasta el tope de la ronda): quedan como las imágenes de la ronda,
 // para que quien aprueba las vea y las marque como siempre. El ZIP entero
-// viaja igual al servidor, que no lo guarda: la IA revisa lo que no entró
-// (las otras imágenes y los PDF), y se le dice qué archivos ya van como
-// imágenes para que no los mire dos veces (por su lugar en el índice, que es
-// el mismo que ve el servidor con zipfile.infolist()).
+// viaja siempre al servidor, que lo guarda tal cual como el original de la
+// ronda ("cuando lo subís deberías de subir la carpeta comprimida, no los
+// archivos sueltos"), llena los lugares de imagen que queden con lo que acá
+// no se pudo mostrar (las páginas de los PDF) y le pasa a la IA el resto. Se
+// le dice qué imágenes ya están resueltas acá, para que no las vuelva a poner
+// ni a mirar (por su lugar en el índice, que es el mismo que ve el servidor
+// con zipfile.infolist()).
 //
 // Sin librerías: el índice del ZIP se lee a mano y lo comprimido se abre con
 // DecompressionStream('deflate-raw'), que traen los navegadores y Node. Si el
@@ -169,4 +172,86 @@ export function tipoDeImagen(nombre: string): string {
 /** "piezas/feed.jpg" -> "feed.jpg". */
 export function nombreCorto(nombre: string): string {
   return nombre.split('/').pop() || nombre
+}
+
+// ---------------------------------------------------------------------------
+// El ZIP en el formulario, y lo que hace el servidor con él al entregar
+// ---------------------------------------------------------------------------
+// Un PDF el navegador no lo puede dibujar sin una librería: las páginas las
+// saca el servidor al entregar, si queda lugar en la ronda. Por eso un ZIP
+// con solo el PDF del folleto ya alcanza para entregar (Ivan, 19/11/2026, no
+// entendía por qué no: no tenía que pasar).
+
+export type EstadoDelZip = {
+  /** El índice, o null si acá no se pudo leer (ZIP64): lo abre el servidor. */
+  entradas: EntradaZip[] | null
+  /** Las imágenes de adentro que ya van como imágenes de la ronda (su lugar en el índice). */
+  tomadas: number[]
+  /** Las que la persona sacó de la ronda a propósito: el servidor no las vuelve a poner. */
+  sacadas: number[]
+}
+
+/** Lo que el servidor puede pasar a la ronda al entregar: las imágenes que acá
+ *  no se tomaron (ni se sacaron a propósito) y los PDF, que salen por página.
+ *  Lo cifrado no cuenta: allá tampoco se abre. null si no se sabe (el ZIP no
+ *  se pudo leer acá). */
+export function pendientesDelZip(z: EstadoDelZip): { imagenes: number; pdfs: number } | null {
+  if (!z.entradas) return null
+  const resueltas = new Set([...z.tomadas, ...z.sacadas])
+  const quedan = z.entradas.filter(e => !e.cifrado && !resueltas.has(e.indice))
+  return {
+    imagenes: quedan.filter(e => e.clase === 'imagen').length,
+    pdfs: quedan.filter(e => e.clase === 'pdf').length,
+  }
+}
+
+/** Si al entregar sale del ZIP alguna imagen más para la ronda: hay lugar
+ *  (`lugar`: los de la ronda que quedan libres) y queda algo para pasar, o no
+ *  se sabe (lo decide el servidor, que avisa si no sale nada). */
+export function zipSumaImagenes(z: EstadoDelZip, lugar: number): boolean {
+  if (lugar <= 0) return false
+  const p = pendientesDelZip(z)
+  return p == null || p.imagenes + p.pdfs > 0
+}
+
+/** Lo que va en `zipYaSubidas`: las que ya van como imágenes de la ronda y las
+ *  que la persona sacó. El servidor no las vuelve a poner y la IA no las mira. */
+export function zipYaResueltas(z: EstadoDelZip): number[] {
+  return Array.from(new Set([...z.tomadas, ...z.sacadas])).sort((a, b) => a - b)
+}
+
+/** "12,3 MB" o "350 KB": lo que pesa un archivo, para leer. */
+export function pesoLegible(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',').replace(/,0$/, '')} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
+/** La línea debajo del nombre del ZIP en el formulario: lo que pesa, qué se
+ *  tomó de adentro y qué pasa con lo demás al entregar. `lugar`: los lugares
+ *  de imagen que quedan libres en la ronda. */
+export function detalleDelZip(z: EstadoDelZip, tamano: number, leyendo: boolean, lugar: number): string {
+  const partes = [pesoLegible(tamano)]
+  if (leyendo) return [...partes, 'abriéndolo…'].join(' · ')
+  const n = z.tomadas.length
+  if (n) partes.push(n === 1 ? 'se tomó 1 imagen de adentro' : `se tomaron ${n} imágenes de adentro`)
+  const p = pendientesDelZip(z)
+  if (zipSumaImagenes(z, lugar)) {
+    partes.push(
+      p == null ? 'se abre al entregar'
+        : p.pdfs > 0 ? `las páginas ${p.pdfs === 1 ? 'del PDF' : 'de los PDF'} se agregan al entregar`
+          : `las ${n ? 'otras ' : ''}imágenes se agregan al entregar`,
+    )
+  } else if (p && p.imagenes + p.pdfs > 0) {
+    const resto = p.imagenes + p.pdfs
+    partes.push(resto === 1 ? '1 archivo más para revisar' : `${resto} archivos más para revisar`)
+  }
+  return partes.join(' · ')
+}
+
+/** Lo que dice la ficha de una ronda cuyo ZIP no se guardó porque la base
+ *  estaba llena (19/11/2026): qué hacer, según quién mira. */
+export function avisoZipSinGuardar(hayLink: boolean, laHizoQuienMira: boolean): string {
+  const que = 'El ZIP no se guardó porque la base estaba llena'
+  if (hayLink) return `${que}: el original queda en el link.`
+  return laHizoQuienMira ? `${que}: pasá el link al original en los comentarios.` : `${que}: pedile el link a quien la hace.`
 }

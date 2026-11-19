@@ -5,7 +5,10 @@
  *     npm run test:calendario
  */
 import * as zlib from 'zlib'
-import { abrirEntrada, esBasura, leerIndiceZip, nombreCorto, tipoDeImagen, ZipRaro, MAX_ARCHIVOS_ZIP } from './zip'
+import {
+  abrirEntrada, avisoZipSinGuardar, detalleDelZip, esBasura, leerIndiceZip, nombreCorto, pendientesDelZip, pesoLegible,
+  tipoDeImagen, zipSumaImagenes, zipYaResueltas, ZipRaro, MAX_ARCHIVOS_ZIP, type EstadoDelZip,
+} from './zip'
 
 let fallos = 0
 function ok(nombre: string, cond: boolean, detalle = '') {
@@ -106,6 +109,55 @@ async function main() {
   igual('el tipo por la extensión', ['a.PNG', 'b.webp', 'c.jpeg', 'd.jpg'].map(tipoDeImagen),
     ['image/png', 'image/webp', 'image/jpeg', 'image/jpeg'])
   igual('el nombre sin la carpeta', [nombreCorto('piezas/feed.jpg'), nombreCorto('feed.jpg')], ['feed.jpg', 'feed.jpg'])
+
+  // -------------------------------------------------------------------------
+  // El ZIP en el formulario (19/11/2026): viaja siempre, el servidor lo guarda
+  // tal cual y pasa a la ronda lo que acá no se pudo mostrar (las páginas de
+  // los PDF). Un ZIP con solo el folleto en PDF alcanza para entregar.
+  // -------------------------------------------------------------------------
+  console.log('\nel ZIP en el formulario')
+  const soloPdf = leerIndiceZip(armarZip([{ nombre: 'folleto.pdf', datos: bytes(1) }, { nombre: 'leeme.txt', datos: bytes(2) }]))
+  const estado = (e: EstadoDelZip['entradas'], tomadas: number[] = [], sacadas: number[] = []): EstadoDelZip => ({ entradas: e, tomadas, sacadas })
+
+  igual('un ZIP con solo un PDF: el servidor saca sus páginas', pendientesDelZip(estado(soloPdf)), { imagenes: 0, pdfs: 1 })
+  ok('y alcanza para entregar si queda lugar en la ronda', zipSumaImagenes(estado(soloPdf), 4))
+  ok('sin lugar en la ronda, no suma nada', !zipSumaImagenes(estado(soloPdf), 0))
+  igual('lo que se dice debajo del nombre', detalleDelZip(estado(soloPdf), 5 * 1024 * 1024, false, 4),
+    '5 MB · las páginas del PDF se agregan al entregar')
+  igual('mientras se abre', detalleDelZip(estado(soloPdf), 5 * 1024 * 1024, true, 4), '5 MB · abriéndolo…')
+
+  // piezas/feed.jpg (1), piezas/story.png (2), folleto.pdf (4), fuente.psd (5), ñandú.webp (6), Caña.jpg (7).
+  igual('se tomaron tres, Caña.jpg no se pudo sacar acá: con un lugar, el servidor pone la página del PDF (va antes en el ZIP)',
+    detalleDelZip(estado(entradas, [1, 2, 6]), 12.34 * 1024 * 1024, false, 1),
+    '12,3 MB · se tomaron 3 imágenes de adentro · las páginas del PDF se agregan al entregar')
+  igual('lo que queda: la que no se pudo sacar y el PDF', pendientesDelZip(estado(entradas, [1, 2, 6])), { imagenes: 1, pdfs: 1 })
+  igual('sin lugar, lo demás queda para revisar', detalleDelZip(estado(entradas, [1, 2, 6, 7]), 300 * 1024, false, 0),
+    '300 KB · se tomaron 4 imágenes de adentro · 1 archivo más para revisar')
+  const soloImagenes = leerIndiceZip(armarZip([{ nombre: 'a.jpg', datos: bytes(1) }, { nombre: 'b.jpg', datos: bytes(1) }]))
+  igual('imágenes que el navegador no pudo abrir: las agrega el servidor',
+    detalleDelZip(estado(soloImagenes), 2048, false, 4), '2 KB · las imágenes se agregan al entregar')
+  igual('...y si ya se tomó alguna, «las otras»',
+    detalleDelZip(estado(soloImagenes, [0]), 2048, false, 3), '2 KB · se tomó 1 imagen de adentro · las otras imágenes se agregan al entregar')
+  igual('un ZIP que acá no se lee lo abre el servidor', detalleDelZip(estado(null), 1024 * 1024, false, 4), '1 MB · se abre al entregar')
+  ok('...y puede alcanzar para entregar (si no sale nada, avisa el servidor)', zipSumaImagenes(estado(null), 4))
+
+  // Lo que la persona saca de la ronda no vuelve, y no se mira dos veces.
+  ok('si sacó las dos imágenes del ZIP, no queda nada para ver', !zipSumaImagenes(estado(soloImagenes, [], [0, 1]), 4))
+  igual('lo resuelto acá va al servidor: las tomadas y las sacadas, sin repetir',
+    zipYaResueltas(estado(entradas, [6, 1], [2, 1])), [1, 2, 6])
+  const conClave = leerIndiceZip(armarZip([{ nombre: 'secreto.jpg', datos: bytes(1) }])).map(e => ({ ...e, cifrado: true }))
+  ok('una imagen con contraseña no cuenta (allá tampoco se abre)', !zipSumaImagenes(estado(conClave), 4))
+
+  igual('el peso, para leer', [12.34, 12, 1].map(n => pesoLegible(n * 1024 * 1024)).concat(pesoLegible(350 * 1024), pesoLegible(10)),
+    ['12,3 MB', '12 MB', '1 MB', '350 KB', '1 KB'])
+
+  // Con la base llena el ZIP no se guarda (la entrega queda igual): qué hacer.
+  igual('sin guardar, con el link', avisoZipSinGuardar(true, false),
+    'El ZIP no se guardó porque la base estaba llena: el original queda en el link.')
+  igual('sin guardar, al equipo', avisoZipSinGuardar(false, false),
+    'El ZIP no se guardó porque la base estaba llena: pedile el link a quien la hace.')
+  igual('sin guardar, a quien la hizo', avisoZipSinGuardar(false, true),
+    'El ZIP no se guardó porque la base estaba llena: pasá el link al original en los comentarios.')
 
   if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
   console.log('\nzip: todo bien')
