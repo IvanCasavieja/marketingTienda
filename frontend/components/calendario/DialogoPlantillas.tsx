@@ -13,7 +13,10 @@ import {
 } from '@/lib/calendario/plantillas'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { useCalendario, useCategoriasDelMundo } from '@/lib/calendario/store'
-import { nombreConEmpresa, type AnclaTarea, type BarraGuardada, type Persona, type Plantilla, type TareaDePlantilla } from '@/lib/calendario/tipos'
+import {
+  agenciasSinRepetir, asignablesPara, mismaEmpresa, nombreConEmpresa,
+  type AnclaTarea, type BarraGuardada, type Persona, type Plantilla, type TareaDePlantilla,
+} from '@/lib/calendario/tipos'
 import { mundoDe } from '@/lib/mundos'
 import { useCatalogoDeTipos } from '@/store/tiposDeTarea'
 import { Cocarda } from './Cocarda'
@@ -491,10 +494,14 @@ function FilaDeTarea({
   // nace sola su tarjeta en el tablero. Las agencias de la plataforma son las
   // empresas de las cuentas externas.
   const { tipos } = useCatalogoDeTipos()
-  const agencias = [...new Set(personas.filter(p => p.externo && p.empresa).map(p => p.empresa as string))]
-    .sort((a, b) => a.localeCompare(b, 'es'))
+  // Cada agencia una vez, aunque alguna cuenta la tenga escrita distinto
+  // («Disenadores», 19/11/2026); la de la tarea se busca igual.
+  const agencias = agenciasSinRepetir(personas.filter(p => p.externo).map(p => p.empresa))
   const para = tarea.para ?? 'tienda'
-  const valorQuien = para === 'agencia' ? `agencia:${tarea.agencia ?? ''}` : para
+  const agenciaEnLista = para === 'agencia' ? agencias.find(a => mismaEmpresa(a, tarea.agencia)) : undefined
+  const valorQuien = para === 'agencia' ? `agencia:${agenciaEnLista ?? tarea.agencia ?? ''}` : para
+  // Una tarea de Tienda (o de una agencia de afuera) la lleva alguien de Tienda.
+  const responsables = asignablesPara(personas, para)
   function elegirQuien(v: string) {
     if (v.startsWith('agencia:')) onCambiar({ para: 'agencia', agencia: v.slice(8), asignadoA: null })
     else if (v === 'fuera') onCambiar({ para: 'fuera', agencia: tarea.para === 'fuera' ? tarea.agencia ?? '' : '' })
@@ -596,7 +603,7 @@ function FilaDeTarea({
             <select value={valorQuien} onChange={e => elegirQuien(e.target.value)} aria-label="Quién la hace" className="campo">
               <option value="tienda">Alguien de Tienda</option>
               {agencias.map(a => <option key={a} value={`agencia:${a}`}>{a} (agencia)</option>)}
-              {para === 'agencia' && tarea.agencia && !agencias.includes(tarea.agencia) && (
+              {para === 'agencia' && tarea.agencia && !agenciaEnLista && (
                 <option value={`agencia:${tarea.agencia}`}>{tarea.agencia} (agencia)</option>
               )}
               <option value="fuera">Otra agencia (fuera de la plataforma)</option>
@@ -624,7 +631,10 @@ function FilaDeTarea({
               {tarea.asignadoA != null && !asignado && (
                 <option value={tarea.asignadoA}>{personasCargadas ? 'Alguien que ya no ve este calendario' : 'Asignada'}</option>
               )}
-              {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
+              {asignado && !responsables.includes(asignado) && (
+                <option value={asignado.id}>{nombreConEmpresa(asignado)}</option>
+              )}
+              {responsables.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
             </select>
           </label>
           <span className="flex items-center gap-1">

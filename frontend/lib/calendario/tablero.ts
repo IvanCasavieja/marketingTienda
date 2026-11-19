@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Columna, MomentoEntrega, QuienLaHace, Tarjeta, TipoPieza } from './entregas'
+import { claveDeEmpresa, mismaEmpresa } from './tipos'
 
 export type DefColumna = {
   clave: Columna
@@ -127,11 +128,12 @@ export function quienLaHaceTexto(h: QuienLaHace | null | undefined): string | nu
 }
 
 /** La clave y el nombre de "quién la hace" para el filtro del equipo. Todo
- *  lo de Tienda va junto ("Diseño de Tienda"); cada agencia, aparte. */
+ *  lo de Tienda va junto ("Diseño de Tienda"); cada agencia, aparte, sin
+ *  mirar tildes ni mayúsculas (19/11/2026: «Disenadores» es Diseñadores). */
 export function grupoDeQuien(h: QuienLaHace | null | undefined): { clave: string; nombre: string } {
   if (!h || h.tipo === 'tienda' || !h.nombre) return { clave: 'tienda', nombre: 'Diseño de Tienda' }
   const nombre = h.tipo === 'fuera' ? `${h.nombre} (de afuera)` : h.nombre
-  return { clave: `${h.tipo}:${h.nombre.toLocaleLowerCase('es')}`, nombre }
+  return { clave: `${h.tipo}:${claveDeEmpresa(h.nombre)}`, nombre }
 }
 
 /** Las opciones del filtro "¿Quién la hace?", con cuántas tarjetas tiene cada una. */
@@ -153,12 +155,14 @@ export const OTRAS = '__otras__'
 /**
  * A cuál de los tableros (Publicis, Another Monday, Diseñadores: los manda el
  * servidor) va una tarjeta, o null si a ninguno. Una tarjeta "es" de un
- * tablero cuando la hace esa agencia, escrita como sea.
+ * tablero cuando la hace esa agencia, escrita como sea: sin mirar
+ * mayúsculas, espacios ni tildes (19/11/2026: una guardada para
+ * «Disenadores» va a la pestaña de Diseñadores, no a «Otras»).
  */
 export function tableroDeTarjeta(t: Pick<Tarjeta, 'hace'>, tableros: string[]): string | null {
   if (!t.hace || t.hace.tipo !== 'agencia' || !t.hace.nombre) return null
-  const nombre = t.hace.nombre.split(/\s+/).filter(Boolean).join(' ').toLocaleLowerCase('es')
-  return tableros.find(x => x.toLocaleLowerCase('es') === nombre) ?? null
+  const nombre = t.hace.nombre
+  return tableros.find(x => mismaEmpresa(x, nombre)) ?? null
 }
 
 /** Las pestañas del tablero para el equipo: los tres siempre, con cuántas

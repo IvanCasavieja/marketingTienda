@@ -1888,13 +1888,13 @@ async def _metricas(db: AsyncSession, usuario: User, mundo: str, dias: int) -> d
     # de una agencia de AFUERA, donde quien la sube es alguien del equipo que
     # carga lo que le mandaron: las rondas son de esa agencia, no de esa
     # persona (revisión del 16/11/2026). Ahí se agrupa por el nombre de la
-    # agencia (sin mirar mayúsculas ni espacios).
+    # agencia (sin mirar tildes, mayúsculas ni espacios: externos.clave_de_empresa).
     agencias: dict[str, str] = {}
     filas = []
     for tipo, subida, mundo_fila, ronda, para, agencia in (await db.execute(consulta)).all():
         limpia = externos.limpiar_empresa(agencia) if para == "fuera" else None
         if limpia:
-            clave = f"fuera:{limpia.casefold()}"
+            clave = f"fuera:{externos.clave_de_empresa(limpia)}"
             agencias.setdefault(clave, limpia)
             filas.append((tipo, clave, mundo_fila, ronda))
         else:

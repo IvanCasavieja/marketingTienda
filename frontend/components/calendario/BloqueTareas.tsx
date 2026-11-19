@@ -11,7 +11,7 @@ import { DictarBrief, type BriefListo } from '@/components/ia/DictarBrief'
 import { useCalendario } from '@/lib/calendario/store'
 import { plantillasSugeridas, textoDeAncla } from '@/lib/calendario/plantillas'
 import {
-  ETIQUETA_ESTADO_TAREA, NIVELES_DE_TAREA, nivelDeTarea,
+  ETIQUETA_ESTADO_TAREA, NIVELES_DE_TAREA, asignablesPara, delEquipo, mismaEmpresa, nivelDeTarea,
   type BarraGuardada, type EstadoTarea, type Persona, type Tarea, nombreConEmpresa,
 } from '@/lib/calendario/tipos'
 import { proximoPaso } from '@/lib/calendario/entregas'
@@ -378,11 +378,14 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   // asignar", la tiene la agencia. Y pasársela a alguien de Tienda se la saca
   // del tablero (el servidor la pasa a Tienda): se pregunta antes.
   const deLaAgencia = tarea.para === 'agencia' ? (tarea.agencia || 'la agencia') : null
+  // Una tarea de Tienda la lleva alguien de Tienda: las cuentas de las
+  // agencias se ofrecen solo en una pieza de una agencia (19/11/2026). Quien
+  // ya la tiene sigue apareciendo, para no perder de quién era.
+  const asignables = asignablesPara(personas, tarea.para)
   function asignar(valor: string) {
     const id = valor ? Number(valor) : null
     const nueva = id != null ? personas.find(p => p.id === id) : undefined
-    const mismaAgencia = !!nueva?.externo && !!nueva.empresa && !!tarea.agencia
-      && nueva.empresa.toLocaleLowerCase('es') === tarea.agencia.toLocaleLowerCase('es')
+    const mismaAgencia = !!nueva?.externo && mismaEmpresa(nueva.empresa, tarea.agencia)
     if (deLaAgencia && id != null && !mismaAgencia
       && !window.confirm(`Se la sacás a ${deLaAgencia}: deja de estar en su tablero y la hace ${nueva?.nombre ?? 'esa persona'}. ¿Seguís?`)) {
       return
@@ -489,7 +492,10 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
                     {tarea.asignadoA != null && !asignado && (
                       <option value={tarea.asignadoA}>{personasEstado === 'ok' ? 'Alguien que ya no ve este calendario' : 'Asignada'}</option>
                     )}
-                    {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}{p.id === usuarioId ? ' (vos)' : ''}</option>)}
+                    {asignado && !asignables.includes(asignado) && (
+                      <option value={asignado.id}>{nombreConEmpresa(asignado)}</option>
+                    )}
+                    {asignables.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}{p.id === usuarioId ? ' (vos)' : ''}</option>)}
                   </select>
                 </label>
               ) : (
@@ -774,9 +780,12 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="etiqueta-campo">{conPiezas ? 'Responsable de Tienda Inglesa' : 'Para quién'}</span>
+          {/* Solo gente de Tienda (19/11/2026): elegir una cuenta de una
+              agencia («Fer (Diseñadores)») convertía la tarea en una pieza
+              de la agencia. A la agencia se le pide con una pieza. */}
           <select value={asignadoA} onChange={e => setAsignadoA(e.target.value)} className="campo">
             <option value="">Sin asignar por ahora</option>
-            {personas.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
+            {delEquipo(personas).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
           {personasEstado === 'error' && (
             <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">

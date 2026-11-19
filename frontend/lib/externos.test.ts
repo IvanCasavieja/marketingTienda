@@ -8,7 +8,9 @@
 import { INICIO_DE_EXTERNOS, calendarioVedado, esExterno, rutaDeExterno, ventanaEnPalabras } from './externos'
 import { alcanceDe, veCalendario } from './alcance'
 import { inicioDe } from './mundos'
-import { delEquipo, nombreConEmpresa, type Persona } from './calendario/tipos'
+import {
+  agenciasSinRepetir, asignablesPara, claveDeEmpresa, delEquipo, mismaEmpresa, nombreConEmpresa, type Persona,
+} from './calendario/tipos'
 import type { CurrentUser } from '../types'
 
 let fallos = 0
@@ -71,6 +73,25 @@ const personas: Persona[] = [
 ]
 igual('la agencia no se ofrece para avisos ni para aprobar', delEquipo(personas).map(p => p.id), [1])
 igual('en las listas se ve de qué empresa es', personas.map(nombreConEmpresa), ['Promo', 'Ana (Agencia Pampa)'])
+
+// 19/11/2026: elegir a «Fer (Diseñadores)» como responsable de una tarea de
+// Tienda la convertía en una pieza de la agencia. Diseñadores es una agencia
+// externa: en una tarea de Tienda solo se ofrece gente de Tienda.
+const fer: Persona = { id: 3, nombre: 'Fer', externo: true, empresa: 'Diseñadores' }
+igual('una tarea de Tienda la lleva alguien de Tienda', asignablesPara([...personas, fer], 'tienda').map(p => p.id), [1])
+igual('sin decir quién la hace, es de Tienda', asignablesPara([...personas, fer], undefined).map(p => p.id), [1])
+igual('lo de una agencia de afuera lo carga alguien de Tienda', asignablesPara([...personas, fer], 'fuera').map(p => p.id), [1])
+igual('en una pieza de una agencia sí se ofrecen sus cuentas', asignablesPara([...personas, fer], 'agencia').map(p => p.id), [1, 2, 3])
+
+// La empresa se elige de una lista y se compara sin tildes ni mayúsculas:
+// «Disenadores» o «diseñadores » son Diseñadores (como en el servidor).
+igual('la clave de una empresa', claveDeEmpresa('  DISEÑADORES  '), 'disenadores')
+ok('sin ñ es la misma', mismaEmpresa('Disenadores', 'Diseñadores'))
+ok('con espacios y en minúscula, también', mismaEmpresa('another   monday ', 'Another Monday'))
+ok('otra agencia no', !mismaEmpresa('Publicis', 'Diseñadores'))
+ok('sin empresa no hay con quién compartirla', !mismaEmpresa('', '') && !mismaEmpresa(null, undefined))
+igual('cada agencia una vez, como la escribió la primera', agenciasSinRepetir(['Diseñadores', 'Disenadores', null, 'Publicis', ' publicis ']),
+  ['Diseñadores', 'Publicis'])
 
 if (fallos) {
   console.log(`\n${fallos} prueba(s) fallaron`)

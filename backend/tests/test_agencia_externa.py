@@ -107,6 +107,39 @@ def test_la_misma_empresa_se_reconoce_sin_mayusculas_ni_espacios_de_mas():
     assert not externos.misma_empresa("", "")
 
 
+def test_la_misma_empresa_tambien_sin_tildes_y_con_la_enie_como_n():
+    """19/11/2026: la empresa se escribía a mano, y una cuenta con
+    «Disenadores» (sin ñ) quedaba en otra agencia que no veía sus tarjetas."""
+    for escrita in ("Disenadores", "diseñadores ", "  DISEÑADORES", "Diséñadores"):
+        assert externos.misma_empresa(escrita, "Diseñadores"), escrita
+    assert externos.clave_de_empresa("  Another   MONDAY ") == "another monday"
+    assert externos.clave_de_empresa("Ñandú Estudio") == "nandu estudio"
+    assert externos.clave_de_empresa("   ") is None
+    assert not externos.misma_empresa("Diseñadores", "Diseño")
+
+
+def test_al_guardar_una_agencia_que_ya_existe_queda_como_ya_esta():
+    from app.core.tableros import TABLEROS, tablero_de
+
+    existentes = [*TABLEROS, "Agencia Pampa"]
+    assert externos.empresa_como_ya_esta("disenadores ", existentes) == "Diseñadores"
+    assert externos.empresa_como_ya_esta("AGENCIA  PAMPA", existentes) == "Agencia Pampa"
+    # Una nueva, como vino (sin espacios de más); vacía, nada.
+    assert externos.empresa_como_ya_esta("  Estudio   Nuevo ", existentes) == "Estudio Nuevo"
+    assert externos.empresa_como_ya_esta("  ", existentes) is None
+    # La lista para elegir: cada una una vez, como la escribió la primera.
+    assert externos.sin_repetir([*TABLEROS, "Disenadores", "agencia pampa", "Agencia Pampa", None, ""]) == [
+        "Publicis", "Another Monday", "Diseñadores", "agencia pampa"]
+    assert tablero_de("disenadores") == "Diseñadores" and tablero_de("Otra") is None
+
+
+def test_una_tarjeta_de_disenadores_es_de_la_cuenta_de_disenadores_aunque_falte_la_enie():
+    cuenta = _usuario(60, "calendario.view", empresa="Disenadores")
+    tarjeta = SimpleNamespace(asignado_a_id=None, para="agencia", agencia="Diseñadores")
+    assert externos.es_tarea_propia(cuenta, tarjeta)
+    assert not externos.es_tarea_propia(cuenta, SimpleNamespace(asignado_a_id=None, para="agencia", agencia="Publicis"))
+
+
 @pytest.mark.parametrize("ruta,permitida", [
     ("/api/v1/auth/me", True),
     ("/api/v1/auth/change-password", True),
@@ -209,10 +242,20 @@ AVISOS = [
 
 class FuenteSinFiltro:
     """Como una consulta con un bug: devuelve todo, sin mirar mundo ni fechas.
-    La de la agencia tiene que recortar igual."""
+    La de la agencia tiene que recortar igual.
+
+    `tarjetas`: las tareas que tienen su tarjeta en el tablero (entregas).
+    Por defecto ninguna: «Mi tarea del FUTURO» es una tarea sin tarjeta, y
+    esas la agencia no las ve fuera de su ventana (como en Mis tareas)."""
+
+    def __init__(self, tarjetas=()):
+        self.tarjetas = set(tarjetas)
 
     def _b(self, i):
         return next(b for b in BARRAS if b.id == i)
+
+    async def tareas_con_tarjeta(self, ids):
+        return {i for i in ids if i in self.tarjetas}
 
     async def barras(self, mundos, *, rango=None, secciones=None, ids=None):
         return [b for b in BARRAS if ids is None or b.id in ids]
@@ -242,8 +285,8 @@ class FuenteSinFiltro:
         return [AGENCIA, OTRA_AGENCIA, COLEGA, DEL_EQUIPO]
 
 
-def _tino(nombre, usuario=AGENCIA, args=None):
-    salida = asyncio.run(cc.ejecutar(nombre, args or {}, usuario, None, hoy=HOY, fuente=FuenteSinFiltro()))
+def _tino(nombre, usuario=AGENCIA, args=None, tarjetas=()):
+    salida = asyncio.run(cc.ejecutar(nombre, args or {}, usuario, None, hoy=HOY, fuente=FuenteSinFiltro(tarjetas)))
     return json.loads(salida), salida
 
 
@@ -283,11 +326,52 @@ def test_ni_la_carga_del_equipo_ni_los_avisos():
         assert "Black Friday" not in texto
 
 
-def test_a_una_agencia_que_no_ve_el_calendario_don_tino_no_le_cuenta_nada():
+def test_a_una_agencia_que_no_ve_el_calendario_don_tino_no_le_cuenta_nada_mas_que_lo_suyo():
+    """«No lo ve» (lo que tiene una agencia por defecto): del calendario,
+    nada. Lo suyo sí (19/11/2026, "Don Tino debe amoldarse a cada usuario"):
+    sus tarjetas, que en su tablero ve siempre; esta cuenta no tiene ninguna."""
     sin_calendario = _usuario(53, "calendario.view", "ai.don_tino")
-    for herramienta in ("calendario_acciones", "calendario_tareas", "calendario_accion"):
+    for herramienta in ("calendario_acciones", "calendario_accion"):
         datos, texto = _tino(herramienta, usuario=sin_calendario, args={"accion_id": "b-ahora"})
         assert "error" in datos and "Black Friday" not in texto
+    datos, texto = _tino("calendario_tareas", usuario=sin_calendario, tarjetas={"t-mia", "t-mia-futura"})
+    assert datos["tareas"] == [] and datos["solo_las_suyas"]
+    assert "Black Friday" not in texto and "FUTURO" not in texto
+
+
+def test_a_la_agencia_le_cuenta_sus_tarjetas_aunque_la_accion_quede_fuera_de_su_ventana():
+    """Sus tarjetas las ve siempre en su tablero (0070): Don Tino también
+    (19/11/2026). De la acción, el nombre y las fechas, sin link ni id, como
+    en su tablero; la ficha de la acción y lo de los demás siguen cerrados.
+    Una tarea suya SIN tarjeta fuera de su ventana, no: como en Mis tareas."""
+    datos, texto = _tino("calendario_tareas", tarjetas={"t-mia-futura"})
+    assert [t["titulo"] for t in datos["tareas"]] == ["Afiche de Black Friday", "Mi tarea del FUTURO"]
+    futura = datos["tareas"][1]["accion"]
+    assert futura["nombre"] == "Navidad SECRETA de febrero" and futura["fuera_de_lo_que_ve"] is True
+    assert "link" not in futura and "id" not in futura
+    assert (futura["desde"], futura["hasta"]) == ("2027-02-10", "2027-02-20")
+    for secreto in ("INTERNA", "OTRA agencia", "PASADO"):
+        assert secreto not in texto, secreto
+    datos, _ = _tino("calendario_accion", args={"accion_id": "b-futuro"}, tarjetas={"t-mia-futura"})
+    assert "error" in datos
+    # Sin tarjeta, la de febrero no.
+    datos, _ = _tino("calendario_tareas")
+    assert [t["titulo"] for t in datos["tareas"]] == ["Afiche de Black Friday"]
+
+
+def test_a_la_agencia_lo_mio_son_las_tarjetas_de_su_agencia():
+    """«¿Qué tengo pendiente?» (responsable 'yo'): a una agencia, las tarjetas
+    de su agencia, como en su tablero, aunque no estén a su nombre."""
+    de_la_agencia = SimpleNamespace(id="t-pampa", barra_id="b-ahora", parent_id=None, titulo="Banner de la agencia",
+                                    descripcion=None, estado="pendiente", asignado_a_id=None, vence=HOY,
+                                    para="agencia", agencia="agencia pampa")
+    TAREAS.append(de_la_agencia)
+    try:
+        datos, texto = _tino("calendario_tareas", args={"responsable": "yo"})
+    finally:
+        TAREAS.remove(de_la_agencia)
+    assert [t["titulo"] for t in datos["tareas"]] == ["Afiche de Black Friday", "Banner de la agencia"]
+    assert "OTRA agencia" not in texto and "INTERNA" not in texto
 
 
 def test_al_equipo_don_tino_le_sigue_contando_todo():

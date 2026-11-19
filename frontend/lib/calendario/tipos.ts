@@ -264,6 +264,45 @@ export function delEquipo(personas: Persona[]): Persona[] {
 }
 
 /**
+ * Quiénes pueden llevar una tarea, según quién la hace (19/11/2026): una de
+ * Tienda (o lo de una agencia de afuera, que carga alguien del equipo) la
+ * lleva alguien de Tienda. Elegir ahí a «Fer (Diseñadores)» convertía la
+ * tarea interna en una pieza de la agencia; ahora el servidor lo rechaza.
+ * Las cuentas de las agencias (Publicis, Another Monday, Diseñadores: son
+ * agencias externas) se ofrecen solo en las piezas de una agencia.
+ */
+export function asignablesPara(personas: Persona[], para: Tarea['para']): Persona[] {
+  return para === 'agencia' ? personas : delEquipo(personas)
+}
+
+/**
+ * Cómo se compara el nombre de una agencia (19/11/2026): sin espacios de
+ * más, sin mayúsculas, sin tildes y con la ñ como n. «Disenadores» y
+ * «diseñadores » son Diseñadores. Es la misma cuenta que hace el servidor
+ * (backend/app/core/externos.py, clave_de_empresa).
+ */
+export function claveDeEmpresa(texto: string | null | undefined): string {
+  return (texto ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .split(/\s+/).filter(Boolean).join(' ')
+}
+
+export function mismaEmpresa(a: string | null | undefined, b: string | null | undefined): boolean {
+  const clave = claveDeEmpresa(a)
+  return clave !== '' && clave === claveDeEmpresa(b)
+}
+
+/** Los nombres de agencia, cada uno una sola vez (manda cómo se escribió el
+ *  primero) y en orden alfabético. */
+export function agenciasSinRepetir(nombres: (string | null | undefined)[]): string[] {
+  const vistas = new Map<string, string>()
+  for (const n of nombres) {
+    const clave = claveDeEmpresa(n)
+    if (clave && !vistas.has(clave)) vistas.set(clave, (n ?? '').split(/\s+/).filter(Boolean).join(' '))
+  }
+  return [...vistas.values()].sort((a, b) => a.localeCompare(b, 'es'))
+}
+
+/**
  * El catalogo de lo que puede llevar una accion. El area `web-home` es la
  * unica que toca el calendario de headers: una pieza `Header` de ahi baja
  * sola a una posicion libre de marketing.
