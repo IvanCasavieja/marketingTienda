@@ -4,7 +4,7 @@ tablero de tarjetas estilo Trello (0070).
   PUT    /calendario/tareas/{id}/entregas     — que la tarea lleve entregas: tipo, brief, fases, aprobadores
   DELETE /calendario/tareas/{id}/entregas     — que deje de llevarlas (solo si no se entregó nada)
   GET    /calendario/tareas/{id}/entregas     — todo: fases, rondas, imágenes (los ids), marcas, decisiones
-  POST   /calendario/tareas/{id}/versiones    — entregar una ronda (multipart: imágenes y/o un link)
+  POST   /calendario/tareas/{id}/versiones    — entregar una ronda (multipart: imágenes y/o un link, y un ZIP)
   POST   /calendario/tareas/{id}/mover        — arrastrar la tarjeta a otra columna del tablero
   POST   /calendario/versiones/{id}/decision  — aprobar o pedir cambios
   GET    /calendario/entregas/imagenes/{id}   — una imagen (?tam=mini|grande)
@@ -48,7 +48,9 @@ piden al abrir la tarea, de a una.
 Cada versión entregada se la revisa la IA en segundo plano, después de
 contestar la subida (app/services/revision_ia.py). Lo que encontró se pide
 aparte (app/api/routes/revision_ia.py) y lo ven solo los aprobadores y quien
-gestiona: ver `puede_ver_revision`.
+gestiona: ver `puede_ver_revision`. Desde el 19/11/2026 la IA mira también lo
+que venga en un ZIP (campo `zip` del multipart, no se guarda) y detrás del
+link (app/services/materiales.py).
 """
 import json
 import logging
@@ -78,7 +80,7 @@ from app.models.entregas import (
 from app.models.revision_ia import CalendarioRevisionIA
 from app.models.user import User
 from app.services import entregas as reglas
-from app.services import revision_ia, tipos_de_tarea
+from app.services import materiales, revision_ia, tipos_de_tarea
 from app.services.espacio import exigir_lugar
 from app.services.entregas import (
     MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, MAX_IMAGENES, MAX_MARCAS, NoPuedeDecidir, FaseExistente,
@@ -588,7 +590,11 @@ async def ver_entregas(
             # front la pide aparte, y el servidor lo vuelve a controlar ahí).
             "verRevisionIA": puede_ver_revision(current_user, entrega, tarea, actual),
         },
-        "limites": {"imagenes": MAX_IMAGENES, "bytesImagen": MAX_BYTES_IMAGEN, "marcas": MAX_MARCAS},
+        "limites": {
+            "imagenes": MAX_IMAGENES, "bytesImagen": MAX_BYTES_IMAGEN, "marcas": MAX_MARCAS,
+            # El ZIP que se suma a la entrega para que lo revise la IA (19/11/2026).
+            "bytesZip": materiales.MAX_BYTES_ZIP,
+        },
         # La conversación de la tarjeta, al costado como en Trello (0073).
         "comentarios": [_comentario_json(c, current_user, nombres) for c in comentarios],
     }
@@ -744,14 +750,25 @@ async def entregar(
     corregidas: str = Form("[]", max_length=20_000),
     imagenes: list[UploadFile] | None = File(None),
     miniaturas: list[UploadFile] | None = File(None),
+    archivo_zip: UploadFile | None = File(None, alias="zip"),
+    zipYaSubidas: str = Form("[]", max_length=2000),
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
     """Entrega una ronda de la fase en curso: la manda a "Esperando feedback".
     Solo quien la hace (`puede_entregar`). Los materiales son imágenes y/o un
-    link al original (Drive, WeTransfer: 16/11/2026, "imágenes como hoy y/o un
+    link al original (WeTransfer, Smash: 16/11/2026, "imágenes como hoy y/o un
     link"). Va todo en un pedido (las imágenes también): o queda la versión
-    entera, o no queda nada."""
+    entera, o no queda nada.
+
+    Desde el 19/11/2026 puede venir además un ZIP (`zip`, hasta 40 MB) con
+    las piezas adentro: no se guarda (la base es chica), se mira acá que sea
+    un ZIP sano y se le pasa a la IA en segundo plano, que lo abre en memoria
+    (app/services/materiales.py). Por eso el ZIP solo no alcanza: el
+    aprobador tiene que ver la pieza, así que hace falta igual una imagen o
+    el link. Las imágenes de adentro las saca el navegador y las sube como
+    imágenes de la ronda: `zipYaSubidas` dice cuáles (su lugar en el índice
+    del ZIP), para que la IA no las mire dos veces."""
     imagenes, miniaturas = imagenes or [], miniaturas or []
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user, bloquear=True)
     entrega = await _entrega_bloqueada(db, tarea_id)
@@ -782,8 +799,37 @@ async def entregar(
             detail=f"La ronda {ultima.ronda} de {fase.nombre} todavía está en revisión: esperá a que la decidan",
         )
 
+    try:
+        ya_subidas = json.loads(zipYaSubidas or "[]")
+        if not isinstance(ya_subidas, list) or not all(type(i) is int and 0 <= i < 100_000 for i in ya_subidas):
+            raise ValueError
+    except ValueError:
+        raise HTTPException(status_code=422, detail="La lista de imágenes sacadas del ZIP no tiene la forma esperada")
+    zip_saltar = frozenset(ya_subidas)
+    zip_datos, zip_nombre, inventario = None, None, None
+    if archivo_zip is not None and archivo_zip.filename:
+        # Uno más que el máximo: alcanza para saber que se pasó.
+        zip_datos = await archivo_zip.read(materiales.MAX_BYTES_ZIP + 1)
+        zip_nombre = archivo_zip.filename.replace("\\", "/").rsplit("/", 1)[-1][:120] or "archivo.zip"
+        if not zip_datos:
+            zip_datos = None
+        else:
+            try:
+                inventario = materiales.inspeccionar_zip(zip_datos)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc))
+            if not any(e.clase != "otro" for e in inventario):
+                raise HTTPException(
+                    status_code=422,
+                    detail="El ZIP no trae nada para revisar: adentro tiene que haber imágenes (JPG, PNG, WebP) o PDF",
+                )
     if not imagenes and not (link or "").strip():
-        raise HTTPException(status_code=422, detail="Subí al menos una imagen o pegá el link al original")
+        raise HTTPException(
+            status_code=422,
+            detail="Subí al menos una imagen o pegá el link al original" + (
+                ": lo de adentro del ZIP no se guarda, y quien aprueba tiene que poder ver la pieza" if zip_datos else ""
+            ),
+        )
     if len(imagenes) > MAX_IMAGENES:
         raise HTTPException(status_code=422, detail=f"Son demasiadas imágenes: hasta {MAX_IMAGENES} por ronda")
     if len(miniaturas) != len(imagenes):
@@ -866,11 +912,23 @@ async def entregar(
     await db.commit()
     # La IA la revisa en segundo plano: arranca después de contestar (y ya
     # con la versión guardada, por el commit de arriba), abre su propia
-    # sesión y no levanta nunca. Si falla, la entrega queda igual.
-    if revision_ia.activa() and leidas:
-        # Solo con imágenes: un link solo no hay cómo mirarlo.
-        background_tasks.add_task(revision_ia.revisar_version, versionId)
-    return {"id": versionId, "rev": _rev_para(current_user, rev), "ronda": ronda, "entrega": resumen, "avisados": avisados}
+    # sesión y no levanta nunca. Si falla, la entrega queda igual. El ZIP va
+    # en memoria (no está en la base) y el link lo baja ella (19/11/2026):
+    # la entrega no espera la descarga.
+    if revision_ia.activa() and (leidas or zip_datos is not None or link_ok):
+        background_tasks.add_task(
+            revision_ia.revisar_version, versionId, zip_datos=zip_datos, zip_nombre=zip_nombre, zip_saltar=zip_saltar,
+        )
+    return {
+        "id": versionId, "rev": _rev_para(current_user, rev), "ronda": ronda, "entrega": resumen, "avisados": avisados,
+        # Qué se le va a mirar del ZIP (y qué no es imagen ni PDF), para que
+        # quien entrega lo vea en el acto.
+        "zip": None if inventario is None else {
+            "nombre": zip_nombre,
+            "archivos": [e.nombre for e in inventario if e.clase != "otro" and e.indice not in zip_saltar],
+            "ignorados": [e.nombre for e in inventario if e.clase == "otro"],
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -57,7 +57,12 @@ async def ver_revision(
 ):
     """'pendiente' (la IA la está mirando: el front vuelve a preguntar en unos
     segundos), 'lista' (con las observaciones, aunque sean cero) o 'nada' (no
-    se revisó, falló o se llegó al tope: no se muestra nada)."""
+    se revisó, falló o se llegó al tope: no se muestra nada).
+
+    Desde el 19/11/2026 cada observación dice de qué archivo es (`archivo`,
+    `pagina`, `origen`: una del ZIP o del link no tiene `imagenId`), y viajan
+    además `revisados`, `noSePudoAbrir` e `ignorados` (ver
+    revision_ia.materiales_para_mostrar)."""
     await _version_visible(db, version_id, current_user)
     fila = await db.get(CalendarioRevisionIA, version_id)
     out = revision_ia.para_mostrar(
@@ -65,6 +70,7 @@ async def ver_revision(
         fila.observaciones if fila else None, datetime.now(timezone.utc),
     )
     out["observaciones"] = await _json(db, out["observaciones"])
+    out.update(revision_ia.materiales_para_mostrar(fila.materiales if fila else None, out["estado"]))
     return out
 
 

@@ -173,7 +173,8 @@ class CalendarioVersion(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     comentario: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # El original en Drive, WeTransfer... Solo http/https.
+    # El original en WeTransfer, Smash... Solo http/https. Desde el 19/11/2026
+    # la IA intenta bajarlo en segundo plano (app/services/materiales.py).
     link: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     # Las marcas que quien entrega dice que corrigió en esta ronda (ids).
     corregidas: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)

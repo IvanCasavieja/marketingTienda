@@ -348,10 +348,15 @@ def test_lo_que_contesta_la_ia_simulada_pasa_la_validacion_del_sdk():
 # ---------------------------------------------------------------------------
 
 class BaseFalsa:
-    """La base de mentira: la misma regla de reclamo que la de Postgres."""
+    """La base de mentira: la misma regla de reclamo que la de Postgres.
+    `link`: el link al original de cada versión; `imagenes`: cuántas subidas."""
 
-    def __init__(self, versiones: list[str], *, falla_al_cargar=False):
-        self.versiones = {v: (CONTEXTO, [(f"im-{v}", _jpeg(), "image/jpeg")]) for v in versiones}
+    def __init__(self, versiones: list[str], *, falla_al_cargar=False, link: str | None = None, imagenes: int = 1):
+        contexto = Contexto(**{**CONTEXTO.__dict__, "link": link})
+        self.versiones = {
+            v: (contexto, [(f"im-{v}-{i}" if i else f"im-{v}", _jpeg(), "image/jpeg") for i in range(imagenes)])
+            for v in versiones
+        }
         self.filas: dict[str, dict] = {}
         self.falla_al_cargar = falla_al_cargar
 
@@ -369,8 +374,9 @@ class BaseFalsa:
             raise RuntimeError("se cortó la conexión con la base")
         return self.versiones[version_id]
 
-    async def terminar(self, version_id, *, estado, observaciones, motivo, modelo, uso):
-        self.filas[version_id].update(estado=estado, observaciones=observaciones, motivo=motivo, modelo=modelo, uso=uso)
+    async def terminar(self, version_id, *, estado, observaciones, motivo, modelo, uso, materiales=None):
+        self.filas[version_id].update(estado=estado, observaciones=observaciones, motivo=motivo, modelo=modelo, uso=uso,
+                                      materiales=materiales)
 
 
 @pytest.fixture
@@ -497,6 +503,141 @@ def test_si_la_base_falla_tampoco_levanta(ia_prendida):
             raise RuntimeError("no hay base")
 
     assert _revisar("ve-1", Rota(["ve-1"]), api) == "error"
+
+
+# ---------------------------------------------------------------------------
+# Lo que viene en un ZIP o en un link (19/11/2026)
+# ---------------------------------------------------------------------------
+# Ivan: "¿Qué pasaría si en vez de una imagen me hubieran pasado una carpeta o
+# un link? (…) vos directamente como plataforma ya descargués todas las cosas,
+# hagas todo el proceso". Lo de abrir el ZIP y bajar el link está probado en
+# test_materiales.py; acá, cómo entra en la revisión: la etiqueta con el
+# nombre que ve la IA, el nombre en cada observación, el tope de imágenes y
+# que un link que no se pudo abrir queda anotado, nunca como error.
+
+import zipfile
+
+
+def _zip(archivos: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for nombre, datos in archivos.items():
+            zf.writestr(nombre, datos)
+    return buf.getvalue()
+
+
+def test_las_imagenes_del_zip_y_del_link_llevan_su_nombre_en_la_etiqueta():
+    imagenes = [
+        rv.preparar_imagen("im-1", _jpeg(1600, 1131), "image/jpeg"),
+        rv.preparar_imagen(None, _jpeg(800, 600), "image/jpeg", nombre="Cenefas/cenefa ñ.jpg", origen="zip"),
+        rv.preparar_imagen(None, _jpeg(600, 800), "image/jpeg", nombre="folleto.pdf", origen="link", pagina=2),
+    ]
+    c = rv.armar_contenido(imagenes, CONTEXTO)
+    assert c[0]["text"] == "Imagen 1 de 3 (1600 × 1131 px):"   # la subida, como siempre
+    assert c[2]["text"] == "Imagen 2 de 3 (800 × 600 px): «Cenefas/cenefa ñ.jpg» (del ZIP)"
+    assert c[4]["text"] == "Imagen 3 de 3 (600 × 800 px): página 2 de «folleto.pdf» (del link)"
+    assert "ZIP o de un link" in rv.SISTEMA
+
+
+def test_cada_observacion_dice_de_que_archivo_es():
+    imagenes = [
+        rv.preparar_imagen("im-1", _jpeg(1600, 1131), "image/jpeg"),
+        rv.preparar_imagen(None, _jpeg(800, 600), "image/jpeg", nombre="sub/a.jpg", origen="zip"),
+        rv.preparar_imagen(None, _jpeg(800, 600), "image/jpeg", nombre="f.pdf", origen="link", pagina=3),
+    ]
+    obs = rv.limpiar_observaciones({"observaciones": [
+        _obs(texto="subida", imagen=1, x=160, y=113), _obs(texto="zip", imagen=2, x=400, y=300),
+        _obs(texto="link", imagen=3, x=0, y=0), _obs(texto="sin lugar", imagen=None),
+    ]}, imagenes)
+    assert [(o["texto"], o["imagenId"], o["archivo"], o["pagina"], o["origen"], o["x"]) for o in obs] == [
+        ("subida", "im-1", None, None, "subida", 0.1),
+        ("zip", None, "sub/a.jpg", None, "zip", 0.5),       # no está en la base: sin imagenId
+        ("link", None, "f.pdf", 3, "link", 0.0),
+        ("sin lugar", None, None, None, None, None),
+    ]
+
+
+def test_revisa_tambien_lo_del_zip_y_guarda_que_miro(ia_prendida):
+    base = BaseFalsa(["ve-1"])
+    api = sim.ApiGrabada([_respuesta(
+        _obs(texto="En la subida", imagen=1), _obs(texto="En el PDF", imagen=3, x=100, y=100, gravedad="a_revisar"),
+    )])
+    datos = _zip({"cenefa.jpg": _jpeg(800, 600), "folleto.pdf": _pdf_de_dos_paginas(), "notas.txt": b"hola"})
+    assert asyncio.run(rv.revisar_version("ve-1", base=base, cliente=api.cliente(), zip_datos=datos,
+                                          zip_nombre="piezas.zip")) == "lista"
+    # A la IA fueron la subida y, detrás, lo del ZIP (el PDF por páginas).
+    c = api.pedidos[0]["messages"][0]["content"]
+    etiquetas = [b["text"] for b in c if b["type"] == "text"][:-1]
+    assert etiquetas == [
+        "Imagen 1 de 4 (1600 × 1131 px):", "Imagen 2 de 4 (800 × 600 px): «cenefa.jpg» (del ZIP)",
+        "Imagen 3 de 4 (1131 × 1600 px): página 1 de «folleto.pdf» (del ZIP)",
+        "Imagen 4 de 4 (1131 × 1600 px): página 2 de «folleto.pdf» (del ZIP)",
+    ]
+    fila = base.filas["ve-1"]
+    assert [(o["texto"], o["imagenId"], o["archivo"], o["pagina"]) for o in fila["observaciones"]] == [
+        ("En la subida", "im-ve-1", None, None), ("En el PDF", None, "folleto.pdf", 1)]
+    assert fila["materiales"] == {
+        "revisados": [{"nombre": "cenefa.jpg", "origen": "zip", "paginas": None},
+                      {"nombre": "folleto.pdf", "origen": "zip", "paginas": 2}],
+        "noSePudoAbrir": [], "ignorados": ["notas.txt"],
+    }
+
+
+def _pdf_de_dos_paginas() -> bytes:
+    import pymupdf
+
+    doc = pymupdf.open()
+    for i in range(2):
+        doc.new_page().insert_text((72, 72), f"Página {i + 1}")
+    datos = doc.tobytes()
+    doc.close()
+    return datos
+
+
+def test_un_link_que_no_se_pudo_abrir_queda_anotado_y_la_ia_revisa_lo_subido(ia_prendida, monkeypatch):
+    # Smash no se puede bajar: se anota, y la IA mira lo que se subió.
+    base = BaseFalsa(["ve-1"], link="https://fromsmash.com/AbC")
+    api = sim.ApiGrabada([_respuesta(_obs())])
+    assert _revisar("ve-1", base, api) == "lista"
+    assert len([b for b in api.pedidos[0]["messages"][0]["content"] if b["type"] == "image"]) == 1
+    fila = base.filas["ve-1"]
+    assert len(fila["observaciones"]) == 1
+    assert fila["materiales"]["revisados"] == [] and len(fila["materiales"]["noSePudoAbrir"]) == 1
+    assert "Smash" in fila["materiales"]["noSePudoAbrir"][0] and "ZIP" in fila["materiales"]["noSePudoAbrir"][0]
+
+
+def test_sin_imagenes_y_con_el_link_cerrado_queda_lista_sin_llamar_a_la_ia(ia_prendida):
+    """Una entrega con solo un link que no se pudo abrir: no hay qué mandarle
+    a la IA. Queda 'lista' sin observaciones y con el porqué en materiales
+    (es lo que tiene que ver el aprobador), no un error mudo ni un 500."""
+    base = BaseFalsa(["ve-1"], link="https://fromsmash.com/AbC", imagenes=0)
+    api = sim.ApiGrabada([])
+    assert _revisar("ve-1", base, api) == "lista"
+    fila = base.filas["ve-1"]
+    assert fila["estado"] == "lista" and fila["observaciones"] == [] and api.pedidos == []
+    assert "Smash" in fila["materiales"]["noSePudoAbrir"][0]
+    assert rv.materiales_para_mostrar(fila["materiales"], "lista")["noSePudoAbrir"] == fila["materiales"]["noSePudoAbrir"]
+
+
+def test_el_tope_de_doce_imagenes_entre_subidas_zip_y_link(ia_prendida):
+    base = BaseFalsa(["ve-1"], imagenes=2)
+    api = sim.ApiGrabada([_respuesta()])
+    datos = _zip({f"{i:02d}.jpg": _jpeg(200, 200) for i in range(1, 15)})
+    assert asyncio.run(rv.revisar_version("ve-1", base=base, cliente=api.cliente(), zip_datos=datos,
+                                          zip_nombre="muchas.zip")) == "lista"
+    assert len([b for b in api.pedidos[0]["messages"][0]["content"] if b["type"] == "image"]) == rv.MAX_IMAGENES_IA
+    materiales = base.filas["ve-1"]["materiales"]
+    assert [r["nombre"] for r in materiales["revisados"]] == [f"{i:02d}.jpg" for i in range(1, 11)]
+    assert materiales["noSePudoAbrir"] == [f"«{i:02d}.jpg»: quedó afuera por el tope de imágenes por entrega" for i in (11, 12, 13, 14)]
+
+
+def test_el_resumen_de_materiales_para_la_pantalla():
+    assert rv.materiales_para_mostrar(None, "lista") == {"revisados": [], "noSePudoAbrir": [], "ignorados": []}
+    guardado = {"revisados": [{"nombre": "a.jpg", "origen": "zip", "paginas": None}], "noSePudoAbrir": ["x"], "ignorados": ["b.txt"]}
+    assert rv.materiales_para_mostrar(guardado, "lista") == guardado
+    # Mientras está pendiente (o no se revisó) no se muestra nada de esto.
+    assert rv.materiales_para_mostrar(guardado, "pendiente")["revisados"] == []
+    assert rv.materiales_para_mostrar({"revisados": None}, "lista") == {"revisados": [], "noSePudoAbrir": [], "ignorados": []}
 
 
 def test_el_dia_del_tope_es_el_de_uruguay():
