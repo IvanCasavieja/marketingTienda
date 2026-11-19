@@ -10,6 +10,10 @@
 // Acá está cómo se muestra. Es una ayuda para el aprobador, no una decisión:
 // nada de lo que dice la IA le llega a la agencia salvo que el aprobador lo
 // convierta en una marca suya.
+//
+// Desde el 19/11/2026 dice además, de cada marca de la ronda anterior, si en
+// la pieza nueva se ve hecho (Ivan: "debería de hacerlo"): va al lado de cada
+// marca, en «Lo que se pidió en la ronda N» del Revisor (`cambiosPorMarca`).
 // ---------------------------------------------------------------------------
 
 export type TipoObservacionIA = 'ortografia' | 'marca' | 'legal' | 'precio_vigencia' | 'codigo' | 'otro'
@@ -53,9 +57,34 @@ export type RevisionIA = {
   noSePudoAbrir?: string[]
   /** Lo que venía en el ZIP sin ser imagen ni PDF (un PSD, una fuente). */
   ignorados?: string[]
+  /** Si se ve hecho lo que pedía cada marca de la ronda anterior (19/11/2026).
+   *  Vacío en una primera ronda, si la anterior volvió sin marcas y en las
+   *  revisiones de antes. */
+  cambiosPedidos?: CambioPedidoIA[]
 }
 
 export type MaterialRevisado = { nombre: string; origen: OrigenIA; paginas: number | null }
+
+/** Lo que dice la IA de una marca de la ronda anterior: si en la pieza nueva
+ *  se ve hecho, si falta o si no se puede saber mirando las imágenes. */
+export type VeredictoIA = 'hecho' | 'falta' | 'dudoso'
+
+export type CambioPedidoIA = {
+  /** La marca de la ronda anterior (la de «Lo que se pidió en la ronda N»). */
+  marcaId: string
+  numero: number
+  veredicto: VeredictoIA
+  /** Una frase corta: «El -40% ahora es más grande.» */
+  nota: string
+}
+
+/** Cómo se muestra, al lado de cada marca: discreto (Ivan, 19/11/2026: había
+ *  "demasiado inteligencia artificial"). */
+export const VEREDICTO_IA: Record<VeredictoIA, string> = {
+  hecho: 'IA: hecho',
+  falta: 'IA: falta',
+  dudoso: 'IA: dudoso',
+}
 
 export const TIPO_OBSERVACION: Record<TipoObservacionIA, string> = {
   ortografia: 'Ortografía',
@@ -129,4 +158,21 @@ export function marcaDesdeObservacion(
 export function textoConArchivo(o: ObservacionIA): string {
   const archivo = archivoDe(o)
   return archivo ? `En ${archivo}: ${o.texto}` : o.texto
+}
+
+/**
+ * Lo que dijo la IA de cada marca de la ronda anterior, por id de marca, para
+ * ponerlo al lado de cada una (19/11/2026). Solo con la revisión lista:
+ * mientras la IA mira, o si no se pudo, no se muestra nada. Lo que no tenga
+ * la forma esperada (un veredicto que no existe) no se muestra; si una marca
+ * viene dos veces, vale la primera.
+ */
+export function cambiosPorMarca(revision: RevisionIA | null | undefined): Map<string, CambioPedidoIA> {
+  const porMarca = new Map<string, CambioPedidoIA>()
+  if (!revision || revision.estado !== 'lista') return porMarca
+  for (const c of revision.cambiosPedidos ?? []) {
+    if (!c || typeof c.marcaId !== 'string' || !Object.prototype.hasOwnProperty.call(VEREDICTO_IA, c.veredicto)) continue
+    if (!porMarca.has(c.marcaId)) porMarca.set(c.marcaId, c)
+  }
+  return porMarca
 }
