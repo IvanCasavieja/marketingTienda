@@ -1,46 +1,30 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Camera, Check, ImagePlus, Link2, Loader2, RotateCcw, Send, X } from 'lucide-react'
+import { Camera, ImagePlus, Link2, Loader2, RotateCcw, Send, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import {
-  marcasPendientes, nuevoIdDeVersion, prepararImagen, type DetalleEntregas, type ImagenLista, type Marca,
+  nuevoIdDeVersion, prepararImagen, type DetalleEntregas, type ImagenLista,
 } from '@/lib/calendario/entregas'
-import { useImagen } from './useImagen'
 
 function detalleDeError(e: unknown): string | null {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
   return typeof d === 'string' ? d : null
 }
 
-/** La miniatura de la imagen donde está una marca, con el pin encima: para
- *  que quien corrige vea DÓNDE era sin abrir nada. */
-export function DondeEra({ marca, tono = 'cambio' }: { marca: Pick<Marca, 'imagenId' | 'x' | 'y' | 'numero'>; tono?: 'cambio' | 'ajuste' }) {
-  const { url } = useImagen(marca.imagenId, 'mini')
-  return (
-    <span className="relative inline-block h-14 shrink-0 overflow-hidden rounded-lg bg-slate-100 ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/10">
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- URL local del navegador (blob:)
-        <img src={url} alt="" className="block h-14 w-auto" />
-      ) : (
-        <span className="block h-14 w-14" />
-      )}
-      {url && (
-        <span
-          aria-hidden
-          style={{ left: `${marca.x * 100}%`, top: `${marca.y * 100}%` }}
-          className={`absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white ${tono === 'ajuste' ? 'bg-amber-500' : 'bg-rose-600'}`}
-        />
-      )}
-    </span>
-  )
-}
-
 /**
  * Entregar una ronda: las imágenes (de la cámara o de la galería), un
- * comentario, el link al original y —si es una ronda que volvió— tildar qué
- * marcas se corrigieron. Las imágenes se achican acá antes de subir.
+ * comentario y el link al original. Las imágenes se achican acá antes de
+ * subir.
+ *
+ * Antes, en una ronda que volvía, arriba de las imágenes iba "¿Qué
+ * corregiste? Tildá cada marca". Se sacó (Ivan, 19/11/2026: "siento que eso
+ * no debería ni siquiera estar. Se supone que la agencia ya leyó los
+ * cambios, y una vez que cargan la imagen, vos vas a verificar si esos
+ * cambios están hechos"). Lo que hay que corregir se ve en la ficha, con la
+ * imagen; acá solo se entrega. Al servidor se le sigue mandando la lista de
+ * marcas corregidas, vacía, para no cambiarle el pedido.
  */
 export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -50,9 +34,8 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const { resumen, limites } = detalle
   const fase = resumen.fases.find(f => f.id === resumen.faseActual)
   const ronda = resumen.ronda + 1
-  const pendientes = marcasPendientes(detalle.fases)
-  const cambios = pendientes.filter(m => m.tipo === 'cambio')
-  const ajustes = pendientes.filter(m => m.tipo === 'ajuste')
+  // Es una ronda que volvió con cambios (cambia el ejemplo del comentario).
+  const volvio = resumen.momento === 'cambios'
 
   // El id se arma una vez: si la subida se corta y se reintenta, el
   // servidor reconoce que es la misma y no la duplica.
@@ -61,7 +44,6 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const [preparando, setPreparando] = useState(0)
   const [comentario, setComentario] = useState('')
   const [link, setLink] = useState('')
-  const [corregidas, setCorregidas] = useState<Set<string>>(() => new Set())
   const [subiendo, setSubiendo] = useState<number | null>(null)
   const camaraRef = useRef<HTMLInputElement>(null)
   const galeriaRef = useRef<HTMLInputElement>(null)
@@ -101,22 +83,14 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     })
   }
 
-  function alternar(id: string) {
-    setCorregidas(prev => {
-      const n = new Set(prev)
-      if (n.has(id)) n.delete(id)
-      else n.add(id)
-      return n
-    })
-  }
-
   async function entregar() {
     if (!hayMateriales || linkMalo || subiendo !== null) return
     const form = new FormData()
     form.append('versionId', versionId)
     form.append('comentario', comentario.trim())
     form.append('link', link.trim())
-    form.append('corregidas', JSON.stringify([...corregidas]))
+    // Ya no se tilda qué se corrigió (ver arriba): va la lista vacía.
+    form.append('corregidas', '[]')
     imagenes.forEach((im, i) => {
       form.append('imagenes', im.grande, `imagen-${i + 1}.jpg`)
       form.append('miniaturas', im.mini, `miniatura-${i + 1}.jpg`)
@@ -137,7 +111,10 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
+      {/* La caja es ancha (19/11/2026, ver VistaEntregas): el formulario va al
+          medio, con aire a los costados, para que los campos no se estiren. */}
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl space-y-6">
         <div>
           <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
             {resumen.fases.length === 1
@@ -157,33 +134,6 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
               <RotateCcw className="h-4 w-4" /> Lo que pidieron cambiar
             </h4>
             <p className="mt-1.5 whitespace-pre-line text-sm text-rose-950 dark:text-rose-50">{fase.motivo}</p>
-          </section>
-        )}
-
-        {cambios.length > 0 && (
-          <section aria-labelledby="que-corregiste">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h4 id="que-corregiste" className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                ¿Qué corregiste? <span className="font-normal text-slate-500 dark:text-slate-400">Tildá cada marca</span>
-              </h4>
-              <button
-                type="button"
-                onClick={() => setCorregidas(new Set([...corregidas, ...cambios.map(m => m.id)]))}
-                className="rounded-lg px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10"
-              >
-                Tildar todas
-              </button>
-            </div>
-            <ListaDeMarcasATildar marcas={cambios} tildadas={corregidas} onAlternar={alternar} />
-          </section>
-        )}
-
-        {ajustes.length > 0 && (
-          <section aria-labelledby="ajustes-anotados">
-            <h4 id="ajustes-anotados" className="mb-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-              Ajustes anotados <span className="font-normal text-slate-500 dark:text-slate-400">de una fase aprobada con cambios</span>
-            </h4>
-            <ListaDeMarcasATildar marcas={ajustes} tildadas={corregidas} onAlternar={alternar} />
           </section>
         )}
 
@@ -257,7 +207,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
               onChange={e => setComentario(e.target.value)}
               rows={3}
               maxLength={5000}
-              placeholder={cambios.length ? 'Ej: Agrandé el precio y saqué el fondo azul.' : 'Algo que tengan que saber al revisarla'}
+              placeholder={volvio ? 'Ej: Agrandé el precio y saqué el fondo azul.' : 'Algo que tengan que saber al revisarla'}
               className="campo !h-auto py-2"
             />
           </label>
@@ -276,8 +226,10 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           </label>
         </div>
       </div>
+      </div>
 
-      <div className="flex shrink-0 items-center gap-2 border-t border-slate-300 bg-white px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-900 sm:px-6">
+      <div className="shrink-0 border-t border-slate-300 bg-white px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-900 sm:px-6">
+      <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
         <button
           type="button"
           onClick={onCancelar}
@@ -302,44 +254,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           )}
         </button>
       </div>
+      </div>
     </div>
-  )
-}
-
-function ListaDeMarcasATildar({ marcas, tildadas, onAlternar }: {
-  marcas: (Marca & { ronda: number; fase: string })[]
-  tildadas: Set<string>
-  onAlternar: (id: string) => void
-}) {
-  return (
-    <ul className="space-y-1.5">
-      {marcas.map(m => {
-        const si = tildadas.has(m.id)
-        return (
-          <li key={m.id}>
-            <label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-2 pr-3 transition ${
-              si ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10' : 'border-slate-300 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900'
-            }`}>
-              {/* El tilde real es invisible (sr-only también tapa el contorno
-                  del foco): el foco del teclado se pinta en la casilla dibujada. */}
-              <input type="checkbox" checked={si} onChange={() => onAlternar(m.id)} className="peer sr-only" />
-              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 transition peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-slate-900 ${
-                si ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-500 dark:border-slate-500'
-              }`} aria-hidden>
-                {si && <Check className="h-4 w-4" strokeWidth={3} />}
-              </span>
-              <DondeEra marca={m} tono={m.tipo} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  <span className={`mr-1.5 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[11px] font-bold ${m.tipo === 'ajuste' ? 'bg-amber-500 text-slate-950' : 'bg-rose-600 text-white'}`}>{m.numero}</span>
-                  {m.texto}
-                </span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">Ronda {m.ronda} de {m.fase}</span>
-              </span>
-            </label>
-          </li>
-        )
-      })}
-    </ul>
   )
 }

@@ -4,19 +4,22 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, ImageOff, Sparkles } from 'lucide-react'
 import { useImagen, type Tam } from './useImagen'
 
-/** Cómo se ve un pin: el que se está poniendo ahora, un cambio pedido, un
- *  ajuste ("aprobado con cambios"), uno que la agencia ya corrigió, o lo
- *  que sugiere la IA (no es una marca: es dónde vio algo; lo ve solo quien
- *  aprueba, y recién es marca si lo convierte). */
-export type TonoPin = 'nuevo' | 'cambio' | 'ajuste' | 'corregida' | 'ia'
+/** Cómo se ve un pin: el que se está poniendo ahora, un cambio pedido, uno
+ *  que la agencia ya corrigió (con el tilde), o lo que sugiere la IA (no es
+ *  una marca: es dónde vio algo; lo ve solo quien aprueba, y recién es marca
+ *  si lo convierte). */
+export type TonoPin = 'nuevo' | 'cambio' | 'corregida' | 'ia'
 
 export type Pin = { clave: string; numero: number; x: number; y: number; tono: TonoPin; texto?: string }
 
+// Las marcas van todas del color de la marca (Ivan, 19/11/2026: "está todo
+// muy colorinche (…) tendría que ser algo mucho más minimalista"). Antes cada
+// tipo tenía su color (rojo, ámbar, verde) y la imagen parecía un semáforo.
+// La sugerencia de la IA sigue en violeta porque NO es una marca.
 const TONO: Record<TonoPin, string> = {
   nuevo: 'bg-brand-600 text-white ring-white',
-  cambio: 'bg-rose-600 text-white ring-white',
-  ajuste: 'bg-amber-500 text-slate-950 ring-white',
-  corregida: 'bg-emerald-600 text-white ring-white',
+  cambio: 'bg-brand-600 text-white ring-white',
+  corregida: 'bg-brand-600 text-white ring-white',
   ia: 'bg-violet-600 text-white ring-violet-200 dark:ring-violet-300/60',
 }
 

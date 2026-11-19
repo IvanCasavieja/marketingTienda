@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, Loader2, MapPin, RotateCcw, Sparkles, Stamp, X } from 'lucide-react'
+import { Loader2, MapPin, RotateCcw, Sparkles, Stamp, X } from 'lucide-react'
 import {
   TIPO_OBSERVACION, ordenarObservaciones, tieneLugar, tituloRevisionIA, type ObservacionIA, type RevisionIA,
 } from '@/lib/calendario/revision-ia'
 
 /**
- * Lo que encontró la IA en la pieza, arriba de la imagen del Revisor.
+ * Lo que encontró la IA en la pieza, en el Revisor.
  *
  * Es una ayuda para quien aprueba, no una decisión, y se dice así: la IA se
  * puede equivocar, decide la persona, y a la agencia no le llega nada de esta
@@ -18,11 +18,13 @@ import {
  * Tocar una observación muestra en la imagen dónde la vio la IA (un pin
  * violeta con chispas, que no es una marca).
  *
- * Mientras la IA mira la pieza se avisa en una línea; si falló o no se
- * revisó, no se muestra nada: la revisión sigue como siempre.
+ * No aparece sola (Ivan, 19/11/2026: "quizás está demasiado inteligencia
+ * artificial y puede llegar a provocar confusión"): el Revisor la muestra
+ * recién cuando se toca "Ver lo que encontró la IA", y acá hay una X para
+ * cerrarla. Cuándo se calcula no cambió: la hace el servidor al entregar.
  */
 export function PanelRevisionIA({
-  revision, imagenes, elegida, convertidas, deshabilitado, onElegir, onConvertir, onDeshacer, onDescartar,
+  revision, imagenes, elegida, convertidas, deshabilitado, onElegir, onConvertir, onDeshacer, onDescartar, onCerrar,
 }: {
   revision: RevisionIA | null
   imagenes: { id: string; orden: number }[]
@@ -34,16 +36,16 @@ export function PanelRevisionIA({
   onConvertir: (o: ObservacionIA) => void
   onDeshacer: (o: ObservacionIA) => void
   onDescartar: (o: ObservacionIA, descartada: boolean) => Promise<void>
+  onCerrar: () => void
 }) {
-  const [abierta, setAbierta] = useState(true)
   const [ocupada, setOcupada] = useState<string | null>(null)
 
   if (!revision || revision.estado === 'nada') return null
 
   if (revision.estado === 'pendiente') {
     return (
-      <p role="status" className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50/70 px-3 py-2 text-sm text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100">
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+      <p role="status" className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-600 dark:text-violet-300" aria-hidden />
         La IA está mirando la pieza (ortografía, mundo, legales, precio, QR)…
       </p>
     )
@@ -63,38 +65,34 @@ export function PanelRevisionIA({
 
   return (
     <section
+      id="revision-ia"
       aria-labelledby="revision-ia-titulo"
-      className="rounded-2xl border border-violet-200 bg-violet-50/70 p-3 dark:border-violet-500/30 dark:bg-violet-500/10"
+      className="rounded-2xl border border-slate-300 p-3 dark:border-slate-700"
     >
       <div className="flex items-start gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white" aria-hidden>
-          <Sparkles className="h-4 w-4" />
-        </span>
+        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" aria-hidden />
         <div className="min-w-0 flex-1">
-          <h4 id="revision-ia-titulo" className="text-sm font-bold leading-snug text-violet-950 dark:text-violet-50">
+          <h4 id="revision-ia-titulo" className="text-sm font-bold leading-snug text-slate-900 dark:text-slate-100">
             {tituloRevisionIA(obs)}
           </h4>
-          <p className="mt-0.5 text-xs leading-snug text-violet-900/80 dark:text-violet-200/80">
+          <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400">
             {obs.length === 0
               ? 'Miró ortografía, mundo, legales, precio y QR. Es una ayuda: igual mirala vos.'
               : 'Es una ayuda y se puede equivocar: decidís vos. La agencia no ve esta lista, solo las marcas que hagas.'}
           </p>
         </div>
-        {obs.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setAbierta(v => !v)}
-            aria-expanded={abierta}
-            aria-controls="revision-ia-lista"
-            className="-mr-1 -mt-1 flex min-h-[36px] shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-violet-800 transition hover:bg-violet-100 dark:text-violet-200 dark:hover:bg-violet-500/20"
-          >
-            {abierta ? 'Ocultar' : 'Ver'}
-            <ChevronDown className={`h-4 w-4 transition-transform ${abierta ? 'rotate-180' : ''}`} aria-hidden />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onCerrar}
+          aria-label="Cerrar lo que encontró la IA"
+          title="Cerrar"
+          className="-mr-1.5 -mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
-      {abierta && obs.length > 0 && (
+      {obs.length > 0 && (
         <ul id="revision-ia-lista" className="mt-2.5 space-y-1.5">
           {ordenadas.map(o => {
             const esElegida = elegida === o.id
@@ -105,8 +103,8 @@ export function PanelRevisionIA({
             return (
               <li
                 key={o.id}
-                className={`rounded-xl border bg-white p-2.5 transition dark:bg-slate-900 ${
-                  esElegida ? 'border-violet-400 ring-2 ring-violet-200 dark:border-violet-400/70 dark:ring-violet-500/30' : 'border-violet-100 dark:border-slate-700'
+                className={`rounded-xl border p-2.5 transition ${
+                  esElegida ? 'border-violet-400 ring-2 ring-violet-200 dark:border-violet-400/70 dark:ring-violet-500/30' : 'border-slate-200 dark:border-slate-700'
                 } ${o.estado === 'descartada' ? 'opacity-60' : ''}`}
               >
                 <button
@@ -121,8 +119,8 @@ export function PanelRevisionIA({
                   <span className={`text-sm leading-snug text-slate-800 dark:text-slate-200 ${o.estado === 'descartada' ? 'line-through decoration-slate-400' : ''}`}>
                     <span className={`mr-1.5 inline-block rounded-full px-1.5 py-px align-[1px] text-[11px] font-bold no-underline ${
                       o.gravedad === 'importante'
-                        ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200'
-                        : 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-100'
+                        ? 'bg-violet-100 text-violet-900 dark:bg-violet-500/20 dark:text-violet-100'
+                        : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}>
                       {o.gravedad === 'importante' ? 'Importante' : 'A revisar'}
                     </span>
