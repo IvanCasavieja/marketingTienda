@@ -1727,7 +1727,8 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
     ronda anterior (cada marca con su imagen por orden y su lugar, y el
     comentario de quien pidió los cambios, no la nota interna) y que lo que
     contestó lo ve quien aprueba, nunca la agencia. Lo que hace la IA con eso
-    está en test_revision_ia.py."""
+    está en test_revision_ia.py. Desde la revisión del 19/11/2026 recibe
+    además las miniaturas de esa ronda, para comparar."""
     from app.services import revision_ia
 
     # Entregar no dispara la revisión de verdad (acá no hay clave; por las dudas).
@@ -1736,8 +1737,11 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
     async def prueba(d):
         lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
         tarea_id, _ = await _pedir_banners(d, d.lider)
-        dos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg")),
-               ("imagenes", ("b.jpg", JPEG, "image/jpeg")), ("miniaturas", ("n.jpg", JPEG, "image/jpeg"))]
+        # Las miniaturas, de verdad y de distinto tamaño: así se ve su orden.
+        dos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")),
+               ("miniaturas", ("m.jpg", _jpeg_de_verdad(64, 48), "image/jpeg")),
+               ("imagenes", ("b.jpg", JPEG, "image/jpeg")),
+               ("miniaturas", ("n.jpg", _jpeg_de_verdad(48, 64), "image/jpeg"))]
         v1, v2, v3 = (f"ve-r{i}-{d.sufijo}" for i in (1, 2, 3))
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v1}, files=dos)
         assert r.status_code == 201, r.text
@@ -1766,6 +1770,16 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
             assert "comercial" not in texto
             # La primera ronda no tiene nada antes.
             assert (await revision_ia.cargar_version(s, v1))[0].ronda_anterior is None
+            # Las miniaturas de la ronda 1, en su orden y con el número de su imagen.
+            assert [(m.numero, m.ancho, m.alto) for m in antes.miniaturas] == [(1, 64, 48), (2, 48, 64)]
+            # Una que no está (la purga de antes del 19/11/2026 vació algunas)
+            # no va, y la otra conserva su número: el que dicen las marcas.
+            await s.execute(update(CalendarioVersionImagen).where(CalendarioVersionImagen.id == im1)
+                            .values(miniatura=None))
+            antes = (await revision_ia.cargar_version(s, v2))[0].ronda_anterior
+            assert [(m.numero, m.ancho, m.alto) for m in antes.miniaturas] == [(2, 48, 64)]
+            assert [(m.numero, m.imagen) for m in antes.marcas] == [(1, 2), (2, 1)]
+            await s.rollback()  # la purga era solo para esta prueba
 
         # Lo que contestó la IA (una revisión guardada) lo ve quien aprueba;
         # la agencia, nunca.

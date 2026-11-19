@@ -13,9 +13,10 @@ es una de mentira que usa la misma regla de reclamo que la de Postgres
 - el tope por día, el apagado y que una versión no se pague dos veces;
 - quién ve las observaciones: los aprobadores y quien gestiona, nunca quien
   entrega;
-- lo que se pidió en la ronda anterior (19/11/2026): va como datos, la IA
-  dice marca por marca si se ve hecho, y lo que venga mal se descarta sin
-  tirar la revisión.
+- lo que se pidió en la ronda anterior (19/11/2026): va como datos, con las
+  miniaturas de esa ronda para comparar (lo que la IA marque en ellas se
+  descarta); la IA dice marca por marca si se ve hecho, y lo que venga mal se
+  descarta sin tirar la revisión.
 
 Lo que hace la consulta de Postgres de verdad (el reclamo con su candado,
 cargar la versión, guardar y registrar el uso) se probó contra una copia
@@ -715,13 +716,23 @@ def test_el_dia_del_tope_es_el_de_uruguay():
 # ---------------------------------------------------------------------------
 # Ivan, cuando se le contó que la IA no comparaba con la ronda anterior:
 # "debería de hacerlo (...) si ves que algo no anda, ¿por qué no arreglarlo?".
-# Lo que se fija: qué se le manda (las marcas y el comentario, como datos), qué
-# contesta (hecho, falta o dudoso por marca), que lo que venga mal se descarta
-# sin tirar la revisión y que queda guardado con ella. Cómo se arma desde la
-# base de verdad está en test_tablero_agencia_api.py.
+# Lo que se fija: qué se le manda (las marcas y el comentario, como datos, y
+# las miniaturas de esa ronda para comparar), qué contesta (hecho, falta o
+# dudoso por marca), que lo que venga mal se descarta sin tirar la revisión y
+# que queda guardado con ella. Cómo se arma desde la base de verdad está en
+# test_tablero_agencia_api.py.
 
 def _cambio(numero, veredicto="hecho", nota="El -40% ahora es más grande.") -> dict:
     return {"numero": numero, "veredicto": veredicto, "nota": nota}
+
+
+# La misma ronda 1 con sus miniaturas, como la arma cargar_version (revisión
+# del 19/11/2026): la de la imagen 1, apaisada; la de la 2, parada.
+RONDA_1_CON_MINIATURAS = rv.RondaAnterior(**{**RONDA_1.__dict__, "miniaturas": (
+    rv.preparar_miniatura(1, _jpeg(320, 226, "gray"), "image/jpeg"),
+    rv.preparar_miniatura(2, _jpeg(226, 320, "black"), "image/jpeg"),
+)})
+CON_MINIATURAS = Contexto(**{**CONTEXTO.__dict__, "ronda_anterior": RONDA_1_CON_MINIATURAS})
 
 
 def test_en_una_primera_ronda_el_mensaje_no_cambia():
@@ -783,11 +794,129 @@ def test_la_ia_dice_marca_por_marca_si_se_ve_hecho():
         {"marcaId": "mk-1", "numero": 1, "veredicto": "hecho", "nota": "El -40% ahora es más grande."},
         {"marcaId": "mk-2", "numero": 2, "veredicto": "falta", "nota": "Sigue diciendo «Valido», sin tilde."},
     ]
-    # Lo pedido viajó en el último texto del mensaje, después de las imágenes:
-    # es solo texto (las imágenes de la ronda anterior no van).
+    # Lo pedido viajó en el último texto del mensaje, después de las imágenes.
+    # Esta ronda anterior no trae miniaturas (ver las pruebas de abajo): va
+    # solo la imagen de ahora.
     contenido = api.pedidos[0]["messages"][0]["content"]
     assert "<cambios_pedidos>" in contenido[-1]["text"]
     assert len([b for b in contenido if b["type"] == "image"]) == 1
+
+
+def test_las_miniaturas_de_la_ronda_anterior_van_detras_con_su_etiqueta_y_la_numeracion_no_cambia():
+    """Revisión del 19/11/2026: sin las imágenes de antes, la IA no podía
+    saber si se hizo un cambio relativo (agrandar, mover, cambiar un color o
+    una foto). Van las miniaturas de esa ronda detrás de las de ahora, cada
+    una con una etiqueta que dice de dónde es y que es solo para comparar; las
+    de ahora siguen siendo «Imagen 1 de 2» y «Imagen 2 de 2»."""
+    c = rv.armar_contenido(_imagenes((1600, 1131), (900, 1600)), CON_MINIATURAS)
+    assert [b["type"] for b in c] == ["text", "image"] * 4 + ["text"]
+    textos = [b["text"] for b in c if b["type"] == "text"]
+    assert textos[:4] == [
+        "Imagen 1 de 2 (1600 × 1131 px):", "Imagen 2 de 2 (900 × 1600 px):",
+        "De la ronda anterior (ronda 1), imagen 1 de 2, en miniatura (320 × 226 px): "
+        "solo para comparar, no se revisa ni se marca.",
+        "De la ronda anterior (ronda 1), imagen 2 de 2, en miniatura (226 × 320 px): "
+        "solo para comparar, no se revisa ni se marca.",
+    ]
+    # Tal cual están guardadas, con la forma de cualquier imagen.
+    for bloque, m in zip((c[5], c[7]), RONDA_1_CON_MINIATURAS.miniaturas):
+        assert bloque["source"]["media_type"] == "image/jpeg"
+        assert base64.b64decode(bloque["source"]["data"]) == m.datos
+    # Al final, el pedido con lo que se pidió, que avisa que las miniaturas no se revisan.
+    assert "<cambios_pedidos>" in textos[-1]
+    assert textos[-1].endswith("si se ve hecho lo que se pidió en la ronda anterior "
+                               "(las miniaturas de esa ronda son solo para comparar).")
+
+
+def test_las_miniaturas_van_solo_si_se_pidieron_cambios_con_marcas():
+    imagenes = _imagenes((1600, 1131))
+    sin_marcas = rv.RondaAnterior(**{**RONDA_1_CON_MINIATURAS.__dict__, "marcas": ()})
+    # Una primera ronda, o una anterior sin marcas (no hay nada que controlar): nada.
+    for contexto in (CONTEXTO, Contexto(**{**CONTEXTO.__dict__, "ronda_anterior": sin_marcas})):
+        c = rv.armar_contenido(imagenes, contexto)
+        assert [b["type"] for b in c] == ["text", "image", "text"]
+        assert "<cambios_pedidos>" not in c[-1]["text"] and "miniaturas" not in c[-1]["text"]
+    # Con marcas y sin miniaturas (no estaban): lo pedido va igual, sin el aviso.
+    c = rv.armar_contenido(imagenes, CON_CAMBIOS)
+    assert [b["type"] for b in c] == ["text", "image", "text"]
+    assert "<cambios_pedidos>" in c[-1]["text"] and "miniaturas" not in c[-1]["text"]
+    # Como mucho 4 (MAX_MINIATURAS_ANTERIOR), las primeras.
+    muchas = tuple(rv.preparar_miniatura(i, _jpeg(320, 226), "image/jpeg") for i in range(1, 7))
+    contexto = Contexto(**{**CONTEXTO.__dict__, "ronda_anterior": rv.RondaAnterior(
+        **{**RONDA_1.__dict__, "imagenes": 6, "miniaturas": muchas})})
+    assert rv.MAX_MINIATURAS_ANTERIOR == 4
+    assert [m.numero for m in rv.miniaturas_para_comparar(contexto)] == [1, 2, 3, 4]
+
+
+def test_una_miniatura_que_falta_o_no_se_lee_no_va_y_las_demas_conservan_su_numero():
+    m = rv.preparar_miniatura(2, _jpeg(320, 226), "image/jpeg")
+    assert (m.numero, m.ancho, m.alto, m.tipo_mime) == (2, 320, 226, "image/jpeg")
+    # La purga de antes del 19/11/2026 vació algunas; otra puede venir rota.
+    assert rv.preparar_miniatura(1, None, "image/jpeg") is None
+    assert rv.preparar_miniatura(1, b"esto no es una imagen", "image/jpeg") is None
+    contexto = Contexto(**{**CONTEXTO.__dict__, "ronda_anterior": rv.RondaAnterior(
+        **{**RONDA_1.__dict__, "miniaturas": (m,)})})
+    textos = [b["text"] for b in rv.armar_contenido(_imagenes((1600, 1131)), contexto) if b["type"] == "text"]
+    assert textos[1].startswith("De la ronda anterior (ronda 1), imagen 2 de 2, en miniatura (320 × 226 px)")
+
+
+def test_una_observacion_sobre_una_miniatura_de_la_ronda_anterior_se_descarta():
+    """Las miniaturas van detrás de las imágenes de ahora: si la IA cuenta las
+    imágenes del mensaje, con una sola de ahora la 2 es la primera miniatura.
+    Eso no se revisa: se descarta. Un número más allá queda como siempre, sin
+    ubicación."""
+    obs = rv.limpiar_observaciones({"observaciones": [
+        _obs(texto="de ahora", imagen=1),
+        _obs(texto="en la miniatura 1", imagen=2),
+        _obs(texto="en la miniatura 2", imagen=3),
+        _obs(texto="en una imagen que no hay", imagen=4),
+    ]}, _imagenes((1600, 1131)), anteriores=2)
+    assert [(o["texto"], o["imagenId"]) for o in obs] == [("de ahora", "im-1"), ("en una imagen que no hay", None)]
+    # Sin miniaturas, una imagen que no hay sigue quedando, sin ubicación.
+    [o] = rv.limpiar_observaciones({"observaciones": [_obs(texto="x", imagen=2)]}, _imagenes((1600, 1131)))
+    assert (o["imagenId"], o["x"], o["y"]) == (None, None, None)
+
+    # Pidiéndole la revisión: con dos imágenes de ahora y dos miniaturas, la 2
+    # sigue siendo la segunda de ahora, y la 3 (la primera miniatura) se va.
+    api = sim.ApiGrabada([_respuesta(
+        _obs(texto="En la segunda de ahora", imagen=2, x=450, y=800),
+        _obs(texto="El -40% era más chico", imagen=3, x=10, y=10),
+        cambios=[_cambio(1, "dudoso", "No se llega a comparar el tamaño."), _cambio(2, "falta", "Sigue igual.")],
+    )])
+    observaciones, cambios, _ = _pedir(api, _imagenes((1600, 1131), (900, 1600)), CON_MINIATURAS)
+    assert [(o["texto"], o["imagenId"], o["x"], o["y"]) for o in observaciones] == [
+        ("En la segunda de ahora", "im-2", 0.5, 0.5)]
+    assert [(c["numero"], c["veredicto"]) for c in cambios] == [(1, "dudoso"), (2, "falta")]
+    assert len([b for b in api.pedidos[0]["messages"][0]["content"] if b["type"] == "image"]) == 4
+
+
+def test_revisar_version_manda_las_miniaturas_y_guarda_lo_demas(ia_prendida):
+    base = BaseFalsa(["ve-2"], ronda_anterior=RONDA_1_CON_MINIATURAS)
+    api = sim.ApiGrabada([_respuesta(_obs(), _obs(texto="en la miniatura", imagen=2), cambios=[_cambio(1)])])
+    assert _revisar("ve-2", base, api) == "lista"
+    contenido = api.pedidos[0]["messages"][0]["content"]
+    # La de ahora y, detrás, las dos miniaturas de la ronda 1.
+    assert len([b for b in contenido if b["type"] == "image"]) == 3
+    assert sum(b["type"] == "text" and b["text"].startswith("De la ronda anterior") for b in contenido) == 2
+    fila = base.filas["ve-2"]
+    assert [o["texto"] for o in fila["observaciones"]] == ["Dice «OFERAT»: debería ser «OFERTA»."]
+    assert [(c["marcaId"], c["veredicto"]) for c in fila["cambios_pedidos"]] == [("mk-1", "hecho")]
+
+
+def test_un_cambio_relativo_que_no_se_puede_confirmar_va_dudoso():
+    """Revisión del 19/11/2026: el ejemplo de antes («El -40% ahora es más
+    grande.») empujaba a decir «hecho» sin poder comparar. El de ahora se
+    comprueba mirando la imagen nueva; lo relativo que comparando no se puede
+    confirmar va «dudoso», y lo que diga la agencia que corrigió no cuenta."""
+    assert "más grande" not in rv.SISTEMA
+    assert "Si lo pedido es un cambio relativo (agrandar, achicar, mover, cambiar un color o una foto)" in rv.SISTEMA
+    assert 'si comparando no se puede confirmar, "dudoso"' in rv.SISTEMA
+    assert "Lo que diga la agencia que corrigió no cuenta: el veredicto sale de las imágenes." in rv.SISTEMA
+    assert 'Por ejemplo: Ahora dice "Válido", con tilde.' in rv.SISTEMA
+    nota = rv.FORMATO["schema"]["$defs"]["CambioPedidoDeLaIA"]["properties"]["nota"]["description"]
+    assert nota.endswith('Por ejemplo: Ahora dice "Válido", con tilde.') and "más grande" not in nota
+    # Las miniaturas son solo para comparar: ninguna observación va sobre ellas.
+    assert '"De la ronda anterior"' in rv.SISTEMA and "ninguna observación va sobre ellas" in rv.SISTEMA
 
 
 def test_lo_que_viene_mal_de_los_cambios_pedidos_se_descarta():
