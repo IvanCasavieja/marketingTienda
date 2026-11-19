@@ -31,10 +31,10 @@ y no se va a pagar más (15/11/2026). Por eso:
   imágenes de prueba: una gráfica plana (cenefa) pesó 46 KB, una foto de
   1600x1067 247 KB, y sus miniaturas 6 y 17 KB. Hasta 4 por versión y 2 MB
   como mucho cada una (lo controla el servidor).
-- Los bytes se borran (la grande y la miniatura): los de las versiones que
-  no son la final, a los 30 días de terminada la acción; los de la final (la
-  aprobada de la última fase), a los 120. Las versiones, decisiones y marcas
-  quedan siempre (ver purgar_imagenes_viejas).
+- Las imágenes NO se borran (Ivan, 19/11/2026): son el histórico de piezas.
+  Hasta ese día una purga vaciaba los bytes a los 30 días de terminada la
+  acción (120 la versión final); las que alcanzó a vaciar quedaron con
+  `purgada_at`. Más adelante las imágenes van a vivir en SharePoint.
 - Antes de guardar, el freno general (app/services/espacio.py): si la base
   pasa de BASE_TOPE_MB (400), la subida se rechaza.
 
@@ -196,12 +196,12 @@ class CalendarioVersionImagen(Base):
     orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # 'image/jpeg' | 'image/png' | 'image/webp'
     tipo_mime: Mapped[str] = mapped_column(String(20), nullable=False)
-    # La imagen grande y su miniatura. Las dos quedan en NULL cuando vencen
-    # (ver purgar_imagenes_viejas); la fila queda, con lo que pesaba.
+    # La imagen grande y su miniatura. NULL solo en las que la purga de antes
+    # del 19/11/2026 alcanzó a vaciar (ver purgada_at); hoy no se borran.
     datos: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     tipo_mime_miniatura: Mapped[str] = mapped_column(String(20), nullable=False, default="image/jpeg")
     miniatura: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
-    # Lo que pesaba la grande: queda después de la purga, para medir.
+    # Lo que pesa la grande, para medir cuánto ocupan las entregas.
     tamano: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     purgada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

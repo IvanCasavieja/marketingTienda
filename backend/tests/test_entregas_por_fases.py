@@ -21,10 +21,10 @@ from app.api.routes.entregas import DecisionNueva, EntregaConfig, MarcaNueva
 from app.api.routes.watchlist import _notif_visible
 from app.services.entregas import (
     CAMPOS_DEL_BRIEF, FASES_POR_DEFECTO, MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, MAX_IMAGENES, ORIGEN, TIPOS_DE_PIEZA,
-    FaseExistente, NoPuedeDecidir, a_quien_le_toca, aprobadores_validos, dias_de_retencion, estado_de_tarea,
+    FaseExistente, NoPuedeDecidir, a_quien_le_toca, aprobadores_validos, estado_de_tarea,
     estados_de_fases, limpiar_brief, link_valido, lugar_para_decidir, mensaje_de_aprobacion, mensaje_de_cambios,
     mensaje_para_revisar, metricas_de_retrabajo, momento_de, nombres_de_fases, plan_de_fases, referencia,
-    resultado_de_version, tipo_de_imagen, validar_imagen, vencio,
+    resultado_de_version, tipo_de_imagen, validar_imagen,
 )
 from app.services.espacio import MENSAJE_SIN_LUGAR, entra
 
@@ -329,21 +329,21 @@ def test_el_tope_de_peso():
         validar_imagen(b"\xff\xd8\xff" + b"\x00" * 300_000, maximo=MAX_BYTES_MINIATURA, que="La miniatura")
 
 
-# --- Cuándo se borran las imágenes y el freno de espacio -------------------
+# --- Las imágenes no se borran, y el freno de espacio -----------------------
 
-def test_las_imagenes_de_versiones_no_finales_se_borran_a_los_30_dias():
-    fin = date(2026, 12, 24)
-    assert dias_de_retencion(False) == 30
-    assert not vencio(fin, False, date(2027, 1, 23))
-    assert vencio(fin, False, date(2027, 1, 24))
+def test_las_imagenes_de_las_entregas_no_se_borran_solas():
+    """Ivan, 19/11/2026: son el histórico de piezas (el de las carpetas por año
+    de SharePoint). La pasada diaria archiva tarjetas y nada más: ninguna
+    purga de imágenes arranca con la plataforma."""
+    import inspect
 
+    from app import main
+    from app.services import entregas
 
-def test_las_de_la_version_final_a_los_120():
-    fin = date(2026, 12, 24)
-    assert dias_de_retencion(True) == 120
-    assert not vencio(fin, True, date(2027, 1, 24))
-    assert not vencio(fin, True, date(2027, 4, 23))
-    assert vencio(fin, True, date(2027, 4, 24))
+    assert not hasattr(entregas, "DIAS_DE_RETENCION") and not hasattr(entregas, "vencio")
+    assert "purgar_imagenes_viejas" not in inspect.getsource(entregas.run_pasada_diaria_entregas)
+    assert "purgar_imagenes_viejas" not in inspect.getsource(main)
+    assert "run_pasada_diaria_entregas" in inspect.getsource(main)
 
 
 def test_el_freno_de_espacio():

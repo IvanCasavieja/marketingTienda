@@ -97,13 +97,14 @@ MAX_IMAGENES = 4
 MAX_BYTES_IMAGEN = 2 * 1024 * 1024
 MAX_BYTES_MINIATURA = 256 * 1024
 MAX_MARCAS = 40
-# Cuándo se borran las imágenes (la grande y la miniatura), contado desde que
-# termina la acción. Las versiones, decisiones y marcas quedan siempre: solo
-# se van los bytes. La base es de 500 MB para toda la plataforma.
-DIAS_DE_RETENCION = 30
-# La versión final (la aprobada de la última fase: la pieza que salió) se
-# guarda más, por si hay que reimprimir o reclamar algo.
-DIAS_DE_RETENCION_FINAL = 120
+# Las imágenes de las entregas NO se borran nunca (Ivan, 19/11/2026): son el
+# histórico de piezas, el mismo que hoy vive en carpetas por año en SharePoint
+# (2023, 2024…), y más adelante van a ir a parar ahí. Mientras estén en la
+# base, el único freno es el general de espacio (app/services/espacio.py,
+# BASE_TOPE_MB): si se llena, se deja de guardar y se avisa, pero no se
+# borra nada. Hasta el 19/11 había una purga (a los 30 días de terminada la
+# acción, 120 la versión final): se sacó. La columna `purgada_at` queda por
+# las imágenes que esa purga alcanzó a vaciar antes.
 
 ORIGEN = "calendario_entrega"
 DECISIONES = ("aprobada", "aprobada-con-cambios", "cambios")
@@ -1147,29 +1148,18 @@ async def resumenes_de_entregas(db: AsyncSession, tareas, entregas: list | None 
 
 
 # ---------------------------------------------------------------------------
-# La purga
+# La pasada diaria
 # ---------------------------------------------------------------------------
 
-def dias_de_retencion(es_final: bool) -> int:
-    """Cuánto se guardan las imágenes de una versión después de que termina
-    su acción: la final, DIAS_DE_RETENCION_FINAL; cualquier otra (las que
-    volvieron con cambios, los bocetos aprobados), DIAS_DE_RETENCION."""
-    return DIAS_DE_RETENCION_FINAL if es_final else DIAS_DE_RETENCION
-
-
-def vencio(fin_de_la_accion: date, es_final: bool, hoy: date) -> bool:
-    """Si las imágenes de una versión ya se tienen que borrar."""
-    return fin_de_la_accion < hoy - timedelta(days=dias_de_retencion(es_final))
-
-
-async def purgar_imagenes_viejas(db: AsyncSession, hoy: date | None = None) -> int:
-    """Borra los bytes de las imágenes (la grande y la miniatura) que ya
-    vencieron (ver `vencio`). Las versiones, decisiones y marcas quedan: la
-    historia de rondas y el retrabajo se siguen viendo, sin las fotos.
-    Devuelve cuántas imágenes se vaciaron.
-
-    "Final" es la versión aprobada de la ÚLTIMA fase de su tarea: la pieza que
-    salió. Un boceto aprobado no es final."""
+async def purgar_imagenes_viejas(
+    db: AsyncSession, hoy: date | None = None, *, dias: int = 30, dias_final: int = 120,
+) -> int:
+    """NO SE USA desde el 19/11/2026: las imágenes no se borran (ver arriba).
+    Queda solo por si algún día hay que liberar espacio A MANO, con los días
+    que se pasen; nadie la llama sola. Vacía los bytes (la grande y la
+    miniatura) de las versiones cuya acción terminó hace más de `dias`
+    (`dias_final` para la versión aprobada de la última fase); las versiones,
+    decisiones y marcas quedan."""
     hoy = hoy or date.today()
     otra_fase = aliased(CalendarioFase)
     ultima_fase = (
@@ -1183,8 +1173,8 @@ async def purgar_imagenes_viejas(db: AsyncSession, hoy: date | None = None) -> i
         .join(CalendarioTarea, CalendarioTarea.id == CalendarioVersion.tarea_id)
         .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
         .where(or_(
-            and_(not_(es_final), CalendarioBarra.hasta < hoy - timedelta(days=DIAS_DE_RETENCION)),
-            and_(es_final, CalendarioBarra.hasta < hoy - timedelta(days=DIAS_DE_RETENCION_FINAL)),
+            and_(not_(es_final), CalendarioBarra.hasta < hoy - timedelta(days=dias)),
+            and_(es_final, CalendarioBarra.hasta < hoy - timedelta(days=dias_final)),
         ))
     )
     r = await db.execute(
@@ -1263,11 +1253,10 @@ async def archivar_finalizadas(db: AsyncSession, hoy: date | None = None) -> int
     return n
 
 
-async def run_purga_entregas_loop() -> None:
-    """Loop perpetuo, como la purga de cenefas: una pasada al arrancar y
-    después una por día. Hace las dos cosas que vencen con los días: borrar
-    las imágenes viejas y pasar a Archivado las tarjetas finalizadas hace
-    ARCHIVAR_TARJETAS_DIAS.
+async def run_pasada_diaria_entregas() -> None:
+    """Loop perpetuo: una pasada al arrancar y después una por día. Pasa a
+    Archivado las tarjetas finalizadas hace ARCHIVAR_TARJETAS_DIAS. Hasta el
+    19/11/2026 también borraba las imágenes viejas: ya no (ver arriba).
 
     PENDIENTE (Ivan, 16/11/2026; no se hace hasta que se conecte Outlook):
     acá va también el mail a toda la empresa 1 o 2 días antes de que arranque
@@ -1277,13 +1266,6 @@ async def run_purga_entregas_loop() -> None:
     from app.core.database import AsyncSessionLocal
 
     while True:
-        try:
-            async with AsyncSessionLocal() as db:
-                n = await purgar_imagenes_viejas(db)
-            if n:
-                logger.info("purga_entregas: %d imagen(es) vencidas liberadas", n)
-        except Exception as exc:
-            logger.error("purga_entregas: falló la pasada -- %s", exc, exc_info=True)
         try:
             async with AsyncSessionLocal() as db:
                 n = await archivar_finalizadas(db)
