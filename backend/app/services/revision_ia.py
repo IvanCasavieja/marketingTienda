@@ -54,7 +54,8 @@ dólares por mes. El tope por día (IA_REVISION_POR_DIA) es el freno.
 en vez de una imagen me hubieran pasado una carpeta o un link? (…) vos
 directamente como plataforma ya descargués todas las cosas, hagas todo el
 proceso". La agencia puede entregar además un ZIP, y/o el link al original
-(WeTransfer, un link directo). En segundo plano, app/services/materiales.py
+(WeTransfer, Smash —desde el 19/11/2026, sin cuenta, como su página—, un
+link directo). En segundo plano, app/services/materiales.py
 abre el ZIP en memoria y baja el link (con sus frenos), y lo que sale de ahí
 —imágenes y páginas de PDF, achicadas a LADO_MAXIMO— va a la IA junto con las
 imágenes subidas, cada una con su nombre de archivo, que la IA ve en la

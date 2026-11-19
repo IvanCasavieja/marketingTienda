@@ -19,8 +19,16 @@ servidor se "resuelve" con una tabla (`_resolver` se pisa). Lo que se fija:
   una redirección hacia ahí, o una conexión que termina ahí) no se abre;
 - un link que devuelve una página web, pesa de más, tarda, redirige de más o
   no existe se ANOTA ("no se pudo abrir: …") y nunca es un error;
-- WeTransfer: la página, el POST a su API con el token y la hash, y la
-  descarga del `direct_link`; Smash queda anotado ("pasalo como ZIP");
+- WeTransfer (19/11/2026, como el botón Descargar de su página): el link
+  corto se resuelve sin leer la página, prepare-download y download con la
+  hash, y la descarga del `direct_link`; también los links de marca y los
+  firmados de download.wetransfer.com;
+- Smash (19/11/2026, Ivan: «yo bajo sin smash los links»), como su página
+  para quien recibe el link: el invitado sin datos, el link, la
+  transferencia, el link firmado y la descarga sin el token;
+- lo que no se puede bajar sin cuenta (con contraseña, vencido, borrado,
+  más pesado que el tope, que pide el mail) se anota con el porqué y no se
+  baja nada;
 - el tope de imágenes por entrega se respeta entre el ZIP y el link.
 """
 from __future__ import annotations
@@ -300,13 +308,15 @@ _NOMBRES = {
 
 class Red:
     """El transporte simulado: `rutas` es {(método, url) -> respuesta o
-    función(request) -> respuesta}. Cuenta los pedidos."""
+    función(request) -> respuesta}. Cuenta los pedidos. Cada red arranca sin
+    el token de invitado de Smash guardado."""
 
     def __init__(self, monkeypatch, rutas=None):
         self.rutas = dict(rutas or {})
         self.pedidos: list[httpx.Request] = []
         monkeypatch.setattr(m, "cliente_http", self.cliente)
         monkeypatch.setattr(m, "_resolver", self.resolver)
+        monkeypatch.setattr(m, "_TOKEN_SMASH", {})
 
     async def resolver(self, host):
         if host == "noexiste.example":
@@ -470,82 +480,438 @@ def test_un_servidor_que_tarda_o_se_cae_se_anota(monkeypatch):
     assert "contestó 403" in _juntar(link="https://cdn.example/x").no_se_pudo_abrir[0]
 
 
-def test_smash_queda_anotado_como_pasalo_como_zip(monkeypatch):
+@pytest.mark.parametrize("url, clase", [
+    ("https://we.tl/t-AbCdEf12", "wetransfer"), ("https://go.wetransfer.com/t-AbCdEf12", "wetransfer"),
+    ("https://shorturls.wetransfer.com/AbCdEf12", "wetransfer"), ("https://wetransfer.com/downloads/a1/b2", "wetransfer"),
+    ("https://WWW.WeTransfer.com/downloads/a1/b2", "wetransfer"),
+    ("https://tiendainglesa.wetransfer.com/downloads/a1/b2", "wetransfer"),  # una página de marca
+    ("https://download.wetransfer.com/eu/archivo.zip?token=abc", "directo"),  # ya es el archivo
+    ("https://fromsmash.com/AbCdEfGhIj-dt", "smash"), ("https://www.fromsmash.com/AbCdEfGhIj-dt", "smash"),
+    ("https://agencia.fromsmash.com/Cenefas-Navidad", "smash"),  # el de un equipo
+    ("https://link.fromsmash.co/target/x", "directo"),  # su API, no una página para compartir
+    ("https://fromsmash.com.trucho.example/x", "directo"), ("https://nowetransfer.com/downloads/a1/b2", "directo"),
+    ("https://cdn.example/pieza.jpg", "directo"),
+])
+def test_que_clase_de_link_es(url, clase):
+    assert m.clase_de_link(url) == clase
+
+
+def test_el_token_no_pasa_a_otro_servidor_si_el_pedido_redirige(monkeypatch):
+    """Como en los navegadores: si un pedido con el token redirige a otro
+    servidor, el token (y la contraseña de Smash) no viajan; dentro del
+    mismo servidor, sí."""
+    red = Red(monkeypatch, {
+        ("GET", "https://api.example/a"): httpx.Response(307, headers={"location": "/b"}),
+        ("GET", "https://api.example/b"): httpx.Response(307, headers={"location": "https://otro.example/c"}),
+        ("GET", "https://otro.example/c"): httpx.Response(200, json={}),
+    })
+    cabeceras = {"Authorization": "Bearer t0ken", "smash-authorization": "", "Accept": "application/json"}
+
+    async def pedir():
+        async with m.cliente_http() as cliente:
+            return await m._pedir(cliente, "GET", "https://api.example/a", tope=1000, cabeceras=cabeceras)
+
+    assert asyncio.run(pedir()).estado == 200
+    assert [r.headers.get("authorization") for r in red.pedidos] == ["Bearer t0ken", "Bearer t0ken", None]
+    assert "smash-authorization" not in red.pedidos[2].headers and red.pedidos[2].headers["accept"] == "application/json"
+
+
+# ---------------------------------------------------------------------------
+# Smash (red simulada, con la forma que tiene hoy su API)
+# ---------------------------------------------------------------------------
+
+SMASH = "AbCdEfGhIj-dt"  # la penúltima letra (d) es la región: eu-central-1
+SMASH_LINK = f"https://link.fromsmash.co/target/fromsmash.com%2F{SMASH}?version=10-2019"
+SMASH_API = f"https://transfer.eu-central-1.fromsmash.co/transfer/{SMASH}"
+SMASH_ZIP = f"https://descargas.example/smash/{SMASH}.zip?Expires=1763575200&Signature=f1rma"
+SMASH_PDF = "https://descargas.example/smash/fi-1?Expires=1763575200&Signature=f1rma"
+DESCUBRIR = "https://discovery.fromsmash.co/namespace/public/services?version=02-2023"
+DESCUBRIR_REGION = "https://discovery.us-east-1.fromsmash.co/namespace/public/services?version=02-2023"
+INVITADO = "eyJhbGciOiJIUzI1NiIs.invitado-"
+
+
+def _smash(monkeypatch, *, transferencia=None, rutas=None, link=SMASH_LINK, consulta="version=01-2024"):
+    """Smash como lo ve su página (19/11/2026): discovery redirige al de la
+    región, /account crea el invitado (con un token nuevo cada vez: …-1,
+    …-2), el link dice qué transferencia es, /preview cómo está, /urls da el
+    link firmado y ahí está el archivo (un ZIP con todo, si son varios).
+    `transferencia` pisa campos de /preview y `rutas`, rutas enteras. Un
+    token en `visto["vencidos"]` recibe 401, como uno vencido."""
+    visto = {"invitados": 0, "vencidos": set()}
+
+    def invitado(request):
+        visto["invitados"] += 1
+        visto["cuenta"] = request
+        return httpx.Response(201, json={"account": {
+            "id": f"an-{visto['invitados']}", "region": "us-east-1", "refreshToken": {"token": "r3fresh"},
+            "token": {"type": "Bearer", "token": f"{INVITADO}{visto['invitados']}",
+                      "expiration": "2099-11-20T18:00:00.000Z"}}})
+
+    def urls(request):
+        visto["urls"] = json.loads(request.content)
+        return httpx.Response(200, json={"transfer": {"id": SMASH, "url": SMASH_ZIP, "files": []},
+                                         "urlsExpiredAt": "2026-11-19T18:10:00.000Z"})
+
+    def con_token(respuesta):
+        def contestar(request):
+            if request.headers.get("authorization") in visto["vencidos"]:
+                return httpx.Response(401, json={"name": "Unauthorized", "code": 401, "error": "Token expired"})
+            return respuesta(request) if callable(respuesta) else respuesta
+        return contestar
+
+    todas = {
+        ("GET", DESCUBRIR): httpx.Response(307, headers={"location": DESCUBRIR_REGION}),
+        ("GET", DESCUBRIR_REGION): httpx.Response(200, json={
+            "services": [], "region": "us-east-1", "country": "Uruguay", "countryCode": "UY"}),
+        ("POST", "https://iam.us-east-1.fromsmash.co/account"): invitado,
+        ("POST", "https://iam.eu-central-1.fromsmash.co/account"): invitado,
+        ("GET", link): httpx.Response(200, json={"target": {
+            "url": f"https://transfer.eu-central-1.fromsmash.co/transfer/{SMASH}", "source": f"fromsmash.com/{SMASH}",
+            "target": SMASH, "region": "eu-central-1"}}),
+        ("GET", f"{SMASH_API}/preview?{consulta}"): httpx.Response(200, json={"transfer": {
+            "id": SMASH, "title": "Cenefas Ciberlunes", "status": "Uploaded", "filesNumber": 3, "size": 2_400_000,
+            "region": "eu-central-1", "availabilityEndDate": "2026-11-26T18:00:00.000Z", **(transferencia or {})},
+            "urlsExpiredAt": "2026-11-19T18:10:00.000Z"}),
+        ("PUT", f"{SMASH_API}/urls?{consulta}"): urls,
+        ("GET", SMASH_ZIP): httpx.Response(
+            200, content=_zip({"Cenefas/cenefa 1.jpg": _jpeg(), "Cenefas/cenefa 2.jpg": _jpeg(), "brief.docx": b"x"}),
+            headers={"content-type": "application/zip",
+                     "content-disposition": "attachment; filename*=UTF-8''Cenefas%20Ciberlunes.zip"}),
+        **(rutas or {}),
+    }
+    api = ("https://link.fromsmash.co/", "https://transfer.")
+    return Red(monkeypatch, {k: con_token(v) if k[1].startswith(api) else v for k, v in todas.items()}), visto
+
+
+def test_smash_se_baja_como_lo_hace_su_pagina_sin_cuenta(monkeypatch):
+    """Ivan (19/11/2026): «yo bajo sin smash los links». La página de Smash
+    no pide cuenta: crea sola un invitado sin datos y con ese token pide el
+    link firmado. Acá, los mismos pedidos y en el mismo orden."""
+    red, visto = _smash(monkeypatch)
+    j = _juntar(link=f"https://fromsmash.com/{SMASH}")
+    assert [(i.nombre, i.origen) for i in j.imagenes] == [("Cenefas/cenefa 1.jpg", "link"), ("Cenefas/cenefa 2.jpg", "link")]
+    assert j.ignorados == ["brief.docx"] and j.no_se_pudo_abrir == []
+    assert [(r.method, str(r.url)) for r in red.pedidos] == [
+        ("GET", DESCUBRIR), ("GET", DESCUBRIR_REGION),           # la región más cercana (sigue el 307)
+        ("POST", "https://iam.us-east-1.fromsmash.co/account"),  # el invitado
+        ("GET", SMASH_LINK),                                     # qué transferencia es el link
+        ("GET", f"{SMASH_API}/preview?version=01-2024"),         # cómo está y cuánto pesa
+        ("PUT", f"{SMASH_API}/urls?version=01-2024"),            # el link firmado
+        ("GET", SMASH_ZIP),                                      # la descarga
+    ]
+    # El invitado: sin datos y sin credenciales.
+    cuenta = visto["cuenta"]
+    assert cuenta.content == b"{}" and cuenta.headers["content-type"] == "application/json"
+    assert "authorization" not in cuenta.headers
+    # La API, con el token del invitado y en JSON (sin ese Accept, a veces contesta XML).
+    api = red.pedidos[3:6]
+    assert all(r.headers["authorization"] == f"Bearer {INVITADO}1" for r in api)
+    assert all(r.headers["accept"] == "application/json, text/plain, */*" for r in api)
+    # La contraseña va vacía, como en su página, y solo a la transferencia.
+    assert [r.headers.get("smash-authorization") for r in api] == [None, "", ""]
+    # Varios archivos: todos juntos, en un ZIP. El link firmado se baja sin el token.
+    assert visto["urls"] == {"files": []}
+    assert "authorization" not in red.pedidos[-1].headers
+
+
+def test_smash_de_un_solo_archivo_pide_ese_archivo(monkeypatch):
+    """Como el botón Descargar: un archivo solo se pide por su id, no en un
+    ZIP. Y el link puede venir con www, con «/» al final o del mail de Smash
+    (con ?e=, el mail de quien lo recibe en base64, que va tal cual)."""
+    consulta = "version=01-2024&e=cXVpZW5AZWplbXBsby5jb20%3D"
+    pedido = {}
+
+    def urls(request):
+        pedido["urls"] = json.loads(request.content)
+        return httpx.Response(200, json={"transfer": {"id": SMASH, "url": SMASH_ZIP,
+                                                      "files": [{"id": "fi-1", "url": SMASH_PDF}]}})
+
+    red, _ = _smash(monkeypatch, consulta=consulta, transferencia={"filesNumber": 1, "size": 180_000}, rutas={
+        ("GET", f"{SMASH_API}/files/preview?{consulta}&limit=1"): httpx.Response(200, json={"files": [
+            {"id": "fi-1", "name": "Folletos/folleto navidad.pdf", "ext": "pdf", "size": 180_000}], "next": None}),
+        ("PUT", f"{SMASH_API}/urls?{consulta}"): urls,
+        ("GET", SMASH_PDF): httpx.Response(200, content=_pdf(2), headers={"content-type": "application/pdf"}),
+    })
+    j = _juntar(link=f"https://www.fromsmash.com/{SMASH}/?e=cXVpZW5AZWplbXBsby5jb20=")
+    assert [(i.nombre, i.pagina) for i in j.imagenes] == [("folleto navidad.pdf", 1), ("folleto navidad.pdf", 2)]
+    assert j.revisados == [{"nombre": "folleto navidad.pdf", "origen": "link", "paginas": 2}]
+    assert pedido["urls"] == {"files": [{"id": "fi-1"}]}
+    assert str(red.pedidos[3].url) == SMASH_LINK  # sin www, sin «/» al final y sin la consulta
+    assert str(red.pedidos[-1].url) == SMASH_PDF and not any(r.url == SMASH_ZIP for r in red.pedidos)
+
+
+def test_smash_links_de_un_equipo_y_con_nombre_elegido(monkeypatch):
+    """Un link de equipo (<equipo>.fromsmash.com) o con nombre elegido se
+    resuelve igual: el servidor y la ruta, con la «/» como %2F."""
+    _smash(monkeypatch, link="https://link.fromsmash.co/target/agencia.fromsmash.com%2FCenefas-Navidad?version=10-2019")
+    j = _juntar(link="https://agencia.fromsmash.com/Cenefas-Navidad#descargar")
+    assert len(j.imagenes) == 2 and j.no_se_pudo_abrir == []
+    # Sin nada después del servidor no es una transferencia: ni se pregunta.
     red = Red(monkeypatch)
-    for url in ("https://fromsmash.com/AbC-123", "https://www.fromsmash.com/XyZ", "https://link.fromsmash.co/x"):
-        j = _juntar(link=url)
-        assert j.imagenes == [] and len(j.no_se_pudo_abrir) == 1
-        assert "Smash" in j.no_se_pudo_abrir[0] and "ZIP" in j.no_se_pudo_abrir[0]
+    assert _juntar(link="https://fromsmash.com/").no_se_pudo_abrir == [
+        "No se pudo abrir el link (fromsmash.com/): el link de Smash no es el de una transferencia"]
     assert red.pedidos == []
 
 
-def _wetransfer(monkeypatch, *, con_destinatario=False, api=None, pagina=None):
-    """La red de WeTransfer como la vemos desde afuera: we.tl redirige a la
-    página larga, la página trae el token CSRF y la cookie, la API devuelve
-    el direct_link y ahí está el archivo (un ZIP)."""
-    larga = f"https://wetransfer.com/downloads/{TRANSFER}/{DESTINATARIO}/{HASH}" if con_destinatario \
-        else f"https://wetransfer.com/downloads/{TRANSFER}/{HASH}"
-    html = ('<!DOCTYPE html><html><head><meta name="csrf-token" content="tok3n==" />'
-            '</head><body>Descargá</body></html>')
+def test_smash_reusa_el_invitado_y_pide_otro_si_se_vencio(monkeypatch):
+    red, visto = _smash(monkeypatch)
+    link = f"https://fromsmash.com/{SMASH}"
+    assert len(_juntar(link=link).imagenes) == 2
+    antes = len(red.pedidos)
+    assert len(_juntar(link=link).imagenes) == 2
+    # El segundo link usa el mismo invitado: ni discovery ni /account.
+    assert visto["invitados"] == 1 and str(red.pedidos[antes].url) == SMASH_LINK
+    # Si Smash dice que el token venció (401), se pide otro y se repite una vez.
+    visto["vencidos"].add(f"Bearer {INVITADO}1")
+    antes = len(red.pedidos)
+    j = _juntar(link=link)
+    assert len(j.imagenes) == 2 and j.no_se_pudo_abrir == []
+    assert [(r.method, str(r.url)) for r in red.pedidos[antes:]] == [
+        ("GET", SMASH_LINK), ("GET", DESCUBRIR), ("GET", DESCUBRIR_REGION),
+        ("POST", "https://iam.us-east-1.fromsmash.co/account"), ("GET", SMASH_LINK),
+        ("GET", f"{SMASH_API}/preview?version=01-2024"), ("PUT", f"{SMASH_API}/urls?version=01-2024"), ("GET", SMASH_ZIP),
+    ]
+    assert visto["invitados"] == 2 and red.pedidos[antes + 4].headers["authorization"] == f"Bearer {INVITADO}2"
+    # Si el nuevo tampoco sirve, no insiste: se anota.
+    red, visto = _smash(monkeypatch, rutas={("GET", SMASH_LINK): httpx.Response(401, json={"code": 401})})
+    j = _juntar(link=link)
+    assert j.no_se_pudo_abrir == [f"No se pudo abrir el link (fromsmash.com/{SMASH}): Smash no dejó entrar como invitado (contestó 401)"]
+    assert visto["invitados"] == 2
+
+
+@pytest.mark.parametrize("discovery", [
+    httpx.Response(503, text="Service Unavailable"),
+    httpx.Response(200, json={"services": [], "region": "trucho.example/x"}),  # una región que no es suya
+])
+def test_smash_sin_discovery_pide_el_invitado_en_una_region_fija(monkeypatch, discovery):
+    _, visto = _smash(monkeypatch, rutas={("GET", DESCUBRIR): discovery})
+    assert len(_juntar(link=f"https://fromsmash.com/{SMASH}").imagenes) == 2
+    assert visto["cuenta"].url.host == "iam.eu-central-1.fromsmash.co"
+
+
+_PREVIEW = ("GET", f"{SMASH_API}/preview?version=01-2024")
+
+
+@pytest.mark.parametrize("ruta, respuesta, esperado", [
+    # Con contraseña: con el nombre del error (su SDK) o solo con el texto (JDownloader).
+    (_PREVIEW, httpx.Response(403, json={"name": "PasswordDoesNotMatch", "code": 403, "error": "Password does not match"}),
+     "la transferencia de Smash tiene contraseña: pedile a la agencia un link sin contraseña o el ZIP"),
+    (_PREVIEW, httpx.Response(403, json={"code": 403, "error": f"Password does not match for {SMASH}", "requestId": "h4sh"}),
+     "la transferencia de Smash tiene contraseña"),
+    (_PREVIEW, httpx.Response(403, json={"name": "InvalidEmail", "code": 403, "error": "Invalid email"}),
+     "Smash pide el mail de quien baja esa transferencia"),
+    (_PREVIEW, httpx.Response(403, json={"name": "OwnerUsageExceeded", "code": 403}),
+     "la transferencia de Smash llegó a su límite de descargas"),
+    (_PREVIEW, httpx.Response(403, json={"name": "Forbidden", "code": 403}),
+     "Smash no dejó bajar la transferencia (contestó 403)"),
+    (_PREVIEW, {"status": "Expired"}, "la transferencia de Smash venció: pedile a la agencia que la mande de nuevo"),
+    (_PREVIEW, {"status": "Deleted"}, "la transferencia de Smash fue borrada"),
+    (_PREVIEW, {"status": "Suspended"}, "Smash suspendió esa transferencia"),
+    (_PREVIEW, {"status": "Uploading"}, "la transferencia de Smash todavía se estaba subiendo"),
+    (_PREVIEW, {"status": "Dirty"}, "Smash no deja bajar esa transferencia ahora"),
+    (_PREVIEW, {"size": 120 * 1024 * 1024}, "la transferencia de Smash pesa 120 MB y la plataforma baja hasta 40 MB"),
+    (_PREVIEW, httpx.Response(404, json={"code": 404, "error": f"Transfer {SMASH} not found",
+                                         "details": {"name": "Transfer", "primary": SMASH}}),
+     "Smash dice que esa transferencia no existe"),
+    (("GET", SMASH_LINK), httpx.Response(404, json={"name": "NotFound", "code": 404}), "Smash dice que esa transferencia no existe"),
+    (_PREVIEW, httpx.Response(502, text="Bad Gateway"), "Smash no dejó bajar la transferencia (contestó 502)"),
+    (_PREVIEW, httpx.Response(200, text="<xml>no es JSON</xml>"), "Smash contestó algo que la plataforma no entiende"),
+    (("PUT", f"{SMASH_API}/urls?version=01-2024"), httpx.Response(429, json={"code": 429}), "Smash pidió esperar"),
+    (("POST", "https://iam.us-east-1.fromsmash.co/account"), httpx.Response(500, text="no"),
+     "Smash no dejó entrar como invitado (contestó 500)"),
+])
+def test_smash_lo_que_no_se_puede_bajar_se_anota(monkeypatch, ruta, respuesta, esperado):
+    """Nunca es un error de la entrega: se anota con el porqué, para la
+    persona, y no se baja nada."""
+    if isinstance(respuesta, dict):
+        red, _ = _smash(monkeypatch, transferencia=respuesta)
+    else:
+        red, _ = _smash(monkeypatch, rutas={ruta: respuesta})
+    j = _juntar(link=f"https://fromsmash.com/{SMASH}")
+    assert j.imagenes == [] and j.revisados == [] and len(j.no_se_pudo_abrir) == 1
+    assert j.no_se_pudo_abrir[0].startswith(f"No se pudo abrir el link (fromsmash.com/{SMASH}): ")
+    assert esperado in j.no_se_pudo_abrir[0]
+    assert not any(r.url.host == "descargas.example" for r in red.pedidos)
+
+
+def test_smash_no_arma_servidores_con_lo_que_contesta(monkeypatch):
+    """La región y el id salen de lo que contesta Smash: una región que no es
+    de las suyas no se usa (sale del id, como en su SDK), un id raro no se
+    pide y un link firmado a la red interna no se abre."""
+    red, _ = _smash(monkeypatch, rutas={("GET", SMASH_LINK): httpx.Response(200, json={
+        "target": {"target": SMASH, "region": "trucho.example/x"}})})
+    assert len(_juntar(link=f"https://fromsmash.com/{SMASH}").imagenes) == 2
+    assert all(r.url.host.endswith((".fromsmash.co", "descargas.example")) for r in red.pedidos)
+    for raro in ("../../admin", "AbC/../x", "", None):
+        red, _ = _smash(monkeypatch, rutas={("GET", SMASH_LINK): httpx.Response(200, json={
+            "target": {"target": raro, "region": "eu-central-1"}})})
+        j = _juntar(link=f"https://fromsmash.com/{SMASH}")
+        assert "Smash contestó algo que la plataforma no entiende" in j.no_se_pudo_abrir[0]
+        assert not any(r.url.host.startswith("transfer.") for r in red.pedidos)
+    red, _ = _smash(monkeypatch, rutas={("PUT", f"{SMASH_API}/urls?version=01-2024"): httpx.Response(200, json={
+        "transfer": {"url": "http://169.254.169.254/latest/meta-data/"}})})
+    j = _juntar(link=f"https://fromsmash.com/{SMASH}")
+    assert "dirección interna" in j.no_se_pudo_abrir[0]
+    assert not any(r.url.host == "169.254.169.254" for r in red.pedidos)
+
+
+# ---------------------------------------------------------------------------
+# WeTransfer (red simulada, como el botón Descargar de su página)
+# ---------------------------------------------------------------------------
+
+def _wetransfer(monkeypatch, *, con_destinatario=False, preparar=None, api=None, origen="https://wetransfer.com"):
+    """WeTransfer como lo ve su página (19/11/2026): los links cortos (y el
+    de www) redirigen a la página larga, que no hace falta leer;
+    prepare-download dice si se puede bajar, download devuelve el
+    direct_link y ahí está el archivo (un ZIP). La API está en el servidor
+    de la página (`origen`: wetransfer.com o el de una marca)."""
+    larga = f"{origen}/downloads/{TRANSFER}/{DESTINATARIO}/{HASH}" if con_destinatario \
+        else f"{origen}/downloads/{TRANSFER}/{HASH}"
     visto = {}
 
+    def preparar_por_defecto(request: httpx.Request) -> httpx.Response:
+        visto["preparar"] = request
+        return httpx.Response(200, json={
+            "id": TRANSFER, "state": "downloadable", "password_protected": False,
+            "downloader_email_verification": "anonymous", "recommended_filename": "WeTransfer_cenefas.zip",
+            "size": 2_400_000, "expires_at": "2026-11-26T18:00:00Z", "display_name": "Cenefas",
+            "items": [{"id": "it-1", "name": "Cenefas/cenefa 1.jpg", "size": 1_200_000}]})
+
     def api_por_defecto(request: httpx.Request) -> httpx.Response:
-        visto["cuerpo"] = json.loads(request.content)
-        visto["cabeceras"] = dict(request.headers)
+        visto["bajar"] = request
         return httpx.Response(200, json={"direct_link": "https://download.wetransfer.com/eu/archivo.zip?token=abc"})
 
     rutas = {
         ("GET", "https://we.tl/t-AbCdEf12"): httpx.Response(301, headers={"location": larga}),
-        ("GET", larga): pagina or httpx.Response(200, text=html, headers={
-            "content-type": "text/html", "set-cookie": "_wt_session=galleta; Path=/; Secure; HttpOnly"}),
-        ("POST", f"https://wetransfer.com/api/v4/transfers/{TRANSFER}/download"): api or api_por_defecto,
+        ("GET", "https://go.wetransfer.com/t-AbCdEf12"): httpx.Response(302, headers={"location": larga}),
+        ("GET", "https://shorturls.wetransfer.com/AbCdEf12"): httpx.Response(302, headers={"location": larga}),
+        ("GET", f"https://www.wetransfer.com/downloads/{TRANSFER}/{HASH}"): httpx.Response(
+            301, headers={"location": larga}),
+        # La página no se lee (se pide con tope 0: si se leyera, no entraría).
+        ("GET", larga): httpx.Response(200, text="<!DOCTYPE html><html><body>Descargá</body></html>",
+                                       headers={"content-type": "text/html"}),
+        ("POST", f"{origen}/api/v4/transfers/{TRANSFER}/prepare-download"): preparar or preparar_por_defecto,
+        ("POST", f"{origen}/api/v4/transfers/{TRANSFER}/download"): api or api_por_defecto,
         ("GET", "https://download.wetransfer.com/eu/archivo.zip?token=abc"): httpx.Response(
             302, headers={"location": "https://storage.example/firmado/archivo.zip?sig=1"}),
         ("GET", "https://storage.example/firmado/archivo.zip?sig=1"): httpx.Response(
             200, content=_zip({"Cenefas/cenefa 1.jpg": _jpeg(), "Cenefas/cenefa 2.jpg": _jpeg(), "brief.docx": b"x"}),
-            headers={"content-type": "application/zip", "content-disposition": "attachment; filename=\"wetransfer_cenefas.zip\""}),
+            headers={"content-type": "application/zip"}),
     }
     return Red(monkeypatch, rutas), visto
 
 
-def test_wetransfer_se_baja_por_su_api_sin_credenciales(monkeypatch):
+def test_wetransfer_se_baja_como_el_boton_descargar_de_su_pagina(monkeypatch):
     red, visto = _wetransfer(monkeypatch)
     j = _juntar(link="https://we.tl/t-AbCdEf12")
     assert [(i.nombre, i.origen) for i in j.imagenes] == [("Cenefas/cenefa 1.jpg", "link"), ("Cenefas/cenefa 2.jpg", "link")]
     assert j.ignorados == ["brief.docx"] and j.no_se_pudo_abrir == []
-    assert [str(r.url) for r in red.pedidos] == [
-        "https://we.tl/t-AbCdEf12", f"https://wetransfer.com/downloads/{TRANSFER}/{HASH}",
-        f"https://wetransfer.com/api/v4/transfers/{TRANSFER}/download",
-        "https://download.wetransfer.com/eu/archivo.zip?token=abc", "https://storage.example/firmado/archivo.zip?sig=1",
+    larga = f"https://wetransfer.com/downloads/{TRANSFER}/{HASH}"
+    assert [(r.method, str(r.url)) for r in red.pedidos] == [
+        ("GET", "https://we.tl/t-AbCdEf12"), ("GET", larga),  # el link corto: solo adónde lleva
+        ("POST", f"https://wetransfer.com/api/v4/transfers/{TRANSFER}/prepare-download"),
+        ("POST", f"https://wetransfer.com/api/v4/transfers/{TRANSFER}/download"),
+        ("GET", "https://download.wetransfer.com/eu/archivo.zip?token=abc"),
+        ("GET", "https://storage.example/firmado/archivo.zip?sig=1"),
     ]
-    assert visto["cuerpo"] == {"intent": "entire_transfer", "security_hash": HASH}
-    assert visto["cabeceras"]["x-csrf-token"] == "tok3n==" and visto["cabeceras"]["x-requested-with"] == "XMLHttpRequest"
-    # La cookie de la página vuelve en el POST (es la sesión del token).
-    assert "_wt_session=galleta" in visto["cabeceras"].get("cookie", "")
+    assert json.loads(visto["preparar"].content) == {"security_hash": HASH}
+    assert json.loads(visto["bajar"].content) == {"security_hash": HASH, "intent": "entire_transfer"}
+    for pedido in (visto["preparar"], visto["bajar"]):
+        assert pedido.headers["content-type"] == "application/json" and pedido.headers["accept"] == "application/json"
+        assert pedido.headers["origin"] == "https://wetransfer.com" and pedido.headers["referer"] == larga
+        assert pedido.headers["user-agent"].startswith("Mozilla/5.0")
+        # Lo de antes ya no va: su página no usa más el token CSRF (ni la cookie de la página).
+        assert not {"x-csrf-token", "x-requested-with", "cookie"} & set(pedido.headers)
 
 
 def test_wetransfer_con_destinatario_y_la_pagina_larga_directa(monkeypatch):
-    _, visto = _wetransfer(monkeypatch, con_destinatario=True)
-    j = _juntar(link=f"https://wetransfer.com/downloads/{TRANSFER}/{DESTINATARIO}/{HASH}")
+    """El link largo (el del mail) no abre la página: va derecho a la API."""
+    red, visto = _wetransfer(monkeypatch, con_destinatario=True)
+    j = _juntar(link=f"https://wetransfer.com/downloads/{TRANSFER}/{DESTINATARIO}/{HASH}?t_s=email&t_lsid=x")
     assert len(j.imagenes) == 2
-    assert visto["cuerpo"] == {"intent": "entire_transfer", "security_hash": HASH, "recipient_id": DESTINATARIO}
+    assert str(red.pedidos[0].url) == f"https://wetransfer.com/api/v4/transfers/{TRANSFER}/prepare-download"
+    cuerpo = {"security_hash": HASH, "recipient_id": DESTINATARIO}
+    assert json.loads(visto["preparar"].content) == cuerpo
+    assert json.loads(visto["bajar"].content) == {**cuerpo, "intent": "entire_transfer"}
 
 
-def test_wetransfer_vencido_o_que_no_deja_bajar_se_anota(monkeypatch):
-    # La API no deja (venció, pide contraseña, cambió): se anota y nada más.
-    _wetransfer(monkeypatch, api=httpx.Response(403, json={"message": "No download access"}))
+@pytest.mark.parametrize("link", [
+    "https://go.wetransfer.com/t-AbCdEf12", "https://shorturls.wetransfer.com/AbCdEf12",
+    f"https://www.wetransfer.com/downloads/{TRANSFER}/{HASH}",
+])
+def test_wetransfer_los_otros_links_cortos_y_el_de_www(monkeypatch, link):
+    red, _ = _wetransfer(monkeypatch)
+    j = _juntar(link=link)
+    assert len(j.imagenes) == 2 and j.no_se_pudo_abrir == []
+    assert str(red.pedidos[2].url) == f"https://wetransfer.com/api/v4/transfers/{TRANSFER}/prepare-download"
+
+
+def test_wetransfer_de_una_marca_usa_la_api_de_su_pagina(monkeypatch):
+    """<marca>.wetransfer.com: la API está en el mismo servidor que la página
+    (su web la llama con una ruta relativa)."""
+    origen = "https://tiendainglesa.wetransfer.com"
+    red, visto = _wetransfer(monkeypatch, origen=origen)
+    j = _juntar(link=f"{origen}/downloads/{TRANSFER}/{HASH}")
+    assert len(j.imagenes) == 2 and j.no_se_pudo_abrir == []
+    assert [str(r.url) for r in red.pedidos[:3]] == [
+        f"{origen}/downloads/{TRANSFER}/{HASH}", f"{origen}/api/v4/transfers/{TRANSFER}/prepare-download",
+        f"{origen}/api/v4/transfers/{TRANSFER}/download"]
+    assert visto["preparar"].headers["origin"] == origen
+
+
+def test_un_link_firmado_de_wetransfer_se_baja_directo(monkeypatch):
+    red, _ = _wetransfer(monkeypatch)
+    j = _juntar(link="https://download.wetransfer.com/eu/archivo.zip?token=abc")
+    assert len(j.imagenes) == 2
+    assert [str(r.url) for r in red.pedidos] == [
+        "https://download.wetransfer.com/eu/archivo.zip?token=abc", "https://storage.example/firmado/archivo.zip?sig=1"]
+
+
+_CON_CONTRASENA = "la transferencia de WeTransfer tiene contraseña: pedile a la agencia un link sin contraseña o el ZIP"
+
+
+@pytest.mark.parametrize("preparar, bajar, esperado", [
+    # Con contraseña contesta 200 igual, pero lo dice (y sin la lista de archivos).
+    (httpx.Response(200, json={"state": "downloadable", "password_protected": True}), None, _CON_CONTRASENA),
+    (httpx.Response(403, json={"message": "invalid_transfer_password"}), None, _CON_CONTRASENA),
+    (httpx.Response(403, json={"message": "No download access to this Transfer"}), None,
+     "WeTransfer pide una cuenta o verificar el mail de quien baja esa transferencia"),
+    (httpx.Response(404, json={"message": "Transfer not found"}), None, "la transferencia de WeTransfer venció o la borraron"),
+    (httpx.Response(200, json={"state": "expired", "password_protected": False}), None,
+     "la transferencia de WeTransfer venció o ya no se puede bajar"),
+    (httpx.Response(200, json={"state": "downloadable", "size": 150 * 1024 * 1024}), None,
+     "la transferencia de WeTransfer pesa 150 MB y la plataforma baja hasta 40 MB"),
+    (httpx.Response(429, headers={"retry-after": "30"}), None, "WeTransfer pidió esperar"),
+    (None, httpx.Response(403, json={"message": "No download access to this Transfer"}),
+     "WeTransfer pide una cuenta o verificar el mail"),
+    (None, httpx.Response(400, json={"error": "invalid_transfer"}), "la transferencia de WeTransfer venció o la borraron"),
+    (None, httpx.Response(200, json={"status": "ok"}), "WeTransfer no devolvió el link de descarga"),
+    (None, httpx.Response(500, text="error"), "WeTransfer no dejó bajar la transferencia (contestó 500)"),
+])
+def test_wetransfer_lo_que_no_se_puede_bajar_se_anota(monkeypatch, preparar, bajar, esperado):
+    """Nunca es un error de la entrega: se anota con el porqué, para la
+    persona, y no se baja nada."""
+    red, _ = _wetransfer(monkeypatch, preparar=preparar, api=bajar)
     j = _juntar(link="https://we.tl/t-AbCdEf12")
-    assert j.imagenes == [] and "WeTransfer no dejó bajar la transferencia (contestó 403)" in j.no_se_pudo_abrir[0]
-    assert "Pasalo como ZIP" in j.no_se_pudo_abrir[0]
-    # La API contesta sin el link.
-    _wetransfer(monkeypatch, api=httpx.Response(200, json={"status": "ok"}))
-    assert "no devolvió el link" in _juntar(link="https://we.tl/t-AbCdEf12").no_se_pudo_abrir[0]
-    # Un link que ya no lleva a una transferencia (manda a la portada).
-    _wetransfer(monkeypatch, pagina=httpx.Response(302, headers={"location": "https://wetransfer.com/"}))
+    assert j.imagenes == [] and len(j.no_se_pudo_abrir) == 1
+    assert j.no_se_pudo_abrir[0].startswith("No se pudo abrir el link (we.tl/t-AbCdEf12): ")
+    assert esperado in j.no_se_pudo_abrir[0]
+    assert not any(r.url.host in ("download.wetransfer.com", "storage.example") for r in red.pedidos)
+
+
+def test_un_link_de_wetransfer_que_no_lleva_a_una_transferencia(monkeypatch):
+    # Un link corto viejo que manda a la portada.
     red = Red(monkeypatch, {("GET", "https://we.tl/t-viejo"): httpx.Response(301, headers={"location": "https://wetransfer.com/"}),
                             ("GET", "https://wetransfer.com/"): httpx.Response(200, text="<html>portada</html>")})
     j = _juntar(link="https://we.tl/t-viejo")
-    assert "venció" in j.no_se_pudo_abrir[0] and len(red.pedidos) == 2
+    assert j.no_se_pudo_abrir == [
+        "No se pudo abrir el link (we.tl/t-viejo): el link de WeTransfer venció o no es el de una transferencia"]
+    assert len(red.pedidos) == 2
+    # La portada o un tablero (collect.wetransfer.com, que usa otra API): no se le pide nada a la API.
+    for link in ("https://wetransfer.com/", "https://collect.wetransfer.com/board/abc123"):
+        red = Red(monkeypatch)
+        assert "no es el de una transferencia" in _juntar(link=link).no_se_pudo_abrir[0]
+        assert not any("/api/" in r.url.path for r in red.pedidos)
 
 
 def test_juntar_con_zip_y_link_respeta_el_tope_total(monkeypatch):

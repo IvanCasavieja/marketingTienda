@@ -594,28 +594,78 @@ def _pdf_de_dos_paginas() -> bytes:
     return datos
 
 
+def _smash_simulado(monkeypatch, *, estado="Uploaded", archivo: bytes = b""):
+    """Smash sin red (19/11/2026): el invitado, el link, la transferencia
+    (con su `estado`) y el archivo, con la forma de su API. El paso a paso
+    está probado en test_materiales.py; acá alcanza con que conteste. Nada
+    sale a internet."""
+    from app.services import materiales
+
+    def contestar(request: httpx.Request) -> httpx.Response:
+        host, ruta = request.url.host, request.url.path
+        if host == "iam.eu-central-1.fromsmash.co":
+            return httpx.Response(201, json={"account": {"token": {
+                "token": "eyJhbGciOiJIUzI1NiIs.invitado", "expiration": "2099-11-20T18:00:00.000Z"}}})
+        if host == "link.fromsmash.co":
+            return httpx.Response(200, json={"target": {"target": "AbCdEfGhIj-dt", "region": "eu-central-1"}})
+        if ruta.endswith("/preview"):
+            return httpx.Response(200, json={"transfer": {"status": estado, "filesNumber": 2, "size": len(archivo)}})
+        if ruta.endswith("/urls"):
+            return httpx.Response(200, json={"transfer": {"url": "https://descargas.example/AbCdEfGhIj-dt.zip"}})
+        if host == "descargas.example":
+            return httpx.Response(200, content=archivo)
+        return httpx.Response(503)  # discovery: se usa la región fija
+
+    async def resolver(host):
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(materiales, "cliente_http", lambda: httpx.AsyncClient(transport=httpx.MockTransport(contestar)))
+    monkeypatch.setattr(materiales, "_resolver", resolver)
+    monkeypatch.setattr(materiales, "_TOKEN_SMASH", {})
+
+
+def test_lo_de_un_link_de_smash_tambien_lo_revisa_la_ia(ia_prendida, monkeypatch):
+    """Ivan (19/11/2026): «yo bajo sin smash los links». El link de Smash se
+    baja como lo hace su página (sin cuenta) y lo de adentro va a la IA,
+    detrás de lo que se subió."""
+    _smash_simulado(monkeypatch, archivo=_zip({"Cenefas/cenefa.jpg": _jpeg(800, 600), "brief.docx": b"x"}))
+    base = BaseFalsa(["ve-1"], link="https://fromsmash.com/AbCdEfGhIj-dt")
+    api = sim.ApiGrabada([_respuesta(_obs(texto="En la cenefa del link", imagen=2, x=400, y=300))])
+    assert _revisar("ve-1", base, api) == "lista"
+    etiquetas = [b["text"] for b in api.pedidos[0]["messages"][0]["content"] if b["type"] == "text"][:-1]
+    assert etiquetas == ["Imagen 1 de 2 (1600 × 1131 px):", "Imagen 2 de 2 (800 × 600 px): «Cenefas/cenefa.jpg» (del link)"]
+    fila = base.filas["ve-1"]
+    assert [(o["texto"], o["archivo"], o["origen"]) for o in fila["observaciones"]] == [
+        ("En la cenefa del link", "Cenefas/cenefa.jpg", "link")]
+    assert fila["materiales"] == {"revisados": [{"nombre": "Cenefas/cenefa.jpg", "origen": "link", "paginas": None}],
+                                  "noSePudoAbrir": [], "ignorados": ["brief.docx"]}
+
+
 def test_un_link_que_no_se_pudo_abrir_queda_anotado_y_la_ia_revisa_lo_subido(ia_prendida, monkeypatch):
-    # Smash no se puede bajar: se anota, y la IA mira lo que se subió.
-    base = BaseFalsa(["ve-1"], link="https://fromsmash.com/AbC")
+    # Una transferencia de Smash vencida: se anota, y la IA mira lo que se subió.
+    _smash_simulado(monkeypatch, estado="Expired")
+    base = BaseFalsa(["ve-1"], link="https://fromsmash.com/AbCdEfGhIj-dt")
     api = sim.ApiGrabada([_respuesta(_obs())])
     assert _revisar("ve-1", base, api) == "lista"
     assert len([b for b in api.pedidos[0]["messages"][0]["content"] if b["type"] == "image"]) == 1
     fila = base.filas["ve-1"]
     assert len(fila["observaciones"]) == 1
-    assert fila["materiales"]["revisados"] == [] and len(fila["materiales"]["noSePudoAbrir"]) == 1
-    assert "Smash" in fila["materiales"]["noSePudoAbrir"][0] and "ZIP" in fila["materiales"]["noSePudoAbrir"][0]
+    assert fila["materiales"]["revisados"] == [] and fila["materiales"]["noSePudoAbrir"] == [
+        "No se pudo abrir el link (fromsmash.com/AbCdEfGhIj-dt): la transferencia de Smash venció: pedile a la "
+        "agencia que la mande de nuevo"]
 
 
-def test_sin_imagenes_y_con_el_link_cerrado_queda_lista_sin_llamar_a_la_ia(ia_prendida):
+def test_sin_imagenes_y_con_el_link_cerrado_queda_lista_sin_llamar_a_la_ia(ia_prendida, monkeypatch):
     """Una entrega con solo un link que no se pudo abrir: no hay qué mandarle
     a la IA. Queda 'lista' sin observaciones y con el porqué en materiales
     (es lo que tiene que ver el aprobador), no un error mudo ni un 500."""
-    base = BaseFalsa(["ve-1"], link="https://fromsmash.com/AbC", imagenes=0)
+    _smash_simulado(monkeypatch, estado="Expired")
+    base = BaseFalsa(["ve-1"], link="https://fromsmash.com/AbCdEfGhIj-dt", imagenes=0)
     api = sim.ApiGrabada([])
     assert _revisar("ve-1", base, api) == "lista"
     fila = base.filas["ve-1"]
     assert fila["estado"] == "lista" and fila["observaciones"] == [] and api.pedidos == []
-    assert "Smash" in fila["materiales"]["noSePudoAbrir"][0]
+    assert "la transferencia de Smash venció" in fila["materiales"]["noSePudoAbrir"][0]
     assert rv.materiales_para_mostrar(fila["materiales"], "lista")["noSePudoAbrir"] == fila["materiales"]["noSePudoAbrir"]
 
 

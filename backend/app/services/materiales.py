@@ -28,13 +28,20 @@ Qué hace, y con qué frenos:
   medio. Tope de 40 MB. Si lo que llega es una página web y no un archivo
   (un link privado, uno que pide iniciar sesión), no es un error: se anota
   "no se pudo abrir" y la revisión sigue con lo que haya.
-  - WeTransfer (we.tl, wetransfer.com) muestra una página, no el archivo: la
-    descarga sale de su API (`_bajar_wetransfer`), sin credenciales, como lo
-    hacen las herramientas de línea de comandos. Es una API no documentada:
-    si WeTransfer la cambia, el link queda como "no se pudo abrir" y no se
-    rompe nada más.
-  - Smash (fromsmash.com) no se puede bajar sin su API con credenciales:
-    queda anotado "no se pudo abrir: pasalo como ZIP".
+  - WeTransfer (we.tl, go.wetransfer.com, wetransfer.com y las páginas de
+    marca, <marca>.wetransfer.com) muestra una página, no el archivo: la
+    descarga sale de su API (`_bajar_wetransfer`), sin cuenta, con los
+    mismos dos pedidos que hace el botón Descargar de su página. Un link de
+    download.wetransfer.com ya es el archivo y se baja directo.
+  - Smash (fromsmash.com y <equipo>.fromsmash.com) tampoco pide cuenta para
+    bajar (19/11/2026, Ivan: «yo bajo sin smash los links»): su página crea
+    sola un invitado, sin datos, y con ese token resuelve el link y pide el
+    link firmado de descarga. `_bajar_smash` hace lo mismo.
+  Las dos son APIs sin documentar para terceros (se revisaron el 19/11/2026
+  contra lo que hacen hoy sus páginas): si cambian, el link queda como "no
+  se pudo abrir" y no se rompe nada más. Lo que no se puede bajar sin
+  cuenta (con contraseña, vencido, borrado, más pesado que el tope, que pide
+  el mail de quien baja) queda anotado con el porqué.
 - **Un PDF**: una imagen por página, hasta 10, con PyMuPDF (ya estaba en el
   servidor por la validación de RRSS), al mismo lado máximo que las imágenes
   que van a la IA.
@@ -57,9 +64,11 @@ import logging
 import re
 import socket
 import struct
+import time
 import zipfile
 from dataclasses import dataclass, field
-from urllib.parse import unquote
+from datetime import datetime
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 import httpx
 
@@ -87,8 +96,7 @@ MAX_BYTES_LINK = 40 * 1024 * 1024
 ESPERA_LINK = 10.0           # segundos por operación (conectar, leer...)
 ESPERA_TOTAL_LINK = 60.0     # todo el link, de punta a punta (varios pedidos)
 MAX_REDIRECCIONES = 3
-_MAX_BYTES_PAGINA = 2 * 1024 * 1024    # el HTML de WeTransfer (solo el token)
-_MAX_BYTES_API = 256 * 1024
+_MAX_BYTES_API = 256 * 1024            # lo que contestan las APIs de WeTransfer y Smash
 _AGENTE = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
            "Chrome/131.0.0.0 Safari/537.36 CoreTienda/1.0")
 
@@ -422,16 +430,25 @@ class Respuesta:
     cuerpo: bytes
 
 
+# Lo que no pasa a otro servidor si un pedido redirige, como en los
+# navegadores: el token de invitado de Smash y su contraseña (19/11/2026).
+_CABECERAS_PRIVADAS = frozenset({"authorization", "smash-authorization", "cookie"})
+
+
 async def _pedir(cliente: httpx.AsyncClient, metodo: str, url: str | httpx.URL, *, tope: int,
-                 json_cuerpo: dict | None = None, cabeceras: dict | None = None) -> Respuesta:
+                 json_cuerpo: dict | None = None, cabeceras: dict | None = None,
+                 solo_destino: bool = False) -> Respuesta:
     """Un pedido con los cuidados: cada salto de redirección (hasta 3) pasa
     por `_host_publico`, se controla la IP real de la conexión y el cuerpo se
-    corta en `tope` bytes."""
+    corta en `tope` bytes. Si un salto lleva a otro servidor, el token no
+    viaja (`_CABECERAS_PRIVADAS`). `solo_destino`: solo importa adónde lleva
+    el link (uno corto de WeTransfer): el cuerpo no se lee."""
     actual = httpx.URL(url)
+    cabeceras = dict(cabeceras or {})
     for _ in range(MAX_REDIRECCIONES + 1):
         await _host_publico(actual)
         pedido = cliente.build_request(
-            metodo, actual, json=json_cuerpo, headers={"User-Agent": _AGENTE, **(cabeceras or {})},
+            metodo, actual, json=json_cuerpo, headers={"User-Agent": _AGENTE, **cabeceras},
         )
         try:
             r = await cliente.send(pedido, stream=True)
@@ -447,10 +464,15 @@ async def _pedir(cliente: httpx.AsyncClient, metodo: str, url: str | httpx.URL, 
                 destino = r.headers.get("location")
                 if not destino:
                     raise NoSePudoAbrir("el link redirige a ningún lado")
-                actual = actual.join(destino)
+                siguiente = actual.join(destino)
+                if (siguiente.scheme, siguiente.host, siguiente.port) != (actual.scheme, actual.host, actual.port):
+                    cabeceras = {k: v for k, v in cabeceras.items() if k.casefold() not in _CABECERAS_PRIVADAS}
+                actual = siguiente
                 if r.status_code in (301, 302, 303) and metodo != "GET":
                     metodo, json_cuerpo = "GET", None
                 continue
+            if solo_destino:
+                return Respuesta(str(actual), r.status_code, r.headers, b"")
             largo = r.headers.get("content-length", "")
             if largo.isdigit() and int(largo) > tope:
                 raise NoSePudoAbrir(f"el archivo pesa más de {_mb(tope)}")
@@ -470,74 +492,337 @@ async def _pedir(cliente: httpx.AsyncClient, metodo: str, url: str | httpx.URL, 
     raise NoSePudoAbrir("el link redirige demasiadas veces")
 
 
-_HOSTS_WETRANSFER = ("we.tl", "wetransfer.com", "www.wetransfer.com")
-_HOSTS_SMASH = ("fromsmash.com", "www.fromsmash.com", "fromsmash.co")
-# /downloads/<transferencia>/<hash> o /downloads/<transferencia>/<destinatario>/<hash>
-_DESCARGA_WETRANSFER = re.compile(r"^/downloads/([0-9a-f]{6,64})(?:/([0-9a-f]{6,64}))?/([0-9a-f]{4,64})/?$")
-_CSRF = re.compile(r'name="csrf-token"\s+content="([^"]+)"')
+# WeTransfer (revisado el 19/11/2026 contra lo que hace hoy su página). Los
+# links cortos redirigen a la página larga. download.wetransfer.com ya es el
+# archivo (un link firmado): se baja directo. collect.wetransfer.com (los
+# tableros) usa otra API: queda como "no es el de una transferencia".
+_CORTOS_WETRANSFER = ("we.tl", "go.wetransfer.com", "shorturls.wetransfer.com")
+_ARCHIVO_WETRANSFER = "download.wetransfer.com"
+# .../downloads/<transferencia>/<hash> o .../downloads/<transferencia>/<destinatario>/<hash>
+_DESCARGA_WETRANSFER = re.compile(r"/downloads/([0-9a-f]{6,64})(?:/([0-9a-f]{6,64}))?/([0-9a-f]{4,64})/?$")
 _NOMBRE_ADJUNTO = re.compile(r"""filename\*?=(?:UTF-8'')?["']?([^"';]+)""", re.IGNORECASE)
+
+# Smash (19/11/2026): los servidores y las versiones de su API, como los usa
+# hoy fromsmash.com. Las regiones son las de sus SDK: la penúltima letra del
+# id de una transferencia dice en cuál está.
+_REGIONES_SMASH = {
+    "a": "eu-west-1", "b": "eu-west-2", "c": "eu-west-3", "d": "eu-central-1", "e": "us-east-1",
+    "f": "us-east-2", "g": "us-west-1", "h": "us-west-2", "i": "ca-central-1",
+}
+# Si no contesta la que elige su página: la que usa JDownloader desde 2021.
+_REGION_SMASH = "eu-central-1"
+_CABECERAS_SMASH = {
+    # Sin este Accept, algunas respuestas vienen en XML (JDownloader, 2021).
+    "Accept": "application/json, text/plain, */*",
+    "Origin": "https://fromsmash.com",
+    "Referer": "https://fromsmash.com/",
+}
+_ID_SMASH = re.compile(r"[A-Za-z0-9_-]{4,128}")
+# El token del invitado de Smash: dura un día y se reusa hasta 5 minutos
+# antes de que venza, para no crear un invitado nuevo por cada link.
+_TOKEN_SMASH: dict = {}
+_ESTADOS_SMASH = {
+    "Expired": "la transferencia de Smash venció: pedile a la agencia que la mande de nuevo",
+    "Deleted": "la transferencia de Smash fue borrada",
+    "Deleting": "la transferencia de Smash fue borrada",
+    "Suspended": "Smash suspendió esa transferencia",
+    "Uploading": "la transferencia de Smash todavía se estaba subiendo",
+}
+_SMASH_RARO = "Smash contestó algo que la plataforma no entiende (¿cambió su página?)"
 
 
 def clase_de_link(url: str) -> str:
-    """'wetransfer', 'smash' o 'directo' (cualquier otro: se baja tal cual)."""
+    """'wetransfer', 'smash' o 'directo' (cualquier otro: se baja tal cual,
+    también un link firmado de download.wetransfer.com o uno de fromsmash.co,
+    que es la API de Smash y no una página para compartir)."""
     try:
         host = (httpx.URL(url).host or "").casefold()
     except Exception:
         return "directo"
-    if host in _HOSTS_WETRANSFER:
+    if host == _ARCHIVO_WETRANSFER or host.endswith("." + _ARCHIVO_WETRANSFER):
+        return "directo"
+    if host in _CORTOS_WETRANSFER or host == "wetransfer.com" or host.endswith(".wetransfer.com"):
         return "wetransfer"
-    if host in _HOSTS_SMASH or host.endswith((".fromsmash.com", ".fromsmash.co")):
+    if host == "fromsmash.com" or host.endswith(".fromsmash.com"):
         return "smash"
     return "directo"
 
 
-def _nombre_del_archivo(respuesta: Respuesta, por_defecto: str = "archivo del link") -> str:
-    """El nombre que dice el servidor (Content-Disposition) o el último
-    pedazo del link; corto y sin barras."""
+def _nombre_del_archivo(respuesta: Respuesta, por_defecto: str = "archivo del link", *,
+                        sugerido: str | None = None) -> str:
+    """El nombre que dice el servidor (Content-Disposition), el que sugiere
+    WeTransfer o Smash, o el último pedazo del link; corto y sin barras."""
     m = _NOMBRE_ADJUNTO.search(respuesta.cabeceras.get("content-disposition", ""))
     nombre = unquote(m.group(1)).strip() if m else ""
+    if not nombre and sugerido:
+        nombre = sugerido.strip()
     if not nombre:
         nombre = unquote(httpx.URL(respuesta.url).path.rsplit("/", 1)[-1]).strip()
     nombre = nombre.replace("\\", "/").rsplit("/", 1)[-1]
     return nombre[:120] or por_defecto
 
 
-async def _bajar_wetransfer(cliente: httpx.AsyncClient, url: str) -> Respuesta:
-    """La descarga de WeTransfer, como la hacen las herramientas de línea de
-    comandos (sin credenciales): la página del link trae un token CSRF y la
-    cookie de sesión; con ellos, POST a api/v4/transfers/{id}/download con la
-    security hash del link (y el id del destinatario, si el link es de un
-    mail) devuelve `direct_link`, que es el archivo (un ZIP, si son varios).
-    Un we.tl corto redirige a la página larga: lo resuelve `_pedir`."""
-    pagina = await _pedir(cliente, "GET", url, tope=_MAX_BYTES_PAGINA, cabeceras={"Accept": "text/html"})
-    final = httpx.URL(pagina.url)
-    partes = _DESCARGA_WETRANSFER.match(final.path) if (final.host or "").casefold() in _HOSTS_WETRANSFER else None
-    if pagina.estado != 200 or partes is None:
+def _json(r: Respuesta) -> dict:
+    """Lo que contestó una API, como objeto JSON ({} si no lo es)."""
+    try:
+        datos = json.loads(r.cuerpo)
+    except ValueError:
+        return {}
+    return datos if isinstance(datos, dict) else {}
+
+
+def _con_contrasena(servicio: str) -> NoSePudoAbrir:
+    return NoSePudoAbrir(
+        f"la transferencia de {servicio} tiene contraseña: pedile a la agencia un link sin contraseña o el ZIP"
+    )
+
+
+def _controlar_peso(tamano: object, servicio: str) -> None:
+    """Si WeTransfer o Smash ya dicen que la transferencia pesa más que el
+    tope, no se baja para cortarla a la mitad: se anota."""
+    if isinstance(tamano, (int, float)) and not isinstance(tamano, bool) and tamano > MAX_BYTES_LINK:
+        raise NoSePudoAbrir(
+            f"la transferencia de {servicio} pesa {round(tamano / 1024 / 1024)} MB y la plataforma baja "
+            f"hasta {_mb(MAX_BYTES_LINK)}"
+        )
+
+
+def _motivo_wetransfer(r: Respuesta) -> NoSePudoAbrir:
+    """Por qué WeTransfer no deja bajar, en palabras de la persona (los
+    mensajes de su API son los que distingue su página)."""
+    cuerpo = _json(r)
+    mensaje = str(cuerpo.get("message") or cuerpo.get("error") or "")
+    if mensaje == "invalid_transfer_password":
+        return _con_contrasena("WeTransfer")
+    if mensaje == "No download access to this Transfer":
+        return NoSePudoAbrir(
+            "WeTransfer pide una cuenta o verificar el mail de quien baja esa transferencia: pedile a la "
+            "agencia un link sin ese control o el ZIP"
+        )
+    if r.estado == 404 or mensaje == "invalid_transfer":
+        return NoSePudoAbrir("la transferencia de WeTransfer venció o la borraron")
+    if r.estado == 429:
+        return NoSePudoAbrir("WeTransfer pidió esperar: hubo demasiados pedidos seguidos")
+    return NoSePudoAbrir(f"WeTransfer no dejó bajar la transferencia (contestó {r.estado})")
+
+
+async def _bajar_wetransfer(cliente: httpx.AsyncClient, url: str) -> tuple[Respuesta, str | None]:
+    """La descarga de WeTransfer sin cuenta, con los dos pedidos que hace el
+    botón Descargar de su página (revisado el 19/11/2026):
+    POST api/v4/transfers/{id}/prepare-download, con la hash del link (y el
+    id del destinatario si el link es de un mail), dice si se puede bajar,
+    si tiene contraseña y cuánto pesa; POST .../download devuelve
+    `direct_link`, un link firmado que dura unos minutos y es el archivo (un
+    ZIP, si son varios).
+
+    Su página ya no trae el token CSRF que se mandaba antes (su web no lo
+    usa más): no hace falta abrirla. Solo se abre la de un link corto, de
+    marca o con www, y sin leerla: para saber en qué servidor termina, que
+    es donde está la API (como en el navegador). Devuelve la descarga y el
+    nombre que sugiere WeTransfer."""
+    pagina = httpx.URL(url)
+    if (pagina.host or "").casefold() != "wetransfer.com":
+        pagina = httpx.URL((await _pedir(cliente, "GET", pagina, tope=0, solo_destino=True)).url)
+    host = (pagina.host or "").casefold()
+    es_pagina = host == "wetransfer.com" or host.endswith(".wetransfer.com")
+    partes = _DESCARGA_WETRANSFER.search(pagina.path) if es_pagina else None
+    if partes is None:
         raise NoSePudoAbrir("el link de WeTransfer venció o no es el de una transferencia")
     transferencia, destinatario, seguridad = partes.groups()
-    cabeceras = {"x-requested-with": "XMLHttpRequest", "Accept": "application/json"}
-    token = _CSRF.search(pagina.cuerpo.decode("utf-8", "replace"))
-    if token:
-        cabeceras["x-csrf-token"] = token.group(1)
-    cuerpo = {"intent": "entire_transfer", "security_hash": seguridad}
+    origen = f"https://{host}"
+    cabeceras = {"Accept": "application/json", "Origin": origen, "Referer": str(pagina)}
+    cuerpo = {"security_hash": seguridad}
     if destinatario:
         cuerpo["recipient_id"] = destinatario
-    api = await _pedir(
-        cliente, "POST", f"https://wetransfer.com/api/v4/transfers/{transferencia}/download",
-        tope=_MAX_BYTES_API, json_cuerpo=cuerpo, cabeceras=cabeceras,
-    )
-    if api.estado != 200:
-        raise NoSePudoAbrir(
-            f"WeTransfer no dejó bajar la transferencia (contestó {api.estado}): venció, pide contraseña o "
-            "cambió su página. Pasalo como ZIP"
-        )
-    try:
-        directo = (json.loads(api.cuerpo) or {}).get("direct_link")
-    except ValueError:
-        directo = None
+    api = f"{origen}/api/v4/transfers/{transferencia}"
+    r = await _pedir(cliente, "POST", f"{api}/prepare-download", tope=_MAX_BYTES_API, json_cuerpo=cuerpo,
+                     cabeceras=cabeceras)
+    if r.estado != 200:
+        raise _motivo_wetransfer(r)
+    info = _json(r)
+    # Con contraseña contesta 200 igual, pero sin la lista de archivos.
+    if info.get("password_protected"):
+        raise _con_contrasena("WeTransfer")
+    if info.get("state") != "downloadable":
+        raise NoSePudoAbrir("la transferencia de WeTransfer venció o ya no se puede bajar")
+    _controlar_peso(info.get("size"), "WeTransfer")
+    r = await _pedir(cliente, "POST", f"{api}/download", tope=_MAX_BYTES_API,
+                     json_cuerpo={**cuerpo, "intent": "entire_transfer"}, cabeceras=cabeceras)
+    if r.estado != 200:
+        raise _motivo_wetransfer(r)
+    directo = _json(r).get("direct_link")
     if not isinstance(directo, str) or not directo:
-        raise NoSePudoAbrir("WeTransfer no devolvió el link de descarga. Pasalo como ZIP")
-    return await _pedir(cliente, "GET", directo, tope=MAX_BYTES_LINK)
+        raise NoSePudoAbrir("WeTransfer no devolvió el link de descarga (¿cambió su página?)")
+    sugerido = info.get("recommended_filename")
+    descarga = await _pedir(cliente, "GET", directo, tope=MAX_BYTES_LINK)
+    return descarga, sugerido if isinstance(sugerido, str) else None
+
+
+def _uri(texto: str) -> str:
+    """Como encodeURIComponent de JavaScript (la «/» pasa a %2F)."""
+    return quote(texto, safe="-_.!~*'()")
+
+
+def _vence(expiracion: object, ahora: float) -> float:
+    """Cuándo vence el token de Smash (viene como "2026-11-20T18:00:00.000Z");
+    si no se entiende, se usa una hora."""
+    try:
+        return datetime.fromisoformat(str(expiracion).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return ahora + 3600
+
+
+async def _region_smash(cliente: httpx.AsyncClient) -> str:
+    """Dónde pedir el invitado: la región que elige la página de Smash (su
+    discovery, que redirige al de cada región); si no contesta, una fija."""
+    try:
+        r = await _pedir(cliente, "GET", "https://discovery.fromsmash.co/namespace/public/services?version=02-2023",
+                         tope=_MAX_BYTES_API, cabeceras=_CABECERAS_SMASH)
+    except NoSePudoAbrir:
+        return _REGION_SMASH
+    region = _json(r).get("region") if r.estado == 200 else None
+    return region if region in _REGIONES_SMASH.values() else _REGION_SMASH
+
+
+async def _token_smash(cliente: httpx.AsyncClient, *, nuevo: bool = False) -> str:
+    """El token del invitado, como lo crea la página de Smash para cualquiera
+    que abre un link: POST /account sin datos ({}) y sin credenciales. Se
+    guarda hasta que vence (`_TOKEN_SMASH`); `nuevo` pide otro igual."""
+    ahora = time.time()
+    if not nuevo and _TOKEN_SMASH.get("vence", 0) > ahora + 300:
+        return _TOKEN_SMASH["token"]
+    region = await _region_smash(cliente)
+    r = await _pedir(cliente, "POST", f"https://iam.{region}.fromsmash.co/account", tope=_MAX_BYTES_API,
+                     json_cuerpo={}, cabeceras=_CABECERAS_SMASH)
+    cuenta = _json(r).get("account")
+    token = cuenta.get("token") if isinstance(cuenta, dict) else None
+    valor = token.get("token") if isinstance(token, dict) else None
+    if r.estado not in (200, 201) or not isinstance(valor, str) or not valor:
+        raise NoSePudoAbrir(f"Smash no dejó entrar como invitado (contestó {r.estado})")
+    _TOKEN_SMASH.clear()
+    _TOKEN_SMASH.update(token=valor, vence=_vence(token.get("expiration"), ahora))
+    return valor
+
+
+def _motivo_smash(r: Respuesta) -> NoSePudoAbrir:
+    """Por qué Smash no deja bajar, en palabras de la persona. Sus errores
+    vienen como {name, code, error, ...}: manda el `name` (como en su SDK) y,
+    por las dudas, el texto."""
+    cuerpo = _json(r)
+    nombre = str(cuerpo.get("name") or "")
+    texto = str(cuerpo.get("error") or "").casefold()
+    if r.estado == 404:
+        return NoSePudoAbrir(
+            "Smash dice que esa transferencia no existe (venció, la borraron o el link está mal copiado)"
+        )
+    if r.estado == 403:
+        if nombre.startswith("PasswordDoesNotMatch") or "password" in texto:
+            return _con_contrasena("Smash")
+        if nombre.startswith("InvalidEmail") or "email" in texto:
+            return NoSePudoAbrir(
+                "Smash pide el mail de quien baja esa transferencia: pedile a la agencia un link sin ese "
+                "control o el ZIP"
+            )
+        if nombre.startswith(("OwnerUsageExceeded", "AccessorUsageExceeded")):
+            return NoSePudoAbrir("la transferencia de Smash llegó a su límite de descargas")
+    if r.estado == 401:
+        return NoSePudoAbrir("Smash no dejó entrar como invitado (contestó 401)")
+    if r.estado == 429:
+        return NoSePudoAbrir("Smash pidió esperar: hubo demasiados pedidos seguidos")
+    return NoSePudoAbrir(f"Smash no dejó bajar la transferencia (contestó {r.estado})")
+
+
+async def _api_smash(cliente: httpx.AsyncClient, metodo: str, url: str, *, json_cuerpo: dict | None = None,
+                     de_transferencia: bool = False) -> dict:
+    """Un pedido a la API de Smash como invitado: el JSON de la respuesta, o
+    NoSePudoAbrir con el porqué. Si contesta 401 (el token guardado venció
+    o lo dieron de baja), se pide otro y se repite una vez."""
+
+    async def pedir(token: str) -> Respuesta:
+        cabeceras = {**_CABECERAS_SMASH, "Authorization": f"Bearer {token}"}
+        if de_transferencia:
+            # La contraseña de la transferencia: su página la manda vacía
+            # cuando no hay. Las que tienen se anotan (_motivo_smash).
+            cabeceras["smash-authorization"] = ""
+        return await _pedir(cliente, metodo, url, tope=_MAX_BYTES_API, json_cuerpo=json_cuerpo,
+                            cabeceras=cabeceras)
+
+    r = await pedir(await _token_smash(cliente))
+    if r.estado == 401:
+        r = await pedir(await _token_smash(cliente, nuevo=True))
+    if r.estado != 200:
+        raise _motivo_smash(r)
+    return _json(r)
+
+
+async def _bajar_smash(cliente: httpx.AsyncClient, url: str) -> tuple[Respuesta, str | None]:
+    """La descarga de Smash sin cuenta, con los pedidos que hace su página
+    para quien recibe el link (revisado el 19/11/2026 contra fromsmash.com,
+    su SDK y JDownloader), con el token del invitado (`_token_smash`):
+
+    1. el link (servidor y ruta, sin la consulta) dice qué transferencia es
+       y en qué región está (link.fromsmash.co/target);
+    2. la transferencia dice si se puede bajar (vencida, borrada...) y
+       cuánto pesa (/preview);
+    3. como el botón Descargar: si es un archivo solo, se pide el link
+       firmado de ese archivo (su id sale de /files/preview); si son
+       varios, el de todos juntos en un ZIP (/urls);
+    4. el link firmado dura unos minutos y se baja sin el token.
+
+    Devuelve la descarga y el nombre del archivo, si es uno solo."""
+    partes = urlsplit(url.strip())
+    host = (partes.hostname or "").casefold()
+    if host.startswith("www."):
+        host = host[4:]  # www.fromsmash.com redirige a fromsmash.com
+    ruta = partes.path.rstrip("/")
+    if not ruta:
+        raise NoSePudoAbrir("el link de Smash no es el de una transferencia")
+    datos = await _api_smash(cliente, "GET", f"https://link.fromsmash.co/target/{_uri(host + ruta)}?version=10-2019")
+    target = datos.get("target") if isinstance(datos.get("target"), dict) else {}
+    transferencia = target.get("target")
+    if not isinstance(transferencia, str) or not _ID_SMASH.fullmatch(transferencia):
+        raise NoSePudoAbrir(_SMASH_RARO)
+    region = target.get("region")
+    if region not in _REGIONES_SMASH.values():
+        region = _REGIONES_SMASH.get(transferencia[-2])
+        if region is None:
+            raise NoSePudoAbrir(_SMASH_RARO)
+    base = f"https://transfer.{region}.fromsmash.co/transfer/{transferencia}"
+    # Los links que manda Smash por mail traen `e` (el mail de quien lo
+    # recibe): va tal cual, como en su página.
+    e = parse_qs(partes.query).get("e", [""])[0]
+    consulta = "version=01-2024" + (f"&e={_uri(e)}" if e else "")
+
+    transfer = (await _api_smash(cliente, "GET", f"{base}/preview?{consulta}", de_transferencia=True)).get("transfer")
+    if not isinstance(transfer, dict):
+        raise NoSePudoAbrir(_SMASH_RARO)
+    estado = str(transfer.get("status") or "")
+    if estado not in ("Uploaded", "Processing"):
+        raise NoSePudoAbrir(_ESTADOS_SMASH.get(estado, "Smash no deja bajar esa transferencia ahora"))
+    _controlar_peso(transfer.get("size"), "Smash")
+
+    nombre = None
+    if transfer.get("filesNumber") == 1:
+        lista = (await _api_smash(cliente, "GET", f"{base}/files/preview?{consulta}&limit=1",
+                                  de_transferencia=True)).get("files")
+        archivo = lista[0] if isinstance(lista, list) and lista and isinstance(lista[0], dict) else {}
+        if not isinstance(archivo.get("id"), str):
+            raise NoSePudoAbrir(_SMASH_RARO)
+        nombre = archivo.get("name") if isinstance(archivo.get("name"), str) else None
+        pedido = {"files": [{"id": archivo["id"]}]}
+    else:
+        pedido = {"files": []}
+    firmados = (await _api_smash(cliente, "PUT", f"{base}/urls?{consulta}", json_cuerpo=pedido,
+                                 de_transferencia=True)).get("transfer")
+    firmados = firmados if isinstance(firmados, dict) else {}
+    if pedido["files"]:
+        lista = firmados.get("files")
+        firmado = lista[0].get("url") if isinstance(lista, list) and lista and isinstance(lista[0], dict) else None
+    else:
+        firmado = firmados.get("url")
+    if not isinstance(firmado, str) or not firmado:
+        raise NoSePudoAbrir(_SMASH_RARO)
+    return await _pedir(cliente, "GET", firmado, tope=MAX_BYTES_LINK), nombre
 
 
 def _parece_html(datos: bytes) -> bool:
@@ -549,20 +834,18 @@ async def _bajar_link(url: str) -> tuple[str, bytes, str]:
     """(nombre, bytes, clase) de lo que hay detrás de un link: 'imagen',
     'pdf' o 'zip'. NoSePudoAbrir con el porqué si no se puede."""
     clase = clase_de_link(url)
-    if clase == "smash":
-        raise NoSePudoAbrir(
-            "los links de Smash no se pueden bajar desde la plataforma (su descarga necesita su API con "
-            "credenciales): pedile a la agencia el ZIP o un link directo al archivo"
-        )
+    sugerido = None
     async with cliente_http() as cliente:
         if clase == "wetransfer":
-            r = await _bajar_wetransfer(cliente, url)
+            r, sugerido = await _bajar_wetransfer(cliente, url)
+        elif clase == "smash":
+            r, sugerido = await _bajar_smash(cliente, url)
         else:
             r = await _pedir(cliente, "GET", url, tope=MAX_BYTES_LINK)
     if r.estado != 200:
         raise NoSePudoAbrir(f"el servidor contestó {r.estado}")
     datos = r.cuerpo
-    nombre = _nombre_del_archivo(r)
+    nombre = _nombre_del_archivo(r, sugerido=sugerido)
     if tipo_de_imagen(datos):
         return nombre, datos, "imagen"
     if datos[:5] == b"%PDF-":
