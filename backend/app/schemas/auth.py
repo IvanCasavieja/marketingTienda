@@ -1,23 +1,22 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
-import re
+
+
+# Cuántos caracteres puede tener una contraseña nueva. Ivan, 19/11/2026: la
+# plataforma es interna de Tienda Inglesa y pedir 12 caracteres con
+# mayúscula, número y símbolo era demasiado ("de 6 a 20 caracteres está
+# bárbara"). Solo se mira el largo.
+CLAVE_MINIMO = 6
+CLAVE_MAXIMO = 20
 
 
 def _validate_password_strength(v: str) -> str:
-    """Compartido entre los 3 schemas que piden una contraseña nueva
-    (registro, reset y change-password) — junta TODAS las reglas que
-    faltan en un solo mensaje en vez de cortar en la primera, para que el
-    usuario no tenga que ir a los tumbos probando de a un requisito."""
-    faltantes = []
-    if len(v) < 12:
-        faltantes.append("al menos 12 caracteres")
-    if not re.search(r"[A-Z]", v):
-        faltantes.append("una letra mayúscula")
-    if not re.search(r"[0-9]", v):
-        faltantes.append("un número")
-    if not re.search(r"[^a-zA-Z0-9]", v):
-        faltantes.append("un símbolo")
-    if faltantes:
-        raise ValueError("La contraseña debe tener " + ", ".join(faltantes) + ".")
+    """Compartido entre los schemas que piden una contraseña nueva (registro,
+    reset y change-password) y el alta desde el panel de usuarios: entre
+    CLAVE_MINIMO y CLAVE_MAXIMO caracteres, de cualquier tipo."""
+    if len(v) < CLAVE_MINIMO:
+        raise ValueError(f"La contraseña tiene que tener al menos {CLAVE_MINIMO} caracteres.")
+    if len(v) > CLAVE_MAXIMO:
+        raise ValueError(f"La contraseña puede tener hasta {CLAVE_MAXIMO} caracteres.")
     return v
 
 
