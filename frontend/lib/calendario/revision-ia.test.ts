@@ -5,8 +5,9 @@
  *     npm run test:calendario
  */
 import {
-  archivoDe, marcaDesdeObservacion, ordenarObservaciones, textoConArchivo, textoRevisados, tieneLugar, tituloRevisionIA,
-  type ObservacionIA,
+  VEREDICTO_IA, archivoDe, cambiosPorMarca, marcaDesdeObservacion, ordenarObservaciones, textoConArchivo, textoRevisados,
+  tieneLugar, tituloRevisionIA,
+  type CambioPedidoIA, type ObservacionIA, type RevisionIA,
 } from './revision-ia'
 
 let fallos = 0
@@ -70,6 +71,27 @@ igual('lo que miró además, en una línea', [
   textoRevisados([{ nombre: 'a.jpg', origen: 'zip', paginas: null }, { nombre: 'b.pdf', origen: 'zip', paginas: 3 }]),
   textoRevisados(['1', '2', '3', '4', '5', '6'].map(n => ({ nombre: `${n}.jpg`, origen: 'zip' as const, paginas: null }))),
 ], ['«a.jpg»', '«a.jpg» y «b.pdf» (3 páginas)', '«1.jpg», «2.jpg», «3.jpg», «4.jpg» y 2 más'])
+
+// Lo que dice la IA de cada marca de la ronda anterior (19/11/2026).
+const hecho: CambioPedidoIA = { marcaId: 'mk-1', numero: 1, veredicto: 'hecho', nota: 'El -40% ahora es más grande.' }
+const falta: CambioPedidoIA = { marcaId: 'mk-2', numero: 2, veredicto: 'falta', nota: 'Sigue diciendo «Valido», sin tilde.' }
+const lista = (cambiosPedidos?: unknown[]): RevisionIA =>
+  ({ estado: 'lista', observaciones: [], cambiosPedidos: cambiosPedidos as CambioPedidoIA[] | undefined })
+igual('lo de cada marca, por su id', [...cambiosPorMarca(lista([hecho, falta])).entries()],
+  [['mk-1', hecho], ['mk-2', falta]])
+igual('lo que dice, como se ve al lado de la marca', [VEREDICTO_IA.hecho, VEREDICTO_IA.falta, VEREDICTO_IA.dudoso],
+  ['IA: hecho', 'IA: falta', 'IA: dudoso'])
+ok('mientras la IA mira, nada', cambiosPorMarca({ estado: 'pendiente', observaciones: [], cambiosPedidos: [hecho] }).size === 0)
+ok('si no se pudo revisar, nada', cambiosPorMarca({ estado: 'nada', observaciones: [] }).size === 0)
+ok('sin revisión, nada', cambiosPorMarca(null).size === 0 && cambiosPorMarca(undefined).size === 0)
+ok('una revisión de antes (sin la lista), nada', cambiosPorMarca(lista()).size === 0)
+igual('lo que no tiene la forma esperada no se muestra, y una marca repetida vale la primera',
+  [...cambiosPorMarca(lista([
+    null, { marcaId: 'mk-1', numero: 1, veredicto: 'corregido', nota: '' }, { numero: 3, veredicto: 'hecho', nota: '' },
+    { marcaId: 'toString', numero: 4, veredicto: 'constructor', nota: '' }, falta,
+    { ...falta, veredicto: 'hecho' },
+  ])).entries()],
+  [['mk-2', falta]])
 
 if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
 console.log('\nrevision-ia: todo bien')

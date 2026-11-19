@@ -10,7 +10,8 @@ import {
   fechaYHora, type DetalleEntregas, type Marca, type TipoDecision, type Version,
 } from '@/lib/calendario/entregas'
 import {
-  marcaDesdeObservacion, textoConArchivo, tieneLugar, type ObservacionIA, type RevisionIA,
+  VEREDICTO_IA, cambiosPorMarca, marcaDesdeObservacion, textoConArchivo, tieneLugar,
+  type ObservacionIA, type RevisionIA, type VeredictoIA,
 } from '@/lib/calendario/revision-ia'
 import { ImagenConMarcas, Miniatura, type Pin } from './ImagenConMarcas'
 import { PanelRevisionIA } from './PanelRevisionIA'
@@ -24,6 +25,15 @@ type Nueva = { clave: string; imagenId: string; x: number; y: number; texto: str
 // los 10 minutos y no muestra nada).
 const CADA_MS = 5_000
 const MAX_VUELTAS = 36
+
+// Lo que dice la IA de cada marca de la ronda anterior (19/11/2026): verde si
+// se ve hecho, rojo suave si falta, gris si no se puede saber. Chico y con
+// buen contraste en claro y en oscuro.
+const COLOR_VEREDICTO: Record<VeredictoIA, string> = {
+  hecho: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300',
+  falta: 'bg-rose-50 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300',
+  dudoso: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+}
 
 // La notebook (lg de Tailwind): la imagen a la izquierda y todo lo demás a la
 // derecha. Ahí lo de la IA va arriba de la columna de la derecha, al lado de
@@ -70,6 +80,11 @@ function pinesDe(marcas: Marca[], imagenId: string): Pin[] {
  * hay un botón discreto arriba, "Ver lo que encontró la IA (3)", y recién al
  * tocarlo se muestra la lista. Cuándo se calcula no cambió (el servidor, al
  * entregar): acá solo cambió cuándo se muestra.
+ *
+ * Lo único de la IA que se ve sin tocar ese botón es, en «Lo que se pidió en
+ * la ronda N», si se ve hecho lo que pedía cada marca (19/11/2026, Ivan:
+ * "debería de hacerlo"): una etiqueta chica al lado de cada una, con la nota
+ * abajo. Es justo el control que hace quien aprueba.
  */
 export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -172,6 +187,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const sinTexto = nuevas.findIndex(n => !n.texto.trim())
   // Lo que se pidió en la ronda anterior y si la agencia dice que lo corrigió.
   const pedidoAntes = anterior?.faseId === version.faseId ? anterior.marcas : []
+  // Y lo que ve la IA de cada una (vacío si esta persona no ve la revisión:
+  // entonces no se la pide).
+  const iaDeCadaMarca = cambiosPorMarca(revisionIA)
   const respaldoDe = detalle.puedo.comoRespaldo ? detalle.resumen.aprobadorDeTurno : null
   // El botón que abre lo de la IA: qué dice según cómo viene la revisión.
   const hayIA = verIA && !!revisionIA && revisionIA.estado !== 'nada'
@@ -460,21 +478,37 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         {/* Lo que se pidió en la ronda anterior, para controlar que esté.
             Desde el 19/11/2026 la agencia ya no tilda qué corrigió: la lista
             va sin tilde, numerada como las marcas. Si una ronda vieja trae
-            tildes, se muestran. */}
+            tildes, se muestran. Al lado de cada marca, lo que ve la IA en
+            esta ronda («IA: hecho», «IA: falta», «IA: dudoso») y su nota
+            abajo, chiquita; la agencia no lo ve (el servidor no se lo da). */}
         {pedidoAntes.length > 0 && (
           <section className="rounded-xl border border-slate-300 p-3 dark:border-slate-700">
             <h4 className="mb-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">Lo que se pidió en la ronda {anterior?.ronda}</h4>
             <ul className="space-y-1">
               {pedidoAntes.map(m => {
                 const dice = version.corregidas.includes(m.id)
+                const ia = iaDeCadaMarca.get(m.id)
                 return (
                   <li key={m.id} className="flex items-start gap-2 text-sm">
                     <span className={`mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold ${dice ? 'bg-emerald-500 text-white' : 'bg-brand-600 text-white'}`}>
                       {dice ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : m.numero}
                     </span>
-                    <span className="min-w-0 text-slate-700 dark:text-slate-300">
-                      {m.texto}
-                      {dice && <span className="ml-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">dice que lo corrigió</span>}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-start justify-between gap-2">
+                        <span className="min-w-0 text-slate-700 dark:text-slate-300">
+                          {m.texto}
+                          {dice && <span className="ml-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">dice que lo corrigió</span>}
+                        </span>
+                        {ia && (
+                          <span
+                            title="Lo que ve la IA en esta ronda. Es una ayuda: se puede equivocar."
+                            className={`mt-0.5 shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-[11px] font-semibold ${COLOR_VEREDICTO[ia.veredicto]}`}
+                          >
+                            {VEREDICTO_IA[ia.veredicto]}
+                          </span>
+                        )}
+                      </span>
+                      {ia?.nota && <span className="mt-0.5 block text-xs text-slate-600 dark:text-slate-400">{ia.nota}</span>}
                     </span>
                   </li>
                 )
