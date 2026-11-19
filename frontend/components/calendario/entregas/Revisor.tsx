@@ -10,7 +10,7 @@ import {
   fechaYHora, type DetalleEntregas, type Marca, type TipoDecision, type Version,
 } from '@/lib/calendario/entregas'
 import {
-  marcaDesdeObservacion, tieneLugar, type ObservacionIA, type RevisionIA,
+  marcaDesdeObservacion, textoConArchivo, tieneLugar, type ObservacionIA, type RevisionIA,
 } from '@/lib/calendario/revision-ia'
 import { ImagenConMarcas, Miniatura, type Pin } from './ImagenConMarcas'
 import { PanelRevisionIA } from './PanelRevisionIA'
@@ -96,6 +96,8 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const [obsElegida, setObsElegida] = useState<string | null>(null)
   // Si la persona pidió ver la lista de la IA (cerrada hasta que la toque).
   const [mostrarIA, setMostrarIA] = useState(false)
+  // Las observaciones que se pasaron al comentario (ronda sin imágenes: no hay dónde marcar).
+  const [pasadas, setPasadas] = useState<string[]>([])
 
   useEffect(() => {
     if (!verIA) return
@@ -208,6 +210,14 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   /** "Hacer marca": una marca normal, del aprobador, con el texto de la IA
    *  (que puede corregir antes de mandar). Se manda con la decisión. */
   function convertir(o: ObservacionIA) {
+    if (version.imagenes.length === 0) {
+      // La ronda vino solo con el link (y la IA lo pudo bajar): no hay imagen
+      // donde marcar, así que va al comentario, que la agencia sí ve.
+      setComentario(prev => `${prev.trim() ? `${prev.trimEnd()}\n` : ''}- ${textoConArchivo(o)}`)
+      setPasadas(prev => (prev.includes(o.id) ? prev : [...prev, o.id]))
+      setObsElegida(null)
+      return
+    }
     if (!hayLugarParaOtraMarca()) return
     const m = marcaDesdeObservacion(o, version.imagenes, activa)
     const clave = nuevaClave()
@@ -305,6 +315,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
       imagenes={version.imagenes}
       elegida={obsElegida}
       convertidas={convertidas}
+      pasadas={pasadas}
       deshabilitado={!!enviando}
       onElegir={elegirObservacion}
       onConvertir={convertir}

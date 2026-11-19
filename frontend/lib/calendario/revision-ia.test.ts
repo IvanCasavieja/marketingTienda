@@ -5,7 +5,8 @@
  *     npm run test:calendario
  */
 import {
-  marcaDesdeObservacion, ordenarObservaciones, tieneLugar, tituloRevisionIA, type ObservacionIA,
+  archivoDe, marcaDesdeObservacion, ordenarObservaciones, textoConArchivo, textoRevisados, tieneLugar, tituloRevisionIA,
+  type ObservacionIA,
 } from './revision-ia'
 
 let fallos = 0
@@ -54,6 +55,21 @@ igual('sin lugar, va al medio de su imagen',
 igual('sin imagen, al medio de la que se está mirando',
   marcaDesdeObservacion(obs('a', { imagenId: null, x: null, y: null }), imagenes, 'im-2'),
   { imagenId: 'im-2', x: 0.5, y: 0.5, texto: 'texto a' })
+
+// Lo del ZIP y el link (19/11/2026).
+const delZip = obs('z', { imagenId: null, x: null, y: null, archivo: 'piezas/feed.jpg', origen: 'zip', pagina: null })
+const delPdf = obs('p', { imagenId: null, x: null, y: null, archivo: 'folleto.pdf', origen: 'link', pagina: 2 })
+igual('el archivo de lo que vino en el ZIP o el link', [archivoDe(delZip), archivoDe(delPdf), archivoDe(obs('a'))],
+  ['«piezas/feed.jpg»', '«folleto.pdf», página 2', null])
+igual('una observación de antes (sin archivo) no cambia', textoConArchivo(obs('a')), 'texto a')
+igual('la marca de un archivo del ZIP dice cuál es, al medio de la que se mira',
+  marcaDesdeObservacion(delPdf, imagenes, 'im-1'),
+  { imagenId: 'im-1', x: 0.5, y: 0.5, texto: 'En «folleto.pdf», página 2: texto p' })
+igual('lo que miró además, en una línea', [
+  textoRevisados([{ nombre: 'a.jpg', origen: 'zip', paginas: null }]),
+  textoRevisados([{ nombre: 'a.jpg', origen: 'zip', paginas: null }, { nombre: 'b.pdf', origen: 'zip', paginas: 3 }]),
+  textoRevisados(['1', '2', '3', '4', '5', '6'].map(n => ({ nombre: `${n}.jpg`, origen: 'zip' as const, paginas: null }))),
+], ['«a.jpg»', '«a.jpg» y «b.pdf» (3 páginas)', '«1.jpg», «2.jpg», «3.jpg», «4.jpg» y 2 más'])
 
 if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
 console.log('\nrevision-ia: todo bien')

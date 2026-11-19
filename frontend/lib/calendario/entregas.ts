@@ -141,7 +141,8 @@ export type DetalleEntregas = {
     /** A qué columnas del tablero la puede llevar. */
     mover?: Columna[]
   }
-  limites: { imagenes: number; bytesImagen: number; marcas: number }
+  /** `bytesZip`: el tope del ZIP de la entrega (19/11/2026; un servidor de antes no lo manda). */
+  limites: { imagenes: number; bytesImagen: number; marcas: number; bytesZip?: number }
   /** La conversación de la tarjeta, al costado como en Trello (17/11/2026). */
   comentarios?: ComentarioDeTarjeta[]
 }
