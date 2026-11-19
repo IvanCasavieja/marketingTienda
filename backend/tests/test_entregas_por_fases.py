@@ -382,6 +382,20 @@ def test_el_freno_de_espacio():
     assert entra(10_000 * mb, mb, 0)
 
 
+def test_el_zip_original_deja_lugar_para_las_imagenes():
+    """19/11/2026: el ZIP de una ronda (hasta 40 MB) se guarda solo si después
+    siguen libres ZIP_RESERVA_MB debajo del tope: unos pocos ZIP no pueden
+    dejar sin lugar a las imágenes, que son las que se miran y se marcan."""
+    from app.core.config import Settings
+
+    mb = 1024 * 1024
+    assert Settings().ZIP_RESERVA_MB == 50
+    assert entra(300 * mb, 40 * mb, 400, reserva_mb=50)          # 340 de 350: entra
+    assert not entra(320 * mb, 40 * mb, 400, reserva_mb=50)      # 360 de 350: no
+    assert entra(320 * mb, 200 * 1024, 400)                      # una imagen, en el mismo momento, sí
+    assert entra(10_000 * mb, 40 * mb, 0, reserva_mb=50)         # sin tope, no frena
+
+
 def test_el_mensaje_de_base_llena_dice_que_hacer():
     assert "avisale a quien administra Core Tienda" in MENSAJE_SIN_LUGAR
 

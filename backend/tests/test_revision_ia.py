@@ -583,15 +583,36 @@ def test_revisa_tambien_lo_del_zip_y_guarda_que_miro(ia_prendida):
     }
 
 
-def _pdf_de_dos_paginas() -> bytes:
+def _pdf_de_dos_paginas(paginas: int = 2) -> bytes:
     import pymupdf
 
     doc = pymupdf.open()
-    for i in range(2):
+    for i in range(paginas):
         doc.new_page().insert_text((72, 72), f"Página {i + 1}")
     datos = doc.tobytes()
     doc.close()
     return datos
+
+
+def test_lo_que_ya_paso_a_la_ronda_la_ia_no_lo_mira_dos_veces(ia_prendida):
+    """19/11/2026: al entregar, el servidor pasa a la ronda lo que el navegador
+    no pudo mostrar del ZIP (las páginas de un PDF). Eso la IA ya lo ve como
+    imagen de la ronda (con su id, para la marca): del ZIP mira solo lo que
+    falta, con el número de página de verdad."""
+    base = BaseFalsa(["ve-1"], imagenes=3)  # la subida y dos páginas que pasaron a la ronda
+    api = sim.ApiGrabada([_respuesta()])
+    datos = _zip({"a.jpg": _jpeg(800, 600), "folleto.pdf": _pdf_de_dos_paginas(4), "b.jpg": _jpeg(800, 600)})
+    assert asyncio.run(rv.revisar_version(
+        "ve-1", base=base, cliente=api.cliente(), zip_datos=datos, zip_nombre="piezas.zip",
+        zip_saltar=frozenset({0}), zip_paginas={1: 2},
+    )) == "lista"
+    etiquetas = [b["text"] for b in api.pedidos[0]["messages"][0]["content"] if b["type"] == "text"][:-1]
+    assert [e.split(":", 1)[1] for e in etiquetas] == [
+        "", "", "",  # las tres de la ronda
+        " página 3 de «folleto.pdf» (del ZIP)", " página 4 de «folleto.pdf» (del ZIP)", " «b.jpg» (del ZIP)",
+    ]
+    assert base.filas["ve-1"]["materiales"]["revisados"] == [
+        {"nombre": "folleto.pdf", "origen": "zip", "paginas": 2}, {"nombre": "b.jpg", "origen": "zip", "paginas": None}]
 
 
 def test_un_link_que_no_se_pudo_abrir_queda_anotado_y_la_ia_revisa_lo_subido(ia_prendida, monkeypatch):

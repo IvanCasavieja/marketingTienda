@@ -22,6 +22,12 @@ servidor se "resuelve" con una tabla (`_resolver` se pisa). Lo que se fija:
 - WeTransfer: la página, el POST a su API con el token y la hash, y la
   descarga del `direct_link`; Smash queda anotado ("pasalo como ZIP");
 - el tope de imágenes por entrega se respeta entre el ZIP y el link.
+
+Y al entregar (19/11/2026), lo que el navegador no pudo mostrar del ZIP pasa
+a imágenes de la ronda (`imagenes_para_la_ronda`): las páginas de los PDF y
+las imágenes que no subió, en el orden del ZIP, achicadas igual que en el
+navegador (1600 px y 320 la miniatura, JPEG 75, derechas y sobre blanco), y
+la IA no vuelve a mirar lo que ya quedó en la ronda.
 """
 from __future__ import annotations
 
@@ -579,3 +585,164 @@ def test_el_nombre_del_archivo_bajado():
     assert m._nombre_del_archivo(r("https://x.example/d", **{"content-disposition": "attachment; filename*=UTF-8''se%C3%B1al.pdf"})) == "señal.pdf"
     assert m._nombre_del_archivo(r("https://x.example/")) == "archivo del link"
     assert m._nombre_del_archivo(r("https://x.example/" + "a" * 300 + ".jpg")).endswith("a") and len(m._nombre_del_archivo(r("https://x.example/" + "a" * 300))) == 120
+
+
+# ---------------------------------------------------------------------------
+# Lo del ZIP que pasa a la ronda al entregar (19/11/2026)
+# ---------------------------------------------------------------------------
+# Ivan no entendía por qué un ZIP con solo el PDF del folleto no alcanzaba
+# para entregar: "no debería pasar". Ahora el servidor dibuja las páginas y
+# las guarda como imágenes de la ronda, para que quien aprueba las vea y las
+# marque como cualquier imagen.
+
+def _abrir(datos: bytes) -> Image.Image:
+    img = Image.open(io.BytesIO(datos))
+    img.load()
+    return img
+
+
+def _calidad_75() -> dict:
+    """Las tablas de cuantización de un JPEG guardado con calidad 75: si son
+    las mismas, se guardó con la calidad del navegador."""
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), "white").save(buf, "JPEG", quality=75)
+    return _abrir(buf.getvalue()).quantization
+
+
+def test_un_zip_con_solo_un_pdf_sale_como_imagenes_de_la_ronda():
+    s = m.imagenes_para_la_ronda(_zip({"folleto.pdf": _pdf(3), "leeme.txt": b"x"}), lugar=4)
+    assert [(i.nombre, i.pagina, i.indice) for i in s.imagenes] == [("folleto.pdf", 1, 0), ("folleto.pdf", 2, 0), ("folleto.pdf", 3, 0)]
+    # Achicadas como en el navegador: 1600 px de lado mayor (una A4 en vertical
+    # sale de 1131 x 1600), la miniatura de 320 y JPEG con calidad 75.
+    for im in s.imagenes:
+        grande, mini = _abrir(im.datos), _abrir(im.miniatura)
+        assert grande.format == mini.format == "JPEG" and grande.mode == "RGB"
+        assert grande.size == (1131, 1600) and max(mini.size) == 320
+        assert grande.quantization == _calidad_75()
+        assert len(im.datos) <= m.MAX_BYTES_IMAGEN and len(im.miniatura) <= m.MAX_BYTES_MINIATURA
+    # Entró entero: la IA no lo vuelve a mirar.
+    assert s.entradas == {0} and s.paginas == {} and s.no_se_pudo == []
+
+
+def test_un_pdf_largo_llena_los_lugares_que_quedan_y_la_ia_sigue_desde_ahi():
+    datos = _zip({"folleto.pdf": _pdf(6)})
+    s = m.imagenes_para_la_ronda(datos, lugar=3)
+    assert [i.pagina for i in s.imagenes] == [1, 2, 3]
+    # Entró en parte: no se salta entero, se dice hasta qué página.
+    assert s.entradas == set() and s.paginas == {0: 3}
+    # La IA mira las que siguen (4, 5 y 6), con su número de página de verdad.
+    j = m.Juntado()
+    assert m.extraer_del_zip(datos, j, lugar=12, saltar=frozenset(s.entradas), paginas_hechas=s.paginas) == 3
+    assert [(i.nombre, i.pagina) for i in j.imagenes] == [("folleto.pdf", 4), ("folleto.pdf", 5), ("folleto.pdf", 6)]
+    assert j.revisados == [{"nombre": "folleto.pdf", "origen": "zip", "paginas": 3}] and j.no_se_pudo_abrir == []
+    # Por juntar (lo que usa la revisión), igual.
+    j = _juntar(zip_datos=datos, zip_nombre="piezas.zip", zip_saltar=frozenset(s.entradas), zip_paginas=s.paginas)
+    assert [i.pagina for i in j.imagenes] == [4, 5, 6]
+
+
+def test_el_tope_de_paginas_por_pdf_de_la_ia_cuenta_las_que_ya_estan_en_la_ronda():
+    j = m.Juntado()
+    m.extraer_del_zip(_zip({"catalogo.pdf": _pdf(12)}), j, lugar=12, paginas_hechas={0: 4})
+    assert [i.pagina for i in j.imagenes] == [5, 6, 7, 8, 9, 10]
+    assert j.no_se_pudo_abrir == ["«catalogo.pdf»: se revisaron las primeras 10 páginas de 12 (tope de 10 páginas por PDF)"]
+    # Sin lugar para la IA, el PDF no "quedó afuera": sus primeras páginas están en la ronda.
+    j = m.Juntado()
+    m.extraer_del_zip(_zip({"a.jpg": _jpeg(50, 50), "catalogo.pdf": _pdf(5)}), j, lugar=1, paginas_hechas={1: 4})
+    assert j.no_se_pudo_abrir == ["«catalogo.pdf»: se revisaron solo las páginas que van como imágenes de la ronda "
+                                  "(tope de imágenes por entrega)"]
+
+
+def test_van_en_el_orden_del_zip_sin_las_que_subio_el_navegador():
+    transparente = io.BytesIO()
+    Image.new("RGBA", (300, 200), (0, 0, 0, 0)).save(transparente, "PNG")
+    datos = _zip({"a.jpg": _jpeg(), "b.png": transparente.getvalue(), "folleto.pdf": _pdf(2), "c.jpg": _jpeg()})
+    s = m.imagenes_para_la_ronda(datos, lugar=3, saltar=frozenset({0}))
+    assert [(i.nombre, i.pagina) for i in s.imagenes] == [("b.png", None), ("folleto.pdf", 1), ("folleto.pdf", 2)]
+    assert s.entradas == {1, 2}
+    # Lo transparente queda sobre blanco, como en el navegador (en JPEG
+    # saldría negro), y una imagen chica no se agranda.
+    b = _abrir(s.imagenes[0].datos)
+    assert b.size == (300, 200) and all(v > 245 for v in b.getpixel((150, 100)))
+    # Sin lugar, no se abre nada.
+    assert m.imagenes_para_la_ronda(datos, lugar=0).imagenes == []
+
+
+def test_una_imagen_del_zip_se_achica_y_queda_derecha():
+    grande = m.imagenes_para_la_ronda(_zip({"foto.jpg": _jpeg(3200, 3200, "blue")}), lugar=1).imagenes[0]
+    assert _abrir(grande.datos).size == (1600, 1600) and _abrir(grande.miniatura).size == (320, 320)
+    # Una foto del teléfono, guardada acostada con la orientación en el EXIF:
+    # el navegador la muestra derecha, y la de la ronda también tiene que estarlo.
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    buf = io.BytesIO()
+    Image.new("RGB", (800, 400), "green").save(buf, "JPEG", exif=exif.tobytes())
+    derecha = m.imagenes_para_la_ronda(_zip({"celular.jpg": buf.getvalue()}), lugar=1).imagenes[0]
+    assert _abrir(derecha.datos).size == (400, 800)
+
+
+def test_lo_que_no_se_puede_pasar_a_la_ronda_se_anota_y_sigue_con_lo_proximo():
+    gigante = io.BytesIO()
+    Image.new("1", (8000, 8000)).save(gigante, "PNG")
+    datos = _zip({"cerrado.pdf": _pdf(1, clave="secreta"), "roto.pdf": b"%PDF-1.4 nada", "trucho.jpg": b"texto",
+                  "gigante.png": gigante.getvalue(), "ok.jpg": _jpeg(100, 100)})
+    s = m.imagenes_para_la_ronda(datos, lugar=4)
+    assert [i.nombre for i in s.imagenes] == ["ok.jpg"]
+    assert s.no_se_pudo == [
+        "«cerrado.pdf»: el PDF está protegido con contraseña",
+        "«roto.pdf»: no se pudo leer el PDF (¿está dañado?)",
+        "«trucho.jpg»: no es una imagen JPG, PNG ni WebP (aunque el nombre lo diga)",
+        "«gigante.png»: es demasiado grande (8000 x 8000)",
+    ]
+
+
+def test_las_paginas_se_dibujan_de_a_una_y_se_suelta_la_memoria(monkeypatch):
+    """El servidor tiene 512 MB: PyMuPDF guarda lo que decodifica (hasta 256
+    MB) y se vacía después de cada página y al cerrar el PDF. Y un PDF por
+    vez en todo el proceso: PyMuPDF no se puede usar desde dos hilos a la vez."""
+    import threading
+
+    import pymupdf
+
+    vaciadas = []
+    original = pymupdf.TOOLS.store_shrink
+
+    def vaciar(n):
+        # Mientras se dibuja, el candado está tomado: otro hilo no puede entrar.
+        tomado = []
+
+        def probar():
+            pude = m._DE_A_UNO.acquire(blocking=False)
+            if pude:
+                m._DE_A_UNO.release()
+            tomado.append(not pude)
+
+        otro = threading.Thread(target=probar)
+        otro.start()
+        otro.join()
+        vaciadas.append((n, tomado[0]))
+        return original(n)
+
+    monkeypatch.setattr(pymupdf.TOOLS, "store_shrink", vaciar)
+    m.imagenes_para_la_ronda(_zip({"folleto.pdf": _pdf(3)}), lugar=4)
+    assert vaciadas == [(100, True)] * 4  # 3 páginas y el cierre
+    vaciadas.clear()
+    m.paginas_de_pdf(_pdf(2))  # lo de la IA, igual
+    assert vaciadas == [(100, True)] * 3
+
+
+def test_el_servidor_achica_igual_que_el_navegador():
+    """Las medidas y la calidad tienen que ser las de
+    frontend/lib/calendario/entregas.ts: si cambian allá, cambian acá."""
+    import pathlib
+    import re
+
+    from app.services import entregas as reglas
+
+    ts = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "lib" / "calendario" / "entregas.ts").read_text(encoding="utf-8")
+
+    def constante(nombre):
+        return float(re.search(rf"export const {nombre} = ([0-9.]+)", ts).group(1))
+
+    assert constante("LADO_MAYOR") == reglas.LADO_MAYOR
+    assert constante("LADO_MINIATURA") == reglas.LADO_MINIATURA
+    assert round(constante("CALIDAD") * 100) == reglas.CALIDAD_JPEG

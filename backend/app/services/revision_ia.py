@@ -63,7 +63,10 @@ que no se pudo abrir y lo que se ignoró queda guardado con la revisión
 (`materiales`) para mostrárselo al aprobador: nunca es un error. Como la IA
 cobra por imagen (~2.400 tokens ≈ US$0,01 con Opus 5.5 cada una), hay un tope
 de MAX_IMAGENES_IA imágenes por entrega entre las subidas, las del ZIP y las
-del link: lo que no entra se anota.
+del link: lo que no entra se anota. Lo del ZIP que al entregar ya pasó a ser
+imagen de la ronda (lo que subió el navegador y lo que dibuja el servidor si
+queda lugar, como las páginas de un PDF) la IA lo ve como imagen de la ronda,
+con su id para la marca, y no lo mira dos veces (`zip_saltar`, `zip_paginas`).
 
 **Si la IA se niega.** Para Opus 5.5 la guía de Anthropic sugiere pedir un
 modelo de respaldo del lado del servidor (`fallbacks`, en beta) por si un
@@ -786,13 +789,16 @@ def activa() -> bool:
 async def revisar_version(
     version_id: str, *, base: BaseDeRevisiones | None = None, cliente=None,
     zip_datos: bytes | None = None, zip_nombre: str | None = None, zip_saltar: frozenset[int] = frozenset(),
+    zip_paginas: dict[int, int] | None = None,
 ) -> str:
     """Revisa una versión con la IA y guarda lo que encontró. Corre en segundo
     plano, después de que la entrega ya quedó guardada y contestada.
 
-    `zip_datos`: el ZIP que subió la agencia con la entrega (19/11/2026), que
-    no se guarda en la base: se abre acá, en memoria, y se suelta (sin las
-    imágenes de `zip_saltar`, que ya vinieron subidas). El link al
+    `zip_datos`: el ZIP que subió la agencia con la entrega (19/11/2026). Se
+    abre acá, en memoria, y se suelta. Lo que ya es imagen de la ronda la IA
+    lo ve como tal y no lo mira dos veces: las entradas de `zip_saltar` (las
+    que subió el navegador o pasó el servidor a la ronda) y, de un PDF que
+    entró en parte, las primeras `zip_paginas[índice]` páginas. El link al
     original viene con la versión (Contexto.link) y se baja acá también.
 
     NUNCA levanta: pase lo que pase (la IA falla, la base falla, la imagen no
@@ -824,7 +830,7 @@ async def revisar_version(
                     from app.services import materiales
                     juntado = await materiales.juntar(
                         zip_datos=zip_datos, zip_nombre=zip_nombre, link=contexto.link,
-                        lugar=MAX_IMAGENES_IA - len(imagenes), zip_saltar=zip_saltar,
+                        lugar=MAX_IMAGENES_IA - len(imagenes), zip_saltar=zip_saltar, zip_paginas=zip_paginas,
                     )
                     imagenes += juntado.imagenes
                     materiales_json = juntado.resumen()

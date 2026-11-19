@@ -7,6 +7,7 @@ tablero de tarjetas estilo Trello (0070).
   POST   /calendario/tareas/{id}/versiones    — entregar una ronda (multipart: imágenes y/o un link, y un ZIP)
   POST   /calendario/tareas/{id}/mover        — arrastrar la tarjeta a otra columna del tablero
   POST   /calendario/versiones/{id}/decision  — aprobar o pedir cambios
+  GET    /calendario/versiones/{id}/zip       — el ZIP original de la ronda, tal cual lo mandó la agencia
   GET    /calendario/entregas/imagenes/{id}   — una imagen (?tam=mini|grande)
   GET    /calendario/entregas?mundo=&rev=     — el tablero del mundo (5 columnas) y el retrabajo
   GET    /calendario/entregas/archivadas      — más de Archivado ("Ver más")
@@ -49,13 +50,21 @@ Cada versión entregada se la revisa la IA en segundo plano, después de
 contestar la subida (app/services/revision_ia.py). Lo que encontró se pide
 aparte (app/api/routes/revision_ia.py) y lo ven solo los aprobadores y quien
 gestiona: ver `puede_ver_revision`. Desde el 19/11/2026 la IA mira también lo
-que venga en un ZIP (campo `zip` del multipart, no se guarda) y detrás del
-link (app/services/materiales.py).
+que venga en un ZIP (campo `zip` del multipart) y detrás del link
+(app/services/materiales.py).
+
+El ZIP, desde el 19/11/2026, se guarda tal cual como el original de la ronda
+(calendario_version_zips): se baja con las mismas reglas que las imágenes de
+la versión (`_exigir_ver_archivos`). Y lo que el navegador no pudo mostrar de
+adentro (las páginas de un PDF) el servidor lo pasa a imágenes de la ronda al
+entregar: ver `entregar`.
 """
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator
@@ -75,13 +84,13 @@ from app.core.rate_limit import limiter
 from app.models.calendario import CalendarioBarra, CalendarioRevision, CalendarioRevisionMundo, CalendarioTarea
 from app.models.entregas import (
     CalendarioComentario, CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioMarca, CalendarioVersion,
-    CalendarioVersionImagen,
+    CalendarioVersionImagen, CalendarioVersionZip,
 )
 from app.models.revision_ia import CalendarioRevisionIA
 from app.models.user import User
 from app.services import entregas as reglas
 from app.services import materiales, revision_ia, tipos_de_tarea
-from app.services.espacio import exigir_lugar
+from app.services.espacio import exigir_lugar, hay_lugar
 from app.services.entregas import (
     MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, MAX_IMAGENES, MAX_MARCAS, NoPuedeDecidir, FaseExistente,
 )
@@ -463,12 +472,22 @@ async def ver_entregas(
     imagenes: dict[str, list[CalendarioVersionImagen]] = {}
     decisiones: dict[str, list[CalendarioDecision]] = {}
     marcas: dict[str, list[CalendarioMarca]] = {}
+    zips: dict[str, dict] = {}
     if ids_v:
         for im in (await db.execute(
             select(CalendarioVersionImagen).where(CalendarioVersionImagen.version_id.in_(ids_v))
             .order_by(CalendarioVersionImagen.orden)
         )).scalars():
             imagenes.setdefault(im.version_id, []).append(im)
+        # El ZIP original de cada ronda (19/11/2026): nombre, peso y si se
+        # guardó, sin traer los bytes (eso es al bajarlo, ver `bajar_zip`).
+        for vid, nombre, tamano, fecha, guardado in (await db.execute(
+            select(CalendarioVersionZip.version_id, CalendarioVersionZip.nombre, CalendarioVersionZip.tamano,
+                   CalendarioVersionZip.created_at, CalendarioVersionZip.datos.isnot(None))
+            .where(CalendarioVersionZip.version_id.in_(ids_v))
+        )).all():
+            zips[vid] = {"nombre": nombre, "tamano": tamano, "guardado": bool(guardado),
+                         "fecha": fecha.isoformat() if fecha else None}
         for d in (await db.execute(
             select(CalendarioDecision).where(CalendarioDecision.version_id.in_(ids_v))
             .order_by(CalendarioDecision.id)
@@ -519,6 +538,9 @@ async def ver_entregas(
                 {"id": im.id, "orden": im.orden, "purgada": im.purgada_at is not None}
                 for im in imagenes.get(v.id, [])
             ],
+            # El ZIP que vino con la ronda, si vino: {nombre, tamano, guardado,
+            # fecha}. `guardado` en false: la base estaba llena y no se guardó.
+            "zip": zips.get(v.id),
             "decisiones": [decision_json(d) for d in decisiones.get(v.id, [])],
             "marcas": [
                 {
@@ -669,6 +691,39 @@ async def comentar(
     return {"id": comentario.id, "comentario": _comentario_json(comentario, current_user, nombres), "avisados": avisados}
 
 
+def _exigir_ver_archivos(
+    usuario: User, tarea: CalendarioTarea, barra: CalendarioBarra, entrega: CalendarioEntrega | None, *,
+    no_existe: str, no_podes: str,
+) -> None:
+    """Quién ve los archivos de una versión (sus imágenes y su ZIP original):
+    lo mismo que la tarea (`_tarea_y_barra`). Una cuenta externa, solo los de
+    sus tarjetas; nadie, los de una acción fuera de su alcance que no sea una
+    tarjeta suya. Lo demás, el mismo 404 (`no_existe`) que algo que no
+    existe; sin el calendario del mundo, 403 (`no_podes`)."""
+    propia = entrega is not None and reglas.es_tarjeta_propia(usuario, tarea, entrega)
+    if externos.es_externo(usuario) and not propia:
+        raise HTTPException(status_code=404, detail=no_existe)
+    if not propia and not alcance.toca(barra.desde, barra.hasta, alcance.ventana_de(usuario)):
+        raise HTTPException(status_code=404, detail=no_existe)
+    exigir_mundo(usuario, barra.mundo)
+    if not _puede_ver(usuario, barra.mundo, tarea):
+        raise HTTPException(status_code=403, detail=no_podes)
+
+
+def _de_la_version(columnas: tuple, tabla, *, por, valor):
+    """La consulta de un archivo de una versión con su tarea, su acción y su
+    entrega (para `_exigir_ver_archivos`), en una sola ida a la base."""
+    return (
+        select(*columnas, CalendarioTarea, CalendarioBarra, CalendarioEntrega)
+        .select_from(tabla)
+        .join(CalendarioVersion, CalendarioVersion.id == tabla.version_id)
+        .join(CalendarioTarea, CalendarioTarea.id == CalendarioVersion.tarea_id)
+        .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
+        .join(CalendarioEntrega, CalendarioEntrega.tarea_id == CalendarioTarea.id, isouter=True)
+        .where(por == valor)
+    )
+
+
 @router.get("/entregas/imagenes/{imagen_id}")
 async def ver_imagen(
     imagen_id: str,
@@ -679,29 +734,15 @@ async def ver_imagen(
     """Una imagen de una versión. Viaja con la sesión (el front la pide por
     axios y arma una URL local), no con un link público: una pieza sin
     lanzar no puede quedar abierta a quien tenga el link."""
-    fila = (await db.execute(
-        select(CalendarioVersionImagen.tipo_mime, CalendarioVersionImagen.tipo_mime_miniatura,
-               CalendarioTarea, CalendarioBarra, CalendarioEntrega)
-        .join(CalendarioVersion, CalendarioVersion.id == CalendarioVersionImagen.version_id)
-        .join(CalendarioTarea, CalendarioTarea.id == CalendarioVersion.tarea_id)
-        .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
-        .join(CalendarioEntrega, CalendarioEntrega.tarea_id == CalendarioTarea.id, isouter=True)
-        .where(CalendarioVersionImagen.id == imagen_id)
-    )).first()
+    fila = (await db.execute(_de_la_version(
+        (CalendarioVersionImagen.tipo_mime, CalendarioVersionImagen.tipo_mime_miniatura),
+        CalendarioVersionImagen, por=CalendarioVersionImagen.id, valor=imagen_id,
+    ))).first()
     if fila is None:
         raise HTTPException(status_code=404, detail="Esa imagen ya no existe")
     tipo, tipo_mini, tarea, barra, entrega = fila
-    # Lo mismo que la tarea (`_tarea_y_barra`): una cuenta externa, solo las
-    # de sus tarjetas; nadie, las de una acción fuera de su alcance que no
-    # sea una tarjeta suya. Lo demás, el mismo 404 que una que no existe.
-    propia = entrega is not None and reglas.es_tarjeta_propia(current_user, tarea, entrega)
-    if externos.es_externo(current_user) and not propia:
-        raise HTTPException(status_code=404, detail="Esa imagen ya no existe")
-    if not propia and not alcance.toca(barra.desde, barra.hasta, alcance.ventana_de(current_user)):
-        raise HTTPException(status_code=404, detail="Esa imagen ya no existe")
-    exigir_mundo(current_user, barra.mundo)
-    if not _puede_ver(current_user, barra.mundo, tarea):
-        raise HTTPException(status_code=403, detail="No podés ver esta imagen")
+    _exigir_ver_archivos(current_user, tarea, barra, entrega,
+                         no_existe="Esa imagen ya no existe", no_podes="No podés ver esta imagen")
     columna = CalendarioVersionImagen.miniatura if tam == "mini" else CalendarioVersionImagen.datos
     datos = (await db.execute(select(columna).where(CalendarioVersionImagen.id == imagen_id))).scalar_one_or_none()
     if datos is None:
@@ -719,6 +760,54 @@ async def ver_imagen(
             # la guarda y no la vuelve a pedir.
             "Cache-Control": "private, max-age=31536000, immutable",
             # Ya viene comprimida: que el GZip de la app no la vuelva a comprimir.
+            "Content-Encoding": "identity",
+        },
+    )
+
+
+def _adjunto(nombre: str) -> str:
+    """El Content-Disposition para bajar un archivo con su nombre, también
+    con tildes y ñ (filename* va en UTF-8; filename, para los viejos)."""
+    plano = "".join(c if 32 <= ord(c) < 127 and c not in '"\\' else "_" for c in nombre) or "archivo.zip"
+    return f"attachment; filename=\"{plano}\"; filename*=UTF-8''{quote(nombre, safe='')}"
+
+
+@router.get("/versiones/{version_id}/zip")
+async def bajar_zip(
+    version_id: str,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """El ZIP original de una ronda, tal cual lo mandó la agencia (19/11/2026,
+    Ivan: "cuando lo subís deberías de subir la carpeta comprimida"). Lo bajan
+    el equipo y la agencia con las mismas reglas que las imágenes de esa
+    versión (`_exigir_ver_archivos`), y viaja con la sesión, como ellas: una
+    pieza sin lanzar no queda abierta a quien tenga un link."""
+    fila = (await db.execute(_de_la_version(
+        (CalendarioVersionZip.nombre, CalendarioVersionZip.datos.isnot(None)),
+        CalendarioVersionZip, por=CalendarioVersionZip.version_id, valor=version_id,
+    ))).first()
+    if fila is None:
+        raise HTTPException(status_code=404, detail="Esa ronda no tiene un ZIP")
+    nombre, guardado, tarea, barra, entrega = fila
+    _exigir_ver_archivos(current_user, tarea, barra, entrega,
+                         no_existe="Esa ronda no tiene un ZIP", no_podes="No podés ver esta ronda")
+    if not guardado:
+        raise HTTPException(
+            status_code=404,
+            detail="El ZIP de esta ronda no se guardó porque la base estaba llena: pedile el link a quien la hace.",
+        )
+    datos = (await db.execute(
+        select(CalendarioVersionZip.datos).where(CalendarioVersionZip.version_id == version_id)
+    )).scalar_one()
+    return Response(
+        content=datos,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": _adjunto(nombre),
+            # El ZIP de una ronda no cambia nunca (cada ronda es nueva).
+            "Cache-Control": "private, max-age=31536000, immutable",
+            # Ya viene comprimido: que el GZip de la app no lo vuelva a comprimir.
             "Content-Encoding": "identity",
         },
     )
@@ -762,13 +851,22 @@ async def entregar(
     entera, o no queda nada.
 
     Desde el 19/11/2026 puede venir además un ZIP (`zip`, hasta 40 MB) con
-    las piezas adentro: no se guarda (la base es chica), se mira acá que sea
-    un ZIP sano y se le pasa a la IA en segundo plano, que lo abre en memoria
-    (app/services/materiales.py). Por eso el ZIP solo no alcanza: el
-    aprobador tiene que ver la pieza, así que hace falta igual una imagen o
-    el link. Las imágenes de adentro las saca el navegador y las sube como
-    imágenes de la ronda: `zipYaSubidas` dice cuáles (su lugar en el índice
-    del ZIP), para que la IA no las mire dos veces."""
+    las piezas adentro. Se mira acá que sea un ZIP sano y:
+
+    - Se guarda tal cual, como el original de la ronda (calendario_version_
+      zips), en la misma transacción. Si no hay lugar (espacio.py, con la
+      reserva ZIP_RESERVA_MB para las imágenes), la entrega se hace igual sin
+      guardarlo y queda anotado (la fila sin los bytes): la ficha lo dice.
+      Nunca se borra nada para hacerle lugar.
+    - Las imágenes de adentro las saca el navegador y las sube como imágenes
+      de la ronda. `zipYaSubidas` dice cuáles (su lugar en el índice del
+      ZIP), junto con las que la persona sacó de la ronda a propósito: esas
+      no vuelven. Si quedan lugares de imagen libres, el servidor los llena
+      con lo demás del ZIP, en su orden: imágenes que el navegador no pudo
+      abrir y páginas de los PDF (materiales.imagenes_para_la_ronda). Así un
+      ZIP solo alcanza para entregar si de él sale al menos una imagen.
+    - La IA lo revisa en segundo plano, sin mirar dos veces lo que ya es
+      imagen de la ronda."""
     imagenes, miniaturas = imagenes or [], miniaturas or []
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user, bloquear=True)
     entrega = await _entrega_bloqueada(db, tarea_id)
@@ -823,13 +921,8 @@ async def entregar(
                     status_code=422,
                     detail="El ZIP no trae nada para revisar: adentro tiene que haber imágenes (JPG, PNG, WebP) o PDF",
                 )
-    if not imagenes and not (link or "").strip():
-        raise HTTPException(
-            status_code=422,
-            detail="Subí al menos una imagen o pegá el link al original" + (
-                ": lo de adentro del ZIP no se guarda, y quien aprueba tiene que poder ver la pieza" if zip_datos else ""
-            ),
-        )
+    if not imagenes and not (link or "").strip() and zip_datos is None:
+        raise HTTPException(status_code=422, detail="Subí al menos una imagen o pegá el link al original")
     if len(imagenes) > MAX_IMAGENES:
         raise HTTPException(status_code=422, detail=f"Son demasiadas imágenes: hasta {MAX_IMAGENES} por ronda")
     if len(miniaturas) != len(imagenes):
@@ -851,12 +944,41 @@ async def entregar(
         datos, tipo = await _leer(grande, MAX_BYTES_IMAGEN, cual)
         datos_mini, tipo_mini = await _leer(mini, MAX_BYTES_MINIATURA, f"La miniatura de {cual.lower()}")
         leidas.append((datos, tipo, datos_mini, tipo_mini))
+
+    # Lo del ZIP que el navegador no pudo mostrar, a los lugares de imagen que
+    # quedan (19/11/2026: un ZIP con solo el PDF del folleto se rechazaba, y
+    # Ivan no entendía por qué; no tenía que pasar). Pesado (descomprimir,
+    # dibujar páginas): en un hilo, de a una cosa.
+    del_zip = materiales.SacadoDelZip()
+    if zip_datos is not None and len(leidas) < MAX_IMAGENES:
+        try:
+            del_zip = await asyncio.to_thread(
+                materiales.imagenes_para_la_ronda, zip_datos, lugar=MAX_IMAGENES - len(leidas), saltar=zip_saltar,
+            )
+        except Exception as exc:  # el ZIP ya se miró arriba: esto no debería pasar
+            logger.warning("entregas: no se pudo sacar nada del ZIP «%s» — %s: %s", zip_nombre, type(exc).__name__, exc)
+        leidas += [(im.datos, "image/jpeg", im.miniatura, "image/jpeg") for im in del_zip.imagenes]
+    if not leidas and not link_ok:
+        # Solo vino un ZIP, y de adentro no salió nada para ver.
+        porque = "; ".join(del_zip.no_se_pudo[:3])
+        raise HTTPException(
+            status_code=422,
+            detail="Del ZIP no salió ninguna imagen para mostrar" + (f" ({porque})" if porque else "")
+            + ": subí una imagen o pegá el link al original, así quien aprueba ve la pieza",
+        )
     # El freno general: con la base casi llena no se guarda ninguna imagen
     # (507, con el mensaje para la persona, y un error en el log). Solo si hay
     # imágenes: una entrega con un link solo no ocupa lugar, y con la base
     # llena recibía un 507 que decía «La imagen no se guardó» (16/11/2026).
+    bytes_imagenes = sum(len(g) + len(m) for g, _, m, _ in leidas)
     if leidas:
-        await exigir_lugar(db, sum(len(g) + len(m) for g, _, m, _ in leidas))
+        await exigir_lugar(db, bytes_imagenes)
+    # El ZIP original, solo si entra dejando la reserva para las imágenes. Si
+    # no, la entrega sigue igual sin él (no es un 507): queda la fila sin los
+    # bytes, para que la ficha diga que no se guardó. Nada se borra.
+    zip_guardado = zip_datos is not None and await hay_lugar(
+        db, bytes_imagenes + len(zip_datos), reserva_mb=settings.ZIP_RESERVA_MB,
+    )
 
     ronda = (ultima.ronda if ultima else 0) + 1
     # Solo cuentan las marcas de ESTA tarea que estaban sin corregir: lo
@@ -879,6 +1001,11 @@ async def entregar(
         db.add(CalendarioVersionImagen(
             id=reglas.nuevo_id("im"), version_id=versionId, orden=orden, tipo_mime=tipo, datos=datos,
             tipo_mime_miniatura=tipo_mini, miniatura=datos_mini, tamano=len(datos),
+        ))
+    if zip_datos is not None:
+        db.add(CalendarioVersionZip(
+            version_id=versionId, nombre=zip_nombre, tamano=len(zip_datos),
+            datos=zip_datos if zip_guardado else None,
         ))
     for m in marcas:
         m.corregida = True
@@ -913,19 +1040,32 @@ async def entregar(
     # La IA la revisa en segundo plano: arranca después de contestar (y ya
     # con la versión guardada, por el commit de arriba), abre su propia
     # sesión y no levanta nunca. Si falla, la entrega queda igual. El ZIP va
-    # en memoria (no está en la base) y el link lo baja ella (19/11/2026):
-    # la entrega no espera la descarga.
-    if revision_ia.activa() and (leidas or zip_datos is not None or link_ok):
+    # en memoria y el link lo baja ella (19/11/2026): la entrega no espera la
+    # descarga. Lo que ya es imagen de la ronda no lo mira dos veces; y si del
+    # ZIP no le queda ninguna imagen ni PDF por mirar (todo pasó a la ronda),
+    # no se le pasa, como hacía antes la pantalla: así no queda ocupando
+    # memoria mientras espera su turno.
+    saltar_ia = zip_saltar | frozenset(del_zip.entradas)
+    queda_para_la_ia = inventario is not None and any(
+        e.clase != "otro" and e.indice not in saltar_ia for e in inventario
+    )
+    if revision_ia.activa() and (leidas or queda_para_la_ia or link_ok):
         background_tasks.add_task(
-            revision_ia.revisar_version, versionId, zip_datos=zip_datos, zip_nombre=zip_nombre, zip_saltar=zip_saltar,
+            revision_ia.revisar_version, versionId,
+            zip_datos=zip_datos if queda_para_la_ia else None, zip_nombre=zip_nombre if queda_para_la_ia else None,
+            zip_saltar=saltar_ia, zip_paginas=dict(del_zip.paginas),
         )
     return {
         "id": versionId, "rev": _rev_para(current_user, rev), "ronda": ronda, "entrega": resumen, "avisados": avisados,
-        # Qué se le va a mirar del ZIP (y qué no es imagen ni PDF), para que
-        # quien entrega lo vea en el acto.
+        # El ZIP: si se guardó (si no, la pantalla avisa), cuántas imágenes de
+        # la ronda salieron de él en el servidor, qué más se le va a mirar y
+        # qué no es imagen ni PDF, para que quien entrega lo vea en el acto.
         "zip": None if inventario is None else {
             "nombre": zip_nombre,
-            "archivos": [e.nombre for e in inventario if e.clase != "otro" and e.indice not in zip_saltar],
+            "tamano": len(zip_datos),
+            "guardado": zip_guardado,
+            "sumadas": len(del_zip.imagenes),
+            "archivos": [e.nombre for e in inventario if e.clase != "otro" and e.indice not in saltar_ia],
             "ignorados": [e.nombre for e in inventario if e.clase == "otro"],
         },
     }

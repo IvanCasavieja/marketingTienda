@@ -19,6 +19,8 @@ Cómo se arma:
   cambios, ronda 2...
 - `calendario_version_imagenes`: hasta 4 por versión, en la base (como los
   archivos de cenefas, ver cenefa_job.py), con su miniatura.
+- `calendario_version_zips` (0081): el ZIP que vino con la ronda, tal cual lo
+  mandó la agencia. Es el original de esa ronda (ver CalendarioVersionZip).
 - `calendario_marcas`: un pin numerado sobre un punto de una imagen, con su
   texto. Es un ítem que la agencia tilda cuando lo corrigió.
 - `calendario_decisiones`: lo que decidió cada aprobador sobre una versión.
@@ -37,6 +39,10 @@ y no se va a pagar más (15/11/2026). Por eso:
   `purgada_at`. Más adelante las imágenes van a vivir en SharePoint.
 - Antes de guardar, el freno general (app/services/espacio.py): si la base
   pasa de BASE_TOPE_MB (400), la subida se rechaza.
+- El ZIP original (19/11/2026) pesa mucho más que las imágenes (hasta 40 MB):
+  se guarda solo si después siguen libres ZIP_RESERVA_MB debajo del tope,
+  para que nunca le quite el lugar a las imágenes. Si no entra, la entrega se
+  hace igual sin el ZIP y la ficha lo dice. No se borra nada para hacer lugar.
 
 Con un uso razonable de Tienda Inglesa —25 tareas con entregas por mes, 2
 fases, 1,5 rondas por fase y 1,5 imágenes por versión— son unas 110 imágenes
@@ -205,6 +211,42 @@ class CalendarioVersionImagen(Base):
     # Lo que pesa la grande, para medir cuánto ocupan las entregas.
     tamano: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     purgada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CalendarioVersionZip(Base):
+    """El ZIP que entregó la agencia con una ronda, tal cual lo mandó (0081).
+
+    Pedido de Ivan (19/11/2026): "no es más fácil guardar el zip en vez de
+    guardar las imágenes? (…) cuando lo subís deberías de subir la carpeta
+    comprimida, no los archivos sueltos, porque pesan más". Es el original de
+    esa ronda: se baja desde la ficha («Bajar el ZIP»), con las mismas reglas
+    de quién ve qué que las imágenes de la versión, y es lo que más adelante
+    se va a subir a SharePoint (el histórico de piezas, por año). Las
+    imágenes de la ronda (1600 px) se siguen guardando aparte: son las que
+    se miran y se marcan.
+
+    Una fila por versión (la clave es la versión), con lo que hace falta para
+    encontrarlo y subirlo: el nombre del archivo, lo que pesa y la fecha. Los
+    bytes van `deferred`: listar no los trae.
+
+    Si al entregar no había lugar (app/services/espacio.py, ZIP_RESERVA_MB),
+    la entrega se hace igual y la fila queda SIN los bytes (`datos` en NULL):
+    así la ficha dice que el ZIP no se guardó y por qué. Nunca se borra nada
+    para hacerle lugar. Como el resto de la versión, se va solo si alguien
+    borra la tarea (o la acción) entera."""
+
+    __tablename__ = "calendario_version_zips"
+
+    version_id: Mapped[str] = mapped_column(
+        ForeignKey("calendario_versiones.id", ondelete="CASCADE"), primary_key=True
+    )
+    # El nombre con el que lo subió la agencia ("piezas navidad.zip"), sin la carpeta.
+    nombre: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Lo que pesa, en bytes (aunque no se haya guardado: es lo que se mandó).
+    tamano: Mapped[int] = mapped_column(Integer, nullable=False)
+    # El ZIP entero. NULL si no se guardó porque la base estaba llena.
+    datos: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

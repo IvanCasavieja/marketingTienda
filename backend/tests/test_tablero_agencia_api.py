@@ -11,6 +11,7 @@ Necesita una base Postgres en la última migración (TEST_DATABASE_URL); sin
 ella se saltea. Todo corre adentro de una transacción que se deshace al final.
 """
 import asyncio
+import io
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -34,7 +35,9 @@ if URL:
     from app.models.calendario import (
         CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPlantilla, CalendarioTarea,
     )
-    from app.models.entregas import CalendarioDecision, CalendarioEntrega, CalendarioFase
+    from app.models.entregas import (
+        CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioVersionImagen, CalendarioVersionZip,
+    )
     from app.models.notificacion import Notificacion
     from app.models.revision_ia import CalendarioRevisionIA
     from app.models.role import ALL_PERMISSIONS
@@ -1350,9 +1353,9 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
     """Ivan (19/11/2026): "¿Qué pasaría si en vez de una imagen me hubieran
     pasado una carpeta o un link? (…) vos directamente como plataforma ya
     descargués todas las cosas". El ZIP viaja en el campo `zip` del
-    multipart, no se guarda, y se le pasa en memoria a la revisión de la IA,
-    que corre después de contestar. Acá la revisión es un espía: lo de abrir
-    el ZIP está en test_materiales.py."""
+    multipart y se le pasa en memoria a la revisión de la IA, que corre
+    después de contestar (además se guarda tal cual: ver las pruebas de abajo).
+    Acá la revisión es un espía: lo de abrir el ZIP está en test_materiales.py."""
     from app.services import revision_ia
 
     llamadas = []
@@ -1371,11 +1374,17 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
         zip_bueno = _zip_de_prueba({"Cenefas/cenefa 1.jpg": JPEG, "folleto.pdf": b"%PDF-1.4 x", "notas.txt": b"hola"})
         imagen = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg"))]
 
-        # El ZIP solo no alcanza: quien aprueba tiene que ver la pieza (las
-        # imágenes de adentro las saca el navegador y van como imágenes).
+        # Un ZIP solo alcanza si de adentro sale al menos una imagen para que
+        # quien aprueba vea la pieza. Acá nada se puede abrir (la «cenefa» y el
+        # «folleto» son de mentira): se rechaza, diciendo por qué.
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z0-{d.sufijo}"},
                           files=[("zip", ("piezas.zip", zip_bueno, "application/zip"))])
-        assert r.status_code == 422 and "ver la pieza" in r.json()["detail"], r.text
+        assert r.status_code == 422, r.text
+        assert r.json()["detail"] == (
+            "Del ZIP no salió ninguna imagen para mostrar («Cenefas/cenefa 1.jpg»: no se pudo leer la imagen; "
+            "«folleto.pdf»: no se pudo leer el PDF (¿está dañado?)): subí una imagen o pegá el link al original, "
+            "así quien aprueba ve la pieza"
+        )
         # Un ZIP que no es un ZIP, o sin nada para revisar adentro.
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z0-{d.sufijo}"},
                           files=imagen + [("zip", ("piezas.zip", b"esto no es un zip", "application/zip"))])
@@ -1392,17 +1401,18 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z1-{d.sufijo}"},
                           files=imagen + [("zip", ("piezas.zip", zip_bueno, "application/zip"))])
         assert r.status_code == 201, r.text
-        assert r.json()["zip"] == {"nombre": "piezas.zip", "archivos": ["Cenefas/cenefa 1.jpg", "folleto.pdf"],
-                                   "ignorados": ["notas.txt"]}
+        assert r.json()["zip"] == {"nombre": "piezas.zip", "tamano": len(zip_bueno), "guardado": True, "sumadas": 0,
+                                   "archivos": ["Cenefas/cenefa 1.jpg", "folleto.pdf"], "ignorados": ["notas.txt"]}
         assert llamadas == [(f"ve-z1-{d.sufijo}", {"zip_datos": zip_bueno, "zip_nombre": "piezas.zip",
-                                                    "zip_saltar": frozenset()})]
+                                                    "zip_saltar": frozenset(), "zip_paginas": {}})]
         det = await _detalle(lider, tarea_id)
         assert det["resumen"]["momento"] == "revision" and len(det["fases"][0]["versiones"][0]["imagenes"]) == 1
         assert (await _decidir(lider, f"ve-z1-{d.sufijo}", "cambios", "Volvé a mandarla")).status_code == 200
 
         # Un link solo también se manda a revisar (antes no: la IA lo baja ella).
         assert (await _entregar_link(a1, tarea_id, f"ve-z2-{d.sufijo}")).status_code == 201
-        assert llamadas[-1] == (f"ve-z2-{d.sufijo}", {"zip_datos": None, "zip_nombre": None, "zip_saltar": frozenset()})
+        assert llamadas[-1] == (f"ve-z2-{d.sufijo}", {"zip_datos": None, "zip_nombre": None, "zip_saltar": frozenset(),
+                                                      "zip_paginas": {}})
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z2-{d.sufijo}"},
                           files=imagen)
         assert r.status_code == 201 and r.json()["yaExistia"] and r.json().get("zip") is None
@@ -1445,7 +1455,248 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
         assert r.status_code == 201, r.text
         assert r.json()["zip"]["archivos"] == ["folleto.pdf"]
         assert llamadas[-1] == (f"ve-z3-{d.sufijo}", {"zip_datos": zip_bueno, "zip_nombre": "piezas.zip",
-                                                    "zip_saltar": frozenset({0})})
+                                                    "zip_saltar": frozenset({0}), "zip_paginas": {}})
+    correr(prueba)
+
+
+# ---------------------------------------------------------------------------
+# El ZIP original de la ronda y las páginas de los PDF (19/11/2026)
+# ---------------------------------------------------------------------------
+
+def _jpeg_de_verdad(ancho=400, alto=300, color="white") -> bytes:
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (ancho, alto), color).save(buf, "JPEG", quality=75)
+    return buf.getvalue()
+
+
+def _pdf_de_prueba(paginas: int) -> bytes:
+    import pymupdf
+
+    doc = pymupdf.open()
+    for i in range(paginas):
+        doc.new_page().insert_text((72, 72), f"Folleto, página {i + 1}")
+    datos = doc.tobytes()
+    doc.close()
+    return datos
+
+
+def _espiar_la_ia(monkeypatch) -> list:
+    from app.services import revision_ia
+
+    llamadas = []
+
+    async def espia(version_id, **kw):
+        llamadas.append((version_id, kw))
+
+    monkeypatch.setattr(revision_ia, "activa", lambda: True)
+    monkeypatch.setattr(revision_ia, "revisar_version", espia)
+    return llamadas
+
+
+async def _entregar(cliente, tarea_id, version_id, *, imagenes=0, zip_=None, ya_subidas=None, link=None):
+    data = {"versionId": version_id}
+    if ya_subidas is not None:
+        data["zipYaSubidas"] = ya_subidas
+    if link:
+        data["link"] = link
+    files = []
+    for i in range(imagenes):
+        files += [("imagenes", (f"i{i}.jpg", _jpeg_de_verdad(), "image/jpeg")),
+                  ("miniaturas", (f"m{i}.jpg", _jpeg_de_verdad(64, 48), "image/jpeg"))]
+    if zip_ is not None:
+        files.append(("zip", (zip_[0], zip_[1], "application/zip")))
+    return await cliente.post(f"/calendario/tareas/{tarea_id}/versiones", data=data, files=files or None)
+
+
+def test_el_zip_se_guarda_tal_cual_y_lo_bajan_el_equipo_y_su_agencia(monkeypatch):
+    """Ivan (19/11/2026): "no es más fácil guardar el zip en vez de guardar las
+    imágenes? (…) cuando lo subís deberías de subir la carpeta comprimida, no
+    los archivos sueltos". El ZIP queda guardado como el original de la ronda
+    y se baja con las mismas reglas que las imágenes de esa versión: el
+    equipo y la agencia de la tarjeta sí; otra agencia, o alguien a quien la
+    acción le queda fuera de su alcance, no (el mismo 404 que lo que no existe)."""
+    _espiar_la_ia(monkeypatch)
+
+    async def prueba(d):
+        lider, a1, a2, b1 = (Cliente(d.http, u) for u in (d.lider, d.a1, d.a2, d.b1))
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        zip_ = _zip_de_prueba({"Banners/header.jpg": _jpeg_de_verdad(), "fuentes/Gotham.otf": b"\x00" * 300})
+        version = f"ve-zo-{d.sufijo}"
+        r = await _entregar(a1, tarea_id, version, imagenes=1, zip_=("piezas niño.zip", zip_), ya_subidas="[0]")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["guardado"] is True and r.json()["zip"]["sumadas"] == 0
+
+        # Queda en su lugar, tal cual, con su nombre, su peso y la fecha.
+        async with d.Sesion() as s:
+            fila = (await s.execute(select(
+                CalendarioVersionZip.nombre, CalendarioVersionZip.tamano, CalendarioVersionZip.datos,
+                CalendarioVersionZip.created_at,
+            ).where(CalendarioVersionZip.version_id == version))).one()
+            assert tuple(fila[:3]) == ("piezas niño.zip", len(zip_), zip_) and fila[3] is not None
+        # El detalle de la versión lo dice (sin los bytes), al equipo y a la agencia.
+        for c in (lider, a1):
+            v = (await _detalle(c, tarea_id))["fases"][0]["versiones"][0]
+            assert {k: v["zip"][k] for k in ("nombre", "tamano", "guardado")} == {
+                "nombre": "piezas niño.zip", "tamano": len(zip_), "guardado": True}
+            assert v["zip"]["fecha"]
+
+        # Lo bajan el equipo y las cuentas de la agencia de la tarjeta.
+        for c in (lider, a1, a2):
+            r = await c.get(f"/calendario/versiones/{version}/zip")
+            assert r.status_code == 200, r.text
+            assert r.content == zip_ and r.headers["content-type"] == "application/zip"
+            assert r.headers["content-disposition"] == (
+                "attachment; filename=\"piezas ni_o.zip\"; filename*=UTF-8''piezas%20ni%C3%B1o.zip")
+        # Las mismas reglas que las imágenes de la versión: otra agencia, y
+        # alguien del equipo a quien la acción le queda fuera de su alcance,
+        # ni la imagen ni el ZIP (el 404 de lo que no existe).
+        imagen = (await _detalle(lider, tarea_id))["fases"][0]["versiones"][0]["imagenes"][0]["id"]
+        for u in (d.b1, d.limitado, d.sin_cal):
+            c = Cliente(d.http, u)
+            assert (await c.get(f"/calendario/entregas/imagenes/{imagen}")).status_code == 404, u.full_name
+            r = await c.get(f"/calendario/versiones/{version}/zip")
+            assert r.status_code == 404 and r.json()["detail"] == "Esa ronda no tiene un ZIP", (u.full_name, r.text)
+        assert (await b1.get(f"/calendario/versiones/{version}/zip")).status_code == 404
+        # Una ronda sin ZIP, o que no existe: 404.
+        assert (await _decidir(lider, version, "cambios", "Otra vuelta")).status_code == 200
+        assert (await _entregar_link(a1, tarea_id, f"ve-zl-{d.sufijo}")).status_code == 201
+        assert (await _detalle(lider, tarea_id))["fases"][0]["versiones"][-1]["zip"] is None
+        assert (await lider.get(f"/calendario/versiones/ve-zl-{d.sufijo}/zip")).status_code == 404
+        assert (await lider.get("/calendario/versiones/ve-no-existe/zip")).status_code == 404
+    correr(prueba)
+
+
+def test_un_zip_con_solo_un_pdf_alcanza_y_sus_paginas_se_ven_y_se_marcan(monkeypatch):
+    """Ivan no entendía por qué un ZIP con solo el PDF del folleto no
+    alcanzaba para entregar ("no entendí este punto"): no tenía que pasar. Al
+    entregar, el servidor llena los lugares de imagen que quedan con las
+    páginas de los PDF (y las imágenes que el navegador no pudo sacar), en el
+    orden del ZIP, y quedan como cualquier imagen de la ronda: quien aprueba
+    las ve y las marca. La IA no vuelve a mirar lo que ya está en la ronda."""
+    from PIL import Image
+
+    llamadas = _espiar_la_ia(monkeypatch)
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+
+        # Solo el folleto, de dos páginas: alcanza.
+        zip_ = _zip_de_prueba({"folleto.pdf": _pdf_de_prueba(2), "leeme.txt": b"hola"})
+        v1 = f"ve-pdf1-{d.sufijo}"
+        r = await _entregar(a1, tarea_id, v1, zip_=("folleto.zip", zip_))
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["sumadas"] == 2 and r.json()["zip"]["archivos"] == []
+        imagenes = (await _detalle(lider, tarea_id))["fases"][0]["versiones"][0]["imagenes"]
+        assert [im["orden"] for im in imagenes] == [0, 1]
+        for im in imagenes:
+            r = await lider.get(f"/calendario/entregas/imagenes/{im['id']}")
+            assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+            assert Image.open(io.BytesIO(r.content)).size == (1131, 1600)
+            r = await a1.get(f"/calendario/entregas/imagenes/{im['id']}", params={"tam": "mini"})
+            assert r.status_code == 200 and max(Image.open(io.BytesIO(r.content)).size) == 320
+        # Todo el ZIP ya está en la ronda: la IA mira las imágenes de la ronda
+        # y no recibe el ZIP (no queda ocupando memoria esperando su turno).
+        assert llamadas[-1] == (v1, {"zip_datos": None, "zip_nombre": None, "zip_saltar": frozenset({0}),
+                                     "zip_paginas": {}})
+        # Quien aprueba marca sobre una página como sobre cualquier imagen.
+        r = await lider.post(f"/calendario/versiones/{v1}/decision", json={
+            "decision": "cambios", "marcas": [{"imagenId": imagenes[1]["id"], "x": 0.5, "y": 0.2, "texto": "El precio"}]})
+        assert r.status_code == 200, r.text
+
+        # Con una imagen subida y un PDF largo: llena los 3 lugares que quedan,
+        # y la IA mira las páginas que siguen (desde la 4).
+        zip_ = _zip_de_prueba({"header.jpg": _jpeg_de_verdad(), "catalogo.pdf": _pdf_de_prueba(6)})
+        v2 = f"ve-pdf2-{d.sufijo}"
+        r = await _entregar(a1, tarea_id, v2, imagenes=1, zip_=("catalogo.zip", zip_), ya_subidas="[0]")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["sumadas"] == 3 and r.json()["zip"]["archivos"] == ["catalogo.pdf"]
+        assert len((await _detalle(lider, tarea_id))["fases"][0]["versiones"][1]["imagenes"]) == 4
+        assert llamadas[-1] == (v2, {"zip_datos": zip_, "zip_nombre": "catalogo.zip", "zip_saltar": frozenset({0}),
+                                     "zip_paginas": {1: 3}})
+        assert (await _decidir(lider, v2, "cambios", "Otra vuelta")).status_code == 200
+
+        # Una imagen que la persona sacó de la ronda a propósito (va en
+        # zipYaSubidas) no vuelve; una que el navegador no pudo sacar, sí.
+        zip_ = _zip_de_prueba({"a.jpg": _jpeg_de_verdad(), "b.jpg": _jpeg_de_verdad(), "c.jpg": _jpeg_de_verdad()})
+        v3 = f"ve-pdf3-{d.sufijo}"
+        r = await _entregar(a1, tarea_id, v3, imagenes=1, zip_=("abc.zip", zip_), ya_subidas="[0, 1]")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["sumadas"] == 1
+        assert len((await _detalle(lider, tarea_id))["fases"][0]["versiones"][2]["imagenes"]) == 2
+        assert (await _decidir(lider, v3, "cambios", "Otra más")).status_code == 200
+
+        # Un ZIP del que no sale nada para ver (el PDF pide contraseña) no
+        # alcanza solo, y dice por qué; con el link, sí.
+        import pymupdf
+        doc = pymupdf.open()
+        doc.new_page()
+        cerrado = doc.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="x", owner_pw="x")
+        doc.close()
+        zip_ = _zip_de_prueba({"cerrado.pdf": cerrado})
+        r = await _entregar(a1, tarea_id, f"ve-pdf4-{d.sufijo}", zip_=("cerrado.zip", zip_))
+        assert r.status_code == 422 and "«cerrado.pdf»: el PDF está protegido con contraseña" in r.json()["detail"], r.text
+        r = await _entregar(a1, tarea_id, f"ve-pdf4-{d.sufijo}", zip_=("cerrado.zip", zip_),
+                            link="https://we.tl/t-AbCdEf12")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["sumadas"] == 0 and r.json()["zip"]["guardado"] is True
+    correr(prueba)
+
+
+def test_con_la_base_llena_el_zip_no_se_guarda_la_entrega_sigue_y_no_se_borra_nada(monkeypatch):
+    """Si no hay lugar para el ZIP (dejando la reserva para las imágenes), la
+    entrega se hace igual: quedan la versión y sus imágenes, y del ZIP el
+    nombre y el peso, para que la ficha diga que no se guardó. NUNCA se borra
+    nada para hacerle lugar: el ZIP y las imágenes de la ronda anterior
+    siguen enteros."""
+    from sqlalchemy import text
+
+    from app.core.config import settings
+
+    _espiar_la_ia(monkeypatch)
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        primero = _zip_de_prueba({"pieza.jpg": _jpeg_de_verdad()})
+        v1, v2 = f"ve-ll1-{d.sufijo}", f"ve-ll2-{d.sufijo}"
+        assert (await _entregar(a1, tarea_id, v1, imagenes=1, zip_=("r1.zip", primero), ya_subidas="[0]")).status_code == 201
+        assert (await _decidir(lider, v1, "cambios", "Otra vuelta")).status_code == 200
+        async with d.Sesion() as s:
+            antes = {
+                "zips": (await s.execute(select(func.count()).select_from(CalendarioVersionZip))).scalar_one(),
+                "imagenes": (await s.execute(select(func.count()).select_from(CalendarioVersionImagen))).scalar_one(),
+            }
+            tamano = (await s.execute(text("SELECT pg_database_size(current_database())"))).scalar_one()
+        # La base, casi en el tope para el ZIP: entre 1 y 2 MB libres debajo
+        # de la reserva, y lugar de sobra para las imágenes.
+        mb = 1024 * 1024
+        monkeypatch.setattr(settings, "BASE_TOPE_MB", -(-tamano // mb) + 30)
+        monkeypatch.setattr(settings, "ZIP_RESERVA_MB", 29)
+        segundo = _zip_de_prueba({"pieza.jpg": _jpeg_de_verdad(), "fuente.otf": os.urandom(3 * mb)})
+        r = await _entregar(a1, tarea_id, v2, imagenes=1, zip_=("r2.zip", segundo), ya_subidas="[0]")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["guardado"] is False
+        det = await _detalle(lider, tarea_id)
+        v_1, v_2 = det["fases"][0]["versiones"]
+        assert v_2["zip"]["guardado"] is False and v_2["zip"]["tamano"] == len(segundo)
+        assert len(v_2["imagenes"]) == 1 and det["resumen"]["momento"] == "revision"
+        r = await lider.get(f"/calendario/versiones/{v2}/zip")
+        assert r.status_code == 404 and "no se guardó porque la base estaba llena" in r.json()["detail"]
+        # Lo de antes, entero.
+        assert v_1["zip"]["guardado"] is True
+        assert (await lider.get(f"/calendario/versiones/{v1}/zip")).content == primero
+        assert (await lider.get(f"/calendario/entregas/imagenes/{v_1['imagenes'][0]['id']}")).status_code == 200
+        async with d.Sesion() as s:
+            assert (await s.execute(select(func.count()).select_from(CalendarioVersionZip))).scalar_one() == antes["zips"] + 1
+            assert (await s.execute(select(func.count()).select_from(CalendarioVersionImagen))).scalar_one() == antes["imagenes"] + 1
+            assert (await s.execute(
+                select(CalendarioVersionZip.datos).where(CalendarioVersionZip.version_id == v2)
+            )).scalar_one() is None
     correr(prueba)
 
 

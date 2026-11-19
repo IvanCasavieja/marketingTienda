@@ -43,9 +43,19 @@ Nada de esto levanta hacia afuera: lo que no se pudo abrir queda en
 `Juntado.no_se_pudo_abrir` con el porqué, para la persona. Corre en segundo
 plano, después de contestar la entrega (revision_ia.revisar_version): la
 entrega no espera la descarga. Lo que sale de acá va a la IA como las
-imágenes subidas, con el nombre del archivo en cada observación; NO se guarda
-en la base (la base es chica, ver app/models/entregas.py): el aprobador ve
-lo que subió la agencia y, de lo demás, lo que la IA encontró.
+imágenes subidas, con el nombre del archivo en cada observación; lo que la
+IA mira de acá NO se guarda como imagen: el aprobador ve las imágenes de la
+ronda y, de lo demás, lo que la IA encontró.
+
+**El ZIP, desde el 19/11/2026, se guarda tal cual** como el original de la
+ronda (calendario_version_zips, ver app/models/entregas.py: Ivan, "cuando lo
+subís deberías de subir la carpeta comprimida, no los archivos sueltos"). Y
+al entregar, lo que el navegador no pudo mostrar sale de acá como imágenes de
+la ronda (`imagenes_para_la_ronda`): sobre todo las páginas de los PDF (un
+folleto), que antes no se veían y hacían rechazar un ZIP con solo PDF. Esas
+se guardan como cualquier imagen de la ronda, achicadas igual que en el
+navegador, y la IA no las vuelve a mirar (`saltar` y `paginas_hechas` en
+`extraer_del_zip`).
 """
 from __future__ import annotations
 
@@ -57,14 +67,18 @@ import logging
 import re
 import socket
 import struct
+import threading
 import zipfile
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
 import httpx
 
-from app.services.entregas import tipo_de_imagen
-from app.services.revision_ia import LADO_MAXIMO, ImagenParaIA, preparar_imagen
+from app.services.entregas import (
+    CALIDAD_JPEG, LADO_MAYOR, LADO_MINIATURA, MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, tipo_de_imagen,
+)
+from app.services.revision_ia import LADO_MAXIMO, MAX_PIXELES, ImagenParaIA, preparar_imagen
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +108,14 @@ _AGENTE = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 # El PDF
 MAX_PAGINAS_PDF = 10
+
+# Lo pesado (un PDF abierto, una imagen grande decodificada), de a uno en todo
+# el proceso: PyMuPDF no se puede usar desde dos hilos a la vez (su
+# documentación avisa que puede tirar abajo el proceso), y dos imágenes
+# grandes juntas en 512 MB son demasiado. Lo usan la entrega, en el pedido
+# (imagenes_para_la_ronda), y la IA, en segundo plano (extraer_del_zip), cada
+# una desde su hilo. Reentrante, por si una función de acá llama a otra.
+_DE_A_UNO = threading.RLock()
 
 
 class NoSePudoAbrir(Exception):
@@ -127,20 +149,26 @@ class Juntado:
                 "ignorados": list(self.ignorados)}
 
 
-def _anotar_paginas(j: Juntado, nombre: str, origen: str, paginas: list[bytes], total: int, lugar: int) -> int:
+def _anotar_paginas(
+    j: Juntado, nombre: str, origen: str, paginas: list[bytes], total: int, lugar: int, desde: int = 0,
+) -> int:
     """Suma las páginas renderizadas de un PDF (ya al lado máximo) y anota el
-    archivo. Devuelve cuántas imágenes agregó."""
+    archivo. `desde`: cuántas páginas, de la 1 en adelante, ya van como
+    imágenes de la ronda (la IA las ve ahí): estas son las que siguen, y se
+    numeran como en el PDF. Devuelve cuántas imágenes agregó."""
     n = 0
-    for i, datos in enumerate(paginas, 1):
+    for i, datos in enumerate(paginas, desde + 1):
         if n >= lugar:
             break
         j.imagenes.append(preparar_imagen(None, datos, "image/jpeg", nombre=nombre, origen=origen, pagina=i))
         n += 1
-    j.revisados.append({"nombre": nombre, "origen": origen, "paginas": n})
-    if n < total:
+    if n:
+        j.revisados.append({"nombre": nombre, "origen": origen, "paginas": n})
+    vistas = desde + n
+    if vistas < total:
         j.no_se_pudo_abrir.append(
-            f"«{nombre}»: se revisaron las primeras {n} páginas de {total}"
-            + (f" (tope de {MAX_PAGINAS_PDF} páginas por PDF)" if n >= MAX_PAGINAS_PDF else " (tope de imágenes por entrega)")
+            f"«{nombre}»: se revisaron las primeras {vistas} páginas de {total}"
+            + (f" (tope de {MAX_PAGINAS_PDF} páginas por PDF)" if vistas >= MAX_PAGINAS_PDF else " (tope de imágenes por entrega)")
         )
     return n
 
@@ -276,16 +304,24 @@ def _leer_entrada(zf: zipfile.ZipFile, e: Entrada) -> bytes:
 
 def extraer_del_zip(
     datos: bytes, juntado: Juntado, *, lugar: int, origen: str = "zip", saltar: frozenset[int] = frozenset(),
+    paginas_hechas: Mapping[int, int] | None = None,
 ) -> int:
     """Saca del ZIP las imágenes y los PDF (como imágenes, una por página) y
     los suma a `juntado`, hasta `lugar` imágenes: lo que no entra queda
     anotado. Lo que no es imagen ni PDF va a `ignorados`. Devuelve cuántas
-    imágenes agregó. `saltar`: los lugares en el índice de las imágenes que
-    el navegador ya sacó del ZIP y subió como imágenes de la ronda: esas la
-    IA ya las ve, no se miran dos veces. ValueError si el ZIP entero no sirve (ver
+    imágenes agregó. ValueError si el ZIP entero no sirve (ver
     inspeccionar_zip). Es sincrónica y pesada (descomprime, abre imágenes,
-    renderiza PDF): se llama desde un hilo."""
+    renderiza PDF): se llama desde un hilo.
+
+    Lo que ya es imagen de la ronda la IA lo ve ahí, y no se mira dos veces:
+    - `saltar`: los lugares en el índice de lo que ya está entero en la ronda
+      (las imágenes que subió el navegador, las que la persona sacó a
+      propósito, y lo que el servidor pasó a la ronda al entregar, ver
+      `imagenes_para_la_ronda`);
+    - `paginas_hechas`: de un PDF que pasó a la ronda solo en parte, cuántas
+      páginas (de la 1 en adelante): se miran las que siguen."""
     entradas = inspeccionar_zip(datos)
+    hechas_por_pdf = paginas_hechas or {}
     agregadas = 0
     with zipfile.ZipFile(io.BytesIO(datos)) as zf:
         for e in entradas:
@@ -294,8 +330,13 @@ def extraer_del_zip(
             if e.clase == "otro":
                 juntado.ignorados.append(e.nombre)
                 continue
+            hechas = hechas_por_pdf.get(e.indice, 0) if e.clase == "pdf" else 0
             if agregadas >= lugar:
-                juntado.no_se_pudo_abrir.append(f"«{e.nombre}»: quedó afuera por el tope de imágenes por entrega")
+                juntado.no_se_pudo_abrir.append(
+                    f"«{e.nombre}»: se revisaron solo las páginas que van como imágenes de la ronda "
+                    "(tope de imágenes por entrega)" if hechas
+                    else f"«{e.nombre}»: quedó afuera por el tope de imágenes por entrega"
+                )
                 continue
             try:
                 contenido = _leer_entrada(zf, e)
@@ -303,12 +344,15 @@ def extraer_del_zip(
                     tipo = tipo_de_imagen(contenido)
                     if tipo is None:
                         raise NoSePudoAbrir("no es una imagen JPG, PNG ni WebP (aunque el nombre lo diga)")
-                    juntado.imagenes.append(preparar_imagen(None, contenido, tipo, nombre=e.nombre, origen=origen))
+                    with _DE_A_UNO:
+                        juntado.imagenes.append(preparar_imagen(None, contenido, tipo, nombre=e.nombre, origen=origen))
                     juntado.revisados.append({"nombre": e.nombre, "origen": origen, "paginas": None})
                     agregadas += 1
                 else:
-                    paginas, total = paginas_de_pdf(contenido, max_paginas=min(MAX_PAGINAS_PDF, lugar - agregadas))
-                    agregadas += _anotar_paginas(juntado, e.nombre, origen, paginas, total, lugar - agregadas)
+                    paginas, total = paginas_de_pdf(
+                        contenido, desde=hechas, max_paginas=min(MAX_PAGINAS_PDF - hechas, lugar - agregadas),
+                    )
+                    agregadas += _anotar_paginas(juntado, e.nombre, origen, paginas, total, lugar - agregadas, desde=hechas)
             except (NoSePudoAbrir, ValueError) as exc:
                 juntado.no_se_pudo_abrir.append(f"«{e.nombre}»: {exc}")
             except Exception as exc:  # un archivo roto no tira la revisión entera
@@ -321,34 +365,232 @@ def extraer_del_zip(
 # El PDF (puro)
 # ---------------------------------------------------------------------------
 
-def paginas_de_pdf(datos: bytes, *, max_paginas: int = MAX_PAGINAS_PDF, lado: int = LADO_MAXIMO) -> tuple[list[bytes], int]:
-    """Las primeras `max_paginas` páginas como JPEG (lado mayor `lado`, como
-    las imágenes que van a la IA) y cuántas páginas tiene en total. ValueError
-    si no se puede leer o pide contraseña. De a una página en memoria."""
+def _abrir_pdf(datos: bytes):
+    """El PDF abierto con PyMuPDF, o ValueError con el porqué para la persona
+    (dañado, o pide contraseña). Quien lo abre lo cierra."""
     import pymupdf
 
     try:
         doc = pymupdf.open(stream=datos, filetype="pdf")
     except Exception as exc:
         raise ValueError("no se pudo leer el PDF (¿está dañado?)") from exc
-    try:
-        if doc.needs_pass:
-            raise ValueError("el PDF está protegido con contraseña")
-        total = doc.page_count
-        salida: list[bytes] = []
-        for i in range(min(total, max(0, max_paginas))):
-            pagina = doc[i]
-            mayor = max(pagina.rect.width, pagina.rect.height) or 1.0
-            # Los puntos del PDF son 1/72 de pulgada: una A4 mide 842 de alto,
-            # así que a 1600 px es ~1,9x (137 dpi). Un sello de 2 cm no se
-            # agranda más de 8x: no tendría sentido mandar una imagen gigante.
-            escala = min(lado / mayor, 8.0)
-            pix = pagina.get_pixmap(matrix=pymupdf.Matrix(escala, escala), alpha=False)
-            salida.append(pix.tobytes("jpeg", jpg_quality=85))
-            del pix
-        return salida, total
-    finally:
+    if doc.needs_pass:
         doc.close()
+        raise ValueError("el PDF está protegido con contraseña")
+    return doc
+
+
+def _pixmap_de_pagina(pagina, lado: int):
+    """La página dibujada, con su lado mayor en `lado` píxeles, sobre blanco."""
+    import pymupdf
+
+    mayor = max(pagina.rect.width, pagina.rect.height) or 1.0
+    # Los puntos del PDF son 1/72 de pulgada: una A4 mide 842 de alto, así
+    # que a 1600 px es ~1,9x (137 dpi). Un sello de 2 cm no se agranda más de
+    # 8x: no tendría sentido una imagen gigante.
+    escala = min(lado / mayor, 8.0)
+    return pagina.get_pixmap(matrix=pymupdf.Matrix(escala, escala), alpha=False)
+
+
+def _soltar_memoria_del_pdf() -> None:
+    """PyMuPDF guarda lo que decodifica (las fotos de adentro de un PDF) en
+    un depósito que puede llegar a 256 MB, y el servidor tiene 512: se vacía
+    después de cada página."""
+    import pymupdf
+
+    try:
+        pymupdf.TOOLS.store_shrink(100)
+    except Exception:  # una versión que no lo tenga: no es para cortar nada
+        pass
+
+
+def paginas_de_pdf(
+    datos: bytes, *, max_paginas: int = MAX_PAGINAS_PDF, lado: int = LADO_MAXIMO, desde: int = 0,
+) -> tuple[list[bytes], int]:
+    """Hasta `max_paginas` páginas como JPEG (lado mayor `lado`, como las
+    imágenes que van a la IA), empezando por la página `desde` + 1 (las
+    anteriores ya van como imágenes de la ronda), y cuántas páginas tiene en
+    total. ValueError si no se puede leer o pide contraseña. De a una página
+    en memoria, y un PDF por vez en todo el proceso (`_DE_A_UNO`)."""
+    with _DE_A_UNO:
+        doc = _abrir_pdf(datos)
+        try:
+            total = doc.page_count
+            salida: list[bytes] = []
+            for i in range(max(0, desde), min(total, max(0, desde) + max(0, max_paginas))):
+                pix = _pixmap_de_pagina(doc[i], lado)
+                salida.append(pix.tobytes("jpeg", jpg_quality=85))
+                del pix
+                _soltar_memoria_del_pdf()
+            return salida, total
+        finally:
+            doc.close()
+            _soltar_memoria_del_pdf()
+
+
+# ---------------------------------------------------------------------------
+# Lo del ZIP que pasa a ser imagen de la ronda, al entregar (puro)
+# ---------------------------------------------------------------------------
+# Ivan (19/11/2026) no entendía por qué un ZIP con solo el PDF del folleto no
+# alcanzaba para entregar: "no debería pasar". El navegador saca las imágenes
+# del ZIP, pero un PDF no lo puede dibujar sin una librería. Así que al
+# entregar, si quedan lugares de imagen en la ronda (MAX_IMAGENES menos las
+# subidas), el servidor los llena con lo del ZIP, en su orden: las imágenes
+# que el navegador no subió (no pudo abrir el ZIP, o esa imagen) y las páginas
+# de los PDF. Quedan guardadas como cualquier imagen de la ronda, con su
+# miniatura, achicadas igual que en el navegador (LADO_MAYOR, LADO_MINIATURA y
+# CALIDAD_JPEG en app/services/entregas.py), así quien aprueba las ve y las
+# marca. Una cosa por vez y una página por vez: el servidor tiene 512 MB.
+
+@dataclass
+class ImagenDeLaRonda:
+    datos: bytes        # JPEG, lado mayor LADO_MAYOR
+    miniatura: bytes    # JPEG, lado mayor LADO_MINIATURA
+    indice: int         # de qué entrada del ZIP salió (su lugar en el índice)
+    nombre: str
+    pagina: int | None  # si es la página de un PDF, cuál (desde 1)
+
+
+@dataclass
+class SacadoDelZip:
+    imagenes: list[ImagenDeLaRonda] = field(default_factory=list)
+    # Lo que ya quedó entero en la ronda (imágenes, y PDF con todas sus
+    # páginas adentro): la IA no lo vuelve a mirar.
+    entradas: set[int] = field(default_factory=set)
+    # De los PDF que entraron en parte: cuántas páginas, de la 1 en adelante.
+    paginas: dict[int, int] = field(default_factory=dict)
+    # Lo que no se pudo pasar a la ronda, con el porqué (para la persona, si
+    # del ZIP no sale nada).
+    no_se_pudo: list[str] = field(default_factory=list)
+
+
+def _a_rgb(img):
+    """La imagen en RGB; lo transparente, sobre blanco (como el navegador: un
+    PNG transparente en JPEG saldría con el fondo negro)."""
+    from PIL import Image
+
+    if img.has_transparency_data:
+        con_alfa = img.convert("RGBA")
+        fondo = Image.new("RGB", con_alfa.size, "white")
+        fondo.paste(con_alfa, mask=con_alfa.getchannel("A"))
+        return fondo
+    return img if img.mode == "RGB" else img.convert("RGB")
+
+
+def _jpeg(img, lado: int) -> bytes:
+    """Como `aJpeg` del navegador: lado mayor `lado` (nunca se agranda, y con
+    el mismo redondeo), JPEG con CALIDAD_JPEG. `img` ya en RGB; no se toca."""
+    from PIL import Image
+
+    escala = min(1.0, lado / max(img.width, img.height, 1))
+    if escala < 1.0:
+        img = img.resize((max(1, round(img.width * escala)), max(1, round(img.height * escala))), Image.LANCZOS)
+    salida = io.BytesIO()
+    img.save(salida, "JPEG", quality=CALIDAD_JPEG)
+    return salida.getvalue()
+
+
+def _grande_y_miniatura(img) -> tuple[bytes, bytes]:
+    """La imagen de la ronda y su miniatura, con los mismos topes que una que
+    sube el navegador (ValueError si se pasa, que con 1600 px no pasa)."""
+    grande = _jpeg(img, LADO_MAYOR)
+    if len(grande) > MAX_BYTES_IMAGEN:
+        raise ValueError("sigue pesando demasiado después de achicarla")
+    mini = _jpeg(img, LADO_MINIATURA)
+    if len(mini) > MAX_BYTES_MINIATURA:
+        raise ValueError("su miniatura pesa demasiado")
+    return grande, mini
+
+
+def _imagen_de_la_ronda(contenido: bytes) -> tuple[bytes, bytes]:
+    """Una imagen del ZIP, achicada para la ronda y derecha según su EXIF
+    (el navegador la muestra derecha). Un JPG grande se lee ya achicado
+    (`draft` decodifica a 1/2, 1/4 u 1/8 sin bajar de LADO_MAYOR): una foto
+    de 24 MP no llega a ocupar su tamaño entero en memoria."""
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    if tipo_de_imagen(contenido) is None:
+        raise NoSePudoAbrir("no es una imagen JPG, PNG ni WebP (aunque el nombre lo diga)")
+    with _DE_A_UNO:
+        try:
+            img = Image.open(io.BytesIO(contenido))  # solo el encabezado
+            if img.width * img.height > MAX_PIXELES:
+                raise NoSePudoAbrir(f"es demasiado grande ({img.width} x {img.height})")
+            img.draft(None, (LADO_MAYOR, LADO_MAYOR))
+            img.thumbnail((LADO_MAYOR, LADO_MAYOR), Image.LANCZOS)
+            img = _a_rgb(ImageOps.exif_transpose(img))
+        except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+            raise NoSePudoAbrir("no se pudo leer la imagen") from exc
+        return _grande_y_miniatura(img)
+
+
+def _paginas_de_la_ronda(contenido: bytes, cuantas: int) -> tuple[list[tuple[bytes, bytes]], int]:
+    """Las primeras `cuantas` páginas de un PDF como imágenes de la ronda
+    (grande y miniatura), dibujadas de a una, y cuántas páginas tiene. Un PDF
+    por vez en todo el proceso (`_DE_A_UNO`)."""
+    from PIL import Image
+
+    with _DE_A_UNO:
+        doc = _abrir_pdf(contenido)
+        try:
+            total = doc.page_count
+            salida: list[tuple[bytes, bytes]] = []
+            for i in range(min(total, max(0, cuantas))):
+                pix = _pixmap_de_pagina(doc[i], LADO_MAYOR)
+                img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                del pix
+                salida.append(_grande_y_miniatura(img))
+                del img
+                _soltar_memoria_del_pdf()
+            return salida, total
+        finally:
+            doc.close()
+            _soltar_memoria_del_pdf()
+
+
+def imagenes_para_la_ronda(datos: bytes, *, lugar: int, saltar: frozenset[int] = frozenset()) -> SacadoDelZip:
+    """Lo del ZIP que pasa a la ronda al entregar, hasta `lugar` imágenes y en
+    el orden del ZIP: las imágenes que no están en `saltar` (las que el
+    navegador ya subió, o la persona sacó a propósito) y las páginas de los
+    PDF. Lo que no se puede abrir se anota y se sigue con lo próximo; nunca
+    levanta por un archivo de adentro (ValueError solo si el ZIP entero no
+    sirve, ver inspeccionar_zip). Sincrónica y pesada: se llama en un hilo."""
+    s = SacadoDelZip()
+    if lugar <= 0:
+        return s
+    entradas = inspeccionar_zip(datos)
+    with zipfile.ZipFile(io.BytesIO(datos)) as zf:
+        for e in entradas:
+            if len(s.imagenes) >= lugar:
+                break
+            if e.clase == "otro" or e.indice in saltar:
+                continue
+            contenido = None
+            try:
+                contenido = _leer_entrada(zf, e)
+                if e.clase == "imagen":
+                    grande, mini = _imagen_de_la_ronda(contenido)
+                    s.imagenes.append(ImagenDeLaRonda(grande, mini, e.indice, e.nombre, None))
+                    s.entradas.add(e.indice)
+                else:
+                    paginas, total = _paginas_de_la_ronda(contenido, lugar - len(s.imagenes))
+                    for n, (grande, mini) in enumerate(paginas, 1):
+                        s.imagenes.append(ImagenDeLaRonda(grande, mini, e.indice, e.nombre, n))
+                    if paginas and len(paginas) >= total:
+                        s.entradas.add(e.indice)
+                    elif paginas:
+                        s.paginas[e.indice] = len(paginas)
+            except (NoSePudoAbrir, ValueError) as exc:
+                s.no_se_pudo.append(f"«{e.nombre}»: {exc}")
+            except Exception as exc:  # un archivo raro no tira la entrega
+                logger.warning("materiales: no se pudo pasar «%s» del ZIP a la ronda — %s: %s",
+                               e.nombre, type(exc).__name__, exc)
+                s.no_se_pudo.append(f"«{e.nombre}»: no se pudo abrir")
+            finally:
+                # Que el archivo de adentro (hasta 40 MB) se suelte antes de
+                # abrir el siguiente.
+                contenido = None
+    return s
 
 
 # ---------------------------------------------------------------------------
@@ -586,7 +828,8 @@ def _sumar_descarga(j: Juntado, nombre: str, datos: bytes, clase: str, lugar: in
         j.no_se_pudo_abrir.append(f"«{nombre}»: quedó afuera por el tope de imágenes por entrega")
         return
     if clase == "imagen":
-        j.imagenes.append(preparar_imagen(None, datos, tipo_de_imagen(datos), nombre=nombre, origen="link"))
+        with _DE_A_UNO:
+            j.imagenes.append(preparar_imagen(None, datos, tipo_de_imagen(datos), nombre=nombre, origen="link"))
         j.revisados.append({"nombre": nombre, "origen": "link", "paginas": None})
         return
     paginas, total = paginas_de_pdf(datos, max_paginas=min(MAX_PAGINAS_PDF, lugar))
@@ -603,19 +846,21 @@ def _link_corto(url: str) -> str:
 
 async def juntar(
     *, zip_datos: bytes | None, zip_nombre: str | None, link: str | None, lugar: int,
-    zip_saltar: frozenset[int] = frozenset(),
+    zip_saltar: frozenset[int] = frozenset(), zip_paginas: Mapping[int, int] | None = None,
 ) -> Juntado:
-    """Todo lo que hay que sumarle a la IA además de las imágenes subidas: lo
-    del ZIP y lo del link, hasta `lugar` imágenes en total. No levanta: lo
-    que no se pudo abrir queda anotado con el porqué, para la persona. Lo
-    pesado (descomprimir, renderizar) corre en un hilo, para no frenar al
-    resto del servidor."""
+    """Todo lo que hay que sumarle a la IA además de las imágenes de la
+    ronda: lo del ZIP (menos lo que ya es imagen de la ronda: `zip_saltar` y
+    `zip_paginas`, ver extraer_del_zip) y lo del link, hasta `lugar` imágenes
+    en total. No levanta: lo que no se pudo abrir queda anotado con el
+    porqué, para la persona. Lo pesado (descomprimir, renderizar) corre en un
+    hilo, para no frenar al resto del servidor."""
     j = Juntado()
     if zip_datos:
         nombre = zip_nombre or "el ZIP"
         try:
             await asyncio.to_thread(
                 extraer_del_zip, zip_datos, j, lugar=max(0, lugar - len(j.imagenes)), saltar=zip_saltar,
+                paginas_hechas=zip_paginas,
             )
         except ValueError as exc:
             j.no_se_pudo_abrir.append(f"No se pudo abrir el ZIP «{nombre}»: {exc}")
