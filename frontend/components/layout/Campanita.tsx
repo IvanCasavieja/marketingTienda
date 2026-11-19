@@ -236,8 +236,10 @@ export function Campanita({ onNavegar }: { onNavegar?: () => void }) {
     }
   }
 
-  // Hay algo sin leer: lo dice la lista si ya llegó; si no, el número del menú.
-  const haySinLeer = notificaciones ? notificaciones.some((n) => !n.leida) : notifCount > 0;
+  // Hay algo sin leer: el número del menú (cuenta todos) o la lista. La lista
+  // trae solo los 50 más nuevos: si lo sin leer es más viejo, sin el número
+  // el botón desaparecía y el número quedaba sin poder sacarse.
+  const haySinLeer = notifCount > 0 || !!notificaciones?.some((n) => !n.leida);
 
   const panel = (
     <div
@@ -322,7 +324,9 @@ export function Campanita({ onNavegar }: { onNavegar?: () => void }) {
                     <button
                       type="button"
                       onClick={(e) => marcarUnaLeida(n, e)}
-                      onKeyDown={(e) => e.stopPropagation()}
+                      // Enter y espacio son de este botón (no abren el aviso);
+                      // Escape sigue de largo y cierra la campanita.
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); }}
                       title={t("sidebar.marcarLeida")}
                       className="-my-2 flex min-h-[40px] items-center gap-1 rounded-lg px-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10 md:min-h-[32px]"
                     >

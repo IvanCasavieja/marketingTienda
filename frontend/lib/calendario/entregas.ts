@@ -70,7 +70,9 @@ export type Decision = {
   aprobador: number | null
   decididoPor: number | null
   orden: number
-  decision: TipoDecision
+  /** 'aprobada-con-cambios' solo llega en rondas de antes del 19/11/2026,
+   *  cuando existía: se lee como aprobada (ver etiquetaDecision). */
+  decision: TipoDecision | 'aprobada-con-cambios'
   comentario: string | null
   /** Solo para el equipo. A una cuenta externa (la agencia) no le llega ni la clave. */
   notaInterna?: string | null
@@ -133,7 +135,7 @@ export type DetalleEntregas = {
   personas: Record<string, string>
   columna?: Columna
   puedo: {
-    entregar: boolean; decidir: boolean; comoRespaldo: boolean; configurar: boolean; tildarMarcas: boolean
+    entregar: boolean; decidir: boolean; comoRespaldo: boolean; configurar: boolean
     /** Devolver una pieza ya aprobada con un texto: abre la Entrega siguiente. */
     devolver?: boolean
     /** Si ve lo que encontró la IA (aprobadores y quien gestiona; nunca quien entrega). */
@@ -298,6 +300,13 @@ export const ETIQUETA_DECISION: Record<TipoDecision, string> = {
   cambios: 'Pidió cambios',
 }
 
+/** Qué decidió alguien, para leer: "Pidió cambios" o "Aprobó". Una ronda
+ *  vieja puede traer «Aprobado con cambios» (sacada el 19/11/2026): se lee
+ *  como aprobada, que es lo que fue. */
+export function etiquetaDecision(decision: Decision['decision']): string {
+  return decision === 'cambios' ? ETIQUETA_DECISION.cambios : ETIQUETA_DECISION.aprobada
+}
+
 /** "Fase 1 · Boceto": el estado de cada fase en una línea corta. */
 export function estadoDeFase(
   fase: ResumenEntrega['fases'][number], resumen: ResumenEntrega,
@@ -398,13 +407,6 @@ export function versionAnterior(fases: FaseDetalle[], version: Version): Version
     if (aprobada) return aprobada
   }
   return null
-}
-
-/** Las marcas de la tarea que todavía no se corrigieron, de la más vieja a la más nueva. */
-export function marcasPendientes(fases: FaseDetalle[]): (Marca & { ronda: number; fase: string })[] {
-  return fases.flatMap(f => f.versiones.flatMap(v => v.marcas
-    .filter(m => !m.corregida)
-    .map(m => ({ ...m, ronda: v.ronda, fase: f.nombre }))))
 }
 
 /** "19/11": el día de una versión, para el renglón de cada ronda. */

@@ -9,7 +9,7 @@ import {
 import { toast } from 'sonner'
 import { calendarioApi, entregasApi } from '@/lib/api'
 import {
-  ETIQUETA_DECISION, camposDe, fechaDia, fechaYHora, pasoEnLaVista, proximoPaso, tipoDePieza, versionAnterior,
+  camposDe, etiquetaDecision, fechaDia, fechaYHora, pasoEnLaVista, proximoPaso, tipoDePieza, versionAnterior,
   type DetalleEntregas, type FaseDetalle, type Marca, type Version,
 } from '@/lib/calendario/entregas'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
@@ -38,10 +38,11 @@ function detalleDeError(e: unknown): string | null {
 }
 
 /**
- * Las entregas de una tarea, encima de todo: la línea de fases, el próximo
- * paso con su botón, la versión actual y la historia. Desde acá se entrega
- * y se revisa. Vive una sola vez, en el layout: la abren la ficha de la
- * acción, el tablero, "Mis tareas" y los avisos (ver store/entregas.ts).
+ * Las entregas de una tarea, encima de todo: el estado en una línea con su
+ * botón, la versión en curso (o lo que hay que corregir) y las rondas
+ * cerradas (ver Resumen). Desde acá se entrega y se revisa. Vive una sola
+ * vez, en el layout: la abren la ficha de la acción, el tablero, "Mis
+ * tareas" y los avisos (ver store/entregas.ts).
  */
 export default function VistaEntregas() {
   const tareaId = useVistaEntregas(s => s.tareaId)
@@ -326,14 +327,15 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
     ? ultimaDeFase.decisiones.filter(d => d.decision === 'cambios' && d.comentario)
     : []
   const unaFase = resumen.fases.length === 1
-  // El renglón chico arriba del estado: "Entrega · ronda 1".
+  // El renglón chico arriba del estado, solo si suma algo: con varias fases
+  // la línea de fases ya dice fase, estado y ronda; en revisión y en
+  // producción la ronda ya la nombra el texto del paso. Queda para la ronda
+  // que volvió con cambios ("Ronda 2 · Volvió con cambios") y para cuántas
+  // rondas llevó la aprobada.
   const rondas = faseActual?.versiones.length ?? 0
-  const cabecera = [
-    faseActual?.nombre ?? 'Entrega',
-    resumen.momento === 'aprobada'
-      ? (rondas > 0 ? `${rondas} ${rondas === 1 ? 'ronda' : 'rondas'}` : null)
-      : resumen.ronda > 0 ? `ronda ${resumen.ronda}` : null,
-  ].filter(Boolean).join(' · ')
+  const cabecera = !unaFase ? null
+    : resumen.momento === 'aprobada' ? (rondas > 0 ? `${rondas} ${rondas === 1 ? 'ronda' : 'rondas'}` : null)
+      : resumen.momento === 'cambios' && resumen.ronda > 0 ? `Ronda ${resumen.ronda}` : null
   const hayBoton = (paso.accion === 'entregar' && puedo.entregar) || (puedo.decidir && resumen.momento === 'revision')
 
   return (
@@ -343,13 +345,15 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
         {!unaFase && <LineaDeFases resumen={resumen} />}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {cabecera}
-              {resumen.momento === 'cambios' && (
-                <> · <span className="text-rose-700 dark:text-rose-300">Volvió con cambios</span></>
-              )}
-            </p>
-            <p className="mt-1 flex items-start gap-2 text-lg font-bold leading-snug text-slate-900 dark:text-slate-100">
+            {cabecera && (
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {cabecera}
+                {resumen.momento === 'cambios' && (
+                  <> · <span className="text-rose-700 dark:text-rose-300">Volvió con cambios</span></>
+                )}
+              </p>
+            )}
+            <p className="flex items-start gap-2 text-lg font-bold leading-snug text-slate-900 dark:text-slate-100">
               {resumen.momento === 'aprobada' && <PartyPopper className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />}
               <span>{paso.texto}</span>
             </p>
@@ -396,23 +400,29 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
       {/* 2. La versión en curso, grande. Si volvió con cambios, es lo que hay que corregir. */}
       {ultimaDeFase && (resumen.momento === 'cambios' ? (
         <section aria-labelledby="hay-que-corregir" className="space-y-3">
+          {/* El número, solo si hay marcas: los cambios pueden venir solo
+              escritos (desde el tablero es lo común), y "(0)" decía que no
+              había nada que corregir. Lo escrito va arriba de la imagen. */}
           <h3 id="hay-que-corregir" className="text-sm font-bold text-slate-900 dark:text-slate-100">
-            Lo que hay que corregir ({aCorregir.length})
+            Lo que hay que corregir{aCorregir.length > 0 ? ` (${aCorregir.length})` : ''}
           </h3>
-          <VersionGrande detalle={detalle} version={ultimaDeFase} />
-          <ListaDeMarcas marcas={aCorregir} version={ultimaDeFase} />
           {comentariosDeVuelta.map((d, i) => (
             <p key={i} className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">
-              <span className="font-semibold text-slate-900 dark:text-slate-100">{nombreDe(d.aprobador)}:</span> «{d.comentario}»
+              {/* Quien lo escribió: el respaldo, si decidió por otro. */}
+              <span className="font-semibold text-slate-900 dark:text-slate-100">{nombreDe(d.decididoPor ?? d.aprobador)}:</span> «{d.comentario}»
             </p>
           ))}
+          {/* key: al entregar, la ficha pasa de la ronda que volvió a la nueva
+              y la imagen elegida no tiene que quedar la de la ronda vieja. */}
+          <VersionGrande key={ultimaDeFase.id} detalle={detalle} version={ultimaDeFase} />
+          <ListaDeMarcas marcas={aCorregir} version={ultimaDeFase} />
         </section>
       ) : (
         <section aria-label={`Ronda ${ultimaDeFase.ronda}`} className="space-y-3">
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Ronda {ultimaDeFase.ronda} · la subió {nombreDe(ultimaDeFase.subidaPor)} · {fechaYHora(ultimaDeFase.fecha)}
           </p>
-          <VersionGrande detalle={detalle} version={ultimaDeFase} />
+          <VersionGrande key={ultimaDeFase.id} detalle={detalle} version={ultimaDeFase} />
           {ultimaDeFase.comentario && (
             <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">«{ultimaDeFase.comentario}»</p>
           )}
@@ -623,7 +633,7 @@ function CadenaDeAprobacion({ detalle, version }: { detalle: DetalleEntregas; ve
               d ? 'text-emerald-700 dark:text-emerald-300' : toca ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'
             }`}>
               {d && <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden />}
-              {nombreDe(id)}{!d && toca ? ' · le toca' : ''}
+              {nombreDe(id)}
             </span>
           </li>
         )
@@ -641,19 +651,10 @@ const ESTADO_VERSION = {
   cambios: { texto: 'Volvió con cambios', tono: 'text-rose-700 dark:text-rose-300' },
 } as const
 
-/** Qué decidió alguien, para leer: "Pidió cambios" o "Aprobó". Se mira el
- *  texto y no el tipo porque una ronda vieja puede traer una decisión que ya
- *  no existe («Aprobado con cambios», sacada el 19/11/2026): se lee como
- *  aprobada, que es lo que fue. */
-function etiquetaDecision(decision: string): string {
-  return decision === 'cambios' ? ETIQUETA_DECISION.cambios : ETIQUETA_DECISION.aprobada
-}
-
 /**
- * Una versión, grande: la imagen con sus marcas (del color de la marca; la
- * que la agencia ya tildó como corregida lleva el tilde), las otras imágenes
- * como miniaturas y, abajo, de dónde bajar el original y la vista previa.
- * La usa la ficha para la versión en curso y cada ronda al abrirse.
+ * Una versión, grande: la imagen con sus marcas, las otras imágenes como
+ * miniaturas y, abajo, de dónde bajar el original y la vista previa. La usa
+ * la ficha para la versión en curso y cada ronda al abrirse.
  */
 function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
   detalle: DetalleEntregas
@@ -855,7 +856,7 @@ function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas;
       >
         <FileText className="h-4 w-4 text-brand-600 dark:text-brand-300" />
         Lo que se pidió
-        <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${abierto ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform dark:text-slate-400 ${abierto ? 'rotate-180' : ''}`} />
       </button>
       {abierto && (lista || pedido) && (
         <div className="mt-2 rounded-2xl border border-brand-200 bg-brand-50/60 p-3.5 text-sm text-slate-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-slate-100">
@@ -992,10 +993,10 @@ function Ronda({ detalle, fase, version, conFase }: {
           <span className={`font-semibold ${estado.tono}`}>{estado.texto}</span>
           <span className="text-slate-500 dark:text-slate-400">· {quien} · {fechaDia(version.fecha)}</span>
         </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 ${abierta ? 'rotate-180' : ''}`} aria-hidden />
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 dark:text-slate-400 ${abierta ? 'rotate-180' : ''}`} aria-hidden />
       </button>
       {abierta && (
-        <div className="space-y-3 border-t border-slate-200 px-3.5 py-3 dark:border-slate-700">
+        <div className="space-y-3 border-t border-slate-300 px-3.5 py-3 dark:border-slate-700">
           <p className="text-xs text-slate-500 dark:text-slate-400">La subió {nombreDe(version.subidaPor)} · {fechaYHora(version.fecha)}</p>
           <VersionGrande detalle={detalle} version={version} claseImagen="max-h-[50vh]" />
           {version.comentario && <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">«{version.comentario}»</p>}

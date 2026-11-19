@@ -54,7 +54,7 @@ export function PanelRevisionIA({
 
   if (revision.estado === 'pendiente') {
     return (
-      <p role="status" className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
+      <p id="revision-ia" role="status" className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
         <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-600 dark:text-violet-300" aria-hidden />
         La IA está mirando la pieza (ortografía, mundo, legales, precio, QR)…
       </p>
@@ -105,7 +105,7 @@ export function PanelRevisionIA({
           onClick={onCerrar}
           aria-label="Cerrar lo que encontró la IA"
           title="Cerrar"
-          className="-mr-1.5 -mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 sm:-mr-1.5 sm:-mt-1.5 sm:h-9 sm:w-9"
         >
           <X className="h-4 w-4" />
         </button>

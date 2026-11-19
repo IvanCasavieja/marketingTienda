@@ -2364,8 +2364,6 @@ export const entregasApi = {
     api.patch<ObservacionIA>(
       `/calendario/versiones/${encodeURIComponent(versionId)}/revision-ia/${encodeURIComponent(observacionId)}`,
       { descartada }, ESPERA),
-  tildarMarca: (marcaId: string, corregida: boolean) =>
-    api.patch<{ id: string; corregida: boolean }>(`/calendario/marcas/${encodeURIComponent(marcaId)}`, { corregida }, ESPERA),
   imagen: (imagenId: string, tam: "mini" | "grande") =>
     api.get<Blob>(`/calendario/entregas/imagenes/${encodeURIComponent(imagenId)}`, {
       params: { tam }, responseType: "blob", timeout: 60_000,

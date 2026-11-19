@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import {
-  Check, Columns2, ExternalLink, Link2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2, X,
+  Check, Columns2, ExternalLink, Link2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
@@ -156,7 +156,8 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   )
   // Dónde vio la IA lo que se tocó en la lista: un pin violeta que no es una
   // marca. Si ya se hizo marca, se ve la marca y no hace falta.
-  const observacion = revisionIA?.observaciones.find(o => o.id === obsElegida) ?? null
+  // Con la lista cerrada, el pin tampoco: la IA no aparece sola.
+  const observacion = mostrarIA ? (revisionIA?.observaciones.find(o => o.id === obsElegida) ?? null) : null
   const pinIA: Pin[] = observacion && observacion.imagenId === activa && observacion.estado !== 'marca'
     && convertidas[observacion.id] == null && tieneLugar(observacion, version.imagenes)
     ? [{ clave: `ia-${observacion.id}`, numero: 0, x: observacion.x as number, y: observacion.y as number, tono: 'ia', texto: observacion.texto }]
@@ -164,9 +165,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const pinesActuales = [...pinesDe(version.marcas, activa), ...pinesNuevos, ...pinIA]
   const hayMarcas = nuevas.length > 0
   const hayAlgo = hayMarcas || comentario.trim() !== '' || notaInterna.trim() !== ''
-  // Para pedir cambios (o aprobar con cambios) hace falta algo que quien
-  // entrega VEA: una marca o el comentario. La nota interna no cuenta (el
-  // servidor la rechaza igual: quien entrega no sabría qué cambiar).
+  // Para pedir cambios hace falta algo que quien entrega VEA: una marca o el
+  // comentario. La nota interna no cuenta (el servidor la rechaza igual:
+  // quien entrega no sabría qué cambiar).
   const hayParaQuienEntrega = hayMarcas || comentario.trim() !== ''
   const sinTexto = nuevas.findIndex(n => !n.texto.trim())
   // Lo que se pidió en la ronda anterior y si la agencia dice que lo corrigió.
@@ -174,8 +175,10 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const respaldoDe = detalle.puedo.comoRespaldo ? detalle.resumen.aprobadorDeTurno : null
   // El botón que abre lo de la IA: qué dice según cómo viene la revisión.
   const hayIA = verIA && !!revisionIA && revisionIA.estado !== 'nada'
+  // Mientras la IA mira, se dice eso (no "Revisar con IA", que promete una
+  // acción: la revisión ya arrancó sola al entregar).
   const textoBotonIA = !revisionIA || revisionIA.estado === 'pendiente'
-    ? 'Revisar con IA'
+    ? 'La IA está revisando…'
     : revisionIA.observaciones.length === 0
       ? 'Ver la revisión de la IA'
       : `Ver lo que encontró la IA (${revisionIA.observaciones.length})`
@@ -476,6 +479,25 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                   </li>
                 )
               })}
+            </ul>
+          </section>
+        )}
+
+        {/* Marcas que ya trae esta misma ronda: solo pasa con rondas de antes
+            del 19/11/2026, cuando un aprobador de la cadena podía «aprobar
+            con cambios». Sin esta lista, sus pines quedaban sin texto. */}
+        {version.marcas.length > 0 && (
+          <section className="rounded-xl border border-slate-300 p-3 dark:border-slate-700">
+            <h4 className="mb-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">Ya marcado en esta ronda</h4>
+            <ul className="space-y-1">
+              {version.marcas.map(m => (
+                <li key={m.id} className="flex items-start gap-2 text-sm">
+                  <span className="mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-bold text-white">
+                    {m.numero}
+                  </span>
+                  <span className="min-w-0 text-slate-700 dark:text-slate-300">{m.texto}</span>
+                </li>
+              ))}
             </ul>
           </section>
         )}

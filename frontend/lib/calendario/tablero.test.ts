@@ -14,7 +14,7 @@ import {
   seMovioElDedo, sePuedeSoltar, tableroDeTarjeta, textoDeFecha,
 } from './tablero'
 import { diaEnUruguay } from './fechas'
-import { pasoEnLaVista, proximoPaso, type ResumenEntrega, type Tarjeta } from './entregas'
+import { etiquetaDecision, fechaDia, pasoEnLaVista, proximoPaso, type ResumenEntrega, type Tarjeta } from './entregas'
 import { descripcionDelPedido, detalleSinPedido, linkValido, pedidoEnLista, type TipoDeTarea } from './tipos-de-tarea'
 
 let fallos = 0
@@ -239,6 +239,13 @@ igual('el detalle sin el pedido repetido', detalleSinPedido(`${pedidoBanners}\nA
 igual('si es solo el pedido, nada', detalleSinPedido(pedidoBanners, pedidoBanners), '')
 igual('si no empieza con el pedido, entero', detalleSinPedido('Otra cosa', pedidoBanners), 'Otra cosa')
 igual('sin pedido, entero', detalleSinPedido(' Algo ', null), 'Algo')
+
+// Las decisiones, para leer (19/11/2026: se sacó «Aprobado con cambios»; una
+// ronda vieja que la trae se lee como aprobada, que es lo que fue).
+igual('cómo se lee cada decisión', [etiquetaDecision('aprobada'), etiquetaDecision('cambios'), etiquetaDecision('aprobada-con-cambios')],
+  ['Aprobó', 'Pidió cambios', 'Aprobó'])
+// El día de cada ronda, en el renglón cerrado.
+igual('el día de una ronda', [fechaDia(null), fechaDia('x'), fechaDia('2026-11-19T12:00:00')], ['', '', '19/11'])
 
 if (fallos) {
   console.log(`\n${fallos} prueba(s) fallaron`)
