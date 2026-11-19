@@ -1820,8 +1820,9 @@ def test_super_fds_cierre_en_cada_uno_y_lanzar_en_el_primero_del_mes():
 
 
 def test_los_avisos_salen_por_mail_a_quien_los_quiere(monkeypatch):
-    """Ivan (18/11/2026): todos los avisos de la campanita también por mail,
-    al momento, y cada uno los apaga en su perfil."""
+    """Ivan (18/11/2026): los avisos de la campanita también por mail, al
+    momento, y cada uno los apaga en su perfil. Menos los del tablero, que
+    quedan solo en la campanita (19/11/2026: tope de 3.000 mails por mes)."""
     from app.services import avisos_por_mail as apm
     from app.services import email_service
 
@@ -1837,11 +1838,15 @@ def test_los_avisos_salen_por_mail_a_quien_los_quiere(monkeypatch):
         enviados.append((to, subject))
 
     async def prueba(d):
-        # Un aviso de verdad: pedir una pieza le avisa a la agencia. Nace pendiente de mail.
+        # Un aviso del tablero: pedir una pieza le avisa a la agencia. Queda solo
+        # en la campanita: nace sin mail pendiente.
         tarea_id, _ = await _pedir_banners(d, d.lucia)
         async with d.Sesion() as s:
             nuevos = (await s.execute(select(Notificacion).where(Notificacion.origen_ref.contains(tarea_id)))).scalars().all()
-            assert nuevos and all(n.mail_pendiente for n in nuevos)
+            assert nuevos and not any(n.mail_pendiente for n in nuevos)
+            # Uno del tablero que hubiera quedado en la cola de antes del cambio: tampoco sale.
+            s.add(Notificacion(user_id=d.lucia.id, tipo="calendario_entrega", mensaje="Del tablero", origen_tipo="calendario_entrega",
+                               origen_ref=f"{d.ciber.id}:{tarea_id}:ve-x:hecha", mail_pendiente=True))
             # Uno a quien lo apagó, y uno viejo (de hace dos días).
             lider = await s.get(User, d.lider.id)
             lider.avisos_por_mail = False
@@ -1859,6 +1864,7 @@ def test_los_avisos_salen_por_mail_a_quien_los_quiere(monkeypatch):
         assert d.lucia.email in destinatarios and ("Lanzar: Ciberlunes arranca en 60 días.") in [a for _, a in enviados]
         assert d.lider.email not in destinatarios                     # lo apagó
         assert "Viejo" not in [a for _, a in enviados]                # de hace dos días
+        assert "Del tablero" not in [a for _, a in enviados]          # el tablero: solo campanita
         assert salieron == len(enviados)
         async with d.Sesion() as s:
             assert (await s.execute(select(func.count()).select_from(Notificacion).where(
