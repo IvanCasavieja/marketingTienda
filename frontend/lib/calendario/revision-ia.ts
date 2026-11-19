@@ -53,7 +53,7 @@ export type RevisionIA = {
   /** Lo que miró además de las imágenes subidas: archivos del ZIP o del link
    *  (`paginas`: cuántas páginas de un PDF). Vacío si no hubo. */
   revisados?: MaterialRevisado[]
-  /** Lo que no pudo abrir, con el porqué (un link de Smash, un ZIP roto…). */
+  /** Lo que no pudo abrir, con el porqué (un link vencido o con contraseña, un ZIP roto…). */
   noSePudoAbrir?: string[]
   /** Lo que venía en el ZIP sin ser imagen ni PDF (un PSD, una fuente). */
   ignorados?: string[]

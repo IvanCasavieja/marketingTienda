@@ -26,10 +26,12 @@ import {
  *
  * Desde el 19/11/2026 la IA mira también lo que vino en un ZIP o detrás del
  * link: esas observaciones dicen de qué archivo son (no se ven acá, no se
- * guardan), y abajo va qué más miró y qué no pudo abrir (un link de Smash,
- * un ZIP roto), para que quien aprueba sepa qué le falta mirar a él. En una
- * ronda que vino solo con el link no hay imagen donde marcar: "Hacer marca"
- * pasa a ser "Pasar al comentario".
+ * guardan), y abajo va qué más miró y qué no pudo abrir (un link vencido o
+ * con contraseña, un ZIP roto), para que quien aprueba sepa qué le falta
+ * mirar a él. Los links de WeTransfer y de Smash los baja sin cuenta, como
+ * sus páginas (backend/app/services/materiales.py). En una ronda que vino
+ * solo con el link no hay imagen donde marcar: "Hacer marca" pasa a ser
+ * "Pasar al comentario".
  */
 export function PanelRevisionIA({
   revision, imagenes, elegida, convertidas, pasadas, deshabilitado, onElegir, onConvertir, onDeshacer, onDescartar, onCerrar,
