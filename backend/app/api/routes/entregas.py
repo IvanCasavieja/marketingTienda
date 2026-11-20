@@ -4,6 +4,7 @@ tablero de tarjetas estilo Trello (0070).
   PUT    /calendario/tareas/{id}/entregas     — que la tarea lleve entregas: tipo, brief, fases, aprobadores
   DELETE /calendario/tareas/{id}/entregas     — que deje de llevarlas (solo si no se entregó nada)
   GET    /calendario/tareas/{id}/entregas     — todo: fases, rondas, imágenes (los ids), marcas, decisiones
+  POST   /calendario/tareas/{id}/control-previo — antes de entregar: ¿se ven hechos los cambios pedidos? (la IA)
   POST   /calendario/tareas/{id}/versiones    — entregar una ronda (multipart: imágenes y/o un link, y un ZIP)
   POST   /calendario/tareas/{id}/mover        — arrastrar la tarjeta a otra columna del tablero
   POST   /calendario/versiones/{id}/decision  — aprobar o pedir cambios
@@ -905,6 +906,56 @@ async def _leer(archivo: UploadFile, maximo: int, que: str) -> tuple[bytes, str]
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+@router.post("/tareas/{tarea_id}/control-previo")
+@limiter.limit("10/minute")
+async def control_previo(
+    request: Request,
+    tarea_id: str,
+    comentario: str = Form("", max_length=5000),
+    imagenes: list[UploadFile] | None = File(None),
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Antes de entregar, la IA mira si se hicieron los cambios pedidos (Ivan,
+    20/11/2026: "que a la agencia, cuando va a subir los archivos, la IA le
+    diga 'che, pará, acá faltan estas cositas de los cambios'").
+
+    Recibe las mismas imágenes que se van a entregar (sin las miniaturas: no
+    se guarda nada de ellas) y no crea ninguna versión. Contesta
+    {estado, cambios, controlId}: 'sin-pedido' si no hay una ronda anterior
+    de la fase en curso que haya vuelto con marcas (o si ahora no se podría
+    entregar: eso lo dice la entrega), 'listo' con cada marca pedida
+    [{numero, texto, veredicto, nota}], o 'no-disponible' (sin IA, tope,
+    falla, demora): la pantalla manda igual. Nunca traba la entrega. Solo
+    quien la hace (`puede_entregar`). Ver
+    revision_ia.controlar_antes_de_entregar."""
+    imagenes = imagenes or []
+    tarea, barra = await _tarea_y_barra(db, tarea_id, current_user)
+    if not puede_entregar(current_user, tarea):
+        raise HTTPException(status_code=403, detail="Entrega solo quien hace la tarea")
+    sin_pedido = revision_ia.ResultadoDelControl("sin-pedido", []).para_la_agencia()
+    entrega = await db.get(CalendarioEntrega, tarea_id)
+    if entrega is None or entrega.fase_actual_id is None or reglas.archivada_sin_terminar(entrega):
+        return sin_pedido
+    ultima = await _ultima_version(db, entrega.fase_actual_id)
+    if ultima is not None and ultima.estado == "revision":
+        return sin_pedido
+    if not imagenes:
+        return sin_pedido
+    if len(imagenes) > MAX_IMAGENES:
+        raise HTTPException(status_code=422, detail=f"Son demasiadas imágenes: hasta {MAX_IMAGENES} por ronda")
+    leidas = []
+    for i, grande in enumerate(imagenes, 1):
+        leidas.append(await _leer(grande, MAX_BYTES_IMAGEN, f"La imagen {i}" if len(imagenes) > 1 else "La imagen"))
+    fase = await db.get(CalendarioFase, entrega.fase_actual_id)
+    usuario_id = current_user.id
+    resultado = await revision_ia.controlar_antes_de_entregar(
+        db, tarea=tarea, entrega=entrega, barra=barra, fase=fase, ronda=(ultima.ronda if ultima else 0) + 1,
+        usuario_id=usuario_id, imagenes=leidas, comentario=comentario,
+    )
+    return resultado.para_la_agencia()
+
+
 @router.post("/tareas/{tarea_id}/versiones", status_code=201)
 @limiter.limit("20/minute")
 async def entregar(
@@ -1073,9 +1124,11 @@ async def entregar(
     ))
     # La versión tiene que existir antes que sus imágenes (FK): se manda ya.
     await db.flush()
+    ids_de_imagenes: list[str] = []
     for orden, (datos, tipo, datos_mini, tipo_mini) in enumerate(leidas):
+        ids_de_imagenes.append(reglas.nuevo_id("im"))
         db.add(CalendarioVersionImagen(
-            id=reglas.nuevo_id("im"), version_id=versionId, orden=orden, tipo_mime=tipo, datos=datos,
+            id=ids_de_imagenes[-1], version_id=versionId, orden=orden, tipo_mime=tipo, datos=datos,
             tipo_mime_miniatura=tipo_mini, miniatura=datos_mini, tamano=len(datos),
         ))
     for m in marcas:
@@ -1092,6 +1145,14 @@ async def entregar(
         async with _UN_ZIP_POR_VEZ:
             await db.flush()
     await reglas.recalcular(db, entrega, tarea)
+    # Si la IA ya miró exactamente estas imágenes en el control previo (Ivan,
+    # 20/11/2026), la revisión de la versión sale de ahí y no se le paga dos
+    # veces. Con link o ZIP no: eso lo mira al entregar.
+    del_control = bool(leidas) and await revision_ia.reusar_control(
+        db, tarea_id=tarea_id, usuario_id=current_user.id, fase_id=fase.id, ronda=ronda,
+        huella=revision_ia.huella_de([g for g, _, _, _ in leidas]), con_link=bool(link_ok),
+        con_zip=zip_datos is not None, version_id=versionId, ids_de_imagenes=ids_de_imagenes,
+    )
 
     # Al aprobador que le toca; sin cadena, a quien creó la tarea (que la
     # puede decidir como respaldo si tiene calendario.tareas).
@@ -1128,7 +1189,7 @@ async def entregar(
     queda_para_la_ia = inventario is not None and any(
         e.clase != "otro" and e.indice not in saltar_ia for e in inventario
     )
-    if revision_ia.activa() and (leidas or queda_para_la_ia or link_ok):
+    if revision_ia.activa() and not del_control and (leidas or queda_para_la_ia or link_ok):
         background_tasks.add_task(
             revision_ia.revisar_version, versionId,
             zip_datos=zip_datos if queda_para_la_ia else None, zip_nombre=zip_nombre if queda_para_la_ia else None,

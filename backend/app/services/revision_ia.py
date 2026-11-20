@@ -27,8 +27,16 @@ Lo que NO hace, a propósito:
 - No la ve la agencia ni quien entregó la pieza: solo los aprobadores y
   quien gestiona las tareas (`puede_ver`). Para quien entrega, una lista de
   "errores" de una máquina se leería como una decisión, y no lo es.
+  Una excepción (Ivan, 20/11/2026: "que a la agencia, cuando va a subir los
+  archivos, la IA le diga 'che, pará, acá faltan estas cositas de los
+  cambios'"): ANTES de entregar una ronda que viene después de un pedido de
+  cambios, quien entrega ve el veredicto de la IA sobre cada marca pedida
+  (hecho, falta o dudoso, con su nota) en su propio control previo, y decide
+  si corrige o manda igual. Las observaciones siguen siendo del equipo. Ver
+  `controlar_antes_de_entregar`, al final.
 - No se paga dos veces: una fila por versión (la clave es la versión), y se
-  reclama antes de llamar a la IA.
+  reclama antes de llamar a la IA. Si la versión se entrega con las mismas
+  imágenes de un control previo, su revisión sale de ese control.
 
 **El modelo.** `settings.MODELO_IA_REVISION` (Opus 5.5 por defecto, ver
 config.py): todo depende de leer bien la imagen, y es el que la guía de
@@ -811,6 +819,96 @@ def cambios_pedidos_para_mostrar(cambios: list | None, estado: str) -> list[dict
     return [dict(c) for c in cambios if isinstance(c, dict)]
 
 
+# ---------------------------------------------------------------------------
+# El control antes de entregar (puro). Ver controlar_antes_de_entregar.
+# ---------------------------------------------------------------------------
+
+# Cómo va el `imagenId` de una observación del control previo: la imagen N de
+# las que la agencia todavía no mandó. Al reusarlo pasa a ser la de verdad.
+IMAGEN_PREVIA = "previa:"
+# Un control más viejo que esto no se reusa al entregar: corre la IA de nuevo.
+VIGENCIA_DEL_CONTROL = timedelta(hours=2)
+
+
+def huella_de(imagenes: list[bytes]) -> str:
+    """La huella de las imágenes que se van a entregar, en su orden: el mismo
+    archivo en el mismo lugar da la misma huella. Cada una va con su largo
+    adelante, así dos listas distintas nunca se pegan igual. Pura."""
+    import hashlib
+
+    h = hashlib.sha256()
+    for datos in imagenes:
+        h.update(len(datos).to_bytes(8, "big"))
+        h.update(datos)
+    return h.hexdigest()
+
+
+def se_puede_reusar(
+    control, *, usuario_id: int, fase_id: str, ronda: int, huella: str, con_link: bool, con_zip: bool,
+    ahora: datetime,
+) -> bool:
+    """Si la revisión de la versión que se acaba de entregar puede salir del
+    control previo, sin volver a llamar a la IA. Pura. Solo si:
+
+    - el control terminó bien ('lista') y no se usó ya para otra versión;
+    - es de la misma persona, de la misma fase y de la misma ronda (si en el
+      medio alguien decidió algo, la ronda cambió);
+    - las imágenes son exactamente las mismas (la huella);
+    - la entrega no trae link ni ZIP: eso la IA lo mira al entregar (baja el
+      link, abre el ZIP) y el control previo no lo vio;
+    - y es reciente (VIGENCIA_DEL_CONTROL)."""
+    if control is None or control.estado != "lista" or control.usado_en_version_id is not None:
+        return False
+    if con_link or con_zip:
+        return False
+    if (control.usuario_id, control.fase_id, control.ronda, control.huella) != (usuario_id, fase_id, ronda, huella):
+        return False
+    creado = control.created_at
+    return creado is not None and ahora - creado <= VIGENCIA_DEL_CONTROL
+
+
+def observaciones_de_la_version(observaciones: list | None, ids_de_imagenes: list[str]) -> list[dict]:
+    """Las observaciones del control previo, como quedan en la revisión de la
+    versión: cada "previa:N" pasa a ser el id de la imagen N que se guardó.
+    Una que no corresponde a ninguna queda sin imagen (y sin lugar). Pura."""
+    salida: list[dict] = []
+    for o in observaciones or []:
+        if not isinstance(o, dict):
+            continue
+        o = dict(o)
+        imagen = o.get("imagenId")
+        if isinstance(imagen, str) and imagen.startswith(IMAGEN_PREVIA):
+            try:
+                n = int(imagen[len(IMAGEN_PREVIA):])
+            except ValueError:
+                n = 0
+            if 1 <= n <= len(ids_de_imagenes):
+                o["imagenId"] = ids_de_imagenes[n - 1]
+            else:
+                o.update(imagenId=None, x=None, y=None)
+        salida.append(o)
+    return salida
+
+
+def cambios_para_la_agencia(cambios: list | None, ronda: RondaAnterior | None) -> list[dict]:
+    """Lo que ve la agencia de su control previo: marca por marca, el número,
+    lo que se le pidió, el veredicto de la IA y su nota, en el orden de las
+    marcas. Nada más: las observaciones (ortografía, legales, logo, QR) las
+    ve solo el equipo. Pura."""
+    if ronda is None or not isinstance(cambios, list):
+        return []
+    textos = {m.numero: _recortar(" ".join(m.texto.split()), MAX_TEXTO_MARCA) for m in ronda.marcas}
+    salida = []
+    for c in cambios:
+        if not isinstance(c, dict) or c.get("numero") not in textos or c.get("veredicto") not in VEREDICTOS:
+            continue
+        salida.append({
+            "numero": c["numero"], "texto": textos[c["numero"]], "veredicto": c["veredicto"],
+            "nota": c.get("nota") or "",
+        })
+    return salida
+
+
 class NoSePuede(Exception):
     """El mensaje es para la persona; `codigo`, el HTTP."""
 
@@ -1061,6 +1159,29 @@ async def ronda_anterior_de(db, version) -> RondaAnterior | None:
     )
 
 
+async def hechas_hoy(db, desde: datetime) -> int:
+    """Cuántas veces se le pidió algo a la IA desde `desde`, para el tope del
+    día: las revisiones de versiones (menos las que quedaron afuera por el
+    tope) y los controles antes de entregar (0086) que no terminaron siendo la
+    revisión de una versión (esos ya cuentan como revisión: una sola vez)."""
+    from sqlalchemy import func, select
+
+    from app.models.revision_ia import CalendarioControlPrevio, CalendarioRevisionIA
+
+    revisiones = (await db.execute(
+        select(func.count()).select_from(CalendarioRevisionIA).where(
+            CalendarioRevisionIA.created_at >= desde, CalendarioRevisionIA.estado != "tope",
+        )
+    )).scalar_one()
+    controles = (await db.execute(
+        select(func.count()).select_from(CalendarioControlPrevio).where(
+            CalendarioControlPrevio.created_at >= desde, CalendarioControlPrevio.estado != "tope",
+            CalendarioControlPrevio.usado_en_version_id.is_(None),
+        )
+    )).scalar_one()
+    return revisiones + controles
+
+
 class BaseDeRevisiones:
     """Lo que la revisión lee y escribe en Postgres. Aparte, para que las
     pruebas recorran `revisar_version` entera con una base de mentira."""
@@ -1070,7 +1191,7 @@ class BaseDeRevisiones:
         'ya' si ya se reclamó antes (no se paga dos veces); 'tope' si hoy ya
         se revisaron `tope` (queda anotada como 'tope' y no se manda);
         'no_existe' si la versión se borró."""
-        from sqlalchemy import func, select, text
+        from sqlalchemy import text
 
         from app.core.database import AsyncSessionLocal
         from app.models.entregas import CalendarioVersion
@@ -1080,11 +1201,7 @@ class BaseDeRevisiones:
             # Hasta el commit: el segundo reclamo espera acá y después ve la
             # fila del primero (y la cuenta del día con ella adentro).
             await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _CANDADO})
-            hechas = (await db.execute(
-                select(func.count()).select_from(CalendarioRevisionIA).where(
-                    CalendarioRevisionIA.created_at >= desde, CalendarioRevisionIA.estado != "tope",
-                )
-            )).scalar_one()
+            hechas = await hechas_hoy(db, desde)
             decision = decidir_reclamo(
                 ya_reclamada=await db.get(CalendarioRevisionIA, version_id) is not None,
                 version_existe=await db.get(CalendarioVersion, version_id) is not None,
@@ -1237,3 +1354,198 @@ async def revisar_version(
     except Exception as exc:
         logger.error("revision_ia: falló la revisión de la versión %s — %s", version_id, exc, exc_info=True)
         return "error"
+
+
+# ---------------------------------------------------------------------------
+# El control antes de entregar (con la base)
+# ---------------------------------------------------------------------------
+#
+# Ivan (20/11/2026): "que a la agencia, cuando va a subir los archivos, la IA
+# le diga 'che, pará, acá faltan estas cositas de los cambios'". Eligió que
+# sea ANTES de mandar, que a la agencia se le muestren solo los cambios
+# pedidos y que el control se reuse para el aprobador (no pagar dos veces).
+#
+# - La agencia toca "Entregar" en una ronda que viene después de un pedido de
+#   cambios con marcas: el navegador manda primero las mismas imágenes a
+#   POST /calendario/tareas/{id}/control-previo y espera la respuesta (la IA
+#   tarda unos 30 a 60 segundos; la pantalla deja "Mandar sin esperar").
+# - Es la misma revisión de siempre (`pedir_revision`, el mismo pedido y el
+#   mismo esquema), sobre imágenes que todavía no son una versión. Se guarda
+#   entera en `calendario_controles_previos` (0086) con la huella de las
+#   imágenes, y cuenta para el tope del día (`hechas_hoy`).
+# - A la agencia vuelve SOLO el veredicto de cada marca pedida
+#   (`cambios_para_la_agencia`). Las observaciones (ortografía, legales,
+#   logo, QR) siguen siendo del equipo: `puede_ver` no cambia.
+# - Si la agencia entrega exactamente esas imágenes (misma huella, misma
+#   fase y ronda, sin link ni ZIP, dentro de VIGENCIA_DEL_CONTROL), la
+#   revisión de la versión sale del control (`reusar_control`) y no se le
+#   vuelve a pagar a la IA. Si cambió algo, corre la de siempre al entregar.
+# - Nunca traba: sin clave, apagada, con el tope, si la IA falla o tarda más
+#   de ESPERA_DEL_CONTROL, contesta 'no-disponible' y la pantalla manda igual.
+#   Si la persona toca "Mandar sin esperar", el control sigue hasta terminar
+#   pero no se reusa (todavía no estaba 'lista' al entregar): en ese caso, el
+#   único, se paga dos veces.
+
+# Cuánto se espera a la IA con la persona mirando la pantalla. Más que esto,
+# 'no-disponible' y entrega igual (la pantalla además deja mandar sin esperar).
+ESPERA_DEL_CONTROL = 100
+# Dos controles a la vez como mucho: cada uno tiene hasta 4 imágenes de 1600 px
+# en memoria (el servidor tiene 512 MB). Aparte de _UNA_A_LA_VEZ: la persona
+# está esperando, no puede quedar detrás de las revisiones en segundo plano.
+_CONTROLES_A_LA_VEZ = asyncio.Semaphore(2)
+
+
+@dataclass(frozen=True)
+class ResultadoDelControl:
+    # 'sin-pedido' (no hay cambios pedidos con marcas que controlar), 'listo'
+    # o 'no-disponible' (sin clave, apagada, tope, falla o tardó demasiado).
+    estado: str
+    cambios: list
+    control_id: str | None = None
+
+    def para_la_agencia(self) -> dict:
+        return {"estado": self.estado, "cambios": self.cambios, "controlId": self.control_id}
+
+
+async def controlar_antes_de_entregar(
+    db, *, tarea, entrega, barra, fase, ronda: int, usuario_id: int,
+    imagenes: list[tuple[bytes, str]], comentario: str | None, cliente=None,
+) -> ResultadoDelControl:
+    """El control de la IA antes de entregar (ver arriba). `imagenes`: (bytes,
+    tipo) de las que la persona va a entregar, en su orden; `ronda`: la que
+    va a entregar. NUNCA levanta: si algo sale mal, 'no-disponible'."""
+    from types import SimpleNamespace
+
+    from sqlalchemy import text
+
+    from app.models.revision_ia import CalendarioControlPrevio
+
+    no_disponible = ResultadoDelControl("no-disponible", [])
+    try:
+        if not activa():
+            return no_disponible
+        anterior = await ronda_anterior_de(db, SimpleNamespace(fase_id=fase.id, ronda=ronda))
+        if anterior is None or not imagenes:
+            return ResultadoDelControl("sin-pedido", [])
+        modelo = settings.MODELO_IA_REVISION
+        contexto = Contexto(
+            tipo_pieza=entrega.tipo_pieza, brief=dict(entrega.brief or {}), mundo=barra.mundo,
+            accion=barra.nombre, accion_desde=barra.desde, accion_hasta=barra.hasta, tarea=tarea.titulo,
+            fase=fase.nombre, ronda=ronda, comentario=(comentario or "").strip() or None, hoy=hoy_en_uruguay(),
+            ronda_anterior=anterior,
+        )
+        control_id = f"cp-{secrets.token_hex(8)}"
+        # El tope del día, con el mismo candado que las revisiones: dos a la
+        # vez no pasan los dos el último lugar.
+        await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _CANDADO})
+        hechas = await hechas_hoy(db, inicio_del_dia())
+        tope = max(0, settings.IA_REVISION_POR_DIA)
+        sin_lugar = hechas >= tope
+        db.add(CalendarioControlPrevio(
+            id=control_id, tarea_id=tarea.id, fase_id=fase.id, ronda=ronda, usuario_id=usuario_id,
+            huella=huella_de([d for d, _ in imagenes]), estado="tope" if sin_lugar else "pendiente", modelo=modelo,
+            motivo=f"Tope del día: {hechas} de {tope}" if sin_lugar else None,
+        ))
+        await db.commit()
+        if sin_lugar:
+            logger.warning("revision_ia: tope del día alcanzado (%d): el control previo %s no se hace", tope, control_id)
+            return no_disponible
+
+        uso: Uso | None = None
+        try:
+            async with _CONTROLES_A_LA_VEZ:
+                preparadas = [
+                    preparar_imagen(f"{IMAGEN_PREVIA}{i}", datos, tipo) for i, (datos, tipo) in enumerate(imagenes, 1)
+                ][:MAX_IMAGENES_IA]
+                if cliente is None:
+                    from app.services import ia_cliente
+                    cliente = ia_cliente.cliente_anthropic()
+                observaciones, cambios, uso = await asyncio.wait_for(
+                    pedir_revision(cliente, preparadas, contexto, modelo), timeout=ESPERA_DEL_CONTROL,
+                )
+        except Exception as exc:
+            if isinstance(exc, RevisionFallida):
+                uso = exc.uso
+            motivo = (f"Tardó más de {ESPERA_DEL_CONTROL} s" if isinstance(exc, TimeoutError)
+                      else f"{type(exc).__name__}: {exc}")
+            logger.warning("revision_ia: no se pudo hacer el control previo %s — %s", control_id, motivo)
+            await _terminar_control(db, control_id, estado="error", modelo=modelo, uso=uso, usuario_id=usuario_id,
+                                    motivo=motivo)
+            return no_disponible
+        await _terminar_control(db, control_id, estado="lista", modelo=modelo, uso=uso, usuario_id=usuario_id,
+                                observaciones=observaciones, cambios=cambios)
+        logger.info("revision_ia: control previo %s, %d de %d marca(s) con veredicto, %d observación(es)",
+                    control_id, len(cambios), len(anterior.marcas), len(observaciones))
+        return ResultadoDelControl("listo", cambios_para_la_agencia(cambios, anterior), control_id)
+    except Exception as exc:
+        logger.error("revision_ia: falló el control previo de la tarea %s — %s",
+                     getattr(tarea, "id", "?"), exc, exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        return no_disponible
+
+
+async def _terminar_control(
+    db, control_id: str, *, estado: str, modelo: str, uso: Uso | None, usuario_id: int | None,
+    observaciones: list[dict] | None = None, cambios: list[dict] | None = None, motivo: str | None = None,
+) -> None:
+    """Guarda cómo terminó el control y registra el uso de la IA (si se llegó
+    a llamar), como `BaseDeRevisiones.terminar`, pero a nombre de quien lo
+    pidió: lo disparó una persona."""
+    from app.models.revision_ia import CalendarioControlPrevio
+    from app.services.ai_usage_service import log_ai_usage
+
+    fila = await db.get(CalendarioControlPrevio, control_id, with_for_update=True)
+    if fila is None:
+        return
+    fila.estado = estado
+    fila.observaciones = list(observaciones or [])
+    fila.cambios_pedidos = list(cambios) if estado == "lista" and cambios is not None else None
+    fila.motivo = motivo[:300] if motivo else None
+    fila.modelo = modelo
+    fila.terminado_at = datetime.now(timezone.utc)
+    if uso and (uso.input_tokens or uso.output_tokens):
+        fila.input_tokens = uso.input_tokens
+        fila.output_tokens = uso.output_tokens
+        fila.costo_usd = estimate_cost("anthropic", modelo, uso.input_tokens, uso.output_tokens)
+        await log_ai_usage(db, usuario_id, FEATURE, "anthropic", modelo, uso.input_tokens, uso.output_tokens)
+    await db.commit()
+
+
+async def reusar_control(
+    db, *, tarea_id: str, usuario_id: int, fase_id: str, ronda: int, huella: str, con_link: bool, con_zip: bool,
+    version_id: str, ids_de_imagenes: list[str], ahora: datetime | None = None,
+) -> bool:
+    """Al entregar: si hay un control previo que sirve (`se_puede_reusar`),
+    crea con él la revisión de la versión, en la transacción de la entrega,
+    y lo marca como usado. Devuelve si lo reusó: si no, la revisión corre en
+    segundo plano como siempre. No commitea."""
+    from sqlalchemy import select
+
+    from app.models.revision_ia import CalendarioControlPrevio, CalendarioRevisionIA
+
+    if con_link or con_zip:
+        return False
+    ahora = ahora or datetime.now(timezone.utc)
+    control = (await db.execute(
+        select(CalendarioControlPrevio).where(
+            CalendarioControlPrevio.tarea_id == tarea_id, CalendarioControlPrevio.usuario_id == usuario_id,
+            CalendarioControlPrevio.huella == huella, CalendarioControlPrevio.estado == "lista",
+            CalendarioControlPrevio.usado_en_version_id.is_(None),
+        ).order_by(CalendarioControlPrevio.created_at.desc()).limit(1).with_for_update()
+    )).scalar_one_or_none()
+    if not se_puede_reusar(control, usuario_id=usuario_id, fase_id=fase_id, ronda=ronda, huella=huella,
+                           con_link=con_link, con_zip=con_zip, ahora=ahora):
+        return False
+    if await db.get(CalendarioRevisionIA, version_id) is not None:
+        return False
+    db.add(CalendarioRevisionIA(
+        version_id=version_id, estado="lista", modelo=control.modelo,
+        observaciones=observaciones_de_la_version(control.observaciones, ids_de_imagenes),
+        cambios_pedidos=control.cambios_pedidos, input_tokens=control.input_tokens,
+        output_tokens=control.output_tokens, costo_usd=control.costo_usd, terminada_at=ahora,
+    ))
+    control.usado_en_version_id = version_id
+    return True
